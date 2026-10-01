@@ -147,7 +147,7 @@ Along the narrative arc in `messaging.md`.
 - Days 8–9: real-money rehearsals on all three chains.
 - Days 10–11: videos and submission.
 
-What agents can't do, and what therefore sets the pace: funding and testing real wallets on mainnet, recording the videos, and deciding the name and voice. The day-by-day plan is in `DESIGN-VAULT.md`, section 16.
+What agents can't do, and what therefore sets the pace: funding and testing real wallets on mainnet, recording the videos, and deciding the name and voice. The days, the milestones and the cut order are in `PLAN-VAULT.md`.
 
 ## Tests for the first two days
 

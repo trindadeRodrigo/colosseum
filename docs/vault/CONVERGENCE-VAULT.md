@@ -80,7 +80,7 @@ Settled on Oct 1 unless marked open. Each keeps its trade-off, so it can be reop
 1. **Documents and clean-up into `main`:** the product, the design, the audit, this map, the research, the two test rigs, the decisions in `docs/GATES.md`, the licence, and the fixes that make every check run and pass. No product behaviour changes.
 2. **Repo organisation,** from `main`: remove what is dead or stale, and lay out the folders the design needs.
 3. **The frame** the TypeScript streams wait for: the first version of the shared types, the mock adapter with its contract tests, the migration, the flags. Then the test that enforces the import rules and the CI workflows for the program and the contracts.
-4. **One pull request per stream.** The streams, their owners and what "done" means are in section 15 of the design; the day-by-day plan is in section 16.
+4. **One pull request per stream.** The streams, their owners and what "done" means are in section 15 of the design; the days, the milestones and the cut order are in `PLAN-VAULT.md`.
 
 Before every merge: `pnpm verify` locally and a green run on GitHub.
 

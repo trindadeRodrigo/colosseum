@@ -122,7 +122,7 @@ Two things in his code break these rules today. `packages/db/src/seed-assets.ts`
 
 ## 3. Frozen interfaces
 
-Frozen in two steps. **v0 on Oct 2**, after a walking skeleton passes on the mock (a three-chain buy through API, order, legs and report): streams start against it, and one named owner (Thom) approves any change. **Final on Oct 4 evening**, after each real adapter has built and simulated a create, a deposit, one swap and one keeper leg on a fork. Only then does `tests/frozen.test.ts` start hashing the files; it hashes new files only, never his. Later changes are additive. Each TypeScript type below has a zod schema of the same name in `packages/schemas/src/`.
+Frozen in two steps. **v0 on Oct 2**, with the first types and the mock: streams start against it, and one named owner (Thom) approves any change. A walking skeleton on the mock (a three-chain buy through API, order, legs and report) proves it by Oct 3. **Final on Oct 4 evening**, after each real adapter has built and simulated a create, a deposit, one swap and one keeper leg on a fork. Only then does `tests/frozen.test.ts` start hashing the files; it hashes new files only, never his. Later changes are additive. Each TypeScript type below has a zod schema of the same name in `packages/schemas/src/`.
 
 ### 3.1 Shared types
 
@@ -938,7 +938,7 @@ Stock markets are closed on Oct 3, 4, 10 and 11. Keeper trades on stocks, and an
 1. `/swap/v2/build`: fall back to the legacy route the spike proved locally. Oct 3.
 2. Trading on Base (read-only) if its $10 run fails. Oct 2.
 3. Auto-follow on Robinhood Chain: owner-signed only, which the handoff allows. Oct 7.
-4. Auto-follow on Solana: followers get the one-tap prompt, which still meets item 7's base case. Oct 8.
+4. Auto-follow on Solana: followers get the one-tap prompt, which still meets item 7's base case. Oct 7, at night: after `launch()` on Oct 8 a cycle takes 48 hours.
 5. (Taken on Oct 1: one disclosed upgrade key in place of a multisig.)
 
 Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-LINK`; no registered route that reaches a signer; the three-profile test.

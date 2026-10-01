@@ -43,7 +43,7 @@ A piece of work is done when all of this is true, and not before:
 - **Branches:** work happens on a branch cut from `staging`, named `<area>/<short-name>` (`vault/keeper-leg`, `web/goal-screen`, `chore/...`). Start one with `/start-work`.
 - **Pull requests:** every branch opens a pull request into `staging` (`/open-pr`). When a batch on `staging` is verified, one pull request goes from `staging` into `main`. Nobody pushes to `main` or `staging` directly. A hook stops Claude doing it by mistake; branch protection on GitHub is what enforces it (ORG-5 in the ledger).
 - **Verification:** `pnpm verify` is the one command. It runs lint, both typechecks, the tests and the build, and CI runs the same command. `pnpm verify:quick` (lint and typechecks) runs before every commit Claude makes, by a hook; a commit that changes only documents skips it. The tests need the database: `pnpm db:up`.
-- **Commits:** small, with a prefix that names the area or the slot: `vault:`, `api:`, `web:`, `docs:`, `chore:`, or a slot id such as `D3-PM:`. Prior-work reuse goes in commits prefixed `prior:` and is listed in `docs/PRIOR-WORK.md`.
+- **Commits:** small, with a prefix that names the area or the slot: `vault:`, `api:`, `web:`, `docs:`, `chore:`, or a slot id such as `SOL-2:`. Prior-work reuse goes in commits prefixed `prior:` and is listed in `docs/PRIOR-WORK.md`.
 - **Ledger:** `docs/vault/STATE-VAULT.md` is the one list of tasks, with owner, status, evidence and blockers. Update it in the pull request that does the work.
 - **Plugins and personal skills:** where a plugin's workflow disagrees with this file, this file wins. Plans, specs and notes go under `docs/`, never in a plugin's default folder.
 
