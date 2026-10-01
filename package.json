@@ -53,7 +53,11 @@
     "risk:markets": "tsx scripts/risk/verify-markets.ts",
     "risk:lending-measure": "tsx scripts/risk/lending-measure.ts",
     "risk:lending-registry": "tsx scripts/risk/lending-registry.ts",
-    "risk:lending-history": "tsx scripts/risk/lending-history.ts"
+    "risk:lending-history": "tsx scripts/risk/lending-history.ts",
+    "risk:lending-ix-table": "tsx scripts/risk/lending-ix-table.ts",
+    "risk:lending-decode": "tsx scripts/risk/lending-decode.ts",
+    "risk:lending-decode-check": "tsx scripts/risk/lending-decode-check.ts",
+    "risk:lending-freeze-tx-fixtures": "tsx scripts/risk/lending-freeze-tx-fixtures.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
