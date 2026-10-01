@@ -16,7 +16,7 @@ Per the Colosseum rules, only work done inside the window (Sep 14 – Oct 12, 20
 |---|---|---|---|
 | Haircut rules (subset relevant to USD yield legs) | `packages/engine/src/assets/haircuts.ts` (D4-PM) | _pending_ | Rule ids and thresholds ported; provenance label `prior_dataset` if any data comes with them |
 | Macro dataset (USD/BRL, CDI) | fallback for `fx_observations` only if BCB API fails | _pending_ | V7 passed, so not expected |
-| SVS math and oracle crates, naming conventions | the vault program, if `docs/HANDOFF-VAULT.md` is accepted | _pending_ | Vendored with attribution; `prior:` commits |
+| SVS math and oracle crates, naming conventions | the vault program, if `docs/vault/HANDOFF-VAULT.md` is accepted | _pending_ | Vendored with attribution; `prior:` commits |
 
 ## Submission-form text (draft)
 
