@@ -1,0 +1,1276 @@
+[
+  {
+    "id": "0xd80b3b4cc602181da7004070f75c54b3107807f0cc71072d8c373662d44df972",
+    "fee": 900000,
+    "tickSpacing": 18000,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 989449
+  },
+  {
+    "id": "0x06ca11bc02af898083715ab7b27a2e41f949861ff2269099016f2b837c758421",
+    "fee": 950000,
+    "tickSpacing": 19000,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 1151917
+  },
+  {
+    "id": "0x98be496c51741e7a41b565aa52ba2731e8bb17e45246e220729cfbf835d84fd8",
+    "fee": 50000,
+    "tickSpacing": 1000,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 1496185
+  },
+  {
+    "id": "0x3bb34a44f1b2b5f32c034c38a53065a521a47b199700fa9bd19d60985ff24bf1",
+    "fee": 3000,
+    "tickSpacing": 60,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 1576460
+  },
+  {
+    "id": "0x7aa87f0cf3a6fe5fdf320a611f4f2806eaf4c9dfd85db688862055fddbca3042",
+    "fee": 850000,
+    "tickSpacing": 17000,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 3465647
+  },
+  {
+    "id": "0x77706d74c27832fbb9894675aaeb68ff592d59d2b07a4c03ab45bcc9b2ae3bda",
+    "fee": 500000,
+    "tickSpacing": 1000,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 5294977
+  },
+  {
+    "id": "0x5e86db9a096faa8c8b12d7b41ef49b245035e242cc8ee83f86467891de85b8ac",
+    "fee": 10000,
+    "tickSpacing": 200,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 6111268
+  },
+  {
+    "id": "0x6f9aafb99f9b8e74571d833c4c2546d25c5a479d87f0089e94de79e3e61af2cd",
+    "fee": 609800,
+    "tickSpacing": 12196,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 10680354
+  },
+  {
+    "id": "0x6e3f19a38c27e39c88abcd8413e3b35c0cbb60775cddeaf094678489216dd130",
+    "fee": 30000,
+    "tickSpacing": 600,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 12277713
+  },
+  {
+    "id": "0xc888a15a4a9a0ef8894997f6b68c619769a5d79c32d6534470469b0100cffdff",
+    "fee": 800000,
+    "tickSpacing": 16000,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 12406506
+  },
+  {
+    "id": "0x622b68c4e8273ba14745b8c89bbc1f13a35dc2d6b1f5bddc3cc5d4561bf7ab05",
+    "fee": 925000,
+    "tickSpacing": 18500,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 12407246
+  },
+  {
+    "id": "0x2d6ec380a3dc18dc4a2067ba6884835b49455cd79c8afa1f7625b6b2f85670a6",
+    "fee": 500,
+    "tickSpacing": 10,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 13180220
+  },
+  {
+    "id": "0x6a41bdbdf82850998dd5f30588cde7a38447ba6334258ba91775e090155eb796",
+    "fee": 10000,
+    "tickSpacing": 100,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 13408982
+  },
+  {
+    "id": "0x92192d24cdaea9a40135b0bbbe19cb2a7258dadbb89c04581be3784717767d7d",
+    "fee": 999016,
+    "tickSpacing": 19980,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 15224518
+  },
+  {
+    "id": "0xd99791a001d668e2d5682d9e515315134a4d4704e64a02f1d089c52b6ab3e9e4",
+    "fee": 600,
+    "tickSpacing": 12,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 15236377
+  },
+  {
+    "id": "0xf1324b9d3e73cff4f3cbe8451f607bd064d0feba1353bde555e3b3afa9f94a33",
+    "fee": 3250,
+    "tickSpacing": 65,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 16010345
+  },
+  {
+    "id": "0x36be8a0d68ca22f86bcdf41617051a27cbb244a17ad7fe0aede318f46effe644",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0x83432ccbf6a058856e90698ecb47561e25f08a88",
+    "block": 16264386
+  },
+  {
+    "id": "0xddee7cde7880bd85c25639a8774f663d6473543b694eb144578032b08b48939f",
+    "fee": 930000,
+    "tickSpacing": 18600,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 16563009
+  },
+  {
+    "id": "0x733dae2c0cbb73e608d99d6c236dd2dff1eba84e2c7cb01da342115b3d897729",
+    "fee": 499,
+    "tickSpacing": 10,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 18030142
+  },
+  {
+    "id": "0x1d6b86ca25e01a320aa392d6b64e68c364245c2071a7315e80e3e0ccb7e87cc3",
+    "fee": 50,
+    "tickSpacing": 1,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 18185847
+  },
+  {
+    "id": "0x79507a251efdb37b62fc3ed15890ea568770ee56d1ce467d8234844992a7fd64",
+    "fee": 40,
+    "tickSpacing": 1,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 18187712
+  },
+  {
+    "id": "0xfc1576a995e5c2f34c63ec463c800d6dfed9b568006e9cc4838ce8ec255add30",
+    "fee": 1000,
+    "tickSpacing": 1,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 18253754
+  },
+  {
+    "id": "0x6444a8e0b267406a15db74ca00c4a24bdfa81ed3180f5b6d0851f8ed6f4f29c5",
+    "fee": 100,
+    "tickSpacing": 1,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 18594337
+  },
+  {
+    "id": "0x57c3c9777580efe266154f04c75ca7a5f912040e6c2ef541e248ff54f3b42e03",
+    "fee": 400,
+    "tickSpacing": 8,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 18729101
+  },
+  {
+    "id": "0x441d580dcf4b436956c6e297a62f5cd4a8cd34ea1aa5cc80fd6a9a0b08ef3429",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0xa0ce1df0191a66434fb04391161776c7814f8a80",
+    "block": 20714714
+  },
+  {
+    "id": "0x0432636d67597c334d609c50609f0c9fc8ceb54786d400bf21ef89b50294e131",
+    "fee": 990000,
+    "tickSpacing": 9900,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 20715354
+  },
+  {
+    "id": "0xeab71a55ad0562b228abcf3b97edb272b22bd78d1e76e93d37a9ebe8f93eed71",
+    "fee": 880000,
+    "tickSpacing": 8800,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 20716486
+  },
+  {
+    "id": "0xf99f5f47f36d5325e799c54c6ea06513fe59f2157bcfeadef2b0abb51a9c40ce",
+    "fee": 3499,
+    "tickSpacing": 60,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 20923856
+  },
+  {
+    "id": "0x33833d86c64846f507e8e862cfc6ed33f029f3d0d679b629e51cea9ad0b25a26",
+    "fee": 2000,
+    "tickSpacing": 40,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 21262804
+  },
+  {
+    "id": "0xc3e2baf4b05d2574fd759f371895b48b03acc391778b8ff99224ef528406c130",
+    "fee": 2500,
+    "tickSpacing": 25,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 21849700
+  },
+  {
+    "id": "0x7a9ef0851f69fd26f036adc221a379fe28d3ed521fb2704101211890f876d61c",
+    "fee": 1500,
+    "tickSpacing": 15,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 22039123
+  },
+  {
+    "id": "0xdf5c0bcd967d54774c139a4ef803ec994779736346fb4c21b50ed241b1fd2682",
+    "fee": 375,
+    "tickSpacing": 4,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 23453353
+  },
+  {
+    "id": "0xc16369d31e57f6712533aeacdc99eb911818100e5e677242a6ad4a847c0e01ce",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0xe06495094a44987833219a48b175c5c30d426088",
+    "block": 24145205
+  },
+  {
+    "id": "0x53e74184f024eb01ceb7bbde68866bff3cc3ddf378c78745eb52bdd9ad7bcd91",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0x20f8b7ec9cc3bb5c739dedb15a8b4275f84b00c8",
+    "block": 24402457
+  },
+  {
+    "id": "0x0797058eafd4d86a6ee3c483a44def620eab230947b007322042b14ee9d5bdd6",
+    "fee": 9000,
+    "tickSpacing": 90,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 24411351
+  },
+  {
+    "id": "0xd7ad01c51c07bb3737a8f13e9561065b3ff45aef4d6bcc26b501675d7820867e",
+    "fee": 375,
+    "tickSpacing": 4,
+    "hooks": "0xaab7342859493ea8ab62e8854f49836d69625440",
+    "block": 25275053
+  },
+  {
+    "id": "0x156083b01bdcb6febb51fcfc75d98e9838388e95e6a0ecbd541165a924904132",
+    "fee": 500,
+    "tickSpacing": 5,
+    "hooks": "0xaab7342859493ea8ab62e8854f49836d69625440",
+    "block": 25276043
+  },
+  {
+    "id": "0x92a8dfcd177123f21145c49643116a5f66ceba56b6860419c1e35d3bda0d222b",
+    "fee": 2000,
+    "tickSpacing": 20,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 25343142
+  },
+  {
+    "id": "0x3f5b14358c4bef391614084e4a62ed8b8fcfda3eeef12a6dce07b75bf219a27d",
+    "fee": 375,
+    "tickSpacing": 4,
+    "hooks": "0x483040121726fbc491d1a082dc0e1addfc83d440",
+    "block": 25420003
+  },
+  {
+    "id": "0x1440e510784a87e6a8967d3f679af9512c3dfdb96215a1d4b68f57bf0168e007",
+    "fee": 75,
+    "tickSpacing": 1,
+    "hooks": "0x483040121726fbc491d1a082dc0e1addfc83d440",
+    "block": 25421107
+  },
+  {
+    "id": "0xbc978f68050fc6261178fb5f2fbbb2b82324ef87d41d240e79266d821522526c",
+    "fee": 75,
+    "tickSpacing": 1,
+    "hooks": "0x3013dfdd919c861983534047a745976676ae5440",
+    "block": 25889183
+  },
+  {
+    "id": "0x1f3c07d883bee3d11649edcf5fe5c14bcc8c357a730ef667a497a4b0d117221f",
+    "fee": 375,
+    "tickSpacing": 4,
+    "hooks": "0xbd5177f4e6f00a55f8724c18995251f34b7314c0",
+    "block": 26797597
+  },
+  {
+    "id": "0x93e416aad0cc8889c524afe56b889d00660aecc9db6c84c55f601151010910c0",
+    "fee": 400,
+    "tickSpacing": 4,
+    "hooks": "0xbd5177f4e6f00a55f8724c18995251f34b7314c0",
+    "block": 26798764
+  },
+  {
+    "id": "0xdb3cfdb607d48338f3823982e5e917e56f4d0c02d14a0662fe82568bbcdad5ea",
+    "fee": 0,
+    "tickSpacing": 10,
+    "hooks": "0x104ac2c6e7b2e5dfee78cc2b401531e26dcf0088",
+    "block": 29467011
+  },
+  {
+    "id": "0x3d407c9d38faf32d0b95d1aa5d047b0bc02955ad33674091edd666a89f5b2a67",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0x2ac29f18b22a12917d4653406b0d2fe7b592a888",
+    "block": 29843530
+  },
+  {
+    "id": "0x7d9439cb88db098715054e302a27340749a355cc1161ed89dcac7c98413a8557",
+    "fee": 1000,
+    "tickSpacing": 10,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 32013913
+  },
+  {
+    "id": "0xc13b692ea2c1d639c51ec3967c1ff4194daebfd765bb470ace01f360e14894eb",
+    "fee": 100,
+    "tickSpacing": 400,
+    "hooks": "0xc52fc52698479e42f0da9a8a75296ec3871454c0",
+    "block": 33427712
+  },
+  {
+    "id": "0x170af76190eadb30635d2877c6a7042cb517ee08b3f4315ea5c6330b24de39ef",
+    "fee": 1000,
+    "tickSpacing": 200,
+    "hooks": "0xc52fc52698479e42f0da9a8a75296ec3871454c0",
+    "block": 33726000
+  },
+  {
+    "id": "0x7990aad9e8fb048f49a155a7df5603db0366f0657035b78eb4196395cccb3dcd",
+    "fee": 8388608,
+    "tickSpacing": 10,
+    "hooks": "0x66622f77b797d506e5376f7798b67ab288966080",
+    "block": 37260309
+  },
+  {
+    "id": "0xdf1ecfc04c51adba15d99eeeb682c4d23e306332a9266f0e83f8b5d7eab5bdad",
+    "fee": 986500,
+    "tickSpacing": 9865,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 38495615
+  },
+  {
+    "id": "0x2cb09b07ab4dc0e59b2b0be91e6d40e11338ecd6307f6e221808a36e7987c3a4",
+    "fee": 1000,
+    "tickSpacing": 1000,
+    "hooks": "0xc52fc52698479e42f0da9a8a75296ec3871454c0",
+    "block": 38829343
+  },
+  {
+    "id": "0x55c2dddc6c6b85897009759787655c6fad1e1c4d5c63d33e38bd7e18c55000d2",
+    "fee": 375,
+    "tickSpacing": 1000,
+    "hooks": "0xc52fc52698479e42f0da9a8a75296ec3871454c0",
+    "block": 38829855
+  },
+  {
+    "id": "0x71d14bb5a25947723341dc4d905fa8712db4256d78662808101791b239f1b038",
+    "fee": 3000,
+    "tickSpacing": 60,
+    "hooks": "0xf4f6ee50c4f96a86452d21f5f247b1d5198d2ac0",
+    "block": 39328658
+  },
+  {
+    "id": "0x16f03f9e502efe62de6ed7f2f365ad8c11f60de92b072280b9d4513077cee6f1",
+    "fee": 30000,
+    "tickSpacing": 300,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 39947066
+  },
+  {
+    "id": "0x94a510bb08bb8225cdc92d648bb3c1edccaac775e1ff4b5c06935f338b28337f",
+    "fee": 8388608,
+    "tickSpacing": 10,
+    "hooks": "0x48a0c7f1e5508794f93ab7dd217684da47dac0c4",
+    "block": 41675858
+  },
+  {
+    "id": "0x78dfa41c10b41f05b1096802d15a92955c7b2a9bbe3d4f52db313ea222707bcc",
+    "fee": 500,
+    "tickSpacing": 60,
+    "hooks": "0xad7363db1991685389275949dd246f61da03d040",
+    "block": 41946511
+  },
+  {
+    "id": "0xdb3ff80e4813ce17fe5ea480e6bf2aa9ce1104a847d0bbe767b6a2435c951e6f",
+    "fee": 1000,
+    "tickSpacing": 60,
+    "hooks": "0xad7363db1991685389275949dd246f61da03d040",
+    "block": 41946535
+  },
+  {
+    "id": "0x94c58741c5954b733dfcc191bc200f813a244ce3ce47d319e827c8a05a058e92",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0xd11758ec960e365df35e3790b172b25c708a6888",
+    "block": 42315129
+  },
+  {
+    "id": "0x401bc4b106c6deac5c66c251743efce2776a7eb0ce49d122d870308a4d209e43",
+    "fee": 8388608,
+    "tickSpacing": 5,
+    "hooks": "0x59a286b116bf5a1d6f82129e45ed170f5c24c0c4",
+    "block": 42487650
+  },
+  {
+    "id": "0x6fd0dc1dff0380106dfc2c740e03485ec7a26b48fd5d1b58f66a4bf0913eed50",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0x7c3bda0e0410eb047d20a61502b6b44a0400e0c0",
+    "block": 43015785
+  },
+  {
+    "id": "0xd5b87cf1c729f806e8ef5ef11d652a10ad60d8921d6110d6fd9938680cd6f152",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0x9185151852a44a5394736611ef4460c67883a0c0",
+    "block": 43039584
+  },
+  {
+    "id": "0x333c01504847f9a5e6dbc5ada30f61b2fafcb2ed67a2c813661180412b66f5fb",
+    "fee": 8388608,
+    "tickSpacing": 5,
+    "hooks": "0x869bf49e17bd633d3aab8aa3ffd134d35f3680c4",
+    "block": 43098305
+  },
+  {
+    "id": "0xcfa246640e2866a1512245c37491bcfadfdadc24aabd407beeecc8e81f368f97",
+    "fee": 8388608,
+    "tickSpacing": 5,
+    "hooks": "0x82760b6f8aa0042c2e25abedb18318bbf4b200c4",
+    "block": 43330106
+  },
+  {
+    "id": "0xc63d60d0f6d4e9aee57e9c24609c2fed16444aab27f836dc9b1b3f89d5de293e",
+    "fee": 8388608,
+    "tickSpacing": 5,
+    "hooks": "0x704c9f31f701c5ddc18a030301dcb7ec236a00c4",
+    "block": 44869304
+  },
+  {
+    "id": "0xf71c421c60d19c784d262f845cd2e8e8bec511ea6447e9e6d950fd6b4ce4db5a",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0x6d2ac09bf3e7be9e1898e8429b000bff6fb380c4",
+    "block": 44910042
+  },
+  {
+    "id": "0x0e67138e21eea85fe8b150f6e0c3f7b6b8154828080402773e63500681d71189",
+    "fee": 8388608,
+    "tickSpacing": 5,
+    "hooks": "0xd801177707cc268ef69b352f7811baaa07f1c0c4",
+    "block": 45034409
+  },
+  {
+    "id": "0xa9fa30edf29d8d321073b75d8414158926204b6200ec987250d35959b9a6f822",
+    "fee": 8388608,
+    "tickSpacing": 10,
+    "hooks": "0x6d2ac09bf3e7be9e1898e8429b000bff6fb380c4",
+    "block": 45228750
+  },
+  {
+    "id": "0x0d2c2e77fd41a2bfb8cf2705af0e627a29b8ce45d486a6c5be834314588eba88",
+    "fee": 8388608,
+    "tickSpacing": 10,
+    "hooks": "0x36b002e9218556f26d646e101870ed2647c100c4",
+    "block": 45481071
+  },
+  {
+    "id": "0x1a3c601f9bee0986053f5546bdcffe49367a5cc27ff68812b745f4f055630ab6",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0x64e9ae1066c47ac4a3cc0a5bd7b135908590e088",
+    "block": 45485786
+  },
+  {
+    "id": "0xdf34f8a744dfd1f8dcf50fc79f23bc8de0c4dc4020769ae2ed7a4f3342d5223e",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0x4ceab7f62ec7ea41b24c1b3076a520ec179780c4",
+    "block": 45526209
+  },
+  {
+    "id": "0xf4bb3c939105558018c235c7af7944309cdd9b61b2a4897af48d844951763ea4",
+    "fee": 8388608,
+    "tickSpacing": 2,
+    "hooks": "0xed9a27cfc6d1d8c73c93ba9a91313125b3ca60c4",
+    "block": 45621977
+  },
+  {
+    "id": "0x0926cdd1a0e53cf6fecef24ad079df3cf8b094ffd3edd7e70e0e298e3e64b98b",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0x4b699780d0cf2b1fe4bf1db09691c1bc87278880",
+    "block": 45624027
+  },
+  {
+    "id": "0x3eaf01a40f146c537663e89cde15a89abe652e8c0583cf0c789edf299cfa78f5",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0x7fc38b80950a44f98044fa39a10b4f22c5ae4888",
+    "block": 45624640
+  },
+  {
+    "id": "0x49022f1c2e35d040702ca1bab33e7083346ec45025b723fe04d573e6c0c54ed0",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0xeeaaeb0ac959a3c4b067e34022122f9adc8e0888",
+    "block": 45624748
+  },
+  {
+    "id": "0x7ac553f620ed1512e13d64d1551fb77c7efb34141feabdb2e2bd83ad24a38a95",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0x9b4633e9ed47872de94be1a38af2e61eb8e74888",
+    "block": 45624864
+  },
+  {
+    "id": "0xd94d8865a7af521c51ccd38278f26539591cc1c065e4395d3091a06795a7d998",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0xad06cbe3eeb4d0c8f49561a17f7b9ed39d280888",
+    "block": 45624970
+  },
+  {
+    "id": "0x69ae86dadf0b457b6e6c9afef966fae332a19ca56fa0432692d370de1f3f4560",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0x54201b5a0bee8328b666271d391efdcafde30888",
+    "block": 45625085
+  },
+  {
+    "id": "0x7a9a677d29886552f0bbf2eeae2f2d0c40867b011a0b8c76d26d43abd61eeb11",
+    "fee": 8388608,
+    "tickSpacing": 1,
+    "hooks": "0x2522db314b0a4e7686ca9501b1c1b41b9204c880",
+    "block": 45629419
+  },
+  {
+    "id": "0xa38fd65282b68279a3ff443af0ba5076bc73f5d66c9fbb184c712dece1ce7936",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0xae025b4efa6c0101e836099b2a78658d79140888",
+    "block": 45630109
+  },
+  {
+    "id": "0x1c94efafc1f1924be23d27722aafc3b1b8f660038a3614f67e93776b5f8f3458",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0x4183ba0012d1c9e6c5ee7c2be65da7f26225c888",
+    "block": 45630223
+  },
+  {
+    "id": "0x05c77bcb353b95a4eb9e5625c7017ddad4c74ed5ae6f6235b5cf21d5b7afcbe5",
+    "fee": 8388608,
+    "tickSpacing": 3,
+    "hooks": "0xbb0641439c202c1519bf9edfc756d408d1a640c4",
+    "block": 50150424
+  },
+  {
+    "id": "0x6607cc09e819b691081f16a85e989f899a271756827c58ce309e1b8a80da4df5",
+    "fee": 3000,
+    "tickSpacing": 60,
+    "hooks": "0x1f3b991c1534e1b570c43fe4bd5cd18311fd6503",
+    "block": 50169812
+  },
+  {
+    "id": "0x6098c14900d991533140c951d4e2748e43b18f941950a8c304e87cd08e2e305e",
+    "fee": 3000,
+    "tickSpacing": 60,
+    "hooks": "0xf45510a5ca0ecba81c8998983d7ff1366849e503",
+    "block": 50336279
+  },
+  {
+    "id": "0x22242bdd78866bce1ca819ac20fb64af969689da78dfe27a988402ab86785797",
+    "fee": 8388608,
+    "tickSpacing": 10,
+    "hooks": "0x858d977e55ecee1c6a5ca8c5318b55d7c70340c4",
+    "block": 50692219
+  },
+  {
+    "id": "0xbdc40aceb904012f8a15a94bcb21b9c3219687cd7a100c1e5391420863afdbea",
+    "fee": 8388608,
+    "tickSpacing": 8,
+    "hooks": "0x858d977e55ecee1c6a5ca8c5318b55d7c70340c4",
+    "block": 50692801
+  },
+  {
+    "id": "0x0121ae5fa19201eb0e85783080d7207f9a21db0a517af10b54538317bd578ad4",
+    "fee": 1600,
+    "tickSpacing": 16,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 50820670
+  },
+  {
+    "id": "0xf9e5a818abb767f9987333bd0fa974e38f582f744bc5cf1da49b5c0d34473c9d",
+    "fee": 951100,
+    "tickSpacing": 9511,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 50837485
+  },
+  {
+    "id": "0x908295f296a520ddde1e176c07d1d078c243934b043edc2de432d8fedf570ef8",
+    "fee": 8388608,
+    "tickSpacing": 10,
+    "hooks": "0x603ac50838cc1de53da788b37b609228a34f40c4",
+    "block": 51063110
+  },
+  {
+    "id": "0x1506d1d8c1629f5229a65858c28c3beac937555aed2337ee1dc076b4779d3215",
+    "fee": 900000,
+    "tickSpacing": 19988,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 51159826
+  },
+  {
+    "id": "0x2346e0b85c546e138214298e07981f63426f97fca6baf5b166bc5b642b6adb9a",
+    "fee": 8388608,
+    "tickSpacing": 1,
+    "hooks": "0x5badf3ddc17d3938e7e4354738c08d32fa1d40c4",
+    "block": 51463912
+  },
+  {
+    "id": "0x49f6bc62eb7a6b5f0dcd037f34a112f643f82890201cbe524ccce0251e5d1c35",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0x982cb9077d434d7d9625b2a5a41960601cff9080",
+    "block": 51478447
+  },
+  {
+    "id": "0x29ad066a0dd96c17576c856db9f8f6a40c79bbda51d8263170d5b2207efb2197",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0x14637f24f9c778aef1637ba836ff8580395fe0c4",
+    "block": 51478620
+  },
+  {
+    "id": "0xac143e569de6d705bd674e44ca933868865e099cb49f0c3747ae845bf2d5a609",
+    "fee": 8388608,
+    "tickSpacing": 10,
+    "hooks": "0x14637f24f9c778aef1637ba836ff8580395fe0c4",
+    "block": 51494714
+  },
+  {
+    "id": "0x942301519b3db9ec1dd84f64802e86b0b3e63ccb0ff894aaf79dffeacade5563",
+    "fee": 0,
+    "tickSpacing": 10,
+    "hooks": "0xdd35b72b8e8a9290de03b382fc254c95053f6888",
+    "block": 51538955
+  },
+  {
+    "id": "0xf02cf016537443865c26cd05d2cbcf3b716b4797370b02495ee662e9c63a519e",
+    "fee": 60000,
+    "tickSpacing": 500,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 51550343
+  },
+  {
+    "id": "0xe73f70aacce220ccefc21bbdb37989138d1c799187ab20a260eeca33c7224203",
+    "fee": 8388608,
+    "tickSpacing": 1,
+    "hooks": "0x344a66ee5826d8cb59a6f4e1fd802baf2d64a5c7",
+    "block": 51807534
+  },
+  {
+    "id": "0xcb6afc4b2239ea328782d7b0070e521b1b324ad3e77ce79d8a0736d34f2814d8",
+    "fee": 8388608,
+    "tickSpacing": 2,
+    "hooks": "0x344a66ee5826d8cb59a6f4e1fd802baf2d64a5c7",
+    "block": 51807915
+  },
+  {
+    "id": "0x420c99856fa42b495581bfb704882f0fe3125a27e12a79f8401200e1fadaa9ef",
+    "fee": 8388608,
+    "tickSpacing": 10,
+    "hooks": "0xa4e6f5500e88691fdcb289aa0e99067481434880",
+    "block": 51854954
+  },
+  {
+    "id": "0xdbb75d2f70989242700b6253e3efbd7d15c96ead3927c3ad0e3fc51e232d6e84",
+    "fee": 0,
+    "tickSpacing": 10,
+    "hooks": "0x50d0fc640d02d5c7bdadc925806f5d8110f180cc",
+    "block": 51876738
+  },
+  {
+    "id": "0x3e0d8613a94a4290e5ca316f9084f3d64a8db43c95da782b1fd19ccb4f6e7078",
+    "fee": 8388608,
+    "tickSpacing": 7,
+    "hooks": "0x78c20a88ff6d2e975f9ab2a4ebef8bf2a41c45c7",
+    "block": 51908829
+  },
+  {
+    "id": "0xdfdbc3e7ac80327652e69b9cc8b0c6995978dca5152b85ce838f37a7beacb2ee",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0x739b0366ac3018c0e27df5133536de82ed710080",
+    "block": 52150990
+  },
+  {
+    "id": "0xcd49eb3c7e49c04f1bb04d450d13ab870cefd3dc5246a88c317c2c2c7a3a0e1a",
+    "fee": 8388608,
+    "tickSpacing": 10,
+    "hooks": "0xa3768c7a29938fe30c9ace1aede577f77f7b85c7",
+    "block": 52296042
+  },
+  {
+    "id": "0x8e766fc2b58897cf027946eb01d5b2d6aca7ad4e0155fef221d0e077a132c68e",
+    "fee": 13690,
+    "tickSpacing": 137,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 52309234
+  },
+  {
+    "id": "0x752b10c5b846c44cc76e5a573d0b1e83d20a9c211678b80d7e6fbb00649f3e77",
+    "fee": 8388608,
+    "tickSpacing": 10,
+    "hooks": "0xfae7dd733e63153a2fced436345788d6616785c7",
+    "block": 52312079
+  },
+  {
+    "id": "0x84e2847d2fe2dab492ca065326efa51b6f7e0924f200f983b9939530834df815",
+    "fee": 80,
+    "tickSpacing": 1,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 52314444
+  },
+  {
+    "id": "0x095ee39749aadf73b1e1730def735131b327189884c9a508fa12dfecd9f1791b",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0x7566a3bfbe88c06bc5f33fea927f461e8279d0c4",
+    "block": 52467432
+  },
+  {
+    "id": "0x3a0f2703e8ea4ed7a325c21fbd66ea9c4d3a069623e067f47712ed14b594e79a",
+    "fee": 40000,
+    "tickSpacing": 400,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 52701630
+  },
+  {
+    "id": "0x53912c39351c5fab7cfd81e5f3461604f28a9f0574ad578f20723fddaefaf32b",
+    "fee": 8388608,
+    "tickSpacing": 3,
+    "hooks": "0xeb7a43e98a9756b969bf080d6c414263194a80c4",
+    "block": 52714290
+  },
+  {
+    "id": "0x1ce4d03fa10d244b59fdd5ce70a91e70c50b8af8364b9e3283da78e02cf6e691",
+    "fee": 100000,
+    "tickSpacing": 1000,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 52769502
+  },
+  {
+    "id": "0xefe42669d83cf5ecd1fe24dd922dc3d52dead7410cd3837eb21b6e46cb2df4ac",
+    "fee": 8388608,
+    "tickSpacing": 3,
+    "hooks": "0xe769f875a807bdf4da813aa70b9410b1480c40c4",
+    "block": 52849830
+  },
+  {
+    "id": "0x07973d8b496bd03dc9857094af9ddfa3a47e2b3df20beee7c1ec1cca48ebff0d",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0x73cafee524cee109c1b444e25c2f53fb7f0b80c4",
+    "block": 52853937
+  },
+  {
+    "id": "0x0718e9354144e2f54b15b69f4d5b470bb8c4807685a4ac94e77dcabda5ad376a",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0x8d9cf6277fa4d550bbf31e7fc15d9a406be27a80",
+    "block": 53005762
+  },
+  {
+    "id": "0x3d65da3c0cdda9806f84952b0f02d704a8817f7b7f2e421c092cb47fad03df94",
+    "fee": 8388608,
+    "tickSpacing": 1,
+    "hooks": "0x0f552c04cebf75a032e0e73e235a50e9f84cc5c7",
+    "block": 53050987
+  },
+  {
+    "id": "0x5e06eb07807c17e2b8943f9cdb6947283bc29eb516e1f8aee5bbb26e6442f601",
+    "fee": 8388608,
+    "tickSpacing": 1,
+    "hooks": "0xdce6b501ff33246d135d6cdb0f083059832745c7",
+    "block": 53076695
+  },
+  {
+    "id": "0x144d44ad5f908c3e003a311909bc7eb3d70640ea063a2d1be0060e4a2f3e21eb",
+    "fee": 8388608,
+    "tickSpacing": 2,
+    "hooks": "0xdce6b501ff33246d135d6cdb0f083059832745c7",
+    "block": 53077055
+  },
+  {
+    "id": "0x1158e763e26d9e1791d9be55ddab04736cac236b9029ffff2cfe631d2b0492bd",
+    "fee": 8388608,
+    "tickSpacing": 5,
+    "hooks": "0xdce6b501ff33246d135d6cdb0f083059832745c7",
+    "block": 53077612
+  },
+  {
+    "id": "0xce8da9ae60621ab1d2da0cb86a93a0b8cdd85160ab1534199f17a03b4ad9e592",
+    "fee": 100,
+    "tickSpacing": 1,
+    "hooks": "0xaef65006c3b47577b6e70e40a8719143d17565c7",
+    "block": 53413564
+  },
+  {
+    "id": "0xe6a7df3a33507e4ed558a7d154419df3551a3995c5fbde2c8bfcdc1eed5aa0b0",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0x3993ed68bcc6929716c1c3e32cacde2a65998080",
+    "block": 53421530
+  },
+  {
+    "id": "0x444ae2edfa11fcb6fe2cd1d11626b49535d2bd453ae7c20733ad5227fedc62bc",
+    "fee": 1000,
+    "tickSpacing": 60,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 53429514
+  },
+  {
+    "id": "0xc0740fc2109bddc4f5ab26d499cbfe0c5c8d059c5ef41dec28579f76bd4f572e",
+    "fee": 8388608,
+    "tickSpacing": 15,
+    "hooks": "0xda480d75634ff885203225f6db37126d8ef245c7",
+    "block": 53476453
+  },
+  {
+    "id": "0xd3a577cc273c5f81a169c0fd06b79c24269f4bb3cb5e7ad0313ada5310014389",
+    "fee": 2,
+    "tickSpacing": 1,
+    "hooks": "0xeeca4c76149a73d8c4c8305acb23ee336a4dc044",
+    "block": 53493399
+  },
+  {
+    "id": "0xf55675aa8c19c82ba960647c291b2c795837cd34a2e5f3240f5c5fecf1d7f359",
+    "fee": 3000,
+    "tickSpacing": 60,
+    "hooks": "0x2664eea5c49ffe9eed11d55613cec086becfeac0",
+    "block": 53519270
+  },
+  {
+    "id": "0xf8581a34f40b752960536dfa64127184edf6dd0f0ef21e3af2700ff556a81561",
+    "fee": 8388608,
+    "tickSpacing": 10,
+    "hooks": "0xe30039c7f37f5474fb925009930bd34d898fc5c7",
+    "block": 53951399
+  },
+  {
+    "id": "0xc6e4a62bed460184686b7280c62c971f50215f688ba2e0c9fd4b08aef6341261",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0xdc6995397b5875f30317fa9bb30ff6a5e6c645c7",
+    "block": 60359091
+  },
+  {
+    "id": "0x8e57b5dc3d405251e5c41ae375649ea3518d7de0a6ef53e92fbdaef5b24c3f02",
+    "fee": 0,
+    "tickSpacing": 2,
+    "hooks": "0xdc6995397b5875f30317fa9bb30ff6a5e6c645c7",
+    "block": 60359905
+  },
+  {
+    "id": "0xf3b61279a603e3f59380914f72c1db16b218e284cdfcd5c42a96011b9496500c",
+    "fee": 8388608,
+    "tickSpacing": 10,
+    "hooks": "0xa8dbdef28ec155d4a7a5c4aa5ac55eec1232f0c0",
+    "block": 60422640
+  },
+  {
+    "id": "0xcd5c9e43b3ae2cbfc806f9982183b77e2a480f12460af78b674ea30739bd358a",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0x78432fa747e169c06d297ee761c79dc6b2f005c7",
+    "block": 60755984
+  },
+  {
+    "id": "0x71a2b0ecb5ec33afc2deaeebe2cc838ca46b317146407e7ec1f4c9f1fa1a66ab",
+    "fee": 0,
+    "tickSpacing": 10,
+    "hooks": "0xeeca4c76149a73d8c4c8305acb23ee336a4dc044",
+    "block": 60943953
+  },
+  {
+    "id": "0x1e9af32390b688ca58d240d4be57aa1d863cade877ea9d93cc7d72c38b2d30e2",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0xed3c7831212bca4523acce3502dd10da40680880",
+    "block": 61059160
+  },
+  {
+    "id": "0xffb6c1da3bc47b12eabc854ead01231d76a6f9becdb77217264c984fbb3a5fed",
+    "fee": 3000,
+    "tickSpacing": 1,
+    "hooks": "0x78432fa747e169c06d297ee761c79dc6b2f005c7",
+    "block": 61114519
+  },
+  {
+    "id": "0x52156748bda5f46e2a9ffafd2fb331dc5a791c584ffb461ef51c129101951b02",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0x8f9599a4ab8525636c75ce8aedcb6def52a905c7",
+    "block": 61256710
+  },
+  {
+    "id": "0xb3e34cdc5b2b3e67c0fc5d64040f6230094c216855269d9d0d7fed55d93ddab4",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0xba821c7e81ed38e240aeb481d8f6d85756154044",
+    "block": 61271851
+  },
+  {
+    "id": "0xe06c2d9239534c01edcde7c20da6a94524ac38718d00983443fccd566309daf1",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0xb3ca29cf721380cee8b8e4755f3865ebc68fe8cc",
+    "block": 61613986
+  },
+  {
+    "id": "0xb1be5615db6b5414a72dec5c25e7a3596a03bb605e7211e5e7eaea4f28e9c795",
+    "fee": 490490,
+    "tickSpacing": 4905,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 61802246
+  },
+  {
+    "id": "0x4e7c1fba5122b0d56ec8fbebfe7b316c5ed27a10325fdb8885a68deb7d8f5d66",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0xdc2c4c6c3c79aef71443d05b75e26e8b9a0145c7",
+    "block": 61847200
+  },
+  {
+    "id": "0xdb1d068c5a40d30b2ed8172f2bf619ae643b3180275d2f578438e355da04ac6d",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0x8a65439c688fff4dbbd7595a82d1eac01c7905c7",
+    "block": 62504326
+  },
+  {
+    "id": "0x266e2029dabb6308858c97bd81176d7d8c3ea1897e73c2b1ee6fd01b24dd7386",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0xce2c659ce976fd937451ed24486b10f883a3aaa0",
+    "block": 62610372
+  },
+  {
+    "id": "0xe31dca06a245d18e42d3ea17bd6c706ddc7d110d77a0fbb7c9f42cc362a5eabe",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0x91d8f804112240af8fd900c9285de2eb1f9a6aa0",
+    "block": 62677222
+  },
+  {
+    "id": "0x0078a106d000dfe294e44fbd0b290b48364eb127c67bc89b708d91ab57234520",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0x0e588c51c54ca781834d398e1ffb25569dd505c7",
+    "block": 62686963
+  },
+  {
+    "id": "0xc366b1827def0e59eb88ccd5dbe344188379e6e5d4a26e68df06bcb9e1f9f9b8",
+    "fee": 8388608,
+    "tickSpacing": 10,
+    "hooks": "0xfc9e6f1bd264cfdf0b97616943507d702daa00a0",
+    "block": 62730507
+  },
+  {
+    "id": "0x8904fbe7fc6ef8ca81791d21dab8f0b27fe29afbbff2ca0664235be574b36f8c",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0x7bbc35470c43dc63ef7540465d3d88122cf0c5c7",
+    "block": 62805955
+  },
+  {
+    "id": "0xc98c7b9a65fcf26976aa8e18acfebaeadb4f5edaaa58eefbd998605ec7c9b515",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0xac9d0a3f9a556f3b37de28ca2ac13015acc105c7",
+    "block": 62880423
+  },
+  {
+    "id": "0xfca8fc408838762b7c26082cdcf5a13545888958c3941c962a476bc7aca52206",
+    "fee": 3000,
+    "tickSpacing": 1,
+    "hooks": "0x0e588c51c54ca781834d398e1ffb25569dd505c7",
+    "block": 63041852
+  },
+  {
+    "id": "0x9261ae856c74fa870aebc505150803097460ee1447c4ce5378414ef36ab5237e",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0x84bf5a334c88058d742a1cb007420eb0d4b36044",
+    "block": 63295112
+  },
+  {
+    "id": "0xdc811ff4809128221f042f78fa3b3b44aae1a5c0029957c63e2dc508950ca16f",
+    "fee": 8388608,
+    "tickSpacing": 10,
+    "hooks": "0xda56a5171a54afcaaed244f21d21d2553c0d60e4",
+    "block": 63299243
+  },
+  {
+    "id": "0x1f39a870da2c22119711bf906794e4d3f22e7103f5a375efd0ad35281c3b3421",
+    "fee": 991200,
+    "tickSpacing": 19824,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 63576385
+  },
+  {
+    "id": "0x8cd7c7e432b8c04f5b5c80269a60b5ca25f9650b08c307e00cf15cc3691f7494",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0xe348eec46639d60f5f9dfbedbcb494807bb56aa0",
+    "block": 63624066
+  },
+  {
+    "id": "0xceb884c71fb55f205d12bf2be238fcab39ae1a1a872eb080cbffb180b102d4a0",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0xdbdf4b1b0c64242b264e44630f383c50447d2880",
+    "block": 63663190
+  },
+  {
+    "id": "0x41e772fde53fe808e033a9a7e015e33728c0865412819ba9b530487afb672a8c",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0x064d2d0618d728691c24d0ac945a99067f0f40c4",
+    "block": 63789202
+  },
+  {
+    "id": "0xb4059acc1093aaf5b7bbd2fb1e7f2badf349aba0fb87471c8d477b952537856e",
+    "fee": 8388608,
+    "tickSpacing": 10,
+    "hooks": "0xe449e013004db4a5681e9622ca10c5ba0ea610cc",
+    "block": 63891950
+  },
+  {
+    "id": "0xff57f8c6f0e9cf0dc5d73b0cab341bd374e58382c6c98610feca1005831cc0c2",
+    "fee": 8388608,
+    "tickSpacing": 1,
+    "hooks": "0xe449e013004db4a5681e9622ca10c5ba0ea610cc",
+    "block": 63892079
+  },
+  {
+    "id": "0x2f21f487c09895aa7e64c4dd2194d0448337b81603cd3d92a1cfa9ff94c1e966",
+    "fee": 650000,
+    "tickSpacing": 6500,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 64047187
+  },
+  {
+    "id": "0x4e512aa0019b3b233eb20762d3a72b14a1f9ef4cccaa04c578a27b7dabb712d7",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0x10c77f9602633788f901bc72b675f3d09c7f00c4",
+    "block": 64271984
+  },
+  {
+    "id": "0xcbe76a520117f078e495e817dbdf3393eb86010bfa3d691d380123f55f03ad17",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0xdd05275d6fca76daa3ddaf2c56a2246bfe0b40c4",
+    "block": 64283826
+  },
+  {
+    "id": "0xd49c94244baa293c0e78ec3af3e2b769a26c5b6e5bc04247d0c19c0060f6c620",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0x80a6857a9efb62108b69650c1605632a201e40c4",
+    "block": 64408620
+  },
+  {
+    "id": "0x04f06d9ac6a630dc67e5e4fe2daad22d41bad32616a93a81f42ac6cd0623fe0a",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0x4949d5146229c3f7144f70a17ae09ced700380c4",
+    "block": 64409796
+  },
+  {
+    "id": "0xf59dd98e966c7123f89067dc69cde38c8d8131ac01bdcd3b3d3d29e5ea2c936a",
+    "fee": 3000,
+    "tickSpacing": 1,
+    "hooks": "0x4949d5146229c3f7144f70a17ae09ced700380c4",
+    "block": 64413602
+  },
+  {
+    "id": "0xfe28035393fb12a1af70ae4f4913374957bb200bc8fc929cb6257b9b36ee4c7a",
+    "fee": 8388608,
+    "tickSpacing": 10,
+    "hooks": "0xda5d691c1c72e19e01968ab7c1062f61fc07a880",
+    "block": 64506762
+  },
+  {
+    "id": "0x26eda8f5bda7aba49bfd19c5677ae4fd37903cc20458ecd956674bcb767ef875",
+    "fee": 3000,
+    "tickSpacing": 1,
+    "hooks": "0xdd05275d6fca76daa3ddaf2c56a2246bfe0b40c4",
+    "block": 64648959
+  },
+  {
+    "id": "0xc2445fd89a5b028e2ef9e5afb6c0b2a4a488b1c2fc573466a29756abfd30d390",
+    "fee": 9700,
+    "tickSpacing": 97,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 65474930
+  },
+  {
+    "id": "0x13de5ce7783d2e7fb60d57b9ab42856ff3bf1840fd235407977835a832795fd0",
+    "fee": 8388608,
+    "tickSpacing": 3,
+    "hooks": "0x5f3a7401452504668a317cee424f2ee1071e40c4",
+    "block": 65557362
+  },
+  {
+    "id": "0x148fcbb7f198bb492969e09de6248af365a099180f6a8931b0f0dd5a5d2fef21",
+    "fee": 8388608,
+    "tickSpacing": 7,
+    "hooks": "0x42a4881bf4ca102b329e8cd85454efb9b7d3c5cf",
+    "block": 65869575
+  },
+  {
+    "id": "0x33f4586e1f00855d1e95d69deea6130d071f5cda66cb4a8a1f42529bcb32a0c7",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0x60d31599d69cd9aa6644e6402857c5cbf7d7e0c4",
+    "block": 65871130
+  },
+  {
+    "id": "0xa3d52b460694ed2f8f2b977580c62580f0204043f52620eb2b5ed4236bfb25e1",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0x5983037cc8f7b45fca03da6131b6d53bda3085cf",
+    "block": 66197632
+  },
+  {
+    "id": "0xbf048f91d753ae236082e4ace13e742953a60bd09a25374bb8638502379e0000",
+    "fee": 0,
+    "tickSpacing": 10,
+    "hooks": "0x43d4652c5f51efe564c84f88d7e091304b63c044",
+    "block": 66241322
+  },
+  {
+    "id": "0xb5500140ff179f9ce1552440adfe08182bf37914d2eeae99ceab76fc3fa420c3",
+    "fee": 0,
+    "tickSpacing": 10,
+    "hooks": "0xfd71fc6baa44bd42db5ecbbe3dce72b8ea60a0cc",
+    "block": 66335326
+  },
+  {
+    "id": "0x7616c51da6e8dd26e8c42730c79a71a1653d2477ed20f2c6c34e08aace17a222",
+    "fee": 40000,
+    "tickSpacing": 400,
+    "hooks": "0x5bea51a486a6a85e4f5c86eaad9f61851aaf0044",
+    "block": 70110886
+  },
+  {
+    "id": "0xb93fc4de7f171b39c2c55ec35845d774c2ebce9b00beb4b397a236121456336d",
+    "fee": 700000,
+    "tickSpacing": 7000,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 70116735
+  },
+  {
+    "id": "0xa2f813a14f7c7c23a428b429f37204646ba9b66141e88f2d9ba3564c3fc149ad",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0xef6c47dc2999c19cec6a06982283dd9dbd7ce5d0",
+    "block": 70812670
+  },
+  {
+    "id": "0x62cc988b1f8d8083db925625bb78e82201500cb8d16367fdce6bfd74663eba65",
+    "fee": 50000,
+    "tickSpacing": 200,
+    "hooks": "0xde5d484083d6b4458481d0d4c185adbc423fc044",
+    "block": 71090506
+  },
+  {
+    "id": "0x33cd79a85bd09d4898fd7181dde75e2435aeddaaa3b988d4fcf34615587053f8",
+    "fee": 50001,
+    "tickSpacing": 200,
+    "hooks": "0xde5d484083d6b4458481d0d4c185adbc423fc044",
+    "block": 71101050
+  },
+  {
+    "id": "0xd446ca7f271e4758b246c12ba9869514135a1a17df3e2e42dbac62cff3e30e1c",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0xc6f353a4d6ace136c4bfc11eb5c7c0ae0c5c20c0",
+    "block": 71410604
+  },
+  {
+    "id": "0x30e20529f6e096429a9abbe8b1be28ea1483852e8e1f383705c15ef58fab153a",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0xa8122e55fbcb3f81cdc5418aebd77351c0e568cc",
+    "block": 72271479
+  },
+  {
+    "id": "0x3e6f0953d1fc2943f4155a553eb211dccc47c2216348ab601d58cfc89abd89d0",
+    "fee": 8388608,
+    "tickSpacing": 1,
+    "hooks": "0x42d916f4b3057509dc998115f72f70306f7cc880",
+    "block": 73938575
+  },
+  {
+    "id": "0xb1c4f75d96d92edd147cb9f113dd1c9b66ca10850fcd53cf528cc83177f04c6e",
+    "fee": 0,
+    "tickSpacing": 1,
+    "hooks": "0xa0d185c901e4abd21f94d4e3ba8fabc3e29e80c4",
+    "block": 74009924
+  },
+  {
+    "id": "0x248fb7733dd412b9974370e5136dc7e47f4379aeac24ef3d5b923d185371e4b0",
+    "fee": 3000,
+    "tickSpacing": 60,
+    "hooks": "0x71ea8aaed666ec9f391e21b33d360bcf45342880",
+    "block": 74629841
+  },
+  {
+    "id": "0x61b8a73d45815577a2fb82ec0f50ff81942c120db35bcb3cb338deffeecccacd",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0x2ed76306e69d687325b02a0369320392a29b20c4",
+    "block": 75376917
+  },
+  {
+    "id": "0xeb74ac8303265bbefc6afe4744158523cd9bd6edd7df08ce29576dc86c7c7160",
+    "fee": 8388608,
+    "tickSpacing": 200,
+    "hooks": "0xb6c412cd28d4e235842134460d59170374ffeac4",
+    "block": 75891190
+  },
+  {
+    "id": "0x98447ac9a35b921eeb7f54f3e8786d71ce0f534a5c3f6f3b03c160f757be461c",
+    "fee": 600000,
+    "tickSpacing": 6000,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 75918804
+  },
+  {
+    "id": "0xc6b1da1e521097fe798d79eabcd29b8e9a8b7cc054f37364a08c08d32a3f56a4",
+    "fee": 300009,
+    "tickSpacing": 3000,
+    "hooks": "0x0000000000000000000000000000000000000000",
+    "block": 76004219
+  },
+  {
+    "id": "0x5fc8140b1ae786c42b10274c2bbec49f586aa0675f6c7b018482ac847d1f222a",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0x628a08decb71ad0c202b408ced6e939993edc0c0",
+    "block": 76691543
+  },
+  {
+    "id": "0x6b73b119afaffef79fd2924bb7b7e32912c8922cf2e3cd182ae0e847cf170be1",
+    "fee": 8388608,
+    "tickSpacing": 60,
+    "hooks": "0x22b657295c720e9371272cd2b10db562a36b60c4",
+    "block": 76711260
+  }
+]

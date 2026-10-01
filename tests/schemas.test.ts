@@ -33,11 +33,11 @@ describe('ConstraintSheet', () => {
 });
 
 describe('registry eligibility rules', () => {
-  const xstock = {
+  const xstock: Parameters<typeof isEligible>[0] = {
     kind: 'equity',
     eligibleProfiles: ['income', 'accumulation', 'high_risk'],
     mintPath: 'dex_swap',
-  } as const;
+  };
   it('never allows equity in income, even if the row says so', () => {
     expect(isEligible(xstock, 'income')).toBe(false);
     expect(isEligible(xstock, 'high_risk')).toBe(true);

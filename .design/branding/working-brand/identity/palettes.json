@@ -1,0 +1,980 @@
+{
+  "$description": "OKLCH 11-stop palettes + named tokens for Tenonfi (working-brand). Wood is the only brand colour.",
+  "$source": "tints.dev API (https://www.tints.dev/api/{name}/{hex}), fetched 2026-10-01; L and H kept, chroma clamped locally (see $method)",
+  "$method": "chroma ceiling = source chroma x 1.15 (madder x 1.00, to stay clear of seal-red/cinnabar); stop 50 <= 0.03, stop 100 <= 0.05 so tints read as paper, not mint/lime/amber. Hex = local OKLCH->sRGB (Ottosson matrices). Contrast = WCAG 2.x relative luminance.",
+  "$generated": "2026-10-01",
+  "wood": {
+    "role": "brand (only brand hue; source = hardwood)",
+    "source": "#7A5A3A",
+    "sourceOklch": "oklch(0.493 0.063 65.50)",
+    "50": {
+      "oklch": "oklch(0.950 0.018 59.50)",
+      "hex": "#F8ECE3"
+    },
+    "100": {
+      "oklch": "oklch(0.899 0.040 58.76)",
+      "hex": "#F3D8C4"
+    },
+    "200": {
+      "oklch": "oklch(0.798 0.072 65.08)",
+      "hex": "#DEB48C",
+      "tintsChroma": 0.1
+    },
+    "300": {
+      "oklch": "oklch(0.694 0.072 64.90)",
+      "hex": "#BC946D",
+      "tintsChroma": 0.089
+    },
+    "400": {
+      "oklch": "oklch(0.599 0.072 66.23)",
+      "hex": "#9D7751",
+      "tintsChroma": 0.076
+    },
+    "500": {
+      "oklch": "oklch(0.493 0.063 65.50)",
+      "hex": "#7A5A3A"
+    },
+    "600": {
+      "oklch": "oklch(0.424 0.054 64.45)",
+      "hex": "#63482E"
+    },
+    "700": {
+      "oklch": "oklch(0.347 0.045 65.44)",
+      "hex": "#4A3520"
+    },
+    "800": {
+      "oklch": "oklch(0.278 0.035 67.34)",
+      "hex": "#342515"
+    },
+    "900": {
+      "oklch": "oklch(0.207 0.027 65.42)",
+      "hex": "#20150A"
+    },
+    "950": {
+      "oklch": "oklch(0.167 0.022 68.75)",
+      "hex": "#150D05"
+    }
+  },
+  "neutral": {
+    "role": "warm neutral (source = stone)",
+    "source": "#6E655B",
+    "sourceOklch": "oklch(0.512 0.019 70.30)",
+    "50": {
+      "oklch": "oklch(0.948 0.007 67.76)",
+      "hex": "#F1EDE9"
+    },
+    "100": {
+      "oklch": "oklch(0.905 0.014 67.66)",
+      "hex": "#E6DED6"
+    },
+    "200": {
+      "oklch": "oklch(0.804 0.022 70.64)",
+      "hex": "#C8BDB0",
+      "tintsChroma": 0.031
+    },
+    "300": {
+      "oklch": "oklch(0.707 0.022 69.29)",
+      "hex": "#AA9E92",
+      "tintsChroma": 0.027
+    },
+    "400": {
+      "oklch": "oklch(0.613 0.022 71.98)",
+      "hex": "#8D8276",
+      "tintsChroma": 0.023
+    },
+    "500": {
+      "oklch": "oklch(0.512 0.019 70.31)",
+      "hex": "#6E655B"
+    },
+    "600": {
+      "oklch": "oklch(0.440 0.017 67.37)",
+      "hex": "#595149"
+    },
+    "700": {
+      "oklch": "oklch(0.364 0.014 71.61)",
+      "hex": "#433D36"
+    },
+    "800": {
+      "oklch": "oklch(0.285 0.012 67.33)",
+      "hex": "#2E2924"
+    },
+    "900": {
+      "oklch": "oklch(0.216 0.007 67.42)",
+      "hex": "#1C1916"
+    },
+    "950": {
+      "oklch": "oklch(0.165 0.007 78.09)",
+      "hex": "#100E0B"
+    }
+  },
+  "forest": {
+    "role": "status: on track",
+    "source": "#2F4A2A",
+    "sourceOklch": "oklch(0.378 0.062 140.60)",
+    "50": {
+      "oklch": "oklch(0.932 0.030 141.22)",
+      "hex": "#DEEEDB",
+      "tintsChroma": 0.082
+    },
+    "100": {
+      "oklch": "oklch(0.866 0.050 140.61)",
+      "hex": "#C2DCBD",
+      "tintsChroma": 0.142
+    },
+    "200": {
+      "oklch": "oklch(0.738 0.071 140.44)",
+      "hex": "#92B68B",
+      "tintsChroma": 0.121
+    },
+    "300": {
+      "oklch": "oklch(0.619 0.071 140.68)",
+      "hex": "#6F9168",
+      "tintsChroma": 0.101
+    },
+    "400": {
+      "oklch": "oklch(0.501 0.071 140.61)",
+      "hex": "#4D6E47",
+      "tintsChroma": 0.082
+    },
+    "500": {
+      "oklch": "oklch(0.378 0.062 140.59)",
+      "hex": "#2F4A2A"
+    },
+    "600": {
+      "oklch": "oklch(0.330 0.054 139.86)",
+      "hex": "#263C21"
+    },
+    "700": {
+      "oklch": "oklch(0.279 0.046 139.95)",
+      "hex": "#1C2E18"
+    },
+    "800": {
+      "oklch": "oklch(0.229 0.037 140.09)",
+      "hex": "#132110"
+    },
+    "900": {
+      "oklch": "oklch(0.185 0.030 140.60)",
+      "hex": "#0B1609"
+    },
+    "950": {
+      "oklch": "oklch(0.146 0.026 140.72)",
+      "hex": "#050D04"
+    }
+  },
+  "ochre": {
+    "role": "status: watch",
+    "source": "#8A5A00",
+    "sourceOklch": "oklch(0.508 0.108 73.30)",
+    "50": {
+      "oklch": "oklch(0.950 0.030 57.93)",
+      "hex": "#FFEADB"
+    },
+    "100": {
+      "oklch": "oklch(0.900 0.050 62.42)",
+      "hex": "#F7D7BD",
+      "tintsChroma": 0.067
+    },
+    "200": {
+      "oklch": "oklch(0.808 0.124 71.89)",
+      "hex": "#F2B360",
+      "tintsChroma": 0.16
+    },
+    "300": {
+      "oklch": "oklch(0.705 0.124 73.48)",
+      "hex": "#CE933C",
+      "tintsChroma": 0.15
+    },
+    "400": {
+      "oklch": "oklch(0.610 0.124 73.52)",
+      "hex": "#AF7614",
+      "tintsChroma": 0.13
+    },
+    "500": {
+      "oklch": "oklch(0.508 0.108 73.29)",
+      "hex": "#8A5A00"
+    },
+    "600": {
+      "oklch": "oklch(0.435 0.092 73.82)",
+      "hex": "#6F4801"
+    },
+    "700": {
+      "oklch": "oklch(0.357 0.076 73.22)",
+      "hex": "#543500"
+    },
+    "800": {
+      "oklch": "oklch(0.288 0.061 72.71)",
+      "hex": "#3D2500"
+    },
+    "900": {
+      "oklch": "oklch(0.208 0.044 72.72)",
+      "hex": "#241400"
+    },
+    "950": {
+      "oklch": "oklch(0.168 0.036 73.31)",
+      "hex": "#180C00"
+    }
+  },
+  "madder": {
+    "role": "status: off track / error",
+    "source": "#A8324A",
+    "sourceOklch": "oklch(0.500 0.154 12.80)",
+    "50": {
+      "oklch": "oklch(0.950 0.018 8.88)",
+      "hex": "#FAEAEC"
+    },
+    "100": {
+      "oklch": "oklch(0.902 0.037 9.62)",
+      "hex": "#F6D5D9"
+    },
+    "200": {
+      "oklch": "oklch(0.803 0.082 10.46)",
+      "hex": "#EEA9B2"
+    },
+    "300": {
+      "oklch": "oklch(0.707 0.136 11.99)",
+      "hex": "#E87A8A"
+    },
+    "400": {
+      "oklch": "oklch(0.609 0.154 12.72)",
+      "hex": "#CE5469",
+      "tintsChroma": 0.187
+    },
+    "500": {
+      "oklch": "oklch(0.500 0.154 12.85)",
+      "hex": "#A8324A"
+    },
+    "600": {
+      "oklch": "oklch(0.431 0.132 12.83)",
+      "hex": "#89273B"
+    },
+    "700": {
+      "oklch": "oklch(0.358 0.110 12.79)",
+      "hex": "#6A1C2C"
+    },
+    "800": {
+      "oklch": "oklch(0.287 0.088 12.85)",
+      "hex": "#4D121E"
+    },
+    "900": {
+      "oklch": "oklch(0.214 0.066 11.79)",
+      "hex": "#310811"
+    },
+    "950": {
+      "oklch": "oklch(0.171 0.054 12.82)",
+      "hex": "#220409"
+    }
+  },
+  "tokens": {
+    "paper": {
+      "hex": "#F6F1E8",
+      "oklch": "oklch(0.960 0.013 82.50)"
+    },
+    "paper-raised": {
+      "hex": "#FBF8F2",
+      "oklch": "oklch(0.980 0.009 84.70)"
+    },
+    "paper-sunk": {
+      "hex": "#EDE6DA",
+      "oklch": "oklch(0.927 0.018 81.40)"
+    },
+    "black": {
+      "hex": "#0D0B09",
+      "oklch": "oklch(0.151 0.005 67.80)"
+    },
+    "char": {
+      "hex": "#1A1714",
+      "oklch": "oklch(0.207 0.008 67.40)"
+    },
+    "char-2": {
+      "hex": "#24201B",
+      "oklch": "oklch(0.246 0.011 73.40)"
+    },
+    "ink": {
+      "hex": "#1C1712",
+      "oklch": "oklch(0.209 0.012 67.10)"
+    },
+    "washi": {
+      "hex": "#ECE4D6",
+      "oklch": "oklch(0.921 0.021 81.80)"
+    },
+    "hinoki": {
+      "hex": "#E6D3B7",
+      "oklch": "oklch(0.875 0.043 77.60)"
+    },
+    "hinoki-deep": {
+      "hex": "#C9AE86",
+      "oklch": "oklch(0.764 0.062 77.40)"
+    },
+    "hardwood": {
+      "hex": "#7A5A3A",
+      "oklch": "oklch(0.493 0.063 65.50)"
+    },
+    "heartwood": {
+      "hex": "#5A3A1E",
+      "oklch": "oklch(0.380 0.062 60.50)"
+    },
+    "stone": {
+      "hex": "#6E655B",
+      "oklch": "oklch(0.512 0.019 70.30)"
+    },
+    "stone-d": {
+      "hex": "#A49A8E",
+      "oklch": "oklch(0.691 0.021 72.50)"
+    },
+    "hair": {
+      "hex": "#D9CDBB",
+      "oklch": "oklch(0.853 0.028 78.20)"
+    },
+    "hair-d": {
+      "hex": "#3A322A",
+      "oklch": "oklch(0.323 0.018 67.10)"
+    },
+    "member": {
+      "hex": "#8C7F70",
+      "oklch": "oklch(0.604 0.027 71.30)"
+    },
+    "member-d": {
+      "hex": "#7A6D5F",
+      "oklch": "oklch(0.543 0.027 69.30)"
+    },
+    "forest": {
+      "hex": "#2F4A2A",
+      "oklch": "oklch(0.378 0.062 140.60)"
+    },
+    "forest-d": {
+      "hex": "#7FA37A",
+      "oklch": "oklch(0.677 0.071 141.60)"
+    },
+    "ochre": {
+      "hex": "#8A5A00",
+      "oklch": "oklch(0.508 0.108 73.30)"
+    },
+    "ochre-d": {
+      "hex": "#D9A441",
+      "oklch": "oklch(0.751 0.130 79.90)"
+    },
+    "madder": {
+      "hex": "#A8324A",
+      "oklch": "oklch(0.500 0.154 12.80)"
+    },
+    "madder-d": {
+      "hex": "#E58AA0",
+      "oklch": "oklch(0.735 0.113 4.60)"
+    }
+  },
+  "contrast": [
+    {
+      "fg": "ink",
+      "bg": "paper",
+      "ratio": 15.81,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "ink",
+      "bg": "paper-raised",
+      "ratio": 16.78,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "ink",
+      "bg": "paper-sunk",
+      "ratio": 14.34,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "stone",
+      "bg": "paper",
+      "ratio": 5.08,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "stone",
+      "bg": "paper-raised",
+      "ratio": 5.39,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "stone",
+      "bg": "paper-sunk",
+      "ratio": 4.61,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "hardwood",
+      "bg": "paper",
+      "ratio": 5.57,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "hardwood",
+      "bg": "paper-raised",
+      "ratio": 5.91,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "hardwood",
+      "bg": "paper-sunk",
+      "ratio": 5.05,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "heartwood",
+      "bg": "paper",
+      "ratio": 9.07,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "heartwood",
+      "bg": "paper-raised",
+      "ratio": 9.62,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "heartwood",
+      "bg": "paper-sunk",
+      "ratio": 8.22,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "forest",
+      "bg": "paper",
+      "ratio": 8.75,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "forest",
+      "bg": "paper-raised",
+      "ratio": 9.28,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "forest",
+      "bg": "paper-sunk",
+      "ratio": 7.94,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "ochre",
+      "bg": "paper",
+      "ratio": 5.27,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "ochre",
+      "bg": "paper-raised",
+      "ratio": 5.59,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "ochre",
+      "bg": "paper-sunk",
+      "ratio": 4.78,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "madder",
+      "bg": "paper",
+      "ratio": 5.8,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "madder",
+      "bg": "paper-raised",
+      "ratio": 6.15,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "madder",
+      "bg": "paper-sunk",
+      "ratio": 5.26,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "member",
+      "bg": "paper",
+      "ratio": 3.47,
+      "use": "non-text",
+      "pass": true
+    },
+    {
+      "fg": "member",
+      "bg": "paper-raised",
+      "ratio": 3.68,
+      "use": "non-text",
+      "pass": true
+    },
+    {
+      "fg": "member",
+      "bg": "paper-sunk",
+      "ratio": 3.14,
+      "use": "non-text",
+      "pass": true
+    },
+    {
+      "fg": "hardwood",
+      "bg": "paper",
+      "ratio": 5.57,
+      "use": "non-text",
+      "pass": true
+    },
+    {
+      "fg": "hardwood",
+      "bg": "paper-raised",
+      "ratio": 5.91,
+      "use": "non-text",
+      "pass": true
+    },
+    {
+      "fg": "hardwood",
+      "bg": "paper-sunk",
+      "ratio": 5.05,
+      "use": "non-text",
+      "pass": true
+    },
+    {
+      "fg": "washi",
+      "bg": "black",
+      "ratio": 15.56,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "washi",
+      "bg": "char",
+      "ratio": 14.14,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "washi",
+      "bg": "char-2",
+      "ratio": 12.82,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "stone-d",
+      "bg": "black",
+      "ratio": 7.1,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "stone-d",
+      "bg": "char",
+      "ratio": 6.45,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "stone-d",
+      "bg": "char-2",
+      "ratio": 5.85,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "hinoki",
+      "bg": "black",
+      "ratio": 13.44,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "hinoki",
+      "bg": "char",
+      "ratio": 12.21,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "hinoki",
+      "bg": "char-2",
+      "ratio": 11.07,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "hinoki-deep",
+      "bg": "black",
+      "ratio": 9.24,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "hinoki-deep",
+      "bg": "char",
+      "ratio": 8.4,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "hinoki-deep",
+      "bg": "char-2",
+      "ratio": 7.62,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "forest-d",
+      "bg": "black",
+      "ratio": 6.94,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "forest-d",
+      "bg": "char",
+      "ratio": 6.31,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "forest-d",
+      "bg": "char-2",
+      "ratio": 5.72,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "ochre-d",
+      "bg": "black",
+      "ratio": 8.73,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "ochre-d",
+      "bg": "char",
+      "ratio": 7.94,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "ochre-d",
+      "bg": "char-2",
+      "ratio": 7.2,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "madder-d",
+      "bg": "black",
+      "ratio": 7.93,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "madder-d",
+      "bg": "char",
+      "ratio": 7.2,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "madder-d",
+      "bg": "char-2",
+      "ratio": 6.53,
+      "use": "text",
+      "pass": true
+    },
+    {
+      "fg": "member-d",
+      "bg": "black",
+      "ratio": 3.91,
+      "use": "non-text",
+      "pass": true
+    },
+    {
+      "fg": "member-d",
+      "bg": "char",
+      "ratio": 3.55,
+      "use": "non-text",
+      "pass": true
+    },
+    {
+      "fg": "member-d",
+      "bg": "char-2",
+      "ratio": 3.22,
+      "use": "non-text",
+      "pass": true
+    },
+    {
+      "fg": "hinoki",
+      "bg": "black",
+      "ratio": 13.44,
+      "use": "non-text",
+      "pass": true
+    },
+    {
+      "fg": "hinoki",
+      "bg": "char",
+      "ratio": 12.21,
+      "use": "non-text",
+      "pass": true
+    },
+    {
+      "fg": "hinoki",
+      "bg": "char-2",
+      "ratio": 11.07,
+      "use": "non-text",
+      "pass": true
+    },
+    {
+      "fg": "paper-raised",
+      "bg": "hardwood",
+      "ratio": 5.91,
+      "use": "text",
+      "pass": true,
+      "note": "primary button label, light"
+    },
+    {
+      "fg": "paper",
+      "bg": "heartwood",
+      "ratio": 9.07,
+      "use": "text",
+      "pass": true,
+      "note": "pressed button, light"
+    },
+    {
+      "fg": "black",
+      "bg": "hinoki",
+      "ratio": 13.44,
+      "use": "text",
+      "pass": true,
+      "note": "primary button label, dark"
+    },
+    {
+      "fg": "black",
+      "bg": "hinoki-deep",
+      "ratio": 9.24,
+      "use": "text",
+      "pass": true,
+      "note": "pressed button, dark"
+    },
+    {
+      "fg": "forest",
+      "bg": "forest-50 #DEEEDB",
+      "ratio": 8.14,
+      "use": "text",
+      "pass": true,
+      "note": "status badge, light"
+    },
+    {
+      "fg": "ochre",
+      "bg": "ochre-50 #FFEADB",
+      "ratio": 5.09,
+      "use": "text",
+      "pass": true,
+      "note": "status badge, light"
+    },
+    {
+      "fg": "madder",
+      "bg": "madder-50 #FAEAEC",
+      "ratio": 5.6,
+      "use": "text",
+      "pass": true,
+      "note": "status badge, light"
+    },
+    {
+      "fg": "forest-d",
+      "bg": "forest-950 #050D04",
+      "ratio": 6.96,
+      "use": "text",
+      "pass": true,
+      "note": "status badge, dark"
+    },
+    {
+      "fg": "ochre-d",
+      "bg": "ochre-950 #180C00",
+      "ratio": 8.55,
+      "use": "text",
+      "pass": true,
+      "note": "status badge, dark"
+    },
+    {
+      "fg": "madder-d",
+      "bg": "madder-950 #220409",
+      "ratio": 7.78,
+      "use": "text",
+      "pass": true,
+      "note": "status badge, dark"
+    },
+    {
+      "fg": "hinoki-deep",
+      "bg": "paper",
+      "ratio": 1.89,
+      "use": "non-text",
+      "pass": false,
+      "note": "FAILS: was a light-mode plan-leg fill; replaced by wood-400"
+    },
+    {
+      "fg": "wood-400 #9D7751",
+      "bg": "paper",
+      "ratio": 3.6,
+      "use": "non-text",
+      "pass": true,
+      "note": "plan-leg fill, light (replacement)"
+    },
+    {
+      "fg": "ink",
+      "bg": "stone",
+      "ratio": 3.11,
+      "use": "text",
+      "pass": false,
+      "note": "FAILS: text must never sit on hatch strokes; use a solid plate"
+    },
+    {
+      "fg": "hair",
+      "bg": "paper",
+      "ratio": 1.39,
+      "use": "decorative",
+      "pass": null,
+      "note": "exempt: decoration only, never a control boundary"
+    },
+    {
+      "fg": "hair-d",
+      "bg": "black",
+      "ratio": 1.56,
+      "use": "decorative",
+      "pass": null,
+      "note": "exempt: decoration only"
+    }
+  ],
+  "semantic": {
+    "light": {
+      "bg": "paper",
+      "surface": "paper-raised",
+      "sunk": "paper-sunk",
+      "text": "ink",
+      "text-muted": "stone",
+      "brand": "hardwood",
+      "brand-pressed": "heartwood",
+      "on-brand": "paper-raised",
+      "border-control": "member",
+      "border-decor": "hair",
+      "focus": "hardwood",
+      "success": "forest",
+      "warning": "ochre",
+      "error": "madder",
+      "info": "ink",
+      "success-bg": "forest-50",
+      "warning-bg": "ochre-50",
+      "error-bg": "madder-50"
+    },
+    "dark": {
+      "bg": "black",
+      "surface": "char",
+      "sunk": "char-2",
+      "text": "washi",
+      "text-muted": "stone-d",
+      "brand": "hinoki",
+      "brand-pressed": "hinoki-deep",
+      "on-brand": "black",
+      "border-control": "member-d",
+      "border-decor": "hair-d",
+      "focus": "hinoki",
+      "success": "forest-d",
+      "warning": "ochre-d",
+      "error": "madder-d",
+      "info": "washi",
+      "success-bg": "forest-950",
+      "warning-bg": "ochre-950",
+      "error-bg": "madder-950"
+    }
+  },
+  "provenance": {
+    "live": {
+      "light": {
+        "tenon": "stone",
+        "pin": "hardwood (solid)",
+        "label": "stone"
+      },
+      "dark": {
+        "tenon": "stone-d",
+        "pin": "hinoki (solid)",
+        "label": "stone-d"
+      }
+    },
+    "stale": {
+      "light": {
+        "tenon": "stone",
+        "pin": "stone (hollow, 1.5px)",
+        "label": "stone, word 'stale' + age"
+      },
+      "dark": {
+        "tenon": "stone-d",
+        "pin": "stone-d (hollow)",
+        "label": "stone-d"
+      }
+    },
+    "mock": {
+      "light": {
+        "tenon": "stone",
+        "fill": "hatch stone 45deg",
+        "label": "ink 'MOCK' on paper-raised plate, 1px stone border"
+      },
+      "dark": {
+        "tenon": "stone-d",
+        "fill": "hatch stone-d 45deg",
+        "label": "washi 'MOCK' on char plate, 1px stone-d border"
+      }
+    },
+    "hatch": {
+      "light": {
+        "stroke": "stone",
+        "ratio_vs_paper": 5.08,
+        "ratio_vs_paper-raised": 5.39
+      },
+      "dark": {
+        "stroke": "stone-d",
+        "ratio_vs_black": 7.1,
+        "ratio_vs_char-2": 5.85
+      },
+      "spec": "1px strokes at 45deg, 6px pitch (3px under 16px); text never on strokes"
+    }
+  },
+  "data": {
+    "plan-legs-light": [
+      "hardwood",
+      "heartwood",
+      "wood-400",
+      "stone"
+    ],
+    "plan-legs-dark": [
+      "hinoki",
+      "hinoki-deep",
+      "wood-400",
+      "stone-d"
+    ],
+    "heatmap-dark": [
+      "#1A1714",
+      "#5A3A1E",
+      "#8A6C4B",
+      "#C9AE86",
+      "#F2E6D3"
+    ],
+    "heatmap-light": "same ramp reversed"
+  }
+}

@@ -31,9 +31,7 @@ const EXPECTED = [
 
 describe('db schema', () => {
   it('declares the 15 core tables', () => {
-    const names = Object.values(schema)
-      .filter(isTable)
-      .map((t) => getTableName(t));
+    const names = (Object.values(schema) as unknown[]).filter(isTable).map((t) => getTableName(t));
     expect(names.sort()).toEqual([...EXPECTED].sort());
   });
   it('keeps pg enums in sync with zod enums', () => {

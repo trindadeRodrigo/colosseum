@@ -27,4 +27,11 @@ Read `docs/HANDOFF-IDEA1.md` (spec) and `docs/PLAN.md` (schedule) before any slo
 - `packages/db` Drizzle schema and migrations (Postgres).
 - `packages/engine` parser, asset registry, solver, schedule, risk sheet, policy.
 - `packages/chain-solana` executors (Jupiter, Kamino, abstract BRL leg), compose, sign, log. `packages/chain-evm` calldata stub.
-- `scripts/verify` reproducible checks behind `docs/VERIFICATION.md`. `scripts/depth-snapshot.ts` the xStocks depth cron.
+- `scripts/verify` reproducible checks behind `docs/VERIFICATION.md`. `scripts/depth-snapshot.mjs` the xStocks depth cron.
+
+## Vault work
+
+- Read `docs/HANDOFF-VAULT.md` (the product) and `docs/DESIGN-VAULT.md` (the design) before any vault work. Decisions are in section 17 of the design and in `docs/GATES.md`.
+- For any screen, `.design/branding/working-brand/patterns/STYLE.md` and the component specs beside it are binding.
+- New work adds files where it can. An edit to an existing file is fine when it makes the product better; say so in the pull request.
+- Slot ids here are `<stream>-<n>`, and a commit prefix may name the area (`vault:`, `api:`, `web:`).

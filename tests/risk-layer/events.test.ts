@@ -76,7 +76,8 @@ describe('pool event decoders (live transactions)', () => {
             []) {
             if (e.kind !== 'liquidity' || e.poolLiquidityBefore === undefined) continue;
             const inRange =
-              e.tickLower <= (e.tick as number) && (e.tick as number) < (e.tickUpper as number);
+              (e.tickLower as number) <= (e.tick as number) &&
+              (e.tick as number) < (e.tickUpper as number);
             expect(
               BigInt(e.poolLiquidityAfter as string) - BigInt(e.poolLiquidityBefore as string),
             ).toBe(inRange ? BigInt(e.liquidityDelta as string) : 0n);

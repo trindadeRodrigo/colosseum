@@ -2,3 +2,5 @@
 // the asset curves. Bundled with its dependencies by install.sh; RISK_HOLIDAYS points at the copied calendar.
 await import('../import');
 await import('../compute');
+
+export {};

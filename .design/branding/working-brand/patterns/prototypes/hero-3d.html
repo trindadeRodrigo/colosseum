@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>tenonfi — landing prototype</title>
+<!-- PROTOTYPE (design branch).
+     1. Pinned 3D stage: the joint starts in the master.jpg pose and seats as you scroll steps 01–03,
+        then the stage releases and the pieces scroll away with the page.
+     2. From step 03 on, the header compacts into a centred bar with the menu.
+     3. Two goal showcases (photo + prompt + plan panel with chart).
+     4. "Try your own goal" simulator, no wallet needed.
+     Every plan, weight, rate and odds figure on this page is MOCK sample data: no live figures, not advice.
+     Review aids: ?p=0..1 pins the joint, ?at=show|sim|close jumps to a section, ?demo=1 submits a sample goal. -->
+<style>
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap");
+:root {
+  --black:#0D0B09; --char:#1A1714; --char-2:#24201B; --washi:#ECE4D6; --stone:#A49A8E; --hair:#3A322A; --member:#7A6D5F;
+  --hinoki:#E6D3B7; --hinoki-deep:#C9AE86; --wood-400:#9D7751; --hardwood:#7A5A3A; --heartwood:#5A3A1E;
+  --font-display:"Newsreader",Georgia,"Times New Roman",serif;
+  --font-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --ease:cubic-bezier(0.2,0,0,1);
+  color-scheme: dark;
+}
+* { box-sizing:border-box; }
+html { background:var(--black); }
+body { margin:0; background:var(--black); color:var(--washi); font:400 16px/1.6 var(--font-body); }
+img { max-width:100%; display:block; }
+.wrap { max-width:1280px; margin:0 auto; padding-inline:clamp(16px,4vw,56px); }
+
+/* ---------------- header: full bar → compact centred bar (from step 03) ---------------- */
+.nav { position:fixed; top:calc(env(safe-area-inset-top,0px) + 12px); left:50%; transform:translateX(-50%); z-index:20;
+  width:calc(100% - 2 * clamp(16px,4vw,56px)); max-width:1280px;
+  display:flex; align-items:center; justify-content:space-between; gap:24px;
+  padding:8px 0; border:1px solid transparent; border-radius:2px; background:transparent;
+  transition:width 480ms var(--ease), max-width 480ms var(--ease), padding 480ms var(--ease), background 480ms var(--ease), border-color 480ms var(--ease); }
+.nav.compact { width:auto; max-width:min(860px, calc(100% - 32px)); padding:8px 8px 8px 18px; background:rgba(26,23,20,.88);
+  border-color:var(--hair); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
+.brand { display:flex; align-items:center; gap:10px; color:var(--washi); text-decoration:none; flex:none; }
+.brand .wm { font:400 24px/1 var(--font-display); letter-spacing:-.01em; transition:font-size 480ms var(--ease); }
+.nav.compact .brand .wm { font-size:20px; }
+.brand svg { fill:var(--hinoki); }
+.menu { display:flex; align-items:center; gap:4px; opacity:0; visibility:hidden; transition:opacity 320ms var(--ease) 120ms, visibility 0s linear 440ms; }
+.nav.compact .menu { opacity:1; visibility:visible; transition:opacity 320ms var(--ease) 160ms, visibility 0s; }
+.menu a { color:var(--washi); text-decoration:none; font:500 14px var(--font-body); padding:8px 12px; border-radius:2px; white-space:nowrap; }
+.menu a:hover { background:var(--char-2); }
+.menu .cta { background:var(--hinoki); color:var(--black); margin-left:8px; }
+.menu .cta:hover { background:#D7C09E; }
+.proto { font:400 11px var(--font-mono); color:var(--stone); border:1px solid var(--hair); padding:4px 8px; border-radius:2px; }
+.nav.compact .proto { display:none; }
+@media (max-width:820px) { .menu a:not(.cta) { display:none; } .nav.compact { max-width:calc(100% - 24px); } }
+
+/* ---------------- pinned 3D stage ---------------- */
+.stage { position:relative; }
+.sticky { position:sticky; top:0; height:100vh; height:100svh; margin-bottom:-100vh; margin-bottom:-100svh; z-index:0; overflow:hidden; }
+#scene { width:100%; height:100%; display:block; }
+.stage-content { position:relative; z-index:1; }
+.hero { min-height:100vh; min-height:100svh; display:flex; align-items:center; }
+.hero-copy { width:100%; min-width:0; max-width:560px; padding-top:72px; }
+.hero h1 { font:400 clamp(2.4rem,1.6rem + 2.6vw,4rem)/1.12 var(--font-display); letter-spacing:-.015em; margin:0; overflow-wrap:break-word; }
+.hero .tagline { margin:28px 0 0; font-size:1.125rem; line-height:1.7; color:var(--stone); max-width:44ch; }
+.hero .tagline b { color:var(--washi); font-weight:500; }
+.scroll-cue { margin-top:40px; font:400 12px var(--font-mono); color:var(--stone); display:flex; gap:10px; align-items:center; }
+.scroll-cue i { display:inline-block; width:1px; height:28px; background:var(--stone); animation:cue 1.6s var(--ease) infinite; transform-origin:top; }
+@keyframes cue { 0%{transform:scaleY(0)} 50%{transform:scaleY(1)} 100%{transform:scaleY(1);opacity:0} }
+.step { min-height:80vh; display:flex; align-items:center; }
+.step-in { max-width:420px; opacity:.22; transform:translateY(12px); transition:opacity 480ms var(--ease), transform 480ms var(--ease); }
+.step.on .step-in { opacity:1; transform:none; }
+.step .n { font:500 12px var(--font-mono); color:var(--hinoki-deep); letter-spacing:.04em; }
+.step h2 { font:400 clamp(1.6rem,1.2rem + 1.2vw,2.3rem)/1.2 var(--font-display); margin:8px 0; }
+.step p { margin:0; color:var(--stone); }
+.hold { height:45vh; }
+@media (max-width:820px) {
+  .hero { align-items:flex-end; padding-bottom:10vh; }
+  .hero-copy, .step-in { background:linear-gradient(to top, rgba(13,11,9,.94) 75%, rgba(13,11,9,0)); padding-top:40px; }
+  .step { align-items:flex-end; padding-bottom:8vh; }
+}
+
+/* ---------------- showcases ---------------- */
+.show { position:relative; z-index:2; background:var(--black); padding-block:clamp(72px,10vw,140px) 40px; }
+.show-head { max-width:720px; margin-bottom:48px; }
+.eyebrow { font:500 12px var(--font-mono); letter-spacing:.06em; color:var(--hinoki-deep); }
+.show-head h2 { font:400 clamp(2rem,1.4rem + 2vw,3.2rem)/1.15 var(--font-display); margin:10px 0 12px; letter-spacing:-.01em; }
+.show-head p { margin:0; color:var(--stone); max-width:56ch; }
+.case { display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); border:1px solid var(--hair); border-radius:2px; overflow:hidden; background:var(--char); margin-bottom:32px; }
+@media (max-width:980px) { .case { grid-template-columns:1fr; } }
+.photo { position:relative; min-height:420px; background:#2a241d; }
+.photo img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; filter:saturate(.9) contrast(1.02); }
+.photo::after { content:""; position:absolute; inset:0; background:linear-gradient(to top, rgba(13,11,9,.88) 0%, rgba(13,11,9,.15) 55%, rgba(13,11,9,0) 100%); }
+.prompt { position:absolute; left:20px; right:20px; bottom:20px; z-index:1; }
+.prompt .who { font:400 12px var(--font-mono); color:var(--hinoki); margin-bottom:8px; }
+.prompt q { display:block; font:400 clamp(1.15rem,1rem + .6vw,1.45rem)/1.35 var(--font-display); quotes:"\201C" "\201D"; }
+.photo-src { position:absolute; top:12px; left:12px; z-index:1; font:400 10px var(--font-mono); color:var(--stone); background:rgba(13,11,9,.6); padding:2px 6px; border-radius:2px; }
+.pane { padding:22px 24px 18px; display:flex; flex-direction:column; gap:16px; min-width:0; }
+.pane-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+.pane-head h3 { margin:0; font:500 18px/1.3 var(--font-body); }
+.pane-head .sub { font-size:13px; color:var(--stone); margin-top:2px; }
+.mock { font:500 11px var(--font-mono); letter-spacing:.06em; color:var(--washi); padding:2px 8px; border-radius:2px; flex:none;
+  background-color:var(--black); background-image:repeating-linear-gradient(45deg, var(--stone) 0 1px, transparent 1px 6px); }
+.mock span { background:var(--black); padding:0 4px; }
+.chips { display:flex; flex-wrap:wrap; gap:6px; }
+.chip-s { font:400 12px var(--font-mono); color:var(--washi); border:1px solid var(--hair); background:var(--char-2); padding:3px 8px; border-radius:2px; }
+.kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); border:1px solid var(--hair); border-radius:2px; }
+.kpi { padding:10px 12px; border-right:1px solid var(--hair); min-width:0; }
+.kpi:last-child { border-right:0; }
+.kpi .l { font:400 11px var(--font-mono); color:var(--stone); }
+.kpi .v { font:500 18px/1.3 var(--font-body); font-variant-numeric:tabular-nums lining-nums; margin-top:2px; }
+.kpi .v small { font:400 11px var(--font-mono); color:var(--stone); }
+@media (max-width:620px) { .kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .kpi:nth-child(2) { border-right:0; } .kpi:nth-child(-n+2) { border-bottom:1px solid var(--hair); } }
+.chart { width:100%; overflow-x:auto; }
+.chart svg { width:100%; min-width:520px; height:auto; display:block; }
+.legend { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:6px 16px; }
+.lg { display:grid; grid-template-columns:10px 1fr auto; gap:8px; align-items:baseline; font-size:13px; }
+.lg i { width:10px; height:10px; display:inline-block; transform:translateY(1px); }
+.lg .w { font:500 12px var(--font-mono); font-variant-numeric:tabular-nums; }
+.lg .why { grid-column:2 / -1; font-size:12px; color:var(--stone); margin-top:-4px; }
+.exitline { border-left:2px solid var(--hinoki); padding:2px 0 2px 10px; font-size:13px; }
+.exitline em { font-style:normal; color:var(--stone); }
+.pane-foot { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; font:400 11px var(--font-mono); color:var(--stone); border-top:1px solid var(--hair); padding-top:10px; }
+.pin { display:inline-block; width:7px; height:7px; border-radius:50%; border:1px solid var(--stone); background:repeating-linear-gradient(45deg, var(--stone) 0 1px, transparent 1px 3px); vertical-align:middle; margin-left:4px; }
+
+/* ---------------- simulator ---------------- */
+.sim { position:relative; z-index:2; background:var(--black); padding-block:60px clamp(72px,10vw,120px); }
+.sim-grid { display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:48px; align-items:start; }
+.sim .intro { position:sticky; top:96px; }
+@media (max-width:980px) { .sim .intro { position:static; } }
+@media (max-width:980px) { .sim-grid { grid-template-columns:1fr; gap:24px; } }
+.sim h2 { font:400 clamp(1.8rem,1.3rem + 1.6vw,2.6rem)/1.15 var(--font-display); margin:10px 0 12px; }
+.sim .intro p { color:var(--stone); margin:0; }
+.panel { background:var(--char); border:1px solid var(--hair); border-radius:2px; }
+.panel-head { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:14px 18px; border-bottom:1px solid var(--hair); }
+.panel-head b { font:500 14px var(--font-body); }
+.panel-head span { font:400 11px var(--font-mono); color:var(--stone); }
+.log { padding:18px; display:flex; flex-direction:column; gap:14px; max-height:60vh; overflow:auto; }
+.msg { max-width:92%; }
+.msg.user { align-self:flex-end; background:var(--char-2); border:1px solid var(--hair); padding:10px 14px; border-radius:2px; }
+.msg.agent p { margin:0 0 8px; }
+.sheet { border:1px solid var(--hair); border-radius:2px; margin-top:6px; }
+.sheet .row { display:grid; grid-template-columns:120px 1fr; gap:12px; padding:7px 12px; border-top:1px solid var(--hair); font-size:14px; }
+.sheet .row:first-child { border-top:0; }
+.sheet .k { font:400 12px var(--font-mono); color:var(--stone); padding-top:2px; }
+.sheet .v.missing { color:var(--stone); font-style:italic; }
+.legs { margin-top:10px; border:1px solid var(--hair); border-radius:2px; }
+.legs-head { display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-bottom:1px solid var(--hair); }
+.leg { display:grid; grid-template-columns:1fr 54px; gap:8px; align-items:center; padding:8px 12px; }
+.leg .name { font-size:14px; } .leg .why { font-size:12px; color:var(--stone); }
+.leg .w { font:500 13px var(--font-mono); text-align:right; font-variant-numeric:tabular-nums; }
+.bar-track { grid-column:1 / -1; height:4px; background:var(--char-2); }
+.bar-fill { height:100%; width:0; transition:width 600ms var(--ease); }
+.disclaimer { margin-top:10px; font-size:12px; color:var(--stone); }
+.suggest { display:flex; flex-wrap:wrap; gap:8px; padding:0 18px 14px; }
+.chip { font:400 13px var(--font-body); color:var(--washi); background:transparent; border:1px solid var(--member); border-radius:2px; padding:6px 10px; cursor:pointer; text-align:left; }
+.chip:hover { background:var(--char-2); }
+/* composer: the one rounded element in the system (founder exception, radius-composer 20px) */
+/* unboxed simulator: the composer is the surface */
+.talk { display:flex; flex-direction:column; gap:16px; min-width:0; }
+.talk .log { padding:0; max-height:none; overflow:visible; }
+.talk .log[hidden] { display:none; }
+form.ask { padding:0; }
+.composer.composer-lg { align-items:flex-end; padding:16px 12px 12px 22px; background:var(--char); }
+.composer.composer-lg textarea { font-size:18px; line-height:1.5; min-height:calc(1.5em * 3); padding:4px 0; }
+.composer.composer-lg .send { width:44px; height:44px; }
+.talk .suggest { padding:0; }
+.talk-meta { display:flex; justify-content:space-between; gap:8px 24px; flex-wrap:wrap; font-size:13px; color:var(--stone); }
+.talk-meta span:first-child { font:400 11px var(--font-mono); padding-top:2px; }
+.linkish { font:inherit; color:var(--washi); background:none; border:0; padding:0; text-decoration:underline; text-underline-offset:3px; cursor:pointer; }
+.linkish:disabled { cursor:default; }
+.composer { display:flex; align-items:flex-end; gap:8px; background:var(--black); border:1px solid var(--member); border-radius:20px; padding:8px 8px 8px 18px;
+  transition:border-color 160ms var(--ease), box-shadow 160ms var(--ease); }
+.composer:focus-within { border-color:var(--hinoki); box-shadow:0 0 0 2px var(--black), 0 0 0 4px var(--hinoki); }
+.composer textarea { flex:1; min-width:0; resize:none; border:0; outline:0; background:transparent; color:var(--washi); font:400 15px/1.5 var(--font-body);
+  padding:7px 0; max-height:calc(1.5em * 5 + 14px); overflow-y:auto; }
+.composer textarea::placeholder { color:var(--stone); }
+.send { flex:none; width:36px; height:36px; border-radius:9999px; border:0; background:var(--hinoki); color:var(--black); display:grid; place-items:center; cursor:pointer;
+  transition:background 160ms var(--ease), opacity 160ms var(--ease); }
+.send:hover { background:#D7C09E; }
+.send:disabled { opacity:.35; cursor:default; }
+.chip:focus-visible, button:focus-visible, .menu a:focus-visible { outline:2px solid var(--hinoki); outline-offset:2px; }
+button.primary { font:500 14px var(--font-body); color:var(--black); background:var(--hinoki); border:0; border-radius:2px; padding:10px 16px; cursor:pointer; }
+button.primary:hover { background:#D7C09E; }
+.connect { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 18px; border-top:1px solid var(--hair); font-size:13px; color:var(--stone); }
+button.ghost { font:500 13px var(--font-body); color:var(--washi); background:transparent; border:1px solid var(--member); border-radius:2px; padding:8px 12px; cursor:pointer; }
+/* ---------------- closing: centred image + subscribe ---------------- */
+.closing { position:relative; z-index:2; background:var(--black); padding-block:clamp(56px,8vw,120px) clamp(72px,10vw,140px); text-align:center; }
+.closing .eyebrow { display:block; }
+.closing h2 { font:400 clamp(2rem,1.4rem + 2vw,3.2rem)/1.15 var(--font-display); margin:10px auto 14px; max-width:20ch; letter-spacing:-.01em; }
+.closing .lede { color:var(--stone); margin:0 auto 40px; max-width:52ch; }
+.frame { position:relative; width:min(560px,100%); margin:0 auto; aspect-ratio:770 / 840; max-width:100%; border:1px solid var(--hair); border-radius:2px; overflow:hidden; }
+.frame img { width:100%; height:100%; object-fit:cover; }
+.frame::after { content:""; position:absolute; inset:0; background:linear-gradient(to top, rgba(13,11,9,.55), rgba(13,11,9,0) 40%); }
+.frame figcaption { position:absolute; left:14px; bottom:12px; z-index:1; font:400 11px var(--font-mono); color:var(--washi); text-align:left; }
+form.sub { width:min(520px,100%); margin:32px auto 0; }
+form.sub .composer { align-items:center; background:var(--char); padding:6px 6px 6px 20px; }
+form.sub input { flex:1; min-width:0; border:0; outline:0; background:transparent; color:var(--washi); font:400 15px var(--font-body); padding:10px 0; }
+form.sub input::placeholder { color:var(--stone); }
+form.sub .primary { border-radius:9999px; padding:10px 18px; }
+.sub-opts { display:flex; justify-content:center; gap:18px; flex-wrap:wrap; margin-top:14px; font-size:13px; color:var(--stone); }
+.sub-opts label { display:flex; gap:6px; align-items:center; cursor:pointer; }
+.sub-opts input { accent-color:#E6D3B7; }
+.sub-note { margin-top:14px; font:400 12px var(--font-mono); color:var(--stone); min-height:1.6em; }
+
+.foot { position:relative; z-index:2; background:var(--black); border-top:1px solid var(--hair); padding:28px 0 calc(env(safe-area-inset-bottom,0px) + 40px); font:400 12px var(--font-mono); color:var(--stone); }
+@media (prefers-reduced-motion: reduce) { .scroll-cue i { animation:none; } .bar-fill, .nav, .menu, .step-in { transition:none; } }
+</style>
+</head>
+<body>
+
+<header class="nav" id="nav">
+  <a class="brand" href="#top" aria-label="tenonfi home">
+    <svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="12" width="5" height="10"/><rect x="7" y="13" width="23" height="8"/><rect x="11" y="3" width="9" height="27"/><circle cx="25" cy="17" r="2" fill="#0D0B09"/></svg>
+    <span class="wm">tenonfi</span>
+  </a>
+  <nav class="menu" aria-label="Main">
+    <a href="#showcase">Products</a>
+    <a href="#simulate">Invest</a>
+    <a href="#resources">Resources</a>
+    <a href="#simulate" class="cta">Connect wallet</a>
+  </nav>
+  <span class="proto">PROTOTYPE · landing</span>
+</header>
+
+<main id="top">
+  <!-- 1 · pinned 3D stage -->
+  <section class="stage" id="stage" aria-label="How tenonfi fits">
+    <div class="sticky"><canvas id="scene" aria-hidden="true"></canvas></div>
+    <div class="stage-content wrap">
+      <div class="hero">
+        <div class="hero-copy">
+          <h1>No product fits everyone. So we make the pieces — and your goals decide how they fit.</h1>
+          <p class="tagline"><b>Made to measure. Every joint shown.</b><br>Tell us what your money needs to do. tenonfi builds the portfolio that gets it there, and shows you how.</p>
+          <div class="scroll-cue"><i></i> scroll to see it fit</div>
+        </div>
+      </div>
+      <div class="step" data-step="1"><div class="step-in"><div class="n">01 · THE PIECES</div><h2>We cut the pieces.</h2><p>Dollar yield, treasuries, credit, cash: each one measured for what it really pays after risk, and how fast it can be turned back into dollars.</p></div></div>
+      <div class="step" data-step="2"><div class="step-in"><div class="n">02 · THE FIT</div><h2>Your goal decides how they fit.</h2><p>An amount, a date, cash you must be able to reach. The plan is cut to those limits and to no one else's.</p></div></div>
+      <div class="step" data-step="3" id="step3"><div class="step-in"><div class="n">03 · THE PIN</div><h2>Every joint stays in sight.</h2><p>Every number carries its source. Every portfolio has an exit plan before the agent invests.</p></div></div>
+      <div class="hold" aria-hidden="true"></div>
+    </div>
+  </section>
+
+  <!-- 2 · showcases -->
+  <section class="show" id="showcase" aria-label="Two goals, cut two ways">
+    <div class="wrap">
+      <div class="show-head">
+        <div class="eyebrow">TWO GOALS · TWO CUTS</div>
+        <h2>Same pieces. Different people. Different fit.</h2>
+        <p>What a plan looks like when it starts from a life, not a product list. Sample plans: every figure below is illustrative.</p>
+      </div>
+
+      <article class="case" aria-label="Example: a trip in 2029">
+        <div class="photo">
+          <img src="assets/photo-trip.jpg" alt="A woman with a small backpack walks a coastal cliff trail at golden hour.">
+          <span class="photo-src">placeholder photo · generated</span>
+          <div class="prompt"><div class="who">Mariana · 31 · paid in USDC</div><q>I want a savings plan I can reach any day, that pays me $1,000 a month during a three-month trip in 2029.</q></div>
+        </div>
+        <div class="pane">
+          <div class="pane-head">
+            <div><h3>Trip fund · Jan–Mar 2029</h3><div class="sub">Low risk · reachable in 1 day · income, so no stocks</div></div>
+            <span class="mock"><span>MOCK</span></span>
+          </div>
+          <div class="chips"><span class="chip-s">target: $1,000/mo × 3</span><span class="chip-s">horizon: 27 months</span><span class="chip-s">liquidity: 1 day</span><span class="chip-s">credit risk: none</span></div>
+          <div class="kpis" id="k1"></div>
+          <div class="chart" id="c1" role="img" aria-label="Monthly balance by leg, growing until January 2029, then paying out $1,000 a month for three months."></div>
+          <div class="legend" id="l1"></div>
+          <div class="exitline">Exit plan before investing: the whole balance is reachable within a day; the trip months are paid from the cash buffer first. <em>Sourced live after connect.</em></div>
+          <div class="pane-foot"><span>sample rates, not live <i class="pin" title="MOCK: no live source"></i></span><span>Simulation. Not investment advice.</span></div>
+        </div>
+      </article>
+
+      <article class="case" aria-label="Example: a growth goal with higher risk">
+        <div class="photo">
+          <img src="assets/photo-ridge.jpg" alt="A climber with a rope over his shoulder stands on a granite ridge above the clouds at sunrise.">
+          <span class="photo-src">placeholder photo · generated</span>
+          <div class="prompt"><div class="who">Diego · 38 · crypto-native</div><q>Turn $20,000 into $35,000 by 2031 for a season in the mountains. I can live with a 25% drop along the way.</q></div>
+        </div>
+        <div class="pane">
+          <div class="pane-head">
+            <div><h3>Mountain season · by Dec 2031</h3><div class="sub">Higher risk · growth · stocks eligible · exits measured by Bearing</div></div>
+            <span class="mock"><span>MOCK</span></span>
+          </div>
+          <div class="chips"><span class="chip-s">start: $20,000</span><span class="chip-s">target: $35,000</span><span class="chip-s">max drawdown: 25%</span><span class="chip-s">credit risk: accepted</span></div>
+          <div class="kpis" id="k2"></div>
+          <div class="chart" id="c2" role="img" aria-label="Projected balance to 2031 with a base path and a range from a weak to a strong case, against the $35,000 target."></div>
+          <div class="legend" id="l2"></div>
+          <div class="exitline">Exit plan before investing: stocks are sized to what Bearing measures can be sold at the thinnest hour of the week. <em>Weekend exits are slower and cost more.</em></div>
+          <div class="pane-foot"><span>sample rates, not live <i class="pin" title="MOCK: no live source"></i></span><span>Odds are estimates. Simulation. Not investment advice.</span></div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- 3 · simulator -->
+  <section class="sim" id="simulate" aria-label="Try your own goal">
+    <div class="wrap sim-grid">
+      <div class="intro">
+        <div class="eyebrow">TRY IT · NO WALLET NEEDED</div>
+        <h2>Tell us what your money needs to do.</h2>
+        <p>Describe a goal in your own words. You'll see how it's read and how the pieces would fit, before you connect anything.</p>
+      </div>
+      <div class="talk">
+        <div class="log" id="log" aria-live="polite" hidden></div>
+        <form class="ask" id="ask" autocomplete="off">
+          <label for="q" style="position:absolute;left:-9999px">Your goal</label>
+          <div class="composer composer-lg">
+            <textarea id="q" name="q" rows="3" placeholder="Describe your goal… an amount, a date, and how fast you might need it back."></textarea>
+            <button class="send" type="submit" aria-label="Fit it" disabled>
+              <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="square"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5"/></svg>
+            </button>
+          </div>
+        </form>
+        <div class="suggest" aria-label="Examples">
+          <button class="chip" type="button">$40,000 by June 2028, cash within 7 days</button>
+          <button class="chip" type="button">$3,000 a month from 2028</button>
+          <button class="chip" type="button">Grow $25,000 over 3 years, I accept credit risk</button>
+        </div>
+        <div class="talk-meta"><span>Simulation · nothing is executed · Enter to fit, Shift + Enter for a new line</span><span>Like the fit? <button class="linkish" type="button" disabled title="Prototype">Connect a wallet</button> for a live plan with sourced numbers.</span></div>
+      </div>
+    </div>
+  </section>
+  <!-- 4 · closing: centred image + subscribe -->
+  <section class="closing" id="updates" aria-label="Follow along">
+    <div class="wrap">
+      <span class="eyebrow">FOLLOW ALONG</span>
+      <h2>Built piece by piece. Watch it come together.</h2>
+      <p class="lede">Product updates as new pieces are cut, and a short letter on goals, liquidity and what tokenized assets really pay. No hype, no price calls.</p>
+      <figure class="frame" style="margin-left:auto;margin-right:auto">
+        <picture>
+          <source srcset="assets/closing.avif" type="image/avif">
+          <img src="assets/closing.jpg" alt="Offset timber beams, stacked and interlocked, frame a view of a forest through tall windows." loading="lazy">
+        </picture>
+        <figcaption>stacked offset beams · reference photo</figcaption>
+      </figure>
+      <form class="sub" id="sub" novalidate>
+        <label for="email" style="position:absolute;left:-9999px">Email address</label>
+        <div class="composer">
+          <input id="email" name="email" type="email" placeholder="you@example.com" autocomplete="email" required>
+          <button class="primary" type="submit">Subscribe</button>
+        </div>
+      </form>
+      <div class="sub-opts" role="group" aria-label="What to receive">
+        <label><input type="checkbox" checked> Product updates</label>
+        <label><input type="checkbox" checked> Newsletter</label>
+      </div>
+      <div class="sub-note" id="sub-note" aria-live="polite">Unsubscribe any time.</div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot" id="resources"><div class="wrap">tenonfi · prototype on the design branch · plans, rates and odds on this page are MOCK sample data, carry no live figures, and are not investment advice.</div></footer>
+
+<script src="assets/textures.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  'use strict';
+  var Q = new URLSearchParams(location.search);
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+  /* ---------------- review aids ---------------- */
+  if (['show', 'sim', 'close'].indexOf(Q.get('at')) >= 0) {
+    document.getElementById('stage').style.display = 'none';
+    if (Q.get('at') !== 'show') document.getElementById('showcase').style.display = 'none';
+    if (Q.get('at') === 'close') document.getElementById('simulate').style.display = 'none';
+  }
+
+  /* ---------------- header + steps: driven by scroll ---------------- */
+  var nav = document.getElementById('nav'), stage = document.getElementById('stage'), step3 = document.getElementById('step3');
+  var steps = Array.prototype.slice.call(document.querySelectorAll('.step'));
+  var progressTarget = 0;
+  function onScroll() {
+    var vh = window.innerHeight, y = window.scrollY;
+    var end = step3.offsetTop + step3.offsetHeight / 2 - vh / 2;     // joint fully seated when step 03 is centred
+    progressTarget = clamp(y / Math.max(end, 1), 0, 1);
+    if (Q.get('p') !== null && !isNaN(+Q.get('p'))) progressTarget = clamp(+Q.get('p'), 0, 1);
+    var compact = stage.style.display === 'none' || y > step3.offsetTop - vh * 0.6;
+    nav.classList.toggle('compact', compact);
+    steps.forEach(function (s) {
+      var r = s.getBoundingClientRect(), mid = r.top + r.height / 2;
+      s.classList.toggle('on', mid > vh * 0.15 && mid < vh * 0.85);
+    });
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
+  onScroll();
+
+  /* ---------------- 3D joint ---------------- */
+  var canvas = document.getElementById('scene'), gl = null;
+  try { gl = canvas.getContext('webgl2') || canvas.getContext('webgl'); } catch (e) {}
+  if (window.THREE && gl && stage.style.display !== 'none') initScene();
+
+  function initScene() {
+    var renderer = new THREE.WebGLRenderer({ canvas: canvas, context: gl, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    var scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0D0B09);
+    var camera = new THREE.PerspectiveCamera(30, 1, 0.1, 200);
+
+    /* master.jpg lighting: raking warm key from upper-left, faint warm rim, very low ambient */
+    scene.add(new THREE.HemisphereLight(0xfff1dc, 0x0d0b09, 0.32));
+    var key = new THREE.DirectionalLight(0xffe7c4, 2.2);
+    key.position.set(-9, 14, 10); key.castShadow = true; key.shadow.mapSize.set(2048, 2048);
+    key.shadow.camera.left = -16; key.shadow.camera.right = 16; key.shadow.camera.top = 16; key.shadow.camera.bottom = -16;
+    key.shadow.bias = -0.0004; key.shadow.radius = 4;
+    scene.add(key);
+    var rim = new THREE.DirectionalLight(0xffd9a8, 0.5); rim.position.set(10, 4, -8); scene.add(rim);
+
+    /* textures: generated wood (assets/woodgen.py), colours sampled from master.jpg */
+    var loader = new THREE.TextureLoader(), W = window.TF_WOOD || {};
+    var aniso = renderer.capabilities.getMaxAnisotropy();
+    function tex(uri, color, rotate) {
+      if (!uri) return null;
+      var t = loader.load(uri);
+      if (color) t.encoding = THREE.sRGBEncoding;
+      t.anisotropy = aniso; t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      if (rotate) { t.center.set(0.5, 0.5); t.rotation = Math.PI / 2; }
+      return t;
+    }
+    function species(sideUri, sideBump, endUri, endBump, fallback) {
+      function m(map, bump) {
+        return new THREE.MeshStandardMaterial({ map: map, bumpMap: bump, bumpScale: 0.025, roughness: 0.68, metalness: 0, color: map ? 0xffffff : fallback });
+      }
+      return {
+        side: m(tex(sideUri, true, false), tex(sideBump, false, false)),
+        sideRot: m(tex(sideUri, true, true), tex(sideBump, false, true)),
+        end: m(tex(endUri, true, false), tex(endBump, false, false))
+      };
+    }
+    var HARD = species(W.hardwoodSide, W.hardwoodSideBump, W.hardwoodEnd, W.hardwoodEndBump, 0x7A5A3A);
+    var HINO = species(W.hinokiSide, W.hinokiSideBump, W.hinokiEnd, W.hinokiEndBump, 0xE2CBA6);
+
+    /* BoxGeometry face order +x,-x,+y,-y,+z,-z; each face's u-axis is z,z,x,x,x,x.
+       A face across the long axis gets end grain; a face whose u runs along the long axis gets side grain as-is, else rotated. */
+    var U = ['z', 'z', 'x', 'x', 'x', 'x'], NORM = ['x', 'x', 'y', 'y', 'z', 'z'];
+    function mats(sp, axis) { return NORM.map(function (n, i) { return n === axis ? sp.end : (U[i] === axis ? sp.side : sp.sideRot); }); }
+    function box(w, h, d, sp, axis, x, y, z) {
+      var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mats(sp, axis));
+      m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; return m;
+    }
+
+    var group = new THREE.Group(); scene.add(group);
+    /* post: 3 × 14 × 3 with a through-mortise 1.6 (y) × 1.2 (z) along x */
+    var post = new THREE.Group();
+    post.add(box(3, 6.2, 3, HINO, 'y', 0, -3.9, 0));
+    post.add(box(3, 6.2, 3, HINO, 'y', 0, 3.9, 0));
+    post.add(box(3, 1.6, 0.9, HINO, 'y', 0, 0, 1.05));
+    post.add(box(3, 1.6, 0.9, HINO, 'y', 0, 0, -1.05));
+    group.add(post);
+    /* rail: 3 × 3 body, tenon 1.6 × 1.2 through the post and out to x = 3.6, with a pin hole at x = 2.55 */
+    var rail = new THREE.Group();
+    rail.add(box(12, 3, 3, HARD, 'x', -7.5, 0, 0));
+    rail.add(box(3.75, 1.6, 1.2, HARD, 'x', 0.375, 0, 0));
+    rail.add(box(0.75, 1.6, 1.2, HARD, 'x', 3.225, 0, 0));
+    rail.add(box(0.6, 1.6, 0.28, HARD, 'x', 2.55, 0, 0.46));
+    rail.add(box(0.6, 1.6, 0.28, HARD, 'x', 2.55, 0, -0.46));
+    group.add(rail);
+    /* pin: pale dowel, grain along its length */
+    var pin = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 3.4, 40), [HINO.sideRot, HINO.end, HINO.end]);
+    pin.castShadow = true; group.add(pin);
+    /* second pale member entering from the front (master.jpg lower-left) */
+    var rail2 = new THREE.Group();
+    rail2.add(box(3, 3, 10, HINO, 'z', 0, -5.2, 6.6));
+    group.add(rail2);
+    group.rotation.set(0.12, -0.62, 0);
+
+    function ease(t) { return 1 - Math.pow(1 - t, 3); }
+    function pose(p) {
+      var a = ease(clamp(p / 0.75, 0, 1)), b = ease(clamp((p - 0.72) / 0.28, 0, 1));
+      rail.position.set(-7.2 * (1 - a), 0.9 * (1 - a), 0);
+      rail.rotation.set(0, 0.22 * (1 - a), -0.05 * (1 - a));
+      pin.position.set(2.55 + rail.position.x, (7.5 + rail.position.y) * (1 - b), 0);
+      pin.rotation.z = 0.35 * (1 - b);
+      rail2.position.z = 3.2 * (1 - a);
+    }
+
+    var current = progressTarget;
+    function layout() {
+      var w = canvas.clientWidth, h = canvas.clientHeight, narrow = w < 820;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      camera.position.set(14, 17, 24); camera.lookAt(0, 0, 0);
+      var off = narrow ? 0 : 4.6;
+      group.position.set(off, narrow ? 3.5 : 0, -off * 0.6);
+      group.scale.setScalar(narrow ? 0.7 : 1);
+    }
+    window.addEventListener('resize', layout); layout();
+    (function loop() {
+      current += (progressTarget - current) * (reduce ? 1 : 0.08);
+      if (Math.abs(progressTarget - current) < 0.0005) current = progressTarget;
+      pose(reduce ? (progressTarget > 0.5 ? 1 : 0) : current);
+      renderer.render(scene, camera);
+      requestAnimationFrame(loop);
+    })();
+  }
+
+  /* ---------------- showcase charts (MOCK sample data only) ---------------- */
+  /* One place for every illustrative number on the page. Not live, not sourced, not advice. */
+  var MOCK = {
+    trip: { legs: [
+      { n: 'Cash buffer (USDC)', why: 'pays the trip months first', w: 0.15, sampleRate: 0, c: '#E6D3B7' },
+      { n: 'Tokenized treasuries', why: 'dollar yield, next-day redemption', w: 0.55, sampleRate: 0.040, c: '#C9AE86' },
+      { n: 'Dollar lending', why: 'variable rate, instant withdrawal', w: 0.30, sampleRate: 0.050, c: '#9D7751' }
+    ], months: 27, payout: 1000, payMonths: 3, startLabel: 'Oct 2026', odds: 0.97 },
+    growth: { legs: [
+      { n: 'Tokenized treasuries', why: 'ballast and the exit of first resort', w: 0.25, sampleRate: 0.040, vol: 0.01, c: '#E6D3B7' },
+      { n: 'Private credit', why: 'higher yield, slower exit (credit risk accepted)', w: 0.20, sampleRate: 0.090, vol: 0.04, c: '#C9AE86' },
+      { n: 'Tokenized stocks (SPYx, QQQx)', why: 'growth leg, sized to Bearing exit capacity', w: 0.45, sampleRate: 0.080, vol: 0.18, c: '#9D7751' },
+      { n: 'Tokenized gold', why: 'diversifier, no yield', w: 0.10, sampleRate: 0.030, vol: 0.14, c: '#7A5A3A' }
+    ], start: 20000, target: 35000, years: 5.25, monthly: 120, odds: 0.71, maxDrop: 0.25 }
+  };
+  var fmt = function (v) { return '$' + Math.round(v).toLocaleString('en-US'); };
+  var NS = 'http://www.w3.org/2000/svg';
+  function el(tag, attrs, text) { var e = document.createElementNS(NS, tag); for (var k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; return e; }
+  function kpis(id, items) {
+    document.getElementById(id).innerHTML = items.map(function (k) { return '<div class="kpi"><div class="l">' + k[0] + '</div><div class="v">' + k[1] + (k[2] ? ' <small>' + k[2] + '</small>' : '') + '</div></div>'; }).join('');
+  }
+  function legend(id, legs) {
+    document.getElementById(id).innerHTML = legs.map(function (l) { return '<div class="lg"><i style="background:' + l.c + '"></i><span>' + l.n + '</span><span class="w">' + Math.round(l.w * 100) + '%</span><span class="why">' + l.why + '</span></div>'; }).join('');
+  }
+
+  /* trip: stacked monthly balance by leg, then three payout months */
+  (function () {
+    var T = MOCK.trip, legs = T.legs, n = T.months, total = T.payout * T.payMonths;
+    var r = legs.reduce(function (s, l) { return s + l.w * l.sampleRate; }, 0) / 12;
+    var fvFactor = 0; for (var k = 0; k < n; k++) fvFactor += Math.pow(1 + r, n - k);
+    var c = total / fvFactor;                                         // monthly contribution that funds the trip
+    var bal = [], b = 0;
+    for (var m = 0; m < n; m++) { b = (b + c) * (1 + r); bal.push(b); }
+    for (var p = 0; p < T.payMonths; p++) { b = Math.max(0, b * (1 + r) - T.payout); bal.push(b); }
+    var earned = bal[n - 1] - c * n;
+    kpis('k1', [['you save', fmt(c), '/ month'], ['for', n + ' months', ''], ['earned on top', fmt(earned), 'sample'], ['odds of funding', Math.round(T.odds * 100) + '%', 'estimate']]);
+    legend('l1', legs);
+    var Wd = 640, H = 220, pl = 44, pr = 10, pt = 14, pb = 26, cw = Wd - pl - pr, ch = H - pt - pb, N = bal.length;
+    var max = Math.ceil(Math.max.apply(null, bal) / 500) * 500;
+    var svg = el('svg', { viewBox: '0 0 ' + Wd + ' ' + H, 'font-family': 'IBM Plex Mono, monospace', 'font-size': 10 });
+    for (var g = 0; g <= max; g += 1000) {
+      var gy = pt + ch - g / max * ch;
+      svg.appendChild(el('line', { x1: pl, x2: Wd - pr, y1: gy, y2: gy, stroke: '#3A322A', 'stroke-width': 1 }));
+      svg.appendChild(el('text', { x: pl - 6, y: gy + 3, 'text-anchor': 'end', fill: '#A49A8E' }, '$' + (g / 1000) + 'k'));
+    }
+    var bw = cw / N;
+    bal.forEach(function (v, i) {
+      var x = pl + i * bw + 1, y0 = pt + ch;
+      legs.forEach(function (l) {
+        var h = v * l.w / max * ch;
+        svg.appendChild(el('rect', { x: x, y: y0 - h, width: Math.max(bw - 2, 1), height: h, fill: l.c }));
+        y0 -= h;
+      });
+    });
+    var px = pl + n * bw;
+    svg.appendChild(el('line', { x1: px, x2: px, y1: pt, y2: pt + ch, stroke: '#E6D3B7', 'stroke-dasharray': '3 3' }));
+    svg.appendChild(el('text', { x: px - 6, y: pt + 10, fill: '#ECE4D6', 'text-anchor': 'end' }, 'trip: $1,000/mo × 3 →'));
+    svg.appendChild(el('text', { x: pl, y: H - 8, fill: '#A49A8E' }, T.startLabel));
+    svg.appendChild(el('text', { x: px - 2, y: H - 8, fill: '#A49A8E', 'text-anchor': 'end' }, 'Jan 2029'));
+    svg.appendChild(el('text', { x: Wd - pr, y: H - 8, fill: '#A49A8E', 'text-anchor': 'end' }, 'Mar'));
+    document.getElementById('c1').appendChild(svg);
+  })();
+
+  /* growth: base path with a weak–strong range against the target */
+  (function () {
+    var G = MOCK.growth, legs = G.legs, n = Math.round(G.years * 12);
+    var mu = legs.reduce(function (s, l) { return s + l.w * l.sampleRate; }, 0);
+    var sig = Math.sqrt(legs.reduce(function (s, l) { return s + Math.pow(l.w * l.vol, 2); }, 0));
+    var base = [], lo = [], hi = [], b = G.start;
+    for (var m = 0; m <= n; m++) {
+      var t = m / 12;
+      if (m > 0) b = (b + G.monthly) * (1 + mu / 12);
+      base.push(b);
+      lo.push(b * Math.exp(-1.28 * sig * Math.sqrt(t)));
+      hi.push(b * Math.exp(1.28 * sig * Math.sqrt(t)));
+    }
+    kpis('k2', [['you add', fmt(G.monthly), '/ month'], ['base case', fmt(base[n]), 'Dec 2031'], ['odds of $35k', Math.round(G.odds * 100) + '%', 'estimate'], ['drop budget', '−' + Math.round(G.maxDrop * 100) + '%', 'max']]);
+    legend('l2', legs);
+    var Wd = 640, H = 220, pl = 48, pr = 10, pt = 14, pb = 26, cw = Wd - pl - pr, ch = H - pt - pb;
+    var min = 10000, max = Math.ceil(Math.max.apply(null, hi) / 5000) * 5000;
+    function X(i) { return pl + i / n * cw; } function Y(v) { return pt + ch - (v - min) / (max - min) * ch; }
+    var svg = el('svg', { viewBox: '0 0 ' + Wd + ' ' + H, 'font-family': 'IBM Plex Mono, monospace', 'font-size': 10 });
+    for (var g = min; g <= max; g += 5000) {
+      svg.appendChild(el('line', { x1: pl, x2: Wd - pr, y1: Y(g), y2: Y(g), stroke: '#3A322A' }));
+      svg.appendChild(el('text', { x: pl - 6, y: Y(g) + 3, 'text-anchor': 'end', fill: '#A49A8E' }, '$' + g / 1000 + 'k'));
+    }
+    var band = 'M' + hi.map(function (v, i) { return X(i) + ' ' + Y(v); }).join(' L') + ' L' + lo.slice().reverse().map(function (v, i) { return X(n - i) + ' ' + Y(v); }).join(' L') + ' Z';
+    svg.appendChild(el('path', { d: band, fill: '#9D7751', 'fill-opacity': 0.28 }));
+    svg.appendChild(el('path', { d: 'M' + lo.map(function (v, i) { return X(i) + ' ' + Y(v); }).join(' L'), fill: 'none', stroke: '#9D7751', 'stroke-dasharray': '3 3' }));
+    svg.appendChild(el('path', { d: 'M' + base.map(function (v, i) { return X(i) + ' ' + Y(v); }).join(' L'), fill: 'none', stroke: '#E6D3B7', 'stroke-width': 2 }));
+    svg.appendChild(el('line', { x1: pl, x2: Wd - pr, y1: Y(G.target), y2: Y(G.target), stroke: '#ECE4D6', 'stroke-dasharray': '6 4' }));
+    svg.appendChild(el('text', { x: pl + 6, y: Y(G.target) - 6, fill: '#ECE4D6' }, 'goal $35k'));
+    svg.appendChild(el('text', { x: X(n) - 4, y: Y(lo[n]) + 14, 'text-anchor': 'end', fill: '#A49A8E' }, 'weak case'));
+    svg.appendChild(el('text', { x: pl, y: H - 8, fill: '#A49A8E' }, 'Oct 2026'));
+    svg.appendChild(el('text', { x: Wd - pr, y: H - 8, 'text-anchor': 'end', fill: '#A49A8E' }, 'Dec 2031'));
+    document.getElementById('c2').appendChild(svg);
+  })();
+
+  /* ---------------- simulator (MOCK) ---------------- */
+  var log = document.getElementById('log'), form = document.getElementById('ask'), q = document.getElementById('q');
+  var send = form.querySelector('.send');
+  function grow() { q.style.height = 'auto'; q.style.height = q.scrollHeight + 'px'; send.disabled = !q.value.trim(); }
+  q.addEventListener('input', grow);
+  q.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (q.value.trim()) form.requestSubmit(); } });
+  document.querySelectorAll('.chip').forEach(function (c) { c.addEventListener('click', function () { q.value = c.textContent; grow(); form.requestSubmit(); }); });
+  function esc(s) { return s.replace(/[&<>"]/g, function (m) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]; }); }
+  function parse(t) {
+    var s = t.toLowerCase(), out = {};
+    var amt = t.match(/[$R€]\$?\s?([\d.,]+)\s*(k|mil|m)?/i); if (amt) out.amount = amt[0].replace(/\s+/g, '');
+    out.kind = /month|mês|mes|mensal/.test(s) ? 'Income: monthly withdrawals' : /grow|cres|crec/.test(s) ? 'Growth: target balance' : 'Target balance by a date';
+    var yr = s.match(/\b(20[2-9]\d)\b/), mon = s.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*/), yrs = s.match(/(\d+)\s*(years|year|anos|años)/);
+    out.horizon = yr ? ((mon ? mon[0][0].toUpperCase() + mon[0].slice(1, 3) + ' ' : '') + yr[1]) : yrs ? yrs[1] + ' years' : null;
+    var liq = s.match(/(\d+)\s*(days|day|dias|días)/);
+    out.liquidity = liq ? 'Cash within ' + liq[1] + ' days' : /week|semana/.test(s) ? 'Cash within 7 days' : null;
+    out.credit = /credit|crédito|credito/.test(s) ? 'Accepted' : 'Not stated, assume cautious';
+    out.stocks = out.kind.indexOf('Income') === 0 ? 'Not eligible for income goals' : /grow/.test(s) ? 'Eligible (growth goal)' : 'Not used';
+    return out;
+  }
+  function plan(p) {
+    var income = p.kind.indexOf('Income') === 0, growth = p.kind.indexOf('Growth') === 0, fast = !!p.liquidity;
+    var legs = [
+      { n: 'Cash buffer', why: 'covers the liquidity window', w: fast ? 20 : 10, c: '#E6D3B7' },
+      { n: 'Tokenized treasuries', why: 'dollar yield, daily redemption', w: income ? 45 : 35, c: '#C9AE86' },
+      { n: 'Dollar lending', why: 'variable rate, fast exit', w: growth ? 20 : 25, c: '#9D7751' },
+      growth ? { n: 'Tokenized stocks', why: 'growth leg, thinner weekend exit', w: 0, c: '#7A5A3A' }
+        : p.credit === 'Accepted' ? { n: 'Private credit', why: 'higher yield, slower exit (credit risk accepted)', w: 0, c: '#7A5A3A' }
+        : { n: 'Longer treasuries', why: 'locks in a rate, short exit; no credit risk', w: 0, c: '#7A5A3A' }
+    ];
+    legs[3].w = 100 - legs[0].w - legs[1].w - legs[2].w;
+    return legs;
+  }
+  function add(html, cls) { log.hidden = false; var d = document.createElement('div'); d.className = 'msg ' + cls; d.innerHTML = html; log.appendChild(d); log.scrollTop = log.scrollHeight; return d; }
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var t = q.value.trim(); if (!t) return;
+    add(esc(t), 'user'); q.value = ''; grow();
+    var p = parse(t), legs = plan(p);
+    function row(k, v) { return '<div class="row"><span class="k">' + k + '</span><span class="v' + (v ? '' : ' missing') + '">' + (v ? esc(v) : 'not given, I’ll ask') + '</span></div>'; }
+    var d = add('<p>Here’s how I read your goal. Edit anything that’s wrong before I fit the pieces.</p>' +
+      '<div class="sheet">' + row('goal', p.kind) + row('amount', p.amount) + row('horizon', p.horizon) + row('liquidity', p.liquidity) + row('credit risk', p.credit) + row('stocks', p.stocks) + '</div>' +
+      '<div class="legs"><div class="legs-head"><span style="font:500 13px var(--font-body)">How the pieces would fit</span><span class="mock"><span>MOCK</span></span></div>' +
+      legs.map(function (l) { return '<div class="leg"><div><div class="name">' + l.n + '</div><div class="why">' + l.why + '</div></div><div class="w">' + l.w + '%</div><div class="bar-track"><div class="bar-fill" data-w="' + l.w + '" style="background:' + l.c + '"></div></div></div>'; }).join('') +
+      '</div><div class="exitline" style="margin-top:10px">Exit plan before investing: ' + (p.liquidity ? esc(p.liquidity.toLowerCase()) + ' is covered by the cash buffer and daily-redeemable legs' : 'tell me how fast you might need cash and I’ll size the buffer') + '. <em>Yields and exit costs are sourced live after you connect.</em></div>' +
+      '<div class="disclaimer">Simulation with sample weights. Not investment advice.</div>', 'agent');
+    requestAnimationFrame(function () { requestAnimationFrame(function () { d.querySelectorAll('.bar-fill').forEach(function (b) { b.style.width = b.dataset.w + '%'; }); }); });
+  });
+  if (Q.get('demo') === '1') window.addEventListener('load', function () { document.querySelector('.chip').click(); });
+
+  /* ---------------- subscribe (prototype: nothing is sent) ---------------- */
+  var sub = document.getElementById('sub'), note = document.getElementById('sub-note'), email = document.getElementById('email');
+  sub.addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (!email.checkValidity()) { note.textContent = 'That doesn’t look like an email address.'; email.focus(); return; }
+    note.textContent = 'Prototype: nothing was sent. In the product, ' + email.value + ' would get a confirmation email.';
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tenonfi — brand guidelines (working-brand, 2026-10-01)</title>
+<style>
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap");
+
+/* ------------------------------------------------------------------
+   Tokens — shadcn-native names, values from working-brand.yml
+   (OKLCH as emitted by theme-css.js). Paste-ready for globals.css.
+   ------------------------------------------------------------------ */
+:root, .on-light {
+  --background: oklch(95.96% 0.0130 82.40);         /* paper #F6F1E8 */
+  --foreground: oklch(20.88% 0.0125 67.03);         /* ink #1C1712 */
+  --card: oklch(97.98% 0.0085 84.59);               /* paper-raised #FBF8F2 */
+  --card-foreground: oklch(20.88% 0.0125 67.03);
+  --popover: oklch(97.98% 0.0085 84.59);
+  --popover-foreground: oklch(20.88% 0.0125 67.03);
+  --primary: oklch(49.32% 0.0626 65.50);            /* hardwood #7A5A3A */
+  --primary-foreground: oklch(97.98% 0.0085 84.59);
+  --secondary: oklch(92.72% 0.0177 81.33);          /* paper-sunk #EDE6DA */
+  --secondary-foreground: oklch(20.88% 0.0125 67.03);
+  --accent: oklch(92.72% 0.0177 81.33);             /* hover surface, not a hue */
+  --accent-foreground: oklch(37.95% 0.0615 60.46);  /* heartwood */
+  --muted: oklch(92.72% 0.0177 81.33);
+  --muted-foreground: oklch(51.21% 0.0192 70.28);   /* stone #6E655B */
+  --destructive: oklch(50.01% 0.1535 12.83);        /* madder #A8324A */
+  --border: oklch(85.32% 0.0278 78.16);             /* hair #D9CDBB — decoration */
+  --input: oklch(60.39% 0.0272 71.23);              /* member #8C7F70 — controls */
+  --ring: oklch(49.32% 0.0626 65.50);
+  --radius: 2px;
+  --chart-1: #7A5A3A; --chart-2: #5A3A1E; --chart-3: #9D7751; --chart-4: #6E655B; --chart-5: #1C1712;
+  --success: #2F4A2A; --warning: #8A5A00; --info: #1C1712;
+
+  /* brand extensions */
+  --tf-success-bg: #DEEEDB; --tf-warning-bg: #FFEADB; --tf-error-bg: #FAEAEC;
+  --tf-primary-hover: #63482E; --tf-primary-pressed: #5A3A1E;
+  --tf-hatch: #6E655B;
+  --tf-hm-1: #F2E6D3; --tf-hm-2: #C9AE86; --tf-hm-3: #8A6C4B; --tf-hm-4: #5A3A1E; --tf-hm-5: #1A1714;
+  --tf-species-pale: #E6D3B7; --tf-species-dark: #7A5A3A;
+
+  --font-display: "Newsreader Variable", "Newsreader", Georgia, "Times New Roman", serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  --font-sans: var(--font-body);
+  --font-condensed: "IBM Plex Sans Condensed", "IBM Plex Sans", "Arial Narrow", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --dur-fast: 160ms; --dur-slide: 320ms;
+  --col: 80px;
+}
+.dark, .on-dark {
+  --background: oklch(15.13% 0.0055 67.77);         /* black #0D0B09 */
+  --foreground: oklch(92.14% 0.0206 81.78);         /* washi #ECE4D6 */
+  --card: oklch(20.70% 0.0075 67.36);               /* char #1A1714 */
+  --card-foreground: oklch(92.14% 0.0206 81.78);
+  --popover: oklch(24.62% 0.0110 73.40);            /* char-2 #24201B */
+  --popover-foreground: oklch(92.14% 0.0206 81.78);
+  --primary: oklch(87.52% 0.0429 77.60);            /* hinoki #E6D3B7 */
+  --primary-foreground: oklch(15.13% 0.0055 67.77);
+  --secondary: oklch(24.62% 0.0110 73.40);
+  --secondary-foreground: oklch(92.14% 0.0206 81.78);
+  --accent: oklch(24.62% 0.0110 73.40);
+  --accent-foreground: oklch(87.52% 0.0429 77.60);
+  --muted: oklch(24.62% 0.0110 73.40);
+  --muted-foreground: oklch(69.14% 0.0208 72.45);   /* stone-d #A49A8E */
+  --destructive: oklch(73.48% 0.1134 4.60);         /* madder-d #E58AA0 */
+  --border: oklch(32.31% 0.0179 67.10);             /* hair-d #3A322A */
+  --input: oklch(54.28% 0.0267 69.27);              /* member-d #7A6D5F */
+  --ring: oklch(87.52% 0.0429 77.60);
+  --chart-1: #E6D3B7; --chart-2: #C9AE86; --chart-3: #9D7751; --chart-4: #A49A8E; --chart-5: #ECE4D6;
+  --success: #7FA37A; --warning: #D9A441; --info: #ECE4D6;
+  --tf-success-bg: #050D04; --tf-warning-bg: #180C00; --tf-error-bg: #220409;
+  --tf-primary-hover: #D7C09E; --tf-primary-pressed: #C9AE86;
+  --tf-hatch: #A49A8E;
+  --tf-hm-1: #1A1714; --tf-hm-2: #5A3A1E; --tf-hm-3: #8A6C4B; --tf-hm-4: #C9AE86; --tf-hm-5: #F2E6D3;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+}
+
+/* ------------------------------------------------------------------ base */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--background); color: var(--foreground);
+  font: 400 1rem/1.5rem var(--font-body); font-variant-numeric: lining-nums tabular-nums; }
+.on-light, .on-dark { background: var(--background); color: var(--foreground); }
+h1, h2, h3, h4, p { margin: 0; }
+h1, h2, h3 { text-wrap: balance; } p, li { text-wrap: pretty; }
+a { color: var(--primary); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.mono { font-family: var(--font-mono); }
+.muted { color: var(--muted-foreground); }
+.tf-figure { font-feature-settings: "tnum" 1, "lnum" 1; }
+svg { display: block; }
+
+/* ------------------------------------------------------------------ nav */
+#toc { position: fixed; left: 0; top: 0; height: 100vh; width: 180px; z-index: 50; overflow-y: auto;
+  display: flex; flex-direction: column; justify-content: center; padding: 0 28px; gap: 8px;
+  border-right: 1px solid var(--border); background: var(--background); }
+#toc .brand { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; color: var(--foreground); text-decoration: none; }
+#toc .brand svg { fill: var(--primary); }
+.wordmark { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.015em; line-height: 1; font-optical-sizing: auto; }
+.toc-link { font: 500 0.875rem/1.5rem var(--font-body); color: var(--muted-foreground); text-decoration: none; padding-left: 10px; border-left: 2px solid transparent; }
+.toc-link:hover { color: var(--foreground); }
+.toc-link.active { color: var(--primary); border-left-color: var(--primary); }
+.theme-toggle { margin-top: 24px; font: 500 0.8125rem/1.25rem var(--font-body); background: transparent; color: var(--foreground);
+  border: 1px solid var(--input); border-radius: var(--radius); padding: 6px 10px; cursor: pointer; text-align: left; }
+.theme-toggle:hover { border-color: var(--primary); color: var(--primary); }
+
+main { margin-left: 180px; }
+.container { max-width: 1120px; padding: 0 56px; margin: 0 auto; }
+section { padding: 96px 0; border-bottom: 1px solid var(--border); scroll-margin-top: 0; }
+.section-label { font: 500 0.78125rem/1.25rem var(--font-body); letter-spacing: 0.015em; color: var(--muted-foreground); margin-bottom: 12px; display: flex; gap: 12px; }
+.section-label b { color: var(--primary); font-weight: 500; }
+.section-heading { font: 600 clamp(1.9375rem, 1.7562rem + 0.7735vw, 2.375rem)/clamp(2.5rem, 2.2928rem + 0.8840vw, 3rem) var(--font-body); letter-spacing: -0.015em; max-width: 24ch; }
+.section-heading.serif { font-family: var(--font-display); font-weight: 500; font-variation-settings: "opsz" 36; }
+.lede { font-size: 1.125rem; line-height: 1.75rem; max-width: 62ch; margin-top: 16px; color: var(--muted-foreground); }
+h3.sub { font: 600 1.25rem/1.75rem var(--font-body); margin: 56px 0 16px; letter-spacing: -0.005em; }
+.rule-note { font-size: 0.875rem; line-height: 1.5rem; color: var(--muted-foreground); max-width: 66ch; margin-top: 12px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
+.panel { border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); padding: 24px; }
+.cap { font: 500 0.78125rem/1.25rem var(--font-body); letter-spacing: 0.015em; color: var(--muted-foreground); }
+.src { font: 400 0.8125rem/1.25rem var(--font-mono); color: var(--muted-foreground); }
+
+/* ------------------------------------------------------------------ P2 stepped divider */
+.step-rule { --step: var(--col); --c: var(--border); height: 9px; margin: 48px 0 0; background:
+  linear-gradient(var(--c), var(--c)) right 0 / calc(100% - 2 * var(--step)) 1px no-repeat,
+  linear-gradient(var(--c), var(--c)) right 4px / calc(100% - var(--step)) 1px no-repeat,
+  linear-gradient(var(--c), var(--c)) right 8px / 100% 1px no-repeat; }
+
+/* ------------------------------------------------------------------ P1 kumiko */
+.lattice { position: relative; isolation: isolate; --cell: var(--col); --c: var(--border); }
+.lattice::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background-image: linear-gradient(to right, var(--c) 1px, transparent 1px), linear-gradient(to bottom, var(--c) 1px, transparent 1px);
+  background-size: var(--cell) var(--cell); }
+.lattice--medium { --cell: 24px; }
+.lattice--fine { --cell: 8px; }
+
+/* ------------------------------------------------------------------ P4 hatch = MOCK / stale only */
+.hatch { background: repeating-linear-gradient(45deg, var(--tf-hatch) 0 1px, transparent 1px 6px); }
+.mock-band { inline-size: 6px; align-self: stretch; flex: none; }
+.mock-plate { display: inline-block; background: var(--card); color: var(--card-foreground); border: 1px solid var(--tf-hatch);
+  font: 500 0.78125rem/1.125rem var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; padding: 0 6px; }
+
+/* ------------------------------------------------------------------ provenance pin */
+.pin { display: inline-block; height: .75em; width: 1.125em; vertical-align: baseline; color: var(--primary); overflow: visible; }
+.pin-btn { position: relative; display: inline-flex; align-items: baseline; background: none; border: 0; padding: 0; margin: 0; color: inherit; cursor: pointer; font: inherit; }
+.pin-btn::before { content: ""; position: absolute; left: 50%; top: 50%; width: 24px; height: 24px; transform: translate(-50%, -50%); }
+.pin.stale, .pin.mock { color: var(--tf-hatch); }
+.word-stale { font: 400 0.8125rem/1.25rem var(--font-mono); color: var(--muted-foreground); margin-left: 6px; }
+.popover { background: var(--popover); color: var(--popover-foreground); border: 1px solid var(--input); border-radius: var(--radius); padding: 12px 14px; font: 400 0.8125rem/1.25rem var(--font-mono); max-width: 360px; }
+.popover dt { color: var(--muted-foreground); } .popover dd { margin: 0 0 6px; }
+
+/* ------------------------------------------------------------------ status squares */
+.status { display: inline-flex; align-items: center; gap: 8px; font: 500 0.875rem/1.25rem var(--font-body); }
+.status svg { width: 12px; height: 12px; flex: none; }
+.status.on { color: var(--success); } .status.watch { color: var(--warning); } .status.off { color: var(--destructive); }
+.badge { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 0; font: 500 0.78125rem/1.25rem var(--font-body); letter-spacing: 0.015em; }
+.badge svg { width: 10px; height: 10px; }
+.badge.on { background: var(--tf-success-bg); color: var(--success); }
+.badge.watch { background: var(--tf-warning-bg); color: var(--warning); }
+.badge.off { background: var(--tf-error-bg); color: var(--destructive); }
+
+/* ------------------------------------------------------------------ controls */
+.btn { display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: var(--radius); font: 500 0.9375rem/1 var(--font-body); cursor: pointer; transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.btn-primary { background: var(--primary); color: var(--primary-foreground); border: 0; }
+.btn-primary:hover, .btn-primary.is-hover { background: var(--tf-primary-hover); }
+.btn-primary:active, .btn-primary.is-pressed { background: var(--tf-primary-pressed); }
+.btn-secondary { background: transparent; color: var(--foreground); border: 1px solid var(--input); }
+.btn-secondary:hover, .btn-secondary.is-hover { border-color: var(--primary); color: var(--primary); }
+.btn.is-focus { outline: 2px solid var(--ring); outline-offset: 2px; }
+.field { display: grid; gap: 6px; }
+.field label { font: 500 0.78125rem/1.25rem var(--font-body); letter-spacing: .015em; }
+.input { height: 40px; padding: 0 12px; border-radius: var(--radius); background: var(--muted); color: var(--foreground); border: 1px solid var(--input); font: 400 1rem var(--font-body); font-variant-numeric: tabular-nums; width: 100%; }
+.input.is-focus { outline: 2px solid var(--ring); outline-offset: 2px; }
+.input.is-error { border-color: var(--destructive); }
+.field .err { font-size: 0.875rem; line-height: 1.25rem; color: var(--destructive); }
+
+/* ------------------------------------------------------------------ hero (always an inverted, warm-black section) */
+#hero { padding: 0; border-bottom: 0; }
+.hero { min-height: 100vh; display: grid; grid-template-rows: 1fr auto; position: relative; overflow: hidden; }
+.hero-inner { display: grid; grid-template-columns: 7fr 5fr; gap: 48px; align-items: center; padding: 96px 56px 64px; max-width: 1280px; }
+.hero h1 { font-family: var(--font-display); font-weight: 400; font-optical-sizing: auto;
+  font-size: clamp(3.0625rem, 2.5834rem + 2.0442vw, 4.2188rem); line-height: clamp(3.5rem, 2.9820rem + 2.2099vw, 4.75rem); letter-spacing: -0.015em; max-width: 17ch; }
+.hero .tagline { margin-top: 32px; font: 400 1.125rem/1.75rem var(--font-body); color: var(--muted-foreground); }
+.hero .tagline b { color: var(--foreground); font-weight: 500; }
+.hero .eyebrow { display: flex; align-items: center; gap: 12px; margin-bottom: 40px; }
+.hero .eyebrow svg { fill: var(--primary); }
+.joint { width: 100%; max-width: 440px; justify-self: end; color: var(--foreground); }
+.joint .member { fill: #C9AE86; }       /* two-species hero: members hinoki-deep */
+.joint .pin-fill { fill: #E6D3B7; }     /* pin hinoki */
+.joint .ground { fill: var(--background); }
+.joint .dim { stroke: var(--border); stroke-width: .06; fill: none; }
+.joint .dim-label { font-family: var(--font-mono); font-size: 1.05px; fill: var(--muted-foreground); }
+.joint .piece { animation: seat 1100ms var(--ease) 400ms both; }
+.joint .pin-in { animation: pin-drop 500ms var(--ease) 1500ms both; }  /* hero lock ≈ 2.0s total — founder choice 2026-10-01 */
+@keyframes seat { from { transform: translateX(-11px); } to { transform: none; } }
+@keyframes pin-drop { from { transform: translateY(-5px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .joint .piece, .joint .pin-in, .leg-anim, .pin-anim { animation: fade 120ms linear both !important; }
+}
+.replay { font: 400 0.8125rem/1.25rem var(--font-mono); color: var(--muted-foreground); background: none; border: 0; cursor: pointer; padding: 4px 0; text-decoration: underline; text-underline-offset: 4px; }
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--border); }
+.metric { padding: 24px 28px 28px; border-right: 1px solid var(--border); }
+.metric:last-child { border-right: 0; }
+.metric .v { font: 500 1.5rem/2rem var(--font-body); letter-spacing: -0.01em; }
+.metric .l { font-size: 0.875rem; line-height: 1.25rem; color: var(--muted-foreground); margin-top: 4px; max-width: 28ch; }
+
+/* ------------------------------------------------------------------ logo */
+.ground-pair { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--border); }
+.ground-pair > div { padding: 40px; }
+.ground-pair > .on-dark { border-left: 1px solid var(--border); }
+.mark-row { display: flex; align-items: flex-end; gap: 28px; flex-wrap: wrap; }
+.mark-cell { display: flex; flex-direction: column; gap: 8px; }
+.mark-cell svg { fill: currentColor; }
+.lab { font: 400 0.75rem/1rem var(--font-mono); color: var(--muted-foreground); }
+.lockup { display: flex; align-items: center; gap: 12px; }
+.lockup svg { fill: var(--primary); }
+.on-light .lockup svg.ink { fill: #1C1712; }
+.donts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 24px; }
+.dont { border: 1px solid var(--border); padding: 20px; display: grid; gap: 12px; justify-items: start; align-content: start; }
+.dont .x { font: 500 0.8125rem/1.25rem var(--font-mono); color: var(--destructive); }
+
+/* ------------------------------------------------------------------ positioning */
+.pos-grid { display: grid; grid-template-columns: 5fr 7fr; gap: 56px; margin-top: 48px; }
+.quote { font-family: var(--font-display); font-weight: 400; font-size: clamp(1.5625rem, 1.4719rem + 0.3867vw, 1.7812rem); line-height: 2.25rem; letter-spacing: -0.01em; font-variation-settings: "opsz" 36; }
+.kv { display: grid; grid-template-columns: 160px 1fr; border-top: 1px solid var(--border); }
+.kv > * { padding: 16px 0; border-bottom: 1px solid var(--border); }
+.kv dt { font: 500 0.78125rem/1.5rem var(--font-body); color: var(--muted-foreground); }
+.kv dd { margin: 0; }
+
+/* ------------------------------------------------------------------ color */
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
+.sw { border: 1px solid var(--border); background: var(--card); }
+.sw .chip { height: 80px; border-bottom: 1px solid var(--border); }
+.sw .meta { padding: 10px 12px 12px; }
+.sw .n { font: 500 0.875rem/1.25rem var(--font-body); }
+.sw .h, .sw .o { font: 400 0.75rem/1rem var(--font-mono); color: var(--muted-foreground); }
+.sw .r { font-size: 0.75rem; line-height: 1rem; color: var(--muted-foreground); margin-top: 4px; }
+.ramp { display: grid; grid-template-columns: 110px repeat(11, 1fr); gap: 2px; align-items: stretch; margin-bottom: 2px; }
+.ramp .name { font: 500 0.8125rem/1.25rem var(--font-body); align-self: center; }
+.ramp .stop { height: 48px; position: relative; }
+.ramp .stop span { position: absolute; left: 6px; bottom: 4px; font: 400 0.6875rem/1 var(--font-mono); }
+.ramp-head { display: grid; grid-template-columns: 110px repeat(11, 1fr); gap: 2px; font: 400 0.75rem/1rem var(--font-mono); color: var(--muted-foreground); margin-bottom: 6px; }
+table.pairs { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+table.pairs th, table.pairs td { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--border); vertical-align: middle; }
+table.pairs th { font: 500 0.78125rem/1.25rem var(--font-body); color: var(--muted-foreground); }
+table.pairs td[data-numeric] { text-align: right; font-family: var(--font-mono); }
+.sample-pair { display: inline-flex; align-items: center; justify-content: center; min-width: 76px; height: 28px; padding: 0 8px; font-weight: 500; border: 1px solid var(--border); }
+.fix { border-left: 2px solid var(--primary); padding: 4px 0 4px 16px; margin-top: 16px; max-width: 72ch; }
+.proportion { display: grid; grid-template-columns: 60fr 30fr 10fr; height: 40px; border: 1px solid var(--border); margin-top: 16px; }
+
+/* ------------------------------------------------------------------ type */
+.type-block { border-top: 1px solid var(--border); padding-top: 32px; margin-top: 56px; display: grid; grid-template-columns: 220px 1fr; gap: 32px; }
+.type-block .who h4 { font: 600 1.25rem/1.75rem var(--font-body); }
+.type-block .who p { font-size: 0.875rem; line-height: 1.5rem; color: var(--muted-foreground); margin-top: 8px; }
+.step { margin-bottom: 32px; }
+.scale-meta { font: 400 0.75rem/1rem var(--font-mono); color: var(--muted-foreground); margin-top: 8px; }
+.t-display { font-family: var(--font-display); font-weight: 400; font-size: clamp(3.0625rem, 2.5834rem + 2.0442vw, 4.2188rem); line-height: clamp(3.5rem, 2.9820rem + 2.2099vw, 4.75rem); letter-spacing: -0.015em; max-width: 18ch; }
+.t-h1 { font-family: var(--font-display); font-weight: 400; font-size: clamp(2.4375rem, 2.1397rem + 1.2707vw, 3.1562rem); line-height: clamp(3rem, 2.6892rem + 1.3260vw, 3.75rem); letter-spacing: -0.01em; }
+.t-h2s { font-family: var(--font-display); font-weight: 500; font-variation-settings: "opsz" 36; font-size: clamp(1.9375rem, 1.7562rem + 0.7735vw, 2.375rem); line-height: clamp(2.5rem, 2.2928rem + 0.8840vw, 3rem); letter-spacing: -0.015em; }
+.t-h2 { font: 600 clamp(1.9375rem, 1.7562rem + 0.7735vw, 2.375rem)/clamp(2.5rem, 2.2928rem + 0.8840vw, 3rem) var(--font-body); letter-spacing: -0.015em; }
+.t-h3 { font: 600 clamp(1.5625rem, 1.4719rem + 0.3867vw, 1.7812rem)/clamp(2rem, 1.8964rem + 0.4420vw, 2.25rem) var(--font-body); letter-spacing: -0.01em; }
+.t-h4 { font: 500 clamp(1.25rem, 1.2112rem + 0.1657vw, 1.3438rem)/1.75rem var(--font-body); letter-spacing: -0.005em; }
+.t-bodylg { font: 400 1.125rem/1.75rem var(--font-body); max-width: 66ch; }
+.t-body { font: 400 1rem/1.5rem var(--font-body); max-width: 66ch; }
+.t-bodysm { font: 400 0.875rem/1.5rem var(--font-body); letter-spacing: .01em; max-width: 66ch; }
+.t-caption { font: 500 0.78125rem/1.25rem var(--font-body); letter-spacing: .015em; }
+.t-source { font: 400 0.8125rem/1.25rem var(--font-mono); }
+.t-mock { font: 500 0.78125rem/1.25rem var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+.t-bkpi { font: 500 1.4688rem/2rem var(--font-mono); }
+.t-btitle { font: 600 1.3125rem/1.75rem var(--font-body); }
+.t-bsection { font: 600 1.0313rem/1.5rem var(--font-body); }
+.t-bemph { font: 500 0.9063rem/1.25rem var(--font-condensed); }
+.t-bcell { font: 400 0.8125rem/1.25rem var(--font-condensed); }
+.t-bhead { font: 500 0.75rem/1rem var(--font-condensed); }
+.t-bmeta { font: 400 0.75rem/1rem var(--font-mono); }
+.pairing { margin-top: 56px; display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--border); }
+.pairing > div { padding: 24px; border-right: 1px solid var(--border); }
+.pairing > div:last-child { border-right: 0; }
+
+/* ------------------------------------------------------------------ visual elements */
+.pattern-demo { height: 240px; border: 1px solid var(--border); position: relative; }
+.pattern-demo .tag { position: absolute; left: 16px; bottom: 16px; background: var(--background); padding: 2px 8px; font: 400 0.75rem/1rem var(--font-mono); color: var(--muted-foreground); border: 1px solid var(--border); }
+.loader { display: inline-grid; grid-template-columns: auto auto; gap: 12px; align-items: center; }
+.loader svg line { stroke: var(--border); stroke-width: 1; }
+.dl { color: var(--foreground); }
+
+/* ------------------------------------------------------------------ components */
+.goal-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; max-width: 560px; }
+.goal-card .goal { font-family: var(--font-display); font-weight: 400; font-optical-sizing: auto; font-size: clamp(2.4375rem, 2.1397rem + 1.2707vw, 3.1562rem); line-height: clamp(3rem, 2.6892rem + 1.3260vw, 3.75rem); letter-spacing: -0.01em; max-width: 14ch; }
+.goal-card .amt { font-size: 1.125rem; line-height: 1.75rem; margin-top: 8px; }
+.legbar { display: flex; gap: 2px; height: 28px; margin: 24px 0 16px; background: var(--card); }
+.legbar > div { height: 100%; }
+.leg-anim { animation: seat var(--dur-slide) var(--ease) both; }
+.legs { display: grid; gap: 0; border-top: 1px solid var(--border); }
+.leg-row { display: grid; grid-template-columns: 16px 1fr auto; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.leg-row .sq { width: 12px; height: 12px; }
+.leg-row .r { text-align: right; }
+.leg-row.mock { grid-template-columns: 16px 1fr auto; }
+.disclaimer { border: 1px solid var(--input); border-radius: var(--radius); padding: 16px 20px; font: 400 1rem/1.5rem var(--font-body); max-width: 66ch; }
+.disclaimer .cap { display: block; margin-bottom: 4px; }
+.activity { font-size: 0.9375rem; line-height: 1.5rem; padding: 12px 0; border-bottom: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+.activity .tx { font-family: var(--font-mono); font-size: 0.8125rem; }
+
+/* embed: partner skin (example partner tokens, NOT ours) */
+.partner-app { --p-bg: #FFFFFF; --p-fg: #1E1E1E; --p-muted: #6A6A6A; --p-line: #E4E4E4; --p-btn: #1E1E1E; --p-radius: 14px;
+  background: #F2F2F2; padding: 32px; border: 1px solid var(--border); }
+.dark .partner-app, .partner-app.p-dark { --p-bg: #17171A; --p-fg: #EEEEEE; --p-muted: #A0A0A0; --p-line: #2C2C30; --p-btn: #EEEEEE; background: #0F0F11; }
+.tf-embed { container-type: inline-size; background: var(--p-bg); color: var(--p-fg); border-radius: var(--p-radius); padding: 20px;
+  font-family: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif; font-size: 15px; line-height: 1.5; max-width: 420px; border: 1px solid var(--p-line); }
+.tf-embed .e-title { font-size: 1.44em; line-height: 1.25; font-weight: 650; }
+.tf-embed .e-lead { font-size: 1.2em; line-height: 1.35; margin-top: .5em; }
+.tf-embed .e-small { font-size: .8333em; color: var(--p-muted); }
+.tf-embed .e-row { display: flex; align-items: stretch; gap: 10px; padding: 10px 0; border-top: 1px solid var(--p-line); }
+.tf-embed .pin { color: var(--p-muted); }
+.tf-embed .e-hatch { background: repeating-linear-gradient(45deg, var(--p-muted) 0 1px, transparent 1px 6px); }
+.tf-embed .e-plate { border: 1px solid var(--p-muted); background: var(--p-bg); color: var(--p-fg); font: 500 .75em/1.5 var(--font-mono); letter-spacing: .08em; padding: 0 6px; align-self: center; }
+.tf-embed .e-btn { margin-top: 14px; width: 100%; height: 44px; border: 0; border-radius: 999px; background: var(--p-btn); color: var(--p-bg); font: 600 1em system-ui, sans-serif; }
+.tf-embed .e-disc { margin-top: 14px; border: 1px solid var(--p-line); border-radius: 8px; padding: 10px 12px; font-size: 1em; }
+.tf-embed .credit { display: flex; align-items: center; gap: 5px; margin-top: 12px; font-size: max(0.6944em, 11px); color: var(--p-muted); }
+.tf-embed .credit svg { width: 12px; height: 12px; fill: currentColor; }
+.tf-embed .credit .wordmark { font-size: 13px; }
+@container (inline-size < 360px) { .tf-embed .e-title { font-size: 1.2em; } }
+
+/* Bearing */
+.bearing { background: var(--background); border: 1px solid var(--border); padding: 24px; }
+.btile { background: var(--card); border: 1px solid var(--border); padding: 16px; }
+.heat { display: grid; grid-template-columns: 32px repeat(24, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); margin-top: 12px; }
+.heat > div { aspect-ratio: 1; min-height: 12px; }
+.heat .lbl { background: var(--card); font: 500 0.75rem/1rem var(--font-condensed); color: var(--muted-foreground); display: flex; align-items: center; aspect-ratio: auto; padding-left: 4px; }
+.heat .ns { background-color: var(--card); background-image: repeating-linear-gradient(45deg, var(--tf-hatch) 0 1px, transparent 1px 4px); }
+.hours { display: grid; grid-template-columns: 32px repeat(24, 1fr); font: 500 0.75rem/1rem var(--font-condensed); color: var(--muted-foreground); margin-top: 4px; }
+.btable { width: 100%; border-collapse: collapse; margin-top: 16px; }
+.btable th { font: 500 0.75rem/1rem var(--font-condensed); color: var(--muted-foreground); text-align: left; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--border); }
+.btable td { font: 400 0.8125rem/1.25rem var(--font-condensed); padding: 4px 8px 4px 0; min-height: 28px; border-bottom: 1px solid var(--border); }
+.btable td[data-numeric], .btable th[data-numeric] { text-align: right; font-family: var(--font-mono); }
+
+/* personas */
+.persona { border: 1px solid var(--border); background: var(--card); padding: 24px; display: grid; gap: 12px; align-content: start; }
+.persona .who { font: 600 1.125rem/1.5rem var(--font-body); }
+.persona .role { font-size: 0.875rem; line-height: 1.25rem; color: var(--muted-foreground); }
+.persona .k { font: 500 0.78125rem/1.25rem var(--font-body); color: var(--muted-foreground); margin-top: 4px; }
+.persona .v { font-size: 0.9375rem; line-height: 1.5rem; }
+.persona .quote-s { font-family: var(--font-display); font-size: 1.25rem; line-height: 1.75rem; font-variation-settings: "opsz" 36; border-top: 1px solid var(--border); padding-top: 12px; }
+
+/* voice */
+.attrs { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--border); margin-top: 48px; }
+.attrs > div { padding: 24px; border-right: 1px solid var(--border); }
+.attrs > div:last-child { border-right: 0; }
+.attrs h4 { font: 600 1.25rem/1.75rem var(--font-body); }
+.attrs .do, .attrs .dont-l { font-size: 0.9375rem; line-height: 1.5rem; margin-top: 12px; }
+.attrs .do::before { content: "> "; font-family: var(--font-mono); color: var(--success); }
+.attrs .dont-l::before { content: "x "; font-family: var(--font-mono); color: var(--destructive); }
+.never-list, .always-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0; border-top: 1px solid var(--border); }
+.never-list li, .always-list li { padding: 12px 0 12px 28px; border-bottom: 1px solid var(--border); position: relative; font-size: 0.9375rem; line-height: 1.5rem; }
+.never-list li::before, .always-list li::before { position: absolute; left: 0; top: 12px; font: 500 0.875rem/1.5rem var(--font-mono); }
+.never-list li::before { content: "x"; color: var(--destructive); }
+.always-list li::before { content: ">"; color: var(--success); }
+.situations { width: 100%; border-collapse: collapse; margin-top: 16px; }
+.situations td, .situations th { padding: 14px 16px 14px 0; border-bottom: 1px solid var(--border); vertical-align: top; text-align: left; font-size: 0.9375rem; line-height: 1.5rem; }
+.situations th { font: 500 0.78125rem/1.25rem var(--font-body); color: var(--muted-foreground); }
+.situations td.no { color: var(--muted-foreground); text-decoration: line-through; text-decoration-color: var(--destructive); }
+
+footer { padding: 48px 0 64px; }
+
+/* ------------------------------------------------------------------ mobile */
+@media (max-width: 768px) {
+  #toc { display: none; }
+  main { margin-left: 0; }
+  .container { padding: 0 20px; }
+  section { padding: 56px 0; }
+  .hero-inner { grid-template-columns: 1fr; padding: 56px 20px 40px; gap: 32px; }
+  .joint { justify-self: start; max-width: 300px; }
+  .metrics { grid-template-columns: 1fr 1fr; }
+  .metric:nth-child(2) { border-right: 0; }
+  .metric:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
+  .grid-2, .grid-3, .grid-4, .pos-grid, .ground-pair, .pairing, .attrs, .type-block, .donts { grid-template-columns: 1fr; }
+  .ground-pair > .on-dark { border-left: 0; border-top: 1px solid var(--border); }
+  .pairing > div, .attrs > div { border-right: 0; border-bottom: 1px solid var(--border); }
+  .ramp, .ramp-head { grid-template-columns: 64px repeat(11, 1fr); }
+  .ramp .stop span { display: none; }
+  .kv { grid-template-columns: 1fr; }
+  .kv dt { padding-bottom: 0; border-bottom: 0; }
+  .heat, .hours { grid-template-columns: 24px repeat(24, 1fr); }
+  .situations, .situations tbody, .situations tr, .situations td { display: block; }
+  .situations thead { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- ======================= SVG library (from identity/logo-comparison.html + iconography.md) ======================= -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- A · master (>= 32px): rail | post | tenon end with pin knock-out -->
+    <symbol id="A" viewBox="0 0 32 32">
+      <rect x="1" y="10" width="5" height="12"/>
+      <rect x="7" y="2" width="10" height="28"/>
+      <path fill-rule="evenodd" d="M18 12h12v8H18z M25 14a2 2 0 1 0 0.001 0z"/>
+    </symbol>
+    <!-- A · 24 hint (22–31px) -->
+    <symbol id="A24" viewBox="0 0 24 24">
+      <rect x="1" y="7" width="3" height="10"/>
+      <rect x="5" y="1" width="8" height="22"/>
+      <path fill-rule="evenodd" d="M14 9h9v6H14z M19 10.5a1.5 1.5 0 1 0 0.001 0z"/>
+    </symbol>
+    <!-- A · small cut (12–21px): no rail, one joint line, enlarged pin -->
+    <symbol id="A16" viewBox="0 0 16 16">
+      <rect x="1" y="1" width="4" height="14"/>
+      <path fill-rule="evenodd" d="M6 4h9v8H6z M11 6a2 2 0 1 0 0.001 0z"/>
+    </symbol>
+    <!-- Provenance pin (iconography.md §4.1): viewBox 18x12, 3:2 outline, stroke 1.5 -->
+    <symbol id="pin-live" viewBox="0 0 18 12">
+      <rect x="0.75" y="0.75" width="16.5" height="10.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <circle cx="9" cy="6" r="2.5" fill="currentColor"/>
+    </symbol>
+    <symbol id="pin-stale" viewBox="0 0 18 12">
+      <rect x="0.75" y="0.75" width="16.5" height="10.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <circle cx="9" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    </symbol>
+    <clipPath id="pin-inner"><rect x="1.5" y="1.5" width="15" height="9"/></clipPath>
+    <symbol id="pin-mock" viewBox="0 0 18 12">
+      <rect x="0.75" y="0.75" width="16.5" height="10.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <g clip-path="url(#pin-inner)" stroke="currentColor" stroke-width="1">
+        <path d="M-10 12L2 0M-5.76 12L6.24 0M-1.52 12L10.48 0M2.72 12L14.72 0M6.96 12L18.96 0M11.2 12L23.2 0M15.44 12L27.44 0"/>
+      </g>
+    </symbol>
+    <!-- Goal-state squares (color-system.md): solid / half / notched outline -->
+    <symbol id="sq-on" viewBox="0 0 12 12"><rect width="12" height="12" fill="currentColor"/></symbol>
+    <symbol id="sq-watch" viewBox="0 0 12 12"><rect x="0.75" y="0.75" width="10.5" height="10.5" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="0" y="6" width="12" height="6" fill="currentColor"/></symbol>
+    <symbol id="sq-off" viewBox="0 0 12 12"><path d="M0.75 0.75H11.25V7.5H7.5V11.25H0.75Z" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+  </defs>
+</svg>
+
+<nav id="toc" aria-label="Contents">
+  <a class="brand" href="#hero" aria-label="tenonfi"><svg width="22" height="22"><use href="#A24"/></svg><span class="wordmark" style="font-size:24px">tenonfi</span></a>
+  <a href="#hero" class="toc-link">Brand</a>
+  <a href="#logo" class="toc-link">Logo</a>
+  <a href="#positioning" class="toc-link">Positioning</a>
+  <a href="#color" class="toc-link">Color</a>
+  <a href="#typography" class="toc-link">Typography</a>
+  <a href="#visuals" class="toc-link">Visual elements</a>
+  <a href="#provenance" class="toc-link">Provenance</a>
+  <a href="#components" class="toc-link">Components</a>
+  <a href="#embed" class="toc-link">Embed</a>
+  <a href="#bearing" class="toc-link">Bearing</a>
+  <a href="#personas" class="toc-link">Personas</a>
+  <a href="#voice" class="toc-link">Voice</a>
+  <button class="theme-toggle" id="themeToggle" type="button" aria-pressed="false">Switch to dark</button>
+</nav>
+
+<main>
+
+<!-- ================================================================ HERO -->
+<section id="hero" class="on-dark" aria-label="Brand">
+  <div class="hero">
+    <div class="hero-inner">
+      <div>
+        <div class="eyebrow"><svg width="32" height="32"><use href="#A"/></svg><span class="wordmark" style="font-size:36px">tenonfi</span></div>
+        <h1>No product fits everyone. So we make the pieces — and your goals decide how they fit.</h1>
+        <p class="tagline"><b>Made to measure. Every joint shown.</b><br>Tell us what your money needs to do. tenonfi builds the portfolio that gets it there — and shows you how.</p>
+      </div>
+      <figure style="margin:0" aria-label="The Open Joint: the plan slides through the goal and a pin locks it.">
+        <svg class="joint" id="joint" viewBox="-2 -3 38 38" role="img" aria-labelledby="jointTitle">
+          <title id="jointTitle">The plan, cut to fit, slides through the goal and seats; the pin goes in last.</title>
+          <!-- dimension lines (hairline, structure) -->
+          <g class="dim">
+            <path d="M7 -1.6H17 M7 -2.1V-1.1 M17 -2.1V-1.1"/>
+            <path d="M18 31.6H30 M18 31.1V32.1 M30 31.1V32.1"/>
+            <path d="M-1 16H33" stroke-dasharray="1.2 .5 .1 .5"/>
+          </g>
+          <text class="dim-label" x="7" y="-2.4">your goal</text>
+          <text class="dim-label" x="18" y="33.6">the plan, cut to fit</text>
+          <!-- moving piece: rail + full tenon -->
+          <g class="piece">
+            <rect class="member" x="1" y="10" width="5" height="12"/>
+            <rect class="member" x="6" y="12" width="24" height="8"/>
+            <circle class="ground" cx="25" cy="16" r="2"/>
+          </g>
+          <!-- post, with ground-coloured joint gaps either side -->
+          <rect class="ground" x="6" y="2" width="1" height="28"/>
+          <rect class="ground" x="17" y="2" width="1" height="28"/>
+          <rect class="member" x="7" y="2" width="10" height="28"/>
+          <!-- pin, last -->
+          <circle class="pin-fill pin-in" cx="25" cy="16" r="2"/>
+          <path class="dim" d="M25 13.4V9.6 M25 9.6H29"/>
+          <text class="dim-label" x="29.4" y="9.9">source</text>
+        </svg>
+        <figcaption style="display:flex;justify-content:space-between;max-width:440px;margin-left:auto;margin-top:8px">
+          <span class="src">J1 · pinned through-tenon · SVG drawing</span>
+          <button class="replay" id="replay" type="button">Replay</button>
+        </figcaption>
+      </figure>
+    </div>
+    <div class="metrics">
+      <div class="metric"><div class="v">3 surfaces · 1 engine</div><div class="l">Consumer app, partner embed and API, and Bearing, on one deterministic solver</div></div>
+      <div class="metric"><div class="v">Since Sept 2026</div><div class="l">Exit depth recorded by size and hour of week. It can't be backfilled</div></div>
+      <div class="metric"><div class="v">2–5.6x</div><div class="l">How far quoted on-chain figures were off, in the founder's prior analytics</div></div>
+      <div class="metric"><div class="v">Live on mainnet</div><div class="l">In the user's own wallet. Every transaction logged with its explorer link</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ LOGO -->
+<section id="logo">
+  <div class="container">
+    <div class="section-label"><b>01</b> Logo</div>
+    <h2 class="section-heading">A pinned through-tenon, and a lowercase serif that speaks to you.</h2>
+    <p class="lede">Rail, post, the tenon end coming through, and the pin as a knock-out. Read left to right, it is the product: your goal (the post), the plan passes through it (the tenon), and its source holds it (the pin). The "fi" is one removable group, so the fallback is <span class="wordmark">tenon</span> with no re-kerning.</p>
+
+    <h3 class="sub">Marks and cuts, on both grounds</h3>
+    <div class="ground-pair">
+      <div class="on-light">
+        <div class="mark-row" style="color:#1C1712">
+          <div class="mark-cell"><svg width="96" height="96"><use href="#A"/></svg><span class="lab">master 96</span></div>
+          <div class="mark-cell"><svg width="48" height="48"><use href="#A"/></svg><span class="lab">48</span></div>
+          <div class="mark-cell"><svg width="32" height="32"><use href="#A"/></svg><span class="lab">32</span></div>
+          <div class="mark-cell"><svg width="24" height="24"><use href="#A24"/></svg><span class="lab">24 hint</span></div>
+          <div class="mark-cell"><svg width="16" height="16"><use href="#A16"/></svg><span class="lab">16 cut</span></div>
+          <div class="mark-cell"><svg width="96" height="96"><g fill="#7A5A3A"><use href="#A"/></g><circle cx="75" cy="48" r="6" fill="#E6D3B7"/></svg><span class="lab">two-species (hero, ≥ 64)</span></div>
+        </div>
+        <div class="lockup" style="margin-top:40px"><svg class="ink" width="40" height="40"><use href="#A"/></svg><span class="wordmark" style="font-size:44px">tenonfi</span></div>
+        <div class="mark-row" style="margin-top:28px;align-items:center">
+          <div class="lockup"><svg class="ink" width="28" height="28"><use href="#A"/></svg><span class="wordmark" style="font-size:31px">tenon</span><span class="lab" style="margin-left:6px">fallback</span></div>
+          <div class="lockup" style="gap:10px"><svg class="ink" width="26" height="26"><use href="#A"/></svg><span class="wordmark" style="font-size:28px">tenonfi</span><span style="font:400 22px/1 var(--font-body);color:#6E655B">Bearing</span></div>
+        </div>
+      </div>
+      <div class="on-dark">
+        <div class="mark-row" style="color:#E6D3B7">
+          <div class="mark-cell"><svg width="96" height="96"><use href="#A"/></svg><span class="lab">master 96</span></div>
+          <div class="mark-cell"><svg width="48" height="48"><use href="#A"/></svg><span class="lab">48</span></div>
+          <div class="mark-cell"><svg width="32" height="32"><use href="#A"/></svg><span class="lab">32</span></div>
+          <div class="mark-cell"><svg width="24" height="24"><use href="#A24"/></svg><span class="lab">24 hint</span></div>
+          <div class="mark-cell"><svg width="16" height="16"><use href="#A16"/></svg><span class="lab">16 cut</span></div>
+          <div class="mark-cell"><svg width="96" height="96"><g fill="#C9AE86"><use href="#A"/></g><circle cx="75" cy="48" r="6" fill="#E6D3B7"/></svg><span class="lab">two-tone (hero, ≥ 64)</span></div>
+        </div>
+        <div class="lockup" style="margin-top:40px"><svg width="40" height="40"><use href="#A"/></svg><span class="wordmark" style="font-size:44px">tenonfi</span></div>
+        <div class="mark-row" style="margin-top:28px;align-items:center">
+          <div class="lockup"><svg width="28" height="28"><use href="#A"/></svg><span class="wordmark" style="font-size:31px">tenon</span><span class="lab" style="margin-left:6px">fallback</span></div>
+          <div class="lockup" style="gap:10px"><svg width="26" height="26"><use href="#A"/></svg><span class="wordmark" style="font-size:28px">tenonfi</span><span style="font:400 22px/1 var(--font-body);color:#A49A8E">Bearing</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-top:24px">
+      <div class="panel">
+        <div class="cap">Construction · 32-unit grid · clear space 0.36H (dashed)</div>
+        <svg viewBox="-4 -4 40 40" width="100%" style="max-width:320px;margin-top:16px;overflow:visible" aria-label="Construction grid of the mark">
+          <g stroke="var(--border)" stroke-width="0.06" id="cgrid"></g>
+          <rect x="-2.6" y="-0.6" width="35.2" height="33.2" fill="none" stroke="var(--primary)" stroke-width="0.12" stroke-dasharray="0.6 0.4"/>
+          <g fill="var(--foreground)" opacity=".92"><use href="#A" width="32" height="32"/></g>
+          <g stroke="var(--primary)" stroke-width="0.1" fill="none"><line x1="0" y1="16" x2="32" y2="16" stroke-dasharray="0.5 0.3"/><circle cx="25" cy="16" r="2"/></g>
+          <g font-family="IBM Plex Mono, monospace" font-size="1.2" fill="var(--muted-foreground)">
+            <text x="7" y="-1.4">post 10u = 0.36H</text><text x="18" y="11">tenon 12×8 (3:2)</text><text x="0" y="24">rail 5×12</text><text x="22" y="22.4">pin d4</text>
+          </g>
+        </svg>
+        <p class="rule-note">Post : rail : tenon heights are 7 : 3 : 2. The pin is offset toward the end grain, and the rail is shorter than the tenon. That asymmetry is what stops the mark reading as a plus or a medical cross, so every redraw keeps it.</p>
+      </div>
+      <div class="panel">
+        <div class="cap">"Powered by" in a partner card, at minimum sizes (12 / 11 / 13 px)</div>
+        <div style="margin-top:16px;background:#FFFFFF;color:#6A6A6A;border:1px solid #E4E4E4;border-radius:12px;padding:14px 16px;font:400 11px/1.4 -apple-system,system-ui,sans-serif;display:flex;align-items:center;gap:5px;width:max-content">
+          Powered by <svg width="12" height="12" fill="currentColor"><use href="#A16"/></svg><span class="wordmark" style="font-size:13px">tenonfi</span>
+        </div>
+        <div style="margin-top:12px;background:#17171A;color:#A0A0A0;border:1px solid #2C2C30;border-radius:12px;padding:14px 16px;font:400 11px/1.4 -apple-system,system-ui,sans-serif;display:flex;align-items:center;gap:5px;width:max-content">
+          Powered by <svg width="12" height="12" fill="currentColor"><use href="#A16"/></svg><span class="wordmark" style="font-size:13px">tenonfi</span>
+        </div>
+        <p class="rule-note">In the partner's muted colour, never in wood. Below the minimum, or where a partner forbids marks, use the text-only "Powered by tenonfi". Minimums: the primary lockup is 96 px wide; the master symbol is 32 px (the 24 hint from 22 px); the small cut is 12 px.</p>
+      </div>
+    </div>
+
+    <h3 class="sub">Never</h3>
+    <div class="donts">
+      <div class="dont"><svg width="56" height="56" viewBox="0 0 32 32" style="fill:var(--primary)"><rect x="1" y="10" width="5" height="12" rx="2.5"/><rect x="7" y="2" width="10" height="28" rx="4"/><rect x="18" y="12" width="12" height="8" rx="3"/></svg><span class="x">x  rounded corners, bevels, shadows, gradients or wood-grain fills</span></div>
+      <div class="dont"><svg width="56" height="56" style="fill:var(--primary);transform:scaleX(-1)"><use href="#A"/></svg><span class="x">x  mirrored or rotated: the post is vertical, because load runs down</span></div>
+      <div class="dont"><svg width="56" height="56" viewBox="0 0 32 32" style="fill:var(--primary)"><rect x="1" y="10" width="30" height="12"/><rect x="11" y="2" width="10" height="28"/></svg><span class="x">x  closed gaps, a filled pin, or a centred pin: it becomes a plus</span></div>
+      <div class="dont"><span class="wordmark" style="font-size:30px;font-style:italic">Tenonfi</span><span class="x">x  caps, title case, italic, the sans, or a different colour for "fi"</span></div>
+    </div>
+    <p class="rule-note">Also never: a red or third-colour pin (no seal or hanko reading), kanji, brush texture, a frame, a circle or rounded badge around the mark, or the mark placed on kumiko or busy photography. Clear space is 0.36H on every side.</p>
+  </div>
+</section>
+
+<!-- ================================================================ POSITIONING -->
+<section id="positioning">
+  <div class="container">
+    <div class="section-label"><b>02</b> Positioning</div>
+    <h2 class="section-heading serif">Others turn an idea into a basket. We turn your goal into a plan made to measure.</h2>
+    <div class="pos-grid">
+      <div style="background:var(--background);padding:8px 0">
+        <p class="quote">“Tell us what your money needs to do. tenonfi builds the portfolio that gets it there — and shows you how.”</p>
+        <p class="cap" style="margin-top:12px">Lead line · homepage hero, video open, deck title</p>
+        <div class="step-rule" style="margin-top:32px"></div>
+        <p class="quote" style="margin-top:32px">“Every portfolio has an exit plan before the agent invests.”</p>
+        <p class="cap" style="margin-top:12px">Proof line · right after the lead line</p>
+      </div>
+      <dl class="kv" style="background:var(--background)">
+        <dt>For</dt><dd>Anyone with a specific goal for their money: an amount, a date, a yield, cash they must be able to reach.</dd>
+        <dt>Category</dt><dd>The agent that works backwards from your goal. Not an "AI portfolio builder", not "RWA baskets".</dd>
+        <dt>Benefit</dt><dd>A portfolio of tokenized real-world assets made to measure for the goal, managed against the odds of reaching it.</dd>
+        <dt>Tie-breaker</dt><dd>An exit plan before it invests, from measured depth. Tokenized doesn't mean liquid.</dd>
+        <dt>Every joint in sight</dt><dd>Source · fetched_at · method on every figure, after-haircut yields beside quoted ones, every move logged with an explorer link.</dd>
+        <dt>Archetype</dt><dd>Sage (60%) × Caregiver (40%). A master joiner who works for you.</dd>
+        <dt>Tagline</dt><dd><b>Made to measure. Every joint shown.</b> &nbsp;<span class="muted">PT: Sob medida. Cada encaixe à vista. · ES: A la medida. Cada ensamble a la vista.</span></dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ COLOR -->
+<section id="color">
+  <div class="container">
+    <div class="section-label"><b>03</b> Color</div>
+    <h2 class="section-heading">One material. Two species. Swapped by the ground.</h2>
+    <p class="lede">Wood is the only colour. On paper the brand wood is hardwood; on warm black it is hinoki. The pin and any key member are always the species opposite the ground. There is no accent hue, no blue, and no pure white or black.</p>
+    <div class="proportion" aria-label="Proportion: 60% ground, 30% ink and hairline, 10% wood">
+      <div style="background:var(--background)"></div><div style="background:var(--foreground)"></div><div style="background:var(--primary)"></div>
+    </div>
+    <p class="cap" style="margin-top:8px">About 60% ground · 30% ink and hairline · 10% wood, placed where it means something (interaction, the pin, the key member)</p>
+
+    <h3 class="sub">Grounds and ink</h3>
+    <div class="swatches" id="sw-grounds"></div>
+    <h3 class="sub">The two species</h3>
+    <div class="swatches" id="sw-species"></div>
+    <h3 class="sub">Lines and muted text</h3>
+    <div class="swatches" id="sw-lines"></div>
+    <p class="rule-note"><b>hair</b> is decoration only (1.39:1), never a control edge. Controls use <b>member</b>, which meets 3:1 on every ground.</p>
+    <h3 class="sub">Goal state: earth pigments, always word + shape + colour</h3>
+    <div class="swatches" id="sw-status"></div>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:16px">
+      <span class="status on"><svg><use href="#sq-on"/></svg>On track</span>
+      <span class="status watch"><svg><use href="#sq-watch"/></svg>Watch</span>
+      <span class="status off"><svg><use href="#sq-off"/></svg>Off track</span>
+    </div>
+
+    <h3 class="sub">Scales (tints, badges and data only; the named tokens rule UI)</h3>
+    <div class="ramp-head"><span></span><span>50</span><span>100</span><span>200</span><span>300</span><span>400</span><span>500</span><span>600</span><span>700</span><span>800</span><span>900</span><span>950</span></div>
+    <div id="ramps"></div>
+
+    <h3 class="sub">Contrast pairs (WCAG 2.2 AA)</h3>
+    <table class="pairs">
+      <thead><tr><th>Pair</th><th>Sample</th><th>Use</th><th data-numeric style="text-align:right">Ratio</th></tr></thead>
+      <tbody>
+        <tr><td>ink on paper</td><td><span class="sample-pair" style="background:#F6F1E8;color:#1C1712">Aa 1,240</span></td><td>body text</td><td data-numeric>15.81</td></tr>
+        <tr><td>stone on paper-sunk</td><td><span class="sample-pair" style="background:#EDE6DA;color:#6E655B">Aa 1,240</span></td><td>muted text (tightest)</td><td data-numeric>4.61</td></tr>
+        <tr><td>paper-raised on hardwood</td><td><span class="sample-pair" style="background:#7A5A3A;color:#FBF8F2">See plan</span></td><td>primary button, light</td><td data-numeric>5.91</td></tr>
+        <tr><td>black on hinoki</td><td><span class="sample-pair" style="background:#E6D3B7;color:#0D0B09">See plan</span></td><td>primary button, dark</td><td data-numeric>13.44</td></tr>
+        <tr><td>washi on black</td><td><span class="sample-pair" style="background:#0D0B09;color:#ECE4D6">Aa 1,240</span></td><td>body text, dark</td><td data-numeric>15.56</td></tr>
+        <tr><td>stone-d on char-2</td><td><span class="sample-pair" style="background:#24201B;color:#A49A8E">Aa 1,240</span></td><td>muted text, dark (tightest)</td><td data-numeric>5.85</td></tr>
+        <tr><td>member on paper-sunk</td><td><span class="sample-pair" style="background:#EDE6DA;border:1px solid #8C7F70;color:#1C1712">input</span></td><td>control edge</td><td data-numeric>3.14</td></tr>
+        <tr><td>wood-400 on paper</td><td><span class="sample-pair" style="background:#F6F1E8"><span style="display:block;width:48px;height:12px;background:#9D7751"></span></span></td><td>plan leg 3, light</td><td data-numeric>3.60</td></tr>
+        <tr><td>hinoki-deep on paper</td><td><span class="sample-pair" style="background:#F6F1E8"><span style="display:block;width:48px;height:12px;background:#C9AE86"></span></span></td><td><span style="color:var(--destructive)">fails: not a light plan leg</span></td><td data-numeric>1.89</td></tr>
+        <tr><td>ink on hatch strokes</td><td><span class="sample-pair hatch" style="background-color:#F6F1E8;color:#1C1712;--tf-hatch:#6E655B">Aa</span></td><td><span style="color:var(--destructive)">fails: text never on hatch</span></td><td data-numeric>3.11</td></tr>
+        <tr><td>hardwood on black</td><td><span class="sample-pair" style="background:#0D0B09;color:#7A5A3A">Aa</span></td><td><span style="color:var(--destructive)">never: the species rule</span></td><td data-numeric>3.13</td></tr>
+      </tbody>
+    </table>
+    <div class="fix"><b>Usage fixes from the colour pass, binding:</b> light plan legs use <b>wood-400 #9D7751</b>, not hinoki-deep. Text over the MOCK hatch sits on a <b>solid plate</b>. "Watch" ochre is 1.06:1 against hardwood, so it is <b>always carried by its word and half-filled square</b>, never by colour.</div>
+  </div>
+</section>
+
+<!-- ================================================================ TYPOGRAPHY -->
+<section id="typography">
+  <div class="container">
+    <div class="section-label"><b>04</b> Typography</div>
+    <h2 class="section-heading">The serif gives the answer. The sans explains. The mono cites.</h2>
+    <p class="lede">Three faces, two families, all OFL with Latin Extended for EN, PT and ES. Newsreader is spent once per screen. The grid unit is 4 px, and every line height lands on it.</p>
+
+    <div class="type-block">
+      <div class="who"><h4>Newsreader</h4><p>Display optical size, upright. 400 for sentences, 500 for short headlines and the wordmark. Never bold, never italic. Marketing and the plan view only: never in the embed, Bearing, tables, buttons, or on pinned numbers.</p></div>
+      <div>
+        <div class="step"><div class="t-display">Your apartment fund is on track.</div><div class="scale-meta">display · Newsreader 400 · 49 → 67.5 px · lh 1.1 · −0.015em</div></div>
+        <div class="step"><div class="t-h1">Your goal in. The way out planned.</div><div class="scale-meta">h1 · Newsreader 400 · 39 → 50.5 px · lh 1.15 · −0.01em</div></div>
+        <div class="step"><div class="t-h2s">It holds. And you can see why.</div><div class="scale-meta">h2 (marketing section head only) · Newsreader 500 · opsz 36 · 31 → 38 px · lh 1.2</div></div>
+      </div>
+    </div>
+
+    <div class="type-block">
+      <div class="who"><h4>IBM Plex Sans</h4><p>400 body, 500 labels and buttons, 600 for UI headings only. No light weights. Tabular lining figures everywhere in UI. Condensed for Bearing tables.</p></div>
+      <div>
+        <div class="step"><div class="t-h2">Access to cash</div><div class="scale-meta">h2 · Plex Sans 600 · 31 → 38 px · lh 1.2 · −0.015em</div></div>
+        <div class="step"><div class="t-h3">Stress cases</div><div class="scale-meta">h3 · Plex Sans 600 · 25 → 28.5 px · lh 1.25</div></div>
+        <div class="step"><div class="t-h4">Why this plan?</div><div class="scale-meta">h4 · Plex Sans 500 · 20 → 21.5 px · 28 px</div></div>
+        <div class="step"><p class="t-bodylg">You're on track for June 2028. If rates fall by a third, you'd land in September instead — we'd tell you in March, not in August.</p><div class="scale-meta">body-lg · Plex Sans 400 · 18 / 28</div></div>
+        <div class="step"><p class="t-body">Most of it sits in short-dated treasuries, which is why it holds when rates move. You can get up to $4,000 out within a day, and the rest within a week (illustrative).</p><div class="scale-meta">body · Plex Sans 400 · 16 / 24</div></div>
+        <div class="step"><p class="t-bodysm">Quoted at 9.1%&#8239;<svg class="pin" style="display:inline-block"><use href="#pin-live"/></svg>. After the credit haircut we use 6.4%&#8239;<svg class="pin" style="display:inline-block"><use href="#pin-live"/></svg>. Here's why (illustrative).</p><div class="scale-meta">body-sm · Plex Sans 400 · 14 / 24 · +0.01em</div></div>
+        <div class="step"><div class="t-caption">On track · June 2028</div><div class="scale-meta">caption · Plex Sans 500 · 12.5 / 20 · +0.015em</div></div>
+      </div>
+    </div>
+
+    <div class="type-block">
+      <div class="who"><h4>IBM Plex Mono</h4><p>When you see mono, you are looking at a source: the provenance line, hashes, ISO timestamps, code, and the MOCK label. Never for headlines (that is the retro-OS register).</p></div>
+      <div>
+        <div class="step"><div class="t-source">source: ondo/usdy · fetched_at: 2026-10-01T14:02Z · method: haircut v1.2</div><div class="scale-meta">source · Plex Mono 400 · 13 / 20</div></div>
+        <div class="step"><span class="mock-plate">MOCK</span><div class="scale-meta">label-mock · Plex Mono 500 · 12.5 / 20 · uppercase · +0.08em (the only all-caps word)</div></div>
+      </div>
+    </div>
+
+    <div class="type-block">
+      <div class="who"><h4>Bearing (productive)</h4><p>A 13 px base on a 1.125 ratio, fixed, with no clamp. Plex Sans Condensed for cells and Plex Mono for values. Rows are 28 px dense or 32 px comfortable.</p></div>
+      <div class="on-dark" style="padding:24px;border:1px solid var(--border)">
+        <div class="step" style="margin-bottom:16px"><div class="t-bkpi">$1.2M</div><div class="scale-meta">b-kpi · Plex Mono 500 · 23.5 / 32</div></div>
+        <div class="step" style="margin-bottom:16px"><div class="t-btitle">Depth by hour</div><div class="scale-meta">b-title · Plex Sans 600 · 21 / 28</div></div>
+        <div class="step" style="margin-bottom:16px"><div class="t-bsection">Exit capacity</div><div class="scale-meta">b-section · Plex Sans 600 · 16.5 / 24</div></div>
+        <div class="step" style="margin-bottom:16px"><div class="t-bemph">xAAPL · selected</div><div class="scale-meta">b-emph · Condensed 500 · 14.5 / 20</div></div>
+        <div class="step" style="margin-bottom:16px"><div class="t-bcell">Sellable at ≤ 2% impact</div><div class="scale-meta">b-cell · Condensed 400 · 13 / 20</div></div>
+        <div class="step" style="margin-bottom:16px"><div class="t-bhead">Hour of week (UTC)</div><div class="scale-meta">b-head · Condensed 500 · 12 / 16</div></div>
+        <div class="step" style="margin-bottom:0"><div class="t-bmeta">n=412 · method v1.3 · Sun 03:00 UTC</div><div class="scale-meta">b-meta · Plex Mono 400 · 12 / 16</div></div>
+      </div>
+    </div>
+
+    <div class="pairing">
+      <div><div class="cap">Answer</div><p style="font-family:var(--font-display);font-size:1.5rem;line-height:2rem;margin-top:8px">Your apartment fund is on track.</p></div>
+      <div><div class="cap">Reason, risk, action</div><p style="margin-top:8px">Rates dipped this month, so I moved a little into treasuries. You're still landing in June 2028.</p></div>
+      <div><div class="cap">Source</div><p class="t-source" style="margin-top:8px">source · fetched_at · method</p></div>
+    </div>
+    <p class="rule-note">Pairing: Newsreader's warmth is the Caregiver, and Plex's cut terminals are the Sage. Same skeleton across Plex Sans and Mono, so explaining and citing are one system. In the embed, Plex is replaced by the partner's font. Only the mono provenance line may keep Plex Mono.</p>
+  </div>
+</section>
+
+<!-- ================================================================ VISUAL ELEMENTS -->
+<section id="visuals">
+  <div class="container">
+    <div class="section-label"><b>05</b> Visual elements</div>
+    <h2 class="section-heading">Kumiko and lattice as structure, never ornament.</h2>
+    <p class="lede">Every pattern is a hairline in hair / hair-d, never a brand species. Patterns never sit behind numbers, text, form fields, charts, the provenance popover or the disclaimer. Only the hatch is diagonal, and the hatch means MOCK.</p>
+
+    <div class="grid-2" style="margin-top:48px">
+      <div>
+        <div class="pattern-demo lattice"><span class="tag">P1 coarse · cell = 1 column</span></div>
+        <p class="rule-note"><b>P1 coarse kumiko.</b> The layout grid made visible: marketing section grounds, and docs page margins only. On a <code class="mono">::before</code> layer, never on a content box. It stops one grid unit short of any figure.</p>
+      </div>
+      <div>
+        <div class="pattern-demo lattice lattice--medium" style="display:grid;place-items:center">
+          <div class="loader" role="status" style="background:var(--background);padding:12px 16px;border:1px solid var(--border)">
+            <svg width="48" height="48" viewBox="0 0 48 48" aria-hidden="true" id="loaderSvg">
+              <g class="lh"><line x1="0" y1="0.5" x2="48" y2="0.5"/><line x1="0" y1="16.5" x2="48" y2="16.5"/><line x1="0" y1="32.5" x2="48" y2="32.5"/><line x1="0" y1="47.5" x2="48" y2="47.5"/></g>
+              <g class="lv"><line x1="0.5" y1="0" x2="0.5" y2="48"/><line x1="16.5" y1="0" x2="16.5" y2="48"/><line x1="32.5" y1="0" x2="32.5" y2="48"/><line x1="47.5" y1="0" x2="47.5" y2="48"/></g>
+            </svg>
+            <span>Building your plan…</span>
+          </div>
+          <span class="tag">P1 medium · 24 px · loading and empty states only</span>
+        </div>
+        <p class="rule-note"><b>P1 medium.</b> Only for loading and empty states. The loader is "the lattice assembles": horizontals slide in on x, then verticals drop on y. It is shown only for waits over 400 ms, always with a text label.</p>
+      </div>
+      <div>
+        <div style="display:grid;grid-template-columns:1fr 120px;gap:16px;align-items:stretch">
+          <div style="border:1px solid var(--border);padding:32px 24px">
+            <div class="step-rule" style="margin:0"></div>
+            <p class="cap" style="margin-top:12px">P2 stacked offset · step = 1 column (marketing), 8 px (docs)</p>
+          </div>
+          <div class="pattern-demo lattice lattice--fine" style="height:auto"><span class="tag" style="left:8px;bottom:8px;white-space:nowrap">8 px</span></div>
+        </div>
+        <p class="rule-note"><b>P2 stacked offset</b> closes sections: three hairlines 4 px apart, each one step longer. <b>P1 fine (8 px) is for print and video only.</b> It moirés on screen, so the specimen here is reference, not permission.</p>
+      </div>
+      <div>
+        <div style="border:1px solid var(--border);padding:24px">
+          <svg viewBox="0 0 320 64" width="100%" class="dl" aria-label="Dimension line: $40,000 by June 2028">
+            <g stroke="var(--border)" fill="none" stroke-width="1">
+              <line x1="20" y1="14" x2="20" y2="56"/><line x1="300" y1="14" x2="300" y2="56"/>
+            </g>
+            <g stroke="var(--foreground)" fill="none" stroke-width="1">
+              <line x1="20" y1="40" x2="300" y2="40"/>
+              <line x1="15" y1="45" x2="25" y2="35"/><line x1="295" y1="45" x2="305" y2="35"/>
+            </g>
+            <text x="160" y="32" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" fill="var(--foreground)">$40,000 · June 2028</text>
+          </svg>
+          <svg viewBox="0 0 320 24" width="100%" style="margin-top:12px" aria-hidden="true">
+            <line x1="20" y1="8" x2="300" y2="8" stroke="var(--foreground)" stroke-width="1"/>
+            <line x1="20" y1="18" x2="300" y2="18" stroke="var(--muted-foreground)" stroke-width="1" stroke-dasharray="4 2"/>
+          </svg>
+          <p class="cap" style="margin-top:4px">Solid = measured or live · dashed = projected</p>
+        </div>
+        <p class="rule-note"><b>Dimension lines are constraints:</b> amount, date and exit window. They use 45° architect's ticks, hairline extension lines with a 2 px gap, and the value in Plex Mono above the line.</p>
+      </div>
+    </div>
+
+    <h3 class="sub">P4 section hatch: MOCK and stale only</h3>
+    <div class="grid-2">
+      <div class="panel" style="display:flex;gap:16px;padding:0;overflow:hidden">
+        <div class="mock-band hatch"></div>
+        <div style="padding:20px 20px 20px 0;display:grid;gap:8px">
+          <div class="cap">Kamino USDC · after haircut</div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="font:500 1.5rem/2rem var(--font-body)">5.20%</span><svg class="pin mock" style="height:12px;width:18px" aria-hidden="true"><use href="#pin-mock"/></svg><span class="mock-plate">MOCK</span></div>
+          <div class="src">Kamino rate feed not connected yet. Shown for layout only.</div>
+        </div>
+      </div>
+      <div>
+        <ul class="always-list">
+          <li>The hatch fills a 6 px edge band or the frame margin. The value and the MOCK label sit on a solid plate.</li>
+          <li>Stroke 1 px at 45°, 6 px pitch (3 px inside glyphs), in stone / stone-d. It passes 3:1 alone, and the word makes it redundant.</li>
+        </ul>
+        <ul class="never-list" style="margin-top:16px;border-top:0">
+          <li>Text on hatch strokes (ink on stone is 3.11:1).</li>
+          <li>The hatch as decoration, as a "real" section, or without the word MOCK or stale.</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3 class="sub">Never behind numbers</h3>
+    <div class="grid-2">
+      <div style="border:1px solid var(--border);height:140px;display:grid;grid-template-columns:2fr 3fr;position:relative">
+        <div class="lattice" style="--cell:24px;margin:0 24px 0 0;border-right:1px solid var(--border)"></div>
+        <div style="padding:24px 0"><span style="font:500 1.25rem/1.75rem var(--font-body)">6.40%</span> <span class="cap">after haircut</span></div>
+        <span class="lab" style="position:absolute;right:12px;bottom:8px;color:var(--success)">&gt; lattice stops a grid unit short of the figure</span>
+      </div>
+      <div style="border:1px solid var(--border);padding:24px;height:140px;position:relative;background-image:linear-gradient(to right,var(--border) 1px,transparent 1px),linear-gradient(to bottom,var(--border) 1px,transparent 1px);background-size:24px 24px">
+        <span style="font:500 1.25rem/1.75rem var(--font-body);opacity:.85">6.40%</span>
+        <span class="lab" style="position:absolute;right:12px;bottom:8px;color:var(--destructive);background:var(--background);padding:0 4px">x  figure set on the lattice</span>
+      </div>
+    </div>
+    <p class="rule-note">Banned motifs: asanoha, kikkō (it also reads as crypto hex), seigaiha, shippō, sakura, crests, and wood-grain wallpaper. Patterns don't move, except the P1-medium loader and video.</p>
+  </div>
+</section>
+
+<!-- ================================================================ PROVENANCE -->
+<section id="provenance">
+  <div class="container">
+    <div class="section-label"><b>06</b> Provenance pin</div>
+    <h2 class="section-heading">Every number carries its source. The pin is how you can tell.</h2>
+    <p class="lede">The tenon end in line mode, with its pin centred so it never reads as a miniature logo. It follows every yield, price and FX figure at cap height and opens <span class="mono">source · fetched_at · method</span>. The state comes from the API and is never inferred in the UI.</p>
+
+    <div class="ground-pair" style="margin-top:40px">
+      <div class="on-light"><div id="pins-light"></div></div>
+      <div class="on-dark"><div id="pins-dark"></div></div>
+    </div>
+
+    <div class="grid-2" style="margin-top:24px;align-items:start">
+      <div>
+        <div style="font:500 1.5rem/2rem var(--font-body)">6.40%&#8239;<button class="pin-btn" aria-label="Source for 6.40%" aria-expanded="true"><svg class="pin" aria-hidden="true"><use href="#pin-live"/></svg></button> <span class="cap">after haircut</span></div>
+        <dl class="popover" style="margin-top:12px">
+          <dt>source</dt><dd>ondo/usdy · api.ondo.finance</dd>
+          <dt>fetched_at</dt><dd>2026-10-01T14:02:11Z</dd>
+          <dt>method</dt><dd>quoted 9.10% − credit haircut v1.2 → 6.40%</dd>
+          <dd style="margin:0;color:var(--muted-foreground)">Illustrative values</dd>
+        </dl>
+      </div>
+      <table class="pairs">
+        <thead><tr><th>State</th><th>Drawing</th><th>Always paired with</th></tr></thead>
+        <tbody>
+          <tr><td>Live</td><td>Solid pin in the species opposite the ground</td><td>Popover: source · fetched_at · method</td></tr>
+          <tr><td>Stale</td><td>Hollow pin, in stone</td><td>The word <b>stale</b> + the age. Never shown alone: live and stale differ by only 1.10:1</td></tr>
+          <tr><td>MOCK</td><td>No pin, hatched tenon, in stone</td><td>The word <b>MOCK</b>; the API says <span class="mono">"provenance": "mock"</span></td></tr>
+          <tr><td>Embed</td><td>Pin in the partner's muted text colour</td><td>Same popover, Plex Mono or the partner's mono</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="rule-note">Accessibility: a <code class="mono">&lt;button aria-label="Source for 6.4%"&gt;</code>, with ", stale, 3 hours old" or ", mock data" appended. It has a 24 × 24 hit area from a transparent <code class="mono">::before</code>, Enter opens it, and there is a U+202F thin no-break space between the figure and the glyph.</p>
+  </div>
+</section>
+
+<!-- ================================================================ COMPONENTS -->
+<section id="components">
+  <div class="container">
+    <div class="section-label"><b>07</b> Components</div>
+    <h2 class="section-heading">Square cuts, hairlines, one action.</h2>
+    <p class="lede">Radius is 0–2 px, there are no shadows, and controls are edged in member. The focus ring is the brand species, 2 px with a 2 px offset. Figures below are illustrative.</p>
+
+    <h3 class="sub">Controls</h3>
+    <div class="grid-2">
+      <div class="panel" style="display:grid;gap:20px">
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-primary">Confirm your goal</button>
+          <button class="btn btn-primary is-hover" tabindex="-1">Hover</button>
+          <button class="btn btn-primary is-pressed" tabindex="-1">Pressed</button>
+          <button class="btn btn-primary is-focus" tabindex="-1">Focus</button>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-secondary">Edit your goal</button>
+          <button class="btn btn-secondary is-hover" tabindex="-1">Hover</button>
+          <a href="#components">See your plan</a>
+        </div>
+        <p class="cap">One primary per view. Never a pill. Consumer flows prefer the underlined link.</p>
+      </div>
+      <div class="panel" style="display:grid;gap:16px">
+        <div class="field"><label for="f1">Target amount</label><input id="f1" class="input" value="$40,000"></div>
+        <div class="field"><label for="f2">By when</label><input id="f2" class="input is-focus" value="June 2028"></div>
+        <div class="field"><label for="f3">Access to cash</label><input id="f3" class="input is-error" value="1 day, 12% yield" aria-describedby="f3e"><span class="err" id="f3e">As set, this doesn't fit: 12% with a one-day exit isn't available without risk you've ruled out. Try a 7-day window, or a lower target.</span></div>
+      </div>
+    </div>
+
+    <h3 class="sub">Badges and status</h3>
+    <div class="panel" style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+      <span class="badge on"><svg><use href="#sq-on"/></svg>On track</span>
+      <span class="badge watch"><svg><use href="#sq-watch"/></svg>Watch</span>
+      <span class="badge off"><svg><use href="#sq-off"/></svg>Off track</span>
+      <span style="display:inline-flex;align-items:stretch;gap:6px"><span class="mock-band hatch"></span><span class="mock-plate">MOCK</span></span>
+      <span style="display:inline-flex;align-items:center;gap:0"><svg class="pin stale" style="width:18px;height:12px"><use href="#pin-stale"/></svg><span class="word-stale">stale · 3 h</span></span>
+    </div>
+
+    <h3 class="sub">Goal card and plan</h3>
+    <div class="grid-2" style="align-items:start">
+      <div class="goal-card">
+        <p class="goal">Your apartment fund is on track.</p>
+        <div style="margin-top:20px"><span class="status on"><svg><use href="#sq-on"/></svg>On track · June 2028</span></div>
+        <p class="amt">$12,480 of $40,000&#8239;<button class="pin-btn" aria-label="Source for $12,480"><svg class="pin"><use href="#pin-live"/></svg></button> · access to cash within 7 days</p>
+        <p style="margin-top:24px"><a href="#components">See your plan</a></p>
+      </div>
+      <div class="panel">
+        <div class="cap">Your plan · 3 legs · illustrative</div>
+        <div class="legbar" id="legbar">
+          <div class="leg-anim" style="width:42%;background:var(--chart-1)"></div>
+          <div class="leg-anim hatch" style="width:38%;background-color:var(--card);animation-delay:60ms"></div>
+          <div class="leg-anim" style="width:20%;background:var(--chart-3);animation-delay:120ms"></div>
+        </div>
+        <div class="legs">
+          <div class="leg-row"><span class="sq" style="background:var(--chart-1)"></span><span><b style="font-weight:500">USDY</b> · 42%</span><span class="r">6.40%&#8239;<svg class="pin"><use href="#pin-live"/></svg> <span class="cap">quoted 9.10%</span></span></div>
+          <div class="leg-row"><span class="sq hatch" style="border:1px solid var(--tf-hatch)"></span><span><b style="font-weight:500">Kamino USDC</b> · 38%</span><span class="r" style="display:inline-flex;gap:8px;align-items:center"><span class="mock-plate" style="text-transform:none;letter-spacing:0">5.20%</span><svg class="pin mock" style="width:18px;height:12px"><use href="#pin-mock"/></svg><span class="mock-plate">MOCK</span></span></div>
+          <div class="leg-row"><span class="sq" style="background:var(--chart-3)"></span><span><b style="font-weight:500">Cash</b> · 20%</span><span class="r">0.00%&#8239;<svg class="pin"><use href="#pin-live"/></svg></span></div>
+        </div>
+        <p class="cap" style="margin-top:12px">Legs light: hardwood · heartwood · wood-400 · stone. Dark: hinoki · hinoki-deep · wood-400 · stone-d. Direct labels, 2 px gaps.</p>
+      </div>
+    </div>
+
+    <h3 class="sub">Disclaimer and activity</h3>
+    <div class="grid-2" style="align-items:start">
+      <div class="disclaimer" role="note">
+        <span class="cap">Not licensed advice</span>
+        This tool is not licensed investment advice. It structures and explains an allocation from a goal you state; the decision and custody are yours. The distributor embedding this tool holds the client relationship.
+      </div>
+      <div>
+        <div class="activity" style="border-top:1px solid var(--border)">I moved $1,200 from USDC to USDY because rates dipped and your June date needs a little more income. <span>Source&#8239;<svg class="pin"><use href="#pin-live"/></svg></span> · <a class="tx" href="#components" title="5Hk3pQ7rTn2vWm8yXc4bZ1aLd6eF9gHj0kMs3uVw9xQa">Tx 5Hk3…9xQa ↗</a></div>
+        <div class="activity">Rebalanced · 2026-09-28T09:14Z · <a class="tx" href="#components">Tx 8Rt2…Lm4P ↗</a></div>
+        <p class="cap" style="margin-top:8px">Rendered from the <span class="mono">DISCLAIMER</span> constant, verbatim, at body size, directly under the plan. Every mainnet line has its explorer link.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ EMBED -->
+<section id="embed">
+  <div class="container">
+    <div class="section-label"><b>08</b> Partner embed</div>
+    <h2 class="section-heading">The joints stay. The wood becomes theirs.</h2>
+    <p class="lede">Inside a partner app, the brand recedes completely: partner colours, font, radius and buttons. What survives is non-negotiable: the pin and its popover, hatch + MOCK, hairline structure, the disclaimer block, explorer links, and the "Powered by" credit in the partner's muted colour.</p>
+    <div class="grid-2" style="margin-top:40px;align-items:start">
+      <div class="partner-app">
+        <div class="tf-embed">
+          <div class="e-small">Savings goal · example partner skin</div>
+          <div class="e-title">Apartment fund</div>
+          <div class="e-lead">On track for June 2028.</div>
+          <div class="e-row" style="margin-top:12px"><span style="flex:1">$12,480 of $40,000</span><span>6.40%&#8239;<svg class="pin"><use href="#pin-live"/></svg></span></div>
+          <div class="e-row"><span class="e-hatch" style="width:6px;flex:none"></span><span style="flex:1">Kamino USDC · 5.20%</span><span class="e-plate">MOCK</span></div>
+          <button class="e-btn" type="button">See your plan</button>
+          <div class="e-disc">This tool is not licensed investment advice. It structures and explains an allocation from a goal you state; the decision and custody are yours. The distributor embedding this tool holds the client relationship.</div>
+          <div class="credit">Powered by <svg><use href="#A16"/></svg><span class="wordmark">tenonfi</span></div>
+        </div>
+      </div>
+      <div>
+        <ul class="always-list">
+          <li>Font is <span class="mono">inherit</span>, and sizes are em-relative on a 1.2 ratio with container queries. The goal sentence uses the partner's font, not the serif.</li>
+          <li>The pin takes the partner's muted text colour. The provenance line uses <span class="mono">var(--tf-mono, "IBM Plex Mono", ui-monospace)</span>.</li>
+          <li>Hatch + MOCK survive white-label. The disclaimer is never smaller than 1em.</li>
+          <li>The credit sits at the foot, at max(0.6944em, 11px), in muted colour. It is the only text under 12 px in the system.</li>
+        </ul>
+        <ul class="never-list" style="margin-top:16px;border-top:0">
+          <li>Wood colours, Newsreader, Plex Sans, kumiko, photography or the two-species logo in the embed.</li>
+          <li>A credit in brand colours, or a credit larger than the partner's own UI text.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ BEARING -->
+<section id="bearing">
+  <div class="container">
+    <div class="section-label"><b>09</b> tenonfi Bearing</div>
+    <h2 class="section-heading">An instrument drawn as a drawing, not hardware.</h2>
+    <p class="lede">Dark by default, on warm black with char and char-2 layers and hairline rows. No bevels, no nameplates, no LED colours. Every metric carries unit · n= · method version · as-of (UTC) · pin. Values below are illustrative.</p>
+    <div class="bearing on-dark" style="margin-top:40px">
+      <div class="lockup" style="gap:8px;margin-bottom:20px"><svg width="22" height="22"><use href="#A24"/></svg><span class="wordmark" style="font-size:22px">tenonfi</span><span style="font:400 17px/1 var(--font-body);color:var(--muted-foreground)">Bearing</span></div>
+      <div class="grid-3" style="gap:16px">
+        <div class="btile">
+          <div class="t-bhead muted">xAAPL · sellable at ≤ 2% impact</div>
+          <div class="t-bkpi" style="margin-top:4px">$1.2M&#8239;<svg class="pin" style="vertical-align:baseline"><use href="#pin-live"/></svg></div>
+          <div class="t-bmeta muted" style="margin-top:4px">Sun 03:00 UTC · n=412 · method v1.3</div>
+        </div>
+        <div class="btile">
+          <div class="t-bhead muted">xGLD · sellable at ≤ 2% impact</div>
+          <div class="t-bkpi" style="margin-top:4px">$310K&#8239;<svg class="pin stale" style="vertical-align:baseline"><use href="#pin-stale"/></svg></div>
+          <div class="t-bmeta muted" style="margin-top:4px">stale · 3 h · n=97 · method v1.3</div>
+        </div>
+        <div class="btile" style="display:flex;gap:12px;padding-left:0">
+          <span class="mock-band hatch"></span>
+          <div>
+            <div class="t-bhead muted">xTSLA · sellable at ≤ 2% impact</div>
+            <div style="margin-top:4px;display:flex;gap:8px;align-items:center"><span class="t-bkpi">$540K</span><span class="mock-plate">MOCK</span></div>
+            <div class="t-bmeta muted" style="margin-top:4px">feed not connected · layout only</div>
+          </div>
+        </div>
+      </div>
+      <div class="btile" style="margin-top:16px">
+        <div class="t-bsection">Depth by hour of week · xAAPL</div>
+        <div class="heat" id="heat" aria-label="Heatmap of depth by hour of week, illustrative"></div>
+        <div class="hours"><span></span><span>00</span><span></span><span></span><span></span><span></span><span></span><span>06</span><span></span><span></span><span></span><span></span><span></span><span>12</span><span></span><span></span><span></span><span></span><span></span><span>18</span><span></span><span></span><span></span><span></span><span></span></div>
+        <div style="display:flex;gap:16px;align-items:center;margin-top:12px;flex-wrap:wrap" class="t-bhead muted">
+          <span>low</span><span style="display:flex;gap:1px"><i style="width:16px;height:10px;background:var(--tf-hm-1);border:1px solid var(--border)"></i><i style="width:16px;height:10px;background:var(--tf-hm-2)"></i><i style="width:16px;height:10px;background:var(--tf-hm-3)"></i><i style="width:16px;height:10px;background:var(--tf-hm-4)"></i><i style="width:16px;height:10px;background:var(--tf-hm-5)"></i></span><span>high</span>
+          <span style="display:inline-flex;gap:6px;align-items:center"><i class="hatch" style="width:16px;height:10px;border:1px solid var(--border)"></i>no sample</span>
+          <span class="t-bmeta">UTC · n=412 · method v1.3 · lightness ramp only</span>
+        </div>
+        <table class="btable">
+          <thead><tr><th>Path</th><th data-numeric>Size</th><th data-numeric>Impact</th><th data-numeric>Depth</th><th>As of</th></tr></thead>
+          <tbody>
+            <tr><td>xAAPL → USDC · Jupiter</td><td data-numeric>$250,000</td><td data-numeric>0.42%</td><td data-numeric>$1.2M</td><td class="t-bmeta">2026-10-01T03:00Z</td></tr>
+            <tr><td>xAAPL → USDC · Jupiter</td><td data-numeric>$1,000,000</td><td data-numeric>1.86%</td><td data-numeric>$1.2M</td><td class="t-bmeta">2026-10-01T03:00Z</td></tr>
+            <tr><td>xAAPL → USDC · Jupiter</td><td data-numeric>$2,500,000</td><td data-numeric>4.90%</td><td data-numeric>$1.2M</td><td class="t-bmeta">2026-10-01T03:00Z</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ PERSONAS -->
+<section id="personas">
+  <div class="container">
+    <div class="section-label"><b>10</b> Personas</div>
+    <h2 class="section-heading">Warm enough for a life goal. Rigorous enough for a risk committee.</h2>
+    <div class="grid-4" style="margin-top:40px">
+      <div class="persona"><div class="who">Mariana · 1a</div><div class="role">Crypto-native diversifier, paid in USDC</div><div class="k">Frustration</div><div class="v">Opaque APYs, hidden risks, rebalancing by hand. Every app is a menu, never an answer.</div><div class="k">Aspiration</div><div class="v">A goal stated once, run safely, where she can see everything.</div><div class="quote-s">“8% with exit in a week, or this amount in two years.”</div></div>
+      <div class="persona"><div class="who">Mariana · 1b</div><div class="role">Life-goal saver, via her neobank</div><div class="k">Frustration</div><div class="v">Products show yields, not whether her goal will land, or what happens if she needs cash early.</div><div class="k">Aspiration</div><div class="v">The private-banker treatment: a plan built for her, kept on course.</div><div class="quote-s">“Am I on track?”</div></div>
+      <div class="persona"><div class="who">Rafael</div><div class="role">Head of Product, neobank / fintech</div><div class="k">Frustration</div><div class="v">Can't build structuring or risk in-house, and can't ship what compliance can't defend.</div><div class="k">Aspiration</div><div class="v">A goal-based earn feature behind an API, white-labelled, with sources for compliance.</div><div class="quote-s">“Will it embarrass my app?”</div></div>
+      <div class="persona"><div class="who">Priya</div><div class="role">Risk lead, lending protocol / curator</div><div class="k">Frustration</div><div class="v">The oracle says $10M. Nobody can say how much liquidates at 3 a.m. on a Sunday.</div><div class="k">Aspiration</div><div class="v">Measured, versioned depth by notional and hour that she can cite in governance.</div><div class="quote-s">“Show me n= and the method.”</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ VOICE -->
+<section id="voice">
+  <div class="container">
+    <div class="section-label"><b>11</b> Voice</div>
+    <h2 class="section-heading">Clear, candid, kind.</h2>
+    <p class="quote" style="margin-top:32px;max-width:40ch">“You're on track for June 2028. If rates fall by a third, you'd land in September instead — we'd tell you in March, not in August.”</p>
+    <p class="cap" style="margin-top:12px">The reference line. Answer, then reason, then risk, then action. Always.</p>
+
+    <div class="attrs">
+      <div><h4>Clear</h4><p class="rule-note">The answer first, in plain words, with a date or an amount.</p><p class="do">On track · June 2028.</p><p class="dont-l">Your portfolio is optimally positioned across diversified yield sources.</p></div>
+      <div><h4>Candid</h4><p class="rule-note">The downside out loud, early, with its consequence. Measured, estimated and MOCK kept apart.</p><p class="do">This figure is a MOCK. The live feed isn't connected yet.</p><p class="dont-l">Earn up to 12% APY.</p></div>
+      <div><h4>Kind</h4><p class="rule-note">Written to one person about their goal. Warn early, offer options, never shame.</p><p class="do">This goal doesn't fit as set. Here are three ways to make it fit.</p><p class="dont-l">You're falling behind on your dream.</p></div>
+    </div>
+
+    <h3 class="sub">By situation</h3>
+    <table class="situations">
+      <thead><tr><th style="width:18%">Situation</th><th>Say</th><th>Not</th></tr></thead>
+      <tbody>
+        <tr><td>Headline yield</td><td>6.4% after haircut&#8239;<svg class="pin" style="display:inline-block"><use href="#pin-live"/></svg></td><td class="no">Earn up to 9.1% APY</td></tr>
+        <tr><td>At risk</td><td>Rates fell 0.8 pts this month. At this level you'd land in August, two months late. You can add $150/month, accept August, or move the date.</td><td class="no">Warning: underperformance detected.</td></tr>
+        <tr><td>Rebalance</td><td>I moved $1,200 from USDC to USDY because rates dipped and your June date needs a little more income. Source · Tx ↗</td><td class="no">Portfolio auto-optimised.</td></tr>
+        <tr><td>Exit</td><td>You can get about $4,000 out today at under 0.5% cost. Selling all of it at once on a Sunday night would cost more.</td><td class="no">Instant liquidity.</td></tr>
+        <tr><td>Bearing metric</td><td class="mono" style="font-size:.875rem">xAAPL · $1.2M&#8239;<svg class="pin" style="display:inline-block"><use href="#pin-live"/></svg> sellable at ≤2% impact · Sun 03:00 UTC · n=412 · method v1.3</td><td class="no">Deep liquidity, low risk.</td></tr>
+        <tr><td>Agent identity</td><td>I proposed this because…</td><td class="no">Your AI wealth genie.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="grid-2" style="margin-top:56px;align-items:start">
+      <div>
+        <div class="cap" style="margin-bottom:12px">Never</div>
+        <ul class="never-list">
+          <li>Present tenonfi as licensed advice, or paraphrase the disclaimer.</li>
+          <li>Promise returns: earn up to, guaranteed, risk-free, safe yield, passive income.</li>
+          <li>Hype or AI magic: smart, AI-powered, intelligent, magic, unlock, supercharge, seamless, autopilot, set and forget.</li>
+          <li>Exclamation marks, emoji, urgency ("don't miss out"), or crypto slang (to the moon, degen, alpha).</li>
+          <li>Joinery words or Japanese terms in product UI. The metaphor lives in the pictures.</li>
+          <li>Name competitors in public copy.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="cap" style="margin-bottom:12px">Always</div>
+        <ul class="always-list">
+          <li>"You" for the user, "I" for the agent's own actions, "we" for the company's commitments.</li>
+          <li>Numbers with a unit, an anchor date and their source. "After haircut" unless marked "quoted".</li>
+          <li>The goal by its name: "your apartment fund".</li>
+          <li>The word MOCK or stale, plus what is missing.</li>
+          <li>Sentence case, Oxford comma, and one precise conditional rather than many soft hedges.</li>
+          <li>"Made to measure" (sob medida / a la medida), never "bespoke".</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <div class="disclaimer" role="note"><span class="cap">Not licensed advice</span>This tool is not licensed investment advice. It structures and explains an allocation from a goal you state; the decision and custody are yours. The distributor embedding this tool holds the client relationship.</div>
+    <p class="src" style="margin-top:24px">tenonfi (provisional; fallback "tenon") · working-brand · brand guidelines v1 · 2026-10-01 · All figures are illustrative. Wordmarks are live type for review; production uses outlines.</p>
+  </div>
+</footer>
+
+</main>
+
+<script>
+(function () {
+  // theme: ?theme=dark or #dark forces dark; toggle persists for the session
+  var root = document.documentElement, btn = document.getElementById('themeToggle');
+  function setTheme(d) { root.classList.toggle('dark', d); btn.textContent = d ? 'Switch to light' : 'Switch to dark'; btn.setAttribute('aria-pressed', d); }
+  setTheme(/theme=dark/.test(location.search) || location.hash === '#dark');
+  btn.addEventListener('click', function () { setTheme(!root.classList.contains('dark')); });
+
+  // swatches
+  var S = {
+    'sw-grounds': [['paper','#F6F1E8','oklch(0.960 0.013 82.5)','light ground'],['paper-raised','#FBF8F2','oklch(0.980 0.009 84.7)','cards, popovers'],['paper-sunk','#EDE6DA','oklch(0.927 0.018 81.4)','wells, code, table heads'],['ink','#1C1712','oklch(0.209 0.012 67.1)','text on light · 15.81'],['black','#0D0B09','oklch(0.151 0.005 67.8)','dark ground'],['char','#1A1714','oklch(0.207 0.008 67.4)','panels on dark'],['char-2','#24201B','oklch(0.246 0.011 73.4)','raised on dark'],['washi','#ECE4D6','oklch(0.921 0.021 81.8)','text on dark · 15.56']],
+    'sw-species': [['hardwood','#7A5A3A','oklch(0.493 0.063 65.5)','brand on paper · 5.57'],['heartwood','#5A3A1E','oklch(0.380 0.062 60.5)','pressed on paper · 9.07'],['hinoki','#E6D3B7','oklch(0.875 0.043 77.6)','brand on black · 13.44'],['hinoki-deep','#C9AE86','oklch(0.764 0.062 77.4)','pressed on black · 9.24'],['wood-400','#9D7751','oklch(0.599 0.072 66.2)','plan leg 3 · 3.60']],
+    'sw-lines': [['stone','#6E655B','oklch(0.512 0.019 70.3)','muted text · 5.08'],['stone-d','#A49A8E','oklch(0.691 0.021 72.5)','muted on dark · 7.10'],['hair','#D9CDBB','oklch(0.853 0.028 78.2)','decor only · 1.39'],['hair-d','#3A322A','oklch(0.323 0.018 67.1)','decor only · 1.56'],['member','#8C7F70','oklch(0.604 0.027 71.3)','controls · 3.47'],['member-d','#7A6D5F','oklch(0.543 0.027 69.3)','controls · 3.91']],
+    'sw-status': [['forest','#2F4A2A','oklch(0.378 0.062 140.6)','on track · 8.75'],['forest-d','#7FA37A','oklch(0.677 0.071 141.6)','on track, dark · 6.94'],['ochre','#8A5A00','oklch(0.508 0.108 73.3)','watch · 5.27'],['ochre-d','#D9A441','oklch(0.751 0.130 79.9)','watch, dark · 8.73'],['madder','#A8324A','oklch(0.500 0.154 12.8)','off track · 5.80'],['madder-d','#E58AA0','oklch(0.735 0.113 4.6)','off track, dark · 7.93']]
+  };
+  Object.keys(S).forEach(function (id) {
+    document.getElementById(id).innerHTML = S[id].map(function (s) {
+      return '<div class="sw"><div class="chip" style="background:' + s[1] + '"></div><div class="meta"><div class="n">' + s[0] + '</div><div class="h">' + s[1] + '</div><div class="o">' + s[2] + '</div><div class="r">' + s[3] + '</div></div></div>';
+    }).join('');
+  });
+
+  // ramps
+  var R = {
+    wood: ['#F8ECE3','#F3D8C4','#DEB48C','#BC946D','#9D7751','#7A5A3A','#63482E','#4A3520','#342515','#20150A','#150D05'],
+    neutral: ['#F1EDE9','#E6DED6','#C8BDB0','#AA9E92','#8D8276','#6E655B','#595149','#433D36','#2E2924','#1C1916','#100E0B'],
+    forest: ['#DEEEDB','#C2DCBD','#92B68B','#6F9168','#4D6E47','#2F4A2A','#263C21','#1C2E18','#132110','#0B1609','#050D04'],
+    ochre: ['#FFEADB','#F7D7BD','#F2B360','#CE933C','#AF7614','#8A5A00','#6F4801','#543500','#3D2500','#241400','#180C00'],
+    madder: ['#FAEAEC','#F6D5D9','#EEA9B2','#E87A8A','#CE5469','#A8324A','#89273B','#6A1C2C','#4D121E','#310811','#220409']
+  };
+  document.getElementById('ramps').innerHTML = Object.keys(R).map(function (k) {
+    return '<div class="ramp"><span class="name">' + k + '</span>' + R[k].map(function (h, i) {
+      return '<div class="stop" style="background:' + h + '"><span style="color:' + (i < 4 ? '#1C1712' : '#ECE4D6') + '">' + h.slice(1) + '</span></div>';
+    }).join('') + '</div>';
+  }).join('');
+
+  // pin states on both grounds
+  function pins() {
+    return '<div style="display:grid;gap:20px;font:500 1.25rem/1.75rem var(--font-body)">' +
+      '<div style="display:flex;align-items:baseline;gap:12px"><span style="width:64px" class="cap">Live</span><span>6.40%&#8239;<svg class="pin"><use href="#pin-live"/></svg></span></div>' +
+      '<div style="display:flex;align-items:baseline;gap:12px"><span style="width:64px" class="cap">Stale</span><span>6.40%&#8239;<svg class="pin stale"><use href="#pin-stale"/></svg><span class="word-stale">stale · 3 h</span></span></div>' +
+      '<div style="display:flex;align-items:center;gap:12px"><span style="width:64px" class="cap">MOCK</span><span style="display:inline-flex;align-items:stretch;gap:8px"><span class="mock-band hatch"></span><span style="background:var(--card);border:1px solid var(--tf-hatch);padding:0 8px">5.20%</span></span><svg class="pin mock" style="height:.75em;width:1.125em"><use href="#pin-mock"/></svg><span class="mock-plate">MOCK</span></div>' +
+      '</div>';
+  }
+  document.getElementById('pins-light').innerHTML = pins();
+  document.getElementById('pins-dark').innerHTML = pins();
+
+  // construction grid lines
+  var g = document.getElementById('cgrid'), d = '';
+  for (var i = 0; i <= 32; i++) d += 'M' + i + ' 0V32M0 ' + i + 'H32';
+  g.innerHTML = '<path d="' + d + '"/>';
+
+  // heatmap 24 x 7, illustrative and deterministic
+  var days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'], heat = document.getElementById('heat'), html = '';
+  days.forEach(function (day, r) {
+    html += '<div class="lbl">' + day + '</div>';
+    for (var h = 0; h < 24; h++) {
+      var us = (h >= 13 && h <= 21) ? 2 : (h >= 8 && h <= 12 ? 1 : 0);
+      var wk = r < 5 ? 2 : 0;
+      var lvl = Math.max(1, Math.min(5, 1 + us + (wk ? (us ? 2 : 1) : 0) - (r === 6 && h < 6 ? 1 : 0) + ((h * 5 + r * 3) % 7 === 0 ? 1 : 0) - ((h * 3 + r * 5) % 9 === 0 ? 1 : 0)));
+      var ns = (r === 6 && h >= 2 && h <= 4) || (r === 5 && h === 3);
+      html += ns ? '<div class="ns" title="' + day + ' ' + h + ':00 UTC · no sample"></div>'
+                 : '<div style="background:var(--tf-hm-' + lvl + ')" title="' + day + ' ' + h + ':00 UTC · level ' + lvl + ' · illustrative"></div>';
+    }
+  });
+  heat.innerHTML = html;
+
+  // hero replay
+  document.getElementById('replay').addEventListener('click', function () {
+    var j = document.getElementById('joint');
+    j.querySelectorAll('.piece, .pin-in').forEach(function (el) { el.style.animation = 'none'; void el.getBoundingClientRect(); el.style.animation = ''; });
+  });
+
+  // scroll spy
+  var links = [].slice.call(document.querySelectorAll('.toc-link'));
+  var secs = links.map(function (a) { return document.querySelector(a.getAttribute('href')); });
+  function spy() {
+    var y = window.scrollY + window.innerHeight * 0.3, idx = 0;
+    secs.forEach(function (s, i) { if (s && s.offsetTop <= y) idx = i; });
+    links.forEach(function (a, i) { a.classList.toggle('active', i === idx); });
+  }
+  window.addEventListener('scroll', spy, { passive: true }); spy();
+})();
+</script>
+</body>
+</html>

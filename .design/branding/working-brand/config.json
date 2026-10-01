@@ -1,0 +1,26 @@
+{
+  "version": "0.10.0",
+  "project_type": "brand",
+  "brand": {
+    "name": "working-brand",
+    "created": "2026-10-01"
+  },
+  "brand_mode": "new",
+  "e2e": false,
+  "evolution_scope": {
+    "preserve": [],
+    "evolve": [],
+    "replace": []
+  },
+  "system_config": {
+    "tech_stack": "nextjs-16 + tailwind-v4 (@theme css vars), no shadcn yet",
+    "system_strategy": "generate",
+    "style_preset": "",
+    "style_base": [
+      "humanist-literary",
+      "minimal-dark",
+      "swiss-minimalist"
+    ]
+  },
+  "gsp_version": "0.10.0"
+}

@@ -1,7 +1,16 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
   "files": {
-    "includes": ["**", "!**/node_modules", "!**/dist", "!**/.next", "!**/migrations/meta", "!data"]
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/.next",
+      "!**/migrations/meta",
+      "!data",
+      "!.design",
+      "!visual-refferences"
+    ]
   },
   "formatter": {
     "indentStyle": "space",
