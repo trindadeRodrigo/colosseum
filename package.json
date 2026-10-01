@@ -57,7 +57,9 @@
     "risk:lending-ix-table": "tsx scripts/risk/lending-ix-table.ts",
     "risk:lending-decode": "tsx scripts/risk/lending-decode.ts",
     "risk:lending-decode-check": "tsx scripts/risk/lending-decode-check.ts",
-    "risk:lending-freeze-tx-fixtures": "tsx scripts/risk/lending-freeze-tx-fixtures.ts"
+    "risk:lending-freeze-tx-fixtures": "tsx scripts/risk/lending-freeze-tx-fixtures.ts",
+    "risk:lending-verify": "tsx scripts/risk/lending-verify.ts",
+    "risk:lending-freeze-verify-fixtures": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/lending-freeze-verify-fixtures.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
