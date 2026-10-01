@@ -9,7 +9,7 @@
       "!**/migrations/meta",
       "!data",
       "!.design",
-      "!visual-refferences"
+      "!**/next-env.d.ts"
     ]
   },
   "formatter": {
