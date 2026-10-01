@@ -103,10 +103,6 @@ The positioning's three frames, with what this proposal adds to the third. No pr
 | Who enforces the limits | The operator | The operator | The person's own vault, on chain |
 | Chains | One | One | Solana, Robinhood Chain, Base |
 
-## Tracks
-
-Solana and Superteam Brasil, as in the current README. Robinhood Chain and Base as well if one project may enter more than one ecosystem track; that question is already open in `docs/GATES.md`.
-
 ## The MVP
 
 What Colosseum's form needs: a live app, a public GitHub repo, a 2–3 minute pitch video, a technical demo video of 3 minutes or less, team backgrounds, the chains and tools used, a go-to-market plan, and disclosure of prior work.
@@ -119,11 +115,11 @@ What must work live on mainnet, with real small amounts. These nine things are t
 4. **One-tap buy.** One confirmation places real swaps on all three chains, with a status per leg and a retry if one fails.
 5. **The portfolio, across chains.** Holdings read on the three chains, valued correctly (stock tokens carry dividend multipliers), with drift from target.
 6. **Rebalance in one tap,** on every chain.
-7. **Publish and follow.** Publish a shared portfolio with its version recorded on chain, follow it from a second account, update it, and the follower is prompted to rebalance. The automatic switch is per plan, off by default, and goes live on each chain once that chain's price-check tests pass, Solana first.
+7. **Publish and follow.** Publish a shared portfolio with its version recorded on chain, follow it from a second account, update it, and the follower is prompted to rebalance. Auto-follow is per plan, off by default, and goes live on each chain once that chain's price-check tests pass, Solana first.
 8. **The exit plan and the risk sheet.** Every asset has a short, sourced sheet: who issues it, what backs it, how you get out, what could go wrong. Every plan and every shared portfolio shows the roll-up: what it holds, where the risk concentrates, and what it costs to exit at your size. The exit cost comes from Bearing (`packages/risk`).
 9. **Built for agents.** An API, an SDK, an MCP server and a skill file over the same logic. Agents propose and the person approves from a link; an agent can also publish a shared portfolio.
 
-One thing is not in the MVP and should be said plainly: **the odds.** The positioning says the plan is managed on the odds of reaching the goal. Today the engine gives a verdict and a gap, not a probability. Until an estimate exists, the product says "on track" or "at risk" with its method and date, as the guardrails ask.
+One thing is not in the MVP and should be said plainly: **the odds.** The positioning says the plan is managed on the odds of reaching the goal. Today the engine gives a verdict and a gap, not a probability. Until an estimate exists, the product says "On track", "Watch" or "Off track" with its method and date, as the guardrails ask.
 
 After the MVP, in this order:
 
@@ -178,18 +174,18 @@ What agents can't do, and what therefore sets the pace: funding and testing real
 - The team holds the upgrade keys for the vault contracts for now, one disclosed key per chain, and the product says so.
 - Free tiers only, apart from about $10 of model credit for reading the goal sentence. On Solana the price reference is Kamino's free onchain prices.
 - Author limits as in `research/open-questions/creator-limits.md`.
-- The work lands on a new branch in this repo, with a pull request to `main`. Thom and Rodrigo are both on the team, in the prior-work note and in the registration.
+- The sign-in button says "Sign in" and opens a choice of passkey or wallet.
+- The keeper runs on a founder's machine while testing, and on a small VM at deploy.
+- The work lands in short-lived branches in this repo, each with a pull request into `staging`; `staging` goes into `main`. Thom and Rodrigo are both on the team, in the prior-work note and in the registration.
 - The structurer is the engine that cuts the plan, and Bearing is the source of the exit plan.
 
 ## Still open
 
 1. The name.
 2. The $10 mainnet tests on the three chains (`spikes/`), and the Privy app.
-3. Whether one project can win more than one track (open in `docs/GATES.md`).
-4. The README describes the structurer alone. Update it once the direction is agreed.
-5. Where the Bearing data runs for the demo: a hosted collector or a dated snapshot.
-6. The decisions in `DESIGN-VAULT.md`, section 17.
-7. Two lines of shipped copy that the vault touches. `DISCLAIMER` says "the decision and custody are yours", and `DISCLAIMER_SHORT` says "Policy in your wallet, not a fund." Only the owner can withdraw from a vault, so the first stays, with the "unaudited, team holds the upgrade keys" notice beside it. The second needs a word from Rodrigo, since the assets move from the wallet to a vault the person owns.
-8. The automatic switch against the voice rules, which say rebalancing is "never to follow a theme or a rate" and that the agent "proposes and explains". What it does: off by default; the person sees an author's change 48 hours ahead and can refuse; then the vault copies it inside its own limits, without re-checking the person's goal. Label: "Rebalance without asking when the portfolio I follow changes". Thom's decision is to keep it this way; the 48-hour notice is the proposal, and the person can refuse.
+3. Where the Bearing data runs for the demo: a hosted collector or a dated snapshot.
+4. The decisions in `DESIGN-VAULT.md`, section 17.
+5. Two lines of shipped copy that the vault touches. `DISCLAIMER` says "the decision and custody are yours", and `DISCLAIMER_SHORT` says "Policy in your wallet, not a fund." Only the owner can withdraw from a vault, so the first stays, with the "unaudited, team holds the upgrade keys" notice beside it. The second needs a word from Rodrigo, since the assets move from the wallet to a vault the person owns.
+6. Auto-follow against the voice rules, which say rebalancing is "never to follow a theme or a rate" and that the agent "proposes and explains". What it does: off by default; the person sees an author's change 48 hours ahead and can refuse; then the vault copies it inside its own limits, without re-checking the person's goal. Label: "Rebalance without asking when the portfolio I follow changes". Thom's decision is to keep it this way; the 48-hour notice is the proposal, and the person can refuse.
 
 The research notes under `research/` were written before the brand strategy. They say "basket" and "community index" where this document says plan and shared portfolio.

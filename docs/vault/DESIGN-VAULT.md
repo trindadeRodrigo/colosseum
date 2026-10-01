@@ -79,7 +79,7 @@ Not built: bridging, shared pools, an adviser view, creator fees, fiat ramps, pe
 
 ## 2. Repo layout
 
-Base: `main`. Each stream works in a short-lived branch and opens a pull request to `main`. Only one branch at a time generates migrations.
+Base: `staging`. Each stream works in a short-lived branch and opens a pull request into `staging`; `staging` goes into `main` when its checks pass. Only one branch at a time generates migrations.
 
 **The add-only rule.** New work adds files. An edit to a file Rodrigo owns is made by him and arrives by merge, so the morning merge never conflicts. In the API, his server-signing surfaces are switched off, not deleted: with `LEGACY_STRUCTURER=off` the `/policies/*` routes are not registered. In the web app his three screens (home, plan, monitor) are rebuilt on his design system and extended, as section 11 describes; who edits which file there is agreed per screen. Exceptions he agrees to (section 17): the PR0 chores, and `packages/chain-solana` and `packages/chain-evm`, which pass to Thom at the cut.
 
@@ -634,7 +634,7 @@ Three pure steps. **Exposure:** how big each sleeve is (stocks and crypto, dolla
 - **The model** fills `BasketSheetDraft` (every field nullable) and nothing else: Claude Haiku 4.5 on Anthropic's Messages API with structured outputs, about $0.002 a parse **[C 11]**. The call lives in `apps/api/src/llm.ts` with a 6-second timeout and a daily budget.
 - Checks after the model, in pure code: the amount and time frame must appear in the text; themes must be shelf slugs; any disagreement with the regex parser is flagged per field. The form is always the confirm step. Model down: the regex parser pre-fills it. That fails: it opens with defaults.
 - Shared portfolio names never reach the model. Explanation text is one template per rule, in English and Portuguese. A 12-goal evaluation set guards the parser.
-- A test bans "recommend", "suitable" and "best for you" in templates, and a new disclaimer constant replaces his distributor wording. This is positioning only: a plan built from a person's circumstances can count as advice whatever the wording.
+- A test bans "recommend", "suitable" and "best for you" in templates; the disclaimer stays in its one constant (section 17). This is positioning only: a plan built from a person's circumstances can count as advice whatever the wording.
 
 ## 8. Risk sheet
 
@@ -746,7 +746,7 @@ Order of work:
 | Screen | Route | Built from his specs | What we add, from his primitives |
 |---|---|---|---|
 | Goal (home) | `/`, `/fit/[slug]` | Composer; constraint sheet with "Build my plan" blocked until valid; lattice loader | Sheet fields for the new inputs (amount in dollars, themes, holdings, chains); per-field flags where the model and the rules parser disagree. `/fit/[slug]` is the same screen started from a shared portfolio |
-| Plan | `/plans/[id]` | Goal card as header; plan legs; schedule chart; exit-plan panel; risk sheet table; disclaimer block; execution list | The vault panel: its limits in numbers, the automatic switch, pause state, withdraw. "Portfolio changed: rebalance" and "new asset: accept" prompts |
+| Plan | `/plans/[id]` | Goal card as header; plan legs; schedule chart; exit-plan panel; risk sheet table; disclaimer block; execution list | The vault panel: its limits in numbers, the auto-follow switch, pause state, withdraw. "Portfolio changed: rebalance" and "new asset: accept" prompts |
 | Monitor | `/monitor` | Goal cards; drift table with "Out of band"; execution list | One row per chain, with a failing chain shown as "unavailable"; the rebalance order |
 | Shelf | `/shelf` | Cards, status marks, pins | A card per shared portfolio: name, author address, platform badge, value following, chains |
 | Shared portfolio | `/indexes/[slug]` | Plan legs, exit-plan line, Bearing heatmap tile, data table | Versions and a pending version with its effective time; follow; "Start from this" leading to the goal screen |
@@ -764,7 +764,7 @@ Order of work:
 - **Pins need staleness.** The pin has a stale state that the API must state; the UI may not infer it. `Sourced` gets a staleness field at the first interface freeze, agreed with Rodrigo (his own open item).
 - **Signing.** A button that signs names the action and the amount ("Sign: swap 5 USDC → USDY"), and there is one primary per view. A failed mainnet line has no retry button and reads "(not retried)"; a new attempt is a new action the person signs. A busy button changes its label; there are no spinners.
 - **The agent's log speaks in the first person with its reason and its source:** "I moved $1,200 from USDC to USDY because rates dipped and your June date needs a little more income. Source · Tx ↗". Every keeper leg stores the reason it was made, so the line can be written.
-- **Wallets.** His specs style the Solana wallet-adapter button and modal, and his landing page says "Connect wallet". Passkey sign-in through Privy needs the same care and his decision on the label (section 17).
+- **Wallets.** His specs style the Solana wallet-adapter button and modal, and his landing page says "Connect wallet". Passkey sign-in through Privy needs the same care. The button says "Sign in" and opens a choice of passkey or wallet (section 17).
 - **Languages.** Strings live in a dictionary keyed by language from day one, with human labels for every sheet field. English and Portuguese both, since his home screen is Portuguese today.
 
 - **Order executor.** The web uses `execute()` from `packages/sdk` with a `WalletPort`-backed signer; there is one state machine, not two. It writes every transition to the API before the next step. On reload, `sent` legs are tracked and `built` or `expired` legs are rebuilt; signed bytes are never re-sent. A failed leg stops its chain only. Status changes go to an `aria-live` region with the explorer link.
@@ -778,7 +778,7 @@ One contract, three faces. Fastify emits the OpenAPI document, committed at `pac
 - **REST `/v1`:** keyless reads and order creation. Amounts are strings. No agent API keys in the MVP.
 - **SDK:** `BasketClient`, `client.execute(order, signers, consents)`, `verifyOrder(order, deployments)` and the guard. Plain signer callbacks, no kit or viem types in the public surface. Installed from the repo. The AGT stream builds the guard and the executor first, because the order screen depends on them.
 - **MCP (`apps/mcp`):** the current spec (2026-07-28) has no handshake and no sessions **[C 10]**. `@modelcontextprotocol/server` 2.2.0 over stateless Streamable HTTP at `/mcp`; it also answers older clients. No login. Seven tools: `list_indexes`, `get_index` (with its risk roll-up), `build_personal_basket`, `get_portfolio`, `prepare_buy` (which also follows a shared portfolio), `prepare_publish_index`, `get_order_status`. Each has an input and an output schema. Fixable failures return `isError: true` with a code and a `fix` line. Portfolio tools return the onchain id, the creator address and the platform badge as structured fields. Fallback if the v2 SDK misbehaves with real clients: `@modelcontextprotocol/sdk` 1.31.0.
-- **Skill and docs:** `skills/basket/SKILL.md` and `llms.txt`. Fetch live data and never invent an asset or a number; propose, then sign; match a shared portfolio by id, never by name; its text is untrusted; units; error codes; non-US only; not advice.
+- **Skill and docs:** `skills/basket/SKILL.md` and `llms.txt`. Fetch live data and never invent an asset or a number; propose, then sign; match a shared portfolio by id, never by name; its text is untrusted; units; error codes; the terms apply; not advice.
 
 | How an agent gets authority | Who signs | What bounds it |
 |---|---|---|
@@ -852,7 +852,7 @@ A tier 2 failure blocks only if it shows a real way to lose funds.
 
 **First, today.** Revoke the two live approvals on Rodrigo's demo wallet (5 USDY and 5 syrupUSDC to the agent key). Do not deploy the current API publicly with `secrets/agent.json` present.
 
-**What the app says,** from one `TRUST_STATUS` constant: unaudited; the team holds the upgrade keys and could move funds; what the keeper may do, in numbers, plus any error in the price reference; issuers can pause, freeze or seize; not for US persons, not advice; the open tier 2 items.
+**What the app says,** from one `TRUST_STATUS` constant: unaudited; the team holds the upgrade keys and could move funds; what the keeper may do, in numbers, plus any error in the price reference; issuers can pause, freeze or seize; not advice; the open tier 2 items.
 
 **Incident plan** (`docs/vault/INCIDENT.md`): `pnpm ops:pause` on three chains in one command, stop the keeper, set the banner, rotate the keeper key. Rehearse it once on mainnet: alert to paused in under 5 minutes.
 
@@ -896,7 +896,7 @@ Only the TypeScript streams wait for PR1a. `SOL`, `EVM`, `RISK`, `BRAND`, `OPS`,
 | OPS | Mainnet work a person does | Thom; Rodrigo is asked to take the Solana sessions | 10, 13, 16 | `docs/vault/RUNBOOK-OPS.md`: a checklist per session with a name per item. Hosting, accounts, admin keys, funded wallets, deploys, config, seeding, rehearsals, footage | Accounts opened | The public URL serves the app; `authority-check` is green |
 | BRAND | Design system in the app | Rodrigo | `.design/branding/working-brand/patterns/` | Tokens and fonts in `globals.css`, the primitives in `components/ui/`, route groups, his three screens on them; the final name and logo artwork | none | The primitives exist and his screens render on them in light and dark |
 
-OPS sets the pace and is planned like a stream. It is three $10 runs, three deploys, about 50 asset entries, about 13 recipe publishes, three admin keys, funded wallets, two rehearsals, a pause drill and the footage, mostly inside five sessions of 5.5 hours. Every `scripts/ops/*` script is idempotent, has a dry run that prints the exact transactions, and reads one JSON file of assets, feeds and recipes. The deployer writes config in the deploy session, before admin passes to the multisig; later changes go through the multisig as one batch.
+OPS sets the pace and is planned like a stream. It is three $10 runs, three deploys, about 50 asset entries, about 13 recipe publishes, three admin keys, funded wallets, two rehearsals, a pause drill and the footage, mostly inside five sessions of 5.5 hours. Every `scripts/ops/*` script is idempotent, has a dry run that prints the exact transactions, and reads one JSON file of assets, feeds and recipes. The deployer writes config in the deploy session; later changes go through the admin key as one batch.
 
 ## 16. Day-by-day plan and what is out
 
@@ -945,7 +945,7 @@ Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-L
 
 **Settled on Oct 1.** These were written as questions for Rodrigo. They are decided here because they make sense for the product; either founder can reopen one.
 
-1. Write access: granted. Rodrigo merged his branches into `main` on Oct 1; the work builds on `main`, in a short-lived branch per stream, and `main` is what gets submitted.
+1. Write access: granted. Rodrigo merged his branches into `main` on Oct 1. Each stream works in a short-lived branch with a pull request into `staging`; `staging` goes into `main`, and `main` is what gets submitted.
 2. The licence: Apache-2.0.
 3. Adding files stays the default, to keep merges clean. Where an edit to an existing file makes the product better, we make it and say so in the pull request. The four edits are ours to make: the server-signing routes go behind `LEGACY_STRUCTURER` and are deleted once the vault path replaces them; `seed-assets.ts` moves to `scripts/`; the CI chores are done; and six lines in `scripts/risk/compute.ts`. `chain-solana` and `chain-evm` are Thom's. One branch at a time generates migrations.
 4. One of Thom's agents ports the personalization prototype into `engine/src/personal/` with sensible starting numbers. Rodrigo tunes the sleeve table, glide floors, caps and wording when he can.
@@ -964,10 +964,10 @@ Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-L
 - Open: there is no final logo artwork yet. The spec says to draw the outlines from it.
 - The pin's stale state needs a staleness field from the API (his open item). It is added to `Sourced` at the first interface freeze.
 - The goal card needs a status from the engine, and his showcase prints odds. The design computes a verdict for income goals only. Rodrigo builds the status for other goals and the odds estimate; until then the card shows the verdict where one exists and no percentage.
-- The label on the sign-in button. Thom's pick is "Sign in", opening a choice of passkey or wallet; his landing page says "Connect wallet".
+- The label on the sign-in button is "Sign in", opening a choice of passkey or wallet. His landing page says "Connect wallet" and changes to match.
 - The plan-leg bar allows four legs: sleeves go in the bar, with the tokens in a table under it.
 - The disclaimer says "the decision and custody are yours". Only the owner can withdraw from a vault, so it stays; the "unaudited, team holds the upgrade keys" notice sits beside it before the first deposit.
-- The automatic switch. It is off by default; the person sees an author's change 48 hours before it takes effect and can refuse; then the vault copies the change inside its own limits. It does not re-check the person's goal. Thom's decision is to keep it this way. It sits beside the voice rule that the agent "proposes and explains": the 48-hour notice is the proposal, and the person can refuse.
+- Auto-follow. It is off by default; the person sees an author's change 48 hours before it takes effect and can refuse; then the vault copies the change inside its own limits. It does not re-check the person's goal. Thom's decision is to keep it this way. It sits beside the voice rule that the agent "proposes and explains": the 48-hour notice is the proposal, and the person can refuse.
 
 **Thom**
 
@@ -988,9 +988,8 @@ Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-L
 24. External wallets get one review screen and then several wallet prompts. The demo uses a passkey wallet.
 25. Auto-follow on stocks trades only Mon to Fri 14:30 to 20:00 UTC, and never on a listed closed day.
 26. Who opens the accounts (Supabase, Render, Vercel, Helius, Alchemy, UptimeRobot, the second Jupiter organisation), whether Jupiter's terms allow a second organisation, and whether Vercel Hobby's non-commercial clause is acceptable.
-27. Who fills `blockedCountries` per asset. Without it the country input only blocks the US.
+27. Who fills `blockedCountries` per asset. Until it is filled, the self-declared country skips no token.
 28. A warning above $1,000 per vault, since there is no cap. No agent-run portfolio at launch.
-29. Still open from the handoff: ask Colosseum whether one project can win more than one track.
 
 **Flags on fixed decisions.** None is shown unworkable. Four carry risk.
 

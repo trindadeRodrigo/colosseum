@@ -24,4 +24,5 @@ The notes are kept as written, so some of what they say was overtaken. `../DESIG
 | About twelve MCP tools and an optional paid endpoint (`open-questions/agent-native.md`) | Seven tools, no paid endpoint |
 | Anchor 1.2 with a generated client, the keeper on a scheduled GitHub workflow, a multisig for the upgrade keys (`design-v2/` notes) | Anchor 0.31.1 with hand-written builders, the keeper run locally while testing and on a small VM at deploy, one disclosed key per chain for now. `design-v2/review-log.md` records why |
 | US visitors blocked by location (`design-v2/web-app.md`) | No location block; the terms say the product is not for US persons |
+| A new version of a followed portfolio takes effect 12 hours after it is published (`design-v2/` notes, `open-questions/creator-limits.md`, `open-questions/agent-native.md`) | 48 hours |
 

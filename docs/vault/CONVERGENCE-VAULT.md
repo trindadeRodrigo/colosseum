@@ -10,7 +10,7 @@ The repo is closer to the design than it looks. `apps/api`, `apps/web`, `package
 
 Two things get replaced: custody (a token approval to a server-held key) and the Brazil-specific frame around the engine. The engine, Bearing, the provenance rules and the execution log stay.
 
-On Oct 1 Rodrigo merged the risk layer and the design system into `main`, so the work builds on `main`.
+On Oct 1 Rodrigo merged the risk layer and the design system into `main`, so the work builds from there: short-lived branches, each with a pull request into `staging`, and `staging` into `main`.
 
 ## What happens to each piece
 
@@ -30,9 +30,9 @@ On Oct 1 Rodrigo merged the risk layer and the design system into `main`, so the
 | chain-solana `positions`, `prices` | superseded | New readers: holdings over both token programs with the multiplier applied once; reference prices from Kamino Scope with age and market state |
 | chain-solana `executor`, `rebalance-executor`, `delegate`, `kamino`, `brl-leg` | switched off, deleted after the freeze | Vault transaction builders replace them, one leg at a time. `buildRevokeUnsigned` stays as the migration tool |
 | `packages/chain-evm` | replace | The stub becomes the Base and Robinhood Chain adapter |
-| `apps/api` | adapt | New routes under `routes/v1/`, auth, a CORS allowlist, rate limits, one error handler. With `LEGACY_STRUCTURER=off` the `/policies/*`, `/plans/*` and `/monitor` routes are not registered. `/risk` routes stay. His edit: delete the routes that sign on the server |
+| `apps/api` | adapt | New routes under `routes/v1/`, auth, a CORS allowlist, rate limits, one error handler. With `LEGACY_STRUCTURER=off` the `/policies/*` routes are not registered. `/risk` routes stay. His edit: delete the routes that sign on the server |
 | `apps/risk-api` | keep | Not touched |
-| `apps/web` | adapt | New screens in `features/` folders. His `/risk/*` pages stay. `/monitor`, `/plans/[id]` and `/embed` leave the navigation and are deleted after the freeze. Privy replaces the wallet-adapter provider |
+| `apps/web` | adapt | New screens in `features/` folders. His `/risk/*` pages stay. His three screens (home, plan, monitor) are rebuilt on his design system and extended, and `/embed` stays (section 11 of the design). Privy replaces the wallet-adapter provider |
 | `scripts/`, `fixtures/`, `tests/`, `docs/` | keep | Collectors and launchd jobs untouched before Oct 12. Old docs get a "superseded by" line once he agrees |
 | `packages/basket` | new | Chain-free logic: flatten a plan that holds shared portfolios, value and drift, the rebalancing planner, the check on authors' limits, the risk roll-up |
 | `packages/chain-mock` | new | The mock adapter the web app, keeper and adapter contract tests run against |
@@ -53,8 +53,8 @@ contracts/   src  test  script   Foundry
 content/     risk-sheets
 scripts/     verify  risk  risk-evm  ops  solana
 tests/  fixtures/  spikes/
-docs/        HANDOFF-VAULT  DESIGN-VAULT  AUDIT-VAULT  CONVERGENCE-VAULT  research/
-             plus the existing uppercase files, kept as history
+docs/        GATES  PRIOR-WORK  DATA-MODEL  README
+             vault/  risk/  structurer/
 ```
 
 `schemas` imports nothing. `risk` and `basket` import only `schemas`; `engine` may import `basket`. Only `api` and `keeper` join logic, chains and the database. `web` and `mcp` never import the database, the engine or a chain package. Only the keeper and scripts can reach a signing key.
@@ -82,7 +82,7 @@ Settled on Oct 1 unless marked open. Each keeps its trade-off, so it can be reop
 3. **The frame** the TypeScript streams wait for: the first version of the shared types, the mock adapter with its contract tests, the migration, the flags. Then the test that enforces the import rules and the CI workflows for the program and the contracts.
 4. **One pull request per stream.** The streams, their owners and what "done" means are in section 15 of the design; the day-by-day plan is in section 16.
 
-Before every merge: `pnpm typecheck && pnpm lint && pnpm test` locally and a green run on GitHub.
+Before every merge: `pnpm verify` locally and a green run on GitHub.
 
 ## What the audit fed into the design
 

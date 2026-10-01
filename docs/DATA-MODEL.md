@@ -1,6 +1,6 @@
 # DATA-MODEL.md
 
-Postgres, Drizzle ORM. 23 tables in two schema files: `packages/db/src/schema.ts` (the structurer, 15 tables) and `packages/db/src/risk-schema.ts` (the risk layer, 8 tables). Migrations in `packages/db/migrations/`: `0000`–`0001` create the structurer tables, `0002`–`0005` the risk tables. Enums are declared in `schema.ts`, mirror `packages/schemas/src/enums.ts`, and `tests/db-schema.test.ts` keeps them in sync.
+Postgres, Drizzle ORM. 23 tables in two schema files: `packages/db/src/schema.ts` (the structurer, 15 tables) and `packages/db/src/risk-schema.ts` (the risk layer, 8 tables). Migrations in `packages/db/migrations/`: `0000`–`0001` create the structurer tables, `0002`–`0005` the risk tables. Enums are declared in `schema.ts`, mirror `packages/schemas/src/enums.ts`, and `tests/db-schema.test.ts` keeps them in sync (all but `chain`, which it does not check).
 
 "Provenance columns" below means the four columns `source`, `method`, `fetched_at`, `provenance`. `provenance` is the enum `live`, `mock`, `sandbox`, `fixture`, `prior_dataset`.
 
@@ -28,11 +28,11 @@ All have a uuid `id` primary key except `assets`, whose `id` is text.
 
 ## Risk tables (`risk-schema.ts`)
 
-No uuid ids here: the primary key is the pool address or a composite, shown in the last column. Measures are `double precision` and curves are JSON. The only foreign key is `risk_pool_snapshots.pool` → `risk_pools.address`; the other `pool`, `ref_pool` and `asset_mint` columns are plain text.
+No uuid ids here: the primary key is the pool address or a composite, shown in the last column. Measures are `double precision`, raw on-chain amounts (`active_liquidity`, `amount_in`, `out_amount`) are text, and curves are JSON. The only foreign key is `risk_pool_snapshots.pool` → `risk_pools.address`; the other `pool`, `ref_pool` and `asset_mint` columns are plain text.
 
 | Table | One line | Key columns |
 |---|---|---|
-| `risk_pools` | Every DEX pool that trades an xStock, confirmed on-chain, with its refresh tier. | PK `address`; `program`, `venue`, `asset_mint`, `asset_symbol`, `quote_mint`, `quote_symbol`, `exit_path` (`direct_usd`, `via_sol`, `via_xstock`, `other`), `tvl_usd`, `tier` (`A` every 5 min, `B` hourly, `X` excluded), `status`, `status_reason`, `method_version`, provenance columns |
+| `risk_pools` | Every DEX pool that trades an xStock, confirmed on-chain, with its refresh tier. | PK `address`; `program`, `venue`, `asset_mint`, `asset_symbol`, `quote_mint`, `quote_symbol`, `exit_path` (`direct_usd`, `via_sol`, `via_xstock`, `other`), `asset_is_token0`, `decimals0`, `decimals1`, `transfer_fee_bps0`, `transfer_fee_bps1`, `tvl_usd`, `discovery_liquidity_usd`, `discovery_volume24h_usd`, `tier` (`A` every 5 min, `B` hourly, `X` excluded), `status`, `status_reason`, `method_version`, provenance columns |
 | `risk_pool_snapshots` | One simulated depth snapshot of one pool: mid price, active liquidity, sell and buy curves. | PK (`pool`, `fetched_at`); `slot`, `mid_price`, `active_liquidity`, `sell`, `buy`, `in_band_liquidity`, `method_version`, provenance columns |
 | `risk_depth_curves` | The fitted depth curve per asset, side and regime, versioned by method. | PK (`asset_mint`, `side`, `regime`, `method_version`); `asset_symbol`, `points`, `insufficient_from`, `quantile`, `min_samples`, `samples`, `data_from`, `data_to`, `computed_at`, `source`, `method`, `provenance` |
 | `risk_events` | Collector events: LP withdrawals near the price, stale tick maps. | PK (`pool`, `kind`, `fetched_at`); `slot`, `asset`, `detail` |

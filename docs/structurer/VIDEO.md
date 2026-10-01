@@ -47,7 +47,7 @@ Screen: stats card from the database (wallets, deposited value, executions, reba
 | 6 | BRS mint or "integration in progress" label | per G-Nora | D7-PM/D8 | label ready; mint pending gate |
 | 7 | xStocks buy (weekday clip, date on screen) | plan `17b2e84a…` executed | D6-PM | pending founder run (weekday) |
 | 8 | Monitor: drift table, Run policy, agent-signed confirmation | `/monitor` | D7-AM | ready; run pending founder approval step |
-| 9 | Revoke the agent (off-switch) | `buildRevokeTx` in a one-liner or UI button | D7-PM | todo (UI button) |
+| 9 | Revoke the agent (off-switch) | `buildRevokeUnsigned` in a one-liner or UI button | D7-PM | todo (UI button) |
 | 10 | API docs + embed | `/docs`, `/embed/<id>` | D6-AM, D4-AM | ready |
 | 11 | LOI slide (Chainless, Picnic, dated) | PDFs from founder | founder | pending |
 | 12 | Nexa analog slide | facts from HANDOFF §9 | D9-PM | todo |

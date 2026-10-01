@@ -1,12 +1,12 @@
 # Documents
 
-Three pieces of work, in the order they were built. The vault work is the live one.
+Three pieces of work, newest first. The vault work is the live one.
 
 | Folder | What it is | Status |
 |---|---|---|
-| `vault/` | Plans held in a vault: the product (`HANDOFF-VAULT.md`), the technical design (`DESIGN-VAULT.md`), the audit of the code as it was on Oct 1 (`AUDIT-VAULT.md`), what happens to each package (`CONVERGENCE-VAULT.md`), and the research behind them (`research/`) | Current. Start with `HANDOFF-VAULT.md` |
+| `vault/` | Plans held in a vault: the product (`HANDOFF-VAULT.md`), the technical design (`DESIGN-VAULT.md`), the audit of the code as it was on Oct 1 (`AUDIT-VAULT.md`), what happens to each package (`CONVERGENCE-VAULT.md`), the task ledger (`STATE-VAULT.md`), and the research behind them (`research/`) | Current. Start with `HANDOFF-VAULT.md` |
 | `risk/` | The liquidity and risk layer ("Bearing"): spec, plan, state and the prompts that drove its build | Built and merged; the collectors still run |
-| `structurer/` | The goal-based structurer: spec, plan, state, verification, acceptance, the video script, screenshots | Built on Sep 30; the engine the vault work builds on |
+| `structurer/` | The goal-based structurer: spec, plan, state, verification, acceptance, the prompts that drove its build, the video script, screenshots | Built on Sep 30; the engine the vault work builds on |
 
 Shared across all three, at this level:
 
