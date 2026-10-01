@@ -18,6 +18,7 @@ import {
   JL_VAULTS_PROGRAM,
   jlPositionTokens,
   jlTokenTotals,
+  jlVaultExchangePrices,
   KAMINO_MARKET_OFFSET,
   KAMINO_OBLIGATION_SIZE,
   KAMINO_RESERVE_MINT_OFFSET,
@@ -887,6 +888,8 @@ async function vl5() {
         bp ? jlPositionTokens(bp, brTot.borrowExchangePrice) : null,
         big(sdk.liquidityUserBorrowData.borrow),
       ],
+      ['vaultTotalSupplyAccrued', (st.totalSupply * jlVaultExchangePrices(st, cfg, srTot.supplyExchangePrice, brTot.borrowExchangePrice, now).vaultSupplyExchangePrice) / 10n ** 12n, big(sdk.totalSupplyAndBorrow.totalSupplyVault)],
+      ['vaultTotalBorrowAccrued', (st.totalBorrow * jlVaultExchangePrices(st, cfg, srTot.supplyExchangePrice, brTot.borrowExchangePrice, now).vaultBorrowExchangePrice) / 10n ** 12n, big(sdk.totalSupplyAndBorrow.totalBorrowVault)],
       ['borrowTokenTotalSupply', brTot.supplied, big(sdkTok.totalSupply)],
       ['borrowTokenTotalBorrow', brTot.borrowed, big(sdkTok.totalBorrow)],
       ['borrowTokenBorrowRate', br.borrowRate, Number(sdkTok.borrowRate.toString())],
@@ -908,7 +911,10 @@ async function vl5() {
       rel: relOf(a, b),
     }));
     // amounts accrue between the two reads (seconds apart): exact fields must match, accruing ones within 1e-6
+    // reads seconds apart: accruing amounts move, and the USDC layer sees about 1.6 tx/s, so allow 1e-5
     const accruing = new Set([
+      'vaultTotalSupplyAccrued',
+      'vaultTotalBorrowAccrued',
       'liquiditySupplyPosition',
       'liquidityBorrowPosition',
       'borrowTokenTotalSupply',
@@ -917,7 +923,7 @@ async function vl5() {
     ]);
     const bad = cmp.filter((c) =>
       accruing.has(c.field)
-        ? c.rel > 1e-6 &&
+        ? c.rel > 1e-5 &&
           !(c.field === 'borrowTokenSupplyRateBps' && Math.abs(Number(c.hand) - Number(c.sdk)) <= 1)
         : c.rel !== 0,
     );
@@ -995,7 +1001,7 @@ async function vl5() {
     sdkReaderFieldsCompared: checked,
     sdkReaderMismatches: mismatches,
     sdkReaderNote:
-      'reader vs SDK high-level reads taken seconds apart; accruing amounts allowed 1e-6',
+      'reader vs SDK high-level reads taken seconds apart; accruing amounts allowed 1e-5',
     protocolKey: [...new Set(ok.map((r) => (r.accounts as { protocolIs: string }).protocolIs))],
     apiEqual: {
       collateralFactor: apiAgree('collateralFactor'),

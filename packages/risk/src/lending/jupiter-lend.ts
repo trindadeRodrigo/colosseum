@@ -410,3 +410,41 @@ export function jlPositionAmounts(p: JlPosition, topmostTick: number) {
     liquidatedBranch: p.tick > topmostTick,
   };
 }
+
+/** Vault amounts (state totals and positions) are kept in 9-decimal internal units, whatever the token's decimals. */
+export const JL_VAULT_INTERNAL_DECIMALS = 9;
+const SCALE18 = 10n ** 18n;
+
+/**
+ * Vault exchange prices accrued to now from the liquidity layer's current exchange prices (port of the read
+ * SDK's `updateExchangePrices`): the vault's prices grow by the same factor as the layer's since the vault's last
+ * update, plus the vault's rate magnifiers. Stored prices go stale on vaults that see few transactions.
+ */
+export function jlVaultExchangePrices(
+  st: JlVaultState,
+  cfg: Pick<JlVaultConfig, 'supplyRateMagnifier' | 'borrowRateMagnifier'>,
+  liquiditySupplyExchangePrice: bigint,
+  liquidityBorrowExchangePrice: bigint,
+  now: number,
+) {
+  const dt = BigInt(Math.max(0, now - Number(st.lastUpdateTimestamp)));
+  const supInc = (liquiditySupplyExchangePrice * SCALE18) / st.liquiditySupplyExchangePrice;
+  let supply = (st.vaultSupplyExchangePrice * supInc) / SCALE18;
+  if (cfg.supplyRateMagnifier !== 0) {
+    const ch =
+      (st.vaultSupplyExchangePrice * dt * BigInt(Math.abs(cfg.supplyRateMagnifier))) /
+      10_000n /
+      SECONDS_PER_YEAR;
+    supply = cfg.supplyRateMagnifier > 0 ? supply + ch : supply - ch;
+  }
+  const borInc = (liquidityBorrowExchangePrice * SCALE18) / st.liquidityBorrowExchangePrice;
+  let borrow = (st.vaultBorrowExchangePrice * borInc + SCALE18 - 1n) / SCALE18;
+  if (cfg.borrowRateMagnifier !== 0) {
+    const ch =
+      (st.vaultBorrowExchangePrice * dt * BigInt(Math.abs(cfg.borrowRateMagnifier))) /
+      10_000n /
+      SECONDS_PER_YEAR;
+    borrow = cfg.borrowRateMagnifier > 0 ? borrow + ch : borrow - ch;
+  }
+  return { vaultSupplyExchangePrice: supply, vaultBorrowExchangePrice: borrow };
+}
