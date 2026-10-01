@@ -12,7 +12,7 @@ import type { UnsignedTx } from '@colosseum/schemas';
 // Partner-side reference flow: ask the API for a plan's unsigned transactions, sign each with the wallet,
 // simulate, send once, confirm, and report the outcome back to the API. Legs are independent: a failed leg is
 // reported and the loop continues. `--fail-leg N` corrupts leg N before signing to prove partial-failure handling.
-// Usage: tsx scripts/sign-and-send.ts --plan <id> [--api http://localhost:3001] [--send] [--fail-leg 2]
+// Usage: tsx scripts/mainnet/sign-and-send.ts --plan <id> [--api http://localhost:3001] [--send] [--fail-leg 2]
 const a = process.argv.slice(2);
 const opt = (k: string) => (a.includes(k) ? a[a.indexOf(k) + 1] : undefined);
 const planId = opt('--plan');

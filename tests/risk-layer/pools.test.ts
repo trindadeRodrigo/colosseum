@@ -23,7 +23,7 @@ import {
 import { describe, expect, it } from 'vitest';
 
 // Fixtures: raw mainnet accounts plus Jupiter direct quotes through the same pool, captured together by
-// scripts/risk/capture-pool-fixture.ts. Tolerances are per venue and documented in docs/PLAN-RISK.md:
+// scripts/risk/capture-pool-fixture.ts. Tolerances are per venue and documented in docs/risk/PLAN-RISK.md:
 // Raydium CLMM is exact to float precision; DLMM and Orca carry dynamic fees not yet modelled.
 type Fixture = {
   venue: 'raydium' | 'orca' | 'dlmm' | 'cpmm';

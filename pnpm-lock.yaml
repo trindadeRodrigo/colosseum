@@ -11,6 +11,24 @@ importers:
       '@biomejs/biome':
         specifier: ^2.5.15
         version: 2.5.15
+      '@colosseum/chain-evm':
+        specifier: workspace:*
+        version: link:packages/chain-evm
+      '@colosseum/chain-solana':
+        specifier: workspace:*
+        version: link:packages/chain-solana
+      '@colosseum/db':
+        specifier: workspace:*
+        version: link:packages/db
+      '@colosseum/engine':
+        specifier: workspace:*
+        version: link:packages/engine
+      '@colosseum/risk':
+        specifier: workspace:*
+        version: link:packages/risk
+      '@colosseum/schemas':
+        specifier: workspace:*
+        version: link:packages/schemas
       '@kamino-finance/klend-sdk':
         specifier: ^12.0.1
         version: 12.0.1(@solana/spl-token@0.4.15(@solana/web3.js@1.99.0(bufferutil@4.1.0)(typescript@5.9.3))(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3))(@solana/web3.js@1.99.0(bufferutil@4.1.0)(typescript@5.9.3))(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(ws@8.22.0(bufferutil@4.1.0))

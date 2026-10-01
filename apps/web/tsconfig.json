@@ -19,12 +19,7 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"],
-      "@colosseum/schemas": ["../../packages/schemas/src/index.ts"],
-      "@colosseum/db": ["../../packages/db/src/index.ts"],
-      "@colosseum/engine": ["../../packages/engine/src/index.ts"],
-      "@colosseum/chain-solana": ["../../packages/chain-solana/src/index.ts"],
-      "@colosseum/chain-evm": ["../../packages/chain-evm/src/index.ts"]
+      "@/*": ["./*"]
     }
   },
   "include": [

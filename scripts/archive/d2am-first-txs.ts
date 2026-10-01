@@ -14,7 +14,7 @@ import { REGISTRY_BY_ID } from '@colosseum/engine';
 
 // D2-AM: first mainnet transactions. Jupiter swaps USDC→USDY and USDC→syrupUSDC (5 USDC each).
 // Every leg: quote → build → simulate → (with --send) sign → send once → confirm → log in `executions`.
-// Usage: tsx scripts/execute/d2am-first-txs.ts [--send] [--legs usdy,syrupusdc] [--usd 5]
+// Archived, do not run. Was: tsx scripts/execute/d2am-first-txs.ts [--send] [--legs usdy,syrupusdc] [--usd 5]
 const args = process.argv.slice(2);
 const SEND = args.includes('--send');
 const legs = (

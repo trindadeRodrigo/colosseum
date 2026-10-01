@@ -1,15 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "noEmit": true,
-    "paths": {
-      "@colosseum/schemas": ["../../packages/schemas/src/index.ts"],
-      "@colosseum/db": ["../../packages/db/src/index.ts"],
-      "@colosseum/engine": ["../../packages/engine/src/index.ts"],
-      "@colosseum/risk": ["../../packages/risk/src/index.ts"],
-      "@colosseum/chain-solana": ["../../packages/chain-solana/src/index.ts"],
-      "@colosseum/chain-evm": ["../../packages/chain-evm/src/index.ts"]
-    }
+    "noEmit": true
   },
   "include": ["src/**/*.ts"]
 }
