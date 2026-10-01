@@ -7,6 +7,8 @@ export * from './events/orca-whirlpool';
 export * from './events/raydium-clmm';
 export * from './events/raydium-cpmm';
 export * from './events/tx';
+export * from './lending/jupiter-lend';
+export * from './lending/kamino';
 export * from './pools/bytes';
 export * from './pools/cl-math';
 export * from './pools/meteora-dlmm';
