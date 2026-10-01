@@ -12,4 +12,5 @@ data/
 docs/loi/*.pdf
 *.tsbuildinfo
 .claude/settings.local.json
+.claude/worktrees/
 CLAUDE.local.md

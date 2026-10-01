@@ -22,8 +22,8 @@
     ],
     "deny": [
       "Read(.env)",
-      "Read(.env.local)",
-      "Read(.env.*.local)",
+      "Read(.env.*)",
+      "Read(!.env.example)",
       "Read(secrets/**)",
       "Edit(/scripts/launchd/**)",
       "Edit(/scripts/risk/collector/**)",
@@ -34,6 +34,9 @@
       "Bash(git push * main)",
       "Bash(git push * staging)"
     ]
+  },
+  "worktree": {
+    "baseRef": "head"
   },
   "hooks": {
     "SessionStart": [

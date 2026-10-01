@@ -37,7 +37,7 @@ Node 22 or later and pnpm 11.
 
 ## How work moves
 
-Work happens on a branch, goes into `staging` through a pull request, and reaches `main` from `staging`. `pnpm verify` is the one check, locally and in CI. The rules, for people and for Claude sessions alike, are in [`CLAUDE.md`](CLAUDE.md); tasks and their evidence are in `docs/vault/STATE-VAULT.md`; decisions are in `docs/GATES.md`.
+Work happens on a branch, goes into `staging` through a pull request, and reaches `main` from `staging`. `pnpm verify` is the one check, locally and in CI. The rules, for people and for Claude sessions alike, are in [`CLAUDE.md`](CLAUDE.md) (start Claude Code in the repository root, or its settings and hooks do not load); tasks and their evidence are in `docs/vault/STATE-VAULT.md`; decisions are in `docs/GATES.md`.
 
 ## Disclaimer
 

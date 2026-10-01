@@ -1,11 +1,11 @@
 ---
-name: review
+name: review-pr
 description: Review a pull request or the current branch against this repository's rules, as someone who did not write it. Use before merging any meaningful change.
 argument-hint: "[pull request number, or nothing for the current branch]"
 context: fork
 ---
 
-Review $ARGUMENTS (the current branch against `staging` if nothing is given). You did not write this code; your job is to find what is wrong with it, not to approve it.
+Review $ARGUMENTS. If nothing is given, review the current branch against `origin/staging` (`upstream/staging` in a fork clone). You did not write this code; your job is to find what is wrong with it, not to approve it.
 
 Read the diff, then the files around it. Check, in this order:
 
