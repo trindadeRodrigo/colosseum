@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './env';
 import { buildRiskApp } from './app';
 
 const app = await buildRiskApp();

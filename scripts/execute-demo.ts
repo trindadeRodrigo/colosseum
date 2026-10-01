@@ -11,5 +11,7 @@ if (answer.trim() !== 'execute') {
   console.log('aborted');
   process.exit(1);
 }
-console.log('execution engine is implemented in slot D3-AM (docs/PLAN.md §4); nothing was sent');
+console.log(
+  'execution engine is implemented in slot D3-AM (docs/structurer/PLAN.md §4); nothing was sent',
+);
 process.exit(2);

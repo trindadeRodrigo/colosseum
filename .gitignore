@@ -9,6 +9,8 @@ coverage/
 secrets/
 *.keypair.json
 data/
-!data/.gitkeep
 docs/loi/*.pdf
 *.tsbuildinfo
+.claude/settings.local.json
+.claude/worktrees/
+CLAUDE.local.md

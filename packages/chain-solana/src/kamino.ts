@@ -43,7 +43,7 @@ export type KaminoDepositBuild = {
 /**
  * Builds and signs a Kamino Lend deposit for `owner` (vanilla obligation, created on first use).
  * Amount is in base units of the reserve's liquidity mint (USDC: 6 decimals).
- * Under policy mechanism A this leg still needs the owner's signature (docs/VERIFICATION.md V5d).
+ * Under policy mechanism A this leg still needs the owner's signature (docs/structurer/VERIFICATION.md V5d).
  */
 export async function buildKaminoDepositTx(
   rpc: SolanaRpc,
