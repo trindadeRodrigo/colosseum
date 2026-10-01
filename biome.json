@@ -8,7 +8,10 @@
       "!**/.next",
       "!**/migrations/meta",
       "!data",
+      "!secrets",
+      "!coverage",
       "!.design",
+      "!.claude/settings.local.json",
       "!**/next-env.d.ts"
     ]
   },
