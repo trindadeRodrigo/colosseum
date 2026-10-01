@@ -1,0 +1,36 @@
+[PASS] test_keeperSwap_1000usd() (gas: 343069)
+  spent USDG (6dp): 1000000000
+  received NVDA (18dp): 4326225312429124808
+  feed px (8dp): 23033340675
+  exec px (8dp): 23114838636
+  value before/after (8dp): 109991941400 109646688857
+  keeperSwap gas (call only): 231885
+[PASS] test_keeperSwap_ur212_pool100() (gas: 331475)
+  spent USDG (6dp): 10000000
+  received NVDA (18dp): 43279396782507802
+  feed px (8dp): 23033340675
+  exec px (8dp): 23105682480
+  value before/after (8dp): 9999267400 9996209750
+  keeperSwap gas (call only): 238718
+[PASS] test_keeperSwap_ur212_pool3000() (gas: 331824)
+  spent USDG (6dp): 10000000
+  received NVDA (18dp): 43199076150214315
+  feed px (8dp): 23033340675
+  exec px (8dp): 23148643191
+  value before/after (8dp): 9999267400 9994359697
+  keeperSwap gas (call only): 238957
+[PASS] test_keeperSwap_urOld() (gas: 331623)
+  spent USDG (6dp): 10000000
+  received NVDA (18dp): 43279396782507802
+  feed px (8dp): 23033340675
+  exec px (8dp): 23105682480
+  value before/after (8dp): 9999267400 9996209750
+  keeperSwap gas (call only): 238580
+[PASS] test_receive_hold_send() (gas: 199392)
+  logs emitted by one NVDA transfer: 2
+[PASS] test_revert_badPool() (gas: 287978)
+[PASS] test_revert_legacyStruct() (gas: 337618)
+[PASS] test_revert_notKeeper_notOwner() (gas: 32232)
+[PASS] test_revert_outputToKeeper() (gas: 289755)
+[PASS] test_revert_outputToKeeper_valueInvariant() (gas: 291006)
+Suite result: ok. 10 passed; 0 failed; 0 skipped; finished in 18.79ms (50.76ms CPU time)

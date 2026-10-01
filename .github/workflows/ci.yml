@@ -3,13 +3,28 @@ on: [push, pull_request]
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: colosseum
+          POSTGRES_PASSWORD: colosseum
+          POSTGRES_DB: colosseum
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd "pg_isready -U colosseum"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 11 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
+      - run: pnpm exec tsc -p tsconfig.json
+      - run: pnpm db:migrate
       - run: pnpm test
+      - run: pnpm build

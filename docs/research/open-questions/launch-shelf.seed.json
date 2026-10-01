@@ -1,0 +1,909 @@
+{
+  "measuredAt": "2026-10-01T13:20Z/14:00Z",
+  "status": "proposal, not approved; weights in bps; costs are price impact only",
+  "mvpNote": "Oct 1: no meme index in the MVP. trench-survivors is kept as research with \"mvp\": false.",
+  "tiers": {
+    "A": "leg up to $50k at <=35 bps impact",
+    "B": "leg up to $10k at <=35 bps",
+    "C": "leg up to about $1k-2k at <=30 bps",
+    "X": "not listed at launch"
+  },
+  "cash": {
+    "solana": "USDC EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "base": "USDC 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "robinhood": "USDG 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168"
+  },
+  "assets": {
+    "solana": [
+      {
+        "symbol": "SPYx",
+        "cls": "stock-index",
+        "address": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+        "program": "T22",
+        "tier": "A",
+        "pyth": "0x2817b78438c769357182c04346fddaad1178c82f4048828fe0997c3c64624e14"
+      },
+      {
+        "symbol": "QQQx",
+        "cls": "stock-index",
+        "address": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+        "program": "T22",
+        "tier": "A",
+        "pyth": "0x178a6f73a5aede9d0d682e86b0047c9f333ed0efe5c6537ca937565219c4054d"
+      },
+      {
+        "symbol": "NVDAx",
+        "cls": "stock",
+        "address": "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh",
+        "program": "T22",
+        "tier": "A",
+        "pyth": "0x4244d07890e4610f46bbde67de8f43a4bf8b569eebe904f136b469f148503b7f"
+      },
+      {
+        "symbol": "TSLAx",
+        "cls": "stock",
+        "address": "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB",
+        "program": "T22",
+        "tier": "A",
+        "pyth": "0x47a156470288850a440df3a6ce85a55917b813a19bb5b31128a33a986566a362"
+      },
+      {
+        "symbol": "AAPLx",
+        "cls": "stock",
+        "address": "XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp",
+        "program": "T22",
+        "tier": "B",
+        "pyth": "0x978e6cc68a119ce066aa830017318563a9ed04ec3a0a6439010fc11296a58675"
+      },
+      {
+        "symbol": "GOOGLx",
+        "cls": "stock",
+        "address": "XsCPL9dNWBMvFtTmwcCA5v3xWPSMEBCszbQdiLLq6aN",
+        "program": "T22",
+        "tier": "B",
+        "pyth": "0xb911b0329028cd0283e4259c33809d62942bd2716a58084e5f31d64c00b5424e"
+      },
+      {
+        "symbol": "METAx",
+        "cls": "stock",
+        "address": "Xsa62P5mvPszXL1krVUnU5ar38bBSVcWAB6fmPCo5Zu",
+        "program": "T22",
+        "tier": "B",
+        "pyth": "0xbf3e5871be3f80ab7a4d1f1fd039145179fb58569e159aee1ccd472868ea5900"
+      },
+      {
+        "symbol": "MSFTx",
+        "cls": "stock",
+        "address": "XspzcW1PRtgf6Wj92HCiZdjzKCyFekVD8P5Ueh3dRMX",
+        "program": "T22",
+        "tier": "B",
+        "pyth": "0xbb723a70af731ab56b9a650eb7e8ac22b7bc07ea77f8670bd1fa9a37bf6df3f5"
+      },
+      {
+        "symbol": "AMZNx",
+        "cls": "stock",
+        "address": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+        "program": "T22",
+        "tier": "B",
+        "pyth": "0x7148fbe6e493ff2580305c92a8d7f8628c9943b11b9b253aebc24863fec290e8"
+      },
+      {
+        "symbol": "SPCXx",
+        "cls": "stock",
+        "address": "Xs3oZwbHvqis4NYcf4YKWmEia2eC84wSiVrcYcTqpH8",
+        "program": "T22",
+        "tier": "A",
+        "pyth": "0xe8e2234a06b288fedde43ae9450cb288886ecb3259ad2f41d0067f02244a0101"
+      },
+      {
+        "symbol": "MSTRx",
+        "cls": "stock",
+        "address": "XsP7xzNPvEHS1m6qfanPUGjNmdnmsLKEoNAnHjdxxyZ",
+        "program": "T22",
+        "tier": "A",
+        "pyth": "0x53f95ba4e23ed15ea56083e2ee9a5eec48055d6f59033d4bb95f1ca2a2349c28"
+      },
+      {
+        "symbol": "CRCLx",
+        "cls": "stock",
+        "address": "XsueG8BtpquVJX9LVLLEGuViXUungE6WmK5YZ3p3bd1",
+        "program": "T22",
+        "tier": "A",
+        "pyth": "0xc13184461c0c80d98ffcd89be627c2220b94a96c7c67f0c4b16bc12fd3b17758"
+      },
+      {
+        "symbol": "HOODx",
+        "cls": "stock",
+        "address": "XsvNBAYkrDRNhA7wPHQfX3ZUXZyZLdnCQDfHZ56bzpg",
+        "program": "T22",
+        "tier": "C",
+        "pyth": "0xdd49a9ac6df5cbfa9d8fc6371f7ae927a74d5c6763c1c01b4220d70314c647f9"
+      },
+      {
+        "symbol": "COINx",
+        "cls": "stock",
+        "address": "Xs7ZdzSHLU9ftNJsii5fCeJhoRWSC32SQGzGQtePxNu",
+        "program": "T22",
+        "tier": "C",
+        "pyth": "0x641435d5dffb5311140b480517c79986d8488d5cf08a11eec53b83ad02cab33f"
+      },
+      {
+        "symbol": "PLTRx",
+        "cls": "stock",
+        "address": "XsoBhf2ufR8fTyNSjqfU71DYGaE6Z3SUGAidpzriAA4",
+        "program": "T22",
+        "tier": "C",
+        "pyth": null
+      },
+      {
+        "symbol": "GLDx",
+        "cls": "gold",
+        "address": "Xsv9hRk1z5ystj9MhnA7Lq4vjSsLwzL2nxrwmwtD3re",
+        "program": "T22",
+        "tier": "A",
+        "pyth": "0xe7d1138d0083368634087268c64b7bea0b4101a6365f83915cba9e76a8364b96"
+      },
+      {
+        "symbol": "jlUSDC",
+        "cls": "dollar-yield",
+        "address": "9BEcn9aPEmhSPbPQeFGjidRiEKki46fVQDyPpSQXPA2D",
+        "program": "SPL",
+        "tier": "A",
+        "pyth": null
+      },
+      {
+        "symbol": "syrupUSDC",
+        "cls": "dollar-yield",
+        "address": "AvZZF1YaZDziPY2RCK4oJrRVrbN3mTD9NL24hPeaZeUj",
+        "program": "SPL",
+        "tier": "A",
+        "pyth": "0xe616297dab48626eaacf6d030717b25823b13ae6520b83f4735bf8deec8e2c9a"
+      },
+      {
+        "symbol": "SOL",
+        "cls": "crypto-major",
+        "address": "So11111111111111111111111111111111111111112",
+        "program": "SPL",
+        "tier": "A",
+        "pyth": "0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d"
+      },
+      {
+        "symbol": "JitoSOL",
+        "cls": "crypto-major",
+        "address": "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn",
+        "program": "SPL",
+        "tier": "A",
+        "pyth": "0x67be9f519b95cf24338801051f9a808eff0a578ccb388db73b7f6fe1de019ffb"
+      },
+      {
+        "symbol": "cbBTC",
+        "cls": "crypto-major",
+        "address": "cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij",
+        "program": "SPL",
+        "tier": "A",
+        "pyth": "0x2817d7bfe5c64b8ea956e9a26f573ef64e72e4d7891f2d6af9bcc93f7aff9a97"
+      },
+      {
+        "symbol": "JUP",
+        "cls": "solana-native",
+        "address": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+        "program": "SPL",
+        "tier": "A",
+        "pyth": "0x0a0408d619e9380abad35060f9192039ed5042fa6f82301d0e48bb52be830996"
+      },
+      {
+        "symbol": "RAY",
+        "cls": "solana-native",
+        "address": "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+        "program": "SPL",
+        "tier": "A",
+        "pyth": "0x91568baa8beb53db23eb3fb7f22c6e8bd303d103919e19733f2bb642d3e7987a"
+      },
+      {
+        "symbol": "PUMP",
+        "cls": "solana-native",
+        "address": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+        "program": "T22",
+        "tier": "A",
+        "pyth": "0x7a01fca212788bba7c5bf8c9efd576a8a722f070d2c17596ff7bb609b8d5c3b9"
+      },
+      {
+        "symbol": "MET",
+        "cls": "solana-native",
+        "address": "METvsvVRapdj9cFLzq4Tr43xK4tAjQfwX76z3n6mWQL",
+        "program": "SPL",
+        "tier": "B",
+        "pyth": "0x0292e0f405bcd4a496d34e48307f6787349ad2bcd8505c3d3a9f77d81a67a682"
+      },
+      {
+        "symbol": "KMNO",
+        "cls": "solana-native",
+        "address": "KMNo3nJsBXfcpJTVhZcXLW7RmTwTt4GVFE7suUBo9sS",
+        "program": "SPL",
+        "tier": "B",
+        "pyth": "0xb17e5bc5de742a8a378b54c9c75442b7d51e30ada63f28d9bd28d3c0e26511a0"
+      },
+      {
+        "symbol": "JTO",
+        "cls": "solana-native",
+        "address": "jtojtomepa8beP8AuQc6eXt5FriJwfFMwQx2v2f9mCL",
+        "program": "SPL",
+        "tier": "C",
+        "pyth": "0xb43660a5f790c69354b0729a5ef9d50d68f1df92107540210b9cccba1f947cc2"
+      },
+      {
+        "symbol": "PYTH",
+        "cls": "solana-native",
+        "address": "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3",
+        "program": "SPL",
+        "tier": "C",
+        "pyth": "0x0bbf28e9a841a1cc788f6a361b17ca072d0ea3098a1e5df1c3922d06719579ff"
+      },
+      {
+        "symbol": "TRUMP",
+        "cls": "meme",
+        "address": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN",
+        "program": "SPL",
+        "tier": "A",
+        "pyth": "0x879551021853eec7a7dc827578e8e69da7e4fa8148339aa0d3d5296405be4b1a"
+      },
+      {
+        "symbol": "PENGU",
+        "cls": "meme",
+        "address": "2zMMhcVQEXDtdE6vsFS7S7D5oUodfJHE8vd1gnBouauv",
+        "program": "SPL",
+        "tier": "A",
+        "pyth": "0xbed3097008b9b5e3c93bec20be79cb43986b85a996475589351a21e67bae9b61"
+      },
+      {
+        "symbol": "BONK",
+        "cls": "meme",
+        "address": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+        "program": "SPL",
+        "tier": "B",
+        "pyth": "0x72b021217ca3fe68922a19aaf990109cb9d84e9ad004b4d2025ad6f529314419"
+      },
+      {
+        "symbol": "Fartcoin",
+        "cls": "meme",
+        "address": "9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump",
+        "program": "SPL",
+        "tier": "B",
+        "pyth": "0x58cd29ef0e714c5affc44f269b2c1899a52da4169d7acc147b9da692e6953608"
+      },
+      {
+        "symbol": "USELESS",
+        "cls": "meme",
+        "address": "Dz9mQ9NzkBcCsuGPFJ3r1bS4wgqKMHBPiVuniW8Mbonk",
+        "program": "SPL",
+        "tier": "A",
+        "pyth": "0xf4b55102bfc9ea1bb2342ea2cb050209ed2a398f7c534afbbc5164541861ba23"
+      },
+      {
+        "symbol": "WIF",
+        "cls": "meme",
+        "address": "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
+        "program": "SPL",
+        "tier": "C",
+        "pyth": "0x4ca4beeca86f0d164160323817a4e42b10010a724c2217c6ee41b54cd4cc61fc"
+      },
+      {
+        "symbol": "MEW",
+        "cls": "meme",
+        "address": "MEW1gQWJ3nEXg2qgERiKu7FAFj79PHvQVREQUzScPP5",
+        "program": "SPL",
+        "tier": "B",
+        "pyth": "0x514aed52ca5294177f20187ae883cec4a018619772ddce41efcc36a6448f5d5d"
+      },
+      {
+        "symbol": "POPCAT",
+        "cls": "meme",
+        "address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+        "program": "SPL",
+        "tier": "C",
+        "pyth": "0xb9312a7ee50e189ef045aa3c7842e099b061bd9bdc99ac645956c3b660dc8cce"
+      },
+      {
+        "symbol": "SPX",
+        "cls": "meme",
+        "address": "J3NKxxXZcnNiMjKw9hYb2K4LUxgwB6t1FtPtQVsv3KFr",
+        "program": "SPL",
+        "tier": "C",
+        "pyth": "0x8414cfadf82f6bed644d2e399c11df21ec0131aa574c56030b132113dbbf3a0a"
+      }
+    ],
+    "base": [
+      {
+        "symbol": "NVDAc",
+        "cls": "stock",
+        "address": "0xb20000000000000000000078ee7ce2fE4908108C",
+        "decimals": 8,
+        "tier": "A",
+        "chainlink": "0x04689a41629776563E6822F76f2e57D148d28513"
+      },
+      {
+        "symbol": "AAPLc",
+        "cls": "stock",
+        "address": "0xb200000000000000000000C2e324d24d7eEcd1fb",
+        "decimals": 8,
+        "tier": "A",
+        "chainlink": "0x787f13dEa48Db0897CbCDD985de77809D837F988"
+      },
+      {
+        "symbol": "METAc",
+        "cls": "stock",
+        "address": "0xb2000000000000000000008bC8786B856E61707C",
+        "decimals": 8,
+        "tier": "A",
+        "chainlink": "0x6526aE6797A76123638b863AeE4dD27Ba4E4b27D"
+      },
+      {
+        "symbol": "GOOGLc",
+        "cls": "stock",
+        "address": "0xb2000000000000000000002D0BA3164cc74f58B7",
+        "decimals": 8,
+        "tier": "A",
+        "chainlink": "0x5bF49E0ffA937CE2FfF033c739aD7C634c4D34F2"
+      },
+      {
+        "symbol": "AMZNc",
+        "cls": "stock",
+        "address": "0xb200000000000000000000d9192b6B456483C2E8",
+        "decimals": 8,
+        "tier": "A",
+        "chainlink": "0x06A8E4b3aBB3B7543d8396FB2B763d22820cB295"
+      },
+      {
+        "symbol": "MSFTc",
+        "cls": "stock",
+        "address": "0xB200000000000000000000Ab99cFa739E253872B",
+        "decimals": 8,
+        "tier": "A",
+        "chainlink": "0xeB10A6c9aa7E537aEd766C08c35Dae35B321b18c"
+      },
+      {
+        "symbol": "MSTRc",
+        "cls": "stock",
+        "address": "0xb2000000000000000000004884b426556b92883d",
+        "decimals": 8,
+        "tier": "A",
+        "chainlink": "0xB3cE282CD188b35DA0E38D8Bc7d58e33173D202a"
+      },
+      {
+        "symbol": "SNDKc",
+        "cls": "stock",
+        "address": "0xb200000000000000000000397293Cb8cda9a10c5",
+        "decimals": 8,
+        "tier": "A",
+        "chainlink": "0x388b0dC46C0Fb05A74BeE0994fa5b02c6Fcca2eA"
+      },
+      {
+        "symbol": "SPCXc",
+        "cls": "stock",
+        "address": "0xb2000000000000000000007b9fcbd005511aCBd5",
+        "decimals": 8,
+        "tier": "A",
+        "chainlink": "0x6A634B235903C4ad6376892180d6fF8612e3Fa68"
+      },
+      {
+        "symbol": "TSLAc",
+        "cls": "stock",
+        "address": "0xb2000000000000000000001e800a7f5189430cD0",
+        "decimals": 8,
+        "tier": "A",
+        "chainlink": "0xFaf869185383a24F8cb00e27BdA6b63B9905DCb4"
+      },
+      {
+        "symbol": "AERO",
+        "cls": "base-native",
+        "address": "0x940181a94A35A4569E4529A3CDfB74e38FD98631",
+        "tier": "A",
+        "chainlink": "0x4EC5970fC728C5f65ba413992CD5fF6FD70fcfF0"
+      },
+      {
+        "symbol": "cbBTC",
+        "cls": "crypto-major",
+        "address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+        "tier": "A",
+        "chainlink": "0x07DA0E54543a844a80ABE69c8A12F22B3aA59f9D"
+      },
+      {
+        "symbol": "cbETH",
+        "cls": "crypto-major",
+        "address": "0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22",
+        "tier": "A",
+        "chainlink": "0xd7818272B9e248357d13057AAb0B417aF31E817d"
+      },
+      {
+        "symbol": "VIRTUAL",
+        "cls": "base-native",
+        "address": "0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b",
+        "tier": "A",
+        "chainlink": "0xEaf310161c9eF7c813A14f8FEF6Fb271434019F7"
+      },
+      {
+        "symbol": "MORPHO",
+        "cls": "base-native",
+        "address": "0xBAa5CC21fd487B8Fcc2F632f3F4E8D37262a0842",
+        "tier": "A",
+        "chainlink": "0xe95e258bb6615d47515Fc849f8542dA651f12bF6"
+      }
+    ],
+    "robinhood": [
+      {
+        "symbol": "SPY",
+        "cls": "stock-index",
+        "address": "0x117cc2133c37B721F49dE2A7a74833232B3B4C0C",
+        "decimals": 18,
+        "tier": "A",
+        "chainlink": "0x319724394D3A0e3669269846abE664Cd621f9f6A"
+      },
+      {
+        "symbol": "NVDA",
+        "cls": "stock",
+        "address": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
+        "decimals": 18,
+        "tier": "A",
+        "chainlink": "0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15"
+      },
+      {
+        "symbol": "GLD",
+        "cls": "gold",
+        "address": "0xC9a981FEE1F9DEc688bb123ccDeCc63D0deBFC4e",
+        "decimals": 18,
+        "tier": "A",
+        "chainlink": "0x470A51258068043bd43dC0a56245625C9fE86eB0"
+      },
+      {
+        "symbol": "META",
+        "cls": "stock",
+        "address": "0xc0D6457C16Cc70d6790Dd43521C899C87ce02f35",
+        "decimals": 18,
+        "tier": "A",
+        "chainlink": "0x7C38C00C30BEe9378381E7B6135d7283356D71b1"
+      },
+      {
+        "symbol": "SPCX",
+        "cls": "stock",
+        "address": "0x4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa",
+        "decimals": 18,
+        "tier": "A",
+        "chainlink": "0xB265810950ba6c5C0Ff821c9963014a56fD8Bffb"
+      },
+      {
+        "symbol": "MSTR",
+        "cls": "stock",
+        "address": "0xec262a75e413fAfD0dF80480274532C79D42da09",
+        "decimals": 18,
+        "tier": "B",
+        "chainlink": "0x396118bdFB181e6240E74D243F266B061c0edc3D"
+      },
+      {
+        "symbol": "CRCL",
+        "cls": "stock",
+        "address": "0xdF0992E440dD0be65BD8439b609d6D4366bf1CB5",
+        "decimals": 18,
+        "tier": "B",
+        "chainlink": "0x6652eDf64bA3731C4F2D3ce821A0Fb1f1f6b482a"
+      },
+      {
+        "symbol": "SGOV",
+        "cls": "dollar-yield",
+        "address": "0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5",
+        "decimals": 18,
+        "tier": "A",
+        "chainlink": "0xa0DF4ee0fFf975306345875E3548Fcc519577A11"
+      },
+      {
+        "symbol": "GOOGL",
+        "cls": "stock",
+        "address": "0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3",
+        "decimals": 18,
+        "tier": "A",
+        "chainlink": "0xF6f373a037c30F0e5010d854385cA89185AE638b"
+      },
+      {
+        "symbol": "USO",
+        "cls": "commodity",
+        "address": "0xa30FA36Db767ad9eD3f7a60fC79526fB4d56D344",
+        "decimals": 18,
+        "tier": "A",
+        "chainlink": "0x75a9c76Ef439e2C7c2E5a34Ab105EcFe3766431c"
+      },
+      {
+        "symbol": "TSLA",
+        "cls": "stock",
+        "address": "0x322F0929c4625eD5bAd873c95208D54E1c003b2d",
+        "decimals": 18,
+        "tier": "A",
+        "chainlink": "0x4A1166a659A55625345e9515b32adECea5547C38"
+      },
+      {
+        "symbol": "AAPL",
+        "cls": "stock",
+        "address": "0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9",
+        "decimals": 18,
+        "tier": "A",
+        "chainlink": "0x6B22A786bAa607d76728168703a39Ea9C99f2cD0"
+      },
+      {
+        "symbol": "COIN",
+        "cls": "stock",
+        "address": "0x6330D8C3178a418788dF01a47479c0ce7CCF450b",
+        "decimals": 18,
+        "tier": "C",
+        "chainlink": "0xA3a468A452940B7D6b69991207B508c609a98Ef2"
+      },
+      {
+        "symbol": "MU",
+        "cls": "stock",
+        "address": "0xfF080c8ce2E5feadaCa0Da81314Ae59D232d4afD",
+        "decimals": 18,
+        "tier": "B",
+        "chainlink": "0x425EEFdCf05ed6526C3cE61Af99429A228a6d596"
+      },
+      {
+        "symbol": "QQQ",
+        "cls": "stock-index",
+        "address": "0xD5f3879160bc7c32ebb4dC785F8a4F505888de68",
+        "decimals": 18,
+        "tier": "A",
+        "chainlink": "0x80901d846d5D7B030F26B480776EE3b29374C2ae"
+      },
+      {
+        "symbol": "INTC",
+        "cls": "stock",
+        "address": "0xc72b96e0E48ecd4DC75E1e45396e26300BC39681",
+        "decimals": 18,
+        "tier": "B",
+        "chainlink": "0x3f390C5C24628Ac7C489515402235FeAD71D1913"
+      },
+      {
+        "symbol": "GME",
+        "cls": "stock",
+        "address": "0x1b0E319c6A659F002271B69dB8A7df2F911c153E",
+        "decimals": 18,
+        "tier": "B",
+        "chainlink": "0x27C71df6A64fB476468EdF256CF72c038baB5B67"
+      },
+      {
+        "symbol": "AMZN",
+        "cls": "stock",
+        "address": "0x12f190a9F9d7D37a250758b26824B97CE941bF54",
+        "decimals": 18,
+        "tier": "B",
+        "chainlink": "0xD5a1508ceD74c084eBf3cBe853e2C968fB2a651C"
+      },
+      {
+        "symbol": "MSFT",
+        "cls": "stock",
+        "address": "0xe93237C50D904957Cf27E7B1133b510C669c2e74",
+        "decimals": 18,
+        "tier": "B",
+        "chainlink": "0x45C3C877C15E6BA2EBB19eA114Ea508d14C1Af2E"
+      },
+      {
+        "symbol": "PLTR",
+        "cls": "stock",
+        "address": "0x894E1EC2D74FFE5AEF8Dc8A9e84686acCB964F2A",
+        "decimals": 18,
+        "tier": "B",
+        "chainlink": "0x820ABedFF239034956B7A9d2F0a331f9F075eB4c"
+      },
+      {
+        "symbol": "AMD",
+        "cls": "stock",
+        "address": "0x86923f96303D656E4aa86D9d42D1e57ad2023fdC",
+        "decimals": 18,
+        "tier": "C",
+        "chainlink": "0x943A29E7ae51A4798823ca9eEd2ed533B2A22C72"
+      },
+      {
+        "symbol": "SLV",
+        "cls": "commodity",
+        "address": "0x411eFb0E7f985935DAec3D4C3ebaEa0d0AD7D89f",
+        "decimals": 18,
+        "tier": "B",
+        "chainlink": "0x209b73908e92Ae021826eD79609845451Ecba2ce"
+      },
+      {
+        "symbol": "SNDK",
+        "cls": "stock",
+        "address": "0xB90A19fF0Af67f7779afF50A882A9CfF42446400",
+        "decimals": 18,
+        "tier": "C",
+        "chainlink": "0xfb133Fa4B7b385802B693a293606682Df47109A3"
+      },
+      {
+        "symbol": "TSM",
+        "cls": "stock",
+        "address": "0x58FfE4a942d3885bAa22D7520691F611EF09e7AA",
+        "decimals": 18,
+        "tier": "B",
+        "chainlink": "0x874cF94aa8eC88Fd9560094dD065f2fB3E41Fc2F"
+      },
+      {
+        "symbol": "DELL",
+        "cls": "stock",
+        "address": "0x941AE714EC6D8130c7B75d67160Ca08f1e7d11Dd",
+        "decimals": 18,
+        "tier": "C",
+        "chainlink": "0x1C6c8cADBe02E19129c39dDB92281cE4c0bf206b"
+      },
+      {
+        "symbol": "BABA",
+        "cls": "stock",
+        "address": "0xad25Ac6C84D497db898fa1E8387bf6Af3532a1c4",
+        "decimals": 18,
+        "tier": "C",
+        "chainlink": "0x62Cc8F9b5f56a33c9C8A60c8B92779f523c4E984"
+      },
+      {
+        "symbol": "ORCL",
+        "cls": "stock",
+        "address": "0xb0992820E760d836549ba69BC7598b4af75dEE03",
+        "decimals": 18,
+        "tier": "X",
+        "chainlink": "0x0e6a64a2B58A6693a531E6c555f3A5d042eEA844"
+      },
+      {
+        "symbol": "NBIS",
+        "cls": "stock",
+        "address": "0x9D9c6684F596F66a64C030B93A886D51Fd4D7931",
+        "decimals": 18,
+        "tier": "X",
+        "chainlink": "0xE1D87B116Ba0fe898998f1D140339D1fA1E09705"
+      },
+      {
+        "symbol": "USAR",
+        "cls": "stock",
+        "address": "0xd917B029C761D264c6A312BBbcDA868658eF86a6",
+        "decimals": 18,
+        "tier": "X",
+        "chainlink": "0xA994d3684e8400A6c8078226925779FdeE682DD9"
+      },
+      {
+        "symbol": "ASML",
+        "cls": "stock",
+        "address": "0x47F93d52cBeC7C6D2CfC080e154002370a60dAEA",
+        "decimals": 18,
+        "tier": "X",
+        "chainlink": "0xB4106147E8cce40b7d46124090d373A71b70f87D"
+      },
+      {
+        "symbol": "CRWV",
+        "cls": "stock",
+        "address": "0x5f10A1C971B69e47e059e1dC91901B59b3fB49C3",
+        "decimals": 18,
+        "tier": "X",
+        "chainlink": "0xe1b3aABCAFAd1c94708dc1367dcfF8Aa4407487C"
+      },
+      {
+        "symbol": "RKLB",
+        "cls": "stock",
+        "address": "0x3b14C39E89D60D627b42a1A4CA45b5bb45Fc12e2",
+        "decimals": 18,
+        "tier": "X",
+        "chainlink": "0x045477BF65Aef6f4F2386ad0164579e48381CC74"
+      },
+      {
+        "symbol": "IONQ",
+        "cls": "stock",
+        "address": "0x558378E000D634A36593E338eBacdd6207640EfE",
+        "decimals": 18,
+        "tier": "X",
+        "chainlink": "0x22EfeC4919baf55F360E0EDee4AbEB26DE4971eb"
+      },
+      {
+        "symbol": "RGTI",
+        "cls": "stock",
+        "address": "0x284358abc07F9359f19f4b5b4aC91901Be2597Ba",
+        "decimals": 18,
+        "tier": "X",
+        "chainlink": "0x2A045cF1C49c61c166C036d2f06FA2D2d984f765"
+      },
+      {
+        "symbol": "EWY",
+        "cls": "stock-index",
+        "address": "0x7f0aBeF0C07280F82c6a08ead09dEd6BAE2C13Fc",
+        "decimals": 18,
+        "tier": "X",
+        "chainlink": "0xEFdf54610B62A7753Ec30bDc380847c12D32e1D1"
+      },
+      {
+        "symbol": "CLSK",
+        "cls": "stock",
+        "address": "0xcBB95BBF36099d34dA091dc6Fa6F49EfA257Cee3",
+        "decimals": 18,
+        "tier": "X",
+        "chainlink": "0x810c12D3a554Bc47fd39597Fe3b3AAC4941F50eF"
+      }
+    ]
+  },
+  "indexes": [
+    {
+      "slug": "the-500",
+      "name": "The 500",
+      "copy": "Five hundred companies, zero opinions. The basket every other basket gets compared to.",
+      "recipes": {
+        "solana": {
+          "SPYx": 10000
+        },
+        "robinhood": {
+          "SPY": 10000
+        }
+      },
+      "estImpactBpsAt1k10k50k": {
+        "solana": [1.7, 3.8, 6.6],
+        "robinhood": [0.1, 1.8, 3.2]
+      }
+    },
+    {
+      "slug": "the-seven",
+      "name": "The Seven",
+      "copy": "The seven stocks doing most of your index fund's heavy lifting, minus the other 493.",
+      "recipes": {
+        "solana": {
+          "NVDAx": 1432,
+          "AAPLx": 1428,
+          "MSFTx": 1428,
+          "GOOGLx": 1428,
+          "AMZNx": 1428,
+          "METAx": 1428,
+          "TSLAx": 1428
+        },
+        "base": {
+          "NVDAc": 1432,
+          "AAPLc": 1428,
+          "MSFTc": 1428,
+          "GOOGLc": 1428,
+          "AMZNc": 1428,
+          "METAc": 1428,
+          "TSLAc": 1428
+        },
+        "robinhood": {
+          "NVDA": 1432,
+          "AAPL": 1428,
+          "MSFT": 1428,
+          "GOOGL": 1428,
+          "AMZN": 1428,
+          "META": 1428,
+          "TSLA": 1428
+        }
+      },
+      "estImpactBpsAt1k10k50k": {
+        "solana": [0.7, 7.2, 19.1],
+        "base": [0.2, 1.7, 4.6],
+        "robinhood": [0.4, 3.5, 7.9]
+      }
+    },
+    {
+      "slug": "trench-survivors",
+      "name": "Trench Survivors",
+      "copy": "Every coin in here was supposed to be dead by now. Plus the casino that mints the next batch.",
+      "recipes": {
+        "solana": {
+          "PUMP": 2000,
+          "TRUMP": 1500,
+          "PENGU": 1500,
+          "BONK": 1500,
+          "Fartcoin": 1500,
+          "WIF": 1000,
+          "USELESS": 1000
+        }
+      },
+      "estImpactBpsAt1k10k50k": {
+        "solana": [0.7, 6.2, 12.3]
+      },
+      "mvp": false
+    },
+    {
+      "slug": "chips-and-agents",
+      "name": "Chips & Agents",
+      "copy": "The companies building the brains, and the token of the agents already spending onchain.",
+      "recipes": {
+        "base": {
+          "NVDAc": 2500,
+          "SNDKc": 1500,
+          "MSFTc": 1500,
+          "GOOGLc": 1500,
+          "METAc": 1000,
+          "AMZNc": 1000,
+          "VIRTUAL": 1000
+        }
+      },
+      "estImpactBpsAt1k10k50k": {
+        "base": [0.4, 1.7, 4.1]
+      }
+    },
+    {
+      "slug": "sand-to-server",
+      "name": "Sand to Server",
+      "copy": "One AI chip's commute: designed in California, etched in Taiwan, racked in Texas. Own every stop.",
+      "recipes": {
+        "robinhood": {
+          "NVDA": 3000,
+          "TSM": 2000,
+          "MU": 1500,
+          "AMD": 1200,
+          "INTC": 1000,
+          "SNDK": 800,
+          "DELL": 500
+        }
+      },
+      "estImpactBpsAt1k10k50k": {
+        "robinhood": [0.2, 4.5, 14.6]
+      }
+    },
+    {
+      "slug": "storm-cellar",
+      "name": "Storm Cellar",
+      "copy": "Stocks, T-bills and gold in one room. For the weeks you'd rather not look.",
+      "recipes": {
+        "solana": {
+          "SPYx": 4000,
+          "syrupUSDC": 3500,
+          "GLDx": 2500
+        },
+        "robinhood": {
+          "SPY": 3500,
+          "SGOV": 3500,
+          "GLD": 2000,
+          "USO": 500,
+          "SLV": 500
+        }
+      },
+      "estImpactBpsAt1k10k50k": {
+        "solana": [0.8, 3.0, 6.1],
+        "robinhood": [0.3, 2.5, 5.4]
+      }
+    },
+    {
+      "slug": "crypto-in-a-suit",
+      "name": "Crypto in a Suit",
+      "copy": "Crypto with earnings calls: the listed companies that hold it, issue it and broker it.",
+      "recipes": {
+        "solana": {
+          "MSTRx": 3000,
+          "CRCLx": 3000,
+          "HOODx": 2000,
+          "COINx": 2000
+        },
+        "robinhood": {
+          "MSTR": 3500,
+          "CRCL": 3500,
+          "COIN": 3000
+        }
+      },
+      "estImpactBpsAt1k10k50k": {
+        "solana": [1.6, 11.1, 25.4],
+        "robinhood": [3.6, 11.2, 27.1]
+      }
+    },
+    {
+      "slug": "home-team",
+      "name": "Home Team",
+      "copy": "Back the chain you're standing on: its staked gas token and the apps that pay the bills.",
+      "recipes": {
+        "solana": {
+          "JitoSOL": 4000,
+          "JUP": 2000,
+          "RAY": 2000,
+          "MET": 1000,
+          "KMNO": 1000
+        },
+        "base": {
+          "cbETH": 3500,
+          "AERO": 2500,
+          "cbBTC": 1500,
+          "MORPHO": 1500,
+          "VIRTUAL": 1000
+        }
+      },
+      "estImpactBpsAt1k10k50k": {
+        "solana": [0.1, 2.6, 5.9],
+        "base": [0.2, 0.9, 1.1]
+      }
+    }
+  ]
+}

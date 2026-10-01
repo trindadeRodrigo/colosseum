@@ -52,7 +52,7 @@ async function balances() {
 async function run(
   kind: 'approve' | 'rebalance',
   build: () => Promise<{
-    wire: Parameters<typeof simulateBase64>[1];
+    wire: Parameters<typeof sendAndConfirm>[1];
     signature: string;
     instructionCount: number;
   }>,

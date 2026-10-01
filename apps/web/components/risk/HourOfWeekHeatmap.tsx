@@ -1,5 +1,6 @@
 type Cell = { hourOfWeekEt: number; medianCost: number; samples: number };
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
 /** 7 × 24 grid in US Eastern time: median sell cost per hour of week; empty cells have no samples yet. */
 export function HourOfWeekHeatmap({ cells, notionalUsd }: { cells: Cell[]; notionalUsd: number }) {
@@ -15,7 +16,7 @@ export function HourOfWeekHeatmap({ cells, notionalUsd }: { cells: Cell[]; notio
         <thead>
           <tr>
             <th />
-            {Array.from({ length: 24 }, (_, h) => (
+            {HOURS.map((h) => (
               <th key={h} className="w-6 font-normal text-gray-500">
                 {h}
               </th>
@@ -26,7 +27,7 @@ export function HourOfWeekHeatmap({ cells, notionalUsd }: { cells: Cell[]; notio
           {DAYS.map((d, di) => (
             <tr key={d}>
               <td className="pr-2 text-gray-500">{d}</td>
-              {Array.from({ length: 24 }, (_, h) => {
+              {HOURS.map((h) => {
                 const c = byHow.get(di * 24 + h);
                 return (
                   <td

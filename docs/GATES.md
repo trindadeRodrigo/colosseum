@@ -20,3 +20,19 @@ Source: `docs/PLAN.md` §5. Status is one of `OPEN | PASSED | FAILED | DECIDED`.
 | Which chain each LOI partner pilots on (Chainless, Picnic) | OPEN | — |
 | Written permission to use partner names or logos in the embed | OPEN | default: unbranded |
 | Regulatory position (who carries personalised-allocation liability) | OPEN | default: disclaimer on plan view, API docs, README, video |
+
+## Decided on 2026-10-01 (Thom, after speaking with Rodrigo)
+
+From `docs/HANDOFF-VAULT.md`. Either founder can reopen one.
+
+| Gate | Status | Decision | Facts |
+|---|---|---|---|
+| **CUSTODY** — who enforces the policy | DECIDED | A vault per plan per chain (Anchor program on Solana, contract on EVM) in place of delegation to the agent key for automatic rebalances | POLICY A covers USDC, USDY and syrupUSDC only, and the only on-chain limit is the approved amount. A program-owned vault bought SPYx through Jupiter CPI on a validator with cloned mainnet state on Oct 1 (`spikes/solana-vault-swap`); mainnet run still to do. |
+| **SHARED-PORTFOLIOS** | DECIDED | Public, versioned portfolios anyone can publish. A plan can start from one or follow it, always through the goal and the limits. Serious assets only in the MVP | `docs/research/open-questions/creator-limits.md`, `launch-shelf.md` |
+| **EVM-S1** — EVM adapter | DECIDED: build | Build it for Robinhood Chain and Base, with the same vault | `spikes/evm-vault` passed on a Robinhood Chain fork; Base passed as a read-only simulation |
+| **B2** — second builder | DECIDED: yes | Thom joins; split in `docs/HANDOFF-VAULT.md` | Engine, risk layer and brand stay with Rodrigo |
+| **SIGN-IN** | DECIDED | Wallet connect or a passkey wallet (Privy) | `docs/research/open-questions/wallet-providers.md` |
+| **BRANCH** — where the vault work lands | DECIDED | The vault work builds on `main`, in short-lived branches per stream | Rodrigo merged the risk layer and the design system into `main` on Oct 1 |
+| **RISK-DATA** — risk data for the demo | OPEN | Hosted collector or a dated snapshot | The collectors run under launchd on one machine today |
+| **NAME** | OPEN | Tenonfi is provisional on the `design` branch; final after the trademark, domain and native-speaker checks | — |
+| **LICENCE** | DECIDED | Apache-2.0 | The repo was public with no licence |

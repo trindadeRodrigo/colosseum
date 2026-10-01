@@ -131,7 +131,12 @@ const { db, client } = createDb();
 for (const r of out) {
   if (r.error) continue;
   const kamino = r.venue === 'kamino';
-  const o = (r.onchain ?? {}) as Record<string, number>;
+  const o = (r.onchain ?? {}) as {
+    loanToValuePct: number;
+    liquidationThresholdPct: number;
+    minLiquidationBonusBps: number;
+    maxLiquidationBonusBps: number;
+  };
   const a = r.api as Record<string, unknown>;
   const row = {
     venue: String(r.venue),
