@@ -10,7 +10,7 @@ A product that turns a person's goal into a plan made to measure, with an exit p
 
 Before any work, read the spec for the piece you touch:
 
-- Vault work: `docs/vault/HANDOFF-VAULT.md` (the product) and `docs/vault/DESIGN-VAULT.md` (the design).
+- Vault work: `docs/vault/HANDOFF-VAULT.md` (the product), `docs/vault/DESIGN-VAULT.md` (the design) and `docs/vault/PLAN-VAULT.md` (the days, the milestones and the cut order).
 - Any screen: `.design/branding/working-brand/patterns/STYLE.md` and the component specs beside it. They are binding.
 - The structurer and the risk layer: `docs/structurer/HANDOFF-IDEA1.md`, `docs/risk/HANDOFF-RISK.md`.
 

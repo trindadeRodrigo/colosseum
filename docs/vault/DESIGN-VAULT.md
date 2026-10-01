@@ -900,6 +900,8 @@ OPS sets the pace and is planned like a stream. It is three $10 runs, three depl
 
 ## 16. Day-by-day plan and what is out
 
+The schedule of record is `PLAN-VAULT.md`, written on the night of Oct 1 with the streams not yet started: it moves the Oct 1 row below into Oct 2 and adds dated milestones. Where the two differ, the plan wins. The table below is kept for its reasoning.
+
 Stock markets are closed on Oct 3, 4, 10 and 11. Keeper trades on stocks, and any footage of them, can only happen on Oct 2 and Oct 5 to 9, between 14:30 and 20:00 UTC (11:30 to 17:00 BRT). Until `launch()` the publish delay is 300 s, so one session holds several publish, adopt and trade cycles; each cycle uses a fresh test portfolio and vault with a few dollars of team money. Oct 12 is a US trading day (memory).
 
 | Day | What happens |
