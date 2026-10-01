@@ -208,3 +208,49 @@ export const riskMarketParams = pgTable(
   },
   (t) => [primaryKey({ columns: [t.account, t.fetchedAt] })],
 );
+
+/**
+ * Lending pools (Step 10b): one row per Kamino reserve, Jupiter Lend vault, or curated vault that supplies into a
+ * registered reserve, confirmed on-chain. `role`: collateral | debt (a reserve lenders supply into) | vault
+ * (a Jupiter Lend vault: one collateral, one debt token) | curated_vault. `offered` is false for curated vaults
+ * (founder D15, 2026-10-01) and null where no product decision applies yet. No wallet or position data here.
+ */
+export const riskLendingPools = pgTable(
+  'risk_lending_pools',
+  {
+    account: text('account').primaryKey(),
+    chain: text('chain').notNull(),
+    venue: text('venue').notNull(),
+    program: text('program').notNull(),
+    market: text('market').notNull(),
+    marketName: text('market_name'),
+    role: text('role').notNull(),
+    mint: text('mint').notNull(),
+    symbol: text('symbol').notNull(),
+    decimals: integer('decimals').notNull(),
+    /** Jupiter Lend vaults: the debt token. */
+    debtMint: text('debt_mint'),
+    debtSymbol: text('debt_symbol'),
+    /** The DEX-registry asset this row's stock maps to (risk_pools.asset_mint), when it is an xStock. */
+    dexAssetMint: text('dex_asset_mint'),
+    /** Vault token accounts, cToken mint, vault state and liquidity-layer position accounts. */
+    accounts: jsonb('accounts').notNull(),
+    /** Oracle accounts (Scope feed + chain; Jupiter Lend oracle + source caches). */
+    oracles: jsonb('oracles').notNull(),
+    /** Parameters at registry time (LTV, thresholds, caps), from the decoded account. */
+    params: jsonb('params').notNull(),
+    manager: text('manager'),
+    offered: integer('offered'),
+    firstTxAt: ts('first_tx_at'),
+    /** 'onchain' when decoded from the account and checked against the SDK; 'api' when only the API is available. */
+    verification: text('verification').notNull(),
+    status: text('status').notNull(),
+    statusReason: text('status_reason'),
+    methodVersion: text('method_version').notNull(),
+    ...provenanceCols,
+  },
+  (t) => [
+    index('risk_lending_pools_market_idx').on(t.market),
+    index('risk_lending_pools_dex_asset_idx').on(t.dexAssetMint),
+  ],
+);
