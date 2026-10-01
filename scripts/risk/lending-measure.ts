@@ -888,8 +888,22 @@ async function vl5() {
         bp ? jlPositionTokens(bp, brTot.borrowExchangePrice) : null,
         big(sdk.liquidityUserBorrowData.borrow),
       ],
-      ['vaultTotalSupplyAccrued', (st.totalSupply * jlVaultExchangePrices(st, cfg, srTot.supplyExchangePrice, brTot.borrowExchangePrice, now).vaultSupplyExchangePrice) / 10n ** 12n, big(sdk.totalSupplyAndBorrow.totalSupplyVault)],
-      ['vaultTotalBorrowAccrued', (st.totalBorrow * jlVaultExchangePrices(st, cfg, srTot.supplyExchangePrice, brTot.borrowExchangePrice, now).vaultBorrowExchangePrice) / 10n ** 12n, big(sdk.totalSupplyAndBorrow.totalBorrowVault)],
+      [
+        'vaultTotalSupplyAccrued',
+        (st.totalSupply *
+          jlVaultExchangePrices(st, cfg, srTot.supplyExchangePrice, brTot.borrowExchangePrice, now)
+            .vaultSupplyExchangePrice) /
+          10n ** 12n,
+        big(sdk.totalSupplyAndBorrow.totalSupplyVault),
+      ],
+      [
+        'vaultTotalBorrowAccrued',
+        (st.totalBorrow *
+          jlVaultExchangePrices(st, cfg, srTot.supplyExchangePrice, brTot.borrowExchangePrice, now)
+            .vaultBorrowExchangePrice) /
+          10n ** 12n,
+        big(sdk.totalSupplyAndBorrow.totalBorrowVault),
+      ],
       ['borrowTokenTotalSupply', brTot.supplied, big(sdkTok.totalSupply)],
       ['borrowTokenTotalBorrow', brTot.borrowed, big(sdkTok.totalBorrow)],
       ['borrowTokenBorrowRate', br.borrowRate, Number(sdkTok.borrowRate.toString())],
