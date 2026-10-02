@@ -1,0 +1,74 @@
+name: foundry-probe
+
+# Temporary, on its own branch: which Foundry release formats the committed contracts as they are,
+# and passes their tests. Not part of any pull request.
+on:
+  push:
+    branches: [frame/foundry-probe]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { version: v1.2.3, sha256: 8202f38f1635c2793b2d1a4fe443ae6f7315190dc6eed219d7969a40ab78a286 }
+          - { version: v1.3.0, sha256: 53e5e910426c265f5cabf64a82173e6070432e2201817588f1f212f3bcb28983 }
+          - { version: v1.3.6, sha256: 01248d7ce267f5b7958bc9b331d068c6c2d8eeb182e58f0b556d7295f398e2ce }
+          - { version: v1.4.0, sha256: 7e54ec62cc9d176703649e01d7eb1fa22e86116fdedff1992cd014923f53ca5f }
+          - { version: v1.4.4, sha256: 22ba110a40e4de7791b007b08284e7b038c6bd4ce141b7ac34b5accec04f71a4 }
+          - { version: v1.5.1, sha256: 73640b01bd9ed29fdb4965085099371f8cf0dbbec3e2086cf54564efc4dcfe88 }
+          - { version: v1.7.1, sha256: cf7e688ed0c4c48adffca788b496076e31060b67ac5afe1e43dbb5499c20c88b }
+          - { version: v1.8.0, sha256: 8c8560de380d58d1ee145934427887b107182367600a3c33aa71f16f2ce7ac57 }
+          - { version: v1.8.1, sha256: 37b45855232e57624d90113b049ca54f0c92055bb5c1997fcbdc3076c7b89c10 }
+          - { version: v1.8.3, sha256: 7ca48e6ca3cac1bce1403ca67e5bc1dc3bc1fd818199c9957c7165079c228568 }
+          - { version: v1.8.4, sha256: 699e2207a6a9b27ca17c48c81e56f1677ed9c58b623b59128b4e15ec9da0625e }
+    env:
+      FOUNDRY_VERSION: ${{ matrix.version }}
+      FOUNDRY_SHA256: ${{ matrix.sha256 }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Foundry
+        run: |
+          curl -sSfL --retry 3 -o "$RUNNER_TEMP/foundry.tar.gz" \
+            "https://github.com/foundry-rs/foundry/releases/download/${FOUNDRY_VERSION}/foundry_${FOUNDRY_VERSION}_linux_amd64.tar.gz"
+          echo "${FOUNDRY_SHA256}  $RUNNER_TEMP/foundry.tar.gz" | sha256sum -c -
+          mkdir -p "$HOME/.foundry/bin"
+          tar -xzf "$RUNNER_TEMP/foundry.tar.gz" -C "$HOME/.foundry/bin"
+          echo "$HOME/.foundry/bin" >> "$GITHUB_PATH"
+          "$HOME/.foundry/bin/forge" --version
+      - run: pnpm install --frozen-lockfile
+      - name: fmt
+        id: fmt
+        continue-on-error: true
+        working-directory: contracts
+        run: forge fmt --check
+      - name: test
+        id: test
+        continue-on-error: true
+        run: pnpm test:contracts
+      - name: sizes
+        id: sizes
+        continue-on-error: true
+        working-directory: contracts
+        run: forge build --sizes
+      - name: Result
+        env:
+          FMT: ${{ steps.fmt.outcome }}
+          TEST: ${{ steps.test.outcome }}
+          SIZES: ${{ steps.sizes.outcome }}
+        run: |
+          hash=$(jq -r '.deployedBytecode.object' contracts/out/BasketVault.sol/BasketVault.json | sha256sum | cut -c1-16)
+          echo "PROBE $FOUNDRY_VERSION fmt=$FMT test=$TEST sizes=$SIZES BasketVault=$hash" | tee -a "$GITHUB_STEP_SUMMARY"
