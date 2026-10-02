@@ -9,7 +9,7 @@ import {
   type Provenance,
   type VaultView,
 } from '@colosseum/schemas';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { Refusal } from './errors';
 
 // The order tables (DESIGN-VAULT section 4), read and written through Drizzle. A leg row mirrors its
@@ -149,16 +149,45 @@ export async function loadProposal(db: Db, id: string): Promise<BasketProposal |
     .select({ proposal: proposals.proposal })
     .from(proposals)
     .where(eq(proposals.id, id));
-  return row ? BasketProposal.parse(row.proposal) : null;
+  if (!row) return null;
+  const parsed = BasketProposal.safeParse(row.proposal);
+  if (!parsed.success)
+    throw new Refusal(409, 'the stored plan cannot be read: make the plan again');
+  return parsed.data;
 }
 
 /** The label and source of a figure, as the attempt row stores them. */
 export type Stamp = { source: string; method: string; fetchedAt: string; provenance: Provenance };
 
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+
+/**
+ * The leg row, then its attempts, both locked. Every writer takes them in this order, so two of them
+ * wait for each other instead of deadlocking.
+ */
+async function lockLeg(tx: Tx, legId: string) {
+  const [leg] = await tx.select().from(legs).where(eq(legs.id, legId)).for('update');
+  if (!leg) throw new Error('the leg vanished');
+  const attempts = await tx
+    .select()
+    .from(legAttempts)
+    .where(eq(legAttempts.legId, legId))
+    .orderBy(asc(legAttempts.n))
+    .for('update');
+  return { leg, attempts };
+}
+
+/** An attempt whose outcome the chain has given: it landed, and either went through or reverted. */
+const final = (status: Attempt['status']) => status === 'confirmed' || status === 'failed';
+
+/** Postgres's unique violation, wherever the driver or Drizzle put its code. */
+const isUnique = (e: unknown) =>
+  [e, (e as { cause?: unknown })?.cause].some((x) => (x as { code?: string })?.code === '23505');
+
 /**
  * Records a build: a new attempt, and the leg mirroring it. The attempt before it, if it was never
- * sent, is closed as expired, so only the newest attempt can settle the leg. Refuses when the leg moved
- * on since the caller read it (two builds at once).
+ * sent, is closed as expired. Refuses when the leg moved on since the caller read it: another build,
+ * or a landing that was recorded meanwhile.
  */
 export async function recordBuild(
   db: Db,
@@ -172,11 +201,15 @@ export async function recordBuild(
   },
 ): Promise<Attempt> {
   return db.transaction(async (tx) => {
-    const moved = await tx
+    const now = await lockLeg(tx, leg.id);
+    if (now.leg.attempt !== leg.attempt || now.leg.status !== leg.status)
+      throw new Refusal(409, 'this step changed while it was being built: read the order again');
+    const n = Math.max(0, ...now.attempts.map((x) => x.n)) + 1;
+    await tx
       .update(legs)
       .set({
         status: 'built',
-        attempt: leg.attempt + 1,
+        attempt: n,
         txId: null,
         explorerUrl: null,
         validUntil: a.validUntil,
@@ -184,10 +217,7 @@ export async function recordBuild(
         expected: a.expected,
         updatedAt: a.builtAt,
       })
-      .where(and(eq(legs.id, leg.id), eq(legs.attempt, leg.attempt), eq(legs.status, leg.status)))
-      .returning({ id: legs.id });
-    if (!moved.length)
-      throw new Refusal(409, 'this step changed while it was being built: read the order again');
+      .where(eq(legs.id, leg.id));
     await tx
       .update(legAttempts)
       .set({ status: 'expired' })
@@ -197,7 +227,7 @@ export async function recordBuild(
       .values({
         legId: leg.id,
         chainId: leg.chain,
-        n: leg.attempt + 1,
+        n,
         messageHash: a.messageHash,
         status: 'built',
         validUntil: a.validUntil,
@@ -218,36 +248,69 @@ export async function recordRefusal(db: Db, legId: string, error: Leg['error']):
   await db.update(legs).set({ error, updatedAt: new Date() }).where(eq(legs.id, legId));
 }
 
-/** What tracking a transaction found, written to the attempt and mirrored on its leg. */
+export type Outcome = {
+  status: Extract<Attempt['status'], 'sent' | 'confirmed' | 'failed' | 'expired'>;
+  /** Null only for an attempt closed before any transaction was seen. */
+  txId: string | null;
+  explorerUrl: string | null;
+  validUntil: string | null;
+  error: Leg['error'];
+};
+
+/**
+ * What became of an attempt, written to it and, where it decides the leg, to the leg.
+ * - An attempt that already holds the chain's outcome (confirmed, or failed) is left as it is: the
+ *   answer is `kept`, and what is stored is what the caller reads back.
+ * - A confirmed attempt settles the leg whichever attempt it is, and closes any other that was built
+ *   and not sent. A leg that is already settled stays on the attempt that settled it.
+ * - Any other outcome moves the leg only when the attempt is the one the leg mirrors.
+ */
 export async function recordOutcome(
   db: Db,
-  attempt: Attempt,
-  a: {
-    status: Extract<Attempt['status'], 'sent' | 'confirmed' | 'failed' | 'expired'>;
-    txId: string;
-    explorerUrl: string | null;
-    validUntil: string | null;
-    error: Leg['error'];
-  },
-): Promise<void> {
-  await db.transaction(async (tx) => {
-    await tx
-      .update(legAttempts)
-      .set({ status: a.status, txId: a.txId, explorerUrl: a.explorerUrl, validUntil: a.validUntil })
-      .where(eq(legAttempts.id, attempt.id));
-    await tx
-      .update(legs)
-      .set({
-        status: a.status,
-        txId: a.txId,
-        explorerUrl: a.explorerUrl,
-        validUntil: a.validUntil,
-        error: a.error,
-        updatedAt: new Date(),
-      })
-      // Only while the leg still mirrors this attempt.
-      .where(and(eq(legs.id, attempt.legId), eq(legs.attempt, attempt.n)));
-  });
+  attempt: Pick<Attempt, 'id' | 'legId'>,
+  a: Outcome,
+): Promise<'recorded' | 'kept'> {
+  try {
+    return await db.transaction(async (tx) => {
+      const { leg, attempts } = await lockLeg(tx, attempt.legId);
+      const row = attempts.find((x) => x.id === attempt.id);
+      if (!row) throw new Error('the attempt vanished');
+      if (final(row.status)) return 'kept';
+      await tx
+        .update(legAttempts)
+        .set({
+          status: a.status,
+          txId: a.txId,
+          explorerUrl: a.explorerUrl,
+          validUntil: a.validUntil,
+        })
+        .where(eq(legAttempts.id, row.id));
+      const settles = a.status === 'confirmed' && leg.status !== 'confirmed';
+      if (settles)
+        await tx
+          .update(legAttempts)
+          .set({ status: 'expired' })
+          .where(and(eq(legAttempts.legId, leg.id), eq(legAttempts.status, 'built')));
+      if (settles || (row.n === leg.attempt && leg.status !== 'confirmed'))
+        await tx
+          .update(legs)
+          .set({
+            status: a.status,
+            attempt: row.n,
+            txId: a.txId,
+            explorerUrl: a.explorerUrl,
+            validUntil: a.validUntil,
+            error: a.error,
+            updatedAt: new Date(),
+          })
+          .where(eq(legs.id, leg.id));
+      return 'recorded';
+    });
+  } catch (e) {
+    if (isUnique(e))
+      throw new Refusal(409, 'that transaction is already recorded for another step');
+    throw e;
+  }
 }
 
 export async function recordOrderState(
@@ -309,19 +372,4 @@ export async function cacheVault(db: Db, view: VaultView, provenance: Provenance
         provenance: row.provenance,
       },
     });
-}
-
-/** True when another attempt already carries this transaction id on this chain. */
-export async function txIdTaken(db: Db, chain: ChainId, txId: string, attemptId: string) {
-  const [row] = await db
-    .select({ id: legAttempts.id })
-    .from(legAttempts)
-    .where(
-      and(
-        eq(legAttempts.chainId, chain),
-        eq(legAttempts.txId, txId),
-        sql`${legAttempts.id} <> ${attemptId}`,
-      ),
-    );
-  return Boolean(row);
 }

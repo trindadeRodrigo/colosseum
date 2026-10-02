@@ -18,7 +18,7 @@ import { Refusal } from './errors';
 // `readonly` have no adapter wired here yet, and say so at start: nothing falls back to the mock.
 
 /**
- * WORKAROUND, to move into packages/schemas (reported in the API-1 hand-over): two things the order
+ * WORKAROUND, to move into packages/schemas (reported in the API-1 hand-over): what the order
  * layer needs from a chain that ChainAdapter v0 does not have. A leg may only settle on the transaction
  * that was built for it, and signed bytes are only relayed when they are bytes this server built.
  */
@@ -29,6 +29,15 @@ export type TxProbe = {
   relay(signedTx: string, messageHash: string): Promise<{ txId: string; validUntil?: string }>;
   /** True when the transaction with this id carries the message with this hash, and no other. */
   carries(txId: string, messageHash: string): Promise<boolean>;
+  /**
+   * What became of an attempt whose transaction id nobody reported. `open`: its bytes can still land.
+   * `gone`: they no longer can, because the chain is past `validUntil`. `landed`: the chain has the
+   * transaction, with its id. A chain with no expiry (EVM, `validUntil` null) never answers `gone`.
+   */
+  fate(attempt: {
+    messageHash: string;
+    validUntil: string | null;
+  }): Promise<{ state: 'open' | 'gone' } | { state: 'landed'; txId: string }>;
 };
 
 export type ChainEntry = {
@@ -74,12 +83,20 @@ function mockTxId(chain: ChainId, messageHash: string): string {
   return out;
 }
 
-function mockProbe(chain: ChainId, mock: MockControl): TxProbe {
+function mockProbe(chain: ChainId, adapter: ChainAdapter, mock: MockControl): TxProbe {
   return {
     // The mock has no signatures: the "signed" bytes are the payload, and its hash is the message hash.
     messageHashOf: (signedTx) => sha256Hex(signedTx),
     relay: (_signedTx, messageHash) => mock.send({ messageHash }),
     carries: async (txId, messageHash) => txId === mockTxId(chain, messageHash),
+    // The mock derives a transaction's id from its message, so it can be asked about one nobody
+    // reported. A real adapter cannot do that from the id alone (README, "Before a real chain").
+    fate: async ({ messageHash, validUntil }) => {
+      const txId = mockTxId(chain, messageHash);
+      const { status } = await adapter.track(txId, validUntil ?? undefined);
+      if (status === 'confirmed' || status === 'reverted') return { state: 'landed', txId };
+      return { state: status === 'expired' ? 'gone' : 'open' };
+    },
   };
 }
 
@@ -115,7 +132,7 @@ export function createChainRegistry(
       provenance: chainProvenance(configs[chain].network, mode) ?? 'mock',
       config: configs[chain],
       adapter,
-      probe: mockProbe(chain, adapter.mock),
+      probe: mockProbe(chain, adapter, adapter.mock),
       approveSpender: () => adapter.mock.addresses.factory,
       mock: adapter.mock,
     });
