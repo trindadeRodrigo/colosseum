@@ -348,6 +348,19 @@ Leg rules:
 - An unsigned order expires after 15 minutes. Once its first leg is signed it stays open for 24 hours.
 - Every attempt carries its explorer link and provenance, which is his rule that every mainnet transaction is logged.
 
+**As built on the mock (API-1, Oct 2).** Where the listing above left a choice open, this is what `apps/api` does.
+
+- `prepareIntent` plans a buy of a stored plan, named by `proposalId`. A buy by `family` and the other five intents answer 501 until their slots. Its context is `{ principal, chains, loadProposal, now }`: `chains` is the adapter registry, which has no adapter for a chain that is off.
+- The plan's number onchain (`basketId`) is the first 8 bytes of the SHA-256 of the plan's id. So the same person buying the same plan again reaches the same vault: with no vault the chain's legs start with `create_vault`, which carries the cash; with one they start with `deposit`.
+- Legs per chain, in order: `approve` where the chain needs it; `create_vault` or `deposit`; then `swap` legs of at most `maxTradesPerTx` trades. Where `tradesInCreate` is true the first trades ride in the create or the deposit. Each chain takes the share of the amount the plan gives it, and its trades add up to exactly that cash.
+- `expected` is filled for a leg with one trade and null otherwise: one figure cannot stand for trades into different assets. `minOutRaw` is the quote less 100 bps, the slippage every build is given.
+- Every order route answers with the `Order` plus `attempts`, every attempt at its legs. A read tracks a leg that was sent and has not settled; there is no worker.
+- A new build closes the attempt before it as `expired`, and only the latest attempt can settle a leg. A leg that was sent is not built again until it settles. Legs on one chain are built in order.
+- A report by `signedTx` is relayed only if the bytes hash to the latest attempt, and only once. A report by `txId` settles the leg only if that transaction carries the attempt's bytes. `ChainAdapter` has no call for either check yet: the API holds them in a small local type (`TxProbe`) that the mock fills in, and they move into the adapter interface with the real adapters (API-2).
+- A chain's refusal that fits none of the ten order codes answers with no `code`; the chain's own code and `retryable` are in `details` in every case.
+- `GET /v1/portfolio` reads the signed-in person's vaults on every chain that is not off, with prices, weights and drift, and refreshes the `vaults` cache. Until `view()` exists in `packages/basket` it uses a small one of its own (`apps/api/src/orders/view.ts`).
+- Two routes exist only while a chain runs on the mock, and act only on such a chain: `POST /v1/mock/fund` (mock cash and gas for the signed-in wallets) and `POST /v1/mock/orders/{id}/legs/{legId}/land` (the mock chain lands the leg's latest attempt, as a wallet would). With no chain on the mock they are not registered.
+
 ### 3.4 How `LiquidityProvider` is used
 
 His interface and his `apps/api/src/liquidity.ts` are unchanged. A new `loadCurves(db, keys, methodVersions)` in `packages/db` reads his curve tables for `['risk-0.3', 'evmq-0.1']`, and `apps/api/src/basket-liquidity.ts` wraps his `createLiquidityProvider` so callers pass an `AssetId`. Curve keys are the bare mint on Solana and `${ChainId}:${lower-case address}` on EVM.
@@ -758,6 +771,7 @@ The roll-up states the share of the plan that is measured.
 **API (`apps/api`).** His Fastify app, plus:
 
 - `plugins/auth.ts`: a person by Privy tokens; the MCP server by one service key in its environment. Every route declares `config.auth`; non-GET routes default to deny. Shelf, risk sheets, quotes, personalize and order creation stay keyless. An order is reachable only by its UUIDv4.
+  - As built (API-1): the access token goes in `Authorization: Bearer`, the identity token in the `privy-id-token` header, and both must name the same person. `PRIVY_APP_ID` names the app; with none set, every route that needs a person answers 503. For now every order route needs sign-in, creation and the read included: an order belongs to the wallets that made it, the `owner` in a request must be wallets of the identity token, and nobody else can read, build or report it. Keyless creation comes back with the agent surface (AGT-2). The service key and the consent route are not built yet.
 - `plugins/limits.ts` (`@fastify/rate-limit`, in memory), keyed by Privy user or service key first, then by client address: 60 a minute anonymous, 120 signed in, 10 on the parser, 30 on the builders. `@fastify/helmet`. A CORS allowlist. One error handler that returns a request id and no SQL.
 - The browser calls `/api/*`. `apps/web/proxy.ts` rewrites it to the API host and adds the client address with a shared-secret header; the API trusts a forwarded address only with that header.
 - Consent is stored against the order id, the address and a hash of the legs it covers.
