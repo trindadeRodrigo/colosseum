@@ -22,6 +22,8 @@ type Case = {
   scenario: string;
   prev: Version & { exists: number };
   next: Version & { flags: number; maxFeeBps: number };
+  older: Version & { exists: number };
+  waiting: Version & { exists: number };
   ctx: { now: number; lastPublishAt: number; publishDelay: number; hasPending: number };
   expect: {
     ok: number;
@@ -37,10 +39,26 @@ type Vectors = {
   limits: Record<string, number>;
   error: string;
   reasons: { id: number; name: string }[];
-  platform: { n: number; assets: string[]; ceilingsBps: number[]; unlisted: string[] };
+  platform: {
+    n: number;
+    assets: string[];
+    ceilingsBps: number[];
+    unlisted: string[];
+    cash: string;
+  };
   count: number;
   cases: Case[];
 };
+
+const SCENARIOS = [
+  'first',
+  'next',
+  'pending',
+  'pending_delay_lowered',
+  'cancelled',
+  'matured',
+  'next_ceiling_lowered',
+];
 
 const file = fileURLToPath(
   new URL('../../../fixtures/creator-limits/vectors.json', import.meta.url),
@@ -54,6 +72,8 @@ const targets = (v: Version): Target[] =>
 const platform = vectors.platform.assets.map((name, i) => ({
   id: assetId(name),
   maxWeightBps: vectors.platform.ceilingsBps[i] ?? Number.NaN,
+  // `platform.cash` names the chain's cash token.
+  ...(name === vectors.platform.cash ? { cls: 'cash' as const } : {}),
 }));
 
 function inputs(c: Case) {
@@ -71,6 +91,7 @@ function inputs(c: Case) {
 describe('the shared vectors for the author limits', () => {
   it('is a file this check can be held to', () => {
     expect(vectors.limits).toEqual(CREATOR_LIMITS);
+    expect(vectors.platform.assets).toContain(vectors.platform.cash);
     expect(vectors.error).toBe(CREATOR_LIMIT_ERROR);
     expect(vectors.reasons.map((r) => r.name)).toEqual([...LIMIT_REASONS]);
     expect(vectors.reasons.map((r) => r.id)).toEqual(LIMIT_REASONS.map((_, i) => i + 1));
@@ -80,6 +101,29 @@ describe('the shared vectors for the author limits', () => {
     expect(new Set(vectors.cases.map((c) => c.name)).size).toBe(vectors.cases.length);
     for (const name of vectors.platform.unlisted)
       expect(vectors.platform.assets).not.toContain(name);
+  });
+
+  it('keeps the first 71 cases where they were, and adds after them', () => {
+    // Other test suites name cases by position. New cases go at the end.
+    expect(vectors.cases.length).toBeGreaterThanOrEqual(87);
+    expect(vectors.cases[0]?.name).toBe('three assets, the fewest allowed');
+    expect(vectors.cases[38]?.name).toBe('exactly on time, 48-hour delay');
+    expect(vectors.cases[70]?.name).toBe('a bad shape and too soon');
+    expect(vectors.cases[71]?.scenario).toBe('matured');
+  });
+
+  it('measures a matured version against itself, not against the one it replaced', () => {
+    // Each matured case is built so that measuring against the older version gives the other answer.
+    const matured = vectors.cases.filter((c) => c.scenario === 'matured');
+    expect(matured.length).toBeGreaterThanOrEqual(3);
+    let flips = 0;
+    for (const c of matured) {
+      const { next, ctx, header } = inputs(c);
+      const wrong = checkCreatorLimits(targets(c.older), next, ctx, header);
+      if (wrong.ok !== (c.expect.ok === 1)) flips += 1;
+      else expect(wrong, c.name).not.toEqual({ ok: true, turnoverBps: c.expect.turnoverBps });
+    }
+    expect(flips).toBeGreaterThanOrEqual(2);
   });
 
   it('has a case that is refused for each rule, and cases that pass', () => {
@@ -99,13 +143,19 @@ describe('the shared vectors for the author limits', () => {
     };
     walk(vectors, '');
     for (const c of vectors.cases) {
-      for (const v of [c.prev, c.next]) {
+      for (const v of [c.prev, c.next, c.older, c.waiting]) {
         expect(v.assets, c.name).toHaveLength(v.n);
         expect(v.weightsBps, c.name).toHaveLength(v.n);
       }
       if (c.prev.exists === 0) expect(c.prev.n, c.name).toBe(0);
       expect(c.scenario === 'first', c.name).toBe(c.prev.exists === 0);
       expect(c.scenario.startsWith('pending'), c.name).toBe(c.ctx.hasPending === 1);
+      expect(SCENARIOS, c.name).toContain(c.scenario);
+      // A version that waits or was cancelled is stated, and so is the one a matured version replaced.
+      const waits = c.scenario.startsWith('pending') || c.scenario === 'cancelled';
+      expect(c.waiting.exists, c.name).toBe(waits ? 1 : 0);
+      expect(c.older.exists, c.name).toBe(c.scenario === 'matured' ? 1 : 0);
+      for (const v of [c.older, c.waiting]) if (v.exists === 0) expect(v.n, c.name).toBe(0);
       if (c.prev.exists === 0) expect(c.ctx.lastPublishAt, c.name).toBe(0);
       expect(c.expect.breaks[0] ?? '', c.name).toBe(c.expect.reason);
       expect(c.expect.reasonId, c.name).toBe(

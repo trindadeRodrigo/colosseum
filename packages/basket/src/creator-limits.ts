@@ -1,9 +1,11 @@
 import type { BasketAsset, LimitContext, LimitResult, Target } from '@colosseum/schemas';
 
 // The four limits on what an author may publish as a shared portfolio (DESIGN-VAULT section 6, decided
-// on Oct 2): 3 to 12 listed assets, each from 2% up to its ceiling in 50 bps steps and adding up to
-// 100%; one version per publish delay and none while one is pending; a version moves at most 20% of
-// the portfolio; a later version takes effect one publish delay after it is published.
+// on Oct 2): 3 to 12 listed assets, never the cash token, each from 2% up to its ceiling in 50 bps
+// steps and adding up to 100%; one version per publish delay and none while one is pending; a version
+// moves at most 20% of the portfolio; a later version takes effect one publish delay after it is
+// published. There is one delay: it is both the notice a follower gets and the least time between two
+// versions. The first version takes effect at once and is exempt from the delay and from turnover.
 //
 // The Solana program and the EVM registry enforce the same rules. All three are tested against
 // fixtures/creator-limits/vectors.json, and the README beside it defines each rule.
@@ -34,6 +36,7 @@ export const LIMIT_REASONS = [
   'VersionPending',
   'VersionTooSoon',
   'TurnoverTooHigh',
+  'CashNotAllowed',
 ] as const;
 export type LimitReason = (typeof LIMIT_REASONS)[number];
 
@@ -46,8 +49,11 @@ export const CREATOR_LIMIT_ERROR = 'CreatorLimit' as const;
  * read, so a full `LimitContext` plus the delay fits.
  */
 export type CreatorLimitContext = Omit<LimitContext, 'assets'> & {
-  /** The platform list of the recipe's chain. */
-  assets: readonly Pick<BasketAsset, 'id' | 'maxWeightBps'>[];
+  /**
+   * The platform list of the recipe's chain. An asset with `cls: 'cash'` is the chain's cash token,
+   * which a shared portfolio may not hold.
+   */
+  assets: readonly (Pick<BasketAsset, 'id' | 'maxWeightBps'> & Partial<Pick<BasketAsset, 'cls'>>)[];
   /** Seconds between two versions, and between a later version and its taking effect. */
   publishDelay: number;
 };
@@ -66,11 +72,11 @@ export function ceilingBps(maxWeightBps: number): number {
 }
 
 /**
- * How much of the portfolio a version moves, in bps: the sum of the absolute weight changes over every
- * asset in either version, divided by 2. An added asset counts from zero and a removed one to zero.
- * Both versions add up to 10,000, so the sum is even; for any other input the half is rounded up.
+ * The sum of the absolute weight changes over every asset in either version, in bps. An added asset
+ * counts from zero and a removed one to zero. This is the number the limit is on: at most 4,000,
+ * twice `maxTurnoverBps`, so no division is needed to check it.
  */
-export function turnoverBps(prev: readonly Target[], next: readonly Target[]): number {
+export function movedBps(prev: readonly Target[], next: readonly Target[]): number {
   const before = new Map<string, number>();
   for (const t of prev) before.set(t.asset, (before.get(t.asset) ?? 0) + t.weightBps);
   const after = new Map<string, number>();
@@ -78,7 +84,15 @@ export function turnoverBps(prev: readonly Target[], next: readonly Target[]): n
   let moved = 0;
   for (const [asset, weight] of after) moved += Math.abs(weight - (before.get(asset) ?? 0));
   for (const [asset, weight] of before) if (!after.has(asset)) moved += weight;
-  return Math.ceil(moved / 2);
+  return moved;
+}
+
+/**
+ * How much of the portfolio a version moves, in bps: half of `movedBps`. Both versions add up to
+ * 10,000, so the sum is even; for any other input the half is rounded up.
+ */
+export function turnoverBps(prev: readonly Target[], next: readonly Target[]): number {
+  return Math.ceil(movedBps(prev, next) / 2);
 }
 
 /** When a version published now takes effect: at once for the first, one delay later after it. */
@@ -162,23 +176,36 @@ export function checkCreatorLimits(
   if (sum !== L.sumBps)
     return refuse('WeightSum', `the weights add up to ${pct(sum)}, not ${pct(L.sumBps)}`);
 
-  if (ctx.hasPending)
-    return refuse('VersionPending', 'a version is already published and not yet in effect');
-  if (ctx.lastPublishAt !== null) {
-    const allowedAt = ctx.lastPublishAt + ctx.publishDelay;
-    if (ctx.now < allowedAt)
+  // Rules 11 to 13 are about a version that follows another. The first takes effect at once and has
+  // nothing to wait for and nothing to be measured against, whatever the context says.
+  let turnover = 0;
+  if (prev !== null) {
+    if (ctx.hasPending)
+      return refuse('VersionPending', 'a version is already published and not yet in effect');
+    if (ctx.lastPublishAt !== null) {
+      const allowedAt = ctx.lastPublishAt + ctx.publishDelay;
+      if (ctx.now < allowedAt)
+        return refuse(
+          'VersionTooSoon',
+          `the next version can be published in ${allowedAt - ctx.now} seconds, at ${allowedAt}`,
+        );
+    }
+    const moved = movedBps(prev, next);
+    if (moved > 2 * L.maxTurnoverBps)
       return refuse(
-        'VersionTooSoon',
-        `the next version can be published in ${allowedAt - ctx.now} seconds, at ${allowedAt}`,
+        'TurnoverTooHigh',
+        `this version moves ${pct(moved / 2)} of the portfolio; the most is ${pct(L.maxTurnoverBps)}`,
       );
+    turnover = Math.ceil(moved / 2);
   }
 
-  if (prev === null) return { ok: true, turnoverBps: 0 };
-  const turnover = turnoverBps(prev, next);
-  if (turnover > L.maxTurnoverBps)
+  const cash = new Set(ctx.assets.filter((a) => a.cls === 'cash').map((a) => a.id));
+  const held = next.find((t) => cash.has(t.asset));
+  if (held)
     return refuse(
-      'TurnoverTooHigh',
-      `this version moves ${pct(turnover)} of the portfolio; the most is ${pct(L.maxTurnoverBps)}`,
+      'CashNotAllowed',
+      `${held.asset} is the cash token; a shared portfolio holds assets`,
     );
+
   return { ok: true, turnoverBps: turnover };
 }

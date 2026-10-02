@@ -448,13 +448,13 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
         const next = recipe.components.map((c) => {
           if (c.kind !== 'asset')
             throw new ChainError('BadInput', 'a vault takes assets only; flatten the recipe first');
-          if (c.asset === cash) refuse('MintNotAccepted', 'cash is not a target');
           return { asset: c.asset, weightBps: c.weightBps };
         });
         const id = mockRecipeId(chain, creator, recipe.familyId);
         const existing = s.recipes.get(id);
         // The four author limits (DESIGN-VAULT section 6), as a real registry checks them: the same
-        // function the Solana program and the EVM registry are held to by the shared vectors.
+        // function the Solana program and the EVM registry are held to by the shared vectors. The
+        // cash token as a component is one of them, refused like the rest.
         const verdict = checkCreatorLimits(
           existing ? targetsOf(existing.active) : null,
           next,

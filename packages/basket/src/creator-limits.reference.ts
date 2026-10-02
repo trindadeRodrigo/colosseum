@@ -20,6 +20,7 @@ const ORDER = [
   'VersionPending',
   'VersionTooSoon',
   'TurnoverTooHigh',
+  'CashNotAllowed',
 ];
 
 /** Twice the turnover: the sum of the absolute changes, by walking two sorted lists side by side. */
@@ -78,16 +79,20 @@ export function referenceBreaks(
     if (onList.length === 0) broken.add('AssetNotListed');
     if (t.weightBps < 200) broken.add('WeightBelowMin');
     if (t.weightBps % 50 !== 0) broken.add('WeightOffStep');
-    for (const a of onList)
+    for (const a of onList) {
       if (t.weightBps > 5000 || t.weightBps > a.maxWeightBps) broken.add('WeightAboveCeiling');
+      if (a.cls === 'cash') broken.add('CashNotAllowed');
+    }
   }
   if (sum !== 10_000) broken.add('WeightSum');
 
-  if (ctx.hasPending) broken.add('VersionPending');
-  if (ctx.lastPublishAt !== null && ctx.now - ctx.lastPublishAt < ctx.publishDelay)
+  // A first version has nothing before it: nothing can be waiting, too recent or moved.
+  const later = prev !== null;
+  if (later && ctx.hasPending) broken.add('VersionPending');
+  if (later && ctx.lastPublishAt !== null && ctx.now - ctx.lastPublishAt < ctx.publishDelay)
     broken.add('VersionTooSoon');
   // Over 20% moved is over 40% of absolute change.
-  if (prev !== null && referenceMovedBps(prev, next) > 4000) broken.add('TurnoverTooHigh');
+  if (later && referenceMovedBps(prev, next) > 4000) broken.add('TurnoverTooHigh');
 
   return ORDER.filter((rule) => broken.has(rule));
 }

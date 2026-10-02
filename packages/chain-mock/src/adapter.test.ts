@@ -384,8 +384,9 @@ describe('chain-mock', () => {
         { kind: 'asset' as const, asset: 'robinhood:spy', weightBps: 5000 },
       ],
     };
+    // That is one of the author limits, refused with the code of every other limit.
     const publish = f.adapter.buildPublishRecipe({ creator: f.owner, recipe: withCash });
-    expect(await code(publish)).toBe('MintNotAccepted');
+    expect(await code(publish)).toBe('CreatorLimit');
     const unknown = f.adapter.buildWithdrawInKind({ vault: f.vault, assets: ['robinhood:doge'] });
     expect(await code(unknown)).toBe('MintNotAccepted');
   });

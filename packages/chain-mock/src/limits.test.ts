@@ -24,6 +24,8 @@ type Case = {
   scenario: string;
   prev: Version & { exists: number };
   next: Version & { flags: number; maxFeeBps: number };
+  older: Version & { exists: number };
+  waiting: Version & { exists: number };
   ctx: { now: number; lastPublishAt: number; publishDelay: number; hasPending: number };
   expect: { ok: number; error: string; reason: string; effectiveAt: number };
 };
@@ -31,7 +33,7 @@ const file = fileURLToPath(
   new URL('../../../fixtures/creator-limits/vectors.json', import.meta.url),
 );
 const vectors: {
-  platform: { assets: string[]; ceilingsBps: number[] };
+  platform: { assets: string[]; ceilingsBps: number[]; cash: string };
   cases: Case[];
 } = JSON.parse(readFileSync(file, 'utf8'));
 
@@ -39,16 +41,15 @@ const CHAIN = 'solana';
 const id = (name: string) => `${CHAIN}:${name.toLowerCase().replaceAll('_', '-')}`;
 const [cash, template] = mockAssets(CHAIN);
 if (!cash || !template) throw new Error('the mock lists no assets');
-const ASSETS: BasketAsset[] = [
-  cash,
-  ...vectors.platform.assets.map((name, i) => ({
-    ...template,
-    id: id(name),
-    address: mockAddress(CHAIN, `asset:${name}`),
-    symbol: name,
-    maxWeightBps: vectors.platform.ceilingsBps[i] ?? 0,
-  })),
-];
+// The vectors name the chain's cash token and give it a ceiling like any asset's, so that the only
+// thing against it is that it is cash.
+const ASSETS: BasketAsset[] = vectors.platform.assets.map((name, i) => ({
+  ...(name === vectors.platform.cash ? cash : template),
+  id: id(name),
+  address: mockAddress(CHAIN, `asset:${name}`),
+  symbol: name,
+  maxWeightBps: vectors.platform.ceilingsBps[i] ?? 0,
+}));
 const PRICES = Object.fromEntries(ASSETS.map((a) => [a.id, '1']));
 const OWNER = mockAddress(CHAIN, 'author');
 const FAMILY = 'ef'.repeat(32);
@@ -90,8 +91,14 @@ async function arrange(c: Case) {
     mock.send(await adapter.buildPublishRecipe({ creator: OWNER, recipe: recipe(v) }));
   if (c.scenario === 'next') await publish(c.prev);
   if (c.scenario === 'pending') {
-    // `prev` goes into effect, and one delay later the same weights are published again and wait.
+    // `prev` goes into effect, and one delay later the waiting version is published.
     await publish(c.prev);
+    mock.advance(delay);
+    await publish(c.waiting);
+  }
+  if (c.scenario === 'matured') {
+    // The older version goes into effect; one delay later `prev` is published, waits, and matures.
+    await publish(c.older);
     mock.advance(delay);
     await publish(c.prev);
   }
@@ -100,8 +107,11 @@ async function arrange(c: Case) {
   return adapter;
 }
 
-/** What the mock cannot be brought to: it has no cancel, and one publish delay for its lifetime. */
-const NOT_ON_THE_MOCK = ['cancelled', 'pending_delay_lowered'];
+/**
+ * What the mock cannot be brought to: it has no cancel, and one publish delay and one asset list for
+ * its lifetime.
+ */
+const NOT_ON_THE_MOCK = ['cancelled', 'pending_delay_lowered', 'next_ceiling_lowered'];
 const runnable = vectors.cases.filter((c) => !NOT_ON_THE_MOCK.includes(c.scenario));
 
 describe('chain-mock: publishing a shared portfolio is held to the author limits', () => {
@@ -141,11 +151,13 @@ describe('chain-mock: publishing a shared portfolio is held to the author limits
   });
 
   it('ran every scenario the mock can be brought to, and met most of the rules on the way', () => {
-    expect(vectors.cases.length - runnable.length).toBe(3);
+    expect(vectors.cases.length - runnable.length).toBe(5);
+    expect(runnable.filter((c) => c.scenario === 'matured').length).toBeGreaterThanOrEqual(3);
     expect(seen.accepted).toBeGreaterThan(15);
     expect(seen.badInput).toBeGreaterThan(10);
     expect([...seen.refused].sort()).toEqual([
       'AssetNotListed',
+      'CashNotAllowed',
       'TooFewAssets',
       'TooManyAssets',
       'TurnoverTooHigh',

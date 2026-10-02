@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   type CreatorLimitContext,
   checkCreatorLimits,
+  movedBps,
   type RecipeHeader,
   turnoverBps,
 } from './creator-limits';
@@ -17,7 +18,9 @@ const LISTED = [
   { id: 'solana:quarter', maxWeightBps: 2500 },
   { id: 'solana:odd', maxWeightBps: 2520 },
   { id: 'solana:tiny', maxWeightBps: 150 },
-  { id: 'solana:cash', maxWeightBps: 0 },
+  { id: 'solana:shut', maxWeightBps: 0 },
+  // The chain's cash token, with a ceiling that would let it in if it were an asset like the others.
+  { id: 'solana:usdc', maxWeightBps: 5000, cls: 'cash' as const },
 ];
 const PLAIN = LISTED.slice(0, 14).map((a) => a.id);
 const ANY = [...LISTED.map((a) => a.id), 'solana:unlisted', 'solana:other'];
@@ -58,7 +61,14 @@ const validVersion: fc.Arbitrary<Target[]> = fc
  */
 const ceilingVersion: fc.Arbitrary<Target[]> = fc
   .tuple(
-    fc.constantFrom('solana:wide', 'solana:quarter', 'solana:odd', 'solana:tiny', 'solana:cash'),
+    fc.constantFrom(
+      'solana:wide',
+      'solana:quarter',
+      'solana:odd',
+      'solana:tiny',
+      'solana:shut',
+      'solana:usdc',
+    ),
     fc.integer({ min: 4, max: 110 }),
   )
   .chain(([asset, steps]) => {
@@ -140,9 +150,11 @@ const scenario = fc
     const ctx: CreatorLimitContext = {
       assets: LISTED,
       publishDelay: s.publishDelay,
-      lastPublishAt: s.prev ? s.last : null,
+      // A first version sometimes comes with a context that names a last publish or a pending
+      // version. No registry can be in that state; the check must not be thrown by it.
+      lastPublishAt: s.prev || s.pendingBias === 9 ? s.last : null,
       now: s.last + s.publishDelay + s.wait,
-      hasPending: s.prev !== null && s.hasPending && s.pendingBias < 2,
+      hasPending: s.hasPending && (s.prev !== null ? s.pendingBias < 2 : s.pendingBias === 8),
     };
     const header: RecipeHeader = { flags: s.flags, maxFeeBps: s.maxFeeBps };
     return { prev: s.prev, next, ctx, header };
@@ -185,16 +197,20 @@ describe('checkCreatorLimits, on generated versions', { timeout: 60_000 }, () =>
         expect(sum).toBe(10_000);
         // Both header values zero.
         expect([header.flags, header.maxFeeBps]).toEqual([0, 0]);
+        // Never the cash token.
+        expect(next.some((t) => t.asset === 'solana:usdc')).toBe(false);
+        // The first version is exempt from what follows.
+        if (prev === null) {
+          expect(result.turnoverBps).toBe(0);
+          return;
+        }
         // One version per publish delay, and none while one is pending.
         expect(ctx.hasPending).toBe(false);
         if (ctx.lastPublishAt !== null)
           expect(ctx.now).toBeGreaterThanOrEqual(ctx.lastPublishAt + ctx.publishDelay);
-        // At most 20% of the portfolio moved; the first version is exempt.
-        if (prev === null) expect(result.turnoverBps).toBe(0);
-        else {
-          expect(result.turnoverBps * 2).toBe(referenceMovedBps(prev, next));
-          expect(result.turnoverBps).toBeLessThanOrEqual(2000);
-        }
+        // The absolute changes add up to at most 4,000: 20% of the portfolio moved.
+        expect(referenceMovedBps(prev, next)).toBeLessThanOrEqual(4000);
+        expect(result.turnoverBps * 2).toBe(referenceMovedBps(prev, next));
       }),
       { numRuns: 4000 },
     );
@@ -209,7 +225,8 @@ describe('checkCreatorLimits, on generated versions', { timeout: 60_000 }, () =>
     expect(accepted.length).toBeGreaterThan(300);
     expect(accepted.filter((r) => r.ok && r.turnoverBps > 0).length).toBeGreaterThan(50);
     const reasons = new Set(outcomes.flatMap((r) => (r.ok ? [] : [r.code])));
-    expect(reasons.size).toBeGreaterThanOrEqual(11);
+    expect(reasons.size).toBeGreaterThanOrEqual(12);
+    expect(reasons).toContain('CashNotAllowed');
   });
 
   it('refuses to judge without the delay or the time, where a comparison would pass by accident', () => {
@@ -238,6 +255,84 @@ describe('checkCreatorLimits, on generated versions', { timeout: 60_000 }, () =>
       ok: true,
       turnoverBps: 0,
     });
+  });
+
+  it('exempts a first version from the delay and from turnover, whatever the context says', () => {
+    const version = [
+      { asset: 'solana:a', weightBps: 5000 },
+      { asset: 'solana:b', weightBps: 3000 },
+      { asset: 'solana:c', weightBps: 2000 },
+    ];
+    const ctx = {
+      assets: LISTED,
+      now: 1000,
+      lastPublishAt: null,
+      hasPending: false,
+      publishDelay: 300,
+    };
+    const accepted = { ok: true, turnoverBps: 0 };
+    expect(checkCreatorLimits(null, version, ctx)).toEqual(accepted);
+    // The review of BAS-1: these two were refused as pending and as too soon.
+    expect(checkCreatorLimits(null, version, { ...ctx, hasPending: true })).toEqual(accepted);
+    expect(checkCreatorLimits(null, version, { ...ctx, lastPublishAt: 900 })).toEqual(accepted);
+    // A later version in the same context is held to both.
+    expect(checkCreatorLimits(version, version, { ...ctx, hasPending: true })).toMatchObject({
+      code: 'VersionPending',
+    });
+    expect(checkCreatorLimits(version, version, { ...ctx, lastPublishAt: 900 })).toMatchObject({
+      code: 'VersionTooSoon',
+    });
+  });
+
+  it('refuses the cash token as a component, even where its ceiling would let it in', () => {
+    const withCash = [
+      { asset: 'solana:usdc', weightBps: 5000 },
+      { asset: 'solana:b', weightBps: 3000 },
+      { asset: 'solana:c', weightBps: 2000 },
+    ];
+    const ctx = {
+      assets: LISTED,
+      now: 1000,
+      lastPublishAt: null,
+      hasPending: false,
+      publishDelay: 300,
+    };
+    expect(checkCreatorLimits(null, withCash, ctx)).toMatchObject({
+      ok: false,
+      code: 'CashNotAllowed',
+    });
+    // The same list with no asset marked as cash has nothing to refuse it by.
+    const unmarked = LISTED.map(({ id, maxWeightBps }) => ({ id, maxWeightBps }));
+    expect(checkCreatorLimits(null, withCash, { ...ctx, assets: unmarked })).toEqual({
+      ok: true,
+      turnoverBps: 0,
+    });
+  });
+
+  it('compares turnover without dividing: 4,000 of absolute change passes, 4,001 does not', () => {
+    const prev = [
+      { asset: 'solana:a', weightBps: 5000 },
+      { asset: 'solana:b', weightBps: 3000 },
+      { asset: 'solana:c', weightBps: 2000 },
+    ];
+    const next = [
+      { asset: 'solana:a', weightBps: 3000 },
+      { asset: 'solana:b', weightBps: 5000 },
+      { asset: 'solana:c', weightBps: 2000 },
+    ];
+    expect(movedBps(prev, next)).toBe(4000);
+    expect(turnoverBps(prev, next)).toBe(2000);
+    // An odd sum, which two versions that each add up to 10,000 never give: over is over.
+    const odd = [
+      { asset: 'solana:a', weightBps: 5001 },
+      { asset: 'solana:b', weightBps: 4999 },
+    ];
+    const far = [
+      { asset: 'solana:a', weightBps: 3001 },
+      { asset: 'solana:b', weightBps: 7000 },
+    ];
+    expect(movedBps(odd, far)).toBe(4001);
+    expect(turnoverBps(odd, far)).toBe(2001);
   });
 
   it('counts turnover the same whichever version is called the old one', () => {

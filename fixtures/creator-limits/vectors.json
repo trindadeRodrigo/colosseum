@@ -1,6 +1,6 @@
 {
   "schema": "creator-limits-vectors",
-  "version": 1,
+  "version": 2,
   "readme": "fixtures/creator-limits/README.md",
   "limits": {
     "minAssets": 3,
@@ -76,11 +76,16 @@
     {
       "id": 13,
       "name": "TurnoverTooHigh",
-      "rule": "turnover against the previous version is over maxTurnoverBps"
+      "rule": "the absolute weight changes against the previous version add up to more than twice maxTurnoverBps"
+    },
+    {
+      "id": 14,
+      "name": "CashNotAllowed",
+      "rule": "the chain's cash token is a component"
     }
   ],
   "platform": {
-    "n": 18,
+    "n": 19,
     "assets": [
       "A",
       "B",
@@ -99,15 +104,17 @@
       "CAP_2500",
       "CAP_2520",
       "CAP_150",
-      "CAP_0"
+      "CAP_0",
+      "CASH"
     ],
     "ceilingsBps": [
       5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 10000, 2500,
-      2520, 150, 0
+      2520, 150, 0, 5000
     ],
-    "unlisted": ["UNLISTED"]
+    "unlisted": ["UNLISTED"],
+    "cash": "CASH"
   },
-  "count": 71,
+  "count": 87,
   "cases": [
     {
       "name": "three assets, the fewest allowed",
@@ -125,6 +132,18 @@
         "weightsBps": [5000, 3000, 2000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212400,
@@ -159,6 +178,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791212400,
         "lastPublishAt": 0,
@@ -191,6 +222,18 @@
         "weightsBps": [10000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212400,
@@ -225,6 +268,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791212400,
         "lastPublishAt": 0,
@@ -257,6 +312,18 @@
         "weightsBps": [800, 800, 800, 800, 800, 800, 800, 800, 800, 800, 800, 1200],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212400,
@@ -291,6 +358,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791212400,
         "lastPublishAt": 0,
@@ -323,6 +402,18 @@
         "weightsBps": [200, 4800, 5000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212400,
@@ -357,6 +448,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791212400,
         "lastPublishAt": 0,
@@ -389,6 +492,18 @@
         "weightsBps": [50, 4950, 5000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212400,
@@ -423,6 +538,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791212400,
         "lastPublishAt": 0,
@@ -455,6 +582,18 @@
         "weightsBps": [250, 4750, 5000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212400,
@@ -489,6 +628,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791212400,
         "lastPublishAt": 0,
@@ -521,6 +672,18 @@
         "weightsBps": [2001, 2999, 5000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212400,
@@ -555,6 +718,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791212400,
         "lastPublishAt": 0,
@@ -587,6 +762,18 @@
         "weightsBps": [5000, 2500, 2500],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212400,
@@ -621,6 +808,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791212400,
         "lastPublishAt": 0,
@@ -653,6 +852,18 @@
         "weightsBps": [5000, 3000, 2000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212400,
@@ -687,6 +898,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791212400,
         "lastPublishAt": 0,
@@ -719,6 +942,18 @@
         "weightsBps": [2500, 5000, 2500],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212400,
@@ -753,6 +988,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791212400,
         "lastPublishAt": 0,
@@ -785,6 +1032,18 @@
         "weightsBps": [2500, 5000, 2500],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212400,
@@ -819,6 +1078,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791212400,
         "lastPublishAt": 0,
@@ -851,6 +1122,18 @@
         "weightsBps": [200, 5000, 4800],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212400,
@@ -885,6 +1168,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791212400,
         "lastPublishAt": 0,
@@ -917,6 +1212,18 @@
         "weightsBps": [5000, 2950, 2000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212400,
@@ -951,6 +1258,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791212400,
         "lastPublishAt": 0,
@@ -983,6 +1302,18 @@
         "weightsBps": [5000, 5000, 5000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212400,
@@ -1017,6 +1348,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791212400,
         "lastPublishAt": 0,
@@ -1049,6 +1392,18 @@
         "weightsBps": [2500, 3000, 2500, 2000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212400,
@@ -1083,6 +1438,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791212400,
         "lastPublishAt": 0,
@@ -1115,6 +1482,18 @@
         "weightsBps": [5000, 3000, 2000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212400,
@@ -1149,6 +1528,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791212400,
         "lastPublishAt": 0,
@@ -1181,6 +1572,18 @@
         "weightsBps": [5000, 3000, 2000],
         "flags": 1,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212400,
@@ -1215,6 +1618,18 @@
         "flags": 128,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791212400,
         "lastPublishAt": 0,
@@ -1247,6 +1662,18 @@
         "weightsBps": [5000, 3000, 2000],
         "flags": 255,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212400,
@@ -1281,6 +1708,18 @@
         "flags": 0,
         "maxFeeBps": 1
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791212400,
         "lastPublishAt": 0,
@@ -1313,6 +1752,18 @@
         "weightsBps": [5000, 3000, 2000],
         "flags": 1,
         "maxFeeBps": 100
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212400,
@@ -1347,6 +1798,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791385199,
         "lastPublishAt": 1791212400,
@@ -1379,6 +1842,18 @@
         "weightsBps": [4500, 3500, 2000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791385200,
@@ -1413,6 +1888,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791385201,
         "lastPublishAt": 1791212400,
@@ -1445,6 +1932,18 @@
         "weightsBps": [4500, 3500, 2000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212699,
@@ -1479,6 +1978,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791212700,
         "lastPublishAt": 1791212400,
@@ -1511,6 +2022,18 @@
         "weightsBps": [4500, 3500, 2000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212459,
@@ -1545,6 +2068,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791212460,
         "lastPublishAt": 1791212400,
@@ -1577,6 +2112,18 @@
         "weightsBps": [4500, 3500, 2000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791212400,
@@ -1611,6 +2158,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4500, 3500, 2000]
+      },
       "ctx": {
         "now": 1791216000,
         "lastPublishAt": 1791212400,
@@ -1643,6 +2202,18 @@
         "weightsBps": [4500, 3500, 2000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4500, 3500, 2000]
       },
       "ctx": {
         "now": 1791385199,
@@ -1677,6 +2248,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4500, 3500, 2000]
+      },
       "ctx": {
         "now": 1791212800,
         "lastPublishAt": 1791212400,
@@ -1709,6 +2292,18 @@
         "weightsBps": [4500, 3500, 2000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4500, 3500, 2000]
       },
       "ctx": {
         "now": 1791216000,
@@ -1743,6 +2338,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4500, 3500, 2000]
+      },
       "ctx": {
         "now": 1791385200,
         "lastPublishAt": 1791212400,
@@ -1775,6 +2382,18 @@
         "weightsBps": [5000, 3000, 2000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791412400,
@@ -1809,6 +2428,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791412400,
         "lastPublishAt": 1791212400,
@@ -1841,6 +2472,18 @@
         "weightsBps": [3000, 5000, 2000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791412400,
@@ -1875,6 +2518,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791412400,
         "lastPublishAt": 1791212400,
@@ -1907,6 +2562,18 @@
         "weightsBps": [3000, 3000, 2000, 2000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791412400,
@@ -1941,6 +2608,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791412400,
         "lastPublishAt": 1791212400,
@@ -1973,6 +2652,18 @@
         "weightsBps": [3500, 3500, 3000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791412400,
@@ -2007,6 +2698,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791412400,
         "lastPublishAt": 1791212400,
@@ -2039,6 +2742,18 @@
         "weightsBps": [4000, 4000, 2000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791412400,
@@ -2073,6 +2788,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791412400,
         "lastPublishAt": 1791212400,
@@ -2105,6 +2832,18 @@
         "weightsBps": [300, 300, 300, 300, 1300, 1300, 1300, 1300, 800, 800, 800, 1200],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791412400,
@@ -2139,6 +2878,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791412400,
         "lastPublishAt": 1791212400,
@@ -2171,6 +2922,18 @@
         "weightsBps": [5000, 3000, 2000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791412400,
@@ -2205,6 +2968,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791412400,
         "lastPublishAt": 1791212400,
@@ -2237,6 +3012,18 @@
         "weightsBps": [5050, 2950, 2000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791412400,
@@ -2271,6 +3058,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791412400,
         "lastPublishAt": 1791212400,
@@ -2303,6 +3102,18 @@
         "weightsBps": [750, 750, 750, 750, 750, 750, 750, 750, 750, 750, 750, 1200, 550],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791412400,
@@ -2337,6 +3148,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791412400,
         "lastPublishAt": 1791212400,
@@ -2369,6 +3192,18 @@
         "weightsBps": [5000, 3000, 2000],
         "flags": 0,
         "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
       },
       "ctx": {
         "now": 1791216000,
@@ -2403,6 +3238,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4500, 3500, 2000]
+      },
       "ctx": {
         "now": 1791216000,
         "lastPublishAt": 1791212400,
@@ -2436,6 +3283,18 @@
         "flags": 0,
         "maxFeeBps": 0
       },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
       "ctx": {
         "now": 1791216000,
         "lastPublishAt": 1791212400,
@@ -2448,6 +3307,726 @@
         "reason": "WeightSum",
         "reasonId": 10,
         "breaks": ["WeightSum", "VersionTooSoon"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "exactly when the waiting version takes effect, 20% against it",
+      "group": "matured",
+      "scenario": "matured",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [3000, 5000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "ctx": {
+        "now": 1791385200,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 2000,
+        "effectiveAt": 1791558000
+      }
+    },
+    {
+      "name": "one step over 20% against the matured version, 5% against the one before",
+      "group": "matured",
+      "scenario": "matured",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [3000, 5000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4550, 2950, 2500],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "ctx": {
+        "now": 1791385200,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "TurnoverTooHigh",
+        "reasonId": 13,
+        "breaks": ["TurnoverTooHigh"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "10% against the matured version, 30% against the one before",
+      "group": "matured",
+      "scenario": "matured",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [3000, 5000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [2000, 5000, 3000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "ctx": {
+        "now": 1791388800,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 1000,
+        "effectiveAt": 1791561600
+      }
+    },
+    {
+      "name": "while a version waits, the same weights again are refused too",
+      "group": "matured",
+      "scenario": "pending",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [3000, 5000, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [3000, 5000, 2000]
+      },
+      "ctx": {
+        "now": 1791385199,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 1
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "VersionPending",
+        "reasonId": 11,
+        "breaks": ["VersionPending", "VersionTooSoon"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a later version with an asset twice",
+      "group": "later",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 4,
+        "assets": ["A", "A", "B", "C"],
+        "weightsBps": [2500, 2500, 3000, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "DuplicateAsset",
+        "reasonId": 6,
+        "breaks": ["DuplicateAsset"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a later version with a weight under the floor",
+      "group": "later",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 4850, 150],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightBelowMin",
+        "reasonId": 7,
+        "breaks": ["WeightBelowMin"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a later version with weights off the step",
+      "group": "later",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3025, 1975],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightOffStep",
+        "reasonId": 8,
+        "breaks": ["WeightOffStep"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a later version one step short of 100%, and nothing else wrong",
+      "group": "later",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 1950],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightSum",
+        "reasonId": 10,
+        "breaks": ["WeightSum"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a later version raises a weight to its ceiling of 25%",
+      "group": "later",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["CAP_2500", "A", "B"],
+        "weightsBps": [2000, 5000, 3000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["CAP_2500", "A", "B"],
+        "weightsBps": [2500, 5000, 2500],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 500,
+        "effectiveAt": 1791585200
+      }
+    },
+    {
+      "name": "a later version raises a weight one step over its ceiling of 25%",
+      "group": "later",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["CAP_2500", "A", "B"],
+        "weightsBps": [2000, 5000, 3000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["CAP_2500", "A", "B"],
+        "weightsBps": [2550, 5000, 2450],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightAboveCeiling",
+        "reasonId": 9,
+        "breaks": ["WeightAboveCeiling"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a weight that did not change is over a ceiling that came down",
+      "group": "later",
+      "scenario": "next_ceiling_lowered",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["CAP_2500", "A", "B"],
+        "weightsBps": [3000, 5000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["CAP_2500", "A", "B"],
+        "weightsBps": [3000, 5000, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightAboveCeiling",
+        "reasonId": 9,
+        "breaks": ["WeightAboveCeiling"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "after a ceiling came down, a version that brings the weight under it",
+      "group": "later",
+      "scenario": "next_ceiling_lowered",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["CAP_2500", "A", "B"],
+        "weightsBps": [3000, 5000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["CAP_2500", "A", "B"],
+        "weightsBps": [2500, 5000, 2500],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 500,
+        "effectiveAt": 1791585200
+      }
+    },
+    {
+      "name": "the cash token as a component",
+      "group": "cash",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["CASH", "A", "B"],
+        "weightsBps": [2000, 5000, 3000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "CashNotAllowed",
+        "reasonId": 14,
+        "breaks": ["CashNotAllowed"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a later version brings in the cash token",
+      "group": "cash",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "CASH"],
+        "weightsBps": [5000, 3000, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "CashNotAllowed",
+        "reasonId": 14,
+        "breaks": ["CashNotAllowed"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "the cash token and one asset",
+      "group": "cash",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 2,
+        "assets": ["CASH", "A"],
+        "weightsBps": [5000, 5000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "TooFewAssets",
+        "reasonId": 3,
+        "breaks": ["TooFewAssets", "CashNotAllowed"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a later version replaces every asset and brings in the cash token",
+      "group": "cash",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["CASH", "D", "E"],
+        "weightsBps": [5000, 3000, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "older": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "waiting": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "TurnoverTooHigh",
+        "reasonId": 13,
+        "breaks": ["TurnoverTooHigh", "CashNotAllowed"],
         "turnoverBps": 0,
         "effectiveAt": 0
       }
