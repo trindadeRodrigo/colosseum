@@ -193,6 +193,107 @@ describe('planRebalance', () => {
   });
 });
 
+// ---- what the review of BAS-1 found ----
+
+/** A pool, as the mock and the real ones pay: the output in whole units first, then the cost off it. */
+function poolOut(amountIn: bigint, sell: [string, number], buy: [string, number], costBps: bigint) {
+  const gross =
+    (amountIn * parseDecimal(sell[0]) * 10n ** BigInt(buy[1])) /
+    (parseDecimal(buy[0]) * 10n ** BigInt(sell[1]));
+  return (gross * (10_000n - costBps)) / 10_000n;
+}
+
+describe('planRebalance, the review of BAS-1', () => {
+  it('a batch planned with a cost never spends more cash than its sales bring in', () => {
+    // The smallest input the review found: the plan bought with 239,520,238 against 239,520,236 held.
+    const messy = [
+      price('solana:spy', '105.35209657'),
+      price('solana:nvda', '53.81015838'),
+      price('solana:gold', '168.08563233'),
+    ];
+    const v = vault('4', {
+      'solana:spy': ['284474639', 3850],
+      'solana:gold': ['118867981', 1350],
+      'solana:nvda': ['0', 4800],
+    });
+    const eight = ['spy', 'nvda', 'gold'].map((x) => asset(`solana:${x}`, { decimals: 8 }));
+    for (const costBps of [10, 11, 12, 75, 300]) {
+      const plan = planRebalance(
+        v,
+        targets({ spy: 3850, gold: 1350, nvda: 4800 }),
+        messy,
+        { bandBps: 50, minTradeUsd: 1, costBps },
+        [USDC, ...eight],
+      );
+      expect(plan.map((t) => t.buy)).toEqual([CASH, CASH, 'solana:nvda']);
+      let cash = 4n;
+      for (const t of plan) {
+        const amount = BigInt(t.amountInRaw);
+        if (t.buy === CASH) {
+          const usd = messy.find((p) => p.asset === t.sell)?.usdPerToken ?? '0';
+          cash += poolOut(amount, [usd, 8], ['1', 6], BigInt(costBps));
+        } else {
+          expect(amount <= cash, `cost ${costBps}: buys with ${amount}, holds ${cash}`).toBe(true);
+          cash -= amount;
+        }
+      }
+    }
+  });
+
+  it('does not start a plan by selling again what a sale just brought to its target', () => {
+    // After two keeper sales at a cost of 10 bps: SPY and NVDA sit a hair over their targets (their
+    // drift shows as 0), the cash they brought is idle, and gold is 4% under.
+    const v = vault('43302259839', {
+      'solana:spy': ['475895204288', 5000],
+      'solana:nvda': ['571059782477', 3000],
+      'solana:gold': ['99919915064', 2000],
+    });
+    const after = [
+      price('solana:spy', '112'),
+      price('solana:nvda', '56'),
+      price('solana:gold', '170'),
+    ];
+    const eight = ['spy', 'nvda', 'gold'].map((x) => asset(`solana:${x}`, { decimals: 8 }));
+    const plan = planRebalance(v, targets({ spy: 5000, nvda: 3000, gold: 2000 }), after, POLICY, [
+      USDC,
+      ...eight,
+    ]);
+    // The one thing to do is to buy gold with the idle cash.
+    expect(plan.map((t) => [t.sell, t.buy])).toEqual([[CASH, 'solana:gold']]);
+    const spent = BigInt(plan[0]?.amountInRaw ?? 0);
+    expect(spent <= 43_302_259_839n && spent > 43_290_000_000n).toBe(true);
+  });
+
+  it('spends cash that sits idle above its share, even with every asset inside the band', () => {
+    // $1,000: SPY on target, NVDA 38 bps under, gold 26 under, and the 64 bps they lack held as cash.
+    const v = vault('6400000', {
+      'solana:spy': ['500000000', 5000],
+      'solana:nvda': ['592400000', 3000],
+      'solana:gold': ['987000000', 2000],
+    });
+    const plan = planRebalance(
+      v,
+      targets({ spy: 5000, nvda: 3000, gold: 2000 }),
+      PRICES,
+      POLICY,
+      ASSETS,
+    );
+    expect(plan.map((t) => [t.sell, t.buy])).toEqual([
+      [CASH, 'solana:nvda'],
+      [CASH, 'solana:gold'],
+    ]);
+    // Cash 40 bps over its share is inside the band: nothing to do.
+    const calm = vault('4000000', {
+      'solana:spy': ['500000000', 5000],
+      'solana:nvda': ['596000000', 3000],
+      'solana:gold': ['990000000', 2000],
+    });
+    expect(
+      planRebalance(calm, targets({ spy: 5000, nvda: 3000, gold: 2000 }), PRICES, POLICY, ASSETS),
+    ).toEqual([]);
+  });
+});
+
 // ---- properties ----
 //
 // A second, plain model of a vault applies the trades one by one at the given prices, with nothing

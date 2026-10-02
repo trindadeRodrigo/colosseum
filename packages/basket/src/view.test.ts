@@ -83,6 +83,13 @@ describe('view', () => {
     expect(VaultView.parse(seen)).toEqual(seen);
   });
 
+  it('refuses a vault whose cash token is not on the asset list, where it used to leave the cash out', () => {
+    // The review of BAS-1: $500 of cash and $500 of SPY read as a vault worth $500, all of it SPY.
+    const v = vault('500000000', { 'solana:spy': ['500000000', 5000] });
+    expect(() => view(v, [price('solana:spy', '100')], [SPY])).toThrow(/solana:usdc/);
+    expect(view(v, [price('solana:spy', '100')], [USDC, SPY]).valueUsd).toBe('1000');
+  });
+
   it('makes the weights add up to exactly 10,000 with the cash, whatever does not divide', () => {
     // Three positions of $1 each and no cash: 3334, 3333, 3333.
     const v = vault('0', {

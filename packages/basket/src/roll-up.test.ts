@@ -116,6 +116,21 @@ describe('rollUp', () => {
     expect(r.flags).toEqual(expect.arrayContaining(['exit_quote_missing', 'exit_partly_measured']));
   });
 
+  it('gives no measured cost when nothing but cash was measured', () => {
+    // The review of BAS-1: $200 of cash and $800 of stock with no curve read as "0 bps, measured".
+    const r = rollUp(
+      [
+        { asset: 'solana:usdc', amountUsd: 200 },
+        { asset: 'solana:spy', amountUsd: 800 },
+      ],
+      { shelf: SHELF, quotes: [] },
+    );
+    expect(r.exit.measuredWorstBps).toBeNull();
+    expect(r.exit.quotedBps).toBeNull();
+    expect(r.flags).toContain('exit_not_measured');
+    expect(r.flags).not.toContain('exit_partly_measured');
+  });
+
   it('takes the stored quote at the nearest size, the latest one, and says how old it is', () => {
     const quotes = [
       quote('solana:spy', 1000, 5, T2),
