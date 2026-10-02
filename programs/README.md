@@ -8,7 +8,9 @@
 | `tests/` | The LiteSVM suite, under Vitest. Its own install: `litesvm` needs `@solana/kit` 8 and the repo is on 2.3 |
 | `../idl/` | The interface files other code builds against, committed |
 
-Tools: anchor-cli 0.31.1, solana-cli 3.0.1, platform tools v1.54.
+Tools: anchor-cli 0.31.1, solana-cli 3.0.1, platform tools v1.54 (which build with Rust 1.89.0). On the host, Rust 1.89.0 for clippy and `nightly-2025-09-09` for the interface files. There is no `rust-toolchain.toml`: the build picks its own compiler, and the two host versions are named where they are used.
+
+CI: `.github/workflows/program.yml` installs the same versions, checked against their sha256 where the release publishes one, and runs the build, the tests, the interface-file check and clippy. It runs when `programs/`, `idl/`, `Anchor.toml`, `Cargo.toml` or `Cargo.lock` change. A version bump here is a bump of the `env` block there.
 
 ## Build
 
@@ -30,7 +32,7 @@ Sizes on Oct 2: `basket.so` 306,096 bytes, `mock_router.so` 212,376 bytes, `test
 pnpm test:program        # from the repo root
 ```
 
-It installs `programs/tests`, typechecks it, rebuilds a program whose sources are newer than its binary, and runs the suite. Nothing leaves the machine: the programs run inside LiteSVM. The root `pnpm test` does not include these tests, because CI has no Solana toolchain yet.
+It installs `programs/tests`, typechecks it, rebuilds a program whose sources are newer than its binary, and runs the suite. Nothing leaves the machine: the programs run inside LiteSVM. The root `pnpm test` does not include these tests: they need the Solana toolchain, which only the program workflow installs.
 
 ```sh
 pnpm --dir programs/tests rules-bite          # every rule; a rebuild each, a few minutes
@@ -66,7 +68,14 @@ anchor idl build -p basket -o idl/basket.json
 anchor idl build -p mock_router -o idl/mock_router.json
 ```
 
-Run both after any change to an instruction, an account or an error. `tests/idl.test.ts` compares the committed files with the instructions the tests build, and fails until they agree.
+Run both after any change to an instruction, an account or an error. `tests/idl.test.ts` compares the committed files with the instructions the tests build, and fails until they agree. CI builds both again and fails if a committed file differs by a byte. Anchor builds them with a nightly compiler; to use the one CI uses: `RUSTUP_TOOLCHAIN=nightly-2025-09-09 anchor idl build ...`.
+
+```sh
+cargo +1.89.0 clippy --workspace --all-targets --locked    # what CI lists; warnings do not fail it yet
+cargo deny --locked check advisories licenses              # security.yml; the rules are in deny.toml
+```
+
+Three warnings per Anchor program come from Anchor's own macros (`unexpected cfg condition value: solana` twice, and the deprecated `realloc`).
 
 ## Program ids and keypairs
 
