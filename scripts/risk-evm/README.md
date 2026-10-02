@@ -62,3 +62,16 @@ pnpm risk-evm:import                 # load the JSONL into risk_asset_snapshots 
 | `build-quoter.ts`, `record-fixture.ts` | Rebuild the bytecode; re-record the test fixture. Both need Foundry |
 
 After editing `ClQuoter.sol`, run `pnpm exec tsx scripts/risk-evm/build-quoter.ts`; a test fails while the JSON is stale. The tests are in `tests/risk-evm.test.ts` and replay `fixtures/risk-evm/robinhood-nvda-quotes.json`; none calls the network.
+
+## What Rodrigo's side needs before the API can serve these curves (RISK-1)
+
+`scripts/risk/compute.ts` already fits every row; it needs about six lines so EVM curves keep their own symbol and method version. Line numbers are for the file as it is on `staging` on Oct 2.
+
+1. In the select (lines 30 to 35), add `asset: riskAssetSnapshots.asset` and `methodVersion: riskAssetSnapshots.methodVersion`.
+2. After line 41: `const meta = new Map<string, { asset: string; version: string }>();`
+3. Inside the loop that starts at line 42: `meta.set(r.assetMint, { asset: r.asset, version: r.methodVersion });`
+4. Line 70: `assetSymbol: symbol.get(mint) ?? meta.get(mint)?.asset ?? mint.slice(0, 6),` (today an EVM row's symbol would be `0xd060`).
+5. Line 81: keep the snapshot's version when it starts with `evmq-`, otherwise `CURVE_METHOD_VERSION` as today, so Solana rows stay `risk-0.3`.
+6. Line 82, `source`: it says "routed: best split across dollar-exit pools", which is wrong for EVM rows; make it follow the version.
+
+Outside `compute.ts`: `apps/api/src/liquidity.ts:37` filters on one method version with `eq` and needs `inArray`; and each EVM token needs an `assets` row whose `mint` is the token address exactly as written in `config.ts`, because that is what `asset_mint` holds.
