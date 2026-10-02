@@ -92,29 +92,29 @@ Base: `staging`. Each stream works in a short-lived branch and opens a pull requ
 | `packages/engine` | exists; gains `src/personal/` | Rodrigo | schemas, basket |
 | `packages/risk` | exists | Rodrigo | schemas |
 | `packages/db` | exists; gains `basket-schema.ts`, `curves.ts`, migration `0006` | one agent | schemas |
-| `packages/chain-solana` | exists; gains vault builders, `send.ts` and a `./server` entry for `sign.ts` and `wallet.ts` | Thom | schemas |
-| `packages/chain-evm` | stub replaced; ABIs committed | Thom | schemas |
-| `packages/chain-mock` | new; stamps `provenance: 'mock'` | Thom | schemas |
-| `packages/sdk` | new, built; types from OpenAPI; the guard and the leg executor | Thom | schemas (types only) |
+| `packages/chain-solana` | exists; gains vault builders, `send.ts` and a `./server` entry for `sign.ts` and `wallet.ts` | Thom | schemas; its tests also chain-mock, for the contract cases |
+| `packages/chain-evm` | stub replaced; ABIs committed | Thom | schemas; its tests also chain-mock, for the contract cases |
+| `packages/chain-mock` | new; stamps `provenance: 'mock'` | Thom | schemas, basket |
+| `packages/sdk` | new, built; types from OpenAPI; the guard and the leg executor | Thom | schemas (types only; its tests may use the parsers) |
 | `apps/api` | exists; new routes under `routes/v1/` | shared | all packages |
-| `apps/risk-api` | exists | Rodrigo; not touched | as today |
+| `apps/risk-api` | exists | Rodrigo; not touched | as today: schemas, db, risk, and the `/risk` routes file of `apps/api` by a relative path |
 | `apps/keeper`, `apps/mcp` | new | Thom | keeper: schemas, basket, db, chain-*; mcp: sdk |
 | `apps/web` | exists | shared | schemas, sdk |
 | `programs/basket`, `programs/mock-router`, `idl/`, `contracts/` | new | Thom | none |
 | `content/risk-sheets/`, `content/chains.json` | new, data only | Rodrigo writes sheets | none |
-| `scripts/risk-evm/`, `scripts/ops/`, `scripts/solana/` | new | Thom | any |
+| `scripts/risk-evm/`, `scripts/ops/`, `scripts/solana/`, `scripts/seed-assets.ts` | new; the seed file moved from `packages/db` | Thom | any |
 | `scripts/risk/`, launchd jobs | exist | Rodrigo; not touched | n/a |
 
-**Dependency rules**, enforced by `tests/boundaries.test.ts` (a table of forbidden pairs, with a planted bad import as a self-check):
+**Dependency rules**, enforced by `tests/boundaries.test.ts`. It holds the "May import" column above as a table, reads every import under `packages/` and `apps/` (static, dynamic and `import type`), and fails on a pair the table does not allow, and on a folder with no row. It checks itself with a planted bad import. `scripts/` and the root `tests/` may import anything.
 
 1. `schemas` imports nothing. Interfaces live there, implementations elsewhere, and the apps wire them, as his `LiquidityProvider` already does.
 2. `risk` never imports `engine`. `basket` imports only `schemas`.
 3. Only `apps/api` and `apps/keeper` join logic, chains and the database.
 4. `apps/web` and `apps/mcp` never import `db`, `engine` or a chain package.
-5. Only `apps/keeper` and `scripts/` may import the signing entry, `@colosseum/chain-solana/server`, or the EVM signer. Broadcast and status live in a key-free `send.ts`, which the API may import.
-6. No new library reads `process.env`. A pure `parseFlags(env)` in `packages/schemas` is called once by each app.
+5. Only `apps/keeper` and `scripts/` may import the signing entry, `@colosseum/chain-solana/server`, or the EVM signer: `@colosseum/chain-evm/server`, or `viem/accounts`, where a raw key becomes a signer. A chain package keeps its key-holding code in `src/sign.ts`, `signer.ts`, `wallet.ts` or `server.ts`, and nothing its root entry loads may reach those files. Test files are exempt. Broadcast and status live in a key-free `send.ts`, which the API may import.
+6. No new library reads `process.env`. A pure `parseFlags(env)` in `packages/schemas` is called once by each app. The seven files that read it before the rule are listed in the test and leave the list when they stop.
 
-Two things in his code break these rules today. `packages/db/src/seed-assets.ts` imports `engine`. The `chain-solana` root barrel re-exports `sign.ts` and `wallet.ts`, and his `apps/api/src/routes/monitor.ts` imports the keypair loader from it. Rodrigo is asked to move the seed file to `scripts/` and delete the server-signing routes on `risk-layer` (the audit's top fix). When that merges, PR1b moves `sign.ts` and `wallet.ts` behind the `./server` entry. Until then the test lists both as dated exemptions, the routes are not registered, and no key file exists on the API host.
+One thing in his code breaks these rules today. The `chain-solana` root barrel re-exports `sign.ts` and `wallet.ts`, and his `apps/api/src/routes/monitor.ts` imports the keypair loader from it. API-2 moves both files behind the `./server` entry and puts the server-signing routes behind `LEGACY_STRUCTURER`. Until then the test lists it as a dated exemption, and fails once the exemption is no longer needed, so it gets deleted. The other one is fixed: the seed file imported `engine` from inside `packages/db`, and moved to `scripts/seed-assets.ts` on Oct 2 (`pnpm db:seed` runs it as before).
 
 **Flags.** `CHAIN_MODE_<CHAIN>=live|readonly|mock|off`, `AUTO_FOLLOW_<CHAIN>`, `KEEPER_ENABLED`, `AGENT_SURFACE`, `LEGACY_STRUCTURER`, served at `GET /v1/config`. A feature shows only when the flag and the adapter's `capabilities` both allow it. A failed gate flips a flag; it does not change code.
 
@@ -137,7 +137,7 @@ Two things in his code break these rules today. `packages/db/src/seed-assets.ts`
 | `mock` | The chain runs on `packages/chain-mock`, whatever network it is set to | MOCK |
 | none | The chain is `off`: there is no figure | not shown |
 
-**Pull requests.** PR0 repairs CI, which has failed at setup on every run: delete `version: 11` in `ci.yml`, fix three lint errors, add a Postgres 16 service and `pnpm db:migrate`, delete the placeholder `allowBuilds` lines, add `LICENSE`. PR1a is the frame every TypeScript stream waits for: the v0 types, `chain-mock` with contract tests, migration `0006`, flags. PR1b follows without blocking anyone: the boundary test, three CI workflows (`ci.yml`, `program.yml`, `contracts.yml`) and the dependency pins.
+**Pull requests.** PR0 repairs CI, which has failed at setup on every run: delete `version: 11` in `ci.yml`, fix three lint errors, add a Postgres 16 service and `pnpm db:migrate`, delete the placeholder `allowBuilds` lines, add `LICENSE`. PR1a is the frame every TypeScript stream waits for: the v0 types, `chain-mock` with contract tests, migration `0006`, flags. PR1b follows without blocking anyone: the boundary test, the CI workflows (`ci.yml`, and `program.yml`, `contracts.yml` and `security.yml`, which run only when their files change) and the dependency pins.
 
 **Process.** His slot process carries over: `docs/vault/PLAN-VAULT.md`, `docs/vault/STATE-VAULT.md`, rows in `docs/GATES.md`. Slot ids are `<stream>-<n>`, half a day each. An open gate stops one stream. `pnpm dev` starts `api` and `web` only.
 
@@ -1016,7 +1016,7 @@ Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-L
 
 1. Write access: granted. Rodrigo merged his branches into `main` on Oct 1. Each stream works in a short-lived branch with a pull request into `staging`; `staging` goes into `main`, and `main` is what gets submitted.
 2. The licence: Apache-2.0.
-3. Adding files stays the default, to keep merges clean. Where an edit to an existing file makes the product better, we make it and say so in the pull request. The four edits are ours to make: the server-signing routes go behind `LEGACY_STRUCTURER` and are deleted once the vault path replaces them; `seed-assets.ts` moves to `scripts/`; the CI chores are done; and six lines in `scripts/risk/compute.ts`. `chain-solana` and `chain-evm` are Thom's. One branch at a time generates migrations.
+3. Adding files stays the default, to keep merges clean. Where an edit to an existing file makes the product better, we make it and say so in the pull request. The four edits are ours to make: the server-signing routes go behind `LEGACY_STRUCTURER` and are deleted once the vault path replaces them; `seed-assets.ts` moves to `scripts/` (done on Oct 2); the CI chores are done; and six lines in `scripts/risk/compute.ts`. `chain-solana` and `chain-evm` are Thom's. One branch at a time generates migrations.
 4. One of Thom's agents ports the personalization prototype into `engine/src/personal/` with sensible starting numbers. Rodrigo tunes the sleeve table, glide floors, caps and wording when he can.
 5. Stock tokens stay out of income plans, as his rule says.
 6. Stocks and gold: no return assumed, with the dollar loss in a 20% fall shown. A sourced range can come later.
