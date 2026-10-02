@@ -104,6 +104,14 @@ export function checkCreatorLimits(
   header: RecipeHeader = { flags: 0, maxFeeBps: 0 },
 ): LimitResult {
   const L = CREATOR_LIMITS;
+  // A missing delay or time would make every comparison below false and let a version through.
+  for (const [name, value] of [
+    ['publishDelay', ctx.publishDelay],
+    ['now', ctx.now],
+    ['lastPublishAt', ctx.lastPublishAt ?? 0],
+  ] as const)
+    if (!Number.isSafeInteger(value) || value < 0)
+      throw new RangeError(`${name} must be a whole number of seconds, 0 or more`);
   if (header.maxFeeBps !== 0) return refuse('FeeNotZero', 'a shared portfolio charges no fee');
   if (header.flags !== 0) return refuse('FlagsNotZero', 'flags must be zero');
 

@@ -326,7 +326,8 @@ const plan = (w: World) => planRebalance(w.v, w.targets, w.prices, w.policy, w.a
 /** A vault worth at least $1,000, so that one raw unit of anything is far under a bp of it. */
 const large = (w: World) => model(w).total() >= 1000n * 10n ** 36n;
 
-describe('planRebalance, on generated vaults', () => {
+// Generated cases take a second or two alone and several when the machine is busy.
+describe('planRebalance, on generated vaults', { timeout: 60_000 }, () => {
   it('never trades away from a target and never past one, and always has the cash', () => {
     let traded = 0;
     fc.assert(

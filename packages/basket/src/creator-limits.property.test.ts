@@ -148,7 +148,8 @@ const scenario = fc
     return { prev: s.prev, next, ctx, header };
   });
 
-describe('checkCreatorLimits, on generated versions', () => {
+// Generated cases take a second or two alone and several when the machine is busy.
+describe('checkCreatorLimits, on generated versions', { timeout: 60_000 }, () => {
   it('accepts exactly what the slow reference accepts, and names the same first rule', () => {
     fc.assert(
       fc.property(scenario, ({ prev, next, ctx, header }) => {
@@ -209,6 +210,34 @@ describe('checkCreatorLimits, on generated versions', () => {
     expect(accepted.filter((r) => r.ok && r.turnoverBps > 0).length).toBeGreaterThan(50);
     const reasons = new Set(outcomes.flatMap((r) => (r.ok ? [] : [r.code])));
     expect(reasons.size).toBeGreaterThanOrEqual(11);
+  });
+
+  it('refuses to judge without the delay or the time, where a comparison would pass by accident', () => {
+    const version = [
+      { asset: 'solana:a', weightBps: 5000 },
+      { asset: 'solana:b', weightBps: 3000 },
+      { asset: 'solana:c', weightBps: 2000 },
+    ];
+    const ctx = { assets: LISTED, now: 1000, lastPublishAt: 990, hasPending: false };
+    // A caller holding the shared `LimitContext`, which has no delay yet.
+    const noDelay = ctx as unknown as CreatorLimitContext;
+    expect(() => checkCreatorLimits(version, version, noDelay)).toThrow(RangeError);
+    for (const bad of [Number.NaN, -1, 1.5, Number.POSITIVE_INFINITY]) {
+      expect(() => checkCreatorLimits(version, version, { ...ctx, publishDelay: bad })).toThrow(
+        RangeError,
+      );
+      expect(() =>
+        checkCreatorLimits(version, version, { ...ctx, publishDelay: 60, now: bad }),
+      ).toThrow(RangeError);
+    }
+    expect(checkCreatorLimits(version, version, { ...ctx, publishDelay: 60 })).toMatchObject({
+      ok: false,
+      code: 'VersionTooSoon',
+    });
+    expect(checkCreatorLimits(version, version, { ...ctx, publishDelay: 10 })).toEqual({
+      ok: true,
+      turnoverBps: 0,
+    });
   });
 
   it('counts turnover the same whichever version is called the old one', () => {

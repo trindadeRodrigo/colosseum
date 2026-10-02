@@ -157,7 +157,8 @@ const vaultWorld = fc
     };
   });
 
-describe('view, on generated vaults', () => {
+// Generated cases take a second or two alone and several when the machine is busy.
+describe('view, on generated vaults', { timeout: 60_000 }, () => {
   it('gives weights that add up to 10,000 with the cash, each within a bp of its true share', () => {
     let valued = 0;
     fc.assert(

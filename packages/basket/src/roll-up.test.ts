@@ -238,7 +238,8 @@ describe('rollUp', () => {
   });
 });
 
-describe('rollUp, on generated plans', () => {
+// Generated cases take a second or two alone and several when the machine is busy.
+describe('rollUp, on generated plans', { timeout: 60_000 }, () => {
   const ids = SHELF.assets.map((a) => a.id);
   const lines = fc.array(
     fc.record({

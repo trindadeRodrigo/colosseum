@@ -175,7 +175,8 @@ const attempt = (plan: Recipe, s: Shelf, p: { minLineBps: number; maxLines: numb
   }
 };
 
-describe('flatten, on generated plans', () => {
+// Generated cases take a second or two alone and several when the machine is busy.
+describe('flatten, on generated plans', { timeout: 60_000 }, () => {
   it('preserves the total weight, with each asset once and no line under the minimum', () => {
     let flattened = 0;
     fc.assert(

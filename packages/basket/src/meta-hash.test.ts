@@ -10,7 +10,8 @@ import { sha256Hex } from './sha256';
 const nodeSha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 const utf8 = (text: string) => new TextEncoder().encode(text);
 
-describe('sha256Hex', () => {
+// Generated cases take a second or two alone and several when the machine is busy.
+describe('sha256Hex', { timeout: 60_000 }, () => {
   it('gives the published digests (FIPS 180-4 examples)', () => {
     expect(sha256Hex(utf8(''))).toBe(
       'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
@@ -58,7 +59,7 @@ const SAMPLE: FamilyMeta = {
   chains: ['solana', 'robinhood'],
 };
 
-describe('metaHash', () => {
+describe('metaHash', { timeout: 60_000 }, () => {
   it('writes the six fields in name order, the chains sorted, with no spaces', () => {
     expect(canonicalFamilyMeta(SAMPLE)).toBe(
       `{"chains":["robinhood","solana"],"copy":"Chips, and what runs on them.","familyId":"${'ab'.repeat(32)}","kind":"index","name":"From Sand to Server","slug":"sand-to-server"}`,
