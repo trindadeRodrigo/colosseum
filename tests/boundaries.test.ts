@@ -659,6 +659,8 @@ describe('import boundaries: each rule bites', () => {
     'apps/web/app/page.tsx':
       "import type { Plan } from '@x/schemas';\nimport { X } from '@/components/X';\nimport type { Db } from '@x/db';\nimport '@x/chain-solana/server';\nexport default () => <X />;",
     'scripts/lib.ts': "import '@x/engine';\nimport '@x/db';\nimport '@x/chain-solana/server';",
+    // A workspace package outside packages/ and apps/, as contracts/ is: not read.
+    'contracts/script/check.mjs': "import '@x/db';\nimport '@x/chain-solana/server';",
   };
   const DEPS: Record<string, string[]> = {
     'packages/schemas': ['zod', 'lodash'],
@@ -669,7 +671,7 @@ describe('import boundaries: each rule bites', () => {
     mkdirSync(dirname(join(repo, file)), { recursive: true });
     writeFileSync(join(repo, file), text);
     const [base, folder] = file.split('/');
-    if (base === 'scripts') continue;
+    if (base !== 'packages' && base !== 'apps') continue;
     const dependencies = Object.fromEntries(
       (DEPS[`${base}/${folder}`] ?? []).map((dep) => [dep, '*']),
     );
@@ -678,6 +680,11 @@ describe('import boundaries: each rule bites', () => {
       JSON.stringify({ name: `@x/${folder}`, main: './src/index.ts', dependencies }),
     );
   }
+
+  writeFileSync(
+    join(repo, 'contracts', 'package.json'),
+    JSON.stringify({ name: '@x/contracts', dependencies: { '@x/db': '*', '@x/engine': '*' } }),
+  );
 
   it('catches every bad line and nothing else', () => {
     expect(check(repo).map(show)).toEqual(
