@@ -9,6 +9,7 @@ import {
   riskLendingPositions,
   riskLpConcentration,
   riskPools,
+  riskReferencePrices,
 } from '@colosseum/db';
 import {
   type AssetCurves,
@@ -25,6 +26,7 @@ import {
   maxNotionalAt,
   measuredRegimes,
   type PlanLeg,
+  quantileOf,
   type Regime,
   regimeAt,
 } from '@colosseum/risk';
@@ -242,6 +244,67 @@ export async function loadAssetFacts(
       }
     : null;
 
+  // pool mid against each lending oracle, by regime: Step 11's hourly reference prices, in the hours whose answer is
+  // the pool mid, each live oracle's gap to it (`others`). The median over the window; (mid − oracle) ÷ oracle.
+  const refRows = await db
+    .select({
+      observedAt: riskReferencePrices.observedAt,
+      regime: riskReferencePrices.regime,
+      others: riskReferencePrices.others,
+      methodVersion: riskReferencePrices.methodVersion,
+      source: riskReferencePrices.source,
+      provenance: riskReferencePrices.provenance,
+    })
+    .from(riskReferencePrices)
+    .where(
+      and(
+        eq(riskReferencePrices.mint, mint as string),
+        eq(riskReferencePrices.priceSource, 'pool_mid'),
+        gte(riskReferencePrices.observedAt, weekAgo),
+      ),
+    );
+  const gaps = new Map<string, { xs: number[]; from: Date; to: Date }>();
+  for (const r of refRows)
+    for (const o of (r.others ?? []) as Array<{
+      priceSource: string;
+      gapToAnswer: number;
+      live?: boolean;
+      stale?: boolean;
+    }>) {
+      if (o.live === false || o.stale || !Number.isFinite(o.gapToAnswer)) continue;
+      const k = `${o.priceSource}|${r.regime}`;
+      const g = gaps.get(k) ?? { xs: [], from: r.observedAt, to: r.observedAt };
+      g.xs.push(1 / (1 + o.gapToAnswer) - 1);
+      if (r.observedAt < g.from) g.from = r.observedAt;
+      if (r.observedAt > g.to) g.to = r.observedAt;
+      gaps.set(k, g);
+    }
+  const refMeta = refRows[0];
+  const trackingRegimes = [
+    ...new Set([...measuredRegimes(sell).measured, ...refRows.map((r) => r.regime as Regime)]),
+  ];
+  const tracking: AssetFactsInput['tracking'] = trackingRegimes.flatMap((regime) =>
+    (['kamino_scope', 'jupiter_lend_oracle'] as const).map((against) => {
+      const g = gaps.get(`${against}|${regime}`);
+      return {
+        against,
+        regime,
+        gap:
+          g && refMeta
+            ? {
+                value: quantileOf(g.xs, 0.5),
+                samples: g.xs.length,
+                fetchedAt: g.to.toISOString(),
+                source: `risk_reference_prices (${refMeta.source}): hours priced at the pool mid`,
+                method: `median of (pool mid − ${against}) ÷ ${against}, last ${params.capacityWindowDays} days`,
+                methodVersion: refMeta.methodVersion,
+                provenance: refMeta.provenance,
+              }
+            : ('no_samples_in_regime' as const),
+      };
+    }),
+  );
+
   const issuers = fixture('issuer-models.json') as {
     fetchedAt: string;
     models: Record<string, IssuerModel>;
@@ -272,15 +335,7 @@ export async function loadAssetFacts(
       : null,
     lendingCollateral,
     // the lending oracles' gaps are a report until item 11 imports them
-    tracking: lendingCollateral
-      ? measuredRegimes(sell).measured.flatMap((regime) =>
-          (['kamino_scope', 'jupiter_lend_oracle'] as const).map((against) => ({
-            against,
-            regime,
-            gap: 'not_imported' as const,
-          })),
-        )
-      : [],
+    tracking: lendingCollateral ? tracking : [],
     issuer: xstocks ? { ...xstocks, fetchedAt: issuers.fetchedAt } : null,
   });
 }
