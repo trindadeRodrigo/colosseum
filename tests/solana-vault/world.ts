@@ -151,6 +151,8 @@ export type FakeNode = {
   blockHeight: bigint;
   /** Methods that fail as a node that is down does. */
   down: Set<string>;
+  /** Runs before each call is answered: what happens on the chain between two questions. */
+  before?: (method: string) => void;
 };
 
 const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -185,6 +187,7 @@ export function fakeNode(accounts: RawAccount[]): FakeNode {
   const call = <T>(method: string, answer: () => T) => ({
     send: async () => {
       node.calls.push(method);
+      node.before?.(method);
       if (node.down.has(method))
         throw new Error('fetch failed: https://rpc.example/?api-key=SECRET');
       return answer();

@@ -480,6 +480,26 @@ describe('Solana reader: transaction status', () => {
     expect(await reader.track(failing)).toMatchObject({ status: 'pending' });
   });
 
+  it('does not call a transaction expired when it landed while the block height was being read', async () => {
+    const late = signature(10);
+    const { node, reader } = world();
+    node.before = (method) => {
+      if (method === 'getBlockHeight')
+        node.statuses.set(late, { confirmationStatus: 'confirmed', err: null });
+    };
+    // Unknown at the first question, past its last block at the second, landed by the third.
+    expect((await reader.track(late, '5')).status).toBe('confirmed');
+    expect(node.calls).toEqual(['getSignatureStatuses', 'getBlockHeight', 'getSignatureStatuses']);
+    // One that really never landed is expired, after the same three questions.
+    node.calls.length = 0;
+    expect((await reader.track(signature(11), '5')).status).toBe('expired');
+    expect(node.calls).toHaveLength(3);
+    // Still inside its window: pending, and no third question.
+    node.calls.length = 0;
+    expect((await reader.track(signature(11), '1000')).status).toBe('pending');
+    expect(node.calls).toEqual(['getSignatureStatuses', 'getBlockHeight']);
+  });
+
   it("names a custom error as the vault's own only when the vault program raised it", async () => {
     const [router, noLogs, token, runtime] = [6, 7, 8, 9].map(signature) as [
       string,

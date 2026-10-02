@@ -535,22 +535,32 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
         if (!isSignature(txId)) return refuse('BadInput', 'txId: expected a transaction signature');
         const signature: Signature = txId;
         const explorerUrl = explorerLink(config, txId) ?? '';
-        const statuses = await ask('getSignatureStatuses', () =>
-          rpc.getSignatureStatuses([signature], { searchTransactionHistory: true }).send(),
-        );
-        const status = statuses.value[0];
-        // `processed` can still be dropped with its fork: only a confirmed block counts as landed.
-        if (!status || status.confirmationStatus === 'processed' || !status.confirmationStatus) {
-          if (status || validUntil === undefined) return { status: 'pending', explorerUrl };
+        const statusNow = async () => {
+          const statuses = await ask('getSignatureStatuses', () =>
+            rpc.getSignatureStatuses([signature], { searchTransactionHistory: true }).send(),
+          );
+          return statuses.value[0] ?? null;
+        };
+        let status = await statusNow();
+        if (!status && validUntil !== undefined) {
           const lastValid = input(z.string().regex(/^\d+$/), validUntil, 'validUntil');
           const height = await ask('getBlockHeight', () =>
             rpc.getBlockHeight({ commitment }).send(),
           );
-          return {
-            status: BigInt(height) > BigInt(lastValid) ? 'expired' : 'pending',
-            explorerUrl,
-          };
+          if (BigInt(height) > BigInt(lastValid)) {
+            // The chain is past the last block the transaction could land in. It may have landed
+            // between the two questions, so it is asked for once more before it is called expired:
+            // an expiry that is wrong would have the same step sent twice.
+            status = await statusNow();
+            if (!status) return { status: 'expired', explorerUrl };
+          }
         }
+        // `processed` can still be dropped with its fork: only a confirmed block counts as landed.
+        if (
+          status?.confirmationStatus !== 'confirmed' &&
+          status?.confirmationStatus !== 'finalized'
+        )
+          return { status: 'pending', explorerUrl };
         if (!status.err) return { status: 'confirmed', explorerUrl };
         const tx = await ask('getTransaction', () =>
           rpc
