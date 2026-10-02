@@ -13,7 +13,12 @@
       "!.design",
       "!.claude/settings.local.json",
       "!.claude/worktrees",
-      "!**/next-env.d.ts"
+      "!**/next-env.d.ts",
+      "!**/target",
+      "!**/.anchor",
+      "!**/test-ledger",
+      "!keys",
+      "!idl"
     ]
   },
   "formatter": {
