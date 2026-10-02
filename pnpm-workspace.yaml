@@ -37,3 +37,13 @@ minimumReleaseAgeExclude:
   - '@vitest/spy@5.0.3'
   - next@16.3.8
   - vitest@5.0.3
+# Advisories that `pnpm audit` reports and that are accepted for now. What each one is, whether we reach
+# it and its fix: docs/vault/SECURITY-DEPS.md. security.yml fails on any high or critical advisory that is
+# not in this list. A line comes out when its override lands (SEC-4 in the ledger).
+auditConfig:
+  ignoreGhsas:
+    - GHSA-rfgv-xxqx-mfg5 # undici, under @scalar/fastify-api-reference
+    - GHSA-w293-vg96-wgc3 # undici, under @scalar/fastify-api-reference
+    - GHSA-82x6-q7mm-w9cf # toml, under @kamino-finance/klend-sdk
+    - GHSA-v5mp-jgw5-2x6j # toml, under @kamino-finance/klend-sdk
+    - GHSA-3gc7-fjrx-p6mg # bigint-buffer, under @kamino-finance/klend-sdk

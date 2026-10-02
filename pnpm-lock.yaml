@@ -270,9 +270,6 @@ importers:
 
   packages/db:
     dependencies:
-      '@colosseum/engine':
-        specifier: workspace:*
-        version: link:../engine
       '@colosseum/schemas':
         specifier: workspace:*
         version: link:../schemas
