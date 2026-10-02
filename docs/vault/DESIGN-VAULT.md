@@ -27,7 +27,7 @@ Nothing here has run on mainnet. The three $10 runs come first in time.
 - About $10 of Anthropic credit for the sentence parser is approved. Nothing else is spent, and no money goes onto mainnet for now (decided on Oct 2): the three $10 tests are dropped and no domain is bought.
 - Base comes after Solana and Robinhood Chain (decided on Oct 2). Its contracts are the same Solidity; it is deployed only if the first two are working by Tue Oct 6.
 - Built and shown on test networks first (decided on Oct 2): Solana devnet and the EVM test networks, with test tokens, a test exchange and test prices standing in for the stock tokens, Jupiter and the price feeds, labelled as test everywhere. So the router and the price source are set in each chain's config, never fixed in code. The vault's handling of the real tokens and pools is proven by tests on copies of mainnet. Mainnet maybe later, by configuration. Where the text below names a $10 run, a mainnet deploy or a mainnet rehearsal, `PLAN-VAULT.md` says what stands in for it.
-- Build tools may be installed on Thom's machine. Already there: Anchor 0.31.1, Solana CLI 3.0.1, Rust, Foundry (older than the pin), Docker. Missing: surfpool, solana-verify, Slither.
+- Build tools may be installed on Thom's machine. Already there: Anchor 0.31.1, Solana CLI 3.0.1, Rust, Foundry (1.2.3-nightly, older than the release CI pins), Docker. Missing: surfpool, solana-verify, Slither.
 
 ## 0. What changed from v1
 
@@ -595,7 +595,7 @@ event WithdrawSkipped(address indexed token);                   // by the vault,
 - `withdrawAll` uses a low-level call per token and treats a revert or a `false` return as skipped, with a `WithdrawSkipped` event each. Each token's balance read gets at most 100,000 gas and its transfer 300,000 (the real tokens on Robinhood Chain use under 14,000 and 48,000), so a token that burns its gas costs a bounded amount. Before each token the call requires 420,000 gas left and otherwise fails as a whole with `GasTooLow`: a token is never skipped because the caller sent too little, and a gas estimate cannot land on a run that leaves one behind. `withdraw` is uncapped. The vault has no `fallback` and no `receive`.
 - The factory enforces the same parameter bounds as the Solana program, and `flags` and `maxFeeBps` must be zero in `create`.
 - Every refusal is a typed error carrying the numbers, named as on Solana where the rule is the same. So far, on the vault: `NotOwner`, `ZeroAddress`, `CashTokenNotSet`, `DepositShortfall(token, expected, received)` (a token that skims on transfer is refused), `GasTooLow(left, needed)`. On the config: `NotAdmin`, `NotPendingAdmin`, `ZeroAddress`, `NoCode`, `AssetNotListed`, `AssetIsRouter`, `RouterIsAsset`, `FeedRequired`, `InvalidPull`, `ParamOutOfBounds(param, value)`.
-- Pins: Foundry v1.8.3, forge-std v1.17.0, OpenZeppelin Contracts 5.6.1 (5.7.0 has no audit report yet), solc 0.8.37, `evm_version = "cancun"`, `via_ir`. solc moved from 0.8.30 on Oct 2: that version has two `via_ir` bugs later code could hit (`delete` on a transient variable, and named arguments in `require` with a custom error). The contracts are built and tested so far on Thom's Foundry, 1.2.3-nightly of July 2025, not on the pin; CI gets 1.8.3 in FRAME-2. The libraries come from pnpm through `contracts/package.json`, with no submodules. ABIs are generated into `packages/chain-evm/src/abi/*.ts` and committed, so the TypeScript CI needs no Foundry.
+- Pins: Foundry v1.3.6, forge-std v1.17.0, OpenZeppelin Contracts 5.6.1 (5.7.0 has no audit report yet), solc 0.8.37, `evm_version = "cancun"`, `via_ir`. solc moved from 0.8.30 on Oct 2: that version has two `via_ir` bugs later code could hit (`delete` on a transient variable, and named arguments in `require` with a custom error). The contracts were written on Thom's Foundry, 1.2.3-nightly of July 2025. CI runs v1.3.6: the newest release whose formatter leaves the committed sources as they are. Eleven releases from v1.2.3 to v1.8.4 were tried on Oct 2; all pass the 149 tests and build the same vault bytecode, and from v1.4.0 on `forge fmt` joins one 120-column declaration in `IIndexRegistry.sol`. Moving the pin to v1.8.3, which this design first named, takes that one reformatted line in the same change. The libraries come from pnpm through `contracts/package.json`, with no submodules. ABIs are generated into `packages/chain-evm/src/abi/*.ts` and committed, so the TypeScript CI needs no Foundry.
 
 ## 4. Data model
 
@@ -930,7 +930,7 @@ A tier 2 failure blocks only if it shows a real way to lose funds.
 - `authority-check` is green with the disclosed admin key as admin, `launched` true and the delay at 172,800 s. The Supabase Data API is off.
 - The three-profile test passes: pairwise distance at least 3,000 bps, a reason on every line.
 
-**Supply chain.** Keep pnpm 11's one-day release hold and build-script approval. A pull request that changes the lockfile names the new packages and a person reads the diff. `security.yml` runs gitleaks, `pnpm audit --prod` and cargo-deny.
+**Supply chain.** Keep pnpm 11's one-day release hold and build-script approval. A pull request that changes the lockfile names the new packages and a person reads the diff. `security.yml` runs gitleaks, `pnpm audit --prod` and cargo-deny, on every pull request and weekly. The audit fails on a high or critical advisory that is not listed, with its reason, in `docs/vault/SECURITY-DEPS.md`.
 
 **First, today.** Revoke the two live approvals on Rodrigo's demo wallet (5 USDY and 5 syrupUSDC to the agent key). Do not deploy the current API publicly with `secrets/agent.json` present.
 
@@ -1089,7 +1089,7 @@ Each stream note in `docs/vault/research/design-v2/` lists its full sources. The
 1. Anchor releases (1.2.0, Sep 4): https://github.com/otter-sec/anchor/releases (`coral-xyz/anchor` redirects there)
 2. Jupiter build endpoint and rate limits ("per organisation, not per API key"): https://developers.jup.ag/docs/swap/build , https://developers.jup.ag/docs/portal/rate-limits
 3. Kamino Scope layout and priced reserves: https://github.com/Kamino-Finance/scope , https://api.kamino.finance/kamino-market/5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua/reserves/metrics
-4. Foundry v1.8.3: https://github.com/foundry-rs/foundry/releases
+4. Foundry releases (v1.8.3 was the latest when this was written; CI pins v1.3.6, section 3.8): https://github.com/foundry-rs/foundry/releases
 5. OpenZeppelin Contracts 5.6.1 and 5.7.0; `MulticallUpgradeable` at tag v5.6.1: https://github.com/OpenZeppelin/openzeppelin-contracts/releases , https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable/blob/v5.6.1/contracts/utils/MulticallUpgradeable.sol
 6. Chainlink tokenized equity and sequencer feeds: https://docs.chain.link/data-feeds/tokenized-equity-feeds , https://docs.chain.link/data-feeds/l2-sequencer-feeds
 7. Privy pricing, allowed domains, identity tokens: https://www.privy.io/pricing , https://docs.privy.io/recipes/dashboard/allowed-domains.md , https://docs.privy.io/user-management/users/identity-tokens.md

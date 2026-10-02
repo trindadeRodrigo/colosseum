@@ -20,10 +20,13 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # The design's pin (DESIGN-VAULT.md section 3.8). The contracts were first written on 1.2.3-nightly.
-  FOUNDRY_VERSION: v1.8.3
-  # sha256 of foundry_v1.8.3_linux_amd64.tar.gz, from the release page
-  FOUNDRY_SHA256: 7ca48e6ca3cac1bce1403ca67e5bc1dc3bc1fd818199c9957c7165079c228568
+  # The newest release whose formatter leaves the committed sources as they are (they were written on
+  # 1.2.3-nightly). Tried on 2026-10-02, eleven releases from v1.2.3 to v1.8.4: all pass the 149 tests and
+  # build the same BasketVault bytecode; from v1.4.0 on, `forge fmt` joins one 120-column declaration in
+  # IIndexRegistry.sol. Moving to a newer release means reformatting that line in the same change.
+  FOUNDRY_VERSION: v1.3.6
+  # sha256 of foundry_v1.3.6_linux_amd64.tar.gz, from the release page
+  FOUNDRY_SHA256: 01248d7ce267f5b7958bc9b331d068c6c2d8eeb182e58f0b556d7295f398e2ce
 
 jobs:
   present:
