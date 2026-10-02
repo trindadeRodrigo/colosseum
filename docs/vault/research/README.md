@@ -8,6 +8,7 @@ They use earlier words. Read "personal basket" as plan, "community index" or "in
 - `open-questions/`: wallets, limits on authors, the launch shelf, the agent surface.
 - `design-v2/`: the nine notes and the review log behind the second design, a prototype of the rules that cut a plan, and the quoter scripts used to measure exit cost on the EVM chains.
 - `solana-liquidity.md`: what the main Solana tokens cost to buy and sell at four sizes.
+- `test-networks.md` (Oct 2): what exists on Solana devnet, Robinhood Chain's test network and Base Sepolia, and what we bring so the same vault code runs there.
 
 Eleven earlier notes were left out of the repo because the design overtook them (vault feasibility per chain, precedents, the keeper, the price reference, the test-rig write-ups). The notes here still cite some of them by file name; Thom has them.
 

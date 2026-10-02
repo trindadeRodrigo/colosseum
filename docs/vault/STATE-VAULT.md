@@ -68,6 +68,13 @@ The days and milestones are in `PLAN-VAULT.md`. A slot is about half a day of on
 | RISK-1 | Oct 2 | The three fixes before anything public reads Bearing (the request that freezes the API, the import that runs out of memory, the thin regime), the six lines in `compute.ts`, and a dated dump of the curves | Rodrigo | todo | | |
 | RISK-2 | Oct 7 | About ten risk sheets, one per issuer family, in `content/risk-sheets/`. Check: the sheets render and hosted curves show their date | Rodrigo | todo | | |
 | OPS-4 | Oct 3 to 4 | `scripts/ops/*`, each with a dry run that prints its transactions: the Solana deploy, the test tokens, test exchange and test prices for the test networks, config, the asset entries, the caps, seeding and publishing the launch portfolios, pause on three chains, withdraw without the app; `docs/vault/RUNBOOK-OPS.md` with a checklist per session | Thom | todo | | SOL-3, EVM-3 for the last step |
+| TNET-1 | Oct 3 | For the EVM test networks: a test stock token with the multiplier and pause calls the real ones have, test cash, a price contract with Chainlink's interface, a stub sequencer feed. Check: the vault's unit tests run against them unchanged | Thom | todo | | EVM-1 |
+| TNET-2 | Oct 4 | Robinhood Chain's test network (46630): Universal Router 2.1.2 deployed, a Uniswap v4 pool per test token, a liquidity script. Check: a dry run prints the transactions | Thom | todo | | TNET-1, EVM-3 |
+| TNET-3 | Oct 4 | Base Sepolia (84532): the test stock tokens created through the real stock-token factory, a Uniswap v3 pool per token, the adapter's pool factory read from config. Check: a dry run prints the transactions | Thom | todo | | TNET-1, EVM-3 |
+| TNET-4 | Oct 3 | Solana devnet: one test program holding the test exchange (`mock-router`, paying from its own reserve at the test price) and a price account with Scope's layout; test mints with the real token's extension set; test cash. Check: the LiteSVM suite passes against it | Thom | todo | | SOL-1 |
+| TNET-5 | Oct 4 | The price updater: copies real prices and their timestamps from mainnet onto the three test networks, so a test price moves and goes stale as the real one does; every figure labelled as a test network's | Thom | todo | | TNET-1, TNET-4 |
+| TNET-6 | Oct 4 | Swaps on devnet: a second quote-and-build path for the test exchange, since Jupiter's API serves mainnet only | Thom | todo | | TNET-4, ADS-1 |
+| TNET-7 | Oct 5 | A small, rate-limited hand-out of test cash and gas for a new person | Thom | todo | | OPS-6 |
 
 ## Sessions, and other things a person does
 
@@ -76,7 +83,7 @@ No money goes onto mainnet for now (gates `SPEND` and `SHOW`): a deploy or a reh
 | ID | Day | What happens | Owner | Status | Evidence | Blocked by |
 |---|---|---|---|---|---|---|
 | OPS-1 | Oct 2 | The three vault tests of the rigs (`spikes/`) re-run on copies of mainnet, and the Scope read, with the results recorded. No money; an agent can run it | Thom | todo | | |
-| OPS-2 | Oct 2 | First thing: the two Privy apps. Then a second Jupiter organisation, the passkey origin test, the hosting and RPC accounts. Free tiers only | Thom | todo | | |
+| OPS-2 | Oct 2 | First thing: the two Privy apps. Then the faucets (devnet SOL, 5 to 7 needed, two requests per 8 hours; Robinhood test network ETH; Base Sepolia ETH), a second Jupiter organisation, the passkey origin test, the hosting and RPC accounts. Free tiers only | Thom | todo | | |
 | OPS-3 | Now | The two live approvals on the demo wallet revoked (5 USDY, 5 syrupUSDC to the agent key), before anything is hosted | Rodrigo | todo | | |
 | OPS-5 | Oct 4 | The origin decided (a domain or one fixed URL); the admin, guardian, keeper and platform-creator keys created; the deploy dry run read line by line | Thom | todo | | OPS-4 |
 | OPS-6 | Oct 5, in session | Deploy on the test networks and verify the contracts: config, caps, hand-over to the admin key. The launch portfolios published: at least six, two on more than one chain. The first hosted web and API; the cold-start test. The owner path on Solana devnet, then on the EVM test networks. Check: `authority-check` is green | Thom; Solana sessions to be agreed | todo | | OPS-5, SEC-1 |
