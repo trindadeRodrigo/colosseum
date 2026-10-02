@@ -41,12 +41,11 @@ From `docs/vault/HANDOFF-VAULT.md`. Either founder can reopen one.
 | **US-PERSONS** | DECIDED | The terms say the product is not for US persons. No location block and no banner | — |
 | **UPGRADE-KEYS** | DECIDED | One disclosed key per chain for now, and the app says who holds it. A multisig after the MVP | Still open: who holds each key |
 | **KEEPER-HOST** | DECIDED | A founder's machine while testing; a small VM at deploy | — |
-| **COST** | SUPERSEDED on 2026-10-02: nothing is spent (see below) | Free tiers only, apart from about $10 of model credit for reading the goal sentence | Kamino Scope prices ten stock tokens on Solana for free |
+| **COST** | DECIDED | Free tiers only, apart from about $10 of model credit for reading the goal sentence | Kamino Scope prices ten stock tokens on Solana for free |
 
 ## Decided on 2026-10-02 (Thom)
 
 | Gate | Status | Decision | Facts |
 |---|---|---|---|
-| **COST** | DECIDED | Nothing is spent. No $10 tests on mainnet, no paid model credit, no bought domain. The vault tests run on copies of mainnet; the goal sentence is read by the rules parser, and a model is used only if a key is already at hand | Both test rigs already pass this way: the Solana one on a local validator carrying mainnet's Jupiter and pool state, the EVM one on a fork of Robinhood Chain and, for Base, by read-only simulation |
-| **SHOW** — how the product is shown without a funded deploy | OPEN, by Sun Oct 4 | Default: it runs on copies of mainnet (real tokens, pools and prices; play money), the videos are recorded there, and the hosted app is labelled MOCK wherever nothing is live | A live deploy would lock about 5 SOL on Solana and cost cents on the EVM chains. Free test networks have none of the stock tokens, so they would need made-up tokens and a made-up exchange. Base's stock tokens do not run on a plain fork |
-
+| **SPEND** | DECIDED | No money goes onto mainnet for now: the three $10 tests are dropped, no domain is bought, and nothing is deployed there. The $10 of model credit under `COST` stays | Both test rigs already pass on copies of mainnet: the Solana one on a local validator carrying mainnet's Jupiter and pool state, the EVM one on a fork of Robinhood Chain and, for Base, by read-only simulation |
+| **SHOW** — where the product is built and shown | DECIDED | On test networks first: Solana devnet and the EVM test networks, with test tokens, a test exchange and test prices standing in for the stock tokens, Jupiter and the price feeds, and labelled as test everywhere. Mainnet maybe later, by configuration | The stock tokens, Jupiter's liquidity and the price feeds do not exist on test networks. The integration with the real ones is proven by tests on copies of mainnet. A mainnet deploy would lock about 5 SOL on Solana and cost cents on the EVM chains |

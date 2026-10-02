@@ -30,14 +30,14 @@ The days and milestones are in `PLAN-VAULT.md`. A slot is about half a day of on
 | ID | Day | What it delivers, and the check | Owner | Status | Evidence | Blocked by |
 |---|---|---|---|---|---|---|
 | MIGRATION | n/a | Who may generate a database migration right now. One holder at a time | FRAME-1 | n/a | | |
-| FRAME-1 | Oct 2 | The first version of the shared types in `packages/schemas` (section 3), `packages/chain-mock` stamping `provenance: 'mock'`, migration `0006` with the three database roles, `parseFlags` and `GET /v1/config`. Check: the adapter contract tests pass on the mock | Thom | todo | | |
+| FRAME-1 | Oct 2 | The first version of the shared types in `packages/schemas` (section 3), `packages/chain-mock` stamping `provenance: 'mock'`, migration `0006` with the three database roles, `parseFlags` and `GET /v1/config`; each chain's config names its network (mainnet, test network or local) so a figure from a test network is labelled as one. Check: the adapter contract tests pass on the mock | Thom | todo | | |
 | FRAME-2 | Oct 3 | `tests/boundaries.test.ts` for the import rules (section 2), with a planted bad import; `program.yml`, `contracts.yml` and `security.yml` in CI; the build tools pinned, `base-anvil` tried; `seed-assets.ts` moved to `scripts/`. Check: the planted import fails the test | Thom | todo | | FRAME-1 |
 | FRAME-3 | Oct 4, evening | The interfaces frozen: the hash test on `packages/schemas` turns on, after each adapter has built and simulated a create, a deposit, a swap and a keeper leg | Thom | todo | | ADS-2, ADE-2 |
 | FRAME-4 | When the name is final | The rename: package scope, server and skill names, the working code names in the design's Words table. After Oct 4 it also means a re-deploy of sign-in | Thom | todo | | The name (Rodrigo) |
-| SOL-1 | Oct 2 | `programs/basket` on Anchor 0.31.1, from the rig: create a vault, deposit, withdraw the tokens to the owner; the LiteSVM suite under Vitest; `mock-router`. Check: I1 | Thom | todo | | |
+| SOL-1 | Oct 2 | `programs/basket` on Anchor 0.31.1, from the rig: create a vault, deposit, withdraw the tokens to the owner; the LiteSVM suite under Vitest; `mock-router`; the router and the price source read from config, not fixed in code. Check: I1 | Thom | todo | | |
 | SOL-2 | Oct 3 | An owner swap through Jupiter from the vault; the shared-portfolio registry with creator limits. Check: a saved swap route replays on surfpool; create and first buy fit at 7 and 12 assets; A16 from the shared vectors | Thom | todo | | SOL-1, BAS-1 (the vectors) |
 | SOL-3 | Oct 4, morning | The keeper leg, pause, accept and adopt; the IDL committed. Check: every A-case that applies passes (A1, A2, A4 and A8 among them), and each rule bites when its check is commented out | Thom | todo | | SOL-2 |
-| EVM-1 | Oct 2 | `contracts/`, from the rig: the vault behind a beacon, with create, deposit and withdraw the tokens to the owner. Check: unit tests at 6, 8 and 18 decimals; I1 | Thom | todo | | |
+| EVM-1 | Oct 2 | `contracts/`, from the rig: the vault behind a beacon, with create, deposit and withdraw the tokens to the owner; the router and the price feeds read from config. Check: unit tests at 6, 8 and 18 decimals; I1 | Thom | todo | | |
 | EVM-2 | Oct 3 | The factory and the registry with creator limits; the owner swap; feed ages logged over the weekend. Check: unit tests; A16 from the shared vectors | Thom | todo | | EVM-1, BAS-1 (the vectors) |
 | EVM-3 | Oct 4, morning | The keeper swap, pause, accept and adopt; ABIs committed; deploy scripts with a dry run that prints the transactions. Check: every A-case passes, and each rule bites | Thom | todo | | EVM-2 |
 | BAS-1 | Oct 3 | `packages/basket`: the shared limit vectors first, then flatten, view and drift, planner, limit check, roll-up, meta hash. Check: unit and property tests; the limit check passes the vectors | Thom | todo | | FRAME-1 |
@@ -67,11 +67,11 @@ The days and milestones are in `PLAN-VAULT.md`. A slot is about half a day of on
 | SEC-3 | Oct 7 | Tier 2 of `G-SEC`: invariants, fuzz sequences, static analysis, the fork at a Saturday block. Check: results recorded, open items in `SECURITY.md` | Thom | todo | | SEC-2 |
 | RISK-1 | Oct 2 | The three fixes before anything public reads Bearing (the request that freezes the API, the import that runs out of memory, the thin regime), the six lines in `compute.ts`, and a dated dump of the curves | Rodrigo | todo | | |
 | RISK-2 | Oct 7 | About ten risk sheets, one per issuer family, in `content/risk-sheets/`. Check: the sheets render and hosted curves show their date | Rodrigo | todo | | |
-| OPS-4 | Oct 3 to 4 | `scripts/ops/*`, each with a dry run that prints its transactions: the Solana deploy, config, the asset entries, the caps, seeding and publishing the launch portfolios, pause on three chains, withdraw without the app; `docs/vault/RUNBOOK-OPS.md` with a checklist per session | Thom | todo | | SOL-3, EVM-3 for the last step |
+| OPS-4 | Oct 3 to 4 | `scripts/ops/*`, each with a dry run that prints its transactions: the Solana deploy, the test tokens, test exchange and test prices for the test networks, config, the asset entries, the caps, seeding and publishing the launch portfolios, pause on three chains, withdraw without the app; `docs/vault/RUNBOOK-OPS.md` with a checklist per session | Thom | todo | | SOL-3, EVM-3 for the last step |
 
 ## Sessions, and other things a person does
 
-Nothing is spent (gate `COST`). A row that names a deploy or a rehearsal runs on copies of mainnet unless gate `SHOW` says live.
+No money goes onto mainnet for now (gates `SPEND` and `SHOW`): a deploy or a rehearsal below is on the test networks.
 
 | ID | Day | What happens | Owner | Status | Evidence | Blocked by |
 |---|---|---|---|---|---|---|
@@ -79,7 +79,7 @@ Nothing is spent (gate `COST`). A row that names a deploy or a rehearsal runs on
 | OPS-2 | Oct 2 | First thing: the two Privy apps. Then a second Jupiter organisation, the passkey origin test, the hosting and RPC accounts. Free tiers only | Thom | todo | | |
 | OPS-3 | Now | The two live approvals on the demo wallet revoked (5 USDY, 5 syrupUSDC to the agent key), before anything is hosted | Rodrigo | todo | | |
 | OPS-5 | Oct 4 | The origin decided (a domain or one fixed URL); the admin, guardian, keeper and platform-creator keys created; the deploy dry run read line by line | Thom | todo | | OPS-4 |
-| OPS-6 | Oct 5, in session | Deploy on three chains and verify the contracts: config, caps, hand-over to the admin key. The launch portfolios published: at least six, two on more than one chain. The first hosted web and API; the cold-start test. The owner path against the real pools on Solana, then on Robinhood Chain. Check: `authority-check` is green | Thom; Solana sessions to be agreed | todo | | OPS-5, SEC-1 |
+| OPS-6 | Oct 5, in session | Deploy on the test networks and verify the contracts: config, caps, hand-over to the admin key. The launch portfolios published: at least six, two on more than one chain. The first hosted web and API; the cold-start test. The owner path on Solana devnet, then on the EVM test networks. Check: `authority-check` is green | Thom; Solana sessions to be agreed | todo | | OPS-5, SEC-1 |
 | OPS-7 | Oct 6, in session | A three-chain buy with a passkey wallet. Auto-follow cycles on Solana and Robinhood Chain. Rehearsal 1 on both, every transaction logged | A person | todo | | OPS-6, KEEP-1, KEEP-2 |
 | OPS-8 | Oct 7, in session | Rehearsal 2, and the market-open footage | A person | todo | | OPS-7 |
 | OPS-9 | Oct 8 | `G-SEC` per chain at 12:00 BRT, then `launch()`, then `G-LINK`, the pause drill, and the link shared. A new version of the demo portfolio published | Thom and Rodrigo | todo | | OPS-8, SEC-3 |

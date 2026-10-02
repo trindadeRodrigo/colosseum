@@ -24,7 +24,8 @@ Nothing here has run on mainnet. The three $10 runs come first in time.
 - US persons: no location block and no banner. The terms say the app is not for US persons, and a person accepts the terms before the first deposit.
 - Upgrade keys: one disclosed key per chain for now, and the app says so. A multisig comes after the MVP.
 - Keeper: run locally while testing, with a gas-only key. At deploy it moves to a small VM.
-- Nothing is spent (decided on Oct 2; it replaces the $10 of model credit and the three $10 tests on mainnet). The rules parser reads the goal sentence, and a model is used only if a key is already at hand. The vault tests run on copies of mainnet. Where the text below names a $10 run, a funded deploy, a mainnet rehearsal or a bought domain, `PLAN-VAULT.md` says what stands in for it; how the product is shown without a funded deploy is gate `SHOW` in `docs/GATES.md`.
+- About $10 of Anthropic credit for the sentence parser is approved. Nothing else is spent, and no money goes onto mainnet for now (decided on Oct 2): the three $10 tests are dropped and no domain is bought.
+- Built and shown on test networks first (decided on Oct 2): Solana devnet and the EVM test networks, with test tokens, a test exchange and test prices standing in for the stock tokens, Jupiter and the price feeds, labelled as test everywhere. So the router and the price source are set in each chain's config, never fixed in code. The vault's handling of the real tokens and pools is proven by tests on copies of mainnet. Mainnet maybe later, by configuration. Where the text below names a $10 run, a mainnet deploy or a mainnet rehearsal, `PLAN-VAULT.md` says what stands in for it.
 - Build tools may be installed on Thom's machine. Already there: Anchor 0.31.1, Solana CLI 3.0.1, Rust, Foundry (older than the pin), Docker. Missing: surfpool, solana-verify, Slither.
 
 ## 0. What changed from v1
@@ -975,7 +976,7 @@ Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-L
 
 13. Create the two Privy apps on the free tier. Fix one free URL as the origin by Oct 4; no domain is bought.
 14. The three vault tests run on copies of mainnet, not with $10 on mainnet (decided on Oct 2). Agents may install the build tools.
-15. No paid model credit (decided on Oct 2). The rules parser reads the sentence; a model is optional.
+15. About $10 of Anthropic credit for the sentence parser: approved on Oct 1, confirmed on Oct 2.
 16. Turnkey costs about $0.10 a signature after 25 a month **[C 9]**, so it is not the fallback. If Privy fails, the fallback is connecting a wallet only.
 17. Which VM runs the keeper at deploy. It runs locally while testing.
 
@@ -986,7 +987,7 @@ Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-L
 20. The 500 is a single-asset portfolio outside the registry (section 6).
 21. US visitors: decided on Oct 1. No location block and no banner; the terms say the app is not for US persons.
 22. If the capacity formula puts GLDx below Storm Cellar's 25%, the recipe changes; the capacity rule does not.
-23. Upgrade keys: decided on Oct 1, one disclosed key per chain. Still open: who holds each one and who is guardian on call each day. A live deploy on Solana would lock about 5 SOL; nothing is spent, so it waits on gate `SHOW`.
+23. Upgrade keys: decided on Oct 1, one disclosed key per chain. Still open: who holds each one and who is guardian on call each day. A mainnet deploy on Solana would lock about 5 SOL; mainnet is maybe later (gate `SHOW`).
 24. External wallets get one review screen and then several wallet prompts. The demo uses a passkey wallet.
 25. Auto-follow on stocks trades only Mon to Fri 14:30 to 20:00 UTC, and never on a listed closed day.
 26. Who opens the accounts (Supabase, Render, Vercel, Helius, Alchemy, UptimeRobot, the second Jupiter organisation), whether Jupiter's terms allow a second organisation, and whether Vercel Hobby's non-commercial clause is acceptable.
