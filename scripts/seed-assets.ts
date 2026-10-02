@@ -1,9 +1,11 @@
-import './env';
+import 'dotenv/config';
+import { assets, createDb } from '@colosseum/db';
 import { REGISTRY } from '@colosseum/engine';
 import { Asset } from '@colosseum/schemas';
-import { assets, createDb } from './index';
 
 // Upserts the registry into `assets`. Idempotent. Run: pnpm db:seed
+// It lives here, not in packages/db, because it joins the engine and the database
+// (docs/vault/DESIGN-VAULT.md section 2, rule 3).
 const { db, client } = createDb();
 for (const raw of REGISTRY) {
   const a = Asset.parse(raw);
