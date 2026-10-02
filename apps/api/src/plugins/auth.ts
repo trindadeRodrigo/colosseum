@@ -101,11 +101,44 @@ export class AuthError extends Error {
 const keysUnreadable = (e: unknown) =>
   !(e instanceof errors.JOSEError) ||
   e.code === 'ERR_JWKS_TIMEOUT' ||
+  e.code === 'ERR_JWKS_INVALID' ||
   e.code === 'ERR_JOSE_GENERIC';
+
+/** Seconds allowed between this server's clock and the issuer's. */
+const CLOCK_TOLERANCE_SECONDS = 5;
+/** How long a failure to read the issuer's keys is remembered. */
+const KEYS_DOWN_MS = 15_000;
+
+/**
+ * The same keys, with a failure to read them remembered for a short while: an issuer that is down gets
+ * one request from here every `ms`, not one per caller.
+ */
+export function rememberFailure(
+  keys: JWTVerifyGetKey,
+  ms: number = KEYS_DOWN_MS,
+  now: () => number = Date.now,
+): JWTVerifyGetKey {
+  let down: { until: number; error: unknown } | null = null;
+  return async (header, token) => {
+    if (down && now() < down.until) throw down.error;
+    try {
+      const key = await keys(header, token);
+      down = null;
+      return key;
+    } catch (e) {
+      if (keysUnreadable(e)) down = { until: now() + ms, error: e };
+      throw e;
+    }
+  };
+}
 
 const one = (header: string | string[] | undefined) => (Array.isArray(header) ? header[0] : header);
 
-/** Verifies both tokens and returns who is calling. Throws AuthError, which says what was missing. */
+/**
+ * Verifies both tokens and returns who is calling. Throws AuthError, which says what was missing.
+ * Each token is held to its own job, so neither can stand in for the other: the access token is a
+ * session (it carries `sid` and lists no accounts), and the identity token lists the accounts.
+ */
 export async function authenticate(
   issuer: TokenIssuer,
   headers: Record<string, string | string[] | undefined>,
@@ -121,6 +154,7 @@ export async function authenticate(
       audience: issuer.audience,
       algorithms: ALGORITHMS,
       requiredClaims: ['sub', 'exp'],
+      clockTolerance: CLOCK_TOLERANCE_SECONDS,
     }).catch((e: unknown) => {
       if (keysUnreadable(e)) throw new AuthError('the sign-in keys could not be read', 503);
       // jose's reason (expired, wrong audience, bad signature) stays in the server: one answer for all.
@@ -128,6 +162,11 @@ export async function authenticate(
     });
   const access = await check(bearer, 'access');
   const id = await check(identity, 'identity');
+  const session = typeof access.payload.sid === 'string' && access.payload.sid.length > 0;
+  if (!session || access.payload.linked_accounts !== undefined)
+    throw new AuthError('the access token is not valid for this app');
+  if (id.payload.linked_accounts === undefined)
+    throw new AuthError('the identity token is not valid for this app');
   if (!access.payload.sub || access.payload.sub !== id.payload.sub)
     throw new AuthError('the two tokens name different people');
   return {
@@ -138,12 +177,13 @@ export async function authenticate(
   };
 }
 
-/** True when every address of `owner` is one of the caller's verified wallets. */
+/** True when `owner` names at least one address and every one is among the caller's verified wallets. */
 export function holds(principal: Principal, owner: Owner): boolean {
   const has = (family: Chain, address: string | undefined) =>
     address === undefined ||
     principal.wallets.some((w) => w.family === family && w.address === address);
-  return has('solana', owner.solana) && has('evm', owner.evm);
+  const named = owner.solana !== undefined || owner.evm !== undefined;
+  return named && has('solana', owner.solana) && has('evm', owner.evm);
 }
 
 declare module 'fastify' {
@@ -161,7 +201,8 @@ declare module 'fastify' {
  * Adds sign-in to a scope. Every route in it declares `config.auth`; a route that does not is served
  * only if it is a GET.
  */
-export function registerAuth(scope: FastifyInstance, issuer: TokenIssuer | null): void {
+export function registerAuth(scope: FastifyInstance, given: TokenIssuer | null): void {
+  const issuer = given && { ...given, keys: rememberFailure(given.keys) };
   scope.decorateRequest('principal', null);
   scope.addHook('onRequest', async (req, reply) => {
     const rule = req.routeOptions.config.auth;

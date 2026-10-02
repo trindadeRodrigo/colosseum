@@ -17,7 +17,9 @@ import {
   AuthError,
   authenticate,
   authFromEnv,
+  holds,
   registerAuth,
+  rememberFailure,
   walletsFromClaim,
 } from '../plugins/auth';
 import { registerV1Routes } from '../routes/v1';
@@ -286,8 +288,9 @@ describe('sign-in, without a network', () => {
 
   it('answers 503, not 401, when the issuer’s keys cannot be read', async () => {
     const { issuer, sign } = await testIssuer('unreachable');
-    const token = await sign('did:privy:someone');
-    const headers = { authorization: `Bearer ${token}`, 'privy-id-token': token };
+    const access = await sign('did:privy:someone', { sid: 'session' });
+    const identity = await sign('did:privy:someone', { linked_accounts: '[]' });
+    const headers = { authorization: `Bearer ${access}`, 'privy-id-token': identity };
     const keys = () => Promise.reject(new TypeError('fetch failed'));
     const outcome = await authenticate({ ...issuer, keys }, headers, '127.0.0.1').catch(
       (e: unknown) => e,
@@ -301,6 +304,76 @@ describe('sign-in, without a network', () => {
       wallets: [],
       ip: '127.0.0.1',
     });
+  });
+
+  it('holds each token to its own job, so neither stands in for the other', async () => {
+    const { issuer, sign } = await testIssuer('roles');
+    const sub = 'did:privy:someone';
+    const access = await sign(sub, { sid: 'session' });
+    const identity = await sign(sub, { linked_accounts: '[]' });
+    const signIn = (bearer: string, id: string) =>
+      authenticate(issuer, { authorization: `Bearer ${bearer}`, 'privy-id-token': id }, '::1').then(
+        () => 'in',
+        (e: unknown) => (e instanceof AuthError ? e.status : e),
+      );
+    expect(await signIn(access, identity)).toBe('in');
+    // The identity token in both places, and the access token in both places.
+    expect(await signIn(identity, identity)).toBe(401);
+    expect(await signIn(access, access)).toBe(401);
+    // A session id that is not one, and a token that claims both jobs.
+    expect(await signIn(await sign(sub, { sid: '' }), identity)).toBe(401);
+    expect(await signIn(await sign(sub, { sid: 7 }), identity)).toBe(401);
+    const both = await sign(sub, { sid: 'session', linked_accounts: '[]' });
+    expect(await signIn(both, identity)).toBe(401);
+    expect(await signIn(both, both)).toBe(401);
+  });
+
+  it('asks an issuer that is down once, not once per caller', async () => {
+    let asked = 0;
+    let clock = 0;
+    const down: Parameters<typeof rememberFailure>[0] = () => {
+      asked += 1;
+      return Promise.reject(new TypeError('fetch failed'));
+    };
+    const keys = rememberFailure(down, 15_000, () => clock);
+    const ask = () => Promise.resolve(keys({ alg: 'ES256' }, { payload: '', signature: '' }));
+    for (let i = 0; i < 10; i++) await expect(ask()).rejects.toThrow('fetch failed');
+    expect(asked).toBe(1);
+    // After the pause it is asked again, once.
+    clock += 15_001;
+    for (let i = 0; i < 10; i++) await expect(ask()).rejects.toThrow('fetch failed');
+    expect(asked).toBe(2);
+
+    // Through the route: ten requests while the keys are down are ten 503s and one fetch.
+    const { issuer, sign } = await testIssuer('down');
+    let fetches = 0;
+    const app = Fastify();
+    registerAuth(app, {
+      ...issuer,
+      keys: () => {
+        fetches += 1;
+        return Promise.reject(new TypeError('fetch failed'));
+      },
+    });
+    app.get('/me', { config: { auth: 'user' } }, async () => ({ ok: true }));
+    const headers = {
+      authorization: `Bearer ${await sign('did:privy:x', { sid: 's' })}`,
+      'privy-id-token': await sign('did:privy:x', { linked_accounts: '[]' }),
+    };
+    for (let i = 0; i < 10; i++)
+      expect((await app.inject({ method: 'GET', url: '/me', headers })).statusCode).toBe(503);
+    expect(fetches).toBe(1);
+    await app.close();
+  });
+
+  it('an owner with no address is nobody’s', () => {
+    const wallets = [
+      { family: 'evm' as const, address: `0x${'ab'.repeat(20)}`, kind: 'embedded' as const },
+    ];
+    const principal = { kind: 'user' as const, userId: 'x', wallets, ip: '' };
+    expect(holds(principal, {})).toBe(false);
+    expect(holds(principal, { evm: wallets[0]?.address })).toBe(true);
+    expect(holds(principal, { evm: `0x${'cd'.repeat(20)}` })).toBe(false);
   });
 
   it('closes a route that declares no sign-in rule, unless it is a GET', async () => {
@@ -332,6 +405,7 @@ describe('the /v1 route table', () => {
       '/v1/orders',
       '/v1/orders/{id}',
       '/v1/orders/{id}/legs/{legId}/build',
+      '/v1/orders/{id}/legs/{legId}/cancel',
       '/v1/orders/{id}/legs/{legId}/report',
       '/v1/portfolio',
     ]);
