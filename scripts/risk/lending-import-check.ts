@@ -218,7 +218,7 @@ const out = {
     },
     history: {
       positionsInReconstruction: histPositions,
-      table: posDb.find((r) => r.method === 'lending-reconstruct-0.1') ?? null,
+      table: posDb.find((r) => String(r.method).startsWith('lending-reconstruct-')) ?? null,
     },
   },
   events: {
