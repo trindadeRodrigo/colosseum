@@ -1,0 +1,37 @@
+# The vault contracts. Run from this folder, or from the root with `pnpm test:contracts`.
+# Design pins (DESIGN-VAULT.md 3.8): solc 0.8.37, cancun, via_ir, OpenZeppelin 5.6.1, forge-std 1.17.0.
+# Dependencies come from pnpm (package.json here); there are no git submodules.
+[profile.default]
+src = "src"
+test = "test"
+out = "out"
+cache_path = "cache"
+libs = ["node_modules"]
+# pnpm links node_modules/* into the workspace store one level up.
+allow_paths = ["../node_modules"]
+auto_detect_remappings = false
+remappings = [
+  "@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/",
+  "@openzeppelin/contracts-upgradeable/=node_modules/@openzeppelin/contracts-upgradeable/",
+  "forge-std/=node_modules/forge-std/src/",
+]
+solc = "0.8.37"
+# OpenZeppelin 5.6.1 names a function `at`, which 0.8.37 warns will become a keyword. Our own warnings still show.
+ignored_warnings_from = ["node_modules"]
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+via_ir = true
+# One test reads the vault's built ABI to pin its entry points.
+fs_permissions = [{ access = "read", path = "./out" }]
+
+[fuzz]
+runs = 1000
+
+[invariant]
+runs = 256
+depth = 100
+fail_on_revert = false
+
+[fmt]
+line_length = 120

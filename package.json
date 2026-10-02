@@ -13,6 +13,7 @@
     "build": "pnpm -r build",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:contracts": "cd contracts && forge test",
     "test:program": "pnpm --dir programs/tests install --frozen-lockfile && pnpm --dir programs/tests test",
     "typecheck": "pnpm -r typecheck",
     "verify:quick": "pnpm lint && pnpm typecheck && tsc -p tsconfig.json",
