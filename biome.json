@@ -6,6 +6,8 @@
       "!**/node_modules",
       "!**/dist",
       "!**/.next",
+      "!contracts/out",
+      "!contracts/cache",
       "!**/migrations/meta",
       "!data",
       "!secrets",
@@ -13,7 +15,12 @@
       "!.design",
       "!.claude/settings.local.json",
       "!.claude/worktrees",
-      "!**/next-env.d.ts"
+      "!**/next-env.d.ts",
+      "!**/target",
+      "!**/.anchor",
+      "!**/test-ledger",
+      "!keys",
+      "!idl"
     ]
   },
   "formatter": {

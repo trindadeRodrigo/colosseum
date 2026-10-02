@@ -24,7 +24,7 @@ On Oct 1 Rodrigo merged the risk layer and the design system into `main`, so the
 | engine `parser/rules.ts` | keep | Stays as the path with no model key and as a cross-check on the model. The negation and amount fixes are his edit |
 | engine BRL parts (FX feed and stresses, reserve table, Portuguese regexes) | untouched | The new module works in dollars. Nothing is parked or deleted |
 | `packages/risk` | keep | His edits: the three fixes from the audit (items 9 and 10, and a regime with too few samples counting as zero), and six lines in `scripts/risk/compute.ts` so curves keep their method version, which lets EVM rows in |
-| `packages/db` | keep | New tables in their own schema file and one additive migration. No table of his changes. His edit: `seed-assets.ts` moves to `scripts/` |
+| `packages/db` | keep | New tables in their own schema file and one additive migration. No table of his changes. His edit: `seed-assets.ts` moves to `scripts/` (done on Oct 2: `scripts/seed-assets.ts`) |
 | chain-solana `jupiter`, `compose`, `simulate`, `rpc`, `explorer` | keep, reused | Timeout and backoff, a required key, a compute budget from our own simulation. The package passes to Thom when the branch is cut |
 | chain-solana `sign`, `wallet` | move behind a server-only entry | Only the keeper and scripts may import them. A new key-free `send.ts` broadcasts and tracks |
 | chain-solana `positions`, `prices` | superseded | New readers: holdings over both token programs with the multiplier applied once; reference prices from Kamino Scope with age and market state |
@@ -72,7 +72,7 @@ Settled on Oct 1 unless marked open. Each keeps its trade-off, so it can be reop
 - [x] **Units.** New types and tables use basis points and raw token amounts, so weights sum to exactly 10,000 and an 18-decimal token can be stored. His float weights and his tables stay as they are.
 - [x] **Process.** Parallel streams against frozen interfaces, beside his slot plan, with slot ids of the form `<stream>-<n>`. His rules stay: provenance, MOCK labels, deterministic engine, explorer links, no advice claim. One rule needs his word: "never auto-retry" against a keeper that re-plans a leg which expired without landing.
 - [x] **The `risk-layer` branch.** Merged into `main` on Oct 1, with the design system. The vault work builds on `main`.
-- [x] **Four small edits to his files,** which we make: the routes that sign on the server go behind a flag and are deleted once the vault path replaces them, `seed-assets.ts` moves to `scripts/`, the CI chores (done), and six lines in `compute.ts`.
+- [x] **Four small edits to his files,** which we make: the routes that sign on the server go behind a flag and are deleted once the vault path replaces them, `seed-assets.ts` moves to `scripts/` (done), the CI chores (done), and six lines in `compute.ts`.
 - [ ] **Smaller ones.** Still open: where the Bearing data runs for the demo, revoking the two live approvals on the demo wallet, and who runs the Solana mainnet sessions. The licence is Apache-2.0. The name (Tenonfi is provisional on the `design` branch), which also decides the `@colosseum/` scope and the working code names.
 
 ## Pull requests

@@ -1,0 +1,28 @@
+[package]
+name = "basket"
+version = "0.1.0"
+description = "The vault program: a vault per plan, held by its owner"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "basket"
+
+[features]
+# no-idl: without it anyone can create the program's on-chain IDL account and become its
+# authority. The interface files are built with `anchor idl build` and committed in idl/.
+default = ["no-idl"]
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+anchor-lang = "=0.31.1"
+anchor-spl = "=0.31.1"

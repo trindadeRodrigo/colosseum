@@ -47,29 +47,15 @@
     {
       "idx": 6,
       "version": "7",
-      "when": 1790888425440,
-      "tag": "0006_daffy_deathbird",
+      "when": 1790964472752,
+      "tag": "0006_basket",
       "breakpoints": true
     },
     {
       "idx": 7,
       "version": "7",
-      "when": 1790941489872,
-      "tag": "0007_careless_mastermind",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1790964067625,
-      "tag": "0008_opposite_jocasta",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "7",
-      "when": 1790965538277,
-      "tag": "0009_needy_blob",
+      "when": 1790979681515,
+      "tag": "0007_risk_lending_prices",
       "breakpoints": true
     }
   ]
