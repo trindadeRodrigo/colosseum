@@ -7,7 +7,14 @@ export const ONE_USD = 10n ** BigInt(USD_SCALE);
 
 /** What every function here throws when a number it is handed is not in the form it must be. */
 export class BasketInputError extends Error {
-  readonly code: 'BadDecimal' | 'BadAmount' | 'BadDecimals' | 'DuplicatePrice' | 'CashNotListed';
+  readonly code:
+    | 'BadDecimal'
+    | 'BadAmount'
+    | 'BadDecimals'
+    | 'BadTime'
+    | 'BadField'
+    | 'DuplicatePrice'
+    | 'CashNotListed';
   constructor(code: BasketInputError['code'], message: string) {
     super(message);
     this.name = 'BasketInputError';
