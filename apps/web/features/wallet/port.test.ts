@@ -338,6 +338,20 @@ describe('WalletPort: what it refuses before any key is touched', () => {
     const real = createWalletPort({ ...driver, test: false }, chains);
     const e = await failure(real.sign('solana', [mock]));
     expect([e.code, e.reason]).toEqual(['unknown', 'unsupported']);
+
+    // The mock's EVM transactions name chain id 0. They come back the same way, and are never sent.
+    const evm = port.active('evm')?.address ?? '';
+    const mockEvm = evmTx(evm, 'robinhood', {
+      evm: { to: OTHER_EVM, value: '0', chainId: 0 },
+      provenance: 'mock',
+    });
+    expect(await port.sign('robinhood', [mockEvm])).toEqual([mockEvm.payload]);
+    const outside = await signedIn({ kind: 'external', broadcastEvm: async () => '0x00' });
+    const sent = await failure(outside.port.send('robinhood', { ...mockEvm, signer: outside.evm }));
+    expect([sent.code, sent.reason]).toEqual(['unknown', 'unsupported']);
+    // A transaction that is not mock and names chain id 0 is for no chain this app is on.
+    const zero = { ...mockEvm, provenance: 'sandbox' as const };
+    expect((await failure(port.sign('robinhood', [zero]))).code).toBe('wrong_chain');
   });
 });
 

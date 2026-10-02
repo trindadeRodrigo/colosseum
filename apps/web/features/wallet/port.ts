@@ -107,9 +107,7 @@ export function createWalletPort(
   const evmRequest = (chain: ChainId, tx: BasketTx): EvmRequest => {
     const expected = chains[chain].config.evmChainId;
     if (!tx.evm) throw fail('bad_transaction', 'an EVM transaction names its target');
-    const mock = tx.provenance === 'mock';
-    // The mock builds for chain id 0, which is no network.
-    if (!mock && tx.evm.chainId !== expected)
+    if (tx.evm.chainId !== expected)
       throw new WalletPortError(
         'wrong_chain',
         `the transaction is for chain ${tx.evm.chainId}; this app is on ${chains[chain].config.networkName}`,
@@ -122,7 +120,8 @@ export function createWalletPort(
     } catch {
       throw fail('bad_transaction', 'the target or the value cannot be read');
     }
-    if (!isHex(tx.payload, { strict: true }) || value < 0n)
+    if (value < 0n) throw fail('bad_transaction', 'the value is negative');
+    if (!isHex(tx.payload, { strict: true }))
       throw fail('bad_transaction', 'the call data is not hex');
     return { to: to as `0x${string}`, data: tx.payload, value, chainId: tx.evm.chainId };
   };
@@ -201,6 +200,9 @@ export function createWalletPort(
         if (account.family !== 'evm' || caps(chain).signOnly)
           throw fail('unsupported', 'this wallet signs and hands the bytes back: use sign()');
         check(chain, account, tx);
+        // The mock builds for chain id 0, which is no network: there is nowhere to send it.
+        if (tx.provenance === 'mock')
+          throw fail('unsupported', 'a mock transaction is not sent: report it as it was built');
         const txId = await driver.sendEvm(rawOf(account), evmRequest(chain, tx));
         return { txId };
       }),

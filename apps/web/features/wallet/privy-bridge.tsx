@@ -207,6 +207,9 @@ function PrivyDriver({ onPort, chains }: BridgeProps & { chains: WalletChains })
 
       signIn(method) {
         if (ref.current.privy.authenticated) return Promise.resolve();
+        // Before Privy is ready its login() does nothing, and the promise would never settle.
+        if (!ref.current.privy.ready)
+          return Promise.reject(fail('not_connected', 'the wallet is still loading'));
         return new Promise<void>((resolve, reject) => {
           pending.current?.reject(fail('unsupported', 'a newer sign-in replaced this one'));
           pending.current = { resolve, reject };
