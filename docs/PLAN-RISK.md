@@ -199,9 +199,9 @@ Step 10 reads parameters once an hour from the protocol APIs. That is not enough
 
 **What a lending pool is here.** One debt reserve that lenders supply into, plus the collateral reserves or vaults that secure borrowing from it.
 - **Kamino:** a market holds collateral reserves (the xStocks) and debt reserves (USDC, USDG, PYUSD). A lender's exposure is that market's collateral.
-- **Jupiter Lend:** each vault pairs one collateral with one debt token, and all vaults borrow from one shared liquidity layer per debt token. A lender's exposure to stock collateral is the stock vaults' share of that layer's debt. How this maps to accounts is unverified (item 1).
+- **Jupiter Lend:** each vault pairs one collateral with one debt token, and all vaults borrow from one shared liquidity layer per debt token. A lender's exposure to stock collateral is the stock vaults' share of that layer's debt. The accounts were mapped and decoded on-chain in item 1 (VL-5: 872 of 872 fields equal the SDK's coders on all 8 vaults); the layer itself is live-only (D12).
 
-**Measured 2026-10-01 ~20:10Z** (probe; item 1 replaces it with full counts):
+**Probe 2026-10-01 ~20:10Z** (kept for the record; item 1's counts below replace it):
 
 | Finding | Evidence |
 |---|---|
@@ -211,6 +211,20 @@ Step 10 reads parameters once an hour from the protocol APIs. That is not enough
 | `getTokenLargestAccounts` is not served by the Chainstack shared node. Holder searches must use `getProgramAccounts` by mint. | RPC error -32601, 20:12Z |
 | `@jup-ag/lend` (0.4.0-beta.0) and `@jup-ag/lend-read` (0.0.14) exist on npm. Not yet tried. | `npm view`, 20:09Z |
 | The pool history fetch (Step 5b.2) is still running: 13.8M of 24.9M transactions at about 495 tx/s, 128 parallel, 0 rate-limit errors. About 6 hours left. | `data/risk/history-full/fetch.jsonl`, 20:11Z |
+
+**Measured by item 1 (2026-10-01 20:45–21:26Z; `data/risk/lending-measure.jsonl`, STATE-RISK row 10b):**
+
+| Finding | Evidence |
+|---|---|
+| 4 Kamino markets list an xStock (a fourth, `BBmb1SYx…`, is missing from Kamino's API), 23 reserves; the same 8 Jupiter Lend xStock vaults on-chain and in the API; other programs holding xStocks listed for D14. | VL-1 |
+| History: **1,635,068 distinct transactions over 515 days** (from 2025-04-15), within D10's 3M. VL-4's 2,363,692 summed per group counted shared transactions more than once. First transaction: xStocks Market 2025-07-08, STRCx 2026-05-03, Sentora 2026-08-26, `BBmb1SYx` 2026-09-15, Jupiter Lend vaults 2026-03-20…31. | VL-4, item 4 |
+| Jupiter Lend's USDC liquidity layer sees about 139k transactions a day (≈27M over the vaults' life): live-only (D12). | VL-4 |
+| Kamino and Jupiter Lend decode on-chain: 805 Kamino reserve fields = klend-sdk, 872 Jupiter Lend fields = the read SDK; on-chain = API within interest accrued between reads (xStocks Market USDC: 5,702,241.03 on-chain at 21:21Z vs 5,702,229.73 API at 21:02Z). | VL-2, VL-5, item 3 |
+| Obligations per market: 7,041 xStocks, 337 STRCx, 25 Sentora, 1 `BBmb1SYx`; their cTokens equal the collateral vaults. | VL-6 |
+| klend logs no events (amounts from instructions and token balances); Jupiter Lend logs `LogOperate`/`LogUserPosition`. | VL-7 |
+| 10 curated vaults have a slot in a registered reserve, 6 hold cTokens (Sentora PYUSD 27% of the Sentora PYUSD reserve, Elemental USDC Turbo about 15% of the STRCx USDC reserve). | VL-8 |
+| Storage: about 1.3 KB per transaction compressed, 2.1 GB of raw bodies, 4.6 GB in all in `data/risk/lending-history/`. | item 4, 2026-10-02 |
+| The pool history fetch (Step 5b.2) finished 2026-10-02 01:39Z (24,776,866 transactions; 512 retried 15:48Z) and was repaired and closed at 16:19Z. | STATE-RISK row 5b |
 
 **Constraints.**
 - The running pool fetch (`history-full.ts`), the three risk launchd jobs and the old depth job are not disturbed. While the pool fetch runs, lending fetches use at most 16 parallel requests.
@@ -273,7 +287,7 @@ Step 10 reads parameters once an hour from the protocol APIs. That is not enough
    - **Oracle against DEX:** the gap between the lending oracle's price and the pool mid, by regime, from the 5-minute rows.
    - **Collateral at risk:** for each price gap in `gapGridPct`, the stock collateral that becomes liquidatable per asset (from the positions), against the routed DEX sale capacity at a cost equal to the liquidation bonus, in the worst regime. The ratio of the two is the **liquidation coverage ratio**. It reuses `gapSim` and the routed curves, with every assumption listed.
 
-**Storage.** Raw bodies are about 15 KB each before compression. Budget 10 GB in `data/risk/lending-history/` (gitignored); item 1's count replaces this estimate.
+**Storage.** Raw bodies are about 15 KB each before compression and about 1.3 KB compressed: 2.1 GB measured for the whole history, 4.6 GB in all in `data/risk/lending-history/` (gitignored).
 
 **Done when:**
 - the registry is confirmed on-chain;
@@ -339,10 +353,11 @@ Names in `code` are policy inputs stored next to every output. Anything not list
 | D9 | Orca adaptive fee | **Model it in Step 3** if Orca pools are in Tier A for assets the structurer uses; else keep the documented tolerance | Step 3 |
 | D10 | Lending history window and start | **Each market's whole life, fetched now beside the pool fetch at 16 parallel** (founder, 2026-10-01). Above 3 million transactions in VL-4: stop and report first. | done |
 | D11 | Lending decoders | **Hand-written in `packages/risk`, each checked against the protocol SDK in a script and on frozen bytes.** SDKs stay in `scripts/`. | Step 10b item 5 |
-| D12 | Jupiter Lend shared liquidity layer | **Live 5-minute state from now.** Its history is fetched only if VL-4 shows its accounts fit the D10 budget; otherwise live-only, stated in the report. | Step 10b item 1 |
+| D12 | Jupiter Lend shared liquidity layer | **Live-only** (VL-4, 2026-10-01): the USDC layer's accounts see about 139k transactions a day, ≈27M over the vaults' life, far above D10's 3M; live 5-minute state since 2026-10-01 21:21Z. So Jupiter Lend has no replay or per-vault balance chain in item 6, and its lenders are not measured; the report states both. | done |
 | D13 | Position-level data | **Stored locally; published as aggregates only** (LTV buckets, top-N shares) | done |
 | D14 | Other lending venues found by VL-1 | **Listed with balances, not ingested for now** (founder, 2026-10-01); revisit when the list exists | done |
 | D15 | Curated vaults that supply into registered reserves | **Tracked** (registry, 5-minute state, history, reallocations) **but not offered** (founder, 2026-10-01): `offered: false`, nothing in the engine's asset registry | done |
+| D16 | Pool history window (Step 5b) | **28 days for the 29 older value pools until after the MVP; full-life history revisited then** (founder, 2026-10-02). The 5 pools created inside the window (MSFTx, AAPLx, SPCXx ×2, NVDAx/memecoin) are complete from creation; the lending pools are the long-horizon sample (whole life, D10). Estimated cost of the full life: 40–130 GB, 1–5 days at 500 tx/s, unmeasured. | done; revisit after the MVP |
 
 ## 7. Acceptance mapping (`HANDOFF-RISK.md` §6)
 
