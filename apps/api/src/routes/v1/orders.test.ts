@@ -26,16 +26,20 @@ let app: FastifyInstance;
 let registry: ChainRegistry;
 let planId: string;
 
+// What beforeAll has made so far, to be taken away again even if it failed halfway.
+const undo: (() => Promise<unknown>)[] = [];
+
 beforeAll(async () => {
   issuer = await testIssuer('test');
   stranger = await testIssuer('other');
   data = await testDb();
+  undo.push(() => data.cleanUp());
   planId = await data.storePlan();
   ({ app, registry } = await testApp({ issuer: issuer.issuer, db: data.db }));
+  undo.push(() => app.close());
 });
 afterAll(async () => {
-  await app.close();
-  await data.cleanUp();
+  for (const step of undo.reverse()) await step();
 });
 
 const someone = async (from: TestIssuer = issuer) => data.track(await person(from));
