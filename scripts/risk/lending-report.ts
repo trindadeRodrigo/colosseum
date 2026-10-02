@@ -15,6 +15,7 @@ import {
   type AssetCurves,
   alarmShare,
   bestRoute,
+  buildLendingPoolFacts,
   costAt,
   coverageRatio,
   type DepthCurve,
@@ -24,6 +25,7 @@ import {
   type GapPosition,
   gapStats,
   type IssuerModel,
+  type LendingCollateralInput,
   type LiquidationInput,
   lendingGapSim,
   liquidationCapacity,
@@ -34,7 +36,9 @@ import {
   observedLiquidation,
   observedRoutes,
   observedSale,
+  quantileOf,
   REGIMES,
+  type Read,
   type ReallocationLeg,
   type Regime,
   reallocationSummary,
@@ -42,10 +46,11 @@ import {
   type Supplier,
   saleCapacity,
   supplierConcentration,
+  variation,
   vaultExit,
   weekendDepthRatio,
 } from '@colosseum/risk';
-import type { LiquidationRoute } from '@colosseum/schemas';
+import { collectFacts, LendingPoolFacts, type LiquidationRoute } from '@colosseum/schemas';
 import { LendingMarket } from '@kamino-finance/klend-sdk';
 import { sql } from 'drizzle-orm';
 import { HISTORY_DIR } from './lib-history';
@@ -370,8 +375,8 @@ type Liq = {
     realisedPrice: number;
   }>;
 };
-const liqRows = await rows<{ block_time: string; venue: string; liq: Liq }>(
-  sql`select block_time, venue, detail->'liquidation' liq from risk_lending_events where kind = 'liquidation'`,
+const liqRows = await rows<{ block_time: string; venue: string; market: string | null; liq: Liq }>(
+  sql`select block_time, venue, market, detail->'liquidation' liq from risk_lending_events where kind = 'liquidation'`,
 );
 // liquidators and liquidated positions are wallets: none may reach the output (DA4)
 for (const r of liqRows)
@@ -635,8 +640,8 @@ for (const c of curveRows) {
     insufficientFrom: c.insufficient_from,
     quantile: c.quantile,
     minSamples: c.min_samples,
-    from: c.data_from,
-    to: c.data_to,
+    from: c.data_from ? new Date(c.data_from).toISOString() : null,
+    to: c.data_to ? new Date(c.data_to).toISOString() : null,
     samples: c.samples,
   };
   curvesOf.set(c.asset_mint, a);
@@ -874,7 +879,10 @@ const observedCtx = {
 const observedRows: ObservedLiquidation[] = liqRows.map((r) => {
   const l = r.liq;
   const at = new Date(r.block_time);
-  const row = observedLiquidation({ blockTime: r.block_time, venue: r.venue, liq: l }, observedCtx);
+  const row = observedLiquidation(
+    { blockTime: r.block_time, venue: r.venue, liq: { ...l, market: r.market ?? undefined } },
+    observedCtx,
+  );
   const sales = row.sales;
   if (!sales.length) return row;
   const o = observedSale(row);
@@ -914,6 +922,517 @@ const observedTotals = {
       .map(String)
       .sort()[0] ?? null,
 };
+
+// =============================================================================================== 9. lending pool facts
+// PLAN-ANALYTICS item 10. One LendingPoolFacts sheet per lending pool a lender supplies into: each Kamino debt reserve
+// (its market's stock collateral) and each Jupiter Lend vault (its lenders are the liquidity layer of its debt token).
+// Built from this run's rows; item 11 imports the sheets so the API serves them.
+const SHEET_ROUTE_SIZE_USD = 100_000;
+const RATE_WINDOW_DAYS = 30;
+const RATE_MIN_SAMPLES = 24;
+const reportMeta = { method: METHOD, methodVersion: METHOD };
+const latestRows = await rows<{
+  account: string;
+  kind: string;
+  observed_at: string;
+  supplied: number | null;
+  borrowed: number | null;
+  available: number | null;
+  share_lent_out: number | null;
+  supply_apy: number | null;
+  borrow_apy: number | null;
+  price_usd: number | null;
+  supplied_usd: number | null;
+  detail: Record<string, unknown>;
+  source: string;
+  method: string;
+  method_version: string;
+}>(sql`select distinct on (account, kind) account, kind, observed_at, supplied, borrowed, available, share_lent_out,
+  supply_apy, borrow_apy, price_usd, supplied_usd, detail, source, method, method_version from risk_lending_snapshots
+  where kind in ('kamino_reserve', 'jl_vault', 'jl_liquidity') order by account, kind, observed_at desc`);
+const latestOf = (account: string, kind: string) =>
+  latestRows.find((r) => r.account === account && r.kind === kind) ?? null;
+const rateSeries = await rows<{
+  account: string;
+  kind: string;
+  xs: number[];
+  from: string;
+  to: string;
+}>(
+  sql`select account, kind, array_agg(supply_apy order by observed_at) xs, min(observed_at) "from", max(observed_at) "to"
+  from risk_lending_snapshots where supply_apy is not null and kind in ('kamino_reserve_hourly')
+  and observed_at > now() - make_interval(days => ${RATE_WINDOW_DAYS}) group by account, kind`,
+);
+const posLatest = await rows<{
+  market: string;
+  collateral_asset: string;
+  observed_at: string;
+  collateral_usd: number | null;
+  usd_null_reason: string | null;
+  source: string;
+  method: string;
+  method_version: string;
+}>(sql`select distinct on (market, collateral_asset) market, collateral_asset, observed_at, collateral_usd,
+  usd_null_reason, source, method, method_version from risk_lending_positions
+  order by market, collateral_asset, observed_at desc`);
+const paramChanges = await rows<{ market: string; n: string }>(
+  sql`select market, count(*) n from risk_lending_events where kind = 'config_change'
+  and ix not like 'updateReserveAllocation%' and block_time > now() - interval '30 days' group by market`,
+);
+const socialised = await rows<{ market: string; n: string }>(
+  sql`select market, count(*) n from risk_lending_events where kind = 'socialize_loss' group by market`,
+);
+const iso = (t: string | Date) => new Date(t).toISOString();
+const read = (
+  value: number | null | undefined,
+  meta: {
+    source: string;
+    method: string;
+    methodVersion: string;
+    fetchedAt: string;
+    dataFrom?: string;
+    samples?: number;
+  },
+  reason: Read extends infer R
+    ? R extends { reason: infer Q }
+      ? Q
+      : never
+    : never = 'not_collected',
+  detail?: string,
+): Read =>
+  value === null || value === undefined || !Number.isFinite(value)
+    ? { reason, ...(detail ? { detail } : {}) }
+    : { value, provenance: 'live', ...meta };
+const fromSnap = (r: (typeof latestRows)[number]) => ({
+  source: `risk_lending_snapshots (${r.kind}; ${r.source})`,
+  method: r.method,
+  methodVersion: r.method_version,
+  fetchedAt: iso(r.observed_at),
+});
+const fromReport = (source: string, fetchedAt: string) => ({
+  source,
+  ...reportMeta,
+  fetchedAt,
+});
+const posAt = posFetchedAt ? iso(posFetchedAt) : generatedAt.toISOString();
+
+/** Stock collateral of one oracle (a Kamino collateral reserve or a Jupiter Lend vault), as a sheet input. */
+function collateralInput(c: {
+  asset: string;
+  market: string;
+  oracle: string;
+  threshold: number | null;
+  bonus: number | null;
+  thresholdMeta: { source: string; method: string; methodVersion: string; fetchedAt: string };
+  bonusMeta: { source: string; method: string; methodVersion: string; fetchedAt: string };
+}): LendingCollateralInput {
+  const pos = posLatest.find((p) => p.market === c.market && p.collateral_asset === c.asset);
+  const mint = xstockMintOf.get(c.asset);
+  const curves = mint ? (curvesOf.get(mint) ?? null) : null;
+  const gaps = oracleGaps.get(c.oracle) ?? {};
+  const cov = coverageBoth.filter((x) => x.asset === c.asset);
+  const covSource = fromReport(
+    `lending report section 7 (coverage on the liquidator's margin; positions hour ${posHour}, all markets: the pools share the DEX)`,
+    posAt,
+  );
+  const obs = observedRows.filter((o) => o.market === c.market && o.asset === c.asset);
+  const followed = obs.filter((o) => o.sales.length);
+  const vsMid = followed
+    .map((o) => observedSale(o).saleVsMid)
+    .filter((x): x is number => x !== null);
+  const obsMeta = fromReport(
+    'risk_lending_events (liquidations, Step 10b decode pass) and Step 5b hourly pool mids',
+    observedTotals.to ?? generatedAt.toISOString(),
+  );
+  return {
+    asset: c.asset,
+    collateralUsd: pos
+      ? read(
+          pos.collateral_usd,
+          {
+            source: `risk_lending_positions (${pos.source})`,
+            method: pos.method,
+            methodVersion: pos.method_version,
+            fetchedAt: iso(pos.observed_at),
+          },
+          'no_reference_price',
+          pos.usd_null_reason ?? undefined,
+        )
+      : { reason: 'not_imported', detail: 'no positions row for this market and asset' },
+    liquidationThreshold: read(c.threshold, c.thresholdMeta),
+    liquidationBonus: read(c.bonus, c.bonusMeta),
+    oracleGap: gaps,
+    coverageByGap: P.gapGridPct.map((gapPct) => {
+      const row = cov.find((x) => x.gapPct === gapPct);
+      if (!row)
+        return {
+          gapPct,
+          ratio: {
+            reason: 'not_applicable' as const,
+            detail: 'no position is liquidated at this gap',
+          },
+        };
+      const m = row.margin;
+      return {
+        gapPct,
+        ratio:
+          m.ratio === null
+            ? {
+                reason: (m.reason ?? 'no_samples_in_regime') as
+                  | 'no_samples_in_regime'
+                  | 'not_collected',
+              }
+            : {
+                value: m.ratio,
+                ...covSource,
+                provenance: 'live' as const,
+                ...(m.regime ? { regime: m.regime } : {}),
+                lowerBound: m.lowerBound === true,
+              },
+      };
+    }),
+    regimesMissing: [
+      ...new Set(cov.flatMap((x) => x.margin.regimesMissing.map((k) => k.split(':')[0] as Regime))),
+    ],
+    routes: REGIMES.flatMap((regime) =>
+      c.bonus === null
+        ? []
+        : liquidationRoutes({
+            regime,
+            seizedUsd: SHEET_ROUTE_SIZE_USD,
+            bonus: c.bonus,
+            oracleGap: gaps,
+            curves,
+            curveMeta,
+            twoHop: (mint && twoHopOf.get(mint)) || { pools: 0, tvlUsd: 0 },
+            issuer: xstocksIssuer,
+          }),
+    ),
+    observed: {
+      liquidations: { value: obs.length, provenance: 'live', ...obsMeta },
+      soldInSameTxShare: obs.length
+        ? {
+            value: followed.length / obs.length,
+            provenance: 'live',
+            ...obsMeta,
+            samples: obs.length,
+          }
+        : { reason: 'not_applicable', detail: 'no liquidation of this collateral here' },
+      realisedVsMid: vsMid.length
+        ? { value: quantileOf(vsMid, 0.5), provenance: 'live', ...obsMeta, samples: vsMid.length }
+        : followed.length
+          ? {
+              reason: 'not_collected',
+              detail: 'Step 5b pool mids start 2026-09-04; no followed sale since is in its pools',
+            }
+          : { reason: obs.length ? 'not_followed' : 'not_applicable' },
+    },
+  };
+}
+
+const marketHistory = (market: string, venue: string) => {
+  const liqs = observedRows.filter((o) => o.market === market);
+  const usdKnown = liqs.filter((o) => o.seizedUsd !== null);
+  const meta = fromReport(
+    'risk_lending_events (Step 10b decode pass)',
+    observedTotals.to ?? generatedAt.toISOString(),
+  );
+  const pc = paramChanges.find((x) => x.market === market);
+  const soc = socialised.find((x) => x.market === market);
+  return {
+    liquidations: { value: liqs.length, provenance: 'live' as const, ...meta },
+    liquidatedUsd: {
+      value: usdKnown.reduce((s, o) => s + (o.seizedUsd as number), 0),
+      provenance: 'live' as const,
+      ...meta,
+      samples: usdKnown.length,
+      lowerBound: usdKnown.length < liqs.length,
+    },
+    socialisedLossUsd:
+      venue === 'kamino' && !soc
+        ? {
+            value: 0,
+            provenance: 'live' as const,
+            ...meta,
+            method: 'socialize_loss events (none decoded)',
+          }
+        : {
+            reason: 'not_collected' as const,
+            detail:
+              venue === 'kamino'
+                ? 'socialize_loss events found; amounts not summed yet'
+                : 'Jupiter Lend absorbed debt is read live only (D12)',
+          },
+    parameterChanges30d: {
+      value: Number(pc?.n ?? 0),
+      provenance: 'live' as const,
+      ...meta,
+      method: 'config_change events except curated-vault allocations, last 30 days',
+    },
+  };
+};
+
+const lendingPoolFacts = [
+  // Kamino debt reserves
+  ...kaminoReserves
+    .filter((r) => r.role === 'debt')
+    .map((r) => {
+      const snapRow = latestOf(r.account, 'kamino_reserve');
+      const hist = snap.find((x) => x.account === r.account && x.kind.endsWith('_hourly'));
+      const rates = rateSeries.find((x) => x.account === r.account);
+      const v = rates ? variation(rates.xs.map(Number), RATE_MIN_SAMPLES) : null;
+      const lend = lenders.find((l) => l?.reserve === r.account) as
+        | (Record<string, unknown> & { topNLowerBound: boolean })
+        | undefined;
+      const lendMeta = fromReport(
+        `lending report section 2 (obligation deposits and curated vaults, positions hour ${posHour})`,
+        posAt,
+      );
+      // no attributed supplier: the shares would read 0, which is missing data, not concentration
+      const top = (k: string): Read =>
+        lend && Number(lend.suppliers) > 0 && typeof lend[k] === 'number'
+          ? {
+              value: lend[k] as number,
+              provenance: 'live',
+              ...lendMeta,
+              samples: Number(lend.suppliers),
+              lowerBound: lend.topNLowerBound,
+            }
+          : {
+              reason: 'not_collected',
+              detail: 'no supplier attributed: cTokens held outside obligations and curated vaults',
+            };
+      const collateral = kaminoReserves
+        .filter((c) => c.market === r.market && c.role === 'collateral' && c.dexAssetMint)
+        .map((c) => {
+          const st = reserveRow.get(c.account);
+          const regMeta = {
+            source: 'risk_lending_pools (registry, on-chain reserve config)',
+            method: 'kamino_reserve_decode',
+            methodVersion: c.methodVersion,
+            fetchedAt: iso(c.fetchedAt),
+          };
+          return collateralInput({
+            asset: c.symbol,
+            market: c.market,
+            oracle: st ? kaminoOracle(st) : `kamino ${c.symbol} @${c.marketName}`,
+            threshold: st ? Number(st.liquidationThresholdPct) / 100 : null,
+            bonus: (params(c).minLiquidationBonusBps as number) / 10_000,
+            thresholdMeta: st
+              ? {
+                  source: 'lending collector 5-minute reserve row',
+                  method: String(st.method),
+                  methodVersion: String(st.methodVersion),
+                  fetchedAt: String(st.fetchedAt),
+                }
+              : regMeta,
+            bonusMeta: regMeta,
+          });
+        });
+      return buildLendingPoolFacts({
+        account: r.account,
+        chain: r.chain,
+        venue: r.venue,
+        market: r.marketName ?? r.market,
+        symbol: r.symbol,
+        verification: r.verification as 'onchain' | 'api',
+        provenance: 'live',
+        withdrawal: {
+          // a price of 0 is a missing price, not a worthless reserve
+          suppliedUsd: snapRow
+            ? read(
+                (snapRow.price_usd ?? 0) > 0 ? snapRow.supplied_usd : null,
+                fromSnap(snapRow),
+                'no_reference_price',
+              )
+            : { reason: 'not_collected' },
+          availableUsd: snapRow
+            ? read(
+                snapRow.available !== null && (snapRow.price_usd ?? 0) > 0
+                  ? snapRow.available * (snapRow.price_usd as number)
+                  : null,
+                fromSnap(snapRow),
+                'no_reference_price',
+              )
+            : { reason: 'not_collected' },
+          shareLentOut: snapRow
+            ? read(snapRow.share_lent_out, fromSnap(snapRow))
+            : { reason: 'not_collected' },
+          hoursAboveAlarmShare:
+            hist && Number(hist.slo) > 0
+              ? {
+                  value: Number(hist.above) / Number(hist.slo),
+                  provenance: 'live',
+                  source: `risk_lending_snapshots (hourly history; > ${P.utilAlarmPct}% lent out)`,
+                  method: 'share_of_hours_above_utilAlarmPct',
+                  methodVersion: METHOD,
+                  fetchedAt: iso(hist.last),
+                  dataFrom: iso(hist.first),
+                  samples: Number(hist.slo),
+                }
+              : { reason: 'insufficient_samples' },
+        },
+        rates: {
+          supplyApy: snapRow
+            ? read(snapRow.supply_apy, fromSnap(snapRow))
+            : { reason: 'not_collected' },
+          borrowApy: snapRow
+            ? read(snapRow.borrow_apy, fromSnap(snapRow))
+            : { reason: 'not_collected' },
+          supplyApyVariation:
+            v && rates
+              ? {
+                  value: v.sd,
+                  provenance: 'live',
+                  source: 'risk_lending_snapshots (kamino_reserve_hourly supply_apy)',
+                  method: `stdev of hourly supply APY, last ${RATE_WINDOW_DAYS} days`,
+                  methodVersion: METHOD,
+                  fetchedAt: iso(rates.to),
+                  dataFrom: iso(rates.from),
+                  samples: v.n,
+                }
+              : { reason: 'insufficient_samples' },
+        },
+        lenders: {
+          top1Share: top('top1'),
+          top3Share: top('top3'),
+          top10Share: top('top10'),
+        },
+        collateral,
+        history: marketHistory(r.market, 'kamino'),
+        dataFrom: hist ? iso(hist.first) : null,
+        dataTo: snapRow ? iso(snapRow.observed_at) : null,
+      });
+    }),
+  // Jupiter Lend vaults: lenders are the liquidity layer of the debt token (live only, D12)
+  ...registry
+    .filter((r) => r.venue === 'jupiter_lend' && r.role === 'vault')
+    .map((r) => {
+      const vRow = latestOf(r.account, 'jl_vault');
+      const debtSymbol = String(vRow?.detail.debtSymbol ?? r.debtSymbol ?? '');
+      const layer =
+        latestRows.find((x) => x.kind === 'jl_liquidity' && x.detail.symbol === debtSymbol) ?? null;
+      const layerSeries = live
+        .filter((x) => x.kind === 'jl_liquidity' && x.symbol === debtSymbol)
+        .map((x) => Math.exp(Number(x.supplyApr)) - 1);
+      const lv = variation(layerSeries, RATE_MIN_SAMPLES);
+      const alarm = jlLayer.find((x) => x.symbol === debtSymbol);
+      const hist = snap.find((x) => x.account === r.account && x.kind.endsWith('_hourly'));
+      const live5 = vaultRowById.get(Number(String(r.market).split(':')[1]));
+      const apr = (k: string) =>
+        layer && Number.isFinite(Number(layer.detail[k])) ? Number(layer.detail[k]) : null;
+      const layerMeta = layer
+        ? { ...fromSnap(layer), method: `${layer.method}; APY = exp(APR) − 1` }
+        : null;
+      const regMeta = {
+        source: 'lending collector 5-minute vault row',
+        method: 'jupiter_lend_vault_decode',
+        methodVersion: live5 ? String(live5.methodVersion) : r.methodVersion,
+        fetchedAt: live5 ? String(live5.fetchedAt) : iso(r.fetchedAt),
+      };
+      return buildLendingPoolFacts({
+        account: r.account,
+        chain: r.chain,
+        venue: r.venue,
+        market: r.marketName ?? r.market,
+        symbol: `${r.symbol}/${debtSymbol}`,
+        verification: r.verification as 'onchain' | 'api',
+        provenance: 'live',
+        withdrawal: {
+          // the debt token's liquidity layer, shared by every vault that borrows it; debt valued at par
+          suppliedUsd: layer
+            ? read(layer.supplied, { ...fromSnap(layer), method: `${layer.method}; at par` })
+            : { reason: 'not_collected' },
+          availableUsd: layer
+            ? read(layer.available, { ...fromSnap(layer), method: `${layer.method}; at par` })
+            : { reason: 'not_collected' },
+          shareLentOut: layer
+            ? read(layer.share_lent_out, fromSnap(layer))
+            : { reason: 'not_collected' },
+          hoursAboveAlarmShare:
+            alarm?.share !== null && alarm?.share !== undefined
+              ? {
+                  value: alarm.share,
+                  provenance: 'live',
+                  source: `lending collector 5-minute liquidity-layer rows (${debtSymbol}; > ${P.utilAlarmPct}% lent out)`,
+                  method: 'share_of_5min_rows_above_utilAlarmPct',
+                  methodVersion: METHOD,
+                  fetchedAt: liveTo ?? generatedAt.toISOString(),
+                  ...(liveFrom ? { dataFrom: liveFrom } : {}),
+                  samples: alarm.n,
+                }
+              : { reason: 'insufficient_samples' },
+        },
+        rates: {
+          supplyApy: layerMeta
+            ? read(
+                apr('supplyApr') === null ? null : Math.exp(apr('supplyApr') as number) - 1,
+                layerMeta,
+              )
+            : { reason: 'not_collected' },
+          borrowApy: layerMeta
+            ? read(
+                apr('borrowApr') === null ? null : Math.exp(apr('borrowApr') as number) - 1,
+                layerMeta,
+              )
+            : { reason: 'not_collected' },
+          supplyApyVariation: lv
+            ? {
+                value: lv.sd,
+                provenance: 'live',
+                source: `lending collector 5-minute liquidity-layer rows (${debtSymbol})`,
+                method: 'stdev of exp(supplyApr) − 1 over the 5-minute rows (live only, D12)',
+                methodVersion: METHOD,
+                fetchedAt: liveTo ?? generatedAt.toISOString(),
+                ...(liveFrom ? { dataFrom: liveFrom } : {}),
+                samples: lv.n,
+              }
+            : { reason: 'insufficient_samples' },
+        },
+        lenders: {
+          top1Share: {
+            reason: 'not_collected',
+            detail: 'Jupiter Lend liquidity-layer supply positions are not read',
+          },
+          top3Share: {
+            reason: 'not_collected',
+            detail: 'Jupiter Lend liquidity-layer supply positions are not read',
+          },
+          top10Share: {
+            reason: 'not_collected',
+            detail: 'Jupiter Lend liquidity-layer supply positions are not read',
+          },
+        },
+        collateral: live5
+          ? [
+              collateralInput({
+                asset: r.symbol,
+                market: r.market,
+                oracle: jlOracle(live5),
+                threshold: Number(live5.liquidationThreshold),
+                bonus: Number(live5.liquidationPenalty),
+                thresholdMeta: regMeta,
+                bonusMeta: regMeta,
+              }),
+            ]
+          : [],
+        history: marketHistory(r.market, 'jupiter_lend'),
+        dataFrom: hist ? iso(hist.first) : null,
+        dataTo: vRow ? iso(vRow.observed_at) : null,
+      });
+    }),
+];
+
+const sheetChecks = lendingPoolFacts.map((sh) => {
+  const { facts, invalid } = collectFacts(sh);
+  return {
+    account: sh.account,
+    parses: LendingPoolFacts.safeParse(sh).success,
+    facts: facts.length,
+    measured: facts.filter((x) => x.fact.value !== null).length,
+    invalid,
+  };
+});
 
 // =============================================================================================== output
 const report = {
@@ -993,6 +1512,10 @@ const report = {
       `simulated against observed: recovered value of the routed sale at the sold size in the liquidation regime, against realised ÷ the routed reference mid within ${P.oracleMatchSec}s; only where the routed curve's window covers the liquidation`,
       'size buckets by seized USD; pools are pool accounts, never wallets',
     ],
+  },
+  lendingPoolFacts: {
+    sheets: lendingPoolFacts,
+    note: `PLAN-ANALYTICS item 10: one sheet per Kamino debt reserve and Jupiter Lend vault; routes at a seized $${SHEET_ROUTE_SIZE_USD} in each regime; coverage by gap is asset-wide (section 7)`,
   },
   coverageBoth: {
     rows: coverageBoth,
@@ -1197,6 +1720,31 @@ table(
     missing: c.margin.regimesMissing.join(' ') || '—',
   })),
 );
+const fv = (x: { value: number | null; reason?: string } | undefined, f: (v: number) => string) =>
+  !x ? '—' : x.value === null ? (x.reason ?? '—') : f(x.value);
+table(
+  '9. Lending pool facts (item 10) — one sheet per pool a lender supplies into',
+  lendingPoolFacts.map((sh, i) => {
+    const c = sheetChecks[i] as (typeof sheetChecks)[number];
+    return {
+      pool: `${sh.symbol} ${sh.market.slice(0, 22)}`,
+      supplied: fv(sh.withdrawal.suppliedUsd, usd),
+      available: fv(sh.withdrawal.availableUsd, usd),
+      lentOut: fv(sh.withdrawal.shareLentOut, (v) => pct(v)),
+      alarm: fv(sh.withdrawal.hoursAboveAlarmShare, (v) => pct(v)),
+      supplyApy: fv(sh.rates.supplyApy, (v) => pct(v, 2)),
+      apySd: fv(sh.rates.supplyApyVariation, (v) => pct(v, 2)),
+      top1: fv(sh.lenders.top1Share, (v) => pct(v)),
+      collateral: sh.collateral.map((x) => x.asset).join(' ') || '—',
+      'cov@20%': sh.collateral
+        .map((x) => fv(x.coverageByGap.find((g) => g.gapPct === 20)?.value, (v) => v.toFixed(2)))
+        .join(' '),
+      liq: fv(sh.history.liquidations, String),
+      params30d: fv(sh.history.parameterChanges30d, String),
+      facts: `${c.measured}/${c.facts}${c.parses ? '' : ' SCHEMA'}${c.invalid.length ? ` ${c.invalid.length} invalid` : ''}`,
+    };
+  }),
+);
 const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
 table(
   `8. Observed liquidation routes — ${observedTotals.followed} of ${observedTotals.liquidations} liquidations sold in a registry pool in the same transaction; ${observedTotals.notFollowed} not_followed (${observedTotals.notFollowedWithAggregator} called an aggregator)`,
@@ -1239,4 +1787,7 @@ console.log(
 );
 console.log(`→ ${file}`);
 await client.end();
-if (leaks.length) process.exit(1);
+const badSheets = sheetChecks.filter((c) => !c.parses || c.invalid.length);
+if (badSheets.length)
+  console.error(`lending pool facts failing the contract: ${JSON.stringify(badSheets)}`);
+if (leaks.length || badSheets.length) process.exit(1);

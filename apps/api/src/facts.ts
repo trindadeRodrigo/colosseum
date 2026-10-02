@@ -13,7 +13,9 @@ import {
 import {
   type AssetCurves,
   type AssetFactsInput,
+  assessLiquidity,
   buildAssetFacts,
+  buildPlanFacts,
   type DepthCurve,
   defaultFactsParams,
   defaultLendingReportParams,
@@ -22,10 +24,11 @@ import {
   type IssuerModel,
   maxNotionalAt,
   measuredRegimes,
+  type PlanLeg,
   type Regime,
   regimeAt,
 } from '@colosseum/risk';
-import type { AssetFacts } from '@colosseum/schemas';
+import type { AssetFacts, PlanFacts } from '@colosseum/schemas';
 import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 
 const ROOT = process.env.REPO_ROOT ?? join(import.meta.dirname, '..', '..', '..');
@@ -294,4 +297,149 @@ export async function measuredAssetMints(db: Db): Promise<string[]> {
       ),
     );
   return rows.map((r) => r.mint);
+}
+
+/**
+ * Reads the legs behind a plan's fact sheet and hands them to `buildPlanFacts` (PLAN-ANALYTICS item 10). Each leg
+ * gets its own AssetFacts at its value; issuer, class and chain come from the asset registry, or for an xStock the
+ * registry does not list, from the issuer model; venue and quote token from the leg's largest exit pool. With
+ * withdrawals, the breach assessment (risk-0.2) runs on the legs that have sell curves. An unknown asset id is a
+ * leg with no sheet, never dropped.
+ */
+export async function loadPlanFacts(
+  db: Db,
+  positions: Array<{ assetId: string; valueUsd: number }>,
+  opts: {
+    now?: Date;
+    withdrawals?: Array<{ at: string; usd: number }>;
+    windowDays?: number;
+  } = {},
+): Promise<PlanFacts> {
+  const params = defaultFactsParams();
+  const now = opts.now ?? new Date();
+  const issuers = fixture('issuer-models.json') as {
+    fetchedAt: string;
+    models: Record<string, IssuerModel>;
+  };
+  // the registry's own name for the xStocks issuer, so registered and unregistered xStocks group together
+  const registered = await db.select().from(assetsTable);
+  const xstocksIssuer =
+    registered
+      .map((r) => (r.metadata as { issuer?: string } | null)?.issuer)
+      .find((i) => i && /xstocks/i.test(i)) ??
+    issuers.models.xstocks?.issuer ??
+    null;
+  const legs: PlanLeg[] = [];
+  const illiquid: Array<{ assetId: string; valueUsd: number; curves: AssetCurves }> = [];
+  let cashUsd = 0;
+  for (const p of positions) {
+    const sheet =
+      p.valueUsd > 0 ? await loadAssetFacts(db, p.assetId, { sizeUsd: p.valueUsd, now }) : null;
+    const [reg] = await db
+      .select()
+      .from(assetsTable)
+      .where(
+        sql`${assetsTable.id} = ${p.assetId.toLowerCase()} or lower(${assetsTable.symbol}) = ${p.assetId.toLowerCase()}`,
+      )
+      .limit(1);
+    const mint = sheet?.mint ?? reg?.mint ?? null;
+    const exits = mint
+      ? await db
+          .select({
+            address: riskPools.address,
+            venue: riskPools.venue,
+            quote: riskPools.quoteSymbol,
+            exitPath: riskPools.exitPath,
+          })
+          .from(riskPools)
+          .where(
+            and(
+              eq(riskPools.assetMint, mint),
+              inArray(riskPools.exitPath, ['direct_usd', 'via_sol']),
+              inArray(riskPools.tier, ['A', 'B']),
+            ),
+          )
+          .orderBy(desc(riskPools.tvlUsd))
+      : [];
+    const xstock = !reg && exits.length > 0 && /x$/.test(sheet?.symbol ?? '');
+    const meta = (reg?.metadata ?? {}) as { issuer?: string };
+    const cls = reg?.kind ?? (xstock ? 'equity' : 'unknown');
+    legs.push({
+      assetId: sheet?.assetId ?? reg?.id ?? p.assetId.toLowerCase(),
+      valueUsd: p.valueUsd,
+      attrs: {
+        issuer: meta.issuer ?? (xstock ? xstocksIssuer : null),
+        chain: reg?.chain ?? sheet?.chain ?? 'solana',
+        class: cls,
+        venue: exits[0]?.venue ?? null,
+        quoteToken: exits[0]?.quote ?? null,
+      },
+      sheet,
+      exitPools: exits.map((e) => e.address),
+      usesSol: exits.some((e) => e.exitPath === 'via_sol'),
+    });
+    if (cls === 'cash') cashUsd += p.valueUsd;
+    else if (mint && p.valueUsd > 0) {
+      const curves = await sellCurvesOf(db, mint, sheet?.assetId ?? p.assetId);
+      if (curves)
+        illiquid.push({ assetId: sheet?.assetId ?? p.assetId, valueUsd: p.valueUsd, curves });
+    }
+  }
+  const breach =
+    opts.withdrawals?.length && illiquid.length
+      ? assessLiquidity({
+          cashUsd,
+          brlUsd: 0,
+          liquid: [],
+          illiquid,
+          withdrawals: opts.withdrawals,
+          windowDays: opts.windowDays ?? 7,
+          tau: params.tau,
+          shareOfDepth: 0.25,
+          dryFactorFloor: 0.25,
+          regimeParams: defaultRegimeParams(fixture('us-market-holidays.json')),
+        })
+      : null;
+  return buildPlanFacts({
+    legs,
+    asOf: now.toISOString(),
+    provenance: 'live',
+    platformFeeBps: params.platformFeeBps,
+    stress: { gapPct: 20, lpExitN: 3 },
+    breach: breach
+      ? {
+          result: breach,
+          source: `risk_depth_curves (${CURVE_METHOD_VERSION}) of ${illiquid.length} legs`,
+          method: 'assessLiquidity (breach.ts, risk-0.2): shareOfDepth 0.25, dryFactorFloor 0.25',
+          methodVersion: 'risk-0.2',
+        }
+      : null,
+  });
+}
+
+/** The sell curves of one mint (current method version), or null when it has none. */
+async function sellCurvesOf(db: Db, mint: string, assetId: string): Promise<AssetCurves | null> {
+  const rows = await db
+    .select()
+    .from(riskDepthCurves)
+    .where(
+      and(
+        eq(riskDepthCurves.assetMint, mint),
+        eq(riskDepthCurves.side, 'sell'),
+        eq(riskDepthCurves.methodVersion, CURVE_METHOD_VERSION),
+      ),
+    );
+  if (!rows.length) return null;
+  const byRegime: Partial<Record<Regime, DepthCurve>> = {};
+  for (const r of rows)
+    byRegime[r.regime as Regime] = {
+      points: r.points as DepthCurve['points'],
+      insufficientFrom: r.insufficientFrom,
+      quantile: r.quantile,
+      minSamples: r.minSamples,
+      from: r.dataFrom?.toISOString() ?? null,
+      to: r.dataTo?.toISOString() ?? null,
+      samples: r.samples,
+    };
+  return { assetId, byRegime };
 }

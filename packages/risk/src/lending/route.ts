@@ -145,9 +145,11 @@ export type LiquidationRoutesInput = {
   issuer: (IssuerModel & { fetchedAt: string }) | null;
 };
 
+/** The later of two times, as ISO 8601 (database rows may carry another timestamp format). */
 const later = (a: string | null | undefined, b: string | null | undefined) =>
   [a, b]
     .filter((t): t is string => !!t)
+    .map((t) => new Date(t).toISOString())
     .sort()
     .at(-1);
 
@@ -173,7 +175,7 @@ export function liquidationRoutes(inp: LiquidationRoutesInput): LiquidationRoute
       method,
       methodVersion: FACTS_METHOD_VERSION,
       fetchedAt: later(curve.to ?? curve.from, gap?.fetchedAt) as string,
-      ...(curve.from ? { dataFrom: curve.from } : {}),
+      ...(curve.from ? { dataFrom: new Date(curve.from).toISOString() } : {}),
       samples: Math.min(curve.samples, gap?.samples ?? curve.samples),
       provenance: inp.curveMeta.provenance,
     });

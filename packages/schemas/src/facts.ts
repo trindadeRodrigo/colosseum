@@ -254,6 +254,9 @@ export const LendingPoolFacts = z.object({
       /** Venue oracle against the pool mid, by regime. */
       oracleGap: z.array(z.object({ regime: FactRegime, gap: Fact })),
       coverageByGap: z.array(GapFact),
+      /** Regimes the coverage ratio could not price (no curve or no oracle rows): the ratio is the worst of the
+       *  others, so it can be lower there. */
+      regimesMissing: z.array(FactRegime).optional(),
       /** The route with the highest recovered value first; every alternative is listed. */
       routes: z.array(LiquidationRoute),
       observed: z.object({
@@ -296,6 +299,8 @@ export const PlanFacts = z.object({
     byChain: z.array(ConcentrationRow),
     byClass: z.array(ConcentrationRow),
     byVenue: z.array(ConcentrationRow),
+    /** The token each leg's largest exit pool pays out. */
+    byQuoteToken: z.array(ConcentrationRow).optional(),
   }),
   exit: z.object({
     regime: FactRegime.nullable(),
@@ -313,6 +318,17 @@ export const PlanFacts = z.object({
     lossUsd: Fact,
   }),
   netReturn: z.object({ roundTrip: Fact, breakEvenReturn: Fact }),
+  /** The liquidity breach assessment (risk-0.2) for the plan's withdrawals; absent when none were given. */
+  breach: z
+    .object({
+      breach: z.boolean(),
+      likelyBreach: z.boolean(),
+      shortfallUsd: Fact,
+      monthsAtRisk: z.array(z.string()),
+      /** Legs and regimes inside a withdrawal's window that the curves do not measure. */
+      regimesMissing: z.array(z.object({ assetId: z.string(), regime: FactRegime })),
+    })
+    .optional(),
   stress: z.array(
     z.object({
       /** weekend_gap | lp_exit | lending_pool_fully_lent */

@@ -363,6 +363,36 @@ describe('routes', () => {
     });
   });
 
+  it('curve times from the database (Postgres format) come out as ISO 8601 facts', () => {
+    const spy = curvesOf.get('SPYx') as AssetCurves;
+    const pg: AssetCurves = {
+      ...spy,
+      byRegime: {
+        us_market_hours: {
+          ...(spy.byRegime.us_market_hours as DepthCurve),
+          from: '2026-10-01 21:00:00+00',
+          to: '2026-10-02 13:00:00+00',
+        },
+      },
+    };
+    const rs = liquidationRoutes({
+      regime: 'us_market_hours',
+      seizedUsd: 10_000,
+      bonus: 0.1,
+      oracleGap: {},
+      curves: pg,
+      curveMeta,
+      twoHop: { pools: 0, tvlUsd: 0 },
+      issuer: null,
+    });
+    const { invalid } = collectFacts({ routes: rs });
+    expect(invalid).toEqual([]);
+    expect(rs.find((r) => r.route === 'routed_dex')?.recovered).toMatchObject({
+      fetchedAt: '2026-10-02T13:00:00.000Z',
+      dataFrom: '2026-10-01T21:00:00.000Z',
+    });
+  });
+
   it('not measured is a reason: no weekend curve, a size beyond the grid, a seizure below the issuer minimum', () => {
     const w = routes('weekend', 100_000);
     expect(w.find((r) => r.route === 'routed_dex')?.recovered).toMatchObject({

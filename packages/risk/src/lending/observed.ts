@@ -30,6 +30,8 @@ export type ObservedSale = {
 
 export type ObservedLiquidation = {
   venue: string;
+  /** Kamino market or Jupiter Lend vault (`jupiter_lend:<id>`), when the event names it. */
+  market?: string;
   asset: string;
   regime: Regime;
   at: string;
@@ -54,6 +56,7 @@ export type LiquidationEventDetail = {
   priceUnit: string;
   debtMint: string;
   impliedBonus: number | null;
+  market?: string;
   otherPrograms?: string[];
   sales: Array<{
     pool: string;
@@ -110,6 +113,7 @@ export function observedLiquidation(
     });
   return {
     venue: e.venue,
+    ...(l.market ? { market: l.market } : {}),
     asset: ctx.symbolOf(l.collateralMint) ?? l.collateralMint.slice(0, 6),
     regime: ctx.regimeOf(at),
     at: at.toISOString(),
