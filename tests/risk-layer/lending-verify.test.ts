@@ -107,7 +107,7 @@ describe('lending verify — vault-balance chain', () => {
   });
 
   it('the transaction a getBlock scan found closes that gap exactly', () => {
-    const [a, f, b] = [fx.gap.txs[0], fx.gap.found, fx.gap.txs[1]].map(decode);
+    const [a, f, b] = [fx.gap.txs[0] as Tx, fx.gap.found, fx.gap.txs[1] as Tx].map(decode);
     const step = (t: NonNullable<typeof a>) => ({
       sig: t.s,
       slot: t.sl,

@@ -35,6 +35,8 @@ export type KaminoReserve = {
   farmCollateral: string;
   farmDebt: string;
   lastUpdateSlot: bigint;
+  /** Unix seconds of the last refresh (`LastUpdate.timestamp`, u32); the accrual anchor of a TrueApr reserve. */
+  lastUpdateTimestamp: number;
   liquidityMint: string;
   liquiditySupplyVault: string;
   liquidityFeeVault: string;
@@ -121,6 +123,7 @@ export function decodeKaminoReserve(data: Uint8Array): KaminoReserve {
     farmCollateral: r.pubkey(64),
     farmDebt: r.pubkey(96),
     lastUpdateSlot: r.u64(16),
+    lastUpdateTimestamp: r.u32(28),
     liquidityMint: r.pubkey(128),
     liquiditySupplyVault: r.pubkey(160),
     liquidityFeeVault: r.pubkey(192),

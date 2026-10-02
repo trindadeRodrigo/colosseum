@@ -71,7 +71,9 @@ for (const f of found)
 // the window: each address was walked from the VL-4 start back to its first tx
 const vl4 = readJsonl<{ at: string; vl: string; value: { seconds: number } }>(
   'data/risk/lending-measure.jsonl',
-).findLast((r) => r.vl === 'VL-4');
+)
+  .filter((r) => r.vl === 'VL-4')
+  .at(-1);
 if (!vl4) throw new Error('no VL-4 row in data/risk/lending-measure.jsonl');
 const walkStart = Math.floor(Date.parse(vl4.at) / 1000) - vl4.value.seconds;
 // the newest slot every walk is known to have reached: the latest walked head at or before the walk started

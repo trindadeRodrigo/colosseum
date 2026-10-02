@@ -332,6 +332,33 @@ async function stateCheck() {
         ],
         ['depositLimit', m.config.depositLimit, s(r.config.depositLimit)],
         ['borrowLimit', m.config.borrowLimit, s(r.config.borrowLimit)],
+        // fields the item-7 reconstruction accrues with
+        ['lastUpdateSlot', m.lastUpdateSlot, s(r.lastUpdate.slot)],
+        ['lastUpdateTimestamp', m.lastUpdateTimestamp, s(r.lastUpdate.timestamp)],
+        [
+          'cumulativeBorrowRateBsf',
+          m.cumulativeBorrowRateBsf,
+          (r.liquidity.cumulativeBorrowRateBsf.value as unknown[])
+            .map((x) => BigInt(s(x)))
+            .reduce((acc, x, i) => acc + (x << BigInt(64 * i)), 0n),
+        ],
+        ['interestRateBasis', m.config.interestRateBasis, s(r.config.interestRateBasis)],
+        ['protocolTakeRatePct', m.config.protocolTakeRatePct, s(r.config.protocolTakeRatePct)],
+        [
+          'hostFixedInterestRateBps',
+          m.config.hostFixedInterestRateBps,
+          s(r.config.hostFixedInterestRateBps),
+        ],
+        [
+          'borrowRateCurve',
+          JSON.stringify(m.config.borrowRateCurve.map((p) => [p.utilizationBps, p.borrowRateBps])),
+          JSON.stringify(
+            r.config.borrowRateCurve.points.map((p) => [
+              Number(s(p.utilizationRateBps)),
+              Number(s(p.borrowRateBps)),
+            ]),
+          ),
+        ],
         [
           'withdrawQueueCollateral',
           m.withdrawQueueCollateral,

@@ -60,6 +60,8 @@
     "risk:lending-freeze-tx-fixtures": "tsx scripts/risk/lending-freeze-tx-fixtures.ts",
     "risk:lending-verify": "tsx scripts/risk/lending-verify.ts",
     "risk:lending-gap-scan": "tsx scripts/risk/lending-gap-scan.ts",
+    "risk:lending-freeze-reconstruct-fixtures": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/lending-freeze-reconstruct-fixtures.ts",
+    "risk:lending-reconstruct": "NODE_OPTIONS=--max-old-space-size=12288 tsx scripts/risk/lending-reconstruct.ts",
     "risk:lending-freeze-verify-fixtures": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/lending-freeze-verify-fixtures.ts"
   },
   "devDependencies": {
