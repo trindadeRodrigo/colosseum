@@ -20,6 +20,8 @@ evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
 via_ir = true
+# One test reads the vault's built ABI to pin its entry points.
+fs_permissions = [{ access = "read", path = "./out" }]
 
 [fuzz]
 runs = 1000

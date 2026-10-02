@@ -86,6 +86,31 @@ contract BasketVaultProxyTest is VaultFixture {
         }
     }
 
+    /// I1, stated as the whole surface: these are all the vault's entry points, and none takes a recipient.
+    /// A slot that adds one updates this list, and with it looks at what the new function can move.
+    function test_I1_entryPoints_areExactlyThese() public view {
+        string[8] memory expected = [
+            "initialize(address,bytes32,address)",
+            "deposit(address,uint256)",
+            "withdraw(address,uint256)",
+            "withdrawAll()",
+            "owner()",
+            "planId()",
+            "config()",
+            "tokens()"
+        ];
+        string memory artifact = vm.readFile("out/BasketVault.sol/BasketVault.json");
+        string[] memory found = vm.parseJsonKeys(artifact, ".methodIdentifiers");
+        assertEq(found.length, expected.length, "an entry point was added or removed");
+        for (uint256 i; i < expected.length; ++i) {
+            bool present;
+            for (uint256 j; j < found.length; ++j) {
+                if (keccak256(bytes(found[j])) == keccak256(bytes(expected[i]))) present = true;
+            }
+            assertTrue(present, expected[i]);
+        }
+    }
+
     function test_selectors_matchSection38() public pure {
         assertEq(BasketVault.deposit.selector, IBasketVault.deposit.selector);
         assertEq(BasketVault.withdraw.selector, IBasketVault.withdraw.selector);

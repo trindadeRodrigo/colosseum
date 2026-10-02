@@ -13,7 +13,7 @@
     "build": "pnpm -r build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:contracts": "forge test --root contracts",
+    "test:contracts": "cd contracts && forge test",
     "typecheck": "pnpm -r typecheck",
     "verify:quick": "pnpm lint && pnpm typecheck && tsc -p tsconfig.json",
     "verify": "pnpm verify:quick && pnpm test && pnpm build",
