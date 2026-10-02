@@ -56,6 +56,7 @@ A decision that changes something a document says is not finished until the docu
 - Mainnet: demo wallet only, smallest sensible amount, print the signature and the explorer link. A transaction that reverted is never sent again.
 - Scripts under `scripts/mainnet/` send real transactions. So do the two rigs under `spikes/` when run with `CLUSTER=mainnet` or `--broadcast`, and `pnpm wallet:export` prints a private key. A person runs these, never an agent; `/mainnet` prepares them. `scripts/archive/` is a record and is never run. Hooks block the usual ways of running them: they stop mistakes, they are not a sandbox.
 - Never read `.env` or anything under `secrets/`. Never put a key, a token or a private RPC URL in a file, a brief, a log or a pull request.
+- Test networks are the one exception to "a person runs it": an agent may hold and use a test-network key that carries only faucet funds, kept outside the repo. A mainnet key, never. A deploy to a test network still needs a person's word.
 - The collectors and their launchd jobs (`scripts/launchd/`, `scripts/risk/collector/`, `scripts/depth-snapshot.mjs`) are not edited before Oct 12.
 - Deploying, changing live data, messaging anyone outside the team, and merging into `main` need a person's word.
 
