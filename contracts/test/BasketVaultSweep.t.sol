@@ -45,13 +45,20 @@ abstract contract SweepLeastGasTest is SweepFixture {
     function _count() internal pure virtual returns (uint256);
     function _step() internal pure virtual returns (uint256);
 
+    function _newToken() internal virtual returns (MockToken) {
+        return new StockLikeToken(18);
+    }
+
+    function _afterDeposits() internal virtual {}
+
     function setUp() public {
         _deployPlatform();
         for (uint256 i; i < _count(); ++i) {
-            StockLikeToken token = new StockLikeToken(18);
+            MockToken token = _newToken();
             _hold(token, 100e18);
             held.push(address(token));
         }
+        _afterDeposits();
     }
 
     /// Walks the gas limit up from far too little. At every limit the call either fails or withdraws
@@ -100,6 +107,26 @@ contract SweepLeastGas12Test is SweepLeastGasTest {
 
     function _step() internal pure override returns (uint256) {
         return 250;
+    }
+}
+
+/// One honest token that needs almost all of both caps. The reserve is what guarantees it the full caps at
+/// the least gas the call accepts: with a smaller reserve this token would be skipped just above it.
+contract SweepLeastGasNearTheCapsTest is SweepLeastGasTest {
+    function _count() internal pure override returns (uint256) {
+        return 1;
+    }
+
+    function _step() internal pure override returns (uint256) {
+        return 100;
+    }
+
+    function _newToken() internal override returns (MockToken) {
+        return new GasBurnToken(18);
+    }
+
+    function _afterDeposits() internal override {
+        GasBurnToken(held[0]).setBurn(BALANCE_GAS - 10_000, TRANSFER_GAS - 45_000);
     }
 }
 

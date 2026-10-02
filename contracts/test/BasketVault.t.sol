@@ -423,7 +423,8 @@ abstract contract BasketVaultTest is VaultFixture {
         assertEq(_bal(cash, owner), funded);
     }
 
-    /// A balance read that answers with nothing, or with fewer than 32 bytes, is not a balance.
+    /// A balance read that answers with nothing, or with fewer than 32 bytes, is not a balance. The vault
+    /// must not send whatever happened to be in memory.
     function test_A9_tokenWhoseBalanceReadIsShortOrAbsent_isSkipped() public {
         ShortAnswerToken odd = new ShortAnswerToken(dec);
         odd.mint(owner, funded);
@@ -439,14 +440,27 @@ abstract contract BasketVaultTest is VaultFixture {
             assertEq(skipped.length, 1);
             assertEq(skipped[0], address(odd));
         }
+        odd.setShort(false, 0);
+        assertEq(odd.balanceOf(address(vault)), 10 * unit, "not one unit moved");
         assertEq(_bal(cash, owner), funded, "the healthy token left on the first pass");
 
-        // A full word is a balance again.
-        odd.setShort(true, 32);
         vm.prank(owner);
         assertEq(vault.withdrawAll().length, 0);
-        odd.setShort(false, 0);
         assertEq(odd.balanceOf(owner), funded);
+    }
+
+    /// A token whose code is gone answers every call with success and nothing. That is not a transfer.
+    function test_A9_tokenWhoseCodeIsGone_isSkipped() public {
+        _put(stock, 2 * unit);
+        _put(cash, 100 * unit);
+        vm.etch(stock, hex"");
+
+        vm.prank(owner);
+        address[] memory skipped = vault.withdrawAll();
+
+        assertEq(skipped.length, 1);
+        assertEq(skipped[0], stock);
+        assertEq(_bal(cash, owner), funded);
     }
 
     /// The issuer has put the owner on the token's blocklist: that token stays until the issuer lifts it.

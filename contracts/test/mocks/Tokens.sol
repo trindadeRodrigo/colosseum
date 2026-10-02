@@ -344,7 +344,8 @@ contract BombToken is MockToken {
     }
 }
 
-/// A token whose balance read answers with fewer than 32 bytes: `answerBytes` of them, 0 for nothing at all.
+/// A token whose balance read answers with fewer than 32 bytes, all zero: `answerBytes` of them, 0 for
+/// nothing at all.
 contract ShortAnswerToken is MockToken {
     bool public short;
     uint256 public answerBytes;
@@ -357,14 +358,13 @@ contract ShortAnswerToken is MockToken {
     }
 
     function balanceOf(address account) public view override returns (uint256) {
-        uint256 b = _balances[account];
         if (short) {
             uint256 n = answerBytes;
             assembly {
-                mstore(0, b)
+                mstore(0, 0)
                 return(0, n)
             }
         }
-        return b;
+        return _balances[account];
     }
 }

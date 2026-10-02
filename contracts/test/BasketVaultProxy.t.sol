@@ -112,13 +112,15 @@ contract BasketVaultProxyTest is VaultFixture {
             assertTrue(present, expected[i]);
         }
 
-        string[] memory kinds = vm.parseJsonStringArray(artifact, ".abi[*].type");
-        assertGt(kinds.length, expected.length, "the ABI was not read");
-        for (uint256 i; i < kinds.length; ++i) {
-            bytes32 kind = keccak256(bytes(kinds[i]));
+        uint256 entries;
+        for (;; ++entries) {
+            string memory entry = string.concat(".abi[", vm.toString(entries), "]");
+            if (!vm.keyExistsJson(artifact, entry)) break;
+            bytes32 kind = keccak256(bytes(vm.parseJsonString(artifact, string.concat(entry, ".type"))));
             assertTrue(kind != keccak256("fallback"), "the vault has a fallback");
             assertTrue(kind != keccak256("receive"), "the vault has a receive");
         }
+        assertGt(entries, expected.length, "the ABI was not read");
     }
 
     /// The same from outside: a call no function matches, and plain ether, are both turned away.
