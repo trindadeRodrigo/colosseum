@@ -363,6 +363,14 @@ The oracle standard is one rule that answers "what is this asset's price at this
    - P-3 against the pool mid in US market hours, within `externalTolPct`, before it enters `valuationOrder`.
 
    Candidates to check when the founder decides, none verified yet: an oracle network's historical API for the same feeds the venues use (Pyth, Chainlink Data Streams), the issuer's own price feed, and a licensed equities market-data API.
+
+   **Plugging one in, once chosen** (built and tested in items 1–5; `tests/risk-layer/prices.test.ts` plugs a test source in):
+   1. An adapter script writes its prices as observations with `writeObservations('external:<name>', <method>, <day>, rows)` (`scripts/risk/prices/lib.ts`), in the standard unit, with `source`, `fetched_at`, `method` and `provenance`.
+   2. `pnpm risk:prices-validate` compares it with the pool mid by asset and regime with no change to the script; the check "external sources agree with the pool mid in US market hours" must pass (`externalTolPct`, 0.5%).
+   3. Its name goes into `valuationOrder` in `defaultPriceParams()`, with its session in `sessionBySource` or its age limit in `maxAgeSec`.
+   4. `pnpm risk:lending-reconstruct` and `pnpm risk:prices-import --full` re-price the history; `price_source` on every row then says which hours it filled.
+
+   What it would fill today: the 9,474 reserve-hours in which Kamino held a placeholder for METAx and CRCLx, the hours before a reserve's first logged price, and off-hours, where a held oracle price is the only source before 2026-09-04.
 7. **Weekend** (Mon Oct 5). Re-run item 2 with the first weekend of 5-minute rows: the `weekend` regime's gap per asset, and whether `oracle_closed` needs a published haircut.
 
 **Done when:**
@@ -400,6 +408,13 @@ Names in `code` are policy inputs stored next to every output. Anything not list
   - **LP-exit stress:** recompute the pool without the top `N` owners' positions (`lpExitN`, default 3).
 - **LP-withdrawal event.** Between consecutive snapshots, a drop of more than `withdrawalAlarmPct` (default 20%) in in-band liquidity, attributed to the `decrease_liquidity` or `remove_liquidity` transactions in that window. It feeds the policy as an early warning, before any withdrawal date.
 - **Trade history (calibration).** Each past swap gives its size and execution price. Pre-trade mid price comes from the pool state or the previous trade. Realised cost by size and hour-of-week is compared with the simulated curve for the same bucket, and the comparison is published.
+- **Reference price (the oracle standard, Step 11; `method_version = prices-0.1`).** One valuation per asset and time, from price observations that are never blended.
+  - Sources, in `valuationOrder`: the pool mid (Step 5b's hourly mid of the asset's reference USDC pool, and the collector's 5-minute reference mid), then the price Kamino's program logged at each reserve refresh, then the rate Jupiter Lend's oracle returned inside each vault transaction. USDC is at par.
+  - An observation counts when it is recent enough: a stock oracle's age is counted in its own session (`sessionBySource`: US market hours for Kamino, the whole weekday for Jupiter Lend), at most `maxOpenAgeSec` of open session and `maxClosedAgeSec` in all; anything else at most `maxAgeSec` on wall clock.
+  - A price from an open session goes before a price an oracle is holding.
+  - A stock oracle that does not move through a US trading day is a placeholder (`minFrozenObs`): no valuation is taken from it.
+  - A venue's liquidation price is that venue's own oracle, always, placeholder or not.
+  - Every price carries its source, its age, the regime and a quality (`traded`, `oracle_open`, `oracle_closed`, `oracle_continuous`, `external`, `par`); every other source's price at that time is kept beside it with its gap.
 - **Redemption.** An issuer redemption that settles after the horizon is listed with status `settles_after_horizon` and is not counted in recoverable value (founder, Oct 1).
 
 ## 5. Stack additions

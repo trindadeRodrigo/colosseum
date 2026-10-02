@@ -42,6 +42,8 @@ const P = {
   maxClosedAgeSec: 4 * 86400,
   /** P-3 compares a pool mid with an oracle observation at most this old. */
   overlapMaxAgeSec: 3600,
+  /** P-3: largest median gap to the pool mid, in US market hours, for an external source to be accepted, percent. */
+  externalTolPct: 0.5,
   /** P-2: klend prints four decimals. */
   logDecimalsTol: 1e-4,
   /** P-2: a Jupiter Lend return and an API row are compared when at most this far apart. */
@@ -339,8 +341,25 @@ checks.push({
 });
 
 // ------------------------------------------------------------------------------------------------- P-3
-const kByMint = groupBy(kLog, (o) => o.mint);
-const jByMintQuote = groupBy(jLog, (o) => `${o.mint}|${o.quote}`);
+// every source that is not a pool mid, one asset and quote at a time: the two lending oracles' logged prices and
+// any external source that has observations. Collector reads start after Step 5b's window, so they add nothing.
+const logged = new Map([
+  ['kamino_scope', 'klend_refresh_log'],
+  ['jupiter_lend_oracle', 'jl_oracle_return'],
+]);
+const oracleSeries = new Map<string, StoredObservation[]>();
+for (const [key, a] of by) {
+  const [priceSource, method] = key.split('|') as [string, string];
+  if (priceSource === 'pool_mid') continue;
+  if (logged.has(priceSource) && logged.get(priceSource) !== method) continue;
+  for (const o of a) {
+    const k = `${priceSource}|${o.mint}|${o.quote}`;
+    const s = oracleSeries.get(k);
+    if (s) s.push(o);
+    else oracleSeries.set(k, [o]);
+  }
+}
+for (const a of oracleSeries.values()) a.sort((x, y) => x.t - y.t || (x.slot ?? 0) - (y.slot ?? 0));
 type Cell = { gaps: number[]; ages: number[] };
 const cells = new Map<string, Cell>();
 const addGap = (label: string, regime: Regime, gap: number, age: number) => {
@@ -350,22 +369,14 @@ const addGap = (label: string, regime: Regime, gap: number, age: number) => {
   c.ages.push(age);
   cells.set(k, c);
 };
-for (const m of poolH) {
-  const regime = regimeOf(m.t);
-  const k = latestAt(kByMint.get(m.mint) ?? [], m.t);
-  if (k && m.t - k.t <= P.overlapMaxAgeSec)
-    addGap(`kamino_scope ${sym(m.mint)}`, regime, k.price / m.price - 1, m.t - k.t);
-  for (const [key, a] of jByMintQuote) {
-    const [mint, quote] = key.split('|') as [string, string];
-    if (mint !== m.mint) continue;
-    const j = latestAt(a, m.t);
-    if (j && m.t - j.t <= P.overlapMaxAgeSec)
-      addGap(
-        `jupiter_lend_oracle ${sym(mint)}/${quote === USDC ? 'USDC' : 'JupUSD'}`,
-        regime,
-        j.price / m.price - 1,
-        m.t - j.t,
-      );
+const poolByMint = groupBy(poolH, (o) => o.mint);
+for (const [key, a] of oracleSeries) {
+  const [priceSource, mint, quote] = key.split('|') as [string, string, string];
+  const label = `${priceSource} ${sym(mint)}${quote === 'usd' ? '' : quote === USDC ? '/USDC' : `/${sym(quote) === quote.slice(0, 8) ? 'JupUSD' : sym(quote)}`}`;
+  for (const m of poolByMint.get(mint) ?? []) {
+    const o = latestAt(a, m.t);
+    if (o && m.t - o.t <= P.overlapMaxAgeSec)
+      addGap(label, regimeOf(m.t), o.price / m.price - 1, m.t - o.t);
   }
 }
 const p3 = [...cells]
@@ -383,6 +394,26 @@ const p3 = [...cells]
     };
   })
   .sort((a, b) => a.oracle.localeCompare(b.oracle) || a.regime.localeCompare(b.regime));
+
+// an external source enters `valuationOrder` only when it agrees with the pool mid in US market hours (item 6)
+const externalRows = p3.filter(
+  (r) => r.oracle.startsWith('external:') && r.regime === 'us_market_hours',
+);
+if (externalRows.length)
+  checks.push({
+    check: 'P-3 external sources agree with the pool mid in US market hours',
+    status: externalRows.every(
+      (r) => r.median !== null && Math.abs(r.median) <= P.externalTolPct / 100,
+    )
+      ? 'pass'
+      : 'finding',
+    note: externalRows
+      .map(
+        (r) =>
+          `${r.oracle}: median ${r.median === null ? '—' : (100 * r.median).toFixed(3)}% over ${r.n} hours`,
+      )
+      .join('; '),
+  });
 
 // ------------------------------------------------------------------------------------------------- P-4
 const multiplier = new Map<string, number>();
