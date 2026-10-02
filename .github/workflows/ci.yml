@@ -22,9 +22,6 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm exec tsc -p tsconfig.json
       - run: pnpm db:migrate
-      - run: pnpm test
-      - run: pnpm build
+      # The same command a person or a session runs locally: lint, typechecks, tests, build.
+      - run: pnpm verify

@@ -529,8 +529,8 @@ for (const o of obligations) {
       asset: d.symbol,
       usd: d.usd,
       liqThreshold: Number(st.liquidationThresholdPct) / 100,
-      liqBonus: params(reg).maxLiquidationBonusBps / 10_000,
-      liqBonusMin: params(reg).minLiquidationBonusBps / 10_000,
+      liqBonus: (params(reg).maxLiquidationBonusBps as number) / 10_000,
+      liqBonusMin: (params(reg).minLiquidationBonusBps as number) / 10_000,
       stock: reg.dexAssetMint !== null,
     });
   }
@@ -753,9 +753,9 @@ table(
     supplied: l?.supplied.toFixed(0),
     lentOut: pct(l?.shareLentOut),
     suppliers: l?.suppliers,
-    top1: pct(l?.top1 as number),
-    top3: pct(l?.top3 as number),
-    top10: pct(l?.top10 as number),
+    top1: pct((l as Record<string, unknown> | null)?.top1 as number),
+    top3: pct((l as Record<string, unknown> | null)?.top3 as number),
+    top10: pct((l as Record<string, unknown> | null)?.top10 as number),
     unattributed: pct(l?.unattributedShare),
     top1CanLeave: pct(l?.largestSupplierExit.withdrawableNowShare),
     lentOutAfter: pct(l?.largestSupplierExit.shareLentOutAfter),

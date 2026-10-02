@@ -1,10 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "noEmit": true,
-    "paths": {
-      "@colosseum/schemas": ["../schemas/src/index.ts"]
-    }
+    "noEmit": true
   },
   "include": ["src/**/*.ts"]
 }

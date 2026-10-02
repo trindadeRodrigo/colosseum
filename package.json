@@ -9,11 +9,14 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "pnpm -r --parallel --filter ./apps/* dev",
+    "dev": "pnpm -r --parallel --filter @colosseum/api --filter @colosseum/web dev",
     "build": "pnpm -r build",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "pnpm -r typecheck",
+    "verify:quick": "pnpm lint && pnpm typecheck && tsc -p tsconfig.json",
+    "verify": "pnpm verify:quick && pnpm test && pnpm build",
+    "db:up": "docker compose up -d --wait postgres && pnpm db:migrate",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "db:generate": "pnpm --filter @colosseum/db generate",
@@ -29,7 +32,7 @@
     "check:d1pm": "tsx scripts/checks/d1pm-simulate.ts",
     "wallet:export": "tsx scripts/wallet-export.ts",
     "wallet:import": "tsx scripts/wallet-import.ts",
-    "sign-and-send": "tsx scripts/sign-and-send.ts",
+    "sign-and-send": "tsx scripts/mainnet/sign-and-send.ts",
     "fixture:plan": "tsx scripts/fixtures/insert-fixture-plan.ts",
     "feeds:refresh": "tsx scripts/feeds/refresh.ts",
     "schedule:export": "tsx scripts/schedule-export.ts",
@@ -82,6 +85,12 @@
     "tsx": "^4.23.15",
     "typescript": "^5.9.0",
     "vitest": "^5.0.3",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "@colosseum/schemas": "workspace:*",
+    "@colosseum/db": "workspace:*",
+    "@colosseum/engine": "workspace:*",
+    "@colosseum/chain-solana": "workspace:*",
+    "@colosseum/chain-evm": "workspace:*",
+    "@colosseum/risk": "workspace:*"
   }
 }

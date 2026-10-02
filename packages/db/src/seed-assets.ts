@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './env';
 import { REGISTRY } from '@colosseum/engine';
 import { Asset } from '@colosseum/schemas';
 import { assets, createDb } from './index';

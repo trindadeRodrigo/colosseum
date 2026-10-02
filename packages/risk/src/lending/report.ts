@@ -65,12 +65,16 @@ export function supplierConcentration(
   suppliers: readonly Supplier[],
   totalSupply: number,
   topN: readonly number[],
-) {
+): {
+  suppliers: number;
+  unattributedShare: number | null;
+  topNLowerBound: boolean;
+} & Record<`top${number}`, number | null> {
   const amounts = suppliers.map((s) => s.amount).filter((a) => a > 0);
   const sorted = [...amounts].sort((a, b) => b - a);
   const attributed = sorted.reduce((s, a) => s + a, 0);
   const unattributed = Math.max(0, totalSupply - attributed);
-  const top: Record<string, number | null> = {};
+  const top: Record<`top${number}`, number | null> = {};
   for (const n of topN)
     top[`top${n}`] =
       totalSupply > 0 ? sorted.slice(0, n).reduce((s, a) => s + a, 0) / totalSupply : null;

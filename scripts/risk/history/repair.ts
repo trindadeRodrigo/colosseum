@@ -182,7 +182,7 @@ for (const a of adds) {
   if (!DRY) {
     appendFileSync(
       logFile,
-      `${JSON.stringify({ pool: addr, day, sig, reason: row.repaired.reason, old: null, new: row })}\n`,
+      `${JSON.stringify({ pool: addr, day, sig, reason: row.repaired?.reason, old: null, new: row })}\n`,
     );
     writeFileSync(`${file}.tmp`, `${[...lines, JSON.stringify(row)].join('\n')}\n`);
     renameSync(`${file}.tmp`, file);
