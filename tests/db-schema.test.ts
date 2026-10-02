@@ -1,4 +1,4 @@
-import { basketSchema, schema } from '@colosseum/db';
+import { basketSchema, chainRows, createDb, schema } from '@colosseum/db';
 import {
   AssetKind,
   ExecutionKind,
@@ -7,6 +7,7 @@ import {
   PolicyMechanism,
   Profile,
   Provenance,
+  parseChainConfigs,
 } from '@colosseum/schemas';
 import { getTableName, isTable } from 'drizzle-orm';
 import { getTableConfig, type PgTable } from 'drizzle-orm/pg-core';
@@ -117,5 +118,62 @@ describe('db schema: vault tables', () => {
     );
     expect(provenance.length).toBeGreaterThan(4);
     for (const c of provenance) expect(c.getSQLType()).toBe('provenance');
+  });
+  it('names a vault in the keeper tables by chain and address, not by a row of the API cache', () => {
+    for (const table of [basketSchema.keeperLegs, basketSchema.keeperVaults]) {
+      const { columns, foreignKeys } = getTableConfig(table);
+      expect(columns.map((c) => c.name)).toEqual(
+        expect.arrayContaining(['chain_id', 'vault_address']),
+      );
+      expect(columns.map((c) => c.name)).not.toContain('vault_id');
+      const referenced = foreignKeys.map((fk) => getTableName(fk.reference().foreignTable));
+      expect(referenced).not.toContain('vaults');
+    }
+    const key = getTableConfig(basketSchema.keeperVaults).primaryKeys[0];
+    expect(key?.columns.map((c) => c.name)).toEqual(['chain_id', 'vault_address']);
+    const runKey = getTableConfig(basketSchema.keeperLegs).uniqueConstraints[0];
+    expect(runKey?.columns.map((c) => c.name)).toEqual([
+      'chain_id',
+      'vault_address',
+      'keeper_run_id',
+      'seq',
+    ]);
+  });
+
+  it('indexes what is looked up: an attempt by its hash, vaults by recipe, follows by family', () => {
+    const indexed = (table: PgTable) =>
+      getTableConfig(table).indexes.map((i) =>
+        i.config.columns.map((c) => ('name' in c ? c.name : '')).join(','),
+      );
+    expect(indexed(basketSchema.legAttempts)).toContain('message_hash');
+    expect(indexed(basketSchema.vaults)).toEqual(expect.arrayContaining(['owner', 'recipe_id']));
+    expect(indexed(basketSchema.follows)).toContain('family_id');
+    expect(indexed(basketSchema.keeperLegs)).toContain('keeper_run_id');
+  });
+
+  it('opens the database with both schemas, so db.query knows the vault tables', async () => {
+    // Nothing connects until a query runs.
+    const { db, client } = createDb('postgres://nobody:nothing@localhost:1/none');
+    expect(db.query.orders).toBeDefined();
+    expect(db.query.keeperLegs).toBeDefined();
+    expect(db.query.plans).toBeDefined();
+    await client.end();
+  });
+
+  it('seeds one chains row per chain, and refuses a database that belongs to another network', () => {
+    const testnet = parseChainConfigs({});
+    const rows = chainRows([], testnet);
+    expect(rows.map((r) => [r.id, r.family, r.network, r.evmChainId])).toEqual([
+      ['solana', 'solana', 'testnet', null],
+      ['robinhood', 'evm', 'testnet', 46630],
+      ['base', 'evm', 'testnet', 84532],
+    ]);
+    // Seeding again over its own rows changes nothing and is allowed.
+    const seeded = rows.map((r) => ({ id: r.id, network: r.network }));
+    expect(chainRows(seeded, testnet)).toEqual(rows);
+    const mainnet = parseChainConfigs({ CHAIN_NETWORK_ROBINHOOD: 'mainnet' });
+    expect(() => chainRows(seeded, mainnet)).toThrow(
+      'chains.robinhood is testnet in this database and mainnet in the config: one database per network',
+    );
   });
 });

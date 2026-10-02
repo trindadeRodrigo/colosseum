@@ -29,6 +29,7 @@ import {
   jsonb,
   numeric,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -59,7 +60,11 @@ const chainId = () =>
     .notNull()
     .references(() => chains.id);
 
-/** The only list of chains. Seeded from the chain configs; `network` says mainnet, testnet or local. */
+/**
+ * The only list of chains. seedChains() writes it from the chain configs at start. `network` says
+ * mainnet, testnet or local, and one database serves one network: seedChains refuses a config that
+ * names another.
+ */
 export const chains = pgTable('chains', {
   id: text('id').$type<ChainId>().primaryKey(),
   family: chainEnum('family').notNull(),
@@ -230,6 +235,7 @@ export const vaults = pgTable(
   (t) => [
     unique('vaults_chain_address_key').on(t.chainId, t.address),
     index('vaults_owner_idx').on(t.owner),
+    index('vaults_recipe_idx').on(t.recipeId),
   ],
 );
 
@@ -247,7 +253,10 @@ export const follows = pgTable(
     promptVersion: integer('prompt_version'),
     createdAt: ts('created_at').notNull().defaultNow(),
   },
-  (t) => [unique('follows_user_family_key').on(t.userId, t.familyId)],
+  (t) => [
+    unique('follows_user_family_key').on(t.userId, t.familyId),
+    index('follows_family_idx').on(t.familyId),
+  ],
 );
 
 /** One object behind every buy, rebalance, publish and agent approval. Reachable only by its id. */
@@ -341,7 +350,11 @@ export const keeperRuns = pgTable(
   ],
 );
 
-/** The keeper's own leg log and idempotency key. Only the keeper writes it; it never signs from a row. */
+/**
+ * The keeper's own leg log and idempotency key. Only the keeper writes it; it never signs from a row.
+ * A vault is named by its chain and address, not by a row of `vaults`: the keeper finds vaults on the
+ * chain, and `vaults` is the API's cache, which the keeper may not write.
+ */
 export const keeperLegs = pgTable(
   'keeper_legs',
   {
@@ -349,10 +362,8 @@ export const keeperLegs = pgTable(
     keeperRunId: uuid('keeper_run_id')
       .notNull()
       .references(() => keeperRuns.id),
-    vaultId: uuid('vault_id')
-      .notNull()
-      .references(() => vaults.id),
     chainId: chainId(),
+    vaultAddress: text('vault_address').notNull(),
     seq: integer('seq').notNull(),
     kind: text('kind').$type<Extract<LegKind, 'adopt_version' | 'keeper_leg'>>().notNull(),
     description: text('description').notNull(),
@@ -369,18 +380,24 @@ export const keeperLegs = pgTable(
     createdAt: ts('created_at').notNull().defaultNow(),
     updatedAt: ts('updated_at').notNull().defaultNow(),
   },
-  (t) => [unique('keeper_legs_vault_run_seq_key').on(t.vaultId, t.keeperRunId, t.seq)],
+  (t) => [
+    unique('keeper_legs_vault_run_seq_key').on(t.chainId, t.vaultAddress, t.keeperRunId, t.seq),
+    index('keeper_legs_run_idx').on(t.keeperRunId),
+  ],
 );
 
-/** Per vault: the last version the keeper brought fully inside the band, and expired tries since. */
-export const keeperVaults = pgTable('keeper_vaults', {
-  vaultId: uuid('vault_id')
-    .primaryKey()
-    .references(() => vaults.id),
-  syncedVersion: integer('synced_version').notNull().default(0),
-  expiredAttempts: integer('expired_attempts').notNull().default(0),
-  updatedAt: ts('updated_at').notNull().defaultNow(),
-});
+/** Per vault, by chain and address: the last version the keeper brought fully inside the band, and expired tries since. */
+export const keeperVaults = pgTable(
+  'keeper_vaults',
+  {
+    chainId: chainId(),
+    vaultAddress: text('vault_address').notNull(),
+    syncedVersion: integer('synced_version').notNull().default(0),
+    expiredAttempts: integer('expired_attempts').notNull().default(0),
+    updatedAt: ts('updated_at').notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.chainId, t.vaultAddress] })],
+);
 
 /**
  * Every build of a leg, an owner's or the keeper's: exactly one of the two leg columns is set. This is
@@ -409,6 +426,8 @@ export const legAttempts = pgTable(
     unique('leg_attempts_chain_tx_key').on(t.chainId, t.txId),
     unique('leg_attempts_leg_n_key').on(t.legId, t.n),
     unique('leg_attempts_keeper_leg_n_key').on(t.keeperLegId, t.n),
+    // A reported transaction is matched to the attempt that built it by this hash.
+    index('leg_attempts_message_hash_idx').on(t.messageHash),
     check('leg_attempts_one_leg', sql`num_nonnulls(${t.legId}, ${t.keeperLegId}) = 1`),
   ],
 );

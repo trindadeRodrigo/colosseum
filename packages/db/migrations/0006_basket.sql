@@ -88,8 +88,8 @@ CREATE TABLE "index_families" (
 CREATE TABLE "keeper_legs" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"keeper_run_id" uuid NOT NULL,
-	"vault_id" uuid NOT NULL,
 	"chain_id" text NOT NULL,
+	"vault_address" text NOT NULL,
 	"seq" integer NOT NULL,
 	"kind" text NOT NULL,
 	"description" text NOT NULL,
@@ -105,7 +105,7 @@ CREATE TABLE "keeper_legs" (
 	"provenance" "provenance" NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "keeper_legs_vault_run_seq_key" UNIQUE("vault_id","keeper_run_id","seq")
+	CONSTRAINT "keeper_legs_vault_run_seq_key" UNIQUE("chain_id","vault_address","keeper_run_id","seq")
 );
 --> statement-breakpoint
 CREATE TABLE "keeper_runs" (
@@ -117,10 +117,12 @@ CREATE TABLE "keeper_runs" (
 );
 --> statement-breakpoint
 CREATE TABLE "keeper_vaults" (
-	"vault_id" uuid PRIMARY KEY NOT NULL,
+	"chain_id" text NOT NULL,
+	"vault_address" text NOT NULL,
 	"synced_version" integer DEFAULT 0 NOT NULL,
 	"expired_attempts" integer DEFAULT 0 NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "keeper_vaults_chain_id_vault_address_pk" PRIMARY KEY("chain_id","vault_address")
 );
 --> statement-breakpoint
 CREATE TABLE "leg_attempts" (
@@ -282,10 +284,9 @@ ALTER TABLE "follows" ADD CONSTRAINT "follows_user_id_users_id_fk" FOREIGN KEY (
 ALTER TABLE "follows" ADD CONSTRAINT "follows_family_id_index_families_family_id_fk" FOREIGN KEY ("family_id") REFERENCES "public"."index_families"("family_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "index_families" ADD CONSTRAINT "index_families_creator_user_id_users_id_fk" FOREIGN KEY ("creator_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "keeper_legs" ADD CONSTRAINT "keeper_legs_keeper_run_id_keeper_runs_id_fk" FOREIGN KEY ("keeper_run_id") REFERENCES "public"."keeper_runs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "keeper_legs" ADD CONSTRAINT "keeper_legs_vault_id_vaults_id_fk" FOREIGN KEY ("vault_id") REFERENCES "public"."vaults"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "keeper_legs" ADD CONSTRAINT "keeper_legs_chain_id_chains_id_fk" FOREIGN KEY ("chain_id") REFERENCES "public"."chains"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "keeper_runs" ADD CONSTRAINT "keeper_runs_chain_id_chains_id_fk" FOREIGN KEY ("chain_id") REFERENCES "public"."chains"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "keeper_vaults" ADD CONSTRAINT "keeper_vaults_vault_id_vaults_id_fk" FOREIGN KEY ("vault_id") REFERENCES "public"."vaults"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "keeper_vaults" ADD CONSTRAINT "keeper_vaults_chain_id_chains_id_fk" FOREIGN KEY ("chain_id") REFERENCES "public"."chains"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "leg_attempts" ADD CONSTRAINT "leg_attempts_leg_id_legs_id_fk" FOREIGN KEY ("leg_id") REFERENCES "public"."legs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "leg_attempts" ADD CONSTRAINT "leg_attempts_keeper_leg_id_keeper_legs_id_fk" FOREIGN KEY ("keeper_leg_id") REFERENCES "public"."keeper_legs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "leg_attempts" ADD CONSTRAINT "leg_attempts_chain_id_chains_id_fk" FOREIGN KEY ("chain_id") REFERENCES "public"."chains"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -303,9 +304,13 @@ ALTER TABLE "vaults" ADD CONSTRAINT "vaults_basket_id_baskets_id_fk" FOREIGN KEY
 ALTER TABLE "vaults" ADD CONSTRAINT "vaults_recipe_id_recipes_id_fk" FOREIGN KEY ("recipe_id") REFERENCES "public"."recipes"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "baskets_user_idx" ON "baskets" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "consents_order_idx" ON "consents" USING btree ("order_id");--> statement-breakpoint
+CREATE INDEX "follows_family_idx" ON "follows" USING btree ("family_id");--> statement-breakpoint
+CREATE INDEX "keeper_legs_run_idx" ON "keeper_legs" USING btree ("keeper_run_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "keeper_runs_one_open_per_chain" ON "keeper_runs" USING btree ("chain_id") WHERE "keeper_runs"."finished_at" is null;--> statement-breakpoint
+CREATE INDEX "leg_attempts_message_hash_idx" ON "leg_attempts" USING btree ("message_hash");--> statement-breakpoint
 CREATE INDEX "orders_owner_solana_idx" ON "orders" USING btree ("owner_solana");--> statement-breakpoint
 CREATE INDEX "orders_owner_evm_idx" ON "orders" USING btree ("owner_evm");--> statement-breakpoint
 CREATE INDEX "price_observations_asset_time_idx" ON "price_observations" USING btree ("asset_id","fetched_at");--> statement-breakpoint
 CREATE INDEX "user_wallets_user_idx" ON "user_wallets" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX "vaults_owner_idx" ON "vaults" USING btree ("owner");
+CREATE INDEX "vaults_owner_idx" ON "vaults" USING btree ("owner");--> statement-breakpoint
+CREATE INDEX "vaults_recipe_idx" ON "vaults" USING btree ("recipe_id");

@@ -1,5 +1,5 @@
 {
-  "id": "8afae48f-93d9-472d-80e8-addabfecb934",
+  "id": "641495d5-9005-4c08-8af6-0c5058fc3887",
   "prevId": "e9154b3d-819b-4ecb-8db0-37eafe91c7c5",
   "version": "7",
   "dialect": "postgresql",
@@ -2644,7 +2644,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "follows_family_idx": {
+          "name": "follows_family_idx",
+          "columns": [
+            {
+              "expression": "family_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "follows_user_id_users_id_fk": {
           "name": "follows_user_id_users_id_fk",
@@ -2879,14 +2895,14 @@
           "primaryKey": false,
           "notNull": true
         },
-        "vault_id": {
-          "name": "vault_id",
-          "type": "uuid",
+        "chain_id": {
+          "name": "chain_id",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "chain_id": {
-          "name": "chain_id",
+        "vault_address": {
+          "name": "vault_address",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -2986,7 +3002,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "keeper_legs_run_idx": {
+          "name": "keeper_legs_run_idx",
+          "columns": [
+            {
+              "expression": "keeper_run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "keeper_legs_keeper_run_id_keeper_runs_id_fk": {
           "name": "keeper_legs_keeper_run_id_keeper_runs_id_fk",
@@ -2994,19 +3026,6 @@
           "tableTo": "keeper_runs",
           "columnsFrom": [
             "keeper_run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "keeper_legs_vault_id_vaults_id_fk": {
-          "name": "keeper_legs_vault_id_vaults_id_fk",
-          "tableFrom": "keeper_legs",
-          "tableTo": "vaults",
-          "columnsFrom": [
-            "vault_id"
           ],
           "columnsTo": [
             "id"
@@ -3034,7 +3053,8 @@
           "name": "keeper_legs_vault_run_seq_key",
           "nullsNotDistinct": false,
           "columns": [
-            "vault_id",
+            "chain_id",
+            "vault_address",
             "keeper_run_id",
             "seq"
           ]
@@ -3124,10 +3144,16 @@
       "name": "keeper_vaults",
       "schema": "",
       "columns": {
-        "vault_id": {
-          "name": "vault_id",
-          "type": "uuid",
-          "primaryKey": true,
+        "chain_id": {
+          "name": "chain_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "vault_address": {
+          "name": "vault_address",
+          "type": "text",
+          "primaryKey": false,
           "notNull": true
         },
         "synced_version": {
@@ -3154,12 +3180,12 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "keeper_vaults_vault_id_vaults_id_fk": {
-          "name": "keeper_vaults_vault_id_vaults_id_fk",
+        "keeper_vaults_chain_id_chains_id_fk": {
+          "name": "keeper_vaults_chain_id_chains_id_fk",
           "tableFrom": "keeper_vaults",
-          "tableTo": "vaults",
+          "tableTo": "chains",
           "columnsFrom": [
-            "vault_id"
+            "chain_id"
           ],
           "columnsTo": [
             "id"
@@ -3168,7 +3194,15 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "keeper_vaults_chain_id_vault_address_pk": {
+          "name": "keeper_vaults_chain_id_vault_address_pk",
+          "columns": [
+            "chain_id",
+            "vault_address"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -3284,7 +3318,23 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "leg_attempts_message_hash_idx": {
+          "name": "leg_attempts_message_hash_idx",
+          "columns": [
+            {
+              "expression": "message_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "leg_attempts_leg_id_legs_id_fk": {
           "name": "leg_attempts_leg_id_legs_id_fk",
@@ -4305,6 +4355,21 @@
           "columns": [
             {
               "expression": "owner",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "vaults_recipe_idx": {
+          "name": "vaults_recipe_idx",
+          "columns": [
+            {
+              "expression": "recipe_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
