@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Runs after `next build` (see "build" in package.json). The build fails if the output holds anything
-// that exists for development only: the throwaway wallet, the dev page, or any route under /dev.
-// It also looks for one string every build ships, so a change in where Next writes its output makes
-// this check fail instead of pass on nothing.
+// that exists for development only: the throwaway wallet, the dev page, any route under /dev, or any
+// file of features/wallet/dev/ or features/wallet/test/ in what a route was built from.
+// It also looks for one string every build ships and one file every route is built from, so a change
+// in where Next writes its output makes this check fail instead of pass on nothing.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,22 +28,59 @@ function* files(dir, root = dir) {
   }
 }
 
-/** Every route path the build knows, from its manifests and from the folders it wrote. */
+const json = (path) => (existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null);
+
+/** Every route path the build knows, from each of its manifests and from the folders it wrote. */
 function routes(out) {
   const found = new Set();
+  // App Router: route file to path. Pages Router: path to file.
   for (const name of ['app-path-routes-manifest.json', 'server/app-paths-manifest.json']) {
-    const path = join(out, name);
-    if (!existsSync(path)) continue;
-    const manifest = JSON.parse(readFileSync(path, 'utf8'));
-    for (const [key, value] of Object.entries(manifest)) {
+    for (const [key, value] of Object.entries(json(join(out, name)) ?? {})) {
       found.add(key);
       if (typeof value === 'string' && value.startsWith('/')) found.add(value);
     }
   }
-  const app = join(out, 'server', 'app');
-  if (existsSync(app))
-    for (const name of readdirSync(app)) found.add(`/${name.replace(/\.[a-z]+$/, '')}`);
+  for (const key of Object.keys(json(join(out, 'server/pages-manifest.json')) ?? {}))
+    found.add(key);
+  const manifest = json(join(out, 'routes-manifest.json')) ?? {};
+  for (const list of [manifest.staticRoutes, manifest.dynamicRoutes, manifest.dataRoutes])
+    for (const route of list ?? []) if (typeof route?.page === 'string') found.add(route.page);
+  for (const top of ['server/app', 'server/pages']) {
+    const dir = join(out, top);
+    if (existsSync(dir))
+      for (const name of readdirSync(dir)) found.add(`/${name.replace(/\.[a-z.]+$/, '')}`);
+  }
   return [...found];
+}
+
+/** Folders whose files are for development and tests only. No built route may come from them. */
+export const DEV_ONLY = /(^|\/)features\/wallet\/(dev|test)\//;
+/** A file every route is built from: the proof that the source maps name our files. */
+export const ALWAYS_BUILT = 'features/wallet/WalletProvider.tsx';
+
+/**
+ * The source files the server side of the build was made from, read from its source maps. A client
+ * component is built for the server too, so a file any route imports is named here, with one
+ * exception: what is loaded with `ssr: false`. For that, see features/wallet/imports.test.ts, which
+ * reads the imports themselves.
+ */
+function sources(out) {
+  const found = new Map();
+  const dir = join(out, 'server');
+  if (!existsSync(dir)) return found;
+  for (const path of files(dir)) {
+    if (!path.endsWith('.js.map')) continue;
+    let map;
+    try {
+      map = JSON.parse(readFileSync(path, 'utf8'));
+    } catch {
+      continue;
+    }
+    const names = [map.sources ?? [], ...(map.sections ?? []).map((s) => s.map?.sources ?? [])];
+    for (const name of names.flat())
+      if (typeof name === 'string') found.set(decodeURIComponent(name), relative(out, path));
+  }
+  return found;
 }
 
 /** @returns {string[]} what is wrong with the build in `out`; empty when it is clean. */
@@ -62,6 +100,13 @@ export function checkBuild(out) {
   if (!shipped)
     problems.push(
       `"${REQUIRED}" was not found: the check is not reading the build output, so it proves nothing`,
+    );
+  const built = sources(out);
+  for (const [source, chunk] of built)
+    if (DEV_ONLY.test(source)) problems.push(`${chunk} was built from ${source}`);
+  if (![...built.keys()].some((source) => source.endsWith(ALWAYS_BUILT)))
+    problems.push(
+      `no source map names ${ALWAYS_BUILT}: the check cannot see which files the routes were built from`,
     );
   return problems;
 }

@@ -2,7 +2,13 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { checkBuild, FORBIDDEN, REQUIRED } from '../../scripts/check-build.mjs';
+import {
+  ALWAYS_BUILT,
+  checkBuild,
+  DEV_ONLY,
+  FORBIDDEN,
+  REQUIRED,
+} from '../../scripts/check-build.mjs';
 import { DEV_PAGE_MARKER } from './dev/marker';
 import { WALLET_MARKER } from './marker';
 import { TEST_WALLET_MARKER } from './test/test-driver';
@@ -25,10 +31,17 @@ afterEach(() => {
   for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
+/** A source map as the build writes one beside a server chunk. */
+const map = (...sources: string[]) => JSON.stringify({ version: 3, sources });
+const OURS = '../../../../../../apps/web/';
+
 const CLEAN = {
   'static/chunks/app.js': `x.displayName="${WALLET_MARKER}"`,
   'app-path-routes-manifest.json': JSON.stringify({ '/page': '/', '/monitor/page': '/monitor' }),
+  'routes-manifest.json': JSON.stringify({ staticRoutes: [{ page: '/' }, { page: '/monitor' }] }),
+  'server/pages-manifest.json': JSON.stringify({ '/404': 'pages/404.html' }),
   'server/app/monitor.html': '<html></html>',
+  'server/chunks/ssr/1.js.map': map(`${OURS}app/layout.tsx`, `${OURS}${ALWAYS_BUILT}`),
 };
 
 describe('the check that runs after every production build', () => {
@@ -71,12 +84,59 @@ describe('the check that runs after every production build', () => {
   });
 
   it('fails when it cannot find what every build ships, instead of passing on nothing', () => {
-    expect(checkBuild(build({ 'static/chunks/app.js': 'nothing of ours' }))).toEqual([
+    expect(checkBuild(build({ ...CLEAN, 'static/chunks/app.js': 'nothing of ours' }))).toEqual([
       expect.stringContaining('proves nothing'),
     ]);
     expect(checkBuild(join(tmpdir(), 'no-such-build-output'))).toEqual([
       expect.stringContaining('no build output'),
     ]);
+  });
+
+  it('fails when a /dev route is in any of the other manifests', () => {
+    const cases = {
+      'routes-manifest.json': JSON.stringify({ dynamicRoutes: [{ page: '/dev/[tool]' }] }),
+      'server/pages-manifest.json': JSON.stringify({ '/dev/wallet': 'pages/dev/wallet.js' }),
+      'server/app-paths-manifest.json': JSON.stringify({
+        '/dev/wallet/page': 'app/dev/wallet/page.js',
+      }),
+      'server/pages/dev.html': '',
+    };
+    for (const [file, text] of Object.entries(cases))
+      expect(checkBuild(build({ ...CLEAN, [file]: text })).join('\n'), file).toContain(
+        'the build has a development route: /dev',
+      );
+  });
+
+  it('fails when a route was built from a file of the dev or the test folder', () => {
+    // No marker survives here: dev/rpc.ts carries none. The source map is what gives it away.
+    for (const file of ['features/wallet/dev/rpc.ts', 'features/wallet/test/fixtures.ts']) {
+      const out = build({
+        ...CLEAN,
+        'server/chunks/ssr/2.js.map': map(`${OURS}app/monitor/page.tsx`, `${OURS}${file}`),
+      });
+      expect(checkBuild(out)).toEqual([`server/chunks/ssr/2.js.map was built from ${OURS}${file}`]);
+    }
+    // A map in sections, and a path written with escapes, are read the same way.
+    const sections = build({
+      ...CLEAN,
+      'server/app/page.js.map': JSON.stringify({
+        version: 3,
+        sections: [{ map: { sources: [`${OURS}features/wallet/dev/self%2Dtransfer.ts`] } }],
+      }),
+    });
+    expect(checkBuild(sections)).toHaveLength(1);
+    expect(DEV_ONLY.test('apps/web/features/wallet/developer.ts')).toBe(false);
+    expect(DEV_ONLY.test('apps/web/features/wallet/testing/x.ts')).toBe(false);
+  });
+
+  it('fails when no source map names our files, instead of passing on nothing', () => {
+    const { 'server/chunks/ssr/1.js.map': _, ...noMaps } = CLEAN;
+    expect(checkBuild(build(noMaps))).toEqual([expect.stringContaining('cannot see which files')]);
+    const others = build({
+      ...noMaps,
+      'server/chunks/ssr/9.js.map': map('node_modules/next/x.js'),
+    });
+    expect(checkBuild(others)).toEqual([expect.stringContaining('cannot see which files')]);
   });
 
   it('leaves out what `next dev` writes, which is not part of a build', () => {
