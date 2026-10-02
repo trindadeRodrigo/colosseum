@@ -2,7 +2,7 @@ import { legAttempts, legs, orders, proposals, vaults } from '@colosseum/db';
 import { BasketTx, BuildLegResponse, ChainError, type ChainId, Order } from '@colosseum/schemas';
 import { eq, inArray, or } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ChainRegistry } from '../../orders/chains';
 import {
   type Person,
@@ -19,6 +19,11 @@ import { PortfolioResponse } from './portfolio';
 // API-1, the walking skeleton of M1 and the identity checks of G-LINK, through HTTP on the mock chain
 // and the real database. Every test makes its own wallets and its own orders; afterAll deletes the
 // rows that hang off them and nothing else.
+
+// Every test here makes dozens of requests against a database other sessions share. A test that runs
+// past its time keeps running into the next one's mock chain, so the limit is set well above the
+// slowest of them.
+vi.setConfig({ testTimeout: 60_000 });
 
 let issuer: TestIssuer;
 let stranger: TestIssuer;
@@ -348,8 +353,9 @@ describe('sign-in', () => {
     const placed = await order(a);
     const [bearer = '', token = ''] = [a.headers.authorization, a.headers['privy-id-token']];
     const other = await person(stranger);
+    // An access token that is right in everything but the claims given.
     const access = (claims: Record<string, unknown>, expiresAt?: number) =>
-      issuer.sign(a.sub, claims, expiresAt).then((t) => `Bearer ${t}`);
+      issuer.sign(a.sub, { sid: 'session', ...claims }, expiresAt).then((t) => `Bearer ${t}`);
     const callers: Record<string, Record<string, string>> = {
       'no token': {},
       'no identity token': { authorization: bearer },
@@ -360,7 +366,7 @@ describe('sign-in', () => {
       'another issuer': other.headers,
       // The other issuer's key, but claiming to be this issuer and this app.
       'a forged issuer': {
-        authorization: `Bearer ${await stranger.sign(a.sub, { iss: issuer.issuer.issuer, aud: issuer.issuer.audience })}`,
+        authorization: `Bearer ${await stranger.sign(a.sub, { sid: 'session', iss: issuer.issuer.issuer, aud: issuer.issuer.audience })}`,
         'privy-id-token': token,
       },
       // This issuer's own key, under another issuer's name.
@@ -643,7 +649,7 @@ describe('a leg settles only on the transaction that was built for it', () => {
       // The cash left the wallet once.
       expect(before - (await cash())).toBe(10_000_000n);
     }
-  });
+  }, 60_000);
 
   it('on Solana, builds again once the first transaction can no longer land', async () => {
     const a = await someone();
@@ -662,6 +668,11 @@ describe('a leg settles only on the transaction that was built for it', () => {
     clock += 2 * 60 * 1000;
     const two = await build(a, placed, deposit.id, on);
     expect(two.attempt.n).toBe(2);
+    const rebuilt = OrderDetail.parse((await get(a, `/v1/orders/${placed.id}`, on)).json());
+    expect(attemptsOf(rebuilt, deposit.id)).toEqual([
+      [1, 'expired'],
+      [2, 'built'],
+    ]);
     const mock = timed.registry.get('solana').mock;
     await expect(mock?.send({ messageHash: one.tx.messageHash })).rejects.toMatchObject({
       code: 'Expired',
@@ -719,6 +730,8 @@ describe('a leg settles only on the transaction that was built for it', () => {
       status: 'expired',
       error: { code: 'rejected', retryable: true },
     });
+    // Cancelled once; there is nothing left to cancel.
+    expect((await post(a, legUrl(placed, deposit.id, 'cancel'))).statusCode).toBe(409);
     const two = await build(a, placed, deposit.id);
     expect(two.attempt.n).toBe(2);
 
@@ -764,7 +777,7 @@ describe('a leg settles only on the transaction that was built for it', () => {
     expect(early.statusCode).toBe(409);
     expect(early.json().error).toMatch(/can still land/);
     expect(attemptsOf(await read(a, sol.placed), sol.deposit.id)).toEqual([[1, 'built']]);
-  });
+  }, 60_000);
 
   it('racing a build against the report of a landed transaction loses nothing, on both chains', async () => {
     for (const chain of ['solana', 'robinhood'] as const) {
@@ -791,7 +804,7 @@ describe('a leg settles only on the transaction that was built for it', () => {
       }
       expect(before - (await cash())).toBe(BigInt(rounds) * 10_000_000n);
     }
-  });
+  }, 60_000);
 
   it('finds a cancelled transaction that landed before the leg is built again', async () => {
     const a = await someone();
@@ -810,7 +823,7 @@ describe('a leg settles only on the transaction that was built for it', () => {
       expect(legOf(after, deposit.id)).toMatchObject({ status: 'confirmed', attempt: 1 });
       expect(attemptsOf(after, deposit.id)).toEqual([[1, 'confirmed']]);
     }
-  });
+  }, 60_000);
 
   it('two builds at once make one attempt', async () => {
     const a = await someone();
@@ -826,7 +839,7 @@ describe('a leg settles only on the transaction that was built for it', () => {
       expect(both.map((r) => r.statusCode).sort()).toEqual([200, 409, 409]);
       expect(attemptsOf(await read(a, placed), leg.id)).toEqual([[1, 'built']]);
     }
-  });
+  }, 60_000);
 
   it('a transaction that never lands leaves the leg sent, then expired, and it is built again', async () => {
     const a = await someone();
