@@ -1,0 +1,130 @@
+import { z } from 'zod';
+import { BasketAsset } from './basket-asset';
+import { AssetId, Bps, ChainId, Sourced } from './chain';
+import { Language } from './enums';
+import { Component, FamilyMeta, Recipe } from './recipe';
+
+// DESIGN-VAULT 3.6, personalization. A plan is a `BasketProposal`: lines with reasons, a card and one
+// recipe per chain. `compose()` in packages/engine/src/personal builds it; the numbers in
+// `PersonalParams` are Rodrigo's.
+
+export const BasketSheet = z.object({
+  basketType: z.literal('standard'),
+  goal: z.enum(['grow', 'income', 'protect']),
+  amountUsd: z.number().min(10).max(1_000_000),
+  horizonMonths: z.number().int().min(1).max(480),
+  risk: z.enum(['low', 'medium', 'high']),
+  /** Family slugs. */
+  themes: z.array(z.string().min(1)).max(3),
+  /** ISO two-letter, self-declared. */
+  country: z.string().regex(/^[A-Z]{2}$/),
+  chains: z.array(ChainId).min(1),
+  incomeTargetUsdMonthly: z.number().positive().optional(),
+  rules: z.object({ useHoldings: z.boolean(), glide: z.boolean() }),
+  language: Language,
+});
+export type BasketSheet = z.infer<typeof BasketSheet>;
+
+/** Everything a plan can be built from: the listed assets and the shared portfolios. */
+export const Shelf = z.object({
+  version: z.string().min(1),
+  assets: z.array(BasketAsset),
+  families: z.array(z.object({ meta: FamilyMeta, recipes: z.array(Recipe) })),
+});
+export type Shelf = z.infer<typeof Shelf>;
+
+export const PersonalParams = z.object({
+  version: z.string().min(1),
+  /** Key `${goal}:${risk}`. */
+  sleeves: z.record(z.string(), z.object({ growthBps: Bps, dollarYieldBps: Bps, goldBps: Bps })),
+  glideFloor: z.array(
+    z.object({ monthsLeft: z.number().int().nonnegative(), dollarYieldBps: Bps }),
+  ),
+  /** Key: risk. */
+  capPerStockBps: z.record(z.string(), Bps),
+  /** Key: risk. */
+  capPerIssuerBps: z.record(z.string(), Bps),
+  tierCeilingUsd: z.record(z.enum(['A', 'B', 'C']), z.number().nonnegative()),
+  shareOfDepth: z.number().positive().max(1),
+  tau: z.number().positive().max(1),
+  minLineBps: Bps,
+  maxLinesPerChain: z.number().int().min(1),
+});
+export type PersonalParams = z.infer<typeof PersonalParams>;
+
+/** Why a line is what it is. `text` comes from a template, never from a model. */
+export const Reason = z.object({
+  rule: z.string().min(1),
+  inputs: z.array(z.string()),
+  params: z.record(z.string(), z.union([z.string(), z.number()])),
+  text: z.string(),
+});
+export type Reason = z.infer<typeof Reason>;
+
+export const BasketLine = z.object({
+  chain: ChainId,
+  assetId: AssetId,
+  /** The family slug this line came through, if any. */
+  viaIndex: z.string().optional(),
+  weightBps: Bps,
+  amountUsd: z.number().nonnegative(),
+  reasons: z.array(Reason),
+});
+export type BasketLine = z.infer<typeof BasketLine>;
+
+export const BasketCard = z.object({
+  moneyTodayUsd: z.number().nonnegative(),
+  termMonths: z.number().int().positive(),
+  cashFlow: z.enum(['none', 'monthly', 'at_end']),
+  expectedReturn: z.object({
+    lowPct: z.number(),
+    highPct: z.number(),
+    basis: z.string(),
+    lossInFallUsd: z.number().nonnegative(),
+  }),
+  /** `costBps` is null when the exit cost is not measured; never shown as zero. */
+  exit: z.object({ text: z.string(), costBps: z.number().nullable() }),
+});
+export type BasketCard = z.infer<typeof BasketCard>;
+
+/** Income goals only: whether the target is met, the gap, and each way to close it. */
+export const Verdict = z.object({
+  met: z.boolean(),
+  gapUsdMonthly: z.number(),
+  ways: z.array(z.object({ change: z.string(), closesGap: z.boolean() })),
+});
+export type Verdict = z.infer<typeof Verdict>;
+
+export const ObservationRef = Sourced.extend({
+  id: z.string().min(1),
+  kind: z.enum(['yield', 'price', 'liquidity']),
+});
+export type ObservationRef = z.infer<typeof ObservationRef>;
+
+export const BasketProposal = z
+  .object({
+    sheet: BasketSheet,
+    engineVersion: z.string().min(1),
+    paramsHash: z.string().min(1),
+    shelfVersion: z.string().min(1),
+    inputsHash: z.string().min(1),
+    lines: z.array(BasketLine),
+    recipes: z.array(
+      z.object({
+        chain: ChainId,
+        amountUsd: z.number().nonnegative(),
+        components: z.array(Component),
+      }),
+    ),
+    removed: z.array(z.object({ ref: z.string(), reasons: z.array(Reason) })),
+    card: BasketCard,
+    verdict: Verdict.optional(),
+    flags: z.array(z.string()),
+    observations: z.array(ObservationRef),
+    disclaimer: z.string(),
+  })
+  .refine((p) => p.lines.reduce((n, l) => n + l.weightBps, 0) === 10_000, {
+    message: 'line weights must add up to exactly 10,000',
+    path: ['lines'],
+  });
+export type BasketProposal = z.infer<typeof BasketProposal>;
