@@ -76,6 +76,7 @@
     "@colosseum/chain-solana": "workspace:*",
     "@colosseum/chain-evm": "workspace:*",
     "@colosseum/chain-mock": "workspace:*",
+    "@colosseum/basket": "workspace:*",
     "@colosseum/risk": "workspace:*"
   }
 }
