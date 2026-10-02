@@ -1,3 +1,4 @@
+import { CREATOR_LIMIT_ERROR, checkCreatorLimits } from '@colosseum/basket';
 import {
   AcceptVersionArgs,
   Address,
@@ -75,7 +76,12 @@ type MockVault = {
   cash: bigint;
   positions: Map<AssetId, Position>;
 };
-type MockRecipe = { active: Recipe; pending: Recipe | null };
+type MockRecipe = {
+  active: Recipe;
+  pending: Recipe | null;
+  /** Unix seconds of the last publish: the next one waits a publish delay from it. */
+  lastPublishAt: number;
+};
 type State = {
   /** Unix seconds of the mock clock, and the mock block height. */
   seconds: number;
@@ -111,7 +117,10 @@ export type MockOptions = {
   chain: ChainId;
   /** Where the mock clock starts. Default: Mon 2026-10-05 15:00 UTC, inside the US session. */
   now?: string;
-  /** Seconds between a new version being published and taking effect. Default 300, the team test cycle. */
+  /**
+   * The publish delay: seconds between a later version being published and taking effect, and the
+   * least between two versions. Default 300, the team test cycle.
+   */
   publishDelaySeconds?: number;
   /** Replaces the built-in asset list. Exactly one asset must have `cls: 'cash'`. */
   assets?: BasketAsset[];
@@ -432,29 +441,48 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
         return;
       }
       case 'publish': {
-        // The four author limits (DESIGN-VAULT section 6) are not checked here: they live with
-        // checkCreatorLimits in packages/basket, which the mock cannot import.
         const { creator, recipe } = op.a;
         if (recipe.chain !== chain) refuse('BadInput', `this recipe is for ${recipe.chain}`);
         if (recipe.creator !== creator) refuse('BadInput', 'the creator signs their own recipe');
         if (recipe.kind !== 'community') refuse('BadInput', 'only a shared portfolio is published');
-        targetsOf(recipe);
+        const next = recipe.components.map((c) => {
+          if (c.kind !== 'asset')
+            throw new ChainError('BadInput', 'a vault takes assets only; flatten the recipe first');
+          return { asset: c.asset, weightBps: c.weightBps };
+        });
         const id = mockRecipeId(chain, creator, recipe.familyId);
         const existing = s.recipes.get(id);
+        // The four author limits (DESIGN-VAULT section 6), as a real registry checks them: the same
+        // function the Solana program and the EVM registry are held to by the shared vectors. The
+        // cash token as a component is one of them, refused like the rest.
+        const verdict = checkCreatorLimits(
+          existing ? targetsOf(existing.active) : null,
+          next,
+          {
+            assets,
+            now: s.seconds,
+            lastPublishAt: existing?.lastPublishAt ?? null,
+            hasPending: Boolean(existing?.pending),
+            publishDelay,
+          },
+          { flags: recipe.flags, maxFeeBps: recipe.maxFeeBps },
+        );
+        if (!verdict.ok) refuse(CREATOR_LIMIT_ERROR, `${verdict.code}: ${verdict.detail}`);
         if (!existing) {
           s.recipes.set(id, {
             active: { ...recipe, onchainId: id, version: 1, effectiveAt: s.seconds },
             pending: null,
+            lastPublishAt: s.seconds,
           });
           return;
         }
-        if (existing.pending) refuse('CreatorLimit', 'a version is already pending');
         existing.pending = {
           ...recipe,
           onchainId: id,
           version: existing.active.version + 1,
           effectiveAt: s.seconds + publishDelay,
         };
+        existing.lastPublishAt = s.seconds;
         return;
       }
       case 'adopt_version': {
@@ -684,7 +712,10 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
           .map((v) => v.address),
       ),
     getRecipe: (recipeOnchainId) =>
-      guarded(() => structuredClone(recipeOf(live(), recipeOnchainId))),
+      guarded(() => {
+        const { active, pending } = recipeOf(live(), recipeOnchainId);
+        return structuredClone({ active, pending });
+      }),
     getWalletHoldings: (owner) =>
       guarded(() => {
         const s = live();

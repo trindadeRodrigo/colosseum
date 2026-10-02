@@ -14,6 +14,9 @@ importers:
       '@biomejs/biome':
         specifier: ^2.5.15
         version: 2.5.15
+      '@colosseum/basket':
+        specifier: workspace:*
+        version: link:packages/basket
       '@colosseum/chain-evm':
         specifier: workspace:*
         version: link:packages/chain-evm
@@ -224,6 +227,19 @@ importers:
         specifier: github:foundry-rs/forge-std#v1.17.0
         version: https://codeload.github.com/foundry-rs/forge-std/tar.gz/f3dae6e6ee381f25eb6a246f7da9b85c91a68219
 
+  packages/basket:
+    dependencies:
+      '@colosseum/schemas':
+        specifier: workspace:*
+        version: link:../schemas
+    devDependencies:
+      fast-check:
+        specifier: ^4.10.2
+        version: 4.10.2
+      vitest:
+        specifier: ^5.0.3
+        version: 5.0.3(@types/node@22.20.4)(vite@8.3.1(@types/node@22.20.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+
   packages/chain-evm:
     dependencies:
       '@colosseum/schemas':
@@ -232,6 +248,9 @@ importers:
 
   packages/chain-mock:
     dependencies:
+      '@colosseum/basket':
+        specifier: workspace:*
+        version: link:../basket
       '@colosseum/schemas':
         specifier: workspace:*
         version: link:../schemas
@@ -4334,6 +4353,10 @@ packages:
     resolution: {integrity: sha512-GipyPsXO1anza0AOZdy69Im7hGFCNB7Y/NGjDlZGJ3GJJLtwNSb2vrzYrTYJRrRloVx7pl+bhUaTB8yiccPvFQ==}
     engines: {node: '> 0.1.90'}
 
+  fast-check@4.10.2:
+    resolution: {integrity: sha512-iK2f+YrcmoeGqk6fA0ea2bptcu/itMIm4NfEozq6N25+aG6h7s5HZbB/k1aV7b5w5sFLMCbbtRUsTVR+BgC3xw==}
+    engines: {node: '>=12.17.0'}
+
   fast-copy@3.1.0:
     resolution: {integrity: sha512-IuCOCDFM1F/s4LtG7Bjr3yUUwPHybyhqN74xk2cMYoP51vVeErMy8+6HGFchi/+45lW8uzhs6lBeEqks2GWt6A==}
 
@@ -5446,6 +5469,9 @@ packages:
 
   pump@3.0.4:
     resolution: {integrity: sha512-VS7sjc6KR7e1ukRFhQSY5LM2uBWAUPiOPa/A3mkKmiMwSmRFUITt0xuj+/lesgnCv+dPIEYlkzrcyXgquIHMcA==}
+
+  pure-rand@8.4.2:
+    resolution: {integrity: sha512-vvuOGgcuPJAirlHvuQw1TrOiw7ptaIXXmIbNuiNOY6lNGJJH49PQ1Kj4nd783nPdQhQdicgOjVI2yI/9BD6/Ng==}
 
   qrcode@1.5.3:
     resolution: {integrity: sha512-puyri6ApkEHYiVl4CFzo1tDkAZ+ATcnbJrJ6RiBM1Fhctdn/ix9MTE3hRph33omisEbC/2fcfemsseiKgBPKZg==}
@@ -12469,6 +12495,10 @@ snapshots:
 
   eyes@0.1.8: {}
 
+  fast-check@4.10.2:
+    dependencies:
+      pure-rand: 8.4.2
+
   fast-copy@3.1.0: {}
 
   fast-decode-uri-component@1.0.1: {}
@@ -13706,6 +13736,8 @@ snapshots:
     dependencies:
       end-of-stream: 1.4.5
       once: 1.4.0
+
+  pure-rand@8.4.2: {}
 
   qrcode@1.5.3:
     dependencies:

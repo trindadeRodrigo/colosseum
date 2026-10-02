@@ -85,6 +85,9 @@ export async function mockFixture(
   const buySpy = { sell: mock.cash, buy: `${chain}:spy`, amountInRaw: usd(300) };
   await send(adapter.buildOwnerSwap({ vault, trades: [buySpy], slippageBps: 100 }));
 
+  // An author publishes one version per publish delay (300 seconds on the mock), so the clock moves on
+  // before each later version.
+  mock.advance(300);
   if (opts.newVersion) await publish(FAMILY, { spy: 4000, nvda: 4000, gold: 2000 });
   await publish(NEW_ASSET_FAMILY, { spy: 4000, nvda: 3000, gold: 2000, tsla: 1000 });
   mock.advance(301);
