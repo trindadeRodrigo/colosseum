@@ -391,7 +391,8 @@ pub struct Config { admin, pending_admin, guardian, default_keeper: Pubkey,
   launched: bool,                                  // one-way; raises the floor on publish_delay_s
   tolerance_bps: u16, loss_cap_bps: u16, band_bps: u16, twap_dev_bps: u16, max_price_age_s: u16,
   asset_cooldown_s: u32, publish_delay_s: u32, session_open_utc_s: u32, session_close_utc_s: u32,
-  closed_until: i64, closed_days: [u16; 32] /* days since 1970, UTC */, reserved: [u8; 64] }
+  closed_until: i64, closed_days: [u16; 32] /* days since 1970, UTC */,
+  bump: u8 /* of its own address */, reserved: [u8; 63] }  // 396 bytes; this order is not frozen, Vault's is
 pub struct AssetRegistry { price_accounts: [Pubkey; 4], count: u8, assets: [AssetEntry; 64] }  // zero-copy
 pub struct AssetEntry {                            // padded to 96 bytes
   mint: Pubkey, price_slot: u8, price_index: u16, twap_index: u16, decimals: u8,
@@ -412,20 +413,23 @@ pub struct Position { mint: Pubkey, target_bps: u16, tracked: u64, last_keeper_t
 
 | Who | Instructions |
 |---|---|
-| Owner | `create_vault(basket_id: u64, targets: Vec<Target>, auto_follow: bool, expected_version: u32)` (with a recipe account passed, it copies the active version if its number matches); `deposit(amount: u64)`; `owner_swap(max_in: u64, min_out: u64, data: Vec<u8>)`; `withdraw(amount: u64)` (one mint per call; the destination token account must belong to the owner); `close_vault()` |
+| Owner | `create_vault(basket_id: u64, targets: Vec<Target>, auto_follow: bool, expected_version: u32)` (with a recipe account passed, it copies the active version if its number matches); `deposit(amount: u64)` (the cash mint only, `Config.cash_mint`; any other mint is `NotCashMint`); `owner_swap(max_in: u64, min_out: u64, data: Vec<u8>)`; `withdraw(amount: u64)` (any token the vault holds, one mint per call; the destination token account must belong to the owner); `close_vault()` |
 | Owner | `set_targets(targets)` (clears `recipe`, auto-follow off); `accept_version(expected_version: u32)` (follows the passed recipe at exactly that active version; new assets allowed); `set_auto_follow(on: bool)`; `set_keeper(keeper: Pubkey)` (reserved; no builder, and the guard refuses it) |
 | Keeper | `keeper_leg(amount_in: u64, data: Vec<u8>)`. The program computes the minimum output. It needs auto-follow on and stored targets, not a recipe or a new version |
 | Anyone | `adopt_version()` (weights-only change, after the delay, auto-follow on); `sync_balances()` |
 | Creator | `publish_recipe(family_id: [u8; 32], components, meta_hash, max_fee_bps: u16, flags: u8)` (both must be zero); `update_recipe(components, meta_hash)`; `cancel_pending()` |
 | Guardian | `pause_keeper()`; `veto_pending()`; `extend_closed_until(ts: i64)`; `add_closed_day(day: u16)`. Each can only tighten |
-| Admin | `init_config(..)` and `init_assets()` (signer must be the upgrade authority); `set_params(..)`; `launch()`; `unpause_keeper()`; `set_closed(..)`; `set_guardian(..)`; `upsert_asset(entry)`; `propose_admin`, `accept_admin` |
+| Admin | `init_config(..)` and `init_assets()` (signer must be the upgrade authority, which becomes the admin); `set_router(program)`, `set_price_owner(program)`, `set_cash_mint(mint)` (each refuses the zero address and emits the old and the new value); `set_params(..)`; `launch()`; `unpause_keeper()`; `set_closed(..)`; `set_guardian(..)`; `upsert_asset(entry)`; `propose_admin`, `accept_admin` |
 
-- `withdraw` and `owner_swap` take no Config, registry or price account. A pause or a dead feed cannot block the owner.
-- The swap target must be Jupiter's program id with selector `route_v2` or `shared_accounts_route_v2`, or the two legacy selectors the spike used. Bytes and accounts are forwarded as in the spike.
+- `withdraw` takes no Config, registry or price account. `owner_swap` reads `Config` for the router and nothing else, and `deposit` reads it for the cash mint. A pause or a dead feed cannot block the owner. Every instruction that reads `Config` checks its address from the seed and the stored bump.
+- The swap target must be `Config.router_program` (Jupiter on mainnet, the test exchange on devnet), with selector `route_v2` or `shared_accounts_route_v2`, or the two legacy selectors the spike used. Bytes and accounts are forwarded as in the spike. Whether the three setters lock at `launch()` or take a delay is decided with the swap.
+- Cash is not a position. What a vault holds in cash is the balance of its associated token account for `Config.cash_mint`. `tracked` is a hint, rewritten when the program moves that mint; anything that values a vault reads the token accounts themselves.
+- A vault's own targets: at most 16, each mint once, never the zero address (it marks an empty slot), weights adding up to at most 10,000 bps (the rest is cash). A zero weight is allowed. Anything else is `InvalidTargets`.
 - Every instruction derives the associated token account for (vault, mint, the mint's own token program) and rejects any other account. The account list may hold exactly two token accounts owned by the vault, the input and the output; after the call their owner, delegate, close authority and data length must be unchanged. Anything else is `AccountTampered`.
-- `set_params` enforces hard-coded bounds: tolerance at most 300 bps, loss cap at most 500 bps, cooldown at least 600 s, publish delay at least 60 s before `launch()` and at least 172,800 s after. The numbers the app shows cannot move past these without an upgrade.
-- Errors, order frozen, append only: `NotKeeper, AutoFollowOff, KeeperPaused, MintNotAccepted, RouterNotAllowed, SpentTooMuch, ReceivedTooLittle, OtherAccountDebited, AccountTampered, PriceStale, PriceDeviation, MarketClosed, MultiplierWindow, NotTowardTarget, PastTarget, Cooldown, LossCapReached, AssetNotPriced, NewAssetNeedsOwner, VersionNotEffective, CreatorLimit, VersionMismatch, WrongDestination, ParamOutOfBounds`.
-- Events, same names on EVM: `VaultCreated`, `Followed`, `Unfollowed`, `VersionAdopted`, `TargetsSet`, `KeeperTrade`, `RecipePublished`, `VersionCancelled`.
+- `init_config` and `set_params` enforce hard-coded bounds: tolerance at most 300 bps, loss cap at most 500 bps, cooldown at least 600 s, publish delay at least 60 s before `launch()` and at least 172,800 s after. The numbers the app shows cannot move past these without an upgrade.
+- Errors, order frozen, append only: `NotKeeper, AutoFollowOff, KeeperPaused, MintNotAccepted, RouterNotAllowed, SpentTooMuch, ReceivedTooLittle, OtherAccountDebited, AccountTampered, PriceStale, PriceDeviation, MarketClosed, MultiplierWindow, NotTowardTarget, PastTarget, Cooldown, LossCapReached, AssetNotPriced, NewAssetNeedsOwner, VersionNotEffective, CreatorLimit, VersionMismatch, WrongDestination, ParamOutOfBounds`. Appended since: `NotUpgradeAuthority, InvalidTargets, NotCashMint, ZeroAddress`.
+- Events, same names on EVM: `VaultCreated`, `Followed`, `Unfollowed`, `VersionAdopted`, `TargetsSet`, `KeeperTrade`, `RecipePublished`, `VersionCancelled`. Solana only: `RouterSet`, `PriceOwnerSet`, `CashMintSet`.
+- Both programs are built with `no-idl`: the program has no on-chain IDL account for anyone to claim. The interface files are committed in `idl/`.
 
 ### 3.8 EVM contracts (`contracts/src/interfaces/`)
 
@@ -827,7 +831,7 @@ No mainnet key that can move funds or loosen a limit sits where a coding agent h
 
 | Tier 1: required to switch auto-follow on | Passing |
 |---|---|
-| Every A-case that applies, as a named test (Foundry at 6, 8 and 18 decimals; LiteSVM under Vitest with `mock-router` at Jupiter's address and a hand-written Scope account) | All pass |
+| Every A-case that applies, as a named test (Foundry at 6, 8 and 18 decimals; LiteSVM under Vitest with `mock-router` as `Config.router_program` and a hand-written Scope account) | All pass |
 | Each rule bites: comment out each check in turn, in the contracts and in `checks.rs` | A named test fails for each |
 | I1 and I4 | Hold in unit tests and on live state |
 | One scripted mainnet rehearsal, $10 to $20, every transaction logged | Create, deposit, owner swap, publish, adopt, one keeper leg; A1, A2, A4, A8 and A13 fail as expected on live state; pause; withdraw while paused |
