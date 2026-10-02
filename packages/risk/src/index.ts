@@ -7,6 +7,7 @@ export * from './events/orca-whirlpool';
 export * from './events/raydium-clmm';
 export * from './events/raydium-cpmm';
 export * from './events/tx';
+export * from './facts/returns';
 export * from './lending/aggregate';
 export * from './lending/ix-names';
 export * from './lending/jupiter-lend';
