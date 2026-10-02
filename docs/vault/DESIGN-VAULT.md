@@ -443,13 +443,16 @@ struct Limits { uint8 minAssets; uint8 maxAssets; uint16 minWeightBps; uint16 ma
 struct Snapshot { address owner; bytes32 indexId; uint32 acceptedVersion; bool autoFollow; address operator;
                   address[] tokens; uint16[] targetBps; uint256[] balances;
                   uint256[] prices; /* USD per whole token, 1e18 */ uint64[] priceUpdatedAt;
-                  uint64[] lastKeeperAt; uint16 lossUsedBps; }
+                  uint64[] lastKeeperAt; uint16 lossUsedBps;
+                  bytes32 planId; /* matches a vault to its plan with no event */ }
+struct IndexVersion { uint32 version; /* 0 = none */ uint64 effectiveAt; bytes32 metaHash; Weight[] components; }
+struct IndexInfo { address creator; bytes32 familyId; IndexVersion active; IndexVersion pending; }
 
 interface IBasketVault {
   // owner only: no pause, no feed; withdraw calls neither factory nor registry and pays only the owner
-  function deposit(uint256 amount) external;                    // the cash token only
-  function withdraw(address token, uint256 amount) external;
-  function withdrawAll() external returns (address[] memory skipped);
+  function deposit(uint256 amount) external;                    // the cash token only, read from the config
+  function withdraw(address token, uint256 amount) external;    // any token held, deposited or sent in
+  function withdrawAll() external returns (address[] memory skipped);  // every token in tokens()
   function ownerSwap(Swap[] calldata swaps) external;           // allowlisted router; own balance deltas and minOut
   function setTargets(Weight[] calldata targets) external;      // clears the index, auto-follow off
   function acceptVersion(bytes32 indexId, uint32 expectedVersion) external;
@@ -461,8 +464,19 @@ interface IBasketVault {
   // keeper only; needs auto-follow on and stored targets, not an index
   function keeperSwap(Swap calldata s) external returns (uint256 spent, uint256 received);
   function snapshot() external view returns (Snapshot memory);
+  function owner() external view returns (address);             // set once at initialize; no setter
+  function planId() external view returns (bytes32);            // the factory's salt
+  function config() external view returns (address);            // the IVaultConfig it reads: the factory
+  function tokens() external view returns (address[] memory);   // what withdrawAll walks
 }
-interface IVaultFactory {
+interface IVaultConfig {                                        // the half of the factory a vault reads
+  function cashToken() external view returns (address);         // the one token deposit() pulls
+  function asset(address token) external view returns (AssetConfig memory);  // all zero if not listed
+  function assets() external view returns (address[] memory);
+  function isAsset(address token) external view returns (bool); // asset() cannot say it: a feed may be zero
+  function routerPull(address router) external view returns (uint8);   // 0 no, 1 direct, 2 Permit2
+}
+interface IVaultFactory is IVaultConfig {
   function createVault(bytes32 salt, Weight[] calldata targets, bytes32 indexId, uint32 expectedVersion,
       bool autoFollow) external returns (address vault);        // indexId != 0: targets must be empty
   function createVaultAndBuy(bytes32 salt, Weight[] calldata targets, bytes32 indexId, uint32 expectedVersion,
@@ -471,10 +485,7 @@ interface IVaultFactory {
   function vaultCount() external view returns (uint256);
   function vaultAt(uint256 i) external view returns (address);
   function vaultsOf(address owner) external view returns (address[] memory);
-  function asset(address token) external view returns (AssetConfig memory);
-  function assets() external view returns (address[] memory);
-  function routerPull(address router) external view returns (uint8);   // 0 no, 1 direct, 2 Permit2
-  function keeper() external view returns (address);            // also guardian(), cashToken(), sequencerFeed()
+  function keeper() external view returns (address);            // also guardian(), sequencerFeed()
   function keeperPaused() external view returns (bool);
   function launched() external view returns (bool);
   function closedUntil() external view returns (uint64);
@@ -497,6 +508,7 @@ interface IIndexRegistry {
   function pending(bytes32 id) external view
       returns (uint32 version, uint64 effectiveAt, Weight[] memory components);
   function creatorOf(bytes32 id) external view returns (address);
+  function indexInfo(bytes32 id) external view returns (IndexInfo memory);  // one read of all the app shows
   function indexCount() external view returns (uint256);
   function indexAt(uint256 i) external view returns (bytes32);
   function previewPublish(bytes32 id, Weight[] calldata next) external view
@@ -507,18 +519,21 @@ event RecipePublished(bytes32 indexed id, uint32 indexed version, address indexe
                       Weight[] components, uint64 effectiveAt, uint16 turnoverBps, bytes32 metaHash);
 event KeeperTrade(address indexed vault, address tokenIn, address tokenOut,
                   uint256 spent, uint256 received, uint256 lossUsd, uint16 lossUsedBps);
+event WithdrawSkipped(address indexed token);                   // by the vault, once per token withdrawAll left
 // VersionCancelled, VaultCreated, Followed, Unfollowed, VersionAdopted, TargetsSet: vault and id indexed
+// IVaultConfig: AssetSet(token, config), RouterSet(router, pull), CashTokenSet(token), AdminProposed, AdminChanged
 ```
 
 - Each vault is an OpenZeppelin `BeaconProxy`, one beacon per chain. Factory and registry are UUPS proxies. ERC-7201 namespaced storage; `_disableInitializers()` in every logic constructor.
-- Every proxy is created with its init call inside its constructor, and the beacon with its owner. The admin address is therefore part of the creation code, so anyone who replays our code and salt on another chain gets our admin, not theirs.
+- Every proxy is created with its init call inside its constructor, and the beacon with its owner. The admin address is therefore part of the creation code, so anyone who replays our code and salt on another chain gets our admin, not theirs. The vault's init call is `initialize(address owner, bytes32 planId, address config)`; EVM-2 extends it with the targets and the index. A proxy created without it belongs to whoever calls it first, so the app and the keeper trust only vaults the factory registered.
+- Built so far (EVM-1): the vault's owner path and `VaultConfig`, the abstract base the factory inherits. It holds the admin (handed over in two steps, `proposeAdmin` then `acceptAdmin`), `setAsset`, `setRouter` and `setCashToken`. A listed asset is never a router and a router never a listed asset; both must have code. `setAsset` bounds `source` and `session` to 0 or 1, decimals to 18, `maxWeightBps` to 5000 and `maxAge` to between 60 s and 48 h when a feed is set, and keeps the stored `haltUntil`. The cash token must be a listed asset.
 - `active()` switches to the pending version at `effectiveAt` with no transaction. The registry keeps current and pending only; history is in events. Its `publishDelay` is an admin parameter whose floor depends on the factory's `launched()`.
 - `ownerSwap` requires `routerPull(router) != 0`. The factory may call `ownerSwap` only inside `createVaultAndBuy`. No `tx.origin` checks anywhere.
 - One reentrancy guard covers every state-changing vault function. `multicall` is `MulticallUpgradeable`, which ships in 5.6.1 **[C 5]**. The vault never implements ERC-1271 (`isValidSignature`), or the router's Permit2 command would become usable from the keeper's call data; a test pins this.
-- `withdrawAll` uses a low-level call per token and treats a revert or a `false` return as skipped.
+- `withdrawAll` uses a low-level call per token and treats a revert or a `false` return as skipped, with a `WithdrawSkipped` event each. Each token's balance read gets at most 100,000 gas and its transfer 300,000 (the real tokens on Robinhood Chain use under 14,000 and 48,000), so a token that burns its gas costs a bounded amount. Before each token the call requires 420,000 gas left and otherwise fails as a whole with `GasTooLow`: a token is never skipped because the caller sent too little, and a gas estimate cannot land on a run that leaves one behind. `withdraw` is uncapped. The vault has no `fallback` and no `receive`.
 - The factory enforces the same parameter bounds as the Solana program, and `flags` and `maxFeeBps` must be zero in `create`.
-- Every refusal is a typed error carrying the numbers, named as on Solana where the rule is the same.
-- Pins: Foundry v1.8.3, forge-std v1.17.0, OpenZeppelin Contracts 5.6.1 (5.7.0 has no audit report yet), solc 0.8.30, `evm_version = "cancun"`, `via_ir`. ABIs are generated into `packages/chain-evm/src/abi/*.ts` and committed, so the TypeScript CI needs no Foundry.
+- Every refusal is a typed error carrying the numbers, named as on Solana where the rule is the same. So far, on the vault: `NotOwner`, `ZeroAddress`, `CashTokenNotSet`, `DepositShortfall(token, expected, received)` (a token that skims on transfer is refused), `GasTooLow(left, needed)`. On the config: `NotAdmin`, `NotPendingAdmin`, `ZeroAddress`, `NoCode`, `AssetNotListed`, `AssetIsRouter`, `RouterIsAsset`, `FeedRequired`, `InvalidPull`, `ParamOutOfBounds(param, value)`.
+- Pins: Foundry v1.8.3, forge-std v1.17.0, OpenZeppelin Contracts 5.6.1 (5.7.0 has no audit report yet), solc 0.8.37, `evm_version = "cancun"`, `via_ir`. solc moved from 0.8.30 on Oct 2: that version has two `via_ir` bugs later code could hit (`delete` on a transient variable, and named arguments in `require` with a custom error). The contracts are built and tested so far on Thom's Foundry, 1.2.3-nightly of July 2025, not on the pin; CI gets 1.8.3 in FRAME-2. The libraries come from pnpm through `contracts/package.json`, with no submodules. ABIs are generated into `packages/chain-evm/src/abi/*.ts` and committed, so the TypeScript CI needs no Foundry.
 
 ## 4. Data model
 
@@ -583,7 +598,7 @@ The session window sits inside the New York session in summer and winter time, s
 - One swap leg per transaction. Mainnet's instruction stack limit is 5 levels, counting the transaction's own instruction as level 1 **[C 15]**; the spike's route reached level 4. The spare level is kept for a deeper route or a transfer hook, so a keeper leg is never wrapped in another program.
 - Scope is parsed by hand (its crate is BUSL-licensed). Kamino can remap an index, so the keeper re-derives each asset's `(account, index)` before a run. That check is off-chain. If the Oct 2 Scope read confirms the layout of Scope's mappings account (memory), `keeper_leg` also compares the mapping entry at the pinned index with `source_check`. If not, the field stays zero and the gap is listed in `docs/vault/SECURITY.md`.
 
-**EVM specifics.** Raw units everywhere; the feeds already include the multiplier. Decimals (18 on Robinhood Chain, 8 on Base) are passed in config, never read from the token. Robinhood Chain swaps go through Universal Router 2.1.2 (`0x204FAca1764B154221e35c0d20aBb3c525710498`) on hookless pools. Base uses our hardened `SlipstreamAdapter`: it checks `pool.factory()`, sends output only to `msg.sender` and holds nothing. Robinhood Chain has no sequencer feed; that risk is accepted.
+**EVM specifics.** `deposit` takes an amount and no token: the vault reads the cash token from its config each time, so there is no way to name another. `withdrawAll` walks the tokens that came in by a vault function; a token sent in from outside leaves through `withdraw(token, amount)`. Raw units everywhere; the feeds already include the multiplier. Decimals (18 on Robinhood Chain, 8 on Base) are passed in config, never read from the token. Robinhood Chain swaps go through Universal Router 2.1.2 (`0x204FAca1764B154221e35c0d20aBb3c525710498`) on hookless pools. Base uses our hardened `SlipstreamAdapter`: it checks `pool.factory()`, sends output only to `msg.sender` and holds nothing. Robinhood Chain has no sequencer feed; that risk is accepted.
 
 ## 6. Shared-portfolio registry and creator limits
 
