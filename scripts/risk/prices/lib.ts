@@ -68,6 +68,8 @@ export function* readObservations(only?: readonly string[]): Generator<StoredObs
 const USD_STABLE_SYMBOLS = ['USDG', 'PYUSD'];
 
 export type PriceInputs = {
+  /** Every stored observation, with `live: false` set where a stock oracle was not pricing the stock. */
+  observations: StoredObservation[];
   index: PriceIndex;
   ctx: PriceContext;
   /** Observations per `priceSource|method`. */
@@ -140,5 +142,11 @@ export function loadPriceInputs(): PriceInputs {
     us_market_hours: buildSessionClock(from, to, regime, 'us_market_hours'),
     us_weekdays: buildSessionClock(from, to, regime, 'us_weekdays'),
   };
-  return { index: buildPriceIndex(all), ctx: { params, regime, clocks }, counts, notLive };
+  return {
+    observations: all,
+    index: buildPriceIndex(all),
+    ctx: { params, regime, clocks },
+    counts,
+    notLive,
+  };
 }

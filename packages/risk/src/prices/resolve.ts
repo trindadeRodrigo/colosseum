@@ -152,33 +152,50 @@ export type ResolvedPrice = {
   others: PriceCandidate[];
 };
 
-/** Observations by `mint|priceSource` and by `mint|priceSource|market`, each sorted by time. */
-export type PriceIndex = Map<string, PriceObservation[]>;
+/**
+ * Observations in time order by `mint|priceSource|quote` and by `mint|priceSource|market`, with what each mint
+ * has: its sources, the quotes each source uses, and its first observation.
+ */
+export type PriceIndex = {
+  series: Map<string, PriceObservation[]>;
+  sources: Map<string, PriceSourceId[]>;
+  quotes: Map<string, string[]>;
+  /** Time of each mint's first observation, from any source. */
+  first: Map<string, number>;
+  /** Time of the newest observation. */
+  last: number;
+};
 
 export function buildPriceIndex(observations: Iterable<PriceObservation>): PriceIndex {
-  const ix: PriceIndex = new Map();
+  const series = new Map<string, PriceObservation[]>();
+  const sources = new Map<string, Set<PriceSourceId>>();
+  const quotes = new Map<string, Set<string>>();
+  const first = new Map<string, number>();
+  let last = 0;
   const push = (k: string, o: PriceObservation) => {
-    const a = ix.get(k);
+    const a = series.get(k);
     if (a) a.push(o);
-    else ix.set(k, [o]);
+    else series.set(k, [o]);
+  };
+  const note = <T>(m: Map<string, Set<T>>, k: string, v: T) => {
+    const s = m.get(k);
+    if (s) s.add(v);
+    else m.set(k, new Set([v]));
   };
   for (const o of observations) {
-    push(`${o.mint}|${o.priceSource}`, o);
+    push(`${o.mint}|${o.priceSource}|quote:${o.quote}`, o);
     if (o.market) push(`${o.mint}|${o.priceSource}|${o.market}`, o);
+    note(sources, o.mint, o.priceSource);
+    note(quotes, `${o.mint}|${o.priceSource}`, o.quote);
+    const f = first.get(o.mint);
+    if (f === undefined || o.t < f) first.set(o.mint, o.t);
+    if (o.t > last) last = o.t;
   }
-  for (const a of ix.values())
+  for (const a of series.values())
     a.sort((x, y) => x.t - y.t || (x.slot ?? 0) - (y.slot ?? 0) || x.ref.localeCompare(y.ref));
-  return ix;
-}
-
-/** Sources that hold at least one observation of the mint. */
-export function sourcesOf(ix: PriceIndex, mint: string): PriceSourceId[] {
-  const out: PriceSourceId[] = [];
-  for (const k of ix.keys()) {
-    const p = k.split('|');
-    if (p.length === 2 && p[0] === mint) out.push(p[1] as PriceSourceId);
-  }
-  return out.sort();
+  const sorted = <T>(m: Map<string, Set<T>>) =>
+    new Map([...m].map(([k, s]) => [k, [...s].sort()] as [string, T[]]));
+  return { series, sources: sorted(sources), quotes: sorted(quotes), first, last };
 }
 
 /** The latest observation at or before `t` (the last one, when several share that time). */
@@ -228,8 +245,24 @@ function resolve(ix: PriceIndex, q: PriceQuery, ctx: PriceContext, depth: number
     if (depth > 0) return p.parMints.includes(quote) ? 1 : null;
     return resolve(ix, { mint: quote, t: q.t, purpose: 'valuation' }, ctx, depth + 1).priceUsd;
   };
+  // a source that quotes one asset in several tokens (two Jupiter Lend vaults): the latest observation whose quote
+  // has a USD price, else the latest one
+  const latestOf = (s: PriceSourceId): PriceObservation | null => {
+    let best: PriceObservation | null = null;
+    let bestUsd = false;
+    for (const quote of ix.quotes.get(`${q.mint}|${s}`) ?? []) {
+      const o = latestAt(ix.series.get(`${q.mint}|${s}|quote:${quote}`), q.t);
+      if (!o) continue;
+      const usd = quoteUsd(quote) !== null;
+      if (!best || (usd && !bestUsd) || (usd === bestUsd && o.t > best.t)) {
+        best = o;
+        bestUsd = usd;
+      }
+    }
+    return best;
+  };
   const candidate = (s: PriceSourceId, market?: string): PriceCandidate | null => {
-    const o = latestAt(ix.get(market ? `${q.mint}|${s}|${market}` : `${q.mint}|${s}`), q.t);
+    const o = market ? latestAt(ix.series.get(`${q.mint}|${s}|${market}`), q.t) : latestOf(s);
     if (!o) return null;
     const usd = quoteUsd(o.quote);
     const ageSec = q.t - o.t;
@@ -261,7 +294,7 @@ function resolve(ix: PriceIndex, q: PriceQuery, ctx: PriceContext, depth: number
       gapToAnswer: null,
     };
   };
-  const all = sourcesOf(ix, q.mint)
+  const all = (ix.sources.get(q.mint) ?? [])
     .map((s) => candidate(s))
     .filter((c): c is PriceCandidate => c !== null);
 

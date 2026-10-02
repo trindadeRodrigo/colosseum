@@ -73,6 +73,7 @@
     "risk:lending-freeze-verify-fixtures": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/lending-freeze-verify-fixtures.ts",
     "risk:prices-extract": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/prices/extract.ts",
     "risk:prices-validate": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/prices/validate.ts",
+    "risk:prices-import": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/prices/import.ts",
     "risk:prices-freeze-fixtures": "tsx scripts/risk/prices/freeze-fixtures.ts && biome format --write fixtures/risk/prices"
   },
   "devDependencies": {

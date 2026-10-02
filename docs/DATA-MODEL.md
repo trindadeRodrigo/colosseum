@@ -40,6 +40,8 @@ No uuid ids here: the primary key is the pool address or a composite, shown in t
 | `risk_quotes` | Jupiter quote cross-checks, routes kept, for the routing gap against pool simulation. | PK (`run_id`, `asset_mint`, `side`, `notional_usd`); `asset`, `amount_in`, `out_amount`, `route`, `error`, provenance columns (`source` and `method` nullable) |
 | `risk_asset_snapshots` | Routed (multi-pool) sell and buy curves per asset, one row per collector run. | PK (`asset_mint`, `fetched_at`); `asset`, `slot`, `ref_pool`, `ref_mid_usd`, `pools`, `sell`, `buy`, `method_version`, provenance columns |
 | `risk_market_params` | Lending-market parameters per reserve or vault: decoded on-chain where possible, else from the protocol API. | PK (`account`, `fetched_at`); `venue`, `market`, `asset_mint`, `asset`, `borrow_asset`, `is_xstock`, `params`, `totals`, `verification` (`onchain` or `api`), `slot`, provenance columns |
+| `risk_price_observations` | The oracle standard's inputs (PLAN-RISK Step 11): one price of one asset from one price source at one time. | PK (`price_source`, `ref`, `mint`, `observed_at`, `slot`, `price`); `price_source` (`pool_mid`, `kamino_scope`, `jupiter_lend_oracle`, `external:<name>`), `quote` (`usd` or a mint), `market`, `live` (false while a stock oracle held a placeholder price), `source_ts`, `market_status`, `chain`, `method_version`, provenance columns |
+| `risk_reference_prices` | The reference price per asset and hour: the resolver's valuation with its source, age, regime and quality; the newest row of an asset is its live reference price. | PK (`mint`, `observed_at`, `method_version`); `symbol`, `price_usd` (null with `null_reason`), `price_source`, `ref`, `quality` (`traded`, `oracle_open`, `oracle_closed`, `oracle_continuous`, `external`, `par`), `regime`, `age_sec`, `price_observed_at`, `others` (every other source's price at that hour with its gap), `chain`, provenance columns |
 
 ## Provenance
 
@@ -49,16 +51,17 @@ Which tables carry what:
 
 | Columns | Tables |
 |---|---|
-| All four (`source`, `method`, `fetched_at`, `provenance`) | `yield_observations`, `fx_observations`, `depth_observations`, `risk_pools`, `risk_pool_snapshots`, `risk_lp_concentration`, `risk_asset_snapshots`, `risk_market_params`, `risk_quotes` (`source` and `method` nullable) |
+| All four (`source`, `method`, `fetched_at`, `provenance`) | `yield_observations`, `fx_observations`, `depth_observations`, `risk_pools`, `risk_pool_snapshots`, `risk_lp_concentration`, `risk_asset_snapshots`, `risk_market_params`, `risk_price_observations`, `risk_reference_prices`, `risk_quotes` (`source` and `method` nullable) |
 | `source`, `method`, `provenance`, with `computed_at` in place of `fetched_at` | `risk_depth_curves` |
 | `provenance` only | `assets`, `executions` |
 | `source` and `observed_at` only | `positions` |
 | `fetched_at` only | `risk_events` |
 
-`method_version` is on `risk_pools`, `risk_pool_snapshots`, `risk_depth_curves`, `risk_lp_concentration` and `risk_asset_snapshots`. It is not on `risk_events`, `risk_quotes` or `risk_market_params`.
+`method_version` is on `risk_pools`, `risk_pool_snapshots`, `risk_depth_curves`, `risk_lp_concentration`, `risk_asset_snapshots`, `risk_price_observations` and `risk_reference_prices`. It is not on `risk_events`, `risk_quotes` or `risk_market_params`.
 
 ## Notes for code
 
 - `createDb` in `packages/db/src/index.ts` registers only `schema.ts` with Drizzle, so `db.query.*` covers the 15 structurer tables. Risk tables are exported from `@colosseum/db` and read with `db.select().from(riskPools)` and the like.
 - `tests/db-schema.test.ts` asserts the 15 structurer tables by name. No test asserts the list of risk tables.
-- `risk_pools.asset_is_token0` and `risk_market_params.is_xstock` are integers used as flags, not booleans.
+- `risk_pools.asset_is_token0` and `risk_market_params.is_xstock` are integers used as flags, not booleans. `risk_price_observations.live` is a boolean.
+- The price parameters behind a `risk_reference_prices.method_version` (source order, sessions, age limits) are in `data/risk/prices/import-runs.jsonl`, one line per import, not on the rows.

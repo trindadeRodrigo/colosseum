@@ -27,6 +27,7 @@ export * from './prices/live';
 export * from './prices/liveness';
 export * from './prices/logged';
 export * from './prices/observation';
+export * from './prices/reference';
 export * from './prices/resolve';
 export * from './prices/session';
 export * from './provider';

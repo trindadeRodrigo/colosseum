@@ -6,12 +6,14 @@ import {
   defaultLivenessParams,
   defaultPriceParams,
   defaultRegimeParams,
+  hourlyReferencePrices,
   loggedOraclePrices,
   markLiveness,
   openSecondsBetween,
   type PriceContext,
   type PriceObservation,
   type RpcTx,
+  referencePrice,
   resolvePrice,
 } from '@colosseum/risk';
 import { describe, expect, it } from 'vitest';
@@ -383,6 +385,41 @@ describe('resolver (item 3)', () => {
     // the pool mid is listed beside it, never used
     expect(a.others.some((c) => c.priceSource === 'pool_mid')).toBe(true);
     expect(() => resolvePrice(ix, { mint: SPY, t: sat, purpose: 'liquidation' }, ctx)).toThrow();
+  });
+
+  it('a source quoting in two tokens gives the observation that has a USD price', () => {
+    const jl = obsFx.filter((o) => o.priceSource === 'jupiter_lend_oracle');
+    const only = buildPriceIndex(jl);
+    // a JupUSD-quoted observation that comes after a USDC-quoted one on the same weekday session
+    const usdcQuoted = jl.filter((o) => o.quote === ctxFx.usdc);
+    const other = jl.find(
+      (o) =>
+        o.quote !== ctxFx.usdc &&
+        usdcQuoted.some((u) => u.t < o.t && o.t - u.t < params.maxOpenAgeSec),
+    ) as PriceObservation;
+    const r = resolvePrice(only, { mint: SPY, t: other.t, purpose: 'valuation' }, ctx);
+    expect(r.priceSource).toBe('jupiter_lend_oracle');
+    expect(r.quote).toBe(ctxFx.usdc);
+    expect(r.priceUsd).toBe((lastBefore(usdcQuoted, other.t) as PriceObservation).price);
+  });
+
+  it('the reference price keeps the other sources beside the answer, in the stored shape', () => {
+    const r = referencePrice(ix, ctx, SPY, sat);
+    const full = resolvePrice(ix, { mint: SPY, t: sat, purpose: 'valuation' }, ctx);
+    expect(r.priceUsd).toBe(full.priceUsd);
+    expect(r.priceSource).toBe('pool_mid');
+    expect(r.quality).toBe('traded');
+    expect(r.others.map((o) => o.priceSource).sort()).toEqual([
+      'jupiter_lend_oracle',
+      'kamino_scope',
+    ]);
+    const k = r.others.find((o) => o.priceSource === 'kamino_scope');
+    expect(k?.gapToAnswer).toBe(
+      full.others.find((c) => c.priceSource === 'kamino_scope')?.gapToAnswer,
+    );
+    expect(k && 'quote' in k).toBe(false);
+    const hours = [...hourlyReferencePrices(ix, ctx, SPY, sat - 1, sat + 7200)];
+    expect(hours.map((h) => h.t)).toEqual([sat, sat + 3600, sat + 7200]);
   });
 
   it('assets priced around the clock: USDC at par, USDG from its oracle on wall clock', () => {
