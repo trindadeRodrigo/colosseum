@@ -1,0 +1,2456 @@
+{
+  "schema": "creator-limits-vectors",
+  "version": 1,
+  "readme": "fixtures/creator-limits/README.md",
+  "limits": {
+    "minAssets": 3,
+    "maxAssets": 12,
+    "minWeightBps": 200,
+    "maxWeightBps": 5000,
+    "stepBps": 50,
+    "sumBps": 10000,
+    "maxTurnoverBps": 2000
+  },
+  "error": "CreatorLimit",
+  "reasons": [
+    {
+      "id": 1,
+      "name": "FeeNotZero",
+      "rule": "maxFeeBps is not zero"
+    },
+    {
+      "id": 2,
+      "name": "FlagsNotZero",
+      "rule": "flags is not zero"
+    },
+    {
+      "id": 3,
+      "name": "TooFewAssets",
+      "rule": "fewer than minAssets entries"
+    },
+    {
+      "id": 4,
+      "name": "TooManyAssets",
+      "rule": "more than maxAssets entries"
+    },
+    {
+      "id": 5,
+      "name": "AssetNotListed",
+      "rule": "an asset is not on the platform list"
+    },
+    {
+      "id": 6,
+      "name": "DuplicateAsset",
+      "rule": "an asset appears more than once"
+    },
+    {
+      "id": 7,
+      "name": "WeightBelowMin",
+      "rule": "a weight is under minWeightBps"
+    },
+    {
+      "id": 8,
+      "name": "WeightOffStep",
+      "rule": "a weight is not a multiple of stepBps"
+    },
+    {
+      "id": 9,
+      "name": "WeightAboveCeiling",
+      "rule": "a weight is over min(maxWeightBps, the asset's ceiling)"
+    },
+    {
+      "id": 10,
+      "name": "WeightSum",
+      "rule": "the weights do not add up to sumBps"
+    },
+    {
+      "id": 11,
+      "name": "VersionPending",
+      "rule": "a version is published and not yet in effect"
+    },
+    {
+      "id": 12,
+      "name": "VersionTooSoon",
+      "rule": "now is before lastPublishAt + publishDelay"
+    },
+    {
+      "id": 13,
+      "name": "TurnoverTooHigh",
+      "rule": "turnover against the previous version is over maxTurnoverBps"
+    }
+  ],
+  "platform": {
+    "n": 18,
+    "assets": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "J",
+      "K",
+      "L",
+      "M",
+      "CAP_10000",
+      "CAP_2500",
+      "CAP_2520",
+      "CAP_150",
+      "CAP_0"
+    ],
+    "ceilingsBps": [
+      5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 10000, 2500,
+      2520, 150, 0
+    ],
+    "unlisted": ["UNLISTED"]
+  },
+  "count": 71,
+  "cases": [
+    {
+      "name": "three assets, the fewest allowed",
+      "group": "count",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 0,
+        "effectiveAt": 1791212400
+      }
+    },
+    {
+      "name": "two assets",
+      "group": "count",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 2,
+        "assets": ["A", "B"],
+        "weightsBps": [5000, 5000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "TooFewAssets",
+        "reasonId": 3,
+        "breaks": ["TooFewAssets"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "one asset at 100%",
+      "group": "count",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 1,
+        "assets": ["A"],
+        "weightsBps": [10000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "TooFewAssets",
+        "reasonId": 3,
+        "breaks": ["TooFewAssets", "WeightAboveCeiling"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "an empty list",
+      "group": "count",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 0,
+        "assets": [],
+        "weightsBps": [],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "TooFewAssets",
+        "reasonId": 3,
+        "breaks": ["TooFewAssets", "WeightSum"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "twelve assets, the most allowed",
+      "group": "count",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 12,
+        "assets": ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"],
+        "weightsBps": [800, 800, 800, 800, 800, 800, 800, 800, 800, 800, 800, 1200],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 0,
+        "effectiveAt": 1791212400
+      }
+    },
+    {
+      "name": "thirteen assets",
+      "group": "count",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 13,
+        "assets": ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"],
+        "weightsBps": [750, 750, 750, 750, 750, 750, 750, 750, 750, 750, 750, 750, 1000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "TooManyAssets",
+        "reasonId": 4,
+        "breaks": ["TooManyAssets"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a weight exactly at the 2% floor",
+      "group": "weight",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [200, 4800, 5000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 0,
+        "effectiveAt": 1791212400
+      }
+    },
+    {
+      "name": "a weight one step under the floor",
+      "group": "weight",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [150, 4850, 5000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightBelowMin",
+        "reasonId": 7,
+        "breaks": ["WeightBelowMin"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a weight of one step, 50 bps",
+      "group": "weight",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [50, 4950, 5000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightBelowMin",
+        "reasonId": 7,
+        "breaks": ["WeightBelowMin"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a weight of zero",
+      "group": "weight",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [0, 5000, 5000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightBelowMin",
+        "reasonId": 7,
+        "breaks": ["WeightBelowMin"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a weight one step over the floor",
+      "group": "weight",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [250, 4750, 5000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 0,
+        "effectiveAt": 1791212400
+      }
+    },
+    {
+      "name": "weights half a step off",
+      "group": "weight",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [225, 4775, 5000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightOffStep",
+        "reasonId": 8,
+        "breaks": ["WeightOffStep"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "weights one basis point off the step",
+      "group": "weight",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [2001, 2999, 5000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightOffStep",
+        "reasonId": 8,
+        "breaks": ["WeightOffStep"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a weight under the floor and off the step",
+      "group": "weight",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [175, 4825, 5000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightBelowMin",
+        "reasonId": 7,
+        "breaks": ["WeightBelowMin", "WeightOffStep"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a weight exactly at 50%",
+      "group": "weight",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 2500, 2500],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 0,
+        "effectiveAt": 1791212400
+      }
+    },
+    {
+      "name": "a weight one step over 50%",
+      "group": "weight",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5050, 2950, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightAboveCeiling",
+        "reasonId": 9,
+        "breaks": ["WeightAboveCeiling"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a ceiling over 50%: 50% is still allowed",
+      "group": "weight",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["CAP_10000", "A", "B"],
+        "weightsBps": [5000, 3000, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 0,
+        "effectiveAt": 1791212400
+      }
+    },
+    {
+      "name": "a ceiling over 50%: one step over 50% is refused",
+      "group": "weight",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["CAP_10000", "A", "B"],
+        "weightsBps": [5050, 2950, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightAboveCeiling",
+        "reasonId": 9,
+        "breaks": ["WeightAboveCeiling"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a weight exactly at a ceiling of 25%",
+      "group": "weight",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["CAP_2500", "A", "B"],
+        "weightsBps": [2500, 5000, 2500],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 0,
+        "effectiveAt": 1791212400
+      }
+    },
+    {
+      "name": "a weight one step over a ceiling of 25%",
+      "group": "weight",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["CAP_2500", "A", "B"],
+        "weightsBps": [2550, 5000, 2450],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightAboveCeiling",
+        "reasonId": 9,
+        "breaks": ["WeightAboveCeiling"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a ceiling that is not on a step: the last step under it",
+      "group": "weight",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["CAP_2520", "A", "B"],
+        "weightsBps": [2500, 5000, 2500],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 0,
+        "effectiveAt": 1791212400
+      }
+    },
+    {
+      "name": "a ceiling that is not on a step: the first step over it",
+      "group": "weight",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["CAP_2520", "A", "B"],
+        "weightsBps": [2550, 5000, 2450],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightAboveCeiling",
+        "reasonId": 9,
+        "breaks": ["WeightAboveCeiling"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a ceiling under the floor: no weight is allowed",
+      "group": "weight",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["CAP_150", "A", "B"],
+        "weightsBps": [200, 5000, 4800],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightAboveCeiling",
+        "reasonId": 9,
+        "breaks": ["WeightAboveCeiling"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a ceiling of zero: listed, but not for a shared portfolio",
+      "group": "weight",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["CAP_0", "A", "B"],
+        "weightsBps": [200, 5000, 4800],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightAboveCeiling",
+        "reasonId": 9,
+        "breaks": ["WeightAboveCeiling"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "one step short of 100%",
+      "group": "sum",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 2950, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightSum",
+        "reasonId": 10,
+        "breaks": ["WeightSum"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "one step over 100%",
+      "group": "sum",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3050, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightSum",
+        "reasonId": 10,
+        "breaks": ["WeightSum"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "every weight at its ceiling, 150% in all",
+      "group": "sum",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 5000, 5000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightSum",
+        "reasonId": 10,
+        "breaks": ["WeightSum"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "an asset twice, side by side",
+      "group": "list",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 4,
+        "assets": ["A", "A", "B", "C"],
+        "weightsBps": [2500, 2500, 3000, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "DuplicateAsset",
+        "reasonId": 6,
+        "breaks": ["DuplicateAsset"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "an asset twice, apart",
+      "group": "list",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 4,
+        "assets": ["A", "B", "A", "C"],
+        "weightsBps": [2500, 3000, 2500, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "DuplicateAsset",
+        "reasonId": 6,
+        "breaks": ["DuplicateAsset"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "three entries but two assets",
+      "group": "list",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "A", "B"],
+        "weightsBps": [5000, 3000, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "DuplicateAsset",
+        "reasonId": 6,
+        "breaks": ["DuplicateAsset"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "an asset that is not on the platform list",
+      "group": "list",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "UNLISTED"],
+        "weightsBps": [5000, 3000, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "AssetNotListed",
+        "reasonId": 5,
+        "breaks": ["AssetNotListed"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "an unlisted asset, twice",
+      "group": "list",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "UNLISTED", "UNLISTED"],
+        "weightsBps": [5000, 2500, 2500],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "AssetNotListed",
+        "reasonId": 5,
+        "breaks": ["AssetNotListed", "DuplicateAsset"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "flags is 1",
+      "group": "header",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000],
+        "flags": 1,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "FlagsNotZero",
+        "reasonId": 2,
+        "breaks": ["FlagsNotZero"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "flags is 128, the top bit",
+      "group": "header",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000],
+        "flags": 128,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "FlagsNotZero",
+        "reasonId": 2,
+        "breaks": ["FlagsNotZero"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "flags is 255",
+      "group": "header",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000],
+        "flags": 255,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "FlagsNotZero",
+        "reasonId": 2,
+        "breaks": ["FlagsNotZero"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "the fee is 1 bp",
+      "group": "header",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000],
+        "flags": 0,
+        "maxFeeBps": 1
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "FeeNotZero",
+        "reasonId": 1,
+        "breaks": ["FeeNotZero"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "the fee and flags are both set",
+      "group": "header",
+      "scenario": "first",
+      "prev": {
+        "exists": 0,
+        "n": 0,
+        "assets": [],
+        "weightsBps": []
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000],
+        "flags": 1,
+        "maxFeeBps": 100
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 0,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "FeeNotZero",
+        "reasonId": 1,
+        "breaks": ["FeeNotZero", "FlagsNotZero"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "one second too soon, 48-hour delay",
+      "group": "timing",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4500, 3500, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791385199,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "VersionTooSoon",
+        "reasonId": 12,
+        "breaks": ["VersionTooSoon"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "exactly on time, 48-hour delay",
+      "group": "timing",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4500, 3500, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791385200,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 500,
+        "effectiveAt": 1791558000
+      }
+    },
+    {
+      "name": "one second after, 48-hour delay",
+      "group": "timing",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4500, 3500, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791385201,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 500,
+        "effectiveAt": 1791558001
+      }
+    },
+    {
+      "name": "one second too soon, 300-second delay",
+      "group": "timing",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4500, 3500, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212699,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 300,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "VersionTooSoon",
+        "reasonId": 12,
+        "breaks": ["VersionTooSoon"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "exactly on time, 300-second delay",
+      "group": "timing",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4500, 3500, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212700,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 300,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 500,
+        "effectiveAt": 1791213000
+      }
+    },
+    {
+      "name": "one second too soon, 60-second delay",
+      "group": "timing",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4500, 3500, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212459,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 60,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "VersionTooSoon",
+        "reasonId": 12,
+        "breaks": ["VersionTooSoon"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "exactly on time, 60-second delay",
+      "group": "timing",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4500, 3500, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212460,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 60,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 500,
+        "effectiveAt": 1791212520
+      }
+    },
+    {
+      "name": "in the same second as the last publish",
+      "group": "timing",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4500, 3500, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "VersionTooSoon",
+        "reasonId": 12,
+        "breaks": ["VersionTooSoon"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a version is pending",
+      "group": "timing",
+      "scenario": "pending",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4500, 3500, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791216000,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 1
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "VersionPending",
+        "reasonId": 11,
+        "breaks": ["VersionPending", "VersionTooSoon"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a version is pending one second before it takes effect",
+      "group": "timing",
+      "scenario": "pending",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4500, 3500, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791385199,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 1
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "VersionPending",
+        "reasonId": 11,
+        "breaks": ["VersionPending", "VersionTooSoon"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a version is pending though the interval has passed",
+      "group": "timing",
+      "scenario": "pending_delay_lowered",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4500, 3500, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791212800,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 300,
+        "hasPending": 1
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "VersionPending",
+        "reasonId": 11,
+        "breaks": ["VersionPending"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a cancelled version does not give the slot back",
+      "group": "timing",
+      "scenario": "cancelled",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4500, 3500, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791216000,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "VersionTooSoon",
+        "reasonId": 12,
+        "breaks": ["VersionTooSoon"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "after a cancelled version, exactly on time",
+      "group": "timing",
+      "scenario": "cancelled",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4500, 3500, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791385200,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 500,
+        "effectiveAt": 1791558000
+      }
+    },
+    {
+      "name": "the same weights again",
+      "group": "turnover",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 0,
+        "effectiveAt": 1791585200
+      }
+    },
+    {
+      "name": "the smallest move, one step",
+      "group": "turnover",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4950, 3050, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 50,
+        "effectiveAt": 1791585200
+      }
+    },
+    {
+      "name": "exactly 20%, all of it between two assets",
+      "group": "turnover",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [3000, 5000, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 2000,
+        "effectiveAt": 1791585200
+      }
+    },
+    {
+      "name": "one step over 20%",
+      "group": "turnover",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 2950, 2050]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [2950, 5000, 2050],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "TurnoverTooHigh",
+        "reasonId": 13,
+        "breaks": ["TurnoverTooHigh"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a new asset at exactly 20%",
+      "group": "turnover",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 4,
+        "assets": ["A", "B", "C", "D"],
+        "weightsBps": [3000, 3000, 2000, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 2000,
+        "effectiveAt": 1791585200
+      }
+    },
+    {
+      "name": "a new asset one step over 20%",
+      "group": "turnover",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 4,
+        "assets": ["A", "B", "C", "D"],
+        "weightsBps": [2950, 3000, 2000, 2050],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "TurnoverTooHigh",
+        "reasonId": 13,
+        "breaks": ["TurnoverTooHigh"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "an asset removed, exactly 20%",
+      "group": "turnover",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 4,
+        "assets": ["A", "B", "C", "D"],
+        "weightsBps": [3000, 3000, 2000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [3500, 3500, 3000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 2000,
+        "effectiveAt": 1791585200
+      }
+    },
+    {
+      "name": "an asset removed, one step over 20%",
+      "group": "turnover",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 4,
+        "assets": ["A", "B", "C", "D"],
+        "weightsBps": [3000, 3000, 1950, 2050]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [3500, 3500, 3000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "TurnoverTooHigh",
+        "reasonId": 13,
+        "breaks": ["TurnoverTooHigh"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "one asset swapped for another at 20%",
+      "group": "turnover",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4000, 4000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "D"],
+        "weightsBps": [4000, 4000, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 2000,
+        "effectiveAt": 1791585200
+      }
+    },
+    {
+      "name": "one asset swapped for another, one step over 20%",
+      "group": "turnover",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [4000, 3950, 2050]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "D"],
+        "weightsBps": [4000, 3950, 2050],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "TurnoverTooHigh",
+        "reasonId": 13,
+        "breaks": ["TurnoverTooHigh"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "twelve assets, eight of them move, exactly 20%",
+      "group": "turnover",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 12,
+        "assets": ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"],
+        "weightsBps": [800, 800, 800, 800, 800, 800, 800, 800, 800, 800, 800, 1200]
+      },
+      "next": {
+        "n": 12,
+        "assets": ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"],
+        "weightsBps": [300, 300, 300, 300, 1300, 1300, 1300, 1300, 800, 800, 800, 1200],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 2000,
+        "effectiveAt": 1791585200
+      }
+    },
+    {
+      "name": "twelve assets, eight of them move, one step over 20%",
+      "group": "turnover",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 12,
+        "assets": ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"],
+        "weightsBps": [800, 800, 800, 800, 800, 800, 800, 800, 800, 800, 800, 1200]
+      },
+      "next": {
+        "n": 12,
+        "assets": ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"],
+        "weightsBps": [250, 300, 300, 300, 1350, 1300, 1300, 1300, 800, 800, 800, 1200],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "TurnoverTooHigh",
+        "reasonId": 13,
+        "breaks": ["TurnoverTooHigh"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "every asset replaced",
+      "group": "turnover",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["D", "E", "F"],
+        "weightsBps": [5000, 3000, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "TurnoverTooHigh",
+        "reasonId": 13,
+        "breaks": ["TurnoverTooHigh"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "the same assets listed in another order",
+      "group": "turnover",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["C", "A", "B"],
+        "weightsBps": [2000, 5000, 3000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 1,
+        "error": "",
+        "reason": "",
+        "reasonId": 0,
+        "breaks": [],
+        "turnoverBps": 0,
+        "effectiveAt": 1791585200
+      }
+    },
+    {
+      "name": "a later version with a weight over its ceiling",
+      "group": "later",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5050, 2950, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightAboveCeiling",
+        "reasonId": 9,
+        "breaks": ["WeightAboveCeiling"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a later version down to two assets",
+      "group": "later",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 2,
+        "assets": ["A", "B"],
+        "weightsBps": [5000, 5000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "TooFewAssets",
+        "reasonId": 3,
+        "breaks": ["TooFewAssets"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a later version up to thirteen assets",
+      "group": "later",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 12,
+        "assets": ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"],
+        "weightsBps": [800, 800, 800, 800, 800, 800, 800, 800, 800, 800, 800, 1200]
+      },
+      "next": {
+        "n": 13,
+        "assets": ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"],
+        "weightsBps": [750, 750, 750, 750, 750, 750, 750, 750, 750, 750, 750, 1200, 550],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "TooManyAssets",
+        "reasonId": 4,
+        "breaks": ["TooManyAssets"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a later version with an unlisted asset",
+      "group": "later",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "UNLISTED"],
+        "weightsBps": [5000, 3000, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791412400,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "AssetNotListed",
+        "reasonId": 5,
+        "breaks": ["AssetNotListed"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "too soon and too much at once",
+      "group": "later",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["D", "E", "F"],
+        "weightsBps": [5000, 3000, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791216000,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "VersionTooSoon",
+        "reasonId": 12,
+        "breaks": ["VersionTooSoon", "TurnoverTooHigh"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "pending, too soon and too much at once",
+      "group": "later",
+      "scenario": "pending",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["D", "E", "F"],
+        "weightsBps": [5000, 3000, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791216000,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 1
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "VersionPending",
+        "reasonId": 11,
+        "breaks": ["VersionPending", "VersionTooSoon", "TurnoverTooHigh"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    },
+    {
+      "name": "a bad shape and too soon",
+      "group": "later",
+      "scenario": "next",
+      "prev": {
+        "exists": 1,
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 3000, 2000]
+      },
+      "next": {
+        "n": 3,
+        "assets": ["A", "B", "C"],
+        "weightsBps": [5000, 2950, 2000],
+        "flags": 0,
+        "maxFeeBps": 0
+      },
+      "ctx": {
+        "now": 1791216000,
+        "lastPublishAt": 1791212400,
+        "publishDelay": 172800,
+        "hasPending": 0
+      },
+      "expect": {
+        "ok": 0,
+        "error": "CreatorLimit",
+        "reason": "WeightSum",
+        "reasonId": 10,
+        "breaks": ["WeightSum", "VersionTooSoon"],
+        "turnoverBps": 0,
+        "effectiveAt": 0
+      }
+    }
+  ]
+}
