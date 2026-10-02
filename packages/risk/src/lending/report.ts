@@ -26,6 +26,8 @@ export type LendingReportParams = {
   bandPct: number;
   /** A 5-minute lending row and a routed reference mid are compared when they are at most this far apart. */
   oracleMatchSec: number;
+  /** A liquidation counts toward capacity while the liquidator's margin is at least this (percent; item 8). */
+  minLiquidatorMarginPct: number;
 };
 
 export const defaultLendingReportParams = (): LendingReportParams => ({
@@ -35,6 +37,7 @@ export const defaultLendingReportParams = (): LendingReportParams => ({
   jlCloseFactor: 1,
   bandPct: 1,
   oracleMatchSec: 180,
+  minLiquidatorMarginPct: 0,
 });
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -153,6 +156,8 @@ export type GapDeposit = {
   liqBonusMin?: number;
   /** True for an xStock: the gap applies to it. */
   stock: boolean;
+  /** The venue oracle that prices this deposit, as the report labels it; seizures are also split by it. */
+  oracle?: string;
 };
 
 export type GapPosition = {
@@ -175,6 +180,8 @@ export type GapAssetRow = {
   minBonus: number | null;
   /** Seized USD by liquidation bonus (key: bonus in bps). */
   seizedByBonusBps: Record<string, number>;
+  /** Seized USD and smallest sale-cost tolerance by venue oracle (deposits that name one). */
+  byOracle: Record<string, { seizedUsd: number; minBonus: number }>;
 };
 
 /**
@@ -229,6 +236,7 @@ export function lendingGapSim(positions: readonly GapPosition[], gapPct: number,
         seizedUsd: 0,
         minBonus: null,
         seizedByBonusBps: {},
+        byOracle: {},
       };
       if (!touched.has(d.asset)) row.positions++;
       touched.add(d.asset);
@@ -239,6 +247,12 @@ export function lendingGapSim(positions: readonly GapPosition[], gapPct: number,
       row.seizedByBonusBps[bps] = (row.seizedByBonusBps[bps] ?? 0) + part;
       const tol = d.liqBonusMin ?? d.liqBonus;
       row.minBonus = row.minBonus === null ? tol : Math.min(row.minBonus, tol);
+      if (d.oracle) {
+        const o = row.byOracle[d.oracle];
+        row.byOracle[d.oracle] = o
+          ? { seizedUsd: o.seizedUsd + part, minBonus: Math.min(o.minBonus, tol) }
+          : { seizedUsd: part, minBonus: tol };
+      }
       byAsset.set(d.asset, row);
     }
   }

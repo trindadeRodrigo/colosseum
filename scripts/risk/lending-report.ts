@@ -14,6 +14,7 @@ import { createDb, riskLendingPools } from '@colosseum/db';
 import {
   type AssetCurves,
   alarmShare,
+  bestRoute,
   coverageRatio,
   type DepthCurve,
   defaultLendingReportParams,
@@ -21,9 +22,14 @@ import {
   type GapDeposit,
   type GapPosition,
   gapStats,
+  type IssuerModel,
   type LiquidationInput,
   lendingGapSim,
+  liquidationCapacity,
+  liquidationRoutes,
   liquidationTable,
+  type OracleGapObs,
+  REGIMES,
   type ReallocationLeg,
   type Regime,
   reallocationSummary,
@@ -34,6 +40,7 @@ import {
   vaultExit,
   weekendDepthRatio,
 } from '@colosseum/risk';
+import type { LiquidationRoute } from '@colosseum/schemas';
 import { LendingMarket } from '@kamino-finance/klend-sdk';
 import { sql } from 'drizzle-orm';
 import { HISTORY_DIR } from './lib-history';
@@ -45,9 +52,11 @@ import { LENDING_HISTORY_DIR, multipleAccounts, RISK_HOME } from './lib-lending'
 // D13), the routed depth curves (risk_depth_curves, risk-0.3), Step 5b's hourly pool rows (weekend depth ratio, pool
 // mids) and the decode pass's curated-vault reallocations. One RPC call: the 4 Kamino market accounts (close factor
 // and full-liquidation LTV), decoded with klend-sdk. Policy inputs: `defaultLendingReportParams()`.
+// PLAN-ANALYTICS item 8 adds sections 6 and 7: the liquidation routes compared (margin per route, size and regime,
+// `packages/risk/src/lending/route.ts`) and the coverage ratio on the liquidator's margin beside the earlier one.
 // Output: data/risk/lending-history/report/lending-report-<stamp>.json, and the tables printed.
 
-const METHOD = 'lending-report-0.1';
+const METHOD = 'lending-report-0.2';
 const P = defaultLendingReportParams();
 const RP = defaultRegimeParams(
   JSON.parse(
@@ -426,7 +435,7 @@ const nearestMid = (mint: string, t: number) => {
 };
 const oracleObs = new Map<
   string,
-  { gaps: number[]; ages: number[]; multipliers: number[]; unit: string }
+  { gaps: number[]; ages: number[]; multipliers: number[]; unit: string; from: string; to: string }
 >();
 for (const r of live) {
   let mint: string | undefined;
@@ -452,8 +461,17 @@ for (const r of live) {
   if (mid === null) continue;
   const regime = regimeAt(new Date(r.fetchedAt), RP);
   const k = `${label}|${regime}`;
-  const o = oracleObs.get(k) ?? { gaps: [], ages: [], multipliers: [], unit };
+  const o = oracleObs.get(k) ?? {
+    gaps: [],
+    ages: [],
+    multipliers: [],
+    unit,
+    from: r.fetchedAt,
+    to: r.fetchedAt,
+  };
   o.gaps.push(price / mid - 1);
+  if (r.fetchedAt < o.from) o.from = r.fetchedAt;
+  if (r.fetchedAt > o.to) o.to = r.fetchedAt;
   if (age !== null && Number.isFinite(age)) o.ages.push(age);
   if (r.oracleMultiplier) o.multipliers.push(Number(r.oracleMultiplier));
   oracleObs.set(k, o);
@@ -495,6 +513,10 @@ const marketRules = new Map(
   }),
 );
 const marketReadAt = new Date().toISOString();
+// the oracle labels of section 4, so a seizure is priced at its own venue's oracle gap (item 8)
+const kaminoOracle = (st: LiveRow) =>
+  `kamino ${st.symbol} @${st.marketName ? String(st.marketName) : String(st.market).slice(0, 8)}`;
+const jlOracle = (v: LiveRow) => `jupiter_lend ${v.symbol}/${v.debtSymbol}`;
 
 const gapPositions: GapPosition[] = [];
 let unpriced = 0;
@@ -532,6 +554,7 @@ for (const o of obligations) {
       liqBonus: (params(reg).maxLiquidationBonusBps as number) / 10_000,
       liqBonusMin: (params(reg).minLiquidationBonusBps as number) / 10_000,
       stock: reg.dexAssetMint !== null,
+      oracle: kaminoOracle(st),
     });
   }
   if (!ok || o.debtUsd === null) {
@@ -564,6 +587,7 @@ for (const p of jlPositions) {
         liqThreshold: Number(v.liquidationThreshold),
         liqBonus: Number(v.liquidationPenalty),
         stock: true,
+        oracle: jlOracle(v),
       },
     ],
     debtUsd: p.debt,
@@ -656,6 +680,166 @@ const atRisk = P.gapGridPct.map((g) => {
   };
 });
 
+// =============================================================================================== 6. liquidation routes
+// PLAN-ANALYTICS item 8. Each venue oracle's median gap to the routed reference mid, by regime (section 4's rows).
+const oracleGaps = new Map<string, Partial<Record<Regime, OracleGapObs>>>();
+for (const [k, o] of oracleObs) {
+  const [oracle, regime] = k.split('|') as [string, Regime];
+  const median = gapStats(o.gaps).median;
+  if (median === null) continue;
+  const m = oracleGaps.get(oracle) ?? {};
+  m[regime] = {
+    value: median,
+    samples: o.gaps.length,
+    fetchedAt: o.to,
+    dataFrom: o.from,
+    source: 'lending collector 5-minute rows (venue oracle) against risk_asset_snapshots refMidUsd',
+    method: `median(oracle / routed reference mid − 1), matched within ${P.oracleMatchSec}s`,
+    methodVersion: METHOD,
+    provenance: 'live',
+  };
+  oracleGaps.set(oracle, m);
+}
+const curveMeta = {
+  source: 'risk_depth_curves (risk-0.3, routed sale across dollar and SOL pools)',
+  method: 'routed_greedy_32_chunks',
+  methodVersion: 'risk-0.3',
+  provenance: 'live' as const,
+};
+const gapOf = (oracle: string) =>
+  Object.fromEntries(
+    Object.entries(oracleGaps.get(oracle) ?? {}).map(([r, o]) => [r, (o as OracleGapObs).value]),
+  ) as Partial<Record<Regime, number>>;
+// two-hop exits: pools pairing the stock with a token the collector does not price (registry, tiers A and B)
+const twoHopRows = await rows<{ asset_mint: string; pools: string; tvl: number | null }>(
+  sql`select asset_mint, count(*) pools, sum(tvl_usd) tvl from risk_pools
+  where exit_path in ('other', 'via_xstock') and tier in ('A', 'B') group by asset_mint`,
+);
+const twoHopOf = new Map(
+  twoHopRows.map((r) => [r.asset_mint, { pools: Number(r.pools), tvlUsd: Number(r.tvl ?? 0) }]),
+);
+const issuerFile = JSON.parse(readFileSync('fixtures/risk/issuer-models.json', 'utf8')) as {
+  fetchedAt: string;
+  models: Record<string, IssuerModel>;
+};
+const xstocksIssuer = issuerFile.models.xstocks
+  ? { ...issuerFile.models.xstocks, fetchedAt: issuerFile.fetchedAt }
+  : null;
+const ROUTE_SIZES = [10_000, 100_000, 1_000_000];
+// every (asset, oracle) seized at some gap of the grid, with the smallest bonus its liquidators earn
+const seizedOracles = new Map<string, { asset: string; oracle: string; bonus: number }>();
+for (const g of atRisk)
+  for (const a of g.byAsset)
+    for (const [oracle, o] of Object.entries(a.byOracle)) {
+      const k = `${a.asset}|${oracle}`;
+      const prev = seizedOracles.get(k);
+      seizedOracles.set(k, {
+        asset: a.asset,
+        oracle,
+        bonus: prev ? Math.min(prev.bonus, o.minBonus) : o.minBonus,
+      });
+    }
+const routesSection = [...seizedOracles.values()]
+  .sort((a, b) => a.asset.localeCompare(b.asset) || a.oracle.localeCompare(b.oracle))
+  .map(({ asset, oracle, bonus }) => {
+    const mint = xstockMintOf.get(asset);
+    const curves = mint ? (curvesOf.get(mint) ?? null) : null;
+    const wr = weekendRatio.get(asset);
+    const cap = curves
+      ? liquidationCapacity(
+          curves,
+          Object.keys(curves.byRegime) as Regime[],
+          { bonus, oracleGap: gapOf(oracle), minMargin: P.minLiquidatorMarginPct / 100 },
+          wr ? { ratio: wr.ratio, from: 'us_market_hours' } : null,
+        )
+      : null;
+    return {
+      asset,
+      oracle,
+      bonus,
+      oracleGap: oracleGaps.get(oracle) ?? {},
+      capacity: cap,
+      byRegime: REGIMES.map((regime) => ({
+        regime,
+        bySize: ROUTE_SIZES.map((seizedUsd) => {
+          const routes: LiquidationRoute[] = liquidationRoutes({
+            regime,
+            seizedUsd,
+            bonus,
+            oracleGap: oracleGaps.get(oracle) ?? {},
+            curves,
+            curveMeta,
+            twoHop: (mint && twoHopOf.get(mint)) || { pools: 0, tvlUsd: 0 },
+            issuer: xstocksIssuer,
+          });
+          return { seizedUsd, best: bestRoute(routes)?.route ?? null, routes };
+        }),
+      })),
+    };
+  });
+
+// =============================================================================================== 7. coverage, both
+// The earlier ratio (section 5, unchanged) beside the ratio on the liquidator's margin: per asset, the smallest
+// capacity among the venue oracles whose positions are seized at that gap.
+const coverageBoth = atRisk.flatMap((g) =>
+  g.byAsset.map((a) => {
+    const mint = xstockMintOf.get(a.asset);
+    const curves = mint ? curvesOf.get(mint) : undefined;
+    const wr = weekendRatio.get(a.asset);
+    const perOracle = Object.entries(a.byOracle).map(([oracle, o]) => ({
+      oracle,
+      seizedUsd: o.seizedUsd,
+      bonus: o.minBonus,
+      ...(curves
+        ? liquidationCapacity(
+            curves,
+            Object.keys(curves.byRegime) as Regime[],
+            {
+              bonus: o.minBonus,
+              oracleGap: gapOf(oracle),
+              minMargin: P.minLiquidatorMarginPct / 100,
+            },
+            wr ? { ratio: wr.ratio, from: 'us_market_hours' } : null,
+          )
+        : { worst: null, byRegime: [], missing: [] }),
+    }));
+    const priced = perOracle.filter((o) => o.worst !== null);
+    const limiting = priced.reduce<(typeof priced)[number] | null>(
+      (w, o) => (!w || (o.worst?.capacityUsd as number) < (w.worst?.capacityUsd as number) ? o : w),
+      null,
+    );
+    const capacityUsd = limiting?.worst?.capacityUsd ?? null;
+    return {
+      gapPct: g.gapPct,
+      asset: a.asset,
+      seizedUsd: a.seizedUsd,
+      earlier: { capacityUsd: a.capacityUsd, regime: a.capacityRegime, ratio: a.coverageRatio },
+      margin: {
+        capacityUsd,
+        regime: limiting?.worst?.regime ?? null,
+        derived: limiting?.worst?.derived ?? null,
+        lowerBound: limiting?.worst?.lowerBound ?? null,
+        tau: limiting?.worst?.tau ?? null,
+        limitingOracle: limiting?.oracle ?? null,
+        ratio: capacityUsd === null ? null : coverageRatio(capacityUsd, a.seizedUsd),
+        reason:
+          capacityUsd === null ? (curves ? 'no_samples_in_regime' : 'not_collected') : undefined,
+        oraclesNotPriced: perOracle.filter((o) => o.worst === null).map((o) => o.oracle),
+        regimesMissing: [
+          ...new Set(perOracle.flatMap((o) => o.missing.map((m) => `${m.regime}:${m.reason}`))),
+        ],
+      },
+      perOracle: perOracle.map((o) => ({
+        oracle: o.oracle,
+        seizedUsd: o.seizedUsd,
+        bonus: o.bonus,
+        worst: o.worst,
+        missing: o.missing,
+      })),
+    };
+  }),
+);
+
 // =============================================================================================== output
 const report = {
   method: METHOD,
@@ -709,6 +893,27 @@ const report = {
       'capacity = routed sell capacity at cost ≤ the smallest sale-cost tolerance (bonus at the threshold) among this asset’s seizures, in the worst measured regime; when lower, the weekend capacity derived as US-market-hours capacity × Step 5b weekend/market-hours median ±2% sell depth (`capacityDerived`)',
       `no oracle band (bandPct ${P.bandPct}); Kamino maxLiquidatableDebtMarketValueAtOnce caps one liquidation, not the total`,
     ],
+  },
+  liquidationRoutes: {
+    method: 'margin = (1 + b) × (P_m / P_o) × (1 − c) − 1 (PLAN-ANALYTICS §5); facts-0.1',
+    rows: routesSection,
+    assumptions: [
+      'b = the smallest bonus the liquidators of that oracle earn on this asset (Kamino: the bonus at the threshold; Jupiter Lend: the penalty)',
+      'P_o / P_m = the median of the venue oracle over the routed reference mid in that regime (section 4); a regime without rows is not measured',
+      'routed_dex: the routed sale across dollar and SOL pools in the liquidation regime (risk-0.3 curves)',
+      'two_hop: pools pairing the stock with a token the collector does not price; their dollar leg is not collected',
+      'wait_for_market_open: the market-hours sale, the price held flat over the wait (market risk is item 12): an assumption',
+      'issuer_redemption: redeemed at the venue oracle price less the issuer fee, from fixtures/risk/issuer-models.json: an assumption',
+      'a route resting on an assumption is listed, never chosen as best over a measured one',
+    ],
+  },
+  coverageBoth: {
+    rows: coverageBoth,
+    definitions: {
+      earlier:
+        'capacity at sale cost ≤ the bonus at the threshold, in the worst measured regime (section 5, unchanged)',
+      margin: `capacity at liquidator margin ≥ ${P.minLiquidatorMarginPct}% on the routed sale, at each regime's own oracle gap, worst regime where both the curve and the gap are measured; per asset, the smallest across the venue oracles seized at that gap. At gap 0 the cost tolerance is b / (1 + b), not b.`,
+    },
   },
 };
 const json = JSON.stringify(report, null, 1);
@@ -851,8 +1056,62 @@ table(
     badDebt: usd(g.badDebtUsd),
   })),
 );
+const marginAt = (r: LiquidationRoute | undefined) =>
+  !r
+    ? '—'
+    : r.liquidatorMargin.value === null
+      ? r.liquidatorMargin.reason
+      : `${pct(r.liquidatorMargin.value, 2)}${r.liquidatorMargin.quality === 'assumption' ? '~' : ''}`;
+table(
+  '6. Liquidation routes — liquidator margin by route, seized size and regime (best = measured route recovering most)',
+  routesSection.flatMap((s) =>
+    s.byRegime
+      .filter(
+        (x) => s.oracleGap[x.regime] || s.capacity?.byRegime.some((c) => c.regime === x.regime),
+      )
+      .map((x) => {
+        const gap = s.oracleGap[x.regime];
+        const cap = s.capacity?.byRegime.find((c) => c.regime === x.regime && !c.derived);
+        const route = (size: number, name: string) =>
+          x.bySize.find((b) => b.seizedUsd === size)?.routes.find((r) => r.route === name);
+        return {
+          asset: s.asset,
+          oracle: s.oracle.replace(` ${s.asset}`, '').slice(0, 30),
+          regime: x.regime,
+          bonus: pct(s.bonus, 1),
+          oracleGap: gap ? `${pct(gap.value, 2)} n=${gap.samples}` : '—',
+          tau: cap ? pct(cap.tau, 2) : '—',
+          capacity: cap ? `${usd(cap.capacityUsd)}${cap.lowerBound ? '+' : ''}` : '—',
+          'dex@10k': marginAt(route(10_000, 'routed_dex')),
+          'dex@100k': marginAt(route(100_000, 'routed_dex')),
+          'dex@1M': marginAt(route(1_000_000, 'routed_dex')),
+          'wait@100k': marginAt(route(100_000, 'wait_for_market_open')),
+          'issuer@100k': marginAt(route(100_000, 'issuer_redemption')),
+          twoHop: marginAt(route(100_000, 'two_hop')),
+          best: x.bySize.find((b) => b.seizedUsd === 100_000)?.best ?? '—',
+        };
+      }),
+  ),
+);
+table(
+  `7. Coverage ratio, both definitions — earlier (cost ≤ bonus) beside the liquidator's margin ≥ ${P.minLiquidatorMarginPct}%`,
+  coverageBoth.map((c) => ({
+    gap: `${c.gapPct}%`,
+    asset: c.asset,
+    seized: usd(c.seizedUsd),
+    capEarlier: usd(c.earlier.capacityUsd),
+    ratioEarlier: c.earlier.ratio === null ? '—' : c.earlier.ratio.toFixed(2),
+    capMargin: `${usd(c.margin.capacityUsd)}${c.margin.lowerBound ? '+' : ''}`,
+    regime: `${c.margin.regime ?? '—'}${c.margin.derived ? '*' : ''}`,
+    tau: c.margin.tau === null ? '—' : pct(c.margin.tau, 2),
+    ratioMargin: c.margin.ratio === null ? (c.margin.reason ?? '—') : c.margin.ratio.toFixed(2),
+    limitedBy: (c.margin.limitingOracle ?? '—').slice(0, 34),
+    notPriced: c.margin.oraclesNotPriced.length,
+    missing: c.margin.regimesMissing.join(' ') || '—',
+  })),
+);
 console.log(
-  '\n* derived weekend capacity; + capacity beyond the top of the measured grid (lower bound)',
+  '\n* derived weekend capacity; + capacity beyond the top of the measured grid (lower bound); ~ rests on an assumption',
 );
 console.log(
   `\nprivate addresses checked: ${privateAddresses.size}; found in the report: ${leaks.length}`,

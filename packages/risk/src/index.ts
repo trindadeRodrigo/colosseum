@@ -15,6 +15,7 @@ export * from './lending/jupiter-lend';
 export * from './lending/kamino';
 export * from './lending/reconstruct';
 export * from './lending/report';
+export * from './lending/route';
 export * from './lending/tx';
 export * from './lending/verify';
 export * from './pools/bytes';
