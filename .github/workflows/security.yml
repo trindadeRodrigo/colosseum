@@ -12,6 +12,7 @@ on:
       - '.gitleaks.toml'
       - '.gitleaksignore'
       - 'deny.toml'
+      - 'pnpm-workspace.yaml'
   workflow_dispatch:
 
 permissions:
@@ -79,24 +80,33 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
-      # Reads the lockfile; nothing is installed. Every severity is listed.
+      # Reads the lockfile; nothing is installed. Every advisory of every severity is listed, the accepted
+      # ones too: the report is the same audit with the ignore list of pnpm-workspace.yaml taken out.
       - name: Report
         run: |
+          accepted=$(grep -oE 'GHSA(-[0-9a-z]{4}){3}' pnpm-workspace.yaml | sort -u | tr '\n' ' ')
+          cp pnpm-workspace.yaml "$RUNNER_TEMP/pnpm-workspace.yaml"
+          awk '/^auditConfig:/ { skip = 1; next } skip && /^[^ #]/ { skip = 0 } !skip' \
+            "$RUNNER_TEMP/pnpm-workspace.yaml" > pnpm-workspace.yaml
           pnpm audit --prod --json > "$RUNNER_TEMP/audit.json" || true
+          cp "$RUNNER_TEMP/pnpm-workspace.yaml" pnpm-workspace.yaml
           {
             echo "### pnpm audit --prod"
             jq -r '.metadata.vulnerabilities | "critical \(.critical), high \(.high), moderate \(.moderate), low \(.low)"' "$RUNNER_TEMP/audit.json"
             echo
-            echo "| Severity | Package | Vulnerable | Fixed in | Advisory | Reached through |"
-            echo "|---|---|---|---|---|---|"
-            jq -r '
+            echo "| Severity | Package | Vulnerable | Fixed in | Advisory | Reached through | Accepted |"
+            echo "|---|---|---|---|---|---|---|"
+            jq -r --arg accepted "$accepted" '
               def rank: {"critical": 0, "high": 1, "moderate": 2, "low": 3}[.] // 4;
-              [.advisories[]] | sort_by(.severity | rank) | .[]
-              | "| \(.severity) | \(.module_name) | `\(.vulnerable_versions)` | `\(.patched_versions)` | \(.github_advisory_id) | \(.findings[0].paths[0] | gsub(">"; " > ")) |"
+              ($accepted | split(" ")) as $known
+              | [.advisories[]] | sort_by(.severity | rank) | .[]
+              | .github_advisory_id as $id
+              | "| \(.severity) | \(.module_name) | `\(.vulnerable_versions)` | `\(.patched_versions)` | \($id) | \(.findings[0].paths[0] | gsub(">"; " > ")) | \(if ($known | index($id)) then "yes: docs/vault/SECURITY-DEPS.md" else "" end) |"
             ' "$RUNNER_TEMP/audit.json"
           } >> "$GITHUB_STEP_SUMMARY"
           pnpm audit --prod || true
-      - name: Fail on high or critical
+      # With the ignore list: the accepted advisories pass, any other high or critical one fails.
+      - name: Fail on a high or critical advisory that is not accepted
         run: pnpm audit --prod --audit-level high
 
   cargo-deny:
