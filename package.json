@@ -55,6 +55,7 @@
     "risk:routing-gap": "tsx scripts/risk/routing-gap.ts",
     "risk:markets": "tsx scripts/risk/verify-markets.ts",
     "risk:provider-check": "tsx scripts/risk/facts/provider-check.ts",
+    "risk:facts": "tsx scripts/risk/facts/asset-facts.ts",
     "risk:lending-measure": "tsx scripts/risk/lending-measure.ts",
     "risk:lending-registry": "tsx scripts/risk/lending-registry.ts",
     "risk:lending-history": "tsx scripts/risk/lending-history.ts",

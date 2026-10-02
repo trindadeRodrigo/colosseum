@@ -1,0 +1,379 @@
+import {
+  type AssetFacts,
+  type CostBreakdown,
+  FACTS_METHOD_VERSION,
+  type Fact,
+  type FactNullReason,
+  type FactRegime,
+  type FactUnit,
+  fact,
+  type MeasuredFact,
+  missing,
+} from '@colosseum/schemas';
+import { type AssetCurves, curveFor, type IssuerModel, measuredRegimes } from '../assess';
+import { costAt, type DepthCurve, maxNotionalAt, usableCount } from '../curves';
+import { REGIMES, type Regime } from '../time';
+import { breakEvenReturn, lossUsd, roundTripCost } from './returns';
+
+/**
+ * AssetFacts for one asset and one trade size (PLAN-ANALYTICS item 7). A pure function over rows the caller
+ * read: no clock, no I/O. Every number comes out as a fact with the source of the rows it was read from; what
+ * the rows do not hold comes out as `null` with its reason, never as zero.
+ */
+type RowMeta = {
+  source: string;
+  method: string;
+  methodVersion: string;
+  provenance: MeasuredFact['provenance'];
+};
+
+export type AssetFactsInput = {
+  assetId: string;
+  symbol: string;
+  chain: string;
+  mint: string | null;
+  sizeUsd: number;
+  tau: number;
+  /** When the caller read the rows; the time of every fact that is a policy input. */
+  asOf: string;
+  /** Sell curves by regime; null when the asset's chain or class has no collector. */
+  sell: AssetCurves | null;
+  buy: AssetCurves | null;
+  curveMeta: RowMeta;
+  /** Why there are no curves at all, when `sell` is null. */
+  uncoveredReason?: FactNullReason;
+  /** Charged by the product or the aggregator on top of the pools (DA5). */
+  platformFeeBps: number;
+  /** Latest LP concentration row of the asset's largest dollar pool. */
+  lp:
+    | (RowMeta & {
+        fetchedAt: string;
+        top1: number;
+        top3: number;
+        top10: number;
+        lpExitN: number;
+        /** Sell curve of the pool without its largest `lpExitN` in-band positions. */
+        sellWithoutTopN: Array<{ notionalUsd: number; costPct: number }> | null;
+      })
+    | null;
+  /** LP-withdrawal events of the asset's pools in the 7 days before `to`. */
+  lpWithdrawals: { count: number; to: string; source: string; method: string } | null;
+  /** Exit capacity at `tau` in each snapshot of the last days, by regime. */
+  capacitySeries:
+    | (RowMeta & {
+        byRegime: Partial<Record<Regime, number[]>>;
+        to: string;
+        minSamples: number;
+      })
+    | null;
+  /** Stock collateral in lending markets, latest hour. */
+  lendingCollateral: (RowMeta & { usd: number; fetchedAt: string }) | null;
+  /** Other price sources the pool mid is compared with, and the gaps the caller could read. */
+  tracking: Array<{
+    against: string;
+    regime: Regime;
+    gap: (RowMeta & { value: number; fetchedAt: string; samples: number }) | FactNullReason;
+  }>;
+  issuer: (IssuerModel & { fetchedAt: string }) | null;
+  gapGridPct: readonly number[];
+};
+
+/** Policy inputs of the fact sheets (facts-0.1); each is shown on the sheet it shapes. */
+export const defaultFactsParams = () => ({
+  /** Trade size a sheet refers to when none is asked for. */
+  refSizeUsd: 10_000,
+  /** Cost tolerance behind capacity figures (PLAN-RISK §4 founder default). */
+  tau: 0.01,
+  /** Charged by the product or the aggregator on top of the pools (DA5). */
+  platformFeeBps: 0,
+  /** Window for capacity variation and LP-withdrawal counts. */
+  capacityWindowDays: 7,
+  capacityMinSamples: 8,
+});
+
+const NOT_SPLIT = 'the amount sent to each pool is not stored yet (item 4)';
+
+export function buildAssetFacts(inp: AssetFactsInput): AssetFacts {
+  const curveFact = (
+    value: number,
+    unit: FactUnit,
+    c: DepthCurve,
+    regime: FactRegime,
+    quality: MeasuredFact['quality'] = 'measured',
+  ): MeasuredFact =>
+    fact({
+      value,
+      unit,
+      quality,
+      regime,
+      sizeUsd: inp.sizeUsd,
+      ...inp.curveMeta,
+      fetchedAt: c.to ?? c.from ?? inp.asOf,
+      ...(c.from ? { dataFrom: c.from } : {}),
+      samples: c.samples,
+    });
+  const platformFee = fact({
+    value: inp.platformFeeBps / 10_000,
+    unit: 'fraction',
+    quality: 'assumption',
+    source: 'policy input platformFeeBps',
+    method: 'policy_input',
+    methodVersion: FACTS_METHOD_VERSION,
+    fetchedAt: inp.asOf,
+    provenance: inp.curveMeta.provenance,
+  });
+
+  /** Total cost of one side at the sheet's size in one regime, or why it is not measured. */
+  const sideCost = (
+    curves: AssetCurves | null,
+    regime: Regime,
+  ): { cost: number; curve: DepthCurve } | { reason: FactNullReason } => {
+    if (!curves) return { reason: inp.uncoveredReason ?? 'not_collected' };
+    const { curve } = curveFor(curves, regime);
+    if (!curve) return { reason: 'no_samples_in_regime' };
+    if (usableCount(curve) === 0) return { reason: 'insufficient_samples' };
+    const k = costAt(curve, inp.sizeUsd);
+    return k === null ? { reason: 'beyond_measured_size' } : { cost: k, curve };
+  };
+  const breakdown = (curves: AssetCurves | null, regime: Regime): CostBreakdown => {
+    const s = sideCost(curves, regime);
+    const ctx = { regime, sizeUsd: inp.sizeUsd };
+    const split = (unit: FactUnit) =>
+      'cost' in s
+        ? missing('not_collected', unit, { ...ctx, detail: NOT_SPLIT })
+        : missing(s.reason, unit, ctx);
+    return {
+      total: 'cost' in s ? curveFact(s.cost, 'fraction', s.curve, regime) : split('fraction'),
+      poolFee: split('fraction'),
+      transferFee: split('fraction'),
+      impact: split('fraction'),
+      basis: split('fraction'),
+      networkFeeUsd: missing('not_collected', 'usd', {
+        ...ctx,
+        detail: 'measured from swap transactions in item 4',
+      }),
+      platformFee,
+      // without the network fee, so the true loss is at least this
+      lossUsd:
+        'cost' in s
+          ? curveFact(
+              lossUsd(inp.sizeUsd, s.cost, { platformFeeBps: inp.platformFeeBps }),
+              'usd',
+              s.curve,
+              regime,
+              'lower_bound',
+            )
+          : split('usd'),
+    };
+  };
+
+  const costs = REGIMES.map((regime) => {
+    const out = sideCost(inp.sell, regime);
+    const inn = sideCost(inp.buy, regime);
+    const ctx = { regime, sizeUsd: inp.sizeUsd };
+    const pairReason = 'reason' in out ? out.reason : 'reason' in inn ? inn.reason : null;
+    const { curve } = inp.sell ? curveFor(inp.sell, regime) : { curve: null };
+    const m = curve && usableCount(curve) > 0 ? maxNotionalAt(curve, inp.tau) : null;
+    return {
+      regime,
+      exit: breakdown(inp.sell, regime),
+      entry: breakdown(inp.buy, regime),
+      roundTrip:
+        'cost' in out && 'cost' in inn
+          ? curveFact(roundTripCost(inn.cost, out.cost), 'fraction', out.curve, regime)
+          : missing(pairReason as FactNullReason, 'fraction', ctx),
+      breakEvenReturn:
+        'cost' in out && 'cost' in inn
+          ? curveFact(breakEvenReturn(inn.cost, out.cost), 'fraction', out.curve, regime)
+          : missing(pairReason as FactNullReason, 'fraction', ctx),
+      exitCapacityUsd:
+        m && curve
+          ? curveFact(
+              m.notionalUsd,
+              'usd',
+              curve,
+              regime,
+              m.lowerBound ? 'lower_bound' : 'measured',
+            )
+          : missing('reason' in out ? out.reason : 'insufficient_samples', 'usd', { regime }),
+    };
+  });
+
+  const regimes = inp.sell
+    ? measuredRegimes(inp.sell)
+    : { measured: [] as Regime[], missing: REGIMES.map((regime) => ({ regime })) };
+  // the worst regime at this size: one whose curve stops below the size, else the highest measured cost
+  let worstRegime: Regime | null = null;
+  let worstCost = Number.NEGATIVE_INFINITY;
+  for (const regime of regimes.measured) {
+    const s = sideCost(inp.sell, regime);
+    const k = 'cost' in s ? s.cost : Number.POSITIVE_INFINITY;
+    if (k > worstCost) {
+      worstCost = k;
+      worstRegime = regime;
+    }
+  }
+
+  const weekendRatio = ((): Fact => {
+    if (!inp.sell) return missing(inp.uncoveredReason ?? 'not_collected', 'ratio');
+    const w = inp.sell.byRegime.weekend;
+    const m = inp.sell.byRegime.us_market_hours;
+    for (const [regime, c] of [
+      ['weekend', w],
+      ['us_market_hours', m],
+    ] as const) {
+      if (!c) return missing('no_samples_in_regime', 'ratio', { regime });
+      if (usableCount(c) === 0) return missing('insufficient_samples', 'ratio', { regime });
+    }
+    const cm = maxNotionalAt(m as DepthCurve, inp.tau).notionalUsd;
+    if (!(cm > 0)) return missing('insufficient_samples', 'ratio', { regime: 'us_market_hours' });
+    return curveFact(
+      maxNotionalAt(w as DepthCurve, inp.tau).notionalUsd / cm,
+      'ratio',
+      w as DepthCurve,
+      'weekend',
+    );
+  })();
+
+  const rowFact = (
+    value: number,
+    unit: FactUnit,
+    row: RowMeta & { fetchedAt: string },
+    extra: Partial<MeasuredFact> = {},
+  ): MeasuredFact =>
+    fact({
+      value,
+      unit,
+      quality: 'measured',
+      source: row.source,
+      method: row.method,
+      methodVersion: row.methodVersion,
+      provenance: row.provenance,
+      fetchedAt: row.fetchedAt,
+      ...extra,
+    });
+  const lpGone = (unit: FactUnit) =>
+    missing(inp.sell ? 'not_collected' : (inp.uncoveredReason ?? 'not_collected'), unit, {
+      detail: 'LP positions are read hourly for the pools holding the top 80% of liquidity',
+    });
+  const lpExit = ((): Fact => {
+    if (!inp.lp) return lpGone('fraction');
+    const pts = inp.lp.sellWithoutTopN;
+    if (!pts?.length) return missing('not_collected', 'fraction', { sizeUsd: inp.sizeUsd });
+    const hit = pts.find((p) => p.notionalUsd >= inp.sizeUsd);
+    return hit
+      ? rowFact(hit.costPct / 100, 'fraction', inp.lp, { sizeUsd: hit.notionalUsd })
+      : missing('beyond_measured_size', 'fraction', { sizeUsd: inp.sizeUsd });
+  })();
+  const capacityVariation = ((): Fact => {
+    const s = inp.capacitySeries;
+    if (!s || !worstRegime) return missing('insufficient_samples', 'ratio');
+    const xs = s.byRegime[worstRegime] ?? [];
+    if (xs.length < s.minSamples)
+      return missing('insufficient_samples', 'ratio', { regime: worstRegime });
+    const mean = xs.reduce((a, x) => a + x, 0) / xs.length;
+    if (!(mean > 0)) return missing('insufficient_samples', 'ratio', { regime: worstRegime });
+    const sd = Math.sqrt(xs.reduce((a, x) => a + (x - mean) ** 2, 0) / xs.length);
+    return rowFact(
+      sd / mean,
+      'ratio',
+      { ...s, fetchedAt: s.to },
+      {
+        regime: worstRegime,
+        samples: xs.length,
+      },
+    );
+  })();
+
+  const issuerFact = (value: number, unit: FactUnit): Fact =>
+    inp.issuer
+      ? fact({
+          value,
+          unit,
+          quality: inp.issuer.provenance === 'live' ? 'measured' : 'assumption',
+          source: inp.issuer.source,
+          method: 'issuer_model',
+          methodVersion: FACTS_METHOD_VERSION,
+          fetchedAt: inp.issuer.fetchedAt,
+          provenance: inp.curveMeta.provenance,
+        })
+      : missing('not_applicable', unit);
+
+  const curves = inp.sell ? Object.values(inp.sell.byRegime) : [];
+  const dates = (k: 'from' | 'to') =>
+    curves
+      .map((c) => c[k])
+      .filter((t): t is string => !!t)
+      .sort();
+  return {
+    assetId: inp.assetId,
+    symbol: inp.symbol,
+    chain: inp.chain,
+    mint: inp.mint,
+    sizeUsd: inp.sizeUsd,
+    tau: inp.tau,
+    costs,
+    worstRegime,
+    weekendRatio,
+    liquidityStability: {
+      lpTop1Share: inp.lp ? rowFact(inp.lp.top1, 'fraction', inp.lp) : lpGone('fraction'),
+      lpTop3Share: inp.lp ? rowFact(inp.lp.top3, 'fraction', inp.lp) : lpGone('fraction'),
+      lpTop10Share: inp.lp ? rowFact(inp.lp.top10, 'fraction', inp.lp) : lpGone('fraction'),
+      lpExitCost: lpExit,
+      lpWithdrawalEvents7d: inp.lpWithdrawals
+        ? fact({
+            value: inp.lpWithdrawals.count,
+            unit: 'count',
+            quality: 'measured',
+            source: inp.lpWithdrawals.source,
+            method: inp.lpWithdrawals.method,
+            methodVersion: FACTS_METHOD_VERSION,
+            fetchedAt: inp.lpWithdrawals.to,
+            provenance: inp.curveMeta.provenance,
+          })
+        : missing('not_collected', 'count'),
+      capacityVariation,
+    },
+    tracking: inp.tracking.map((t) => ({
+      against: t.against,
+      regime: t.regime,
+      gap:
+        typeof t.gap === 'string'
+          ? missing(t.gap, 'fraction', { regime: t.regime })
+          : rowFact(t.gap.value, 'fraction', t.gap, { regime: t.regime, samples: t.gap.samples }),
+    })),
+    lendingUse: {
+      collateralUsd: inp.lendingCollateral
+        ? rowFact(inp.lendingCollateral.usd, 'usd', inp.lendingCollateral)
+        : missing('not_applicable', 'usd', { detail: 'no registered lending market takes it' }),
+      coverageByGap: inp.gapGridPct.map((gapPct) => ({
+        gapPct,
+        value: missing(inp.lendingCollateral ? 'not_imported' : 'not_applicable', 'ratio', {
+          detail: 'the coverage ratio is a report until item 11 imports it',
+        }),
+      })),
+    },
+    issuerRoute: {
+      capacityUsdPerOpenHour: issuerFact(inp.issuer?.capacityUsdPerOpenHour ?? 0, 'usd'),
+      fee: issuerFact(inp.issuer?.feePct ?? 0, 'fraction'),
+      settlementHours: issuerFact(inp.issuer?.settlementHours ?? 0, 'hours'),
+    },
+    marketRisk: {
+      volatilityAnnual: missing('no_reference_price', 'fraction'),
+      maxDrawdown: missing('no_reference_price', 'fraction'),
+      weekendGapFrequency: inp.gapGridPct.map((gapPct) => ({
+        gapPct,
+        value: missing('no_reference_price', 'fraction'),
+      })),
+    },
+    coverage: {
+      regimesMeasured: regimes.measured,
+      regimesMissing: regimes.missing.map((m) => m.regime),
+      samples: curves.reduce((a, c) => a + c.samples, 0),
+      dataFrom: dates('from')[0] ?? null,
+      dataTo: dates('to').at(-1) ?? null,
+    },
+    methodVersion: FACTS_METHOD_VERSION,
+    provenance: inp.curveMeta.provenance,
+  };
+}

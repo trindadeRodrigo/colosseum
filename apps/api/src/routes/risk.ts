@@ -27,11 +27,12 @@ import {
   regimesIn,
   weekendRatio,
 } from '@colosseum/risk';
-import { DISCLAIMER } from '@colosseum/schemas';
+import { AssetFacts, DISCLAIMER } from '@colosseum/schemas';
 import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import { loadAssetFacts } from '../facts';
 
 /**
  * Liquidity & risk API (`/risk/*`). Mounted by apps/api and, alone, by apps/risk-api. Every number carries
@@ -162,6 +163,30 @@ export async function registerRiskRoutes(app: FastifyInstance) {
         disclaimer: DISCLAIMER.en,
         assets,
       };
+    },
+  );
+
+  f.get(
+    '/risk/facts/assets/:id',
+    {
+      schema: {
+        summary:
+          'Fact sheet for one asset at one trade size: entry and exit cost by regime, capacity, LP concentration, lending use. A fact with no data is null with its reason, never zero',
+        params: z.object({ id: z.string() }),
+        querystring: z.object({
+          sizeUsd: z.coerce.number().positive().optional(),
+          tau: z.coerce.number().positive().max(0.5).optional(),
+        }),
+        response: {
+          200: AssetFacts.extend({ disclaimer: z.string() }),
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (req, reply) => {
+      const sheet = await loadAssetFacts(db, req.params.id, req.query);
+      if (!sheet) return reply.code(404).send({ error: `unknown asset ${req.params.id}` });
+      return { ...sheet, disclaimer: DISCLAIMER.en };
     },
   );
 
