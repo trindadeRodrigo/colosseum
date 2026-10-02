@@ -36,7 +36,9 @@ abstract contract VaultFixture is Test {
 
     function _createVault(address owner_, bytes32 planId_, address config_) internal returns (BasketVault) {
         bytes memory init = abi.encodeCall(BasketVault.initialize, (owner_, planId_, config_));
-        return BasketVault(address(new BeaconProxy(address(beacon), init)));
+        // `payable` so this still compiles if the vault ever gained a `receive`: the entry-point test, not the
+        // compiler, is what must catch that.
+        return BasketVault(payable(address(new BeaconProxy(address(beacon), init))));
     }
 
     /// A priced asset as the platform would list it: a Chainlink-style feed with 8 decimals, 26 hours of age.

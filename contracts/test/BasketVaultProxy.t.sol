@@ -38,7 +38,7 @@ contract BasketVaultProxyTest is VaultFixture {
         vm.prank(admin);
         beacon.upgradeTo(address(v2));
 
-        assertEq(BasketVaultV2Dummy(address(vault)).version(), 2);
+        assertEq(BasketVaultV2Dummy(payable(address(vault))).version(), 2);
         assertEq(vault.owner(), owner);
         assertEq(vault.planId(), PLAN_ID);
         assertEq(vault.config(), address(config));
