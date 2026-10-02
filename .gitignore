@@ -24,3 +24,6 @@ test-ledger/
 *-keypair.json
 # A file tests/boundaries.test.ts plants for a moment and removes
 packages/db/migrations/boundary-plant-*.ts
+
+# vitest reporter output
+.vitest/

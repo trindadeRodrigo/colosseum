@@ -189,6 +189,17 @@ const FAULTS: { fault: string; wrap: Wrap; caught: string[] }[] = [
     caught: ['adopting a version that adds an asset: NewAssetNeedsOwner'],
   },
   {
+    fault: 'publishes whatever an author sends',
+    wrap: (real, f) => ({
+      buildPublishRecipe: (a) =>
+        real.buildPublishRecipe(a).catch((e) => {
+          if (!(e instanceof ChainError) || e.code !== 'CreatorLimit') throw e;
+          return real.buildPublishRecipe({ creator: f.owner, recipe: f.publishRecipe });
+        }),
+    }),
+    caught: ['a shared portfolio outside the author limits: CreatorLimit'],
+  },
+  {
     fault: 'refuses with a plain Error',
     wrap: (real) => spoilErrors(real, (e) => new Error(e.message)),
     caught: [

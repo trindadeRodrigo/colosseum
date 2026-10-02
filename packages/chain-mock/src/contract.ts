@@ -86,7 +86,10 @@ export type ContractFixture = {
   keeperTrade: Trade;
   /** A trade in one of `vault`'s assets that moves it away from its target. */
   awayTrade: Trade;
-  /** A next version of `recipeOnchainId` that `owner` can publish now. */
+  /**
+   * A next version of `recipeOnchainId` that `owner` can publish now: inside the four author limits
+   * (DESIGN-VAULT section 6), so three assets or more, and a publish delay after the last version.
+   */
   publishRecipe: Recipe;
   /** An id in the chain's own format that was never sent. */
   unknownTxId: string;
@@ -589,6 +592,32 @@ group('refusals', {
 
   'the keeper, away from a target: NotTowardTarget': async (c) => {
     await refuses(c.a.buildKeeperLeg(c.f.vault, c.f.awayTrade), 'NotTowardTarget');
+  },
+
+  'a shared portfolio outside the author limits: CreatorLimit': async (c) => {
+    const [first, second, ...rest] = c.f.publishRecipe.components;
+    if (!first || !second || rest.length === 0)
+      throw new Error('the fixture recipe has fewer than three assets');
+    const publish = (recipe: Recipe) => c.a.buildPublishRecipe({ creator: recipe.creator, recipe });
+    // Two assets, where three is the fewest.
+    const two = [first, second].map((x) => ({ ...x, weightBps: 5000 }));
+    await refuses(publish({ ...c.f.publishRecipe, components: two }), 'CreatorLimit');
+    // Half a step moved from one asset to another: weights go in steps of 50 bps.
+    const offStep = [
+      { ...first, weightBps: first.weightBps - 25 },
+      { ...second, weightBps: second.weightBps + 25 },
+      ...rest,
+    ];
+    await refuses(publish({ ...c.f.publishRecipe, components: offStep }), 'CreatorLimit');
+    // A version on top of one that is published and not yet in effect, with nothing changed.
+    const { active } = await c.a.getRecipe(c.f.newAssetRecipeId);
+    const again = {
+      ...c.f.publishRecipe,
+      familyId: active.familyId,
+      creator: active.creator,
+      components: active.components,
+    };
+    await refuses(publish(again), 'CreatorLimit');
   },
 
   'adopting a version that adds an asset: NewAssetNeedsOwner': async (c) => {

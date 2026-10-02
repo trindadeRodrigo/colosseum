@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@colosseum/basket": "workspace:*",
     "@colosseum/schemas": "workspace:*",
     "zod": "^4.6.5"
   },
