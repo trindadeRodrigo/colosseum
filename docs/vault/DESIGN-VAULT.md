@@ -116,7 +116,26 @@ Base: `staging`. Each stream works in a short-lived branch and opens a pull requ
 
 Two things in his code break these rules today. `packages/db/src/seed-assets.ts` imports `engine`. The `chain-solana` root barrel re-exports `sign.ts` and `wallet.ts`, and his `apps/api/src/routes/monitor.ts` imports the keypair loader from it. Rodrigo is asked to move the seed file to `scripts/` and delete the server-signing routes on `risk-layer` (the audit's top fix). When that merges, PR1b moves `sign.ts` and `wallet.ts` behind the `./server` entry. Until then the test lists both as dated exemptions, the routes are not registered, and no key file exists on the API host.
 
-**Flags.** `CHAIN_MODE_<CHAIN>=live|readonly|mock`, `AUTO_FOLLOW_<CHAIN>`, `KEEPER_ENABLED`, `AGENT_SURFACE`, `LEGACY_STRUCTURER`, served at `GET /v1/config`. A feature shows only when the flag and the adapter's `capabilities` both allow it. A failed gate flips a flag; it does not change code.
+**Flags.** `CHAIN_MODE_<CHAIN>=live|readonly|mock|off`, `AUTO_FOLLOW_<CHAIN>`, `KEEPER_ENABLED`, `AGENT_SURFACE`, `LEGACY_STRUCTURER`, served at `GET /v1/config`. A feature shows only when the flag and the adapter's `capabilities` both allow it. A failed gate flips a flag; it does not change code.
+
+| Variable | Values | Unset means |
+|---|---|---|
+| `CHAIN_MODE_<CHAIN>` | `live` trades; `readonly` reads the chain and builds nothing; `mock` runs on `packages/chain-mock`; `off` leaves the chain out | `mock` for Solana and Robinhood Chain, `off` for Base |
+| `CHAIN_NETWORK_<CHAIN>` | `mainnet`, `testnet` (devnet, Robinhood Chain test network 46630, Base Sepolia 84532), `local` (a copy of mainnet on the developer's machine) | `testnet`, so nothing reaches mainnet by omission |
+| `CHAIN_ROUTER_<CHAIN>`, `CHAIN_PRICE_SOURCE_<CHAIN>` | An address of the chain's own family; an EVM address in any case, stored lower-case. The price source is the Scope-layout account on Solana; on EVM feeds are per asset | What `chain-presets.ts` knows for that network; nothing on a test network until our deploy |
+| `AUTO_FOLLOW_<CHAIN>`, `KEEPER_ENABLED`, `AGENT_SURFACE` | `on` or `off` | `off` |
+| `LEGACY_STRUCTURER` | `on` or `off` | `on`, because his routes are still registered whatever it says. It flips to `off` in the change that makes the API skip them (API-2) |
+
+`parseFlags(env)` and `parseChainConfigs(env, contracts)` in `packages/schemas` are pure and read only what they are given. `<CHAIN>` is `SOLANA`, `ROBINHOOD` or `BASE`. A value they do not know, or a set variable under `CHAIN_`, `AUTO_FOLLOW_` or `KEEPER_` that is not one of these, stops the app at start; the message names the variable and never repeats its value. So does a chain set to `live` or `readonly` with no router, no price account (Solana) or no deployment in `contracts` (`program` on Solana; `factory` and `registry` on EVM): `assertChainsReady`. A chain config holds no RPC URL. Until `content/chains.json` exists, what is known of each network is in `packages/schemas/src/chain-presets.ts` (data, outside the frozen files), and a deploy's addresses reach the config as the `contracts` argument.
+
+**The label on a figure.** One scale, his `Provenance`, worked out by `chainProvenance(network, mode)` where the mode is known. A chain config itself carries no label.
+
+| Label | Means | Shown as |
+|---|---|---|
+| `live` | Mainnet, read or traded for real | no mark |
+| `sandbox` | A test network, or a local copy of mainnet | "test network" |
+| `mock` | The chain runs on `packages/chain-mock`, whatever network it is set to | MOCK |
+| none | The chain is `off`: there is no figure | not shown |
 
 **Pull requests.** PR0 repairs CI, which has failed at setup on every run: delete `version: 11` in `ci.yml`, fix three lint errors, add a Postgres 16 service and `pnpm db:migrate`, delete the placeholder `allowBuilds` lines, add `LICENSE`. PR1a is the frame every TypeScript stream waits for: the v0 types, `chain-mock` with contract tests, migration `0006`, flags. PR1b follows without blocking anyone: the boundary test, three CI workflows (`ci.yml`, `program.yml`, `contracts.yml`) and the dependency pins.
 
@@ -126,12 +145,28 @@ Two things in his code break these rules today. `packages/db/src/seed-assets.ts`
 
 Frozen in two steps. **v0 on Oct 2**, with the first types and the mock: streams start against it, and one named owner (Thom) approves any change. A walking skeleton on the mock (a three-chain buy through API, order, legs and report) proves it by Oct 3. **Final on Oct 4 evening**, after each real adapter has built and simulated a create, a deposit, one swap and one keeper leg on a fork. Only then does `tests/frozen.test.ts` start hashing the files; it hashes new files only, never his. Later changes are additive. Each TypeScript type below has a zod schema of the same name in `packages/schemas/src/`.
 
+**v0 as built (FRAME-1, Oct 2).** Where the listings below left a choice open, this is what the code in `packages/schemas` does. Thom approves a change until the freeze.
+
+| Point | What the code does |
+|---|---|
+| Refined schemas | zod refuses `.omit()`, `.pick()` and `.partial()` on an object with refinements, so each refined schema has its plain object beside it: `RecipeBase`, `BuiltTxBase`, `BasketTxBase`, `LegBase`, `OrderBase`, `OwnerBase`, `WalletAccountBase`, `BasketAssetBase`, `TradeBase`, `BasketProposalBase` |
+| A recipe's components | Each asset or family once; each weight at least 1 bp; the sum exactly 10,000; assets on the recipe's own chain; a shared portfolio lists assets only. `Targets` holds a vault's targets to the same |
+| A trade | Two different assets on one chain |
+| An order | Every leg carries the order's id and is on a chain the owner has an address for |
+| Inline arguments | Named so a route can validate one: `CreateVaultArgs`, `DepositArgs`, `OwnerSwapArgs`, `SetTargetsArgs`, `AcceptVersionArgs`, `SetAutoFollowArgs`, `WithdrawInKindArgs`, `PublishRecipeArgs`, `ApproveArgs`, `FundingNeed` |
+| The parser's draft | `BasketSheetDraft`: every field of `BasketSheet`, each nullable (section 7) |
+| Interfaces | `ChainReader`, `OwnerBuilder`, `KeeperBuilder`, `Submitter`, `Signer`, `WalletPort` and `RollUpContext` are TypeScript types only: they hold functions |
+| Statuses and kinds in the database | `text`, typed from the zod types, not Postgres enums, so a change before the freeze is not a migration |
+| `leg_attempts` | Points at a row of `legs` or of `keeper_legs`, with a check that exactly one is set |
+| `orders` | The owner as two columns, `owner_solana` and `owner_evm`, and the request as it came |
+| `TxStatus.explorerUrl` | Required, and empty on a network with no explorer |
+
 ### 3.1 Shared types
 
 ```ts
 // chain.ts. Rodrigo's Chain ('solana' | 'evm') stays and means the wallet family.
 type ChainId = 'solana' | 'base' | 'robinhood';       // EVM ids: base 8453, robinhood 4663
-type Address = string;                                // base58 on Solana; lower-case 0x on EVM
+type Address = string;                                // SolanaAddress (base58, 32 bytes) | EvmAddress (lower-case 0x)
 type RawAmount = string;                              // raw token units, decimal string. Never a float
 type AssetId = string;                                // `${ChainId}:${slug}`, e.g. 'solana:spyx'
 type Sourced = { source: string; method: string; fetchedAt: string; provenance: Provenance };
@@ -155,7 +190,7 @@ type Recipe = { schemaVersion: 1; familyId: string; chain: ChainId; onchainId: s
   version: number; effectiveAt: number;               // unix seconds
   components: Component[];                            // sum is exactly 10_000
   metaHash: string; maxFeeBps: 0; flags: 0 };         // both stored onchain and required to be zero in the MVP
-type Target = { asset: AssetId; weightBps: number };  // what a vault stores
+type Target = { asset: AssetId; weightBps: number };  // what a vault stores; an asset appears once
 type FamilyMeta = { familyId: string; slug: string; name: string; copy: string;
   kind: 'index' | 'single'; chains: ChainId[] };
 
@@ -187,6 +222,8 @@ type TxStatus = { status: 'pending' | 'confirmed' | 'reverted' | 'expired'; expl
 - `family` (in `Component`, `IntentRequest` and themes) is always the slug.
 - `metaHash` is the SHA-256 of the canonical JSON of `FamilyMeta`. It is content, not identity: anyone can copy it.
 
+**Addresses.** Lower-case `0x` is the one form of an EVM address here, so an address compares as a string. `normalizeAddress(family, value)` turns what a wallet provider or a config value gives (checksum case) into it and refuses an address of the other family. `Owner.solana`, `Owner.evm`, `WalletAccount` and `BasketAsset` are checked against their family.
+
 **Value and display.** `display = raw × multiplier / 10^decimals` is shares of the underlying, for display only. `valueUsd = raw × usdPerToken / 10^decimals`, with no multiplier, because the reference price on all three chains is the price of one whole token and already includes it. Contract-test vector: 8 decimals, raw 250,000,000, multiplier 1.02, price 100 gives display 2.55 and value 250.00. `view(vault, prices)` in `packages/basket` is the only place that computes value, weight and drift. His `computeDrift` stays for his own screens.
 
 ### 3.2 Chain adapter (`chain-adapter.ts`)
@@ -210,26 +247,31 @@ interface ChainReader {
   track(txId: string, validUntil?: string): Promise<TxStatus>;
 }
 interface OwnerBuilder {          // each call returns ONE transaction; the planner splits by the capabilities
-  buildApprove(a: { owner: Address; spender: Address; amountRaw: RawAmount }): Promise<BasketTx>;
+  // BuiltTx is BasketTx without legId and attemptId (3.3): a builder takes no leg
+  buildApprove(a: { owner: Address; spender: Address; amountRaw: RawAmount }): Promise<BuiltTx>;
   buildCreateVault(a: { owner: Address; basketId: string; targets: Target[]; recipeOnchainId?: string;
     expectedVersion?: number; autoFollow: boolean; depositRaw?: RawAmount; trades?: Trade[];
-    slippageBps: number }): Promise<BasketTx>;
-  buildDeposit(a: { vault: Address; amountRaw: RawAmount; trades?: Trade[]; slippageBps: number }): Promise<BasketTx>;
-  buildOwnerSwap(a: { vault: Address; trades: Trade[]; slippageBps: number }): Promise<BasketTx>;
-  buildSetTargets(a: { vault: Address; targets: Target[] }): Promise<BasketTx>;
-  buildAcceptVersion(a: { vault: Address; recipeOnchainId: string; expectedVersion: number }): Promise<BasketTx>;
-  buildSetAutoFollow(a: { vault: Address; on: boolean }): Promise<BasketTx>;
-  buildWithdrawInKind(a: { vault: Address; assets?: AssetId[] }): Promise<BasketTx[]>;   // always to the owner
-  buildPublishRecipe(a: { creator: Address; recipe: Recipe }): Promise<BasketTx>;
+    slippageBps: number }): Promise<BuiltTx>;
+  buildDeposit(a: { vault: Address; amountRaw: RawAmount; trades?: Trade[]; slippageBps: number }): Promise<BuiltTx>;
+  buildOwnerSwap(a: { vault: Address; trades: Trade[]; slippageBps: number }): Promise<BuiltTx>;
+  buildSetTargets(a: { vault: Address; targets: Target[] }): Promise<BuiltTx>;
+  buildAcceptVersion(a: { vault: Address; recipeOnchainId: string; expectedVersion: number }): Promise<BuiltTx>;
+  buildSetAutoFollow(a: { vault: Address; on: boolean }): Promise<BuiltTx>;
+  buildWithdrawInKind(a: { vault: Address; assets?: AssetId[] }): Promise<BuiltTx[]>;   // always to the owner
+  buildPublishRecipe(a: { creator: Address; recipe: Recipe }): Promise<BuiltTx>;
 }
 interface KeeperBuilder {
-  buildAdoptVersion(vault: Address): Promise<BasketTx>;
-  buildKeeperLeg(vault: Address, trade: Trade): Promise<BasketTx>;
+  buildAdoptVersion(vault: Address): Promise<BuiltTx>;
+  buildKeeperLeg(vault: Address, trade: Trade): Promise<BuiltTx>;
 }
 type ChainAdapter = ChainReader & OwnerBuilder & KeeperBuilder;
 ```
 
 `chain-mock/src/contract.ts` holds the contract tests every adapter must pass. No builder sets a vault's keeper or operator.
+
+- **Refusals.** An adapter that refuses throws `ChainError { code, message, retryable }` from `packages/schemas`, for bad arguments as much as for a simulated revert. One list of codes, `ChainErrorCode`: the vault's own error names of 3.7 first, then the adapter's (`BadInput`, `NotSupported`, `TooManyTrades`, `BadTrade`, `VaultNotFound`, `VaultExists`, `RecipeNotFound`, `NotFollowing`, `NotFunded`, `NoGas`, `AllowanceTooLow`, `Expired`, `NotBuiltHere`, `Unavailable`, `Unknown`). `retryable` is true where building again later or at a fresh price can succeed on its own. The API maps a code onto its own error codes of 3.3; the vault's name stays on the leg.
+- **The contract.** `adapterContract(name, setup)` from `@colosseum/chain-mock/contract`. `setup` returns a `ContractFixture`: the adapter, a `send(tx)` that signs and broadcasts (on the mock, `mock.send`), an owner with three vaults (one following with auto-follow on, one with its own targets and auto-follow off, one a version behind a recipe that adds an asset), and the trades to try. The cases read, build, check each refusal's code, then send and read the state back. `contract.selfcheck.test.ts` runs the same cases against adapters broken on purpose and expects them to fail.
+- **Readings fixed in v0.** A create that follows a recipe takes empty `targets` and the `expectedVersion`. `getPrices` returns one price per asset asked for and must price every asset whose `priceKind` is not `none`. `quote` applies the adapter's own slippage to `minOutRaw`. `validUntil` is opaque outside the adapter: a block height on Solana, absent on EVM. A deposit is the chain's cash token and nothing else.
 
 On Solana, `create_vault` opens only the cash account. Each position's token account is created, idempotently, in the swap leg that first buys it. That should keep a 12-asset create inside the 1,232-byte transaction limit; the SOL stream measures create and first-buy sizes for 7 and 12 assets on Oct 3.
 
@@ -238,12 +280,16 @@ On Solana, `create_vault` opens only the cash account. Each position's token acc
 ```ts
 // basket-tx.ts. His tx.ts is not edited; his fields payload, evm, chain, description,
 // provenance and lastValidBlockHeight are reused.
-const BasketTx = UnsignedTx.omit({ kind: true, legAssetId: true, executionId: true }).extend({
-  legId, attemptId, legKind,                           // strings, LegKind
+const BuiltTx = UnsignedTx.omit({ kind: true, legAssetId: true, executionId: true }).extend({
+  legKind,                                             // what an adapter returns
   chainId, signer, feePayer /* optional */,
   messageHash,                                         // hash of the exact bytes to sign
   preview });                                          // Sourced & { summary, simulated, feeNativeRaw,
                                                        //   changes: { holder: 'wallet' | 'vault', asset, deltaRaw }[] }
+const BasketTx = BuiltTx.extend({ legId, attemptId });  // strings, stamped by the API or the keeper (stampTx).
+                                                       // The wallet, the web and the guard take only this.
+// Both check their fields against each other: `evm` on an EVM chain and nowhere else, lastValidBlockHeight
+// on Solana, chain = the family of chainId, a signer in that family's form.
 
 // order.ts
 type LegStatus = 'planned' | 'built' | 'sent' | 'confirmed' | 'failed' | 'expired' | 'skipped';
@@ -255,7 +301,8 @@ type Leg = { id: string; orderId: string | null;       // null for keeper legs
   expected: { inRaw: RawAmount; outRaw: RawAmount; minOutRaw: RawAmount; costBps: number } | null;
   status: LegStatus; attempt: number; txId: string | null; explorerUrl: string | null;   // from the latest attempt
   validUntil: string | null; error: { code: string; message: string; retryable: boolean } | null;
-  trigger: 'manual' | 'index_update' | 'drift' | 'liquidity_breach'; provenance: 'live' | 'mock' };
+  trigger: 'manual' | 'index_update' | 'drift' | 'liquidity_breach'; provenance: Provenance };
+  // a keeper leg has orderId null and kind adopt_version or keeper_leg; an owner leg has neither
 type Attempt = { id: string; legId: string; n: number; messageHash: string; nonce: number | null;
   status: 'built' | 'sent' | 'confirmed' | 'failed' | 'expired'; txId: string | null;
   explorerUrl: string | null; validUntil: string | null; builtAt: string };
@@ -272,7 +319,8 @@ type IntentRequest =
   | { type: 'buy'; owner: Owner; amountUsd: number; proposalId?: string; family?: string; chains?: ChainId[] }
   | { type: 'rebalance'; vaults: Address[]; reason: 'manual' | 'index_update' | 'drift' }
   | { type: 'follow'; vault: Address; family: string; autoFollow: boolean }
-  | { type: 'publish'; creator: Owner; family: string; name: string; copy: string; recipes: Recipe[] }
+  | { type: 'publish'; creator: Owner; family: string; name: string; copy: string;
+      recipes: RecipeDraft[] }   // { chain, components } per chain; the server and the registry assign the rest
   | { type: 'withdraw'; vaults: Address[]; sellToCash: boolean }
   | { type: 'settings'; vault: Address; autoFollow: boolean };
 type Principal = { kind: 'anon' | 'user' | 'service'; userId?: string; wallets: WalletAccount[]; ip: string };
@@ -282,6 +330,14 @@ function prepareIntent(req: IntentRequest, ctx: { principal: Principal;
 ```
 
 Routes: `POST /v1/orders` (plans legs, builds nothing); `GET /v1/orders/{id}`; `POST /v1/orders/{id}/legs/{legId}/build` (a fresh `BasketTx` and a new attempt); `POST .../report` with `{ txId }` or `{ signedTx }`; `POST /v1/orders/{id}/consent` (signed-in owner only). Errors use his shape plus `code` and `fix`. Codes: `NOT_FUNDED`, `ASSET_NOT_ELIGIBLE`, `GOAL_NOT_ACHIEVABLE`, `NEW_ASSET_NEEDS_APPROVAL`, `VERSION_CHANGED`, `CREATOR_LIMIT`, `ORDER_EXPIRED`, `US_PERSON`, `RATE_LIMITED`, `CHAIN_UNAVAILABLE`. `MARKET_CLOSED` is a warning on an order, not an error: the owner may trade at any hour, and only keeper trades are bound to the session.
+
+| Route | Body | Answer |
+|---|---|---|
+| `POST /v1/orders` | `IntentRequest` | `Order` |
+| `POST .../legs/{legId}/build` | none | `BuildLegResponse { tx: BasketTx, attempt: Attempt }` |
+| `POST .../legs/{legId}/report` | `ReportLegRequest`: `{ txId }` or `{ signedTx }`, exactly one | `Order` |
+| `POST /v1/orders/{id}/consent` | `ConsentRequest { kinds, textVersion }` | `Order` |
+| `GET /v1/config` | none | `ConfigResponse { flags, chains: ChainStatus[] }`: each chain's config, its mode and its label |
 
 Leg rules:
 
@@ -310,11 +366,12 @@ His provider ignores the window argument today (`packages/risk/src/provider.ts`)
 
 ```ts
 // The keeper plans from chain state and signs in the same pass. A keeper_legs row is its own log
-// and idempotency key, unique on (vault_id, keeper_run_id, seq). It never signs from a stored row.
+// and idempotency key, unique on (chain_id, vault_address, keeper_run_id, seq). It never signs from a stored row.
 interface Submitter { chain: ChainId;
   submit(leg: Leg): Promise<{ txId: string; validUntil?: string; nonce?: number }>;
   status(txId: string, validUntil?: string): Promise<'pending' | 'confirmed' | 'reverted' | 'expired'>; }
 interface Signer { address(family: Chain): string; sign(family: Chain, tx: BasketTx): Promise<string>; }
+// The keeper stamps what a builder returns with its keeper_legs row and attempt before it signs.
 
 // wallet.ts (no Privy types)
 type WalletAccount = { family: Chain; address: string; kind: 'embedded' | 'external' };
@@ -327,6 +384,7 @@ interface WalletPort {
   send(chain: ChainId, tx: BasketTx): Promise<{ txId: string }>;    // EVM external
   exportKey(family: Chain): Promise<void>; authHeaders(): Promise<Record<string, string>>; }
 // throws WalletError { code: 'rejected' | 'expired' | 'no_gas' | 'wrong_chain' | 'unknown' }
+// sign() and send() take BasketTx, never BuiltTx: nothing unstamped reaches a wallet
 ```
 
 ### 3.6 Personalization and `packages/basket`
@@ -385,7 +443,9 @@ One Anchor program (0.31.1, the version the spike builds on) holds the vaults, t
 
 ```rust
 // seeds: ["config"] | ["assets"] | ["recipe", creator, family_id] | ["vault", owner, basket_id u64 LE]
-pub struct Config { admin, pending_admin, guardian, default_keeper: Pubkey, keeper_paused: bool,
+pub struct Config { admin, pending_admin, guardian, default_keeper: Pubkey,
+  router_program: Pubkey, price_owner: Pubkey, cash_mint: Pubkey,  // set per network, never fixed in code
+  keeper_paused: bool,
   launched: bool,                                  // one-way; raises the floor on publish_delay_s
   tolerance_bps: u16, loss_cap_bps: u16, band_bps: u16, twap_dev_bps: u16, max_price_age_s: u16,
   asset_cooldown_s: u32, publish_delay_s: u32, session_open_utc_s: u32, session_close_utc_s: u32,
@@ -445,7 +505,7 @@ struct Snapshot { address owner; bytes32 indexId; uint32 acceptedVersion; bool a
 
 interface IBasketVault {
   // owner only: no pause, no feed; withdraw calls neither factory nor registry and pays only the owner
-  function deposit(address token, uint256 amount) external;
+  function deposit(uint256 amount) external;                    // the cash token only
   function withdraw(address token, uint256 amount) external;
   function withdrawAll() external returns (address[] memory skipped);
   function ownerSwap(Swap[] calldata swaps) external;           // allowlisted router; own balance deltas and minOut
@@ -524,7 +584,7 @@ event KeeperTrade(address indexed vault, address tokenIn, address tokenOut,
 
 | Table | Key columns |
 |---|---|
-| `chains` | text id (`solana`, `base`, `robinhood`), seeded from `content/chains.json`; every `chain_id` column is text with a foreign key here |
+| `chains` | text id (`solana`, `base`, `robinhood`) with its family, network and EVM chain id; every `chain_id` column is text with a foreign key here. `seedChains(db, configs)` writes the rows from the chain configs at API start and after `pnpm db:migrate`, and refuses a database whose rows name another network: one database per network |
 | `users`, `user_wallets` | `privy_id`; `(family, address)` unique, `kind`; written only from a verified identity token |
 | `consents` | order id, address, kind, text version, a hash of the legs it covers, time |
 | `basket_assets` | id `chain:slug`; `(chain_id, address)` unique; class, underlying, issuer, tier, price source, session, `max_weight_bps`, `blocked_countries` |
@@ -534,11 +594,11 @@ event KeeperTrade(address indexed vault, address tokenIn, address tokenOut,
 | `vaults` | `(chain_id, address)` unique; owner, plan, recipe, accepted version, auto-follow, targets, balances, `value_usd`, `vault_type`, `observed_at` |
 | `follows` | user, family: the watchlist and pending prompts |
 | `orders`, `legs`, `leg_attempts` | the `Order`, `Leg` and `Attempt` fields; nullable `org_id` on orders; attempts carry `message_hash`, `nonce`, his provenance columns, nullable `fee_amount`, unique `(chain_id, tx_id)` |
-| `keeper_runs`, `keeper_legs`, `keeper_vaults` | one open run per chain (a partial unique index, which works through any connection pooler); the keeper's own leg log; `synced_version` per vault |
+| `keeper_runs`, `keeper_legs`, `keeper_vaults` | one open run per chain (a partial unique index, which works through any connection pooler); the keeper's own leg log; `synced_version` per vault. The two vault tables name a vault by `(chain_id, vault_address)`, not by a row of `vaults`: the keeper finds vaults on the chain and may not write the API's cache |
 | `price_observations` | asset, value, his `source`, `method`, `fetched_at`, `provenance` |
 | `idempotency_keys` | as named |
 
-Three Postgres roles. `api` can read the keeper tables and not write them. `keeper` writes only the keeper tables and its attempts. `collector` writes only the risk tables. Supabase's Data API is switched off, because it exposes `public` tables to anonymous callers by default (security review, checked against Supabase's docs).
+Three Postgres roles, not yet made: migration `0006` creates the tables only. Roles are cluster-wide, need `CREATEROLE` and carry no password in a migration, so they are created at the deploy, before the hosted database is used. `api` can read the keeper tables and not write them. `keeper` writes only the keeper tables and its attempts. `collector` writes only the risk tables. Supabase's Data API is switched off, because it exposes `public` tables to anonymous callers by default (security review, checked against Supabase's docs).
 
 Units: weights are integer basis points; token amounts are raw units in `numeric(78,0)`; dollars are display values only.
 
@@ -548,7 +608,9 @@ Units: weights are integer basis points; token amounts are raw units in `numeric
 
 ## 5. Vault rules per chain
 
-**The owner can always** deposit, swap with their own signature and slippage through an allowed router, set targets, switch auto-follow, and withdraw every token in kind to their own wallet. Withdrawal is per token and calls no router, feed, factory or registry. Only a program or beacon upgrade can block it. Owner trades are allowed at any hour; outside the session the app shows a warning.
+**Money comes in as cash only** (decided on Oct 2). A deposit is the chain's dollar token and nothing else; the same action then buys each asset in the plan's proportions, as trades the app builds and the owner signs once. The vault refuses a deposit of any other token. A token sent to the vault's address from outside cannot be stopped; it counts for nothing and the owner can withdraw it.
+
+**The owner can always** deposit cash, swap with their own signature and slippage through an allowed router, set targets, switch auto-follow, and withdraw every token in kind to their own wallet. Withdrawal is per token and calls no router, feed, factory or registry. Only a program or beacon upgrade can block it. Owner trades are allowed at any hour; outside the session the app shows a warning.
 
 **The keeper can call one function,** and the vault checks each call. Starting values are not yet calibrated.
 
@@ -800,7 +862,7 @@ The keeper is the bounded risk: a leaked keeper key can cost each auto-follow va
 | Keeper | One function | The keeper machine, gas only, under $20 |
 | Platform creator | Publishes the launch portfolios | A gas-only key; its address earns the platform badge |
 
-No key that can move funds or loosen a limit sits where a coding agent has a shell. `scripts/ops/authority-check.ts` compares the live admin, beacon owner, implementation slots, guardian, keeper, `launched` and the publish delay on three chains with `deployments/*.json`, whose expected values are written before the deploy. It runs daily in demo week.
+No mainnet key that can move funds or loosen a limit sits where a coding agent has a shell. On test networks an agent may hold the deploy keys (decided on Oct 2); they are kept outside the repo. `scripts/ops/authority-check.ts` compares the live admin, beacon owner, implementation slots, guardian, keeper, `launched` and the publish delay on three chains with `deployments/*.json`, whose expected values are written before the deploy. It runs daily in demo week.
 
 **Hostile cases.** Frozen on day 1. The same ID names a test on each chain family; `docs/vault/SECURITY.md` holds the matrix.
 
