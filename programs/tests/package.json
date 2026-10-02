@@ -5,7 +5,8 @@
   "packageManager": "pnpm@11.5.3",
   "scripts": {
     "test": "tsc -p tsconfig.json && vitest run",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "rules-bite": "node rules-bite.mjs"
   },
   "devDependencies": {
     "@solana-program/system": "^0.14.0",
