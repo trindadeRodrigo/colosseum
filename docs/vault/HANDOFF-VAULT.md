@@ -73,7 +73,7 @@ Nexa's own shelf is Brazilian credit, off chain. This shelf is global assets, on
 
 Decided from the research in `research/vaults/decision-memo.md`:
 
-- **One vault per plan, per chain, owned by the person.** Only they can deposit or withdraw. There are no shared pools.
+- **One vault per plan, per chain, owned by the person.** Only they can deposit or withdraw. A deposit is the dollar token only, and the same action buys the plan's assets in proportion. There are no shared pools.
 - **A plan can hold shared portfolios, one level deep.** The vault holds only the underlying assets. A shared portfolio lives on one chain; one that spans chains is a set of per-chain versions under one name.
 - **The vault checks every agent trade itself:** only assets in the plan, what was bought must land back in the vault, the price must be close to a reference price, losses are capped per week, and the owner can always switch the agent off and withdraw the tokens directly.
 - **The vault is our own small contract:** one program on Solana and one Solidity contract shared by Base and Robinhood Chain, built on OpenZeppelin's audited library where possible. Both are unaudited, and the product says so. There is no deposit cap.
