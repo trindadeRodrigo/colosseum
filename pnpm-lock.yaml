@@ -68,6 +68,9 @@ importers:
       '@colosseum/chain-evm':
         specifier: workspace:*
         version: link:../../packages/chain-evm
+      '@colosseum/chain-mock':
+        specifier: workspace:*
+        version: link:../../packages/chain-mock
       '@colosseum/chain-solana':
         specifier: workspace:*
         version: link:../../packages/chain-solana
@@ -104,6 +107,9 @@ importers:
       fastify-type-provider-zod:
         specifier: ^7.0.0
         version: 7.0.0(@fastify/swagger@9.9.1)(fastify@5.12.5)(openapi-types@12.1.3)(zod@4.6.5)
+      jose:
+        specifier: ^6.2.12
+        version: 6.2.12
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -3288,6 +3294,9 @@ packages:
   jiti@2.7.0:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
+
+  jose@6.2.12:
+    resolution: {integrity: sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==}
 
   js-sha256@0.9.0:
     resolution: {integrity: sha512-sga3MHh9sgQN2+pJ9VYZ+1LPwXOxuBJBA5nrR5/ofPfuiJBE2hnjsaN8se8JznOmGLN2p49Pe5U/ttafcs/apA==}
@@ -7589,6 +7598,8 @@ snapshots:
       supports-color: 8.1.1
 
   jiti@2.7.0: {}
+
+  jose@6.2.12: {}
 
   js-sha256@0.9.0: {}
 
