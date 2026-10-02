@@ -14,3 +14,8 @@ docs/loi/*.pdf
 .claude/settings.local.json
 .claude/worktrees/
 CLAUDE.local.md
+# Solana program build output, and the program keypairs (never committed)
+target/
+.anchor/
+test-ledger/
+/keys/
