@@ -21,6 +21,7 @@ export * from './lending/report';
 export * from './lending/route';
 export * from './lending/tx';
 export * from './lending/verify';
+export * from './pools/build';
 export * from './pools/bytes';
 export * from './pools/cl-math';
 export * from './pools/meteora-dlmm';
