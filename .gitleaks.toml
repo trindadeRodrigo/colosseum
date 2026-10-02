@@ -1,0 +1,9 @@
+# gitleaks, run by .github/workflows/security.yml. The default rules, plus what is known not to be a secret.
+# A public address that trips a rule in new code: add its fingerprint to .gitleaksignore, with a comment.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Recorded chain data: transactions and accounts, full of base58 addresses and signatures. Only the generic rule is lifted here; a private key or a provider token in a fixture is still caught."
+targetRules = ["generic-api-key"]
+paths = ['''^fixtures/''']
