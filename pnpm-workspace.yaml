@@ -42,6 +42,10 @@ minimumReleaseAgeExclude:
 # Advisories that `pnpm audit` reports and that are accepted for now. What each one is, whether we reach
 # it and its fix: docs/vault/SECURITY-DEPS.md. security.yml fails on any high or critical advisory that is
 # not in this list. A line comes out when its override lands (SEC-4 in the ledger).
+overrides:
+  # GHSA-96hv-2xvq-fx4p (high) and GHSA-58qx-3vcg-4xpx: the older viem copies under Privy's WalletConnect
+  # pin ws 8.18. Only Node opens a socket with ws; a browser uses its own WebSocket.
+  'ws@>=8.0.0 <8.21.0': ^8.21.0
 auditConfig:
   ignoreGhsas:
     - GHSA-rfgv-xxqx-mfg5 # undici, under @scalar/fastify-api-reference
