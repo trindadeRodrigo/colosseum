@@ -94,7 +94,7 @@ Base: `staging`. Each stream works in a short-lived branch and opens a pull requ
 | `packages/db` | exists; gains `basket-schema.ts`, `curves.ts`, migration `0006` | one agent | schemas |
 | `packages/chain-solana` | exists; gains vault builders, `send.ts` and a `./server` entry for `sign.ts` and `wallet.ts` | Thom | schemas; its tests also chain-mock, for the contract cases |
 | `packages/chain-evm` | stub replaced; ABIs committed | Thom | schemas; its tests also chain-mock, for the contract cases |
-| `packages/chain-mock` | new; stamps `provenance: 'mock'` | Thom | schemas, basket |
+| `packages/chain-mock` | new; stamps `provenance: 'mock'`; its registry checks the author limits with `checkCreatorLimits` | Thom | schemas, basket |
 | `packages/sdk` | new, built; types from OpenAPI; the guard and the leg executor | Thom | schemas (types only; its tests may use the parsers) |
 | `apps/api` | exists; new routes under `routes/v1/` | shared | all packages |
 | `apps/risk-api` | exists | Rodrigo; not touched | as today: schemas, db, risk, and the `/risk` routes file of `apps/api` by a relative path |
@@ -220,7 +220,7 @@ type TxStatus = { status: 'pending' | 'confirmed' | 'reverted' | 'expired'; expl
 - `familyId` is 32 random bytes in hex, chosen when a family's first publish order is made. It is the Solana recipe seed and the EVM salt, so one family has one fixed id on all three chains.
 - `onchainId` is the recipe account address on Solana and `keccak256(abi.encode(creator, familyId))` on EVM.
 - `family` (in `Component`, `IntentRequest` and themes) is always the slug.
-- `metaHash` is the SHA-256 of the canonical JSON of `FamilyMeta`. It is content, not identity: anyone can copy it.
+- `metaHash` is the SHA-256 of the canonical JSON of five fields of `FamilyMeta`: `familyId`, `slug`, `name`, `copy` and `kind`, each in Unicode NFC. It leaves `chains` out, so a shared portfolio published on one more chain later keeps its hash. The exact encoding and worked cases are in `fixtures/creator-limits/README.md`. It is content, not identity: anyone can copy it.
 
 **Addresses.** Lower-case `0x` is the one form of an EVM address here, so an address compares as a string. `normalizeAddress(family, value)` turns what a wallet provider or a config value gives (checksum case) into it and refuses an address of the other family. `Owner.solana`, `Owner.evm`, `WalletAccount` and `BasketAsset` are checked against their family.
 
@@ -639,7 +639,7 @@ Units: weights are integer basis points; token amounts are raw units in `numeric
 | 2 | Recipe assets only | Both mints are in `positions` or are the cash mint | Both tokens accepted, each with a feed | none |
 | 3 | Balance change | Own input and output accounts read before and after; no third vault token account; no delegate, close authority or size change after | Exact approval, zeroed after, Permit2 included; own balance deltas; no other accepted asset fell | none |
 | 4 | Value, per trade | `value(received) ≥ value(spent) × (1 − tolerance)` from two Scope entries; USDC counts as $1 | Same from two Chainlink feeds; cash counts as $1 while its feed is within 0.5% of $1 | 75 bps Solana, 125 bps EVM |
-| 5 | Toward target | Sell only if overweight, buy only if underweight, stop inside the band. Vault value = Σ `tracked × price` | Same | band 50 bps |
+| 5 | Toward target | Sell only if over its target, buy only if under. The trade may end anywhere inside the band, on either side of the target, and not outside the band on the far side. Vault value = cash at $1 + Σ `tracked × price` | Same | band 50 bps |
 | 6 | Cooldown | Per non-cash asset | Same | 3,600 s |
 | 7 | Weekly loss cap | Lost value added to a counter that decays linearly over 7 days | Same | 200 bps of vault value |
 | 8 | Fresh price | Scope entry at most 120 s old, and within `twap_dev_bps` of Scope's 1-hour average | `answer > 0` and `updatedAt` within `maxAge`; Base also checks the sequencer feed | 120 s and 200 bps (placeholder); 26 h for EVM stocks |
@@ -648,6 +648,8 @@ Units: weights are integer basis points; token amounts are raw units in `numeric
 | 11 | Pause | `Config.keeper_paused` | `keeperPaused()` | guardian pauses, admin unpauses |
 
 The session window sits inside the New York session in summer and winter time, so there is no daylight-saving code. Closed days are loaded at deploy from his `fixtures/risk/us-market-holidays.json`, as far ahead as it runs, with half days counted as closed. A fresh-looking feed on a holiday then fails check 9.
+
+**Check 5, exactly** (decided on Oct 2; the rule for SOL-3 and EVM-3). A weight is an asset's value over everything the vault holds, cash included, with cash counted as $1. A sale needs the asset over its target before the trade, and a purchase needs it under: `NotTowardTarget` otherwise. After the trade the asset may sit anywhere inside the band, on either side of its target; it may not sit outside the band on the far side: `PastTarget`. So a fill a little better than the reference price does not revert. `planRebalance` still sizes each trade to land on the target or just before it.
 
 **What the cap does and does not bound.** Checks 4 and 7 are measured at the reference price. If the reference is wrong by X, a leg can lose X plus the tolerance while the counter records only the tolerance. Check 5 limits this to assets that are truly off target. The app's trust notice says "plus any error in the price reference".
 
@@ -671,14 +673,14 @@ The session window sits inside the New York session in summer and winter time, s
 - Following is the vault pointing at a recipe.
 - The 500 holds one asset, so it is not a registered shared portfolio. It sits on the shelf as a single-asset portfolio (`kind: 'single'`): a vault with one target and no recipe. The registry keeps one rule set and no admin exception.
 
-Limits, checked by the registry. Constants, not per-portfolio settings. Shape limits and `maxWeightBps` apply from version 1; the turnover limit from version 2. Decided on Oct 2: four simple rules. Dropped from the earlier design: a 10-point change per asset, a rolling 7-day turnover counter, and a rule for a ceiling that falls below a live weight. With one version per 48 hours at 20% each, an author moves at most about 70% of a portfolio in a week, which costs followers at most about 1.75% at the widest tolerance, inside the vault's 2% weekly cap.
+Limits, checked by the registry. Constants, not per-portfolio settings. Shape limits and `maxWeightBps` apply from version 1. Version 1 takes effect at once and is exempt from the frequency and turnover rules, which apply from version 2. Decided on Oct 2: four simple rules. Dropped from the earlier design: a 10-point change per asset, a rolling 7-day turnover counter, and a rule for a ceiling that falls below a live weight. With one version per 48 hours at 20% each, an author moves at most about 70% of a portfolio in a week, which costs followers at most about 1.75% at the widest tolerance, inside the vault's 2% weekly cap.
 
 | Limit | Value |
 |---|---|
-| Assets | 3 to 12, platform list only, each 2% to 50%, in 50 bps steps |
-| Turnover | 20% of the portfolio per version |
+| Assets | 3 to 12, platform list only, never the chain's cash token, each 2% to 50%, in 50 bps steps |
+| Turnover | 20% of the portfolio per version, compared without dividing: the absolute weight changes against the version in effect add up to at most 4,000 bps (twice 2,000). A version that waited and has taken effect is the one in effect |
 | Frequency | One version per publish delay (48 hours after `launch()`); none while one is pending |
-| Delay | `publishDelay`, 48 hours after `launch()`; computed by the registry, checked by the vault |
+| Delay | `publishDelay`, 48 hours after `launch()`; computed by the registry, checked by the vault. One delay, not two: it is both the notice a follower gets and the least time between two versions, so `Limits.minInterval` in 3.8 goes away (EVM-2) |
 | Cancel | The creator or the guardian can cancel a pending version. A cancel does not give the slot back |
 
 **The cap from measured exit capacity.** Each listed asset has `maxWeightBps` in the onchain asset list. The registry rejects a component above `min(5000, maxWeightBps)`. An ops script sets it from Rodrigo's curves:
@@ -687,9 +689,9 @@ Limits, checked by the registry. Constants, not per-portfolio settings. Shape li
 
 with `shareOfDepth` 0.25 and `τ` 1% (his values), and `indexCapacityUsd` $250k on Solana and $50k on the EVM chains (from `creator-limits.md`). An asset with no measured curve keeps the ceiling of its shelf tier. The first values are written in the deploy session on Oct 5.
 
-The ceilings are written at deploy and do not move during the MVP, so no rule is built for a ceiling that falls below a live weight.
+The ceilings are written at deploy and do not move during the MVP, so no rule is built for a ceiling that falls below a live weight. The plain rule covers it: every weight of a new version is checked against the ceiling of the day, whether the weight changed or not.
 
-`previewPublish` and `limits()` let an agent check before paying for a transaction. The TypeScript check, the Solana program and the EVM registry share one file of test vectors, including a version published too soon, a weight above its ceiling and a non-zero `flags`.
+`previewPublish` and `limits()` let an agent check before paying for a transaction. The TypeScript check, the Solana program and the EVM registry share one file of test vectors, `fixtures/creator-limits/vectors.json`, including a version published too soon, a weight above its ceiling and a non-zero `flags`. The README beside it defines each rule and names the reason a refusal carries.
 
 ## 7. Personalization engine
 

@@ -284,12 +284,14 @@ describe('chain-mock', () => {
     expect(adopted?.pending).toBeNull();
     expect(adopted?.positions.map((p) => p.targetBps)).toEqual([3000, 5000, 2000]);
 
-    // Version 3 adds an asset.
+    // Version 3 adds an asset, inside the author limits: 10% out of NVDA and into TSLA.
     const withTsla = {
       ...f.publishRecipe,
       components: [
-        { kind: 'asset' as const, asset: 'solana:spy', weightBps: 5000 },
-        { kind: 'asset' as const, asset: 'solana:tsla', weightBps: 5000 },
+        { kind: 'asset' as const, asset: 'solana:spy', weightBps: 3000 },
+        { kind: 'asset' as const, asset: 'solana:nvda', weightBps: 4000 },
+        { kind: 'asset' as const, asset: 'solana:gold', weightBps: 2000 },
+        { kind: 'asset' as const, asset: 'solana:tsla', weightBps: 1000 },
       ],
     };
     await mock.send(await adapter.buildPublishRecipe({ creator: f.owner, recipe: withTsla }));
@@ -382,8 +384,9 @@ describe('chain-mock', () => {
         { kind: 'asset' as const, asset: 'robinhood:spy', weightBps: 5000 },
       ],
     };
+    // That is one of the author limits, refused with the code of every other limit.
     const publish = f.adapter.buildPublishRecipe({ creator: f.owner, recipe: withCash });
-    expect(await code(publish)).toBe('MintNotAccepted');
+    expect(await code(publish)).toBe('CreatorLimit');
     const unknown = f.adapter.buildWithdrawInKind({ vault: f.vault, assets: ['robinhood:doge'] });
     expect(await code(unknown)).toBe('MintNotAccepted');
   });
@@ -473,11 +476,14 @@ describe('chain-mock', () => {
     await adapter.mock.send(
       await adapter.buildOwnerSwap({ vault: f.vault, trades: [buyTsla], slippageBps: 50 }),
     );
+    // Inside the author limits: 10% out of NVDA and into TSLA.
     const withTsla = {
       ...f.publishRecipe,
       components: [
         { kind: 'asset' as const, asset: 'solana:spy', weightBps: 5000 },
-        { kind: 'asset' as const, asset: 'solana:tsla', weightBps: 5000 },
+        { kind: 'asset' as const, asset: 'solana:nvda', weightBps: 2000 },
+        { kind: 'asset' as const, asset: 'solana:gold', weightBps: 2000 },
+        { kind: 'asset' as const, asset: 'solana:tsla', weightBps: 1000 },
       ],
     };
     await adapter.mock.send(
