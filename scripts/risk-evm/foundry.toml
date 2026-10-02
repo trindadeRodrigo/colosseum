@@ -1,0 +1,12 @@
+# Builds ClQuoter.sol only. The collector reads the committed cl-quoter.json, so forge is needed
+# only after the contract changes: see README.md.
+[profile.default]
+src = "."
+out = "out"
+cache_path = "cache"
+solc = "0.8.28"
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+bytecode_hash = "none"
+cbor_metadata = false
