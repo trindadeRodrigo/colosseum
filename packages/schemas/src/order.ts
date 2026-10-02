@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { ApiError } from './api';
-import { Address, ChainId, EvmAddress, RawAmount, SolanaAddress } from './chain';
+import { Address, ChainId, chainFamily, EvmAddress, RawAmount, SolanaAddress } from './chain';
 import { Provenance } from './enums';
 import { RecipeDraft } from './recipe';
 import { Trade } from './vault';
@@ -112,7 +112,7 @@ export type OrderType = z.infer<typeof OrderType>;
 export const ConsentKind = z.enum(['auto_follow_on', 'new_asset']);
 export type ConsentKind = z.infer<typeof ConsentKind>;
 
-export const Order = z.object({
+export const OrderBase = z.object({
   id: z.string().min(1),
   type: OrderType,
   owner: Owner,
@@ -133,6 +133,15 @@ export const Order = z.object({
   expiresAt: z.number().int().nonnegative(),
   createdAt: z.string().datetime(),
   disclaimer: z.string(),
+});
+
+/** Every leg is the order's own, on a chain the owner has an address for. */
+export const Order = OrderBase.refine((o) => o.legs.every((l) => l.orderId === o.id), {
+  message: "every leg carries the order's id",
+  path: ['legs'],
+}).refine((o) => o.legs.every((l) => o.owner[chainFamily(l.chain)] !== undefined), {
+  message: 'the owner has an address for the chain of every leg',
+  path: ['legs'],
 });
 export type Order = z.infer<typeof Order>;
 

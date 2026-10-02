@@ -255,6 +255,9 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
     };
     expect(Order.safeParse(order).success).toBe(true);
     expect(Order.safeParse({ ...order, needsConsent: ['set_keeper'] }).success).toBe(false);
+    // A leg belongs to its order, on a chain the owner has an address for.
+    expect(Order.safeParse({ ...order, owner: { solana: SOL } }).success).toBe(false);
+    expect(Order.safeParse({ ...order, id: 'order-2' }).success).toBe(false);
     // MARKET_CLOSED is a warning, never an error code.
     expect(schemas.OrderErrorCode.safeParse('MARKET_CLOSED').success).toBe(false);
     expect(schemas.OrderErrorCode.safeParse('NOT_FUNDED').success).toBe(true);
@@ -478,7 +481,7 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
 
   it('exports the plain object beside each refined schema, since zod refuses to reshape a refined one', () => {
     expect(() => Recipe.omit({ onchainId: true })).toThrow();
-    for (const base of [RecipeBase, BasketProposalBase, LegBase, BuiltTxBase])
+    for (const base of [RecipeBase, BasketProposalBase, LegBase, BuiltTxBase, schemas.OrderBase])
       expect(Object.keys(base.partial().shape).length).toBeGreaterThan(5);
     expect(Object.keys(RecipeBase.omit({ onchainId: true }).shape)).not.toContain('onchainId');
     expect(Object.keys(BasketProposalBase.pick({ lines: true }).shape)).toEqual(['lines']);
