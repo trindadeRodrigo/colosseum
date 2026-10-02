@@ -94,7 +94,7 @@ Base: `staging`. Each stream works in a short-lived branch and opens a pull requ
 | `packages/db` | exists; gains `basket-schema.ts`, `curves.ts`, migration `0006` | one agent | schemas |
 | `packages/chain-solana` | exists; gains vault builders, `send.ts` and a `./server` entry for `sign.ts` and `wallet.ts` | Thom | schemas |
 | `packages/chain-evm` | stub replaced; ABIs committed | Thom | schemas |
-| `packages/chain-mock` | new; stamps `provenance: 'mock'` | Thom | schemas |
+| `packages/chain-mock` | new; stamps `provenance: 'mock'`; its registry checks the author limits with `checkCreatorLimits` | Thom | schemas, basket |
 | `packages/sdk` | new, built; types from OpenAPI; the guard and the leg executor | Thom | schemas (types only) |
 | `apps/api` | exists; new routes under `routes/v1/` | shared | all packages |
 | `apps/risk-api` | exists | Rodrigo; not touched | as today |
