@@ -69,16 +69,18 @@ The days and milestones are in `PLAN-VAULT.md`. A slot is about half a day of on
 | RISK-2 | Oct 7 | About ten risk sheets, one per issuer family, in `content/risk-sheets/`. Check: the sheets render and hosted curves show their date | Rodrigo | todo | | |
 | OPS-4 | Oct 3 to 4 | `scripts/ops/*`, each with a dry run that prints its transactions: the Solana deploy, config, the asset entries, the caps, seeding and publishing the launch portfolios, pause on three chains, withdraw without the app; `docs/vault/RUNBOOK-OPS.md` with a checklist per session | Thom | todo | | SOL-3, EVM-3 for the last step |
 
-## Mainnet sessions and other things a person does
+## Sessions, and other things a person does
+
+Nothing is spent (gate `COST`). A row that names a deploy or a rehearsal runs on copies of mainnet unless gate `SHOW` says live.
 
 | ID | Day | What happens | Owner | Status | Evidence | Blocked by |
 |---|---|---|---|---|---|---|
-| OPS-1 | Oct 2, in session | The three $10 mainnet tests of the vault rigs (`spikes/`), one per chain, and the Scope read. Thom funds the three wallets first | Thom | todo | | |
-| OPS-2 | Oct 2 | First thing: the two Privy apps. Then a second Jupiter organisation, the passkey origin test, the hosting and RPC accounts | Thom | todo | | |
+| OPS-1 | Oct 2 | The three vault tests of the rigs (`spikes/`) re-run on copies of mainnet, and the Scope read, with the results recorded. No money; an agent can run it | Thom | todo | | |
+| OPS-2 | Oct 2 | First thing: the two Privy apps. Then a second Jupiter organisation, the passkey origin test, the hosting and RPC accounts. Free tiers only | Thom | todo | | |
 | OPS-3 | Now | The two live approvals on the demo wallet revoked (5 USDY, 5 syrupUSDC to the agent key), before anything is hosted | Rodrigo | todo | | |
 | OPS-5 | Oct 4 | The origin decided (a domain or one fixed URL); the admin, guardian, keeper and platform-creator keys created; the deploy dry run read line by line | Thom | todo | | OPS-4 |
-| OPS-6 | Oct 5, in session | Deploy on three chains and verify the contracts: config, caps, hand-over to the admin key. The launch portfolios published: at least six, two on more than one chain. The first hosted web and API; the cold-start test. The owner path with real money on Solana, then on the other two chains. Check: `authority-check` is green | Thom; Solana sessions to be agreed | todo | | OPS-5, SEC-1 |
-| OPS-7 | Oct 6, in session | A three-chain buy with a passkey wallet. Auto-follow cycles on Solana and Robinhood Chain. Rehearsal 1 on both, $10 to $20, every transaction logged | A person | todo | | OPS-6, KEEP-1, KEEP-2 |
+| OPS-6 | Oct 5, in session | Deploy on three chains and verify the contracts: config, caps, hand-over to the admin key. The launch portfolios published: at least six, two on more than one chain. The first hosted web and API; the cold-start test. The owner path against the real pools on Solana, then on Robinhood Chain. Check: `authority-check` is green | Thom; Solana sessions to be agreed | todo | | OPS-5, SEC-1 |
+| OPS-7 | Oct 6, in session | A three-chain buy with a passkey wallet. Auto-follow cycles on Solana and Robinhood Chain. Rehearsal 1 on both, every transaction logged | A person | todo | | OPS-6, KEEP-1, KEEP-2 |
 | OPS-8 | Oct 7, in session | Rehearsal 2, and the market-open footage | A person | todo | | OPS-7 |
 | OPS-9 | Oct 8 | `G-SEC` per chain at 12:00 BRT, then `launch()`, then `G-LINK`, the pause drill, and the link shared. A new version of the demo portfolio published | Thom and Rodrigo | todo | | OPS-8, SEC-3 |
 | OPS-10 | Oct 9 | The freeze at 18:00 BRT: `main` tagged | Thom | todo | | OPS-9 |

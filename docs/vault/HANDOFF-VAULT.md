@@ -172,7 +172,7 @@ What agents can't do, and what therefore sets the pace: funding and testing real
 - When an author adds a new asset, each follower approves it with a tap. A new version takes effect for followers 48 hours after it is published.
 - On Robinhood Chain, only the stock tokens with a price feed (about 36 of 195) can be rebalanced automatically. The rest are one-tap only.
 - The team holds the upgrade keys for the vault contracts for now, one disclosed key per chain, and the product says so.
-- Free tiers only, apart from about $10 of model credit for reading the goal sentence. On Solana the price reference is Kamino's free onchain prices.
+- Nothing is spent: free tiers only, no paid model credit, no money on mainnet tests (Oct 2). On Solana the price reference is Kamino's free onchain prices.
 - Author limits as in `research/open-questions/creator-limits.md`.
 - The sign-in button says "Sign in" and opens a choice of passkey or wallet.
 - The keeper runs on a founder's machine while testing, and on a small VM at deploy.
@@ -182,7 +182,7 @@ What agents can't do, and what therefore sets the pace: funding and testing real
 ## Still open
 
 1. The name.
-2. The $10 mainnet tests on the three chains (`spikes/`), and the Privy app.
+2. How the product is shown without a funded deploy (gate `SHOW` in `docs/GATES.md`), and the Privy app.
 3. Where the Bearing data runs for the demo: a hosted collector or a dated snapshot.
 4. The decisions in `DESIGN-VAULT.md`, section 17.
 5. Two lines of shipped copy that the vault touches. `DISCLAIMER` says "the decision and custody are yours", and `DISCLAIMER_SHORT` says "Policy in your wallet, not a fund." Only the owner can withdraw from a vault, so the first stays, with the "unaudited, team holds the upgrade keys" notice beside it. The second needs a word from Rodrigo, since the assets move from the wallet to a vault the person owns.

@@ -5,15 +5,16 @@ Written on Thu Oct 1, at night. The freeze is Fri Oct 9 at 18:00 BRT and the sub
 ## Where we start
 
 - Done: the documents, the audit, green checks, the repo organised, the shared Claude setup (ORG-1 to ORG-4).
-- Not started: any product code for the vault. The two test rigs in `spikes/` pass on local forks; neither has run on mainnet.
+- Not started: any product code for the vault. The two test rigs in `spikes/` pass on copies of mainnet; neither has run on mainnet itself.
+- Decided on Oct 2: nothing is spent. No $10 tests on mainnet, no paid model, no bought domain. Everything through Sunday is local and free anyway. What it changes is Monday onward, under "Where it runs" below.
 - One day behind the design. Its day plan had the program, the contracts, the personalization port and the sign-in page starting on Oct 1. They start on Oct 2, which now carries two days of starts. There is no spare day: Oct 8 is for the gates and Oct 9 for fixes. A slip costs a cut, in the order below.
 
 ## How the days are used
 
 Eight working days, two people, and agents doing most of the typing. What limits us is not typing. It is three things:
 
-1. **What only a person can do.** Mainnet sessions, keys, accounts, the name. These are listed per day below so nobody finds one at 17:00.
-2. **The stock market's hours.** Auto-follow on stocks trades only Mon to Fri, 11:30 to 17:00 BRT. Nothing is deployed before Mon Oct 5, and `launch()` on Thu Oct 8 turns the delay into 48 hours. So a full auto-follow cycle can be tried and filmed in three sessions only: Oct 5, 6 and 7.
+1. **What only a person can do.** Keys, accounts, the name, the recordings. These are listed per day below so nobody finds one at 17:00.
+2. **The days left after the deploy.** Nothing is deployed before Mon Oct 5, so a full auto-follow cycle can be tried and filmed on Oct 5, 6 and 7. If anything goes live, two more limits apply: auto-follow on stocks trades only Mon to Fri, 11:30 to 17:00 BRT, and `launch()` on Thu Oct 8 turns the delay into 48 hours.
 3. **Review.** Every slot ends in a pull request into `staging` that someone other than its author reviews. One slot, one pull request.
 
 A slot is about half a day of one stream, named `<stream>-<n>`. A slot is done under the contract in `CLAUDE.md`, not when the code is written.
@@ -27,11 +28,13 @@ Each is a check anyone can run. If one is missed by a day, the cut beside it is 
 | When | What must be true | If missed |
 |---|---|---|
 | **M1** Sat Oct 3, night | The walking skeleton on the mock: a buy across three chains goes through the API as an order with a leg per chain, the legs settle, and the result reads back through the API. Every figure labelled MOCK. The contract tests pass on `chain-mock`. The three-profile test is green on starting numbers | Nothing is cut. The TypeScript streams add nothing new until it passes |
-| **M2** Mon Oct 5, night | The program and the contracts are deployed and `authority-check` is green. On Solana, with real money: create a vault, buy into it, see it, withdraw the tokens to the owner | The deploy moves to Tue morning. A chain not deployed by Tue 12:00 BRT is read-only, Base first |
+| **M2** Mon Oct 5, night | The program and the contracts are deployed and `authority-check` is green. On Solana, against the real pools: create a vault, buy into it, see it, withdraw the tokens to the owner | The deploy moves to Tue morning. A chain not deployed by Tue 12:00 BRT is read-only, Base first |
 | **M3** Tue Oct 6, night | The same owner path on Robinhood Chain and Base with a passkey wallet. A shared portfolio is published and followed. Rehearsal 1 recorded on Solana and Robinhood Chain, with a first auto-follow cycle on each | Auto-follow on Robinhood Chain becomes owner-signed only |
 | **M4** Wed Oct 7, night | Auto-follow has run a full cycle on Solana in market hours and is filmed. Portfolio and rebalance work end to end. Risk sheets render. An outside agent builds a plan and a person approves it from the link | Auto-follow on Solana becomes the one-tap prompt. The five extra agent tools stay out |
 | **M5** Thu Oct 8 | `G-SEC` recorded per chain at 12:00 BRT. Then `launch()`, so the delay is 48 hours from here on. Then `G-LINK`. Only then is the link shared | A chain that misses tier 1 ships owner-signed. The link is not shared until `G-LINK` passes |
 | **Freeze** Fri Oct 9, 18:00 BRT | `main` tagged. After it: P0 fixes only, each with a test | n/a |
+
+**Where it runs.** With nothing spent, "deployed" in M2 to M5 means on copies of mainnet unless gate `SHOW` in `docs/GATES.md` says otherwise by Sun Oct 4: a local validator carrying mainnet's programs, pools and prices for Solana, and a fork for Robinhood Chain. The tokens, pools and prices are the real ones; the money is not. On a copy the clock is ours, so the market's hours and the 48-hour delay are tested by moving it, and "in session" below means a person at the keyboard. Base's stock tokens do not run on a plain fork, so Base is checked call by call and stays read-only unless `base-anvil` works (tried in FRAME-2). The hosted app is labelled MOCK wherever nothing is live. A live deploy stays possible later by flipping `CHAIN_MODE_<CHAIN>`; it needs about 5 SOL locked on Solana and cents on the EVM chains.
 
 ## Day by day
 
@@ -39,10 +42,10 @@ Slot ids point at rows in `STATE-VAULT.md`. "In session" means in market hours, 
 
 | Day | Streams | A person does |
 |---|---|---|
-| **Fri Oct 2** | FRAME-1 (the first version of the types, the mock, the migration, the flags: every TypeScript stream waits for it, so it lands by midday). SOL-1, EVM-1 (the vault, from the rigs). ENG-2 starts (the personalization port). WAL-1 (the sign-in page). REVM-1 (the EVM depth collector starts now, so it has a weekend of samples). BRAND-1, RISK-1. Three half-day tries: one mock MCP tool on the free host, Slither on the rig, one hand-written kit builder | **Thom, first thing:** the Privy apps, so WAL-1 can start; then the second Jupiter organisation, the passkey origin test, the accounts (OPS-2). **Thom, in session, and nothing else:** the three $10 runs and the Scope read (OPS-1). **Rodrigo:** revoke the two live approvals (OPS-3), before anything is hosted |
+| **Fri Oct 2** | FRAME-1 (the first version of the types, the mock, the migration, the flags: every TypeScript stream waits for it, so it lands by midday). SOL-1, EVM-1 (the vault, from the rigs). ENG-2 starts (the personalization port). WAL-1 (the sign-in page). REVM-1 (the EVM depth collector starts now, so it has a weekend of samples). BRAND-1, RISK-1. Three half-day tries: one mock MCP tool on the free host, Slither on the rig, one hand-written kit builder | **Thom, first thing:** the Privy apps, so WAL-1 can start; then the second Jupiter organisation, the passkey origin test, the accounts (OPS-2). The three vault tests and the Scope read on copies of mainnet (OPS-1): free, and an agent can run them. **Rodrigo:** revoke the two live approvals (OPS-3), before anything is hosted |
 | **Sat Oct 3** | FRAME-2 (the import-rules test, the CI workflows). BAS-1, with the shared limit vectors first. SOL-2 (the swap route on surfpool, the registry, sizes at 7 and 12 assets). EVM-2 (factory and registry). ADS-1, ADE-1 (read side). API-1 (sign-in, orders, the portfolio read). AGT-1 (guard and executor). WEB-1 (the app shell on the design system, on the mock). ENG-2 ends. OPS-4 starts (the ops scripts). Feed ages logged over the weekend. **M1** | Review. Rodrigo: the sleeve table and the wording for ENG-2 when he can; one specification of the pin (DES-1) |
 | **Sun Oct 4** | Morning: SOL-3, EVM-3 (the keeper path and the hostile cases). Afternoon: ADS-2, ADE-2 (every builder, simulated). API-2. WEB-2 (his three screens on the primitives). SEC-1 (`authority-check` and the expected values, written before the deploy). OPS-4 ends. Evening: the interfaces freeze and the hash test turns on (FRAME-3) | **Thom:** the origin decided (a domain or one fixed URL); the admin, guardian, keeper and platform-creator keys created; the deploy dry run read line by line (OPS-5) |
-| **Mon Oct 5** | KEEP-1 (the keeper against Solana). WEB-3 (plan, buy, order status on the real API, with the terms and the trust notice). SEC-2 (`SECURITY.md`, `INCIDENT.md`, the rehearsal script) | **In session:** deploy on three chains, config, caps, the launch portfolios published, hand-over to the admin key, hosting, the cold-start test. The owner path on Solana with real money, then on the other two chains if the session allows (OPS-6). A first keeper leg on Solana in the last hour, or on Tuesday. **M2** |
+| **Mon Oct 5** | KEEP-1 (the keeper against Solana). WEB-3 (plan, buy, order status on the real API, with the terms and the trust notice). SEC-2 (`SECURITY.md`, `INCIDENT.md`, the rehearsal script) | **In session:** deploy, config, caps, the launch portfolios published, hand-over to the admin key, hosting, the cold-start test. The owner path on Solana against the real pools, then on Robinhood Chain if the session allows (OPS-6). A first keeper leg on Solana in the last hour, or on Tuesday. **M2** |
 | **Tue Oct 6** | Morning: KEEP-2 (Robinhood Chain). WEB-4 (the shelf, publish and follow). API-3. AGT-2 (SDK and MCP on the real API, hosted) | **In session:** a three-chain buy with a passkey wallet; auto-follow cycles on Solana and Robinhood Chain; rehearsal 1 (OPS-7). **M3** |
 | **Wed Oct 7** | WEB-5 (portfolio and rebalance). RISK-2 (sheets render). AGT-3 (skill, `llms.txt`). SEC-3 (tier 2 runs). Add-backs decided | **In session:** rehearsal 2 and the market-open footage (OPS-8). The last day a full auto-follow cycle can be shown. **M4** |
 | **Thu Oct 8** | Fixes only, from the rehearsals and the gates | **12:00 BRT:** `G-SEC` per chain. Then `launch()`, `G-LINK`, the pause drill, the link shared, a new version of the demo portfolio published (OPS-9). **M5** |
@@ -56,7 +59,7 @@ Slot ids point at rows in `STATE-VAULT.md`. "In session" means in market hours, 
 In this order, each on its date. A cut flips a flag; it does not delete code.
 
 1. **Sat Oct 3.** The new Jupiter build route: fall back to the route the rig proved.
-2. **Fri Oct 2** if Base's $10 run fails, or **Tue Oct 6 at 12:00 BRT** if Base is not deployed. Trading on Base: read-only.
+2. **Sat Oct 3** if `base-anvil` cannot run Base's stock tokens, or **Tue Oct 6 at 12:00 BRT** if Base is not deployed. Trading on Base: read-only.
 3. **Tue Oct 6 at M3, final on Wed Oct 7.** Auto-follow on Robinhood Chain: owner-signed only.
 4. **Wed Oct 7 at M4, final that night.** Auto-follow on Solana: followers get the one-tap prompt instead. Thursday's session opens 30 minutes before `G-SEC`, and after `launch()` a cycle takes 48 hours, so there is no later day to try again.
 
@@ -68,18 +71,19 @@ Out from the start, back only if ahead: Portuguese copy, five more agent tools, 
 
 ## Who owns what
 
-As in section 15 of the design. In short: Rodrigo owns the engine's numbers and wording, Bearing and the risk sheets, the design system in the app, the name and the logo. Thom owns the program, the contracts, the adapters, the API, the keeper, sign-in, the agent surface, the screens built on Rodrigo's system, security and the mainnet sessions. Either can pick up a slot marked for the other; say so in the ledger row first.
+As in section 15 of the design. In short: Rodrigo owns the engine's numbers and wording, Bearing and the risk sheets, the design system in the app, the name and the logo. Thom owns the program, the contracts, the adapters, the API, the keeper, sign-in, the agent surface, the screens built on Rodrigo's system, security and the deploy and rehearsal sessions. Either can pick up a slot marked for the other; say so in the ledger row first.
 
 ## Still to settle, with the day it bites
 
 | What | Who | Bites on |
 |---|---|---|
 | `main` and `staging` protected (ORG-5) | Rodrigo | Now |
+| How the product is shown with nothing spent (gate `SHOW`): on copies of mainnet with the hosted app labelled MOCK; on free test networks with made-up tokens; or live, if someone funds the deploy | Thom and Rodrigo | Sun Oct 4 |
 | Whether Jupiter's terms allow a second organisation | Thom | Fri Oct 2 |
 | One specification of the provenance pin; the final logo (DES-1) | Rodrigo | Sat Oct 3, with WEB-1 |
-| Who holds each admin key, who is guardian on call each day, who funds 5 SOL for the Solana deploy | Thom and Rodrigo | Sun Oct 4 |
+| Who holds each admin key and who is guardian on call each day | Thom and Rodrigo | Sun Oct 4 |
 | The name. It fixes the package scope, the origin and the passkeys, so a change after Sunday costs a re-deploy of sign-in (FRAME-4) | Rodrigo | Sun Oct 4, with the origin |
-| Who runs the Solana mainnet sessions (deploy, config, rehearsals) | Thom and Rodrigo | Mon Oct 5 |
+| Who runs the Solana sessions (deploy, config, rehearsals) | Thom and Rodrigo | Mon Oct 5 |
 | Which VM runs the keeper once it leaves a founder's machine | Thom | Mon Oct 5 |
 | Whether Vercel Hobby's non-commercial clause is acceptable for the hosted app | Thom | Mon Oct 5 |
 | Who fills the blocked countries per asset; until then the declared country skips no token | Thom and Rodrigo | Mon Oct 5, with the asset entries |
