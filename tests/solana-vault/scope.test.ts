@@ -1,5 +1,7 @@
+import { createHash } from 'node:crypto';
 import {
   type ClusterClock,
+  DEFAULT_MAX_AHEAD_SECONDS,
   decodeClock,
   decodeScopeEntry,
   isScopeEntrySet,
@@ -9,9 +11,10 @@ import {
   SCOPE_ENTRY_BYTES,
   SCOPE_HEADER_BYTES,
   SCOPE_PRICES_BYTES,
+  SCOPE_PRICES_DISCRIMINATOR,
   scopeIndex,
   scopePrice,
-} from '@colosseum/chain-solana/src/vault';
+} from '@colosseum/chain-solana/vault';
 import { ChainError } from '@colosseum/schemas';
 import type { Address } from '@solana/kit';
 import { describe, expect, it } from 'vitest';
@@ -52,7 +55,7 @@ describe("Scope's price account layout", () => {
       expect(scopePrice(entry)).toBe(want.usdPerToken);
       expect(clock.unixTimestamp - entry.unixTimestamp).toBe(BigInt(want.ageSeconds));
       expect(entry.slot).toBe(clock.slot);
-      const [reading] = readScopeAccount(price, owner, [want.index], clock);
+      const [reading] = readScopeAccount(price, owner, [{ index: want.index }], clock);
       expect(reading).toEqual({
         index: want.index,
         usdPerToken: want.usdPerToken,
@@ -91,33 +94,101 @@ describe('reading prices out of the account: refusals, never a made-up figure', 
 
   it('refuses an account that is not owned by the price program', () => {
     const stolen = { ...price, owner: fixture.names.program as Address };
-    const e = refusal(() => readScopeAccount(stolen, owner, [index], clock));
+    const e = refusal(() => readScopeAccount(stolen, owner, [{ index }], clock));
     expect(e.code).toBe('AssetNotPriced');
     expect(e.message).toMatch(/not by the price program/);
   });
 
   it("refuses a missing account, and one that is not the size of Scope's", () => {
-    expect(refusal(() => readScopeAccount(null, owner, [index], clock)).code).toBe(
+    expect(refusal(() => readScopeAccount(null, owner, [{ index }], clock)).code).toBe(
       'AssetNotPriced',
     );
     const short = { ...price, data: price.data.subarray(0, 1_000) };
-    expect(refusal(() => readScopeAccount(short, owner, [index], clock)).message).toMatch(/layout/);
+    expect(refusal(() => readScopeAccount(short, owner, [{ index }], clock)).message).toMatch(
+      /layout/,
+    );
   });
 
-  it('refuses an entry nobody wrote', () => {
+  it('refuses an entry nobody wrote, and names the asset it was read for', () => {
     const empty = decodeScopeEntry(price.data, fixture.prices.emptyIndex);
     expect(isScopeEntrySet(empty)).toBe(false);
     expect(() => scopePrice(empty)).toThrow(/no price/);
     const e = refusal(() =>
-      readScopeAccount(price, owner, [index, fixture.prices.emptyIndex], clock),
+      readScopeAccount(
+        price,
+        owner,
+        [{ index }, { index: fixture.prices.emptyIndex, asset: 'solana:tslax' }],
+        clock,
+      ),
     );
     expect(e.code).toBe('AssetNotPriced');
     expect(e.message).toContain(`entry ${fixture.prices.emptyIndex}`);
+    expect(e.message).toContain('solana:tslax');
   });
 
-  it('reports an entry stamped ahead of the clock as zero seconds old, not as a negative age', () => {
-    const behind: ClusterClock = { slot: clock.slot, unixTimestamp: clock.unixTimestamp - 1_000n };
-    expect(readScopeAccount(price, owner, [index], behind)[0]?.ageSeconds).toBe(0);
+  it('refuses an entry with a value and no time, or no value, or an exponent no price has', () => {
+    const at = SCOPE_HEADER_BYTES + SCOPE_ENTRY_BYTES * index;
+    const edited = (offset: number, value: bigint) => {
+      const data = new Uint8Array(price.data);
+      new DataView(data.buffer).setBigUint64(at + offset, value, true);
+      return { ...price, data };
+    };
+    // Without the check on the time, this entry would read as a price fifty-six years old.
+    const noTime = edited(24, 0n);
+    expect(decodeScopeEntry(noTime.data, index).value).toBeGreaterThan(0n);
+    expect(isScopeEntrySet(decodeScopeEntry(noTime.data, index))).toBe(false);
+    expect(refusal(() => readScopeAccount(noTime, owner, [{ index }], clock)).message).toMatch(
+      /holds no price/,
+    );
+    expect(isScopeEntrySet(decodeScopeEntry(edited(0, 0n).data, index))).toBe(false);
+    expect(isScopeEntrySet(decodeScopeEntry(edited(8, 31n).data, index))).toBe(false);
+    expect(isScopeEntrySet(decodeScopeEntry(edited(8, 30n).data, index))).toBe(true);
+  });
+
+  it('takes an entry a little ahead of the clock as fresh, and refuses one far ahead', () => {
+    const behind = (seconds: bigint): ClusterClock => ({
+      slot: clock.slot,
+      unixTimestamp: clock.unixTimestamp - seconds,
+    });
+    const age = BigInt(fixture.prices.entries.spyx.ageSeconds);
+    // Clocks differ by seconds: up to the bound, the age is zero and never negative.
+    const bound = BigInt(DEFAULT_MAX_AHEAD_SECONDS);
+    expect(readScopeAccount(price, owner, [{ index }], behind(age + bound))[0]?.ageSeconds).toBe(0);
+    const e = refusal(() => readScopeAccount(price, owner, [{ index }], behind(age + bound + 1n)));
+    expect(e.code).toBe('AssetNotPriced');
+    expect(e.message).toMatch(/121 s ahead/);
+    // The caller's own bound, as the reader passes Config's.
+    const tight = { maxAheadSeconds: 5 };
+    expect(readScopeAccount(price, owner, [{ index }], behind(age + 5n), tight)).toHaveLength(1);
+    refusal(() => readScopeAccount(price, owner, [{ index }], behind(age + 6n), tight));
+  });
+
+  it('refuses an entry stamped in milliseconds: it is not fresh for ever', () => {
+    const data = new Uint8Array(price.data);
+    const threeDaysAgo = (clock.unixTimestamp - 259_200n) * 1000n;
+    new DataView(data.buffer).setBigUint64(
+      SCOPE_HEADER_BYTES + SCOPE_ENTRY_BYTES * index + 24,
+      threeDaysAgo,
+      true,
+    );
+    const e = refusal(() => readScopeAccount({ ...price, data }, owner, [{ index }], clock));
+    expect(e.message).toMatch(/ahead of the cluster's clock/);
+  });
+
+  it("checks the account's first eight bytes when it is told what they are", () => {
+    expect(SCOPE_PRICES_DISCRIMINATOR).toEqual(
+      new Uint8Array(createHash('sha256').update('account:OraclePrices').digest().subarray(0, 8)),
+    );
+    const checks = { maxAheadSeconds: 120, discriminator: SCOPE_PRICES_DISCRIMINATOR };
+    expect(readScopeAccount(price, owner, [{ index }], clock, checks)).toHaveLength(1);
+    const data = new Uint8Array(price.data);
+    data[7] = (data[7] ?? 0) ^ 1;
+    const other = { ...price, data };
+    expect(
+      refusal(() => readScopeAccount(other, owner, [{ index }], clock, checks)).message,
+    ).toMatch(/discriminator/);
+    // Not told, not checked.
+    expect(readScopeAccount(other, owner, [{ index }], clock)).toHaveLength(1);
   });
 });
 
@@ -159,6 +230,14 @@ describe("whether the market for an asset is open, from the program's Config", (
     expect(marketAt('us_equity', { ...halted, closedUntil: monday.unixTimestamp }, monday)).toBe(
       'open',
     );
+  });
+
+  it('is never open in a session that wraps past midnight or has no length', () => {
+    const wraps = { ...config, sessionOpenUtcS: 79_200, sessionCloseUtcS: 7_200 };
+    expect(marketAt('us_equity', wraps, at('2026-10-05T23:00:00Z'))).toBe('closed');
+    expect(marketAt('us_equity', wraps, at('2026-10-06T01:00:00Z'))).toBe('closed');
+    const empty = { ...config, sessionCloseUtcS: config.sessionOpenUtcS };
+    expect(marketAt('us_equity', empty, at('2026-10-05T14:30:00Z'))).toBe('closed');
   });
 
   it('never closes an asset that trades at all hours', () => {

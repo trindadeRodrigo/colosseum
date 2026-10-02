@@ -7,7 +7,7 @@ import {
   toBase58,
   VAULT_RECIPE_OFFSET,
   VAULT_SIZE,
-} from '@colosseum/chain-solana/src/vault';
+} from '@colosseum/chain-solana/vault';
 import { ChainError, type ChainErrorCode } from '@colosseum/schemas';
 import { type Address, getAddressEncoder } from '@solana/kit';
 import { describe, expect, it } from 'vitest';
@@ -196,7 +196,8 @@ describe('Solana reader: prices', () => {
   });
 
   it("says a stock token's market is closed outside the session the program keeps", async () => {
-    const saturday = BigInt(Date.parse('2026-10-03T15:00:00Z') / 1000);
+    // The Saturday after the entries were written.
+    const saturday = BigInt(Date.parse('2026-10-10T15:00:00Z') / 1000);
     const clock = new Uint8Array(40);
     new DataView(clock.buffer).setBigInt64(32, saturday, true);
     const { reader } = world({
@@ -210,8 +211,47 @@ describe('Solana reader: prices', () => {
       [assetId('spyx'), 'closed'],
       [assetId('gold'), 'open'],
     ]);
-    // The entries are stamped later than this clock: no negative age.
-    expect(prices.every((p) => p.ageSeconds === 0)).toBe(true);
+    // Five days on, the price is still handed over, with its age: the caller decides what is too old.
+    expect(prices.map((p) => p.ageSeconds)).toEqual([5 * 86_400 + 30, 5 * 86_400 + 400]);
+  });
+
+  it('refuses a price stamped further ahead of the clock than Config allows a price to be old', async () => {
+    const at = accountOf(fixture, 'clock');
+    const config = await world().reader.getConfig();
+    expect(config.maxPriceAgeS).toBe(120);
+    const behind = (seconds: bigint) => {
+      const clock = new Uint8Array(at.data);
+      new DataView(clock.buffer).setBigInt64(
+        32,
+        BigInt(fixture.clock.unixTimestamp) - seconds,
+        true,
+      );
+      return world({ edit: (node) => node.accounts.set(at.address, { ...at, data: clock }) })
+        .reader;
+    };
+    const age = BigInt(fixture.prices.entries.spyx.ageSeconds);
+    // Inside the bound it is skew between two clocks: fresh, and never a negative age.
+    const [skewed] = await behind(age + 120n).getPrices([assetId('spyx')]);
+    expect(skewed?.ageSeconds).toBe(0);
+    const e = await refusal(behind(age + 121n).getPrices([assetId('spyx')]), 'AssetNotPriced');
+    expect(e.message).toContain('ahead of the cluster');
+    expect(e.message).toContain(assetId('spyx'));
+  });
+
+  it("checks the first bytes of the price account on mainnet, where it is Kamino's", async () => {
+    const price = accountOf(fixture, 'price');
+    const other = patched(price, [{ at: 0, bytes: new Uint8Array(8).fill(7) }]);
+    const edit = (node: FakeNode) => node.accounts.set(price.address, other);
+    const e = await refusal(
+      world({ network: 'mainnet', edit }).reader.getPrices([assetId('spyx')]),
+      'AssetNotPriced',
+    );
+    expect(e.message).toMatch(/discriminator/);
+    // Elsewhere the account is ours and not yet defined (TNET-4): owner and size are what is checked.
+    expect(
+      await world({ network: 'testnet', edit }).reader.getPrices([assetId('spyx')]),
+    ).toHaveLength(1);
+    expect(await world({ network: 'mainnet' }).reader.getPrices([assetId('spyx')])).toHaveLength(1);
   });
 
   it("refuses a price account the program's Config does not vouch for", async () => {
@@ -260,6 +300,7 @@ describe('Solana reader: prices', () => {
       'AssetNotPriced',
     );
     expect(e.message).toContain(`entry ${fixture.prices.emptyIndex}`);
+    expect(e.message).toContain(assetId('tslax'));
     await refusal(reader.getPrices(['solana:msftx']), 'MintNotAccepted');
     await refusal(reader.getPrices(['SPYx']), 'BadInput');
   });
@@ -280,6 +321,67 @@ describe('Solana reader: vaults', () => {
       'getMultipleAccounts',
       'getProgramAccounts',
     ]);
+  });
+
+  it('does not take a vault-shaped account of another program for a vault', async () => {
+    const vault = accountOf(fixture, 'vault:following');
+    const foreign = { ...vault, owner: names.router as Address };
+    const { reader } = world({ edit: (node) => node.accounts.set(vault.address, foreign) });
+    expect(await reader.getVault(vault.address)).toBeNull();
+    // The same bytes under the vault program are a vault.
+    expect((await world().reader.getVault(vault.address))?.address).toBe(vault.address);
+    // And a Config the vault program does not own is no Config.
+    const config = accountOf(fixture, 'config');
+    const stolen = { ...config, owner: names.router as Address };
+    await refusal(
+      world({ edit: (node) => node.accounts.set(config.address, stolen) }).reader.getConfig(),
+      'Unavailable',
+    );
+  });
+
+  it('drops what a node hands back from the vault query under another owner', async () => {
+    const manual = accountOf(fixture, 'vault:manual');
+    const stray = { ...manual, address: names.stranger as Address, owner: names.router as Address };
+    const { node, reader } = world({ edit: (n) => n.strays.push(stray) });
+    const mine = await reader.getVaults(names.owner);
+    expect(mine.map((v) => v.address)).not.toContain(stray.address);
+    expect(mine).toHaveLength(3);
+    // The stray has auto-follow off; one with it on is not listed for the keeper either.
+    node.strays.push({
+      ...accountOf(fixture, 'vault:following'),
+      address: stray.address,
+      owner: stray.owner,
+    });
+    expect(await reader.listAutoFollowVaults()).not.toContain(stray.address);
+    expect(await reader.listAutoFollowVaults()).toHaveLength(2);
+  });
+
+  it('reports a frozen balance as held, and does not count frozen cash as cash to pay with', async () => {
+    const frozen = (role: string) => patched(accountOf(fixture, role), [{ at: 108, bytes: [2] }]);
+    const { reader } = world({
+      edit: (node) => {
+        // The owner's cash account, and the vault's SPYx.
+        for (const held of ['owner/usdc', 'following/spyx']) {
+          const account = frozen(`token:${held}`);
+          node.accounts.set(account.address, account);
+        }
+      },
+    });
+    // The issuer froze them; they are still the holder's, and a vault's value still includes them.
+    const { held } = fixture.expected.vaults.following;
+    const vault = await reader.getVault(names.vaults.following);
+    expect(vault?.positions.find((p) => p.asset === assetId('spyx'))?.raw).toBe(held.spyx);
+    const wallet = await reader.getWalletHoldings(names.owner);
+    expect(wallet.find((h) => h.asset === assetId('usdc'))?.raw).toBe(
+      fixture.expected.wallets.owner.usdc,
+    );
+    // A frozen account cannot send: there is no cash to deposit until the issuer thaws it.
+    const need = { cashRaw: '1', legs: 1, newVault: false };
+    expect(await reader.funding(names.owner, need)).toMatchObject({ cashHaveRaw: '0', ok: false });
+    expect(await world().reader.funding(names.owner, need)).toMatchObject({
+      cashHaveRaw: fixture.expected.wallets.owner.usdc,
+      ok: true,
+    });
   });
 
   it('counts lamports sitting where a token account would be as no tokens', async () => {
@@ -424,7 +526,7 @@ describe('Solana reader: a list that does not match the chain', () => {
 });
 
 describe('Solana reader: gas', () => {
-  it("needs the fee of each transaction, the rent a new vault locks, and the wallet's own floor", async () => {
+  it("needs a fee and one token account's rent for each transaction, a new vault's rent, and the wallet's own floor", async () => {
     const { reader } = world();
     const rent = (bytes: number) => BigInt(bytes + 128) * 6_960n;
     const need = { cashRaw: '0', legs: 3, newVault: true };
@@ -432,8 +534,22 @@ describe('Solana reader: gas', () => {
     expect(BigInt(funding.gasNeedRaw)).toBe(
       rent(0) + 3n * 5_000n + rent(VAULT_SIZE) + 3n * rent(TOKEN_ACCOUNT_BYTES_BOUND),
     );
+    // An existing vault may open a position's account in each trade too: the same per transaction,
+    // without the vault's own rent.
     const existing = await reader.funding(names.owner, { ...need, newVault: false });
-    expect(BigInt(existing.gasNeedRaw)).toBe(rent(0) + 3n * 5_000n);
+    expect(BigInt(existing.gasNeedRaw)).toBe(
+      rent(0) + 3n * 5_000n + 3n * rent(TOKEN_ACCOUNT_BYTES_BOUND),
+    );
+    // A wallet with its floor and the fee alone cannot pay for a trade that opens an account.
+    const bare = world({
+      edit: (node) => {
+        const wallet = accountOf(fixture, 'wallet:owner');
+        node.accounts.set(wallet.address, { ...wallet, lamports: rent(0) + 5_000n });
+      },
+    }).reader;
+    expect((await bare.funding(names.owner, { cashRaw: '1', legs: 1, newVault: false })).ok).toBe(
+      false,
+    );
     expect(funding.gasHaveRaw).toBe(accountOf(fixture, 'wallet:owner').lamports.toString());
     // Nothing to send needs nothing, even from a wallet that does not exist. A new vault is one
     // transaction at the least.
@@ -478,6 +594,40 @@ describe('Solana reader: transaction status', () => {
     // Seen by the node, so it is not expired whatever the block height.
     expect((await reader.track(seen, '0')).status).toBe('pending');
     expect(await reader.track(failing)).toMatchObject({ status: 'pending' });
+  });
+
+  it('reads the block height at finalized, whatever the reader is set to', async () => {
+    const lost = signature(12);
+    for (const commitment of ['processed', 'confirmed', 'finalized'] as const) {
+      const node = fixtureNode(fixture);
+      // A fork that is ahead and not finalized: past the last valid block. The finalized chain is not.
+      node.heights = { processed: 1_000n, confirmed: 900n, finalized: 4n };
+      const reader = createSolanaVaultReader({
+        config: configOf(fixture),
+        rpc: node.rpc,
+        assets: assetsOf(fixture),
+        commitment,
+      });
+      // The fork can be dropped and the transaction still land at height 5: it is not expired yet.
+      expect((await reader.track(lost, '5')).status).toBe('pending');
+      expect(node.heightsAsked).toEqual(['finalized']);
+      node.heights.finalized = 6n;
+      expect((await reader.track(lost, '5')).status).toBe('expired');
+    }
+  });
+
+  it('answers with a number when the logs are not there yet, and with the name once they are', async () => {
+    const failed = signature(13);
+    const { node, reader } = world({
+      edit: (n) =>
+        n.statuses.set(failed, {
+          confirmationStatus: 'confirmed',
+          err: { InstructionError: [0, { Custom: 6026 }] },
+        }),
+    });
+    expect((await reader.track(failed)).error?.code).toBe('Custom:6026');
+    node.logs.set(failed, [`Program ${names.program} failed: custom program error: 0x178a`]);
+    expect((await reader.track(failed)).error?.code).toBe('NotCashMint');
   });
 
   it('does not call a transaction expired when it landed while the block height was being read', async () => {

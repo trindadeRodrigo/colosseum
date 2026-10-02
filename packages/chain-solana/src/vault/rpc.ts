@@ -89,7 +89,8 @@ export type Memcmp = { offset: number; bytes: Uint8Array };
 
 /**
  * A program's accounts of one size whose bytes match every filter. `addressesOnly` asks the node for no
- * data at all. The node takes at most four filters, the size included.
+ * data at all. The node takes at most four filters, the size included. An account the node hands back
+ * under another owner is dropped: a vault-shaped account of another program is not a vault.
  */
 export async function getProgramAccounts(
   rpc: VaultRpc,
@@ -113,10 +114,12 @@ export async function getProgramAccounts(
       })
       .send(),
   );
-  return found.map(({ pubkey, account }) => ({
-    address: pubkey,
-    owner: account.owner,
-    lamports: BigInt(account.lamports),
-    data: new Uint8Array(base64.encode(account.data[0])),
-  }));
+  return found
+    .filter(({ account }) => account.owner === program)
+    .map(({ pubkey, account }) => ({
+      address: pubkey,
+      owner: account.owner,
+      lamports: BigInt(account.lamports),
+      data: new Uint8Array(base64.encode(account.data[0])),
+    }));
 }

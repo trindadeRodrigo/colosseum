@@ -1,5 +1,5 @@
 import { displayAmount } from '@colosseum/chain-mock';
-import type { SolanaVaultReader } from '@colosseum/chain-solana/src/vault';
+import type { SolanaVaultReader } from '@colosseum/chain-solana/vault';
 import {
   BasketAsset,
   Capabilities,

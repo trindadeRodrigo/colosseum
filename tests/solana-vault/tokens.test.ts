@@ -8,7 +8,7 @@ import {
   multiplierString,
   TOKEN_2022_PROGRAM,
   TOKEN_PROGRAM,
-} from '@colosseum/chain-solana/src/vault';
+} from '@colosseum/chain-solana/vault';
 import type { Address } from '@solana/kit';
 import { describe, expect, it } from 'vitest';
 import { accountOf, loadFixture, type MintName } from './world';
@@ -91,6 +91,7 @@ describe('token accounts of both token programs', () => {
         mint: names.mints[mintName],
         owner: who,
         amount: BigInt(want ?? '-1'),
+        frozen: false,
       });
       expect(await associatedTokenAddress(who as Address, token.mint, account.owner)).toBe(
         account.address,
@@ -108,6 +109,23 @@ describe('token accounts of both token programs', () => {
   it('refuses bytes that are not a token account', () => {
     expect(() => decodeTokenAccount(accountOf(fixture, 'mint:usdc').data)).toThrow(/not a token/);
     expect(() => decodeTokenAccount(new Uint8Array(165))).toThrow(/not initialised/);
+  });
+
+  it("reads a frozen account as the holder's balance, marked frozen, and refuses any other state", () => {
+    const token = accountOf(fixture, 'token:owner/spyx');
+    const inState = (state: number) => {
+      const data = new Uint8Array(token.data);
+      data[108] = state;
+      return data;
+    };
+    // The issuer froze it: the tokens are still there and still the holder's, and they cannot move.
+    expect(decodeTokenAccount(inState(2))).toEqual({
+      ...decodeTokenAccount(token.data),
+      frozen: true,
+    });
+    expect(decodeTokenAccount(token.data).frozen).toBe(false);
+    for (const state of [0, 3, 255])
+      expect(() => decodeTokenAccount(inState(state))).toThrow(/not initialised/);
   });
 });
 

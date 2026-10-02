@@ -12,6 +12,8 @@ export const SCOPE_HEADER_BYTES = 40;
 export const SCOPE_ENTRY_BYTES = 56;
 export const SCOPE_ENTRIES = 512;
 export const SCOPE_PRICES_BYTES = SCOPE_HEADER_BYTES + SCOPE_ENTRY_BYTES * SCOPE_ENTRIES;
+/** sha256("account:OraclePrices")[0..8]: what Kamino's price account starts with on mainnet. */
+export const SCOPE_PRICES_DISCRIMINATOR = new Uint8Array([89, 128, 118, 221, 6, 72, 180, 146]);
 
 /** A price never needs more decimal places than this; a larger exponent is not a Scope entry. */
 const MAX_EXPONENT = 30n;

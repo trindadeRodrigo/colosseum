@@ -21,22 +21,41 @@ export type ScopeReading = {
   index: number;
   /** USD for one whole token, as an exact decimal. */
   usdPerToken: string;
-  /** The cluster's clock minus the entry's time; zero when the entry is ahead of the clock. */
+  /** The cluster's clock minus the entry's time; zero when the entry is a little ahead of the clock. */
   ageSeconds: number;
   /** Unix seconds of the entry. */
   updatedAt: number;
 };
 
+/** One entry to read, and the asset it prices, for the message of a refusal. */
+export type ScopeQuery = { index: number; asset?: string };
+
+export type ScopeChecks = {
+  /**
+   * How far ahead of the cluster's clock an entry's time may be and still count as fresh. Clocks differ
+   * by seconds; anything further ahead was not stamped in unix seconds (milliseconds, say) and would
+   * otherwise read as zero seconds old for ever. The reader passes `Config.max_price_age_s`.
+   */
+  maxAheadSeconds: number;
+  /** When given, the account must start with these eight bytes. */
+  discriminator?: Uint8Array;
+};
+
+/** The skew allowed where no Config is at hand: the starting value of `max_price_age_s`. */
+export const DEFAULT_MAX_AHEAD_SECONDS = 120;
+
 /**
  * Reads entries out of a price account that has already been fetched, with the clock of the same
  * moment. Refuses with `AssetNotPriced` when the account is missing, is not owned by `owner`, is not
- * the size of Scope's price account, or an entry holds no price. Nothing is filled in.
+ * the size of Scope's price account, or an entry holds no price or is stamped in the future. Nothing
+ * is filled in.
  */
 export function readScopeAccount(
   account: RawAccount | null,
   owner: Address,
-  indices: number[],
+  entries: ScopeQuery[],
   clock: ClusterClock,
+  checks: ScopeChecks = { maxAheadSeconds: DEFAULT_MAX_AHEAD_SECONDS },
 ): ScopeReading[] {
   const refuse = (why: string): never => {
     throw new ChainError('AssetNotPriced', why);
@@ -46,11 +65,16 @@ export function readScopeAccount(
     return refuse(`the price account is owned by ${account.owner}, not by the price program`);
   if (account.data.length !== SCOPE_PRICES_BYTES)
     return refuse(`the price account is ${account.data.length} bytes, not Scope's layout`);
-  return indices.map((index) => {
+  const tag = checks.discriminator;
+  if (tag && !tag.every((byte, i) => account.data[i] === byte))
+    return refuse("the price account does not start with the discriminator of Scope's prices");
+  return entries.map(({ index, asset }) => {
+    const what = `entry ${index} of the price account${asset ? ` (${asset})` : ''}`;
     const entry = decodeScopeEntry(account.data, index);
-    if (!isScopeEntrySet(entry))
-      return refuse(`entry ${index} of the price account holds no price`);
+    if (!isScopeEntrySet(entry)) return refuse(`${what} holds no price`);
     const age = clock.unixTimestamp - entry.unixTimestamp;
+    if (age < -BigInt(checks.maxAheadSeconds))
+      return refuse(`${what} is stamped ${-age} s ahead of the cluster's clock`);
     return {
       index,
       usdPerToken: scopePrice(entry),
@@ -61,26 +85,35 @@ export function readScopeAccount(
 }
 
 /**
- * Fetches a Scope-layout price account and the clock in one call and reads `indices` out of it.
+ * Fetches a Scope-layout price account and the clock in one call and reads `entries` out of it.
  * `owner` is the program that must own the account: `Config.price_owner` on a network where the vault
  * program runs.
  */
 export async function readScopePrices(
   rpc: VaultRpc,
-  query: { account: Address; owner: Address; indices: number[] },
+  query: { account: Address; owner: Address; entries: ScopeQuery[] } & Partial<ScopeChecks>,
   commitment: Commitment = 'confirmed',
 ): Promise<{ clock: ClusterClock; readings: ScopeReading[] }> {
   const [account, clockAccount] = await getAccounts(rpc, [query.account, SYSVAR_CLOCK], commitment);
   const clock = decodeClock(clockAccount ?? null);
-  return { clock, readings: readScopeAccount(account ?? null, query.owner, query.indices, clock) };
+  const checks = {
+    maxAheadSeconds: query.maxAheadSeconds ?? DEFAULT_MAX_AHEAD_SECONDS,
+    discriminator: query.discriminator,
+  };
+  return {
+    clock,
+    readings: readScopeAccount(account ?? null, query.owner, query.entries, clock, checks),
+  };
 }
 
 const DAY = 86_400n;
 
 /**
  * Whether the vault program would take a keeper trade in a stock token at this clock: DESIGN-VAULT
- * section 5, check 9, from the program's own Config. Monday to Friday, inside the session, not a closed
- * day, and past `closed_until`. An asset that trades at all hours is always open.
+ * section 5, check 9, from the program's own Config. Monday to Friday, from the session's open up to
+ * but not at its close, not a closed day, and from `closed_until` on. A session whose close is not
+ * after its open is never open. An asset that trades at all hours is always open. The keeper leg
+ * (SOL-3) has to hold to the same rule, or this changes with it.
  */
 export function marketAt(
   session: 'always' | 'us_equity',

@@ -8,7 +8,7 @@ import {
   TOKEN_ACCOUNT_BYTES_BOUND,
   toBase58,
   VAULT_SIZE,
-} from '@colosseum/chain-solana/src/vault';
+} from '@colosseum/chain-solana/vault';
 import { createSolanaRpc } from '@solana/kit';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { type ReadSetup, readCases } from './reads';

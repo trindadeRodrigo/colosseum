@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { RawAccount, VaultRpc } from '@colosseum/chain-solana/src/vault';
+import type { RawAccount, VaultRpc } from '@colosseum/chain-solana/vault';
 import { type BasketAsset, type ChainConfig, parseChainConfigs } from '@colosseum/schemas';
 import type { Address } from '@solana/kit';
 
@@ -146,9 +146,15 @@ export type FakeNode = {
   accounts: Map<string, RawAccount>;
   /** Every call made, by method name, in order. */
   calls: string[];
+  /** The commitment of each getBlockHeight call. */
+  heightsAsked: string[];
   statuses: Map<string, Status>;
   logs: Map<string, string[]>;
   blockHeight: bigint;
+  /** A height per commitment, where they differ: a fork not yet finalized is ahead. */
+  heights: Partial<Record<string, bigint>>;
+  /** What the node hands back from getProgramAccounts on top of what matches, as a node that lies does. */
+  strays: RawAccount[];
   /** Methods that fail as a node that is down does. */
   down: Set<string>;
   /** Runs before each call is answered: what happens on the chain between two questions. */
@@ -178,9 +184,12 @@ export function fakeNode(accounts: RawAccount[]): FakeNode {
     rpc: undefined as unknown as VaultRpc,
     accounts: new Map(accounts.map((a) => [a.address, a])),
     calls: [],
+    heightsAsked: [],
     statuses: new Map(),
     logs: new Map(),
     blockHeight: 1_000n,
+    heights: {},
+    strays: [],
     down: new Set(),
   };
   const context = { slot: 1n };
@@ -227,7 +236,7 @@ export function fakeNode(accounts: RawAccount[]): FakeNode {
       call('getProgramAccounts', () => {
         const filters = config.filters ?? [];
         if (filters.length > 4) throw new Error('Too many filters provided; max 4');
-        return [...node.accounts.values()]
+        const matching = [...node.accounts.values()]
           .filter((a) => a.owner === program)
           .filter((a) =>
             filters.every((f) => {
@@ -238,14 +247,21 @@ export function fakeNode(accounts: RawAccount[]): FakeNode {
               const at = Number(memcmp.offset);
               return want.every((byte, i) => a.data[at + i] === byte);
             }),
-          )
-          .map((a) => ({ pubkey: a.address, account: wire(a, config.dataSlice) }));
+          );
+        return [...matching, ...node.strays].map((a) => ({
+          pubkey: a.address,
+          account: wire(a, config.dataSlice),
+        }));
       }),
     getBalance: (address: string) =>
       call('getBalance', () => ({ context, value: node.accounts.get(address)?.lamports ?? 0n })),
     getMinimumBalanceForRentExemption: (size: bigint) =>
       call('getMinimumBalanceForRentExemption', () => (size + 128n) * 6_960n),
-    getBlockHeight: () => call('getBlockHeight', () => node.blockHeight),
+    getBlockHeight: (config?: { commitment?: string }) =>
+      call('getBlockHeight', () => {
+        node.heightsAsked.push(config?.commitment ?? 'default');
+        return node.heights[config?.commitment ?? ''] ?? node.blockHeight;
+      }),
     getSignatureStatuses: (signatures: string[]) =>
       call('getSignatureStatuses', () => ({
         context,

@@ -112,18 +112,26 @@ export function multiplierAt(mint: MintInfo, unixSeconds: bigint): number {
   return unixSeconds >= scaled.newMultiplierEffectiveAt ? scaled.newMultiplier : scaled.multiplier;
 }
 
-export type TokenAccountInfo = { mint: Address; owner: Address; amount: bigint };
+export type TokenAccountInfo = {
+  mint: Address;
+  owner: Address;
+  amount: bigint;
+  /** The issuer froze the account: the balance is still the holder's, and cannot move until it is thawed. */
+  frozen: boolean;
+};
 
 /** Decodes a token account of either token program. Throws when the bytes are not an initialised one. */
 export function decodeTokenAccount(data: Uint8Array): TokenAccountInfo {
   if (data.length < TOKEN_ACCOUNT_BYTES)
     throw new Error(`not a token account: ${data.length} bytes`);
-  // State: 0 uninitialised, 1 initialised, 2 frozen. A frozen balance is still the holder's.
-  if (data[108] !== 1 && data[108] !== 2) throw new Error('the token account is not initialised');
+  // State: 0 uninitialised, 1 initialised, 2 frozen. Anything else is not a token account.
+  const state = data[108];
+  if (state !== 1 && state !== 2) throw new Error('the token account is not initialised');
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   return {
     mint: addressDecoder.decode(data.subarray(0, 32)),
     owner: addressDecoder.decode(data.subarray(32, 64)),
     amount: view.getBigUint64(64, true),
+    frozen: state === 2,
   };
 }

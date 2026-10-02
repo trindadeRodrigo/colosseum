@@ -20,7 +20,7 @@ import {
   vaultAddress,
   vaultErrorName,
   ZERO_ADDRESS,
-} from '@colosseum/chain-solana/src/vault';
+} from '@colosseum/chain-solana/vault';
 import { type Address, getAddressDecoder } from '@solana/kit';
 import { describe, expect, it } from 'vitest';
 import { accountOf, loadFixture, type MintName, REPO_ROOT, type VaultName } from './world';
@@ -205,6 +205,32 @@ describe('the Config and Vault layouts against idl/basket.json', () => {
     const overfull = new Uint8Array(vault);
     overfull[offsetsOf('Vault').count ?? 0] = MAX_POSITIONS + 1;
     expect(() => decodeVault(overfull)).toThrow(/positions in use/);
+  });
+});
+
+describe('flags', () => {
+  it('refuses a flag byte that is neither 0 nor 1, in Config and in Vault', () => {
+    const fixture = loadFixture();
+    const config = accountOf(fixture, 'config').data;
+    const vault = accountOf(fixture, 'vault:following').data;
+    const withByte = (data: Uint8Array, at: number, byte: number) => {
+      const copy = new Uint8Array(data);
+      copy[at] = byte;
+      return copy;
+    };
+    const { keeper_paused: paused = 0, launched = 0 } = offsetsOf('Config');
+    expect(decodeConfig(withByte(config, paused, 1)).keeperPaused).toBe(true);
+    expect(decodeConfig(withByte(config, launched, 1)).launched).toBe(true);
+    expect(decodeVault(withByte(vault, VAULT_AUTO_FOLLOW_OFFSET, 0)).autoFollow).toBe(false);
+    for (const byte of [2, 255]) {
+      expect(() => decodeConfig(withByte(config, paused, byte))).toThrow(/neither true nor false/);
+      expect(() => decodeConfig(withByte(config, launched, byte))).toThrow(
+        /neither true nor false/,
+      );
+      expect(() => decodeVault(withByte(vault, VAULT_AUTO_FOLLOW_OFFSET, byte))).toThrow(
+        /neither true nor false/,
+      );
+    }
   });
 });
 

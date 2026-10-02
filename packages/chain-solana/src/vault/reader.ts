@@ -47,7 +47,7 @@ import {
   type RawAccount,
   type VaultRpc,
 } from './rpc';
-import { scopeIndex } from './scope';
+import { SCOPE_PRICES_DISCRIMINATOR, scopeIndex } from './scope';
 import { describeFailure } from './status';
 import {
   associatedTokenAddress,
@@ -228,11 +228,12 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
   /**
    * What each holder has of each asset: the balance of the associated token account for (holder, mint,
    * the mint's own token program). No such account, or one that is not the holder's, counts as nothing.
+   * A frozen account's balance is still the holder's and is reported; `frozen` says it cannot move.
    */
   async function balances(
     pairs: { holder: Address; asset: BasketAsset }[],
     snap: Snapshot,
-  ): Promise<bigint[]> {
+  ): Promise<{ amount: bigint; frozen: boolean }[]> {
     const programs = pairs.map(({ asset }) => {
       const mint = snap.mints.get(asset.address);
       return mint ? mint.tokenProgram : refuse('Unknown', `${asset.id} has no mint`);
@@ -243,12 +244,13 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
       ),
     );
     const accounts = await getAccounts(rpc, addresses, commitment);
+    const nothing = { amount: 0n, frozen: false };
     return pairs.map(({ holder, asset }, i) => {
       const account = accounts[i];
       // Lamports sent to the address before the token account exists leave a system account there.
-      if (!account || account.owner !== programs[i]) return 0n;
+      if (!account || account.owner !== programs[i]) return nothing;
       const token = decodeTokenAccount(account.data);
-      return token.mint === asset.address && token.owner === holder ? token.amount : 0n;
+      return token.mint === asset.address && token.owner === holder ? token : nothing;
     });
   }
 
@@ -348,7 +350,9 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
     );
     let at = 0;
     return found.map(({ address, vault }, i) => {
-      const held = (lists[i] ?? []).map((asset) => holding(asset, amounts[at++] ?? 0n, snap));
+      const held = (lists[i] ?? []).map((asset) =>
+        holding(asset, amounts[at++]?.amount ?? 0n, snap),
+      );
       return vaultState(address, vault, held, snap, observedAt);
     });
   }
@@ -403,8 +407,15 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
         const readings = readScopeAccount(
           priceAccount ?? null,
           onchain.priceOwner,
-          priced.map((a) => scopeIndex(a.priceRef) ?? -1),
+          priced.map((a) => ({ index: scopeIndex(a.priceRef) ?? -1, asset: a.id })),
           clock,
+          {
+            maxAheadSeconds: onchain.maxPriceAgeS,
+            // Mainnet's account is Kamino's and starts with Scope's discriminator.
+            // TNET-4: the test network's price account is not defined yet, so its first bytes are not
+            // checked there. Once it is, check them on every network.
+            discriminator: config.network === 'mainnet' ? SCOPE_PRICES_DISCRIMINATOR : undefined,
+          },
         );
         const fetchedAt = now().toISOString();
         return priced.map((asset, i): Price => {
@@ -492,7 +503,7 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
           snap,
         );
         return assets.flatMap((asset, i) => {
-          const raw = amounts[i] ?? 0n;
+          const raw = amounts[i]?.amount ?? 0n;
           return raw > 0n ? [holding(asset, raw, snap)] : [];
         });
       }),
@@ -507,20 +518,24 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
           ask('getBalance', () => rpc.getBalance(who, { commitment }).send()),
           rent(),
         ]);
-        const [cashHave = 0n] = await balances([{ holder: who, asset: cash }], snap);
+        const [held] = await balances([{ holder: who, asset: cash }], snap);
+        // Cash in a frozen account is the wallet's, and getWalletHoldings shows it, but it cannot be
+        // deposited: it does not count toward what the wallet can pay.
+        const cashHave = held && !held.frozen ? held.amount : 0n;
         const gasHave = BigInt(lamports.value);
         // A new vault is at least the transaction that creates it.
         const legs = BigInt(wanted.newVault ? Math.max(wanted.legs, 1) : wanted.legs);
-        // A new vault locks rent for its own account and for one token account per transaction: the
-        // cash account when it is created, then one position's account in each trade that follows. An
-        // existing vault is charged fees only; the builder's simulation has the last word. A wallet
-        // that pays for anything must stay above its own rent-exempt minimum.
+        // Each transaction may open one token account: the cash account when a vault is created, a
+        // position's account in the trade that first buys it. `FundingNeed` cannot say how many of the
+        // legs do, so every leg is charged one; a new vault adds the rent of its own account. A wallet
+        // that pays for anything must stay above its own rent-exempt minimum. The builder's simulation
+        // has the last word.
         const gasNeed =
           legs === 0n
             ? 0n
             : rents.wallet +
-              legs * SIGNATURE_FEE_LAMPORTS +
-              (wanted.newVault ? rents.vault + legs * rents.tokenAccount : 0n);
+              legs * (SIGNATURE_FEE_LAMPORTS + rents.tokenAccount) +
+              (wanted.newVault ? rents.vault : 0n);
         return {
           chain: 'solana',
           cashHaveRaw: cashHave.toString(),
@@ -553,8 +568,10 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
         let status = await statusNow();
         if (!status && validUntil !== undefined) {
           const lastValid = input(z.string().regex(/^\d+$/), validUntil, 'validUntil');
+          // Always the finalized height, whatever this reader's commitment: a height read from a fork
+          // that is later dropped can be past the last valid block while the transaction still lands.
           const height = await ask('getBlockHeight', () =>
-            rpc.getBlockHeight({ commitment }).send(),
+            rpc.getBlockHeight({ commitment: 'finalized' }).send(),
           );
           if (BigInt(height) > BigInt(lastValid)) {
             // The chain is past the last block the transaction could land in. It may have landed

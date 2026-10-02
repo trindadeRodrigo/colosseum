@@ -4,7 +4,6 @@ import {
   getAddressDecoder,
   getAddressEncoder,
   getArrayDecoder,
-  getBooleanDecoder,
   getBytesDecoder,
   getI64Decoder,
   getProgramDerivedAddress,
@@ -14,6 +13,7 @@ import {
   getU32Decoder,
   getU64Decoder,
   getU64Encoder,
+  transformDecoder,
 } from '@solana/kit';
 
 // The two accounts of programs/basket, as programs/basket/src/state.rs lays them out (DESIGN-VAULT 3.7).
@@ -77,6 +77,12 @@ export function vaultErrorName(code: number): (typeof VAULT_ERRORS)[number] | nu
 
 const addressDecoder = getAddressDecoder();
 
+/** A Borsh bool is one byte, 0 or 1. Anything else is not something the program wrote. */
+const strictBoolean = transformDecoder(getU8Decoder(), (byte): boolean => {
+  if (byte > 1) throw new Error(`a flag holds ${byte}, which is neither true nor false`);
+  return byte === 1;
+});
+
 const configDecoder = getStructDecoder([
   ['discriminator', fixDecoderSize(getBytesDecoder(), 8)],
   ['admin', addressDecoder],
@@ -86,8 +92,8 @@ const configDecoder = getStructDecoder([
   ['routerProgram', addressDecoder],
   ['priceOwner', addressDecoder],
   ['cashMint', addressDecoder],
-  ['keeperPaused', getBooleanDecoder()],
-  ['launched', getBooleanDecoder()],
+  ['keeperPaused', strictBoolean],
+  ['launched', strictBoolean],
   ['toleranceBps', getU16Decoder()],
   ['lossCapBps', getU16Decoder()],
   ['bandBps', getU16Decoder()],
@@ -115,7 +121,7 @@ const vaultDecoder = getStructDecoder([
   ['owner', addressDecoder],
   ['recipe', addressDecoder],
   ['acceptedVersion', getU32Decoder()],
-  ['autoFollow', getBooleanDecoder()],
+  ['autoFollow', strictBoolean],
   ['basketId', getU64Decoder()],
   ['bump', getU8Decoder()],
   ['keeper', addressDecoder],
