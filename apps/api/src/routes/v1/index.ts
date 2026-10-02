@@ -58,6 +58,17 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
       if (refusal) return reply.code(refusal.status).send(refusal.body());
       if (err instanceof Error && 'validation' in err && err.validation)
         return reply.code(400).send({ error: err.message });
+      // A request the server could not read (bad JSON, an empty body, a content type it does not
+      // take, a body too large) is the caller's to fix. Fastify's own messages are safe to pass on;
+      // a parser's may quote the body, so it gets one fixed line.
+      const status = (err as { statusCode?: unknown }).statusCode;
+      if (typeof status === 'number' && status >= 400 && status < 500) {
+        const code = (err as { code?: unknown }).code;
+        const ours = err instanceof Error && typeof code === 'string' && code.startsWith('FST_');
+        return reply
+          .code(status)
+          .send({ error: ours ? err.message : 'the request body could not be read as JSON' });
+      }
       req.log.error({ err }, 'a /v1 route failed');
       // The request id and nothing else: no SQL, no stack.
       return reply.code(500).send({ error: `the server failed on this request (${req.id})` });
