@@ -4,9 +4,11 @@
 
 ---
 
-## Where this stands (2026-10-02, for a fresh session)
+## Where this stands (2026-10-02 23:45Z, for a fresh session)
 
-Items 1–3 and 5–10 are done, 11 is in progress, 4 and 12–17 are to do (§7 of the plan). Step 11's reference prices have arrived (§2): run **A-C** for them first, then **A-B** for item 4 or 11. Start the session inside the worktree; the branch already has `risk` and `staging` merged in and `pnpm verify` passing (1,280 tests).
+Done: items 1–3 and 5–11, and A-C for Step 11's reference prices (§7 of the plan has the evidence for each). In progress: **item 4**, whose data source the founder chose on 2026-10-02 (DA7 (a): our own read-only snapshot, `pnpm risk:split-snapshot`, built and run once); its remaining four steps are listed in its §7 row. To do: items 12–17 (Phase 2; 12 can start now that `risk_reference_prices` exists; 14, 16 and 17 wait for Mon Oct 5 under DA3). The branch has `risk` and `staging` merged in, migration 0008 is item 11's, and `pnpm verify` passes (1,288 tests). Nothing is pushed.
+
+Waiting on a person (not on the next session): the refresh job's new bundle (item 2, steps in §7), scheduling `pnpm risk:lending-report && pnpm risk:facts-import` and `pnpm risk:split-snapshot` hourly (launchd jobs), and reading one asset sheet and one lending sheet on `/docs`.
 
 ## A-B — Item execution (run once per item; replace `{N}` with 1–17)
 
