@@ -137,7 +137,7 @@ One thing in his code breaks these rules today. The `chain-solana` root barrel r
 | `mock` | The chain runs on `packages/chain-mock`, whatever network it is set to | MOCK |
 | none | The chain is `off`: there is no figure | not shown |
 
-**Pull requests.** PR0 repairs CI, which has failed at setup on every run: delete `version: 11` in `ci.yml`, fix three lint errors, add a Postgres 16 service and `pnpm db:migrate`, delete the placeholder `allowBuilds` lines, add `LICENSE`. PR1a is the frame every TypeScript stream waits for: the v0 types, `chain-mock` with contract tests, migration `0006`, flags. PR1b follows without blocking anyone: the boundary test, the CI workflows (`ci.yml`, and `program.yml`, `contracts.yml` and `security.yml`, which run only when their files change) and the dependency pins.
+**Pull requests.** PR0 repairs CI, which has failed at setup on every run: delete `version: 11` in `ci.yml`, fix three lint errors, add a Postgres 16 service and `pnpm db:migrate`, delete the placeholder `allowBuilds` lines, add `LICENSE`. PR1a is the frame every TypeScript stream waits for: the v0 types, `chain-mock` with contract tests, migration `0006`, flags. PR1b follows without blocking anyone: the boundary test, the CI workflows (`ci.yml` on every push; `program.yml` and `contracts.yml` when their files change; `security.yml` on every pull request and weekly) and the dependency pins.
 
 **Process.** His slot process carries over: `docs/vault/PLAN-VAULT.md`, `docs/vault/STATE-VAULT.md`, rows in `docs/GATES.md`. Slot ids are `<stream>-<n>`, half a day each. An open gate stops one stream. `pnpm dev` starts `api` and `web` only.
 

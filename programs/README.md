@@ -10,7 +10,7 @@
 
 Tools: anchor-cli 0.31.1, solana-cli 3.0.1, platform tools v1.54 (which build with Rust 1.89.0). On the host, Rust 1.89.0 for clippy and `nightly-2025-09-09` for the interface files. There is no `rust-toolchain.toml`: the build picks its own compiler, and the two host versions are named where they are used.
 
-CI: `.github/workflows/program.yml` installs the same versions, checked against their sha256 where the release publishes one, and runs the build, the tests, the interface-file check and clippy. It runs when `programs/`, `idl/`, `Anchor.toml`, `Cargo.toml` or `Cargo.lock` change. A version bump here is a bump of the `env` block there.
+CI: `.github/workflows/program.yml` installs the same versions, each download checked against a sha256 written in the workflow, and runs the build, the tests, the interface-file check and clippy. It runs when `programs/`, `idl/`, `Anchor.toml`, `Cargo.toml` or `Cargo.lock` change. A version bump here is a bump of the `env` block there.
 
 ## Build
 

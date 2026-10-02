@@ -33,6 +33,9 @@ env:
   SOLANA_SHA256: c5bd5e55d87ce71214e312819e3c6cbb55e3b538b4ac3179ee91aec155a23578
   PLATFORM_TOOLS: v1.54
   ANCHOR_VERSION: 0.31.1
+  # sha256 of anchor-0.31.1-x86_64-unknown-linux-gnu. The release publishes none: this is the file as
+  # first downloaded here on 2026-10-02.
+  ANCHOR_SHA256: 5e5f8fc0f75f2c3dc5cceb082a7f735d09be2207540291ffad370eb5b2dc959b
   # Clippy runs on the Rust that platform tools v1.54 build the programs with.
   RUST_CLIPPY: 1.89.0
   # Anchor builds the interface files with a nightly. This is the one the committed files were made with.
@@ -87,7 +90,7 @@ jobs:
           mkdir -p "$HOME/.local/bin"
           curl -sSfL --retry 3 -o "$HOME/.local/bin/anchor" \
             "https://github.com/solana-foundation/anchor/releases/download/v${ANCHOR_VERSION}/anchor-${ANCHOR_VERSION}-x86_64-unknown-linux-gnu"
-          sha256sum "$HOME/.local/bin/anchor"
+          echo "${ANCHOR_SHA256}  $HOME/.local/bin/anchor" | sha256sum -c -
           chmod +x "$HOME/.local/bin/anchor"
 
       - name: Put the tools on the path
