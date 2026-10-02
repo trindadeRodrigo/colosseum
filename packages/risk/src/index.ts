@@ -28,6 +28,7 @@ export * from './pools/orca-whirlpool';
 export * from './pools/positions';
 export * from './pools/raydium-clmm';
 export * from './pools/raydium-cpmm';
+export * from './pools/route';
 export * from './pools/simulate';
 export * from './provider';
 export * from './replay';
