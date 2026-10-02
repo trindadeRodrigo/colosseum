@@ -67,3 +67,18 @@ Each case:
 - An implementation that says which rule was broken reports `expect.reason` (or `expect.reasonId`). If it checks the rules in another order, assert that its reason is one of `expect.breaks`.
 
 TypeScript: `packages/basket/src/creator-limits.vectors.test.ts`.
+
+## The meta hash
+
+A shared portfolio's name and copy stay off-chain. The registry stores their hash, so anyone can check the text against the chain. `meta-hash.json` has worked cases: the fields (`meta`), the exact text that is hashed (`canonical`), that text's bytes in hex (`utf8Hex`) and the hash (`sha256`).
+
+`metaHash` is the SHA-256 of the canonical JSON of the six fields:
+
+1. One JSON object with exactly these members, in this order: `chains`, `copy`, `familyId`, `kind`, `name`, `slug`.
+2. `chains` is an array of the chain ids, each once, in ascending byte order.
+3. No whitespace outside the strings.
+4. Strings as `JSON.stringify` writes them (RFC 8785, 3.2.2.2): `"` and `\` take a backslash; U+0008, U+0009, U+000A, U+000C and U+000D are `\b`, `\t`, `\n`, `\f`, `\r`; any other character under U+0020 is `\u00xx` in lower-case hex; everything else, `/` and non-ASCII included, is written as itself.
+5. UTF-8, no byte-order mark, no Unicode normalisation.
+6. The hash is 64 lower-case hex characters with no prefix. Onchain it is the same 32 bytes in the same order.
+
+A program or a contract stores the 32 bytes and never builds the text. Its test takes `utf8Hex` as bytes and checks that SHA-256 of them is `sha256` (`sha256(bytes)` in Solidity, `hash::hash(&bytes)` in Rust). TypeScript builds the text: `metaHash` in `packages/basket`, tested in `packages/basket/src/meta-hash.test.ts`.
