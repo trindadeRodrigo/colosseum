@@ -8,6 +8,8 @@ import {
   expectError,
   expectOk,
   fundedSigner,
+  idlCreateInstruction,
+  MOCK_ROUTER_PROGRAM,
   send,
 } from './src/env';
 import {
@@ -132,6 +134,13 @@ describe('mock-router', () => {
     );
     expect(balance(svm, otherStock)).toBe(2_000000n);
     expect(balance(svm, await ata(trader.address, stock))).toBe(0n);
+  });
+
+  it("refuses Anchor's instruction that creates an on-chain IDL account", async () => {
+    const stranger = await fundedSigner(svm);
+    const { instruction, idlAccount } = await idlCreateInstruction(MOCK_ROUTER_PROGRAM, stranger);
+    expectError(await send(svm, stranger, [instruction]), ANCHOR.IdlInstructionStub);
+    expect(svm.getAccount(idlAccount).exists).toBe(false);
   });
 
   it("answers to the same first eight bytes as Jupiter's route_v2", () => {

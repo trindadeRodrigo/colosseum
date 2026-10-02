@@ -2,6 +2,7 @@ import {
   type AccountMeta,
   type Address,
   fixDecoderSize,
+  generateKeyPairSigner,
   getAddressDecoder,
   getAddressEncoder,
   getArrayDecoder,
@@ -30,7 +31,10 @@ import {
   discriminator,
   programDataAddress,
   readonly,
+  type SendResult,
   SYSTEM_PROGRAM,
+  SYSVAR_RENT,
+  send,
   signer,
   writable,
   writableSigner,
@@ -72,9 +76,11 @@ export const ERR = {
   // Appended by SOL-1, after the frozen list.
   NotUpgradeAuthority: 6024,
   InvalidTargets: 6025,
+  NotCashMint: 6026,
+  ZeroAddress: 6027,
 } as const;
 
-export const CONFIG_SIZE = 364;
+export const CONFIG_SIZE = 396;
 export const VAULT_SIZE = 1063;
 export const MAX_POSITIONS = 16;
 
@@ -119,7 +125,21 @@ export type InitConfigArgs = {
   defaultKeeper: Address;
   routerProgram: Address;
   priceOwner: Address;
+  cashMint: Address;
   params: Params;
+};
+
+/** The starting values of DESIGN-VAULT.md section 5. They are settings, not figures the app shows. */
+export const DEFAULT_PARAMS: Params = {
+  toleranceBps: 75,
+  lossCapBps: 200,
+  bandBps: 50,
+  twapDevBps: 200,
+  maxPriceAgeS: 120,
+  assetCooldownS: 3_600,
+  publishDelayS: 60,
+  sessionOpenUtcS: 14 * 3_600 + 30 * 60,
+  sessionCloseUtcS: 20 * 3_600,
 };
 
 const paramsEncoder = getStructEncoder([
@@ -139,6 +159,7 @@ const initConfigArgsEncoder = getStructEncoder([
   ['defaultKeeper', addressEncoder],
   ['routerProgram', addressEncoder],
   ['priceOwner', addressEncoder],
+  ['cashMint', addressEncoder],
   ['params', paramsEncoder],
 ]);
 
@@ -150,6 +171,7 @@ const configDecoder = getStructDecoder([
   ['defaultKeeper', getAddressDecoder()],
   ['routerProgram', getAddressDecoder()],
   ['priceOwner', getAddressDecoder()],
+  ['cashMint', getAddressDecoder()],
   ['keeperPaused', getBooleanDecoder()],
   ['launched', getBooleanDecoder()],
   ['toleranceBps', getU16Decoder()],
@@ -163,7 +185,8 @@ const configDecoder = getStructDecoder([
   ['sessionCloseUtcS', getU32Decoder()],
   ['closedUntil', getI64Decoder()],
   ['closedDays', getArrayDecoder(getU16Decoder(), { size: 32 })],
-  ['reserved', fixDecoderSize(getBytesDecoder(), 64)],
+  ['bump', getU8Decoder()],
+  ['reserved', fixDecoderSize(getBytesDecoder(), 63)],
 ]);
 
 const positionDecoder = getStructDecoder([
@@ -232,28 +255,72 @@ export async function initConfigInstruction(
   };
 }
 
-/** Accounts: admin (signer), config. */
-export async function setRouterInstruction(
+/** The three admin setters share one shape. Accounts: admin (signer), config. */
+async function setAddressInstruction(
+  name: 'set_router' | 'set_price_owner' | 'set_cash_mint',
   admin: TransactionSigner,
-  routerProgram: Address,
+  value: Address,
+  config?: Address,
 ): Promise<Instruction> {
   return {
     programAddress: BASKET_PROGRAM,
-    accounts: [signer(admin), writable(await configAddress())],
-    data: concat(discriminator('set_router'), addressEncoder.encode(routerProgram)),
+    accounts: [signer(admin), writable(config ?? (await configAddress()))],
+    data: concat(discriminator(name), addressEncoder.encode(value)),
   };
 }
 
-/** Accounts: admin (signer), config. */
-export async function setPriceOwnerInstruction(
+export const setRouterInstruction = (admin: TransactionSigner, value: Address, config?: Address) =>
+  setAddressInstruction('set_router', admin, value, config);
+export const setPriceOwnerInstruction = (
   admin: TransactionSigner,
-  priceOwner: Address,
-): Promise<Instruction> {
-  return {
-    programAddress: BASKET_PROGRAM,
-    accounts: [signer(admin), writable(await configAddress())],
-    data: concat(discriminator('set_price_owner'), addressEncoder.encode(priceOwner)),
-  };
+  value: Address,
+  config?: Address,
+) => setAddressInstruction('set_price_owner', admin, value, config);
+export const setCashMintInstruction = (
+  admin: TransactionSigner,
+  value: Address,
+  config?: Address,
+) => setAddressInstruction('set_cash_mint', admin, value, config);
+
+/** The three setter events carry the old and the new value. */
+export function decodeAddressChange(payload: Uint8Array): { old: Address; new: Address } {
+  const decoder = getAddressDecoder();
+  return { old: decoder.decode(payload.slice(0, 32)), new: decoder.decode(payload.slice(32, 64)) };
+}
+
+/** Initialises Config with the default parameters and unused keys wherever the test names none. */
+export async function initConfig(
+  svm: LiteSVM,
+  deployer: TransactionSigner,
+  args: Partial<InitConfigArgs> & { cashMint: Address },
+): Promise<SendResult> {
+  const unused = SYSVAR_RENT; // any address that is not the zero address
+  return send(svm, deployer, [
+    await initConfigInstruction(deployer, {
+      guardian: unused,
+      defaultKeeper: unused,
+      routerProgram: unused,
+      priceOwner: unused,
+      params: DEFAULT_PARAMS,
+      ...args,
+    }),
+  ]);
+}
+
+/** A copy of the real Config at another address, with some bytes changed. No transaction
+ * can make this account; it shows what the address check on Config is for. */
+export async function forgeConfig(
+  svm: LiteSVM,
+  changes: { admin?: Address; cashMint?: Address },
+): Promise<Address> {
+  const real = svm.getAccount(await configAddress());
+  if (!real.exists) throw new Error('initialise Config before forging one');
+  const data = new Uint8Array(real.data);
+  if (changes.admin) data.set(addressEncoder.encode(changes.admin), 8);
+  if (changes.cashMint) data.set(addressEncoder.encode(changes.cashMint), 200);
+  const forged = (await generateKeyPairSigner()).address;
+  svm.setAccount({ ...real, address: forged, data });
+  return forged;
 }
 
 export type Target = { mint: Address; targetBps: number };
@@ -302,8 +369,8 @@ export async function createVaultInstruction(input: {
   };
 }
 
-/** Accounts: owner (signer), vault, mint, the vault's token account, the source token account,
- * the mint's token program. */
+/** Accounts: owner (signer), vault, config, mint (the cash mint), the vault's token account,
+ * the source token account, the mint's token program, then any extra accounts for a hook. */
 export async function depositInstruction(input: {
   owner: TransactionSigner;
   vault: Address;
@@ -311,16 +378,20 @@ export async function depositInstruction(input: {
   amount: bigint;
   source?: Address;
   vaultTokenAccount?: Address;
+  config?: Address;
+  extraAccounts?: AccountMeta[];
 }): Promise<Instruction> {
   return {
     programAddress: BASKET_PROGRAM,
     accounts: [
       signer(input.owner),
-      writable(input.vault),
+      readonly(input.vault),
+      readonly(input.config ?? (await configAddress())),
       readonly(input.mint.address),
       writable(input.vaultTokenAccount ?? (await ata(input.vault, input.mint))),
       writable(input.source ?? (await ata(input.owner.address, input.mint))),
       readonly(input.mint.program),
+      ...(input.extraAccounts ?? []),
     ],
     data: concat(discriminator('deposit'), u64.encode(input.amount)),
   };

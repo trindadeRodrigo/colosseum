@@ -8,6 +8,7 @@ const SHARED = ['Cargo.toml', 'Cargo.lock'];
 const PROGRAMS = [
   { binary: 'basket.so', source: 'programs/basket' },
   { binary: 'mock_router.so', source: 'programs/mock-router' },
+  { binary: 'test_hook.so', source: 'programs/test-hook' },
 ];
 // The flags are explained in programs/README.md.
 const BUILD = ['build', '--no-idl', '--', '--tools-version', 'v1.54'];

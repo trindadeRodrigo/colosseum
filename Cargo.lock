@@ -2703,6 +2703,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-hook"
+version = "0.1.0"
+dependencies = [
+ "solana-program",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -11,6 +11,7 @@ import {
   appendTransactionMessageInstructions,
   createTransactionMessage,
   generateKeyPairSigner,
+  getAddressDecoder,
   getAddressEncoder,
   getProgramDerivedAddress,
   type Instruction,
@@ -25,6 +26,7 @@ import { FailedTransactionMetadata, LiteSVM, type TransactionMetadata } from 'li
 
 export const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 export const SYSTEM_PROGRAM = address('11111111111111111111111111111111');
+export const SYSVAR_RENT = address('SysvarRent111111111111111111111111111111111');
 export const UPGRADEABLE_LOADER = address('BPFLoaderUpgradeab1e11111111111111111111111');
 
 const addressEncoder = getAddressEncoder();
@@ -82,6 +84,13 @@ export async function createWorld(): Promise<World> {
   await loadProgram(svm, BASKET_PROGRAM, 'basket.so', deployer.address);
   await loadProgram(svm, MOCK_ROUTER_PROGRAM, 'mock_router.so', deployer.address);
   return { svm, deployer };
+}
+
+/** Loads the hostile transfer-hook program (programs/test-hook) at a fresh address. */
+export async function loadHook(svm: LiteSVM): Promise<Address> {
+  const hook = (await generateKeyPairSigner()).address;
+  svm.addProgram(hook, readFileSync(join(REPO_ROOT, 'target', 'deploy', 'test_hook.so')));
+  return hook;
 }
 
 export async function fundedSigner(svm: LiteSVM, sol = 10n): Promise<KeyPairSigner> {
@@ -178,11 +187,63 @@ export const writableSigner = (s: TransactionSigner): AccountSignerMeta => ({
 
 /** Anchor's own error codes that the tests name. */
 export const ANCHOR = {
+  IdlInstructionStub: 1000,
   ConstraintHasOne: 2001,
   ConstraintSeeds: 2006,
   ConstraintAssociated: 2009,
   ConstraintTokenOwner: 2015,
+  ConstraintMintTokenProgram: 2022,
+  AccountDiscriminatorMismatch: 3002,
+  AccountDidNotDeserialize: 3003,
+  AccountOwnedByWrongProgram: 3007,
   InvalidProgramId: 3008,
   AccountNotSigner: 3010,
-  AccountNotInitialized: 3012,
 } as const;
+
+/** The system program's "already in use": what creating an account twice ends with. */
+export const SYSTEM_ACCOUNT_ALREADY_IN_USE = 0;
+
+/** The payloads of the Anchor events with this name that a transaction logged. */
+export function events(meta: TransactionMetadata, name: string): Uint8Array[] {
+  const tag = createHash('sha256').update(`event:${name}`).digest().subarray(0, 8);
+  return meta
+    .logs()
+    .filter((line) => line.startsWith('Program data: '))
+    .map((line) => Buffer.from(line.slice('Program data: '.length), 'base64'))
+    .filter((data) => data.subarray(0, 8).equals(tag))
+    .map((data) => new Uint8Array(data.subarray(8)));
+}
+
+/** Anchor's built-in instruction that creates a program's on-chain IDL account. A program
+ * built with `no-idl` must refuse it: whoever creates that account becomes its authority. */
+export async function idlCreateInstruction(
+  program: Address,
+  payer: TransactionSigner,
+): Promise<{ instruction: Instruction; idlAccount: Address }> {
+  const [base] = await getProgramDerivedAddress({ programAddress: program, seeds: [] });
+  // createWithSeed(base, "anchor:idl", program)
+  const idlAccount = getAddressDecoder().decode(
+    createHash('sha256')
+      .update(addressEncoder.encode(base) as Uint8Array)
+      .update('anchor:idl')
+      .update(addressEncoder.encode(program) as Uint8Array)
+      .digest(),
+  );
+  const tag = new Uint8Array([0x40, 0xf4, 0xbc, 0x78, 0xa7, 0xe9, 0x69, 0x0a]);
+  const dataLength = new Uint8Array(8);
+  new DataView(dataLength.buffer).setBigUint64(0, 1000n, true);
+  return {
+    idlAccount,
+    instruction: {
+      programAddress: program,
+      accounts: [
+        writableSigner(payer),
+        writable(idlAccount),
+        readonly(base),
+        readonly(SYSTEM_PROGRAM),
+        readonly(program),
+      ],
+      data: concat(tag, [0], dataLength),
+    },
+  };
+}

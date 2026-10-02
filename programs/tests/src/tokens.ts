@@ -30,6 +30,14 @@ import { expectOk, SYSTEM_PROGRAM, send } from './env';
 export const TOKEN_PROGRAM = address('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 export const TOKEN_2022_PROGRAM = address('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
 
+/** Token program errors the tests name. The numbers are the same in both token programs. */
+export const TOKEN_ERR = {
+  InsufficientFunds: 1,
+  MintMismatch: 3,
+  OwnerMismatch: 4,
+  MintPaused: 67,
+} as const;
+
 export type TestMint = {
   address: Address;
   /** The token program that owns the mint. */
@@ -67,11 +75,20 @@ export function stockExtensions(issuer: Address, mint: Address): ExtensionArgs[]
 export async function createMint(
   svm: LiteSVM,
   payer: TransactionSigner,
-  options: { program: Address; decimals: number; stock?: boolean },
+  options: {
+    program: Address;
+    decimals: number;
+    /** The stock token's extension set. */
+    stock?: boolean;
+    /** Or any other extensions, given the issuer's address. */
+    extensions?: (issuer: Address) => ExtensionArgs[];
+  },
 ): Promise<TestMint> {
   const mint = await generateKeyPairSigner();
   const issuer = await generateKeyPairSigner();
-  const extensions = options.stock ? stockExtensions(issuer.address, mint.address) : [];
+  const extensions = options.stock
+    ? stockExtensions(issuer.address, mint.address)
+    : (options.extensions?.(issuer.address) ?? []);
   // A mint without extensions is the base 82 bytes under either token program.
   const space = extensions.length ? BigInt(getMintSize(extensions)) : 82n;
   const config = { programAddress: options.program };
@@ -190,3 +207,17 @@ export function tokenAccount(svm: LiteSVM, token: Address): Token {
 export function balance(svm: LiteSVM, token: Address): bigint {
   return svm.getAccount(token).exists ? tokenAccount(svm, token).amount : 0n;
 }
+
+/** A Token-2022 transfer fee of 1%: the receiver gets less than was sent. */
+export const onePercentFee = (issuer: Address): ExtensionArgs[] => {
+  const fee = { epoch: 0n, maximumFee: 1_000_000_000n, transferFeeBasisPoints: 100 };
+  return [
+    extension('TransferFeeConfig', {
+      transferFeeConfigAuthority: issuer,
+      withdrawWithheldAuthority: issuer,
+      withheldAmount: 0n,
+      olderTransferFee: fee,
+      newerTransferFee: fee,
+    }),
+  ];
+};

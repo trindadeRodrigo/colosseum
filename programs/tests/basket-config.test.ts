@@ -1,48 +1,64 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { type Address, generateKeyPairSigner, type KeyPairSigner } from '@solana/kit';
+import {
+  type Address,
+  generateKeyPairSigner,
+  getProgramDerivedAddress,
+  type Instruction,
+  type KeyPairSigner,
+  type TransactionSigner,
+} from '@solana/kit';
+import { getCreateAccountInstruction } from '@solana-program/system';
 import type { LiteSVM } from 'litesvm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   CONFIG_SIZE,
   configAddress,
+  createVaultInstruction,
+  DEFAULT_PARAMS,
+  decodeAddressChange,
   ERR,
   FROZEN_ERRORS,
+  forgeConfig,
   type InitConfigArgs,
   initConfigInstruction,
   type Params,
   readConfig,
+  setCashMintInstruction,
   setPriceOwnerInstruction,
   setRouterInstruction,
+  vaultAddress,
 } from './src/basket';
 import {
   ANCHOR,
   BASKET_PROGRAM,
   createWorld,
+  events,
   expectError,
   expectOk,
-  failed,
   fundedSigner,
+  idlCreateInstruction,
   loadProgram,
   MOCK_ROUTER_PROGRAM,
   programDataAddress,
   REPO_ROOT,
+  SYSTEM_ACCOUNT_ALREADY_IN_USE,
   SYSTEM_PROGRAM,
   send,
 } from './src/env';
 
-// The starting values of DESIGN-VAULT.md section 5. They are settings, not figures the app shows.
-const PARAMS: Params = {
-  toleranceBps: 75,
-  lossCapBps: 200,
-  bandBps: 50,
-  twapDevBps: 200,
-  maxPriceAgeS: 120,
-  assetCooldownS: 3_600,
-  publishDelayS: 60,
-  sessionOpenUtcS: 14 * 3_600 + 30 * 60,
-  sessionCloseUtcS: 20 * 3_600,
-};
+type Setter = (admin: TransactionSigner, value: Address, config?: Address) => Promise<Instruction>;
+
+// The three addresses that differ per network. Each has a setter and an event.
+const SETTERS: {
+  field: 'routerProgram' | 'priceOwner' | 'cashMint';
+  event: string;
+  set: Setter;
+}[] = [
+  { field: 'routerProgram', event: 'RouterSet', set: setRouterInstruction },
+  { field: 'priceOwner', event: 'PriceOwnerSet', set: setPriceOwnerInstruction },
+  { field: 'cashMint', event: 'CashMintSet', set: setCashMintInstruction },
+];
 
 describe('basket config', () => {
   let svm: LiteSVM;
@@ -54,11 +70,12 @@ describe('basket config', () => {
     args = {
       guardian: (await generateKeyPairSigner()).address,
       defaultKeeper: (await generateKeyPairSigner()).address,
-      // On devnet the test exchange and the owner of the test price account; on mainnet
-      // Jupiter and Kamino Scope. Either way they are values in Config.
+      // On devnet the test exchange, the owner of the test price account and the test
+      // dollar token; on mainnet Jupiter, Kamino Scope and USDC. Either way, values in Config.
       routerProgram: MOCK_ROUTER_PROGRAM,
       priceOwner: (await generateKeyPairSigner()).address,
-      params: PARAMS,
+      cashMint: (await generateKeyPairSigner()).address,
+      params: DEFAULT_PARAMS,
     };
   });
 
@@ -69,7 +86,8 @@ describe('basket config', () => {
     it('lets the upgrade authority initialise it, and makes that key the admin', async () => {
       expectOk(await init(deployer));
 
-      const account = svm.getAccount(await configAddress());
+      const address = await configAddress();
+      const account = svm.getAccount(address);
       expect(account.exists && account.data.length).toBe(CONFIG_SIZE);
 
       const config = await readConfig(svm);
@@ -79,12 +97,20 @@ describe('basket config', () => {
       expect(config.defaultKeeper).toBe(args.defaultKeeper);
       expect(config.routerProgram).toBe(MOCK_ROUTER_PROGRAM);
       expect(config.priceOwner).toBe(args.priceOwner);
+      expect(config.cashMint).toBe(args.cashMint);
       expect(config.keeperPaused).toBe(false);
       expect(config.launched).toBe(false);
-      expect(config).toMatchObject(PARAMS);
+      expect(config).toMatchObject(DEFAULT_PARAMS);
       expect(config.closedUntil).toBe(0n);
       expect(config.closedDays).toEqual(new Array(32).fill(0));
       expect(config.reserved.every((b) => b === 0)).toBe(true);
+
+      // The bump of its own address, kept so later reads can check the address cheaply.
+      const [, bump] = await getProgramDerivedAddress({
+        programAddress: BASKET_PROGRAM,
+        seeds: ['config'],
+      });
+      expect(config.bump).toBe(bump);
     });
 
     it('refuses a signer who is not the upgrade authority', async () => {
@@ -121,10 +147,16 @@ describe('basket config', () => {
       expectError(result, ANCHOR.InvalidProgramId);
     });
 
+    it('cannot be run at all once the program has no upgrade authority', async () => {
+      // So Config is initialised before the program is ever made immutable.
+      await loadProgram(svm, BASKET_PROGRAM, 'basket.so', null);
+      expectError(await init(deployer), ERR.NotUpgradeAuthority);
+    });
+
     it('cannot be initialised twice', async () => {
       expectOk(await init(deployer));
       const other = (await generateKeyPairSigner()).address;
-      expect(failed(await init(deployer, { routerProgram: other }))).toBe(true);
+      expectError(await init(deployer, { routerProgram: other }), SYSTEM_ACCOUNT_ALREADY_IN_USE);
       expect((await readConfig(svm)).routerProgram).toBe(MOCK_ROUTER_PROGRAM);
     });
   });
@@ -139,12 +171,15 @@ describe('basket config', () => {
     ];
 
     it.each(outOfBounds)('refuses %s', async (_, change) => {
-      expectError(await init(deployer, { params: { ...PARAMS, ...change } }), ERR.ParamOutOfBounds);
+      expectError(
+        await init(deployer, { params: { ...DEFAULT_PARAMS, ...change } }),
+        ERR.ParamOutOfBounds,
+      );
     });
 
     it('accepts each bound itself', async () => {
       const atTheBounds = {
-        ...PARAMS,
+        ...DEFAULT_PARAMS,
         toleranceBps: 300,
         lossCapBps: 500,
         assetCooldownS: 600,
@@ -155,51 +190,112 @@ describe('basket config', () => {
     });
   });
 
-  describe('the router and the price source owner', () => {
+  describe('the router, the price source owner and the cash mint', () => {
     let guardian: KeyPairSigner;
     let keeper: KeyPairSigner;
-    let newRouter: Address;
-    let newPriceOwner: Address;
+    let replacement: Address;
 
     beforeEach(async () => {
       guardian = await fundedSigner(svm);
       keeper = await fundedSigner(svm);
       expectOk(await init(deployer, { guardian: guardian.address, defaultKeeper: keeper.address }));
-      newRouter = (await generateKeyPairSigner()).address;
-      newPriceOwner = (await generateKeyPairSigner()).address;
+      replacement = (await generateKeyPairSigner()).address;
     });
 
-    it('are changed by the admin, and nothing else moves', async () => {
-      const before = await readConfig(svm);
-      expectOk(
-        await send(svm, deployer, [
-          await setRouterInstruction(deployer, newRouter),
-          await setPriceOwnerInstruction(deployer, newPriceOwner),
-        ]),
-      );
-      expect(await readConfig(svm)).toEqual({
-        ...before,
-        routerProgram: newRouter,
-        priceOwner: newPriceOwner,
+    describe.each(SETTERS)('$field', ({ field, event, set }) => {
+      it('is changed by the admin, with an event that carries the old and the new value', async () => {
+        const before = await readConfig(svm);
+        const meta = expectOk(await send(svm, deployer, [await set(deployer, replacement)]));
+
+        expect(await readConfig(svm)).toEqual({ ...before, [field]: replacement });
+        expect(events(meta, event).map(decodeAddressChange)).toEqual([
+          { old: before[field], new: replacement },
+        ]);
+      });
+
+      it('cannot be changed by anyone else, the guardian and the keeper included', async () => {
+        const stranger = await fundedSigner(svm);
+        for (const who of [guardian, keeper, stranger]) {
+          expectError(await send(svm, who, [await set(who, replacement)]), ANCHOR.ConstraintHasOne);
+        }
+        expect((await readConfig(svm))[field]).toBe(args[field]);
+      });
+
+      it('cannot be set to the zero address, which is also the system program', async () => {
+        expectError(
+          await send(svm, deployer, [await set(deployer, SYSTEM_PROGRAM)]),
+          ERR.ZeroAddress,
+        );
+        expect((await readConfig(svm))[field]).toBe(args[field]);
       });
     });
 
-    it('cannot be changed by anyone else, the guardian and the keeper included', async () => {
-      const stranger = await fundedSigner(svm);
-      for (const who of [guardian, keeper, stranger]) {
-        expectError(
-          await send(svm, who, [await setRouterInstruction(who, newRouter)]),
-          ANCHOR.ConstraintHasOne,
+    // Config is one account at one address. Anything else passed in its place is refused,
+    // whatever it holds.
+    describe('only the real Config is accepted', () => {
+      let attacker: KeyPairSigner;
+
+      beforeEach(async () => {
+        attacker = await fundedSigner(svm);
+      });
+
+      it('refuses a forged Config at another address, though it names the signer as admin', async () => {
+        const forged = await forgeConfig(svm, { admin: attacker.address });
+        for (const { set } of SETTERS) {
+          expectError(
+            await send(svm, attacker, [await set(attacker, replacement, forged)]),
+            ANCHOR.ConstraintSeeds,
+          );
+        }
+      });
+
+      it("refuses the attacker's own Vault, whose owner sits where the admin does", async () => {
+        const theirVault = await vaultAddress(attacker.address, 1n);
+        expectOk(
+          await send(svm, attacker, [
+            await createVaultInstruction({ owner: attacker, basketId: 1n }),
+          ]),
         );
         expectError(
-          await send(svm, who, [await setPriceOwnerInstruction(who, newPriceOwner)]),
-          ANCHOR.ConstraintHasOne,
+          await send(svm, attacker, [
+            await setRouterInstruction(attacker, replacement, theirVault),
+          ]),
+          ANCHOR.AccountDiscriminatorMismatch,
         );
-      }
-      const config = await readConfig(svm);
-      expect(config.routerProgram).toBe(MOCK_ROUTER_PROGRAM);
-      expect(config.priceOwner).toBe(args.priceOwner);
+      });
+
+      it('refuses a blank account the attacker created and gave to the program', async () => {
+        const blank = await generateKeyPairSigner();
+        const space = BigInt(CONFIG_SIZE);
+        expectOk(
+          await send(svm, attacker, [
+            getCreateAccountInstruction({
+              payer: attacker,
+              newAccount: blank,
+              lamports: svm.minimumBalanceForRentExemption(space),
+              space,
+              programAddress: BASKET_PROGRAM,
+            }),
+          ]),
+        );
+        expectError(
+          await send(svm, attacker, [
+            await setRouterInstruction(attacker, replacement, blank.address),
+          ]),
+          ANCHOR.AccountDiscriminatorMismatch,
+        );
+        expect((await readConfig(svm)).routerProgram).toBe(MOCK_ROUTER_PROGRAM);
+      });
     });
+  });
+
+  it("refuses Anchor's instruction that creates an on-chain IDL account", async () => {
+    // Whoever creates that account becomes its authority, and anyone could: the program is
+    // built without it. The interface files are in idl/ instead.
+    const stranger = await fundedSigner(svm);
+    const { instruction, idlAccount } = await idlCreateInstruction(BASKET_PROGRAM, stranger);
+    expectError(await send(svm, stranger, [instruction]), ANCHOR.IdlInstructionStub);
+    expect(svm.getAccount(idlAccount).exists).toBe(false);
   });
 
   describe('the source', () => {
@@ -213,7 +309,7 @@ describe('basket config', () => {
             : [],
       );
 
-    it('names no address but its own: the router and the price source live in Config', () => {
+    it('names no address but its own: the router, the price source and the cash mint live in Config', () => {
       const addresses = rustFiles(SRC).flatMap(
         (file) => readFileSync(file, 'utf8').match(/"[1-9A-HJ-NP-Za-km-z]{32,44}"/g) ?? [],
       );
@@ -224,8 +320,9 @@ describe('basket config', () => {
       const source = readFileSync(join(SRC, 'errors.rs'), 'utf8');
       const variants = [...source.matchAll(/^\s+([A-Z][A-Za-z]+),$/gm)].map((m) => m[1]);
       expect(variants.slice(0, FROZEN_ERRORS.length)).toEqual([...FROZEN_ERRORS]);
-      expect(6000 + variants.indexOf('NotUpgradeAuthority')).toBe(ERR.NotUpgradeAuthority);
-      expect(6000 + variants.indexOf('InvalidTargets')).toBe(ERR.InvalidTargets);
+      for (const [name, code] of Object.entries(ERR)) {
+        expect([name, 6000 + variants.indexOf(name)]).toEqual([name, code]);
+      }
     });
   });
 });
