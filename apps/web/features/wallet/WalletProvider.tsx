@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react';
 import { API } from '@/lib/api';
+import { apiUrl } from './api-url';
 import { WALLET_MARKER } from './marker';
 import type { WebWalletPort } from './port';
 
@@ -89,16 +90,19 @@ export function useWalletPort(): WebWalletPort {
 /**
  * The one way the app calls the API as the signed-in person: fetch with the sign-in headers the API's
  * auth expects (the Privy access token as a Bearer token, and the identity token when there is one).
- * Signed out, the call goes out without them. `path` is relative to the API ('/v1/config').
+ * Signed out, the call goes out without them. `path` is the part after the API's address and starts
+ * with one `/` ('/v1/config'); anything that would lead to another host is refused before the token
+ * is asked for, and a redirect is an error, so the token is never carried to where one points.
  */
 export function useApiFetch(): (path: string, init?: RequestInit) => Promise<Response> {
   const port = useWalletPort();
   return useCallback(
     async (path, init) => {
+      const url = apiUrl(API, path);
       const headers = new Headers(init?.headers);
       for (const [name, value] of Object.entries(await port.authHeaders()))
         headers.set(name, value);
-      return fetch(`${API}${path}`, { cache: 'no-store', ...init, headers });
+      return fetch(url, { cache: 'no-store', ...init, headers, redirect: 'error' });
     },
     [port],
   );
