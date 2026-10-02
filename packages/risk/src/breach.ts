@@ -1,4 +1,10 @@
-import { type AssetCurves, liquidityScore, weekendRatio, worstCapacity } from './assess';
+import {
+  type AssetCurves,
+  liquidityScore,
+  measuredRegimes,
+  weekendRatio,
+  worstMeasuredCapacity,
+} from './assess';
 import type { RegimeParams } from './time';
 import { REGIMES, regimesIn } from './time';
 
@@ -64,10 +70,9 @@ function check(inp: BreachInput): WithdrawalCheck[] {
     let capacity = 0;
     let capacityDry = 0;
     const caps = ill.map((l) => {
-      const c = Math.min(
-        l.valueUsd,
-        inp.shareOfDepth * worstCapacity(l.curves, regimes, inp.tau).capacityUsd,
-      );
+      // a regime the curves do not measure is skipped and named, never read as zero capacity (DA2)
+      const w = worstMeasuredCapacity(l.curves, regimes, inp.tau);
+      const c = Math.min(l.valueUsd, inp.shareOfDepth * (w?.capacityUsd ?? 0));
       const rho = weekendRatio(l.curves, inp.tau);
       const d = Math.max(inp.dryFactorFloor, Math.min(1, rho ?? inp.dryFactorFloor));
       capacity += c;
@@ -138,11 +143,21 @@ export function assessLiquidity(inp: BreachInput) {
   const merged = new Map<string, number>();
   for (const o of orders) merged.set(o.fromAssetId, (merged.get(o.fromAssetId) ?? 0) + o.amountUsd);
   const monthsAtRisk = checks.filter((c) => c.likelyBreach).map((c) => c.at.slice(0, 7));
+  // regimes inside a withdrawal's window that a leg's curves do not measure (DA2)
+  const missing = new Map<string, { assetId: string; regime: string }>();
+  for (const w of inp.withdrawals) {
+    const from = new Date(new Date(w.at).getTime() - inp.windowDays * 86_400_000);
+    const regimes = regimesIn(from, inp.windowDays * 24, inp.regimeParams);
+    for (const l of inp.illiquid)
+      for (const m of measuredRegimes(l.curves, regimes).missing)
+        missing.set(`${l.assetId}:${m.regime}`, { assetId: l.assetId, regime: m.regime });
+  }
   return {
     breach: checks.some((c) => c.breach),
     likelyBreach: checks.some((c) => c.likelyBreach),
     shortfallUsd: Math.max(0, ...checks.map((c) => c.need - c.capacityDry)),
     monthsAtRisk,
+    regimesMissing: [...missing.values()],
     checks,
     orders: [...merged.entries()].map(([fromAssetId, amountUsd]) => ({
       fromAssetId,

@@ -82,6 +82,9 @@ export function fitCurve(
 const usable = (c: DepthCurve) =>
   c.insufficientFrom === null ? c.points : c.points.slice(0, c.insufficientFrom);
 
+/** Grid points with enough samples to be used. Zero means the curve measures nothing yet. */
+export const usableCount = (c: DepthCurve): number => usable(c).length;
+
 export function costAt(c: DepthCurve, n: number): number | null {
   const pts = usable(c);
   if (pts.length === 0) return null;

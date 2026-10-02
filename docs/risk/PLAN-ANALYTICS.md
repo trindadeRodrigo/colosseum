@@ -162,7 +162,7 @@ Names in `code` are policy inputs, stored beside every output.
   - `basis = Σ a_i × (1 − P_i / P_ref) / n`: the pools used against the reference pool. It can be negative, which is why small sales sometimes show a negative cost today;
   - `impact = cost − poolFee − transferFee − basis`.
 - **Loss in dollars** for a client: `n × cost + networkFeeUsd + n × platformFeeBps / 10⁴`. `networkFeeUsd` is measured. `platformFeeBps` is what the product or the aggregator charges; it is a policy input (DA5).
-- **Round trip.** `entryCost(n, r_in) + exitCost(n', r_out)`, with `n'` the position's value at exit.
+- **Round trip.** `1 − (1 − entryCost(n, r_in)) × (1 − exitCost(n', r_out))`, with `n'` the position's value at exit.
 - **Net return.** With gross return `g` over the holding period, entry cost `c_in` and exit cost `c_out`: `net = (1 − c_in)(1 + g)(1 − c_out) − 1`, less fixed fees over `n`. Break-even: `g* = 1 / ((1 − c_in)(1 − c_out)) − 1`. Returns are computed, never promised.
 - **Liquidator margin.** A liquidator repays debt `d` and seizes stock worth `d(1 + b)` at the venue's oracle price `P_o`. Sold through a route at cost `c(s, regime)` against the DEX mid `P_m`: `margin = (1 + b) × (P_m / P_o) × (1 − c) − 1`. The venue's own oracle is used for `P_o` (D18).
 - **Liquidation capacity and coverage.** Capacity is the largest seized notional with `margin ≥ minLiquidatorMarginPct` (default 0) on the best measured route. Coverage ratio at gap `g` is capacity ÷ the collateral that becomes liquidatable at `g`, from the positions, under each venue's close factor.
@@ -188,11 +188,11 @@ Defaults apply unless you change them.
 | Item | Status | Evidence |
 |---|---|---|
 | 1. Contract | done | `packages/schemas/src/facts.ts`: `Fact` (measured or `null` with one of 11 reasons), `CostBreakdown`, `AssetFacts`, `LendingPoolFacts`, `PlanFacts`, and `collectFacts` (every fact in a sheet, plus any bare number stored as one). `tests/risk-layer/facts-contract.test.ts` (4 tests): a measured fact without its source, method, time, version, provenance or quality is rejected; a `null` without a listed reason is rejected; a sheet with a missing weekend parses and its 40+ facts are all complete. The check on builders (no `0` for missing input) runs in each builder's own test from item 7 on. Still **YOU**: show Thom §4. |
-| 2. Three fixes | todo | |
+| 2. Three fixes | in-progress (1 of 3) | **Zero capacity: fixed (DA2 default applied).** Reproduced first: with a weekend curve of 3 samples per size, `exitCapacity` answered `$0` in `weekend`, `exitCost` `null`, the weekend ratio `0`, and a breach check gave the leg no capacity (`tests/risk-layer/provider-regimes.test.ts`, 5 failing tests before the change). Now `measuredRegimes` (`packages/risk/src/assess.ts`) names such a regime with its reason; the provider's worst-regime answers, the weekend ratio and the breach check skip it, and `assess` returns `regimesMissing`. `worstCapacity` itself is unchanged (the lending report passes it measured regimes). `tests/engine-baseline.test.ts` and `tests/liquidity-hooks.test.ts` unchanged and passing. **Still todo:** the `POST /risk/positions/assess` freeze and the hourly import's memory. |
 | 3. Router with fee split | todo | |
 | 4. Cost breakdown curves | todo | |
-| 5. Entry, round trip, net return | todo | |
-| 6. Per-regime provider | todo | |
+| 5. Entry, round trip, net return | done | `packages/risk/src/facts/returns.ts`: `lossUsd`, `roundTripCost`, `netReturn`, `breakEvenReturn`, `annualCostDrag`, `netReturnAtSize` (the exit is priced at the size the position has become; `null` with the side that is not measured). `tests/risk-layer/facts-returns.test.ts` (7 tests): hand-computed cases, net below gross for every positive cost, fixed fees charged both ways. Deviation: the round trip compounds, `1 − (1 − c_in)(1 − c_out)`, so it agrees with the net return; §5 said the sum, which is the same to first order. |
+| 6. Per-regime provider | done | `RegimeLiquidityProvider` (`packages/schemas/src/liquidity.ts`) extends `LiquidityProvider` with `regimes`, `exitCostIn`, `entryCostIn`, `exitCapacityIn`; `createLiquidityProvider` returns it and takes optional `buyCurves`; `apps/api/src/liquidity.ts` loads both sides. Existing callers typed `LiquidityProvider` compile unchanged. `tests/risk-layer/provider-regimes.test.ts` (11 tests). Live check `pnpm risk:provider-check 10000` (2026-10-02 ~18:00Z, curves `risk-0.3`): SPYx exit 0.0216% in US market hours and −0.0070% on weekday off-hours, entry 0.0756% and 0.0889%, round trip 0.0972% and 0.0819%, capacity at 1% $380k and $444k; QQQx exit 0.1903% and 0.1964%, capacity $90k and $87k; weekend and holiday `no_samples_in_regime` for both. The numbers move with each hourly curve fit. |
 | 7. `AssetFacts` | todo | |
 | 8. Liquidation coverage and simulated route | todo | |
 | 9. Observed liquidation route | todo | |
@@ -201,6 +201,9 @@ Defaults apply unless you change them.
 | 12–17. Phase 2 | todo | |
 
 ### Discovered
+
+- 2026-10-02: order changed. The stored curves' cost already holds the pool fee and the token's transfer fee, so the return math needed the entry side, the round trip and per-regime answers first (items 5 and 6, done). The fee split (items 3–4) explains the cost; it does not correct it.
+- 2026-10-02: item 3's check cannot be met from the raw snapshots as written. The collector keeps raw account bytes hourly for concentrated-liquidity pools in the top 80% of TVL only, while a routed row uses every dollar-exit pool of the asset (CPMM and DLMM included). Three ways to get the amount sent to each pool: a read-only snapshot script of our own (new RPC reads, DA3); the per-pool 5-minute curves interpolated between grid sizes (approximate, error measurable against the stored routed total); or two lines in the collector after Oct 12 so each routed row stores its split. Item 3's router is still tested for equality with the collector's algorithm on frozen pool fixtures.
 
 - 2026-10-02: the routed curves show a negative sell cost at small sizes (NVDAx $100: −0.02% at 00:02Z). The reference mid is the largest pool's, and a smaller pool was priced better. It is the `basis` term of §5, not an error; the sheet must show it so a negative cost is not read as a free trade.
 - 2026-10-02: `main`'s `pnpm verify` typechecks `scripts/` and `tests/` and formats fixtures. The merge into `risk` (`42d37aa`) fixed eight type errors and two fixture formats that the older check never saw.
