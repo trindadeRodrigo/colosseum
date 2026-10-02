@@ -2,20 +2,39 @@ import * as schemas from '@colosseum/schemas';
 import {
   Address,
   AssetId,
+  BasketAsset,
   BasketId,
   BasketProposal,
+  BasketProposalBase,
   BasketSheet,
+  BasketSheetDraft,
   BasketTx,
+  BuildLegResponse,
+  BuiltTx,
+  BuiltTxBase,
+  ChainError,
+  ChainErrorCode,
+  ConsentRequest,
   chainFamily,
+  EvmAddress,
   IntentRequest,
   Leg,
+  LegBase,
   LimitResult,
+  normalizeAddress,
   Order,
+  Owner,
   RawAmount,
   RawDelta,
   Recipe,
+  RecipeBase,
+  ReportLegRequest,
+  SolanaAddress,
+  stampTx,
   Targets,
+  Trade,
   UnsignedTx,
+  WalletAccount,
   WalletError,
 } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
@@ -53,12 +72,13 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
       // 3.2
       'Capabilities',
       // 3.3
-      ...['BasketTx', 'LegStatus', 'LegKind', 'Leg', 'Attempt', 'Owner', 'Order'],
-      ...['IntentRequest', 'Principal'],
+      ...['BuiltTx', 'BasketTx', 'LegStatus', 'LegKind', 'Leg', 'Attempt', 'Owner', 'Order'],
+      ...['IntentRequest', 'Principal', 'BuildLegResponse', 'ReportLegRequest', 'ConsentRequest'],
       // 3.5
       'WalletAccount',
       // 3.6
-      ...['BasketSheet', 'Shelf', 'PersonalParams', 'Reason', 'BasketLine', 'BasketCard'],
+      ...['BasketSheet', 'BasketSheetDraft', 'Shelf', 'PersonalParams', 'Reason', 'BasketLine'],
+      'BasketCard',
       ...['Verdict', 'ObservationRef', 'BasketProposal', 'Share', 'LimitContext', 'LimitResult'],
       'RiskRollUp',
     ];
@@ -111,8 +131,8 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
     expect(Targets.safeParse([{ asset: 'solana:spyx', weightBps: 9_950 }]).success).toBe(false);
   });
 
-  it('builds BasketTx from UnsignedTx without its structurer fields', () => {
-    const keys = Object.keys(BasketTx.shape);
+  it('builds the transaction types from UnsignedTx without its structurer fields', () => {
+    const keys = Object.keys(BuiltTx.shape);
     for (const reused of [
       'payload',
       'evm',
@@ -122,37 +142,73 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
       'lastValidBlockHeight',
     ])
       expect(keys).toContain(reused);
-    for (const dropped of ['kind', 'legAssetId', 'executionId'])
+    for (const dropped of ['kind', 'legAssetId', 'executionId', 'legId', 'attemptId'])
       expect(keys).not.toContain(dropped);
     expect(Object.keys(UnsignedTx.shape)).toContain('legAssetId');
+    expect(Object.keys(BasketTx.shape)).toEqual([...keys, 'legId', 'attemptId']);
+  });
 
-    const tx = {
-      chain: 'solana',
-      payload: 'AA==',
-      description: 'Add cash to the vault',
+  const built = {
+    chain: 'solana',
+    payload: 'AA==',
+    lastValidBlockHeight: 1000,
+    description: 'Add cash to the vault',
+    provenance: 'mock',
+    legKind: 'deposit',
+    chainId: 'solana',
+    signer: SOL,
+    messageHash: HEX32,
+    preview: {
+      source: 'chain-mock',
+      method: 'mock state transition',
+      fetchedAt: NOW,
       provenance: 'mock',
-      legId: null,
-      attemptId: null,
-      legKind: 'deposit',
-      chainId: 'solana',
-      signer: SOL,
-      messageHash: HEX32,
-      preview: {
-        source: 'chain-mock',
-        method: 'mock state transition',
-        fetchedAt: NOW,
-        provenance: 'mock',
-        summary: 'Add cash to the vault',
-        simulated: true,
-        feeNativeRaw: '5000',
-        changes: [{ holder: 'wallet', asset: 'solana:usdc', deltaRaw: '-1000000' }],
-      },
+      summary: 'Add cash to the vault',
+      simulated: true,
+      feeNativeRaw: '5000',
+      changes: [{ holder: 'wallet', asset: 'solana:usdc', deltaRaw: '-1000000' }],
+    },
+  } as const;
+
+  it('keeps two shapes: what an adapter builds, and the same with its leg and attempt', () => {
+    expect(BuiltTx.safeParse(built).success).toBe(true);
+    // An adapter returns no ids, and nothing without both ids is a BasketTx.
+    expect(BasketTx.safeParse(built).success).toBe(false);
+    expect(BasketTx.safeParse({ ...built, legId: 'leg-1' }).success).toBe(false);
+    expect(BasketTx.safeParse({ ...built, legId: null, attemptId: null }).success).toBe(false);
+    const stamped = stampTx(BuiltTx.parse(built), { legId: 'leg-1', attemptId: 'att-1' });
+    expect(BasketTx.parse(stamped)).toEqual({ ...built, legId: 'leg-1', attemptId: 'att-1' });
+    expect(BuiltTx.safeParse({ ...built, legKind: 'set_keeper' }).success).toBe(false);
+    const { provenance: _, ...unlabelled } = built.preview;
+    expect(BuiltTx.safeParse({ ...built, preview: unlabelled }).success).toBe(false);
+  });
+
+  it("holds a transaction's fields to each other", () => {
+    const evm = { to: EVM, value: '0', chainId: 46630 };
+    const { lastValidBlockHeight: _, ...noHeight } = built;
+    const preview = { ...built.preview, changes: [] };
+    const onRobinhood = {
+      ...noHeight,
+      chain: 'evm',
+      chainId: 'robinhood',
+      signer: EVM,
+      evm,
+      preview,
     };
-    expect(BasketTx.safeParse(tx).success).toBe(true);
-    expect(BasketTx.safeParse({ ...tx, legId: 'leg-1', attemptId: 'att-1' }).success).toBe(true);
-    expect(BasketTx.safeParse({ ...tx, legKind: 'set_keeper' }).success).toBe(false);
-    const { provenance: _, ...unlabelled } = tx.preview;
-    expect(BasketTx.safeParse({ ...tx, preview: unlabelled }).success).toBe(false);
+    expect(BuiltTx.safeParse(onRobinhood).success).toBe(true);
+    const otherChain = [{ holder: 'vault', asset: 'base:usdc', deltaRaw: '1' }];
+    const bad = [
+      { ...built, chainId: 'base' }, // the Solana family on an EVM chain
+      { ...built, evm }, // evm on Solana
+      noHeight, // Solana with no last valid block height
+      { ...built, signer: EVM }, // an EVM signer on Solana
+      { ...onRobinhood, evm: undefined }, // EVM with no evm
+      { ...onRobinhood, signer: SOL },
+      { ...built, preview: { ...built.preview, changes: otherChain } },
+    ];
+    for (const tx of bad) expect(BuiltTx.safeParse(tx).success, JSON.stringify(tx)).toBe(false);
+    const stamped = { ...built, chainId: 'base', legId: 'l', attemptId: 'a' };
+    expect(BasketTx.safeParse(stamped).success).toBe(false);
   });
 
   it('parses an order with a leg, and labels a leg on a test network as neither live nor mock', () => {
@@ -215,7 +271,7 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
         family: 'x',
         name: 'X',
         copy: '',
-        recipes: [recipe],
+        recipes: [{ chain: 'solana', components: recipe.components }],
       },
       { type: 'withdraw', vaults: [EVM], sellToCash: false },
       { type: 'settings', vault: EVM, autoFollow: true },
@@ -286,5 +342,175 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
     expect(LimitResult.safeParse({ ok: false, code: 'TURNOVER', detail: '' }).success).toBe(true);
     expect(LimitResult.safeParse({ ok: true }).success).toBe(false);
     expect(new WalletError('no_gas')).toMatchObject({ code: 'no_gas', name: 'WalletError' });
+  });
+  it('lists each asset once: a repeated asset is not a way to reach 10,000', () => {
+    const spy = { asset: 'solana:spyx', weightBps: 5000 };
+    expect(Targets.safeParse([spy, spy]).success).toBe(false);
+    expect(Targets.safeParse([spy, { ...spy, asset: 'solana:nvdax' }]).success).toBe(true);
+    const twice = [
+      { kind: 'asset', asset: 'solana:spyx', weightBps: 5000 },
+      { kind: 'asset', asset: 'solana:spyx', weightBps: 3000 },
+      { kind: 'asset', asset: 'solana:gold', weightBps: 2000 },
+    ];
+    expect(Recipe.safeParse({ ...recipe, components: twice }).success).toBe(false);
+    const families = [
+      { kind: 'index', family: 'chips', weightBps: 5000 },
+      { kind: 'index', family: 'chips', weightBps: 5000 },
+    ];
+    expect(Recipe.safeParse({ ...recipe, kind: 'personal', components: families }).success).toBe(
+      false,
+    );
+    // A line of nothing is not a line, and an asset of another chain is not this recipe's.
+    const withZero = [...recipe.components, { kind: 'asset', asset: 'solana:gold', weightBps: 0 }];
+    expect(Recipe.safeParse({ ...recipe, components: withZero }).success).toBe(false);
+    const elsewhere = [
+      recipe.components[0],
+      { kind: 'asset', asset: 'base:nvda', weightBps: 4000 },
+    ];
+    expect(Recipe.safeParse({ ...recipe, components: elsewhere }).success).toBe(false);
+  });
+
+  it('checks an address against its family', () => {
+    const checksummed = '0x204FAca1764B154221e35c0d20aBb3c525710498';
+    expect(normalizeAddress('evm', checksummed)).toBe(EVM);
+    expect(normalizeAddress('solana', ` ${SOL} `)).toBe(SOL);
+    expect(() => normalizeAddress('solana', EVM)).toThrow();
+    expect(() => normalizeAddress('evm', SOL)).toThrow();
+    expect(SolanaAddress.safeParse(EVM).success).toBe(false);
+    expect(EvmAddress.safeParse(SOL).success).toBe(false);
+    // Base58 of the right length that is not 32 bytes is not an address.
+    expect(SolanaAddress.safeParse('abcdefghijkmnopqrstuvwxyzABCDEFG').success).toBe(false);
+    expect(SolanaAddress.safeParse('1'.repeat(32)).success).toBe(true);
+
+    expect(Owner.safeParse({ solana: SOL, evm: EVM }).success).toBe(true);
+    expect(Owner.safeParse({ solana: EVM }).success).toBe(false);
+    expect(Owner.safeParse({ evm: SOL }).success).toBe(false);
+    expect(Owner.safeParse({ evm: checksummed }).success).toBe(false);
+    expect(Owner.safeParse({}).success).toBe(false);
+
+    const wallet = { family: 'evm', address: EVM, kind: 'embedded' };
+    expect(WalletAccount.safeParse(wallet).success).toBe(true);
+    expect(WalletAccount.safeParse({ ...wallet, family: 'solana' }).success).toBe(false);
+    expect(WalletAccount.safeParse({ ...wallet, address: checksummed }).success).toBe(false);
+
+    const asset = {
+      id: 'robinhood:nvda',
+      chain: 'robinhood',
+      address: EVM,
+      symbol: 'NVDA',
+      decimals: 18,
+      cls: 'stock',
+      underlying: 'NVDA',
+      issuer: 'x',
+      tier: 'A',
+      priceKind: 'chainlink',
+      priceRef: '',
+      session: 'us_equity',
+      autoFollowEligible: true,
+      maxWeightBps: 5000,
+      blockedCountries: [],
+      sheet: '',
+      provenance: 'sandbox',
+    };
+    expect(BasketAsset.safeParse(asset).success).toBe(true);
+    expect(BasketAsset.safeParse({ ...asset, chain: 'solana' }).success).toBe(false);
+    expect(BasketAsset.safeParse({ ...asset, id: 'base:nvda' }).success).toBe(false);
+    expect(BasketAsset.safeParse({ ...asset, address: SOL }).success).toBe(false);
+  });
+
+  it('holds a trade to two different assets on one chain, and a leg to its signer', () => {
+    const trade = { sell: 'solana:usdc', buy: 'solana:spyx', amountInRaw: '1' };
+    expect(Trade.safeParse(trade).success).toBe(true);
+    expect(Trade.safeParse({ ...trade, buy: 'solana:usdc' }).success).toBe(false);
+    expect(Trade.safeParse({ ...trade, buy: 'base:spy' }).success).toBe(false);
+
+    const leg = {
+      id: 'l',
+      orderId: 'o',
+      chain: 'base',
+      seq: 0,
+      kind: 'approve',
+      signer: 'owner',
+      description: '',
+      trades: [],
+      expected: null,
+      status: 'planned',
+      attempt: 0,
+      txId: null,
+      explorerUrl: null,
+      validUntil: null,
+      error: null,
+      trigger: 'manual',
+      provenance: 'live',
+    };
+    expect(Leg.safeParse(leg).success).toBe(true);
+    // A keeper leg belongs to no order and is one of the two keeper kinds; an owner leg is neither.
+    expect(Leg.safeParse({ ...leg, signer: 'keeper' }).success).toBe(false);
+    expect(Leg.safeParse({ ...leg, signer: 'keeper', orderId: null }).success).toBe(false);
+    expect(Leg.safeParse({ ...leg, kind: 'keeper_leg' }).success).toBe(false);
+    expect(Leg.safeParse({ ...leg, orderId: null }).success).toBe(false);
+    const keeper = { ...leg, signer: 'keeper', orderId: null, kind: 'adopt_version' };
+    expect(Leg.safeParse(keeper).success).toBe(true);
+  });
+
+  it('carries one refusal type, with one list of codes', () => {
+    const e = new ChainError('VersionMismatch', 'the active version is 3');
+    expect(e).toBeInstanceOf(Error);
+    expect(e.toJSON()).toEqual({
+      code: 'VersionMismatch',
+      message: 'the active version is 3',
+      retryable: false,
+    });
+    // Building again can succeed on its own for these, and only for these kinds of refusal.
+    expect(new ChainError('ReceivedTooLittle', '').retryable).toBe(true);
+    expect(new ChainError('MarketClosed', '').retryable).toBe(true);
+    expect(new ChainError('NotFunded', '').retryable).toBe(false);
+    expect(new ChainError('Unknown', '', true).retryable).toBe(true);
+    // The vault's own errors, in the order the design freezes them, come first.
+    expect(ChainErrorCode.options.slice(0, 3)).toEqual([
+      'NotKeeper',
+      'AutoFollowOff',
+      'KeeperPaused',
+    ]);
+    expect(ChainErrorCode.options).toContain('BadInput');
+    expect(new Set(ChainErrorCode.options).size).toBe(ChainErrorCode.options.length);
+  });
+
+  it('exports the plain object beside each refined schema, since zod refuses to reshape a refined one', () => {
+    expect(() => Recipe.omit({ onchainId: true })).toThrow();
+    for (const base of [RecipeBase, BasketProposalBase, LegBase, BuiltTxBase])
+      expect(Object.keys(base.partial().shape).length).toBeGreaterThan(5);
+    expect(Object.keys(RecipeBase.omit({ onchainId: true }).shape)).not.toContain('onchainId');
+    expect(Object.keys(BasketProposalBase.pick({ lines: true }).shape)).toEqual(['lines']);
+  });
+
+  it('names the bodies of the order routes', () => {
+    expect(ReportLegRequest.safeParse({ txId: 'abc' }).success).toBe(true);
+    expect(ReportLegRequest.safeParse({ signedTx: 'AA==' }).success).toBe(true);
+    expect(ReportLegRequest.safeParse({ txId: 'abc', signedTx: 'AA==' }).success).toBe(false);
+    expect(ReportLegRequest.safeParse({}).success).toBe(false);
+    expect(ConsentRequest.safeParse({ kinds: ['auto_follow_on'], textVersion: '1' }).success).toBe(
+      true,
+    );
+    expect(ConsentRequest.safeParse({ kinds: [], textVersion: '1' }).success).toBe(false);
+    expect(Object.keys(BuildLegResponse.shape)).toEqual(['tx', 'attempt']);
+    // The parser's draft: every field of the sheet, each allowed to be null.
+    const empty = Object.fromEntries(Object.keys(BasketSheet.shape).map((k) => [k, null]));
+    expect(BasketSheetDraft.safeParse(empty).success).toBe(true);
+    expect(BasketSheetDraft.safeParse({ ...empty, amountUsd: 5 }).success).toBe(false);
+    expect(Object.keys(BasketSheetDraft.shape)).toEqual(Object.keys(BasketSheet.shape));
+    // A creator sends the chain and the weights; the server and the registry assign the rest.
+    const publish = {
+      type: 'publish',
+      creator: { solana: SOL },
+      family: 'x',
+      name: 'X',
+      copy: '',
+      recipes: [{ chain: 'solana', components: recipe.components }],
+    };
+    expect(IntentRequest.safeParse(publish).success).toBe(true);
+    const viaIndex = [{ kind: 'index', family: 'chips', weightBps: 10_000 }];
+    const personal = { ...publish, recipes: [{ chain: 'solana', components: viaIndex }] };
+    expect(IntentRequest.safeParse(personal).success).toBe(false);
   });
 });

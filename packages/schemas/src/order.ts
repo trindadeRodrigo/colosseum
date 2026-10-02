@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { ApiError } from './api';
-import { Address, ChainId, RawAmount } from './chain';
+import { Address, ChainId, EvmAddress, RawAmount, SolanaAddress } from './chain';
 import { Provenance } from './enums';
-import { Recipe } from './recipe';
+import { RecipeDraft } from './recipe';
 import { Trade } from './vault';
 import { WalletAccount } from './wallet';
 
@@ -37,8 +37,9 @@ export type LegKind = z.infer<typeof LegKind>;
 export const LegTrigger = z.enum(['manual', 'index_update', 'drift', 'liquidity_breach']);
 export type LegTrigger = z.infer<typeof LegTrigger>;
 
-/** A planned step. Never duplicated: each build is an Attempt, and the leg mirrors its latest one. */
-export const Leg = z.object({
+const KEEPER_KINDS: ReadonlySet<string> = new Set(['adopt_version', 'keeper_leg']);
+
+export const LegBase = z.object({
   id: z.string().min(1),
   /** Null for keeper legs. */
   orderId: z.string().min(1).nullable(),
@@ -58,11 +59,24 @@ export const Leg = z.object({
   explorerUrl: z.string().nullable(),
   /** Opaque to everything but the adapter that produced it: a block height on Solana. */
   validUntil: z.string().nullable(),
+  /** A ChainError's three fields where the chain or an adapter refused; a WalletError's code where the wallet did. */
   error: z.object({ code: z.string(), message: z.string(), retryable: z.boolean() }).nullable(),
   trigger: LegTrigger,
   // The design says 'live' | 'mock'. Since test networks came first (GATES, 2026-10-02) a leg on one is
   // neither, so this is the full Provenance: 'sandbox' is a test network or a local copy.
   provenance: Provenance,
+});
+
+/**
+ * A planned step. Never duplicated: each build is an Attempt, and the leg mirrors its latest one.
+ * A keeper leg belongs to no order and is one of the two keeper kinds; an owner leg is neither.
+ */
+export const Leg = LegBase.refine((l) => (l.signer === 'keeper') === (l.orderId === null), {
+  message: 'a keeper leg has no order, and an owner leg has one',
+  path: ['orderId'],
+}).refine((l) => (l.signer === 'keeper') === KEEPER_KINDS.has(l.kind), {
+  message: 'adopt_version and keeper_leg are the keeper kinds, and the only ones',
+  path: ['kind'],
 });
 export type Leg = z.infer<typeof Leg>;
 
@@ -83,10 +97,13 @@ export const Attempt = z.object({
 });
 export type Attempt = z.infer<typeof Attempt>;
 
-/** One address per wallet family. The EVM address serves both EVM chains. */
-export const Owner = z
-  .object({ solana: Address.optional(), evm: Address.optional() })
-  .refine((o) => Boolean(o.solana ?? o.evm), 'an owner has at least one address');
+export const OwnerBase = z.object({ solana: SolanaAddress.optional(), evm: EvmAddress.optional() });
+
+/** One address per wallet family, each in its family's form. The EVM address serves both EVM chains. */
+export const Owner = OwnerBase.refine(
+  (o) => Boolean(o.solana ?? o.evm),
+  'an owner has at least one address',
+);
 export type Owner = z.infer<typeof Owner>;
 
 export const OrderType = z.enum(['buy', 'rebalance', 'follow', 'publish', 'withdraw', 'settings']);
@@ -146,7 +163,8 @@ export const IntentRequest = z.discriminatedUnion('type', [
     family: z.string().min(1),
     name: z.string().min(1),
     copy: z.string(),
-    recipes: z.array(Recipe).min(1),
+    /** One per chain. Only the chain and the weights: the server and the registry assign the rest. */
+    recipes: z.array(RecipeDraft).min(1),
   }),
   z.object({
     type: z.literal('withdraw'),
@@ -166,7 +184,11 @@ export const Principal = z.object({
 });
 export type Principal = z.infer<typeof Principal>;
 
-/** MARKET_CLOSED is a warning on an order, not an error: only keeper trades are bound to the session. */
+/**
+ * What the API answers with. A ChainError from an adapter is mapped onto one of these (NotFunded to
+ * NOT_FUNDED, VersionMismatch to VERSION_CHANGED, and so on); the vault's own name stays on the leg.
+ * MARKET_CLOSED is a warning on an order, not an error: only keeper trades are bound to the session.
+ */
 export const OrderErrorCode = z.enum([
   'NOT_FUNDED',
   'ASSET_NOT_ELIGIBLE',

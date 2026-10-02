@@ -76,8 +76,16 @@ export const VaultView = VaultState.extend({
 });
 export type VaultView = z.infer<typeof VaultView>;
 
-/** One side is the chain's cash token. */
-export const Trade = z.object({ sell: AssetId, buy: AssetId, amountInRaw: RawAmount });
+export const TradeBase = z.object({ sell: AssetId, buy: AssetId, amountInRaw: RawAmount });
+
+/** One side is the chain's cash token; both sides are on one chain. */
+export const Trade = TradeBase.refine(
+  (t) => t.sell !== t.buy,
+  'a trade has two different sides',
+).refine(
+  (t) => t.sell.split(':')[0] === t.buy.split(':')[0],
+  'both sides of a trade are on one chain',
+);
 export type Trade = z.infer<typeof Trade>;
 
 export const Quote = Sourced.extend({

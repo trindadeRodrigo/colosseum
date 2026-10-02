@@ -25,6 +25,25 @@ export const BasketSheet = z.object({
 });
 export type BasketSheet = z.infer<typeof BasketSheet>;
 
+/**
+ * What the sentence parser fills (DESIGN-VAULT section 7): every field of the sheet, each null when the
+ * text did not say. The form is always the confirm step that turns a draft into a BasketSheet.
+ */
+export const BasketSheetDraft = z.object({
+  basketType: BasketSheet.shape.basketType.nullable(),
+  goal: BasketSheet.shape.goal.nullable(),
+  amountUsd: BasketSheet.shape.amountUsd.nullable(),
+  horizonMonths: BasketSheet.shape.horizonMonths.nullable(),
+  risk: BasketSheet.shape.risk.nullable(),
+  themes: BasketSheet.shape.themes.nullable(),
+  country: BasketSheet.shape.country.nullable(),
+  chains: BasketSheet.shape.chains.nullable(),
+  incomeTargetUsdMonthly: z.number().positive().nullable(),
+  rules: BasketSheet.shape.rules.nullable(),
+  language: BasketSheet.shape.language.nullable(),
+});
+export type BasketSheetDraft = z.infer<typeof BasketSheetDraft>;
+
 /** Everything a plan can be built from: the listed assets and the shared portfolios. */
 export const Shelf = z.object({
   version: z.string().min(1),
@@ -101,30 +120,30 @@ export const ObservationRef = Sourced.extend({
 });
 export type ObservationRef = z.infer<typeof ObservationRef>;
 
-export const BasketProposal = z
-  .object({
-    sheet: BasketSheet,
-    engineVersion: z.string().min(1),
-    paramsHash: z.string().min(1),
-    shelfVersion: z.string().min(1),
-    inputsHash: z.string().min(1),
-    lines: z.array(BasketLine),
-    recipes: z.array(
-      z.object({
-        chain: ChainId,
-        amountUsd: z.number().nonnegative(),
-        components: z.array(Component),
-      }),
-    ),
-    removed: z.array(z.object({ ref: z.string(), reasons: z.array(Reason) })),
-    card: BasketCard,
-    verdict: Verdict.optional(),
-    flags: z.array(z.string()),
-    observations: z.array(ObservationRef),
-    disclaimer: z.string(),
-  })
-  .refine((p) => p.lines.reduce((n, l) => n + l.weightBps, 0) === 10_000, {
-    message: 'line weights must add up to exactly 10,000',
-    path: ['lines'],
-  });
+export const BasketProposalBase = z.object({
+  sheet: BasketSheet,
+  engineVersion: z.string().min(1),
+  paramsHash: z.string().min(1),
+  shelfVersion: z.string().min(1),
+  inputsHash: z.string().min(1),
+  lines: z.array(BasketLine),
+  recipes: z.array(
+    z.object({
+      chain: ChainId,
+      amountUsd: z.number().nonnegative(),
+      components: z.array(Component),
+    }),
+  ),
+  removed: z.array(z.object({ ref: z.string(), reasons: z.array(Reason) })),
+  card: BasketCard,
+  verdict: Verdict.optional(),
+  flags: z.array(z.string()),
+  observations: z.array(ObservationRef),
+  disclaimer: z.string(),
+});
+
+export const BasketProposal = BasketProposalBase.refine(
+  (p) => p.lines.reduce((n, l) => n + l.weightBps, 0) === 10_000,
+  { message: 'line weights must add up to exactly 10,000', path: ['lines'] },
+);
 export type BasketProposal = z.infer<typeof BasketProposal>;

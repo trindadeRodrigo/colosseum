@@ -1,14 +1,20 @@
 import { z } from 'zod';
 import type { BasketTx } from './basket-tx';
-import { Address, type ChainId } from './chain';
+import { Address, type ChainId, isAddressOf } from './chain';
 import { Chain } from './enums';
 
 // DESIGN-VAULT 3.5. No Privy types here: the web app implements WalletPort over whatever provider it uses.
 
-export const WalletAccount = z.object({
+export const WalletAccountBase = z.object({
   family: Chain,
   address: Address,
   kind: z.enum(['embedded', 'external']),
+});
+
+/** The address is in its family's form: run normalizeAddress() on what a wallet provider returns. */
+export const WalletAccount = WalletAccountBase.refine((w) => isAddressOf(w.family, w.address), {
+  message: "the address is in the form of the wallet's family",
+  path: ['address'],
 });
 export type WalletAccount = z.infer<typeof WalletAccount>;
 

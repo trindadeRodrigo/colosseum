@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Address, AssetId, Bps, ChainId } from './chain';
+import { Address, AssetId, Bps, ChainId, chainFamily, isAddressOf } from './chain';
 import { Provenance } from './enums';
 
 // DESIGN-VAULT 3.1. The structurer's `Asset` in asset.ts is untouched.
@@ -22,7 +22,7 @@ export type AssetTier = z.infer<typeof AssetTier>;
 export const PriceKind = z.enum(['scope', 'chainlink', 'none']);
 export type PriceKind = z.infer<typeof PriceKind>;
 
-export const BasketAsset = z.object({
+export const BasketAssetBase = z.object({
   id: AssetId,
   chain: ChainId,
   address: Address,
@@ -44,5 +44,14 @@ export const BasketAsset = z.object({
   /** The risk sheet this asset points to, under content/risk-sheets/. */
   sheet: z.string(),
   provenance: Provenance,
+});
+
+/** An asset belongs to one chain: its id starts with that chain and its address is in that chain's form. */
+export const BasketAsset = BasketAssetBase.refine((a) => a.id.startsWith(`${a.chain}:`), {
+  message: "the id starts with the asset's chain",
+  path: ['id'],
+}).refine((a) => isAddressOf(chainFamily(a.chain), a.address), {
+  message: "the address is in the form of the asset's chain",
+  path: ['address'],
 });
 export type BasketAsset = z.infer<typeof BasketAsset>;

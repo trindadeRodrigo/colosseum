@@ -43,13 +43,6 @@
       "when": 1790820018428,
       "tag": "0005_rich_absorbing_man",
       "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1790962152961,
-      "tag": "0006_basket",
-      "breakpoints": true
     }
   ]
 }

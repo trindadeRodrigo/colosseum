@@ -11,14 +11,59 @@ export function chainFamily(chain: ChainId): Chain {
   return chain === 'solana' ? 'solana' : 'evm';
 }
 
-/** base58 on Solana; lower-case 0x on EVM, so an address compares equal as a string. */
-export const Address = z
+const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+
+/** How many bytes a base58 string stands for, or -1 when a character is not base58. */
+function base58ByteLength(text: string): number {
+  let n = 0n;
+  let zeros = 0;
+  let leading = true;
+  for (const ch of text) {
+    const digit = BASE58.indexOf(ch);
+    if (digit < 0) return -1;
+    if (leading && digit === 0) zeros += 1;
+    else leading = false;
+    n = n * 58n + BigInt(digit);
+  }
+  return zeros + (n === 0n ? 0 : Math.ceil(n.toString(16).length / 2));
+}
+
+/** A Solana address: base58 that decodes to exactly 32 bytes. */
+export const SolanaAddress = z
   .string()
-  .regex(
-    /^(?:[1-9A-HJ-NP-Za-km-z]{32,44}|0x[0-9a-f]{40})$/,
-    'expected a base58 address or a lower-case 0x address',
-  );
+  .regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, 'expected a base58 address')
+  .refine((s) => base58ByteLength(s) === 32, 'expected 32 bytes in base58');
+export type SolanaAddress = z.infer<typeof SolanaAddress>;
+
+/** An EVM address in its one canonical form here: lower-case 0x. Use normalizeAddress() on outside input. */
+export const EvmAddress = z.string().regex(/^0x[0-9a-f]{40}$/, 'expected a lower-case 0x address');
+export type EvmAddress = z.infer<typeof EvmAddress>;
+
+/** base58 on Solana; lower-case 0x on EVM, so an address compares equal as a string. */
+export const Address = z.union([SolanaAddress, EvmAddress]);
 export type Address = z.infer<typeof Address>;
+
+/** The address schema of one wallet family. */
+export const AddressOf = { solana: SolanaAddress, evm: EvmAddress } as const;
+
+/** True when `address` is in the form of `family`. For cross-field checks. */
+export function isAddressOf(family: Chain, address: string): boolean {
+  return AddressOf[family].safeParse(address).success;
+}
+
+/**
+ * An address from outside (a wallet provider, a config value) in the form used here: an EVM address is
+ * lower-cased, whatever its checksum case; a Solana address is left as it is. Throws when it is not an
+ * address of that family. The message never repeats the value.
+ */
+export function normalizeAddress(family: Chain, value: string): Address {
+  const trimmed = value.trim();
+  const candidate = family === 'evm' ? trimmed.toLowerCase() : trimmed;
+  const parsed = AddressOf[family].safeParse(candidate);
+  if (!parsed.success)
+    throw new Error(family === 'evm' ? 'not a 0x address' : 'not a base58 address of 32 bytes');
+  return parsed.data;
+}
 
 /** Raw token units as a decimal string. Never a float. */
 export const RawAmount = z

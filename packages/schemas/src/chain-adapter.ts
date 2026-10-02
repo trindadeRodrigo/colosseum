@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { BasketAsset } from './basket-asset';
-import type { BasketTx } from './basket-tx';
+import type { BuiltTx } from './basket-tx';
 import { Address, AssetId, BasketId, Bps, type ChainId, RawAmount } from './chain';
 import { Recipe, Target, Targets } from './recipe';
 import {
@@ -103,23 +103,26 @@ export interface ChainReader {
   track(txId: string, validUntil?: string): Promise<TxStatus>;
 }
 
-/** Each call returns ONE transaction; the planner splits by the capabilities. */
+/**
+ * Each call returns ONE transaction; the planner splits by the capabilities. A builder that refuses
+ * throws a ChainError, for bad arguments as much as for a simulated revert.
+ */
 export interface OwnerBuilder {
-  buildApprove(a: ApproveArgs): Promise<BasketTx>;
-  buildCreateVault(a: CreateVaultArgs): Promise<BasketTx>;
-  buildDeposit(a: DepositArgs): Promise<BasketTx>;
-  buildOwnerSwap(a: OwnerSwapArgs): Promise<BasketTx>;
-  buildSetTargets(a: SetTargetsArgs): Promise<BasketTx>;
-  buildAcceptVersion(a: AcceptVersionArgs): Promise<BasketTx>;
-  buildSetAutoFollow(a: SetAutoFollowArgs): Promise<BasketTx>;
+  buildApprove(a: ApproveArgs): Promise<BuiltTx>;
+  buildCreateVault(a: CreateVaultArgs): Promise<BuiltTx>;
+  buildDeposit(a: DepositArgs): Promise<BuiltTx>;
+  buildOwnerSwap(a: OwnerSwapArgs): Promise<BuiltTx>;
+  buildSetTargets(a: SetTargetsArgs): Promise<BuiltTx>;
+  buildAcceptVersion(a: AcceptVersionArgs): Promise<BuiltTx>;
+  buildSetAutoFollow(a: SetAutoFollowArgs): Promise<BuiltTx>;
   /** Always to the owner. */
-  buildWithdrawInKind(a: WithdrawInKindArgs): Promise<BasketTx[]>;
-  buildPublishRecipe(a: PublishRecipeArgs): Promise<BasketTx>;
+  buildWithdrawInKind(a: WithdrawInKindArgs): Promise<BuiltTx[]>;
+  buildPublishRecipe(a: PublishRecipeArgs): Promise<BuiltTx>;
 }
 
 export interface KeeperBuilder {
-  buildAdoptVersion(vault: Address): Promise<BasketTx>;
-  buildKeeperLeg(vault: Address, trade: Trade): Promise<BasketTx>;
+  buildAdoptVersion(vault: Address): Promise<BuiltTx>;
+  buildKeeperLeg(vault: Address, trade: Trade): Promise<BuiltTx>;
 }
 
 /** No builder sets a vault's keeper or operator. */

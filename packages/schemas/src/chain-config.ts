@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { PriceKind } from './basket-asset';
-import { Address, ChainId } from './chain';
-import { Chain, Provenance } from './enums';
-import { type ChainMode, type EnvLike, envKey } from './flags';
+import { Address, ChainId, normalizeAddress } from './chain';
+import { CHAIN_PRESETS, type ChainPresets } from './chain-presets';
+import { Chain, type Provenance } from './enums';
+import { type ChainMode, type EnvLike, envKey, type Flags, readEnv } from './flags';
 
 // GATES 2026-10-02 (SHOW): built and shown on test networks first, mainnet later by configuration.
 // So a chain's network, its chain id and the addresses that differ per network live here, never in the
@@ -11,6 +12,10 @@ import { type ChainMode, type EnvLike, envKey } from './flags';
 export const Network = z.enum(['mainnet', 'testnet', 'local']);
 export type Network = z.infer<typeof Network>;
 
+/**
+ * Where a chain is. It carries no provenance: the label on a figure depends on how the chain is run as
+ * well, so it is worked out by chainProvenance() where the mode is known.
+ */
 export const ChainConfig = z.object({
   id: ChainId,
   family: Chain,
@@ -30,129 +35,50 @@ export const ChainConfig = z.object({
    * feeds are per asset (`BasketAsset.priceRef`), so it stays null.
    */
   priceSource: z.object({ kind: PriceKind, address: Address.nullable() }),
-  /** Our own deployments on this network, by name: `program`, `factory`, `registry`, `cash`. */
+  /** Our own deployments on this network, by name. REQUIRED_CONTRACTS lists the ones a chain needs. */
   contracts: z.record(z.string(), Address),
-  /**
-   * The label on every figure read from this network. This is the existing Provenance, not a second
-   * scale: `live` is mainnet only, and a test network or a local copy is `sandbox`.
-   */
-  provenance: Provenance,
 });
 export type ChainConfig = z.infer<typeof ChainConfig>;
 
-export function networkProvenance(network: Network): Provenance {
+/**
+ * The label on every figure read from a chain, given how it is run. This is the existing Provenance,
+ * not a second scale:
+ * - `mock`: the chain runs on packages/chain-mock, whatever network it is set to.
+ * - `live`: mainnet, read or traded for real.
+ * - `sandbox`: a test network, or a local copy of mainnet.
+ * - null: the chain is off, so there is no figure to label.
+ */
+export function chainProvenance(network: Network, mode: ChainMode): Provenance | null {
+  if (mode === 'off') return null;
+  if (mode === 'mock') return 'mock';
   return network === 'mainnet' ? 'live' : 'sandbox';
 }
 
-/** What a figure from this chain is labelled with, given how the chain is run. The mock wins. */
-export function chainProvenance(network: Network, mode: ChainMode): Provenance {
-  return mode === 'mock' ? 'mock' : networkProvenance(network);
-}
-
-type Preset = Omit<ChainConfig, 'id' | 'family' | 'name' | 'network' | 'provenance' | 'contracts'>;
-export type ChainPresets = Record<
-  ChainId,
-  { family: Chain; name: string; networks: Record<Network, Preset> }
->;
-
-const JUPITER_V6 = 'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4';
-/** Universal Router 2.1.2 on Robinhood Chain (DESIGN-VAULT section 5). */
-const ROBINHOOD_UNIVERSAL_ROUTER = '0x204faca1764b154221e35c0d20abb3c525710498';
-
-const solanaMainnet: Preset = {
-  networkName: 'mainnet-beta',
-  evmChainId: null,
-  explorerTx: 'https://solscan.io/tx/{txId}',
-  router: JUPITER_V6,
-  // The Scope prices account is not written in full anywhere in this repo: set CHAIN_PRICE_SOURCE_SOLANA.
-  priceSource: { kind: 'scope', address: null },
-};
-const robinhoodMainnet: Preset = {
-  networkName: 'Robinhood Chain',
-  evmChainId: 4663,
-  // No explorer address for mainnet is recorded in this repo yet.
-  explorerTx: null,
-  router: ROBINHOOD_UNIVERSAL_ROUTER,
-  priceSource: { kind: 'chainlink', address: null },
-};
-const baseMainnet: Preset = {
-  networkName: 'Base',
-  evmChainId: 8453,
-  explorerTx: 'https://basescan.org/tx/{txId}',
-  // Our SlipstreamAdapter, once deployed.
-  router: null,
-  priceSource: { kind: 'chainlink', address: null },
+/** The deployments a chain cannot run without, by family. */
+export const REQUIRED_CONTRACTS: Record<Chain, readonly string[]> = {
+  solana: ['program'],
+  evm: ['factory', 'registry'],
 };
 
-/**
- * What is known per network before anything of ours is deployed. Test networks have no Jupiter, no
- * Universal Router 2.1.2 and no price feeds (docs/vault/research/test-networks.md): their router and
- * price source are ours, and stay null here until a deploy sets them.
- * `local` is a copy of mainnet on the developer's machine, as the two rigs under spikes/ run: mainnet's
- * ids and addresses, no explorer, and never labelled live.
- */
-export const CHAIN_PRESETS: ChainPresets = {
-  solana: {
-    family: 'solana',
-    name: 'Solana',
-    networks: {
-      mainnet: solanaMainnet,
-      testnet: {
-        networkName: 'devnet',
-        evmChainId: null,
-        explorerTx: 'https://solscan.io/tx/{txId}?cluster=devnet',
-        router: null,
-        priceSource: { kind: 'scope', address: null },
-      },
-      local: { ...solanaMainnet, networkName: 'local copy of mainnet', explorerTx: null },
-    },
-  },
-  robinhood: {
-    family: 'evm',
-    name: 'Robinhood Chain',
-    networks: {
-      mainnet: robinhoodMainnet,
-      testnet: {
-        networkName: 'Robinhood Chain testnet',
-        evmChainId: 46630,
-        explorerTx: 'https://explorer.testnet.chain.robinhood.com/tx/{txId}',
-        router: null,
-        priceSource: { kind: 'chainlink', address: null },
-      },
-      local: { ...robinhoodMainnet, networkName: 'local copy of mainnet', explorerTx: null },
-    },
-  },
-  base: {
-    family: 'evm',
-    name: 'Base',
-    networks: {
-      mainnet: baseMainnet,
-      testnet: {
-        networkName: 'Base Sepolia',
-        evmChainId: 84532,
-        explorerTx: 'https://sepolia.basescan.org/tx/{txId}',
-        router: null,
-        priceSource: { kind: 'chainlink', address: null },
-      },
-      local: { ...baseMainnet, networkName: 'local copy of mainnet', explorerTx: null },
-    },
-  },
-};
-
-function address(env: EnvLike, key: string): string | undefined {
+// An error names the variable and never repeats its value.
+function address(env: EnvLike, key: string, family: Chain): Address | undefined {
   const v = env[key]?.trim();
   if (!v) return undefined;
-  const parsed = Address.safeParse(v);
-  if (!parsed.success)
-    throw new Error(`${key}: expected a base58 address or a lower-case 0x address`);
-  return parsed.data;
+  try {
+    return normalizeAddress(family, v);
+  } catch {
+    throw new Error(
+      `${key}: expected ${family === 'evm' ? 'a 0x address' : 'a base58 address of 32 bytes'}`,
+    );
+  }
 }
 
 /**
  * Pure: one config per chain from the record it is given.
  * - CHAIN_NETWORK_<CHAIN> = mainnet | testnet | local. Unset means testnet, so nothing reaches mainnet
  *   by omission.
- * - CHAIN_ROUTER_<CHAIN> and CHAIN_PRICE_SOURCE_<CHAIN> replace the preset's address.
+ * - CHAIN_ROUTER_<CHAIN> and CHAIN_PRICE_SOURCE_<CHAIN> replace the preset's address. Each must be an
+ *   address of the chain's own family; an EVM address may be in any case and is stored lower-case.
  * `contracts` come from the second argument, which a deploy fills.
  */
 export function parseChainConfigs(
@@ -162,34 +88,62 @@ export function parseChainConfigs(
 ): Record<ChainId, ChainConfig> {
   const one = (id: ChainId): ChainConfig => {
     const key = envKey('CHAIN_NETWORK', id);
-    const raw = env[key]?.trim().toLowerCase();
-    const network = Network.safeParse(raw || 'testnet');
-    if (!network.success)
-      throw new Error(`${key}: expected ${Network.options.join(', ')}, got "${env[key]}"`);
+    const network = Network.safeParse(readEnv(env, key) ?? 'testnet');
+    if (!network.success) throw new Error(`${key}: expected ${Network.options.join(', ')}`);
     const { family, name, networks } = presets[id];
     const preset = networks[network.data];
+    const deployed = Object.entries(contracts[id] ?? {}).map(([contract, value]) => {
+      try {
+        return [contract, normalizeAddress(family, value)];
+      } catch {
+        throw new Error(`contracts.${id}.${contract}: not an address of the ${family} family`);
+      }
+    });
     return ChainConfig.parse({
       id,
       family,
       name,
       network: network.data,
       ...preset,
-      router: address(env, envKey('CHAIN_ROUTER', id)) ?? preset.router,
+      router: address(env, envKey('CHAIN_ROUTER', id), family) ?? preset.router,
       priceSource: {
         kind: preset.priceSource.kind,
-        address: address(env, envKey('CHAIN_PRICE_SOURCE', id)) ?? preset.priceSource.address,
+        address:
+          address(env, envKey('CHAIN_PRICE_SOURCE', id), family) ?? preset.priceSource.address,
       },
-      contracts: contracts[id] ?? {},
-      provenance: networkProvenance(network.data),
+      contracts: Object.fromEntries(deployed),
     });
   };
   return { solana: one('solana'), robinhood: one('robinhood'), base: one('base') };
 }
 
-/** `explorerTx` with the id filled in, or null when the network has no explorer. */
-export function explorerTxUrl(
-  config: Pick<ChainConfig, 'explorerTx'>,
-  txId: string,
-): string | null {
+/**
+ * Throws when a chain is set to `live` or `readonly` and its config cannot run it: no router, no price
+ * account on Solana, or a deployment missing from `contracts`. Called once at start, so a chain that is
+ * not deployed fails there and not on the first request.
+ */
+export function assertChainsReady(flags: Flags, configs: Record<ChainId, ChainConfig>): void {
+  for (const id of ChainId.options) {
+    const mode = flags.chainMode[id];
+    if (mode !== 'live' && mode !== 'readonly') continue;
+    const config = configs[id];
+    const missing = [
+      ...(config.router ? [] : [envKey('CHAIN_ROUTER', id)]),
+      ...(config.priceSource.kind === 'scope' && !config.priceSource.address
+        ? [envKey('CHAIN_PRICE_SOURCE', id)]
+        : []),
+      ...REQUIRED_CONTRACTS[config.family]
+        .filter((name) => !config.contracts[name])
+        .map((name) => `contracts.${id}.${name}`),
+    ];
+    if (missing.length)
+      throw new Error(
+        `${envKey('CHAIN_MODE', id)} is ${mode} on ${config.networkName}, but these are not set: ${missing.join(', ')}`,
+      );
+  }
+}
+
+/** A link to one transaction on the chain's explorer, or null when the network has none. */
+export function explorerLink(config: Pick<ChainConfig, 'explorerTx'>, txId: string): string | null {
   return config.explorerTx ? config.explorerTx.replace('{txId}', txId) : null;
 }
