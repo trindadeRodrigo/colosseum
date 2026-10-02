@@ -74,6 +74,8 @@
     "risk:prices-extract": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/prices/extract.ts",
     "risk:prices-validate": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/prices/validate.ts",
     "risk:prices-import": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/prices/import.ts",
+    "risk:prices-job": "tsx scripts/risk/prices/job.ts",
+    "risk:prices-install-job": "zsh scripts/risk/prices/install-job.sh",
     "risk:prices-freeze-fixtures": "tsx scripts/risk/prices/freeze-fixtures.ts && biome format --write fixtures/risk/prices"
   },
   "devDependencies": {

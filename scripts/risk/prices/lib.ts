@@ -64,11 +64,13 @@ export function* readObservations(only?: readonly string[]): Generator<StoredObs
   }
 }
 
+/** JupUSD, valued at par like USDC (PLAN-RISK D20): Jupiter Lend prices a stock the same in both vaults. */
+export const JUPUSD = 'JuprjznTrTSp2UFa3ZBUFgwdAmtZCq4MQCwysN55USD';
 /** USD stablecoins that are debt reserves and refreshed rarely: a day-old logged price is accepted (policy input). */
 const USD_STABLE_SYMBOLS = ['USDG', 'PYUSD'];
 
 export type PriceInputs = {
-  /** Every stored observation, with `live: false` set where a stock oracle was not pricing the stock. */
+  /** Every observation given, with `live: false` set where a stock oracle was not pricing the stock. */
   observations: StoredObservation[];
   index: PriceIndex;
   ctx: PriceContext;
@@ -79,10 +81,11 @@ export type PriceInputs = {
 };
 
 /**
- * Everything the resolver needs, from the observation files and the lending registry: the index (with the
- * liveness flags set on stock oracle observations), the parameters, the calendar and the session clock.
+ * Everything the resolver needs, from a set of observations and the lending registry: the index (with the
+ * liveness flags set on stock oracle observations), the parameters, the calendar and the session clocks. It reads
+ * only `~/.colosseum/risk` and the calendar (`RISK_HOLIDAYS`, else the fixture), so the hourly job can use it.
  */
-export function loadPriceInputs(): PriceInputs {
+export function buildPriceInputs(all: StoredObservation[]): PriceInputs {
   const calendar = JSON.parse(
     readFileSync(process.env.RISK_HOLIDAYS ?? 'fixtures/risk/us-market-holidays.json', 'utf8'),
   ) as { closed: string[]; earlyClose13ET: string[] };
@@ -107,12 +110,15 @@ export function loadPriceInputs(): PriceInputs {
         .map((r) => r.mint as string),
     ),
   ];
-  const params = defaultPriceParams({ parMints: [USDC], continuousMints, usdStableMints });
+  const params = defaultPriceParams({
+    parMints: [USDC, JUPUSD],
+    continuousMints,
+    usdStableMints,
+  });
 
-  const all: StoredObservation[] = [...readObservations()];
   const counts: Record<string, number> = {};
   const series = new Map<string, StoredObservation[]>();
-  let minT = Number.POSITIVE_INFINITY;
+  let minT = Math.floor(Date.now() / 1000);
   for (const o of all) {
     counts[`${o.priceSource}|${o.method}`] = (counts[`${o.priceSource}|${o.method}`] ?? 0) + 1;
     if (o.t < minT) minT = o.t;
@@ -130,9 +136,12 @@ export function loadPriceInputs(): PriceInputs {
     const L = markLiveness(a, regime, LP);
     let n = 0;
     L.live.forEach((v, i) => {
-      if (v) return;
-      (a[i] as StoredObservation).live = false;
-      n++;
+      const o = a[i] as StoredObservation;
+      if (v) delete o.live;
+      else {
+        o.live = false;
+        n++;
+      }
     });
     if (n) notLive[k] = n;
   }
@@ -150,3 +159,6 @@ export function loadPriceInputs(): PriceInputs {
     notLive,
   };
 }
+
+/** The inputs from every observation file on disk (`data/risk/prices/obs`). */
+export const loadPriceInputs = (): PriceInputs => buildPriceInputs([...readObservations()]);

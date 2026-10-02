@@ -6,6 +6,7 @@ import { hourlyReferencePrices } from '@colosseum/risk';
 import { sql } from 'drizzle-orm';
 import { latestRegistryFile, type RegistryPool } from '../lib-history';
 import { RISK_HOME } from '../lib-lending';
+import { referenceRow, upsertObservations, upsertReferencePrices } from './db';
 import { loadPriceInputs, PRICES_DIR, PRICES_METHOD_VERSION } from './lib';
 
 // Step 11 item 5 — `pnpm risk:prices-import`. Fills risk_price_observations from the observation files of item 1
@@ -21,9 +22,7 @@ import { loadPriceInputs, PRICES_DIR, PRICES_METHOD_VERSION } from './lib';
 // The run, with the price parameters it used, is appended to data/risk/prices/import-runs.jsonl.
 // Usage: tsx scripts/risk/prices/import.ts [--recent]
 const FULL = !process.argv.includes('--recent');
-const P = { overlapSec: 2 * 86400, chunk: 2000 };
-const SOURCE = 'price observations (Step 11 item 1), resolved by packages/risk/src/prices';
-const METHOD = 'prices-resolve';
+const P = { overlapSec: 2 * 86400 };
 const t0 = Date.now();
 const fetchedAt = new Date();
 const { db, client } = createDb();
@@ -46,62 +45,12 @@ if (!FULL)
     .from(riskPriceObservations)
     .groupBy(riskPriceObservations.priceSource, riskPriceObservations.method))
     newest.set(`${r.s}|${r.m}`, Date.parse(r.t) / 1000);
-let buf: Array<typeof riskPriceObservations.$inferInsert> = [];
-const flush = async () => {
-  if (!buf.length) return;
-  // one statement cannot touch a key twice
-  const seen = new Set<string>();
-  const rows = buf.filter((r) => {
-    const k = `${r.priceSource}|${r.ref}|${r.mint}|${(r.observedAt as Date).getTime()}|${r.slot}|${r.price}`;
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
-  const res = await db
-    .insert(riskPriceObservations)
-    .values(rows)
-    .onConflictDoUpdate({
-      target: [
-        riskPriceObservations.priceSource,
-        riskPriceObservations.ref,
-        riskPriceObservations.mint,
-        riskPriceObservations.observedAt,
-        riskPriceObservations.slot,
-        riskPriceObservations.price,
-      ],
-      set: { live: sql`excluded.live`, failedChecks: sql`excluded.failed_checks` },
-    })
-    .returning({ m: riskPriceObservations.mint });
-  bump('observationsWritten', res.length);
-  buf = [];
-};
-for (const o of inputs.observations) {
-  bump('observationsRead');
+const due = inputs.observations.filter((o) => {
   const since = newest.get(`${o.priceSource}|${o.method}`);
-  if (since !== undefined && o.t < since - P.overlapSec) continue;
-  buf.push({
-    chain: o.chain,
-    mint: o.mint,
-    priceSource: o.priceSource,
-    observedAt: new Date(o.t * 1000),
-    slot: o.slot ?? 0,
-    price: o.price,
-    quote: o.quote,
-    ref: o.ref,
-    market: o.market,
-    live: o.live !== false,
-    failedChecks: o.failedChecks?.length ? o.failedChecks.join(',') : null,
-    sourceTs: o.sourceTs ? new Date(o.sourceTs * 1000) : null,
-    marketStatus: o.marketStatus ?? null,
-    methodVersion: o.methodVersion,
-    source: o.source,
-    method: o.method,
-    fetchedAt: new Date(o.fetchedAt),
-    provenance: 'live',
-  });
-  if (buf.length >= P.chunk) await flush();
-}
-await flush();
+  return since === undefined || o.t >= since - P.overlapSec;
+});
+bump('observationsRead', inputs.observations.length);
+bump('observationsWritten', await upsertObservations(db, due, 'update'));
 
 // ------------------------------------------------------------------------------------------------- reference prices
 const symbolOf = new Map<string, string>();
@@ -130,61 +79,13 @@ const quality: Record<string, number> = {};
 for (const [mint, firstT] of [...first].sort(([a], [b]) => a.localeCompare(b))) {
   const have = stored.get(mint);
   const from = have === undefined ? firstT : Math.max(firstT, have - P.overlapSec);
-  let rows: Array<typeof riskReferencePrices.$inferInsert> = [];
-  const put = async () => {
-    if (!rows.length) return;
-    const res = await db
-      .insert(riskReferencePrices)
-      .values(rows)
-      .onConflictDoUpdate({
-        target: [
-          riskReferencePrices.mint,
-          riskReferencePrices.observedAt,
-          riskReferencePrices.methodVersion,
-        ],
-        set: {
-          priceUsd: sql`excluded.price_usd`,
-          priceSource: sql`excluded.price_source`,
-          ref: sql`excluded.ref`,
-          quality: sql`excluded.quality`,
-          regime: sql`excluded.regime`,
-          ageSec: sql`excluded.age_sec`,
-          priceObservedAt: sql`excluded.price_observed_at`,
-          nullReason: sql`excluded.null_reason`,
-          others: sql`excluded.others`,
-          fetchedAt: sql`excluded.fetched_at`,
-        },
-      })
-      .returning({ m: riskReferencePrices.mint });
-    bump('referencePricesWritten', res.length);
-    rows = [];
-  };
+  const rows = [];
   for (const r of hourlyReferencePrices(inputs.index, inputs.ctx, mint, from, lastHour)) {
     const q = r.quality ?? r.nullReason ?? 'none';
     quality[q] = (quality[q] ?? 0) + 1;
-    rows.push({
-      mint,
-      observedAt: new Date(r.t * 1000),
-      chain: 'solana',
-      symbol: symbolOf.get(mint) ?? null,
-      priceUsd: r.priceUsd,
-      priceSource: r.priceSource,
-      ref: r.ref,
-      quality: r.quality,
-      regime: r.regime,
-      ageSec: r.ageSec,
-      priceObservedAt: r.obsT === null ? null : new Date(r.obsT * 1000),
-      nullReason: r.nullReason,
-      others: r.others,
-      methodVersion: PRICES_METHOD_VERSION,
-      source: SOURCE,
-      method: METHOD,
-      fetchedAt,
-      provenance: 'live',
-    });
-    if (rows.length >= P.chunk) await put();
+    rows.push(referenceRow(r, symbolOf.get(mint) ?? null, fetchedAt));
   }
-  await put();
+  bump('referencePricesWritten', await upsertReferencePrices(db, rows));
   bump('assets');
 }
 await client.end();

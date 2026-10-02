@@ -461,11 +461,13 @@ async function importHistorySnapshotsAndPositions() {
         collateralUnits: number;
         ltvNull: number;
         ltvNullUnits: number;
+        usdNull?: number;
         buckets: Row;
       }
     >;
     for (const [asset, a] of Object.entries(t ?? {})) {
-      const usdOk = !r.usdNullReason && a.ltvNull === 0;
+      // the USD totals are whole only when every position has an LTV and a USD value
+      const usdOk = !r.usdNullReason && a.ltvNull === 0 && (a.usdNull ?? 0) === 0;
       const sum = (k: string) =>
         Object.values(a.buckets).reduce<number>((s, b) => s + Number((b as Row)[k] ?? 0), 0);
       pos.push({
@@ -488,7 +490,10 @@ async function importHistorySnapshotsAndPositions() {
         top1: null,
         top3: null,
         top10: null,
-        usdNullReason: usdOk ? null : ((r.usdNullReason as string) ?? 'ltv_null_positions'),
+        usdNullReason: usdOk
+          ? null
+          : ((r.usdNullReason as string) ??
+            (a.ltvNull > 0 ? 'ltv_null_positions' : 'usd_null_positions')),
         methodVersion: r.method as string,
         source: r.source as string,
         method: r.method as string,

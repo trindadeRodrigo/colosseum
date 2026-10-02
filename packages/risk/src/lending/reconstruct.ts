@@ -315,6 +315,12 @@ export type PositionValue = {
   collateralUnits: number;
   collateralUsd: number | null;
   debtUsd: number | null;
+  /**
+   * Loan-to-value in percent on the venue's own oracle (PLAN-RISK D21): debt over collateral, both at the price the
+   * venue liquidates on. When given, it decides the bucket, and the USD fields only feed the bucket's totals; null
+   * means the venue's oracle had no recent price. When absent, the bucket comes from `debtUsd / collateralUsd`.
+   */
+  ltvPct?: number | null;
 };
 
 const bucketIn = (m: Record<string, BucketRow>, label: string): BucketRow => {
@@ -324,7 +330,8 @@ const bucketIn = (m: Record<string, BucketRow>, label: string): BucketRow => {
 };
 
 /** Aggregate positions into per-asset LTV buckets. Positions without debt are counted in `<=edges[0]` (LTV 0);
- *  positions with a missing price are counted under `ltvNull` with their units. */
+ *  positions with no LTV are counted under `ltvNull` with their units; positions that have an LTV (`ltvPct`) and
+ *  no USD value are in their bucket and counted under `usdNull`, so a bucket's USD totals are known to be short. */
 export function ltvTable(positions: readonly PositionValue[], edges: readonly number[]) {
   const out: Record<
     string,
@@ -333,6 +340,7 @@ export function ltvTable(positions: readonly PositionValue[], edges: readonly nu
       collateralUnits: number;
       ltvNull: number;
       ltvNullUnits: number;
+      usdNull: number;
       buckets: Record<string, BucketRow>;
     }
   > = {};
@@ -342,11 +350,28 @@ export function ltvTable(positions: readonly PositionValue[], edges: readonly nu
       collateralUnits: 0,
       ltvNull: 0,
       ltvNullUnits: 0,
+      usdNull: 0,
       buckets: {},
     };
     const a = out[p.asset] as NonNullable<(typeof out)[string]>;
     a.positions++;
     a.collateralUnits += p.collateralUnits;
+    if (p.ltvPct !== undefined) {
+      if (p.ltvPct === null) {
+        a.ltvNull++;
+        a.ltvNullUnits += p.collateralUnits;
+        continue;
+      }
+      const b = bucketIn(a.buckets, ltvBucket(p.ltvPct, edges));
+      b.positions++;
+      b.collateralUnits += p.collateralUnits;
+      if (p.collateralUsd === null || p.debtUsd === null) a.usdNull++;
+      else {
+        b.collateralUsd += p.collateralUsd;
+        b.debtUsd += p.debtUsd;
+      }
+      continue;
+    }
     if (p.collateralUsd === null || p.debtUsd === null || p.collateralUsd <= 0) {
       if (p.debtUsd === 0 && p.collateralUnits > 0 && p.collateralUsd === null) {
         // no debt: LTV is 0 whatever the price
