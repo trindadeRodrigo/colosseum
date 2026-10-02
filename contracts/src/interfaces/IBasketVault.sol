@@ -18,17 +18,25 @@ interface IBasketVault {
         uint16 lossUsedBps
     );
 
+    /// `withdrawAll` left this token in the vault: its balance read or its transfer failed inside the gas
+    /// the sweep gives each token. `withdraw(token, amount)` is the way to try it alone.
+    event WithdrawSkipped(address indexed token);
+
     error NotOwner(address caller);
     error ZeroAddress();
-    error AssetNotListed(address token);
+    error CashTokenNotSet();
     error DepositShortfall(address token, uint256 expected, uint256 received);
+    error GasTooLow(uint256 left, uint256 needed);
 
     // ---- owner only: no pause, no feed; withdraw calls neither factory nor registry and pays only the owner
 
-    function deposit(address token, uint256 amount) external;
+    /// The cash token only (gate `DEPOSIT`): pulls `amount` of `config.cashToken()` from the owner.
+    function deposit(uint256 amount) external;
 
+    /// Any token the vault holds, deposited or sent in from outside.
     function withdraw(address token, uint256 amount) external;
 
+    /// Every token in `tokens()`. A token that fails is skipped, returned and announced by `WithdrawSkipped`.
     function withdrawAll() external returns (address[] memory skipped);
 
     /// Allowlisted router; judged by the vault's own balance deltas and `minOut`.
@@ -55,4 +63,15 @@ interface IBasketVault {
     function keeperSwap(Swap calldata s) external returns (uint256 spent, uint256 received);
 
     function snapshot() external view returns (Snapshot memory);
+
+    function owner() external view returns (address);
+
+    /// The plan this vault holds: the salt the factory derives its address from.
+    function planId() external view returns (bytes32);
+
+    /// The `IVaultConfig` this vault reads; from EVM-2 on, the factory.
+    function config() external view returns (address);
+
+    /// The tokens `withdrawAll` walks: every token that came in by a vault function.
+    function tokens() external view returns (address[] memory);
 }

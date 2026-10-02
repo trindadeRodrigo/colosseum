@@ -5,7 +5,7 @@ import {IVaultConfig} from "./IVaultConfig.sol";
 import {Swap, Weight} from "./Types.sol";
 
 /// Creates the vaults and holds the platform's settings for one chain (DESIGN-VAULT.md section 3.8). A UUPS
-/// proxy. `asset`, `assets` and `routerPull` come from `IVaultConfig`.
+/// proxy. `asset`, `assets`, `isAsset`, `routerPull` and `cashToken` come from `IVaultConfig`.
 ///
 /// Events still to be declared by the slot that emits them: VaultCreated, with vault and id indexed.
 interface IVaultFactory is IVaultConfig {
@@ -40,8 +40,6 @@ interface IVaultFactory is IVaultConfig {
     function keeper() external view returns (address);
 
     function guardian() external view returns (address);
-
-    function cashToken() external view returns (address);
 
     function sequencerFeed() external view returns (address);
 

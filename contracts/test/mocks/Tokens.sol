@@ -192,8 +192,9 @@ contract FreezableToken is MockToken {
     }
 }
 
-/// A token that calls out in the middle of `transfer`, as a token with hooks would. It can also act as a
-/// vault's owner (`act`), which is the only way a re-entering call gets past the owner check.
+/// A token that calls out in the middle of a transfer, as a token with hooks would (ERC-777's
+/// `tokensToSend`). It can also act as a vault's owner (`act`), which is the only way a re-entering call gets
+/// past the owner check.
 contract HookToken is TokenBase {
     address public hookTarget;
     bytes public hookData;
@@ -210,9 +211,21 @@ contract HookToken is TokenBase {
         return _call(target, data);
     }
 
+    function approve(address spender, uint256 amount) external returns (bool) {
+        _approve(msg.sender, spender, amount);
+        return true;
+    }
+
     function transfer(address to, uint256 amount) external returns (bool) {
         if (hookTarget != address(0)) _call(hookTarget, hookData);
         require(_move(msg.sender, to, amount), InsufficientBalance());
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        if (hookTarget != address(0)) _call(hookTarget, hookData);
+        require(_spend(from, msg.sender, amount), InsufficientAllowance());
+        require(_move(from, to, amount), InsufficientBalance());
         return true;
     }
 
@@ -224,5 +237,134 @@ contract HookToken is TokenBase {
             }
         }
         return ret;
+    }
+}
+
+/// The shape of a tokenised stock: a pause flag, a per-account freeze list and a multiplier, all read on
+/// every transfer. It makes a transfer cost about what a real one costs.
+contract StockLikeToken is MockToken {
+    bool public paused;
+    uint256 public multiplier = 1e18;
+    mapping(address => bool) public frozen;
+
+    error Blocked();
+
+    constructor(uint8 decimals_) MockToken(decimals_) {}
+
+    function setFrozen(address who, bool on) external {
+        frozen[who] = on;
+    }
+
+    function _checks(address from, address to) internal view {
+        require(!paused && !frozen[from] && !frozen[to] && multiplier != 0, Blocked());
+    }
+
+    function transfer(address to, uint256 amount) external override returns (bool) {
+        _checks(msg.sender, to);
+        require(_move(msg.sender, to, amount), InsufficientBalance());
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external override returns (bool) {
+        _checks(from, to);
+        require(_spend(from, msg.sender, amount), InsufficientAllowance());
+        require(_move(from, to, amount), InsufficientBalance());
+        return true;
+    }
+}
+
+/// A token whose code later burns gas (a bad upgrade, or malice) in its balance read, its transfer, or both:
+/// a set amount, or with `type(uint256).max` every unit it is given.
+contract GasBurnToken is MockToken {
+    uint256 public balanceBurn;
+    uint256 public transferBurn;
+
+    constructor(uint8 decimals_) MockToken(decimals_) {}
+
+    function setBurn(uint256 onBalance, uint256 onTransfer) external {
+        balanceBurn = onBalance;
+        transferBurn = onTransfer;
+    }
+
+    function balanceOf(address account) public view override returns (uint256) {
+        _burn(balanceBurn);
+        return _balances[account];
+    }
+
+    function transfer(address to, uint256 amount) external override returns (bool) {
+        _burn(transferBurn);
+        require(_move(msg.sender, to, amount), InsufficientBalance());
+        return true;
+    }
+
+    function _burn(uint256 amount) internal view {
+        if (amount == type(uint256).max) {
+            assembly {
+                invalid()
+            }
+        }
+        uint256 start = gasleft();
+        while (start - gasleft() < amount) {}
+    }
+}
+
+/// Once armed with `setBomb(size)`, answers every balance read and every transfer with `size` bytes of
+/// return data, starting with the right word. A megabyte costs the token itself about 2.2 million gas.
+contract BombToken is MockToken {
+    uint256 public size;
+
+    constructor(uint8 decimals_) MockToken(decimals_) {}
+
+    function setBomb(uint256 size_) external {
+        size = size_;
+    }
+
+    function balanceOf(address account) public view override returns (uint256) {
+        uint256 b = _balances[account];
+        uint256 n = size;
+        if (n != 0) {
+            assembly {
+                mstore(0, b)
+                return(0, n)
+            }
+        }
+        return b;
+    }
+
+    function transfer(address to, uint256 amount) external override returns (bool) {
+        require(_move(msg.sender, to, amount), InsufficientBalance());
+        uint256 n = size;
+        if (n != 0) {
+            assembly {
+                mstore(0, 1)
+                return(0, n)
+            }
+        }
+        return true;
+    }
+}
+
+/// A token whose balance read answers with fewer than 32 bytes: `answerBytes` of them, 0 for nothing at all.
+contract ShortAnswerToken is MockToken {
+    bool public short;
+    uint256 public answerBytes;
+
+    constructor(uint8 decimals_) MockToken(decimals_) {}
+
+    function setShort(bool on, uint256 answerBytes_) external {
+        short = on;
+        answerBytes = answerBytes_;
+    }
+
+    function balanceOf(address account) public view override returns (uint256) {
+        uint256 b = _balances[account];
+        if (short) {
+            uint256 n = answerBytes;
+            assembly {
+                mstore(0, b)
+                return(0, n)
+            }
+        }
+        return b;
     }
 }

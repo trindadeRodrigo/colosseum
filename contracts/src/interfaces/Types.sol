@@ -60,4 +60,21 @@ struct Snapshot {
     uint64[] priceUpdatedAt;
     uint64[] lastKeeperAt;
     uint16 lossUsedBps;
+    bytes32 planId; // the plan this vault holds, so a vault is matched to its plan with no event
+}
+
+/// One version of a shared portfolio. `version == 0` means there is none (no pending version).
+struct IndexVersion {
+    uint32 version;
+    uint64 effectiveAt;
+    bytes32 metaHash;
+    Weight[] components;
+}
+
+/// Everything the app shows about a shared portfolio, in one read.
+struct IndexInfo {
+    address creator;
+    bytes32 familyId;
+    IndexVersion active;
+    IndexVersion pending;
 }

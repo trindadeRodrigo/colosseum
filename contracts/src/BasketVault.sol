@@ -63,19 +63,8 @@ contract BasketVault is Initializable, ReentrancyGuardTransient {
 
     // ---- owner only
 
-    /// Pulls `amount` of a listed token from the owner. The vault's balance must rise by at least `amount`:
-    /// a token that skims a fee on transfer is refused, because every later check (a swap's minimum, the
-    /// keeper's value check) assumes a transfer moves what it says.
-    function deposit(address token, uint256 amount) external onlyOwner nonReentrant {
-        VaultStorage storage $ = _vault();
-        require($.config.isAsset(token), IBasketVault.AssetNotListed(token));
-        $.tokens.add(token);
-
-        uint256 before = IERC20(token).balanceOf(address(this));
-        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
-        uint256 received = IERC20(token).balanceOf(address(this)) - before;
-        require(received >= amount, IBasketVault.DepositShortfall(token, amount, received));
-    }
+    /// Stub: the new signature only, so the tests compile and fail. The code follows in the next commit.
+    function deposit(uint256) external onlyOwner nonReentrant {}
 
     /// Sends `amount` of any token the vault holds to the owner, listed or not. Fails if the token does.
     function withdraw(address token, uint256 amount) external onlyOwner nonReentrant {

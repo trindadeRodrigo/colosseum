@@ -62,6 +62,11 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
         emit RouterSet(router, pull);
     }
 
+    /// Stub: the signature only, so the tests compile and fail. The code follows in the next commit.
+    function setCashToken(address token) external onlyAdmin {}
+
+    function cashToken() public view returns (address) {}
+
     /// Step one of a handover. Nothing changes until `next` accepts, so a mistyped address cannot take the role.
     function proposeAdmin(address next) external onlyAdmin {
         _config().pendingAdmin = next;

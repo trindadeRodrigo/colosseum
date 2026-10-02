@@ -24,9 +24,10 @@ contract BasketVaultProxyTest is VaultFixture {
         cash = new MockToken(6);
         _list(address(cash), 6);
         cash.mint(owner, 100e6);
+        _setCash(address(cash));
         vm.startPrank(owner);
         cash.approve(address(vault), type(uint256).max);
-        vault.deposit(address(cash), 100e6);
+        vault.deposit(100e6);
         vm.stopPrank();
     }
 
@@ -86,12 +87,13 @@ contract BasketVaultProxyTest is VaultFixture {
         }
     }
 
-    /// I1, stated as the whole surface: these are all the vault's entry points, and none takes a recipient.
-    /// A slot that adds one updates this list, and with it looks at what the new function can move.
+    /// I1, stated as the whole surface: these are all the vault's entry points, none takes a recipient, and
+    /// there is no `fallback` and no `receive` for a call to land in. A slot that adds an entry point updates
+    /// this list, and with it looks at what the new function can move.
     function test_I1_entryPoints_areExactlyThese() public view {
         string[8] memory expected = [
             "initialize(address,bytes32,address)",
-            "deposit(address,uint256)",
+            "deposit(uint256)",
             "withdraw(address,uint256)",
             "withdrawAll()",
             "owner()",
@@ -109,11 +111,36 @@ contract BasketVaultProxyTest is VaultFixture {
             }
             assertTrue(present, expected[i]);
         }
+
+        string[] memory kinds = vm.parseJsonStringArray(artifact, ".abi[*].type");
+        assertGt(kinds.length, expected.length, "the ABI was not read");
+        for (uint256 i; i < kinds.length; ++i) {
+            bytes32 kind = keccak256(bytes(kinds[i]));
+            assertTrue(kind != keccak256("fallback"), "the vault has a fallback");
+            assertTrue(kind != keccak256("receive"), "the vault has a receive");
+        }
+    }
+
+    /// The same from outside: a call no function matches, and plain ether, are both turned away.
+    function test_I1_unknownCallsAndEther_areRefused() public {
+        vm.deal(owner, 1 ether);
+        vm.startPrank(owner);
+        (bool ok,) = address(vault).call(abi.encodeWithSignature("sweep(address)", owner));
+        assertFalse(ok);
+        (ok,) = address(vault).call{value: 1 wei}("");
+        assertFalse(ok);
+        (ok,) = address(vault).call("");
+        assertFalse(ok);
+        vm.stopPrank();
     }
 
     function test_selectors_matchSection38() public pure {
         assertEq(BasketVault.deposit.selector, IBasketVault.deposit.selector);
         assertEq(BasketVault.withdraw.selector, IBasketVault.withdraw.selector);
         assertEq(BasketVault.withdrawAll.selector, IBasketVault.withdrawAll.selector);
+        assertEq(BasketVault.owner.selector, IBasketVault.owner.selector);
+        assertEq(BasketVault.planId.selector, IBasketVault.planId.selector);
+        assertEq(BasketVault.config.selector, IBasketVault.config.selector);
+        assertEq(BasketVault.tokens.selector, IBasketVault.tokens.selector);
     }
 }

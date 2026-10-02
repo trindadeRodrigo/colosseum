@@ -8,4 +8,9 @@ contract ConfigHarness is VaultConfig {
     constructor(address admin_) initializer {
         _initVaultConfig(admin_);
     }
+
+    /// Stands in for the guardian's `haltAsset` of EVM-3: writes the halt and nothing else.
+    function haltForTest(address token, uint64 until) external {
+        _config().assets[token].haltUntil = until;
+    }
 }

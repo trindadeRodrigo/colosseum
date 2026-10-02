@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.24;
 
-import {Limits, Weight} from "./Types.sol";
+import {IndexInfo, Limits, Weight} from "./Types.sol";
 
 /// The shared portfolios of one chain: current and pending version, and the author limits
 /// (DESIGN-VAULT.md sections 3.8 and 6). A UUPS proxy. History lives in events.
@@ -39,6 +39,10 @@ interface IIndexRegistry {
         returns (uint32 version, uint64 effectiveAt, Weight[] memory components);
 
     function creatorOf(bytes32 id) external view returns (address);
+
+    /// The creator, the family, and the active and pending versions with their components, `effectiveAt`
+    /// and `metaHash`. Like `active()`, it shows the pending version as active once `effectiveAt` has passed.
+    function indexInfo(bytes32 id) external view returns (IndexInfo memory);
 
     function indexCount() external view returns (uint256);
 

@@ -60,4 +60,20 @@ abstract contract VaultFixture is Test {
         vm.prank(admin);
         config.setAsset(token, _assetConfig(tokenDecimals));
     }
+
+    /// Makes a listed token the chain's cash token: the one token `deposit` pulls.
+    function _setCash(address token) internal {
+        vm.prank(admin);
+        config.setCashToken(token);
+    }
+
+    /// Deposits `token` into `vault_` as its owner, by making it the cash token for the length of the call.
+    /// This is how a test gets several tokens into a vault's `tokens` list before the swaps exist.
+    function _depositAs(BasketVault vault_, address token, uint256 amount) internal {
+        address cashBefore = config.cashToken();
+        if (cashBefore != token) _setCash(token);
+        vm.prank(vault_.owner());
+        vault_.deposit(amount);
+        if (cashBefore != token && cashBefore != address(0)) _setCash(cashBefore);
+    }
 }
