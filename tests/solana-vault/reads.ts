@@ -125,7 +125,12 @@ export function readCases(name: string, setup: () => Promise<ReadSetup>): void {
         expect(got.usdPerToken).toBe(want.usdPerToken);
         expect(got.source).toContain(`entry ${want.index}`);
         if (s.exactAges) expect(got.ageSeconds).toBe(want.ageSeconds);
-        else expect(got.ageSeconds).toBeGreaterThanOrEqual(want.ageSeconds);
+        else {
+          // On a running clock the entry has aged since it was written, and the node's clock is not
+          // the writer's to the second.
+          expect(got.ageSeconds).toBeGreaterThanOrEqual(Math.max(0, want.ageSeconds - 60));
+          expect(got.ageSeconds).toBeLessThan(want.ageSeconds + 900);
+        }
       }
       expect(await s.reader.getPrices([])).toEqual([]);
     });
