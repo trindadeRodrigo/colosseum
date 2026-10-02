@@ -21,6 +21,36 @@ CREATE TABLE "risk_lending_events" (
 	CONSTRAINT "risk_lending_events_signature_event_key_pk" PRIMARY KEY("signature","event_key")
 );
 --> statement-breakpoint
+CREATE TABLE "risk_lending_pools" (
+	"account" text PRIMARY KEY NOT NULL,
+	"chain" text NOT NULL,
+	"venue" text NOT NULL,
+	"program" text NOT NULL,
+	"market" text NOT NULL,
+	"market_name" text,
+	"role" text NOT NULL,
+	"mint" text NOT NULL,
+	"symbol" text NOT NULL,
+	"decimals" integer NOT NULL,
+	"debt_mint" text,
+	"debt_symbol" text,
+	"dex_asset_mint" text,
+	"accounts" jsonb NOT NULL,
+	"oracles" jsonb NOT NULL,
+	"params" jsonb NOT NULL,
+	"manager" text,
+	"offered" integer,
+	"first_tx_at" timestamp with time zone,
+	"verification" text NOT NULL,
+	"status" text NOT NULL,
+	"status_reason" text,
+	"method_version" text NOT NULL,
+	"source" text NOT NULL,
+	"method" text NOT NULL,
+	"fetched_at" timestamp with time zone NOT NULL,
+	"provenance" "provenance" NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "risk_lending_positions" (
 	"market" text NOT NULL,
 	"collateral_asset" text NOT NULL,
@@ -81,6 +111,53 @@ CREATE TABLE "risk_lending_snapshots" (
 	CONSTRAINT "risk_lending_snapshots_account_observed_at_kind_pk" PRIMARY KEY("account","observed_at","kind")
 );
 --> statement-breakpoint
+CREATE TABLE "risk_price_observations" (
+	"chain" text NOT NULL,
+	"mint" text NOT NULL,
+	"price_source" text NOT NULL,
+	"observed_at" timestamp with time zone NOT NULL,
+	"slot" double precision NOT NULL,
+	"price" double precision NOT NULL,
+	"quote" text NOT NULL,
+	"ref" text NOT NULL,
+	"market" text,
+	"live" boolean DEFAULT true NOT NULL,
+	"failed_checks" text,
+	"source_ts" timestamp with time zone,
+	"market_status" integer,
+	"method_version" text NOT NULL,
+	"source" text NOT NULL,
+	"method" text NOT NULL,
+	"fetched_at" timestamp with time zone NOT NULL,
+	"provenance" "provenance" NOT NULL,
+	CONSTRAINT "risk_price_observations_pk" PRIMARY KEY("price_source","ref","mint","observed_at","slot","price")
+);
+--> statement-breakpoint
+CREATE TABLE "risk_reference_prices" (
+	"mint" text NOT NULL,
+	"observed_at" timestamp with time zone NOT NULL,
+	"chain" text NOT NULL,
+	"symbol" text,
+	"price_usd" double precision,
+	"price_source" text,
+	"ref" text,
+	"quality" text,
+	"regime" text NOT NULL,
+	"age_sec" double precision,
+	"price_observed_at" timestamp with time zone,
+	"null_reason" text,
+	"others" jsonb NOT NULL,
+	"method_version" text NOT NULL,
+	"source" text NOT NULL,
+	"method" text NOT NULL,
+	"fetched_at" timestamp with time zone NOT NULL,
+	"provenance" "provenance" NOT NULL,
+	CONSTRAINT "risk_reference_prices_pk" PRIMARY KEY("mint","observed_at","method_version")
+);
+--> statement-breakpoint
 CREATE INDEX "risk_lending_events_pool_idx" ON "risk_lending_events" USING btree ("pool","block_time");--> statement-breakpoint
 CREATE INDEX "risk_lending_events_kind_idx" ON "risk_lending_events" USING btree ("kind","block_time");--> statement-breakpoint
-CREATE INDEX "risk_lending_snapshots_market_idx" ON "risk_lending_snapshots" USING btree ("market","observed_at");
+CREATE INDEX "risk_lending_pools_market_idx" ON "risk_lending_pools" USING btree ("market");--> statement-breakpoint
+CREATE INDEX "risk_lending_pools_dex_asset_idx" ON "risk_lending_pools" USING btree ("dex_asset_mint");--> statement-breakpoint
+CREATE INDEX "risk_lending_snapshots_market_idx" ON "risk_lending_snapshots" USING btree ("market","observed_at");--> statement-breakpoint
+CREATE INDEX "risk_price_observations_mint_idx" ON "risk_price_observations" USING btree ("mint","price_source","observed_at");

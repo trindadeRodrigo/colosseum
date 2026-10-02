@@ -13,6 +13,8 @@
     "build": "pnpm -r build",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:contracts": "cd contracts && forge test",
+    "test:program": "pnpm --dir programs/tests install --frozen-lockfile && pnpm --dir programs/tests test",
     "typecheck": "pnpm -r typecheck",
     "verify:quick": "pnpm lint && pnpm typecheck && tsc -p tsconfig.json",
     "verify": "pnpm verify:quick && pnpm test && pnpm build",
@@ -26,7 +28,7 @@
     "verify:all": "tsx scripts/verify/run-all.ts",
     "depth:snapshot": "node scripts/depth-snapshot.mjs",
     "depth:install-cron": "zsh scripts/launchd/install.sh",
-    "db:seed": "pnpm --filter @colosseum/db seed",
+    "db:seed": "tsx scripts/seed-assets.ts",
     "depth:import": "tsx scripts/depth-import.ts",
     "wallet:create": "tsx scripts/wallet-create.ts",
     "check:d1pm": "tsx scripts/checks/d1pm-simulate.ts",
@@ -75,7 +77,15 @@
     "risk:lending-freeze-report-fixtures": "tsx scripts/risk/lending-freeze-report-fixtures.ts",
     "risk:lending-freeze-liquidation-fixtures": "tsx scripts/risk/lending-freeze-liquidation-fixtures.ts",
     "risk:lending-report": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/lending-report.ts",
-    "risk:lending-freeze-verify-fixtures": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/lending-freeze-verify-fixtures.ts"
+    "risk:lending-freeze-verify-fixtures": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/lending-freeze-verify-fixtures.ts",
+    "risk:prices-extract": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/prices/extract.ts",
+    "risk:prices-validate": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/prices/validate.ts",
+    "risk:prices-import": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/prices/import.ts",
+    "risk:prices-job": "tsx scripts/risk/prices/job.ts",
+    "risk:prices-install-job": "zsh scripts/risk/prices/install-job.sh",
+    "risk:prices-freeze-fixtures": "tsx scripts/risk/prices/freeze-fixtures.ts && biome format --write fixtures/risk/prices",
+    "risk-evm:collect": "tsx scripts/risk-evm/collect.ts",
+    "risk-evm:import": "tsx scripts/risk-evm/import.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
@@ -96,6 +106,8 @@
     "@colosseum/engine": "workspace:*",
     "@colosseum/chain-solana": "workspace:*",
     "@colosseum/chain-evm": "workspace:*",
+    "@colosseum/chain-mock": "workspace:*",
+    "@colosseum/basket": "workspace:*",
     "@colosseum/risk": "workspace:*"
   }
 }

@@ -201,4 +201,36 @@ describe('lending reconstruct — LTV buckets', () => {
     expect(t.cbBTC?.ltvNull).toBe(1);
     expect(t.cbBTC?.buckets['<=10']?.positions).toBe(1);
   });
+
+  it('with the venue-oracle LTV given, it decides the bucket and USD only feeds the totals (D21)', () => {
+    const t = ltvTable(
+      [
+        // valued at 2000 / 1500 by the pool mid (75%), 80% on the venue's oracle: bucket <=100
+        { asset: 'SPYx', collateralUnits: 2, collateralUsd: 2000, debtUsd: 1500, ltvPct: 80 },
+        // an LTV and no USD value: in its bucket, and counted as short of USD
+        { asset: 'SPYx', collateralUnits: 3, collateralUsd: null, debtUsd: null, ltvPct: 40 },
+        // the venue's oracle had no recent price: no LTV, whatever the valuation says
+        { asset: 'SPYx', collateralUnits: 5, collateralUsd: 5000, debtUsd: 1000, ltvPct: null },
+        { asset: 'SPYx', collateralUnits: 1, collateralUsd: null, debtUsd: 0, ltvPct: 0 },
+      ],
+      [10, 50, 75, 100],
+    );
+    expect(Object.keys(t.SPYx?.buckets ?? {})).toEqual(['<=10', '<=50', '<=100']);
+    expect(t.SPYx?.buckets['<=100']).toEqual({
+      positions: 1,
+      collateralUnits: 2,
+      collateralUsd: 2000,
+      debtUsd: 1500,
+    });
+    expect(t.SPYx?.buckets['<=50']).toEqual({
+      positions: 1,
+      collateralUnits: 3,
+      collateralUsd: 0,
+      debtUsd: 0,
+    });
+    expect(t.SPYx?.ltvNull).toBe(1);
+    expect(t.SPYx?.ltvNullUnits).toBe(5);
+    expect(t.SPYx?.usdNull).toBe(2);
+    expect(t.SPYx?.positions).toBe(4);
+  });
 });

@@ -1,4 +1,5 @@
 import {
+  boolean,
   doublePrecision,
   index,
   integer,
@@ -371,6 +372,83 @@ export const riskLendingPositions = pgTable(
     primaryKey({
       name: 'risk_lending_positions_pk',
       columns: [t.market, t.collateralAsset, t.observedAt, t.method],
+    }),
+  ],
+);
+
+/**
+ * Price observations of the oracle standard (PLAN-RISK Step 11): one price of one asset from one price source at
+ * one time. `price_source` is pool_mid | kamino_scope | jupiter_lend_oracle | external:<name>; `source` names the
+ * data source, as on every table. `price` is per whole token in `quote` (`usd`, or the mint a lending oracle quotes
+ * in). `live` is false while a stock oracle held a placeholder price, and `failed_checks` names the venue's own
+ * checks a price failed: both are still the venue's price, never a valuation.
+ */
+export const riskPriceObservations = pgTable(
+  'risk_price_observations',
+  {
+    chain: text('chain').notNull(),
+    mint: text('mint').notNull(),
+    priceSource: text('price_source').notNull(),
+    observedAt: ts('observed_at').notNull(),
+    /** 0 when the source reports no slot. */
+    slot: doublePrecision('slot').notNull(),
+    price: doublePrecision('price').notNull(),
+    quote: text('quote').notNull(),
+    /** Pool, Kamino reserve or Jupiter Lend vault the price came from. */
+    ref: text('ref').notNull(),
+    /** Lending market or vault, for a lending oracle. */
+    market: text('market'),
+    live: boolean('live').notNull().default(true),
+    /** The venue's own checks the price failed when logged (klend: `twap`, `heuristic`), comma-separated. */
+    failedChecks: text('failed_checks'),
+    /** The source's own timestamp for the price, when it reports one. */
+    sourceTs: ts('source_ts'),
+    marketStatus: integer('market_status'),
+    methodVersion: text('method_version').notNull(),
+    ...provenanceCols,
+  },
+  (t) => [
+    primaryKey({
+      name: 'risk_price_observations_pk',
+      columns: [t.priceSource, t.ref, t.mint, t.observedAt, t.slot, t.price],
+    }),
+    index('risk_price_observations_mint_idx').on(t.mint, t.priceSource, t.observedAt),
+  ],
+);
+
+/**
+ * The reference price per asset and hour (PLAN-RISK Step 11): the resolver's valuation, with the source it came
+ * from, the observation's age, the regime and the quality (traded | oracle_open | oracle_closed |
+ * oracle_continuous | external | par). `price_usd` is null with `null_reason` when no source had a usable price.
+ * `others` keeps every other source's price at that hour with its gap to the answer, so the DEX price and each
+ * venue's oracle price stay side by side. The newest row of an asset is its live reference price. The price
+ * parameters of a `method_version` (order, sessions, limits) are in the import's run log, not on every row.
+ */
+export const riskReferencePrices = pgTable(
+  'risk_reference_prices',
+  {
+    mint: text('mint').notNull(),
+    observedAt: ts('observed_at').notNull(),
+    chain: text('chain').notNull(),
+    symbol: text('symbol'),
+    priceUsd: doublePrecision('price_usd'),
+    priceSource: text('price_source'),
+    ref: text('ref'),
+    quality: text('quality'),
+    regime: text('regime').notNull(),
+    /** Seconds between the observation used and the hour. */
+    ageSec: doublePrecision('age_sec'),
+    priceObservedAt: ts('price_observed_at'),
+    nullReason: text('null_reason'),
+    /** [{priceSource, price, quote, priceUsd, ref, ageSec, openAgeSec, sessionOpen, stale, live, gapToAnswer}] */
+    others: jsonb('others').notNull(),
+    methodVersion: text('method_version').notNull(),
+    ...provenanceCols,
+  },
+  (t) => [
+    primaryKey({
+      name: 'risk_reference_prices_pk',
+      columns: [t.mint, t.observedAt, t.methodVersion],
     }),
   ],
 );

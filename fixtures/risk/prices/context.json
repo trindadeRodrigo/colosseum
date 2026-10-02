@@ -1,0 +1,146 @@
+{
+  "source": "lending registry (~/.colosseum/risk/lending-registry.json), confirmed on-chain (Step 10b item 2)",
+  "method": "prices-freeze-fixtures",
+  "fetchedAt": "2026-10-02T18:27:19.904Z",
+  "provenance": "fixture",
+  "kaminoReserves": {
+    "w6diwHyXhRzmhRWwnz3jQPqTt35qFbBDcQP7T2VdgSm": {
+      "symbol": "QQQx",
+      "mint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "market": "8BNUWRSibVasaAmhYpBCFpGgMisGKfVAf9ho3Cmf6vjr"
+    },
+    "4WqQtjQbewk7ptnXsX3E3Tf3M4pa9YiBsgAqjsJDkspH": {
+      "symbol": "NVDAx",
+      "mint": "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh",
+      "market": "8BNUWRSibVasaAmhYpBCFpGgMisGKfVAf9ho3Cmf6vjr"
+    },
+    "6bR98MJTH68s7eV8ssyBgfuuH5oR2bEt58P9rZPLpBrC": {
+      "symbol": "PYUSD",
+      "mint": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+      "market": "8BNUWRSibVasaAmhYpBCFpGgMisGKfVAf9ho3Cmf6vjr"
+    },
+    "7Yh74hEtP75acqhQ5f2FqoHQny5TYiYBPVxkwN35rCSi": {
+      "symbol": "SPYx",
+      "mint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "market": "8BNUWRSibVasaAmhYpBCFpGgMisGKfVAf9ho3Cmf6vjr"
+    },
+    "UvXjBuC7YZYaGB9Rn1PpBD1GySmjzunXgE8Zev9ua8d": {
+      "symbol": "SPYx",
+      "mint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua"
+    },
+    "2jerdAXR8r2B6z3P7P6VgSiePQX7wqcpbEqdDbm8mgeB": {
+      "symbol": "QQQx",
+      "mint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua"
+    },
+    "4UBJu5Xp1aziV9frBQBhc1RnKrgXHAWHYejQytkYr8gq": {
+      "symbol": "HOODx",
+      "mint": "XsvNBAYkrDRNhA7wPHQfX3ZUXZyZLdnCQDfHZ56bzpg",
+      "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua"
+    },
+    "4wg6rEkGgHaEuxMduP46C1xFZ24Lnp5YgdNkZAHxFzsN": {
+      "symbol": "GOOGLx",
+      "mint": "XsCPL9dNWBMvFtTmwcCA5v3xWPSMEBCszbQdiLLq6aN",
+      "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua"
+    },
+    "57qagnQFuWw1seEqi6Z5JBvkm5xH5svdmq9dtqxG1rYy": {
+      "symbol": "CRCLx",
+      "mint": "XsueG8BtpquVJX9LVLLEGuViXUungE6WmK5YZ3p3bd1",
+      "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua"
+    },
+    "5AWpVYJvNASoUM8toSDQRcVyA9dvoUuFj5qNx9v32bjj": {
+      "symbol": "cbBTC",
+      "mint": "cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij",
+      "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua"
+    },
+    "5iTiczqgUegqA3PpoNpotizMbY9n1sRWr3oL6igKvWuf": {
+      "symbol": "TSLAx",
+      "mint": "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB",
+      "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua"
+    },
+    "7B66Az3tJhAo4bLkX8PzTixQ9ZGyHkkjxfVLhF26sP5q": {
+      "symbol": "NVDAx",
+      "mint": "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh",
+      "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua"
+    },
+    "97zoywd8mPZsGTg8q1wdD2Wgkdrs2tqusp1Qqcxbyj7E": {
+      "symbol": "USDC",
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua"
+    },
+    "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G": {
+      "symbol": "METAx",
+      "mint": "Xsa62P5mvPszXL1krVUnU5ar38bBSVcWAB6fmPCo5Zu",
+      "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua"
+    },
+    "CKJbqakbPGyhziowm19LPYz636UszuezfkitmpRtcLSH": {
+      "symbol": "AAPLx",
+      "mint": "XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp",
+      "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua"
+    },
+    "Cwy2WJoswCMyfPtWTrmiaDLXC3phz3qwr1TaT4kaSAyD": {
+      "symbol": "MSTRx",
+      "mint": "XsP7xzNPvEHS1m6qfanPUGjNmdnmsLKEoNAnHjdxxyZ",
+      "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua"
+    },
+    "F1xMZ8em6SrQkCnKQR1pzcxQieSUth35sYDQ2kK6o8tX": {
+      "symbol": "USDG",
+      "mint": "2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH",
+      "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua"
+    },
+    "8Pw7JiQELCWkcck9DtPzWtYwGnPLsUpLuZEKxZAQ4AAs": {
+      "symbol": "SPYx",
+      "mint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "market": "BBmb1SYx1MiJjeCFbGtrP8FcV9XJ3uYd4dLHhe1NbwAP"
+    },
+    "97dJB16StDAB8SivhcJeEqZhJ1N5xXTk8fZoXF6SwDzU": {
+      "symbol": "EUROP",
+      "mint": "euro5sNHrZC2wu2RoLvy6xxoVMc3Qnd1vjxoWf4MftA",
+      "market": "BBmb1SYx1MiJjeCFbGtrP8FcV9XJ3uYd4dLHhe1NbwAP"
+    },
+    "CakTLcsJBjeVDUL5J4dLoG4HwECy9P1gA8dUsHGYZV7H": {
+      "symbol": "EURC",
+      "mint": "HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr",
+      "market": "BBmb1SYx1MiJjeCFbGtrP8FcV9XJ3uYd4dLHhe1NbwAP"
+    },
+    "Go23M4jzQsuceHz37JrvkHZb7GAs3KUJRj8UE8f2sTbj": {
+      "symbol": "QQQx",
+      "mint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "market": "BBmb1SYx1MiJjeCFbGtrP8FcV9XJ3uYd4dLHhe1NbwAP"
+    },
+    "3gJZGXg9h4HgG14q91sFwgNCPbWPWLu7dshd6iHDdaPr": {
+      "symbol": "STRCx",
+      "mint": "Xs78JED6PFZxWc2wCEPspZW9kL3Se5J7L5TChKgsidH",
+      "market": "B7a2Dmdnfg8zfZX2814d6Xo6ctxs22jnTuCcjTq5KcPD"
+    },
+    "8trJaNUfkP9pNgrwzByfsuwVtZ5TmZpq568UkCpjFWbi": {
+      "symbol": "USDC",
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "market": "B7a2Dmdnfg8zfZX2814d6Xo6ctxs22jnTuCcjTq5KcPD"
+    }
+  },
+  "continuousMints": [
+    "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+    "cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij",
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH",
+    "euro5sNHrZC2wu2RoLvy6xxoVMc3Qnd1vjxoWf4MftA",
+    "HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr"
+  ],
+  "usdStableMints": [
+    "2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH",
+    "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo"
+  ],
+  "usdc": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "jupiterLendVaults": [
+    "14R6LgJe6UNmExr3FgaYVqLgDh219ayRUUBpZuQwHzzm",
+    "3zvPLKm39qtTzqRg3i5N1cLKEvW7eqq7Pojzvkn4VreQ",
+    "5f561RUPHDqRh98W62FdaYjHCqEvwzV7ePHXszdfQC5Z",
+    "9ewVy9vTQ1R5Kgp5VDaygXU59z1k6H3AZhoaNyeKMYEr",
+    "DdfzCbtHxKFAUsBCkdc5Jdi1hadfoYeBzbNpxBDWKRN5",
+    "Dnrc3CxMiDbcLPNaDVFZKf8SapkbQE6Az2obcKfWwBke",
+    "EdepRi812J9QcPjaCiRq8UZ56b4WPWWr2BKis8XtAP7H",
+    "Fsn7PpTfBbdKi9MCjNWzq49uzJ2jSPsKRquMhHALjW6o"
+  ]
+}

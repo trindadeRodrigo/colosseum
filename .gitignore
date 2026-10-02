@@ -5,6 +5,8 @@
 node_modules/
 dist/
 .next/
+contracts/out/
+contracts/cache/
 coverage/
 secrets/
 *.keypair.json
@@ -14,3 +16,14 @@ docs/loi/*.pdf
 .claude/settings.local.json
 .claude/worktrees/
 CLAUDE.local.md
+# Solana program build output, and the program keypairs (never committed)
+target/
+.anchor/
+test-ledger/
+/keys/
+*-keypair.json
+# A file tests/boundaries.test.ts plants for a moment and removes
+packages/db/migrations/boundary-plant-*.ts
+
+# vitest reporter output
+.vitest/

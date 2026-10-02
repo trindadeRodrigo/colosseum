@@ -24,14 +24,17 @@ import {
   newKaminoReserveSim,
   obligationCollateral,
   type PositionValue,
+  type PriceNullReason,
+  type PriceQuality,
+  resolvePrice,
   rollingMedianAt,
 } from '@colosseum/risk';
-import { latestRegistryFile, type RegistryPool, valuePools } from './lib-history';
 import { LENDING_HISTORY_DIR, RISK_HOME, readAddressSignatures, USDC } from './lib-lending';
+import { loadPriceInputs } from './prices/lib';
 
 // Step 10b item 7 — hourly reconstruction of every lending pool since its first transaction
 // (`pnpm risk:lending-reconstruct`). Reads only what is on disk: the decode pass (`decoded/`), the lending registry,
-// the Step 5b hourly pool rows (`data/risk/history-full/hourly/`, for USD), and, for the checks, the hourly raw
+// the price observations of Step 11 (`data/risk/prices/obs/`, for USD), and, for the checks, the hourly raw
 // reserve bytes (`raw-markets/`), the hourly obligation bytes (`lending-positions/`) and the hourly API rows.
 // Output in `<dir>/hourly/` (gitignored):
 //   reserves.jsonl.gz   one row per Kamino reserve and hour: supplied, borrowed, available, share lent out, rates
@@ -49,17 +52,21 @@ import { LENDING_HISTORY_DIR, RISK_HOME, readAddressSignatures, USDC } from './l
 //            its cumulative borrow index) against the replay's normalised debt; collateral cTokens exact
 //   K-api    supplied and borrowed against the hourly API rows (the API read falls between transactions)
 //   J-api    Jupiter Lend layer-level and vault-level totals against the API rows
-// USD: Step 5b's hourly mid of the asset's reference USDC pool (the first USDC value pool by TVL with that hour,
-// as Step 5b prices other quotes); USDC at par (as Step 5b). Anything else, or hours outside Step 5b's window,
-// keeps units with USD null and `usdNullReason: 'no_price_source'`.
+// USD: the oracle standard (Step 11, `packages/risk/src/prices`): Step 5b's hourly mid of the asset's reference USDC
+// pool where it covers the hour, else the price the lending oracle logged (Kamino, then Jupiter Lend), USDC at par.
+// Every row carries the price's source, quality and age; an hour with no usable price keeps units with USD null
+// and the resolver's reason in `usdNullReason` (no_observation, stale, oracle_not_live, no_quote_price).
+// LTV (D21): every position's loan-to-value is taken on the venue's own oracle (`liqPriceAt`), not on the valuation
+// price; USD totals stay on the valuation price. JupUSD is at par (D20).
 // Usage: tsx scripts/risk/lending-reconstruct.ts [dir=data/risk/lending-history]
 const DIR = process.argv[2] ?? LENDING_HISTORY_DIR;
 const OUT = join(DIR, 'hourly');
 mkdirSync(OUT, { recursive: true });
+const JUPUSD = 'JuprjznTrTSp2UFa3ZBUFgwdAmtZCq4MQCwysN55USD';
 const P = defaultLendingReconstructParams();
-const METHOD = 'lending-reconstruct-0.1';
+const METHOD = 'lending-reconstruct-0.3';
 const SOURCE =
-  'lending history decode pass (Solana RPC getTransaction) + Step 5b hourly pool mids; klend accrual replayed';
+  'lending history decode pass (Solana RPC getTransaction) + Step 11 price observations; klend accrual replayed';
 const fetchedAt = new Date().toISOString();
 const prov = { source: SOURCE, fetched_at: fetchedAt, method: METHOD, provenance: 'live' };
 const t0 = Date.now();
@@ -110,7 +117,7 @@ const vaultToReserve = new Map(
 const decimals = new Map<string, number>();
 for (const r of reg.rows) if (r.mint) decimals.set(r.mint, r.decimals);
 decimals.set(USDC, 6);
-decimals.set('JuprjznTrTSp2UFa3ZBUFgwdAmtZCq4MQCwysN55USD', 6);
+decimals.set(JUPUSD, 6);
 
 // the window: the VL-4 walk (as lending-verify)
 type Addr = { i: number; address: string };
@@ -130,33 +137,77 @@ for (const a of addrs) {
 const lastHour = Math.floor(walkStart / 3600) * 3600; // the last whole hour inside the window
 
 // ------------------------------------------------------------------------------------------------- prices
-// Step 5b hourly rows: asset → hour → { usd, pool }, from the first USDC value pool by TVL holding the hour
-const hourlyDir = 'data/risk/history-full/hourly';
-const usdcPools = valuePools(0.8, latestRegistryFile())
-  .filter((p: RegistryPool) => p.mint0 === USDC || p.mint1 === USDC)
-  .sort((a, b) => b.tvlUsd - a.tvlUsd);
-const priceBy = new Map<string, Map<number, { usd: number; pool: string }>>();
-for (const p of usdcPools) {
-  const f = join(hourlyDir, `${p.address}.jsonl`);
-  if (!existsSync(f)) continue;
-  const m = priceBy.get(p.assetSymbol) ?? new Map();
-  for (const r of readJsonl<{ hour: string; midUsd: number }>(f)) {
-    const h = Date.parse(r.hour) / 1000;
-    if (!m.has(h)) m.set(h, { usd: r.midUsd, pool: p.address });
-  }
-  priceBy.set(p.assetSymbol, m);
-}
+// The oracle standard (Step 11): one valuation per mint and hour from the resolver. A pool mid where Step 5b
+// covers the hour, else the lending oracles' logged prices, each with its source, age and quality.
+const prices = loadPriceInputs();
+type HourPrice = {
+  usd: number | null;
+  source: string | null;
+  quality: PriceQuality | null;
+  ageSec: number | null;
+  reason: PriceNullReason | null;
+};
 const symbolOfMint = new Map<string, string>();
-for (const r of reg.rows) if (r.mint && r.symbol) symbolOfMint.set(r.mint, r.symbol);
-function priceAt(mint: string, hour: number): { usd: number | null; source: string | null } {
-  if (mint === USDC) return { usd: 1, source: 'usdc_at_par' };
-  const sym = symbolOfMint.get(mint);
-  const p = sym ? priceBy.get(sym)?.get(hour) : undefined;
-  return p ? { usd: p.usd, source: `pool_mid:${p.pool}` } : { usd: null, source: null };
+for (const r of reg.rows)
+  if (r.mint && r.symbol && r.venue === 'kamino') symbolOfMint.set(r.mint, r.symbol);
+symbolOfMint.set(JUPUSD, 'JupUSD');
+const priceMemo = new Map<string, Map<number, HourPrice>>();
+const priceStats = new Map<string, number>();
+function priceAt(mint: string, hour: number): HourPrice {
+  let m = priceMemo.get(mint);
+  if (!m) {
+    m = new Map();
+    priceMemo.set(mint, m);
+  }
+  let v = m.get(hour);
+  if (!v) {
+    const r = resolvePrice(prices.index, { mint, t: hour, purpose: 'valuation' }, prices.ctx);
+    v = {
+      usd: r.priceUsd,
+      source:
+        r.priceSource === null
+          ? null
+          : r.priceSource === 'par'
+            ? `${mint === USDC ? 'usdc' : (symbolOfMint.get(mint) ?? mint).toLowerCase()}_at_par`
+            : `${r.priceSource}:${r.ref}`,
+      quality: r.quality,
+      ageSec: r.ageSec,
+      reason: r.nullReason,
+    };
+    m.set(hour, v);
+  }
+  return v;
 }
-const priceWindow = [...priceBy.values()].flatMap((m) => [...m.keys()]);
-const priceFrom = priceWindow.length ? Math.min(...priceWindow) : null;
-const priceTo = priceWindow.length ? Math.max(...priceWindow) : null;
+
+// The price a venue liquidates on (D21): that venue's own oracle, in the market or vault of the position, and
+// another market of the same oracle only when its own has no recent observation. Never the pool mid.
+type LiqPrice = { price: number | null; usd: number | null; reason: PriceNullReason | null };
+const liqMemo = new Map<string, Map<number, LiqPrice>>();
+function liqPriceAt(
+  priceSource: 'kamino_scope' | 'jupiter_lend_oracle',
+  mint: string,
+  market: string,
+  hour: number,
+): LiqPrice {
+  const k = `${priceSource}|${mint}|${market}`;
+  let m = liqMemo.get(k);
+  if (!m) {
+    m = new Map();
+    liqMemo.set(k, m);
+  }
+  let v = m.get(hour);
+  if (!v) {
+    const r = resolvePrice(
+      prices.index,
+      { mint, t: hour, purpose: 'liquidation', priceSource, market },
+      prices.ctx,
+    );
+    v = { price: r.price, usd: r.priceUsd, reason: r.price === null ? r.nullReason : null };
+    m.set(hour, v);
+  }
+  return v;
+}
+const ltvStats = { kamino: { known: 0, none: 0 }, jupiter_lend: { known: 0, none: 0 } };
 
 // ------------------------------------------------------------------------------------------------- checks' inputs
 // hourly raw reserve bytes inside the window (raw-markets: pool collector, API-listed reserves)
@@ -306,6 +357,8 @@ function emitHour(h: number, slot: number, slotMs: number) {
     const dec = r.decimals;
     const supply = kaminoTotalSupply(v);
     const price = priceAt(r.mint as string, h);
+    const stat = `${r.symbol}|${price.quality ?? price.reason}`;
+    priceStats.set(stat, (priceStats.get(stat) ?? 0) + 1);
     const ui = (x: number) => x / 10 ** dec;
     const usd = (x: number) => (price.usd === null ? null : +(ui(x) * price.usd).toFixed(2));
     reserveRows.push(
@@ -340,10 +393,12 @@ function emitHour(h: number, slot: number, slotMs: number) {
         status: v.config.status,
         priceUsd: price.usd,
         priceSource: price.source,
+        priceQuality: price.quality,
+        priceAgeSec: price.ageSec,
         suppliedUsd: usd(supply),
         borrowedUsd: usd(v.borrowed),
         availableUsd: usd(Number(v.available)),
-        ...(price.usd === null ? { usdNullReason: 'no_price_source' } : {}),
+        ...(price.usd === null ? { usdNullReason: price.reason } : {}),
         ...prov,
       }),
     );
@@ -370,6 +425,9 @@ function emitHour(h: number, slot: number, slotMs: number) {
   for (const [id, o] of obs) {
     let cUnits = 0;
     let cUsd: number | null = 0;
+    // collateral and debt at Kamino's own price, for the LTV
+    let cLiq: number | null = 0;
+    let dLiq: number | null = 0;
     let best: { sym: string; usd: number; units: number } | null = null;
     let syms = new Set<string>();
     for (const [vault, ct] of obColl.get(id) ?? []) {
@@ -383,6 +441,8 @@ function emitHour(h: number, slot: number, slotMs: number) {
       const p = priceAt(r.mint as string, h);
       const usd = p.usd === null ? null : units * p.usd;
       add(coll, o.market, r.symbol as string, units, usd);
+      const lp = liqPriceAt('kamino_scope', r.mint as string, o.market, h).usd;
+      cLiq = cLiq === null || lp === null ? null : cLiq + units * lp;
       cUnits += units;
       cUsd = cUsd === null || usd === null ? null : cUsd + usd;
       syms.add(r.symbol as string);
@@ -400,6 +460,8 @@ function emitHour(h: number, slot: number, slotMs: number) {
       const p = priceAt(r.mint as string, h);
       const usd = p.usd === null ? null : units * p.usd;
       add(debt, o.market, r.symbol as string, units, usd);
+      const lp = liqPriceAt('kamino_scope', r.mint as string, o.market, h).usd;
+      dLiq = dLiq === null || lp === null ? null : dLiq + units * lp;
       hasDebt = true;
       dUsd = dUsd === null || usd === null ? null : dUsd + usd;
     }
@@ -410,7 +472,13 @@ function emitHour(h: number, slot: number, slotMs: number) {
     counts.set(o.market, c);
     const asset = !best ? 'none' : syms.size > 1 && cUsd === null ? 'mixed' : best.sym;
     const arr = byMarket.get(o.market) ?? [];
-    arr.push({ asset, collateralUnits: cUnits, collateralUsd: cUsd, debtUsd: dUsd });
+    const ltvPct = !hasDebt
+      ? 0
+      : cLiq === null || dLiq === null || cLiq <= 0
+        ? null
+        : (100 * dLiq) / cLiq;
+    if (hasDebt) ltvStats.kamino[ltvPct === null ? 'none' : 'known']++;
+    arr.push({ asset, collateralUnits: cUnits, collateralUsd: cUsd, debtUsd: dUsd, ltvPct });
     byMarket.set(o.market, arr);
     syms = new Set();
   }
@@ -434,6 +502,7 @@ function emitHour(h: number, slot: number, slotMs: number) {
         collateralByAsset: obj(coll.get(market)),
         debtByAsset: obj(debt.get(market)),
         ltvBucketsPct: P.ltvBucketsPct,
+        ltvBasis: 'venue_oracle',
         ltvByCollateralAsset: ltvTable(byMarket.get(market) ?? [], P.ltvBucketsPct),
         ...prov,
       }),
@@ -1023,6 +1092,8 @@ for (const v of jlVaults) {
     const vd = vaultEx(vDebt, exBorrow.get(debtMint) ?? [], h);
     const pCol = priceAt(colMint, h);
     const pDebt = priceAt(debtMint, h);
+    // the vault's own oracle: collateral in the debt token, so its LTV needs no USD price
+    const liq = liqPriceAt('jupiter_lend_oracle', colMint, v.account, h).price;
     const list: PositionValue[] = [];
     let open = 0;
     let unknown = 0;
@@ -1041,7 +1112,14 @@ for (const v of jlVaults) {
         collateralUsd: pCol.usd === null || !vc ? null : cUnits * pCol.usd,
         debtUsd:
           dUnits === 0 ? 0 : pDebt.usd === null || Number.isNaN(dUnits) ? null : dUnits * pDebt.usd,
+        ltvPct:
+          dUnits === 0
+            ? 0
+            : liq === null || !vc || Number.isNaN(dUnits) || cUnits <= 0
+              ? null
+              : (100 * dUnits) / (cUnits * liq),
       });
+      if (dUnits !== 0) ltvStats.jupiter_lend[list.at(-1)?.ltvPct === null ? 'none' : 'known']++;
     }
     const colUnits = tot.collateral === null ? null : tot.collateral / 10 ** colDec;
     const debtUnits = tot.debt === null ? null : tot.debt / 10 ** debtDec;
@@ -1062,17 +1140,21 @@ for (const v of jlVaults) {
         positionsStateUnknown: unknown,
         priceUsd: pCol.usd,
         priceSource: pCol.source,
+        priceQuality: pCol.quality,
+        priceAgeSec: pCol.ageSec,
         debtPriceUsd: pDebt.usd,
         debtPriceSource: pDebt.source,
         collateralUsd:
           colUnits === null || pCol.usd === null ? null : +(colUnits * pCol.usd).toFixed(2),
         debtUsd:
           debtUnits === null || pDebt.usd === null ? null : +(debtUnits * pDebt.usd).toFixed(2),
+        oraclePrice: liq,
         ltvOfVault:
-          colUnits && debtUnits !== null && pCol.usd !== null && pDebt.usd !== null
-            ? (debtUnits * pDebt.usd) / (colUnits * pCol.usd)
-            : null,
-        ...(pCol.usd === null || pDebt.usd === null ? { usdNullReason: 'no_price_source' } : {}),
+          colUnits && debtUnits !== null && liq !== null ? debtUnits / (colUnits * liq) : null,
+        ltvBasis: 'venue_oracle',
+        ...(pCol.usd === null || pDebt.usd === null
+          ? { usdNullReason: pCol.usd === null ? pCol.reason : `debt_${pDebt.reason}` }
+          : {}),
         ltvBucketsPct: P.ltvBucketsPct,
         ltvByCollateralAsset: ltvTable(list, P.ltvBucketsPct),
         ...prov,
@@ -1138,10 +1220,14 @@ const summary = {
   },
   usd: {
     method:
-      'Step 5b hourly mid of the asset reference USDC pool (first USDC value pool by TVL with the hour); USDC at par',
-    from: priceFrom === null ? null : new Date(priceFrom * 1000).toISOString(),
-    to: priceTo === null ? null : new Date(priceTo * 1000).toISOString(),
-    assets: [...priceBy.keys()],
+      'oracle standard (Step 11): valuation per mint and hour, pool mid first, then the lending oracles logged prices; USDC at par',
+    params: prices.ctx.params,
+    observations: prices.counts,
+    notLiveObservations: prices.notLive,
+    // Kamino reserve-hours by asset and by the price's quality, or the reason there is none
+    reserveHours: Object.fromEntries([...priceStats].sort(([a], [b]) => a.localeCompare(b))),
+    // position-hours with debt: LTV known on the venue's own oracle, or not (no recent observation of it)
+    ltvOnVenueOracle: ltvStats,
   },
   rows: { reserves: reserveRows.length, markets: marketRows.length, jlVaults: jlRows.length },
   kamino: {

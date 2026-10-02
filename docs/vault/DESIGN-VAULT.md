@@ -27,7 +27,7 @@ Nothing here has run on mainnet. The three $10 runs come first in time.
 - About $10 of Anthropic credit for the sentence parser is approved. Nothing else is spent, and no money goes onto mainnet for now (decided on Oct 2): the three $10 tests are dropped and no domain is bought.
 - Base comes after Solana and Robinhood Chain (decided on Oct 2). Its contracts are the same Solidity; it is deployed only if the first two are working by Tue Oct 6.
 - Built and shown on test networks first (decided on Oct 2): Solana devnet and the EVM test networks, with test tokens, a test exchange and test prices standing in for the stock tokens, Jupiter and the price feeds, labelled as test everywhere. So the router and the price source are set in each chain's config, never fixed in code. The vault's handling of the real tokens and pools is proven by tests on copies of mainnet. Mainnet maybe later, by configuration. Where the text below names a $10 run, a mainnet deploy or a mainnet rehearsal, `PLAN-VAULT.md` says what stands in for it.
-- Build tools may be installed on Thom's machine. Already there: Anchor 0.31.1, Solana CLI 3.0.1, Rust, Foundry (older than the pin), Docker. Missing: surfpool, solana-verify, Slither.
+- Build tools may be installed on Thom's machine. Already there: Anchor 0.31.1, Solana CLI 3.0.1, Rust, Foundry (1.2.3-nightly, older than the release CI pins), Docker. Missing: surfpool, solana-verify, Slither.
 
 ## 0. What changed from v1
 
@@ -92,33 +92,52 @@ Base: `staging`. Each stream works in a short-lived branch and opens a pull requ
 | `packages/engine` | exists; gains `src/personal/` | Rodrigo | schemas, basket |
 | `packages/risk` | exists | Rodrigo | schemas |
 | `packages/db` | exists; gains `basket-schema.ts`, `curves.ts`, migration `0006` | one agent | schemas |
-| `packages/chain-solana` | exists; gains vault builders, `send.ts` and a `./server` entry for `sign.ts` and `wallet.ts` | Thom | schemas |
-| `packages/chain-evm` | stub replaced; ABIs committed | Thom | schemas |
-| `packages/chain-mock` | new; stamps `provenance: 'mock'` | Thom | schemas |
-| `packages/sdk` | new, built; types from OpenAPI; the guard and the leg executor | Thom | schemas (types only) |
+| `packages/chain-solana` | exists; gains vault builders, `send.ts` and a `./server` entry for `sign.ts` and `wallet.ts` | Thom | schemas; its tests also chain-mock, for the contract cases |
+| `packages/chain-evm` | stub replaced; ABIs committed | Thom | schemas; its tests also chain-mock, for the contract cases |
+| `packages/chain-mock` | new; stamps `provenance: 'mock'`; its registry checks the author limits with `checkCreatorLimits` | Thom | schemas, basket |
+| `packages/sdk` | new, built; types from OpenAPI; the guard and the leg executor | Thom | schemas (types only; its tests may use the parsers) |
 | `apps/api` | exists; new routes under `routes/v1/` | shared | all packages |
-| `apps/risk-api` | exists | Rodrigo; not touched | as today |
+| `apps/risk-api` | exists | Rodrigo; not touched | as today: schemas, db, risk, and the `/risk` routes file of `apps/api` by a relative path |
 | `apps/keeper`, `apps/mcp` | new | Thom | keeper: schemas, basket, db, chain-*; mcp: sdk |
 | `apps/web` | exists | shared | schemas, sdk |
 | `programs/basket`, `programs/mock-router`, `idl/`, `contracts/` | new | Thom | none |
 | `content/risk-sheets/`, `content/chains.json` | new, data only | Rodrigo writes sheets | none |
-| `scripts/risk-evm/`, `scripts/ops/`, `scripts/solana/` | new | Thom | any |
+| `scripts/risk-evm/`, `scripts/ops/`, `scripts/solana/`, `scripts/seed-assets.ts` | new; the seed file moved from `packages/db` | Thom | any |
 | `scripts/risk/`, launchd jobs | exist | Rodrigo; not touched | n/a |
 
-**Dependency rules**, enforced by `tests/boundaries.test.ts` (a table of forbidden pairs, with a planted bad import as a self-check):
+**Dependency rules**, enforced by `tests/boundaries.test.ts`. It holds the "May import" column above as a table, reads every import under `packages/` and `apps/` (static, dynamic and `import type`), and fails on a pair the table does not allow, and on a folder with no row. It checks itself with a planted bad import. `scripts/` and the root `tests/` may import anything.
 
 1. `schemas` imports nothing. Interfaces live there, implementations elsewhere, and the apps wire them, as his `LiquidityProvider` already does.
 2. `risk` never imports `engine`. `basket` imports only `schemas`.
 3. Only `apps/api` and `apps/keeper` join logic, chains and the database.
 4. `apps/web` and `apps/mcp` never import `db`, `engine` or a chain package.
-5. Only `apps/keeper` and `scripts/` may import the signing entry, `@colosseum/chain-solana/server`, or the EVM signer. Broadcast and status live in a key-free `send.ts`, which the API may import.
-6. No new library reads `process.env`. A pure `parseFlags(env)` in `packages/schemas` is called once by each app.
+5. Only `apps/keeper` and `scripts/` may import the signing entry, `@colosseum/chain-solana/server`, or the EVM signer: `@colosseum/chain-evm/server`, or `viem/accounts`, where a raw key becomes a signer. A chain package keeps its key-holding code in `src/sign.ts`, `signer.ts`, `wallet.ts` or `server.ts`, and nothing its root entry loads may reach those files. Test files are exempt. Broadcast and status live in a key-free `send.ts`, which the API may import.
+6. No new library reads `process.env`. A pure `parseFlags(env)` in `packages/schemas` is called once by each app. The seven files that read it before the rule are listed in the test and leave the list when they stop.
 
-Two things in his code break these rules today. `packages/db/src/seed-assets.ts` imports `engine`. The `chain-solana` root barrel re-exports `sign.ts` and `wallet.ts`, and his `apps/api/src/routes/monitor.ts` imports the keypair loader from it. Rodrigo is asked to move the seed file to `scripts/` and delete the server-signing routes on `risk-layer` (the audit's top fix). When that merges, PR1b moves `sign.ts` and `wallet.ts` behind the `./server` entry. Until then the test lists both as dated exemptions, the routes are not registered, and no key file exists on the API host.
+One thing in his code breaks these rules today. The `chain-solana` root barrel re-exports `sign.ts` and `wallet.ts`, and his `apps/api/src/routes/monitor.ts` imports the keypair loader from it. API-2 moves both files behind the `./server` entry and puts the server-signing routes behind `LEGACY_STRUCTURER`. Until then the test lists it as a dated exemption, and fails once the exemption is no longer needed, so it gets deleted. The other one is fixed: the seed file imported `engine` from inside `packages/db`, and moved to `scripts/seed-assets.ts` on Oct 2 (`pnpm db:seed` runs it as before).
 
-**Flags.** `CHAIN_MODE_<CHAIN>=live|readonly|mock`, `AUTO_FOLLOW_<CHAIN>`, `KEEPER_ENABLED`, `AGENT_SURFACE`, `LEGACY_STRUCTURER`, served at `GET /v1/config`. A feature shows only when the flag and the adapter's `capabilities` both allow it. A failed gate flips a flag; it does not change code.
+**Flags.** `CHAIN_MODE_<CHAIN>=live|readonly|mock|off`, `AUTO_FOLLOW_<CHAIN>`, `KEEPER_ENABLED`, `AGENT_SURFACE`, `LEGACY_STRUCTURER`, served at `GET /v1/config`. A feature shows only when the flag and the adapter's `capabilities` both allow it. A failed gate flips a flag; it does not change code.
 
-**Pull requests.** PR0 repairs CI, which has failed at setup on every run: delete `version: 11` in `ci.yml`, fix three lint errors, add a Postgres 16 service and `pnpm db:migrate`, delete the placeholder `allowBuilds` lines, add `LICENSE`. PR1a is the frame every TypeScript stream waits for: the v0 types, `chain-mock` with contract tests, migration `0006`, flags. PR1b follows without blocking anyone: the boundary test, three CI workflows (`ci.yml`, `program.yml`, `contracts.yml`) and the dependency pins.
+| Variable | Values | Unset means |
+|---|---|---|
+| `CHAIN_MODE_<CHAIN>` | `live` trades; `readonly` reads the chain and builds nothing; `mock` runs on `packages/chain-mock`; `off` leaves the chain out | `mock` for Solana and Robinhood Chain, `off` for Base |
+| `CHAIN_NETWORK_<CHAIN>` | `mainnet`, `testnet` (devnet, Robinhood Chain test network 46630, Base Sepolia 84532), `local` (a copy of mainnet on the developer's machine) | `testnet`, so nothing reaches mainnet by omission |
+| `CHAIN_ROUTER_<CHAIN>`, `CHAIN_PRICE_SOURCE_<CHAIN>` | An address of the chain's own family; an EVM address in any case, stored lower-case. The price source is the Scope-layout account on Solana; on EVM feeds are per asset | What `chain-presets.ts` knows for that network; nothing on a test network until our deploy |
+| `AUTO_FOLLOW_<CHAIN>`, `KEEPER_ENABLED`, `AGENT_SURFACE` | `on` or `off` | `off` |
+| `LEGACY_STRUCTURER` | `on` or `off` | `on`, because his routes are still registered whatever it says. It flips to `off` in the change that makes the API skip them (API-2) |
+
+`parseFlags(env)` and `parseChainConfigs(env, contracts)` in `packages/schemas` are pure and read only what they are given. `<CHAIN>` is `SOLANA`, `ROBINHOOD` or `BASE`. A value they do not know, or a set variable under `CHAIN_`, `AUTO_FOLLOW_` or `KEEPER_` that is not one of these, stops the app at start; the message names the variable and never repeats its value. So does a chain set to `live` or `readonly` with no router, no price account (Solana) or no deployment in `contracts` (`program` on Solana; `factory` and `registry` on EVM): `assertChainsReady`. A chain config holds no RPC URL. Until `content/chains.json` exists, what is known of each network is in `packages/schemas/src/chain-presets.ts` (data, outside the frozen files), and a deploy's addresses reach the config as the `contracts` argument.
+
+**The label on a figure.** One scale, his `Provenance`, worked out by `chainProvenance(network, mode)` where the mode is known. A chain config itself carries no label.
+
+| Label | Means | Shown as |
+|---|---|---|
+| `live` | Mainnet, read or traded for real | no mark |
+| `sandbox` | A test network, or a local copy of mainnet | "test network" |
+| `mock` | The chain runs on `packages/chain-mock`, whatever network it is set to | MOCK |
+| none | The chain is `off`: there is no figure | not shown |
+
+**Pull requests.** PR0 repairs CI, which has failed at setup on every run: delete `version: 11` in `ci.yml`, fix three lint errors, add a Postgres 16 service and `pnpm db:migrate`, delete the placeholder `allowBuilds` lines, add `LICENSE`. PR1a is the frame every TypeScript stream waits for: the v0 types, `chain-mock` with contract tests, migration `0006`, flags. PR1b follows without blocking anyone: the boundary test, the CI workflows (`ci.yml` on every push; `program.yml` and `contracts.yml` when their files change; `security.yml` on every pull request and weekly) and the dependency pins.
 
 **Process.** His slot process carries over: `docs/vault/PLAN-VAULT.md`, `docs/vault/STATE-VAULT.md`, rows in `docs/GATES.md`. Slot ids are `<stream>-<n>`, half a day each. An open gate stops one stream. `pnpm dev` starts `api` and `web` only.
 
@@ -126,12 +145,28 @@ Two things in his code break these rules today. `packages/db/src/seed-assets.ts`
 
 Frozen in two steps. **v0 on Oct 2**, with the first types and the mock: streams start against it, and one named owner (Thom) approves any change. A walking skeleton on the mock (a three-chain buy through API, order, legs and report) proves it by Oct 3. **Final on Oct 4 evening**, after each real adapter has built and simulated a create, a deposit, one swap and one keeper leg on a fork. Only then does `tests/frozen.test.ts` start hashing the files; it hashes new files only, never his. Later changes are additive. Each TypeScript type below has a zod schema of the same name in `packages/schemas/src/`.
 
+**v0 as built (FRAME-1, Oct 2).** Where the listings below left a choice open, this is what the code in `packages/schemas` does. Thom approves a change until the freeze.
+
+| Point | What the code does |
+|---|---|
+| Refined schemas | zod refuses `.omit()`, `.pick()` and `.partial()` on an object with refinements, so each refined schema has its plain object beside it: `RecipeBase`, `BuiltTxBase`, `BasketTxBase`, `LegBase`, `OrderBase`, `OwnerBase`, `WalletAccountBase`, `BasketAssetBase`, `TradeBase`, `BasketProposalBase` |
+| A recipe's components | Each asset or family once; each weight at least 1 bp; the sum exactly 10,000; assets on the recipe's own chain; a shared portfolio lists assets only. `Targets` holds a vault's targets to the same |
+| A trade | Two different assets on one chain |
+| An order | Every leg carries the order's id and is on a chain the owner has an address for |
+| Inline arguments | Named so a route can validate one: `CreateVaultArgs`, `DepositArgs`, `OwnerSwapArgs`, `SetTargetsArgs`, `AcceptVersionArgs`, `SetAutoFollowArgs`, `WithdrawInKindArgs`, `PublishRecipeArgs`, `ApproveArgs`, `FundingNeed` |
+| The parser's draft | `BasketSheetDraft`: every field of `BasketSheet`, each nullable (section 7) |
+| Interfaces | `ChainReader`, `OwnerBuilder`, `KeeperBuilder`, `Submitter`, `Signer`, `WalletPort` and `RollUpContext` are TypeScript types only: they hold functions |
+| Statuses and kinds in the database | `text`, typed from the zod types, not Postgres enums, so a change before the freeze is not a migration |
+| `leg_attempts` | Points at a row of `legs` or of `keeper_legs`, with a check that exactly one is set |
+| `orders` | The owner as two columns, `owner_solana` and `owner_evm`, and the request as it came |
+| `TxStatus.explorerUrl` | Required, and empty on a network with no explorer |
+
 ### 3.1 Shared types
 
 ```ts
 // chain.ts. Rodrigo's Chain ('solana' | 'evm') stays and means the wallet family.
 type ChainId = 'solana' | 'base' | 'robinhood';       // EVM ids: base 8453, robinhood 4663
-type Address = string;                                // base58 on Solana; lower-case 0x on EVM
+type Address = string;                                // SolanaAddress (base58, 32 bytes) | EvmAddress (lower-case 0x)
 type RawAmount = string;                              // raw token units, decimal string. Never a float
 type AssetId = string;                                // `${ChainId}:${slug}`, e.g. 'solana:spyx'
 type Sourced = { source: string; method: string; fetchedAt: string; provenance: Provenance };
@@ -155,7 +190,7 @@ type Recipe = { schemaVersion: 1; familyId: string; chain: ChainId; onchainId: s
   version: number; effectiveAt: number;               // unix seconds
   components: Component[];                            // sum is exactly 10_000
   metaHash: string; maxFeeBps: 0; flags: 0 };         // both stored onchain and required to be zero in the MVP
-type Target = { asset: AssetId; weightBps: number };  // what a vault stores
+type Target = { asset: AssetId; weightBps: number };  // what a vault stores; an asset appears once
 type FamilyMeta = { familyId: string; slug: string; name: string; copy: string;
   kind: 'index' | 'single'; chains: ChainId[] };
 
@@ -185,7 +220,9 @@ type TxStatus = { status: 'pending' | 'confirmed' | 'reverted' | 'expired'; expl
 - `familyId` is 32 random bytes in hex, chosen when a family's first publish order is made. It is the Solana recipe seed and the EVM salt, so one family has one fixed id on all three chains.
 - `onchainId` is the recipe account address on Solana and `keccak256(abi.encode(creator, familyId))` on EVM.
 - `family` (in `Component`, `IntentRequest` and themes) is always the slug.
-- `metaHash` is the SHA-256 of the canonical JSON of `FamilyMeta`. It is content, not identity: anyone can copy it.
+- `metaHash` is the SHA-256 of the canonical JSON of five fields of `FamilyMeta`: `familyId`, `slug`, `name`, `copy` and `kind`, each in Unicode NFC. It leaves `chains` out, so a shared portfolio published on one more chain later keeps its hash. The exact encoding and worked cases are in `fixtures/creator-limits/README.md`. It is content, not identity: anyone can copy it.
+
+**Addresses.** Lower-case `0x` is the one form of an EVM address here, so an address compares as a string. `normalizeAddress(family, value)` turns what a wallet provider or a config value gives (checksum case) into it and refuses an address of the other family. `Owner.solana`, `Owner.evm`, `WalletAccount` and `BasketAsset` are checked against their family.
 
 **Value and display.** `display = raw × multiplier / 10^decimals` is shares of the underlying, for display only. `valueUsd = raw × usdPerToken / 10^decimals`, with no multiplier, because the reference price on all three chains is the price of one whole token and already includes it. Contract-test vector: 8 decimals, raw 250,000,000, multiplier 1.02, price 100 gives display 2.55 and value 250.00. `view(vault, prices)` in `packages/basket` is the only place that computes value, weight and drift. His `computeDrift` stays for his own screens.
 
@@ -210,26 +247,31 @@ interface ChainReader {
   track(txId: string, validUntil?: string): Promise<TxStatus>;
 }
 interface OwnerBuilder {          // each call returns ONE transaction; the planner splits by the capabilities
-  buildApprove(a: { owner: Address; spender: Address; amountRaw: RawAmount }): Promise<BasketTx>;
+  // BuiltTx is BasketTx without legId and attemptId (3.3): a builder takes no leg
+  buildApprove(a: { owner: Address; spender: Address; amountRaw: RawAmount }): Promise<BuiltTx>;
   buildCreateVault(a: { owner: Address; basketId: string; targets: Target[]; recipeOnchainId?: string;
     expectedVersion?: number; autoFollow: boolean; depositRaw?: RawAmount; trades?: Trade[];
-    slippageBps: number }): Promise<BasketTx>;
-  buildDeposit(a: { vault: Address; amountRaw: RawAmount; trades?: Trade[]; slippageBps: number }): Promise<BasketTx>;
-  buildOwnerSwap(a: { vault: Address; trades: Trade[]; slippageBps: number }): Promise<BasketTx>;
-  buildSetTargets(a: { vault: Address; targets: Target[] }): Promise<BasketTx>;
-  buildAcceptVersion(a: { vault: Address; recipeOnchainId: string; expectedVersion: number }): Promise<BasketTx>;
-  buildSetAutoFollow(a: { vault: Address; on: boolean }): Promise<BasketTx>;
-  buildWithdrawInKind(a: { vault: Address; assets?: AssetId[] }): Promise<BasketTx[]>;   // always to the owner
-  buildPublishRecipe(a: { creator: Address; recipe: Recipe }): Promise<BasketTx>;
+    slippageBps: number }): Promise<BuiltTx>;
+  buildDeposit(a: { vault: Address; amountRaw: RawAmount; trades?: Trade[]; slippageBps: number }): Promise<BuiltTx>;
+  buildOwnerSwap(a: { vault: Address; trades: Trade[]; slippageBps: number }): Promise<BuiltTx>;
+  buildSetTargets(a: { vault: Address; targets: Target[] }): Promise<BuiltTx>;
+  buildAcceptVersion(a: { vault: Address; recipeOnchainId: string; expectedVersion: number }): Promise<BuiltTx>;
+  buildSetAutoFollow(a: { vault: Address; on: boolean }): Promise<BuiltTx>;
+  buildWithdrawInKind(a: { vault: Address; assets?: AssetId[] }): Promise<BuiltTx[]>;   // always to the owner
+  buildPublishRecipe(a: { creator: Address; recipe: Recipe }): Promise<BuiltTx>;
 }
 interface KeeperBuilder {
-  buildAdoptVersion(vault: Address): Promise<BasketTx>;
-  buildKeeperLeg(vault: Address, trade: Trade): Promise<BasketTx>;
+  buildAdoptVersion(vault: Address): Promise<BuiltTx>;
+  buildKeeperLeg(vault: Address, trade: Trade): Promise<BuiltTx>;
 }
 type ChainAdapter = ChainReader & OwnerBuilder & KeeperBuilder;
 ```
 
 `chain-mock/src/contract.ts` holds the contract tests every adapter must pass. No builder sets a vault's keeper or operator.
+
+- **Refusals.** An adapter that refuses throws `ChainError { code, message, retryable }` from `packages/schemas`, for bad arguments as much as for a simulated revert. One list of codes, `ChainErrorCode`: the vault's own error names of 3.7 first, then the adapter's (`BadInput`, `NotSupported`, `TooManyTrades`, `BadTrade`, `VaultNotFound`, `VaultExists`, `RecipeNotFound`, `NotFollowing`, `NotFunded`, `NoGas`, `AllowanceTooLow`, `Expired`, `NotBuiltHere`, `Unavailable`, `Unknown`). `retryable` is true where building again later or at a fresh price can succeed on its own. The API maps a code onto its own error codes of 3.3; the vault's name stays on the leg.
+- **The contract.** `adapterContract(name, setup)` from `@colosseum/chain-mock/contract`. `setup` returns a `ContractFixture`: the adapter, a `send(tx)` that signs and broadcasts (on the mock, `mock.send`), an owner with three vaults (one following with auto-follow on, one with its own targets and auto-follow off, one a version behind a recipe that adds an asset), and the trades to try. The cases read, build, check each refusal's code, then send and read the state back. `contract.selfcheck.test.ts` runs the same cases against adapters broken on purpose and expects them to fail.
+- **Readings fixed in v0.** A create that follows a recipe takes empty `targets` and the `expectedVersion`. `getPrices` returns one price per asset asked for and must price every asset whose `priceKind` is not `none`. `quote` applies the adapter's own slippage to `minOutRaw`. `validUntil` is opaque outside the adapter: a block height on Solana, absent on EVM. A deposit is the chain's cash token and nothing else.
 
 On Solana, `create_vault` opens only the cash account. Each position's token account is created, idempotently, in the swap leg that first buys it. That should keep a 12-asset create inside the 1,232-byte transaction limit; the SOL stream measures create and first-buy sizes for 7 and 12 assets on Oct 3.
 
@@ -238,12 +280,16 @@ On Solana, `create_vault` opens only the cash account. Each position's token acc
 ```ts
 // basket-tx.ts. His tx.ts is not edited; his fields payload, evm, chain, description,
 // provenance and lastValidBlockHeight are reused.
-const BasketTx = UnsignedTx.omit({ kind: true, legAssetId: true, executionId: true }).extend({
-  legId, attemptId, legKind,                           // strings, LegKind
+const BuiltTx = UnsignedTx.omit({ kind: true, legAssetId: true, executionId: true }).extend({
+  legKind,                                             // what an adapter returns
   chainId, signer, feePayer /* optional */,
   messageHash,                                         // hash of the exact bytes to sign
   preview });                                          // Sourced & { summary, simulated, feeNativeRaw,
                                                        //   changes: { holder: 'wallet' | 'vault', asset, deltaRaw }[] }
+const BasketTx = BuiltTx.extend({ legId, attemptId });  // strings, stamped by the API or the keeper (stampTx).
+                                                       // The wallet, the web and the guard take only this.
+// Both check their fields against each other: `evm` on an EVM chain and nowhere else, lastValidBlockHeight
+// on Solana, chain = the family of chainId, a signer in that family's form.
 
 // order.ts
 type LegStatus = 'planned' | 'built' | 'sent' | 'confirmed' | 'failed' | 'expired' | 'skipped';
@@ -255,7 +301,8 @@ type Leg = { id: string; orderId: string | null;       // null for keeper legs
   expected: { inRaw: RawAmount; outRaw: RawAmount; minOutRaw: RawAmount; costBps: number } | null;
   status: LegStatus; attempt: number; txId: string | null; explorerUrl: string | null;   // from the latest attempt
   validUntil: string | null; error: { code: string; message: string; retryable: boolean } | null;
-  trigger: 'manual' | 'index_update' | 'drift' | 'liquidity_breach'; provenance: 'live' | 'mock' };
+  trigger: 'manual' | 'index_update' | 'drift' | 'liquidity_breach'; provenance: Provenance };
+  // a keeper leg has orderId null and kind adopt_version or keeper_leg; an owner leg has neither
 type Attempt = { id: string; legId: string; n: number; messageHash: string; nonce: number | null;
   status: 'built' | 'sent' | 'confirmed' | 'failed' | 'expired'; txId: string | null;
   explorerUrl: string | null; validUntil: string | null; builtAt: string };
@@ -272,7 +319,8 @@ type IntentRequest =
   | { type: 'buy'; owner: Owner; amountUsd: number; proposalId?: string; family?: string; chains?: ChainId[] }
   | { type: 'rebalance'; vaults: Address[]; reason: 'manual' | 'index_update' | 'drift' }
   | { type: 'follow'; vault: Address; family: string; autoFollow: boolean }
-  | { type: 'publish'; creator: Owner; family: string; name: string; copy: string; recipes: Recipe[] }
+  | { type: 'publish'; creator: Owner; family: string; name: string; copy: string;
+      recipes: RecipeDraft[] }   // { chain, components } per chain; the server and the registry assign the rest
   | { type: 'withdraw'; vaults: Address[]; sellToCash: boolean }
   | { type: 'settings'; vault: Address; autoFollow: boolean };
 type Principal = { kind: 'anon' | 'user' | 'service'; userId?: string; wallets: WalletAccount[]; ip: string };
@@ -283,6 +331,14 @@ function prepareIntent(req: IntentRequest, ctx: { principal: Principal;
 
 Routes: `POST /v1/orders` (plans legs, builds nothing); `GET /v1/orders/{id}`; `POST /v1/orders/{id}/legs/{legId}/build` (a fresh `BasketTx` and a new attempt); `POST .../report` with `{ txId }` or `{ signedTx }`; `POST /v1/orders/{id}/consent` (signed-in owner only). Errors use his shape plus `code` and `fix`. Codes: `NOT_FUNDED`, `ASSET_NOT_ELIGIBLE`, `GOAL_NOT_ACHIEVABLE`, `NEW_ASSET_NEEDS_APPROVAL`, `VERSION_CHANGED`, `CREATOR_LIMIT`, `ORDER_EXPIRED`, `US_PERSON`, `RATE_LIMITED`, `CHAIN_UNAVAILABLE`. `MARKET_CLOSED` is a warning on an order, not an error: the owner may trade at any hour, and only keeper trades are bound to the session.
 
+| Route | Body | Answer |
+|---|---|---|
+| `POST /v1/orders` | `IntentRequest` | `Order` |
+| `POST .../legs/{legId}/build` | none | `BuildLegResponse { tx: BasketTx, attempt: Attempt }` |
+| `POST .../legs/{legId}/report` | `ReportLegRequest`: `{ txId }` or `{ signedTx }`, exactly one | `Order` |
+| `POST /v1/orders/{id}/consent` | `ConsentRequest { kinds, textVersion }` | `Order` |
+| `GET /v1/config` | none | `ConfigResponse { flags, chains: ChainStatus[] }`: each chain's config, its mode and its label |
+
 Leg rules:
 
 - A leg is a planned step and is never duplicated. Each build is one row in `leg_attempts`; the leg's `status`, `txId`, `explorerUrl` and `attempt` mirror its latest attempt.
@@ -291,6 +347,21 @@ Leg rules:
 - An order is `partial` when one chain is done and another has a failed leg.
 - An unsigned order expires after 15 minutes. Once its first leg is signed it stays open for 24 hours.
 - Every attempt carries its explorer link and provenance, which is his rule that every mainnet transaction is logged.
+
+**As built on the mock (API-1, Oct 2).** Where the listing above left a choice open, this is what `apps/api` does.
+
+- `prepareIntent` plans a buy of a stored plan, named by `proposalId`. A buy by `family` and the other five intents answer 501 until their slots. Its context is `{ principal, chains, loadProposal, now }`: `chains` is the adapter registry, which has no adapter for a chain that is off.
+- The plan's number onchain (`basketId`) is the first 8 bytes of the SHA-256 of the plan's id. So the same person buying the same plan again reaches the same vault: with no vault the chain's legs start with `create_vault`, which carries the cash; with one they start with `deposit`.
+- Legs per chain, in order: `approve` where the chain needs it; `create_vault` or `deposit`; then `swap` legs of at most `maxTradesPerTx` trades. Where `tradesInCreate` is true the first trades ride in the create or the deposit. Each chain takes the share of the amount the plan gives it, and its trades add up to exactly that cash.
+- `expected` is filled for a leg with one trade and null otherwise: one figure cannot stand for trades into different assets. `minOutRaw` is the quote less 100 bps, the slippage every build is given.
+- Every order route answers with the `Order` plus `attempts`, every attempt at its legs. A read tracks a leg that was sent and has not settled; there is no worker.
+- Legs on one chain are built in order. A leg is not built again while the transaction built before can still land, so nobody is asked to sign twice for one step: on Solana until the chain is past the attempt's `validUntil`; on an EVM chain, where nothing expires, until the attempt is reported or the person cancels it with `POST /v1/orders/{id}/legs/{legId}/cancel` (no body, answers the order). A cancel is refused on Solana while the transaction can still land. A real EVM adapter must give the next attempt the first one's nonce, so only one can land (`apps/api/src/orders/README.md`).
+- A report, by `txId` or by `signedTx`, is matched against every attempt at the leg, and the leg settles on the attempt that landed, whatever it was labelled. An attempt the chain has confirmed or reverted is never rewritten. Signed bytes are relayed once, and only for an attempt that was built and never sent. A transaction that carries the bytes of no attempt is refused and changes nothing. `ChainAdapter` has no call for these checks yet: the API holds them in a small local type (`TxProbe`) that the mock fills in, and they move into the adapter interface with the real adapters (API-2).
+- The 24 hours start when the chain has seen an order's first transaction (confirmed or reverted), not when one is claimed. Nothing reopens an order that has expired: a transaction that lands afterwards is recorded and the order stays expired.
+- One order buys at most $1,000,000 (`ORDER_POLICY.maxAmountUsd`, the ceiling of a plan's own amount), until `IntentRequest` carries a limit. A stored plan whose weights are not valid targets is refused when the order is made.
+- A chain's refusal that fits none of the ten order codes answers with no `code`; the chain's own code and `retryable` are in `details` in every case.
+- `GET /v1/portfolio` reads the signed-in person's vaults on every chain that is not off, with prices, weights and drift, and refreshes the `vaults` cache. Until `view()` exists in `packages/basket` it uses a small one of its own (`apps/api/src/orders/view.ts`).
+- Two routes exist only while a chain runs on the mock, and act only on such a chain: `POST /v1/mock/fund` (mock cash and gas for the signed-in wallets) and `POST /v1/mock/orders/{id}/legs/{legId}/land` (the mock chain lands the leg's latest attempt, as a wallet would). With no chain on the mock they are not registered.
 
 ### 3.4 How `LiquidityProvider` is used
 
@@ -310,11 +381,12 @@ His provider ignores the window argument today (`packages/risk/src/provider.ts`)
 
 ```ts
 // The keeper plans from chain state and signs in the same pass. A keeper_legs row is its own log
-// and idempotency key, unique on (vault_id, keeper_run_id, seq). It never signs from a stored row.
+// and idempotency key, unique on (chain_id, vault_address, keeper_run_id, seq). It never signs from a stored row.
 interface Submitter { chain: ChainId;
   submit(leg: Leg): Promise<{ txId: string; validUntil?: string; nonce?: number }>;
   status(txId: string, validUntil?: string): Promise<'pending' | 'confirmed' | 'reverted' | 'expired'>; }
 interface Signer { address(family: Chain): string; sign(family: Chain, tx: BasketTx): Promise<string>; }
+// The keeper stamps what a builder returns with its keeper_legs row and attempt before it signs.
 
 // wallet.ts (no Privy types)
 type WalletAccount = { family: Chain; address: string; kind: 'embedded' | 'external' };
@@ -327,6 +399,7 @@ interface WalletPort {
   send(chain: ChainId, tx: BasketTx): Promise<{ txId: string }>;    // EVM external
   exportKey(family: Chain): Promise<void>; authHeaders(): Promise<Record<string, string>>; }
 // throws WalletError { code: 'rejected' | 'expired' | 'no_gas' | 'wrong_chain' | 'unknown' }
+// sign() and send() take BasketTx, never BuiltTx: nothing unstamped reaches a wallet
 ```
 
 ### 3.6 Personalization and `packages/basket`
@@ -385,11 +458,14 @@ One Anchor program (0.31.1, the version the spike builds on) holds the vaults, t
 
 ```rust
 // seeds: ["config"] | ["assets"] | ["recipe", creator, family_id] | ["vault", owner, basket_id u64 LE]
-pub struct Config { admin, pending_admin, guardian, default_keeper: Pubkey, keeper_paused: bool,
+pub struct Config { admin, pending_admin, guardian, default_keeper: Pubkey,
+  router_program: Pubkey, price_owner: Pubkey, cash_mint: Pubkey,  // set per network, never fixed in code
+  keeper_paused: bool,
   launched: bool,                                  // one-way; raises the floor on publish_delay_s
   tolerance_bps: u16, loss_cap_bps: u16, band_bps: u16, twap_dev_bps: u16, max_price_age_s: u16,
   asset_cooldown_s: u32, publish_delay_s: u32, session_open_utc_s: u32, session_close_utc_s: u32,
-  closed_until: i64, closed_days: [u16; 32] /* days since 1970, UTC */, reserved: [u8; 64] }
+  closed_until: i64, closed_days: [u16; 32] /* days since 1970, UTC */,
+  bump: u8 /* of its own address */, reserved: [u8; 63] }  // 396 bytes; this order is not frozen, Vault's is
 pub struct AssetRegistry { price_accounts: [Pubkey; 4], count: u8, assets: [AssetEntry; 64] }  // zero-copy
 pub struct AssetEntry {                            // padded to 96 bytes
   mint: Pubkey, price_slot: u8, price_index: u16, twap_index: u16, decimals: u8,
@@ -410,20 +486,23 @@ pub struct Position { mint: Pubkey, target_bps: u16, tracked: u64, last_keeper_t
 
 | Who | Instructions |
 |---|---|
-| Owner | `create_vault(basket_id: u64, targets: Vec<Target>, auto_follow: bool, expected_version: u32)` (with a recipe account passed, it copies the active version if its number matches); `deposit(amount: u64)`; `owner_swap(max_in: u64, min_out: u64, data: Vec<u8>)`; `withdraw(amount: u64)` (one mint per call; the destination token account must belong to the owner); `close_vault()` |
+| Owner | `create_vault(basket_id: u64, targets: Vec<Target>, auto_follow: bool, expected_version: u32)` (with a recipe account passed, it copies the active version if its number matches); `deposit(amount: u64)` (the cash mint only, `Config.cash_mint`; any other mint is `NotCashMint`); `owner_swap(max_in: u64, min_out: u64, data: Vec<u8>)`; `withdraw(amount: u64)` (any token the vault holds, one mint per call; the destination token account must belong to the owner); `close_vault()` |
 | Owner | `set_targets(targets)` (clears `recipe`, auto-follow off); `accept_version(expected_version: u32)` (follows the passed recipe at exactly that active version; new assets allowed); `set_auto_follow(on: bool)`; `set_keeper(keeper: Pubkey)` (reserved; no builder, and the guard refuses it) |
 | Keeper | `keeper_leg(amount_in: u64, data: Vec<u8>)`. The program computes the minimum output. It needs auto-follow on and stored targets, not a recipe or a new version |
 | Anyone | `adopt_version()` (weights-only change, after the delay, auto-follow on); `sync_balances()` |
 | Creator | `publish_recipe(family_id: [u8; 32], components, meta_hash, max_fee_bps: u16, flags: u8)` (both must be zero); `update_recipe(components, meta_hash)`; `cancel_pending()` |
 | Guardian | `pause_keeper()`; `veto_pending()`; `extend_closed_until(ts: i64)`; `add_closed_day(day: u16)`. Each can only tighten |
-| Admin | `init_config(..)` and `init_assets()` (signer must be the upgrade authority); `set_params(..)`; `launch()`; `unpause_keeper()`; `set_closed(..)`; `set_guardian(..)`; `upsert_asset(entry)`; `propose_admin`, `accept_admin` |
+| Admin | `init_config(..)` and `init_assets()` (signer must be the upgrade authority, which becomes the admin); `set_router(program)`, `set_price_owner(program)`, `set_cash_mint(mint)` (each refuses the zero address and emits the old and the new value); `set_params(..)`; `launch()`; `unpause_keeper()`; `set_closed(..)`; `set_guardian(..)`; `upsert_asset(entry)`; `propose_admin`, `accept_admin` |
 
-- `withdraw` and `owner_swap` take no Config, registry or price account. A pause or a dead feed cannot block the owner.
-- The swap target must be Jupiter's program id with selector `route_v2` or `shared_accounts_route_v2`, or the two legacy selectors the spike used. Bytes and accounts are forwarded as in the spike.
+- `withdraw` takes no Config, registry or price account. `owner_swap` reads `Config` for the router and nothing else, and `deposit` reads it for the cash mint. A pause or a dead feed cannot block the owner. Every instruction that reads `Config` checks its address from the seed and the stored bump.
+- The swap target must be `Config.router_program` (Jupiter on mainnet, the test exchange on devnet), with selector `route_v2` or `shared_accounts_route_v2`, or the two legacy selectors the spike used. Bytes and accounts are forwarded as in the spike. Whether the three setters lock at `launch()` or take a delay is decided with the swap.
+- Cash is not a position. What a vault holds in cash is the balance of its associated token account for `Config.cash_mint`. `tracked` is a hint, rewritten when the program moves that mint; anything that values a vault reads the token accounts themselves.
+- A vault's own targets: at most 16, each mint once, never the zero address (it marks an empty slot), weights adding up to at most 10,000 bps (the rest is cash). A zero weight is allowed. Anything else is `InvalidTargets`.
 - Every instruction derives the associated token account for (vault, mint, the mint's own token program) and rejects any other account. The account list may hold exactly two token accounts owned by the vault, the input and the output; after the call their owner, delegate, close authority and data length must be unchanged. Anything else is `AccountTampered`.
-- `set_params` enforces hard-coded bounds: tolerance at most 300 bps, loss cap at most 500 bps, cooldown at least 600 s, publish delay at least 60 s before `launch()` and at least 172,800 s after. The numbers the app shows cannot move past these without an upgrade.
-- Errors, order frozen, append only: `NotKeeper, AutoFollowOff, KeeperPaused, MintNotAccepted, RouterNotAllowed, SpentTooMuch, ReceivedTooLittle, OtherAccountDebited, AccountTampered, PriceStale, PriceDeviation, MarketClosed, MultiplierWindow, NotTowardTarget, PastTarget, Cooldown, LossCapReached, AssetNotPriced, NewAssetNeedsOwner, VersionNotEffective, CreatorLimit, VersionMismatch, WrongDestination, ParamOutOfBounds`.
-- Events, same names on EVM: `VaultCreated`, `Followed`, `Unfollowed`, `VersionAdopted`, `TargetsSet`, `KeeperTrade`, `RecipePublished`, `VersionCancelled`.
+- `init_config` and `set_params` enforce hard-coded bounds: tolerance at most 300 bps, loss cap at most 500 bps, cooldown at least 600 s, publish delay at least 60 s before `launch()` and at least 172,800 s after. The numbers the app shows cannot move past these without an upgrade.
+- Errors, order frozen, append only: `NotKeeper, AutoFollowOff, KeeperPaused, MintNotAccepted, RouterNotAllowed, SpentTooMuch, ReceivedTooLittle, OtherAccountDebited, AccountTampered, PriceStale, PriceDeviation, MarketClosed, MultiplierWindow, NotTowardTarget, PastTarget, Cooldown, LossCapReached, AssetNotPriced, NewAssetNeedsOwner, VersionNotEffective, CreatorLimit, VersionMismatch, WrongDestination, ParamOutOfBounds`. Appended since: `NotUpgradeAuthority, InvalidTargets, NotCashMint, ZeroAddress`.
+- Events, same names on EVM: `VaultCreated`, `Followed`, `Unfollowed`, `VersionAdopted`, `TargetsSet`, `KeeperTrade`, `RecipePublished`, `VersionCancelled`. Solana only: `RouterSet`, `PriceOwnerSet`, `CashMintSet`.
+- Both programs are built with `no-idl`: the program has no on-chain IDL account for anyone to claim. The interface files are committed in `idl/`.
 
 ### 3.8 EVM contracts (`contracts/src/interfaces/`)
 
@@ -441,13 +520,16 @@ struct Limits { uint8 minAssets; uint8 maxAssets; uint16 minWeightBps; uint16 ma
 struct Snapshot { address owner; bytes32 indexId; uint32 acceptedVersion; bool autoFollow; address operator;
                   address[] tokens; uint16[] targetBps; uint256[] balances;
                   uint256[] prices; /* USD per whole token, 1e18 */ uint64[] priceUpdatedAt;
-                  uint64[] lastKeeperAt; uint16 lossUsedBps; }
+                  uint64[] lastKeeperAt; uint16 lossUsedBps;
+                  bytes32 planId; /* matches a vault to its plan with no event */ }
+struct IndexVersion { uint32 version; /* 0 = none */ uint64 effectiveAt; bytes32 metaHash; Weight[] components; }
+struct IndexInfo { address creator; bytes32 familyId; IndexVersion active; IndexVersion pending; }
 
 interface IBasketVault {
   // owner only: no pause, no feed; withdraw calls neither factory nor registry and pays only the owner
-  function deposit(address token, uint256 amount) external;
-  function withdraw(address token, uint256 amount) external;
-  function withdrawAll() external returns (address[] memory skipped);
+  function deposit(uint256 amount) external;                    // the cash token only, read from the config
+  function withdraw(address token, uint256 amount) external;    // any token held, deposited or sent in
+  function withdrawAll() external returns (address[] memory skipped);  // every token in tokens()
   function ownerSwap(Swap[] calldata swaps) external;           // allowlisted router; own balance deltas and minOut
   function setTargets(Weight[] calldata targets) external;      // clears the index, auto-follow off
   function acceptVersion(bytes32 indexId, uint32 expectedVersion) external;
@@ -459,8 +541,19 @@ interface IBasketVault {
   // keeper only; needs auto-follow on and stored targets, not an index
   function keeperSwap(Swap calldata s) external returns (uint256 spent, uint256 received);
   function snapshot() external view returns (Snapshot memory);
+  function owner() external view returns (address);             // set once at initialize; no setter
+  function planId() external view returns (bytes32);            // the factory's salt
+  function config() external view returns (address);            // the IVaultConfig it reads: the factory
+  function tokens() external view returns (address[] memory);   // what withdrawAll walks
 }
-interface IVaultFactory {
+interface IVaultConfig {                                        // the half of the factory a vault reads
+  function cashToken() external view returns (address);         // the one token deposit() pulls
+  function asset(address token) external view returns (AssetConfig memory);  // all zero if not listed
+  function assets() external view returns (address[] memory);
+  function isAsset(address token) external view returns (bool); // asset() cannot say it: a feed may be zero
+  function routerPull(address router) external view returns (uint8);   // 0 no, 1 direct, 2 Permit2
+}
+interface IVaultFactory is IVaultConfig {
   function createVault(bytes32 salt, Weight[] calldata targets, bytes32 indexId, uint32 expectedVersion,
       bool autoFollow) external returns (address vault);        // indexId != 0: targets must be empty
   function createVaultAndBuy(bytes32 salt, Weight[] calldata targets, bytes32 indexId, uint32 expectedVersion,
@@ -469,10 +562,7 @@ interface IVaultFactory {
   function vaultCount() external view returns (uint256);
   function vaultAt(uint256 i) external view returns (address);
   function vaultsOf(address owner) external view returns (address[] memory);
-  function asset(address token) external view returns (AssetConfig memory);
-  function assets() external view returns (address[] memory);
-  function routerPull(address router) external view returns (uint8);   // 0 no, 1 direct, 2 Permit2
-  function keeper() external view returns (address);            // also guardian(), cashToken(), sequencerFeed()
+  function keeper() external view returns (address);            // also guardian(), sequencerFeed()
   function keeperPaused() external view returns (bool);
   function launched() external view returns (bool);
   function closedUntil() external view returns (uint64);
@@ -495,6 +585,7 @@ interface IIndexRegistry {
   function pending(bytes32 id) external view
       returns (uint32 version, uint64 effectiveAt, Weight[] memory components);
   function creatorOf(bytes32 id) external view returns (address);
+  function indexInfo(bytes32 id) external view returns (IndexInfo memory);  // one read of all the app shows
   function indexCount() external view returns (uint256);
   function indexAt(uint256 i) external view returns (bytes32);
   function previewPublish(bytes32 id, Weight[] calldata next) external view
@@ -505,18 +596,21 @@ event RecipePublished(bytes32 indexed id, uint32 indexed version, address indexe
                       Weight[] components, uint64 effectiveAt, uint16 turnoverBps, bytes32 metaHash);
 event KeeperTrade(address indexed vault, address tokenIn, address tokenOut,
                   uint256 spent, uint256 received, uint256 lossUsd, uint16 lossUsedBps);
+event WithdrawSkipped(address indexed token);                   // by the vault, once per token withdrawAll left
 // VersionCancelled, VaultCreated, Followed, Unfollowed, VersionAdopted, TargetsSet: vault and id indexed
+// IVaultConfig: AssetSet(token, config), RouterSet(router, pull), CashTokenSet(token), AdminProposed, AdminChanged
 ```
 
 - Each vault is an OpenZeppelin `BeaconProxy`, one beacon per chain. Factory and registry are UUPS proxies. ERC-7201 namespaced storage; `_disableInitializers()` in every logic constructor.
-- Every proxy is created with its init call inside its constructor, and the beacon with its owner. The admin address is therefore part of the creation code, so anyone who replays our code and salt on another chain gets our admin, not theirs.
+- Every proxy is created with its init call inside its constructor, and the beacon with its owner. The admin address is therefore part of the creation code, so anyone who replays our code and salt on another chain gets our admin, not theirs. The vault's init call is `initialize(address owner, bytes32 planId, address config)`; EVM-2 extends it with the targets and the index. A proxy created without it belongs to whoever calls it first, so the app and the keeper trust only vaults the factory registered.
+- Built so far (EVM-1): the vault's owner path and `VaultConfig`, the abstract base the factory inherits. It holds the admin (handed over in two steps, `proposeAdmin` then `acceptAdmin`), `setAsset`, `setRouter` and `setCashToken`. A listed asset is never a router and a router never a listed asset; both must have code. `setAsset` bounds `source` and `session` to 0 or 1, decimals to 18, `maxWeightBps` to 5000 and `maxAge` to between 60 s and 48 h when a feed is set, and keeps the stored `haltUntil`. The cash token must be a listed asset.
 - `active()` switches to the pending version at `effectiveAt` with no transaction. The registry keeps current and pending only; history is in events. Its `publishDelay` is an admin parameter whose floor depends on the factory's `launched()`.
 - `ownerSwap` requires `routerPull(router) != 0`. The factory may call `ownerSwap` only inside `createVaultAndBuy`. No `tx.origin` checks anywhere.
 - One reentrancy guard covers every state-changing vault function. `multicall` is `MulticallUpgradeable`, which ships in 5.6.1 **[C 5]**. The vault never implements ERC-1271 (`isValidSignature`), or the router's Permit2 command would become usable from the keeper's call data; a test pins this.
-- `withdrawAll` uses a low-level call per token and treats a revert or a `false` return as skipped.
+- `withdrawAll` uses a low-level call per token and treats a revert or a `false` return as skipped, with a `WithdrawSkipped` event each. Each token's balance read gets at most 100,000 gas and its transfer 300,000 (the real tokens on Robinhood Chain use under 14,000 and 48,000), so a token that burns its gas costs a bounded amount. Before each token the call requires 420,000 gas left and otherwise fails as a whole with `GasTooLow`: a token is never skipped because the caller sent too little, and a gas estimate cannot land on a run that leaves one behind. `withdraw` is uncapped. The vault has no `fallback` and no `receive`.
 - The factory enforces the same parameter bounds as the Solana program, and `flags` and `maxFeeBps` must be zero in `create`.
-- Every refusal is a typed error carrying the numbers, named as on Solana where the rule is the same.
-- Pins: Foundry v1.8.3, forge-std v1.17.0, OpenZeppelin Contracts 5.6.1 (5.7.0 has no audit report yet), solc 0.8.30, `evm_version = "cancun"`, `via_ir`. ABIs are generated into `packages/chain-evm/src/abi/*.ts` and committed, so the TypeScript CI needs no Foundry.
+- Every refusal is a typed error carrying the numbers, named as on Solana where the rule is the same. So far, on the vault: `NotOwner`, `ZeroAddress`, `CashTokenNotSet`, `DepositShortfall(token, expected, received)` (a token that skims on transfer is refused), `GasTooLow(left, needed)`. On the config: `NotAdmin`, `NotPendingAdmin`, `ZeroAddress`, `NoCode`, `AssetNotListed`, `AssetIsRouter`, `RouterIsAsset`, `FeedRequired`, `InvalidPull`, `ParamOutOfBounds(param, value)`.
+- Pins: Foundry v1.3.6, forge-std v1.17.0, OpenZeppelin Contracts 5.6.1 (5.7.0 has no audit report yet), solc 0.8.37, `evm_version = "cancun"`, `via_ir`. solc moved from 0.8.30 on Oct 2: that version has two `via_ir` bugs later code could hit (`delete` on a transient variable, and named arguments in `require` with a custom error). The contracts were written on Thom's Foundry, 1.2.3-nightly of July 2025. CI runs v1.3.6: the newest release whose formatter leaves the committed sources as they are. Eleven releases from v1.2.3 to v1.8.4 were tried on Oct 2; all pass the 149 tests and build the same vault bytecode, and from v1.4.0 on `forge fmt` joins one 120-column declaration in `IIndexRegistry.sol`. Moving the pin to v1.8.3, which this design first named, takes that one reformatted line in the same change. The libraries come from pnpm through `contracts/package.json`, with no submodules. ABIs are generated into `packages/chain-evm/src/abi/*.ts` and committed, so the TypeScript CI needs no Foundry.
 
 ## 4. Data model
 
@@ -524,7 +618,7 @@ event KeeperTrade(address indexed vault, address tokenIn, address tokenOut,
 
 | Table | Key columns |
 |---|---|
-| `chains` | text id (`solana`, `base`, `robinhood`), seeded from `content/chains.json`; every `chain_id` column is text with a foreign key here |
+| `chains` | text id (`solana`, `base`, `robinhood`) with its family, network and EVM chain id; every `chain_id` column is text with a foreign key here. `seedChains(db, configs)` writes the rows from the chain configs at API start and after `pnpm db:migrate`, and refuses a database whose rows name another network: one database per network |
 | `users`, `user_wallets` | `privy_id`; `(family, address)` unique, `kind`; written only from a verified identity token |
 | `consents` | order id, address, kind, text version, a hash of the legs it covers, time |
 | `basket_assets` | id `chain:slug`; `(chain_id, address)` unique; class, underlying, issuer, tier, price source, session, `max_weight_bps`, `blocked_countries` |
@@ -534,11 +628,11 @@ event KeeperTrade(address indexed vault, address tokenIn, address tokenOut,
 | `vaults` | `(chain_id, address)` unique; owner, plan, recipe, accepted version, auto-follow, targets, balances, `value_usd`, `vault_type`, `observed_at` |
 | `follows` | user, family: the watchlist and pending prompts |
 | `orders`, `legs`, `leg_attempts` | the `Order`, `Leg` and `Attempt` fields; nullable `org_id` on orders; attempts carry `message_hash`, `nonce`, his provenance columns, nullable `fee_amount`, unique `(chain_id, tx_id)` |
-| `keeper_runs`, `keeper_legs`, `keeper_vaults` | one open run per chain (a partial unique index, which works through any connection pooler); the keeper's own leg log; `synced_version` per vault |
+| `keeper_runs`, `keeper_legs`, `keeper_vaults` | one open run per chain (a partial unique index, which works through any connection pooler); the keeper's own leg log; `synced_version` per vault. The two vault tables name a vault by `(chain_id, vault_address)`, not by a row of `vaults`: the keeper finds vaults on the chain and may not write the API's cache |
 | `price_observations` | asset, value, his `source`, `method`, `fetched_at`, `provenance` |
 | `idempotency_keys` | as named |
 
-Three Postgres roles. `api` can read the keeper tables and not write them. `keeper` writes only the keeper tables and its attempts. `collector` writes only the risk tables. Supabase's Data API is switched off, because it exposes `public` tables to anonymous callers by default (security review, checked against Supabase's docs).
+Three Postgres roles, not yet made: migration `0006` creates the tables only. Roles are cluster-wide, need `CREATEROLE` and carry no password in a migration, so they are created at the deploy, before the hosted database is used. `api` can read the keeper tables and not write them. `keeper` writes only the keeper tables and its attempts. `collector` writes only the risk tables. Supabase's Data API is switched off, because it exposes `public` tables to anonymous callers by default (security review, checked against Supabase's docs).
 
 Units: weights are integer basis points; token amounts are raw units in `numeric(78,0)`; dollars are display values only.
 
@@ -548,7 +642,9 @@ Units: weights are integer basis points; token amounts are raw units in `numeric
 
 ## 5. Vault rules per chain
 
-**The owner can always** deposit, swap with their own signature and slippage through an allowed router, set targets, switch auto-follow, and withdraw every token in kind to their own wallet. Withdrawal is per token and calls no router, feed, factory or registry. Only a program or beacon upgrade can block it. Owner trades are allowed at any hour; outside the session the app shows a warning.
+**Money comes in as cash only** (decided on Oct 2). A deposit is the chain's dollar token and nothing else; the same action then buys each asset in the plan's proportions, as trades the app builds and the owner signs once. The vault refuses a deposit of any other token. A token sent to the vault's address from outside cannot be stopped; it counts for nothing and the owner can withdraw it.
+
+**The owner can always** deposit cash, swap with their own signature and slippage through an allowed router, set targets, switch auto-follow, and withdraw every token in kind to their own wallet. Withdrawal is per token and calls no router, feed, factory or registry. Only a program or beacon upgrade can block it. Owner trades are allowed at any hour; outside the session the app shows a warning.
 
 **The keeper can call one function,** and the vault checks each call. Starting values are not yet calibrated.
 
@@ -558,7 +654,7 @@ Units: weights are integer basis points; token amounts are raw units in `numeric
 | 2 | Recipe assets only | Both mints are in `positions` or are the cash mint | Both tokens accepted, each with a feed | none |
 | 3 | Balance change | Own input and output accounts read before and after; no third vault token account; no delegate, close authority or size change after | Exact approval, zeroed after, Permit2 included; own balance deltas; no other accepted asset fell | none |
 | 4 | Value, per trade | `value(received) ≥ value(spent) × (1 − tolerance)` from two Scope entries; USDC counts as $1 | Same from two Chainlink feeds; cash counts as $1 while its feed is within 0.5% of $1 | 75 bps Solana, 125 bps EVM |
-| 5 | Toward target | Sell only if overweight, buy only if underweight, stop inside the band. Vault value = Σ `tracked × price` | Same | band 50 bps |
+| 5 | Toward target | Sell only if over its target, buy only if under. The trade may end anywhere inside the band, on either side of the target, and not outside the band on the far side. Vault value = cash at $1 + Σ `tracked × price` | Same | band 50 bps |
 | 6 | Cooldown | Per non-cash asset | Same | 3,600 s |
 | 7 | Weekly loss cap | Lost value added to a counter that decays linearly over 7 days | Same | 200 bps of vault value |
 | 8 | Fresh price | Scope entry at most 120 s old, and within `twap_dev_bps` of Scope's 1-hour average | `answer > 0` and `updatedAt` within `maxAge`; Base also checks the sequencer feed | 120 s and 200 bps (placeholder); 26 h for EVM stocks |
@@ -567,6 +663,8 @@ Units: weights are integer basis points; token amounts are raw units in `numeric
 | 11 | Pause | `Config.keeper_paused` | `keeperPaused()` | guardian pauses, admin unpauses |
 
 The session window sits inside the New York session in summer and winter time, so there is no daylight-saving code. Closed days are loaded at deploy from his `fixtures/risk/us-market-holidays.json`, as far ahead as it runs, with half days counted as closed. A fresh-looking feed on a holiday then fails check 9.
+
+**Check 5, exactly** (decided on Oct 2; the rule for SOL-3 and EVM-3). A weight is an asset's value over everything the vault holds, cash included, with cash counted as $1. A sale needs the asset over its target before the trade, and a purchase needs it under: `NotTowardTarget` otherwise. After the trade the asset may sit anywhere inside the band, on either side of its target; it may not sit outside the band on the far side: `PastTarget`. So a fill a little better than the reference price does not revert. `planRebalance` still sizes each trade to land on the target or just before it.
 
 **What the cap does and does not bound.** Checks 4 and 7 are measured at the reference price. If the reference is wrong by X, a leg can lose X plus the tolerance while the counter records only the tolerance. Check 5 limits this to assets that are truly off target. The app's trust notice says "plus any error in the price reference".
 
@@ -579,7 +677,7 @@ The session window sits inside the New York session in summer and winter time, s
 - One swap leg per transaction. Mainnet's instruction stack limit is 5 levels, counting the transaction's own instruction as level 1 **[C 15]**; the spike's route reached level 4. The spare level is kept for a deeper route or a transfer hook, so a keeper leg is never wrapped in another program.
 - Scope is parsed by hand (its crate is BUSL-licensed). Kamino can remap an index, so the keeper re-derives each asset's `(account, index)` before a run. That check is off-chain. If the Oct 2 Scope read confirms the layout of Scope's mappings account (memory), `keeper_leg` also compares the mapping entry at the pinned index with `source_check`. If not, the field stays zero and the gap is listed in `docs/vault/SECURITY.md`.
 
-**EVM specifics.** Raw units everywhere; the feeds already include the multiplier. Decimals (18 on Robinhood Chain, 8 on Base) are passed in config, never read from the token. Robinhood Chain swaps go through Universal Router 2.1.2 (`0x204FAca1764B154221e35c0d20aBb3c525710498`) on hookless pools. Base uses our hardened `SlipstreamAdapter`: it checks `pool.factory()`, sends output only to `msg.sender` and holds nothing. Robinhood Chain has no sequencer feed; that risk is accepted.
+**EVM specifics.** `deposit` takes an amount and no token: the vault reads the cash token from its config each time, so there is no way to name another. `withdrawAll` walks the tokens that came in by a vault function; a token sent in from outside leaves through `withdraw(token, amount)`. Raw units everywhere; the feeds already include the multiplier. Decimals (18 on Robinhood Chain, 8 on Base) are passed in config, never read from the token. Robinhood Chain swaps go through Universal Router 2.1.2 (`0x204FAca1764B154221e35c0d20aBb3c525710498`) on hookless pools. Base uses our hardened `SlipstreamAdapter`: it checks `pool.factory()`, sends output only to `msg.sender` and holds nothing. Robinhood Chain has no sequencer feed; that risk is accepted.
 
 ## 6. Shared-portfolio registry and creator limits
 
@@ -590,14 +688,14 @@ The session window sits inside the New York session in summer and winter time, s
 - Following is the vault pointing at a recipe.
 - The 500 holds one asset, so it is not a registered shared portfolio. It sits on the shelf as a single-asset portfolio (`kind: 'single'`): a vault with one target and no recipe. The registry keeps one rule set and no admin exception.
 
-Limits, checked by the registry. Constants, not per-portfolio settings. Shape limits and `maxWeightBps` apply from version 1; the turnover limit from version 2. Decided on Oct 2: four simple rules. Dropped from the earlier design: a 10-point change per asset, a rolling 7-day turnover counter, and a rule for a ceiling that falls below a live weight. With one version per 48 hours at 20% each, an author moves at most about 70% of a portfolio in a week, which costs followers at most about 1.75% at the widest tolerance, inside the vault's 2% weekly cap.
+Limits, checked by the registry. Constants, not per-portfolio settings. Shape limits and `maxWeightBps` apply from version 1. Version 1 takes effect at once and is exempt from the frequency and turnover rules, which apply from version 2. Decided on Oct 2: four simple rules. Dropped from the earlier design: a 10-point change per asset, a rolling 7-day turnover counter, and a rule for a ceiling that falls below a live weight. With one version per 48 hours at 20% each, an author moves at most about 70% of a portfolio in a week, which costs followers at most about 1.75% at the widest tolerance, inside the vault's 2% weekly cap.
 
 | Limit | Value |
 |---|---|
-| Assets | 3 to 12, platform list only, each 2% to 50%, in 50 bps steps |
-| Turnover | 20% of the portfolio per version |
+| Assets | 3 to 12, platform list only, never the chain's cash token, each 2% to 50%, in 50 bps steps |
+| Turnover | 20% of the portfolio per version, compared without dividing: the absolute weight changes against the version in effect add up to at most 4,000 bps (twice 2,000). A version that waited and has taken effect is the one in effect |
 | Frequency | One version per publish delay (48 hours after `launch()`); none while one is pending |
-| Delay | `publishDelay`, 48 hours after `launch()`; computed by the registry, checked by the vault |
+| Delay | `publishDelay`, 48 hours after `launch()`; computed by the registry, checked by the vault. One delay, not two: it is both the notice a follower gets and the least time between two versions, so `Limits.minInterval` in 3.8 goes away (EVM-2) |
 | Cancel | The creator or the guardian can cancel a pending version. A cancel does not give the slot back |
 
 **The cap from measured exit capacity.** Each listed asset has `maxWeightBps` in the onchain asset list. The registry rejects a component above `min(5000, maxWeightBps)`. An ops script sets it from Rodrigo's curves:
@@ -606,9 +704,9 @@ Limits, checked by the registry. Constants, not per-portfolio settings. Shape li
 
 with `shareOfDepth` 0.25 and `τ` 1% (his values), and `indexCapacityUsd` $250k on Solana and $50k on the EVM chains (from `creator-limits.md`). An asset with no measured curve keeps the ceiling of its shelf tier. The first values are written in the deploy session on Oct 5.
 
-The ceilings are written at deploy and do not move during the MVP, so no rule is built for a ceiling that falls below a live weight.
+The ceilings are written at deploy and do not move during the MVP, so no rule is built for a ceiling that falls below a live weight. The plain rule covers it: every weight of a new version is checked against the ceiling of the day, whether the weight changed or not.
 
-`previewPublish` and `limits()` let an agent check before paying for a transaction. The TypeScript check, the Solana program and the EVM registry share one file of test vectors, including a version published too soon, a weight above its ceiling and a non-zero `flags`.
+`previewPublish` and `limits()` let an agent check before paying for a transaction. The TypeScript check, the Solana program and the EVM registry share one file of test vectors, `fixtures/creator-limits/vectors.json`, including a version published too soon, a weight above its ceiling and a non-zero `flags`. The README beside it defines each rule and names the reason a refusal carries.
 
 ## 7. Personalization engine
 
@@ -655,15 +753,16 @@ The roll-up states the share of the plan that is measured.
 - It picks the deepest dollar pools per token from DexScreener, quotes his size grid, keeps the best single pool per size, and writes `risk_asset_snapshots` rows in his shape with `method_version = 'evmq-0.1'`. Cost is against the pool's own mid, because the feed lags.
 - His `scripts/risk/compute.ts` already fits every row. It needs about six lines so curves keep the snapshot's method version; that change is his.
 - Measured today in session, selling $10k and $50k: Robinhood NVDA 0.01% and 0.07%; Base NVDAc 0.03% and 0.14%. The method is "best single pool", so cost is overstated when liquidity is split.
+- Those two hand measurements leave the pool fee out. The collector (`scripts/risk-evm/`, running hourly since Oct 2) includes it, as Rodrigo's curves do, because the fee is part of what a person loses on the way out: NVDA came to 0.07% and 0.15%, and most Robinhood Chain stock tokens, whose deep pools charge 0.3%, to 0.3% to 0.4% at $10k. It measures only pools the vault can reach (Uniswap v3 pools the factory confirms, and v4 pools without hooks), each against its own mid price. Exit cost shown anywhere in the product is on this basis: fee included.
 - The collector runs hourly from Oct 2, which gives weekend and weekday regimes by Oct 5. A 28-day backfill on dRPC's free archive works but is out unless a stream is idle.
 
 **Where the data runs.** His collectors stay on his Mac. The hosted database gets a dated dump of his curves first; an hourly copy job is a later add. Every sheet shows the date of its curves; stale curves are never shown as live.
 
 ## 9. Wallets and signing
 
-- **Privy**, free plan (0 to 499 monthly users) **[C 7]**. Login methods `passkey` and `wallet`. Embedded Solana and EVM wallets created on login, `showWalletUIs: false`. Chain 4663 is a viem `defineChain` with our own RPC URL.
+- **Privy**, free plan (0 to 499 monthly users) **[C 7]**. Login methods `passkey` and `wallet`. Embedded Solana and EVM wallets created on login, `showWalletUIs: false`. Each EVM chain is a viem `defineChain` made from its chain config, with a public RPC URL that carries no key. Privy is told both networks of each (Robinhood Chain 46630 and 4663, Base Sepolia and Base); the default, and the only one the wallet signs for, is the network `NEXT_PUBLIC_CHAIN_NETWORK_<CHAIN>` names, the test network when unset. `local` is refused in the browser: a signature for a copy of mainnet is valid on mainnet. At start the web asks `GET /v1/config` and compares networks and chain ids; if they differ or the API does not answer, sign-in is off and says why.
 - **One origin, decided by Oct 4 evening.** Passkeys bind to a domain and Privy does not accept a wildcard such as `*.vercel.app` **[C 7]**. Either a custom domain (about $10 a year, a person's decision under "free tiers only"), which lets the host change later, or one fixed Vercel project URL confirmed with Privy on Oct 2. No real wallet is created before that, and each demo wallet's key is exported once as the recovery path.
-- **Packages:** `@privy-io/react-auth` 3.46.0, `viem` 2.56.0, and `@solana/kit` 3.0.3 or newer in `apps/web` only **[C 8]**. Remove wallet-adapter and `@solana/web3.js` 1.x. Two kit versions coexist (2.3 in `chain-solana`, 3 or newer in the web) and never meet: the web gets bytes.
+- **Packages:** `@privy-io/react-auth` 3.46.0 and `viem` 2.56.0, pinned exactly, and `@solana/kit` 5.5.1 in `apps/web` only **[C 8]**: Privy asks for 3.0.3 or newer, and 5.5.1 is the copy its own dependency already brings. Privy's code also imports `@solana-program/memo`, `system` and `token`, so the web lists them (0.10.0, 0.10.0, 0.9.0). Wallet-adapter and `@solana/web3.js` 1.x stay until his screens are rebuilt (WEB-2), then go. Two kit versions coexist (2.3 in `chain-solana`, 5.5 in the web) and never meet: the web gets bytes.
 - **One person, three chains.** One Privy user id; a Solana address and one EVM address that serves both EVM chains. A vault's owner is the active wallet of that family at creation and never changes.
 - **API sign-in.** `plugins/auth.ts` verifies two Privy tokens locally with `jose`: the access token, which names the user, and the identity token (`privy-id-token`, ES256, switched on in the dashboard), which lists the linked wallets **[C 7]**. Wallets are read only from the identity token, never from what the client says. The `aud` claim is pinned to the app id of each environment. No Privy secret on the server.
 
@@ -682,7 +781,7 @@ The roll-up states the share of the plan that is measured.
   - Swap amounts in the bytes must equal the `inRaw` and `minOutRaw` shown on the review screen.
   - A call that turns auto-follow on or accepts a version is refused unless the executor was handed a consent the UI itself collected for that order.
   - Limits: the guard runs in the page it protects, so it does nothing against script injection. `apps/web` ships a nonce-based content security policy and a lint ban on `dangerouslySetInnerHTML`. A compromised API can still show a bad price; the review screen prints the minimum received per leg.
-- **Sending and reporting.** On Solana the wallet signs and the web posts the bytes; the server broadcasts only if they hash to the `messageHash` of an attempt it built. If a wallet changed the bytes, the server does not relay; the wallet sends and the web reports the id. For every reported id the server fetches the transaction and matches signer, target and call data (on Solana: our instruction's accounts and data) to the built leg before marking it confirmed.
+- **Sending and reporting.** On Solana the wallet signs and the web posts the bytes; the server broadcasts only if they hash to the `messageHash` of an attempt it built. If a wallet changed the bytes, the server does not relay; the wallet sends and the web reports the id. As built (WAL-1), the web's `WalletPort` checks what a wallet hands back before returning it as signed: on Solana the same message byte for byte with this account's valid signature, on EVM the same call, signed by this account, of a plain type, with the fee under a ceiling. So a wallet that changed the bytes fails in the browser with `changed`, and the path where it sends by itself is open: it needs a `send()` on Solana, which `WalletPort` does not have. For every reported id the server fetches the transaction and matches signer, target and call data (on Solana: our instruction's accounts and data) to the built leg before marking it confirmed.
 - **Fees.** `GET /v1/funding` returns what is missing per chain: cash plus native gas. The buy button is disabled per chain until funded.
 - **Recovery.** "Export key" per family in settings. After the first deposit the app prompts for a second passkey or an email. `scripts/ops/withdraw-without-app.ts` withdraws in kind with only the owner key.
 
@@ -691,6 +790,7 @@ The roll-up states the share of the plan that is measured.
 **API (`apps/api`).** His Fastify app, plus:
 
 - `plugins/auth.ts`: a person by Privy tokens; the MCP server by one service key in its environment. Every route declares `config.auth`; non-GET routes default to deny. Shelf, risk sheets, quotes, personalize and order creation stay keyless. An order is reachable only by its UUIDv4.
+  - As built (API-1): the access token goes in `Authorization: Bearer`, the identity token in the `privy-id-token` header, and both must name the same person. `PRIVY_APP_ID` names the app; with none set, every route that needs a person answers 503. Each token is held to its own job: the access token must carry a session id (`sid`) and no `linked_accounts`, the identity token must carry `linked_accounts`, so neither can stand in for the other. Five seconds of clock difference are allowed. For now every order route needs sign-in, creation and the read included: an order belongs to the wallets that made it, the `owner` in a request must be wallets of the identity token, and to anybody else the order answers 404, as an id that does not exist does. Keyless creation comes back with the agent surface (AGT-2). The service key and the consent route are not built yet.
 - `plugins/limits.ts` (`@fastify/rate-limit`, in memory), keyed by Privy user or service key first, then by client address: 60 a minute anonymous, 120 signed in, 10 on the parser, 30 on the builders. `@fastify/helmet`. A CORS allowlist. One error handler that returns a request id and no SQL.
 - The browser calls `/api/*`. `apps/web/proxy.ts` rewrites it to the API host and adds the client address with a shared-secret header; the API trusts a forwarded address only with that header.
 - Consent is stored against the order id, the address and a hash of the legs it covers.
@@ -800,7 +900,7 @@ The keeper is the bounded risk: a leaked keeper key can cost each auto-follow va
 | Keeper | One function | The keeper machine, gas only, under $20 |
 | Platform creator | Publishes the launch portfolios | A gas-only key; its address earns the platform badge |
 
-No key that can move funds or loosen a limit sits where a coding agent has a shell. `scripts/ops/authority-check.ts` compares the live admin, beacon owner, implementation slots, guardian, keeper, `launched` and the publish delay on three chains with `deployments/*.json`, whose expected values are written before the deploy. It runs daily in demo week.
+No mainnet key that can move funds or loosen a limit sits where a coding agent has a shell. On test networks an agent may hold the deploy keys (decided on Oct 2); they are kept outside the repo. `scripts/ops/authority-check.ts` compares the live admin, beacon owner, implementation slots, guardian, keeper, `launched` and the publish delay on three chains with `deployments/*.json`, whose expected values are written before the deploy. It runs daily in demo week.
 
 **Hostile cases.** Frozen on day 1. The same ID names a test on each chain family; `docs/vault/SECURITY.md` holds the matrix.
 
@@ -823,7 +923,7 @@ No key that can move funds or loosen a limit sits where a coding agent has a she
 
 | Tier 1: required to switch auto-follow on | Passing |
 |---|---|
-| Every A-case that applies, as a named test (Foundry at 6, 8 and 18 decimals; LiteSVM under Vitest with `mock-router` at Jupiter's address and a hand-written Scope account) | All pass |
+| Every A-case that applies, as a named test (Foundry at 6, 8 and 18 decimals; LiteSVM under Vitest with `mock-router` as `Config.router_program` and a hand-written Scope account) | All pass |
 | Each rule bites: comment out each check in turn, in the contracts and in `checks.rs` | A named test fails for each |
 | I1 and I4 | Hold in unit tests and on live state |
 | One scripted mainnet rehearsal, $10 to $20, every transaction logged | Create, deposit, owner swap, publish, adopt, one keeper leg; A1, A2, A4, A8 and A13 fail as expected on live state; pause; withdraw while paused |
@@ -848,7 +948,7 @@ A tier 2 failure blocks only if it shows a real way to lose funds.
 - `authority-check` is green with the disclosed admin key as admin, `launched` true and the delay at 172,800 s. The Supabase Data API is off.
 - The three-profile test passes: pairwise distance at least 3,000 bps, a reason on every line.
 
-**Supply chain.** Keep pnpm 11's one-day release hold and build-script approval. A pull request that changes the lockfile names the new packages and a person reads the diff. `security.yml` runs gitleaks, `pnpm audit --prod` and cargo-deny.
+**Supply chain.** Keep pnpm 11's one-day release hold and build-script approval. A pull request that changes the lockfile names the new packages and a person reads the diff. `security.yml` runs gitleaks, `pnpm audit --prod` and cargo-deny, on every pull request and weekly. The audit fails on a high or critical advisory that is not listed, with its reason, in `docs/vault/SECURITY-DEPS.md`.
 
 **First, today.** Revoke the two live approvals on Rodrigo's demo wallet (5 USDY and 5 syrupUSDC to the agent key). Do not deploy the current API publicly with `secrets/agent.json` present.
 
@@ -949,7 +1049,7 @@ Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-L
 
 1. Write access: granted. Rodrigo merged his branches into `main` on Oct 1. Each stream works in a short-lived branch with a pull request into `staging`; `staging` goes into `main`, and `main` is what gets submitted.
 2. The licence: Apache-2.0.
-3. Adding files stays the default, to keep merges clean. Where an edit to an existing file makes the product better, we make it and say so in the pull request. The four edits are ours to make: the server-signing routes go behind `LEGACY_STRUCTURER` and are deleted once the vault path replaces them; `seed-assets.ts` moves to `scripts/`; the CI chores are done; and six lines in `scripts/risk/compute.ts`. `chain-solana` and `chain-evm` are Thom's. One branch at a time generates migrations.
+3. Adding files stays the default, to keep merges clean. Where an edit to an existing file makes the product better, we make it and say so in the pull request. The four edits are ours to make: the server-signing routes go behind `LEGACY_STRUCTURER` and are deleted once the vault path replaces them; `seed-assets.ts` moves to `scripts/` (done on Oct 2); the CI chores are done; and six lines in `scripts/risk/compute.ts`. `chain-solana` and `chain-evm` are Thom's. One branch at a time generates migrations.
 4. One of Thom's agents ports the personalization prototype into `engine/src/personal/` with sensible starting numbers. Rodrigo tunes the sleeve table, glide floors, caps and wording when he can.
 5. Stock tokens stay out of income plans, as his rule says.
 6. Stocks and gold: no return assumed, with the dollar loss in a 20% fall shown. A sourced range can come later.
@@ -1007,7 +1107,7 @@ Each stream note in `docs/vault/research/design-v2/` lists its full sources. The
 1. Anchor releases (1.2.0, Sep 4): https://github.com/otter-sec/anchor/releases (`coral-xyz/anchor` redirects there)
 2. Jupiter build endpoint and rate limits ("per organisation, not per API key"): https://developers.jup.ag/docs/swap/build , https://developers.jup.ag/docs/portal/rate-limits
 3. Kamino Scope layout and priced reserves: https://github.com/Kamino-Finance/scope , https://api.kamino.finance/kamino-market/5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua/reserves/metrics
-4. Foundry v1.8.3: https://github.com/foundry-rs/foundry/releases
+4. Foundry releases (v1.8.3 was the latest when this was written; CI pins v1.3.6, section 3.8): https://github.com/foundry-rs/foundry/releases
 5. OpenZeppelin Contracts 5.6.1 and 5.7.0; `MulticallUpgradeable` at tag v5.6.1: https://github.com/OpenZeppelin/openzeppelin-contracts/releases , https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable/blob/v5.6.1/contracts/utils/MulticallUpgradeable.sol
 6. Chainlink tokenized equity and sequencer feeds: https://docs.chain.link/data-feeds/tokenized-equity-feeds , https://docs.chain.link/data-feeds/l2-sequencer-feeds
 7. Privy pricing, allowed domains, identity tokens: https://www.privy.io/pricing , https://docs.privy.io/recipes/dashboard/allowed-domains.md , https://docs.privy.io/user-management/users/identity-tokens.md

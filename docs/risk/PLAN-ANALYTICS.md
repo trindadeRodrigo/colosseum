@@ -25,7 +25,7 @@ Nothing here blocks an item. It decides which facts are `null` on day one.
 | Information | Arrives | From | Facts it fills | Null reason until then |
 |---|---|---|---|---|
 | Weekend regime curves | Mon Oct 5, after the first collected weekend | the running collector | weekend exit cost, weekend ratio, coverage ratio in the measured worst regime | `no_samples_in_regime` |
-| One reference price per asset and time | Step 11 items 3–5 | the Step 11 session | USD value of history, premium or discount against each lending oracle, volatility, drawdown, gap frequency | `no_reference_price` |
+| One reference price per asset and time | **Arrived 2026-10-02** (Step 11 items 1–6, merged into this branch): `risk_reference_prices` (one row per asset and hour: `price_usd`, `price_source`, `quality`, `regime`, `age_sec`, `null_reason`, and `others` with each venue's oracle price and its gap), `risk_price_observations`, and the resolver `resolvePrice` / `referencePrice` in `packages/risk/src/prices` (`scripts/risk/prices/lib.ts` builds its inputs). The lending history is priced by it (`lending-reconstruct-0.3`). Still open there: the weekend regime (Mon Oct 5) and an external feed (D19) | the Step 11 session | USD value of history, premium or discount against each lending oracle, volatility, drawdown, gap frequency | `no_reference_price` until the builders read it (A-C) |
 | The underlying share price | when D19 picks an external feed | open | tracking against the real stock, gap frequency on a long history | `no_external_source` |
 | EVM depth (Robinhood Chain, Base) | Thom's collector, `method_version = evmq-0.1` | vault stream | the same exit facts on the two EVM chains | `chain_not_covered` |
 | Pools of non-stock assets (USDY, syrupUSDC, USDT) | item 17, Mon Oct 5 at the earliest (DA3) | new read-only snapshot script | measured exit cost for dollar-yield tokens and stablecoins | `not_collected` |
@@ -201,6 +201,8 @@ Defaults apply unless you change them.
 | 12–17. Phase 2 | todo | |
 
 ### Discovered
+
+- 2026-10-02 (prepared for a fresh session): `risk` was merged into this branch after Step 11 items 1–6 and the merge of `staging`. Migrations are now `0006_basket.sql` (staging) and `0007_risk_lending_prices.sql` (the six risk tables); item 11's table is generated on top of those as 0008. The constraint "no migration before item 11" is met. `pnpm verify` on the merged branch: 1,280 tests. Items left: 4, 11 (in progress), 12–17; the A-C prompt for Step 11's reference prices has not been run yet.
 
 - 2026-10-02: order changed. The stored curves' cost already holds the pool fee and the token's transfer fee, so the return math needed the entry side, the round trip and per-regime answers first (items 5 and 6, done). The fee split (items 3–4) explains the cost; it does not correct it.
 - 2026-10-02: item 3's check cannot be met from the raw snapshots as written. The collector keeps raw account bytes hourly for concentrated-liquidity pools in the top 80% of TVL only, while a routed row uses every dollar-exit pool of the asset (CPMM and DLMM included). Three ways to get the amount sent to each pool: a read-only snapshot script of our own (new RPC reads, DA3); the per-pool 5-minute curves interpolated between grid sizes (approximate, error measurable against the stored routed total); or two lines in the collector after Oct 12 so each routed row stores its split. Item 3's router is still tested for equality with the collector's algorithm on frozen pool fixtures.
