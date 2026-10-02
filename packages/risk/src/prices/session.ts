@@ -76,3 +76,15 @@ export function openSecondsBetween(c: SessionClock, a: number, b: number): numbe
     throw new Error(`session clock covers ${c.from}–${c.to}, asked ${a}–${b}`);
   return openUntil(c, b) - openUntil(c, a);
 }
+
+/** Whether the session opens between `a` and `b`: a start `s` with `a` < `s` ≤ `b`. */
+export function sessionStartsBetween(c: SessionClock, a: number, b: number): boolean {
+  let lo = 0;
+  let hi = c.open.length;
+  while (lo < hi) {
+    const m = (lo + hi) >> 1;
+    if ((c.open[m] as [number, number])[0] <= a) lo = m + 1;
+    else hi = m;
+  }
+  return lo < c.open.length && (c.open[lo] as [number, number])[0] <= b;
+}

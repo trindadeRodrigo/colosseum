@@ -1,7 +1,7 @@
 {
   "source": "lending registry (~/.colosseum/risk/lending-registry.json), confirmed on-chain (Step 10b item 2)",
   "method": "prices-freeze-fixtures",
-  "fetchedAt": "2026-10-02T17:48:28.033Z",
+  "fetchedAt": "2026-10-02T18:27:19.904Z",
   "provenance": "fixture",
   "kaminoReserves": {
     "w6diwHyXhRzmhRWwnz3jQPqTt35qFbBDcQP7T2VdgSm": {

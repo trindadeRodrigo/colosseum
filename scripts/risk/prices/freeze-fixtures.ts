@@ -1,7 +1,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import type { PriceObservation } from '@colosseum/risk';
-import { RISK_HOME } from '../lib-lending';
+import { LENDING_HISTORY_DIR, RISK_HOME } from '../lib-lending';
 import { readObservations } from './lib';
 
 // Step 11 — freezes real observations and the registry context for tests/risk-layer/prices.test.ts.
@@ -10,6 +11,9 @@ import { readObservations } from './lib';
 //   fixtures/risk/prices/observations.json  three windows of real observations, thinned:
 //     weekend   SPYx from every source and USDG, Fri 2026-09-25 12:00Z → Mon 2026-09-28 16:00Z
 //     listing   METAx from Kamino, 2026-02-09 → 2026-02-13: the placeholder price, then the live feed
+//   fixtures/risk/prices/txs/               one transaction from the lending history's raw bodies: klend logging a
+//                                           price that failed its own TWAP and heuristic checks (AAPLx at 0.0123,
+//                                           2026-02-12) and liquidating on it
 // Thinning keeps the last observation of each source, market and ten-minute bucket; the tests' expectations are
 // computed on the frozen rows themselves, never on the full data.
 // Usage: tsx scripts/risk/prices/freeze-fixtures.ts && pnpm exec biome format --write fixtures/risk/prices
@@ -101,3 +105,38 @@ writeFileSync(
   )}\n`,
 );
 console.log(`read ${JSON.stringify(count)}, kept ${observations.length} → ${OUT}`);
+
+// the transaction with the rejected price, from the raw bodies of its day
+const TXS = [
+  {
+    name: 'kamino-failed-price-check',
+    day: '2026-02-12',
+    signature:
+      '5MzymXvopk4Y1j9StqAhBYCW46VevmB4H8fAygVvRvuzWJK7oQsZRN4QWa1M4vzUbp5e8CnuTFGidhzidgnPbCqD',
+  },
+];
+mkdirSync(join(OUT, 'txs'), { recursive: true });
+for (const x of TXS) {
+  const line = gunzipSync(readFileSync(join(LENDING_HISTORY_DIR, 'raw', `${x.day}.jsonl.gz`)))
+    .toString('utf8')
+    .split('\n')
+    .find((l) => l.startsWith(`{"s":"${x.signature}"`));
+  if (!line) throw new Error(`${x.signature} not in raw/${x.day}`);
+  writeFileSync(
+    join(OUT, 'txs', `${x.name}.json`),
+    `${JSON.stringify(
+      {
+        name: x.name,
+        signature: x.signature,
+        source: 'lending history raw bodies (Solana RPC getTransaction)',
+        method: 'prices-freeze-fixtures',
+        fetchedAt,
+        provenance: 'fixture',
+        tx: (JSON.parse(line) as { tx: unknown }).tx,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+console.log(`froze ${TXS.length} transaction(s) → ${OUT}/txs`);

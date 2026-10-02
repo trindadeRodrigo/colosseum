@@ -1,7 +1,7 @@
 {
   "source": "data/risk/prices/obs (Step 11 item 1): klend refresh logs, Jupiter Lend oracle returns, Step 5b hourly pool mids",
   "method": "prices-freeze-fixtures (last observation per source, market and ten-minute bucket)",
-  "fetchedAt": "2026-10-02T17:48:28.033Z",
+  "fetchedAt": "2026-10-02T18:27:19.904Z",
   "provenance": "fixture",
   "windows": [
     {
@@ -26,7 +26,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -38,7 +39,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -50,7 +52,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -62,7 +65,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -74,7 +78,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -86,7 +91,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -98,7 +104,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -110,7 +117,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -122,7 +130,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -134,7 +143,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -146,7 +156,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -158,7 +169,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -170,7 +182,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -182,7 +195,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -194,7 +208,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -206,7 +221,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -218,7 +234,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -230,7 +247,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -242,7 +260,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -254,7 +273,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -266,7 +286,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -278,7 +299,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -290,7 +312,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -302,7 +325,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -314,7 +338,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -326,7 +351,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -338,7 +364,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -350,7 +377,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -362,7 +390,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -374,7 +403,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -386,7 +416,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -398,7 +429,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -410,7 +442,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -422,7 +455,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -434,7 +468,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -446,7 +481,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -458,7 +494,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -470,7 +507,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -482,7 +520,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -494,7 +533,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -506,7 +546,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -518,7 +559,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -530,7 +572,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -542,7 +585,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -554,7 +598,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -566,7 +611,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -578,7 +624,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -590,7 +637,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -602,7 +650,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -614,7 +663,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -626,7 +676,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -638,7 +689,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -650,7 +702,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -662,7 +715,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -674,7 +728,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -686,7 +741,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -698,7 +754,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -710,7 +767,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -722,7 +780,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -734,7 +793,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -746,7 +806,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -758,7 +819,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -770,7 +832,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -782,7 +845,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -794,7 +858,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -806,7 +871,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -818,7 +884,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -830,7 +897,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -842,7 +910,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -854,7 +923,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -866,7 +936,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -878,7 +949,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -890,7 +962,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -902,7 +975,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -914,7 +988,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -926,7 +1001,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -938,7 +1014,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -950,7 +1027,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -962,7 +1040,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -974,7 +1053,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -986,7 +1066,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -998,7 +1079,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -1010,7 +1092,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -1022,7 +1105,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -1034,7 +1118,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",
@@ -1046,7 +1131,8 @@
       "quote": "usd",
       "ref": "AJPrye7NZGex2rUZhRwiAPJYxai1Ptb7DNWR3yYjtk3G",
       "market": "5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua",
-      "method": "klend_refresh_log"
+      "method": "klend_refresh_log",
+      "failedChecks": ["heuristic"]
     },
     {
       "chain": "solana",

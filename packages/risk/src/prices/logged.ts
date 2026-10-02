@@ -12,7 +12,10 @@ import { flattenIxs } from '../lending/tx';
  *  - Kamino: klend logs `Token: <name> Price: <usd>` whenever it refreshes a reserve (the Scope price it then acts
  *    on, four decimals). The line is attributed to a reserve through the accounts of the instruction that logged
  *    it: the one registered reserve among them whose token name equals the logged name. A refresh of a reserve
- *    outside the registry is counted, not returned.
+ *    outside the registry is counted, not returned. klend also logs when the price fails its own checks
+ *    (`Price twap check failed token=[…]`, `Price heuristic check failed token=[…]`) and still logs the price:
+ *    the failed checks are returned with it (`failedChecks`), because such a price is what the venue saw and not
+ *    a valuation (AAPLx was logged at 0.0123 on 2026-02-12 with both checks failed).
  *  - Jupiter Lend: a vault instruction calls the oracle program, whose return value is the exchange rate it used:
  *    collateral in debt tokens × 1e15 (one u128, or two for `get_both_exchange_rate`: both are kept). The vault,
  *    the collateral mint and the debt mint come from the calling instruction's accounts.
@@ -34,6 +37,8 @@ export type LoggedOraclePrice = {
   path: string;
   /** Jupiter Lend `get_both_exchange_rate`: the second rate, when it differs from the first. */
   secondPrice?: number;
+  /** klend: its own price checks that failed for this token in the same refresh. */
+  failedChecks?: string[];
 };
 
 export type LoggedPriceContext = {
@@ -110,12 +115,24 @@ export function loggedOraclePrices(tx: RpcTx, ctx: LoggedPriceContext): LoggedPr
   if (!out.aligned) return out;
 
   const seen = new Set<string>();
+  const kamino = new Map<string, LoggedOraclePrice>();
   flat.forEach((ix, i) => {
     const lines = (frames[i] as Frame).lines;
     if (ix.program === KLEND_PROGRAM) {
+      // the check lines come before the price line of the same refresh
+      const failed = new Map<string, Set<string>>();
       for (const l of lines) {
+        const f = /^Program log: Price (\w+) check failed token=\[(.+?)\]/.exec(l);
+        if (f) {
+          const s = failed.get(f[2] as string) ?? new Set<string>();
+          s.add(f[1] as string);
+          failed.set(f[2] as string, s);
+          continue;
+        }
         const m = /^Program log: Token: (.+) Price: ([\d.]+)$/.exec(l);
         if (!m) continue;
+        const checks = [...(failed.get(m[1] as string) ?? [])].sort();
+        failed.delete(m[1] as string);
         const reserves = [
           ...new Set(ix.accounts.filter((a) => ctx.kaminoReserves.get(a)?.symbol === m[1])),
         ];
@@ -130,11 +147,17 @@ export function loggedOraclePrices(tx: RpcTx, ctx: LoggedPriceContext): LoggedPr
         const ref = reserves[0] as string;
         const r = ctx.kaminoReserves.get(ref) as { mint: string; market: string };
         const price = Number(m[2]);
-        // one row per reserve and price in a transaction: a reserve is often refreshed several times
+        if (!(price > 0)) continue;
+        // one row per reserve and price in a transaction: a reserve is often refreshed several times. A failed
+        // check on any of them stays on the row.
         const k = `${ref}|${price}`;
-        if (seen.has(k) || !(price > 0)) continue;
-        seen.add(k);
-        out.prices.push({
+        const prev = kamino.get(k);
+        if (prev) {
+          if (checks.length)
+            prev.failedChecks = [...new Set([...(prev.failedChecks ?? []), ...checks])].sort();
+          continue;
+        }
+        const row: LoggedOraclePrice = {
           priceSource: 'kamino_scope',
           mint: r.mint,
           price,
@@ -142,7 +165,10 @@ export function loggedOraclePrices(tx: RpcTx, ctx: LoggedPriceContext): LoggedPr
           ref,
           market: r.market,
           path: ix.path,
-        });
+          ...(checks.length ? { failedChecks: checks } : {}),
+        };
+        kamino.set(k, row);
+        out.prices.push(row);
       }
       return;
     }

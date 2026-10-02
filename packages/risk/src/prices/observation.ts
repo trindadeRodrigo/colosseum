@@ -37,6 +37,8 @@ export type PriceObservation = {
   sourceTs?: number | null;
   /** False when the source was not pricing the asset at that time (`markLiveness`); absent means live. */
   live?: boolean;
+  /** The venue's own checks this price failed when it was logged (klend: `twap`, `heuristic`); absent means none. */
+  failedChecks?: string[];
   /** Jupiter Lend's market status for the feed, when read live. */
   marketStatus?: number | null;
 };

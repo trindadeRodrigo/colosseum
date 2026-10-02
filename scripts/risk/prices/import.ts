@@ -10,15 +10,17 @@ import { loadPriceInputs, PRICES_DIR, PRICES_METHOD_VERSION } from './lib';
 
 // Step 11 item 5 — `pnpm risk:prices-import`. Fills risk_price_observations from the observation files of item 1
 // and risk_reference_prices with the resolver's valuation per asset and hour. Run `pnpm risk:prices-extract` first
-// (`--only=live` refreshes the collectors' rows in seconds). Idempotent:
-//   observations     rows newer than the newest one stored per price source and method, minus `overlapSec`, are
-//                    written again; a row that exists keeps everything but its `live` flag, which is updated
-//   reference prices each asset from its first observation (or from the newest stored hour minus `overlapSec`) to
-//                    the last whole hour that has any observation; an hour that exists is replaced
-// The overlap is there because a trading day is judged live or frozen only once it is over.
+// (`--only=live` refreshes the collectors' rows in seconds). Idempotent: an observation that exists keeps
+// everything but its `live` and `failed_checks` flags; a reference hour that exists is replaced.
+//   default    every observation, and every hour of every asset from its first observation to the last whole
+//              hour that has any observation (about a minute). Always right, whatever was added or backfilled.
+//   --recent   only what is newer than the newest stored row per price source and method (per asset for the
+//              reference prices), minus `overlapSec`: seconds instead of a minute. The overlap is there because a
+//              trading day is judged live or frozen only once it is over. It does NOT pick up older rows added
+//              later (a backfilled pool history, a new reserve, an external source): run the default after those.
 // The run, with the price parameters it used, is appended to data/risk/prices/import-runs.jsonl.
-// Usage: tsx scripts/risk/prices/import.ts [--full]
-const FULL = process.argv.includes('--full');
+// Usage: tsx scripts/risk/prices/import.ts [--recent]
+const FULL = !process.argv.includes('--recent');
 const P = { overlapSec: 2 * 86400, chunk: 2000 };
 const SOURCE = 'price observations (Step 11 item 1), resolved by packages/risk/src/prices';
 const METHOD = 'prices-resolve';
@@ -67,7 +69,7 @@ const flush = async () => {
         riskPriceObservations.slot,
         riskPriceObservations.price,
       ],
-      set: { live: sql`excluded.live` },
+      set: { live: sql`excluded.live`, failedChecks: sql`excluded.failed_checks` },
     })
     .returning({ m: riskPriceObservations.mint });
   bump('observationsWritten', res.length);
@@ -88,6 +90,7 @@ for (const o of inputs.observations) {
     ref: o.ref,
     market: o.market,
     live: o.live !== false,
+    failedChecks: o.failedChecks?.length ? o.failedChecks.join(',') : null,
     sourceTs: o.sourceTs ? new Date(o.sourceTs * 1000) : null,
     marketStatus: o.marketStatus ?? null,
     methodVersion: o.methodVersion,

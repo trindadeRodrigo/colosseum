@@ -5,6 +5,7 @@ import {
   type PriceSession,
   SESSION_REGIMES,
   type SessionClock,
+  sessionStartsBetween,
 } from './session';
 
 /**
@@ -22,12 +23,16 @@ import {
  * (`others`, with its gap to the answer), so the DEX price and the oracle price are both kept.
  *
  * Recent enough. An observation counts when it is at or before the time asked, and:
- *  - a source with a session (`sessionBySource`), for an asset tied to the US market: its session has been open
- *    for at most `maxOpenAgeSec` since the observation, and the observation is at most `maxClosedAgeSec` old. The
- *    oracle holds its last price while its session is closed, so Friday's last observation is still its price on
- *    Sunday, while a 10:00 observation is not at 13:00;
+ *  - a source with a session (`sessionBySource`), for an asset tied to the US market: its session has not opened
+ *    again since the observation, has been open for at most `maxOpenAgeSec` since it, and the observation is at
+ *    most `maxClosedAgeSec` old. The oracle holds its last price while its session is closed, so Friday's last
+ *    observation is still its price on Sunday; it is not on Monday at 10:00, and a 10:00 observation is not at
+ *    13:00;
  *  - anything else (a pool mid, an external feed, an asset priced around the clock): at most `maxAgeSec[source]`
- *    old (`maxAgeSecByMint` overrides it for a single mint).
+ *    old (`maxAgeSecByMint` overrides it for a single mint's oracles, never for a pool mid).
+ * A price that failed a disqualifying check of the venue when it was logged (`failedChecks`, `disqualifyingChecks`)
+ * is passed over for a valuation: the latest observation that passed is used instead. For a liquidation it is the
+ * venue's price and is returned.
  *
  * A price quoted in another token (Jupiter Lend quotes the collateral in the vault's debt token) is converted with
  * that token's own valuation at the same time; when there is none the reason is `no_quote_price`.
@@ -48,7 +53,12 @@ export type PriceQuality =
   | 'oracle_continuous'
   | 'external'
   | 'par';
-export type PriceNullReason = 'no_observation' | 'stale' | 'oracle_not_live' | 'no_quote_price';
+export type PriceNullReason =
+  | 'no_observation'
+  | 'stale'
+  | 'oracle_not_live'
+  | 'oracle_check_failed'
+  | 'no_quote_price';
 
 export type PriceParams = {
   /** Sources tried in this order for a valuation. An external feed is plugged in by adding its id here. */
@@ -63,6 +73,8 @@ export type PriceParams = {
   maxOpenAgeSec: number;
   /** A source with a session: oldest observation accepted across a closure, seconds of wall clock. */
   maxClosedAgeSec: number;
+  /** Checks of the venue whose failure keeps a logged price out of a valuation (klend's `twap`). */
+  disqualifyingChecks: string[];
   /** Mints valued at one USD by assumption (USDC, as Step 5b does). */
   parMints: string[];
   /** Mints whose oracle prices around the clock, so no session changes what its price means. */
@@ -73,8 +85,10 @@ export type PriceParams = {
  * Set from Step 11 item 2. Sessions: Kamino's logged stock prices changed in 67% of consecutive observations in
  * US market hours and 1–3% outside; Jupiter Lend's in 65% on weekdays around the clock and 3–5% on weekends and
  * holidays. Limits: with two hours of session time a stock's logged Kamino price covers 98–100% of its hours; a
- * USD stablecoin's logged price moved by at most 0.5% between two observations less than a day apart. The mint
- * lists come from the lending registry.
+ * USD stablecoin's logged price moved by at most 0.5% between two observations less than a day apart. Checks: a
+ * price that failed klend's TWAP check is passed over (AAPLx was logged at 0.0123 on 2026-02-12); one that failed
+ * only the heuristic check is kept, because klend's fixed bounds lag the market for weeks (1,732 METAx prices, a
+ * median 1.3% from the nearest price that passed). The mint lists come from the lending registry.
  */
 export const defaultPriceParams = (mints: {
   parMints: string[];
@@ -87,6 +101,7 @@ export const defaultPriceParams = (mints: {
   maxAgeSecByMint: Object.fromEntries(mints.usdStableMints.map((m) => [m, 86400])),
   maxOpenAgeSec: 7200,
   maxClosedAgeSec: 4 * 86400,
+  disqualifyingChecks: ['twap'],
   parMints: mints.parMints,
   continuousMints: mints.continuousMints,
 });
@@ -125,6 +140,8 @@ export type PriceCandidate = {
   sessionOpen: boolean | null;
   stale: boolean;
   live: boolean;
+  /** The venue's own checks the price failed when it was logged; a disqualifying one keeps it out of a valuation. */
+  failedChecks: string[];
   /** This source's USD price over the answer's, minus one; null when either is missing. */
   gapToAnswer: number | null;
 };
@@ -147,6 +164,8 @@ export type ResolvedPrice = {
   nullReason: PriceNullReason | null;
   /** `liquidation`: false when the oracle was not pricing the asset (a placeholder), so the price is the venue's only. */
   live: boolean | null;
+  /** `liquidation`: the venue's own checks the price failed when it was logged (empty when none). */
+  failedChecks: string[] | null;
   /** `liquidation` with a market: false when another market's observation of the same oracle was used. */
   marketMatched: boolean | null;
   others: PriceCandidate[];
@@ -198,8 +217,15 @@ export function buildPriceIndex(observations: Iterable<PriceObservation>): Price
   return { series, sources: sorted(sources), quotes: sorted(quotes), first, last };
 }
 
-/** The latest observation at or before `t` (the last one, when several share that time). */
-function latestAt(a: readonly PriceObservation[] | undefined, t: number): PriceObservation | null {
+/**
+ * The latest observation at or before `t` (the last one, when several share that time). With `rejected`, the
+ * latest one it does not reject, when there is one.
+ */
+function latestAt(
+  a: readonly PriceObservation[] | undefined,
+  t: number,
+  rejected?: (o: PriceObservation) => boolean,
+): PriceObservation | null {
   if (!a?.length) return null;
   let lo = 0;
   let hi = a.length;
@@ -208,7 +234,15 @@ function latestAt(a: readonly PriceObservation[] | undefined, t: number): PriceO
     if ((a[m] as PriceObservation).t <= t) lo = m + 1;
     else hi = m;
   }
-  return lo > 0 ? (a[lo - 1] as PriceObservation) : null;
+  const i = lo - 1;
+  if (i < 0) return null;
+  if (rejected) {
+    let k = i;
+    while (k >= 0 && rejected(a[k] as PriceObservation)) k--;
+    // none passed: the latest one is returned, and its failed check keeps it out of a valuation
+    if (k >= 0) return a[k] as PriceObservation;
+  }
+  return a[i] as PriceObservation;
 }
 
 export function resolvePrice(ix: PriceIndex, q: PriceQuery, ctx: PriceContext): ResolvedPrice {
@@ -234,6 +268,7 @@ function resolve(ix: PriceIndex, q: PriceQuery, ctx: PriceContext, depth: number
     quality: null,
     nullReason: null,
     live: null,
+    failedChecks: null,
     marketMatched: null,
     others: [],
   };
@@ -245,33 +280,36 @@ function resolve(ix: PriceIndex, q: PriceQuery, ctx: PriceContext, depth: number
     if (depth > 0) return p.parMints.includes(quote) ? 1 : null;
     return resolve(ix, { mint: quote, t: q.t, purpose: 'valuation' }, ctx, depth + 1).priceUsd;
   };
-  // a source that quotes one asset in several tokens (two Jupiter Lend vaults): the latest observation whose quote
-  // has a USD price, else the latest one
-  const latestOf = (s: PriceSourceId): PriceObservation | null => {
-    let best: PriceObservation | null = null;
-    let bestUsd = false;
-    for (const quote of ix.quotes.get(`${q.mint}|${s}`) ?? []) {
-      const o = latestAt(ix.series.get(`${q.mint}|${s}|quote:${quote}`), q.t);
-      if (!o) continue;
-      const usd = quoteUsd(quote) !== null;
-      if (!best || (usd && !bestUsd) || (usd === bestUsd && o.t > best.t)) {
-        best = o;
-        bestUsd = usd;
-      }
-    }
-    return best;
-  };
-  const candidate = (s: PriceSourceId, market?: string): PriceCandidate | null => {
-    const o = market ? latestAt(ix.series.get(`${q.mint}|${s}|${market}`), q.t) : latestOf(s);
-    if (!o) return null;
+  // a price that failed a disqualifying check of the venue is the venue's price and no valuation: only the
+  // venue's oracle, asked for a liquidation price, keeps it
+  const disqualified = (o: { failedChecks?: string[] }) =>
+    o.failedChecks?.some((c) => p.disqualifyingChecks.includes(c)) ?? false;
+  const rejectedFor = (s: PriceSourceId) =>
+    q.purpose === 'liquidation' && s === q.priceSource ? undefined : disqualified;
+  const toCandidate = (o: PriceObservation, s: PriceSourceId): PriceCandidate => {
     const usd = quoteUsd(o.quote);
     const ageSec = q.t - o.t;
     const session = continuous ? undefined : p.sessionBySource[s];
     let openAgeSec: number | null = null;
+    let stale: boolean;
     if (session) {
       const clock = ctx.clocks[session];
       if (!clock) throw new Error(`no session clock for ${session}`);
-      openAgeSec = openSecondsBetween(clock, o.t, q.t);
+      if (o.t < clock.from) stale = true;
+      else {
+        openAgeSec = openSecondsBetween(clock, o.t, q.t);
+        // once the session has opened again the oracle has moved on: a price from before that open is out of date
+        stale =
+          sessionStartsBetween(clock, o.t, q.t) ||
+          openAgeSec > p.maxOpenAgeSec ||
+          ageSec > p.maxClosedAgeSec;
+      }
+    } else {
+      const limit =
+        (sourceKind(s) === 'dex' ? undefined : p.maxAgeSecByMint[q.mint]) ??
+        p.maxAgeSec[s] ??
+        (p.maxAgeSec.default as number);
+      stale = ageSec > limit;
     }
     return {
       priceSource: s,
@@ -285,14 +323,28 @@ function resolve(ix: PriceIndex, q: PriceQuery, ctx: PriceContext, depth: number
       ageSec,
       openAgeSec,
       sessionOpen: session ? SESSION_REGIMES[session].includes(regime) : null,
-      stale:
-        openAgeSec === null
-          ? ageSec >
-            (p.maxAgeSecByMint[q.mint] ?? p.maxAgeSec[s] ?? (p.maxAgeSec.default as number))
-          : openAgeSec > p.maxOpenAgeSec || ageSec > p.maxClosedAgeSec,
+      stale,
       live: o.live !== false,
+      failedChecks: o.failedChecks ?? [],
       gapToAnswer: null,
     };
+  };
+  // a source that quotes one asset in several tokens (two Jupiter Lend vaults): a recent observation before an
+  // old one, then one whose quote has a USD price, then the latest
+  const rank = (c: PriceCandidate) => (c.stale ? 0 : 2) + (c.priceUsd === null ? 0 : 1);
+  const candidate = (s: PriceSourceId, market?: string): PriceCandidate | null => {
+    if (market) {
+      const o = latestAt(ix.series.get(`${q.mint}|${s}|${market}`), q.t, rejectedFor(s));
+      return o ? toCandidate(o, s) : null;
+    }
+    let best: PriceCandidate | null = null;
+    for (const quote of ix.quotes.get(`${q.mint}|${s}`) ?? []) {
+      const o = latestAt(ix.series.get(`${q.mint}|${s}|quote:${quote}`), q.t, rejectedFor(s));
+      if (!o) continue;
+      const c = toCandidate(o, s);
+      if (!best || rank(c) > rank(best) || (rank(c) === rank(best) && c.obsT > best.obsT)) best = c;
+    }
+    return best;
   };
   const all = (ix.sources.get(q.mint) ?? [])
     .map((s) => candidate(s))
@@ -320,11 +372,14 @@ function resolve(ix: PriceIndex, q: PriceQuery, ctx: PriceContext, depth: number
     tried = p.valuationOrder
       .map((s) => all.find((c) => c.priceSource === s))
       .filter((c): c is PriceCandidate => c !== undefined);
-    const usable = tried.filter((c) => !c.stale && c.live && c.priceUsd !== null);
+    const usable = tried.filter(
+      (c) => !c.stale && c.live && !disqualified(c) && c.priceUsd !== null,
+    );
     // a price from an open session (or a source with no session) before a price an oracle is holding
     chosen = usable.find((c) => c.sessionOpen !== false) ?? usable[0] ?? null;
   } else {
-    if (!q.priceSource) throw new Error('a liquidation price needs the venue oracle (priceSource)');
+    if (!q.priceSource || sourceKind(q.priceSource) !== 'lending_oracle')
+      throw new Error('a liquidation price needs the venue oracle (priceSource), never the DEX');
     const own = q.market ? candidate(q.priceSource, q.market) : null;
     const any = all.find((c) => c.priceSource === q.priceSource) ?? null;
     // the venue's own market first; another market of the same oracle only when it has no fresh observation
@@ -351,7 +406,9 @@ function resolve(ix: PriceIndex, q: PriceQuery, ctx: PriceContext, depth: number
         ? 'stale'
         : !first.live
           ? 'oracle_not_live'
-          : 'no_quote_price';
+          : disqualified(first)
+            ? 'oracle_check_failed'
+            : 'no_quote_price';
     return { ...base, nullReason, marketMatched, others };
   }
   const kind = sourceKind(chosen.priceSource);
@@ -378,6 +435,7 @@ function resolve(ix: PriceIndex, q: PriceQuery, ctx: PriceContext, depth: number
     quality,
     nullReason: chosen.priceUsd === null ? 'no_quote_price' : null,
     live: q.purpose === 'liquidation' ? chosen.live : null,
+    failedChecks: q.purpose === 'liquidation' ? chosen.failedChecks : null,
     marketMatched,
     others,
   };

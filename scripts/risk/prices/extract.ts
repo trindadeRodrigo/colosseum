@@ -97,6 +97,7 @@ if (want('logged')) {
     kaminoAmbiguous: 0,
     jlOutsideRegistry: 0,
     jlSecondRateDiffers: 0,
+    failedCheckLines: 0,
     observations: { kamino_scope: 0, jupiter_lend_oracle: 0 } as Record<string, number>,
     first: {} as Record<string, string>,
   };
@@ -114,9 +115,8 @@ if (want('logged')) {
       s.daysSkipped++;
       continue;
     }
-    // the raw file is by fetch unit, not strictly by block day: rows are bucketed by the observation's own day
     const by = new Map<string, StoredObservation[]>();
-    const seen = new Set<string>();
+    const seen = new Map<string, StoredObservation>();
     for (const line of text.split('\n')) {
       if (!line) continue;
       const r = JSON.parse(line) as Row;
@@ -139,30 +139,38 @@ if (want('logged')) {
           continue;
         }
         if (p.secondPrice !== undefined) s.jlSecondRateDiffers++;
-        // one row per reserve or vault, slot and price
+        if (p.failedChecks) s.failedCheckLines++;
+        // one row per reserve or vault, slot and price; a failed check on any of them stays on the row
         const k = `${p.ref}|${r.tx.slot}|${p.price}`;
-        if (seen.has(k)) continue;
-        seen.add(k);
+        const prev = seen.get(k);
+        if (prev) {
+          if (p.failedChecks)
+            prev.failedChecks = [
+              ...new Set([...(prev.failedChecks ?? []), ...p.failedChecks]),
+            ].sort();
+          continue;
+        }
         const method = p.priceSource === 'kamino_scope' ? 'klend_refresh_log' : 'jl_oracle_return';
         const key = `${p.priceSource}|${method}`;
         const arr = by.get(key) ?? [];
-        arr.push(
-          stored(
-            {
-              chain: 'solana',
-              mint: p.mint,
-              priceSource: p.priceSource,
-              t,
-              slot: r.tx.slot,
-              price: p.price,
-              quote: p.quote,
-              ref: p.ref,
-              market: p.market,
-              method,
-            },
-            SOURCE,
-          ),
+        const row = stored(
+          {
+            chain: 'solana',
+            mint: p.mint,
+            priceSource: p.priceSource,
+            t,
+            slot: r.tx.slot,
+            price: p.price,
+            quote: p.quote,
+            ref: p.ref,
+            market: p.market,
+            method,
+            ...(p.failedChecks ? { failedChecks: p.failedChecks } : {}),
+          },
+          SOURCE,
         );
+        seen.set(k, row);
+        arr.push(row);
         by.set(key, arr);
         s.observations[p.priceSource] = (s.observations[p.priceSource] ?? 0) + 1;
         const f = s.first[p.priceSource];

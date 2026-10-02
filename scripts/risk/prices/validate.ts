@@ -10,6 +10,7 @@ import {
   type Regime,
   regimeAt,
   type SessionClock,
+  sessionStartsBetween,
 } from '@colosseum/risk';
 import { LENDING_HISTORY_DIR, RISK_HOME, USDC } from '../lib-lending';
 import {
@@ -120,6 +121,16 @@ const latestAt = (a: StoredObservation[], t: number) => {
   return lo > 0 ? (a[lo - 1] as StoredObservation) : null;
 };
 
+const latestPassing = (a: StoredObservation[], t: number) => {
+  let o = latestAt(a, t);
+  if (!o?.failedChecks?.includes('twap')) return o;
+  for (let i = a.indexOf(o) - 1; i >= 0; i--) {
+    o = a[i] as StoredObservation;
+    if (!o.failedChecks?.includes('twap')) return o;
+  }
+  return latestAt(a, t);
+};
+
 const checks: Array<{ check: string; status: 'pass' | 'finding'; note: string }> = [];
 
 // ------------------------------------------------------------------------------------------------- P-1
@@ -181,7 +192,8 @@ function coverage(obs: StoredObservation[], clock: SessionClock) {
     let openHours = 0;
     let notLive = 0;
     for (let h = Math.ceil(first / 3600) * 3600; h <= last; h += 3600) {
-      const o = latestAt(a, h);
+      // as the resolver does: the latest observation that did not fail klend's TWAP check
+      const o = latestPassing(a, h);
       if (!o) continue;
       hours++;
       const open = regimeOf(h) === 'us_market_hours';
@@ -192,8 +204,10 @@ function coverage(obs: StoredObservation[], clock: SessionClock) {
       }
       const age = h - o.t;
       const openAge = session ? openSecondsBetween(clock, o.t, h) : null;
+      // a price from before the session opened again is out of date, whatever its age
+      const reopened = session && sessionStartsBetween(clock, o.t, h);
       for (const x of grid)
-        if (openAge === null ? age <= x : openAge <= x && age <= P.maxClosedAgeSec) {
+        if (openAge === null ? age <= x : !reopened && openAge <= x && age <= P.maxClosedAgeSec) {
           (cov[x] as { all: number; open: number }).all++;
           if (open) (cov[x] as { all: number; open: number }).open++;
         }
@@ -233,6 +247,42 @@ const p1 = {
   kamino_scope: coverage(kLog, clocks.kamino_scope),
   jupiter_lend_oracle: coverage(jLog, clocks.jupiter_lend_oracle),
 };
+
+// prices the venue's own checks rejected when it logged them: kept as the venue's price, never used as a valuation
+const failedByAsset = new Map<
+  string,
+  { observations: number; checks: Set<string>; first: number; last: number }
+>();
+for (const o of kLog) {
+  if (!o.failedChecks?.length) continue;
+  const f = failedByAsset.get(o.mint) ?? {
+    observations: 0,
+    checks: new Set<string>(),
+    first: o.t,
+    last: o.t,
+  };
+  f.observations++;
+  for (const c of o.failedChecks) f.checks.add(c);
+  f.last = o.t;
+  failedByAsset.set(o.mint, f);
+}
+const p1FailedChecks = [...failedByAsset]
+  .map(([mint, f]) => ({
+    asset: sym(mint),
+    observations: f.observations,
+    checks: [...f.checks].sort(),
+    first: new Date(f.first * 1000).toISOString(),
+    last: new Date(f.last * 1000).toISOString(),
+  }))
+  .sort((a, b) => b.observations - a.observations);
+if (p1FailedChecks.length)
+  checks.push({
+    check: 'P-1 no logged price failed the venue own checks',
+    status: 'finding',
+    note: p1FailedChecks
+      .map((f) => `${f.asset} ${f.observations} (${f.checks.join('+')})`)
+      .join('; '),
+  });
 
 // ------------------------------------------------------------------------------------------------- P-2
 // (a) klend log = the reserve's stored price at the same refresh slot, as the collector read it later
@@ -395,25 +445,31 @@ const p3 = [...cells]
   })
   .sort((a, b) => a.oracle.localeCompare(b.oracle) || a.regime.localeCompare(b.regime));
 
-// an external source enters `valuationOrder` only when it agrees with the pool mid in US market hours (item 6)
-const externalRows = p3.filter(
-  (r) => r.oracle.startsWith('external:') && r.regime === 'us_market_hours',
+// an external source enters `valuationOrder` only when it agrees with the pool mid in US market hours (item 6);
+// one with no such hours to compare is a finding, not a pass
+const externalSources = [...new Set([...by.keys()].map((k) => k.split('|')[0] as string))].filter(
+  (s) => s.startsWith('external:'),
 );
-if (externalRows.length)
+if (externalSources.length) {
+  const rows = p3.filter((r) => r.oracle.startsWith('external:') && r.regime === 'us_market_hours');
+  const compared = new Set(rows.map((r) => r.oracle.split(' ')[0]));
+  const missing = externalSources.filter((s) => !compared.has(s));
   checks.push({
     check: 'P-3 external sources agree with the pool mid in US market hours',
-    status: externalRows.every(
-      (r) => r.median !== null && Math.abs(r.median) <= P.externalTolPct / 100,
-    )
-      ? 'pass'
-      : 'finding',
-    note: externalRows
+    status:
+      missing.length === 0 &&
+      rows.every((r) => r.median !== null && Math.abs(r.median) <= P.externalTolPct / 100)
+        ? 'pass'
+        : 'finding',
+    note: rows
       .map(
         (r) =>
           `${r.oracle}: median ${r.median === null ? '—' : (100 * r.median).toFixed(3)}% over ${r.n} hours`,
       )
+      .concat(missing.map((s) => `${s}: no US market hour shared with a pool mid`))
       .join('; '),
   });
+}
 
 // ------------------------------------------------------------------------------------------------- P-4
 const multiplier = new Map<string, number>();
@@ -512,6 +568,7 @@ const out = {
   observations: Object.fromEntries([...by].map(([k, a]) => [k, a.length])),
   checks,
   p1Liveness: liveness,
+  p1FailedChecks,
   p1Coverage: p1,
   p2: { klendLogVsReserve: p2a, jupiterLendVsApi: p2b, crossMarket: p2c },
   p3Overlap: p3,

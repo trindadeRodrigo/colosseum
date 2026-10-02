@@ -1,0 +1,1 @@
+ALTER TABLE "risk_price_observations" ADD COLUMN "failed_checks" text;
