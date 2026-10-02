@@ -1,7 +1,8 @@
 use anchor_lang::prelude::*;
 
-use crate::checks::check_params;
+use crate::checks::{check_address, check_params};
 use crate::errors::BasketError;
+use crate::events::{CashMintSet, PriceOwnerSet, RouterSet};
 use crate::program::Basket;
 use crate::state::{Config, Params, CONFIG_SEED};
 
@@ -11,6 +12,7 @@ pub struct InitConfigArgs {
     pub default_keeper: Pubkey,
     pub router_program: Pubkey,
     pub price_owner: Pubkey,
+    pub cash_mint: Pubkey,
     pub params: Params,
 }
 
@@ -50,6 +52,8 @@ impl InitConfig<'_> {
         config.default_keeper = args.default_keeper;
         config.router_program = args.router_program;
         config.price_owner = args.price_owner;
+        config.cash_mint = args.cash_mint;
+        config.bump = ctx.bumps.config;
         config.tolerance_bps = args.params.tolerance_bps;
         config.loss_cap_bps = args.params.loss_cap_bps;
         config.band_bps = args.params.band_bps;
@@ -67,6 +71,48 @@ impl InitConfig<'_> {
 #[derive(Accounts)]
 pub struct SetConfig<'info> {
     pub admin: Signer<'info>,
-    #[account(mut, has_one = admin)]
+    #[account(
+        mut,
+        seeds = [CONFIG_SEED],
+        bump = config.bump,
+        has_one = admin
+    )]
     pub config: Box<Account<'info, Config>>,
+}
+
+// SOL-2: these three take effect at once. Whether they lock at `launch()` or take a delay
+// is decided with the swap, which is what makes the router a power worth bounding.
+impl SetConfig<'_> {
+    pub fn set_router(ctx: Context<SetConfig>, router_program: Pubkey) -> Result<()> {
+        check_address(&router_program)?;
+        let config = &mut ctx.accounts.config;
+        emit!(RouterSet {
+            old: config.router_program,
+            new: router_program,
+        });
+        config.router_program = router_program;
+        Ok(())
+    }
+
+    pub fn set_price_owner(ctx: Context<SetConfig>, price_owner: Pubkey) -> Result<()> {
+        check_address(&price_owner)?;
+        let config = &mut ctx.accounts.config;
+        emit!(PriceOwnerSet {
+            old: config.price_owner,
+            new: price_owner,
+        });
+        config.price_owner = price_owner;
+        Ok(())
+    }
+
+    pub fn set_cash_mint(ctx: Context<SetConfig>, cash_mint: Pubkey) -> Result<()> {
+        check_address(&cash_mint)?;
+        let config = &mut ctx.accounts.config;
+        emit!(CashMintSet {
+            old: config.cash_mint,
+            new: cash_mint,
+        });
+        config.cash_mint = cash_mint;
+        Ok(())
+    }
 }

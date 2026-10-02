@@ -5,12 +5,14 @@ use crate::errors::BasketError;
 use crate::state::{Vault, VAULT_SEED};
 use crate::transfer::transfer_checked_with_extra;
 
+/// Any token the vault holds, cash or not, bought or sent in from outside.
 /// No Config, registry or price account: a pause or a dead feed cannot block the owner.
 #[derive(Accounts)]
 pub struct Withdraw<'info> {
     pub owner: Signer<'info>,
     #[account(mut, has_one = owner)]
     pub vault: Box<Account<'info, Vault>>,
+    #[account(mint::token_program = token_program)]
     pub mint: InterfaceAccount<'info, Mint>,
     /// The associated token account for (vault, mint, the mint's own token program).
     #[account(

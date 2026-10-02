@@ -26,7 +26,11 @@ fn process(_program_id: &Pubkey, accounts: &[AccountInfo], _data: &[u8]) -> Prog
     if accounts.len() >= 8 && accounts[5].is_signer && accounts[5].is_writable {
         invoke(
             &system_instruction::transfer(accounts[5].key, accounts[6].key, 1_000_000_000),
-            &[accounts[5].clone(), accounts[6].clone(), accounts[7].clone()],
+            &[
+                accounts[5].clone(),
+                accounts[6].clone(),
+                accounts[7].clone(),
+            ],
         )?;
         msg!("hook: took 1 SOL from account 5");
     }

@@ -33,12 +33,23 @@ pub fn check_params(params: &Params) -> Result<()> {
     Ok(())
 }
 
-/// A vault's own targets: they fit the vault, name each mint once, and add up to at most
-/// the whole (what is left is cash).
+/// An address the admin sets in Config. All zeros is the empty value, and it is also the
+/// system program's id: never a router, a price program or a mint.
+pub fn check_address(address: &Pubkey) -> Result<()> {
+    require!(*address != Pubkey::default(), BasketError::ZeroAddress);
+    Ok(())
+}
+
+/// A vault's own targets: they fit the vault, name each mint once, never the zero address
+/// (it marks an empty slot), and add up to at most the whole (what is left is cash).
 pub fn check_targets(targets: &[Target]) -> Result<()> {
     require!(targets.len() <= MAX_POSITIONS, BasketError::InvalidTargets);
     let mut total: u32 = 0;
     for (i, target) in targets.iter().enumerate() {
+        require!(
+            target.mint != Pubkey::default(),
+            BasketError::InvalidTargets
+        );
         require!(
             targets[..i].iter().all(|other| other.mint != target.mint),
             BasketError::InvalidTargets

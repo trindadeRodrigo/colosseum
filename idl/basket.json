@@ -87,7 +87,8 @@
     {
       "name": "deposit",
       "docs": [
-        "Owner. One mint per call, into the vault's associated token account."
+        "Owner. Cash only: the mint must be Config's cash mint. Into the vault's associated",
+        "token account."
       ],
       "discriminator": [
         242,
@@ -108,8 +109,28 @@
           ]
         },
         {
-          "name": "vault",
-          "writable": true
+          "name": "vault"
+        },
+        {
+          "name": "config",
+          "docs": [
+            "Read for the cash mint. Only the one Config, at its own address."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "mint"
@@ -263,6 +284,56 @@
       ]
     },
     {
+      "name": "set_cash_mint",
+      "docs": [
+        "Admin. The one mint a vault takes as a deposit: the chain's dollar token."
+      ],
+      "discriminator": [
+        27,
+        163,
+        236,
+        15,
+        62,
+        222,
+        172,
+        245
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "cash_mint",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
       "name": "set_price_owner",
       "docs": [
         "Admin. The program that must own a price account for the vault to read it:",
@@ -288,7 +359,22 @@
         },
         {
           "name": "config",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
         }
       ],
       "args": [
@@ -324,7 +410,22 @@
         },
         {
           "name": "config",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
         }
       ],
       "args": [
@@ -337,8 +438,8 @@
     {
       "name": "withdraw",
       "docs": [
-        "Owner. One mint per call, in kind, to a token account the owner owns.",
-        "Reads no config, registry or price: nothing but an upgrade can block it."
+        "Owner. Any token the vault holds, one mint per call, in kind, to a token account the",
+        "owner owns. Reads no config, registry or price: nothing but an upgrade can block it."
       ],
       "discriminator": [
         183,
@@ -473,6 +574,45 @@
     }
   ],
   "events": [
+    {
+      "name": "CashMintSet",
+      "discriminator": [
+        181,
+        72,
+        234,
+        184,
+        59,
+        194,
+        13,
+        245
+      ]
+    },
+    {
+      "name": "PriceOwnerSet",
+      "discriminator": [
+        207,
+        245,
+        120,
+        247,
+        89,
+        83,
+        251,
+        146
+      ]
+    },
+    {
+      "name": "RouterSet",
+      "discriminator": [
+        178,
+        160,
+        175,
+        231,
+        87,
+        8,
+        101,
+        145
+      ]
+    },
     {
       "name": "VaultCreated",
       "discriminator": [
@@ -616,10 +756,39 @@
     {
       "code": 6025,
       "name": "InvalidTargets",
-      "msg": "too many targets, a mint listed twice, or weights above 100%"
+      "msg": "too many targets, a mint listed twice or left empty, or weights above 100%"
+    },
+    {
+      "code": 6026,
+      "name": "NotCashMint",
+      "msg": "a vault takes deposits in the cash mint only"
+    },
+    {
+      "code": 6027,
+      "name": "ZeroAddress",
+      "msg": "the zero address, which is also the system program, is not accepted here"
     }
   ],
   "types": [
+    {
+      "name": "CashMintSet",
+      "docs": [
+        "The admin changed the mint a vault takes as a deposit."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "old",
+            "type": "pubkey"
+          },
+          {
+            "name": "new",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
     {
       "name": "Config",
       "docs": [
@@ -660,6 +829,14 @@
             "docs": [
               "The program that must own a price account. Never fixed in code: Kamino Scope on",
               "mainnet, the test price program on devnet."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "cash_mint",
+            "docs": [
+              "The one mint a vault takes as a deposit: the chain's dollar token. Never fixed in",
+              "code: USDC on mainnet, the test dollar token on devnet."
             ],
             "type": "pubkey"
           },
@@ -727,11 +904,18 @@
             }
           },
           {
+            "name": "bump",
+            "docs": [
+              "The bump of this account's own address, so every read can check the address."
+            ],
+            "type": "u8"
+          },
+          {
             "name": "reserved",
             "type": {
               "array": [
                 "u8",
-                64
+                63
               ]
             }
           }
@@ -757,6 +941,10 @@
           },
           {
             "name": "price_owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "cash_mint",
             "type": "pubkey"
           },
           {
@@ -833,14 +1021,53 @@
           {
             "name": "tracked",
             "docs": [
-              "The balance last seen in the vault's token account for this mint. A hint: an issuer",
-              "with a permanent delegate, or anyone sending tokens in, changes the real balance."
+              "The balance the vault's token account held when the program last looked. A hint,",
+              "not a balance: an issuer with a permanent delegate, or anyone sending tokens in,",
+              "changes the real one. Anything that values the vault reads the token accounts."
             ],
             "type": "u64"
           },
           {
             "name": "last_keeper_ts",
             "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PriceOwnerSet",
+      "docs": [
+        "The admin changed the program that must own a price account."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "old",
+            "type": "pubkey"
+          },
+          {
+            "name": "new",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RouterSet",
+      "docs": [
+        "The admin changed the program a vault may swap through."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "old",
+            "type": "pubkey"
+          },
+          {
+            "name": "new",
+            "type": "pubkey"
           }
         ]
       }

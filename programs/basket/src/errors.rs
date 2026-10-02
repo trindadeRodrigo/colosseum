@@ -55,6 +55,10 @@ pub enum BasketError {
     // Appended after the frozen list.
     #[msg("signer is not the program's upgrade authority")]
     NotUpgradeAuthority,
-    #[msg("too many targets, a mint listed twice, or weights above 100%")]
+    #[msg("too many targets, a mint listed twice or left empty, or weights above 100%")]
     InvalidTargets,
+    #[msg("a vault takes deposits in the cash mint only")]
+    NotCashMint,
+    #[msg("the zero address, which is also the system program, is not accepted here")]
+    ZeroAddress,
 }

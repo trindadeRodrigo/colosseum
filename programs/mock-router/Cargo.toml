@@ -9,7 +9,9 @@ crate-type = ["cdylib", "lib"]
 name = "mock_router"
 
 [features]
-default = []
+# no-idl: without it anyone can create the program's on-chain IDL account and become its
+# authority. The interface files are built with `anchor idl build` and committed in idl/.
+default = ["no-idl"]
 cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []

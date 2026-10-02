@@ -25,6 +25,9 @@ pub struct Config {
     /// The program that must own a price account. Never fixed in code: Kamino Scope on
     /// mainnet, the test price program on devnet.
     pub price_owner: Pubkey,
+    /// The one mint a vault takes as a deposit: the chain's dollar token. Never fixed in
+    /// code: USDC on mainnet, the test dollar token on devnet.
+    pub cash_mint: Pubkey,
     pub keeper_paused: bool,
     /// One-way; raises the floor on `publish_delay_s`.
     pub launched: bool,
@@ -40,7 +43,9 @@ pub struct Config {
     pub closed_until: i64,
     /// Days since 1970, UTC.
     pub closed_days: [u16; 32],
-    pub reserved: [u8; 64],
+    /// The bump of this account's own address, so every read can check the address.
+    pub bump: u8,
+    pub reserved: [u8; 63],
 }
 
 /// The keeper and registry settings an admin chooses, within the hard bounds in `checks`.
@@ -87,8 +92,9 @@ pub struct Vault {
 pub struct Position {
     pub mint: Pubkey,
     pub target_bps: u16,
-    /// The balance last seen in the vault's token account for this mint. A hint: an issuer
-    /// with a permanent delegate, or anyone sending tokens in, changes the real balance.
+    /// The balance the vault's token account held when the program last looked. A hint,
+    /// not a balance: an issuer with a permanent delegate, or anyone sending tokens in,
+    /// changes the real one. Anything that values the vault reads the token accounts.
     pub tracked: u64,
     pub last_keeper_ts: i64,
 }

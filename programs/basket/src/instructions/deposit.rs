@@ -1,14 +1,27 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
-use crate::state::Vault;
+use crate::errors::BasketError;
+use crate::state::{Config, Vault, CONFIG_SEED};
 use crate::transfer::transfer_checked_with_extra;
 
+/// Money comes into a vault as the chain's dollar token only. A token sent to the vault's
+/// address from outside cannot be stopped; `withdraw` takes it out again.
 #[derive(Accounts)]
 pub struct Deposit<'info> {
     pub owner: Signer<'info>,
-    #[account(mut, has_one = owner)]
+    #[account(has_one = owner)]
     pub vault: Box<Account<'info, Vault>>,
+    /// Read for the cash mint. Only the one Config, at its own address.
+    #[account(
+        seeds = [CONFIG_SEED],
+        bump = config.bump
+    )]
+    pub config: Box<Account<'info, Config>>,
+    #[account(
+        mint::token_program = token_program,
+        constraint = mint.key() == config.cash_mint @ BasketError::NotCashMint
+    )]
     pub mint: InterfaceAccount<'info, Mint>,
     /// The one token account the vault uses for this mint: the associated token account
     /// for (vault, mint, the mint's own token program).
@@ -26,6 +39,8 @@ pub struct Deposit<'info> {
 }
 
 impl<'info> Deposit<'info> {
+    /// Cash is not a position, so nothing is recorded in the vault: what it holds in cash
+    /// is the balance of its token account.
     pub fn handle(ctx: Context<'_, '_, '_, 'info, Deposit<'info>>, amount: u64) -> Result<()> {
         let accounts = ctx.accounts;
         transfer_checked_with_extra(
@@ -38,11 +53,6 @@ impl<'info> Deposit<'info> {
             amount,
             accounts.mint.decimals,
             &[],
-        )?;
-
-        accounts.vault_token_account.reload()?;
-        let held = accounts.vault_token_account.amount;
-        accounts.vault.record_balance(&accounts.mint.key(), held);
-        Ok(())
+        )
     }
 }

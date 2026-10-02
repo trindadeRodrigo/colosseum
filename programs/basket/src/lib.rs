@@ -1,6 +1,6 @@
 //! The vault program: one vault per person per plan, on Solana.
 //!
-//! This is the owner path only: initialise the config, create a vault, deposit, and
+//! This is the owner path only: initialise the config, create a vault, deposit cash, and
 //! withdraw the tokens themselves to the owner. The swap, the shared-portfolio registry,
 //! the keeper leg, pause and auto-follow are later instructions on the same accounts.
 //! The design is docs/vault/DESIGN-VAULT.md, sections 3.7, 5 and 13.
@@ -31,15 +31,18 @@ pub mod basket {
     /// Admin. The one program a vault may swap through: Jupiter on mainnet, the test
     /// exchange on devnet.
     pub fn set_router(ctx: Context<SetConfig>, router_program: Pubkey) -> Result<()> {
-        ctx.accounts.config.router_program = router_program;
-        Ok(())
+        SetConfig::set_router(ctx, router_program)
     }
 
     /// Admin. The program that must own a price account for the vault to read it:
     /// Kamino Scope on mainnet, the test price program on devnet.
     pub fn set_price_owner(ctx: Context<SetConfig>, price_owner: Pubkey) -> Result<()> {
-        ctx.accounts.config.price_owner = price_owner;
-        Ok(())
+        SetConfig::set_price_owner(ctx, price_owner)
+    }
+
+    /// Admin. The one mint a vault takes as a deposit: the chain's dollar token.
+    pub fn set_cash_mint(ctx: Context<SetConfig>, cash_mint: Pubkey) -> Result<()> {
+        SetConfig::set_cash_mint(ctx, cash_mint)
     }
 
     /// Owner. One vault per owner per plan id.
@@ -53,7 +56,8 @@ pub mod basket {
         CreateVault::handle(ctx, basket_id, targets, auto_follow, expected_version)
     }
 
-    /// Owner. One mint per call, into the vault's associated token account.
+    /// Owner. Cash only: the mint must be Config's cash mint. Into the vault's associated
+    /// token account.
     pub fn deposit<'info>(
         ctx: Context<'_, '_, '_, 'info, Deposit<'info>>,
         amount: u64,
@@ -61,8 +65,8 @@ pub mod basket {
         Deposit::handle(ctx, amount)
     }
 
-    /// Owner. One mint per call, in kind, to a token account the owner owns.
-    /// Reads no config, registry or price: nothing but an upgrade can block it.
+    /// Owner. Any token the vault holds, one mint per call, in kind, to a token account the
+    /// owner owns. Reads no config, registry or price: nothing but an upgrade can block it.
     pub fn withdraw<'info>(
         ctx: Context<'_, '_, '_, 'info, Withdraw<'info>>,
         amount: u64,
