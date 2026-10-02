@@ -1,4 +1,4 @@
-import { legAttempts, legs, orders, vaults } from '@colosseum/db';
+import { legAttempts, legs, orders, proposals, vaults } from '@colosseum/db';
 import { BasketTx, BuildLegResponse, ChainError, type ChainId, Order } from '@colosseum/schemas';
 import { eq, inArray, or } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -7,6 +7,7 @@ import type { ChainRegistry } from '../../orders/chains';
 import {
   type Person,
   person,
+  planFixture,
   type TestIssuer,
   testApp,
   testDb,
@@ -126,15 +127,47 @@ const first = (o: OrderDetail, chain: ChainId, seq = 0) => {
 };
 
 /** Builds, lands and reports every leg in order. Returns the order as the last report left it. */
-async function settleAll(who: Person, o: OrderDetail): Promise<OrderDetail> {
+async function settleAll(
+  who: Person,
+  o: OrderDetail,
+  on?: FastifyInstance,
+  until?: (leg: OrderDetail['legs'][number]) => boolean,
+): Promise<OrderDetail> {
   let latest = o;
   for (const leg of o.legs) {
-    await build(who, o, leg.id);
-    latest = await report(who, o, leg.id, { txId: await land(who, o, leg.id) });
+    if (until?.(leg)) break;
+    await build(who, o, leg.id, on);
+    latest = await report(who, o, leg.id, { txId: await land(who, o, leg.id, on) }, on);
     expect(legOf(latest, leg.id).status).toBe('confirmed');
   }
   return latest;
 }
+
+/**
+ * A second buy of the plan on one chain, taken up to its deposit: the vault is open and every leg
+ * before the deposit has settled. The deposit is the leg that moves the person's cash.
+ */
+async function toDeposit(who: Person, chain: ChainId, on?: FastifyInstance, amountUsd = 10) {
+  const placed = await order(who, { amountUsd, chains: [chain] }, on);
+  const deposit = placed.legs.find((l) => l.kind === 'deposit');
+  if (!deposit) throw new Error('the vault is not open yet');
+  await settleAll(who, placed, on, (leg) => leg.id === deposit.id);
+  return { placed, deposit };
+}
+
+/** Opens the person's vault for the plan on one chain with a first, settled buy. */
+async function openVault(who: Person, chain: ChainId, on?: FastifyInstance, reg = registry) {
+  await fund(who, [chain], on);
+  await settleAll(who, await order(who, { amountUsd: 100, chains: [chain] }, on), on);
+  const wallet = chain === 'solana' ? who.solana : who.evm;
+  return async () => {
+    const held = await reg.get(chain).adapter.getWalletHoldings(wallet);
+    return BigInt(held.find((h) => h.asset === `${chain}:usdc`)?.raw ?? '0');
+  };
+}
+
+const attemptsOf = (o: OrderDetail, legId: string) =>
+  o.attempts.filter((x) => x.legId === legId).map((x) => [x.n, x.status]);
 
 describe('the walking skeleton: a buy across two chains on the mock', () => {
   it('goes from an intent to settled legs, and reads back in the portfolio', async () => {
@@ -304,6 +337,7 @@ describe('sign-in', () => {
     { method: 'GET', url: `/v1/orders/${o.id}` },
     { method: 'POST', url: legUrl(o, first(o, 'solana').id, 'build') },
     { method: 'POST', url: legUrl(o, first(o, 'solana').id, 'report'), payload: { txId: 'x' } },
+    { method: 'POST', url: legUrl(o, first(o, 'solana').id, 'cancel') },
     { method: 'GET', url: '/v1/portfolio' },
     { method: 'POST', url: '/v1/mock/fund', payload: { chain: 'solana', cashUsd: 1 } },
     { method: 'POST', url: `/v1/mock/orders/${o.id}/legs/${first(o, 'solana').id}/land` },
@@ -342,6 +376,24 @@ describe('sign-in', () => {
         authorization: await access({}, Math.floor(Date.now() / 1000) - 60),
         'privy-id-token': token,
       },
+      // The identity token in both places: it lists wallets, so it is not a session.
+      'the identity token as the access token': {
+        authorization: `Bearer ${token}`,
+        'privy-id-token': token,
+      },
+      // The access token in both places: it lists no wallets.
+      'the access token as the identity token': {
+        authorization: bearer,
+        'privy-id-token': bearer.replace('Bearer ', ''),
+      },
+      'an access token with no session': {
+        authorization: `Bearer ${await issuer.sign(a.sub)}`,
+        'privy-id-token': token,
+      },
+      'an identity token with no wallet list': {
+        authorization: bearer,
+        'privy-id-token': await issuer.sign(a.sub),
+      },
       // Two valid tokens of this issuer that name different people.
       'two people': {
         authorization: (await person(issuer)).headers.authorization ?? '',
@@ -356,6 +408,20 @@ describe('sign-in', () => {
       }
     // Nothing moved: no attempt was made and the order reads as it was placed.
     expect(await read(a, placed)).toEqual(placed);
+  });
+
+  it('allows a few seconds between its clock and the issuer’s, and no more', async () => {
+    const a = await someone();
+    const at = (secondsAgo: number) => Math.floor(Date.now() / 1000) - secondsAgo;
+    const withAccess = async (exp: number) => ({
+      headers: {
+        ...a.headers,
+        authorization: `Bearer ${await issuer.sign(a.sub, { sid: 's' }, exp)}`,
+      },
+    });
+    const url = '/v1/portfolio';
+    expect((await call(await withAccess(at(2)), { method: 'GET', url })).statusCode).toBe(200);
+    expect((await call(await withAccess(at(30)), { method: 'GET', url })).statusCode).toBe(401);
   });
 
   it('answers 503, never a pass, when no issuer is configured', async () => {
@@ -394,12 +460,15 @@ describe('ownership: an order belongs to the wallets that made it', () => {
       { method: 'POST', url: legUrl(placed, leg.id, 'build') },
       { method: 'POST', url: legUrl(placed, leg.id, 'report'), payload: { signedTx: tx.payload } },
       { method: 'POST', url: legUrl(placed, leg.id, 'report'), payload: { txId: 'anything' } },
+      { method: 'POST', url: legUrl(placed, leg.id, 'cancel') },
       { method: 'POST', url: `/v1/mock/orders/${placed.id}/legs/${leg.id}/land` },
     ];
+    // The same answer as for an order that does not exist: B learns nothing from the id.
+    const missing = await get(b, '/v1/orders/4b1c0f0e-3f8e-4d0e-9d2b-0d7a3a6b1c2d');
     for (const sent of tries) {
       const res = await call(b, sent);
-      expect([sent.url, res.statusCode]).toEqual([sent.url, 403]);
-      expect(res.body).not.toContain(a.solana);
+      expect([sent.url, res.statusCode]).toEqual([sent.url, 404]);
+      expect(res.body).toBe(missing.body);
     }
     expect(await read(a, placed)).toEqual(before);
     // B sees nothing of A's in their own portfolio either.
@@ -541,10 +610,11 @@ describe('a leg settles only on the transaction that was built for it', () => {
     expect(await report(a, placed, leg.id, { signedTx: one.tx.payload }, on)).toEqual(failed);
     expect(relays).toBe(1);
 
-    // A new build is new bytes; those are relayed once too, and the old ones are refused.
+    // A new build is new bytes; those are relayed once too, and the old ones are never sent again.
     const two = await build(a, placed, leg.id, on);
-    const old = await post(a, legUrl(placed, leg.id, 'report'), { signedTx: one.tx.payload }, on);
-    expect(old.statusCode).toBe(409);
+    const built = OrderDetail.parse((await get(a, `/v1/orders/${placed.id}`, on)).json());
+    expect(await report(a, placed, leg.id, { signedTx: one.tx.payload }, on)).toEqual(built);
+    expect(relays).toBe(1);
     const done = await report(a, placed, leg.id, { signedTx: two.tx.payload }, on);
     expect(legOf(done, leg.id)).toMatchObject({ status: 'confirmed', attempt: 2 });
     expect(await report(a, placed, leg.id, { signedTx: two.tx.payload }, on)).toEqual(done);
@@ -552,39 +622,210 @@ describe('a leg settles only on the transaction that was built for it', () => {
     await on.close();
   });
 
-  it('a leg built twice: the second attempt supersedes, and the first cannot settle it', async () => {
-    const a = await someone();
-    await fund(a, ['robinhood']);
-    const placed = await order(a, { amountUsd: 400, chains: ['robinhood'] });
-    const leg = first(placed, 'robinhood');
-    expect(leg.kind).toBe('approve');
-    const one = await build(a, placed, leg.id);
-    const two = await build(a, placed, leg.id);
-    expect([one.attempt.n, two.attempt.n]).toEqual([1, 2]);
-    expect(two.tx.messageHash).not.toBe(one.tx.messageHash);
-    expect((await read(a, placed)).attempts.map((x) => [x.n, x.status])).toEqual([
-      [1, 'expired'],
-      [2, 'built'],
-    ]);
+  it('does not build a leg again while the transaction built before can still land', async () => {
+    // The review's sequence, on the leg that moves cash: build, build again, land the first, report it.
+    for (const chain of ['solana', 'robinhood'] as const) {
+      const a = await someone();
+      const cash = await openVault(a, chain);
+      const { placed, deposit } = await toDeposit(a, chain);
+      const before = await cash();
+      await build(a, placed, deposit.id);
+      const again = await post(a, legUrl(placed, deposit.id, 'build'));
+      expect([chain, again.statusCode]).toEqual([chain, 409]);
+      expect(again.json().error).toMatch(/can still land/);
+      expect(attemptsOf(await read(a, placed), deposit.id)).toEqual([[1, 'built']]);
 
-    // The wallet sends the first one anyway, and it lands.
-    const mock = registry.get('robinhood').mock;
-    const stale = await mock?.send({ messageHash: one.tx.messageHash });
-    expect((await registry.get('robinhood').adapter.track(stale?.txId ?? '')).status).toBe(
-      'confirmed',
-    );
-    for (const body of [{ txId: stale?.txId }, { signedTx: one.tx.payload }]) {
-      const res = await post(a, legUrl(placed, leg.id, 'report'), body);
-      expect(res.statusCode).toBe(409);
+      const landed = await land(a, placed, deposit.id);
+      expect(landed).toBeTruthy();
+      const done = await report(a, placed, deposit.id, { txId: landed });
+      expect(legOf(done, deposit.id)).toMatchObject({ status: 'confirmed', attempt: 1 });
+      expect(attemptsOf(done, deposit.id)).toEqual([[1, 'confirmed']]);
+      // The cash left the wallet once.
+      expect(before - (await cash())).toBe(10_000_000n);
     }
-    expect(legOf(await read(a, placed), leg.id)).toMatchObject({ status: 'built', attempt: 2 });
+  });
 
-    const done = await report(a, placed, leg.id, { txId: await land(a, placed, leg.id) });
-    expect(legOf(done, leg.id)).toMatchObject({ status: 'confirmed', attempt: 2 });
-    expect(done.attempts.map((x) => [x.n, x.status, x.txId === stale?.txId])).toEqual([
-      [1, 'expired', false],
-      [2, 'confirmed', false],
+  it('on Solana, builds again once the first transaction can no longer land', async () => {
+    const a = await someone();
+    let clock = Date.now();
+    const timed = await testApp({ issuer: issuer.issuer, db: data.db, now: () => new Date(clock) });
+    const on = timed.app;
+    const cash = await openVault(a, 'solana', on, timed.registry);
+    const { placed, deposit } = await toDeposit(a, 'solana', on);
+    const before = await cash();
+    const one = await build(a, placed, deposit.id, on);
+    expect((await post(a, legUrl(placed, deposit.id, 'build'), undefined, on)).statusCode).toBe(
+      409,
+    );
+
+    // Past its last valid block the first transaction is dead, and the mock chain refuses it.
+    clock += 2 * 60 * 1000;
+    const two = await build(a, placed, deposit.id, on);
+    expect(two.attempt.n).toBe(2);
+    const mock = timed.registry.get('solana').mock;
+    await expect(mock?.send({ messageHash: one.tx.messageHash })).rejects.toMatchObject({
+      code: 'Expired',
+    });
+    const done = await report(
+      a,
+      placed,
+      deposit.id,
+      { txId: await land(a, placed, deposit.id, on) },
+      on,
+    );
+    expect(attemptsOf(done, deposit.id)).toEqual([
+      [1, 'expired'],
+      [2, 'confirmed'],
     ]);
+    expect(before - (await cash())).toBe(10_000_000n);
+    await on.close();
+  });
+
+  it('settles on a transaction that landed and was never reported, instead of building again', async () => {
+    const a = await someone();
+    let clock = Date.now();
+    const timed = await testApp({ issuer: issuer.issuer, db: data.db, now: () => new Date(clock) });
+    const on = timed.app;
+    const cash = await openVault(a, 'solana', on, timed.registry);
+    const { placed, deposit } = await toDeposit(a, 'solana', on);
+    const before = await cash();
+    await build(a, placed, deposit.id, on);
+    // The wallet sent it and it landed, but nobody told the API. Then its validity ran out.
+    const txId = await land(a, placed, deposit.id, on);
+    clock += 2 * 60 * 1000;
+    const again = await post(a, legUrl(placed, deposit.id, 'build'), undefined, on);
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error).toMatch(/has landed/);
+    const after = OrderDetail.parse((await get(a, `/v1/orders/${placed.id}`, on)).json());
+    expect(legOf(after, deposit.id)).toMatchObject({ status: 'confirmed', attempt: 1, txId });
+    expect(attemptsOf(after, deposit.id)).toEqual([[1, 'confirmed']]);
+    expect(before - (await cash())).toBe(10_000_000n);
+    await on.close();
+  });
+
+  it('on an EVM chain, builds again only after a cancel, and still settles on the attempt that landed', async () => {
+    const a = await someone();
+    const cash = await openVault(a, 'robinhood');
+    const { placed, deposit } = await toDeposit(a, 'robinhood');
+    const before = await cash();
+    const one = await build(a, placed, deposit.id);
+    // No expiry on EVM: time does not free the leg. The person cancels the attempt.
+    const refused = await post(a, legUrl(placed, deposit.id, 'build'));
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().fix).toMatch(/cancel/);
+    const cancelled = await post(a, legUrl(placed, deposit.id, 'cancel'));
+    expect(cancelled.statusCode, cancelled.body).toBe(200);
+    expect(legOf(OrderDetail.parse(cancelled.json()), deposit.id)).toMatchObject({
+      status: 'expired',
+      error: { code: 'rejected', retryable: true },
+    });
+    const two = await build(a, placed, deposit.id);
+    expect(two.attempt.n).toBe(2);
+
+    // The wallet sends the cancelled one anyway. It lands, and its id is reported.
+    const stale = await registry.get('robinhood').mock?.send({ messageHash: one.tx.messageHash });
+    const done = await report(a, placed, deposit.id, { txId: stale?.txId });
+    expect(legOf(done, deposit.id)).toMatchObject({
+      status: 'confirmed',
+      attempt: 1,
+      txId: stale?.txId,
+      error: null,
+    });
+    // The second attempt is closed: the server will not relay it, and the leg is not built again.
+    expect(attemptsOf(done, deposit.id)).toEqual([
+      [1, 'confirmed'],
+      [2, 'expired'],
+    ]);
+    const late = await post(a, legUrl(placed, deposit.id, 'report'), { signedTx: two.tx.payload });
+    expect(late.statusCode).toBe(409);
+    expect((await post(a, legUrl(placed, deposit.id, 'build'))).statusCode).toBe(409);
+    expect(done.status).toBe('done');
+    expect(before - (await cash())).toBe(10_000_000n);
+  });
+
+  it('cancels only an attempt that was built and has not landed', async () => {
+    const a = await someone();
+    await openVault(a, 'robinhood');
+    const { placed, deposit } = await toDeposit(a, 'robinhood');
+    // Nothing built yet.
+    expect((await post(a, legUrl(placed, deposit.id, 'cancel'))).statusCode).toBe(409);
+    await build(a, placed, deposit.id);
+    // It landed, unreported: the cancel finds it and the leg settles instead.
+    const txId = await land(a, placed, deposit.id);
+    const res = await post(a, legUrl(placed, deposit.id, 'cancel'));
+    expect(res.statusCode).toBe(409);
+    expect(legOf(await read(a, placed), deposit.id)).toMatchObject({ status: 'confirmed', txId });
+
+    // On Solana an attempt cannot be cancelled while it can still land: only time closes it.
+    await openVault(a, 'solana');
+    const sol = await toDeposit(a, 'solana');
+    await build(a, sol.placed, sol.deposit.id);
+    const early = await post(a, legUrl(sol.placed, sol.deposit.id, 'cancel'));
+    expect(early.statusCode).toBe(409);
+    expect(early.json().error).toMatch(/can still land/);
+    expect(attemptsOf(await read(a, sol.placed), sol.deposit.id)).toEqual([[1, 'built']]);
+  });
+
+  it('racing a build against the report of a landed transaction loses nothing, on both chains', async () => {
+    for (const chain of ['solana', 'robinhood'] as const) {
+      const a = await someone();
+      const cash = await openVault(a, chain);
+      const before = await cash();
+      const rounds = 12;
+      for (let i = 0; i < rounds; i++) {
+        const { placed, deposit } = await toDeposit(a, chain);
+        await build(a, placed, deposit.id);
+        const txId = await land(a, placed, deposit.id);
+        const url = (step: string) => legUrl(placed, deposit.id, step);
+        const [rebuilt, ...reports] = await Promise.all([
+          post(a, url('build')),
+          post(a, url('report'), { txId }),
+          post(a, url('report'), { txId }),
+          get(a, `/v1/orders/${placed.id}`),
+        ]);
+        expect([chain, i, rebuilt.statusCode]).toEqual([chain, i, 409]);
+        expect(reports.map((r) => r.statusCode)).toEqual([200, 200, 200]);
+        const after = await read(a, placed);
+        expect(legOf(after, deposit.id)).toMatchObject({ status: 'confirmed', attempt: 1, txId });
+        expect(attemptsOf(after, deposit.id)).toEqual([[1, 'confirmed']]);
+      }
+      expect(before - (await cash())).toBe(BigInt(rounds) * 10_000_000n);
+    }
+  });
+
+  it('finds a cancelled transaction that landed before the leg is built again', async () => {
+    const a = await someone();
+    await openVault(a, 'robinhood');
+    for (let i = 0; i < 6; i++) {
+      const { placed, deposit } = await toDeposit(a, 'robinhood');
+      const one = await build(a, placed, deposit.id);
+      expect((await post(a, legUrl(placed, deposit.id, 'cancel'))).statusCode).toBe(200);
+      const sent = await registry.get('robinhood').mock?.send({ messageHash: one.tx.messageHash });
+      const [rebuilt, reported] = await Promise.all([
+        post(a, legUrl(placed, deposit.id, 'build')),
+        post(a, legUrl(placed, deposit.id, 'report'), { txId: sent?.txId }),
+      ]);
+      expect([i, rebuilt.statusCode, reported.statusCode]).toEqual([i, 409, 200]);
+      const after = await read(a, placed);
+      expect(legOf(after, deposit.id)).toMatchObject({ status: 'confirmed', attempt: 1 });
+      expect(attemptsOf(after, deposit.id)).toEqual([[1, 'confirmed']]);
+    }
+  });
+
+  it('two builds at once make one attempt', async () => {
+    const a = await someone();
+    await fund(a, ['solana']);
+    for (let i = 0; i < 8; i++) {
+      const placed = await order(a, { amountUsd: 600, chains: ['solana'] });
+      const leg = first(placed, 'solana');
+      const both = await Promise.all([
+        post(a, legUrl(placed, leg.id, 'build')),
+        post(a, legUrl(placed, leg.id, 'build')),
+        post(a, legUrl(placed, leg.id, 'build')),
+      ]);
+      expect(both.map((r) => r.statusCode).sort()).toEqual([200, 409, 409]);
+      expect(attemptsOf(await read(a, placed), leg.id)).toEqual([[1, 'built']]);
+    }
   });
 
   it('a transaction that never lands leaves the leg sent, then expired, and it is built again', async () => {
@@ -747,6 +988,108 @@ describe('refusals', () => {
     expect(half.statusCode).toBe(422);
     expect((await get(a, '/v1/orders/not-an-id')).statusCode).toBe(400);
     expect((await get(a, '/v1/orders/4b1c0f0e-3f8e-4d0e-9d2b-0d7a3a6b1c2d')).statusCode).toBe(404);
+  });
+
+  it('refuses a stored plan it cannot use when the order is made, not at every build', async () => {
+    const a = await someone();
+    const buy = (proposalId: string, more: object = {}) =>
+      post(a, '/v1/orders', { type: 'buy', owner: a.owner, amountUsd: 1000, proposalId, ...more });
+
+    // Weights that do not add up to a whole are not targets a vault can take.
+    const short = planFixture();
+    for (const recipe of short.recipes)
+      recipe.components = recipe.components.map((c, i) =>
+        i === 0 ? { ...c, weightBps: c.weightBps - 1000 } : c,
+      );
+    const res = await buy(await data.storePlan(short));
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error).toMatch(/weights/);
+
+    // A stored plan that no longer reads as a plan: a conflict with what is stored, not a server fault.
+    const brokenId = await data.storePlan();
+    await data.db
+      .update(proposals)
+      .set({ proposal: { not: 'a plan' } as never })
+      .where(eq(proposals.id, brokenId));
+    const broken = await buy(brokenId);
+    expect(broken.statusCode).toBe(409);
+    expect(broken.json().error).toMatch(/cannot be read/);
+
+    // The most one order may buy.
+    expect((await buy(planId, { amountUsd: 1_000_000 })).statusCode).toBe(200);
+    const over = await buy(planId, { amountUsd: 1_000_000.01 });
+    expect(over.statusCode).toBe(422);
+    expect(over.json().error).toMatch(/1,000,000/);
+    expect((await buy(planId, { amountUsd: 1e300 })).statusCode).toBe(422);
+  });
+
+  it('answers a request it cannot read with a 4xx, never a 500', async () => {
+    const a = await someone();
+    const placed = await order(a);
+    const json = { ...a.headers, 'content-type': 'application/json' };
+    const send = (url: string, headers: Record<string, string>, payload?: string) =>
+      app.inject({ method: 'POST', url, headers, ...(payload === undefined ? {} : { payload }) });
+    const buildUrl = legUrl(placed, first(placed, 'solana').id, 'build');
+    const huge = JSON.stringify({ type: 'buy', owner: a.owner, pad: 'x'.repeat(2_000_000) });
+    const cases: [string, Awaited<ReturnType<typeof send>>, number][] = [
+      ['malformed JSON', await send('/v1/orders', json, '{"type":'), 400],
+      ['an empty JSON body', await send(buildUrl, json), 400],
+      ['an empty JSON body, on create', await send('/v1/orders', json, ''), 400],
+      [
+        'another content type',
+        await send('/v1/orders', { ...a.headers, 'content-type': 'application/xml' }, '<a/>'),
+        415,
+      ],
+      ['a body too large', await send('/v1/orders', json, huge), 413],
+      [
+        'a __proto__ key',
+        await send('/v1/orders', json, '{"type":"buy","__proto__":{"admin":true}}'),
+        400,
+      ],
+    ];
+    for (const [name, res, status] of cases) {
+      expect([name, res.statusCode]).toEqual([name, status]);
+      expect(typeof res.json().error).toBe('string');
+      expect(res.body).not.toMatch(/the server failed|stack|node_modules/);
+    }
+    // The leg was not touched by any of it.
+    expect(await read(a, placed)).toEqual(placed);
+  });
+
+  it('a report does not reopen an expired order, and only a transaction the chain has seen extends one', async () => {
+    const a = await someone();
+    let clock = Date.now();
+    const timed = await testApp({ issuer: issuer.issuer, db: data.db, now: () => new Date(clock) });
+    const on = timed.app;
+    await fund(a, ['robinhood'], on);
+    const state = async (o: OrderDetail) =>
+      OrderDetail.parse((await get(a, `/v1/orders/${o.id}`, on)).json());
+
+    // An id that matches the attempt but was never sent: the chain has not seen it, the clock stays.
+    const unsent = await order(a, { amountUsd: 400, chains: ['robinhood'] }, on);
+    const approve = first(unsent, 'robinhood');
+    const built = await build(a, unsent, approve.id, on);
+    const mock = timed.registry.get('robinhood').mock;
+    mock?.dropNext();
+    const never = await mock?.send({ messageHash: built.tx.messageHash });
+    const waiting = await report(a, unsent, approve.id, { txId: never?.txId }, on);
+    expect(legOf(waiting, approve.id).status).toBe('sent');
+    expect(waiting.expiresAt).toBe(unsent.expiresAt);
+    clock += 20 * 60 * 1000;
+    expect((await state(unsent)).status).toBe('expired');
+
+    // A transaction that lands after the order expired is recorded, and the order stays expired.
+    const late = await order(a, { amountUsd: 400, chains: ['robinhood'] }, on);
+    const leg = first(late, 'robinhood');
+    await build(a, late, leg.id, on);
+    const txId = await land(a, late, leg.id, on);
+    clock += 20 * 60 * 1000;
+    const after = await report(a, late, leg.id, { txId }, on);
+    expect(legOf(after, leg.id).status).toBe('confirmed');
+    expect([after.status, after.expiresAt]).toEqual(['expired', late.expiresAt]);
+    const next = await post(a, legUrl(late, first(late, 'robinhood', 1).id, 'build'), {}, on);
+    expect(next.statusCode).toBe(410);
+    await on.close();
   });
 
   it('an order nobody signed expires after 15 minutes', async () => {
