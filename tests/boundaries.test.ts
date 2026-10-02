@@ -1,3 +1,5 @@
+import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -5,10 +7,10 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
 import { afterAll, describe, expect, it } from 'vitest';
 
@@ -289,7 +291,7 @@ function ruleFor(from: string, to: string): Rule {
   return 'table';
 }
 
-function check(root: string): Violation[] {
+function check(root: string, plant?: string): Violation[] {
   const violations: Violation[] = [];
   const rel = (path: string) => posix(relative(root, path));
 
@@ -301,7 +303,11 @@ function check(root: string): Violation[] {
       const manifestPath = join(root, dir, 'package.json');
       if (!entry.isDirectory() || !existsSync(manifestPath)) continue;
       const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
-      const files = [...walk(join(root, dir))].map(rel).sort();
+      // A planted file counts only for the run that planted it (see "What this test writes").
+      const files = [...walk(join(root, dir))]
+        .map(rel)
+        .filter((file) => file === plant || !isPlant(root, file))
+        .sort();
       units.push({ dir, name: String(manifest.name), manifest, files });
     }
   }
@@ -473,23 +479,77 @@ const isExempt = (v: Violation) =>
 // ---------------------------------------------------------------------------------------------------------
 // The tests.
 
-// The planted file goes in packages/db/migrations: a watched folder that the other tests which walk the
-// tree while this one runs all skip, so a file that appears and disappears there cannot trip them.
-const PLANT = 'packages/db/migrations/boundary-plant.ts';
+// What this test writes. Two things, both inside the checkout this file is in (`inside` refuses any other
+// path), each under a name of its own per run, so two runs in one checkout never meet:
+// - one planted file at a time in packages/db/migrations: a watched folder, and one that the other tests
+//   which walk the tree while this one runs all skip, so a file that appears and disappears cannot trip them;
+// - a made-up repo under node_modules/.cache, which every walker skips and git ignores.
+// Each is removed in a `finally`. A killed process runs no `finally`, so a process of its own removes the
+// path 30 s later whatever happens to this one, and the next run sweeps what is older than a minute.
+// The planted name is in .gitignore, and the checker counts a planted file only for the run that wrote it.
+const PLANT_DIR = 'packages/db/migrations';
+const PLANT_NAME = /^boundary-plant-[0-9a-f]+\.ts$/;
+const PLANT_MARK = '// Planted for a moment by tests/boundaries.test.ts. Safe to delete.\n';
+const CACHE_DIR = 'node_modules/.cache/boundaries';
+
+/** A file under the planted name that carries the marker, or that another run has just removed. */
+function isPlant(root: string, file: string): boolean {
+  if (dirname(file) !== PLANT_DIR || !PLANT_NAME.test(basename(file))) return false;
+  try {
+    return readFileSync(join(root, file), 'utf8').startsWith(PLANT_MARK);
+  } catch {
+    return true;
+  }
+}
+
+function inside(path: string): string {
+  const full = resolve(ROOT, path);
+  if (!full.startsWith(ROOT + sep)) throw new Error(`${path} is outside ${ROOT}`);
+  return full;
+}
+
+function removeLater(full: string): void {
+  const script =
+    "setTimeout(() => require('node:fs').rmSync(process.argv[1], { recursive: true, force: true }), 30000)";
+  spawn(process.execPath, ['-e', script, full], { detached: true, stdio: 'ignore' }).unref();
+}
+
+function sweep(): void {
+  const stale = (full: string) => Date.now() - statSync(full).mtimeMs > 60_000;
+  for (const dir of [PLANT_DIR, CACHE_DIR]) {
+    if (!existsSync(inside(dir))) continue;
+    for (const name of readdirSync(inside(dir))) {
+      const full = inside(join(dir, name));
+      try {
+        const ours =
+          dir === CACHE_DIR ||
+          (PLANT_NAME.test(name) && readFileSync(full, 'utf8').startsWith(PLANT_MARK));
+        if (ours && stale(full)) rmSync(full, { recursive: true, force: true });
+      } catch {
+        // Another run removed it first.
+      }
+    }
+  }
+}
+
 const nameOf = (dir: string) =>
   (JSON.parse(readFileSync(join(ROOT, dir, 'package.json'), 'utf8')) as { name: string }).name;
 
-function withPlant(source: string): Violation[] {
-  writeFileSync(join(ROOT, PLANT), source);
+/** Plants `source` (after the marker line), runs the checker, removes the file. */
+function withPlant(source: string): { file: string; caught: Violation[] } {
+  const file = `${PLANT_DIR}/boundary-plant-${randomBytes(6).toString('hex')}.ts`;
+  const full = inside(file);
+  removeLater(full);
+  writeFileSync(full, PLANT_MARK + source, { flag: 'wx' });
   try {
-    return check(ROOT).filter((v) => v.file === PLANT);
+    return { file, caught: check(ROOT, file).filter((v) => v.file === file) };
   } finally {
-    rmSync(join(ROOT, PLANT), { force: true });
+    rmSync(full, { force: true });
   }
 }
 
 describe('import boundaries (DESIGN-VAULT.md section 2)', () => {
-  rmSync(join(ROOT, PLANT), { force: true }); // left by a run that was killed
+  sweep();
   const found = check(ROOT);
 
   it('finds no import that breaks a rule', () => {
@@ -524,26 +584,34 @@ describe('import boundaries (DESIGN-VAULT.md section 2)', () => {
   });
 
   it('self-check: catches an import planted in a watched folder, then removes it', () => {
-    const caught = withPlant(
+    const { file, caught } = withPlant(
       `import { REGISTRY } from '${nameOf(ENGINE)}';\nexport const n = REGISTRY.length;\n`,
     );
-    expect(caught).toEqual([{ file: PLANT, line: 1, kind: 'import', target: ENGINE, rule: 3 }]);
-    expect(existsSync(join(ROOT, PLANT))).toBe(false);
+    expect(caught).toEqual([{ file, line: 2, kind: 'import', target: ENGINE, rule: 3 }]);
+    expect(existsSync(inside(file))).toBe(false);
   });
 
   it('self-check: catches a planted `import type` too', () => {
-    const caught = withPlant(
+    const { file, caught } = withPlant(
       `// a comment first\nimport type { Asset } from '${nameOf(ENGINE)}';\nexport type A = Asset;\n`,
     );
-    expect(caught).toEqual([{ file: PLANT, line: 2, kind: 'import', target: ENGINE, rule: 3 }]);
-    expect(existsSync(join(ROOT, PLANT))).toBe(false);
+    expect(caught).toEqual([{ file, line: 3, kind: 'import', target: ENGINE, rule: 3 }]);
+    expect(existsSync(inside(file))).toBe(false);
+  });
+
+  it('self-check: writes nowhere but this checkout', () => {
+    expect(() => inside('../boundary-plant-00.ts')).toThrow(/outside/);
+    expect(() => inside('/tmp/boundary-plant-00.ts')).toThrow(/outside/);
+    expect(inside(PLANT_DIR)).toBe(join(ROOT, PLANT_DIR));
   });
 });
 
 // Every rule, in a made-up repo that has the folders this one does not have yet (basket, sdk, keeper, mcp)
 // and another package scope. Each bad line is listed with what it must be caught as; everything else is allowed.
 describe('import boundaries: each rule bites', () => {
-  const repo = mkdtempSync(join(tmpdir(), 'boundaries-'));
+  mkdirSync(inside(CACHE_DIR), { recursive: true });
+  const repo = mkdtempSync(join(inside(CACHE_DIR), 'repo-'));
+  removeLater(repo);
   afterAll(() => rmSync(repo, { recursive: true, force: true }));
 
   const FILES: Record<string, string> = {
