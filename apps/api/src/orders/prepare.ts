@@ -12,6 +12,7 @@ import {
   type Order,
   type Principal,
   type Target,
+  Targets,
   type Trade,
 } from '@colosseum/schemas';
 import { holds } from '../plugins/auth';
@@ -21,14 +22,22 @@ import { Refusal, refusing } from './errors';
 // DESIGN-VAULT 3.3: the one function behind the web buttons, REST, the SDK and MCP. It plans the legs
 // of an order and builds nothing: a leg is built just before it is signed.
 
-/** The numbers the order layer applies. One place, so the review screen and the bytes agree. */
+/**
+ * The numbers the order layer applies. One place, so the review screen and the bytes agree.
+ * WORKAROUND: `slippageBps` and `maxAmountUsd` belong on the shared `IntentRequest`, which has neither.
+ */
 export const ORDER_POLICY = {
   /** The slippage every build is given, and what a leg's `minOutRaw` is worked out with. */
   slippageBps: 100,
   /** An order nobody signed expires after this long. */
   unsignedSeconds: 15 * 60,
-  /** Once its first leg is signed, an order stays open this long. */
+  /** Once the chain has seen its first transaction, an order stays open this long. */
   signedSeconds: 24 * 60 * 60,
+  /**
+   * The most one order may buy, in dollars: the ceiling of a plan's own amount (`BasketSheet`). Held
+   * here until the shared `IntentRequest` carries one.
+   */
+  maxAmountUsd: 1_000_000,
 } as const;
 
 export type PrepareContext = {
@@ -56,9 +65,13 @@ export const lessBps = (amount: bigint, bps: number) => (amount * BigInt(10_000 
 const usd = (cents: bigint) =>
   `$${(cents / 100n).toLocaleString('en-US')}.${(cents % 100n).toString().padStart(2, '0')}`;
 
-/** A plan's components on one chain as vault targets. A shared portfolio inside a plan is not flattened here. */
+/**
+ * A plan's components on one chain as the targets a vault takes: each asset once, the weights adding up
+ * to exactly 10,000. A plan that does not give that is refused here, when the order is made. A shared
+ * portfolio inside a plan is not flattened here.
+ */
 export function targetsOf(components: Component[]): Target[] {
-  return components.map((c) => {
+  const targets = components.map((c) => {
     if (c.kind !== 'asset')
       throw new Refusal(
         422,
@@ -66,6 +79,13 @@ export function targetsOf(components: Component[]): Target[] {
       );
     return { asset: c.asset, weightBps: c.weightBps };
   });
+  const checked = Targets.safeParse(targets);
+  if (!checked.success)
+    throw new Refusal(
+      422,
+      `this plan's weights cannot be a vault's targets: ${checked.error.issues[0]?.message ?? 'not valid'}`,
+    );
+  return checked.data;
 }
 
 /** Splits `total` by integer weights. Each share is rounded down; what is left goes to the largest. */
@@ -184,6 +204,7 @@ async function planChainBuy(a: {
 }
 
 /**
+ * WORKAROUND: `Leg.expected` is one figure, so a leg with several trades has none.
  * What a leg with one trade is expected to pay out, from a quote taken now. `minOutRaw` is the quote
  * less the slippage every build is given. Null for a leg with no trade or with several: one figure
  * cannot stand for trades into different assets.
@@ -233,6 +254,11 @@ export async function prepareIntent(req: IntentRequest, ctx: PrepareContext): Pr
     return { entry, recipe, owner };
   });
 
+  if (!(req.amountUsd <= ORDER_POLICY.maxAmountUsd))
+    throw new Refusal(
+      422,
+      `one order buys at most $${ORDER_POLICY.maxAmountUsd.toLocaleString('en-US')}`,
+    );
   const cents = BigInt(Math.round(req.amountUsd * 100));
   if (cents <= 0n) throw new Refusal(422, 'the amount is less than one cent');
   // Each chain gets the share of the amount that the plan gives it.

@@ -5,6 +5,8 @@ import { z } from 'zod';
 // and `fix`. A refusal that came from a chain keeps the chain's own code and its `retryable` in
 // `details`, so a client can tell "try again" from "change something first".
 
+// WORKAROUND: `OrderError` in packages/schemas has no place for the chain's code or `retryable`, and
+// needs a `code` on every answer. This shape stays here until it does.
 export const RefusalBody = ApiError.extend({
   /** One of the ten order codes, where one fits. Absent for a refusal that is none of them. */
   code: OrderErrorCode.optional(),

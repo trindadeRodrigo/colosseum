@@ -18,7 +18,7 @@ import { view } from '../../orders/view';
 import { signedIn } from './orders';
 
 /**
- * GET /v1/portfolio. Named here until it moves beside the other bodies in packages/schemas. One entry
+ * WORKAROUND: GET /v1/portfolio, named here until it moves beside the other bodies in packages/schemas. One entry
  * per chain that is not switched off. `provenance` is the label on every figure under it: `mock` when
  * the chain runs on the mock, `sandbox` on a test network, `live` on mainnet only.
  */
