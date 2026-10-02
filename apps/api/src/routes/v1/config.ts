@@ -1,4 +1,5 @@
 import {
+  assertChainsReady,
   type ChainId,
   ConfigResponse,
   chainProvenance,
@@ -14,12 +15,18 @@ const ORDER: ChainId[] = ['solana', 'robinhood', 'base'];
 /**
  * The flags and one entry per chain. Each entry's `provenance` is the label every figure from that chain
  * carries as it is run now: `mock` on the mock, `sandbox` on a test network or a local copy, `live` on
- * mainnet only. Nothing here is a secret: a chain config holds no RPC URL.
- * Throws on a variable it cannot read, so a typo stops the API at start.
+ * mainnet only, and null for a chain that is off. Nothing here is a secret: a chain config holds no RPC
+ * URL.
+ * Throws on a variable it cannot read, and on a chain set to `live` or `readonly` that has no router,
+ * price source or deployment to run on, so either stops the API at start.
  */
-export function buildConfig(env: EnvLike): ConfigResponse {
+export function buildConfig(
+  env: EnvLike,
+  contracts: Parameters<typeof parseChainConfigs>[1] = {},
+): ConfigResponse {
   const flags = parseFlags(env);
-  const configs = parseChainConfigs(env);
+  const configs = parseChainConfigs(env, contracts);
+  assertChainsReady(flags, configs);
   return {
     flags,
     chains: ORDER.map((id) => {
