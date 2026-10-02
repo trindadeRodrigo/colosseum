@@ -1,7 +1,7 @@
 import { Recipe, Shelf, Targets } from '@colosseum/schemas';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { FlattenError, flatten } from './flatten';
+import { FlattenError, flatten, flattenReport } from './flatten';
 import { asset, family, recipe, shelf } from './testing';
 
 const ASSETS = ['spy', 'nvda', 'tsla', 'gold', 'yield', 'amd', 'msft'].map((s) =>
@@ -98,11 +98,78 @@ describe('flatten', () => {
       'solana:gold': 2000,
       'solana:tsla': 1000,
     });
-    expect(flatten(plan, SHELF, { minLineBps: 50, maxLines: 2 })).toEqual([
+    const report = flattenReport(plan, SHELF, { minLineBps: 50, maxLines: 2 });
+    expect(report.targets).toEqual([
       // 4000 and 3000 of 7000, scaled to 10,000: 5714.29 and 4285.71.
       { asset: 'solana:spy', weightBps: 5714 },
       { asset: 'solana:nvda', weightBps: 4286 },
     ]);
+    // That takes SPY from under its 50% ceiling to over it, which is said, not hidden.
+    expect(report.overCeiling).toEqual([
+      { asset: 'solana:spy', weightBps: 5714, ceilingBps: 5000 },
+    ]);
+    expect(code(() => flatten(plan, SHELF, { minLineBps: 50, maxLines: 2 }))).toBe('OverCeiling');
+  });
+
+  it('reports each line it dropped, and why', () => {
+    const tail = family('tail', [recipe('solana', { 'solana:nvda': 9800, 'solana:amd': 200 })]);
+    const plan = recipe('solana', {
+      'index:tail': 2000,
+      'solana:spy': 4000,
+      'solana:gold': 2500,
+      'solana:tsla': 1470,
+      'solana:msft': 30,
+    });
+    const report = flattenReport(plan, shelf(ASSETS, [tail]), { minLineBps: 50, maxLines: 3 });
+    expect(report.dropped).toEqual([
+      // The fourth largest line of three allowed.
+      { asset: 'solana:tsla', weightBps: 1470, why: 'over_max_lines' },
+      // 2% of 20%, and a direct line of 30 bps: both under the 50 bps minimum.
+      { asset: 'solana:amd', weightBps: 40, why: 'under_minimum' },
+      { asset: 'solana:msft', weightBps: 30, why: 'under_minimum' },
+    ]);
+    // 4000, 2500 and 1960 of 8460, scaled to 10,000.
+    expect(report.targets).toEqual([
+      { asset: 'solana:spy', weightBps: 4728 },
+      { asset: 'solana:gold', weightBps: 2955 },
+      { asset: 'solana:nvda', weightBps: 2317 },
+    ]);
+    expect(report.overCeiling).toEqual([]);
+    // Nothing dropped, nothing to report.
+    expect(
+      flattenReport(plan, shelf(ASSETS, [tail]), { minLineBps: 1, maxLines: 16 }),
+    ).toMatchObject({ dropped: [], overCeiling: [] });
+  });
+
+  it('does not push a line over its ceiling in silence', () => {
+    // The review of BAS-1: A is 30% of the plan; a shared portfolio of twelve fills the rest. Cut
+    // to eight lines, A comes to 42%. Here A's ceiling is 35%.
+    const twelve = Object.fromEntries(
+      Array.from({ length: 12 }, (_, i) => [`solana:f${i}`, i === 0 ? 837 : 833]),
+    );
+    const wide = family('wide', [recipe('solana', twelve)]);
+    const capped = shelf(
+      [asset('solana:a', { maxWeightBps: 3500 }), ...Object.keys(twelve).map((id) => asset(id))],
+      [wide],
+    );
+    const plan = recipe('solana', { 'solana:a': 3000, 'index:wide': 7000 });
+    const report = flattenReport(plan, capped, { minLineBps: 50, maxLines: 8 });
+    // 3000 of the 7084.5 that the eight largest lines hold.
+    expect(report.targets[0]).toEqual({ asset: 'solana:a', weightBps: 4235 });
+    expect(report.overCeiling).toEqual([{ asset: 'solana:a', weightBps: 4235, ceilingBps: 3500 }]);
+    expect(report.dropped).toHaveLength(5);
+    expect(report.dropped.every((d) => d.why === 'over_max_lines')).toBe(true);
+    expect(report.targets.reduce((n, t) => n + t.weightBps, 0)).toBe(10_000);
+    // With nowhere to say it, flatten refuses.
+    expect(code(() => flatten(plan, capped, { minLineBps: 50, maxLines: 8 }))).toBe('OverCeiling');
+    // With room for every line nothing is raised, and a line the plan itself put over a ceiling is
+    // the plan's business, not flatten's.
+    expect(flatten(plan, capped, { minLineBps: 50, maxLines: 16 })[0]).toEqual({
+      asset: 'solana:a',
+      weightBps: 3000,
+    });
+    const single = recipe('solana', { 'solana:a': 10_000 });
+    expect(flatten(single, capped, WIDE)).toEqual([{ asset: 'solana:a', weightBps: 10_000 }]);
   });
 
   it('refuses what it cannot flatten, by name', () => {
@@ -112,6 +179,13 @@ describe('flatten', () => {
     );
     const twice = shelf(ASSETS, [family('chips', [...chips.recipes, ...chips.recipes])]);
     expect(code(() => flatten(plan, twice, WIDE))).toBe('AmbiguousRecipe');
+    // Two shared portfolios under one slug: neither is "the" one.
+    const other = family('chips', [recipe('solana', { 'solana:gold': 10_000 })]);
+    expect(code(() => flatten(plan, shelf(ASSETS, [chips, other]), WIDE))).toBe('AmbiguousFamily');
+    // A shared portfolio that points at itself is one that points at another.
+    const loop = family('loop', [recipe('solana', { 'index:loop': 10_000 })]);
+    const circular = recipe('solana', { 'index:loop': 10_000 });
+    expect(code(() => flatten(circular, shelf(ASSETS, [loop]), WIDE))).toBe('BadFamilyRecipe');
     // One level only: a shared portfolio that points at another is not followed.
     const nested = {
       ...chips,
@@ -168,7 +242,7 @@ const world = fc
 
 const attempt = (plan: Recipe, s: Shelf, p: { minLineBps: number; maxLines: number }) => {
   try {
-    return flatten(plan, s, p);
+    return flattenReport(plan, s, p).targets;
   } catch (e) {
     if (e instanceof FlattenError && e.code === 'NothingLeft') return null;
     throw e;
@@ -201,7 +275,11 @@ describe('flatten, on generated plans', { timeout: 60_000 }, () => {
   it('loses nothing when no line is dropped: each asset gets what the plan gives it', () => {
     fc.assert(
       fc.property(world, ({ plan, shelf: s }) => {
-        const targets = flatten(plan, s, { minLineBps: 0, maxLines: 1000 });
+        const report = flattenReport(plan, s, { minLineBps: 0, maxLines: 1000 });
+        const { targets } = report;
+        expect(report.dropped.every((d) => d.why === 'under_minimum' && d.weightBps < 1)).toBe(
+          true,
+        );
         // The exact share of each asset, in ten-thousandths of a bp, worked out the long way.
         const exact = new Map<string, number>();
         for (const c of plan.components) {
@@ -227,6 +305,54 @@ describe('flatten, on generated plans', { timeout: 60_000 }, () => {
       }),
       { numRuns: 1500 },
     );
+  });
+
+  it('accounts for every line: kept or dropped, and never over a ceiling without saying so', () => {
+    let raised = 0;
+    fc.assert(
+      fc.property(world, ({ plan, shelf: s, p }) => {
+        let report: ReturnType<typeof flattenReport>;
+        try {
+          report = flattenReport(plan, s, p);
+        } catch (e) {
+          expect(e instanceof FlattenError && e.code).toBe('NothingLeft');
+          return;
+        }
+        const { targets, dropped, overCeiling } = report;
+        // What the plan gave each asset, the long way.
+        const exact = new Map<string, number>();
+        for (const c of plan.components) {
+          if (c.kind === 'asset') exact.set(c.asset, (exact.get(c.asset) ?? 0) + c.weightBps);
+          else
+            for (const x of s.families.find((f) => f.meta.slug === c.family)?.recipes[0]
+              ?.components ?? [])
+              if (x.kind === 'asset')
+                exact.set(
+                  x.asset,
+                  (exact.get(x.asset) ?? 0) + (c.weightBps * x.weightBps) / 10_000,
+                );
+        }
+        // Every asset is a target or is in the dropped list, with the weight it had.
+        expect([...targets.map((t) => t.asset), ...dropped.map((d) => d.asset)].sort()).toEqual(
+          [...exact.keys()].sort(),
+        );
+        for (const d of dropped) {
+          expect(d.weightBps).toBeCloseTo(exact.get(d.asset) ?? -1, 6);
+          expect(d.why === 'under_minimum').toBe(d.weightBps < Math.max(1, p.minLineBps));
+        }
+        // A kept line over 50% that was not over it in the plan is in the list, and only those are.
+        const pushed = targets.filter(
+          (t) => t.weightBps > 5000 && (exact.get(t.asset) ?? 0) <= 5000,
+        );
+        expect(overCeiling.map((o) => o.asset).sort()).toEqual(pushed.map((t) => t.asset).sort());
+        if (pushed.length > 0) {
+          raised += 1;
+          expect(() => flatten(plan, s, p)).toThrow(FlattenError);
+        } else expect(flatten(plan, s, p)).toEqual(targets);
+      }),
+      { numRuns: 1500 },
+    );
+    expect(raised).toBeGreaterThan(20);
   });
 
   it('does not depend on the order the lines are written in', () => {
