@@ -13,6 +13,7 @@ export * from './lending/aggregate';
 export * from './lending/ix-names';
 export * from './lending/jupiter-lend';
 export * from './lending/kamino';
+export * from './lending/observed';
 export * from './lending/reconstruct';
 export * from './lending/report';
 export * from './lending/route';

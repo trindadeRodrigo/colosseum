@@ -28,6 +28,8 @@ export type LendingReportParams = {
   oracleMatchSec: number;
   /** A liquidation counts toward capacity while the liquidator's margin is at least this (percent; item 8). */
   minLiquidatorMarginPct: number;
+  /** Seizure size buckets of the observed routes (USD edges; item 9). */
+  sizeBucketsUsd: number[];
 };
 
 export const defaultLendingReportParams = (): LendingReportParams => ({
@@ -38,6 +40,7 @@ export const defaultLendingReportParams = (): LendingReportParams => ({
   bandPct: 1,
   oracleMatchSec: 180,
   minLiquidatorMarginPct: 0,
+  sizeBucketsUsd: [1_000, 10_000, 100_000],
 });
 
 // ---------------------------------------------------------------------------------------------------------------

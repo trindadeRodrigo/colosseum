@@ -15,6 +15,7 @@ import {
   type AssetCurves,
   alarmShare,
   bestRoute,
+  costAt,
   coverageRatio,
   type DepthCurve,
   defaultLendingReportParams,
@@ -28,7 +29,11 @@ import {
   liquidationCapacity,
   liquidationRoutes,
   liquidationTable,
+  type ObservedLiquidation,
   type OracleGapObs,
+  observedLiquidation,
+  observedRoutes,
+  observedSale,
   REGIMES,
   type ReallocationLeg,
   type Regime,
@@ -54,6 +59,7 @@ import { LENDING_HISTORY_DIR, multipleAccounts, RISK_HOME } from './lib-lending'
 // and full-liquidation LTV), decoded with klend-sdk. Policy inputs: `defaultLendingReportParams()`.
 // PLAN-ANALYTICS item 8 adds sections 6 and 7: the liquidation routes compared (margin per route, size and regime,
 // `packages/risk/src/lending/route.ts`) and the coverage ratio on the liquidator's margin beside the earlier one.
+// Item 9 adds section 8: the routes liquidations actually took, from the decoded events (no new fetch).
 // Output: data/risk/lending-history/report/lending-report-<stamp>.json, and the tables printed.
 
 const METHOD = 'lending-report-0.2';
@@ -352,8 +358,12 @@ type Liq = {
   priceUnit: string;
   debtMint: string;
   impliedBonus: number | null;
+  liquidator?: string;
+  position?: string;
+  otherPrograms: string[];
   sales: Array<{
     pool: string;
+    venue: string;
     mintIn: string;
     mintOut: string;
     amountIn: string;
@@ -363,6 +373,9 @@ type Liq = {
 const liqRows = await rows<{ block_time: string; venue: string; liq: Liq }>(
   sql`select block_time, venue, detail->'liquidation' liq from risk_lending_events where kind = 'liquidation'`,
 );
+// liquidators and liquidated positions are wallets: none may reach the output (DA4)
+for (const r of liqRows)
+  for (const a of [r.liq.liquidator, r.liq.position]) if (a) privateAddresses.add(a);
 const liqInputs: Array<LiquidationInput & { venue: string; asset: string }> = liqRows.map((r) => {
   const l = r.liq;
   const at = new Date(r.block_time);
@@ -840,6 +853,68 @@ const coverageBoth = atRisk.flatMap((g) =>
   }),
 );
 
+// =============================================================================================== 8. observed routes
+// PLAN-ANALYTICS item 9. The same liquidation rows as section 3, followed into the registry pools that sold the
+// seized collateral in the same transaction. The simulated sale is compared where the routed curve of the
+// liquidation's regime covers its time and a reference mid was read within oracleMatchSec.
+const SOL_MINT = 'So11111111111111111111111111111111111111112';
+const AGGREGATORS = new Set([
+  'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4', // Jupiter v6
+  'JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB', // Jupiter v4
+]);
+const observedCtx = {
+  decimalsOf: (m: string) => decimalsOf.get(m) ?? null,
+  symbolOf: (m: string) => symbolOfMint.get(m) ?? null,
+  dollarMints: DOLLAR_MINTS,
+  solMint: SOL_MINT,
+  aggregators: AGGREGATORS,
+  regimeOf: (at: Date) => regimeAt(at, RP),
+  poolMid,
+};
+const observedRows: ObservedLiquidation[] = liqRows.map((r) => {
+  const l = r.liq;
+  const at = new Date(r.block_time);
+  const row = observedLiquidation({ blockTime: r.block_time, venue: r.venue, liq: l }, observedCtx);
+  const sales = row.sales;
+  if (!sales.length) return row;
+  const o = observedSale(row);
+  const curve = curvesOf.get(l.collateralMint)?.byRegime[row.regime];
+  const mid = nearestMid(l.collateralMint, at.getTime());
+  const covered =
+    curve?.from && curve.to && row.at >= String(curve.from) && row.at <= String(curve.to);
+  let simulated: ObservedLiquidation['simulated'];
+  if (!curve) simulated = { reason: 'no_samples_in_regime' };
+  else if (!covered) simulated = { reason: 'before_routed_curves' };
+  else if (mid === null || o.realisedUsd === null) simulated = { reason: 'no_reference_mid' };
+  else {
+    const c = costAt(curve, o.soldUnits * mid);
+    simulated =
+      c === null
+        ? { reason: 'beyond_measured_size' }
+        : { simulatedRecovered: 1 - c, observedRecovered: o.realisedUsd / mid };
+  }
+  return { ...row, simulated };
+});
+const observed = observedRoutes(observedRows, P.sizeBucketsUsd);
+const observedTotals = {
+  liquidations: observedRows.length,
+  followed: observedRows.filter((r) => r.sales.length).length,
+  notFollowed: observedRows.filter((r) => !r.sales.length).length,
+  notFollowedWithAggregator: observedRows.filter((r) => !r.sales.length && r.aggregator).length,
+  from: observedRows.map((r) => r.at).sort()[0] ?? null,
+  to:
+    observedRows
+      .map((r) => r.at)
+      .sort()
+      .at(-1) ?? null,
+  routedCurvesFrom:
+    [...curvesOf.values()]
+      .flatMap((a) => Object.values(a.byRegime).map((c) => c?.from))
+      .filter((t): t is string => !!t)
+      .map(String)
+      .sort()[0] ?? null,
+};
+
 // =============================================================================================== output
 const report = {
   method: METHOD,
@@ -905,6 +980,18 @@ const report = {
       'wait_for_market_open: the market-hours sale, the price held flat over the wait (market risk is item 12): an assumption',
       'issuer_redemption: redeemed at the venue oracle price less the issuer fee, from fixtures/risk/issuer-models.json: an assumption',
       'a route resting on an assumption is listed, never chosen as best over a measured one',
+    ],
+  },
+  observedRoutes: {
+    totals: observedTotals,
+    rows: observed,
+    assumptions: [
+      'followed = the seized collateral sold in a registry pool in the liquidation transaction (Step 10b decode pass); not_followed waits for item 13',
+      'notFollowedWithAggregator: the transaction called Jupiter but no registry pool sold the collateral (a pool outside the registry, or another asset)',
+      'realised price: dollar-quoted sales only, units-weighted; against the program price (Jupiter Lend: debt token at par) and the sale pool hourly mid (Step 5b, from 2026-09-04)',
+      'observed margin = (1 + implied bonus) × realised ÷ oracle − 1, on the units sold',
+      `simulated against observed: recovered value of the routed sale at the sold size in the liquidation regime, against realised ÷ the routed reference mid within ${P.oracleMatchSec}s; only where the routed curve's window covers the liquidation`,
+      'size buckets by seized USD; pools are pool accounts, never wallets',
     ],
   },
   coverageBoth: {
@@ -1109,6 +1196,40 @@ table(
     notPriced: c.margin.oraclesNotPriced.length,
     missing: c.margin.regimesMissing.join(' ') || '—',
   })),
+);
+const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
+table(
+  `8. Observed liquidation routes — ${observedTotals.followed} of ${observedTotals.liquidations} liquidations sold in a registry pool in the same transaction; ${observedTotals.notFollowed} not_followed (${observedTotals.notFollowedWithAggregator} called an aggregator)`,
+  observed.map((o) => ({
+    asset: o.asset,
+    regime: o.regime,
+    size: o.bucket,
+    liq: o.liquidations,
+    followed: o.followed,
+    notFollowed: `${o.notFollowed}${o.notFollowedWithAggregator ? ` (${o.notFollowedWithAggregator} agg)` : ''}`,
+    soldShare: o.soldShare.n ? pct(o.soldShare.median, 0) : '—',
+    dexes: o.byDex
+      ? Object.entries(o.byDex)
+          .sort((a, b) => b[1] - a[1])
+          .map(
+            ([d, x]) =>
+              `${d.replace('_whirlpool', '').replace('raydium_', 'ray-').replace('meteora_', '')} ${pct(x, 0)}`,
+          )
+          .join(' ')
+      : 'not_followed',
+    topPool: o.pools[0]
+      ? `${short(o.pools[0].pool)} ${o.pools[0].quote} ${pct(o.pools[0].share, 0)}`
+      : '—',
+    vsOracle: o.saleVsOracle.n ? pct(o.saleVsOracle.median, 2) : (o.reason ?? '—'),
+    vsMid: o.saleVsMid.n ? `${pct(o.saleVsMid.median, 2)} n=${o.saleVsMid.n}` : '—',
+    margin: o.observedMargin.n ? pct(o.observedMargin.median, 2) : (o.reason ?? '—'),
+    simVsObs: o.simulatedVsObserved.n
+      ? `${pct(o.simulatedVsObserved.median, 2)} n=${o.simulatedVsObserved.n}`
+      : Object.keys(o.simulatedVsObserved.reasons).join(' ') || '—',
+  })),
+);
+console.log(
+  `  liquidations ${observedTotals.from?.slice(0, 10)} → ${observedTotals.to?.slice(0, 10)}; routed curves from ${String(observedTotals.routedCurvesFrom).slice(0, 10)}; simVsObs = observed − simulated recovered value`,
 );
 console.log(
   '\n* derived weekend capacity; + capacity beyond the top of the measured grid (lower bound); ~ rests on an assumption',
