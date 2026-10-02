@@ -65,6 +65,8 @@
     "risk:lending-import-check": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/lending-import-check.ts",
     "risk:lending-import": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/lending-import.ts",
     "risk:lending-reconstruct": "NODE_OPTIONS=--max-old-space-size=12288 tsx scripts/risk/lending-reconstruct.ts",
+    "risk:lending-freeze-report-fixtures": "tsx scripts/risk/lending-freeze-report-fixtures.ts",
+    "risk:lending-report": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/lending-report.ts",
     "risk:lending-freeze-verify-fixtures": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/lending-freeze-verify-fixtures.ts"
   },
   "devDependencies": {
