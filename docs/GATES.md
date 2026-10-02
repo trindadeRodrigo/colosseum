@@ -9,7 +9,7 @@ Source: `docs/PLAN.md` §5. Status is one of `OPEN | PASSED | FAILED | DECIDED`.
 | **EVM-S1** — EVM adapter | OPEN | D5-AM, Mon Oct 5 | **Skip** | — | Build only if a partner confirms a pilot chain in writing, `STATE.md` has no `slipped` rows, and G-Nora has not passed. |
 | **SOLVER** — form | OPEN | D5-AM, Mon Oct 5 | LP (`javascript-lp-solver`) + rules layer; greedy waterfall on infeasibility | — | |
 | **FREEZE** — feature freeze | DECIDED | Fri Oct 9 18:00 BRT | — | 2026-09-30 | After the freeze: P0 fixes only (crash, wrong number, failed mainnet path), each with a test; no schema or dependency changes; `main` tagged `freeze`. |
-| **B2** — second builder | DECIDED: no | D1-AM | No | 2026-09-30 | Solo. `[B2]` marks stay in the plan for a possible later hand-over. |
+| **B2** — second builder | DECIDED: yes (was "no" on 2026-09-30) | D1-AM | No | 2026-10-01 | Gabriel Thom joined as co-founder on 2026-10-01 and owns tech and infrastructure. Rodrigo owns data and risk, design, and commercial (integrations, validations). The remaining `[B2]` slots are not yet assigned slot by slot. |
 | **KAMINO-LEG** — SDK vs substitute | DECIDED: klend-sdk | D1-AM | klend-sdk | 2026-09-30 | `@kamino-finance/klend-sdk@12.0.1` loads the main market and reads the USDC reserve on public RPC (V3). Note: it depends on `@solana/kit` 2.x, not web3.js v1. 13.0.1 was published 2026-09-30 and is held back by pnpm's minimum-release-age policy; revisit only if 12.x breaks. |
 
 ## Founder items (not build tasks, recorded here when answered)
