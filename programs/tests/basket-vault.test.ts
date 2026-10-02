@@ -38,6 +38,7 @@ import {
   createWorld,
   events,
   expectError,
+  expectFailure,
   expectOk,
   fundedSigner,
   MOCK_ROUTER_PROGRAM,
@@ -725,22 +726,26 @@ describe('basket vault', () => {
 
     describe('accounts that are not what they are passed as', () => {
       it('refuses a token program that is not the one the mint belongs to', async () => {
-        // A Token-2022 mint with the classic program, with the vault's real token account
-        // and with the one derived for the wrong program.
+        // A Token-2022 mint with the classic program: with the vault's real token account,
+        // and with the one derived for the wrong program, which does not exist.
         const stockAsClassic: TestMint = { ...stock, program: TOKEN_PROGRAM };
-        for (const vaultTokenAccount of [vaultStock, undefined]) {
-          const result = await send(svm, owner, [
+        const wrongProgram = { owner, vault, mint: stockAsClassic, amount: 1n };
+        expectError(
+          await send(svm, owner, [
             await withdrawInstruction({
-              owner,
-              vault,
-              mint: stockAsClassic,
-              amount: 1n,
-              vaultTokenAccount,
+              ...wrongProgram,
+              vaultTokenAccount: vaultStock,
               destination: ownerStock,
             }),
-          ]);
-          expectError(result, ANCHOR.ConstraintMintTokenProgram);
-        }
+          ]),
+          ANCHOR.ConstraintMintTokenProgram,
+        );
+        expectError(
+          await send(svm, owner, [
+            await withdrawInstruction({ ...wrongProgram, destination: ownerStock }),
+          ]),
+          ANCHOR.AccountNotInitialized,
+        );
         // A classic mint with Token-2022, on withdraw and on deposit.
         const cashAs2022: TestMint = { ...cash, program: TOKEN_2022_PROGRAM };
         const accounts = { vaultTokenAccount: vaultCash, destination: ownerCash };
@@ -800,22 +805,32 @@ describe('basket vault', () => {
 
       it('refuses an account that is not a mint where the mint goes', async () => {
         const accounts = { vaultTokenAccount: vaultCash, destination: ownerCash };
-        const notMints: [Address, number][] = [
-          [vault, ANCHOR.AccountOwnedByWrongProgram],
-          [ownerCash, ANCHOR.AccountDidNotDeserialize],
-        ];
-        for (const [address, code] of notMints) {
-          const result = await send(svm, owner, [
+        // The vault account itself: not a token program's account at all.
+        expectError(
+          await send(svm, owner, [
             await withdrawInstruction({
               owner,
               vault,
-              mint: { ...cash, address },
+              mint: { ...cash, address: vault },
               amount: 1n,
               ...accounts,
             }),
-          ]);
-          expectError(result, code);
-        }
+          ]),
+          ANCHOR.AccountOwnedByWrongProgram,
+        );
+        // A token account: the token program's, but not a mint.
+        expectFailure(
+          await send(svm, owner, [
+            await withdrawInstruction({
+              owner,
+              vault,
+              mint: { ...cash, address: ownerCash },
+              amount: 1n,
+              ...accounts,
+            }),
+          ]),
+          'InvalidAccountData',
+        );
         expectVaultUntouched();
       });
     });

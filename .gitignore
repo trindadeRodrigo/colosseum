@@ -19,3 +19,4 @@ target/
 .anchor/
 test-ledger/
 /keys/
+*-keypair.json

@@ -151,6 +151,16 @@ export function expectError(result: SendResult, code: number): void {
   }
 }
 
+/** Fails unless the transaction failed with this runtime error, one that carries no code
+ * of its own (for example `MissingAccount` or `InvalidAccountData`). */
+export function expectFailure(result: SendResult, name: string): void {
+  if (!failed(result)) throw new Error(`expected ${name}, but the transaction succeeded`);
+  const error = result.err().toString();
+  if (!new RegExp(`\\b${name}\\b`).test(error)) {
+    throw new Error(`expected ${name}, got ${error}\n${result.meta().prettyLogs()}`);
+  }
+}
+
 /** Anchor's instruction selector: the first eight bytes of sha256("global:<name>"). */
 export function discriminator(name: string): Uint8Array {
   return new Uint8Array(createHash('sha256').update(`global:${name}`).digest().subarray(0, 8));
@@ -198,6 +208,7 @@ export const ANCHOR = {
   AccountOwnedByWrongProgram: 3007,
   InvalidProgramId: 3008,
   AccountNotSigner: 3010,
+  AccountNotInitialized: 3012,
 } as const;
 
 /** The system program's "already in use": what creating an account twice ends with. */

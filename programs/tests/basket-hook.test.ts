@@ -13,9 +13,8 @@ import {
 } from './src/basket';
 import {
   createWorld,
-  expectError,
+  expectFailure,
   expectOk,
-  failed,
   fundedSigner,
   loadHook,
   readonly,
@@ -36,9 +35,6 @@ import {
   TOKEN_2022_PROGRAM,
   TOKEN_PROGRAM,
 } from './src/tokens';
-
-/** Token-2022's hook interface error: the accounts the hook needs were not passed. */
-const HOOK_ACCOUNTS_MISSING = 2_110_272_652;
 
 // Hostile case A9b. The stock token's mint has a transfer-hook authority and no hook
 // program. Its issuer can set one at any time, after the vault already holds the token.
@@ -97,7 +93,7 @@ describe('a transfer hook set after the vault holds the token (A9b)', () => {
     const without = await send(svm, owner, [
       await withdrawInstruction({ owner, vault, mint: stock, amount: STOCK }),
     ]);
-    expectError(without, HOOK_ACCOUNTS_MISSING);
+    expectFailure(without, 'MissingAccount'); // the hook's accounts were not passed
     expect(balance(svm, vaultStock)).toBe(STOCK);
 
     expectOk(
@@ -153,15 +149,18 @@ describe('a transfer hook set after the vault holds the token (A9b)', () => {
       readonly(SYSTEM_PROGRAM),
     ]);
     const before = svm.getBalance(owner.address) ?? 0n;
-    const result = await send(svm, owner, [
-      await withdrawInstruction({ owner, vault, mint: stock, amount: STOCK, extraAccounts }),
-    ]);
-    // The program strips the signature from every extra account, so Token-2022 cannot
-    // hand the hook one. The transfer fails, the stock stays, and nothing is taken.
-    expect(failed(result)).toBe(true);
+    const meta = expectOk(
+      await send(svm, owner, [
+        await withdrawInstruction({ owner, vault, mint: stock, amount: STOCK, extraAccounts }),
+      ]),
+    );
+    // Account 5 of the hook's call is the owner's wallet, which signed the transaction.
+    // The hook sees it without the signature, and takes nothing. Writable alone lets a
+    // program add lamports to an account, never take them.
+    expect(hookSaw(meta.logs(), 5)).toEqual({ signer: false, writable: true });
     expect(stolen()).toBe(0n);
     expect(before - (svm.getBalance(owner.address) ?? 0n)).toBe(5_000n); // the fee
-    expect(balance(svm, vaultStock)).toBe(STOCK);
+    expect(balance(svm, ownerStock)).toBe(STOCK);
   });
 
   it('a cash mint that gains a hook: a deposit needs the hook accounts, and gives it no signature', async () => {
@@ -182,7 +181,7 @@ describe('a transfer hook set after the vault holds the token (A9b)', () => {
     ]);
 
     const deposit = { owner, vault, mint: cash2, amount: CASH };
-    expectError(await send(svm, owner, [await depositInstruction(deposit)]), HOOK_ACCOUNTS_MISSING);
+    expectFailure(await send(svm, owner, [await depositInstruction(deposit)]), 'MissingAccount');
 
     const extraAccounts = await hookExtras(hook, cash2.address, [
       writableSigner(owner),
