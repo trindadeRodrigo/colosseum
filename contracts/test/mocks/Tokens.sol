@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.30;
+pragma solidity 0.8.37;
 
 // Test tokens. Each variant breaks ERC-20 in one way a real token does. None of them is production code.
 
