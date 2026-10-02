@@ -103,7 +103,8 @@ export type Funding = z.infer<typeof Funding>;
 
 export const TxStatus = z.object({
   status: z.enum(['pending', 'confirmed', 'reverted', 'expired']),
-  explorerUrl: z.string().min(1),
+  /** Empty on a network with no explorer (a local copy). */
+  explorerUrl: z.string(),
   error: z.object({ code: z.string(), message: z.string() }).optional(),
 });
 export type TxStatus = z.infer<typeof TxStatus>;

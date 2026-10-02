@@ -222,7 +222,9 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
     ];
     for (const req of ok) expect(IntentRequest.safeParse(req).success).toBe(true);
     expect(IntentRequest.safeParse({ type: 'set_keeper', vault: EVM }).success).toBe(false);
-    expect(IntentRequest.safeParse({ type: 'buy', owner: {}, amountUsd: 0 }).success).toBe(false);
+    expect(IntentRequest.safeParse({ type: 'buy', owner: {}, amountUsd: 500 }).success).toBe(false);
+    const noMoney = { type: 'buy', owner: { solana: SOL }, amountUsd: 0 };
+    expect(IntentRequest.safeParse(noMoney).success).toBe(false);
     expect(
       IntentRequest.safeParse({ type: 'rebalance', vaults: [], reason: 'manual' }).success,
     ).toBe(false);

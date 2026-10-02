@@ -84,7 +84,9 @@ export const Attempt = z.object({
 export type Attempt = z.infer<typeof Attempt>;
 
 /** One address per wallet family. The EVM address serves both EVM chains. */
-export const Owner = z.object({ solana: Address.optional(), evm: Address.optional() });
+export const Owner = z
+  .object({ solana: Address.optional(), evm: Address.optional() })
+  .refine((o) => Boolean(o.solana ?? o.evm), 'an owner has at least one address');
 export type Owner = z.infer<typeof Owner>;
 
 export const OrderType = z.enum(['buy', 'rebalance', 'follow', 'publish', 'withdraw', 'settings']);
