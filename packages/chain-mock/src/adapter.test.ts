@@ -1,6 +1,6 @@
-import type { BasketTx, ChainId } from '@colosseum/schemas';
+import { BasketTx, BuiltTx, ChainError, type ChainId, stampTx } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
-import { createMockAdapter, MockChainError } from './adapter';
+import { createMockAdapter } from './adapter';
 import { displayAmount, fromScaled, valueScaled } from './amounts';
 import { mockFixture } from './fixture';
 import { mockAddress } from './ids';
@@ -11,7 +11,7 @@ import { mockAddress } from './ids';
 const code = (p: Promise<unknown>) =>
   p.then(
     () => 'no error',
-    (e) => (e instanceof MockChainError ? e.code : `not a MockChainError: ${e}`),
+    (e) => (e instanceof ChainError ? e.code : `not a ChainError: ${e}`),
   );
 
 async function funded(chain: ChainId) {
@@ -141,7 +141,7 @@ describe('chain-mock', () => {
     expect(vault?.cash.raw).toBe('0');
     // Stock tokens have 18 decimals on Robinhood Chain.
     expect(vault?.positions.map((p) => p.display)).toEqual(['5.994', '1.998']);
-    // The approval was exact and is used up.
+    // The approval is spent by what was deposited.
     const again = adapter.buildDeposit({
       vault: vault?.address ?? '',
       amountRaw: '1',
@@ -160,7 +160,7 @@ describe('chain-mock', () => {
       trades: [trade],
       slippageBps: 50,
     });
-    expect(await code(inCreate)).toBe('TradesNotInCreate');
+    expect(await code(inCreate)).toBe('NotSupported');
     await sol.mock.send(
       await sol.adapter.buildCreateVault({ ...base, depositRaw: '5000000', slippageBps: 50 }),
     );
@@ -176,7 +176,7 @@ describe('chain-mock', () => {
       amountRaw: '1000000',
       slippageBps: 50,
     });
-    const forged: BasketTx = { ...tx, messageHash: 'ff'.repeat(32) };
+    const forged: BuiltTx = { ...tx, messageHash: 'ff'.repeat(32) };
     expect(await code(f.adapter.mock.send(forged))).toBe('NotBuiltHere');
 
     const before = (await f.adapter.getVault(f.vault))?.cash.raw;
@@ -237,7 +237,7 @@ describe('chain-mock', () => {
       autoFollow: false,
       slippageBps: 50,
     });
-    expect(await code(adapter.mock.send(tx))).toBe('NO_GAS');
+    expect(await code(adapter.mock.send(tx))).toBe('NoGas');
   });
 
   it('withdraws every token to the owner and leaves the vault empty', async () => {
@@ -323,7 +323,7 @@ describe('chain-mock', () => {
     await adapter.mock.send(await adapter.buildSetTargets({ vault: f.vault, targets }));
     const vault = await adapter.getVault(f.vault);
     expect([vault?.autoFollow, vault?.recipeOnchainId]).toEqual([false, null]);
-    expect(await adapter.listAutoFollowVaults()).toEqual([]);
+    expect(await adapter.listAutoFollowVaults()).not.toContain(f.vault);
     expect(await code(adapter.buildKeeperLeg(f.vault, f.keeperTrade))).toBe('AutoFollowOff');
   });
 
@@ -338,5 +338,153 @@ describe('chain-mock', () => {
     adapter.mock.setPrice('solana:spy', '101.5');
     expect((await adapter.getPrices(['solana:spy']))[0]?.usdPerToken).toBe('101.5');
     expect(await code(adapter.getPrices(['solana:nope']))).toBe('MintNotAccepted');
+  });
+  it('returns a transaction with no leg id; the order layer stamps both ids', async () => {
+    const f = await mockFixture('robinhood');
+    const built = await f.adapter.buildDeposit({
+      vault: f.vault,
+      amountRaw: '1000000',
+      slippageBps: 50,
+    });
+    expect(BuiltTx.parse(built)).toEqual(built);
+    expect(Object.keys(built)).not.toContain('legId');
+    expect(BasketTx.safeParse(built).success).toBe(false);
+    const stamped = stampTx(built, { legId: 'leg-1', attemptId: 'attempt-1' });
+    expect(BasketTx.parse(stamped)).toEqual(stamped);
+    // Stamping does not change the bytes, so the mock still knows it.
+    expect((await f.adapter.mock.send(stamped)).txId.startsWith('0x')).toBe(true);
+  });
+
+  it('refuses bad arguments as BadInput, never as another kind of error', async () => {
+    const { adapter, mock, owner, targets } = await funded('robinhood');
+    const spender = mock.addresses.factory;
+    expect(await code(adapter.buildApprove({ owner, spender, amountRaw: '1.5' }))).toBe('BadInput');
+    expect(await code(adapter.buildApprove({ owner, spender, amountRaw: '-5' }))).toBe('BadInput');
+    const create = { owner, basketId: '1', targets, autoFollow: false, slippageBps: 50 };
+    expect(await code(adapter.buildCreateVault({ ...create, owner: 'nobody' }))).toBe('BadInput');
+    expect(await code(adapter.buildCreateVault({ ...create, depositRaw: '1.5' }))).toBe('BadInput');
+    expect(await code(adapter.buildCreateVault({ ...create, slippageBps: 20_000 }))).toBe(
+      'BadInput',
+    );
+    const twice = [targets[0], targets[0]].flatMap((t) => (t ? [{ ...t, weightBps: 5000 }] : []));
+    expect(await code(adapter.buildCreateVault({ ...create, targets: twice }))).toBe('BadInput');
+    const zero = { sell: mock.cash, buy: 'robinhood:spy', amountInRaw: '0' };
+    expect(await code(adapter.quote(zero, owner))).toBe('BadTrade');
+    expect(await code(adapter.getPrices(['robinhood:doge']))).toBe('MintNotAccepted');
+    expect(() => mock.setPrice('robinhood:gold', '0')).toThrow(ChainError);
+    expect(() => mock.fund(owner, { assets: { [mock.cash]: '-5' } })).toThrow(ChainError);
+    // Cash is what a vault holds between trades, not something a shared portfolio lists.
+    const f = await mockFixture('robinhood');
+    const withCash = {
+      ...f.publishRecipe,
+      components: [
+        { kind: 'asset' as const, asset: 'robinhood:usdc', weightBps: 5000 },
+        { kind: 'asset' as const, asset: 'robinhood:spy', weightBps: 5000 },
+      ],
+    };
+    const publish = f.adapter.buildPublishRecipe({ creator: f.owner, recipe: withCash });
+    expect(await code(publish)).toBe('MintNotAccepted');
+    const unknown = f.adapter.buildWithdrawInKind({ vault: f.vault, assets: ['robinhood:doge'] });
+    expect(await code(unknown)).toBe('MintNotAccepted');
+  });
+
+  it('holds a trade to its slippage: a price that moves past it reverts the transaction', async () => {
+    const f = await mockFixture('solana');
+    const { adapter } = f;
+    const sellSpy = { sell: 'solana:spy', buy: adapter.mock.cash, amountInRaw: '100000000' };
+    const before = await adapter.getVault(f.vault);
+    const tight = await adapter.buildOwnerSwap({
+      vault: f.vault,
+      trades: [sellSpy],
+      slippageBps: 100,
+    });
+    const loose = await adapter.buildOwnerSwap({
+      vault: f.vault,
+      trades: [sellSpy],
+      slippageBps: 6000,
+    });
+    adapter.mock.setPrice('solana:spy', '50');
+    const reverted = await adapter.track((await adapter.mock.send(tight)).txId);
+    expect(reverted).toMatchObject({ status: 'reverted', error: { code: 'ReceivedTooLittle' } });
+    expect(await adapter.getVault(f.vault)).toEqual(before);
+    expect((await adapter.track((await adapter.mock.send(loose)).txId)).status).toBe('confirmed');
+    // Half the price, less the mock's 10 bps: 49.95 dollars for one token.
+    const after = await adapter.getVault(f.vault);
+    expect(BigInt(after?.cash.raw ?? 0) - BigInt(before?.cash.raw ?? 0)).toBe(49_950_000n);
+  });
+
+  it('spends an EVM approval by what is deposited, not all at once', async () => {
+    const { adapter, mock, owner, targets } = await funded('robinhood');
+    const spender = mock.addresses.factory;
+    await mock.send(await adapter.buildApprove({ owner, spender, amountRaw: '1000' }));
+    const create = { owner, basketId: '1', targets, autoFollow: false, slippageBps: 50 };
+    await mock.send(await adapter.buildCreateVault({ ...create, depositRaw: '1000' }));
+    const vault = (await adapter.getVaults(owner))[0]?.address ?? '';
+    await mock.send(await adapter.buildApprove({ owner, spender, amountRaw: '10' }));
+    const deposit = (amountRaw: string) =>
+      adapter.buildDeposit({ vault, amountRaw, slippageBps: 50 });
+    await mock.send(await deposit('4'));
+    await mock.send(await deposit('4'));
+    expect(await code(deposit('4'))).toBe('AllowanceTooLow');
+    await mock.send(await deposit('2'));
+    expect((await adapter.getVault(vault))?.cash.raw).toBe('1010');
+  });
+
+  it('never repeats a transaction id across restarts when given a seed', async () => {
+    const first = async (seed?: string) => {
+      const adapter = createMockAdapter({ chain: 'robinhood', seed });
+      const owner = mockAddress('robinhood', 'owner');
+      adapter.mock.fund(owner, { gasRaw: '1000000000000000000' });
+      const spender = adapter.mock.addresses.factory;
+      const tx = await adapter.buildApprove({ owner, spender, amountRaw: '1000000' });
+      return (await adapter.mock.send(tx)).txId;
+    };
+    expect(await first('start-1')).not.toBe(await first('start-2'));
+    expect(await first('start-1')).toBe(await first('start-1'));
+    expect(await first()).toBe(await first());
+  });
+
+  it('stops the keeper at the target, and outside the stock session', async () => {
+    const f = await mockFixture('solana');
+    const { adapter } = f;
+    const { mock } = adapter;
+    // SPY is near 30% against a target of 50%: all the cash into it would overshoot.
+    const allIn = { sell: mock.cash, buy: 'solana:spy', amountInRaw: '700000000' };
+    expect(await code(adapter.buildKeeperLeg(f.vault, allIn))).toBe('PastTarget');
+    const bothStocks = { sell: 'solana:spy', buy: 'solana:nvda', amountInRaw: '1000' };
+    expect(await code(adapter.buildKeeperLeg(f.vault, bothStocks))).toBe('BadTrade');
+    mock.advance(6 * 3600);
+    expect(await code(adapter.buildKeeperLeg(f.vault, f.keeperTrade))).toBe('MarketClosed');
+    // Gold trades at any hour, and the owner at any hour in anything.
+    const gold = { sell: mock.cash, buy: 'solana:gold', amountInRaw: '100000000' };
+    expect((await adapter.buildKeeperLeg(f.vault, gold)).legKind).toBe('keeper_leg');
+    const owner = adapter.buildOwnerSwap({
+      vault: f.vault,
+      trades: [f.ownerTrade],
+      slippageBps: 50,
+    });
+    expect((await owner).legKind).toBe('swap');
+  });
+
+  it('treats an asset the owner only holds as new when a version adds it', async () => {
+    const f = await mockFixture('solana', { newVersion: false });
+    const { adapter } = f;
+    const buyTsla = { sell: adapter.mock.cash, buy: 'solana:tsla', amountInRaw: '1000000' };
+    await adapter.mock.send(
+      await adapter.buildOwnerSwap({ vault: f.vault, trades: [buyTsla], slippageBps: 50 }),
+    );
+    const withTsla = {
+      ...f.publishRecipe,
+      components: [
+        { kind: 'asset' as const, asset: 'solana:spy', weightBps: 5000 },
+        { kind: 'asset' as const, asset: 'solana:tsla', weightBps: 5000 },
+      ],
+    };
+    await adapter.mock.send(
+      await adapter.buildPublishRecipe({ creator: f.owner, recipe: withTsla }),
+    );
+    adapter.mock.advance(300);
+    expect((await adapter.getVault(f.vault))?.pending?.newAssets).toEqual(['solana:tsla']);
+    expect(await code(adapter.buildAdoptVersion(f.vault))).toBe('NewAssetNeedsOwner');
   });
 });

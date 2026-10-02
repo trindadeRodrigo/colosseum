@@ -1,59 +1,68 @@
 import {
-  type AcceptVersionArgs,
-  type Address,
-  type ApproveArgs,
-  type AssetId,
+  AcceptVersionArgs,
+  Address,
+  ApproveArgs,
+  AssetId,
   type BasketAsset,
-  type BasketTx,
+  type BuiltTx,
   type Capabilities,
   type ChainAdapter,
+  ChainError,
+  type ChainErrorCode,
   type ChainId,
   CreateVaultArgs,
   chainFamily,
+  DecimalString,
   DepositArgs,
   type Funding,
-  type FundingNeed,
+  FundingNeed,
   type Holding,
   type LegKind,
   OwnerSwapArgs,
   type Price,
   PublishRecipeArgs,
   type Quote,
+  RawAmount,
   type Recipe,
+  SetAutoFollowArgs,
   SetTargetsArgs,
   type Target,
   Trade,
   type TxPreview,
   type TxStatus,
   type VaultState,
-  type WithdrawInKindArgs,
+  WithdrawInKindArgs,
 } from '@colosseum/schemas';
-import { displayAmount, swapOut, valueScaled } from './amounts';
+import { z } from 'zod';
+import { displayAmount, swapOut, toScaled, valueScaled } from './amounts';
 import { mockAddress, mockRecipeId, mockTxId, sha256Hex } from './ids';
 import { mockAssets, mockPrices } from './shelf';
 
 // A whole chain in memory, behind the ChainAdapter interface. Deterministic: the clock only moves when
 // a test moves it, ids are hashes, and nothing reads the network, the environment or a random source.
-// Everything it returns is stamped `provenance: 'mock'`.
+// Everything it returns is stamped `provenance: 'mock'`. Every refusal is a ChainError, for bad
+// arguments as much as for a transaction that would revert.
 
 const SOURCE = 'chain-mock';
 /** What a mock trade costs against the reference price. */
 const TRADE_COST_BPS = 10;
 /** Blocks a Solana transaction stays valid for; the mock mints one block a second. */
 const VALID_BLOCKS = 60;
-
-/** A refusal by the mock chain. `code` is the vault's error name where the design gives one. */
-export class MockChainError extends Error {
-  readonly code: string;
-  constructor(code: string, message: string) {
-    super(message);
-    this.name = 'MockChainError';
-    this.code = code;
-  }
-}
-const refuse = (code: string, message: string): never => {
-  throw new MockChainError(code, message);
+/** The slippage `quote()` allows for in `minOutRaw`. */
+const QUOTE_SLIPPAGE_BPS = 50;
+const refuse = (code: ChainErrorCode, message: string): never => {
+  throw new ChainError(code, message);
 };
+/** Parses an argument and turns a schema failure into BadInput. The message names fields, not values. */
+function input<S extends z.ZodType>(schema: S, value: unknown, what: string): z.infer<S> {
+  const parsed = schema.safeParse(value);
+  if (parsed.success) return parsed.data;
+  const where = parsed.error.issues.map((i) =>
+    i.path.length ? `${i.path.join('.')}: ${i.message}` : i.message,
+  );
+  throw new ChainError('BadInput', `${what}: ${[...new Set(where)].slice(0, 3).join('; ')}`);
+}
+const lessBps = (amount: bigint, bps: number) => (amount * BigInt(10_000 - bps)) / 10_000n;
 
 type Position = { raw: bigint; targetBps: number; lastKeeperAt: number | null };
 type MockVault = {
@@ -87,13 +96,15 @@ type Op =
   | { kind: 'swap'; a: OwnerSwapArgs }
   | { kind: 'set_targets'; a: SetTargetsArgs }
   | { kind: 'accept_version'; a: AcceptVersionArgs }
-  | { kind: 'set_auto_follow'; a: { vault: Address; on: boolean } }
+  | { kind: 'set_auto_follow'; a: SetAutoFollowArgs }
   | { kind: 'withdraw'; a: { vault: Address; assets: AssetId[] } }
   | { kind: 'publish'; a: PublishRecipeArgs }
   | { kind: 'adopt_version'; a: { vault: Address } }
   | { kind: 'keeper_leg'; a: { vault: Address; trade: Trade } };
 
-type Built = { op: Op; signer: Address; validUntil: number | null; txId: string };
+/** What a run of an op hands back: what each trade paid out, and the least each may pay. */
+type Run = { outs: bigint[]; mins?: bigint[] };
+type Built = { op: Op; signer: Address; validUntil: number | null; txId: string; mins: bigint[] };
 type Sent = { status: TxStatus['status']; validUntil: number | null; error?: TxStatus['error'] };
 
 export type MockOptions = {
@@ -106,6 +117,12 @@ export type MockOptions = {
   assets?: BasketAsset[];
   /** USD per whole token by asset id. Required for every asset when `assets` is given. */
   prices?: Record<string, string>;
+  /**
+   * Mixed into every transaction this instance builds. An app that keeps transaction ids across restarts
+   * passes something new each start (a start time), so a fresh mock never repeats an id it handed out
+   * before. Tests leave it out and get the same ids every run.
+   */
+  seed?: string;
 };
 
 /** What a test does to the mock chain from outside: the things a wallet, a faucet and time do. */
@@ -113,6 +130,8 @@ export type MockControl = {
   /** Fixed addresses: who a cash approval goes to, and who the keeper is. */
   addresses: { factory: Address; keeper: Address };
   cash: AssetId;
+  /** The slippage `quote()` allows for. */
+  quoteSlippageBps: number;
   /** Unix seconds of the mock clock. */
   now(): number;
   advance(seconds: number): void;
@@ -123,9 +142,9 @@ export type MockControl = {
    * Stands in for sign-and-broadcast. Only a transaction this adapter built is accepted, found by its
    * `messageHash`. Sending the same one twice returns the same id and changes nothing.
    */
-  send(tx: Pick<BasketTx, 'messageHash'>): Promise<{ txId: string; validUntil?: string }>;
+  send(tx: Pick<BuiltTx, 'messageHash'>): Promise<{ txId: string; validUntil?: string }>;
   /** The next send lands and reverts with this error. */
-  revertNext(error: { code: string; message: string }): void;
+  revertNext(error: { code: ChainErrorCode; message: string }): void;
   /** The next send never lands: it stays pending, then expires when its validity runs out. */
   dropNext(): void;
 };
@@ -144,6 +163,7 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
   const factory = mockAddress(chain, 'factory');
   const keeper = mockAddress(chain, 'keeper');
   const publishDelay = options.publishDelaySeconds ?? 300;
+  const seed = options.seed ?? '';
   /** One fee for every transaction, and the extra a new vault costs, in native units. */
   const fee = family === 'solana' ? 5_000n : 20_000_000_000_000n;
   const newVaultGas = family === 'solana' ? 6_000_000n : 0n;
@@ -178,7 +198,7 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
   const built = new Map<string, Built>();
   const sent = new Map<string, Sent>();
   let buildSeq = 0;
-  let nextRevert: { code: string; message: string } | null = null;
+  let nextRevert: { code: ChainErrorCode; message: string } | null = null;
   let nextDrop = false;
 
   const iso = (s: State) => new Date(s.seconds * 1000).toISOString();
@@ -189,7 +209,8 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
     return byId.get(id) ?? refuse('MintNotAccepted', `${id} is not listed on ${chain}`);
   }
   function price(s: State, id: AssetId): string {
-    return s.prices.get(asset(id).id) ?? refuse('AssetNotPriced', `${id} has no price`);
+    const p = s.prices.get(asset(id).id);
+    return p && toScaled(p) > 0n ? p : refuse('AssetNotPriced', `${id} has no price`);
   }
   function holding(s: State, id: AssetId, raw: bigint): Holding {
     const multiplier = s.multipliers.get(id) ?? '1';
@@ -227,12 +248,14 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
     return weekday && minutes >= 870 && minutes < 1200 ? 'open' : 'closed';
   }
 
+  /** A recipe's components as targets. Only listed assets, and never cash. */
   function targetsOf(recipe: Recipe): Target[] {
-    return recipe.components.map((c) =>
-      c.kind === 'asset'
-        ? { asset: asset(c.asset).id, weightBps: c.weightBps }
-        : refuse('BadRecipe', 'a vault takes assets only; flatten the recipe first'),
-    );
+    return recipe.components.map((c) => {
+      if (c.kind !== 'asset')
+        throw new ChainError('BadInput', 'a vault takes assets only; flatten the recipe first');
+      if (asset(c.asset).id === cash) refuse('MintNotAccepted', 'cash is not a target');
+      return { asset: c.asset, weightBps: c.weightBps };
+    });
   }
   function setTargets(v: MockVault, targets: Target[]) {
     for (const [id, p] of v.positions) {
@@ -246,6 +269,8 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
       else v.positions.set(t.asset, { raw: 0n, targetBps: t.weightBps, lastKeeperAt: null });
     }
   }
+  /** An asset the owner has accepted: one of the vault's targets. Holding it is not accepting it. */
+  const accepted = (v: MockVault, id: AssetId) => (v.positions.get(id)?.targetBps ?? 0) > 0;
   const balance = (v: MockVault, id: AssetId) =>
     id === cash ? v.cash : (v.positions.get(id)?.raw ?? 0n);
   function move(v: MockVault, id: AssetId, delta: bigint) {
@@ -262,19 +287,25 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
     const buy = asset(trade.buy);
     if ((sell.id === cash) === (buy.id === cash))
       refuse('BadTrade', 'one side of a trade is the cash token');
-    return swapOut(
+    if (BigInt(trade.amountInRaw) === 0n) refuse('BadTrade', 'a trade sells more than nothing');
+    const out = swapOut(
       BigInt(trade.amountInRaw),
       { usdPerToken: price(s, sell.id), decimals: sell.decimals },
       { usdPerToken: price(s, buy.id), decimals: buy.decimals },
       TRADE_COST_BPS,
     );
+    return out > 0n ? out : refuse('BadTrade', 'the trade is too small to buy anything');
   }
-  function swap(s: State, v: MockVault, trade: Trade) {
-    const out = quoteOut(s, trade);
+  /** One trade inside a vault. With `run.mins` set, it reverts when it pays out less than agreed. */
+  function swap(s: State, v: MockVault, trade: Trade, run: Run) {
     const amountIn = BigInt(trade.amountInRaw);
-    if (amountIn === 0n) refuse('BadTrade', 'a trade sells more than nothing');
-    if (balance(v, trade.sell) < amountIn)
+    if (amountIn > 0n && balance(v, asset(trade.sell).id) < amountIn)
       refuse('SpentTooMuch', `the vault holds less ${trade.sell} than the trade sells`);
+    const out = quoteOut(s, trade);
+    const min = run.mins?.[run.outs.length];
+    if (min !== undefined && out < min)
+      refuse('ReceivedTooLittle', `${trade.buy}: the price moved past the slippage allowed`);
+    run.outs.push(out);
     move(v, trade.sell, -amountIn);
     move(v, trade.buy, out);
   }
@@ -286,16 +317,16 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
     }
     return w;
   }
+  /** A deposit is always the chain's cash token, from the vault's owner. */
   function pullCash(s: State, v: MockVault, amount: bigint) {
     const w = walletOf(s, v.owner);
-    if ((w.get(cash) ?? 0n) < amount) refuse('NOT_FUNDED', 'the wallet holds less cash than this');
+    if ((w.get(cash) ?? 0n) < amount) refuse('NotFunded', 'the wallet holds less cash than this');
     if (capabilities.needsApprove) {
       const key = [factory, v.address]
         .map((spender) => `${v.owner}>${spender}`)
         .find((k) => (s.allowances.get(k) ?? 0n) >= amount);
-      if (!key) throw new MockChainError('AllowanceTooLow', 'approve the cash first');
-      // An exact approval, used once.
-      s.allowances.set(key, 0n);
+      if (!key) throw new ChainError('AllowanceTooLow', 'approve the cash first');
+      s.allowances.set(key, (s.allowances.get(key) ?? 0n) - amount);
     }
     w.set(cash, (w.get(cash) ?? 0n) - amount);
     v.cash += amount;
@@ -303,7 +334,7 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
   function checkTrades(trades: Trade[] | undefined, inCreate: boolean) {
     if (!trades?.length) return;
     if (inCreate && !capabilities.tradesInCreate)
-      refuse('TradesNotInCreate', `${chain} opens a vault and trades in separate transactions`);
+      refuse('NotSupported', `${chain} opens a vault and trades in separate transactions`);
     if (trades.length > capabilities.maxTradesPerTx)
       refuse('TooManyTrades', `${chain} takes ${capabilities.maxTradesPerTx} per transaction`);
   }
@@ -315,8 +346,8 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
     return total === 0n ? 0 : Number((value(id) * 10_000n) / total);
   }
 
-  /** The one place state changes. Throws a MockChainError and leaves `s` half-changed, so callers pass a copy. */
-  function apply(s: State, op: Op): void {
+  /** The one place state changes. Throws a ChainError and leaves `s` half-changed, so callers pass a copy. */
+  function apply(s: State, op: Op, run: Run): void {
     switch (op.kind) {
       case 'approve':
         s.allowances.set(`${op.a.owner}>${op.a.spender}`, BigInt(op.a.amountRaw));
@@ -336,7 +367,7 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
           positions: new Map(),
         };
         if (a.recipeOnchainId) {
-          if (a.targets.length) refuse('BadTargets', 'a vault that follows takes no targets');
+          if (a.targets.length) refuse('BadInput', 'a vault that follows takes no targets');
           const { active } = recipeOf(s, a.recipeOnchainId);
           if (a.expectedVersion !== active.version)
             refuse('VersionMismatch', `the active version is ${active.version}`);
@@ -344,27 +375,25 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
           v.acceptedVersion = active.version;
           setTargets(v, targetsOf(active));
         } else {
-          const targets = SetTargetsArgs.shape.targets.safeParse(a.targets);
-          if (!targets.success) refuse('BadTargets', 'targets must add up to exactly 10,000');
-          setTargets(v, a.targets);
+          setTargets(v, input(SetTargetsArgs.shape.targets, a.targets, 'targets'));
         }
         s.vaults.set(address, v);
         if (a.depositRaw) pullCash(s, v, BigInt(a.depositRaw));
         checkTrades(a.trades, true);
-        for (const t of a.trades ?? []) swap(s, v, t);
+        for (const t of a.trades ?? []) swap(s, v, t, run);
         return;
       }
       case 'deposit': {
         const v = vaultOf(s, op.a.vault);
         pullCash(s, v, BigInt(op.a.amountRaw));
         checkTrades(op.a.trades, false);
-        for (const t of op.a.trades ?? []) swap(s, v, t);
+        for (const t of op.a.trades ?? []) swap(s, v, t, run);
         return;
       }
       case 'swap': {
         const v = vaultOf(s, op.a.vault);
         checkTrades(op.a.trades, false);
-        for (const t of op.a.trades) swap(s, v, t);
+        for (const t of op.a.trades) swap(s, v, t, run);
         return;
       }
       case 'set_targets': {
@@ -403,11 +432,12 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
         return;
       }
       case 'publish': {
+        // The four author limits (DESIGN-VAULT section 6) are not checked here: they live with
+        // checkCreatorLimits in packages/basket, which the mock cannot import.
         const { creator, recipe } = op.a;
-        if (recipe.chain !== chain) refuse('BadRecipe', `this recipe is for ${recipe.chain}`);
-        if (recipe.creator !== creator) refuse('BadRecipe', 'the creator signs their own recipe');
-        if (recipe.kind !== 'community')
-          refuse('BadRecipe', 'only a shared portfolio is published');
+        if (recipe.chain !== chain) refuse('BadInput', `this recipe is for ${recipe.chain}`);
+        if (recipe.creator !== creator) refuse('BadInput', 'the creator signs their own recipe');
+        if (recipe.kind !== 'community') refuse('BadInput', 'only a shared portfolio is published');
         targetsOf(recipe);
         const id = mockRecipeId(chain, creator, recipe.familyId);
         const existing = s.recipes.get(id);
@@ -430,13 +460,12 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
       case 'adopt_version': {
         const v = vaultOf(s, op.a.vault);
         if (!v.autoFollow) refuse('AutoFollowOff', 'auto-follow is off for this vault');
-        if (!v.recipeOnchainId)
-          throw new MockChainError('NotFollowing', 'this vault follows nothing');
+        if (!v.recipeOnchainId) throw new ChainError('NotFollowing', 'this vault follows nothing');
         const { active } = recipeOf(s, v.recipeOnchainId);
         if (active.version <= v.acceptedVersion)
           refuse('VersionNotEffective', 'no newer version has taken effect');
         const targets = targetsOf(active);
-        if (targets.some((t) => !v.positions.has(t.asset)))
+        if (targets.some((t) => !accepted(v, t.asset)))
           refuse('NewAssetNeedsOwner', 'the new version adds an asset; the owner accepts it');
         v.acceptedVersion = active.version;
         setTargets(v, targets);
@@ -446,19 +475,33 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
         const v = vaultOf(s, op.a.vault);
         if (!v.autoFollow) refuse('AutoFollowOff', 'auto-follow is off for this vault');
         const { sell, buy } = op.a.trade;
+        if ((sell === cash) === (buy === cash))
+          refuse('BadTrade', 'one side of a trade is the cash token');
+        if (BigInt(op.a.trade.amountInRaw) === 0n)
+          refuse('BadTrade', 'a trade sells more than nothing');
         const other = sell === cash ? buy : sell;
         const p = v.positions.get(other);
         if (!p)
-          throw new MockChainError('MintNotAccepted', `${other} is not one of this vault's assets`);
-        // Sell only what is over its target, buy only what is under. The band, the cooldown, the price
-        // checks and the weekly loss cap are the real vault's and are not modelled here.
-        const weight = weightBps(s, v, other);
-        if (sell === cash ? weight >= p.targetBps : weight <= p.targetBps)
+          throw new ChainError('MintNotAccepted', `${other} is not one of this vault's assets`);
+        if (marketOpen(s, asset(other).session) !== 'open')
+          refuse('MarketClosed', `${other} trades in the US session only`);
+        // Sell only what is over its target, buy only what is under, and stop at the target. The band,
+        // the cooldown, the price-age check and the weekly loss cap are the real vault's and are not
+        // modelled here.
+        const buying = sell === cash;
+        const before = weightBps(s, v, other);
+        if (buying ? before >= p.targetBps : before <= p.targetBps)
           refuse(
             'NotTowardTarget',
-            `${other} is at ${weight} bps against a target of ${p.targetBps}`,
+            `${other} is at ${before} bps against a target of ${p.targetBps}`,
           );
-        swap(s, v, op.a.trade);
+        swap(s, v, op.a.trade, run);
+        const after = weightBps(s, v, other);
+        if (buying ? after > p.targetBps : after < p.targetBps)
+          refuse(
+            'PastTarget',
+            `${other} would be at ${after} bps against a target of ${p.targetBps}`,
+          );
         p.lastKeeperAt = s.seconds;
         return;
       }
@@ -494,7 +537,7 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
             effectiveAt: next.effectiveAt,
             newAssets: targetsOf(next)
               .map((t) => t.asset)
-              .filter((id) => !v.positions.has(id)),
+              .filter((id) => !accepted(v, id)),
           }
         : null,
     };
@@ -516,12 +559,18 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
 
   const evmTarget = (op: Op, vault: Address | undefined) =>
     op.kind === 'approve' ? asset(cash).address : (vault ?? factory);
+  /**
+   * The slippage a transaction's trades were built with. A keeper trade has none of its own: the vault
+   * holds it to the reference price, which the mock always trades at.
+   */
+  const slippageOf = (op: Op) => ('slippageBps' in op.a ? op.a.slippageBps : 10_000);
 
   /** Runs the op on a copy, so a transaction that would fail is refused here and never built. */
-  function build(op: Op, signer: Address, watch: { wallet: Address; vault?: Address }): BasketTx {
+  function build(op: Op, signer: Address, watch: { wallet: Address; vault?: Address }): BuiltTx {
     const before = live();
     const after = structuredClone(before);
-    apply(after, op);
+    const run: Run = { outs: [] };
+    apply(after, op, run);
     const changes: TxPreview['changes'] = [];
     const diff = (
       holder: 'wallet' | 'vault',
@@ -546,14 +595,21 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
 
     // A counter stands in for the blockhash or nonce, so two builds of one step are two transactions.
     buildSeq += 1;
-    const body = JSON.stringify({ mock: true, chain, seq: buildSeq, op });
+    const body = JSON.stringify({ mock: true, chain, seed, seq: buildSeq, op });
     const payload =
       family === 'solana'
         ? Buffer.from(body).toString('base64')
         : `0x${Buffer.from(body).toString('hex')}`;
     const messageHash = sha256Hex(payload);
     const validUntil = family === 'solana' ? before.seconds + VALID_BLOCKS : null;
-    built.set(messageHash, { op, signer, validUntil, txId: mockTxId(chain, messageHash) });
+    const slippage = slippageOf(op);
+    built.set(messageHash, {
+      op,
+      signer,
+      validUntil,
+      txId: mockTxId(chain, messageHash),
+      mins: run.outs.map((out) => lessBps(out, slippage)),
+    });
     return {
       chain: family,
       payload,
@@ -563,8 +619,6 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
         : { lastValidBlockHeight: before.seconds + VALID_BLOCKS, feePayer: signer }),
       description: DESCRIPTION[op.kind],
       provenance: 'mock',
-      legId: null,
-      attemptId: null,
       legKind: op.kind,
       chainId: chain,
       signer,
@@ -578,198 +632,238 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
       },
     };
   }
-  const ownerOf = (vault: Address) => vaultOf(live(), vault).owner;
   const ownerTx = (op: Op & { a: { vault: Address } }) => {
-    const owner = ownerOf(op.a.vault);
+    const owner = vaultOf(live(), op.a.vault).owner;
     return build(op, owner, { wallet: owner, vault: op.a.vault });
   };
+
+  /** Nothing but a ChainError leaves the adapter: an error of any other kind is a bug, reported as Unknown. */
+  async function guarded<T>(work: () => T | Promise<T>): Promise<T> {
+    try {
+      return await work();
+    } catch (e) {
+      if (e instanceof ChainError) throw e;
+      throw new ChainError('Unknown', e instanceof Error ? e.message : 'the mock failed');
+    }
+  }
 
   const adapter: MockAdapter = {
     chain,
     capabilities,
 
-    async listAssets() {
-      return structuredClone(assets);
-    },
-    async getPrices(ids) {
-      const s = live();
-      return [...new Set(ids)].map((id) => ({
-        ...stamp(s, id === cash ? 'cash counted as one dollar' : 'fixed mock price'),
-        asset: id,
-        usdPerToken: price(s, id),
-        ageSeconds: 0,
-        market: marketOpen(s, asset(id).session),
-      }));
-    },
-    async getVaults(owner) {
-      const s = live();
-      return [...s.vaults.values()].filter((v) => v.owner === owner).map((v) => vaultState(s, v));
-    },
-    async getVault(vault) {
-      const s = live();
-      const v = s.vaults.get(vault);
-      return v ? vaultState(s, v) : null;
-    },
-    async listAutoFollowVaults(recipeOnchainId) {
-      return [...live().vaults.values()]
-        .filter((v) => v.autoFollow && (!recipeOnchainId || v.recipeOnchainId === recipeOnchainId))
-        .map((v) => v.address);
-    },
-    async getRecipe(recipeOnchainId) {
-      return structuredClone(recipeOf(live(), recipeOnchainId));
-    },
-    async getWalletHoldings(owner) {
-      const s = live();
-      return [...(s.wallets.get(owner) ?? [])]
-        .filter(([, raw]) => raw > 0n)
-        .map(([id, raw]) => holding(s, id, raw));
-    },
-    async funding(owner, need: FundingNeed): Promise<Funding> {
-      const s = live();
-      const cashHave = s.wallets.get(owner)?.get(cash) ?? 0n;
-      const gasHave = s.gas.get(owner) ?? 0n;
-      const gasNeed = fee * BigInt(need.legs) + (need.newVault ? newVaultGas : 0n);
-      return {
-        chain,
-        cashHaveRaw: cashHave.toString(),
-        cashNeedRaw: need.cashRaw,
-        gasHaveRaw: gasHave.toString(),
-        gasNeedRaw: gasNeed.toString(),
-        ok: cashHave >= BigInt(need.cashRaw) && gasHave >= gasNeed,
-      };
-    },
-    async quote(trade, _taker): Promise<Quote> {
-      const s = live();
-      const out = quoteOut(s, Trade.parse(trade));
-      return {
-        ...stamp(s, 'mock price less a fixed cost'),
-        trade,
-        outRaw: out.toString(),
-        minOutRaw: out.toString(),
-        costBps: TRADE_COST_BPS,
-        against: 'reference',
-        venue: 'mock-router',
-      };
-    },
-    async track(txId, validUntil) {
-      const s = live();
-      const tx = sent.get(txId);
-      const until = tx?.validUntil ?? (validUntil ? Number(validUntil) : null);
-      const pending = !tx || tx.status === 'pending';
-      const status =
-        pending && until !== null && s.seconds > until ? 'expired' : (tx?.status ?? 'pending');
-      return {
-        status,
-        explorerUrl: `mock://${chain}/tx/${txId}`,
-        ...(tx?.error ? { error: tx.error } : {}),
-      };
-    },
+    listAssets: () => guarded(() => structuredClone(assets)),
+    getPrices: (ids) =>
+      guarded(() => {
+        const s = live();
+        return [...new Set(input(z.array(AssetId), ids, 'assets'))].map((id) => ({
+          ...stamp(s, id === cash ? 'cash counted as one dollar' : 'fixed mock price'),
+          asset: id,
+          usdPerToken: price(s, id),
+          ageSeconds: 0,
+          market: marketOpen(s, asset(id).session),
+        }));
+      }),
+    getVaults: (owner) =>
+      guarded(() => {
+        const s = live();
+        const who = input(Address, owner, 'owner');
+        return [...s.vaults.values()].filter((v) => v.owner === who).map((v) => vaultState(s, v));
+      }),
+    getVault: (vault) =>
+      guarded(() => {
+        const s = live();
+        const v = s.vaults.get(input(Address, vault, 'vault'));
+        return v ? vaultState(s, v) : null;
+      }),
+    listAutoFollowVaults: (recipeOnchainId) =>
+      guarded(() =>
+        [...live().vaults.values()]
+          .filter(
+            (v) => v.autoFollow && (!recipeOnchainId || v.recipeOnchainId === recipeOnchainId),
+          )
+          .map((v) => v.address),
+      ),
+    getRecipe: (recipeOnchainId) =>
+      guarded(() => structuredClone(recipeOf(live(), recipeOnchainId))),
+    getWalletHoldings: (owner) =>
+      guarded(() => {
+        const s = live();
+        return [...(s.wallets.get(input(Address, owner, 'owner')) ?? [])]
+          .filter(([, raw]) => raw > 0n)
+          .map(([id, raw]) => holding(s, id, raw));
+      }),
+    funding: (owner, need) =>
+      guarded((): Funding => {
+        const s = live();
+        const who = input(Address, owner, 'owner');
+        const wanted = input(FundingNeed, need, 'need');
+        const cashHave = s.wallets.get(who)?.get(cash) ?? 0n;
+        const gasHave = s.gas.get(who) ?? 0n;
+        const gasNeed = fee * BigInt(wanted.legs) + (wanted.newVault ? newVaultGas : 0n);
+        return {
+          chain,
+          cashHaveRaw: cashHave.toString(),
+          cashNeedRaw: wanted.cashRaw,
+          gasHaveRaw: gasHave.toString(),
+          gasNeedRaw: gasNeed.toString(),
+          ok: cashHave >= BigInt(wanted.cashRaw) && gasHave >= gasNeed,
+        };
+      }),
+    quote: (trade, taker) =>
+      guarded((): Quote => {
+        const s = live();
+        input(Address, taker, 'taker');
+        const wanted = input(Trade, trade, 'trade');
+        const out = quoteOut(s, wanted);
+        return {
+          ...stamp(s, 'mock price less a fixed cost'),
+          trade: wanted,
+          outRaw: out.toString(),
+          minOutRaw: lessBps(out, QUOTE_SLIPPAGE_BPS).toString(),
+          costBps: TRADE_COST_BPS,
+          against: 'reference',
+          venue: 'mock-router',
+        };
+      }),
+    track: (txId, validUntil) =>
+      guarded((): TxStatus => {
+        const s = live();
+        const tx = sent.get(txId);
+        const until = tx?.validUntil ?? (validUntil ? Number(validUntil) : null);
+        const pending = !tx || tx.status === 'pending';
+        const status =
+          pending && until !== null && s.seconds > until ? 'expired' : (tx?.status ?? 'pending');
+        return {
+          status,
+          explorerUrl: `mock://${chain}/tx/${txId}`,
+          ...(tx?.error ? { error: tx.error } : {}),
+        };
+      }),
 
-    async buildApprove(a) {
-      if (!capabilities.needsApprove) refuse('NoApprove', `${chain} needs no approval`);
-      return build({ kind: 'approve', a }, a.owner, { wallet: a.owner });
-    },
-    async buildCreateVault(a) {
-      return build({ kind: 'create_vault', a: CreateVaultArgs.parse(a) }, a.owner, {
-        wallet: a.owner,
-      });
-    },
-    async buildDeposit(a) {
-      return ownerTx({ kind: 'deposit', a: DepositArgs.parse(a) });
-    },
-    async buildOwnerSwap(a) {
-      return ownerTx({ kind: 'swap', a: OwnerSwapArgs.parse(a) });
-    },
-    async buildSetTargets(a) {
-      return ownerTx({ kind: 'set_targets', a: SetTargetsArgs.parse(a) });
-    },
-    async buildAcceptVersion(a) {
-      return ownerTx({ kind: 'accept_version', a });
-    },
-    async buildSetAutoFollow(a) {
-      return ownerTx({ kind: 'set_auto_follow', a });
-    },
-    async buildWithdrawInKind(a: WithdrawInKindArgs) {
-      const v = vaultOf(live(), a.vault);
-      const held = [cash, ...v.positions.keys()].filter((id) => balance(v, id) > 0n);
-      const wanted = a.assets ? held.filter((id) => a.assets?.includes(id)) : held;
-      // Solana withdraws one mint per call; EVM takes everything in one.
-      const groups = family === 'solana' ? wanted.map((id) => [id]) : wanted.length ? [wanted] : [];
-      return groups.map((ids) => ownerTx({ kind: 'withdraw', a: { vault: a.vault, assets: ids } }));
-    },
-    async buildPublishRecipe(a) {
-      return build({ kind: 'publish', a: PublishRecipeArgs.parse(a) }, a.creator, {
-        wallet: a.creator,
-      });
-    },
-    async buildAdoptVersion(vault) {
-      return build({ kind: 'adopt_version', a: { vault } }, keeper, { wallet: keeper, vault });
-    },
-    async buildKeeperLeg(vault, trade) {
-      const op: Op = { kind: 'keeper_leg', a: { vault, trade: Trade.parse(trade) } };
-      return build(op, keeper, { wallet: keeper, vault });
-    },
+    buildApprove: (a) =>
+      guarded(() => {
+        if (!capabilities.needsApprove) refuse('NotSupported', `${chain} needs no approval`);
+        const args = input(ApproveArgs, a, 'approve');
+        return build({ kind: 'approve', a: args }, args.owner, { wallet: args.owner });
+      }),
+    buildCreateVault: (a) =>
+      guarded(() => {
+        const args = input(CreateVaultArgs, a, 'create');
+        return build({ kind: 'create_vault', a: args }, args.owner, { wallet: args.owner });
+      }),
+    buildDeposit: (a) =>
+      guarded(() => ownerTx({ kind: 'deposit', a: input(DepositArgs, a, 'deposit') })),
+    buildOwnerSwap: (a) =>
+      guarded(() => ownerTx({ kind: 'swap', a: input(OwnerSwapArgs, a, 'swap') })),
+    buildSetTargets: (a) =>
+      guarded(() => ownerTx({ kind: 'set_targets', a: input(SetTargetsArgs, a, 'targets') })),
+    buildAcceptVersion: (a) =>
+      guarded(() => ownerTx({ kind: 'accept_version', a: input(AcceptVersionArgs, a, 'accept') })),
+    buildSetAutoFollow: (a) =>
+      guarded(() =>
+        ownerTx({ kind: 'set_auto_follow', a: input(SetAutoFollowArgs, a, 'auto-follow') }),
+      ),
+    buildWithdrawInKind: (a) =>
+      guarded(() => {
+        const args = input(WithdrawInKindArgs, a, 'withdraw');
+        const v = vaultOf(live(), args.vault);
+        for (const id of args.assets ?? []) asset(id);
+        const held = [cash, ...v.positions.keys()].filter((id) => balance(v, id) > 0n);
+        const wanted = args.assets ? held.filter((id) => args.assets?.includes(id)) : held;
+        // Solana withdraws one mint per call; EVM takes everything in one.
+        const groups =
+          family === 'solana' ? wanted.map((id) => [id]) : wanted.length ? [wanted] : [];
+        return groups.map((ids) =>
+          ownerTx({ kind: 'withdraw', a: { vault: args.vault, assets: ids } }),
+        );
+      }),
+    buildPublishRecipe: (a) =>
+      guarded(() => {
+        const args = input(PublishRecipeArgs, a, 'publish');
+        return build({ kind: 'publish', a: args }, args.creator, { wallet: args.creator });
+      }),
+    buildAdoptVersion: (vault) =>
+      guarded(() => {
+        const address = input(Address, vault, 'vault');
+        return build({ kind: 'adopt_version', a: { vault: address } }, keeper, {
+          wallet: keeper,
+          vault: address,
+        });
+      }),
+    buildKeeperLeg: (vault, trade) =>
+      guarded(() => {
+        const address = input(Address, vault, 'vault');
+        const op: Op = {
+          kind: 'keeper_leg',
+          a: { vault: address, trade: input(Trade, trade, 'trade') },
+        };
+        return build(op, keeper, { wallet: keeper, vault: address });
+      }),
 
     mock: {
       addresses: { factory, keeper },
       cash,
+      quoteSlippageBps: QUOTE_SLIPPAGE_BPS,
       now: () => state.seconds,
       advance(seconds) {
         state.seconds += seconds;
       },
       fund(owner, amounts) {
-        if (amounts.gasRaw)
-          state.gas.set(owner, (state.gas.get(owner) ?? 0n) + BigInt(amounts.gasRaw));
-        const w = walletOf(state, owner);
+        const who = input(Address, owner, 'owner');
+        const gas = BigInt(input(RawAmount, amounts.gasRaw ?? '0', 'gasRaw'));
+        state.gas.set(who, (state.gas.get(who) ?? 0n) + gas);
+        const w = walletOf(state, who);
         for (const [id, raw] of Object.entries(amounts.assets ?? {}))
-          w.set(asset(id).id, (w.get(id) ?? 0n) + BigInt(raw));
+          w.set(asset(id).id, (w.get(id) ?? 0n) + BigInt(input(RawAmount, raw, id)));
       },
       setPrice(id, usdPerToken) {
-        state.prices.set(asset(id).id, usdPerToken);
+        const value = input(DecimalString, usdPerToken, 'price');
+        if (toScaled(value) === 0n) refuse('BadInput', 'a price is more than zero');
+        state.prices.set(asset(id).id, value);
       },
       setMultiplier(id, multiplier) {
-        state.multipliers.set(asset(id).id, multiplier);
+        state.multipliers.set(asset(id).id, input(DecimalString, multiplier, 'multiplier'));
       },
-      async send(tx) {
-        const b = built.get(tx.messageHash);
-        if (!b) throw new MockChainError('NotBuiltHere', 'the mock only sends what it built');
-        const validUntil = b.validUntil === null ? undefined : String(b.validUntil);
-        if (sent.has(b.txId)) return { txId: b.txId, validUntil };
-        const s = live();
-        if (nextDrop) {
-          nextDrop = false;
-          sent.set(b.txId, { status: 'pending', validUntil: b.validUntil });
-          return { txId: b.txId, validUntil };
-        }
-        if (b.validUntil !== null && s.seconds > b.validUntil)
-          throw new MockChainError('Expired', 'built too long ago; build it again');
-        const cost = fee + (b.op.kind === 'create_vault' ? newVaultGas : 0n);
-        if (b.signer !== keeper) {
-          const have = s.gas.get(b.signer) ?? 0n;
-          if (have < cost)
-            throw new MockChainError('NO_GAS', 'the wallet cannot pay the network fee');
-          s.gas.set(b.signer, have - cost);
-        }
-        let error = nextRevert;
-        nextRevert = null;
-        if (!error) {
-          const next = structuredClone(s);
-          try {
-            apply(next, b.op);
-            state = next;
-          } catch (e) {
-            if (!(e instanceof MockChainError)) throw e;
-            error = { code: e.code, message: e.message };
+      send: (tx) =>
+        guarded(() => {
+          const b = built.get(tx.messageHash);
+          if (!b) throw new ChainError('NotBuiltHere', 'the mock only sends what it built');
+          const validUntil = b.validUntil === null ? undefined : String(b.validUntil);
+          if (sent.has(b.txId)) return { txId: b.txId, validUntil };
+          const s = live();
+          if (nextDrop) {
+            nextDrop = false;
+            sent.set(b.txId, { status: 'pending', validUntil: b.validUntil });
+            return { txId: b.txId, validUntil };
           }
-        }
-        sent.set(
-          b.txId,
-          error
-            ? { status: 'reverted', validUntil: b.validUntil, error }
-            : { status: 'confirmed', validUntil: b.validUntil },
-        );
-        return { txId: b.txId, validUntil };
-      },
+          if (b.validUntil !== null && s.seconds > b.validUntil)
+            throw new ChainError('Expired', 'built too long ago; build it again');
+          const cost = fee + (b.op.kind === 'create_vault' ? newVaultGas : 0n);
+          if (b.signer !== keeper) {
+            const have = s.gas.get(b.signer) ?? 0n;
+            if (have < cost) throw new ChainError('NoGas', 'the wallet cannot pay the network fee');
+            s.gas.set(b.signer, have - cost);
+          }
+          let error = nextRevert;
+          nextRevert = null;
+          if (!error) {
+            const next = structuredClone(s);
+            try {
+              apply(next, b.op, { outs: [], mins: b.mins });
+              state = next;
+            } catch (e) {
+              if (!(e instanceof ChainError)) throw e;
+              error = { code: e.code, message: e.message };
+            }
+          }
+          sent.set(
+            b.txId,
+            error
+              ? { status: 'reverted', validUntil: b.validUntil, error }
+              : { status: 'confirmed', validUntil: b.validUntil },
+          );
+          return { txId: b.txId, validUntil };
+        }),
       revertNext(error) {
         nextRevert = error;
       },
