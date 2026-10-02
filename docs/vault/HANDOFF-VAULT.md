@@ -43,7 +43,7 @@ A shared portfolio is a named, versioned list of assets and weights that anyone 
 
 - **It always goes through the goal.** Choosing one sets the themes on the sheet. The goal, the limits, what the person already holds and the exit plan then decide how much of it they hold, and the plan says why, line by line. Someone who only wants to hold it still gets the sheet, the reasons and the exit plan at their size.
 - **Following.** When its author publishes a new version, the people following it are told, with the change. They rebalance with one tap. A switch, off by default, lets the vault do it by itself: after a 48-hour delay, inside the vault's limits, and never into a new asset without the owner's tap.
-- **Limits on authors.** 3 to 12 assets, each between 2% and 50%; no weight moves more than 10 points per version; one version a day. An asset's maximum weight is capped by its measured exit capacity, from Bearing.
+- **Limits on authors.** 3 to 12 assets, each between 2% and 50%; one new version every 48 hours; a version moves at most 20% of the portfolio. An asset's maximum weight is capped by its measured exit capacity, from Bearing.
 - **Why have them.** They are the reason to come back and the thing to share, and each one carries the exit plan to whoever picks it up.
 - **At launch:** about six, serious assets only, no meme tokens. Names and weights are drafts in `research/open-questions/launch-shelf.md`.
 
@@ -147,7 +147,7 @@ Along the narrative arc in `messaging.md`.
 - Days 8–9: real-money rehearsals on all three chains.
 - Days 10–11: videos and submission.
 
-What agents can't do, and what therefore sets the pace: funding and testing real wallets on mainnet, recording the videos, and deciding the name and voice. The day-by-day plan is in `DESIGN-VAULT.md`, section 16.
+What agents can't do, and what therefore sets the pace: funding and testing real wallets on mainnet, recording the videos, and deciding the name and voice. The days, the milestones and the cut order are in `PLAN-VAULT.md`.
 
 ## Tests for the first two days
 
@@ -166,14 +166,14 @@ What agents can't do, and what therefore sets the pace: funding and testing real
 
 - The vault replaces the token approval for automatic rebalancing.
 - Shared portfolios are in, with serious assets only at launch.
-- Solana, Robinhood Chain and Base from day one. The person funds each chain they want to use.
+- Solana and Robinhood Chain first; Base follows if there is time (Oct 2). The person funds each chain they want to use.
 - Wallet connect or a passkey wallet (Privy).
 - The product is not for US persons, and the terms say so. There is no location block and no banner.
 - When an author adds a new asset, each follower approves it with a tap. A new version takes effect for followers 48 hours after it is published.
 - On Robinhood Chain, only the stock tokens with a price feed (about 36 of 195) can be rebalanced automatically. The rest are one-tap only.
 - The team holds the upgrade keys for the vault contracts for now, one disclosed key per chain, and the product says so.
-- Free tiers only, apart from about $10 of model credit for reading the goal sentence. On Solana the price reference is Kamino's free onchain prices.
-- Author limits as in `research/open-questions/creator-limits.md`.
+- Free tiers only, apart from about $10 of model credit for reading the goal sentence. No money goes onto mainnet for now: the product is built and shown on test networks first, with test tokens labelled as such (Oct 2). On Solana mainnet the price reference is Kamino's free onchain prices.
+- Four limits on authors, simpler than the research note proposed (Oct 2); they are in section 6 of the design.
 - The sign-in button says "Sign in" and opens a choice of passkey or wallet.
 - The keeper runs on a founder's machine while testing, and on a small VM at deploy.
 - The work lands in short-lived branches in this repo, each with a pull request into `staging`; `staging` goes into `main`. Thom and Rodrigo are both on the team, in the prior-work note and in the registration.
@@ -182,7 +182,7 @@ What agents can't do, and what therefore sets the pace: funding and testing real
 ## Still open
 
 1. The name.
-2. The $10 mainnet tests on the three chains (`spikes/`), and the Privy app.
+2. The Privy apps, and whether mainnet follows the test networks (gate `SHOW` in `docs/GATES.md`).
 3. Where the Bearing data runs for the demo: a hosted collector or a dated snapshot.
 4. The decisions in `DESIGN-VAULT.md`, section 17.
 5. Two lines of shipped copy that the vault touches. `DISCLAIMER` says "the decision and custody are yours", and `DISCLAIMER_SHORT` says "Policy in your wallet, not a fund." Only the owner can withdraw from a vault, so the first stays, with the "unaudited, team holds the upgrade keys" notice beside it. The second needs a word from Rodrigo, since the assets move from the wallet to a vault the person owns.

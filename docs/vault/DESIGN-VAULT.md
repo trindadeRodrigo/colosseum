@@ -24,7 +24,9 @@ Nothing here has run on mainnet. The three $10 runs come first in time.
 - US persons: no location block and no banner. The terms say the app is not for US persons, and a person accepts the terms before the first deposit.
 - Upgrade keys: one disclosed key per chain for now, and the app says so. A multisig comes after the MVP.
 - Keeper: run locally while testing, with a gas-only key. At deploy it moves to a small VM.
-- About $10 of Anthropic credit for the sentence parser is approved.
+- About $10 of Anthropic credit for the sentence parser is approved. Nothing else is spent, and no money goes onto mainnet for now (decided on Oct 2): the three $10 tests are dropped and no domain is bought.
+- Base comes after Solana and Robinhood Chain (decided on Oct 2). Its contracts are the same Solidity; it is deployed only if the first two are working by Tue Oct 6.
+- Built and shown on test networks first (decided on Oct 2): Solana devnet and the EVM test networks, with test tokens, a test exchange and test prices standing in for the stock tokens, Jupiter and the price feeds, labelled as test everywhere. So the router and the price source are set in each chain's config, never fixed in code. The vault's handling of the real tokens and pools is proven by tests on copies of mainnet. Mainnet maybe later, by configuration. Where the text below names a $10 run, a mainnet deploy or a mainnet rehearsal, `PLAN-VAULT.md` says what stands in for it.
 - Build tools may be installed on Thom's machine. Already there: Anchor 0.31.1, Solana CLI 3.0.1, Rust, Foundry (older than the pin), Docker. Missing: surfpool, solana-verify, Slither.
 
 ## 0. What changed from v1
@@ -122,7 +124,7 @@ Two things in his code break these rules today. `packages/db/src/seed-assets.ts`
 
 ## 3. Frozen interfaces
 
-Frozen in two steps. **v0 on Oct 2**, after a walking skeleton passes on the mock (a three-chain buy through API, order, legs and report): streams start against it, and one named owner (Thom) approves any change. **Final on Oct 4 evening**, after each real adapter has built and simulated a create, a deposit, one swap and one keeper leg on a fork. Only then does `tests/frozen.test.ts` start hashing the files; it hashes new files only, never his. Later changes are additive. Each TypeScript type below has a zod schema of the same name in `packages/schemas/src/`.
+Frozen in two steps. **v0 on Oct 2**, with the first types and the mock: streams start against it, and one named owner (Thom) approves any change. A walking skeleton on the mock (a three-chain buy through API, order, legs and report) proves it by Oct 3. **Final on Oct 4 evening**, after each real adapter has built and simulated a create, a deposit, one swap and one keeper leg on a fork. Only then does `tests/frozen.test.ts` start hashing the files; it hashes new files only, never his. Later changes are additive. Each TypeScript type below has a zod schema of the same name in `packages/schemas/src/`.
 
 ### 3.1 Shared types
 
@@ -363,8 +365,7 @@ function compose(i: { sheet: BasketSheet; holdings: Holding[]; shelf: Shelf; yie
 
 // packages/basket
 type Share = { key: string; bps: number };
-type LimitContext = { assets: BasketAsset[]; now: number; lastPublishAt: number | null;
-  turnoverBps: number; turnoverAt: number; hasPending: boolean };
+type LimitContext = { assets: BasketAsset[]; now: number; lastPublishAt: number | null; hasPending: boolean };
 type LimitResult = { ok: true; turnoverBps: number } | { ok: false; code: string; detail: string };
 type RollUpContext = { shelf: Shelf; liquidity?: LiquidityProvider; quotes: Quote[] };
 type RiskRollUp = { byIssuer: Share[]; byChain: Share[]; byClass: Share[]; flags: string[];
@@ -395,7 +396,7 @@ pub struct AssetEntry {                            // padded to 96 bytes
   price_kind: u8 /*0 none, 1 scope*/, session: u8 /*0 always, 1 US hours*/, max_weight_bps: u16, flags: u8,
   source_check: [u8; 32] /* zero = off; section 5 */, reserved: [u8; 21] }
 pub struct Recipe { creator: Pubkey, family_id: [u8; 32], current: RecipeVersion, pending: RecipeVersion,
-  last_publish_ts: i64, turnover_ts: i64, turnover_bps: u16, max_fee_bps: u16, flags: u8,
+  last_publish_ts: i64, max_fee_bps: u16, flags: u8,
   vetoed: bool, reserved: [u8; 32] }
 pub struct RecipeVersion { version: u32, effective_at: i64, meta_hash: [u8; 32], count: u8,
   components: [Component; 12] }                    // Component { mint: Pubkey, weight_bps: u16 }
@@ -435,7 +436,7 @@ struct AssetConfig { address feed; uint8 tokenDecimals; uint8 feedDecimals; uint
                      uint16 maxWeightBps; address pauseProbe; bytes4 pauseSelector;
                      bytes4 scheduleSelector; /* called on the token; 0 = none */ uint64 haltUntil; }
 struct Limits { uint8 minAssets; uint8 maxAssets; uint16 minWeightBps; uint16 maxWeightBps; uint16 stepBps;
-                uint16 maxDeltaBps; uint16 maxTurnoverBps; uint16 maxWeeklyTurnoverBps;
+                uint16 maxTurnoverBps;
                 uint32 minInterval; uint32 publishDelay; }
 struct Snapshot { address owner; bytes32 indexId; uint32 acceptedVersion; bool autoFollow; address operator;
                   address[] tokens; uint16[] targetBps; uint256[] balances;
@@ -497,7 +498,7 @@ interface IIndexRegistry {
   function indexCount() external view returns (uint256);
   function indexAt(uint256 i) external view returns (bytes32);
   function previewPublish(bytes32 id, Weight[] calldata next) external view
-      returns (bytes4 err, uint16 turnoverBps, uint16 maxDeltaBps, uint64 nextAllowedAt);
+      returns (bytes4 err, uint16 turnoverBps, uint64 nextAllowedAt);
   function limits() external view returns (Limits memory);
 }
 event RecipePublished(bytes32 indexed id, uint32 indexed version, address indexed creator,
@@ -589,16 +590,15 @@ The session window sits inside the New York session in summer and winter time, s
 - Following is the vault pointing at a recipe.
 - The 500 holds one asset, so it is not a registered shared portfolio. It sits on the shelf as a single-asset portfolio (`kind: 'single'`): a vault with one target and no recipe. The registry keeps one rule set and no admin exception.
 
-Limits, checked by the registry. Constants, not per-portfolio settings. Shape limits and `maxWeightBps` apply from version 1; change limits from version 2.
+Limits, checked by the registry. Constants, not per-portfolio settings. Shape limits and `maxWeightBps` apply from version 1; the turnover limit from version 2. Decided on Oct 2: four simple rules. Dropped from the earlier design: a 10-point change per asset, a rolling 7-day turnover counter, and a rule for a ceiling that falls below a live weight. With one version per 48 hours at 20% each, an author moves at most about 70% of a portfolio in a week, which costs followers at most about 1.75% at the widest tolerance, inside the vault's 2% weekly cap.
 
 | Limit | Value |
 |---|---|
 | Assets | 3 to 12, platform list only, each 2% to 50%, in 50 bps steps |
-| Change per asset per version | 10 points, including adds and removals |
-| Turnover | 20% per version; 60% per 7 days, on a counter that decays linearly over 7 days, the same on both families |
-| Frequency | One version per 24 hours; none while one is pending |
+| Turnover | 20% of the portfolio per version |
+| Frequency | One version per publish delay (48 hours after `launch()`); none while one is pending |
 | Delay | `publishDelay`, 48 hours after `launch()`; computed by the registry, checked by the vault |
-| Cancel | The creator or the guardian can cancel a pending version. A cancel gives back neither the 24-hour slot nor the turnover |
+| Cancel | The creator or the guardian can cancel a pending version. A cancel does not give the slot back |
 
 **The cap from measured exit capacity.** Each listed asset has `maxWeightBps` in the onchain asset list. The registry rejects a component above `min(5000, maxWeightBps)`. An ops script sets it from Rodrigo's curves:
 
@@ -606,9 +606,9 @@ Limits, checked by the registry. Constants, not per-portfolio settings. Shape li
 
 with `shareOfDepth` 0.25 and `τ` 1% (his values), and `indexCapacityUsd` $250k on Solana and $50k on the EVM chains (from `creator-limits.md`). An asset with no measured curve keeps the ceiling of its shelf tier. The first values are written in the deploy session on Oct 5.
 
-Caps follow the curves, so a cap can fall below a live weight. A component above its cap is then allowed if it does not rise and falls by the lesser of 10 points or the distance to the cap. Without this rule a shared portfolio whose cap dropped by more than 10 points could never publish again.
+The ceilings are written at deploy and do not move during the MVP, so no rule is built for a ceiling that falls below a live weight.
 
-`previewPublish` and `limits()` let an agent check before paying for a transaction. The TypeScript check, the Solana program and the EVM registry share one file of test vectors, including a week boundary, a cap below a live weight and a non-zero `flags`.
+`previewPublish` and `limits()` let an agent check before paying for a transaction. The TypeScript check, the Solana program and the EVM registry share one file of test vectors, including a version published too soon, a weight above its ceiling and a non-zero `flags`.
 
 ## 7. Personalization engine
 
@@ -900,6 +900,8 @@ OPS sets the pace and is planned like a stream. It is three $10 runs, three depl
 
 ## 16. Day-by-day plan and what is out
 
+The schedule of record is `PLAN-VAULT.md`, written on the night of Oct 1 with the streams not yet started: it moves the Oct 1 row below into Oct 2 and adds dated milestones. Where the two differ, the plan wins. The table below is kept for its reasoning.
+
 Stock markets are closed on Oct 3, 4, 10 and 11. Keeper trades on stocks, and any footage of them, can only happen on Oct 2 and Oct 5 to 9, between 14:30 and 20:00 UTC (11:30 to 17:00 BRT). Until `launch()` the publish delay is 300 s, so one session holds several publish, adopt and trade cycles; each cycle uses a fresh test portfolio and vault with a few dollars of team money. Oct 12 is a US trading day (memory).
 
 | Day | What happens |
@@ -936,7 +938,7 @@ Stock markets are closed on Oct 3, 4, 10 and 11. Keeper trades on stocks, and an
 1. `/swap/v2/build`: fall back to the legacy route the spike proved locally. Oct 3.
 2. Trading on Base (read-only) if its $10 run fails. Oct 2.
 3. Auto-follow on Robinhood Chain: owner-signed only, which the handoff allows. Oct 7.
-4. Auto-follow on Solana: followers get the one-tap prompt, which still meets item 7's base case. Oct 8.
+4. Auto-follow on Solana: followers get the one-tap prompt, which still meets item 7's base case. Oct 7, at night: after `launch()` on Oct 8 a cycle takes 48 hours.
 5. (Taken on Oct 1: one disclosed upgrade key in place of a multisig.)
 
 Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-LINK`; no registered route that reaches a signer; the three-profile test.
@@ -971,9 +973,9 @@ Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-L
 
 **Thom**
 
-13. Create the two Privy apps. Buy a domain (about $10 a year) or fix one Vercel URL, by Oct 4.
-14. Run the three $10 tests. Agents may install the build tools.
-15. About $10 of Anthropic credit for the sentence parser: approved on Oct 1.
+13. Create the two Privy apps on the free tier. Fix one free URL as the origin by Oct 4; no domain is bought.
+14. The three vault tests run on copies of mainnet, not with $10 on mainnet (decided on Oct 2). Agents may install the build tools.
+15. About $10 of Anthropic credit for the sentence parser: approved on Oct 1, confirmed on Oct 2.
 16. Turnkey costs about $0.10 a signature after 25 a month **[C 9]**, so it is not the fallback. If Privy fails, the fallback is connecting a wallet only.
 17. Which VM runs the keeper at deploy. It runs locally while testing.
 
@@ -984,7 +986,7 @@ Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-L
 20. The 500 is a single-asset portfolio outside the registry (section 6).
 21. US visitors: decided on Oct 1. No location block and no banner; the terms say the app is not for US persons.
 22. If the capacity formula puts GLDx below Storm Cellar's 25%, the recipe changes; the capacity rule does not.
-23. Upgrade keys: decided on Oct 1, one disclosed key per chain. Still open: who holds each one, who is guardian on call each day, and who funds 5 SOL for the Solana deploy.
+23. Upgrade keys: decided on Oct 1, one disclosed key per chain. Still open: who holds each one and who is guardian on call each day. A mainnet deploy on Solana would lock about 5 SOL; mainnet is maybe later (gate `SHOW`).
 24. External wallets get one review screen and then several wallet prompts. The demo uses a passkey wallet.
 25. Auto-follow on stocks trades only Mon to Fri 14:30 to 20:00 UTC, and never on a listed closed day.
 26. Who opens the accounts (Supabase, Render, Vercel, Helius, Alchemy, UptimeRobot, the second Jupiter organisation), whether Jupiter's terms allow a second organisation, and whether Vercel Hobby's non-commercial clause is acceptable.
