@@ -47,6 +47,9 @@ const REGIME_PARAMS = defaultRegimeParams(calendar);
 const ISSUERS = JSON.parse(readFileSync(join(ROOT, 'fixtures/risk/issuer-models.json'), 'utf8'))
   .models as Record<string, IssuerModel>;
 const METHOD_VERSION = 'risk-0.3';
+/** Largest `POST /risk/positions/assess` body: 50 years of monthly withdrawals, 50 legs (PLAN-ANALYTICS item 2). */
+export const ASSESS_MAX_WITHDRAWALS = 600;
+export const ASSESS_MAX_LEGS = 50;
 const HONESTY = [
   'Depth is measured from on-chain pool state; calm-market depth overstates depth in stress. Each curve shows its regime, sample count and date range.',
   'Curves simulate the best split of a sale across the asset’s dollar-exit pools (USDC, USDT, SOL) per snapshot; pools quoted in other tokens are not counted.',
@@ -404,8 +407,13 @@ export async function registerRiskRoutes(app: FastifyInstance) {
           liquid: z
             .array(z.object({ assetId: z.string(), valueUsd: z.number().nonnegative() }))
             .default([]),
-          illiquid: z.array(z.object({ asset: z.string(), valueUsd: z.number().nonnegative() })),
-          withdrawals: z.array(z.object({ at: z.string().datetime(), usd: z.number().positive() })),
+          // bounded so one request cannot hold the event loop (AUDIT-VAULT finding 9; PLAN-ANALYTICS item 2)
+          illiquid: z
+            .array(z.object({ asset: z.string(), valueUsd: z.number().nonnegative() }))
+            .max(ASSESS_MAX_LEGS),
+          withdrawals: z
+            .array(z.object({ at: z.string().datetime(), usd: z.number().positive() }))
+            .max(ASSESS_MAX_WITHDRAWALS),
           windowDays: z.number().int().min(0).max(365),
           tau: z.number().positive().default(0.01),
           shareOfDepth: z.number().positive().max(1).default(0.25),

@@ -46,7 +46,22 @@ export type LiquidityOrder = {
   reason: 'liquidity_breach';
 };
 
-function check(inp: BreachInput): WithdrawalCheck[] {
+/** Regimes inside each withdrawal's window, computed once per assessment (the breach loop re-checks up to 21 times). */
+type WindowRegimes = (at: string) => ReturnType<typeof regimesIn>;
+const windowRegimes = (inp: BreachInput): WindowRegimes => {
+  const memo = new Map<string, ReturnType<typeof regimesIn>>();
+  return (at) => {
+    let r = memo.get(at);
+    if (!r) {
+      const from = new Date(new Date(at).getTime() - inp.windowDays * 86_400_000);
+      r = regimesIn(from, inp.windowDays * 24, inp.regimeParams);
+      memo.set(at, r);
+    }
+    return r;
+  };
+};
+
+function check(inp: BreachInput, regimesOf: WindowRegimes = windowRegimes(inp)): WithdrawalCheck[] {
   let brl = inp.brlUsd;
   let cash = inp.cashUsd;
   const liquid = inp.liquid.map((l) => ({ ...l }));
@@ -64,9 +79,7 @@ function check(inp: BreachInput): WithdrawalCheck[] {
     const fromLiq = Math.min(liqTotal, need);
     for (const l of liquid) l.valueUsd -= liqTotal > 0 ? (l.valueUsd / liqTotal) * fromLiq : 0;
     need -= fromLiq;
-    const t = new Date(w.at);
-    const from = new Date(t.getTime() - inp.windowDays * 86_400_000);
-    const regimes = regimesIn(from, inp.windowDays * 24, inp.regimeParams);
+    const regimes = regimesOf(w.at);
     let capacity = 0;
     let capacityDry = 0;
     const caps = ill.map((l) => {
@@ -102,7 +115,8 @@ function check(inp: BreachInput): WithdrawalCheck[] {
 }
 
 export function assessLiquidity(inp: BreachInput) {
-  const checks = check(inp);
+  const regimesOf = windowRegimes(inp);
+  const checks = check(inp, regimesOf);
   const orders: LiquidityOrder[] = [];
   let state = inp;
   let after = checks;
@@ -136,7 +150,7 @@ export function assessLiquidity(inp: BreachInput) {
       };
       gap -= amt;
     }
-    after = check(state);
+    after = check(state, regimesOf);
     if (gap > 1e-6) break; // nothing left to sell
   }
   // merge orders per asset
@@ -146,8 +160,7 @@ export function assessLiquidity(inp: BreachInput) {
   // regimes inside a withdrawal's window that a leg's curves do not measure (DA2)
   const missing = new Map<string, { assetId: string; regime: string }>();
   for (const w of inp.withdrawals) {
-    const from = new Date(new Date(w.at).getTime() - inp.windowDays * 86_400_000);
-    const regimes = regimesIn(from, inp.windowDays * 24, inp.regimeParams);
+    const regimes = regimesOf(w.at);
     for (const l of inp.illiquid)
       for (const m of measuredRegimes(l.curves, regimes).missing)
         missing.set(`${l.assetId}:${m.regime}`, { assetId: l.assetId, regime: m.regime });
