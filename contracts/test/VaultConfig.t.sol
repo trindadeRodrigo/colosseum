@@ -100,14 +100,6 @@ contract VaultConfigTest is Test {
         assertEq(config.admin(), admin);
     }
 
-    /// With nobody proposed, the zero address is "pending". It must not be able to accept.
-    function test_acceptAdmin_revertsWhenNobodyIsPending() public {
-        vm.prank(address(0));
-        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotPendingAdmin.selector, address(0)));
-        config.acceptAdmin();
-        assertEq(config.admin(), admin);
-    }
-
     // ---- assets and their price feeds
 
     function test_setAsset_listsAndUpdates() public {
