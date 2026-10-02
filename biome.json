@@ -17,7 +17,8 @@
       "!**/target",
       "!**/.anchor",
       "!**/test-ledger",
-      "!keys"
+      "!keys",
+      "!idl"
     ]
   },
   "formatter": {

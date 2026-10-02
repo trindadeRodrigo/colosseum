@@ -583,12 +583,16 @@ describe('basket vault', () => {
 
       it('passes extra accounts on to the token program, for a transfer hook', async () => {
         const extraAccounts = [readonly(await randomAddress()), readonly(await randomAddress())];
-        expectOk(
+        const meta = expectOk(
           await send(svm, owner, [
             await withdrawInstruction({ owner, vault, mint: stock, amount: STOCK, extraAccounts }),
           ]),
         );
         expect(balance(svm, ownerStock)).toBe(STOCK);
+        // The one call the program makes is the transfer: source, mint, destination,
+        // authority, and then the two extra accounts.
+        const calls = meta.innerInstructions()[0] ?? [];
+        expect(calls.map((call) => call.instruction().accounts().length)).toEqual([6]);
       });
 
       it('a mint its issuer has paused blocks only that mint', async () => {

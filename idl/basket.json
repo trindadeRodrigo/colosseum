@@ -1,0 +1,980 @@
+{
+  "address": "529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW",
+  "metadata": {
+    "name": "basket",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "The vault program: a vault per plan, held by its owner"
+  },
+  "instructions": [
+    {
+      "name": "create_vault",
+      "docs": [
+        "Owner. One vault per owner per plan id."
+      ],
+      "discriminator": [
+        29,
+        237,
+        247,
+        208,
+        193,
+        82,
+        54,
+        135
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              },
+              {
+                "kind": "arg",
+                "path": "basket_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "basket_id",
+          "type": "u64"
+        },
+        {
+          "name": "targets",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "Target"
+              }
+            }
+          }
+        },
+        {
+          "name": "auto_follow",
+          "type": "bool"
+        },
+        {
+          "name": "expected_version",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "deposit",
+      "docs": [
+        "Owner. One mint per call, into the vault's associated token account."
+      ],
+      "discriminator": [
+        242,
+        35,
+        198,
+        137,
+        82,
+        225,
+        242,
+        182
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "vault_token_account",
+          "docs": [
+            "The one token account the vault uses for this mint: the associated token account",
+            "for (vault, mint, the mint's own token program)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "source",
+          "docs": [
+            "Where the tokens come from. The token program checks that the owner may move them."
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "init_config",
+      "docs": [
+        "Admin, once. The signer must be the program's upgrade authority and becomes the admin."
+      ],
+      "discriminator": [
+        23,
+        235,
+        115,
+        232,
+        168,
+        96,
+        1,
+        231
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "The program's upgrade authority. It becomes the admin."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "program",
+          "docs": [
+            "This program, to find its program data account."
+          ],
+          "address": "529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW"
+        },
+        {
+          "name": "program_data"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "InitConfigArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "set_price_owner",
+      "docs": [
+        "Admin. The program that must own a price account for the vault to read it:",
+        "Kamino Scope on mainnet, the test price program on devnet."
+      ],
+      "discriminator": [
+        58,
+        135,
+        118,
+        146,
+        2,
+        200,
+        205,
+        39
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "price_owner",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "set_router",
+      "docs": [
+        "Admin. The one program a vault may swap through: Jupiter on mainnet, the test",
+        "exchange on devnet."
+      ],
+      "discriminator": [
+        236,
+        248,
+        107,
+        200,
+        151,
+        160,
+        44,
+        250
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "router_program",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "withdraw",
+      "docs": [
+        "Owner. One mint per call, in kind, to a token account the owner owns.",
+        "Reads no config, registry or price: nothing but an upgrade can block it."
+      ],
+      "discriminator": [
+        183,
+        18,
+        70,
+        156,
+        148,
+        109,
+        161,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "vault_token_account",
+          "docs": [
+            "The associated token account for (vault, mint, the mint's own token program)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "destination",
+          "docs": [
+            "Any token account of this mint that the vault's owner owns."
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Config",
+      "discriminator": [
+        155,
+        12,
+        170,
+        224,
+        30,
+        250,
+        204,
+        130
+      ]
+    },
+    {
+      "name": "Vault",
+      "discriminator": [
+        211,
+        8,
+        232,
+        43,
+        2,
+        152,
+        117,
+        119
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "VaultCreated",
+      "discriminator": [
+        117,
+        25,
+        120,
+        254,
+        75,
+        236,
+        78,
+        115
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "NotKeeper",
+      "msg": "signer is not the vault's keeper"
+    },
+    {
+      "code": 6001,
+      "name": "AutoFollowOff",
+      "msg": "auto-follow is off for this vault"
+    },
+    {
+      "code": 6002,
+      "name": "KeeperPaused",
+      "msg": "the keeper is paused"
+    },
+    {
+      "code": 6003,
+      "name": "MintNotAccepted",
+      "msg": "mint is not one of the vault's assets"
+    },
+    {
+      "code": 6004,
+      "name": "RouterNotAllowed",
+      "msg": "swap target is not the allowed router"
+    },
+    {
+      "code": 6005,
+      "name": "SpentTooMuch",
+      "msg": "the vault spent more than max_in"
+    },
+    {
+      "code": 6006,
+      "name": "ReceivedTooLittle",
+      "msg": "the vault received less than min_out"
+    },
+    {
+      "code": 6007,
+      "name": "OtherAccountDebited",
+      "msg": "another vault token account was debited"
+    },
+    {
+      "code": 6008,
+      "name": "AccountTampered",
+      "msg": "owner, delegate, close authority or size changed on a vault token account"
+    },
+    {
+      "code": 6009,
+      "name": "PriceStale",
+      "msg": "price is too old"
+    },
+    {
+      "code": 6010,
+      "name": "PriceDeviation",
+      "msg": "price is too far from its average"
+    },
+    {
+      "code": 6011,
+      "name": "MarketClosed",
+      "msg": "the market for this asset is closed"
+    },
+    {
+      "code": 6012,
+      "name": "MultiplierWindow",
+      "msg": "within the window around a multiplier change"
+    },
+    {
+      "code": 6013,
+      "name": "NotTowardTarget",
+      "msg": "trade does not move the vault toward its targets"
+    },
+    {
+      "code": 6014,
+      "name": "PastTarget",
+      "msg": "trade would go past the target"
+    },
+    {
+      "code": 6015,
+      "name": "Cooldown",
+      "msg": "asset was traded too recently"
+    },
+    {
+      "code": 6016,
+      "name": "LossCapReached",
+      "msg": "weekly loss cap reached"
+    },
+    {
+      "code": 6017,
+      "name": "AssetNotPriced",
+      "msg": "asset has no price reference"
+    },
+    {
+      "code": 6018,
+      "name": "NewAssetNeedsOwner",
+      "msg": "a new asset needs the owner to accept it"
+    },
+    {
+      "code": 6019,
+      "name": "VersionNotEffective",
+      "msg": "version is not in effect yet"
+    },
+    {
+      "code": 6020,
+      "name": "CreatorLimit",
+      "msg": "outside the limits for a shared portfolio"
+    },
+    {
+      "code": 6021,
+      "name": "VersionMismatch",
+      "msg": "the version is not the one that was reviewed"
+    },
+    {
+      "code": 6022,
+      "name": "WrongDestination",
+      "msg": "destination token account does not belong to the vault's owner"
+    },
+    {
+      "code": 6023,
+      "name": "ParamOutOfBounds",
+      "msg": "parameter outside its hard bound"
+    },
+    {
+      "code": 6024,
+      "name": "NotUpgradeAuthority",
+      "msg": "signer is not the program's upgrade authority"
+    },
+    {
+      "code": 6025,
+      "name": "InvalidTargets",
+      "msg": "too many targets, a mint listed twice, or weights above 100%"
+    }
+  ],
+  "types": [
+    {
+      "name": "Config",
+      "docs": [
+        "One per program, at seeds [\"config\"]."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "pending_admin",
+            "docs": [
+              "Two-step hand-over; all zeros when none is pending."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "guardian",
+            "type": "pubkey"
+          },
+          {
+            "name": "default_keeper",
+            "type": "pubkey"
+          },
+          {
+            "name": "router_program",
+            "docs": [
+              "The only program a vault may swap through. Never fixed in code: Jupiter on mainnet,",
+              "the test exchange on devnet."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "price_owner",
+            "docs": [
+              "The program that must own a price account. Never fixed in code: Kamino Scope on",
+              "mainnet, the test price program on devnet."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "keeper_paused",
+            "type": "bool"
+          },
+          {
+            "name": "launched",
+            "docs": [
+              "One-way; raises the floor on `publish_delay_s`."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "tolerance_bps",
+            "type": "u16"
+          },
+          {
+            "name": "loss_cap_bps",
+            "type": "u16"
+          },
+          {
+            "name": "band_bps",
+            "type": "u16"
+          },
+          {
+            "name": "twap_dev_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_price_age_s",
+            "type": "u16"
+          },
+          {
+            "name": "asset_cooldown_s",
+            "type": "u32"
+          },
+          {
+            "name": "publish_delay_s",
+            "type": "u32"
+          },
+          {
+            "name": "session_open_utc_s",
+            "type": "u32"
+          },
+          {
+            "name": "session_close_utc_s",
+            "type": "u32"
+          },
+          {
+            "name": "closed_until",
+            "type": "i64"
+          },
+          {
+            "name": "closed_days",
+            "docs": [
+              "Days since 1970, UTC."
+            ],
+            "type": {
+              "array": [
+                "u16",
+                32
+              ]
+            }
+          },
+          {
+            "name": "reserved",
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "InitConfigArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "guardian",
+            "type": "pubkey"
+          },
+          {
+            "name": "default_keeper",
+            "type": "pubkey"
+          },
+          {
+            "name": "router_program",
+            "type": "pubkey"
+          },
+          {
+            "name": "price_owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "params",
+            "type": {
+              "defined": {
+                "name": "Params"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Params",
+      "docs": [
+        "The keeper and registry settings an admin chooses, within the hard bounds in `checks`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "tolerance_bps",
+            "type": "u16"
+          },
+          {
+            "name": "loss_cap_bps",
+            "type": "u16"
+          },
+          {
+            "name": "band_bps",
+            "type": "u16"
+          },
+          {
+            "name": "twap_dev_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_price_age_s",
+            "type": "u16"
+          },
+          {
+            "name": "asset_cooldown_s",
+            "type": "u32"
+          },
+          {
+            "name": "publish_delay_s",
+            "type": "u32"
+          },
+          {
+            "name": "session_open_utc_s",
+            "type": "u32"
+          },
+          {
+            "name": "session_close_utc_s",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Position",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "target_bps",
+            "type": "u16"
+          },
+          {
+            "name": "tracked",
+            "docs": [
+              "The balance last seen in the vault's token account for this mint. A hint: an issuer",
+              "with a permanent delegate, or anyone sending tokens in, changes the real balance."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "last_keeper_ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Target",
+      "docs": [
+        "One line of a vault's targets."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "target_bps",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Vault",
+      "docs": [
+        "One per owner per plan, at seeds [\"vault\", owner, basket_id as u64 LE]. It stores the",
+        "state and is the authority of the vault's token accounts.",
+        "",
+        "Borsh. The field order is frozen: `owner` is at byte 8, `recipe` at 40,",
+        "`accepted_version` at 72 and `auto_follow` at 76, and other code filters on them."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "recipe",
+            "docs": [
+              "The shared portfolio this vault follows; all zeros when it follows none."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "accepted_version",
+            "type": "u32"
+          },
+          {
+            "name": "auto_follow",
+            "type": "bool"
+          },
+          {
+            "name": "basket_id",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "keeper",
+            "docs": [
+              "All zeros means Config's default keeper."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "count",
+            "docs": [
+              "How many of `positions` are in use."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "positions",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "Position"
+                  }
+                },
+                16
+              ]
+            }
+          },
+          {
+            "name": "loss_accum",
+            "type": "u64"
+          },
+          {
+            "name": "loss_ts",
+            "type": "i64"
+          },
+          {
+            "name": "reserved",
+            "docs": [
+              "Byte 0 is the vault type; 0 is the standard vault."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                128
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "VaultCreated",
+      "docs": [
+        "Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "basket_id",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ]
+}

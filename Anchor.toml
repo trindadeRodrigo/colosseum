@@ -5,6 +5,10 @@ anchor_version = "0.31.1"
 resolution = true
 skip-lint = false
 
+# Named one by one: programs/tests is the test package, not a program.
+[workspace]
+members = ["programs/basket", "programs/mock-router"]
+
 # The ids are the public keys of keypairs that are never committed (see programs/README.md).
 # Nothing here names a real cluster: deploys are a person's step, with their own flags.
 [programs.localnet]
