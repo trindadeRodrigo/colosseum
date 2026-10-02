@@ -41,7 +41,7 @@ export function failureSentence(e: unknown): string | null {
   const { code, reason, message } = (typeof e === 'object' && e !== null ? e : {}) as Failure;
   const detail = message || 'no reason given';
   if (code === 'rejected') return null;
-  if (reason === 'not_configured') return `Sign-in is not set up here: ${detail}.`;
+  if (reason === 'not_configured') return `Sign-in is off here: ${detail}.`;
   if (code === 'wrong_chain') return `The wallet is on another network: ${detail}.`;
   if (code === 'no_gas') return 'This account has no funds for the network fee.';
   if (code === 'expired') return 'That took too long and expired. Try again.';

@@ -25,6 +25,7 @@ import { evmChainsForProvider, publicWalletEnv, type WalletChains, walletChains 
 import type { DriverAccount, WalletDriver } from './driver';
 import { fail, toWalletError } from './errors';
 import { createWalletPort, idleDriver } from './port';
+import { useApiCheck } from './use-api-check';
 import type { BridgeProps } from './WalletProvider';
 
 // Privy, and the only file that knows it. Everything else in the app sees a WalletPort.
@@ -92,8 +93,12 @@ export default function PrivyBridge({ onPort }: BridgeProps) {
       return e instanceof Error ? e.message : String(e);
     }
   }, []);
+  const check = useApiCheck(typeof setup === 'string' ? null : setup.chains);
   if (!appId) return <Unconfigured onPort={onPort} problem="NEXT_PUBLIC_PRIVY_APP_ID is not set" />;
   if (typeof setup === 'string') return <Unconfigured onPort={onPort} problem={setup} />;
+  // Privy is not mounted until the API says it is on the same networks as this app.
+  if (check === null) return null;
+  if (!check.ok) return <Unconfigured onPort={onPort} problem={check.problem} />;
   return (
     <PrivyProvider appId={appId} config={setup.config}>
       <PrivyDriver onPort={onPort} chains={setup.chains} />
@@ -259,6 +264,8 @@ function PrivyDriver({ onPort, chains }: BridgeProps & { chains: WalletChains })
               to: request.to,
               data: request.data,
               value: `0x${request.value.toString(16)}`,
+              // Named again in the call itself: a wallet that changed chain since the check refuses.
+              chainId: `0x${request.chainId.toString(16)}`,
             },
           ],
         });

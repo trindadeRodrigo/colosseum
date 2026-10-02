@@ -74,7 +74,7 @@ export function SignIn() {
       >
         {loading ? 'Loading sign-in…' : 'Sign in'}
       </button>
-      {port.problem && <p className="mt-2">Sign-in is not set up here: {port.problem}.</p>}
+      {port.problem && <p className="mt-2">Sign-in is off here: {port.problem}.</p>}
       {open && !off && (
         <div id={menu} className="mt-2 flex flex-wrap gap-2">
           <button

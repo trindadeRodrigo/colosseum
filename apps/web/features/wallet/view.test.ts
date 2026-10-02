@@ -27,7 +27,7 @@ describe('what the sign-in control shows', () => {
   it('says nothing when the person refused, and a plain sentence otherwise', () => {
     expect(failureSentence(new WalletError('rejected'))).toBeNull();
     expect(failureSentence(fail('not_configured', 'NEXT_PUBLIC_PRIVY_APP_ID is not set'))).toBe(
-      'Sign-in is not set up here: NEXT_PUBLIC_PRIVY_APP_ID is not set.',
+      'Sign-in is off here: NEXT_PUBLIC_PRIVY_APP_ID is not set.',
     );
     expect(failureSentence(new WalletPortError('no_gas', 'insufficient funds'))).toBe(
       'This account has no funds for the network fee.',
