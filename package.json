@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:contracts": "cd contracts && forge test",
+    "test:program": "pnpm --dir programs/tests install --frozen-lockfile && pnpm --dir programs/tests test",
     "typecheck": "pnpm -r typecheck",
     "verify:quick": "pnpm lint && pnpm typecheck && tsc -p tsconfig.json",
     "verify": "pnpm verify:quick && pnpm test && pnpm build",
@@ -54,7 +55,9 @@
     "risk:history-reconstruct": "tsx scripts/risk/history/reconstruct.ts",
     "risk:history-report": "tsx scripts/risk/history/report.ts",
     "risk:routing-gap": "tsx scripts/risk/routing-gap.ts",
-    "risk:markets": "tsx scripts/risk/verify-markets.ts"
+    "risk:markets": "tsx scripts/risk/verify-markets.ts",
+    "risk-evm:collect": "tsx scripts/risk-evm/collect.ts",
+    "risk-evm:import": "tsx scripts/risk-evm/import.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
@@ -73,6 +76,7 @@
     "@colosseum/engine": "workspace:*",
     "@colosseum/chain-solana": "workspace:*",
     "@colosseum/chain-evm": "workspace:*",
+    "@colosseum/chain-mock": "workspace:*",
     "@colosseum/risk": "workspace:*"
   }
 }

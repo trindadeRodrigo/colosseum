@@ -15,6 +15,7 @@ import { registerPlanRoutes } from './routes/plans';
 import { registerReadRoutes } from './routes/read';
 import { registerRiskRoutes } from './routes/risk';
 import { registerTransactionRoutes } from './routes/transactions';
+import { registerV1Routes } from './routes/v1';
 
 // Chain amounts are bigint; serialise them as strings in every response.
 (BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function toJSON(this: bigint) {
@@ -56,6 +57,7 @@ export async function buildApp() {
   await registerReadRoutes(app);
   await registerMonitorRoutes(app);
   await registerRiskRoutes(app);
+  await registerV1Routes(app, process.env);
 
   return app;
 }
