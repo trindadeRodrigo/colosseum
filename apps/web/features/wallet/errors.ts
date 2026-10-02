@@ -1,16 +1,23 @@
 import { WalletError, type WalletErrorCode } from '@colosseum/schemas';
 
 /**
- * Why a call failed, where the five codes of WalletError cannot say it. Each of these carries the code
- * `unknown`, so a caller that reads only `code` still gets one of the five.
+ * Why a call failed, where the five codes of WalletError cannot say it. `code` stays one of the five,
+ * so a caller that reads only `code` still gets a value it knows.
  */
 export type WalletReason =
   | 'not_configured'
   | 'not_connected'
   | 'unsupported'
-  | 'wrong_signer'
+  | 'wrong_account'
   | 'bad_transaction'
   | 'changed';
+
+/**
+ * The reasons that are a WalletErrorCode of their own. None is yet: `not_connected`, `wrong_account`,
+ * `unsupported` and `changed` go in this list in the change that adds them to packages/schemas, and
+ * from then on each is carried as `code` too.
+ */
+const CODES_OF_THEIR_OWN: readonly string[] = [];
 
 export class WalletPortError extends WalletError {
   readonly reason: WalletReason | null;
@@ -21,7 +28,11 @@ export class WalletPortError extends WalletError {
 }
 
 export const fail = (reason: WalletReason, message: string) =>
-  new WalletPortError('unknown', message, reason);
+  new WalletPortError(
+    CODES_OF_THEIR_OWN.includes(reason) ? (reason as WalletErrorCode) : 'unknown',
+    message,
+    reason,
+  );
 
 type Loose = {
   code?: unknown;

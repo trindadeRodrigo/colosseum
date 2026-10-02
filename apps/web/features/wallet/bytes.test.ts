@@ -19,6 +19,7 @@ import {
   base58Encode,
   base64Decode,
   base64Encode,
+  isZero,
   parseSolanaTx,
   sameBytes,
   withSolanaSignature,
@@ -78,6 +79,19 @@ describe('encodings', () => {
     expect(base64Decode(base64Encode(bytes))).toEqual(bytes);
     expect(() => base64Decode('not base64 !')).toThrow('not base64');
     expect(() => base64Decode('abc')).toThrow('not base64');
+    expect(() => base64Decode('ab=c')).toThrow('not base64');
+    expect(() => base64Decode('abcde')).toThrow('not base64');
+  });
+
+  it('two byte strings are the same only at the same length', () => {
+    const short = Uint8Array.from([1, 2]);
+    const long = Uint8Array.from([1, 2, 3]);
+    expect(sameBytes(short, Uint8Array.from([1, 2]))).toBe(true);
+    expect(sameBytes(short, long)).toBe(false);
+    expect(sameBytes(long, short)).toBe(false);
+    expect(sameBytes(short, Uint8Array.from([1, 9]))).toBe(false);
+    expect(isZero(new Uint8Array(64))).toBe(true);
+    expect(isZero(Uint8Array.from([0, 0, 1]))).toBe(false);
   });
 });
 
@@ -94,6 +108,83 @@ describe('parseSolanaTx', () => {
       expect(wire.signatures).toHaveLength(2);
     });
   }
+
+  it('refuses a message whose parts do not add up', () => {
+    const { transaction } = solanaSelfTransferBytes(PAYER, BLOCKHASH, 1n);
+    const SIGS = 1 + 64; // one signature slot, then the message
+    const edit = (change: (bytes: number[]) => void) => {
+      const bytes = Array.from(transaction);
+      change(bytes);
+      return Uint8Array.from(bytes);
+    };
+    const broken: Record<string, Uint8Array> = {
+      'no signature slot at all': Uint8Array.from([0, ...transaction.slice(SIGS)]),
+      'two slots for one required signer': Uint8Array.from([
+        2,
+        ...new Uint8Array(128),
+        ...transaction.slice(SIGS),
+      ]),
+      // The header asks for three signers; the message lists two accounts.
+      'more required signers than accounts': edit((b) => {
+        b[0] = 3;
+        b.splice(1, 0, ...new Array<number>(128).fill(0));
+        b[SIGS + 128 + 1] = 3;
+      }),
+      'an account list longer than the message': edit((b) => {
+        b[SIGS + 4] = 100;
+      }),
+      'a version it does not know (1)': edit((b) => {
+        b[SIGS] = 0x81;
+      }),
+      'bytes after the end of the message': Uint8Array.from([...transaction, 1, 2, 3]),
+      // A count is one to three bytes. This one says "1" in four, and the rest is the transaction.
+      'a count written in four bytes': Uint8Array.from([
+        0x81,
+        0x80,
+        0x80,
+        0x00,
+        ...transaction.slice(1),
+      ]),
+      // Nobody signs: no slot, and a header that asks for none.
+      'no signer at all': edit((b) => {
+        b.splice(0, SIGS, 0);
+        b[2] = 0;
+      }),
+      'a message cut short': transaction.slice(0, transaction.length - 1),
+      'an instruction longer than the message': edit((b) => {
+        b[b.length - 14] = 200; // the length of the instruction's data
+      }),
+    };
+    for (const [what, bytes] of Object.entries(broken))
+      expect(() => parseSolanaTx(bytes), what).toThrow('not a Solana transaction');
+    // The same checks leave the transaction itself alone.
+    expect(parseSolanaTx(transaction).signers).toEqual([PAYER]);
+  });
+
+  it('reads a legacy message to its end, and a v0 message through its lookup tables', () => {
+    for (const bytes of [KIT.legacy, KIT[0]]) {
+      expect(() => parseSolanaTx(Uint8Array.from([...bytes, 0]))).toThrow(
+        'not a Solana transaction',
+      );
+      expect(() => parseSolanaTx(bytes.slice(0, bytes.length - 1))).toThrow(
+        'not a Solana transaction',
+      );
+    }
+    // A v0 message with one lookup table: the key, two writable indexes, one read-only.
+    const { transaction } = solanaSelfTransferBytes(PAYER, BLOCKHASH, 1n);
+    const withTable = Uint8Array.from([
+      ...transaction.slice(0, transaction.length - 1),
+      1,
+      ...new Uint8Array(32).fill(9),
+      ...[2, 0, 1],
+      ...[1, 2],
+    ]);
+    expect(parseSolanaTx(withTable).feePayer).toBe(PAYER);
+    expect(getTransactionDecoder().decode(withTable).messageBytes).toHaveLength(
+      withTable.length - 65,
+    );
+    expect(() => parseSolanaTx(withTable.slice(0, withTable.length - 1))).toThrow();
+  });
 
   it('refuses bytes that are not a transaction', () => {
     for (const bytes of [new Uint8Array(0), new Uint8Array(10), Uint8Array.from([1, 2, 3])])
@@ -112,7 +203,9 @@ describe('parseSolanaTx', () => {
     expect(wire.signatures[1]).toEqual(signature);
     expect(sameBytes(wire.message, parseSolanaTx(bytes).message)).toBe(true);
     expect(parseSolanaTx(bytes).signatures[1]).toEqual(new Uint8Array(64));
-    expect(() => withSolanaSignature(bytes, 2, signature)).toThrow();
+    expect(() => withSolanaSignature(bytes, 2, signature)).toThrow('no slot');
+    expect(() => withSolanaSignature(bytes, -1, signature)).toThrow('no slot');
+    expect(() => withSolanaSignature(bytes, 0, new Uint8Array(65))).toThrow('no slot');
     expect(() => withSolanaSignature(bytes, 0, new Uint8Array(63))).toThrow();
   });
 });

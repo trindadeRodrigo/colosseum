@@ -1,106 +1,25 @@
-import { BasketTx, type ChainId, WalletAccount, WalletError } from '@colosseum/schemas';
+import { type BasketTx, type ChainId, WalletAccount } from '@colosseum/schemas';
 import { getTransactionDecoder } from '@solana/kit';
 import { parseTransaction, recoverTransactionAddress, verifyMessage } from 'viem';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { base58Decode, base64Decode, base64Encode, parseSolanaTx, sameBytes } from './bytes';
 import { walletChains } from './chains';
-import { solanaSelfTransferBytes } from './dev/self-transfer';
 import type { WalletDriver } from './driver';
-import type { WalletPortError } from './errors';
 import { createWalletPort, idleDriver, type WebWalletPort } from './port';
-import { createTestDriver, type TestWalletOptions } from './test/test-driver';
+import {
+  chains,
+  evmTx,
+  failure,
+  OTHER_EVM,
+  OTHER_SOLANA,
+  REFUSALS,
+  signedIn,
+  solanaTx,
+} from './test/fixtures';
+import { createTestDriver } from './test/test-driver';
 
 // The contract every WalletPort keeps, run on the throwaway wallet. The Privy wallet goes through the
 // same createWalletPort(), so everything here but the driver's own signing is the code the app runs.
-
-const NOW = '2026-10-02T15:00:00.000Z';
-const BLOCKHASH = 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG';
-const OTHER_SOLANA = 'So11111111111111111111111111111111111111112';
-const OTHER_EVM = '0x204faca1764b154221e35c0d20abb3c525710498';
-const chains = walletChains();
-const TESTNET = { robinhood: 46630, base: 84532 } as const;
-
-const preview = {
-  source: 'test',
-  method: 'fixture',
-  fetchedAt: NOW,
-  provenance: 'sandbox',
-  summary: 'a test transaction',
-  simulated: false,
-  feeNativeRaw: '5000',
-  changes: [],
-} as const;
-const ids = {
-  legKind: 'deposit',
-  legId: 'leg-1',
-  attemptId: 'attempt-1',
-  messageHash: 'ab'.repeat(32),
-};
-
-function solanaTx(owner: string, over: Partial<BasketTx> = {}): BasketTx {
-  const { transaction } = solanaSelfTransferBytes(owner, BLOCKHASH, 1n);
-  return BasketTx.parse({
-    ...ids,
-    chain: 'solana',
-    chainId: 'solana',
-    payload: base64Encode(transaction),
-    description: 'a test transaction',
-    provenance: 'sandbox',
-    lastValidBlockHeight: 1,
-    signer: owner,
-    feePayer: owner,
-    preview,
-    ...over,
-  });
-}
-
-function evmTx(owner: string, chain: 'robinhood' | 'base' = 'robinhood', over = {}): BasketTx {
-  return BasketTx.parse({
-    ...ids,
-    chain: 'evm',
-    chainId: chain,
-    payload: '0xa9059cbb',
-    evm: { to: OTHER_EVM, value: '7', chainId: TESTNET[chain] },
-    description: 'a test transaction',
-    provenance: 'sandbox',
-    signer: owner,
-    preview,
-    ...over,
-  });
-}
-
-/** What a real wallet throws when the person says no, in three dialects. */
-const REFUSALS = {
-  'an EIP-1193 wallet (code 4001)': () =>
-    Object.assign(new Error('MetaMask Tx Signature: User denied transaction signature.'), {
-      code: 4001,
-    }),
-  'a wallet-standard wallet (words only)': () => new Error('User rejected the request.'),
-  'a dismissed passkey prompt (NotAllowedError)': () =>
-    new DOMException('The operation either timed out or was not allowed.', 'NotAllowedError'),
-};
-
-async function signedIn(options: TestWalletOptions = {}) {
-  const approve = vi.fn<NonNullable<TestWalletOptions['approve']>>();
-  const driver = await createTestDriver({ approve, ...options });
-  await driver.signIn('passkey');
-  const port = createWalletPort(driver, chains);
-  const address = (family: 'solana' | 'evm') => {
-    const account = port.active(family);
-    if (!account) throw new Error(`no ${family} account`);
-    return account.address;
-  };
-  return { driver, port, approve, solana: address('solana'), evm: address('evm') };
-}
-
-async function failure(run: Promise<unknown>): Promise<WalletPortError> {
-  const e = await run.then(
-    () => null,
-    (error: unknown) => error,
-  );
-  expect(e).toBeInstanceOf(WalletError);
-  return e as WalletPortError;
-}
 
 describe('WalletPort: accounts and capabilities', () => {
   it('is signed out with no accounts until someone signs in, and signs nothing', async () => {
@@ -279,14 +198,16 @@ describe('WalletPort: what it refuses before any key is touched', () => {
     expect((await failure(port.sign('robinhood', [mainnet]))).code).toBe('wrong_chain');
     expect(approve).not.toHaveBeenCalled();
 
-    // The same transaction is signed once the app is set to mainnet.
+    // The same call is signed once the app is set to mainnet.
     const { driver } = await signedIn();
     const onMainnet = createWalletPort(
       driver,
       walletChains({ NEXT_PUBLIC_CHAIN_NETWORK_ROBINHOOD: 'mainnet' }),
     );
     const own = onMainnet.active('evm')?.address ?? '';
-    const [signed] = await onMainnet.sign('robinhood', [{ ...mainnet, signer: own }]);
+    // On mainnet a transaction is labelled live.
+    const live = { ...mainnet, signer: own, provenance: 'live' as const };
+    const [signed] = await onMainnet.sign('robinhood', [live]);
     expect(parseTransaction(signed as `0x${string}`).chainId).toBe(4663);
   });
 
@@ -300,7 +221,7 @@ describe('WalletPort: what it refuses before any key is touched', () => {
     ];
     for (const run of cases) {
       const e = await failure(run);
-      expect([e.code, e.reason]).toEqual(['unknown', 'wrong_signer']);
+      expect([e.code, e.reason]).toEqual(['unknown', 'wrong_account']);
     }
     expect(evm).not.toBe(OTHER_EVM);
     expect(approve).not.toHaveBeenCalled();
@@ -417,7 +338,7 @@ describe('WalletPort: failures are WalletErrors', () => {
   it('send() refuses another chain and another account as sign() does', async () => {
     const { port, evm } = await signedIn({ kind: 'external', broadcastEvm: async () => '0x00' });
     expect((await failure(port.send('robinhood', evmTx(evm, 'base')))).code).toBe('wrong_chain');
-    expect((await failure(port.send('robinhood', evmTx(OTHER_EVM)))).reason).toBe('wrong_signer');
+    expect((await failure(port.send('robinhood', evmTx(OTHER_EVM)))).reason).toBe('wrong_account');
   });
 
   it('a wallet with no gas, a stale blockhash and an unknown chain keep their codes', async () => {

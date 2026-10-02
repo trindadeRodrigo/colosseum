@@ -21,6 +21,11 @@ export type WalletChain = {
   /** `sandbox` on a test network: every figure read from it is shown as "test network". */
   provenance: 'live' | 'sandbox';
   gas: { symbol: string; decimals: number };
+  /**
+   * EVM only: the most the wallet may commit to fees (gas × the highest fee per gas) on a transaction
+   * that states no fee of its own. Null on Solana, where the fee is in the bytes the API built.
+   */
+  feeCeilingRaw: bigint | null;
 };
 export type WalletChains = Record<ChainId, WalletChain>;
 
@@ -40,6 +45,18 @@ const GAS: Record<ChainId, WalletChain['gas']> = {
   solana: { symbol: 'SOL', decimals: 9 },
   robinhood: { symbol: 'ETH', decimals: 18 },
   base: { symbol: 'ETH', decimals: 18 },
+};
+
+/**
+ * 0.001 ETH. A wallet made at sign-in signs with no prompt and takes its gas and fee from an RPC, so
+ * an RPC that answers wrongly could have it sign its whole balance away as fees. A vault transaction
+ * on these chains costs a small fraction of this.
+ */
+const EVM_FEE_CEILING_WHEN_NONE_IS_STATED = 10n ** 15n;
+const FEE_CEILING: Record<ChainId, bigint | null> = {
+  solana: null,
+  robinhood: EVM_FEE_CEILING_WHEN_NONE_IS_STATED,
+  base: EVM_FEE_CEILING_WHEN_NONE_IS_STATED,
 };
 
 /** The public variables this file reads, one per chain. Unset means the test network. */
@@ -88,6 +105,7 @@ export function walletChains(env: PublicWalletEnv = {}): WalletChains {
       rpcUrl: RPC[id][network],
       provenance: chainProvenance(network, 'live') === 'live' ? 'live' : 'sandbox',
       gas: GAS[id],
+      feeCeilingRaw: FEE_CEILING[id],
     };
   };
   return { solana: one('solana'), robinhood: one('robinhood'), base: one('base') };
