@@ -33,7 +33,7 @@ const fx = JSON.parse(readFileSync('fixtures/risk/lending/verify.json', 'utf8'))
     to: Snap;
     txs: Tx[];
   };
-  gap: { vault: string; txs: Tx[] };
+  gap: { vault: string; txs: Tx[]; found: Tx };
   obligation: { address: string; b64: string; collateralVaults: string[]; txs: Tx[] };
   api: {
     apiAt: string;
@@ -104,6 +104,29 @@ describe('lending verify — vault-balance chain', () => {
     const brk = c.breaks[0] as NonNullable<(typeof c.breaks)[number]>;
     expect(BigInt(brk.got) - BigInt(brk.expected)).toBe(220_030_938n);
     expect(brk.slot).toBeGreaterThan(brk.prevSlot);
+  });
+
+  it('the transaction a getBlock scan found closes that gap exactly', () => {
+    const [a, f, b] = [fx.gap.txs[0], fx.gap.found, fx.gap.txs[1]].map(decode);
+    const step = (t: NonNullable<typeof a>) => ({
+      sig: t.s,
+      slot: t.sl,
+      pre: t.d.vaults[fx.gap.vault]?.pre ?? null,
+      post: t.d.vaults[fx.gap.vault]?.post ?? null,
+    });
+    const steps = [a, f, b].map((t) => step(t as NonNullable<typeof t>));
+    expect(balanceChain(steps).breaks).toEqual([]);
+    const found = f as NonNullable<typeof f>;
+    expect(found.sl).toBeGreaterThan(steps[0]?.slot as number);
+    expect(found.sl).toBeLessThan(steps[2]?.slot as number);
+    // a new obligation's first collateral deposit: its flow on the vault is the missing 220,030,938 raw NVDAx
+    const kinds = found.d.events.map((e) => e.ix);
+    expect(kinds).toContain('initObligation');
+    const flow = found.d.events
+      .flatMap((e) => e.flows)
+      .filter((x) => x.account === fx.gap.vault)
+      .reduce((s, x) => s + BigInt(x.delta), 0n);
+    expect(flow).toBe(220_030_938n);
   });
 });
 

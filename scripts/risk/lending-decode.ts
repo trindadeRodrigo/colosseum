@@ -69,7 +69,7 @@ const days = readdirSync(RAW)
   .filter((d) => (ONLY ? d === ONLY : PARTIAL || existsSync(join(RAW, `${d}.done`))))
   .sort();
 
-type Row = { s: string; sl: number; t: number; a: number[]; tx: RpcTx };
+type Row = { s: string; sl: number; t: number; a: number[]; found?: string; tx: RpcTx };
 const summary = {
   method: METHOD,
   source: SOURCE,
@@ -143,6 +143,7 @@ for (const day of days) {
         sl: r.sl,
         t: r.t,
         a: r.a,
+        ...(r.found ? { found: r.found } : {}),
         ...(d.events.length ? { ev: d.events } : {}),
         ...(d.refreshes ? { rf: d.refreshes } : {}),
         ...(d.external.length ? { ext: d.external } : {}),

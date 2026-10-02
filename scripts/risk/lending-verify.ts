@@ -32,6 +32,8 @@ import { LENDING_HISTORY_DIR, RISK_HOME, readAddressSignatures } from './lib-len
 //  positions  obligations opened inside the fetched window and not changed after it: summed collateral events =
 //             the obligation's deposited cTokens in the first hourly snapshot (exact)
 //  api        5-minute on-chain rows against the hourly API rows within 5 minutes, after interest accrual
+// Transactions the address index does not return but a getBlock scan found (`<dir>/gaps/found.jsonl`, written by
+// `lending-gap-scan.ts --add`) are merged into the walks of the addresses they touch, by slot, and counted apart.
 // Output: `<dir>/verify-<stamp>.json` (gitignored), one summary line per check on stdout.
 // Usage: tsx scripts/risk/lending-verify.ts [dir=data/risk/lending-history]
 const DIR = process.argv[2] ?? LENDING_HISTORY_DIR;
@@ -59,6 +61,12 @@ const reg = JSON.parse(readFileSync(join(RISK_HOME, 'lending-registry.json'), 'u
   rows: RegRow[];
 };
 const reserves = reg.rows.filter((r) => r.venue === 'kamino');
+type Found = { signature: string; slot: number; blockTime: number; addresses: string[] };
+const foundFile = join(DIR, 'gaps', 'found.jsonl');
+const found = existsSync(foundFile) ? readJsonl<Found>(foundFile) : [];
+const foundByAddress = new Map<string, Found[]>();
+for (const f of found)
+  for (const a of f.addresses) foundByAddress.set(a, [...(foundByAddress.get(a) ?? []), f]);
 
 // the window: each address was walked from the VL-4 start back to its first tx
 const vl4 = readJsonl<{ at: string; vl: string; value: { seconds: number } }>(
@@ -243,6 +251,11 @@ const coverage = {
   walkedTxsInWindow: walkedWindow,
   fetchedInWindow: fetchedSigs.size,
   errorsListed: errorSigs.size,
+  // not returned by the address index; found by a getBlock scan of a chain break (gaps/found.jsonl)
+  foundByBlockScan: found.filter((f) =>
+    inWindow.has(new Date(f.blockTime * 1000).toISOString().slice(0, 10)),
+  ).length,
+  foundFetched: found.filter((f) => fetchedSigs.has(f.signature)).length,
   missingInWindow: missingWindow,
   missingExamples,
   notYetFetched: walkedAll - walkedWindow,
@@ -262,6 +275,14 @@ for (const a of walkedVaults) {
   let noBalance = 0;
   const noBalanceExamples: string[] = [];
   const walk = [...readAddressSignatures(DIR, a.address)].reverse();
+  const extra = foundByAddress.get(a.address) ?? [];
+  let foundSameSlot = 0;
+  for (const f of extra) {
+    if (walk.some((s) => s.slot === f.slot)) foundSameSlot++;
+    // after every walked tx of an earlier or the same slot (order inside a slot is unknown; counted above)
+    const at = walk.findIndex((s) => s.slot > f.slot);
+    walk.splice(at < 0 ? walk.length : at, 0, { ...f, failed: false });
+  }
   for (const s of walk) {
     if (s.failed || s.blockTime < windowStart) continue;
     walkedInWindow++;
@@ -286,6 +307,8 @@ for (const a of walkedVaults) {
     notFetched,
     noBalance,
     noBalanceExamples,
+    foundByBlockScan: extra.length,
+    foundSameSlot,
     breaks: breaks.length,
     firstBreaks: breaks.slice(0, 5),
   });
@@ -297,6 +320,8 @@ const chainSummary = {
   vaultsWithBreaks: chain.filter((r) => (r.breaks as number) > 0).length,
   notFetched: chain.reduce((s, r) => s + (r.notFetched as number), 0),
   noBalance: chain.reduce((s, r) => s + (r.noBalance as number), 0),
+  foundByBlockScan: chain.reduce((s, r) => s + (r.foundByBlockScan as number), 0),
+  foundSameSlot: chain.reduce((s, r) => s + (r.foundSameSlot as number), 0),
   notCovered:
     'Jupiter Lend liquidity-layer token vaults are shared by every vault and lender of a token and are not walked (D12: live-only); Jupiter Lend has no per-vault balance chain',
 };

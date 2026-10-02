@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import {
@@ -9,14 +9,15 @@ import {
   type LendingEvent,
   reserveDeltas,
 } from '@colosseum/risk';
-import { LENDING_HISTORY_DIR, RISK_HOME } from './lib-lending';
+import { LENDING_HISTORY_DIR, RISK_HOME, readAddressSignatures } from './lib-lending';
 
 // Step 10b item 6 — freeze real mainnet data for tests/risk-layer/lending-verify.test.ts, from what is on disk (no
 // RPC; `pnpm risk:lending-decode` and `pnpm risk:lending-verify` must have run):
 //  replay     one Kamino reserve, two consecutive hourly raw snapshots (raw-markets) and every transaction between
 //             them that changes the reserve, picked as the pair with at least one borrow and one repay and the
 //             fewest such transactions
-//  gap        the two transactions either side of the first vault-chain break the verify run found
+//  gap        the two transactions either side of the first vault-chain break the verify run found, or of the
+//             transaction a getBlock scan found for it (gaps/found.jsonl), with that transaction
 //  obligation an obligation initialised more than once inside the window and unchanged after it, its raw bytes from
 //             the first hourly positions snapshot, and every transaction of it inside the window
 //  api        the API row read between two 5-minute on-chain rows that differ (a transaction between the reads)
@@ -144,18 +145,32 @@ for (const r of reserves) {
 }
 if (!best) throw new Error('no snapshot pair with a borrow and a repay');
 
-// gap
+// gap: the transactions either side of a vault-chain break and, once a getBlock scan has found the transaction
+// the address index missed (gaps/found.jsonl), that transaction too
+type Found = { signature: string; slot: number; addresses: string[] };
+const foundFile = join(DIR, 'gaps', 'found.jsonl');
+const found = (existsSync(foundFile) ? readJsonl<Found>(foundFile) : []).find((f) =>
+  f.addresses.some((a) => vaultRoles[a] === 'liquidity_supply'),
+);
 const broken = verify.chain.vaults.find((v) => v.firstBreaks.length);
-const gap = broken?.firstBreaks[0]
-  ? {
-      vault: broken.vault,
-      txs: [broken.firstBreaks[0].prevSig, broken.firstBreaks[0].sig].map((s) => ({
-        s,
-        sl: slotOf.get(s),
-        tx: rawTx(s),
-      })),
-    }
-  : null;
+const gapTx = (s: string) => ({ s, sl: slotOf.get(s), tx: rawTx(s) });
+let gap: { vault: string; txs: unknown[]; found?: unknown } | null = null;
+if (found) {
+  const vault = found.addresses.find((a) => vaultRoles[a] === 'liquidity_supply') as string;
+  const walk = [...readAddressSignatures(DIR, vault)].filter((x) => !x.failed);
+  const prev = walk.filter((x) => x.slot < found.slot).sort((a, b) => b.slot - a.slot)[0];
+  const next = walk.filter((x) => x.slot > found.slot).sort((a, b) => a.slot - b.slot)[0];
+  if (!prev || !next) throw new Error('found tx has no walked neighbours');
+  gap = {
+    vault,
+    txs: [prev.signature, next.signature].map(gapTx),
+    found: gapTx(found.signature),
+  };
+} else if (broken?.firstBreaks[0])
+  gap = {
+    vault: broken.vault,
+    txs: [broken.firstBreaks[0].prevSig, broken.firstBreaks[0].sig].map(gapTx),
+  };
 
 // obligation
 const inits = new Map<string, number>();
