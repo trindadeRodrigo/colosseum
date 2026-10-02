@@ -2,7 +2,7 @@ import type { Asset } from '@colosseum/schemas';
 
 /**
  * Source of truth for the asset registry (seeded into the `assets` table by `pnpm db:seed`).
- * Static facts only: mints (verified 2026-09-30, docs/VERIFICATION.md V6), token programs, gates,
+ * Static facts only: mints (verified 2026-09-30, docs/structurer/VERIFICATION.md V6), token programs, gates,
  * redemption paths. No yield numbers: those live in `yield_observations` with source and timestamp.
  *
  * The BRL leg is abstract: zero yield, no FX risk against a BRL goal, cap and mint path are parameters.

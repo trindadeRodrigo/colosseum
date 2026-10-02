@@ -1,3 +1,4 @@
+// Read-only check: prints the demo wallet's SOL and USDC balances.
 import 'dotenv/config';
 import { createRpc, loadKeypair } from '@colosseum/chain-solana';
 import { address } from '@solana/kit';

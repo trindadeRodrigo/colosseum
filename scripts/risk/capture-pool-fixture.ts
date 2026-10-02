@@ -1,3 +1,4 @@
+// Read-only: freezes a pool's on-chain accounts into a fixture for tests/risk-layer/pools.test.ts.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import {

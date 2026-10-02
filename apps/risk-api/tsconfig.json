@@ -1,12 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "noEmit": true,
-    "paths": {
-      "@colosseum/schemas": ["../../packages/schemas/src/index.ts"],
-      "@colosseum/db": ["../../packages/db/src/index.ts"],
-      "@colosseum/risk": ["../../packages/risk/src/index.ts"]
-    }
+    "noEmit": true
   },
   "include": ["src/**/*.ts", "../api/src/routes/risk.ts"]
 }

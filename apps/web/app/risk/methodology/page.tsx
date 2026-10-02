@@ -2,7 +2,7 @@ import { DISCLAIMER } from '@colosseum/schemas';
 
 export const metadata = { title: 'Methodology — exit liquidity' };
 
-/** Generated from docs/PLAN-RISK.md §4 and Appendix A (method risk-0.2). Keep the two in step. */
+/** Generated from docs/risk/PLAN-RISK.md §4 and Appendix A (method risk-0.2). Keep the two in step. */
 export default function Methodology() {
   return (
     <article className="prose max-w-3xl space-y-4 text-sm">

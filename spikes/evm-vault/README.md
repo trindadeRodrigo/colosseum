@@ -3,7 +3,7 @@
 Question: can a contract vault hold and trade stock tokens on Robinhood Chain (4663) and Base (8453)?
 Answer: yes on both. Run 2026-10-01, about 13:40-14:30 UTC (US market open). Nothing was signed or sent to a real chain.
 
-The results are summarised in `docs/DESIGN-VAULT.md`.
+The results are summarised in `docs/vault/DESIGN-VAULT.md`.
 
 ## What is here
 
