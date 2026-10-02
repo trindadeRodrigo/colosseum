@@ -8,12 +8,17 @@ import { discOf, eventDisc, type LogFrame, type PoolEvent } from './logs';
 //   LiquidityIncreased / LiquidityDecreased (128) whirlpool@8 position@40 tickLower@72 tickUpper@76
 //     liquidity@80 amountA@96 amountB@104 transferFeeA@112 transferFeeB@120
 //   PositionOpened (80) whirlpool@8 position@40 tickLower@72 tickUpper@76 (empty; an increase follows)
+//   LiquidityRepositioned (186) whirlpool@8 position@40 existingTickLower@72 existingTickUpper@76 newTickLower@80
+//     newTickUpper@84 existingLiquidity@88 newLiquidity@104 existingAmountA@120 existingAmountB@128 newAmountA@136
+//     newAmountB@144 …   (a position moved to a new range in one instruction, logged without an instruction name:
+//     emitted as a decrease of the old range and an increase of the new one; the vaults move by new − existing)
 // Token A is token 0. Fees are collected by a separate instruction, so a decrease pays principal only.
 export const WP_EVENTS = {
   traded: eventDisc('Traded'),
   increased: eventDisc('LiquidityIncreased'),
   decreased: eventDisc('LiquidityDecreased'),
   opened: eventDisc('PositionOpened'),
+  repositioned: eventDisc('LiquidityRepositioned'),
 };
 
 export function decodeWhirlpoolFrames(
@@ -44,7 +49,35 @@ export function decodeWhirlpoolFrames(
           preSqrtPriceX64: r.u128(41).toString(),
         });
       } else if (k === WP_EVENTS.opened && d.length === 80) opened = true;
-      else if ((k === WP_EVENTS.increased || k === WP_EVENTS.decreased) && d.length === 128) {
+      else if (k === WP_EVENTS.repositioned && d.length >= 152) {
+        const position = r.pubkey(40);
+        out.push(
+          {
+            kind: 'liquidity',
+            pool,
+            ixIndex,
+            action: 'decrease',
+            tickLower: r.i32(72),
+            tickUpper: r.i32(76),
+            liquidityDelta: (-r.u128(88)).toString(),
+            amount0: r.u64(120).toString(),
+            amount1: r.u64(128).toString(),
+            position,
+          },
+          {
+            kind: 'liquidity',
+            pool,
+            ixIndex,
+            action: 'increase',
+            tickLower: r.i32(80),
+            tickUpper: r.i32(84),
+            liquidityDelta: r.u128(104).toString(),
+            amount0: r.u64(136).toString(),
+            amount1: r.u64(144).toString(),
+            position,
+          },
+        );
+      } else if ((k === WP_EVENTS.increased || k === WP_EVENTS.decreased) && d.length === 128) {
         const dec = k === WP_EVENTS.decreased;
         const liq = r.u128(80);
         out.push({

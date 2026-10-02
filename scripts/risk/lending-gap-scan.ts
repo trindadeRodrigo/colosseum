@@ -50,7 +50,7 @@ async function worker() {
         {
           encoding: 'json',
           transactionDetails: 'accounts',
-          maxSupportedTransactionVersion: 0,
+          maxSupportedTransactionVersion: 1,
           rewards: false,
         },
       ]);
