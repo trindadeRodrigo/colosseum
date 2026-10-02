@@ -49,7 +49,7 @@ Nothing here blocks an item. It decides which facts are `null` on day one.
 ### Phase 1 — what the agent reads
 
 **1. The contract.** `packages/schemas/src/facts.ts` (zod; the package still imports nothing).
-- `Fact`: `{ value, unit, asOf, regime?, sizeUsd?, source, method, methodVersion, provenance, quality }` or `{ value: null, reason, … }`. `quality` is one of `measured`, `lower_bound`, `assumption`. `reason` is a closed list (§2's reasons plus `beyond_measured_size`, `insufficient_samples`).
+- `Fact`: `{ value, unit, fetchedAt, regime?, sizeUsd?, source, method, methodVersion, provenance, quality }` or `{ value: null, reason, … }`. `quality` is one of `measured`, `lower_bound`, `assumption`. `reason` is a closed list (§2's reasons plus `beyond_measured_size`, `insufficient_samples`).
 - `AssetFacts`, `LendingPoolFacts`, `PlanFacts` as in §4.
 - A fixture provider for tests.
 - **Check:** a test fails if any builder returns a numeric fact without `source`, `asOf` and `method`, or returns `0` where the input was missing.
@@ -187,7 +187,7 @@ Defaults apply unless you change them.
 
 | Item | Status | Evidence |
 |---|---|---|
-| 1. Contract | todo | |
+| 1. Contract | done | `packages/schemas/src/facts.ts`: `Fact` (measured or `null` with one of 11 reasons), `CostBreakdown`, `AssetFacts`, `LendingPoolFacts`, `PlanFacts`, and `collectFacts` (every fact in a sheet, plus any bare number stored as one). `tests/risk-layer/facts-contract.test.ts` (4 tests): a measured fact without its source, method, time, version, provenance or quality is rejected; a `null` without a listed reason is rejected; a sheet with a missing weekend parses and its 40+ facts are all complete. The check on builders (no `0` for missing input) runs in each builder's own test from item 7 on. Still **YOU**: show Thom §4. |
 | 2. Three fixes | todo | |
 | 3. Router with fee split | todo | |
 | 4. Cost breakdown curves | todo | |
