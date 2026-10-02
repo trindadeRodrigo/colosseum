@@ -15,14 +15,15 @@ import { registerPlanRoutes } from './routes/plans';
 import { registerReadRoutes } from './routes/read';
 import { registerRiskRoutes } from './routes/risk';
 import { registerTransactionRoutes } from './routes/transactions';
-import { registerV1Routes } from './routes/v1';
+import { registerV1Routes, type V1Deps } from './routes/v1';
 
 // Chain amounts are bigint; serialise them as strings in every response.
 (BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function toJSON(this: bigint) {
   return this.toString();
 };
 
-export async function buildApp() {
+/** `deps.v1` replaces what the /v1 routes run on. A test passes it; the server passes nothing. */
+export async function buildApp(deps: { v1?: V1Deps } = {}) {
   const app = Fastify({
     logger: process.env.NODE_ENV !== 'test',
   }).withTypeProvider<ZodTypeProvider>();
@@ -57,7 +58,7 @@ export async function buildApp() {
   await registerReadRoutes(app);
   await registerMonitorRoutes(app);
   await registerRiskRoutes(app);
-  await registerV1Routes(app, process.env);
+  await registerV1Routes(app, process.env, deps.v1);
 
   return app;
 }
