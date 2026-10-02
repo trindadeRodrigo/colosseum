@@ -6,14 +6,6 @@ on:
   pull_request:
   schedule:
     - cron: '23 7 * * 1' # Mondays, 07:23 UTC
-  push:
-    paths:
-      - '.github/workflows/security.yml'
-      - '.gitleaks.toml'
-      - '.gitleaksignore'
-      - 'deny.toml'
-      - 'pnpm-workspace.yaml'
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -47,7 +39,7 @@ jobs:
           mkdir -p "$HOME/.local/bin"
           tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$HOME/.local/bin" gitleaks
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      # A pull request: its own commits. Anything else: the whole history, every branch.
+      # A pull request: its own commits. The weekly run: the whole history, every branch.
       # --redact, always: this log is public. Rules and known non-secrets: .gitleaks.toml, .gitleaksignore.
       - name: Scan
         env:
