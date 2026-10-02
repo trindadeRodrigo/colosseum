@@ -1,5 +1,14 @@
 import type { AssetId, BasketAsset, Price, VaultState, VaultView } from '@colosseum/schemas';
-import { apportion, formatDecimal, ONE_USD, parseDecimal, usdValue } from './amounts';
+import {
+  apportion,
+  BasketInputError,
+  checkDecimals,
+  formatDecimal,
+  ONE_USD,
+  parseDecimal,
+  parseRaw,
+  usdValue,
+} from './amounts';
 
 // The one place that turns what a vault holds, at prices, into dollars, weights and drift
 // (DESIGN-VAULT 3.1). value = raw × usdPerToken / 10^decimals, with no multiplier: the reference price
@@ -22,11 +31,19 @@ export type Measured = {
   value: bigint | null;
 };
 
-/** Decimals by asset, and every price above zero by asset, scaled by 1e18. */
+/**
+ * Decimals by asset, and every price above zero by asset, scaled by 1e18. Two prices for one asset,
+ * a price that is not a plain decimal and decimals that are not a whole number are refused.
+ */
 export function lookups(prices: readonly Price[], assets: readonly AssetUnits[]) {
-  const decimalsOf = new Map<string, number>(assets.map((a) => [a.id, a.decimals]));
+  const decimalsOf = new Map<string, number>();
+  for (const a of assets) decimalsOf.set(a.id, checkDecimals(a.decimals, a.id));
   const priceOf = new Map<string, bigint>();
+  const seen = new Set<string>();
   for (const p of prices) {
+    if (seen.has(p.asset))
+      throw new BasketInputError('DuplicatePrice', `${p.asset} has two prices; it takes one`);
+    seen.add(p.asset);
     const scaled = parseDecimal(p.usdPerToken);
     if (scaled > 0n) priceOf.set(p.asset, scaled);
   }
@@ -34,8 +51,12 @@ export function lookups(prices: readonly Price[], assets: readonly AssetUnits[])
 }
 
 /**
- * The vault's cash and each position, valued. The total counts what could be valued. Cash counts as
- * one dollar when no price for it is given, as the vaults count it (DESIGN-VAULT section 5).
+ * The vault's cash and each position, valued. The total counts what could be valued.
+ *
+ * Cash is one dollar, always, whatever a feed says: that is how the vaults count it (DESIGN-VAULT
+ * section 5), and a weight worked out any other way would not be the weight the vault checks. A
+ * price given for the cash token is ignored. A vault whose cash token is not on the asset list is
+ * refused, since its cash could not be counted at all.
  */
 export function measureVault(
   v: VaultState,
@@ -43,15 +64,27 @@ export function measureVault(
   assets: readonly AssetUnits[],
 ): { cash: Measured; positions: Measured[]; total: bigint } {
   const { decimalsOf, priceOf } = lookups(prices, assets);
-  const measure = (asset: AssetId, rawText: string, fallback: bigint | null): Measured => {
-    const raw = BigInt(rawText);
-    const decimals = decimalsOf.get(asset) ?? null;
-    const price = priceOf.get(asset) ?? fallback;
-    const value = price === null || decimals === null ? null : usdValue(raw, price, decimals);
-    return { asset, raw, decimals, price, value };
+  const cashDecimals = decimalsOf.get(v.cash.asset);
+  if (cashDecimals === undefined)
+    throw new BasketInputError(
+      'CashNotListed',
+      `${v.cash.asset}, the vault's cash token, is not on the asset list`,
+    );
+  const cashRaw = parseRaw(v.cash.raw);
+  const cash: Measured = {
+    asset: v.cash.asset,
+    raw: cashRaw,
+    decimals: cashDecimals,
+    price: ONE_USD,
+    value: usdValue(cashRaw, ONE_USD, cashDecimals),
   };
-  const cash = measure(v.cash.asset, v.cash.raw, ONE_USD);
-  const positions = v.positions.map((p) => measure(p.asset, p.raw, null));
+  const positions = v.positions.map((p): Measured => {
+    const raw = parseRaw(p.raw);
+    const decimals = decimalsOf.get(p.asset) ?? null;
+    const price = priceOf.get(p.asset) ?? null;
+    const value = price === null || decimals === null ? null : usdValue(raw, price, decimals);
+    return { asset: p.asset, raw, decimals, price, value };
+  });
   const total = [cash, ...positions].reduce((n, m) => n + (m.value ?? 0n), 0n);
   return { cash, positions, total };
 }
@@ -60,6 +93,7 @@ export function measureVault(
  * A vault with its dollar value, and each position's value, weight and drift against its target.
  *
  * - A weight is a share of everything the vault holds that has a price, cash included, in whole bps.
+ *   Cash is one dollar, always.
  *   The weights of the positions and of the cash add up to exactly 10,000: each share is rounded down
  *   and the bps left over go to the largest remainders.
  * - A position with no price (or not on the asset list) has `valueUsd: null` and a weight of 0, and

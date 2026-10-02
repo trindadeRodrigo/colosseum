@@ -1,12 +1,20 @@
-import type { Price, Target, Trade, VaultState } from '@colosseum/schemas';
-import { ONE_USD, rawFor, unitValue, usdFromNumber, usdValue } from './amounts';
+import type { AssetId, Price, Target, Trade, VaultState } from '@colosseum/schemas';
+import {
+  BasketInputError,
+  ONE_USD,
+  parseRaw,
+  rawFor,
+  unitValue,
+  usdFromNumber,
+  usdValue,
+} from './amounts';
 import { type AssetUnits, lookups } from './view';
 
 // The trades that bring a vault back to its targets. Pure: the vault, the targets, the prices and the
 // asset list come in as arguments, and the same inputs give the same trades.
 
 export class RebalanceError extends Error {
-  readonly code: 'AssetNotPriced' | 'BadTargets' | 'BadPolicy';
+  readonly code: 'AssetNotPriced' | 'BadTargets' | 'BadPolicy' | 'BadInput';
   constructor(code: RebalanceError['code'], message: string) {
     super(message);
     this.name = 'RebalanceError';
@@ -15,7 +23,7 @@ export class RebalanceError extends Error {
 }
 
 export type RebalancePolicy = {
-  /** A weight within this many bps of its target is in place. */
+  /** A weight within this many bps of its target is in place. 0 when planning a deposit. */
   bandBps: number;
   /**
    * The dust threshold: no trade worth less than this many dollars. A float, and safe as one: it is a
@@ -23,11 +31,26 @@ export type RebalancePolicy = {
    */
   minTradeUsd: number;
   /**
-   * LOCAL FIELD, not in DESIGN-VAULT 3.6. What a trade is expected to lose, in bps. The buys are sized
-   * as if each sale brought in this much less, so that a batch of sales and buys sent together does
-   * not run out of cash. Default 0: the plan is exact at the given prices.
+   * LOCAL FIELD, not in DESIGN-VAULT 3.6. The most a trade is expected to lose, in bps. The purchases
+   * count on each sale bringing in this much less, so that sales and purchases sent together do not
+   * run out of cash. Default 0: the plan is exact at the given prices.
    */
   costBps?: number;
+};
+
+/** A plan, and what it had to leave out. */
+export type RebalancePlan = {
+  trades: Trade[];
+  /**
+   * Assets that are held or are targets and have no price (or are not on the asset list). None of
+   * them is traded.
+   */
+  unpriced: AssetId[];
+  /**
+   * False when one of the unpriced assets is both held and a target. The vault's value is then
+   * unknown, every weight with it, and no trade is planned.
+   */
+  weighed: boolean;
 };
 
 type Row = {
@@ -41,28 +64,67 @@ type Row = {
 
 const BPS = 10_000n;
 const ceilDiv = (a: bigint, b: bigint) => (a + b - 1n) / b;
+const abs = (n: bigint) => (n < 0n ? -n : n);
 const byValueThenAsset = <T extends { asset: string; value: bigint }>(a: T, b: T) =>
   a.value === b.value ? (a.asset < b.asset ? -1 : 1) : a.value > b.value ? -1 : 1;
 
+function bps(value: unknown, what: string): bigint {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 10_000)
+    throw new RebalanceError('BadPolicy', `${what} is a whole number of bps from 0 to 10,000`);
+  return BigInt(value);
+}
+
 /**
- * The trades that bring `v` to `targets` at `prices`.
+ * The trades that bring `v` to `targets` at `prices`, and what was left out.
  *
- * - Nothing is planned while every asset is within the band of its target. Once one is outside, the
- *   plan brings every asset to its target, so the cash a purchase needs is there.
+ * - Weights are shares of everything the vault holds, cash included. Cash is one dollar, always.
+ * - Nothing is planned while every asset is within the band of its target and the cash is no more
+ *   than the band over its own share. Once something is outside, the plan brings every asset to its
+ *   target, so the cash a purchase needs is there. Cash over its share counts: what a sale leaves
+ *   idle is spent by the next plan.
  * - Sales come first, then purchases, and every trade has the chain's cash token on one side.
- * - A sale is only of an asset above its target and stops at the target; a purchase is only of one
- *   below and stops at the target. Rounding is always on the near side: a trade never goes past.
- * - No trade worth less than `minTradeUsd`. What such a trade would have moved stays where it is.
+ * - A sale is only of an asset above its target and stops at the target or just before; a purchase
+ *   is only of one below and stops at the target or just before. Both keep a margin for what turning
+ *   a value into whole units can lose, so a trade never goes past at the given prices.
+ * - No trade worth less than `minTradeUsd`. And no sale worth less than 1 bp of the vault in an asset
+ *   that has a target: after a sale lands at any cost, the asset sits a hair over its target, and
+ *   selling that hair is a trade a vault refuses.
  * - A position that is held and is not a target is sold whole. Cash keeps what the targets leave of
  *   100%.
- * - Weights are shares of everything the vault holds, cash included.
- * - Every asset that is held or is a target needs a price and its decimals, or the plan is refused
- *   with `AssetNotPriced`: a vault that cannot be valued cannot be weighed.
+ * - An asset with no price is left out and named in `unpriced`. If it is held and is not a target,
+ *   the rest is planned without it. If it is a target and none is held, its share stays in cash. If
+ *   it is both held and a target, the vault cannot be weighed: `weighed` is false and nothing is
+ *   planned, because any plan for the others would be sized on a guess at what it is worth.
  *
- * The amounts are exact at the given prices with no trading cost. A caller that sends one trade at a
- * time plans again from fresh state after each; one that sends several together passes `costBps`.
- * Split the result with `batchTrades` to respect a chain's limit per transaction.
+ * The amounts are exact at the given prices with no trading cost. A keeper sends the first trade and
+ * plans again from fresh state; an owner sending several together passes `costBps`. Split the trades
+ * with `batchTrades` to respect a chain's limit per transaction. `lastKeeperAt` is not read: the
+ * cooldown is the keeper's to apply.
+ *
+ * Throws `RebalanceError`, and nothing else, for input it cannot use: `BadPolicy`, `BadTargets`,
+ * `BadInput` (a price or an amount that is not a plain number, two prices for one asset, cash among
+ * the positions), `AssetNotPriced` (the cash token is not on the asset list).
  */
+export function rebalancePlan(
+  v: VaultState,
+  targets: Target[],
+  prices: readonly Price[],
+  policy: RebalancePolicy,
+  assets: readonly AssetUnits[],
+): RebalancePlan {
+  try {
+    return plan(v, targets, prices, policy, assets);
+  } catch (e) {
+    if (e instanceof BasketInputError)
+      throw new RebalanceError(
+        e.code === 'CashNotListed' ? 'AssetNotPriced' : 'BadInput',
+        e.message,
+      );
+    throw e;
+  }
+}
+
+/** The trades of `rebalancePlan`, as DESIGN-VAULT 3.6 names the function. */
 export function planRebalance(
   v: VaultState,
   targets: Target[],
@@ -70,21 +132,34 @@ export function planRebalance(
   policy: RebalancePolicy,
   assets: readonly AssetUnits[],
 ): Trade[] {
-  const cost = BigInt(policy.costBps ?? 0);
-  if (!Number.isInteger(policy.bandBps) || policy.bandBps < 0 || policy.bandBps > 10_000)
-    throw new RebalanceError('BadPolicy', 'the band is a whole number of bps from 0 to 10,000');
-  if (!Number.isInteger(policy.costBps ?? 0) || cost < 0n || cost > BPS)
-    throw new RebalanceError('BadPolicy', 'the cost is a whole number of bps from 0 to 10,000');
-  const band = BigInt(policy.bandBps);
+  return rebalancePlan(v, targets, prices, policy, assets).trades;
+}
+
+function plan(
+  v: VaultState,
+  targets: Target[],
+  prices: readonly Price[],
+  policy: RebalancePolicy,
+  assets: readonly AssetUnits[],
+): RebalancePlan {
+  const band = bps(policy.bandBps, 'the band');
+  const cost = bps(policy.costBps ?? 0, 'the cost');
+  if (
+    typeof policy.minTradeUsd !== 'number' ||
+    !Number.isFinite(policy.minTradeUsd) ||
+    policy.minTradeUsd < 0
+  )
+    throw new RebalanceError('BadPolicy', 'the dust threshold is a dollar figure of 0 or more');
   const minTrade = usdFromNumber(policy.minTradeUsd);
 
   const cashId = v.cash.asset;
   const { decimalsOf, priceOf } = lookups(prices, assets);
   const cashDecimals = decimalsOf.get(cashId);
   if (cashDecimals === undefined)
-    throw new RebalanceError('AssetNotPriced', `${cashId} is not on the asset list`);
-  const cashPrice = priceOf.get(cashId) ?? ONE_USD;
-  const cashRaw = BigInt(v.cash.raw);
+    throw new BasketInputError('CashNotListed', `${cashId} is not on the asset list`);
+  // Cash is one dollar, as the vaults count it. A price given for it is not read.
+  const cashPrice = ONE_USD;
+  const cashRaw = parseRaw(v.cash.raw);
 
   const targetOf = new Map<string, bigint>();
   for (const t of targets) {
@@ -99,34 +174,63 @@ export function planRebalance(
   if (targetSum > BPS) throw new RebalanceError('BadTargets', 'the targets add up to over 100%');
 
   const held = new Map<string, bigint>();
-  for (const p of v.positions) held.set(p.asset, (held.get(p.asset) ?? 0n) + BigInt(p.raw));
+  for (const p of v.positions) {
+    if (p.asset === cashId)
+      throw new RebalanceError('BadInput', 'the cash token is listed among the positions');
+    held.set(p.asset, (held.get(p.asset) ?? 0n) + parseRaw(p.raw));
+  }
+
   const rows: Row[] = [];
+  const unpriced: AssetId[] = [];
+  let weighed = true;
   for (const asset of new Set([...targetOf.keys(), ...held.keys()])) {
     const raw = held.get(asset) ?? 0n;
     const targetBps = targetOf.get(asset) ?? 0n;
     if (raw === 0n && targetBps === 0n) continue;
     const decimals = decimalsOf.get(asset);
     const price = priceOf.get(asset);
-    if (decimals === undefined || price === undefined)
-      throw new RebalanceError('AssetNotPriced', `${asset} has no price to weigh it by`);
+    if (decimals === undefined || price === undefined) {
+      unpriced.push(asset);
+      if (raw > 0n && targetBps > 0n) weighed = false;
+      continue;
+    }
     rows.push({ asset, raw, decimals, price, value: usdValue(raw, price, decimals), targetBps });
   }
+  unpriced.sort();
+  if (!weighed) return { trades: [], unpriced, weighed };
 
-  const total = rows.reduce((n, r) => n + r.value, usdValue(cashRaw, cashPrice, cashDecimals));
-  if (total === 0n) return [];
-  const abs = (n: bigint) => (n < 0n ? -n : n);
-  const outside = rows.some((r) => abs(r.value * BPS - r.targetBps * total) > band * total);
-  if (!outside) return [];
+  const cashValue = usdValue(cashRaw, cashPrice, cashDecimals);
+  const total = rows.reduce((n, r) => n + r.value, cashValue);
+  if (total === 0n) return { trades: [], unpriced, weighed };
+  // Each value above was rounded down by less than one unit of 1e-18 dollars, so the vault is worth
+  // at least `total` and less than `most`.
+  const most = total + BigInt(rows.length + 1);
+  // What stays in cash: what the targets leave of 100%, and the share of a target that has no price.
+  const cashShare = BPS - rows.reduce((n, r) => n + r.targetBps, 0n);
 
-  // Sales: down to the target, rounded so that what is kept is never under it.
+  const outside =
+    rows.some((r) => abs(r.value * BPS - r.targetBps * total) > band * total) ||
+    cashValue * BPS - cashShare * total > band * total;
+  if (!outside) return { trades: [], unpriced, weighed };
+
+  // Sales: down to the target, keeping a hair over it so that rounding never leaves the asset under.
   const sales: { asset: string; value: bigint; raw: bigint; proceedsRaw: bigint }[] = [];
   for (const r of rows) {
     if (r.value * BPS <= r.targetBps * total) continue;
-    const keep = ceilDiv(r.targetBps * total, BPS);
-    const raw = r.targetBps === 0n ? r.raw : rawFor(r.value - keep, r.price, r.decimals);
+    const keep = ceilDiv(r.targetBps * most, BPS) + 1n;
+    const raw =
+      r.targetBps === 0n
+        ? r.raw
+        : r.value > keep
+          ? rawFor(r.value - keep, r.price, r.decimals)
+          : 0n;
     const value = usdValue(raw, r.price, r.decimals);
-    const proceedsRaw = rawFor((value * (BPS - cost)) / BPS, cashPrice, cashDecimals);
-    if (raw === 0n || proceedsRaw === 0n || value < minTrade) continue;
+    if (raw === 0n || value < minTrade) continue;
+    // Under 1 bp of the vault: the hair a sale leaves behind, not a position to sell.
+    if (r.targetBps > 0n && value * BPS < total) continue;
+    // As a pool pays: whole cash units first, then the cost off them.
+    const proceedsRaw = (rawFor(value, cashPrice, cashDecimals) * (BPS - cost)) / BPS;
+    if (proceedsRaw === 0n) continue;
     sales.push({ asset: r.asset, value, raw, proceedsRaw });
   }
   sales.sort(byValueThenAsset);
@@ -143,10 +247,9 @@ export function planRebalance(
     .map((r) => ({ asset: r.asset, row: r, value: (r.targetBps * least) / BPS - r.value - 1n }))
     .filter((w) => w.value > 0n && w.value >= minTrade);
 
-  // What there is to spend: the cash held and what the sales bring in, less the cash the targets
-  // leave uninvested.
+  // What there is to spend: the cash held and what the sales bring in, less the cash's own share.
   const reserveRaw = ceilDiv(
-    ceilDiv((BPS - targetSum) * total, BPS) * 10n ** BigInt(cashDecimals),
+    ceilDiv(cashShare * most, BPS) * 10n ** BigInt(cashDecimals),
     cashPrice,
   );
   const haveRaw = sales.reduce((n, s) => n + s.proceedsRaw, cashRaw);
@@ -167,12 +270,13 @@ export function planRebalance(
   for (const w of wanted) {
     let amountIn = rawFor(w.value, cashPrice, cashDecimals);
     if (amountIn > budgetRaw) amountIn = budgetRaw;
-    const bought = rawFor(usdValue(amountIn, cashPrice, cashDecimals), w.row.price, w.row.decimals);
-    if (amountIn === 0n || bought === 0n) continue;
+    const spent = usdValue(amountIn, cashPrice, cashDecimals);
+    const bought = rawFor(spent, w.row.price, w.row.decimals);
+    if (amountIn === 0n || bought === 0n || spent < minTrade) continue;
     budgetRaw -= amountIn;
     trades.push({ sell: cashId, buy: w.asset, amountInRaw: amountIn.toString() });
   }
-  return trades;
+  return { trades, unpriced, weighed };
 }
 
 /**

@@ -2,7 +2,7 @@ import { type Price, type Target, Trade, type VaultState } from '@colosseum/sche
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { parseDecimal } from './amounts';
-import { batchTrades, planRebalance, RebalanceError } from './plan-rebalance';
+import { batchTrades, planRebalance, RebalanceError, rebalancePlan } from './plan-rebalance';
 import { asset, price, vault } from './testing';
 import type { AssetUnits } from './view';
 
@@ -32,6 +32,11 @@ const code = (work: () => unknown) => {
   }
   return 'did not throw';
 };
+/** A trade stops a hair before the exact amount: a few raw units of margin, never one past. */
+const justUnder = (amountInRaw: string | undefined, exact: bigint, margin = 3n) => {
+  const amount = BigInt(amountInRaw ?? -1);
+  return amount <= exact && amount >= exact - margin;
+};
 
 describe('planRebalance', () => {
   it('sells what is over its target, then buys what is under, through cash', () => {
@@ -48,8 +53,9 @@ describe('planRebalance', () => {
       ASSETS,
     );
     expect(plan).toHaveLength(2);
-    // SPY is $100 over: one whole token, 8 decimals.
-    expect(plan[0]).toEqual({ sell: 'solana:spy', buy: CASH, amountInRaw: '100000000' });
+    // SPY is $100 over: one whole token, 8 decimals, less a hair so it is never sold past its target.
+    expect(plan[0]).toMatchObject({ sell: 'solana:spy', buy: CASH });
+    expect(justUnder(plan[0]?.amountInRaw, 100_000_000n)).toBe(true);
     // Gold is $200 under, paid from the $100 held and the $100 the sale brings. A hair under $200,
     // so that rounding can never carry it past its target.
     expect(plan[1]).toMatchObject({ sell: CASH, buy: 'solana:gold' });
@@ -74,7 +80,7 @@ describe('planRebalance', () => {
       [CASH, 'solana:nvda'],
     ]);
     // $5.10 of SPY at $100.
-    expect(plan[0]?.amountInRaw).toBe('5100000');
+    expect(justUnder(plan[0]?.amountInRaw, 5_100_000n)).toBe(true);
   });
 
   it('invests a fresh deposit in the proportions of the targets', () => {
@@ -139,7 +145,8 @@ describe('planRebalance', () => {
     );
     // $20 in all: SPY $12 against $10 (sell $2); NVDA $3.50 against $5 (buy $1.50, less a hair:
     // dust); gold $4.50 against $5 (dust).
-    expect(plan).toEqual([{ sell: 'solana:spy', buy: CASH, amountInRaw: '2000000' }]);
+    expect(plan.map((x) => [x.sell, x.buy])).toEqual([['solana:spy', CASH]]);
+    expect(justUnder(plan[0]?.amountInRaw, 2_000_000n)).toBe(true);
   });
 
   it('sizes the purchases for what the sales are expected to bring when given a cost', () => {
@@ -149,28 +156,121 @@ describe('planRebalance', () => {
     const careful = planRebalance(v, t, PRICES, { ...POLICY, costBps: 100 }, ASSETS);
     expect(exact[0]).toEqual(careful[0]);
     // $500 of SPY sold; at 1% the purchase counts on $495.
-    expect(BigInt(careful[1]?.amountInRaw ?? 0)).toBe(495_000_000n);
+    expect(justUnder(careful[1]?.amountInRaw, 495_000_000n)).toBe(true);
     expect(BigInt(exact[1]?.amountInRaw ?? 0) > 499_999_990n).toBe(true);
   });
 
-  it('refuses a vault it cannot weigh, and targets that make no sense', () => {
+  it('leaves out an asset with no price, says so, and plans the rest', () => {
+    // SPY and NVDA are targets; NVDA has no price and none is held: its half stays in cash.
     const v = vault('1000000000', { 'solana:spy': ['100000000', 5000] });
     const t = targets({ spy: 5000, nvda: 5000 });
     const noNvda = PRICES.filter((p) => p.asset !== 'solana:nvda');
-    expect(code(() => planRebalance(v, t, noNvda, POLICY, ASSETS))).toBe('AssetNotPriced');
-    const zero = [...noNvda, price('solana:nvda', '0')];
-    expect(code(() => planRebalance(v, t, zero, POLICY, ASSETS))).toBe('AssetNotPriced');
-    const unlisted = ASSETS.filter((a) => a.id !== 'solana:nvda');
-    expect(code(() => planRebalance(v, t, PRICES, POLICY, unlisted))).toBe('AssetNotPriced');
-    expect(code(() => planRebalance(v, t, PRICES, POLICY, []))).toBe('AssetNotPriced');
-    const plan = (list: Target[]) => () => planRebalance(v, list, PRICES, POLICY, ASSETS);
-    expect(code(plan([{ asset: CASH, weightBps: 10_000 }]))).toBe('BadTargets');
-    expect(code(plan(targets({ spy: 6000, nvda: 5000 })))).toBe('BadTargets');
-    expect(code(plan([...targets({ spy: 5000 }), ...targets({ spy: 5000 })]))).toBe('BadTargets');
-    expect(code(plan(targets({ spy: 50.5, nvda: 5000 })))).toBe('BadTargets');
-    expect(code(() => planRebalance(v, t, PRICES, { bandBps: -1, minTradeUsd: 1 }, ASSETS))).toBe(
-      'BadPolicy',
+    for (const [prices, assets] of [
+      [noNvda, ASSETS],
+      // A price of zero is no price, and so is an asset that is not on the list.
+      [[...noNvda, price('solana:nvda', '0')], ASSETS],
+      [PRICES, ASSETS.filter((a) => a.id !== 'solana:nvda')],
+    ] as const) {
+      const plan = rebalancePlan(v, t, [...prices], POLICY, assets);
+      expect(plan.unpriced).toEqual(['solana:nvda']);
+      expect(plan.weighed).toBe(true);
+      // $1,100 in all: SPY goes from $100 to $550, and $550 stays for NVDA.
+      expect(plan.trades.map((x) => [x.sell, x.buy])).toEqual([[CASH, 'solana:spy']]);
+      expect(justUnder(plan.trades[0]?.amountInRaw, 450_000_000n)).toBe(true);
+    }
+
+    // A position that is held, is not a target and has no price (a delisted token): the rest is
+    // planned as if it were not there.
+    const old = vault('1000000000', { 'solana:old': ['5', 0] });
+    const rest = rebalancePlan(old, t, PRICES, POLICY, [...ASSETS, asset('solana:old')]);
+    expect(rest.unpriced).toEqual(['solana:old']);
+    expect(rest.trades.map((x) => x.buy)).toEqual(['solana:nvda', 'solana:spy']);
+
+    // Held and a target, with no price: the vault cannot be weighed, so nothing is planned.
+    const blind = vault('500000000', {
+      'solana:spy': ['500000000', 5000],
+      'solana:nvda': ['1000000000', 5000],
+    });
+    expect(rebalancePlan(blind, t, noNvda, POLICY, ASSETS)).toEqual({
+      trades: [],
+      unpriced: ['solana:nvda'],
+      weighed: false,
+    });
+    expect(planRebalance(blind, t, noNvda, POLICY, ASSETS)).toEqual([]);
+    // With every price there, nothing is left out.
+    expect(rebalancePlan(blind, t, PRICES, POLICY, ASSETS)).toMatchObject({
+      unpriced: [],
+      weighed: true,
+    });
+  });
+
+  it('counts cash as one dollar, whatever price it is handed for it', () => {
+    const v = vault('1000000000', {});
+    const t = targets({ spy: 5000, nvda: 5000 });
+    const plain = planRebalance(v, t, PRICES, POLICY, ASSETS);
+    for (const feed of ['0.9991', '1.0004', '0.5'])
+      expect(planRebalance(v, t, [...PRICES, price(CASH, feed)], POLICY, ASSETS)).toEqual(plain);
+  });
+
+  it('refuses input it cannot use as a RebalanceError, never as another kind of error', () => {
+    const v = vault('1000000000', { 'solana:spy': ['100000000', 5000] });
+    const t = targets({ spy: 5000, nvda: 5000 });
+    const run = (
+      over: {
+        vault?: typeof v;
+        targets?: Target[];
+        prices?: Price[];
+        policy?: object;
+        assets?: AssetUnits[];
+      } = {},
+    ) =>
+      code(() =>
+        planRebalance(
+          over.vault ?? v,
+          over.targets ?? t,
+          over.prices ?? PRICES,
+          (over.policy ?? POLICY) as typeof POLICY,
+          over.assets ?? ASSETS,
+        ),
+      );
+    expect(run()).toBe('did not throw');
+
+    // The cash token off the asset list.
+    expect(run({ assets: [] })).toBe('AssetNotPriced');
+
+    expect(run({ targets: [{ asset: CASH, weightBps: 10_000 }] })).toBe('BadTargets');
+    expect(run({ targets: targets({ spy: 6000, nvda: 5000 }) })).toBe('BadTargets');
+    expect(run({ targets: [...targets({ spy: 5000 }), ...targets({ spy: 5000 })] })).toBe(
+      'BadTargets',
     );
+    expect(run({ targets: targets({ spy: 50.5, nvda: 5000 }) })).toBe('BadTargets');
+
+    for (const policy of [
+      { bandBps: -1, minTradeUsd: 1 },
+      { bandBps: 0.5, minTradeUsd: 1 },
+      { bandBps: Number.NaN, minTradeUsd: 1 },
+      { bandBps: 50, minTradeUsd: Number.NaN },
+      { bandBps: 50, minTradeUsd: -1 },
+      { bandBps: 50, minTradeUsd: Number.POSITIVE_INFINITY },
+      { bandBps: 50, minTradeUsd: 1, costBps: 1.5 },
+      { bandBps: 50, minTradeUsd: 1, costBps: Number.NaN },
+      { bandBps: 50, minTradeUsd: 1, costBps: 10_001 },
+      { bandBps: '50', minTradeUsd: 1 },
+    ])
+      expect(run({ policy }), JSON.stringify(policy)).toBe('BadPolicy');
+
+    const spy = (usd: string) => [price('solana:spy', usd), price('solana:nvda', '50')];
+    for (const bad of ['1e-7', '0x10', '1.2.3', '', ' 100', '100 ', '-5', '.5', '1e3', '0100'])
+      expect(run({ prices: spy(bad) }), `price "${bad}"`).toBe('BadInput');
+    // Two prices for one asset, even the same one twice.
+    expect(run({ prices: [...PRICES, price('solana:spy', '100')] })).toBe('BadInput');
+
+    for (const raw of ['', '1.5', '-5', '0x10', '1e3', ' 7'])
+      expect(run({ vault: vault(raw, {}) }), `cash "${raw}"`).toBe('BadInput');
+    expect(run({ vault: vault('1', { 'solana:spy': ['', 5000] }) })).toBe('BadInput');
+    expect(run({ vault: vault('1', { [CASH]: ['5', 0] }) })).toBe('BadInput');
+    expect(run({ assets: [USDC, asset('solana:spy', { decimals: 2.5 })] })).toBe('BadInput');
+
     // An empty vault has nothing to trade.
     expect(planRebalance(vault('0', {}), t, PRICES, POLICY, ASSETS)).toEqual([]);
   });
@@ -312,7 +412,8 @@ type World = {
 function model(w: World) {
   const decimals = new Map(w.assets.map((a) => [a.id, a.decimals]));
   const priceOf = new Map(w.prices.map((p) => [p.asset, parseDecimal(p.usdPerToken)]));
-  const cashPrice = priceOf.get(CASH) ?? 10n ** 18n;
+  // Cash is one dollar whatever the prices say.
+  const cashPrice = 10n ** 18n;
   /** What one raw unit is worth, in 1e-36 dollars. */
   const unit = (id: string) =>
     (id === CASH ? cashPrice : (priceOf.get(id) ?? 0n)) *
@@ -328,7 +429,16 @@ function model(w: World) {
   /** Positive when the asset is over its target, in 1e-36 dollar-bps. */
   const over = (id: string) => worth(id) * 10_000n - (target.get(id) ?? 0n) * total();
   const ids = () => [...new Set([...book.held.keys(), ...target.keys()])];
-  return { book, unit, total, over, ids, worth };
+  const cashShare = 10_000n - [...target.values()].reduce((n, t) => n + t, 0n);
+  /** Positive when there is more cash than the targets leave for it. */
+  const cashOver = () => book.cash * unit(CASH) * 10_000n - cashShare * total();
+  /** What is outside the band: an asset either way, or the cash over its share. */
+  const outside = (bandBps: number) => {
+    const band = BigInt(bandBps) * total();
+    const out = ids().filter((id) => (over(id) < 0n ? -over(id) : over(id)) > band);
+    return cashOver() > band ? [...out, CASH] : out;
+  };
+  return { book, unit, total, over, ids, worth, cashOver, outside };
 }
 
 function apply(w: World, trades: Trade[]) {
@@ -447,20 +557,14 @@ describe('planRebalance, on generated vaults', { timeout: 60_000 }, () => {
     fc.assert(
       fc.property(world(fc.constant(0)).filter(large), (w) => {
         const before = model(w);
-        const band = BigInt(w.policy.bandBps);
-        const outside = (m: ReturnType<typeof model>) =>
-          m.ids().filter((id) => {
-            const gap = m.over(id);
-            return (gap < 0n ? -gap : gap) > band * m.total();
-          });
         const trades = plan(w);
-        if (outside(before).length === 0) {
+        if (before.outside(w.policy.bandBps).length === 0) {
           expect(trades).toEqual([]);
           return;
         }
         rebalanced += 1;
         expect(trades.length).toBeGreaterThan(0);
-        expect(outside(apply(w, trades))).toEqual([]);
+        expect(apply(w, trades).outside(w.policy.bandBps)).toEqual([]);
       }),
       { numRuns: 3000 },
     );
@@ -480,6 +584,61 @@ describe('planRebalance, on generated vaults', { timeout: 60_000 }, () => {
         for (const id of after.ids()) {
           const gap = after.over(id);
           expect((gap < 0n ? -gap : gap) <= allowed, id).toBe(true);
+        }
+      }),
+      { numRuns: 3000 },
+    );
+  });
+
+  it('with a cost, a batch sent together has the cash for every purchase', () => {
+    let batches = 0;
+    fc.assert(
+      fc.property(
+        world(fc.constantFrom(0, 1)),
+        fc.constantFrom(1, 10, 75, 125, 300),
+        (w, costBps) => {
+          const trades = planRebalance(
+            w.v,
+            w.targets,
+            w.prices,
+            { ...w.policy, costBps },
+            w.assets,
+          );
+          // Every trade loses exactly the cost, taken as a pool takes it: off the whole units paid.
+          const m = model(w);
+          const keep = 10_000n - BigInt(costBps);
+          for (const t of trades) {
+            const amount = BigInt(t.amountInRaw);
+            if (t.buy === CASH) {
+              m.book.held.set(t.sell, (m.book.held.get(t.sell) ?? 0n) - amount);
+              m.book.cash += (((amount * m.unit(t.sell)) / m.unit(CASH)) * keep) / 10_000n;
+              expect(m.over(t.sell) >= 0n, `${t.sell} is not sold past its target`).toBe(true);
+            } else {
+              expect(m.book.cash >= amount, `short by ${amount - m.book.cash}`).toBe(true);
+              m.book.cash -= amount;
+              const bought = (((amount * m.unit(CASH)) / m.unit(t.buy)) * keep) / 10_000n;
+              m.book.held.set(t.buy, (m.book.held.get(t.buy) ?? 0n) + bought);
+            }
+          }
+          if (trades.some((t) => t.buy === CASH) && trades.some((t) => t.sell === CASH))
+            batches += 1;
+        },
+      ),
+      { numRuns: 3000 },
+    );
+    expect(batches).toBeGreaterThan(1000);
+  });
+
+  it('never plans a sale worth under 1 bp of the vault in an asset that has a target', () => {
+    fc.assert(
+      fc.property(world(fc.constantFrom(0, 1)), (w) => {
+        const m = model(w);
+        const targeted = new Set(w.targets.map((t) => t.asset));
+        for (const t of plan(w)) {
+          if (t.buy !== CASH || !targeted.has(t.sell)) continue;
+          expect(BigInt(t.amountInRaw) * m.unit(t.sell) * 10_000n >= m.total() - 10n ** 20n).toBe(
+            true,
+          );
         }
       }),
       { numRuns: 3000 },

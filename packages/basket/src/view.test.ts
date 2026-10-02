@@ -1,7 +1,7 @@
 import { VaultView } from '@colosseum/schemas';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { formatDecimal, parseDecimal } from './amounts';
+import { BasketInputError, formatDecimal, parseDecimal } from './amounts';
 import { asset, price, vault } from './testing';
 import { measureVault, view } from './view';
 
@@ -51,14 +51,46 @@ describe('view', () => {
     ]);
   });
 
-  it('uses a price for cash when one is given, and one dollar when not', () => {
+  it('counts cash as one dollar, whatever price it is handed for it', () => {
+    // The vaults count cash as $1 (DESIGN-VAULT section 5), so a weight here is the weight they check.
     const v = vault('1000000000', { 'solana:spy': ['1000000000', 5000] });
     const spy = price('solana:spy', '100');
-    expect(view(v, [spy], ASSETS).valueUsd).toBe('2000');
-    const off = view(v, [spy, price('solana:usdc', '0.998')], ASSETS);
-    expect(off.valueUsd).toBe('1998');
-    // 1000 of 1998 is 50.05%: 5005 bps.
-    expect(off.positions[0]?.weightBps).toBe(5005);
+    const plain = view(v, [spy], ASSETS);
+    expect(plain.valueUsd).toBe('2000');
+    expect(plain.positions[0]?.weightBps).toBe(5000);
+    for (const feed of ['0.998', '1.0004', '0.5'])
+      expect(view(v, [spy, price('solana:usdc', feed)], ASSETS)).toEqual(plain);
+  });
+
+  it('refuses numbers that are not plain numbers, and two prices for one asset', () => {
+    const v = vault('500000000', { 'solana:spy': ['500000000', 5000] });
+    const reason = (work: () => unknown) => {
+      try {
+        work();
+      } catch (e) {
+        return e instanceof BasketInputError ? e.code : `not a BasketInputError: ${e}`;
+      }
+      return 'did not throw';
+    };
+    for (const bad of ['1e-7', '0x10', '1.2.3', '', ' 100', '-1.5', '.5', '1E3', '00.5'])
+      expect(
+        reason(() => view(v, [price('solana:spy', bad)], ASSETS)),
+        `"${bad}"`,
+      ).toBe('BadDecimal');
+    expect(reason(() => parseDecimal('0x10'))).toBe('BadDecimal');
+    expect(parseDecimal('16')).toBe(16n * 10n ** 18n);
+    expect(parseDecimal('0.000000000000000001234')).toBe(1n);
+    for (const raw of ['', '1.5', '-5', '0x10', '1e3', ' 7'])
+      expect(
+        reason(() => view(vault(raw, {}), [], ASSETS)),
+        `"${raw}"`,
+      ).toBe('BadAmount');
+    expect(reason(() => view(vault('1', { 'solana:spy': ['', 0] }), [], ASSETS))).toBe('BadAmount');
+    const twice = [price('solana:spy', '100'), price('solana:spy', '50')];
+    expect(reason(() => view(v, twice, ASSETS))).toBe('DuplicatePrice');
+    const bent = [USDC, asset('solana:spy', { decimals: 2.5 })];
+    expect(reason(() => view(v, [price('solana:spy', '100')], bent))).toBe('BadDecimals');
+    expect(reason(() => view(v, [price('solana:spy', '100')], [SPY]))).toBe('CashNotListed');
   });
 
   it('shows a position with no price as not valued, never as zero dollars', () => {

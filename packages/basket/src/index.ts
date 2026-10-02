@@ -1,4 +1,4 @@
-export { apportion, formatDecimal, parseDecimal } from './amounts';
+export { apportion, BasketInputError, formatDecimal, parseDecimal } from './amounts';
 export * from './creator-limits';
 export * from './flatten';
 export * from './meta-hash';
