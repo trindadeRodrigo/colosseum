@@ -264,21 +264,24 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
     };
   }
 
-  /** The assets a vault holds a balance for: cash first, then its positions in the program's order. */
+  /**
+   * The assets whose token accounts a vault is read for: cash, then its targets in the program's
+   * order, then every other listed asset. A token the vault holds without a target on it (sent in from
+   * outside, or left over when the targets changed) is still the owner's to see and to withdraw.
+   */
   function vaultAssets(address: Address, vault: VaultAccount): BasketAsset[] {
     if (!cash) return refuse('Unknown', 'no cash token');
-    return [
-      cash,
-      ...vault.positions.map((p) => {
-        const asset = byMint.get(p.mint);
-        if (!asset || asset.id === cash.id)
-          return refuse(
-            'MintNotAccepted',
-            `vault ${address} has a target on ${p.mint}, which is ${asset ? 'the cash token' : 'not a listed asset'}`,
-          );
-        return asset;
-      }),
-    ];
+    const targets = vault.positions.map((p) => {
+      const asset = byMint.get(p.mint);
+      if (!asset || asset.id === cash.id)
+        return refuse(
+          'MintNotAccepted',
+          `vault ${address} has a target on ${p.mint}, which is ${asset ? 'the cash token' : 'not a listed asset'}`,
+        );
+      return asset;
+    });
+    const others = assets.filter((a) => a.id !== cash.id && !targets.includes(a));
+    return [cash, ...targets, ...others];
   }
 
   function vaultState(
@@ -288,8 +291,10 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
     snap: Snapshot,
     observedAt: string,
   ): VaultState {
-    const [cashHolding, ...positions] = held;
+    const [cashHolding, ...rest] = held;
     if (!cashHolding) return refuse('Unknown', 'no cash holding');
+    const targets = rest.slice(0, vault.positions.length);
+    const others = rest.slice(vault.positions.length).filter((h) => h.raw !== '0');
     // The registry is not on chain until SOL-2: what is pending for a follower cannot be read yet.
     if (vault.recipe !== ZERO_ADDRESS)
       refuse(
@@ -309,15 +314,19 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
       autoFollow: vault.autoFollow,
       keeper: vault.keeper === ZERO_ADDRESS ? snap.onchain.defaultKeeper : vault.keeper,
       cash: cashHolding,
-      positions: vault.positions.map((p, i) => {
-        const h = positions[i];
-        if (!h) return refuse('Unknown', 'a position has no holding');
-        return {
-          ...h,
-          targetBps: p.targetBps,
-          lastKeeperAt: p.lastKeeperTs > 0n ? Number(p.lastKeeperTs) : null,
-        };
-      }),
+      positions: [
+        ...vault.positions.map((p, i) => {
+          const h = targets[i];
+          if (!h) return refuse('Unknown', 'a position has no holding');
+          return {
+            ...h,
+            targetBps: p.targetBps,
+            lastKeeperAt: p.lastKeeperTs > 0n ? Number(p.lastKeeperTs) : null,
+          };
+        }),
+        // Held with no target: the weight it should have is zero.
+        ...others.map((h) => ({ ...h, targetBps: 0, lastKeeperAt: null })),
+      ],
       lossUsedBps: 0,
       observedAt,
       pending: null,

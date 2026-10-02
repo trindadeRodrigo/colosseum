@@ -180,11 +180,14 @@ export function readCases(name: string, setup: () => Promise<ReadSetup>): void {
     it('stores the targets the owner set, on listed assets, never on cash', async () => {
       const { expected } = s.world;
       for (const vault of ['following', 'manual', 'partial', 'others'] as const) {
+        const { targets } = expected.vaults[vault];
         const state = await vaultOf(vault);
-        expect(state.positions.map((p) => [p.asset, p.targetBps])).toEqual(
-          expected.vaults[vault].targets.map((t) => [assetId(t.mint), t.targetBps]),
+        // The targets come first, in the program's order.
+        expect(state.positions.slice(0, targets.length).map((p) => [p.asset, p.targetBps])).toEqual(
+          targets.map((t) => [assetId(t.mint), t.targetBps]),
         );
         expect(state.cash.asset).toBe(assetId('usdc'));
+        expect(new Set(state.positions.map((p) => p.asset)).size).toBe(state.positions.length);
         for (const p of state.positions) {
           expect(p.asset).not.toBe(assetId('usdc'));
           expect(p.lastKeeperAt).toBeNull();
@@ -203,9 +206,14 @@ export function readCases(name: string, setup: () => Promise<ReadSetup>): void {
         const want = expected.vaults[vault];
         const state = await vaultOf(vault);
         expect(state.cash.raw).toBe(want.held.usdc);
-        expect(Object.fromEntries(state.positions.map((p) => [p.asset, p.raw]))).toEqual(
-          Object.fromEntries(want.targets.map((t) => [assetId(t.mint), want.held[t.mint] ?? '0'])),
-        );
+        // Every target, at zero when the vault holds none of it, and whatever else it holds.
+        const { usdc: _, ...assetsHeld } = want.held;
+        expect(Object.fromEntries(state.positions.map((p) => [p.asset, p.raw]))).toEqual({
+          ...Object.fromEntries(want.targets.map((t) => [assetId(t.mint), '0'])),
+          ...Object.fromEntries(
+            Object.entries(assetsHeld).map(([mint, raw]) => [assetId(mint as MintName), raw]),
+          ),
+        });
       }
       // The program's own record of SPYx is out of date in this world, and is not what is reported.
       const { held, tracked } = expected.vaults.following;
@@ -218,6 +226,23 @@ export function readCases(name: string, setup: () => Promise<ReadSetup>): void {
       );
       expect(new Set(programs)).toEqual(new Set(['token', 'token-2022']));
       expect(following.positions.find((p) => p.asset === assetId('nvdax'))?.raw).toBe('0');
+    });
+
+    it('lists a token the vault holds with no target on it, at a target of zero', async () => {
+      const { expected } = s.world;
+      const want = expected.vaults.manual;
+      expect(want.targets.map((t) => t.mint)).not.toContain('tslax');
+      const manual = await vaultOf('manual');
+      expect(manual.positions.at(-1)).toMatchObject({
+        asset: assetId('tslax'),
+        raw: want.held.tslax,
+        targetBps: 0,
+        lastKeeperAt: null,
+      });
+      expect(manual.positions).toHaveLength(want.targets.length + 1);
+      // A listed asset the vault neither targets nor holds is not a position.
+      expect(manual.positions.map((p) => p.asset)).not.toContain(assetId('nvdax'));
+      expect((await vaultOf('others')).positions).toHaveLength(1);
     });
 
     it("shows each holding as raw × multiplier / 10^decimals, with the mint's own multiplier", async () => {

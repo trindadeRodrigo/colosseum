@@ -276,6 +276,8 @@ export async function buildWorld(
     }),
   ]);
   await mintTo(ledger, deployer, mints.spyx, vaults.following, 30_000_000n);
+  // A listed token sent to a vault that has no target on it: still the owner's to see and withdraw.
+  await mintTo(ledger, deployer, mints.tslax, vaults.manual, 40_000_000n);
 
   const stockMint = { tokenProgram: 'token-2022', decimals: 8, scheduled: null } as const;
   const classic = { multiplier: null, scheduled: null } as const;
@@ -326,7 +328,7 @@ export async function buildWorld(
           basketId: '2',
           autoFollow: false,
           targets: targets.manual,
-          held: { usdc: usdc(500n).toString() },
+          held: { usdc: usdc(500n).toString(), tslax: '40000000' },
           tracked: { spyx: '0', gold: '0' },
         },
         partial: {
