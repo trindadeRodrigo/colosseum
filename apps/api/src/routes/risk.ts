@@ -5,6 +5,8 @@ import {
   riskAssetSnapshots,
   riskDepthCurves,
   riskEvents,
+  riskLendingCoverage,
+  riskLendingFacts,
   riskLpConcentration,
   riskMarketParams,
   riskPoolSnapshots,
@@ -27,12 +29,13 @@ import {
   regimesIn,
   weekendRatio,
 } from '@colosseum/risk';
-import { AssetFacts, DISCLAIMER } from '@colosseum/schemas';
+import { AssetFacts, DISCLAIMER, LendingPoolFacts, PlanFacts } from '@colosseum/schemas';
 import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { loadAssetFacts } from '../facts';
+import { loadAssetFacts, loadPlanFacts } from '../facts';
+import { FACTS_METHODOLOGY } from '../facts-methodology';
 
 /**
  * Liquidity & risk API (`/risk/*`). Mounted by apps/api and, alone, by apps/risk-api. Every number carries
@@ -190,6 +193,177 @@ export async function registerRiskRoutes(app: FastifyInstance) {
       const sheet = await loadAssetFacts(db, req.params.id, req.query);
       if (!sheet) return reply.code(404).send({ error: `unknown asset ${req.params.id}` });
       return { ...sheet, disclaimer: DISCLAIMER.en };
+    },
+  );
+
+  // PLAN-ANALYTICS item 11: the lending and plan fact sheets, and liquidation coverage under both definitions.
+  const latestReportAt = async () => {
+    const [r] = await db
+      .select({ t: riskLendingFacts.reportAt })
+      .from(riskLendingFacts)
+      .orderBy(desc(riskLendingFacts.reportAt))
+      .limit(1);
+    return r?.t ?? null;
+  };
+  f.get(
+    '/risk/facts/methodology',
+    {
+      schema: {
+        summary: 'How every number in the fact sheets is computed (facts-0.1), as markdown',
+        response: {
+          200: z.object({
+            methodVersion: z.string(),
+            markdown: z.string(),
+            disclaimer: z.string(),
+          }),
+        },
+      },
+    },
+    async () => ({
+      methodVersion: 'facts-0.1',
+      markdown: FACTS_METHODOLOGY,
+      disclaimer: DISCLAIMER.en,
+    }),
+  );
+
+  f.get(
+    '/risk/facts/lending',
+    {
+      schema: {
+        summary: 'The lending pools that have a fact sheet, from the latest lending report',
+        response: {
+          200: z.object({
+            reportAt: z.string().nullable(),
+            pools: z.array(
+              z.object({
+                account: z.string(),
+                venue: z.string(),
+                market: z.string(),
+                symbol: z.string(),
+              }),
+            ),
+            disclaimer: z.string(),
+          }),
+        },
+      },
+    },
+    async () => {
+      const at = await latestReportAt();
+      const pools = at
+        ? await db
+            .select({
+              account: riskLendingFacts.account,
+              venue: riskLendingFacts.venue,
+              market: riskLendingFacts.market,
+              symbol: riskLendingFacts.symbol,
+            })
+            .from(riskLendingFacts)
+            .where(eq(riskLendingFacts.reportAt, at))
+        : [];
+      return { reportAt: at?.toISOString() ?? null, pools, disclaimer: DISCLAIMER.en };
+    },
+  );
+
+  f.get(
+    '/risk/facts/lending/:account',
+    {
+      schema: {
+        summary:
+          'Fact sheet for one lending pool: what a lender can withdraw, rates, lender concentration, collateral coverage by price gap, liquidation routes, history. Null facts carry their reason',
+        params: z.object({ account: z.string() }),
+        response: {
+          200: LendingPoolFacts.extend({ reportAt: z.string(), disclaimer: z.string() }),
+          404: z.object({ error: z.string() }),
+        },
+      },
+    },
+    async (req, reply) => {
+      const [row] = await db
+        .select()
+        .from(riskLendingFacts)
+        .where(eq(riskLendingFacts.account, req.params.account))
+        .orderBy(desc(riskLendingFacts.reportAt))
+        .limit(1);
+      if (!row) return reply.code(404).send({ error: `no fact sheet for ${req.params.account}` });
+      return {
+        ...(row.sheet as LendingPoolFacts),
+        reportAt: row.reportAt.toISOString(),
+        disclaimer: DISCLAIMER.en,
+      };
+    },
+  );
+
+  f.post(
+    '/risk/facts/plan',
+    {
+      schema: {
+        summary:
+          'Fact sheet for a set of positions: concentration, exit cost in one regime, round trip, stress cases, and the breach assessment when withdrawals are given. No probability of reaching a goal',
+        body: z.object({
+          positions: z
+            .array(z.object({ assetId: z.string().min(1), valueUsd: z.number().nonnegative() }))
+            .min(1)
+            .max(ASSESS_MAX_LEGS),
+          withdrawals: z
+            .array(z.object({ at: z.string().datetime(), usd: z.number().positive() }))
+            .max(ASSESS_MAX_WITHDRAWALS)
+            .optional(),
+          windowDays: z.number().int().min(0).max(365).optional(),
+        }),
+        response: { 200: PlanFacts.extend({ disclaimer: z.string() }) },
+      },
+    },
+    async (req) => {
+      const sheet = await loadPlanFacts(db, req.body.positions, {
+        withdrawals: req.body.withdrawals,
+        windowDays: req.body.windowDays,
+      });
+      return { ...sheet, disclaimer: DISCLAIMER.en };
+    },
+  );
+
+  f.get(
+    '/risk/lending/coverage',
+    {
+      schema: {
+        summary:
+          "Liquidation coverage by price gap and collateral asset, from the latest lending report: the earlier ratio (sale cost at most the bonus) beside the ratio on the liquidator's margin",
+        querystring: z.object({
+          asset: z.string().optional(),
+          gapPct: z.coerce.number().positive().optional(),
+        }),
+        response: { 200: z.any() },
+      },
+    },
+    async (req) => {
+      const [r] = await db
+        .select({ t: riskLendingCoverage.reportAt })
+        .from(riskLendingCoverage)
+        .orderBy(desc(riskLendingCoverage.reportAt))
+        .limit(1);
+      if (!r) return { reportAt: null, rows: [], disclaimer: DISCLAIMER.en };
+      const rows = await db
+        .select()
+        .from(riskLendingCoverage)
+        .where(
+          and(
+            eq(riskLendingCoverage.reportAt, r.t),
+            req.query.asset ? eq(riskLendingCoverage.asset, req.query.asset) : undefined,
+            req.query.gapPct ? eq(riskLendingCoverage.gapPct, req.query.gapPct) : undefined,
+          ),
+        )
+        .orderBy(riskLendingCoverage.gapPct, riskLendingCoverage.asset);
+      return {
+        reportAt: r.t.toISOString(),
+        definitions: {
+          earlier:
+            'capacity at sale cost at most the bonus at the threshold, worst measured regime',
+          margin:
+            "capacity at liquidator margin at least 0 on the routed sale, at each regime's oracle gap; regimes without a curve or oracle rows are listed in regimesMissing",
+        },
+        rows,
+        disclaimer: DISCLAIMER.en,
+      };
     },
   );
 

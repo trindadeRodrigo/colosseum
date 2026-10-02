@@ -60,6 +60,8 @@
     "risk:facts": "tsx scripts/risk/facts/asset-facts.ts",
     "risk:facts-plan": "tsx scripts/risk/facts/plan-facts.ts",
     "risk:facts-lending": "tsx scripts/risk/facts/lending-facts.ts",
+    "risk:facts-import": "tsx scripts/risk/facts/import-lending.ts",
+    "risk:facts-methodology": "tsx scripts/risk/facts/gen-methodology.ts",
     "risk:lending-measure": "tsx scripts/risk/lending-measure.ts",
     "risk:lending-registry": "tsx scripts/risk/lending-registry.ts",
     "risk:lending-history": "tsx scripts/risk/lending-history.ts",

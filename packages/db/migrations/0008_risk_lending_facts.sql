@@ -1,0 +1,41 @@
+CREATE TABLE "risk_lending_coverage" (
+	"report_at" timestamp with time zone NOT NULL,
+	"gap_pct" double precision NOT NULL,
+	"asset" text NOT NULL,
+	"seized_usd" double precision NOT NULL,
+	"earlier_capacity_usd" double precision,
+	"earlier_regime" text,
+	"earlier_ratio" double precision,
+	"capacity_usd" double precision,
+	"regime" text,
+	"lower_bound" boolean,
+	"derived" boolean,
+	"tau" double precision,
+	"ratio" double precision,
+	"null_reason" text,
+	"limiting_oracle" text,
+	"regimes_missing" jsonb NOT NULL,
+	"positions_hour" text,
+	"method_version" text NOT NULL,
+	"source" text NOT NULL,
+	"method" text NOT NULL,
+	"fetched_at" timestamp with time zone NOT NULL,
+	"provenance" "provenance" NOT NULL,
+	CONSTRAINT "risk_lending_coverage_pk" PRIMARY KEY("report_at","gap_pct","asset","method_version")
+);
+--> statement-breakpoint
+CREATE TABLE "risk_lending_facts" (
+	"account" text NOT NULL,
+	"report_at" timestamp with time zone NOT NULL,
+	"chain" text NOT NULL,
+	"venue" text NOT NULL,
+	"market" text NOT NULL,
+	"symbol" text NOT NULL,
+	"sheet" jsonb NOT NULL,
+	"method_version" text NOT NULL,
+	"source" text NOT NULL,
+	"method" text NOT NULL,
+	"fetched_at" timestamp with time zone NOT NULL,
+	"provenance" "provenance" NOT NULL,
+	CONSTRAINT "risk_lending_facts_pk" PRIMARY KEY("account","report_at","method_version")
+);

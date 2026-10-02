@@ -452,3 +452,65 @@ export const riskReferencePrices = pgTable(
     }),
   ],
 );
+
+/**
+ * LendingPoolFacts sheets built by the lending report (PLAN-ANALYTICS items 10–11): one row per lending pool and
+ * report run, the sheet as the API serves it. Facts inside carry their own source and time; aggregates only (D13).
+ */
+export const riskLendingFacts = pgTable(
+  'risk_lending_facts',
+  {
+    account: text('account').notNull(),
+    /** The report run that built the sheet. */
+    reportAt: ts('report_at').notNull(),
+    chain: text('chain').notNull(),
+    venue: text('venue').notNull(),
+    market: text('market').notNull(),
+    symbol: text('symbol').notNull(),
+    sheet: jsonb('sheet').notNull(),
+    methodVersion: text('method_version').notNull(),
+    ...provenanceCols,
+  },
+  (t) => [
+    primaryKey({
+      name: 'risk_lending_facts_pk',
+      columns: [t.account, t.reportAt, t.methodVersion],
+    }),
+  ],
+);
+
+/**
+ * Liquidation coverage per report run, price gap and collateral asset (PLAN-ANALYTICS items 8 and 11): the earlier
+ * ratio (sale cost ≤ the bonus) beside the ratio on the liquidator's margin. A ratio that is not measured is null
+ * with its reason in `null_reason`, never zero.
+ */
+export const riskLendingCoverage = pgTable(
+  'risk_lending_coverage',
+  {
+    reportAt: ts('report_at').notNull(),
+    gapPct: doublePrecision('gap_pct').notNull(),
+    asset: text('asset').notNull(),
+    seizedUsd: doublePrecision('seized_usd').notNull(),
+    earlierCapacityUsd: doublePrecision('earlier_capacity_usd'),
+    earlierRegime: text('earlier_regime'),
+    earlierRatio: doublePrecision('earlier_ratio'),
+    capacityUsd: doublePrecision('capacity_usd'),
+    regime: text('regime'),
+    lowerBound: boolean('lower_bound'),
+    derived: boolean('derived'),
+    tau: doublePrecision('tau'),
+    ratio: doublePrecision('ratio'),
+    nullReason: text('null_reason'),
+    limitingOracle: text('limiting_oracle'),
+    regimesMissing: jsonb('regimes_missing').notNull(),
+    positionsHour: text('positions_hour'),
+    methodVersion: text('method_version').notNull(),
+    ...provenanceCols,
+  },
+  (t) => [
+    primaryKey({
+      name: 'risk_lending_coverage_pk',
+      columns: [t.reportAt, t.gapPct, t.asset, t.methodVersion],
+    }),
+  ],
+);
