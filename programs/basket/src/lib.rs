@@ -1,5 +1,21 @@
-//! Placeholder until the tests are written: the vault program follows them.
+//! The vault program: one vault per person per plan, on Solana.
+//!
+//! This is the owner path only: initialise the config, create a vault, deposit, and
+//! withdraw the tokens themselves to the owner. The swap, the shared-portfolio registry,
+//! the keeper leg, pause and auto-follow are later instructions on the same accounts.
+//! The design is docs/vault/DESIGN-VAULT.md, sections 3.7, 5 and 13.
+
 use anchor_lang::prelude::*;
+
+pub mod checks;
+pub mod errors;
+pub mod events;
+pub mod instructions;
+pub mod state;
+pub mod transfer;
+
+pub use instructions::*;
+pub use state::{Params, Target};
 
 declare_id!("529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW");
 
@@ -7,10 +23,50 @@ declare_id!("529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW");
 pub mod basket {
     use super::*;
 
-    pub fn placeholder(_ctx: Context<Placeholder>) -> Result<()> {
+    /// Admin, once. The signer must be the program's upgrade authority and becomes the admin.
+    pub fn init_config(ctx: Context<InitConfig>, args: InitConfigArgs) -> Result<()> {
+        InitConfig::handle(ctx, args)
+    }
+
+    /// Admin. The one program a vault may swap through: Jupiter on mainnet, the test
+    /// exchange on devnet.
+    pub fn set_router(ctx: Context<SetConfig>, router_program: Pubkey) -> Result<()> {
+        ctx.accounts.config.router_program = router_program;
         Ok(())
     }
-}
 
-#[derive(Accounts)]
-pub struct Placeholder {}
+    /// Admin. The program that must own a price account for the vault to read it:
+    /// Kamino Scope on mainnet, the test price program on devnet.
+    pub fn set_price_owner(ctx: Context<SetConfig>, price_owner: Pubkey) -> Result<()> {
+        ctx.accounts.config.price_owner = price_owner;
+        Ok(())
+    }
+
+    /// Owner. One vault per owner per plan id.
+    pub fn create_vault(
+        ctx: Context<CreateVault>,
+        basket_id: u64,
+        targets: Vec<Target>,
+        auto_follow: bool,
+        expected_version: u32,
+    ) -> Result<()> {
+        CreateVault::handle(ctx, basket_id, targets, auto_follow, expected_version)
+    }
+
+    /// Owner. One mint per call, into the vault's associated token account.
+    pub fn deposit<'info>(
+        ctx: Context<'_, '_, '_, 'info, Deposit<'info>>,
+        amount: u64,
+    ) -> Result<()> {
+        Deposit::handle(ctx, amount)
+    }
+
+    /// Owner. One mint per call, in kind, to a token account the owner owns.
+    /// Reads no config, registry or price: nothing but an upgrade can block it.
+    pub fn withdraw<'info>(
+        ctx: Context<'_, '_, '_, 'info, Withdraw<'info>>,
+        amount: u64,
+    ) -> Result<()> {
+        Withdraw::handle(ctx, amount)
+    }
+}
