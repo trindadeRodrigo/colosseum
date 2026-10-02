@@ -6,6 +6,8 @@
       "!**/node_modules",
       "!**/dist",
       "!**/.next",
+      "!contracts/out",
+      "!contracts/cache",
       "!**/migrations/meta",
       "!data",
       "!secrets",
