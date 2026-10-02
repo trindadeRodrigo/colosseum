@@ -385,7 +385,9 @@ One Anchor program (0.31.1, the version the spike builds on) holds the vaults, t
 
 ```rust
 // seeds: ["config"] | ["assets"] | ["recipe", creator, family_id] | ["vault", owner, basket_id u64 LE]
-pub struct Config { admin, pending_admin, guardian, default_keeper: Pubkey, keeper_paused: bool,
+pub struct Config { admin, pending_admin, guardian, default_keeper: Pubkey,
+  router_program: Pubkey, price_owner: Pubkey, cash_mint: Pubkey,  // set per network, never fixed in code
+  keeper_paused: bool,
   launched: bool,                                  // one-way; raises the floor on publish_delay_s
   tolerance_bps: u16, loss_cap_bps: u16, band_bps: u16, twap_dev_bps: u16, max_price_age_s: u16,
   asset_cooldown_s: u32, publish_delay_s: u32, session_open_utc_s: u32, session_close_utc_s: u32,
@@ -445,7 +447,7 @@ struct Snapshot { address owner; bytes32 indexId; uint32 acceptedVersion; bool a
 
 interface IBasketVault {
   // owner only: no pause, no feed; withdraw calls neither factory nor registry and pays only the owner
-  function deposit(address token, uint256 amount) external;
+  function deposit(uint256 amount) external;                    // the cash token only
   function withdraw(address token, uint256 amount) external;
   function withdrawAll() external returns (address[] memory skipped);
   function ownerSwap(Swap[] calldata swaps) external;           // allowlisted router; own balance deltas and minOut
@@ -548,7 +550,9 @@ Units: weights are integer basis points; token amounts are raw units in `numeric
 
 ## 5. Vault rules per chain
 
-**The owner can always** deposit, swap with their own signature and slippage through an allowed router, set targets, switch auto-follow, and withdraw every token in kind to their own wallet. Withdrawal is per token and calls no router, feed, factory or registry. Only a program or beacon upgrade can block it. Owner trades are allowed at any hour; outside the session the app shows a warning.
+**Money comes in as cash only** (decided on Oct 2). A deposit is the chain's dollar token and nothing else; the same action then buys each asset in the plan's proportions, as trades the app builds and the owner signs once. The vault refuses a deposit of any other token. A token sent to the vault's address from outside cannot be stopped; it counts for nothing and the owner can withdraw it.
+
+**The owner can always** deposit cash, swap with their own signature and slippage through an allowed router, set targets, switch auto-follow, and withdraw every token in kind to their own wallet. Withdrawal is per token and calls no router, feed, factory or registry. Only a program or beacon upgrade can block it. Owner trades are allowed at any hour; outside the session the app shows a warning.
 
 **The keeper can call one function,** and the vault checks each call. Starting values are not yet calibrated.
 
@@ -800,7 +804,7 @@ The keeper is the bounded risk: a leaked keeper key can cost each auto-follow va
 | Keeper | One function | The keeper machine, gas only, under $20 |
 | Platform creator | Publishes the launch portfolios | A gas-only key; its address earns the platform badge |
 
-No key that can move funds or loosen a limit sits where a coding agent has a shell. `scripts/ops/authority-check.ts` compares the live admin, beacon owner, implementation slots, guardian, keeper, `launched` and the publish delay on three chains with `deployments/*.json`, whose expected values are written before the deploy. It runs daily in demo week.
+No mainnet key that can move funds or loosen a limit sits where a coding agent has a shell. On test networks an agent may hold the deploy keys (decided on Oct 2); they are kept outside the repo. `scripts/ops/authority-check.ts` compares the live admin, beacon owner, implementation slots, guardian, keeper, `launched` and the publish delay on three chains with `deployments/*.json`, whose expected values are written before the deploy. It runs daily in demo week.
 
 **Hostile cases.** Frozen on day 1. The same ID names a test on each chain family; `docs/vault/SECURITY.md` holds the matrix.
 
