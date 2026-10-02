@@ -254,3 +254,123 @@ export const riskLendingPools = pgTable(
     index('risk_lending_pools_dex_asset_idx').on(t.dexAssetMint),
   ],
 );
+
+/**
+ * Lending state rows (Step 10b item 8): the collector's 5-minute on-chain rows (`kind` kamino_reserve | jl_vault |
+ * jl_liquidity | kvault) and the reconstructed hourly history (`kind` kamino_reserve_hourly | jl_vault_hourly).
+ * `observed_at` is the time the state refers to (the read, or the hour); `fetched_at` is when the row was made.
+ * The full source row is kept in `detail`; it holds protocol accounts only, never a wallet or a position.
+ */
+export const riskLendingSnapshots = pgTable(
+  'risk_lending_snapshots',
+  {
+    account: text('account').notNull(),
+    observedAt: ts('observed_at').notNull(),
+    kind: text('kind').notNull(),
+    chain: text('chain').notNull(),
+    venue: text('venue').notNull(),
+    market: text('market').notNull(),
+    symbol: text('symbol'),
+    role: text('role'),
+    slot: doublePrecision('slot'),
+    /** Whole tokens. Curated vaults: supplied = assets under management, available = idle cash. */
+    supplied: doublePrecision('supplied'),
+    borrowed: doublePrecision('borrowed'),
+    available: doublePrecision('available'),
+    shareLentOut: doublePrecision('share_lent_out'),
+    supplyApr: doublePrecision('supply_apr'),
+    borrowApr: doublePrecision('borrow_apr'),
+    supplyApy: doublePrecision('supply_apy'),
+    borrowApy: doublePrecision('borrow_apy'),
+    priceUsd: doublePrecision('price_usd'),
+    suppliedUsd: doublePrecision('supplied_usd'),
+    borrowedUsd: doublePrecision('borrowed_usd'),
+    usdNullReason: text('usd_null_reason'),
+    detail: jsonb('detail').notNull(),
+    methodVersion: text('method_version').notNull(),
+    ...provenanceCols,
+  },
+  (t) => [
+    primaryKey({ columns: [t.account, t.observedAt, t.kind] }),
+    index('risk_lending_snapshots_market_idx').on(t.market, t.observedAt),
+  ],
+);
+
+/**
+ * Lending events from the decode pass of the complete history (Step 10b items 4–5): one row per lending instruction
+ * that touches a registered reserve, vault or curated vault (refreshes and obligation bookkeeping are counted in the
+ * decode pass, not stored), plus one row per configuration change with its old and new value. `pool` is the
+ * risk_lending_pools account the event maps to. No owner, obligation, position or liquidator column: `detail`
+ * keeps protocol accounts, amounts and arguments only (`scrubLendingPayload`).
+ */
+export const riskLendingEvents = pgTable(
+  'risk_lending_events',
+  {
+    signature: text('signature').notNull(),
+    /** Instruction path in the transaction (`2.1`), or `config:<target>:<param>:<n>` for a configuration change. */
+    eventKey: text('event_key').notNull(),
+    slot: doublePrecision('slot').notNull(),
+    blockTime: ts('block_time').notNull(),
+    chain: text('chain').notNull(),
+    venue: text('venue').notNull(),
+    program: text('program').notNull(),
+    market: text('market'),
+    pool: text('pool'),
+    kind: text('kind').notNull(),
+    ix: text('ix'),
+    /** Program that invoked the instruction (a router, curated vault or liquidator program), when not top level. */
+    caller: text('caller'),
+    /** Flows on protocol token accounts, raw units: [{account, role, mint, delta}]. */
+    flows: jsonb('flows').notNull(),
+    detail: jsonb('detail').notNull(),
+    methodVersion: text('method_version').notNull(),
+    ...provenanceCols,
+  },
+  (t) => [
+    primaryKey({ columns: [t.signature, t.eventKey] }),
+    index('risk_lending_events_pool_idx').on(t.pool, t.blockTime),
+    index('risk_lending_events_kind_idx').on(t.kind, t.blockTime),
+  ],
+);
+
+/**
+ * Hourly position aggregates per market and collateral asset (Step 10b item 8; D13): positions, collateral, debt,
+ * LTV buckets and the share of the asset's collateral held by the largest 1, 3 and 10 positions. A position counts
+ * under its dominant collateral asset by USD. No owner or position column, by design.
+ */
+export const riskLendingPositions = pgTable(
+  'risk_lending_positions',
+  {
+    market: text('market').notNull(),
+    collateralAsset: text('collateral_asset').notNull(),
+    observedAt: ts('observed_at').notNull(),
+    chain: text('chain').notNull(),
+    venue: text('venue').notNull(),
+    positions: integer('positions').notNull(),
+    positionsWithDebt: integer('positions_with_debt'),
+    /** Positions whose state is not known at this hour (Jupiter Lend positions in a liquidated branch). */
+    positionsStateUnknown: integer('positions_state_unknown').notNull().default(0),
+    collateralUnits: doublePrecision('collateral_units').notNull(),
+    collateralUsd: doublePrecision('collateral_usd'),
+    debtUsd: doublePrecision('debt_usd'),
+    /** Debt in whole tokens by debt asset. */
+    debtByAsset: jsonb('debt_by_asset'),
+    ltvBucketsPct: jsonb('ltv_buckets_pct').notNull(),
+    /** {label: {positions, collateralUnits, collateralUsd, debtUsd}}; labels `<=10` … `>100`. */
+    buckets: jsonb('buckets').notNull(),
+    ltvNull: integer('ltv_null').notNull(),
+    ltvNullUnits: doublePrecision('ltv_null_units').notNull(),
+    top1: doublePrecision('top1'),
+    top3: doublePrecision('top3'),
+    top10: doublePrecision('top10'),
+    usdNullReason: text('usd_null_reason'),
+    methodVersion: text('method_version').notNull(),
+    ...provenanceCols,
+  },
+  (t) => [
+    primaryKey({
+      name: 'risk_lending_positions_pk',
+      columns: [t.market, t.collateralAsset, t.observedAt, t.method],
+    }),
+  ],
+);

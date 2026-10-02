@@ -4,6 +4,8 @@
 #   com.colosseum.risk-quotes  Jupiter cross-check (Step 3), minutes 4,19,34,49
 #   com.colosseum.risk-refresh import into Postgres + recompute curves, minute 10 of every hour
 #   com.colosseum.risk-lending lending pools (Step 10b), minutes 1,6,...,56 (one-job mode only: `install.sh lending`)
+#   com.colosseum.risk-lending-import lending files into Postgres (Step 10b item 8), minute 12
+#                              (one-job mode only: `install.sh lending-import`)
 # With no argument, installs pools, quotes and refresh as before. With a job name (`install.sh lending`), builds
 # and loads only that job: the running jobs are not reloaded and the shared env file is not rewritten.
 # Own directory (~/.colosseum/risk) and env file. Each collector is bundled with its decoders into one
@@ -40,7 +42,10 @@ if [ -n "$ONLY" ]; then
     lending)
       [ -f "$HOME_DIR/lending-registry.json" ] || { echo "run pnpm risk:lending-registry first"; exit 1; }
       install_job lending com.colosseum.risk-lending 1 6 11 16 21 26 31 36 41 46 51 56 ;;
-    *) echo "unknown job: $ONLY (one-job mode supports: lending)"; exit 1 ;;
+    lending-import)
+      [ -f "$HOME_DIR/lending-registry.json" ] || { echo "run pnpm risk:lending-registry first"; exit 1; }
+      install_job lending-import com.colosseum.risk-lending-import 12 ;;
+    *) echo "unknown job: $ONLY (one-job mode supports: lending, lending-import)"; exit 1 ;;
   esac
   exit 0
 fi

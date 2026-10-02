@@ -50,6 +50,13 @@
       "when": 1790888425440,
       "tag": "0006_daffy_deathbird",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790941489872,
+      "tag": "0007_careless_mastermind",
+      "breakpoints": true
     }
   ]
 }
