@@ -1,0 +1,23 @@
+# cargo-deny, for the Rust workspace (the Solana programs). security.yml runs it.
+# Locally: cargo deny --locked check advisories licenses
+
+[graph]
+# Include what only the IDL build pulls in.
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+# Every entry is a notice that a crate has no maintainer, not a known flaw. Both crates arrive through
+# solana-program 2.3, under anchor-lang 0.31.1, and no version we can move to drops them.
+# Take an entry out when the tree no longer holds the crate: cargo-deny then says the entry matches nothing.
+ignore = [
+  { id = "RUSTSEC-2025-0141", reason = "bincode 1.3 is unmaintained. solana-program and anchor-lang use it to encode instructions and sysvars" },
+  { id = "RUSTSEC-2025-0161", reason = "libsecp256k1 is unmaintained. It is behind solana-secp256k1-recover, which our programs do not call" },
+]
+
+[licenses]
+version = 2
+# What the tree needs today, and nothing else. The repo is Apache-2.0.
+# A crate under another licence fails here: add the licence only after reading it.
+allow = ["Apache-2.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "Unicode-3.0"]

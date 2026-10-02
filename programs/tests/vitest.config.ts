@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitest/config';
 
 // Run from the repo root with `pnpm test:program`. The root vitest.config.ts does not
-// include this folder: CI has no Solana toolchain until the program workflow exists.
+// include this folder: it needs the Solana toolchain, which only .github/workflows/program.yml installs.
 export default defineConfig({
   test: {
     include: ['*.test.ts'],

@@ -3,6 +3,8 @@ name = "mock-router"
 version = "0.1.0"
 description = "Test exchange for LiteSVM and devnet. Not part of the product"
 edition = "2021"
+license = "Apache-2.0"
+publish = false
 
 [lib]
 crate-type = ["cdylib", "lib"]
