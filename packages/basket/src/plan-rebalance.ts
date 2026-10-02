@@ -97,9 +97,10 @@ function bps(value: unknown, what: string): bigint {
  *   planned, because any plan for the others would be sized on a guess at what it is worth.
  *
  * The amounts are exact at the given prices with no trading cost. A keeper sends the first trade and
- * plans again from fresh state; an owner sending several together passes `costBps`. Split the trades
- * with `batchTrades` to respect a chain's limit per transaction. `lastKeeperAt` is not read: the
- * cooldown is the keeper's to apply.
+ * plans again from fresh state. An owner sending several together passes `costBps`: the purchases
+ * then count on every trade losing that much, so the batch has its cash and stops at each target as
+ * long as no trade loses more. Split the trades with `batchTrades` to respect a chain's limit per
+ * transaction. `lastKeeperAt` is not read: the cooldown is the keeper's to apply.
  *
  * Throws `RebalanceError`, and nothing else, for input it cannot use: `BadPolicy`, `BadTargets`,
  * `BadInput` (a price or an amount that is not a plain number, two prices for one asset, cash among
@@ -235,18 +236,6 @@ function plan(
   }
   sales.sort(byValueThenAsset);
 
-  // Purchases. Turning a value into whole units loses up to one unit each time, which makes the vault
-  // worth a hair less than `total` by the time a purchase lands. Each purchase is sized against the
-  // least the vault can then be worth, so it stops at its target or just before.
-  const under = rows.filter((r) => r.value * BPS < r.targetBps * total);
-  const lost =
-    BigInt(sales.length) * (unitValue(cashPrice, cashDecimals) + 2n) +
-    under.reduce((n, r) => n + unitValue(r.price, r.decimals) + 2n, 0n);
-  const least = total > lost ? total - lost : 0n;
-  let wanted = under
-    .map((r) => ({ asset: r.asset, row: r, value: (r.targetBps * least) / BPS - r.value - 1n }))
-    .filter((w) => w.value > 0n && w.value >= minTrade);
-
   // What there is to spend: the cash held and what the sales bring in, less the cash's own share.
   const reserveRaw = ceilDiv(
     ceilDiv(cashShare * most, BPS) * 10n ** BigInt(cashDecimals),
@@ -255,6 +244,22 @@ function plan(
   const haveRaw = sales.reduce((n, s) => n + s.proceedsRaw, cashRaw);
   let budgetRaw = haveRaw > reserveRaw ? haveRaw - reserveRaw : 0n;
   const budget = usdValue(budgetRaw, cashPrice, cashDecimals);
+
+  // Purchases. By the time one lands the vault is worth a little less than `total`: a pool rounds
+  // what it pays down to whole units, and again after taking its cost, so each trade loses up to two
+  // units of what it pays out, and with a cost every trade loses that too. Each purchase is sized
+  // against the least the vault can then be worth, so it stops at its target or just before.
+  const under = rows.filter((r) => r.value * BPS < r.targetBps * total);
+  const sold = sales.reduce((n, s) => n + s.value, 0n);
+  const lost =
+    BigInt(sales.length) * (2n * unitValue(cashPrice, cashDecimals) + 2n) +
+    under.reduce((n, r) => n + 2n * unitValue(r.price, r.decimals) + 2n, 0n) +
+    ceilDiv(cost * (sold + budget), BPS);
+  const least = total > lost ? total - lost : 0n;
+  let wanted = under
+    .map((r) => ({ asset: r.asset, row: r, value: (r.targetBps * least) / BPS - r.value - 1n }))
+    .filter((w) => w.value > 0n && w.value >= minTrade);
+
   const want = wanted.reduce((n, w) => n + w.value, 0n);
   if (want > budget)
     wanted = wanted

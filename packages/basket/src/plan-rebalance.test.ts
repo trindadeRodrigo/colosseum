@@ -364,6 +364,39 @@ describe('planRebalance, the review of BAS-1', () => {
     expect(spent <= 43_302_259_839n && spent > 43_290_000_000n).toBe(true);
   });
 
+  it('keeps a margin on a sale too, so rounding never leaves the asset under its target', () => {
+    // The review's input: an asset of 2 decimals at $0.000008 beside one of 18 decimals. Without a
+    // margin the sale left it under its target by less than one raw unit.
+    const w: World = {
+      v: vault('4600000000000000', {
+        'solana:a': ['553750000000000000', 700],
+        'solana:b': ['1', 5050],
+        'solana:c': ['119194630', 4250],
+      }),
+      targets: [
+        { asset: 'solana:a', weightBps: 700 },
+        { asset: 'solana:b', weightBps: 5050 },
+        { asset: 'solana:c', weightBps: 4250 },
+      ],
+      prices: [
+        price('solana:a', '0.000008'),
+        price('solana:b', '0.00008'),
+        price('solana:c', '745'),
+      ],
+      assets: [
+        USDC,
+        asset('solana:a', { decimals: 2 }),
+        asset('solana:b', { decimals: 18 }),
+        asset('solana:c', { decimals: 2 }),
+      ],
+      policy: { bandBps: 0, minTradeUsd: 1 },
+    };
+    const trades = planRebalance(w.v, w.targets, w.prices, w.policy, w.assets);
+    expect(trades[0]).toMatchObject({ sell: 'solana:a', buy: CASH });
+    // The model checks each trade exactly: over its target before, and not past it after.
+    apply(w, trades);
+  });
+
   it('spends cash that sits idle above its share, even with every asset inside the band', () => {
     // $1,000: SPY on target, NVDA 38 bps under, gold 26 under, and the 64 bps they lack held as cash.
     const v = vault('6400000', {
@@ -590,7 +623,7 @@ describe('planRebalance, on generated vaults', { timeout: 60_000 }, () => {
     );
   });
 
-  it('with a cost, a batch sent together has the cash for every purchase', () => {
+  it('with a cost, a batch sent together has the cash for every purchase and overshoots nothing', () => {
     let batches = 0;
     fc.assert(
       fc.property(
@@ -618,6 +651,9 @@ describe('planRebalance, on generated vaults', { timeout: 60_000 }, () => {
               m.book.cash -= amount;
               const bought = (((amount * m.unit(CASH)) / m.unit(t.buy)) * keep) / 10_000n;
               m.book.held.set(t.buy, (m.book.held.get(t.buy) ?? 0n) + bought);
+              // The vault is worth less by every cost paid so far, and the purchase still stops
+              // at its target.
+              expect(m.over(t.buy) <= 0n, `${t.buy} is not bought past its target`).toBe(true);
             }
           }
           if (trades.some((t) => t.buy === CASH) && trades.some((t) => t.sell === CASH))
