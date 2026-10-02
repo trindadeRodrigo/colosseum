@@ -1,9 +1,10 @@
 // Finds each token's deepest dollar pools and keeps the list in a file, so a run does not look again.
-// DexScreener names the candidates; the chain decides which are kept: a v3-style pool must come from an
-// allowlisted factory, a v4 pool must be hookless, and both must pair the token with the dollar token.
+// DexScreener names the candidates; the chain decides which are kept: a v3-style pool must be the one an
+// allowlisted factory deployed, a v4 pool must be hookless, and both must pair the token with the dollar token.
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
+  addressWord,
   type Call,
   decodeAggregate3,
   decodePoolKey,
@@ -11,6 +12,7 @@ import {
   encodePoolKeys,
   type PoolKey,
   SEL,
+  word,
   words,
   wordToAddress,
   wordToInt,
@@ -87,9 +89,9 @@ export function candidates(
   return out.sort((a, b) => b.liquidityUsd - a.liquidityUsd).slice(0, opts.limit);
 }
 
-const CL_READS = [SEL.factory, SEL.token0, SEL.token1, SEL.fee, SEL.tickSpacing];
+const CL_READS = [SEL.token0, SEL.token1, SEL.fee, SEL.tickSpacing];
 
-/** The calls that check candidates on chain: five reads per v3-style pool, one per v4 pool. */
+/** First round of on-chain checks: four reads per v3-style candidate, the pool key per v4 candidate. */
 export function verifyCalls(chain: ChainConfig, cands: Candidate[]): Call[] {
   return cands.flatMap((c) =>
     c.kind === 'cl'
@@ -99,20 +101,24 @@ export function verifyCalls(chain: ChainConfig, cands: Candidate[]): Call[] {
 }
 
 type Reply = { success: boolean; data: string };
+type Skipped = Record<string, number>;
+const skip = (skipped: Skipped, why: string) => {
+  skipped[why] = (skipped[why] ?? 0) + 1;
+};
 
-/** Keeps the candidates the chain confirms. `replies` are the answers to verifyCalls, in order. */
-export function confirm(
+/**
+ * The candidates that pair the token with the dollar token, in the order given. `replies` are the
+ * answers to verifyCalls. A v4 pool must have no hook. A v3-style pool is not trusted yet: what it
+ * says about itself still has to be confirmed by a factory (factoryCalls, attested).
+ */
+export function eligible(
   chain: ChainConfig,
   token: TokenConfig,
   cands: Candidate[],
   replies: Reply[],
-  maxPools: number,
-): { pools: PoolRef[]; skipped: Record<string, number> } {
+): { pools: PoolRef[]; skipped: Skipped } {
   const pools: PoolRef[] = [];
-  const skipped: Record<string, number> = {};
-  const skip = (why: string) => {
-    skipped[why] = (skipped[why] ?? 0) + 1;
-  };
+  const skipped: Skipped = {};
   const isPair = (a: string, b: string) =>
     (same(a, token.address) && same(b, chain.dollar.address)) ||
     (same(b, token.address) && same(a, chain.dollar.address));
@@ -121,50 +127,93 @@ export function confirm(
     const mine = replies.slice(i, i + (c.kind === 'cl' ? CL_READS.length : 1));
     i += mine.length;
     if (mine.some((r) => !r?.success || r.data.length < 66)) {
-      skip(c.kind === 'cl' ? 'not a v3-style pool' : 'no pool key on the position manager');
+      skip(
+        skipped,
+        c.kind === 'cl' ? 'not a v3-style pool' : 'no pool key on the position manager',
+      );
       continue;
     }
-    if (pools.length >= maxPools) {
-      skip('beyond the pool limit');
-      continue;
-    }
+    const shared = { id: c.id, dex: c.dex, liquidityUsd: c.liquidityUsd };
     if (c.kind === 'cl') {
-      const [factory, token0, token1, fee, spacing] = mine.map((r) => words(r.data)[0] as bigint);
+      const [token0, token1, fee, spacing] = mine.map((r) => words(r.data)[0] as bigint);
       const t0 = wordToAddress(token0 as bigint);
-      const t1 = wordToAddress(token1 as bigint);
-      if (!chain.clFactories.some((f) => same(f, wordToAddress(factory as bigint)))) {
-        skip('factory not on the allowlist');
-      } else if (!isPair(t0, t1)) {
-        skip('not the token against the dollar token');
-      } else {
-        pools.push({
-          kind: 'cl',
-          id: c.id,
-          dex: c.dex,
-          tokenIs0: same(t0, token.address),
-          fee: Number(fee),
-          tickSpacing: wordToInt(spacing as bigint, 24),
-          liquidityUsd: c.liquidityUsd,
-        });
+      if (!isPair(t0, wordToAddress(token1 as bigint))) {
+        skip(skipped, 'not the token against the dollar token');
+        continue;
       }
+      pools.push({
+        kind: 'cl',
+        ...shared,
+        tokenIs0: same(t0, token.address),
+        fee: Number(fee),
+        tickSpacing: wordToInt(spacing as bigint, 24),
+      });
       continue;
     }
     const key = decodePoolKey((mine[0] as Reply).data);
-    if (key.tickSpacing === 0) skip('no pool key on the position manager');
-    else if (!same(key.hooks, ZERO)) skip('has a hook');
-    else if (!isPair(key.currency0, key.currency1)) skip('not the token against the dollar token');
-    else {
+    if (key.tickSpacing === 0) skip(skipped, 'no pool key on the position manager');
+    else if (!same(key.hooks, ZERO)) skip(skipped, 'has a hook');
+    else if (!isPair(key.currency0, key.currency1))
+      skip(skipped, 'not the token against the dollar token');
+    else
       pools.push({
         kind: 'v4',
-        id: c.id,
-        dex: c.dex,
+        ...shared,
         tokenIs0: same(key.currency0, token.address),
         fee: key.fee,
         tickSpacing: key.tickSpacing,
         key,
-        liquidityUsd: c.liquidityUsd,
       });
+  }
+  return { pools, skipped };
+}
+
+/**
+ * Second round: each allowlisted factory is asked which pool it deployed for the pair and fee (or tick
+ * spacing) a v3-style candidate reports. A contract can claim any factory; only the factory's own
+ * answer counts.
+ */
+export function factoryCalls(chain: ChainConfig, token: TokenConfig, pools: PoolRef[]): Call[] {
+  return pools
+    .filter((p) => p.kind === 'cl')
+    .flatMap((p) => {
+      const [t0, t1] = p.tokenIs0
+        ? [token.address, chain.dollar.address]
+        : [chain.dollar.address, token.address];
+      return chain.clFactories.map((f) => ({
+        target: f.address,
+        callData:
+          f.getPoolBy === 'fee'
+            ? `0x${SEL.getPoolByFee}${addressWord(t0)}${addressWord(t1)}${word(p.fee)}`
+            : `0x${SEL.getPoolByTickSpacing}${addressWord(t0)}${addressWord(t1)}${word(p.tickSpacing)}`,
+      }));
+    });
+}
+
+/** The pools a factory vouches for (v4 pools pass as they are), deepest first, up to `maxPools`. */
+export function attested(
+  chain: ChainConfig,
+  found: { pools: PoolRef[]; skipped: Skipped },
+  replies: Reply[],
+  maxPools: number,
+): { pools: PoolRef[]; skipped: Skipped } {
+  const pools: PoolRef[] = [];
+  const skipped = { ...found.skipped };
+  let i = 0;
+  for (const p of found.pools) {
+    if (p.kind === 'cl') {
+      const mine = replies.slice(i, i + chain.clFactories.length);
+      i += mine.length;
+      const vouched = mine.some(
+        (r) => r?.success && r.data.length === 66 && same(wordToAddress(BigInt(r.data)), p.id),
+      );
+      if (!vouched) {
+        skip(skipped, 'not a pool of an allowlisted factory');
+        continue;
+      }
     }
+    if (pools.length >= maxPools) skip(skipped, 'beyond the pool limit');
+    else pools.push(p);
   }
   return { pools, skipped };
 }
@@ -186,6 +235,15 @@ export async function discover(
   rpc: Rpc,
   opts: DiscoverOptions,
 ): Promise<PoolCache> {
+  const multicall = async (calls: Call[]): Promise<Reply[]> =>
+    calls.length
+      ? decodeAggregate3(
+          await rpc.call<string>('eth_call', [
+            { to: chain.multicall3, data: encodeAggregate3(calls) },
+            opts.blockTag,
+          ]),
+        )
+      : [];
   const perToken: Array<{ token: TokenConfig; cands: Candidate[] | null }> = [];
   for (const token of chain.tokens) {
     try {
@@ -195,9 +253,10 @@ export async function discover(
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const pairs = (await res.json()) as DexPair[];
+      if (!Array.isArray(pairs)) throw new Error('not a list of pairs');
       perToken.push({
         token,
-        cands: candidates(Array.isArray(pairs) ? pairs : [], chain, token, {
+        cands: candidates(pairs, chain, token, {
           minLiquidityUsd: opts.minLiquidityUsd,
           limit: opts.candidateLimit,
         }),
@@ -208,34 +267,37 @@ export async function discover(
     }
     await sleep(250);
   }
-  const calls = perToken.flatMap((t) => verifyCalls(chain, t.cands ?? []));
-  const replies = calls.length
-    ? decodeAggregate3(
-        await rpc.call<string>('eth_call', [
-          { to: chain.multicall3, data: encodeAggregate3(calls) },
-          opts.blockTag,
-        ]),
-      )
-    : [];
+
+  const first = await multicall(perToken.flatMap((t) => verifyCalls(chain, t.cands ?? [])));
+  let at = 0;
+  const found = perToken.map(({ token, cands }) => {
+    const n = verifyCalls(chain, cands ?? []).length;
+    const mine = first.slice(at, at + n);
+    at += n;
+    return { token, cands, ...eligible(chain, token, cands ?? [], mine) };
+  });
+  const second = await multicall(found.flatMap((f) => factoryCalls(chain, f.token, f.pools)));
+  at = 0;
   const tokens: PoolCache['tokens'] = {};
-  let i = 0;
-  for (const { token, cands } of perToken) {
-    if (!cands) {
-      // DexScreener did not answer for this token: keep what the last discovery found
-      const kept = opts.previous?.tokens[token.symbol];
-      if (kept && same(kept.address, token.address)) tokens[token.symbol] = kept;
-      continue;
+  for (const f of found) {
+    const n = factoryCalls(chain, f.token, f.pools).length;
+    const kept = attested(chain, f, second.slice(at, at + n), opts.maxPools);
+    at += n;
+    const before = opts.previous?.tokens[f.token.symbol];
+    const usable = before && same(before.address, f.token.address) && before.pools.length > 0;
+    if (kept.pools.length === 0 && usable) {
+      // DexScreener failed or came back empty for a token that had pools: keep the last list
+      opts.log({ event: 'discover_kept_old_list', token: f.token.symbol });
+      tokens[f.token.symbol] = before;
+    } else if (f.cands) {
+      tokens[f.token.symbol] = { address: f.token.address, ...kept };
     }
-    const n = verifyCalls(chain, cands).length;
-    const found = confirm(chain, token, cands, replies.slice(i, i + n), opts.maxPools);
-    i += n;
-    tokens[token.symbol] = { address: token.address, ...found };
   }
   return {
     chain: chain.id,
     chainId: chain.chainId,
     discoveredAt: new Date().toISOString(),
-    source: `${DEXSCREENER}/${chain.dexscreener}/{token}, then factory(), token0(), token1() and poolKeys() on chain`,
+    source: `${DEXSCREENER}/${chain.dexscreener}/{token}, then token0(), token1(), the factory's getPool() and the position manager's poolKeys() on chain`,
     method: 'dexscreener_candidates_confirmed_onchain',
     maxPools: opts.maxPools,
     tokens,

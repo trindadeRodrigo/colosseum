@@ -1,12 +1,18 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDb, riskAssetSnapshots } from '@colosseum/db';
 import { costAt, fitCurve } from '@colosseum/risk';
 import { getTableColumns } from 'drizzle-orm';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { decodeSqrtPrice, word } from '../scripts/risk-evm/abi';
+import {
+  decodeAggregate3,
+  decodeSqrtPrice,
+  encodeAggregate3,
+  encodeGetSlot0,
+  word,
+} from '../scripts/risk-evm/abi';
 import { CHAINS, rpcFor } from '../scripts/risk-evm/config';
 import {
   bestPerSize,
@@ -25,9 +31,16 @@ import {
   toRaw,
 } from '../scripts/risk-evm/curve';
 import { acquireLock, runLoop } from '../scripts/risk-evm/loop';
-import { type Candidate, candidates, confirm, type PoolRef } from '../scripts/risk-evm/pools';
-import { createRpc } from '../scripts/risk-evm/rpc';
-import { decodeQuotes, quoteRequest } from '../scripts/risk-evm/run';
+import {
+  attested,
+  type Candidate,
+  candidates,
+  eligible,
+  factoryCalls,
+  type PoolRef,
+} from '../scripts/risk-evm/pools';
+import { createRpc, type Rpc, type RpcReply, type RpcRequest } from '../scripts/risk-evm/rpc';
+import { collectOnce, decodeQuotes, quoteRequest } from '../scripts/risk-evm/run';
 
 // REVM-1. Nothing here may reach the network: the chain's answers come from a recorded fixture.
 beforeAll(() => {
@@ -39,7 +52,9 @@ beforeAll(() => {
 const robinhood = CHAINS.find((c) => c.id === 'robinhood') as (typeof CHAINS)[number];
 const NVDA = robinhood.tokens.find((t) => t.symbol === 'NVDA') as { address: string };
 const D = { token: 18, dollar: 6 };
-const quote = (out: bigint, filledIn: bigint | null = null) => ({ out, filledIn });
+const quote = (out: bigint, filledIn: bigint) => ({ out, filledIn });
+const SMALL_BUY = 100_000_000n; // $100 and $10,000 in a 6-decimal dollar token
+const LARGE_BUY = 10_000_000_000n;
 const pool = (id: string, mid: number, over: Partial<PoolQuotes> = {}): PoolQuotes => ({
   pool: id,
   midUsd: mid,
@@ -75,12 +90,18 @@ describe('mid price and trade sizes', () => {
 
 describe('cost against the pool mid', () => {
   it('sell: dollars received against the size', () => {
-    const outUsd = outUsdOf('sell', quote(9_990_000_000n), 250, D.token, D.dollar);
+    const outUsd = outUsdOf(
+      'sell',
+      quote(9_990_000_000n, 40n * 10n ** 18n),
+      250,
+      D.token,
+      D.dollar,
+    );
     expect(outUsd).toBe(9_990);
     expect(costPct(10_000, outUsd)).toBeCloseTo(0.1, 10);
   });
   it('buy: tokens received, valued at the same pool mid', () => {
-    const outUsd = outUsdOf('buy', quote(399n * 10n ** 17n), 250, D.token, D.dollar);
+    const outUsd = outUsdOf('buy', quote(399n * 10n ** 17n, LARGE_BUY), 250, D.token, D.dollar);
     expect(outUsd).toBeCloseTo(9_975, 9);
     expect(costPct(10_000, outUsd)).toBeCloseTo(0.25, 9);
   });
@@ -89,7 +110,10 @@ describe('cost against the pool mid', () => {
 describe('best single pool per size', () => {
   const deep = pool('deep', 250, {
     sell: [quote(99_700_000n, 400_000_000_000_000_000n), quote(9_960_000_000n, 40n * 10n ** 18n)],
-    buy: [quote(398_800_000_000_000_000n), quote(39_840_000_000_000_000_000n)],
+    buy: [
+      quote(398_800_000_000_000_000n, SMALL_BUY),
+      quote(39_840_000_000_000_000_000n, LARGE_BUY),
+    ],
   });
   const tight = pool('tight', 250.5, {
     // cheaper for small sizes, runs out at $10k: only three quarters of the tokens are taken
@@ -97,7 +121,7 @@ describe('best single pool per size', () => {
       quote(99_950_000n, sellAmounts(250.5, 18, [100])[0] as bigint),
       quote(7_400_000_000n, ((sellAmounts(250.5, 18, [10_000])[0] as bigint) * 3n) / 4n),
     ],
-    buy: [quote(399_000_000_000_000_000n), null],
+    buy: [quote(399_000_000_000_000_000n, SMALL_BUY), null],
   });
   const silent = pool('silent', 250);
   const sell = bestPerSize('sell', [deep, tight, silent], D, [100, 10_000]);
@@ -116,16 +140,17 @@ describe('best single pool per size', () => {
     expect(sell.map((p) => p.quoted)).toEqual([2, 2]);
     expect(buy.map((p) => p.quoted)).toEqual([2, 1]);
   });
-  it('reports the unfilled share where the quoter gives the amount taken, null where it does not', () => {
+  it('reports the share of the amount a pool could not take, and counts it as lost', () => {
     expect(sell.map((p) => p.unfilledShare)).toEqual([0, 0]);
     const partial = bestPerSize('sell', [tight], D, [100, 10_000]);
     expect(partial[1]?.unfilledShare).toBeCloseTo(0.25, 12);
     expect(partial[1]?.costPct).toBeCloseTo(26, 9);
-    expect(buy.map((p) => p.unfilledShare)).toEqual([null, null]);
+    expect(buy.map((p) => p.unfilledShare)).toEqual([0, 0]);
   });
   it('keeps the first pool on a tie and leaves a size empty when no pool quoted it', () => {
-    const a = pool('a', 250, { sell: [quote(99_000_000n), null] });
-    const b = pool('b', 250, { sell: [quote(99_000_000n), null] });
+    const whole = 400_000_000_000_000_000n;
+    const a = pool('a', 250, { sell: [quote(99_000_000n, whole), null] });
+    const b = pool('b', 250, { sell: [quote(99_000_000n, whole), null] });
     const tie = bestPerSize('sell', [a, b], D, [100, 10_000]);
     expect(tie[0]?.pool).toBe('a');
     expect(tie[1]).toEqual({
@@ -155,7 +180,7 @@ describe('row shape', () => {
     pools: [
       pool('0xd4EB21209C4D6093f80B5b84f5C45cc093EA14a3', 250, {
         sell: [quote(99_950_000n, 400_000_000_000_000_000n), null],
-        buy: [quote(399_800_000_000_000_000n), null],
+        buy: [quote(399_800_000_000_000_000n, SMALL_BUY), null],
       }),
     ],
     source: 'eth_call at block 78422492 (test)',
@@ -295,18 +320,29 @@ describe('recorded quoter responses (Robinhood Chain, NVDA)', () => {
   });
   it('decodes the injected quoter as cast does', () => {
     for (const s of fx.v3.sides) {
-      const got = decodeQuotes(fx.v3.pool, s.result, 8);
+      const got = decodeQuotes(fx.v3.pool, s.result, amounts(s));
       expect(got.map((q) => q?.out)).toEqual(s.castDecoded.outs.map(BigInt));
       expect(got.map((q) => q?.filledIn)).toEqual(s.castDecoded.ins.map(BigInt));
     }
   });
   it('decodes the v4 Quoter through Multicall3 as cast does, failed sizes included', () => {
     for (const s of fx.v4.sides) {
-      const got = decodeQuotes(fx.v4.pool, s.result, 8);
+      const got = decodeQuotes(fx.v4.pool, s.result, amounts(s));
       expect(got.map((q) => q?.out ?? null)).toEqual(
         s.castDecoded.map((d) => (d.success && d.amountOut ? BigInt(d.amountOut) : null)),
       );
-      expect(got.every((q) => q === null || q.filledIn === null)).toBe(true);
+      // a v4 quote that comes back was filled in full
+      got.forEach((q, i) => {
+        if (q) expect(q.filledIn).toBe(amounts(s)[i]);
+      });
+      // the failures are the Quoter's own refusal, not a lack of gas:
+      // UnexpectedRevertBytes(NotEnoughLiquidity(poolId))
+      const refused = decodeAggregate3(s.result).filter((r) => !r.success);
+      expect(refused).toHaveLength(3);
+      for (const r of refused) {
+        expect(r.data.slice(0, 10)).toBe('0x6190b2b0');
+        expect(r.data).toContain(`7a5ed734${fx.v4.pool.id.slice(2)}`);
+      }
     }
     // this thin pool cannot take the three largest sizes
     expect(fx.v4.sides[0]?.castDecoded.map((d) => d.success)).toEqual([
@@ -328,8 +364,8 @@ describe('recorded quoter responses (Robinhood Chain, NVDA)', () => {
         midUsd: midUsd(BigInt(f.sqrtPriceX96), f.pool.tokenIs0, 18, 6),
         sellIn: amounts(side('sell')),
         buyIn: amounts(side('buy')),
-        sell: decodeQuotes(f.pool, side('sell').result, 8),
-        buy: decodeQuotes(f.pool, side('buy').result, 8),
+        sell: decodeQuotes(f.pool, side('sell').result, amounts(side('sell'))),
+        buy: decodeQuotes(f.pool, side('buy').result, amounts(side('buy'))),
       };
     };
     const row = buildRow({
@@ -354,7 +390,17 @@ describe('recorded quoter responses (Robinhood Chain, NVDA)', () => {
     expect(at(10_000)).toBeGreaterThan(at(100));
     expect(at(50_000)).toBeGreaterThan(at(10_000));
     expect(at(50_000)).toBeLessThan(1);
-    expect(row.buy.every((p) => p.costPct !== null && p.costPct > 0)).toBe(true);
+    // buying: tokens received, valued at the pool's mid taken in integer arithmetic
+    const exactMid = Number((2n ** 192n * 10n ** 18n) / BigInt(fx.v3.sqrtPriceX96) ** 2n) / 1e6;
+    const buyOuts = fx.v3.sides[1]?.castDecoded.outs.map(Number) as number[];
+    expect(row.buy.map((p) => p.pool)).toEqual(GRID_USD.map(() => fx.v3.pool.id));
+    row.buy.forEach((p, i) => {
+      const outUsd = ((buyOuts[i] as number) / 1e18) * exactMid;
+      expect(p.costPct).toBeCloseTo((1 - outUsd / p.notionalUsd) * 100, 6);
+    });
+    expect(row.buy[3]?.costPct).toBeGreaterThan(0.05);
+    expect(row.buy[3]?.costPct).toBeLessThan(0.2);
+    expect(row.sell.map((p) => p.unfilledShare)).toEqual(GRID_USD.map(() => 0));
     // what scripts/risk/compute.ts does with a row: finite outUsd only, cost = 1 − outUsd / notionalUsd
     const samples = row.sell
       .filter((p) => Number.isFinite(p.outUsd))
@@ -415,30 +461,41 @@ describe('pool list', () => {
     data: `0x${ws.map((w) => (typeof w === 'string' ? w.slice(2).toLowerCase().padStart(64, '0') : word(w))).join('')}`,
   });
   const cl = (id: string): Candidate => ({ kind: 'cl', id, dex: 'uniswap', liquidityUsd: 1 });
-  const clReplies = (factory: string, t0: string, t1: string) => [
-    ok(factory),
-    ok(t0),
-    ok(t1),
-    ok(500),
-    ok(10),
-  ];
-  const factory = robinhood.clFactories[0] as string;
+  const clReplies = (t0: string, t1: string) => [ok(t0), ok(t1), ok(500), ok(10)];
+  const factory = robinhood.clFactories[0]?.address as string;
+  const weth = '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73';
 
-  it('keeps a v3-style pool only from an allowlisted factory and only for this pair', () => {
-    const foreign = '0x1ac9dB4a2608ba45D6127B1737949b51Bb54B7F3';
-    const got = confirm(
+  it('keeps a v3-style pool only when an allowlisted factory names it for the pair', () => {
+    // the second candidate copies everything the real pool says about itself
+    const copycat = '0x18A5aF4E442F8be68968Cc1f00D537F8af2D12Cd';
+    const found = eligible(
       robinhood,
       token,
-      [cl(v3), cl('0x18A5aF4E442F8be68968Cc1f00D537F8af2D12Cd'), cl(usdg), cl(factory)],
+      [cl(v3), cl(copycat), cl(usdg), cl(factory)],
       [
-        ...clReplies(factory, usdg, token.address),
-        ...clReplies(foreign, usdg, token.address),
-        ...clReplies(factory, usdg, '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73'),
-        ...Array.from({ length: 5 }, () => ({ success: false, data: '0x' })),
+        ...clReplies(usdg, token.address),
+        ...clReplies(usdg, token.address),
+        ...clReplies(usdg, weth),
+        ...Array.from({ length: 4 }, () => ({ success: false, data: '0x' })),
       ],
-      3,
     );
-    expect(got.pools).toEqual([
+    expect(found.pools.map((p) => p.id)).toEqual([v3, copycat]);
+    expect(found.skipped).toEqual({
+      'not the token against the dollar token': 1,
+      'not a v3-style pool': 1,
+    });
+    const calls = factoryCalls(robinhood, token, found.pools);
+    // getPool(USDG, NVDA, 500) on the Uniswap v3 factory, once per candidate
+    const getPool = `0x1698ee82${usdg.slice(2).toLowerCase().padStart(64, '0')}${token.address
+      .slice(2)
+      .toLowerCase()
+      .padStart(64, '0')}${word(500)}`;
+    expect(calls).toEqual([
+      { target: factory, callData: getPool },
+      { target: factory, callData: getPool },
+    ]);
+    const kept = attested(robinhood, found, [ok(v3), ok(v3)], 3);
+    expect(kept.pools).toEqual([
       {
         kind: 'cl',
         id: v3,
@@ -449,29 +506,239 @@ describe('pool list', () => {
         liquidityUsd: 1,
       },
     ]);
-    expect(got.skipped).toEqual({
-      'factory not on the allowlist': 1,
+    expect(kept.skipped).toEqual({
       'not the token against the dollar token': 1,
       'not a v3-style pool': 1,
+      'not a pool of an allowlisted factory': 1,
     });
+    // a factory that knows no such pool answers the zero address
+    expect(attested(robinhood, found, [ok(0), { success: false, data: '0x' }], 3).pools).toEqual(
+      [],
+    );
+  });
+  it('asks a Slipstream factory by tick spacing', () => {
+    const base = CHAINS.find((c) => c.id === 'base') as (typeof CHAINS)[number];
+    const nvdac = base.tokens[0] as (typeof base.tokens)[number];
+    const [call] = factoryCalls(base, nvdac, [
+      {
+        kind: 'cl',
+        id: v3,
+        dex: 'aerodrome',
+        tokenIs0: false,
+        fee: 500,
+        tickSpacing: 10,
+        liquidityUsd: 1,
+      },
+    ]);
+    expect(call?.target).toBe(base.clFactories[0]?.address);
+    expect(call?.callData.slice(0, 10)).toBe('0x28af8d0b');
+    expect(call?.callData.slice(-64)).toBe(word(10));
   });
   it('keeps a v4 pool only when it has no hook, and stops at the pool limit', () => {
     const c: Candidate = { kind: 'v4', id: v4, dex: 'uniswap', liquidityUsd: 1 };
     const key = (hooks: string | number) => ok(usdg, token.address, 3000, 60, hooks);
-    const got = confirm(
+    const found = eligible(
       robinhood,
       token,
       [c, c, c, c],
       [key('0x00000000000000000000000000000000000000c0'), ok(0, 0, 0, 0, 0), key(0), key(0)],
-      1,
     );
-    expect(got.pools).toHaveLength(1);
-    expect(got.pools[0]).toMatchObject({ kind: 'v4', tokenIs0: false, fee: 3000, tickSpacing: 60 });
-    expect(got.skipped).toEqual({
+    expect(found.pools).toHaveLength(2);
+    expect(factoryCalls(robinhood, token, found.pools)).toEqual([]);
+    const kept = attested(robinhood, found, [], 1);
+    expect(kept.pools).toHaveLength(1);
+    expect(kept.pools[0]).toMatchObject({
+      kind: 'v4',
+      tokenIs0: false,
+      fee: 3000,
+      tickSpacing: 60,
+    });
+    expect(kept.skipped).toEqual({
       'has a hook': 1,
       'no pool key on the position manager': 1,
       'beyond the pool limit': 1,
     });
+  });
+});
+
+/** A Multicall3.aggregate3 response, built the long way round. */
+function aggregate3Result(items: Array<{ success: boolean; data: string }>): string {
+  const bodies = items.map((it) => {
+    const bytes = it.data.slice(2);
+    return (
+      word(it.success) +
+      word(0x40) +
+      word(bytes.length / 2) +
+      bytes.padEnd(Math.ceil(bytes.length / 64) * 64, '0')
+    );
+  });
+  let offset = items.length * 32;
+  const heads = bodies.map((b) => {
+    const head = word(offset);
+    offset += b.length / 2;
+    return head;
+  });
+  return `0x${word(0x20)}${word(items.length)}${heads.join('')}${bodies.join('')}`;
+}
+
+describe('one run, replayed from the recording', () => {
+  const fx = JSON.parse(
+    readFileSync('fixtures/risk-evm/robinhood-nvda-quotes.json', 'utf8'),
+  ) as Fixture;
+  const tag = `0x${fx.block.toString(16)}`;
+  const chain = { ...robinhood, tokens: robinhood.tokens.filter((t) => t.symbol === 'NVDA') };
+  const recorded = new Map<string, string>();
+  for (const f of [fx.v3, fx.v4]) for (const s of f.sides) recorded.set(s.castCalldata, s.result);
+  const midsCall = encodeAggregate3([
+    { target: fx.v3.pool.id, callData: '0x3850c7bd' },
+    { target: robinhood.v4?.stateView as string, callData: encodeGetSlot0(fx.v4.pool.id) },
+  ]);
+  const v3Sell = fx.v3.sides[0]?.castCalldata as string;
+  const v4Buy = fx.v4.sides[1] as Fixture['v4']['sides'][number];
+
+  /** Runs collectOnce against a client that answers from the fixture, unless `override` answers first. */
+  async function run(override: (data: string) => RpcReply | undefined = () => undefined) {
+    const dir = mkdtempSync(join(tmpdir(), 'risk-evm-run-'));
+    writeFileSync(
+      join(dir, 'pools-robinhood.json'),
+      JSON.stringify({
+        chain: 'robinhood',
+        chainId: 4663,
+        discoveredAt: new Date().toISOString(),
+        source: 'test',
+        method: 'test',
+        maxPools: 3,
+        tokens: { NVDA: { address: NVDA.address, pools: [fx.v3.pool, fx.v4.pool], skipped: {} } },
+      }),
+    );
+    const seen: RpcRequest[] = [];
+    const answer = (r: RpcRequest): RpcReply => {
+      seen.push(r);
+      if (r.method === 'eth_chainId') return { result: '0x1237' };
+      if (r.method === 'eth_getBlockByNumber')
+        return {
+          result: { number: tag, timestamp: `0x${(Date.parse(fx.fetchedAt) / 1000).toString(16)}` },
+        };
+      const [call] = r.params as [{ data: string }];
+      const forced = override(call.data);
+      if (forced) return forced;
+      if (call.data === midsCall)
+        return {
+          result: aggregate3Result([
+            { success: true, data: fx.v3.slot0 },
+            { success: true, data: fx.v4.slot0 },
+          ]),
+        };
+      const result = recorded.get(call.data);
+      return result ? { result } : { error: { message: 'not in the recording' } };
+    };
+    const rpc: Rpc = {
+      batch: async (requests) => requests.map(answer),
+      call: async <T>(method: string, params: unknown[]) => answer({ method, params }).result as T,
+      stats: () => ({ httpRequests: 0, rpcCalls: seen.length }),
+    };
+    const events: Record<string, unknown>[] = [];
+    const summary = await collectOnce(chain, {
+      dir,
+      maxPools: 3,
+      minLiquidityUsd: 10_000,
+      poolsMaxAgeHours: 24,
+      rediscover: false,
+      env: { RISK_EVM_RH_RPC_URL: 'https://example.invalid/v2/a-key' },
+      rpc,
+      log: (e) => events.push(e),
+    });
+    const file = join(dir, 'assets', `${fx.fetchedAt.slice(0, 10)}.jsonl`);
+    const lines = existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(Boolean) : [];
+    return { summary, events, seen, rows: lines.map((l) => parseRow(JSON.parse(l))) };
+  }
+
+  it('writes one row at the pinned block, in seven calls, without the RPC URL', async () => {
+    const r = await run();
+    expect(r.summary).toMatchObject({ rows: 1, block: fx.block, poolsRediscovered: false });
+    expect(r.rows).toHaveLength(1);
+    const row = r.rows[0] as NonNullable<(typeof r.rows)[number]>;
+    expect(row).toMatchObject({
+      asset: 'NVDA',
+      assetMint: NVDA.address,
+      slot: fx.block,
+      fetchedAt: fx.fetchedAt,
+      pools: 2,
+      refPool: fx.v3.pool.id,
+      methodVersion: 'evmq-0.1',
+      provenance: 'live',
+    });
+    const out10k = Number(fx.v3.sides[0]?.castDecoded.outs[3]) / 1e6;
+    expect(row.sell[3]?.costPct).toBeCloseTo((1 - out10k / 10_000) * 100, 9);
+    expect(r.summary.tokens[0]?.sell10k).toBe(row.sell[3]?.costPct);
+    expect(row.sell.map((p) => p.quoted)).toEqual([2, 2, 2, 2, 2, 1, 1, 1]);
+    // chain id and block, the mids, then one call per pool and side
+    expect(r.seen).toHaveLength(7);
+    const calls = r.seen.filter((q) => q.method === 'eth_call');
+    expect(calls.every((q) => q.params[1] === tag)).toBe(true);
+    // the URL from the environment may carry a key: it is named, never written
+    expect(row.source).toContain('the RPC in RISK_EVM_RH_RPC_URL');
+    expect(JSON.stringify([row, r.summary, r.events])).not.toMatch(/example\.invalid|a-key/);
+  });
+  it('writes no row when the deepest pool did not answer, rather than pass off the thin one', async () => {
+    const r = await run((data) =>
+      data === v3Sell ? { error: { code: -32016, message: 'over rate limit' } } : undefined,
+    );
+    expect(r.rows).toEqual([]);
+    expect(r.summary.rows).toBe(0);
+    expect(r.summary.tokens[0]?.error).toMatch(
+      /sell quote from pool 0xd4EB.* failed: over rate limit/,
+    );
+  });
+  it('asks a v4 pool again with fewer sizes when the call runs out of gas', async () => {
+    const all = decodeAggregate3(v4Buy.result);
+    const r = await run((data) => {
+      if (data === v4Buy.castCalldata) return { error: { message: 'out of gas' } };
+      // the second try carries seven sizes, so it is not in the recording
+      const known = data === midsCall || recorded.has(data);
+      return known ? undefined : { result: aggregate3Result(all.slice(0, 7)) };
+    });
+    expect(r.seen).toHaveLength(8);
+    expect(r.rows).toHaveLength(1);
+    expect(r.rows[0]?.buy.map((p) => p.quoted)).toEqual([2, 2, 2, 2, 2, 1, 1, 1]);
+  });
+  it('leaves out a pool that is still out of gas after three smaller tries, and says so', async () => {
+    const r = await run((data) =>
+      data === midsCall || (recorded.has(data) && data !== v4Buy.castCalldata)
+        ? undefined
+        : { error: { message: 'out of gas' } },
+    );
+    expect(r.seen).toHaveLength(10);
+    expect(r.events).toEqual([
+      { event: 'quote_out_of_gas', asset: 'NVDA', pool: fx.v4.pool.id, side: 'buy' },
+    ]);
+    expect(r.rows[0]?.buy.map((p) => p.quoted)).toEqual(GRID_USD.map(() => 1));
+    expect(r.rows[0]?.sell.map((p) => p.quoted)).toEqual([2, 2, 2, 2, 2, 1, 1, 1]);
+  });
+  it('refuses an endpoint that answers for another chain', async () => {
+    await expect(
+      collectOnce(
+        { ...chain, chainId: 46630 },
+        {
+          dir: mkdtempSync(join(tmpdir(), 'risk-evm-run-')),
+          maxPools: 3,
+          minLiquidityUsd: 10_000,
+          poolsMaxAgeHours: 24,
+          rediscover: false,
+          rpc: {
+            batch: async () => [
+              { result: '0x1237' },
+              { result: { number: tag, timestamp: '0x1' } },
+            ],
+            call: async () => {
+              throw new Error('unexpected call');
+            },
+            stats: () => ({ httpRequests: 0, rpcCalls: 0 }),
+          },
+          log: () => {},
+        },
+      ),
+    ).rejects.toThrow('answers for chain 4663, not 46630');
   });
 });
 
@@ -527,6 +794,18 @@ describe('RPC client', () => {
     expect(got.map((r) => r.result)).toEqual(['0xa', '0xb']);
     expect((sent[1] as Array<{ params: string[] }>).map((r) => r.params[0])).toEqual(['second']);
   });
+  it('asks again when the endpoint refuses a whole batch with one error', async () => {
+    const { rpc, sent } = client([
+      () => reply({ error: { code: 429, message: 'Too Many Requests' } }),
+      (body) => reply(body.map((r) => ({ id: r.id, result: '0xc' }))),
+    ]);
+    const got = await rpc.batch([
+      { method: 'eth_call', params: [] },
+      { method: 'eth_call', params: [] },
+    ]);
+    expect(got.map((r) => r.result)).toEqual(['0xc', '0xc']);
+    expect(sent).toHaveLength(2);
+  });
   it('leaves an error that will not go away, such as out of gas, to the caller', async () => {
     const { rpc, sent } = client([
       () => reply([{ id: 0, error: { code: -32000, message: 'out of gas' } }]),
@@ -560,6 +839,9 @@ describe('injected quoter artefact', () => {
     expect(createHash('sha256').update(src).digest('hex')).toBe(artefact.sourceSha256);
     expect(src.toString()).toMatch(/^\/\/ SPDX-License-Identifier: Apache-2\.0/);
     expect(artefact.deployedBytecode).toMatch(/^0x[0-9a-f]{200,}$/);
+    // quote(address,bool,uint256[],uint256), uniswapV3SwapCallback(int256,int256,bytes), error Q(int256,int256)
+    for (const selector of ['186ccfa5', 'fa461e33', '4ca9c7f9'])
+      expect(artefact.deployedBytecode).toContain(selector);
   });
 });
 
@@ -624,6 +906,13 @@ describe('run lock', () => {
     release?.();
     expect(acquireLock(path)).toBeTypeOf('function');
     expect(acquireLock(held(process.ppid))).toBeNull();
+  });
+  it('is not removed by a process that no longer holds it', () => {
+    const path = join(dir, 'b.lock');
+    const release = acquireLock(path);
+    writeFileSync(path, JSON.stringify({ pid: process.ppid, startedAt: new Date().toISOString() }));
+    release?.();
+    expect(existsSync(path)).toBe(true);
   });
   it('is taken over from a process that is gone, or when it is older than a run can be', () => {
     expect(acquireLock(held(2 ** 30))).toBeTypeOf('function');

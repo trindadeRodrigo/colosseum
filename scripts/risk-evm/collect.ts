@@ -44,8 +44,9 @@ const pct = (v: number | null) => (v === null ? '     n/a' : `${v.toFixed(3).pad
 /** One run of every chain. Throws after the last chain if any of them failed. */
 async function runAll(rediscover: boolean): Promise<void> {
   mkdirSync(dir, { recursive: true });
-  // one run at a time, across processes too: a one-off run and the loop share this lock
-  const release = acquireLock(join(dir, 'run.lock'), 15 * 60_000);
+  // one run at a time, across processes too: a one-off run and the loop share this lock. A run that
+  // meets a hanging endpoint on every call still ends within about half an hour.
+  const release = acquireLock(join(dir, 'run.lock'), 60 * 60_000);
   if (!release) throw new Error(`another run holds ${join(dir, 'run.lock')}`);
   const failed: string[] = [];
   try {

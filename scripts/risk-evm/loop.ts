@@ -1,5 +1,5 @@
 // The hourly loop and the lock that keeps two runs from overlapping.
-import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeSync } from 'node:fs';
+import { linkSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 export type LoopDeps = {
@@ -46,31 +46,39 @@ const alive = (pid: number): boolean => {
 
 /**
  * Takes the lock file, or returns null when a live process holds it. A lock is taken over when its
- * process is gone, or when it is older than `staleAfterMs` (a run takes seconds, so an old run lock
- * means a process id was reused). The returned function releases it.
+ * process is gone, or when it is older than `staleAfterMs` (longer than a run can take, so it can only
+ * be a reused process id). The returned function releases the lock if this process still holds it.
  */
 export function acquireLock(path: string, staleAfterMs?: number): (() => void) | null {
   mkdirSync(dirname(path), { recursive: true });
-  for (let attempt = 0; attempt < 2; attempt++) {
+  const mine = JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() });
+  const read = (): { pid?: number; startedAt?: string } => {
     try {
-      const fd = openSync(path, 'wx');
-      writeSync(fd, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }));
-      closeSync(fd);
-      return () => rmSync(path, { force: true });
+      return JSON.parse(readFileSync(path, 'utf8'));
+    } catch {
+      return {}; // missing or unreadable: treated as stale
+    }
+  };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    // written in full under another name, then linked: the lock never exists half-written
+    const draft = `${path}.${process.pid}.tmp`;
+    writeFileSync(draft, mine);
+    try {
+      linkSync(draft, path);
+      return () => {
+        if (read().pid === process.pid) rmSync(path, { force: true });
+      };
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-      let held: { pid?: number; startedAt?: string } = {};
-      try {
-        held = JSON.parse(readFileSync(path, 'utf8'));
-      } catch {
-        // unreadable lock: treat it as stale
-      }
-      const pid = Number(held.pid);
-      const age = Date.now() - Date.parse(held.startedAt ?? '');
-      const old = staleAfterMs !== undefined && !(age < staleAfterMs);
-      if (Number.isInteger(pid) && pid !== process.pid && alive(pid) && !old) return null;
-      rmSync(path, { force: true });
+    } finally {
+      rmSync(draft, { force: true });
     }
+    const held = read();
+    const pid = Number(held.pid);
+    const age = Date.now() - Date.parse(held.startedAt ?? '');
+    const old = staleAfterMs !== undefined && !(age < staleAfterMs);
+    if (Number.isInteger(pid) && pid !== process.pid && alive(pid) && !old) return null;
+    rmSync(path, { force: true });
   }
   return null;
 }

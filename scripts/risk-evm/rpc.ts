@@ -66,8 +66,9 @@ export function createRpc(url: string, opts: RpcOptions = {}): Rpc {
     const body = requests.map((r, id) => ({ jsonrpc: '2.0', id, ...r }));
     const json = await post(body);
     if (!Array.isArray(json)) {
-      const message = (json as RpcReply)?.error?.message ?? 'not a batch reply';
-      throw new Error(`RPC batch refused: ${message}`);
+      // one error object for the whole batch: every call gets it, so a refusal for rate is asked again
+      const error = (json as RpcReply | null)?.error ?? { message: 'not a batch reply' };
+      return requests.map(() => ({ error }));
     }
     const byId = new Map<number, RpcReply>(
       (json as Array<RpcReply & { id: number }>).map((r) => [r.id, r]),

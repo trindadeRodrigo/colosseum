@@ -17,8 +17,11 @@ export type ChainConfig = {
   /** The cash token pools are quoted against. Counted as one US dollar. */
   dollar: TokenConfig;
   multicall3: string;
-  /** Factories of Uniswap-v3-style pools the vault's swap path reaches. Pools of any other factory are skipped. */
-  clFactories: string[];
+  /**
+   * Factories of Uniswap-v3-style pools the vault's swap path reaches. A pool is quoted only if one of
+   * them names it for its pair: getPool(token0, token1, fee) on Uniswap v3, (…, tickSpacing) on Slipstream.
+   */
+  clFactories: Array<{ address: string; getPoolBy: 'fee' | 'tickSpacing' }>;
   /** Uniswap v4 periphery; null where the vault does not swap through v4. Only hookless pools are quoted. */
   v4: { quoter: string; stateView: string; positionManager: string } | null;
   tokens: TokenConfig[];
@@ -42,7 +45,7 @@ export const CHAINS: ChainConfig[] = [
     dollar: { symbol: 'USDG', address: '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168', decimals: 6 },
     multicall3: MULTICALL3,
     // Uniswap v3 factory: factory() of the NVDA/USDG pool 0xd4EB…14a3.
-    clFactories: ['0x1f7d7550B1b028f7571E69A784071F0205FD2EfA'],
+    clFactories: [{ address: '0x1f7d7550B1b028f7571E69A784071F0205FD2EfA', getPoolBy: 'fee' }],
     // https://developers.uniswap.org/contracts/v4/deployments; the Quoter's poolManager() and the
     // StateView's poolManager() both return 0x8366…0951.
     v4: {
@@ -87,7 +90,9 @@ export const CHAINS: ChainConfig[] = [
     dollar: { symbol: 'USDC', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', decimals: 6 },
     multicall3: MULTICALL3,
     // Aerodrome Slipstream: factory() of the NVDAc/USDC pool 0x853F…7ab9.
-    clFactories: ['0xf8f2eB4940CFE7d13603DDDD87f123820Fc061Ef'],
+    clFactories: [
+      { address: '0xf8f2eB4940CFE7d13603DDDD87f123820Fc061Ef', getPoolBy: 'tickSpacing' },
+    ],
     v4: null,
     tokens: [
       base('NVDAc', '0xb20000000000000000000078ee7ce2fE4908108C'),

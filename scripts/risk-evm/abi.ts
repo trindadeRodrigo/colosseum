@@ -5,11 +5,12 @@
 export const SEL = {
   aggregate3: '82ad56cb', // aggregate3((address,bool,bytes)[])  Multicall3
   slot0: '3850c7bd', // slot0()  v3-style pool
-  factory: 'c45a0155', // factory()
   token0: '0dfe1681', // token0()
   token1: 'd21220a7', // token1()
   fee: 'ddca3f43', // fee()
   tickSpacing: 'd0c93a7c', // tickSpacing()
+  getPoolByFee: '1698ee82', // getPool(address,address,uint24)  Uniswap v3 factory
+  getPoolByTickSpacing: '28af8d0b', // getPool(address,address,int24)  Aerodrome Slipstream factory
   getSlot0: 'c815641c', // getSlot0(bytes32)  v4 StateView
   poolKeys: '86b6be7d', // poolKeys(bytes25)  v4 PositionManager
   quoteExactInputSingle: 'aa9d21cb', // quoteExactInputSingle(((address,address,uint24,int24,address),bool,uint128,bytes))  v4 Quoter

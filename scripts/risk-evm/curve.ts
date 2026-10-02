@@ -56,10 +56,10 @@ export function nearMedian<T extends { midUsd: number }>(pools: T[], maxGap: num
 }
 
 /**
- * One pool's answer at one size: what it paid out, and how much of the amount it took in.
- * `filledIn` is null where the quoter does not report it (the deployed v4 Quoter).
+ * One pool's answer at one size: what it paid out, and how much of the amount it took in. A v3-style
+ * pool that runs out answers with a partial fill; the v4 Quoter refuses instead, so it gives no quote.
  */
-export type Quote = { out: bigint; filledIn: bigint | null };
+export type Quote = { out: bigint; filledIn: bigint };
 
 export type Side = 'sell' | 'buy';
 
@@ -83,7 +83,7 @@ export type CurvePoint = {
   outUsd: number | null;
   /** (1 − outUsd / notionalUsd) × 100: price impact, pool fees and any unfilled part together. */
   costPct: number | null;
-  /** Share of the amount the pool could not take. Null where the quoter does not report it. */
+  /** Share of the amount the pool could not take; it counts as lost in costPct. Null = no pool quoted. */
   unfilledShare: number | null;
   /** The pool with the lowest cost at this size, and the mid the cost is measured against. */
   pool: string | null;
@@ -139,10 +139,7 @@ export function bestPerSize(
       };
     }
     const sent = (side === 'sell' ? best.p.sellIn : best.p.buyIn)[i] ?? 0n;
-    const unfilledShare =
-      best.q.filledIn === null || sent === 0n
-        ? null
-        : Math.max(0, 1 - Number(best.q.filledIn) / Number(sent));
+    const unfilledShare = sent === 0n ? 0 : Math.max(0, 1 - Number(best.q.filledIn) / Number(sent));
     return {
       notionalUsd,
       outUsd: best.outUsd,

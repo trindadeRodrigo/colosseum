@@ -62,6 +62,8 @@ export type RunOptions = {
   poolsMaxAgeHours: number;
   rediscover: boolean;
   env?: Record<string, string | undefined>;
+  /** For tests: a client that answers from a recording. The collector builds its own from the chain's URL. */
+  rpc?: Rpc;
   log: (event: Record<string, unknown>) => void;
 };
 
@@ -129,25 +131,31 @@ export function quoteRequest(
   };
 }
 
-/** The quotes in a reply to quoteRequest, one per size asked; null where the pool gave none. */
-export function decodeQuotes(pool: PoolRef, result: string, sizes: number): Array<Quote | null> {
+/** The quotes in a reply to quoteRequest, one per amount asked; null where the pool gave none. */
+export function decodeQuotes(
+  pool: PoolRef,
+  result: string,
+  amountsIn: bigint[],
+): Array<Quote | null> {
   if (pool.kind === 'cl') {
     const { ins, outs } = decodeClQuote(result);
-    return Array.from({ length: sizes }, (_, i) => {
+    return amountsIn.map((_, i) => {
       const out = outs[i] ?? 0n;
       return out > 0n ? { out, filledIn: ins[i] ?? 0n } : null;
     });
   }
   const replies = decodeAggregate3(result);
-  return Array.from({ length: sizes }, (_, i) => {
+  return amountsIn.map((sent, i) => {
     const r = replies[i];
-    // a quote is two words: amountOut and the Quoter's gas estimate
+    // a quote is two words: amountOut and the Quoter's gas estimate. A pool that cannot take the whole
+    // amount makes the Quoter revert (NotEnoughLiquidity), so a quote that came back was filled in full.
     if (!r?.success || r.data.length !== 130) return null;
     const out = decodeV4Quote(r.data);
-    // the deployed v4 Quoter does not say how much of the amount the pool took
-    return out > 0n ? { out, filledIn: null } : null;
+    return out > 0n ? { out, filledIn: sent } : null;
   });
 }
+
+const outOfGas = (r: RpcReply) => /out of gas|gas required exceeds/i.test(r.error?.message ?? '');
 
 type LivePool = { ref: PoolRef; midUsd: number };
 
@@ -178,25 +186,26 @@ async function quoteToken(
   );
   for (const [i, job] of jobs.entries()) {
     let reply = replies[i] as RpcReply;
-    let sizes = job.amounts.length;
-    // Multicall3 has no gas limit per call, so one size that exhausts a v4 pool can use up the whole call
-    for (let drop = 0; job.pool.kind === 'v4' && reply.error && drop < V4_SIZE_DROPS; drop++) {
-      sizes--;
-      const retry = quoteRequest(chain, job.pool, job.side, job.amounts.slice(0, sizes), blockTag);
+    let asked = job.amounts;
+    // Multicall3 has no gas limit per call, so one large size that walks a whole v4 pool can use up the call
+    for (let drop = 0; job.pool.kind === 'v4' && outOfGas(reply) && drop < V4_SIZE_DROPS; drop++) {
+      asked = asked.slice(0, -1);
+      const retry = quoteRequest(chain, job.pool, job.side, asked, blockTag);
       reply = (await rpc.batch([retry]))[0] as RpcReply;
     }
-    if (reply.error || typeof reply.result !== 'string') {
-      log({
-        event: 'quote_failed',
-        asset: token.symbol,
-        pool: job.pool.id,
-        side: job.side,
-        error: reply.error?.message ?? 'no result',
-      });
+    if (outOfGas(reply)) {
+      // the pool is there but too costly to walk at these sizes: no quote from it, the others still count
+      log({ event: 'quote_out_of_gas', asset: token.symbol, pool: job.pool.id, side: job.side });
       job.target[job.side] = job.amounts.map(() => null);
       continue;
     }
-    const got = decodeQuotes(job.pool, reply.result, sizes);
+    // anything else (the endpoint refused, no answer) says nothing about the pool. A row built without
+    // it would pass off a thinner pool's cost as the best, so the token gets no row this run.
+    if (reply.error || typeof reply.result !== 'string')
+      throw new Error(
+        `${job.side} quote from pool ${job.pool.id} failed: ${reply.error?.message ?? 'no result'}`,
+      );
+    const got = decodeQuotes(job.pool, reply.result, asked);
     job.target[job.side] = job.amounts.map((_, k) => got[k] ?? null);
   }
   return quotes;
@@ -208,7 +217,7 @@ const costAt = (row: AssetSnapshotRow, usd: number) =>
 export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise<RunSummary> {
   const started = Date.now();
   const { url, label } = rpcFor(chain, opts.env);
-  const rpc = createRpc(url);
+  const rpc = opts.rpc ?? createRpc(url);
 
   // 1. the chain and the block every later call is pinned to
   const [idReply, blockReply] = await rpc.batch([
@@ -251,10 +260,11 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
     }
   }
   if (!cache) throw new Error('no pool list');
-  const tokens = chain.tokens.map((token) => ({
-    token,
-    pools: cache.tokens[token.symbol]?.pools ?? [],
-  }));
+  const tokens = chain.tokens.map((token) => {
+    const listed = cache.tokens[token.symbol];
+    const sameToken = listed?.address.toLowerCase() === token.address.toLowerCase();
+    return { token, pools: sameToken ? listed.pools : [] };
+  });
 
   // 3. every pool's price, in one call
   const midCalls: Call[] = tokens.flatMap((t) =>
