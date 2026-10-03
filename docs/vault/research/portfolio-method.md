@@ -1,6 +1,6 @@
 # The portfolio method, and what our solver should change
 
-Oct 3, 2026. Research for the SOLVER gate and for ENG-2. Written from `docs/vault/research/PROMPT-RESEARCH-METHOD.md`. Six research threads ran in parallel, one agent each; the code was read on `staging` at `1b8be80`. Later the same day eleven papers were read in full from PDFs Rodrigo supplied (kept out of the repository); section 8 says what that changed. This note changes no code and proposes changes to other documents without making them; the same pull request adds a line to this folder's README and a row to the ledger.
+Oct 3, 2026. Research for the SOLVER gate and for ENG-2. Written from `docs/vault/research/PROMPT-RESEARCH-METHOD.md`. Six research threads ran in parallel, one agent each; the code was read on `staging` at `1b8be80`. Later the same day eleven papers were read in full from PDFs Rodrigo supplied (kept out of the repository); section 8 says what that changed. Section 2.7 was added after Rodrigo's reading: the product is global, so the goal's currency is a parameter, and the stock rule covers the whole shelf. Four decisions of Oct 3 landed on `staging` after the code was read (`ONE-CHAIN`, `EXIT-SOURCE`, `PROTECT-NO-STOCKS`, `AUDIT-BRACES`); where they touch a finding, the text says so. This note changes no code and proposes changes to other documents without making them; the same pull request adds a line to this folder's README and a row to the ledger.
 
 Tags: `[n]` checked today against source n. `[na]` only the abstract of source n was read. `[ns]` only a search-result snippet of source n was seen; the page was blocked or not opened. `[repo]` read in the code. `[run]` computed today (section 2.3). `[audit]` from `docs/vault/AUDIT-VAULT.md`. `[own]` our derivation, not from a source. `[memory]` not checked. Competitor names appear here because this note is internal.
 
@@ -10,6 +10,7 @@ Tags: `[n]` checked today against source n. `[na]` only the abstract of source n
 - **The linear program should go.** With one budget row, one credit row and per-asset caps, the LP is a continuous knapsack that a sort solves exactly `[24]`. On 20,000 random instances it never beat a greedy fill and returned the same weights; on tied yields its answer changed with the order of the inputs in 2,969 of 5,465 cases `[run]`. An LP earns a place only if we adopt caps that overlap (issuer × chain) or one row per withdrawal date `[own]`.
 - **Yield ranking is the weak part, and the caps are doing the work.** A point ranking of noisy yields is the "error maximiser" of the literature `[27][28a]`; with caps it is defensible, and only because of the caps. Rank in bands, fill equally inside a band, and fix the yield feed first: the "realised 30d" figure is still two points of a DEX price `[repo][audit]`.
 - **Exit cost should bind on every leg, and once more on the whole plan.** Today it caps stocks only; yield legs and the BRL leg are uncapped and the schedule sells yield legs at par `[repo]`. A Brazilian retail holder cannot redeem USDY with the issuer `[62]`, so the pool is the only exit for the leg the solver fills to 40%.
+- **The method is the same in any goal currency; only one leg depends on it.** Most goals will be in dollars. A dollar goal needs no currency-matching leg and no FX stress, and its safe sleeve can sit in liquid rate legs that pay. The BRL leg is the special case, not the base case (section 2.7). Today each engine handles one currency: the legacy sheet is reais only and the ENG-2 sheet dollars only `[repo]`.
 - **Three candidates should be three objectives, not three risk levels:** most covered, most spread, most carry, all inside the person's stated limits. None may be dominated on the scorecard, none is pre-selected, and the engine returns fewer than three when the limits leave fewer (section 2.4).
 - **"Will the goal be met" has an answer with no forecast:** months covered, the funded ratio at a rate the person can hold today, the carry the goal needs beside the carry observed, and the shortfall under named stresses. A probability of reaching the goal is a return forecast whatever the disclaimer `[2][3]`. That argues against the odds estimate in ENG-1; it is question 1 in section 7.
 
@@ -134,7 +135,7 @@ Each candidate is the same engine with a different objective, inside the same li
 
 | Working name | What it optimises | Parameters that move | Wins on |
 |---|---|---|---|
-| Cover | Obligations matched by date, lowest exit cost | Dedication months up (12 where today's is 6); credit share 0; stocks at the lower budget; `tau` and `shareOfDepth` tighter | Months covered; exit cost at the person's size |
+| Cover | Obligations matched by date in the goal's currency, lowest exit cost | Dedication months up (12 where today's is 6); credit share 0; stocks at the lower budget; `tau` and `shareOfDepth` tighter | Months covered; exit cost at the person's size |
 | Spread | Least concentration | Dedication as today; yield legs filled equally within caps; issuer and chain caps tighter | Largest issuer share; number of issuers |
 | Carry | Most observed haircut yield inside the limits | Dedication at the window only; credit share at the person's tolerance; yield legs filled by band | Observed carry; funded ratio |
 
@@ -151,14 +152,14 @@ How they are kept different, each rule with its study:
 
 **The scorecard** (deterministic, every figure with `source`, `fetched_at`, `method`):
 
-- Months of obligations covered by cash and the BRL leg.
-- The base schedule: months funded and the shortfall in reais.
+- Months of obligations covered by cash and the matching sleeve (2.7).
+- The base schedule: months funded and the shortfall, in the goal's currency.
 - The same under each named stress.
 - The funded ratio at the haircut rate of the safest rate leg held.
 - Exit cost at the person's size in the worst regime, with the share of the plan that is measured (`rollUp` already returns both).
 - Concentration by issuer, chain and class (`rollUp`).
 - Yield confidence: the share of observed carry that comes from realised or protocol readings, and the age of the oldest observation.
-- Open FX exposure: obligations beyond what the BRL leg covers.
+- Open FX exposure: obligations beyond what the matching leg covers. Zero, and not shown, when the goal is in dollars.
 - Credit and basis share.
 - Whether primary redemption is reachable by this person, per leg.
 
@@ -173,7 +174,7 @@ Three numbers and a list, all from re-running the engine `[own]`:
 3. **Carry needed beside carry observed.** The single flat rate at which the schedule funds every month, found by bisection on the schedule, next to the plan's observed haircut carry. No source frames it this way; it is safe only while both are labelled as observed and required, not expected.
 4. **Each way to close a gap,** found by solving for one input at a time with the others fixed: more capital, a smaller monthly amount, a later start, a monthly contribution. `Verdict.ways` in `basket-sheet.ts` has this shape for income goals.
 
-The status "met" means every month is funded in the base case and in every named stress; "short" comes with the gap in reais and the ways. The same computation serves balance goals, where today the verdict is dropped `[repo]`.
+The status "met" means every month is funded in the base case and in every named stress; "short" comes with the gap in the goal's currency and the ways. The same computation serves balance goals, where today the verdict is dropped `[repo]`.
 
 ### 2.6 The narration check, if narration is adopted
 
@@ -191,13 +192,47 @@ In order, all in pure code except item 6:
 
 Portuguese is measured on its own. No study of numeric faithfulness in Portuguese financial text was found; on Brazilian clinical cases English led Portuguese by 7.5 to 12.1 points on one task and by nothing on others `[61a]`.
 
+### 2.7 Goal currency, and the stock shelf
+
+**Currency.** The product is global, and most goals will be in dollars. Nothing in the method depends on reais. Stated without a currency `[own]`:
+
+- An obligation is a date, an amount and a currency.
+- The **matching leg** is an asset in the goal's currency that carries no FX risk against it. It is needed only when the goal's currency differs from the currency of the assets, which is dollars. For a goal in reais it is the BRL leg, as today. For a goal in dollars there is none to add: cash and the rate legs are already in the goal's currency.
+- **Dedication for a dollar goal:** cash for the liquidity window, then the next months of withdrawals in the most liquid rate legs. Those pay; the BRL leg pays nothing. So a dollar goal gives up less carry for the same coverage, and the Cover candidate costs less.
+- The FX stance, the FX stresses and the open-FX line of the scorecard apply only when the currencies differ. For a dollar goal they are absent, not shown as zero risk.
+- Bands, caps, the coverage check, the three candidates, the yield, credit, stock and liquidity stresses, and the status in 2.5 are the same in any currency.
+
+This is what the liability literature says too: match the currency of the obligations `[4][12]`; when the assets are already in it, there is nothing to hedge.
+
+What the code has `[repo]`: `ConstraintSheet.currency` is the literal `'BRL'`, the target is `amountBrl`, and the schedule runs in reais. `BasketSheet` is in dollars (`amountUsd`, `incomeTargetUsdMonthly`) and has no currency field. So neither engine takes both. The seam is one field on the sheet, the goal's currency, with obligations carrying it, an FX observation per pair with its source and time, and the BRL leg generalised to "the matching leg for the goal's currency, if one is listed". The registry rule that the BRL leg is abstract already has this shape.
+
+**The test:** the same goal in dollars and in reais at the day's rate. The dollar plan has no matching leg, no FX stress rows and no open-FX line; the two plans differ only in the matching leg and in what was reduced to fund it.
+
+**Stocks.** The rule covers every stock token listed on the person's chain, by one rule, with no subset picked in the engine. Where things stand `[repo]`:
+
+- The legacy registry holds two (SPYx, QQQx). The launch-shelf seed holds 33 distinct stocks and stock indexes across three chains: 15 on Solana, 10 on Base, 32 on Robinhood Chain, ten of those marked excluded. Bearing's collector measured 47 Solana tokens today, gold among them. Rodrigo's figure is 34; which list that is, is question 10.
+- A plan lives on one chain (`ONE-CHAIN`), so a plan can hold only that chain's stock tokens.
+- Stocks are for growth plans only (`PROTECT-NO-STOCKS`, and the income rule).
+- What a stock may weigh comes from its measured exit numbers (`EXIT-SOURCE`), which is change C5 already decided for stocks; a tier stands in where nothing is measured, labelled as a fallback.
+- A plan holds at most 8 lines in the MVP and the vault allows 16 (`DESIGN-VAULT.md` §7), with a minimum line of 0.5%. So every stock is a product on the shelf, and one plan holds a few of them: the person's themes, or a shared portfolio, choose which.
+- On Solana, Kamino Scope prices ten stock tokens, so automatic rebalancing covers plans built from those ten only.
+
+What changes in the solver for a wide shelf:
+
+- Equal split inside the stock sleeve stays `[25a]`.
+- A stock cut by its exit cap hands its share to the other chosen stocks first, and only then to the yield legs. Today it goes straight to the yield legs `[repo]`, which with two stocks hardly matters and with many does.
+- A single-stock cap by risk level, which ENG-2 has (`capPerStockBps`).
+- A stock with no measured curve is held to its fallback ceiling and shown as not measured, never left out silently.
+
+**The test:** every stock token on the shelf is eligible for growth and for nothing else; on the full shelf the plan holds at most 8 lines, each within its cap, and shuffling the shelf changes nothing.
+
 ## 3. What to skip or defer
 
 - Any optimiser that needs a covariance matrix. Nothing we can measure feeds it.
 - Probability of success, cones and Monte Carlo survival rates.
 - A default-probability figure per asset. A handful of events does not make an estimate.
 - A calendar glide path as the only de-risking rule. Defer until the window-driven rule has been compared with it (R6).
-- Overlapping issuer × chain caps solved exactly. One nested chain of caps (asset, issuer, class) keeps the fill a sort. A chain cap comes later, and with it the question of an LP.
+- Overlapping issuer × chain caps. Since `ONE-CHAIN` a plan sits on one chain, so there is no chain cap inside a plan, and the caps stay nested (asset, issuer, class): the fill remains a sort and the LP question recedes.
 - A stressed-market regime for the curves. It needs data the collectors do not hold, and they are not edited before Oct 12.
 - Exit curves for USDY and syrupUSDC, for the same reason. Until then a dollar ceiling by tier stands in, as ENG-2 already plans.
 - Multi-stage stochastic goal programming `[77]`. It is a peer-reviewed linear program over a scenario tree, and the scenarios are return forecasts. It is the same trap as the LP, larger.
@@ -243,6 +278,8 @@ Portuguese is measured on its own. No study of numeric faithfulness in Portugues
 | C16 | No candidate is pre-selected; equal visual weight; neutral order | add | `[40][46s]` | End-to-end test: nothing is selected on load. Later, with real use: if one candidate takes more than about 60% whatever the goal, the set is one option with two foils (the threshold is ours) | `DESIGN-VAULT.md` §11; `STYLE.md` if a component is added | S |
 | C17 | The parser gains a stability gate and locale cases | add | A schema guarantees structure, not values, and number ranges are checked locally `[55]`; `[51a][52a]`; "R$ 3.000,00", "3 mil", "até 2029" are an engineering risk, not a cited one `[memory]` | 20 goals × 10 runs × 5 paraphrases: one sheet per goal, or a typed refusal | `DESIGN-VAULT.md` §7 (the evaluation set) | S |
 | C18 | The narration check of section 2.6, if narration is adopted | add | `[54][58a][56][57a]` | Inject 100 corrupted narrations per language (wrong number, swapped asset, added promise, added comparison): every numeric, name and banned-phrase case is caught; entailment recall is reported apart. A gap in Portuguese keeps Portuguese on templates | `DESIGN-VAULT.md` §7; `GATES.md` (a new row) | M |
+| C19 | The goal's currency is a field on the sheet; obligations carry it; the matching leg and the FX stresses exist only when it differs from dollars | add | Section 2.7; the legacy sheet is reais only and `BasketSheet` dollars only `[repo]`; `[4][12]` | The dollar and reais versions of one goal, as in 2.7 | `DESIGN-VAULT.md` §3.6, §7; `HANDOFF-VAULT.md`; `HANDOFF-IDEA1.md`; `CLAUDE.md` (the BRL-leg rule's wording) | M |
+| C20 | The stock rule runs over every stock token on the person's chain: equal split, a cut stock's share goes to the other stocks first, a cap per stock, a fallback ceiling where unmeasured | change | Section 2.7; today the freed share falls to the yield legs `[repo]`; `ONE-CHAIN`, `EXIT-SOURCE`, `PROTECT-NO-STOCKS` | The full-shelf test in 2.7 | `DESIGN-VAULT.md` §7; the asset list | M |
 | K1 | Rules, caps, cash and BRL dedication, the credit budget, the stress table, equal split of stocks | keep | Section 4.1 | The baseline snapshot test stays green where behaviour is unchanged | none | n/a |
 | K2 | The model only parses; templates explain | keep | Section 2.2, models | Same sheet, 100 runs: byte-identical plan | none | n/a |
 
@@ -261,8 +298,8 @@ What it does not have, and where each lands:
 
 | Missing | Step it belongs to |
 |---|---|
-| Dated obligations and their currency. `BasketSheet` has an amount, a horizon and an optional monthly income in dollars; the schedule in reais was left out on purpose (`personalization-ai.md` §3). Dedication, coverage and the funded ratio all need the dates | The sheet, before exposure |
-| The cash and BRL dedication rules, and the BRL leg itself | Exposure |
+| Dated obligations and their currency (C19). `BasketSheet` has an amount, a horizon and an optional monthly income in dollars; the schedule in reais was left out on purpose (`personalization-ai.md` §3). Dedication, coverage and the funded ratio all need the dates | The sheet, before exposure |
+| The cash and matching-leg dedication rules; the BRL leg as the matching leg for goals in reais | Exposure |
 | Leg types and the two tiers (C9); the credit budget | Exposure, from the shelf |
 | Banded fill inside the dollar-yield sleeve (C2) | Exposure |
 | The coverage check (C6) | Between placement and packaging |
@@ -306,6 +343,8 @@ So the changes fit inside `compose` as parameters and one added check, on one co
 7. **Narration.** The decision to let the model narrate is stated as pending in the brief for this note and is in no other document yet. Templates cannot invent a number, and the evidence for model narration is fluency only. If it passes, does Portuguese ship on templates until C18 has run?
 8. **One engine.** `DESIGN-VAULT.md` §7 says `solve()` is not edited. Do these changes go only into `engine/src/personal/`, with the legacy solver frozen behind its baseline test, or into both?
 9. **Names** for the three candidates, and whether any attribute leads the scorecard.
+10. **The 34 stocks.** Which list is it? The seed has 33 distinct stocks across three chains and Bearing measures 47 Solana tokens. And with at most 8 lines in a plan, is "all of them as products" every stock eligible and chosen through themes and shared portfolios, or should a plan be able to hold more lines?
+11. **Which currencies beyond dollars and reais** at launch, and for each, is there a listed asset that can serve as its matching leg?
 
 ## 8. What could not be verified
 
