@@ -3,6 +3,7 @@
 // to read what it returns.
 
 export { compose, PERSONAL_ENGINE_VERSION } from './compose';
+export { draftFromRules } from './draft';
 export { PERSONAL_PARAMS, PERSONAL_PARAMS_STATUS } from './params';
 export { eligibleForGoal, profileOfGoal, registryRowOf, sleeveOfClass } from './registry';
 export {
