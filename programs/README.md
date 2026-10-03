@@ -3,7 +3,7 @@
 | Path | What |
 |---|---|
 | `basket/` | The vault program. Today: the config and its switches, the asset list, the shared-portfolio registry with the author limits, and the owner path: create a vault (with targets of its own or following a shared portfolio), deposit cash, swap through the one allowed router, set targets, withdraw any token to the owner. Design: `docs/vault/DESIGN-VAULT.md` sections 3.7, 5, 6 and 13 |
-| `mock-router/` | A test exchange for LiteSVM and devnet. Not part of the product. It takes the input token from the signer and pays the output from its own reserve at a price its admin sets |
+| `mock-router/` | A test exchange for LiteSVM and devnet. Not part of the product. It takes the input token from the signer and pays the output from its own reserve at a price its admin sets. Only its upgrade authority can initialise it, and becomes that admin |
 | `puppet-router/` | A hostile router, for the tests only. It runs whatever calls a test scripts, with every privilege the vault handed it |
 | `test-hook/` | A hostile transfer hook, for the tests only. It logs the privileges it is handed and uses any signature it gets |
 | `tests/` | The LiteSVM suite, under Vitest. Its own install: `litesvm` needs `@solana/kit` 8 and the repo is on 2.3 |
@@ -98,7 +98,6 @@ Left for SOL-3. None of it is built.
 - Not built from the admin's and the guardian's lists: `set_guardian`, `set_closed`, `extend_closed_until`, `add_closed_day`. Until `set_guardian` exists the guardian named at `init_config` cannot be changed.
 - A version published before `launch()` keeps the delay it was published under. Publish nothing in the last short delay before launching, or cancel what waits.
 - The reader (`packages/chain-solana/src/vault`) refuses a vault with a non-zero `loss_accum` until the keeper leg defines its unit.
-- `mock-router`'s `init_router` is first come, first served. Pin it to an admin before devnet (TNET-4), as `init_config` is pinned to the upgrade authority.
 - When `close_vault` arrives, an owner-only sweep of token accounts the vault owns that are not the associated ones. Tokens sent to such an account cannot be withdrawn today, and such an account in a router's list makes the swap fail.
 - The destination rule of `withdraw` looks at the token account's owner field only. A builder should send withdrawals to the owner's associated token account: an account someone else prepared and handed to the owner can still carry their delegate.
 
