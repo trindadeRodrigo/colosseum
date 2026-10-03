@@ -154,6 +154,8 @@ describe('explanation templates', () => {
         expect(text, `${t.id}.${lang}`).not.toMatch(/[{}]|undefined|NaN|null/);
       }
     expect(() => render('Less {asset}.', {}, 'en')).toThrow(/asset/);
+    // An empty name is a hole too: " is left out" names nothing.
+    expect(() => render('{what} is left out.', { what: '' }, 'en')).toThrow(/what/);
     expect(() => render('In {months|months}.', { months: 'soon' }, 'en')).toThrow(/months/);
     expect(() => render('{x|nope}.', { x: 1 }, 'en')).toThrow(/nope/);
   });
