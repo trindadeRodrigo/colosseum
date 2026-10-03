@@ -65,5 +65,5 @@ A stock token is open when all of these hold, on the cluster's clock:
 ## Tests
 
 - `tests/solana-vault/`: against `fixtures/solana-vault/world.json`, account bytes the built program wrote in LiteSVM. `pnpm --dir programs/tests fixtures` rewrites it.
-- The reader passes the adapter contract's own `reads` group (`adapterContract(name, setup, { groups: ['reads'] })` in `tests/solana-vault/reads.ts`), on the fixture and on a local validator. The groups left are `shared portfolios` (needs the registry, SOL-2), `quotes` and everything that builds (SOL-2, ADS-2): add each to the list as the chain gets it.
+- The reader passes the adapter contract's own `reads` group (`adapterContract(name, setup, { groups: ['reads'] })` in `tests/solana-vault/reads.ts`), on the fixture and on a local validator. The other groups take a full adapter as their fixture, set up with the transactions it builds, so they wait for the builders (ADS-2). `shared portfolios` is one of them: the registry is on chain and the same file reads it (`getRecipe`, a follower's `pending`), but the group's fixture needs a second portfolio and a vault one version behind it.
 - `SOLANA_LOCAL_VALIDATOR=1 pnpm exec vitest run tests/solana-vault/local-validator.test.ts`: the same read cases on a local validator, with real transactions.
