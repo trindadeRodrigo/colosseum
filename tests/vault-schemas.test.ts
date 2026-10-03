@@ -927,6 +927,9 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
         'MarketClosed',
         'MultiplierWindow',
         'Cooldown',
+        // Both pass with time alone, like a cooldown: the loss counter decays, the version takes effect.
+        'LossCapReached',
+        'VersionNotEffective',
         'GasTooLow',
         'Expired',
         'Unavailable',

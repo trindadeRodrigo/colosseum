@@ -127,7 +127,8 @@ export const CONTRACT_ERROR_CODE = {
 } as const satisfies Record<string, ChainErrorCode>;
 
 /**
- * Whether building again, later or at a fresh price, can succeed with nothing changed by the person.
+ * `retryable` means one thing: the same call may succeed later with no change by the person. It says
+ * nothing about how soon: a cooldown passes in an hour, a weekly loss counter decays over days.
  * Every code says: a code added without a line here does not compile.
  */
 export const CHAIN_ERROR_RETRYABLE: Record<ChainErrorCode, boolean> = {
@@ -149,10 +150,12 @@ export const CHAIN_ERROR_RETRYABLE: Record<ChainErrorCode, boolean> = {
   NotTowardTarget: false,
   PastTarget: false,
   Cooldown: true,
-  LossCapReached: false,
+  /** The weekly counter decays: the same leg passes once enough of it has. */
+  LossCapReached: true,
   AssetNotPriced: false,
   NewAssetNeedsOwner: false,
-  VersionNotEffective: false,
+  /** The version takes effect at its time, with no transaction. */
+  VersionNotEffective: true,
   CreatorLimit: false,
   VersionMismatch: false,
   WrongDestination: false,
@@ -164,7 +167,7 @@ export const CHAIN_ERROR_RETRYABLE: Record<ChainErrorCode, boolean> = {
   NotOwner: false,
   CashTokenNotSet: false,
   DepositShortfall: false,
-  /** A new build sets a higher gas limit. */
+  /** A new build states a higher `evm.gas`. */
   GasTooLow: true,
   NotAdmin: false,
   NoCode: false,

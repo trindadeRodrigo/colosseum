@@ -291,11 +291,11 @@ type ChainAdapter = ChainReader & OwnerBuilder & KeeperBuilder & TxProbe;
 
 `chain-mock/src/contract.ts` holds the contract tests every adapter must pass. No builder sets a vault's keeper or operator.
 
-- **Refusals.** An adapter that refuses throws `ChainError { code, message, retryable }` from `packages/schemas`, for bad arguments as much as for a simulated revert. One list of codes, `ChainErrorCode`, in three blocks: the program's 28 error names of 3.7 in the program's order (`PROGRAM_ERRORS`), the EVM contracts' errors that no program error stands for, then the adapter's (`BadInput`, `NotSupported`, `TooManyTrades`, `BadTrade`, `VaultNotFound`, `VaultExists`, `RecipeNotFound`, `NotFollowing`, `NotFunded`, `NoGas`, `AllowanceTooLow`, `Expired`, `NotBuiltHere`, `Unavailable`, `Unknown`). `retryable` is true where building again later or at a fresh price can succeed on its own; `CHAIN_ERROR_RETRYABLE` says it for every code, so a code cannot be added without it. The API maps a code onto its own error codes of 3.3; the vault's name stays on the leg.
+- **Refusals.** An adapter that refuses throws `ChainError { code, message, retryable }` from `packages/schemas`, for bad arguments as much as for a simulated revert. One list of codes, `ChainErrorCode`, in three blocks: the program's 28 error names of 3.7 in the program's order (`PROGRAM_ERRORS`), the EVM contracts' errors that no program error stands for, then the adapter's (`BadInput`, `NotSupported`, `TooManyTrades`, `BadTrade`, `VaultNotFound`, `VaultExists`, `RecipeNotFound`, `NotFollowing`, `NotFunded`, `NoGas`, `AllowanceTooLow`, `Expired`, `NotBuiltHere`, `Unavailable`, `Unknown`). `retryable` means one thing: the same call may succeed later with no change by the person. It says nothing about how soon: a cooldown passes in an hour, a weekly loss counter decays over days. `CHAIN_ERROR_RETRYABLE` says it for every code, so a code cannot be added without it. The API maps a code onto its own error codes of 3.3; the vault's name stays on the leg.
 
   | Program error (`BasketError`) | Contract error (`contracts/src/interfaces`) | Code | Retryable |
   |---|---|---|---|
-  | Each of the 28, numbered 6000 + its place | The same name where a contract has the same rule | The same name | `KeeperPaused`, `ReceivedTooLittle`, `PriceStale`, `PriceDeviation`, `MarketClosed`, `MultiplierWindow` and `Cooldown` yes; the rest no |
+  | Each of the 28, numbered 6000 + its place | The same name where a contract has the same rule | The same name | `KeeperPaused`, `ReceivedTooLittle`, `PriceStale`, `PriceDeviation`, `MarketClosed`, `MultiplierWindow`, `Cooldown`, `LossCapReached` and `VersionNotEffective` yes; the rest no |
   | `ZeroAddress` | `ZeroAddress` (vault and config) | `ZeroAddress` | no |
   | `ParamOutOfBounds` | `ParamOutOfBounds`, `InvalidPull` | `ParamOutOfBounds` | no |
   | `MintNotAccepted` | `AssetNotListed` | `MintNotAccepted`: not on the chain's asset list, as the adapters already refuse it | no |
@@ -304,7 +304,7 @@ type ChainAdapter = ChainReader & OwnerBuilder & KeeperBuilder & TxProbe;
   | none: an Anchor account constraint | `NotAdmin`, `NotPendingAdmin` | `NotAdmin` | no |
   | none | `CashTokenNotSet` | `CashTokenNotSet` | no |
   | none | `DepositShortfall` | `DepositShortfall` | no |
-  | none | `GasTooLow` | `GasTooLow` | yes: a new build sets a higher gas limit |
+  | none | `GasTooLow` | `GasTooLow` | yes: a new build states a higher `evm.gas` |
   | none | `NoCode` | `NoCode` | no |
   | none | `AssetIsRouter` | `AssetIsRouter` | no |
   | none | `RouterIsAsset` | `RouterIsAsset` | no |
