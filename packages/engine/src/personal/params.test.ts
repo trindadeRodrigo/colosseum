@@ -42,6 +42,18 @@ describe('the parameter table', () => {
     }
   });
 
+  // Decided on Oct 3 (gate PROTECT-NO-STOCKS). The stock share of each protect row went to dollar
+  // yield as a starting value, and the rows are marked as changed for Rodrigo to read.
+  it('gives a plan to protect no stocks or crypto, and starts it from no shared portfolio', () => {
+    for (const risk of RISKS) {
+      const row = PERSONAL_PARAMS.sleeves[`protect:${risk}`];
+      expect(row).toMatchObject({ growthBps: 0 });
+    }
+    expect(PERSONAL_PARAMS.defaultTheme.protect).toBeNull();
+    expect(PERSONAL_PARAMS_STATUS.sleeves.changed).toMatch(/PROTECT-NO-STOCKS/);
+    expect(PERSONAL_PARAMS_STATUS.defaultTheme.changed).toMatch(/PROTECT-NO-STOCKS/);
+  });
+
   it('marks every number as a starting value or as set, and says where it came from', () => {
     const keys = Object.keys(PERSONAL_PARAMS).filter((k) => k !== 'version');
     expect(Object.keys(PERSONAL_PARAMS_STATUS).sort()).toEqual(keys.sort());

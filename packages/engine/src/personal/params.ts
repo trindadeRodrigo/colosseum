@@ -17,9 +17,11 @@ export const PERSONAL_PARAMS: PersonalParameters = {
     'income:low': { growthBps: 0, dollarYieldBps: 10_000, goldBps: 0 },
     'income:medium': { growthBps: 0, dollarYieldBps: 10_000, goldBps: 0 },
     'income:high': { growthBps: 0, dollarYieldBps: 10_000, goldBps: 0 },
-    'protect:low': { growthBps: 2000, dollarYieldBps: 5500, goldBps: 2500 },
-    'protect:medium': { growthBps: 3500, dollarYieldBps: 4000, goldBps: 2500 },
-    'protect:high': { growthBps: 5000, dollarYieldBps: 2500, goldBps: 2500 },
+    // A plan to protect holds no stock tokens (gate PROTECT-NO-STOCKS, Oct 3). The stock share each
+    // row had (20%, 35%, 50%) is in dollar yield for now, which leaves the three rows the same.
+    'protect:low': { growthBps: 0, dollarYieldBps: 7500, goldBps: 2500 },
+    'protect:medium': { growthBps: 0, dollarYieldBps: 7500, goldBps: 2500 },
+    'protect:high': { growthBps: 0, dollarYieldBps: 7500, goldBps: 2500 },
   },
 
   // The least held in dollar yield when the goal's date is within `monthsLeft` months.
@@ -60,17 +62,21 @@ export const PERSONAL_PARAMS: PersonalParameters = {
   atEndMinBps: 3000,
   wayStepUsd: 100,
 
-  defaultTheme: { grow: 'the-500', income: null, protect: 'storm-cellar' },
+  // A plan to protect starts from no shared portfolio: the one it had (Storm Cellar) holds stocks.
+  defaultTheme: { grow: 'the-500', income: null, protect: null },
   defaultUnderlying: { growth: 'SPY', gold: 'GLD' },
 };
 
-type Mark = { status: 'starting' | 'set'; from: string };
+/** `changed` is a change made since the prototype that Rodrigo has not read yet: he clears it. */
+type Mark = { status: 'starting' | 'set'; from: string; changed?: string };
 
 /** Where each number came from, and whether Rodrigo has set it. `params.test.ts` holds this complete. */
 export const PERSONAL_PARAMS_STATUS: Record<Exclude<keyof PersonalParameters, 'version'>, Mark> = {
   sleeves: {
     status: 'starting',
     from: 'The prototype table for grow and protect. The income rows are new: the prototype gave income plans a stock sleeve, and stock tokens stay out of income plans (section 17, item 5).',
+    changed:
+      'Oct 3, gate PROTECT-NO-STOCKS: the protect rows lost their stock share (20%, 35%, 50%), moved to dollar yield. The three rows are now the same (75% dollar yield, 25% gold), so risk moves a plan to protect only through the cap per issuer.',
   },
   glideFloor: { status: 'starting', from: 'The prototype table, unchanged.' },
   cashFloor: {
@@ -107,7 +113,9 @@ export const PERSONAL_PARAMS_STATUS: Record<Exclude<keyof PersonalParameters, 'v
   wayStepUsd: { status: 'starting', from: 'The prototype: round hundreds of dollars.' },
   defaultTheme: {
     status: 'starting',
-    from: 'The prototype for grow and protect. None for income: an income plan holds dollar yield only.',
+    from: 'The prototype for grow. None for income: an income plan holds dollar yield only.',
+    changed:
+      'Oct 3, gate PROTECT-NO-STOCKS: none for protect either. Storm Cellar, which the prototype started it from, holds stocks; a plan to protect with nothing chosen is built from the sleeves.',
   },
   defaultUnderlying: {
     status: 'starting',

@@ -25,7 +25,6 @@ describe('the asset registry, as the personalization engine reads it', () => {
     for (const cls of ['stock', 'etf'] as const) {
       expect(eligibleForGoal(token(cls), 'income')).toBe(false);
       expect(eligibleForGoal(token(cls), 'grow')).toBe(true);
-      expect(eligibleForGoal(token(cls), 'protect')).toBe(true);
       // The rule is the registry's own: a row that claims income is still refused.
       const row = { ...registryRowOf(token(cls)), eligibleProfiles: ['income' as const] };
       expect(isEligible(row, profileOfGoal('income'))).toBe(false);
@@ -37,8 +36,26 @@ describe('the asset registry, as the personalization engine reads it', () => {
       expect(registryRowOf(token(cls)).kind).toBe('equity');
       expect(eligibleForGoal(token(cls), 'income')).toBe(false);
       expect(eligibleForGoal(token(cls), 'grow')).toBe(true);
-      expect(eligibleForGoal(token(cls), 'protect')).toBe(true);
     }
+  });
+
+  // Decided on Oct 3 (gate PROTECT-NO-STOCKS): a plan to protect holds dollar yield, gold and cash.
+  it('lets no stock token into a plan to protect, and no crypto or other commodity either', () => {
+    for (const cls of ['stock', 'etf', 'crypto', 'commodity'] as const) {
+      expect(eligibleForGoal(token(cls), 'protect'), cls).toBe(false);
+      // The registry row is what says so: the profile a goal to protect is checked under is not on it.
+      expect(registryRowOf(token(cls)).eligibleProfiles, cls).not.toContain(
+        profileOfGoal('protect'),
+      );
+    }
+    expect(
+      AssetClass.options.filter((cls) => eligibleForGoal(token(cls), 'protect')).sort(),
+    ).toEqual(['cash', 'dollar_yield', 'gold']);
+  });
+
+  it('holds a plan to grow to nothing: every class is allowed in it', () => {
+    for (const cls of AssetClass.options)
+      expect(eligibleForGoal(token(cls), 'grow'), cls).toBe(true);
   });
 
   it('lets dollar yield and cash into every plan', () => {

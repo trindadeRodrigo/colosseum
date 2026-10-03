@@ -1,7 +1,8 @@
 import { apportion } from '@colosseum/basket';
 import type { BasketAsset, Reason } from '@colosseum/schemas';
-import { BPS, bpsOf, split, sum, toCents, toUsd } from './money';
+import { BPS, bpsOf, byName, split, sum, toCents, toUsd } from './money';
 import { once, type Removed, type Sized, type Unit } from './placement';
+import { eligibleForGoal } from './registry';
 import { type RuleId, reason } from './templates';
 import { SLEEVES, type Sleeve } from './types';
 import type { Family, World } from './world';
@@ -167,7 +168,8 @@ function leftOut(w: World, rule: string, name: string): Reason {
 
 /**
  * A shared portfolio as the plan can use it: its recipe on the person's chain. When it cannot be
- * used, the reasons why: no such portfolio, no version on this chain, or no part the person can hold.
+ * used, the reasons why: no such portfolio, no version on this chain, a part the goal does not allow,
+ * or no part the person can hold.
  */
 export function themeOf(w: World, slug: string, chosen: boolean): Theme | Reason[] {
   const { lang } = w;
@@ -181,6 +183,20 @@ export function themeOf(w: World, slug: string, chosen: boolean): Theme | Reason
   });
   if (parts.length === 0)
     return [reason('THEME_NOT_ON_CHAIN', { theme: name, chain: w.chain }, lang)];
+  // A portfolio that holds a token the goal does not allow is left out whole: a plan to protect
+  // neither follows nor opens one that holds stocks. The reason names the first such token.
+  const [refused] = byName(
+    parts.filter((p) => !eligibleForGoal(p.asset, w.sheet.goal)),
+    (p) => p.asset.underlying,
+  );
+  if (refused)
+    return [
+      reason(
+        'THEME_NOT_FOR_GOAL',
+        { theme: name, asset: refused.asset.underlying, goal: w.sheet.goal },
+        lang,
+      ),
+    ];
   const blocks = parts.map((p) => holdable(w, p.asset.underlying, w.sleeveOf(p.asset)));
   if (blocks.every((b) => !b.ok)) {
     const rules = [...new Set(blocks.flatMap((b) => b.why.map((r) => r.rule)))].sort();

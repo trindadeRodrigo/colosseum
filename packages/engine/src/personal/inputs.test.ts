@@ -52,9 +52,12 @@ describe('each input alone moves the plan and says so', () => {
   });
 
   it('goal', () => {
+    // A plan to protect holds no stocks, so The Seven is left out of it: dollar yield and gold.
     const plan = changed({ goal: 'protect' });
-    expect(movedBecauseOf('goal', plan)).toContain('SLEEVE');
-    expect(sleeveBps(plan, shelf, 'growth')).toBe(3500);
+    expect(movedBecauseOf('goal', plan)).toEqual(['SLEEVE', 'THEME_NOT_FOR_GOAL']);
+    expect(sleeveBps(plan, shelf, 'growth')).toBe(0);
+    expect(sleeveBps(plan, shelf, 'dollarYield')).toBe(7500);
+    expect(sleeveBps(plan, shelf, 'gold')).toBe(2500);
   });
 
   it('risk', () => {

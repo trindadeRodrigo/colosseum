@@ -280,12 +280,11 @@ describe('what the person already holds', () => {
     expect(
       line(grow.plan, 'solana:gldx')?.reasons.find((r) => r.rule === 'MORE_BECAUSE_HELD')?.text,
     ).toBe('A larger share here: you already hold $4,000 of NVDA, so this plan buys less of it.');
-    // A plan to protect has room under the issuer cap, so its dollar yield moves too, and says why.
-    const protect = movedBy({ ...BASE, goal: 'protect' });
-    expect(protect.moved).toEqual(
-      expect.arrayContaining(['solana:gldx', 'solana:syrupusdc', 'solana:aaplx']),
-    );
-    expect(rulesOn(protect.plan, 'solana:syrupusdc')).toContain('MORE_BECAUSE_HELD');
+    // At high risk one issuer may hold the whole plan, so there is room for the dollar yield to grow
+    // too, and it says why.
+    const high = movedBy({ ...BASE, risk: 'high' });
+    expect(high.moved).toEqual(expect.arrayContaining(['solana:syrupusdc', 'solana:aaplx']));
+    expect(rulesOn(high.plan, 'solana:syrupusdc')).toContain('MORE_BECAUSE_HELD');
   });
 
   it('sets the target on the amount plus the holding, then takes the holding off', () => {
@@ -554,26 +553,29 @@ describe('the card', () => {
   const bruno = sheet({ goal: 'protect', amountUsd: 50_000, horizonMonths: 18, risk: 'low' });
 
   it('gives a range: after haircut at the low end, as quoted at the high end, and they differ', () => {
-    // $25,000 and $5,000 in the two dollar-yield tokens of a $50,000 plan.
+    // $25,000 and $15,000 in the two dollar-yield tokens of a $50,000 plan.
     const { expectedReturn } = compose(bruno, shelf, ctx).card;
     const ys = new Map(fixtureYields().map((y) => [y.assetId, y]));
     const part = (pick: 'haircutYield' | 'quotedYield') =>
       (25_000 * (ys.get('solana:syrupusdc')?.[pick] ?? 0) +
-        5_000 * (ys.get('solana:jlusdc')?.[pick] ?? 0)) /
+        15_000 * (ys.get('solana:jlusdc')?.[pick] ?? 0)) /
       500;
-    expect(expectedReturn.lowPct).toBe(2.65);
-    expect(expectedReturn.highPct).toBe(3.01);
+    expect(expectedReturn.lowPct).toBe(3.27);
+    expect(expectedReturn.highPct).toBe(3.84);
     expect(expectedReturn.lowPct).toBeCloseTo(part('haircutYield'), 2);
     expect(expectedReturn.highPct).toBeCloseTo(part('quotedYield'), 2);
     expect(expectedReturn.highPct).toBeGreaterThan(expectedReturn.lowPct);
   });
 
   it('writes the exit cost rounded up, never down', () => {
-    const { exit } = compose(bruno, shelf, ctx).card;
-    // 12.75 basis points measured: "about 0.13%", not 0.12%.
-    expect(exit.costBps).toBe(12.75);
+    // A plan to grow at low risk: $20,000 of SPYx at 1 basis point and $5,000 of GLDx at 12.5, the two
+    // tokens the fixture measures. 3.3 basis points over the half of the plan that is measured:
+    // "about 0.04%", not 0.03%.
+    const grow = sheet({ goal: 'grow', amountUsd: 50_000, horizonMonths: 18, risk: 'low' });
+    const { exit } = compose(grow, shelf, ctx).card;
+    expect(exit.costBps).toBe(3.3);
     expect(exit.text).toBe(
-      'You can withdraw the tokens to your own wallet at any time. Selling everything in the worst hours measured would cost about 0.13%; that is measured for 40% of the plan.',
+      'You can withdraw the tokens to your own wallet at any time. Selling everything in the worst hours measured would cost about 0.04%; that is measured for 50% of the plan.',
     );
   });
 });

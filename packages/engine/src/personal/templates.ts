@@ -137,6 +137,12 @@ export const REASON_TEMPLATES = {
     '{theme} fica de fora: não tem versão na {chain|chain}.',
   ),
 
+  THEME_NOT_FOR_GOAL: rule(
+    ['goal', 'themes'],
+    '{theme} is left out: it holds {asset}, and the asset list does not allow {asset} in a plan for {goal|goal}.',
+    '{theme} fica de fora: tem {asset}, e a lista de ativos não permite {asset} em um plano para {goal|goal}.',
+  ),
+
   // What a person cannot hold, and why.
   NOT_FOR_GOAL: rule(
     ['goal'],

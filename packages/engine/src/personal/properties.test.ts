@@ -377,16 +377,19 @@ describe.each(['solana', 'robinhood'] as const)('where there is room, on %s', (c
           const plan = compose(sheet, launch, context);
           expect(violations(plan, launch, context)).toEqual([]);
           const asked = expectedSleeves(sheet, params);
-          // An income plan holds only what pays: its stocks and gold are held in dollar yield.
-          const income = sheet.goal === 'income';
-          const expected = income
-            ? {
-                growth: 0,
-                dollarYield: asked.growth + asked.dollarYield + asked.gold,
-                gold: 0,
-                cash: asked.cash,
-              }
-            : asked;
+          // An income plan holds only what pays: its stocks and gold are held in dollar yield. A
+          // plan to protect holds no stocks: those are held in dollar yield, and its gold stays.
+          const expected =
+            sheet.goal === 'income'
+              ? {
+                  growth: 0,
+                  dollarYield: asked.growth + asked.dollarYield + asked.gold,
+                  gold: 0,
+                  cash: asked.cash,
+                }
+              : sheet.goal === 'protect'
+                ? { ...asked, growth: 0, dollarYield: asked.growth + asked.dollarYield }
+                : asked;
           expect(Object.fromEntries(plan.sleeves.map((x) => [x.sleeve, x.weightBps]))).toEqual(
             expected,
           );

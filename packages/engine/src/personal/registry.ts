@@ -5,7 +5,9 @@ import type { GoalKind, Sleeve } from './types';
 // How the personalization engine reads the asset registry. A token on the shelf (`BasketAsset`) has a
 // class and no eligibility of its own, so each class is given the registry row the structurer's
 // `isEligible` takes, and that function decides. The rule that stock tokens stay out of income plans
-// is its rule, applied here to every token, with no case of its own in `compose`.
+// is its rule, applied here to every token, with no case of its own in `compose`. The rule that a
+// plan to protect holds dollar yield, gold and cash only (gate PROTECT-NO-STOCKS, Oct 3) is in the
+// rows below: the profile a goal to protect is checked under is on those three classes and no other.
 
 /** Which sleeve a class of asset sits in. `growth` is stocks and crypto. */
 const SLEEVE_OF_CLASS: Record<AssetClass, Sleeve> = {
@@ -33,11 +35,19 @@ const KIND_OF_CLASS: Record<AssetClass, AssetKind> = {
 };
 
 const EVERY_PROFILE: Profile[] = ['income', 'accumulation', 'high_risk'];
-const PROFILES_OF_KIND: Record<AssetKind, Profile[]> = {
-  equity: ['accumulation', 'high_risk'],
-  usd_yield: EVERY_PROFILE,
+/**
+ * The profiles a class is eligible for. A goal to grow may hold every class. A goal to protect holds
+ * dollar yield, gold and cash: no stock token, no crypto, no other commodity. A goal of income is
+ * listed only where the class pays: `isEligible` refuses the rest whatever the row says.
+ */
+const PROFILES_OF_CLASS: Record<AssetClass, Profile[]> = {
+  stock: ['high_risk'],
+  etf: ['high_risk'],
+  crypto: ['high_risk'],
+  commodity: ['high_risk'],
+  gold: ['accumulation', 'high_risk'],
+  dollar_yield: EVERY_PROFILE,
   cash: EVERY_PROFILE,
-  brl_stable: EVERY_PROFILE,
 };
 
 /** The registry profile a goal is checked under. */
@@ -54,8 +64,11 @@ export const profileOfGoal = (goal: GoalKind): Profile => PROFILE_OF_GOAL[goal];
 export function registryRowOf(
   asset: Pick<BasketAsset, 'cls'>,
 ): Pick<Asset, 'kind' | 'eligibleProfiles' | 'mintPath'> {
-  const kind = KIND_OF_CLASS[asset.cls];
-  return { kind, eligibleProfiles: PROFILES_OF_KIND[kind], mintPath: 'dex_swap' };
+  return {
+    kind: KIND_OF_CLASS[asset.cls],
+    eligibleProfiles: PROFILES_OF_CLASS[asset.cls],
+    mintPath: 'dex_swap',
+  };
 }
 
 /** Whether a token may be in a plan for this goal, by the registry's own rule. */

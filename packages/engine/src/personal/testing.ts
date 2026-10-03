@@ -299,6 +299,16 @@ export function distanceBps(a: PersonalProposal, b: PersonalProposal): number {
   return sum([...keys].map((k) => Math.abs((x.get(k) ?? 0) - (y.get(k) ?? 0)))) / 2;
 }
 
+/**
+ * How far apart two plans are in shape: the basis points that would have to move between the four
+ * sleeves. Unlike `distanceBps` it does not see which token or which chain carries a sleeve.
+ */
+export function sleeveDistanceBps(a: PersonalProposal, b: PersonalProposal): number {
+  const of = (plan: PersonalProposal, sleeve: Sleeve) =>
+    plan.sleeves.find((x) => x.sleeve === sleeve)?.weightBps ?? 0;
+  return sum(SLEEVES.map((sleeve) => Math.abs(of(a, sleeve) - of(b, sleeve)))) / 2;
+}
+
 export function allReasons(plan: PersonalProposal): Reason[] {
   return [...plan.lines.flatMap((l) => l.reasons), ...plan.removed.flatMap((r) => r.reasons)];
 }

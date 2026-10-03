@@ -224,23 +224,43 @@ describe('the floors, on the starting table', () => {
   const sleevesOf = (made: PersonalProposal) =>
     Object.fromEntries(made.sleeves.map((x) => [x.sleeve, x.weightBps]));
 
+  // Two rows that hold a little in stocks and a quarter in gold, so a floor takes all the stocks and
+  // then reaches the gold. No row of the starting table does since a plan to protect lost its stocks
+  // (gate PROTECT-NO-STOCKS): these are the rows a plan to protect had, given to a goal to grow.
+  const MIXED: PersonalParameters = {
+    ...P,
+    sleeves: {
+      ...P.sleeves,
+      'grow:low': { growthBps: 2000, dollarYieldBps: 5500, goldBps: 2500 },
+      'grow:medium': { growthBps: 3500, dollarYieldBps: 4000, goldBps: 2500 },
+    },
+  };
+
   it('the date fills dollar yield from stocks first, and from gold only then', () => {
-    // Protect at medium risk starts at 35% stocks, 40% dollar yield, 25% gold. Six months out dollar
-    // yield is 80% at least: all the stocks go, then 5 points of gold; then 10 points of gold to cash.
-    const made = plan({ goal: 'protect', risk: 'medium', horizonMonths: 6 }, P);
+    // 35% stocks, 40% dollar yield, 25% gold. Six months out dollar yield is 80% at least: all the
+    // stocks go, then 5 points of gold; then 10 points of gold to cash.
+    const made = plan({ risk: 'medium', horizonMonths: 6 }, MIXED);
     expect(sleevesOf(made)).toEqual({ growth: 0, dollarYield: 8000, gold: 1000, cash: 1000 });
     // A year out: 60% at least, so 20 points of stocks go, and no gold; then 5 points to cash.
-    const year = plan({ goal: 'protect', risk: 'medium', horizonMonths: 12 }, P);
+    const year = plan({ risk: 'medium', horizonMonths: 12 }, MIXED);
     expect(sleevesOf(year)).toEqual({ growth: 1000, dollarYield: 6000, gold: 2500, cash: 500 });
   });
 
   it('what must not be lost takes from stocks first, then from gold, and is honoured', () => {
-    // Protect at low risk starts at 20% stocks, 55% dollar yield, 25% gold. $9,000 of $10,000 must
-    // be kept: all the stocks go, then 15 points of gold.
-    const made = plan({ goal: 'protect', risk: 'low', limits: { mustKeepUsd: 9_000 } }, P);
+    // 20% stocks, 55% dollar yield, 25% gold. $9,000 of $10,000 must be kept: all the stocks go,
+    // then 15 points of gold.
+    const made = plan({ risk: 'low', limits: { mustKeepUsd: 9_000 } }, MIXED);
     expect(sleevesOf(made)).toEqual({ growth: 0, dollarYield: 9000, gold: 1000, cash: 0 });
-    const all = plan({ goal: 'protect', risk: 'low', limits: { mustKeepUsd: 10_000 } }, P);
+    const all = plan({ risk: 'low', limits: { mustKeepUsd: 10_000 } }, MIXED);
     expect(sleevesOf(all)).toEqual({ growth: 0, dollarYield: 10_000, gold: 0, cash: 0 });
+  });
+
+  it('a plan to protect, on the starting table: the date and what must be kept take from its gold', () => {
+    // 75% dollar yield and 25% gold. Six months out: 80% at least, then 10% in cash, both from gold.
+    const near = plan({ goal: 'protect', horizonMonths: 6 }, P);
+    expect(sleevesOf(near)).toEqual({ growth: 0, dollarYield: 8000, gold: 1000, cash: 1000 });
+    const kept = plan({ goal: 'protect', limits: { mustKeepUsd: 9_000 } }, P);
+    expect(sleevesOf(kept)).toEqual({ growth: 0, dollarYield: 9000, gold: 1000, cash: 0 });
   });
 });
 
@@ -263,11 +283,12 @@ describe('a near date, on the starting table', () => {
   });
 
   it('says the loss in a fall in the words of the line', () => {
+    // $10,000 in gold, the one part of this plan with a price that can fall.
     const made = plan({ goal: 'protect', amountUsd: 50_000, horizonMonths: 18, risk: 'low' }, P);
-    expect(made.lines.find((l) => l.assetId === 'solana:spyx')?.reasons.at(-1)?.text).toBe(
+    expect(made.lines.find((l) => l.assetId === 'solana:gldx')?.reasons.at(-1)?.text).toBe(
       'No return is assumed for this part of your plan. In a 20% fall it would lose $2,000.',
     );
-    expect(made.card.expectedReturn.lossInFallUsd).toBe(4000);
+    expect(made.card.expectedReturn.lossInFallUsd).toBe(2000);
   });
 });
 
