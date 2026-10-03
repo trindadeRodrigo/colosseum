@@ -1,0 +1,2 @@
+# The program tests are their own install: litesvm needs @solana/kit 8, the repo is on 2.3.
+packages: []

@@ -1,0 +1,134 @@
+name: security
+
+# Supply chain (DESIGN-VAULT.md section 13): secrets in commits, known flaws in what ships, and the
+# licences and advisories of the Rust tree. Every job writes what it found to its summary.
+on:
+  pull_request:
+  schedule:
+    - cron: '23 7 * * 1' # Mondays, 07:23 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITLEAKS_VERSION: 8.30.1
+  # sha256 of gitleaks_8.30.1_linux_x64.tar.gz, from the release page
+  GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+  CARGO_DENY_VERSION: 0.20.2
+  # sha256 of cargo-deny-0.20.2-x86_64-unknown-linux-musl.tar.gz, from the release page
+  CARGO_DENY_SHA256: 9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: gitleaks
+        run: |
+          curl -sSfL --retry 3 -o "$RUNNER_TEMP/gitleaks.tar.gz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$HOME/.local/bin" gitleaks
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      # A pull request: its own commits. The weekly run: the whole history, every branch.
+      # --redact, always: this log is public. Rules and known non-secrets: .gitleaks.toml, .gitleaksignore.
+      - name: Scan
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            scope="the commits of this pull request"
+            set -- --log-opts="$BASE..$HEAD"
+          else
+            scope="the whole history, every branch"
+            set --
+          fi
+          status=0
+          gitleaks git --no-banner --redact --report-format json --report-path "$RUNNER_TEMP/gitleaks.json" "$@" . || status=$?
+          {
+            echo "### gitleaks $GITLEAKS_VERSION on $scope: $(jq length "$RUNNER_TEMP/gitleaks.json") findings"
+            jq -r '.[] | "- `\(.RuleID)` in `\(.File)` line \(.StartLine), commit \(.Commit[0:8])"' "$RUNNER_TEMP/gitleaks.json"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      # Reads the lockfile; nothing is installed. Every advisory of every severity is listed, the accepted
+      # ones too: the report is the same audit with the ignore list of pnpm-workspace.yaml taken out.
+      - name: Report
+        run: |
+          accepted=$(grep -oE 'GHSA(-[0-9a-z]{4}){3}' pnpm-workspace.yaml | sort -u | tr '\n' ' ')
+          cp pnpm-workspace.yaml "$RUNNER_TEMP/pnpm-workspace.yaml"
+          awk '/^auditConfig:/ { skip = 1; next } skip && /^[^ #]/ { skip = 0 } !skip' \
+            "$RUNNER_TEMP/pnpm-workspace.yaml" > pnpm-workspace.yaml
+          pnpm audit --prod --json > "$RUNNER_TEMP/audit.json" || true
+          cp "$RUNNER_TEMP/pnpm-workspace.yaml" pnpm-workspace.yaml
+          {
+            echo "### pnpm audit --prod"
+            jq -r '.metadata.vulnerabilities | "critical \(.critical), high \(.high), moderate \(.moderate), low \(.low)"' "$RUNNER_TEMP/audit.json"
+            echo
+            echo "| Severity | Package | Vulnerable | Fixed in | Advisory | Reached through | Accepted |"
+            echo "|---|---|---|---|---|---|---|"
+            jq -r --arg accepted "$accepted" '
+              def rank: {"critical": 0, "high": 1, "moderate": 2, "low": 3}[.] // 4;
+              ($accepted | split(" ")) as $known
+              | [.advisories[]] | sort_by(.severity | rank) | .[]
+              | .github_advisory_id as $id
+              | "| \(.severity) | \(.module_name) | `\(.vulnerable_versions)` | `\(.patched_versions)` | \($id) | \(.findings[0].paths[0] | gsub(">"; " > ")) | \(if ($known | index($id)) then "yes: docs/vault/SECURITY-DEPS.md" else "" end) |"
+            ' "$RUNNER_TEMP/audit.json"
+          } >> "$GITHUB_STEP_SUMMARY"
+          pnpm audit --prod || true
+      # With the ignore list: the accepted advisories pass, any other high or critical one fails.
+      - name: Fail on a high or critical advisory that is not accepted
+        run: pnpm audit --prod --audit-level high
+
+  cargo-deny:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: cargo-deny
+        run: |
+          name="cargo-deny-${CARGO_DENY_VERSION}-x86_64-unknown-linux-musl"
+          curl -sSfL --retry 3 -o "$RUNNER_TEMP/cargo-deny.tar.gz" \
+            "https://github.com/EmbarkStudios/cargo-deny/releases/download/${CARGO_DENY_VERSION}/${name}.tar.gz"
+          echo "${CARGO_DENY_SHA256}  $RUNNER_TEMP/cargo-deny.tar.gz" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$RUNNER_TEMP/cargo-deny.tar.gz" -C "$HOME/.local/bin" --strip-components=1 "${name}/cargo-deny"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      # What deny.toml lets through is still shown: the same check with its ignore list emptied.
+      - name: Report, with nothing ignored
+        run: |
+          sed '/^ignore = \[/,/^\]/d' deny.toml > "$RUNNER_TEMP/deny-all.toml"
+          cargo deny --locked --config "$RUNNER_TEMP/deny-all.toml" check advisories licenses > "$RUNNER_TEMP/deny-all.log" 2>&1 || true
+          {
+            echo "### cargo-deny $CARGO_DENY_VERSION with the ignore list of deny.toml emptied"
+            echo '```'
+            grep -E '^(error|warning)\[' "$RUNNER_TEMP/deny-all.log" | sort | uniq -c || echo "nothing"
+            grep -E '^ +├ (ID|Advisory): ' "$RUNNER_TEMP/deny-all.log" || true
+            tail -n 1 "$RUNNER_TEMP/deny-all.log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Licences and advisories
+        run: cargo deny --locked check advisories licenses

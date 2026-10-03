@@ -1,0 +1,211 @@
+import {
+  type Address,
+  generateKeyPairSigner,
+  getAddressDecoder,
+  type KeyPairSigner,
+} from '@solana/kit';
+import type { LiteSVM } from 'litesvm';
+import { beforeEach, describe, expect, it } from 'vitest';
+import {
+  ANCHOR,
+  createWorld,
+  discriminator,
+  expectError,
+  expectOk,
+  fundedSigner,
+  idlCreateInstruction,
+  loadProgram,
+  MOCK_ROUTER_PROGRAM,
+  programDataAddress,
+  send,
+} from './src/env';
+import {
+  initPairInstruction,
+  initRouterInstruction,
+  MOCK_ROUTER_ERR,
+  routeInstruction,
+  routerAddress,
+  setPriceInstruction,
+} from './src/mock-router';
+import {
+  ata,
+  balance,
+  createAta,
+  createMint,
+  mintTo,
+  type TestMint,
+  TOKEN_2022_PROGRAM,
+  TOKEN_PROGRAM,
+} from './src/tokens';
+
+// The test exchange: it takes the input token from the signer's account and pays the output
+// token from its own reserve, at the price in its own config.
+describe('mock-router', () => {
+  let svm: LiteSVM;
+  let admin: KeyPairSigner; // the program's upgrade authority, which init_router makes the admin
+  let trader: KeyPairSigner;
+  let cash: TestMint; // Token program, 6 decimals
+  let stock: TestMint; // Token-2022 with the stock token's extensions, 8 decimals
+  let traderCash: Address;
+  let traderStock: Address;
+  let reserveCash: Address;
+  let reserveStock: Address;
+
+  // 1 unit of cash (10^6 raw) buys 0.002 of the stock (200,000 raw): a price of 500.
+  const PRICE_NUM = 1n;
+  const PRICE_DEN = 5n;
+
+  beforeEach(async () => {
+    ({ svm, deployer: admin } = await createWorld());
+    trader = await fundedSigner(svm);
+    cash = await createMint(svm, admin, { program: TOKEN_PROGRAM, decimals: 6 });
+    stock = await createMint(svm, admin, { program: TOKEN_2022_PROGRAM, decimals: 8, stock: true });
+
+    const router = await routerAddress();
+    expectOk(
+      await send(svm, admin, [
+        await initRouterInstruction(admin),
+        await initPairInstruction(admin, cash.address, stock.address, PRICE_NUM, PRICE_DEN),
+      ]),
+    );
+    reserveCash = await createAta(svm, admin, router, cash);
+    reserveStock = await mintTo(svm, admin, stock, router, 1_000_00000000n);
+    traderCash = await mintTo(svm, admin, cash, trader.address, 100_000000n);
+    traderStock = await createAta(svm, admin, trader.address, stock);
+  });
+
+  const route = (amountIn: bigint, minOut: bigint) =>
+    routeInstruction({
+      trader,
+      mintIn: cash,
+      mintOut: stock,
+      traderIn: traderCash,
+      destination: traderStock,
+      amountIn,
+      minOut,
+    });
+
+  // On a network where people try the product, whoever initialised the exchange would set its
+  // prices. Only the key that deployed it can.
+  describe('who may initialise it', () => {
+    let fresh: LiteSVM;
+    let deployer: KeyPairSigner;
+    let stranger: KeyPairSigner;
+
+    beforeEach(async () => {
+      ({ svm: fresh, deployer } = await createWorld());
+      stranger = await fundedSigner(fresh);
+    });
+
+    it('refuses a signer who is not the upgrade authority, and takes the one who is', async () => {
+      expectError(
+        await send(fresh, stranger, [await initRouterInstruction(stranger)]),
+        MOCK_ROUTER_ERR.NotUpgradeAuthority,
+      );
+      expect(fresh.getAccount(await routerAddress()).exists).toBe(false);
+      expectOk(await send(fresh, deployer, [await initRouterInstruction(deployer)]));
+      const router = fresh.getAccount(await routerAddress());
+      if (!router.exists) throw new Error('no router');
+      // Router { admin, bump } behind the eight bytes that say what the account is.
+      expect(getAddressDecoder().decode(router.data.slice(8, 40))).toBe(deployer.address);
+    });
+
+    it("refuses another program's data account as proof of the upgrade authority", async () => {
+      // The stranger really is the upgrade authority of some program, just not of this one.
+      const other = (await generateKeyPairSigner()).address;
+      await loadProgram(fresh, other, 'mock_router.so', stranger.address);
+      expectError(
+        await send(fresh, stranger, [
+          await initRouterInstruction(stranger, { programData: await programDataAddress(other) }),
+        ]),
+        MOCK_ROUTER_ERR.NotUpgradeAuthority,
+      );
+      expectError(
+        await send(fresh, stranger, [
+          await initRouterInstruction(stranger, {
+            program: other,
+            programData: await programDataAddress(other),
+          }),
+        ]),
+        ANCHOR.InvalidProgramId,
+      );
+      expect(fresh.getAccount(await routerAddress()).exists).toBe(false);
+    });
+
+    it('cannot be initialised at all once the program has no upgrade authority', async () => {
+      await loadProgram(fresh, MOCK_ROUTER_PROGRAM, 'mock_router.so', null);
+      expectError(
+        await send(fresh, deployer, [await initRouterInstruction(deployer)]),
+        MOCK_ROUTER_ERR.NotUpgradeAuthority,
+      );
+    });
+  });
+
+  it('takes the input from the signer and pays the output from its reserve at the set price', async () => {
+    expectOk(await send(svm, trader, [await route(10_000000n, 2_000000n)]));
+
+    expect(balance(svm, traderCash)).toBe(90_000000n);
+    expect(balance(svm, traderStock)).toBe(2_000000n);
+    expect(balance(svm, reserveCash)).toBe(10_000000n);
+    expect(balance(svm, reserveStock)).toBe(1_000_00000000n - 2_000000n);
+  });
+
+  it('refuses a trade that would pay less than min_out, and moves nothing', async () => {
+    expectError(
+      await send(svm, trader, [await route(10_000000n, 2_000001n)]),
+      MOCK_ROUTER_ERR.BelowMinOut,
+    );
+    expect(balance(svm, traderCash)).toBe(100_000000n);
+    expect(balance(svm, traderStock)).toBe(0n);
+  });
+
+  it('lets only its admin change the price', async () => {
+    const stranger = await fundedSigner(svm);
+    expectError(
+      await send(svm, stranger, [
+        await setPriceInstruction(stranger, cash.address, stock.address, 1n, 1n),
+      ]),
+      ANCHOR.ConstraintHasOne,
+    );
+
+    // Admin halves the price of the stock: the same cash now buys twice as much.
+    expectOk(
+      await send(svm, admin, [
+        await setPriceInstruction(admin, cash.address, stock.address, 2n, 5n),
+      ]),
+    );
+    expectOk(await send(svm, trader, [await route(10_000000n, 0n)]));
+    expect(balance(svm, traderStock)).toBe(4_000000n);
+  });
+
+  it('pays whatever destination it is told to, like a real router', async () => {
+    const other = await fundedSigner(svm);
+    const otherStock = await createAta(svm, admin, other.address, stock);
+    expectOk(
+      await send(svm, trader, [
+        await routeInstruction({
+          trader,
+          mintIn: cash,
+          mintOut: stock,
+          traderIn: traderCash,
+          destination: otherStock,
+          amountIn: 10_000000n,
+          minOut: 0n,
+        }),
+      ]),
+    );
+    expect(balance(svm, otherStock)).toBe(2_000000n);
+    expect(balance(svm, await ata(trader.address, stock))).toBe(0n);
+  });
+
+  it("refuses Anchor's instruction that creates an on-chain IDL account", async () => {
+    const stranger = await fundedSigner(svm);
+    const { instruction, idlAccount } = await idlCreateInstruction(MOCK_ROUTER_PROGRAM, stranger);
+    expectError(await send(svm, stranger, [instruction]), ANCHOR.IdlInstructionStub);
+    expect(svm.getAccount(idlAccount).exists).toBe(false);
+  });
+
+  it("answers to the same first eight bytes as Jupiter's route_v2", () => {
+    expect(Buffer.from(discriminator('route_v2')).toString('hex')).toBe('bb64facc31c4af14');
+  });
+});
