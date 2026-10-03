@@ -22,6 +22,15 @@ type OrderRow = typeof orders.$inferSelect;
 /** An order as the API holds it: the order, the request it came from, and every attempt at its legs. */
 export type StoredOrder = { order: Order; request: IntentRequest; attempts: Attempt[] };
 
+/**
+ * A row written before `Leg.expected` was one entry per trade holds one figure or none. It reads as
+ * the list it would be now: the one figure of a leg with one trade, and nothing otherwise.
+ */
+function expectedOfRow(stored: unknown): Leg['expected'] {
+  if (Array.isArray(stored)) return stored;
+  return stored && typeof stored === 'object' ? [stored as Leg['expected'][number]] : [];
+}
+
 const toLeg = (r: LegRow): Leg => ({
   id: r.id,
   orderId: r.orderId,
@@ -31,7 +40,7 @@ const toLeg = (r: LegRow): Leg => ({
   signer: r.signer,
   description: r.description,
   trades: r.trades,
-  expected: r.expected ?? null,
+  expected: expectedOfRow(r.expected),
   status: r.status,
   attempt: r.attempt,
   txId: r.txId,

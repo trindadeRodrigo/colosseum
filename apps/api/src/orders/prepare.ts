@@ -9,6 +9,7 @@ import {
   DISCLAIMER,
   type IntentRequest,
   type Leg,
+  ORDER_LIMITS,
   type Order,
   type Principal,
   type Target,
@@ -23,22 +24,27 @@ import { Refusal, refusing } from './errors';
 // of an order and builds nothing: a leg is built just before it is signed.
 
 /**
- * The numbers the order layer applies. One place, so the review screen and the bytes agree.
- * WORKAROUND: `slippageBps` and `maxAmountUsd` belong on the shared `IntentRequest`, which has neither.
+ * The numbers the order layer applies. One place, so the review screen and the bytes agree. The most
+ * a request may ask for is `ORDER_LIMITS` in packages/schemas, which the request's own schema holds.
  */
 export const ORDER_POLICY = {
-  /** The slippage every build is given, and what a leg's `minOutRaw` is worked out with. */
+  /**
+   * The slippage a build is given where the buy names none (`maxSlippageBps`), and what a leg's
+   * `minOutRaw` is worked out with.
+   */
   slippageBps: 100,
   /** An order nobody signed expires after this long. */
   unsignedSeconds: 15 * 60,
   /** Once the chain has seen its first transaction, an order stays open this long. */
   signedSeconds: 24 * 60 * 60,
-  /**
-   * The most one order may buy, in dollars: the ceiling of a plan's own amount (`BasketSheet`). Held
-   * here until the shared `IntentRequest` carries one.
-   */
-  maxAmountUsd: 1_000_000,
 } as const;
+
+/** The slippage every trade of an order is built with: the buy's own figure, or the server's. */
+export function slippageOf(request: IntentRequest): number {
+  return request.type === 'buy' && request.maxSlippageBps !== undefined
+    ? request.maxSlippageBps
+    : ORDER_POLICY.slippageBps;
+}
 
 export type PrepareContext = {
   principal: Principal;
@@ -132,6 +138,7 @@ async function planChainBuy(a: {
   basketId: string;
   components: Component[];
   cents: bigint;
+  slippageBps: number;
 }): Promise<ChainPlan> {
   const { entry, owner } = a;
   const { adapter } = entry;
@@ -200,7 +207,7 @@ async function planChainBuy(a: {
       seq,
       ...step,
       signer: 'owner',
-      expected: await expectedOf(entry, step.trades, owner),
+      expected: await expectedOf(entry, step.trades, owner, a.slippageBps),
       status: 'planned',
       attempt: 0,
       txId: null,
@@ -214,25 +221,27 @@ async function planChainBuy(a: {
 }
 
 /**
- * WORKAROUND: `Leg.expected` is one figure, so a leg with several trades has none.
- * What a leg with one trade is expected to pay out, from a quote taken now. `minOutRaw` is the quote
- * less the slippage every build is given. Null for a leg with no trade or with several: one figure
- * cannot stand for trades into different assets.
+ * What each trade of a leg is expected to pay out, from a quote taken now: one entry per trade, in the
+ * order of the trades, and none for a leg that trades nothing. `minOutRaw` is the quote less the
+ * slippage the order is built with.
  */
 export async function expectedOf(
   entry: ChainEntry,
   trades: Trade[],
   taker: Address,
+  slippageBps: number,
 ): Promise<Leg['expected']> {
-  const [trade, ...more] = trades;
-  if (!trade || more.length) return null;
-  const quote = await entry.adapter.quote(trade, taker);
-  return {
-    inRaw: trade.amountInRaw,
-    outRaw: quote.outRaw,
-    minOutRaw: lessBps(BigInt(quote.outRaw), ORDER_POLICY.slippageBps).toString(),
-    costBps: quote.costBps,
-  };
+  const expected: Leg['expected'] = [];
+  for (const trade of trades) {
+    const quote = await entry.adapter.quote(trade, taker);
+    expected.push({
+      inRaw: trade.amountInRaw,
+      outRaw: quote.outRaw,
+      minOutRaw: lessBps(BigInt(quote.outRaw), slippageBps).toString(),
+      costBps: quote.costBps,
+    });
+  }
+  return expected;
 }
 
 const list = (names: string[]) =>
@@ -264,11 +273,15 @@ export async function prepareIntent(req: IntentRequest, ctx: PrepareContext): Pr
     return { entry, recipe, owner };
   });
 
-  if (!(req.amountUsd <= ORDER_POLICY.maxAmountUsd))
+  // The route's schema already holds a request to both; this is for a caller that comes another way.
+  if (!(req.amountUsd <= ORDER_LIMITS.maxAmountUsd))
     throw new Refusal(
       422,
-      `one order buys at most $${ORDER_POLICY.maxAmountUsd.toLocaleString('en-US')}`,
+      `one order buys at most $${ORDER_LIMITS.maxAmountUsd.toLocaleString('en-US')}`,
     );
+  const slippageBps = slippageOf(req);
+  if (!(slippageBps >= 0 && slippageBps <= ORDER_LIMITS.maxSlippageBps))
+    throw new Refusal(422, `a trade takes at most ${ORDER_LIMITS.maxSlippageBps} bps of slippage`);
   const cents = BigInt(Math.round(req.amountUsd * 100));
   if (cents <= 0n) throw new Refusal(422, 'the amount is less than one cent');
   // Each chain gets the share of the amount that the plan gives it.
@@ -288,6 +301,7 @@ export async function prepareIntent(req: IntentRequest, ctx: PrepareContext): Pr
           basketId,
           components: p.recipe.components,
           cents: shares[i] ?? 0n,
+          slippageBps,
         }),
       ),
     ),

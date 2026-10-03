@@ -1,5 +1,14 @@
 import { legAttempts, legs, orders, proposals, vaults } from '@colosseum/db';
-import { BasketTx, BuildLegResponse, ChainError, type ChainId, Order } from '@colosseum/schemas';
+import {
+  BasketTx,
+  BuildLegResponse,
+  ChainError,
+  type ChainId,
+  Order,
+  OrderDetail,
+  OrderError,
+  PortfolioResponse,
+} from '@colosseum/schemas';
 import { eq, inArray, or } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -13,8 +22,6 @@ import {
   testDb,
   testIssuer,
 } from '../../testing/harness';
-import { OrderDetail } from './orders';
-import { PortfolioResponse } from './portfolio';
 
 // API-1, the walking skeleton of M1 and the identity checks of G-LINK, through HTTP on the mock chain
 // and the real database. Every test makes its own wallets and its own orders; afterAll deletes the
@@ -77,7 +84,7 @@ async function fund(
 
 async function order(
   who: Person,
-  body: { amountUsd?: number; chains?: ChainId[] } = {},
+  body: { amountUsd?: number; chains?: ChainId[]; maxSlippageBps?: number } = {},
   on?: FastifyInstance,
 ): Promise<OrderDetail> {
   const res = await post(
@@ -449,6 +456,95 @@ describe('sign-in', () => {
     const placed = await order(a, { chains: ['robinhood'] });
     const { tx } = await build(a, placed, first(placed, 'robinhood').id);
     expect(tx.signer).toBe(a.evm);
+  });
+});
+
+describe('what a leg is expected to pay out', () => {
+  const lessBps = (raw: string, bps: number) =>
+    ((BigInt(raw) * BigInt(10_000 - bps)) / 10_000n).toString();
+
+  it('has one figure per trade, in trade order, and none for a step that trades nothing', async () => {
+    const a = await someone();
+    await fund(a);
+    const placed = await order(a);
+    for (const leg of placed.legs) {
+      expect(leg.expected, `${leg.chain} ${leg.kind}`).toHaveLength(leg.trades.length);
+      for (const [i, figure] of leg.expected.entries()) {
+        expect(figure.inRaw).toBe(leg.trades[i]?.amountInRaw);
+        expect(BigInt(figure.outRaw)).toBeGreaterThan(0n);
+        // The server's own slippage where the request names none: 100 bps.
+        expect(figure.minOutRaw).toBe(lessBps(figure.outRaw, 100));
+      }
+    }
+    // On the EVM chain the first trades ride in the create: one leg, three trades, three figures.
+    const create = placed.legs.find((l) => l.chain === 'robinhood' && l.kind === 'create_vault');
+    expect(create?.expected).toHaveLength(3);
+    expect(first(placed, 'robinhood', 0)).toMatchObject({ kind: 'approve', expected: [] });
+    // Solana trades one a transaction: three swap legs with one figure each.
+    expect(placed.legs.filter((l) => l.chain === 'solana').map((l) => l.expected.length)).toEqual([
+      0, 1, 1, 1,
+    ]);
+  });
+
+  it('shows the minimum that is in the bytes: the built transaction states it per trade', async () => {
+    const a = await someone();
+    await fund(a, ['robinhood']);
+    const placed = await order(a, { chains: ['robinhood'] });
+    const [approve, create] = [first(placed, 'robinhood', 0), first(placed, 'robinhood', 1)];
+    const approved = await build(a, placed, approve.id);
+    expect(approved.tx.preview.minimums).toEqual([]);
+    await report(a, placed, approve.id, { txId: await land(a, placed, approve.id) });
+
+    const { tx } = await build(a, placed, create.id);
+    const leg = legOf(await read(a, placed), create.id);
+    expect(tx.preview.minimums).toEqual(
+      leg.trades.map((t, i) => ({
+        sell: t.sell,
+        buy: t.buy,
+        inRaw: t.amountInRaw,
+        minOutRaw: leg.expected[i]?.minOutRaw,
+      })),
+    );
+    expect(leg.expected).toHaveLength(3);
+  });
+
+  it('builds with the slippage the buy asked for, up to the cap and no further', async () => {
+    const a = await someone();
+    await fund(a, ['solana']);
+    const tight = await order(a, { amountUsd: 600, chains: ['solana'], maxSlippageBps: 25 });
+    const swaps = tight.legs.filter((l) => l.kind === 'swap');
+    expect(swaps).toHaveLength(3);
+    for (const leg of swaps)
+      expect(leg.expected[0]?.minOutRaw).toBe(lessBps(leg.expected[0]?.outRaw ?? '0', 25));
+    // The same figure is in the bytes of the build.
+    const create = first(tight, 'solana', 0);
+    await build(a, tight, create.id);
+    await report(a, tight, create.id, { txId: await land(a, tight, create.id) });
+    const swap = first(tight, 'solana', 1);
+    const { tx } = await build(a, tight, swap.id);
+    const built = legOf(await read(a, tight), swap.id);
+    expect(tx.preview.minimums?.[0]?.minOutRaw).toBe(lessBps(built.expected[0]?.outRaw ?? '0', 25));
+    expect(built.expected[0]?.minOutRaw).toBe(tx.preview.minimums?.[0]?.minOutRaw);
+
+    const buy = { type: 'buy', owner: a.owner, amountUsd: 600, proposalId: planId };
+    expect((await post(a, '/v1/orders', { ...buy, maxSlippageBps: 300 })).statusCode).toBe(200);
+    expect((await post(a, '/v1/orders', { ...buy, maxSlippageBps: 301 })).statusCode).toBe(400);
+    expect((await post(a, '/v1/orders', { ...buy, maxSlippageBps: -1 })).statusCode).toBe(400);
+  });
+
+  it('answers every refusal in the one shared shape', async () => {
+    const a = await someone();
+    const placed = await order(a);
+    // No cash yet: the chain's own code and whether to try again travel in details.
+    const refused = await post(a, legUrl(placed, first(placed, 'solana').id, 'build'));
+    expect(refused.statusCode).toBe(409);
+    expect(OrderError.parse(refused.json())).toEqual(refused.json());
+    expect(refused.json()).toMatchObject({
+      code: 'NOT_FUNDED',
+      details: { chainCode: 'NotFunded', retryable: false },
+    });
+    const missing = await get(a, '/v1/orders/4b1c0f0e-3f8e-4d0e-9d2b-0d7a3a6b1c2d');
+    expect(OrderError.parse(missing.json())).toEqual({ error: 'no order with that id' });
   });
 });
 
@@ -1028,12 +1124,13 @@ describe('refusals', () => {
     expect(broken.statusCode).toBe(409);
     expect(broken.json().error).toMatch(/cannot be read/);
 
-    // The most one order may buy.
+    // The most one order may buy. The ceiling is in the request's own schema, so a request over it
+    // is one the server cannot take (400), with the same sentence.
     expect((await buy(planId, { amountUsd: 1_000_000 })).statusCode).toBe(200);
     const over = await buy(planId, { amountUsd: 1_000_000.01 });
-    expect(over.statusCode).toBe(422);
+    expect(over.statusCode).toBe(400);
     expect(over.json().error).toMatch(/1,000,000/);
-    expect((await buy(planId, { amountUsd: 1e300 })).statusCode).toBe(422);
+    expect((await buy(planId, { amountUsd: 1e300 })).statusCode).toBe(400);
   });
 
   it('answers a request it cannot read with a 4xx, never a 500', async () => {

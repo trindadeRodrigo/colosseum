@@ -139,6 +139,8 @@ function checkTx(c: Ctx, tx: BuiltTx, kind: LegKind, signer: Address) {
   expect(tx.provenance).toBe(c.f.provenance);
   expect(tx.preview.provenance).toBe(c.f.provenance);
   expect(tx.preview.simulated).toBe(true);
+  // An adapter always says what its trades accept at the least: nothing, for a step that trades nothing.
+  expect(tx.preview.minimums, 'the preview states its trades').toBeDefined();
   expect(tx.preview.fetchedAt >= c.f.notBefore).toBe(true);
   expect(BigInt(tx.preview.feeNativeRaw)).toBeGreaterThan(0n);
   expect(tx.description.length).toBeGreaterThan(0);
@@ -472,6 +474,9 @@ group('builds', {
     checkTx(c, tx, 'create_vault', c.f.owner);
     expect(delta(tx, 'vault', first.asset)).toBeGreaterThan(0n);
     expect(delta(tx, 'vault', c.cash.id)).toBe(0n);
+    expect(tx.preview.minimums?.map((m) => [m.sell, m.buy, m.inRaw])).toEqual([
+      [c.cash.id, first.asset, c.f.depositRaw],
+    ]);
   },
 
   'previews a deposit as cash leaving the wallet for the vault, and nothing else': async (c) => {
@@ -481,6 +486,7 @@ group('builds', {
       slippageBps: 100,
     });
     checkTx(c, tx, 'deposit', c.f.owner);
+    expect(tx.preview.minimums).toEqual([]);
     expect(tx.preview.changes).toHaveLength(2);
     expect(delta(tx, 'wallet', c.cash.id)).toBe(-BigInt(c.f.depositRaw));
     expect(delta(tx, 'vault', c.cash.id)).toBe(BigInt(c.f.depositRaw));
@@ -496,6 +502,29 @@ group('builds', {
     expect(delta(tx, 'vault', c.f.ownerTrade.sell)).toBe(-BigInt(c.f.ownerTrade.amountInRaw));
     expect(delta(tx, 'vault', c.f.ownerTrade.buy)).toBeGreaterThan(0n);
     expect(tx.preview.changes.filter((x) => x.holder === 'wallet')).toEqual([]);
+  },
+
+  'states the least each trade accepts, one entry per trade and in their order': async (c) => {
+    const { sell, buy, amountInRaw } = c.f.ownerTrade;
+    const half = { sell, buy, amountInRaw: (BigInt(amountInRaw) / 2n).toString() };
+    // As many trades as one transaction takes here: two where the chain allows, one where it does not.
+    const trades = c.a.capabilities.maxTradesPerTx > 1 ? [half, half] : [c.f.ownerTrade];
+    const slippageBps = 100;
+    const tx = await c.a.buildOwnerSwap({ vault: c.f.vault, trades, slippageBps });
+    const minimums = tx.preview.minimums ?? [];
+    expect(minimums.map((m) => [m.sell, m.buy, m.inRaw])).toEqual(
+      trades.map((t) => [t.sell, t.buy, t.amountInRaw]),
+    );
+    const out = delta(tx, 'vault', buy);
+    const least = minimums.reduce((n, m) => n + BigInt(m.minOutRaw), 0n);
+    for (const m of minimums) expect(BigInt(m.minOutRaw)).toBeGreaterThan(0n);
+    // A floor under what the simulation paid out, and no further under it than twice the slippage.
+    expect(least).toBeLessThanOrEqual(out);
+    expect(least).toBeGreaterThanOrEqual((out * BigInt(10_000 - 2 * slippageBps)) / 10_000n);
+    // A tighter slippage is a higher floor.
+    const tight = await c.a.buildOwnerSwap({ vault: c.f.vault, trades, slippageBps: 0 });
+    const tightLeast = (tight.preview.minimums ?? []).reduce((n, m) => n + BigInt(m.minOutRaw), 0n);
+    expect(tightLeast).toBeGreaterThan(least);
   },
 
   'previews a withdrawal as the tokens themselves going to the owner': async (c) => {

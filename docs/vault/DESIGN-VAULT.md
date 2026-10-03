@@ -315,7 +315,10 @@ const BuiltTx = UnsignedTx.omit({ kind: true, legAssetId: true, executionId: tru
   chainId, signer, feePayer /* optional */,
   messageHash,                                         // 32 bytes of hex, defined per family below
   preview });                                          // Sourced & { summary, simulated, feeNativeRaw,
-                                                       //   changes: { holder: 'wallet' | 'vault', asset, deltaRaw }[] }
+                                                       //   changes: { holder: 'wallet' | 'vault', asset, deltaRaw }[],
+                                                       //   minimums: { sell, buy, inRaw, minOutRaw }[] }
+                                                       // minimums: one per trade, in order, as in the bytes;
+                                                       // an adapter always states it, empty for no trade
 const BasketTx = BuiltTx.extend({ legId, attemptId });  // strings, stamped by the API or the keeper (stampTx).
                                                        // The wallet, the web and the guard take only this.
 // Both check their fields against each other: `evm` on an EVM chain and nowhere else, lastValidBlockHeight
@@ -331,7 +334,8 @@ type LegKind = 'approve' | 'create_vault' | 'deposit' | 'swap' | 'set_targets' |
 type Leg = { id: string; orderId: string | null;       // null for keeper legs
   chain: ChainId; seq: number;                         // order within its chain
   kind: LegKind; signer: 'owner' | 'keeper'; description: string; trades: Trade[];
-  expected: { inRaw: RawAmount; outRaw: RawAmount; minOutRaw: RawAmount; costBps: number } | null;
+  expected: { inRaw: RawAmount; outRaw: RawAmount; minOutRaw: RawAmount; costBps: number }[];
+                                                       // one per trade, in trade order; empty for none
   status: LegStatus; attempt: number; txId: string | null; explorerUrl: string | null;   // from the latest attempt
   validUntil: string | null; error: { code: string; message: string; retryable: boolean } | null;
   trigger: 'manual' | 'index_update' | 'drift' | 'liquidity_breach'; provenance: Provenance };
@@ -349,7 +353,9 @@ type Order = { id: string; type: 'buy' | 'rebalance' | 'follow' | 'publish' | 'w
   status: 'open' | 'partial' | 'done' | 'failed' | 'expired';
   approvalUrl: string; expiresAt: number; createdAt: string; disclaimer: string };
 type IntentRequest =
-  | { type: 'buy'; owner: Owner; amountUsd: number; proposalId?: string; family?: string; chains?: ChainId[] }
+  | { type: 'buy'; owner: Owner; amountUsd: number;   // at most 1,000,000 (ORDER_LIMITS)
+      maxSlippageBps?: number;                         // at most 300; left out, the server's 100
+      proposalId?: string; family?: string; chains?: ChainId[] }
   | { type: 'rebalance'; vaults: Address[]; reason: 'manual' | 'index_update' | 'drift' }
   | { type: 'follow'; vault: Address; family: string; autoFollow: boolean }
   | { type: 'publish'; creator: Owner; family: string; name: string; copy: string;
@@ -362,14 +368,17 @@ function prepareIntent(req: IntentRequest, ctx: { principal: Principal;
   adapters: Record<ChainId, ChainAdapter>; liquidity?: LiquidityProvider; now: string }): Promise<Order>;
 ```
 
-Routes: `POST /v1/orders` (plans legs, builds nothing); `GET /v1/orders/{id}`; `POST /v1/orders/{id}/legs/{legId}/build` (a fresh `BasketTx` and a new attempt); `POST .../report` with `{ txId }` or `{ signedTx }`; `POST /v1/orders/{id}/consent` (signed-in owner only). Errors use his shape plus `code` and `fix`. Codes: `NOT_FUNDED`, `ASSET_NOT_ELIGIBLE`, `GOAL_NOT_ACHIEVABLE`, `NEW_ASSET_NEEDS_APPROVAL`, `VERSION_CHANGED`, `CREATOR_LIMIT`, `ORDER_EXPIRED`, `US_PERSON`, `RATE_LIMITED`, `CHAIN_UNAVAILABLE`. `MARKET_CLOSED` is a warning on an order, not an error: the owner may trade at any hour, and only keeper trades are bound to the session.
+Routes: `POST /v1/orders` (plans legs, builds nothing); `GET /v1/orders/{id}`; `POST /v1/orders/{id}/legs/{legId}/build` (a fresh `BasketTx` and a new attempt); `POST .../report` with `{ txId }` or `{ signedTx }`; `POST .../cancel`; `POST /v1/orders/{id}/consent` (signed-in owner only). Every refusal is an `OrderError`: his shape plus an optional `code`, `fix`, and `details { chainCode, retryable }`, where `chainCode` is the adapter's own `ChainErrorCode`. Codes: `NOT_FUNDED`, `ASSET_NOT_ELIGIBLE`, `GOAL_NOT_ACHIEVABLE`, `NEW_ASSET_NEEDS_APPROVAL`, `VERSION_CHANGED`, `CREATOR_LIMIT`, `ORDER_EXPIRED`, `US_PERSON`, `RATE_LIMITED`, `CHAIN_UNAVAILABLE`. `MARKET_CLOSED` is a warning on an order, not an error: the owner may trade at any hour, and only keeper trades are bound to the session.
 
 | Route | Body | Answer |
 |---|---|---|
-| `POST /v1/orders` | `IntentRequest` | `Order` |
+| `POST /v1/orders` | `IntentRequest` | `OrderDetail`: the `Order` plus `attempts`, every attempt at its legs |
+| `GET /v1/orders/{id}` | none | `OrderDetail` |
 | `POST .../legs/{legId}/build` | none | `BuildLegResponse { tx: BasketTx, attempt: Attempt }` |
-| `POST .../legs/{legId}/report` | `ReportLegRequest`: `{ txId }` or `{ signedTx }`, exactly one | `Order` |
-| `POST /v1/orders/{id}/consent` | `ConsentRequest { kinds, textVersion }` | `Order` |
+| `POST .../legs/{legId}/report` | `ReportLegRequest`: `{ txId }` or `{ signedTx }`, exactly one | `OrderDetail` |
+| `POST .../legs/{legId}/cancel` | none | `CancelLegResponse`, which is `OrderDetail` |
+| `POST /v1/orders/{id}/consent` | `ConsentRequest { kinds, textVersion }` | `OrderDetail` |
+| `GET /v1/portfolio` | none | `PortfolioResponse { chains: { chain, name, mode, provenance, vaults: VaultView[], prices: Price[] }[], disclaimer }` |
 | `GET /v1/config` | none | `ConfigResponse { flags, chains: ChainStatus[] }`: each chain's config, its mode and its label |
 
 Leg rules:
@@ -386,12 +395,12 @@ Leg rules:
 - `prepareIntent` plans a buy of a stored plan, named by `proposalId`. A buy by `family` and the other five intents answer 501 until their slots. Its context is `{ principal, chains, loadProposal, now }`: `chains` is the adapter registry, which has no adapter for a chain that is off.
 - The plan's number onchain (`basketId`) is the first 8 bytes of the SHA-256 of the plan's id. So the same person buying the same plan again reaches the same vault: with no vault the chain's legs start with `create_vault`, which carries the cash; with one they start with `deposit`.
 - Legs per chain, in order: `approve` where the chain needs it; `create_vault` or `deposit`; then `swap` legs of at most `maxTradesPerTx` trades. Where `tradesInCreate` is true the first trades ride in the create or the deposit. Each chain takes the share of the amount the plan gives it, and its trades add up to exactly that cash.
-- `expected` is filled for a leg with one trade and null otherwise: one figure cannot stand for trades into different assets. `minOutRaw` is the quote less 100 bps, the slippage every build is given.
-- Every order route answers with the `Order` plus `attempts`, every attempt at its legs. A read tracks a leg that was sent and has not settled; there is no worker.
+- `expected` has one figure per trade, in the order of the leg's trades, and is empty for a leg that trades nothing. `minOutRaw` is the quote less the order's slippage: the buy's `maxSlippageBps` where it names one, the server's 100 bps where it does not. Once a leg is built, its `minOutRaw` is the number the adapter put in the bytes, which the transaction states per trade in `preview.minimums`; the API refuses to hand out a transaction whose stated trades are not the leg's.
+- Every order route answers with the `Order` plus `attempts`, every attempt at its legs (`OrderDetail`). A read tracks a leg that was sent and has not settled; there is no worker.
 - Legs on one chain are built in order. A leg is not built again while the transaction built before can still land, so nobody is asked to sign twice for one step: on Solana until the chain is past the attempt's `validUntil`; on an EVM chain, where nothing expires, until the attempt is reported or the person cancels it with `POST /v1/orders/{id}/legs/{legId}/cancel` (no body, answers the order). A cancel is refused on Solana while the transaction can still land. A real EVM adapter must give the next attempt the first one's nonce, so only one can land (`apps/api/src/orders/README.md`).
 - A report, by `txId` or by `signedTx`, is matched against every attempt at the leg, and the leg settles on the attempt that landed, whatever it was labelled. An attempt the chain has confirmed or reverted is never rewritten. Signed bytes are relayed once, and only for an attempt that was built and never sent. A transaction that carries the bytes of no attempt is refused and changes nothing. The checks are the adapter's four `TxProbe` calls of 3.2 (`messageHashOf`, `relay`, `carries`, `fate`); the mock is the only adapter that has them so far.
 - The 24 hours start when the chain has seen an order's first transaction (confirmed or reverted), not when one is claimed. Nothing reopens an order that has expired: a transaction that lands afterwards is recorded and the order stays expired.
-- One order buys at most $1,000,000 (`ORDER_POLICY.maxAmountUsd`, the ceiling of a plan's own amount), until `IntentRequest` carries a limit. A stored plan whose weights are not valid targets is refused when the order is made.
+- One order buys at most $1,000,000 and trades with at most 300 bps of slippage (`ORDER_LIMITS` in `packages/schemas`, held by the request's own schema, so a request over either answers 400). A stored plan whose weights on a chain do not add up to exactly 10,000 is refused when the order is made: a buy spends the whole deposit on the plan's assets.
 - A chain's refusal that fits none of the ten order codes answers with no `code`; the chain's own code and `retryable` are in `details` in every case.
 - `GET /v1/portfolio` reads the signed-in person's vaults on every chain that is not off, with prices, weights and drift, and refreshes the `vaults` cache. Until `view()` exists in `packages/basket` it uses a small one of its own (`apps/api/src/orders/view.ts`).
 - Two routes exist only while a chain runs on the mock, and act only on such a chain: `POST /v1/mock/fund` (mock cash and gas for the signed-in wallets) and `POST /v1/mock/orders/{id}/legs/{legId}/land` (the mock chain lands the leg's latest attempt, as a wallet would). With no chain on the mock they are not registered.
@@ -834,7 +843,7 @@ The roll-up states the share of the plan that is measured.
 - **The guard.** A passkey wallet signs with no pop-up, so the guard is the only check between a compromised API and the owner's key. It lives in `packages/sdk/src/guard/`, with program id, selectors and deployment addresses generated from `idl/` and the committed ABIs, and it runs inside the one leg executor that the web and the SDK share.
   - Solana, top level: compute budget; associated-token create-idempotent for the owner or the owner's vault; our program's instructions except `set_keeper`, with the owner as signer and fee payer. No System or token-program instruction at the top level; deposits move tokens inside our program.
   - EVM, by address and selector: the factory's two create calls; the person's own vault, with the address derived locally, for `deposit`, `withdraw`, `withdrawAll`, `ownerSwap`, `setTargets`, `acceptVersion`, `setAutoFollow`, and `multicall` decoded recursively; the registry's `create`, `publish`, `cancel`; the cash token's `approve` only to the factory or that vault, for the stated amount. Never `setOperator`. `value` is zero.
-  - Swap amounts in the bytes must equal the `inRaw` and `minOutRaw` shown on the review screen.
+  - Swap amounts in the bytes must equal the `inRaw` and `minOutRaw` shown on the review screen. The transaction states them per trade in `preview.minimums`, and the leg's `expected[i].minOutRaw` is the same number once the leg is built.
   - A call that turns auto-follow on or accepts a version is refused unless the executor was handed a consent the UI itself collected for that order.
   - Limits: the guard runs in the page it protects, so it does nothing against script injection. `apps/web` ships a nonce-based content security policy and a lint ban on `dangerouslySetInnerHTML`. A compromised API can still show a bad price; the review screen prints the minimum received per leg.
 - **Sending and reporting.** On Solana the wallet signs and the web posts the bytes; the server broadcasts only if they hash to the `messageHash` of an attempt it built. If a wallet changed the bytes, the server does not relay; the wallet sends and the web reports the id. As built (WAL-1), the web's `WalletPort` checks what a wallet hands back before returning it as signed: on Solana the same message byte for byte with this account's valid signature, on EVM the same call, signed by this account, of a plain type, with the fee under a ceiling. So a wallet that changed the bytes fails in the browser with `changed`, and the path where it sends by itself is open: it needs a `send()` on Solana, which `WalletPort` does not have. For every reported id the server fetches the transaction and matches signer, target and call data (on Solana: our instruction's accounts and data) to the built leg before marking it confirmed.

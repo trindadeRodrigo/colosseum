@@ -18,6 +18,7 @@ import {
   BuildLegResponse,
   BuiltTx,
   BuiltTxBase,
+  CancelLegResponse,
   CHAIN_ERROR_RETRYABLE,
   ChainError,
   ChainErrorCode,
@@ -32,11 +33,17 @@ import {
   IntentRequest,
   Leg,
   LegBase,
+  LegRouteParams,
   LimitContext,
   LimitResult,
   normalizeAddress,
+  ORDER_LIMITS,
   Order,
+  OrderDetail,
+  OrderError,
+  OrderRouteParams,
   Owner,
+  PortfolioResponse,
   PROGRAM_ERRORS,
   RawAmount,
   RawDelta,
@@ -93,6 +100,7 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
       // 3.3
       ...['BuiltTx', 'BasketTx', 'LegStatus', 'LegKind', 'Leg', 'Attempt', 'Owner', 'Order'],
       ...['IntentRequest', 'Principal', 'BuildLegResponse', 'ReportLegRequest', 'ConsentRequest'],
+      ...['OrderError', 'OrderDetail', 'PortfolioResponse', 'CancelLegResponse'],
       // 3.5
       'WalletAccount',
       // 3.6
@@ -259,7 +267,7 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
       signer: 'owner',
       description: 'Open the vault for this plan',
       trades: [{ sell: 'robinhood:usdc', buy: 'robinhood:nvda', amountInRaw: '1000000' }],
-      expected: { inRaw: '1000000', outRaw: '20', minOutRaw: '19', costBps: 12 },
+      expected: [{ inRaw: '1000000', outRaw: '20', minOutRaw: '19', costBps: 12 }],
       status: 'planned',
       attempt: 0,
       txId: null,
@@ -299,6 +307,127 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
     // MARKET_CLOSED is a warning, never an error code.
     expect(schemas.OrderErrorCode.safeParse('MARKET_CLOSED').success).toBe(false);
     expect(schemas.OrderErrorCode.safeParse('NOT_FUNDED').success).toBe(true);
+  });
+
+  it('gives a leg one expected figure per trade, in the order of its trades', () => {
+    const trade = { sell: 'robinhood:usdc', buy: 'robinhood:nvda', amountInRaw: '1000000' };
+    const figure = { inRaw: '1000000', outRaw: '20', minOutRaw: '19', costBps: 12 };
+    const leg = {
+      id: 'leg-1',
+      orderId: 'order-1',
+      chain: 'robinhood',
+      seq: 1,
+      kind: 'swap',
+      signer: 'owner',
+      description: 'Buy NVDA and SPY',
+      trades: [trade, { ...trade, buy: 'robinhood:spy' }],
+      expected: [figure, { ...figure, outRaw: '7', minOutRaw: '6' }],
+      status: 'planned',
+      attempt: 0,
+      txId: null,
+      explorerUrl: null,
+      validUntil: null,
+      error: null,
+      trigger: 'manual',
+      provenance: 'mock',
+    };
+    expect(Leg.parse(leg)).toEqual(leg);
+    // No figure at all is allowed: nothing was quoted. One figure for two trades is not.
+    expect(Leg.safeParse({ ...leg, expected: [] }).success).toBe(true);
+    expect(Leg.safeParse({ ...leg, expected: [figure] }).success).toBe(false);
+    expect(Leg.safeParse({ ...leg, expected: null }).success).toBe(false);
+    expect(Leg.safeParse({ ...leg, expected: figure }).success).toBe(false);
+    // A leg with no trade has no figure.
+    expect(Leg.safeParse({ ...leg, kind: 'approve', trades: [], expected: [] }).success).toBe(true);
+    expect(Leg.safeParse({ ...leg, kind: 'approve', trades: [], expected: [figure] }).success).toBe(
+      false,
+    );
+  });
+
+  it('states in a preview the least each trade may pay out, as it is in the bytes', () => {
+    const floor = { sell: 'solana:usdc', buy: 'solana:spyx', inRaw: '1000000', minOutRaw: '990' };
+    const swap = { ...built, legKind: 'swap', preview: { ...built.preview, minimums: [floor] } };
+    expect(BuiltTx.parse(swap).preview.minimums).toEqual([floor]);
+    // Left out by a transaction no adapter built; an adapter always states it.
+    expect(BuiltTx.parse(built).preview.minimums).toBeUndefined();
+    const bad = [
+      { ...floor, buy: 'solana:usdc' }, // one asset on both sides
+      { ...floor, buy: 'base:spy' }, // another chain's asset
+      { ...floor, minOutRaw: '9.9' },
+      { sell: floor.sell, buy: floor.buy, inRaw: floor.inRaw },
+    ];
+    for (const entry of bad) {
+      const tx = { ...swap, preview: { ...swap.preview, minimums: [entry] } };
+      expect(BuiltTx.safeParse(tx).success, JSON.stringify(entry)).toBe(false);
+    }
+  });
+
+  it('caps what a buy may ask for: its amount and its slippage', () => {
+    const buy = { type: 'buy', owner: { solana: SOL }, amountUsd: 500, proposalId: 'p' };
+    expect(ORDER_LIMITS).toEqual({ maxAmountUsd: 1_000_000, maxSlippageBps: 300 });
+    expect(IntentRequest.safeParse({ ...buy, amountUsd: 1_000_000 }).success).toBe(true);
+    const over = IntentRequest.safeParse({ ...buy, amountUsd: 1_000_000.01 });
+    expect(over.success).toBe(false);
+    expect(over.error?.issues[0]?.message).toMatch(/1,000,000/);
+    expect(IntentRequest.safeParse({ ...buy, amountUsd: 1e300 }).success).toBe(false);
+    for (const ok of [0, 50, 300])
+      expect(IntentRequest.safeParse({ ...buy, maxSlippageBps: ok }).success).toBe(true);
+    for (const bad of [301, 10_000, -1, 0.5])
+      expect(IntentRequest.safeParse({ ...buy, maxSlippageBps: bad }).success).toBe(false);
+  });
+
+  it('answers a refusal with the order code where one fits, and the chain code beside it', () => {
+    const refusal = {
+      error: 'the wallet holds less cash than this',
+      code: 'NOT_FUNDED',
+      fix: 'Add cash to the wallet on this chain, then build the step again.',
+      details: { chainCode: 'NotFunded', retryable: false },
+    };
+    expect(OrderError.parse(refusal)).toEqual(refusal);
+    // A refusal that is none of the ten has no code, and still says whether to try again.
+    const plain = {
+      error: 'the trade is too small',
+      details: { chainCode: 'BadTrade', retryable: false },
+    };
+    expect(OrderError.parse(plain)).toEqual(plain);
+    expect(OrderError.safeParse({ error: 'no' }).success).toBe(true);
+    expect(OrderError.safeParse({ error: 'no', code: 'MARKET_CLOSED' }).success).toBe(false);
+    expect(OrderError.safeParse({ error: 'no', details: { chainCode: 'Nope' } }).success).toBe(
+      false,
+    );
+    expect(OrderError.safeParse({ error: 'no', details: { retryable: 'yes' } }).success).toBe(
+      false,
+    );
+  });
+
+  it('names what the order and portfolio routes answer', () => {
+    expect(Object.keys(OrderDetail.shape)).toEqual([
+      ...Object.keys(schemas.OrderBase.shape),
+      'attempts',
+    ]);
+    expect(CancelLegResponse).toBe(OrderDetail);
+    expect(LegRouteParams.safeParse({ id: HEX32, legId: HEX32 }).success).toBe(false);
+    const ids = {
+      id: '4b1c0f0e-3f8e-4d0e-9d2b-0d7a3a6b1c2d',
+      legId: '5b1c0f0e-3f8e-4d0e-9d2b-0d7a3a6b1c2d',
+    };
+    expect(LegRouteParams.parse(ids)).toEqual(ids);
+    expect(OrderRouteParams.parse({ id: ids.id })).toEqual({ id: ids.id });
+    const empty = { chains: [], disclaimer: schemas.DISCLAIMER.en };
+    expect(PortfolioResponse.parse(empty)).toEqual(empty);
+    const chain = {
+      chain: 'solana',
+      name: 'Solana',
+      mode: 'mock',
+      provenance: 'mock',
+      vaults: [],
+      prices: [],
+    };
+    expect(PortfolioResponse.safeParse({ ...empty, chains: [chain] }).success).toBe(true);
+    expect(
+      PortfolioResponse.safeParse({ ...empty, chains: [{ ...chain, provenance: undefined }] })
+        .success,
+    ).toBe(false);
   });
 
   it('tells the six intents apart by type', () => {
@@ -601,7 +730,7 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
       signer: 'owner',
       description: '',
       trades: [],
-      expected: null,
+      expected: [],
       status: 'planned',
       attempt: 0,
       txId: null,

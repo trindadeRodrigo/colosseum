@@ -13,7 +13,7 @@ import {
 } from '@colosseum/schemas';
 import { assertBuilds, type ChainEntry, type ChainRegistry } from './chains';
 import { legErrorFromRevert, Refusal, refusing } from './errors';
-import { basketIdOf, expectedOf, ORDER_POLICY, targetsOf } from './prepare';
+import { basketIdOf, expectedOf, ORDER_POLICY, slippageOf, targetsOf } from './prepare';
 import {
   loadOrder,
   loadProposal,
@@ -101,7 +101,7 @@ async function buildFor(
     throw new Refusal(501, `a ${request.type} order cannot be built yet`);
   const { adapter } = entry;
   const basketId = basketIdOf(request.proposalId);
-  const slippageBps = ORDER_POLICY.slippageBps;
+  const slippageBps = slippageOf(request);
   // The trades of a buy add up to the cash it deposits on that chain (prepare.ts).
   const cashRaw = order.legs
     .filter((l) => l.chain === leg.chain)
@@ -263,7 +263,7 @@ export async function buildLeg(
   try {
     [built, expected] = await refusing(async () => [
       BuiltTx.parse(await buildFor(deps, stored, leg, entry, owner)),
-      await expectedOf(entry, leg.trades, owner),
+      await expectedOf(entry, leg.trades, owner, slippageOf(stored.request)),
     ]);
   } catch (e) {
     const chain = e instanceof Refusal ? e.extra.details : undefined;
@@ -278,6 +278,22 @@ export async function buildLeg(
   // Whatever an adapter returns, the API hands out a transaction only for the order's own wallet.
   if (built.signer !== owner || built.chainId !== leg.chain || built.legKind !== leg.kind)
     throw new Error('the adapter built a transaction for another signer, chain or step');
+  // And only for the leg's own trades. The minimum a person is shown is the one the adapter put in the
+  // bytes, which it states per trade: the leg takes it from there, not from the quote beside it.
+  const minimums = built.preview.minimums;
+  if (minimums) {
+    const same =
+      minimums.length === leg.trades.length &&
+      minimums.every((m, i) => {
+        const t = leg.trades[i];
+        return t && m.sell === t.sell && m.buy === t.buy && m.inRaw === t.amountInRaw;
+      });
+    if (!same) throw new Error('the adapter built other trades than the step has');
+    expected = expected.map((figure, i) => ({
+      ...figure,
+      minOutRaw: minimums[i]?.minOutRaw ?? figure.minOutRaw,
+    }));
+  }
 
   const attempt = await recordBuild(deps.db, leg, {
     messageHash: built.messageHash,

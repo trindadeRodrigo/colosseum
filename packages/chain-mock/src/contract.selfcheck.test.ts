@@ -79,6 +79,32 @@ const FAULTS: { fault: string; wrap: Wrap; caught: string[]; chains?: MockChain[
     caught: ['previews a deposit as cash leaving the wallet for the vault, and nothing else'],
   },
   {
+    fault: 'states no minimum for its trades',
+    wrap: (real) => spoilTx(real, (tx) => ({ ...tx, preview: { ...tx.preview, minimums: [] } })),
+    caught: ['states the least each trade accepts, one entry per trade and in their order'],
+  },
+  {
+    fault: 'leaves the minimums out of the preview',
+    wrap: (real) =>
+      spoilTx(real, ({ preview: { minimums: _minimums, ...preview }, ...tx }) => ({
+        ...tx,
+        preview,
+      })),
+    caught: ['previews a deposit as cash leaving the wallet for the vault, and nothing else'],
+  },
+  {
+    fault: 'accepts any output: every minimum is zero',
+    wrap: (real) =>
+      spoilTx(real, (tx) => ({
+        ...tx,
+        preview: {
+          ...tx.preview,
+          minimums: tx.preview.minimums?.map((m) => ({ ...m, minOutRaw: '0' })),
+        },
+      })),
+    caught: ['states the least each trade accepts, one entry per trade and in their order'],
+  },
+  {
     fault: 'stamps leg ids itself',
     wrap: (real) => spoilTx(real, (tx) => ({ ...tx, legId: 'leg', attemptId: 'attempt' })),
     caught: ['previews a trade inside the vault, with the wallet untouched'],

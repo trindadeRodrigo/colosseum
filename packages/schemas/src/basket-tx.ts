@@ -21,6 +21,15 @@ import { UnsignedTx } from './tx';
 //   BasketTx  BuiltTx plus `legId` and `attemptId`, stamped by the order layer (the API or the keeper).
 //             This is the only shape that leaves the server: the wallet, the web and the guard take it.
 
+/**
+ * The least one trade of a transaction accepts, as the numbers are in its bytes: `inRaw` of `sell`
+ * goes in, and the transaction reverts if less than `minOutRaw` of `buy` comes out.
+ */
+export const TradeMinimum = z
+  .object({ sell: AssetId, buy: AssetId, inRaw: RawAmount, minOutRaw: RawAmount })
+  .refine((m) => m.sell !== m.buy, 'a trade has two different sides');
+export type TradeMinimum = z.infer<typeof TradeMinimum>;
+
 /** What the transaction will do, shown on the review screen before anything is signed. */
 export const TxPreview = Sourced.extend({
   summary: z.string().min(1),
@@ -30,6 +39,13 @@ export const TxPreview = Sourced.extend({
   changes: z.array(
     z.object({ holder: z.enum(['wallet', 'vault']), asset: AssetId, deltaRaw: RawDelta }),
   ),
+  /**
+   * One entry per trade the transaction makes, in the order it makes them, with the amounts that are
+   * in its bytes. An adapter always states it, empty for a transaction that trades nothing, so the
+   * guard can hold the bytes to what the review screen showed (`Leg.expected[i].minOutRaw`). Absent
+   * only on a transaction no adapter built.
+   */
+  minimums: z.array(TradeMinimum).optional(),
 });
 export type TxPreview = z.infer<typeof TxPreview>;
 
@@ -94,6 +110,9 @@ function checkTx(tx: TxFields, ctx: z.RefinementCtx) {
     fail('signer', "the signer is in the form of the tx's chain");
   if (!tx.preview.changes.every((c) => c.asset.startsWith(`${tx.chainId}:`)))
     fail('preview', "every change is in an asset of the tx's chain");
+  const onChain = (asset: string) => asset.startsWith(`${tx.chainId}:`);
+  if (!(tx.preview.minimums ?? []).every((m) => onChain(m.sell) && onChain(m.buy)))
+    fail('preview', "every trade is in assets of the tx's chain");
 }
 
 /** What a chain adapter returns: one unsigned transaction, not yet tied to a leg. */

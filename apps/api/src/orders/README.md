@@ -9,7 +9,7 @@ The order layer behind `/v1/orders` (DESIGN-VAULT 3.3). It plans the legs of an 
 | `store.ts` | The tables, through Drizzle. Every writer locks the leg row first, then its attempts |
 | `chains.ts` | The adapter registry by chain mode |
 | `view.ts` | Value, weight and drift, until `view()` exists in `packages/basket` |
-| `errors.ts` | A refusal and its body; a chain's refusal mapped onto the order codes |
+| `errors.ts` | A refusal (its body is the shared `OrderError`); a chain's refusal mapped onto the order codes |
 
 ## The rules a leg follows
 
@@ -19,14 +19,9 @@ The order layer behind `/v1/orders` (DESIGN-VAULT 3.3). It plans the legs of an 
 - Signed bytes are relayed once, and only for an attempt that is `built`.
 - The first transaction the chain has seen keeps an open order open for 24 hours. A transaction that is only claimed does not, and nothing reopens an order that expired.
 
-## Local workarounds, to move into the shared packages
+## What moved into the shared packages
 
-Marked `WORKAROUND` in the code. They leave with the slot that changes `packages/schemas`.
-
-- The response shapes `OrderDetail`, `PortfolioResponse` and `RefusalBody`, defined in `routes/v1/` and here.
-- `retryable` and the chain's code travel in `details`, because `OrderError` has no field for them.
-- `Leg.expected` is null for a leg with several trades.
-- `ORDER_POLICY.slippageBps` and `ORDER_POLICY.maxAmountUsd` are server constants, because `IntentRequest` carries neither.
+The local workarounds of API-1 are gone (FRAME-1b). The response shapes (`OrderDetail`, `PortfolioResponse`, `OrderError` with the chain's code and `retryable` in `details`) and the four adapter calls behind a report are in `packages/schemas`. `Leg.expected` has one figure per trade. The amount ceiling and the slippage cap are `ORDER_LIMITS`, held by the request's schema; `ORDER_POLICY.slippageBps` is only the figure a buy gets when it names none.
 
 ## Before a real chain
 

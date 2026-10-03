@@ -34,7 +34,7 @@ async function oneLeg(): Promise<Leg> {
     signer: 'owner',
     description: 'test',
     trades: [],
-    expected: null,
+    expected: [],
     status: 'planned',
     attempt: 0,
     txId: null,
@@ -68,7 +68,7 @@ const build = (leg: Leg) =>
   recordBuild(data.db, leg, {
     messageHash: `hash-${randomUUID()}`,
     validUntil: null,
-    expected: null,
+    expected: [],
     stamp: {
       source: 'test',
       method: 'test',

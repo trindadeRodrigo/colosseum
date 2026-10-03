@@ -606,6 +606,9 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
    * holds it to the reference price, which the mock always trades at.
    */
   const slippageOf = (op: Op) => ('slippageBps' in op.a ? op.a.slippageBps : 10_000);
+  /** The trades a transaction makes, in the order it makes them. */
+  const tradesOf = (op: Op): Trade[] =>
+    op.kind === 'keeper_leg' ? [op.a.trade] : 'trades' in op.a ? (op.a.trades ?? []) : [];
 
   /** Runs the op on a copy, so a transaction that would fail is refused here and never built. */
   function build(op: Op, signer: Address, watch: { wallet: Address; vault?: Address }): BuiltTx {
@@ -667,13 +670,15 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
           );
     const validUntil = family === 'solana' ? before.seconds + VALID_BLOCKS : null;
     const slippage = slippageOf(op);
-    built.set(messageHash, {
-      op,
-      signer,
-      validUntil,
-      txId: mockTxId(chain, messageHash),
-      mins: run.outs.map((out) => lessBps(out, slippage)),
-    });
+    const mins = run.outs.map((out) => lessBps(out, slippage));
+    built.set(messageHash, { op, signer, validUntil, txId: mockTxId(chain, messageHash), mins });
+    // The trades as the transaction makes them, each with the floor the send holds it to.
+    const minimums = tradesOf(op).map((t, i) => ({
+      sell: t.sell,
+      buy: t.buy,
+      inRaw: t.amountInRaw,
+      minOutRaw: (mins[i] ?? 0n).toString(),
+    }));
     return {
       chain: family,
       payload,
@@ -692,6 +697,7 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
         simulated: true,
         feeNativeRaw: (fee + (op.kind === 'create_vault' ? newVaultGas : 0n)).toString(),
         changes,
+        minimums,
       },
     };
   }
