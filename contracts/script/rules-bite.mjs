@@ -924,6 +924,20 @@ const RULES = [
     expect: 'test_extendClosedUntil_onlyTightens',
   },
   {
+    id: 'config-launch-no-admin-handover-pending',
+    file: CONFIG,
+    find: 'require($.pendingAdmin == address(0), AdminHandoverPending($.pendingAdmin));',
+    replace: '',
+    expect: 'test_launch_revertsWhileAnAdminHandoverIsProposed',
+  },
+  {
+    id: 'config-launch-no-admin-handover-pending-on-the-factory',
+    file: CONFIG,
+    find: 'require($.pendingAdmin == address(0), AdminHandoverPending($.pendingAdmin));',
+    replace: '',
+    expect: 'test_launch_revertsWhileAnAdminHandoverIsPending',
+  },
+  {
     id: 'config-launch-one-way',
     file: CONFIG,
     find: 'require(!$.launched, AlreadyLaunched());',
@@ -1290,6 +1304,27 @@ const RULES = [
     find: '$.bySalt[owner][salt] = vault;',
     replace: '',
     expect: 'test_createVault_revertsOnAPlanTheOwnerAlreadyUsed',
+  },
+  {
+    id: 'factory-launch-beacon-is-the-admins',
+    file: FACTORY,
+    find: 'require(beaconOwner == admin() && pending == address(0), BeaconNotTheAdmins(beaconOwner, pending));',
+    replace: 'require(pending == address(0), BeaconNotTheAdmins(beaconOwner, pending));',
+    expect: 'test_launch_revertsWhileTheBeaconIsNotTheAdmins',
+  },
+  {
+    id: 'factory-launch-no-beacon-handover-pending',
+    file: FACTORY,
+    find: 'require(beaconOwner == admin() && pending == address(0), BeaconNotTheAdmins(beaconOwner, pending));',
+    replace: 'require(beaconOwner == admin(), BeaconNotTheAdmins(beaconOwner, pending));',
+    expect: 'test_launch_revertsWhileABeaconHandoverIsPending',
+  },
+  {
+    id: 'factory-launch-checks-the-beacon',
+    file: CONFIG,
+    find: '_checkLaunch();',
+    replace: '',
+    expect: 'test_launch_revertsWhileTheBeaconIsNotTheAdmins',
   },
   {
     id: 'factory-upgrade-is-the-admins',

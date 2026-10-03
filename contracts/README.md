@@ -62,7 +62,7 @@ The deployer is the admin while the script runs and proposes the file's admin at
 **The platform's settings**
 
 - The admin sets everything and is handed over in two steps. The guardian (or the admin) can only tighten: pause the keeper, halt an asset for longer, close the market for longer, add a closed day. Only the admin undoes any of it. None of it is read on the owner's path.
-- `launch()` is one-way. From then on the publish delay is at least 172,800 s. Routers, the cash token and the feeds stay the admin's to change, each with an event.
+- `launch()` is one-way. From then on the publish delay is at least 172,800 s. Routers, the cash token and the feeds stay the admin's to change, each with an event. It is refused while a hand-over is half done: an admin proposed and not yet accepted, or a beacon that is not the admin's or is being handed to someone. A deploy leaves both in that state until the admin key accepts each, and a deployer key left with the beacon could replace every vault's code.
 - The registry is set once. The keeper's limits have hard bounds: tolerance at most 300 bps, weekly loss cap at most 500 bps, cooldown at least 600 s.
 
 **Shared portfolios**

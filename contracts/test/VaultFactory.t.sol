@@ -513,6 +513,59 @@ contract VaultFactoryTest is SwapFixture {
         vm.stopPrank();
     }
 
+    // ---- launch: only once the keys are where they will stay
+
+    /// What a deploy leaves behind: the deployer is admin and owns the beacon until the admin key accepts
+    /// each. `launch()` is refused at every step of that hand-over but the last.
+    function test_launch_revertsWhileAnAdminHandoverIsPending() public {
+        address next = makeAddr("next-admin");
+        vm.startPrank(admin);
+        factory.proposeAdmin(next);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.AdminHandoverPending.selector, next));
+        factory.launch();
+        vm.stopPrank();
+        assertFalse(factory.launched());
+
+        // Taking the proposal back clears it.
+        vm.startPrank(admin);
+        factory.proposeAdmin(address(0));
+        factory.launch();
+        vm.stopPrank();
+        assertTrue(factory.launched());
+    }
+
+    function test_launch_revertsWhileTheBeaconIsNotTheAdmins() public {
+        // The admin moved on and the beacon stayed with the old key: the deploy's first accept without the
+        // second.
+        address next = makeAddr("next-admin");
+        vm.prank(admin);
+        factory.proposeAdmin(next);
+        vm.startPrank(next);
+        factory.acceptAdmin();
+        vm.expectRevert(abi.encodeWithSelector(IVaultFactory.BeaconNotTheAdmins.selector, admin, address(0)));
+        factory.launch();
+        vm.stopPrank();
+        assertFalse(factory.launched());
+
+        vm.prank(admin);
+        beacon.transferOwnership(next);
+        vm.startPrank(next);
+        beacon.acceptOwnership();
+        factory.launch();
+        vm.stopPrank();
+        assertTrue(factory.launched());
+    }
+
+    function test_launch_revertsWhileABeaconHandoverIsPending() public {
+        address next = makeAddr("next-owner");
+        vm.startPrank(admin);
+        beacon.transferOwnership(next);
+        vm.expectRevert(abi.encodeWithSelector(IVaultFactory.BeaconNotTheAdmins.selector, admin, next));
+        factory.launch();
+        vm.stopPrank();
+        assertFalse(factory.launched());
+    }
+
     // ---- replacing the factory's logic (A15)
 
     function test_A15_upgrade_keepsStateAndIsTheAdmins() public {

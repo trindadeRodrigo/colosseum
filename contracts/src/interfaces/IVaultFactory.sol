@@ -18,6 +18,8 @@ interface IVaultFactory is IVaultConfig {
     error VaultExists(address vault);
     /// Auto-follow is switched on by the vault's own `setAutoFollow`, which arrives with the keeper path.
     error AutoFollowUnavailable();
+    /// `launch()` while the beacon is not the admin's, or is being handed to someone.
+    error BeaconNotTheAdmins(address beaconOwner, address pendingBeaconOwner);
 
     /// Creates the caller's vault for the plan `salt`. With `indexId` set, `targets` must be empty and the
     /// vault copies the shared portfolio's active version, which must be `expectedVersion`.

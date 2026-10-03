@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.37;
 
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
@@ -152,6 +153,15 @@ contract VaultFactory is VaultConfig, UUPSUpgradeable, IVaultFactory {
     function _isReserved(address target) internal view override returns (bool) {
         FactoryStorage storage $ = _factory();
         return super._isReserved(target) || target == $.beacon || $.isVault[target];
+    }
+
+    /// The beacon's owner can replace the code of every vault. At launch that key is the admin and nobody
+    /// is waiting to take it over.
+    function _checkLaunch() internal view override {
+        Ownable2Step beacon_ = Ownable2Step(_factory().beacon);
+        address beaconOwner = beacon_.owner();
+        address pending = beacon_.pendingOwner();
+        require(beaconOwner == admin() && pending == address(0), BeaconNotTheAdmins(beaconOwner, pending));
     }
 
     /// Replacing this logic is the admin's.

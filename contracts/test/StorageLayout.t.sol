@@ -83,10 +83,10 @@ contract StorageLayoutTest is SwapFixture {
 
     function test_storage_ofTheFactory_theConfigNamespace() public {
         vm.startPrank(admin);
+        factory.launch();
         factory.proposeAdmin(stranger);
         factory.removeAsset(address(stockC));
         factory.setSequencerFeed(feed);
-        factory.launch();
         vm.stopPrank();
         vm.startPrank(guardian);
         factory.pauseKeeper();

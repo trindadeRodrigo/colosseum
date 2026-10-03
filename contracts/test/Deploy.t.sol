@@ -8,6 +8,7 @@ import {Deploy} from "../script/Deploy.s.sol";
 import {BasketVault} from "../src/BasketVault.sol";
 import {IndexRegistry} from "../src/IndexRegistry.sol";
 import {IVaultConfig} from "../src/interfaces/IVaultConfig.sol";
+import {IVaultFactory} from "../src/interfaces/IVaultFactory.sol";
 import {AssetConfig, Params, Weight} from "../src/interfaces/Types.sol";
 import {VaultBeacon} from "../src/VaultBeacon.sol";
 import {VaultFactory} from "../src/VaultFactory.sol";
@@ -75,20 +76,32 @@ contract DeployTest is Test {
         assertEq(factory.assets().length, 0);
         assertEq(factory.cashToken(), address(0));
 
-        // The deployer holds both keys until the admin accepts each.
+        // The deployer holds both keys until the admin accepts each, and cannot launch in between.
         assertEq(factory.admin(), deployer);
         assertEq(factory.pendingAdmin(), cfg.admin);
         assertEq(beacon.owner(), deployer);
         assertEq(beacon.pendingOwner(), cfg.admin);
+        vm.prank(deployer);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.AdminHandoverPending.selector, cfg.admin));
+        factory.launch();
+
+        // One accept without the other is still a hand-over half done.
         vm.startPrank(cfg.admin);
         factory.acceptAdmin();
+        vm.expectRevert(abi.encodeWithSelector(IVaultFactory.BeaconNotTheAdmins.selector, deployer, cfg.admin));
+        factory.launch();
         beacon.acceptOwnership();
         vm.stopPrank();
         assertEq(factory.admin(), cfg.admin);
         assertEq(beacon.owner(), cfg.admin);
+        assertFalse(factory.launched());
         vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAdmin.selector, deployer));
         vm.prank(deployer);
         factory.setKeeper(deployer);
+        // With both keys handed over, the launch is the admin's to make.
+        vm.prank(cfg.admin);
+        factory.launch();
+        assertTrue(factory.launched());
 
         // No logic contract can be initialised by anyone.
         vm.expectRevert(Initializable.InvalidInitialization.selector);

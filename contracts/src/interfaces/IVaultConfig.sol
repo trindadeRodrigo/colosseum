@@ -55,6 +55,8 @@ interface IVaultConfig {
     /// A guardian call may only tighten: the new time must be later than the one stored.
     error OnlyTighten(uint64 stored, uint64 requested);
     error AlreadyLaunched();
+    /// `launch()` while an admin hand-over is proposed and not yet accepted.
+    error AdminHandoverPending(address pendingAdmin);
     error RegistryAlreadySet(address registry);
     /// `param` is the field's name as ASCII, left-aligned: "source", "session", "tokenDecimals",
     /// "feedDecimals", "maxWeightBps", "maxAge", "toleranceBps", "lossCapBps", "assetCooldown",
@@ -165,6 +167,7 @@ interface IVaultConfig {
     function setClosedDay(uint32 day, bool closed) external;
 
     /// One-way: the product is open to the public. Raises the floor of the publish delay to 172,800 s.
+    /// Refused while a hand-over of the admin or of the beacon is half done.
     function launch() external;
 
     function proposeAdmin(address next) external;

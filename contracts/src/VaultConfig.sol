@@ -219,9 +219,16 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
 
     /// @inheritdoc IVaultConfig
     /// @dev Routers, the cash token and the feeds stay the admin's to change after it, each with its event.
+    ///
+    /// The public comes in only once the keys are where they will stay. A deploy leaves the deployer as
+    /// admin and as the beacon's owner until the admin key accepts each; launched in between, a deployer key
+    /// could still replace every vault's code. So a proposed admin, or a beacon that is not the admin's, stops
+    /// the launch.
     function launch() external onlyAdmin {
         ConfigStorage storage $ = _config();
         require(!$.launched, AlreadyLaunched());
+        require($.pendingAdmin == address(0), AdminHandoverPending($.pendingAdmin));
+        _checkLaunch();
         $.launched = true;
         emit Launched();
     }
@@ -369,6 +376,9 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
     function _checkAdmin() internal view {
         require(msg.sender == _config().admin, NotAdmin(msg.sender));
     }
+
+    /// What else must hold before `launch()`. The factory checks its beacon here.
+    function _checkLaunch() internal view virtual {}
 
     /// The addresses that are part of the platform and so never a router. The factory adds its beacon and
     /// every vault.

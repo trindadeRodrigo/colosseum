@@ -910,6 +910,15 @@ contract VaultConfigTest is Test {
         assertTrue(config.launched());
     }
 
+    function test_launch_revertsWhileAnAdminHandoverIsProposed() public {
+        vm.startPrank(admin);
+        config.proposeAdmin(stranger);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.AdminHandoverPending.selector, stranger));
+        config.launch();
+        vm.stopPrank();
+        assertFalse(config.launched());
+    }
+
     /// After launch the routers, the cash token and the feeds are still the admin's to change, by nobody
     /// else, and each change is announced.
     function test_launch_leavesRoutersCashAndFeedsWithTheAdmin() public {
