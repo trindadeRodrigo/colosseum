@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ApiError } from './api';
-import { Address, ChainId, chainFamily, EvmAddress, RawAmount, SolanaAddress } from './chain';
+import { Address, Bps, ChainId, chainFamily, EvmAddress, RawAmount, SolanaAddress } from './chain';
+import { ChainErrorCode } from './chain-error';
 import { Provenance } from './enums';
 import { RecipeDraft } from './recipe';
 import { Trade } from './vault';
@@ -39,6 +40,19 @@ export type LegTrigger = z.infer<typeof LegTrigger>;
 
 const KEEPER_KINDS: ReadonlySet<string> = new Set(['adopt_version', 'keeper_leg']);
 
+/**
+ * What one trade of a leg is expected to do, from a quote: what goes in, what the quote pays out, the
+ * least the transaction accepts (`minOutRaw`, which is the number in the bytes once the leg is built),
+ * and the cost against the reference.
+ */
+export const TradeExpected = z.object({
+  inRaw: RawAmount,
+  outRaw: RawAmount,
+  minOutRaw: RawAmount,
+  costBps: z.number(),
+});
+export type TradeExpected = z.infer<typeof TradeExpected>;
+
 export const LegBase = z.object({
   id: z.string().min(1),
   /** Null for keeper legs. */
@@ -50,9 +64,11 @@ export const LegBase = z.object({
   signer: z.enum(['owner', 'keeper']),
   description: z.string(),
   trades: z.array(Trade),
-  expected: z
-    .object({ inRaw: RawAmount, outRaw: RawAmount, minOutRaw: RawAmount, costBps: z.number() })
-    .nullable(),
+  /**
+   * One entry per trade, in the order of `trades`: entry `i` is trade `i`. Empty for a leg with no
+   * trade, and for one whose trades were not quoted.
+   */
+  expected: z.array(TradeExpected),
   status: LegStatus,
   attempt: z.number().int().nonnegative(),
   txId: z.string().nullable(),
@@ -74,10 +90,15 @@ export const LegBase = z.object({
 export const Leg = LegBase.refine((l) => (l.signer === 'keeper') === (l.orderId === null), {
   message: 'a keeper leg has no order, and an owner leg has one',
   path: ['orderId'],
-}).refine((l) => (l.signer === 'keeper') === KEEPER_KINDS.has(l.kind), {
-  message: 'adopt_version and keeper_leg are the keeper kinds, and the only ones',
-  path: ['kind'],
-});
+})
+  .refine((l) => (l.signer === 'keeper') === KEEPER_KINDS.has(l.kind), {
+    message: 'adopt_version and keeper_leg are the keeper kinds, and the only ones',
+    path: ['kind'],
+  })
+  .refine((l) => l.expected.length === 0 || l.expected.length === l.trades.length, {
+    message: 'one expected figure per trade, or none',
+    path: ['expected'],
+  });
 export type Leg = z.infer<typeof Leg>;
 
 export const AttemptStatus = z.enum(['built', 'sent', 'confirmed', 'failed', 'expired']);
@@ -145,12 +166,32 @@ export const Order = OrderBase.refine((o) => o.legs.every((l) => l.orderId === o
 });
 export type Order = z.infer<typeof Order>;
 
+/** The most a request may ask for. One place, so the schema, the server and a client agree. */
+export const ORDER_LIMITS = {
+  /** The most one order may buy, in dollars: the ceiling of a plan's own amount (`BasketSheet`). */
+  maxAmountUsd: 1_000_000,
+  /**
+   * The most slippage an owner's trade may be built with, in bps. It is the hard bound the vaults put
+   * on the keeper's tolerance (DESIGN-VAULT 3.7), so no request can ask for a looser trade than that.
+   */
+  maxSlippageBps: 300,
+} as const;
+
 /** `family` is always the slug. */
 export const IntentRequest = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('buy'),
     owner: Owner,
-    amountUsd: z.number().positive(),
+    amountUsd: z
+      .number()
+      .positive()
+      .max(ORDER_LIMITS.maxAmountUsd, 'one order buys at most $1,000,000'),
+    /**
+     * The slippage each trade of this order is built with: the least a trade accepts is its quote
+     * less this. Left out, the server's own figure applies. Never more than
+     * `ORDER_LIMITS.maxSlippageBps`.
+     */
+    maxSlippageBps: Bps.max(ORDER_LIMITS.maxSlippageBps).optional(),
     proposalId: z.string().optional(),
     family: z.string().optional(),
     chains: z.array(ChainId).optional(),
@@ -212,6 +253,23 @@ export const OrderErrorCode = z.enum([
 ]);
 export type OrderErrorCode = z.infer<typeof OrderErrorCode>;
 
-/** The existing ApiError shape plus `code` and `fix`. The design names the fields, not the type. */
-export const OrderError = ApiError.extend({ code: OrderErrorCode, fix: z.string().optional() });
+/**
+ * What an order route answers when it says no: the existing ApiError shape plus `code`, `fix` and
+ * typed `details`. A refusal that came from a chain keeps the chain's own code and its `retryable`, so
+ * a client can tell "try again" from "change something first".
+ */
+export const OrderError = ApiError.extend({
+  /** One of the ten order codes, where one fits. Absent for a refusal that is none of them. */
+  code: OrderErrorCode.optional(),
+  /** What the person can do about it, in a sentence. */
+  fix: z.string().optional(),
+  details: z
+    .object({
+      /** The chain adapter's own code. */
+      chainCode: ChainErrorCode.optional(),
+      /** True when the same request can succeed later with nothing changed by the person. */
+      retryable: z.boolean().optional(),
+    })
+    .optional(),
+});
 export type OrderError = z.infer<typeof OrderError>;

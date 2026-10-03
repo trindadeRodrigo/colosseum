@@ -1,10 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
+import { view } from '@colosseum/basket';
 import { mockAddress } from '@colosseum/chain-mock';
 import {
   BasketId,
   ChainError,
+  type IntentRequest,
   type Leg,
+  ORDER_LIMITS,
   parseChainConfigs,
   parseFlags,
   type VaultState,
@@ -23,12 +26,11 @@ import {
   walletsFromClaim,
 } from '../plugins/auth';
 import { registerV1Routes } from '../routes/v1';
-import { testIssuer } from '../testing/harness';
+import { planFixture, testIssuer } from '../testing/harness';
 import { createChainRegistry } from './chains';
 import { Refusal, refusalFromChainError } from './errors';
 import { orderStatus } from './legs';
-import { basketIdOf } from './prepare';
-import { view } from './view';
+import { basketIdOf, prepareIntent } from './prepare';
 
 // The parts of API-1 that need no database. The routes themselves are in routes/v1/orders.test.ts.
 
@@ -77,8 +79,7 @@ describe('the chain registry', () => {
     const owner = '0x00000000000000000000000000000000000000aa';
     const built = async (seed: string) => {
       const { adapter, mock } = registry({}, seed).get('robinhood');
-      const spender = mock?.addresses.factory ?? '';
-      const tx = await adapter.buildApprove({ owner, spender, amountRaw: '1' });
+      const tx = await adapter.buildApprove({ owner, basketId: '1', amountRaw: '1' });
       mock?.fund(owner, { gasRaw: '1000000000000000000' });
       return { hash: tx.messageHash, txId: (await mock?.send(tx))?.txId };
     };
@@ -154,7 +155,13 @@ describe('a chain refusal as the API answers it', () => {
   });
 });
 
-describe('view: value, weight and drift, until packages/basket has it', () => {
+describe('view: value, weight and drift, as the portfolio route gets them from packages/basket', () => {
+  // The shared view takes the chain's asset list for each token's decimals.
+  const ASSETS = [
+    { id: 'solana:usdc', decimals: 6 },
+    { id: 'solana:spy', decimals: 8 },
+    { id: 'solana:gold', decimals: 8 },
+  ];
   const holding = (asset: string, raw: string, multiplier: string, display: string) => ({
     asset,
     raw,
@@ -165,6 +172,7 @@ describe('view: value, weight and drift, until packages/basket has it', () => {
     asset,
     usdPerToken,
     ageSeconds: 0,
+    maxAgeSeconds: 120,
     market: 'open' as const,
     source: 'test',
     method: 'test',
@@ -190,9 +198,14 @@ describe('view: value, weight and drift, until packages/basket has it', () => {
   it('values a holding with no multiplier: the design’s vector', () => {
     // 8 decimals, raw 250,000,000, multiplier 1.02, price 100: display 2.55 and value 250.00.
     const spy = { ...holding('solana:spy', '250000000', '1.02', '2.55'), targetBps: 10_000 };
-    const seen = view(vault([{ ...spy, lastKeeperAt: null }]), [price('solana:spy', '100')]);
-    expect(seen.valueUsd).toBe('250.00');
-    expect(seen.positions[0]).toMatchObject({ valueUsd: '250.00', weightBps: 10_000, driftBps: 0 });
+    const seen = view(
+      vault([{ ...spy, lastKeeperAt: null }]),
+      [price('solana:spy', '100')],
+      ASSETS,
+    );
+    // Dollars are cut to six places with no trailing zeros: 250, not 250.00.
+    expect(seen.valueUsd).toBe('250');
+    expect(seen.positions[0]).toMatchObject({ valueUsd: '250', weightBps: 10_000, driftBps: 0 });
   });
 
   it('counts cash in the total, and drift as weight minus target', () => {
@@ -205,11 +218,11 @@ describe('view: value, weight and drift, until packages/basket has it', () => {
       price('solana:gold', '200'),
       price('solana:usdc', '1'),
     ];
-    const seen = view(vault(positions, '100000000'), prices);
-    expect(seen.valueUsd).toBe('500.00');
+    const seen = view(vault(positions, '100000000'), prices, ASSETS);
+    expect(seen.valueUsd).toBe('500');
     expect(seen.positions.map((p) => [p.valueUsd, p.weightBps, p.driftBps])).toEqual([
-      ['300.00', 6000, 1000],
-      ['100.00', 2000, -3000],
+      ['300', 6000, 1000],
+      ['100', 2000, -3000],
     ]);
   });
 
@@ -218,11 +231,73 @@ describe('view: value, weight and drift, until packages/basket has it', () => {
       { ...holding('solana:spy', '300000000', '1', '3'), targetBps: 5000, lastKeeperAt: null },
       { ...holding('solana:odd', '5', '1', '0.00000005'), targetBps: 5000, lastKeeperAt: null },
     ];
-    const seen = view(vault(positions), [price('solana:spy', '100')]);
+    const seen = view(vault(positions), [price('solana:spy', '100')], ASSETS);
     expect(seen.positions.map((p) => [p.valueUsd, p.weightBps])).toEqual([
-      ['300.00', 10_000],
+      ['300', 10_000],
       [null, 0],
     ]);
+  });
+});
+
+describe('prepareIntent holds a buy to the caps itself, for a caller that does not come through the route', () => {
+  // The route's schema refuses these with a 400 before prepareIntent runs. A caller that hands it a
+  // request directly (the MCP server, a script) is held to the same two numbers here.
+  const solana = mockAddress('solana', 'a buyer');
+  const planId = '4b1c0f0e-3f8e-4d0e-9d2b-0d7a3a6b1c2d';
+  const prepare = (over: { amountUsd?: number; maxSlippageBps?: number }) =>
+    prepareIntent(
+      // Past the schema on purpose: these are values it would not let through.
+      {
+        type: 'buy',
+        owner: { solana },
+        amountUsd: 600,
+        proposalId: planId,
+        chains: ['solana'],
+        ...over,
+      } as IntentRequest,
+      {
+        principal: {
+          kind: 'user',
+          wallets: [{ family: 'solana', address: solana, kind: 'embedded' }],
+          ip: '',
+        },
+        chains: registry(),
+        loadProposal: async (id) => (id === planId ? planFixture() : null),
+        now: '2026-10-05T15:00:00.000Z',
+      },
+    );
+  const refusal = async (work: Promise<unknown>) => {
+    const thrown = await work.then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(thrown).toBeInstanceOf(Refusal);
+    return thrown as Refusal;
+  };
+
+  it('plans a buy at the ceiling and at the cap, with the legs the plan gives', async () => {
+    expect(ORDER_LIMITS).toEqual({ maxAmountUsd: 1_000_000, maxSlippageBps: 300 });
+    const order = await prepare({ amountUsd: 1_000_000, maxSlippageBps: 300 });
+    expect(order.legs.map((l) => l.kind)).toEqual(['create_vault', 'swap', 'swap', 'swap']);
+    // The cap is the slippage the figures are worked out with.
+    const [figure] = order.legs[1]?.expected ?? [];
+    expect(figure?.minOutRaw).toBe(((BigInt(figure?.outRaw ?? 0) * 9_700n) / 10_000n).toString());
+  });
+
+  it('refuses an amount over the ceiling with 422 and the sentence that names it', async () => {
+    for (const amountUsd of [1_000_000.01, 1e300, Number.POSITIVE_INFINITY, Number.NaN]) {
+      const refused = await refusal(prepare({ amountUsd }));
+      expect([amountUsd, refused.status]).toEqual([amountUsd, 422]);
+      expect(refused.message).toBe('one order buys at most $1,000,000');
+    }
+  });
+
+  it('refuses a slippage over the cap, or under nothing, with 422', async () => {
+    for (const maxSlippageBps of [301, 10_000, -1, Number.NaN]) {
+      const refused = await refusal(prepare({ maxSlippageBps }));
+      expect([maxSlippageBps, refused.status]).toEqual([maxSlippageBps, 422]);
+      expect(refused.message).toBe('a trade takes at most 300 bps of slippage');
+    }
   });
 });
 
@@ -463,7 +538,6 @@ describe('no /v1 route can make the server sign', () => {
       'orders/legs.ts',
       'orders/prepare.ts',
       'orders/store.ts',
-      'orders/view.ts',
       'plugins/auth.ts',
       'routes/v1/config.ts',
       'routes/v1/index.ts',
@@ -472,7 +546,9 @@ describe('no /v1 route can make the server sign', () => {
       'routes/v1/portfolio.ts',
     ]);
     // The chain packages hold the signers (chain-solana re-exports sign.ts and wallet.ts): not here.
+    // packages/basket is arithmetic over what it is handed: it imports the schemas and nothing else.
     expect([...packages.keys()].sort()).toEqual([
+      '@colosseum/basket',
       '@colosseum/chain-mock',
       '@colosseum/db',
       '@colosseum/schemas',

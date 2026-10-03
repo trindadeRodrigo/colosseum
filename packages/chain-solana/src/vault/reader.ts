@@ -56,6 +56,7 @@ import {
   isTokenProgram,
   type MintInfo,
   multiplierAt,
+  scheduledMultiplier,
 } from './tokens';
 
 // The read side of the Solana adapter (DESIGN-VAULT 3.2, ADS-1). Everything is read from the chain at
@@ -94,10 +95,9 @@ export type SolanaVaultReaderOptions = {
   now?: () => Date;
 };
 
+/** `provenance` is 'live' on mainnet and 'sandbox' on a test network or a local validator. */
 export type SolanaVaultReader = ChainReader & {
   readonly program: Address;
-  /** 'live' on mainnet, 'sandbox' on a test network or a local validator. */
-  readonly provenance: Provenance;
   /** The program's Config account as it is now. */
   getConfig(): Promise<ConfigAccount>;
 };
@@ -258,11 +258,21 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
     const mint = snap.mints.get(asset.address);
     if (!mint) return refuse('Unknown', `${asset.id} has no mint`);
     const multiplier = multiplierString(multiplierAt(mint, snap.clock.unixTimestamp));
+    // What the issuer has scheduled and the cluster's clock has not reached yet.
+    const next = scheduledMultiplier(mint, snap.clock.unixTimestamp);
     return {
       asset: asset.id,
       raw: raw.toString(),
       multiplier,
       display: displayAmount(raw, multiplier, asset.decimals),
+      ...(next
+        ? {
+            scheduled: {
+              multiplier: multiplierString(next.multiplier),
+              effectiveAt: Number(next.effectiveAt),
+            },
+          }
+        : {}),
     };
   }
 
@@ -430,6 +440,8 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
             asset: asset.id,
             usdPerToken: reading.usdPerToken,
             ageSeconds: reading.ageSeconds,
+            // The program's own limit, from the same read of Config: the keeper leg refuses past it.
+            maxAgeSeconds: onchain.maxPriceAgeS,
             market: marketAt(asset.session, onchain, clock),
           };
         });
@@ -526,15 +538,17 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
         // A new vault is at least the transaction that creates it.
         const legs = BigInt(wanted.newVault ? Math.max(wanted.legs, 1) : wanted.legs);
         // Each transaction may open one token account: the cash account when a vault is created, a
-        // position's account in the trade that first buys it. `FundingNeed` cannot say how many of the
-        // legs do, so every leg is charged one; a new vault adds the rent of its own account. A wallet
-        // that pays for anything must stay above its own rent-exempt minimum. The builder's simulation
-        // has the last word.
+        // position's account in the trade that first buys it. Where the caller says how many are
+        // opened (`newAccounts`), that many are charged; where it does not, every leg is charged one.
+        // A new vault adds the rent of its own account. A wallet that pays for anything must stay
+        // above its own rent-exempt minimum. The builder's simulation has the last word.
+        const accounts = wanted.newAccounts === undefined ? legs : BigInt(wanted.newAccounts);
         const gasNeed =
           legs === 0n
             ? 0n
             : rents.wallet +
-              legs * (SIGNATURE_FEE_LAMPORTS + rents.tokenAccount) +
+              legs * SIGNATURE_FEE_LAMPORTS +
+              accounts * rents.tokenAccount +
               (wanted.newVault ? rents.vault : 0n);
         return {
           chain: 'solana',

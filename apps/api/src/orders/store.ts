@@ -22,6 +22,15 @@ type OrderRow = typeof orders.$inferSelect;
 /** An order as the API holds it: the order, the request it came from, and every attempt at its legs. */
 export type StoredOrder = { order: Order; request: IntentRequest; attempts: Attempt[] };
 
+/**
+ * A row written before `Leg.expected` was one entry per trade holds one figure or none. It reads as
+ * the list it would be now: the one figure of a leg with one trade, and nothing otherwise.
+ */
+function expectedOfRow(stored: unknown): Leg['expected'] {
+  if (Array.isArray(stored)) return stored;
+  return stored && typeof stored === 'object' ? [stored as Leg['expected'][number]] : [];
+}
+
 const toLeg = (r: LegRow): Leg => ({
   id: r.id,
   orderId: r.orderId,
@@ -31,7 +40,7 @@ const toLeg = (r: LegRow): Leg => ({
   signer: r.signer,
   description: r.description,
   trades: r.trades,
-  expected: r.expected ?? null,
+  expected: expectedOfRow(r.expected),
   status: r.status,
   attempt: r.attempt,
   txId: r.txId,
@@ -194,6 +203,8 @@ export async function recordBuild(
   leg: Leg,
   a: {
     messageHash: string;
+    /** EVM: the nonce the build stated. With the message hash it names the attempt. Null on Solana. */
+    nonce: number | null;
     validUntil: string | null;
     expected: Leg['expected'];
     stamp: Stamp;
@@ -229,6 +240,7 @@ export async function recordBuild(
         chainId: leg.chain,
         n,
         messageHash: a.messageHash,
+        nonce: a.nonce,
         status: 'built',
         validUntil: a.validUntil,
         builtAt: a.builtAt,
@@ -327,6 +339,16 @@ export async function recordOrderState(
     .where(eq(orders.id, id));
 }
 
+/**
+ * A dollar figure cut to cents, never rounded: '599.999999' is '599.99'. The cache column holds two
+ * places and Postgres would round a longer figure up, so a vault a hair under $600 would be stored as
+ * $600.00. The view's own figure, to six places, is what a response carries.
+ */
+export function cutToCents(value: string): string {
+  const [whole = '0', frac = ''] = value.split('.');
+  return `${whole}.${frac.padEnd(2, '0').slice(0, 2)}`;
+}
+
 /** Writes the last state read from a vault into the cache. The chain stays the truth. */
 export async function cacheVault(db: Db, view: VaultView, provenance: Provenance): Promise<void> {
   const row = {
@@ -352,7 +374,7 @@ export async function cacheVault(db: Db, view: VaultView, provenance: Provenance
         }),
       ),
     },
-    valueUsd: view.valueUsd,
+    valueUsd: cutToCents(view.valueUsd),
     observedAt: new Date(view.observedAt),
     provenance,
   };

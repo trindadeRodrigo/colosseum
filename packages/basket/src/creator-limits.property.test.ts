@@ -1,26 +1,22 @@
-import type { Target } from '@colosseum/schemas';
+import type { LimitContext, Target } from '@colosseum/schemas';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import {
-  type CreatorLimitContext,
-  checkCreatorLimits,
-  movedBps,
-  type RecipeHeader,
-  turnoverBps,
-} from './creator-limits';
+import { checkCreatorLimits, movedBps, type RecipeHeader, turnoverBps } from './creator-limits';
 import { referenceBreaks, referenceMovedBps } from './creator-limits.reference';
 
 // Generated versions, held to the slow reference and to each bound written out in plain terms.
 
-const LISTED = [
-  ...'abcdefghijklmn'.split('').map((x) => ({ id: `solana:${x}`, maxWeightBps: 5000 })),
-  { id: 'solana:wide', maxWeightBps: 10_000 },
-  { id: 'solana:quarter', maxWeightBps: 2500 },
-  { id: 'solana:odd', maxWeightBps: 2520 },
-  { id: 'solana:tiny', maxWeightBps: 150 },
-  { id: 'solana:shut', maxWeightBps: 0 },
+const LISTED: LimitContext['assets'] = [
+  ...[
+    ...'abcdefghijklmn'.split('').map((x) => ({ id: `solana:${x}`, maxWeightBps: 5000 })),
+    { id: 'solana:wide', maxWeightBps: 10_000 },
+    { id: 'solana:quarter', maxWeightBps: 2500 },
+    { id: 'solana:odd', maxWeightBps: 2520 },
+    { id: 'solana:tiny', maxWeightBps: 150 },
+    { id: 'solana:shut', maxWeightBps: 0 },
+  ].map((a) => ({ ...a, cls: 'stock' as const })),
   // The chain's cash token, with a ceiling that would let it in if it were an asset like the others.
-  { id: 'solana:usdc', maxWeightBps: 5000, cls: 'cash' as const },
+  { id: 'solana:usdc', maxWeightBps: 5000, cls: 'cash' },
 ];
 const PLAIN = LISTED.slice(0, 14).map((a) => a.id);
 const ANY = [...LISTED.map((a) => a.id), 'solana:unlisted', 'solana:other'];
@@ -147,7 +143,7 @@ const scenario = fc
   .map((s) => {
     // A later version is most often an edit of the one in effect.
     const next = s.prev && s.edit ? shift(s.prev, s.edit) : s.fresh;
-    const ctx: CreatorLimitContext = {
+    const ctx: LimitContext = {
       assets: LISTED,
       publishDelay: s.publishDelay,
       // A first version sometimes comes with a context that names a last publish or a pending
@@ -236,8 +232,8 @@ describe('checkCreatorLimits, on generated versions', { timeout: 60_000 }, () =>
       { asset: 'solana:c', weightBps: 2000 },
     ];
     const ctx = { assets: LISTED, now: 1000, lastPublishAt: 990, hasPending: false };
-    // A caller holding the shared `LimitContext`, which has no delay yet.
-    const noDelay = ctx as unknown as CreatorLimitContext;
+    // A caller that got past the type with no delay: plain JavaScript, or a cast.
+    const noDelay = ctx as unknown as LimitContext;
     expect(() => checkCreatorLimits(version, version, noDelay)).toThrow(RangeError);
     for (const bad of [Number.NaN, -1, 1.5, Number.POSITIVE_INFINITY]) {
       expect(() => checkCreatorLimits(version, version, { ...ctx, publishDelay: bad })).toThrow(
@@ -301,8 +297,9 @@ describe('checkCreatorLimits, on generated versions', { timeout: 60_000 }, () =>
       ok: false,
       code: 'CashNotAllowed',
     });
-    // The same list with no asset marked as cash has nothing to refuse it by.
-    const unmarked = LISTED.map(({ id, maxWeightBps }) => ({ id, maxWeightBps }));
+    // The same list with no asset marked as cash has nothing to refuse it by. The type asks for a class
+    // on every asset, so the token is marked as an asset like the others.
+    const unmarked = LISTED.map((a) => ({ ...a, cls: 'stock' as const }));
     expect(checkCreatorLimits(null, withCash, { ...ctx, assets: unmarked })).toEqual({
       ok: true,
       turnoverBps: 0,

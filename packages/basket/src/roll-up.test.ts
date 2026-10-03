@@ -1,8 +1,13 @@
-import { type LiquidityProvider, type Quote, RiskRollUp } from '@colosseum/schemas';
+import {
+  type LiquidityProvider,
+  type Quote,
+  RiskRollUp,
+  type RollUpContext,
+} from '@colosseum/schemas';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { BasketInputError } from './amounts';
-import { type RollUpInput, rollUp } from './roll-up';
+import { rollUp } from './roll-up';
 import { asset, shelf } from './testing';
 
 const SHELF = shelf([
@@ -339,7 +344,7 @@ describe('rollUp, on generated plans', { timeout: 60_000 }, () => {
     }),
     { maxLength: 12 },
   );
-  const ctx: RollUpInput = {
+  const ctx: RollUpContext = {
     shelf: SHELF,
     liquidity: provider({ 'solana:spy': (usd) => (usd < 50_000 ? usd / 1e7 : null) }),
     quotes: [quote('solana:spy', 1000, 5, T1), quote('solana:nvda', 1000, 8, T2)],

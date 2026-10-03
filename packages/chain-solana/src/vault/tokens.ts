@@ -112,6 +112,20 @@ export function multiplierAt(mint: MintInfo, unixSeconds: bigint): number {
   return unixSeconds >= scaled.newMultiplierEffectiveAt ? scaled.newMultiplier : scaled.multiplier;
 }
 
+/**
+ * The multiplier a mint has scheduled and that is not in force yet at `unixSeconds`, with the time it
+ * applies from. Null for a mint without the extension, and once the time has come: it is then the
+ * multiplier in force.
+ */
+export function scheduledMultiplier(
+  mint: MintInfo,
+  unixSeconds: bigint,
+): { multiplier: number; effectiveAt: bigint } | null {
+  const scaled = mint.scaledUiAmount;
+  if (!scaled || unixSeconds >= scaled.newMultiplierEffectiveAt) return null;
+  return { multiplier: scaled.newMultiplier, effectiveAt: scaled.newMultiplierEffectiveAt };
+}
+
 export type TokenAccountInfo = {
   mint: Address;
   owner: Address;
