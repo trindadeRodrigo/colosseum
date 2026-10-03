@@ -13,13 +13,21 @@ import { getTransferSolInstruction } from '@solana-program/system';
 import { decodeMint } from '@solana-program/token-2022';
 import type { LiteSVM } from 'litesvm';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { readConfig, readVault } from './src/basket';
-import { createWorld, expectOk, MOCK_ROUTER_PROGRAM, REPO_ROOT, send } from './src/env';
+import { readAssets, readConfig, readRecipe, readVault } from './src/basket';
+import {
+  createWorld,
+  expectOk,
+  MOCK_ROUTER_PROGRAM,
+  REPO_ROOT,
+  SYSTEM_PROGRAM,
+  send,
+} from './src/env';
 import { ata, balance, TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from './src/tokens';
 import {
   buildWorld,
   type Ledger,
   type MintName,
+  type RecipeName,
   type VaultName,
   type World,
   type WorldExpected,
@@ -37,7 +45,8 @@ import {
 const FIXTURE = join(REPO_ROOT, 'fixtures', 'solana-vault', 'world.json');
 const WRITE = process.env.WRITE_FIXTURES === '1';
 
-/** Mon 2026-10-05 15:00 UTC: inside the US session, so a stock token's market reads as open. */
+/** Mon 2026-10-05 15:00 UTC: inside the US session, so a stock token's market reads as open. The
+ * world ends one publish delay later, which is still inside it. */
 const NOW = BigInt(Date.parse('2026-10-05T15:00:00.000Z') / 1000);
 const SYSVAR_CLOCK = address('SysvarC1ock11111111111111111111111111111111');
 
@@ -56,8 +65,9 @@ const PRICES: Record<MintName, { index: number; value: bigint; exponent: bigint;
 /** An entry nobody wrote. */
 const EMPTY_INDEX = 7;
 
-/** A price account with Scope's layout, written by hand as the design says for LiteSVM. */
-function scopeAccount(slot: bigint): Uint8Array {
+/** A price account with Scope's layout, written by hand as the design says for LiteSVM. Each
+ * entry is as old as `PRICES` says at the chain's time `now`. */
+function scopeAccount(slot: bigint, now: bigint): Uint8Array {
   const data = new Uint8Array(SCOPE_BYTES);
   // Scope's own header: Anchor's discriminator for `OraclePrices`, then the mappings account.
   data.set(createHash('sha256').update('account:OraclePrices').digest().subarray(0, 8), 0);
@@ -68,7 +78,7 @@ function scopeAccount(slot: bigint): Uint8Array {
     view.setBigUint64(at, value, true);
     view.setBigUint64(at + 8, exponent, true);
     view.setBigUint64(at + 16, slot, true);
-    view.setBigUint64(at + 24, NOW - age, true);
+    view.setBigUint64(at + 24, now - age, true);
   }
   return data;
 }
@@ -126,6 +136,12 @@ describe('the vault fixtures for the adapter', () => {
         expectOk(await send(svm, payer, instructions));
       },
       rent: async (bytes) => svm.minimumBalanceForRentExemption(bytes),
+      advanceClock: (seconds) => {
+        const moved = svm.getClock();
+        moved.unixTimestamp += seconds;
+        svm.setClock(moved);
+        return moved.unixTimestamp;
+      },
     };
     world = await buildWorld(ledger, created.deployer);
     const { names, mints } = world;
@@ -140,7 +156,8 @@ describe('the vault fixtures for the adapter', () => {
     ]);
 
     const priceAccount = (await generateKeyPairSigner()).address;
-    const prices = scopeAccount(svm.getClock().slot);
+    // The world moved the clock on by one publish delay; the prices are as old as they say now.
+    const prices = scopeAccount(svm.getClock().slot, svm.getClock().unixTimestamp);
     svm.setAccount({
       address: priceAccount,
       data: prices,
@@ -152,6 +169,7 @@ describe('the vault fixtures for the adapter', () => {
 
     const roles: [string, Address][] = [
       ['config', names.config],
+      ['assets', names.assets],
       ['clock', SYSVAR_CLOCK],
       ['price', priceAccount],
       ['wallet:owner', names.owner],
@@ -160,6 +178,8 @@ describe('the vault fixtures for the adapter', () => {
     ];
     for (const [name, mint] of Object.entries(names.mints)) roles.push([`mint:${name}`, mint]);
     for (const [name, vault] of Object.entries(names.vaults)) roles.push([`vault:${name}`, vault]);
+    for (const [name, recipe] of Object.entries(names.recipes))
+      roles.push([`recipe:${name}`, recipe]);
     const holders = { owner: names.owner, other: names.other, ...names.vaults };
     for (const [holder, who] of Object.entries(holders))
       for (const [name, mint] of Object.entries(mints)) {
@@ -246,6 +266,10 @@ describe('the vault fixtures for the adapter', () => {
         want.autoFollow,
         want.targets.length,
       ]);
+      expect([vault.recipe, vault.acceptedVersion]).toEqual([
+        want.recipe ? names.recipes[want.recipe] : SYSTEM_PROGRAM,
+        want.acceptedVersion,
+      ]);
       const positions = vault.positions.slice(0, vault.count);
       expect(positions.map((p) => [p.mint, p.targetBps])).toEqual(
         want.targets.map((t) => [names.mints[t.mint], t.targetBps]),
@@ -257,6 +281,33 @@ describe('the vault fixtures for the adapter', () => {
     }
     expect(await holdings(names.owner)).toEqual(expected.wallets.owner);
     expect(await holdings(names.other)).toEqual(expected.wallets.other);
+
+    // The asset list holds the four assets, and never the cash mint.
+    const listed = (await readAssets(svm)).assets.map((a) => a.mint);
+    expect(listed).toEqual(
+      (['spyx', 'nvdax', 'gold', 'tslax'] as const).map((name) => names.mints[name]),
+    );
+    for (const [name, want] of Object.entries(expected.recipes)) {
+      const recipe = readRecipe(svm, names.recipes[name as RecipeName]);
+      const weights = (version: typeof recipe.current) =>
+        version.components.map((c) => [c.mint, c.weightBps]);
+      const wanted = (list: { mint: MintName; weightBps: number }[]) =>
+        list.map((c) => [names.mints[c.mint], c.weightBps]);
+      expect(recipe.creator).toBe(names.creator);
+      expect(Buffer.from(recipe.familyId).toString('hex')).toBe(want.familyId);
+      expect([recipe.current.version, weights(recipe.current)]).toEqual([
+        want.active.version,
+        wanted(want.active.components),
+      ]);
+      if (!want.pending) throw new Error('the fixture world has a version that waits');
+      expect([
+        recipe.pending.version,
+        recipe.pending.effectiveAt.toString(),
+        weights(recipe.pending),
+      ]).toEqual([want.pending.version, want.pending.effectiveAt, wanted(want.pending.components)]);
+      // It still waits at the fixture's clock.
+      expect(recipe.pending.effectiveAt).toBeGreaterThan(svm.getClock().unixTimestamp);
+    }
 
     for (const [name, want] of Object.entries(expected.mints)) {
       const mint = mints[name as MintName];

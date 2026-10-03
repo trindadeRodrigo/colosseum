@@ -12,6 +12,7 @@ import {
   type Holding,
   type Price,
   type Provenance,
+  Recipe,
   SolanaAddress,
   type TxStatus,
   type VaultState,
@@ -25,16 +26,23 @@ import {
 } from '@solana/kit';
 import { z } from 'zod';
 import {
+  type AssetRegistryAccount,
+  assetsAddress,
   type ConfigAccount,
   configAddress,
+  decodeAssetRegistry,
   decodeConfig,
+  decodeRecipe,
   decodeVault,
   isAccount,
+  type RecipeAccount,
+  type RecipeVersion,
   VAULT_AUTO_FOLLOW_OFFSET,
   VAULT_DISCRIMINATOR,
   VAULT_RECIPE_OFFSET,
   VAULT_SIZE,
   type VaultAccount,
+  versionsAt,
   ZERO_ADDRESS,
 } from './accounts';
 import { displayAmount, multiplierString } from './amounts';
@@ -81,8 +89,9 @@ export type SolanaVaultReaderOptions = {
   /** Made by the caller from its own RPC URL. */
   rpc: VaultRpc;
   /**
-   * The assets of this network. Until the program holds its own list (SOL-2) the caller supplies it.
-   * An asset with `priceKind: 'scope'` carries its entry's index in `priceRef`.
+   * The assets of this network, with what the chain does not hold of each: its id, its class, its
+   * sheet. The program's own list (`getAssetList`) has the mints a vault may hold and each one's
+   * ceiling. An asset with `priceKind: 'scope'` carries its entry's index in `priceRef`.
    */
   assets: BasketAsset[];
   /** `readonly` until the builders exist (ADS-2). */
@@ -100,6 +109,8 @@ export type SolanaVaultReader = ChainReader & {
   readonly provenance: Provenance;
   /** The program's Config account as it is now. */
   getConfig(): Promise<ConfigAccount>;
+  /** The program's own asset list as it is now: the mints a vault may hold, and each one's entry. */
+  getAssetList(): Promise<AssetRegistryAccount>;
 };
 
 const refuse = (code: ConstructorParameters<typeof ChainError>[0], message: string): never => {
@@ -234,6 +245,15 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
     pairs: { holder: Address; asset: BasketAsset }[],
     snap: Snapshot,
   ): Promise<{ amount: bigint; frozen: boolean }[]> {
+    return (await balancesAnd(pairs, [], snap)).amounts;
+  }
+
+  /** As `balances`, with `others` read in the same call and handed back as they are. */
+  async function balancesAnd(
+    pairs: { holder: Address; asset: BasketAsset }[],
+    others: Address[],
+    snap: Snapshot,
+  ): Promise<{ amounts: { amount: bigint; frozen: boolean }[]; others: (RawAccount | null)[] }> {
     const programs = pairs.map(({ asset }) => {
       const mint = snap.mints.get(asset.address);
       return mint ? mint.tokenProgram : refuse('Unknown', `${asset.id} has no mint`);
@@ -243,15 +263,83 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
         associatedTokenAddress(holder, asset.address as Address, programs[i] as Address),
       ),
     );
-    const accounts = await getAccounts(rpc, addresses, commitment);
+    const accounts = await getAccounts(rpc, [...addresses, ...others], commitment);
     const nothing = { amount: 0n, frozen: false };
-    return pairs.map(({ holder, asset }, i) => {
+    const amounts = pairs.map(({ holder, asset }, i) => {
       const account = accounts[i];
       // Lamports sent to the address before the token account exists leave a system account there.
       if (!account || account.owner !== programs[i]) return nothing;
       const token = decodeTokenAccount(account.data);
       return token.mint === asset.address && token.owner === holder ? token : nothing;
     });
+    return { amounts, others: accounts.slice(addresses.length) };
+  }
+
+  const hex = (bytes: ArrayLike<number>) =>
+    Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+
+  /** A shared portfolio's bytes as a shared portfolio, or a refusal when they are not one. */
+  function readRecipe(address: Address, account: RawAccount | null): RecipeAccount {
+    if (!account || account.owner !== program || !isAccount('recipe', account.data))
+      throw new ChainError('RecipeNotFound', `no shared portfolio at ${address}`, false);
+    return decodeRecipe(account.data);
+  }
+
+  /** The listed asset a shared portfolio's line names. The program lists mints; the ids are the caller's. */
+  function assetOfComponent(recipe: Address, mint: string): BasketAsset {
+    return (
+      byMint.get(mint) ??
+      refuse(
+        'MintNotAccepted',
+        `the shared portfolio ${recipe} holds ${mint}, which is not a listed asset`,
+      )
+    );
+  }
+
+  /** One version of a shared portfolio in the shape every chain answers with. */
+  function recipeOf(address: Address, account: RecipeAccount, version: RecipeVersion): Recipe {
+    if (account.maxFeeBps !== 0 || account.flags !== 0)
+      refuse(
+        'Unknown',
+        `the shared portfolio ${address} carries a fee or flags the program refuses`,
+      );
+    return Recipe.parse({
+      schemaVersion: 1,
+      familyId: hex(account.familyId),
+      chain: 'solana',
+      onchainId: address,
+      creator: account.creator,
+      kind: 'community',
+      version: version.version,
+      effectiveAt: Number(version.effectiveAt),
+      components: version.components.map((c) => ({
+        kind: 'asset',
+        asset: assetOfComponent(address, c.mint).id,
+        weightBps: c.weightBps,
+      })),
+      metaHash: hex(version.metaHash),
+      maxFeeBps: 0,
+      flags: 0,
+    });
+  }
+
+  /**
+   * What a vault that follows has not applied yet: the version in effect when the vault took an
+   * earlier one, or else the version that waits. `newAssets` are the ones the vault has no target on,
+   * which the owner has to accept by hand.
+   */
+  function pendingFor(vault: VaultAccount, recipe: RecipeAccount, clock: ClusterClock) {
+    const { active, pending } = versionsAt(recipe, clock.unixTimestamp);
+    const next = active.version > vault.acceptedVersion ? active : pending;
+    if (!next) return null;
+    const accepted = new Set(vault.positions.filter((p) => p.targetBps > 0).map((p) => p.mint));
+    return {
+      version: next.version,
+      effectiveAt: Number(next.effectiveAt),
+      newAssets: next.components
+        .filter((c) => !accepted.has(c.mint))
+        .map((c) => assetOfComponent(vault.recipe, c.mint).id),
+    };
   }
 
   function holding(asset: BasketAsset, raw: bigint, snap: Snapshot): Holding {
@@ -290,6 +378,7 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
     address: Address,
     vault: VaultAccount,
     held: Holding[],
+    recipe: RecipeAccount | null,
     snap: Snapshot,
     observedAt: string,
   ): VaultState {
@@ -297,12 +386,6 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
     if (!cashHolding) return refuse('Unknown', 'no cash holding');
     const targets = rest.slice(0, vault.positions.length);
     const others = rest.slice(vault.positions.length).filter((h) => h.raw !== '0');
-    // The registry is not on chain until SOL-2: what is pending for a follower cannot be read yet.
-    if (vault.recipe !== ZERO_ADDRESS)
-      refuse(
-        'NotSupported',
-        `vault ${address} follows a shared portfolio; reading one arrives with SOL-2`,
-      );
     // The unit of the loss counter is set by the keeper leg (SOL-3). Until then only zero can be reported.
     if (vault.lossAccum !== 0n)
       refuse('NotSupported', `vault ${address} has a loss counter; reading it arrives with SOL-3`);
@@ -311,7 +394,7 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
       address,
       owner: vault.owner,
       basketId: vault.basketId.toString(),
-      recipeOnchainId: null,
+      recipeOnchainId: vault.recipe === ZERO_ADDRESS ? null : vault.recipe,
       acceptedVersion: vault.acceptedVersion,
       autoFollow: vault.autoFollow,
       keeper: vault.keeper === ZERO_ADDRESS ? snap.onchain.defaultKeeper : vault.keeper,
@@ -331,7 +414,7 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
       ],
       lossUsedBps: 0,
       observedAt,
-      pending: null,
+      pending: recipe ? pendingFor(vault, recipe, snap.clock) : null,
     };
   }
 
@@ -342,18 +425,33 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
   ): Promise<VaultState[]> {
     const observedAt = now().toISOString();
     const lists = found.map(({ address, vault }) => vaultAssets(address, vault));
-    const amounts = await balances(
+    // The shared portfolios these vaults follow, each once, read in the same call as the balances.
+    const followed = [
+      ...new Set(found.map(({ vault }) => vault.recipe).filter((r) => r !== ZERO_ADDRESS)),
+    ];
+    const { amounts, others } = await balancesAnd(
       found.flatMap(({ address }, i) =>
         (lists[i] ?? []).map((asset) => ({ holder: address, asset })),
       ),
+      followed,
       snap,
+    );
+    const recipes = new Map(
+      followed.map((address, i) => {
+        const account = others[i] ?? null;
+        // The program writes a vault's `recipe` only from a shared portfolio it was handed, and
+        // never closes one: a vault that points at nothing is not something it wrote.
+        if (!account || account.owner !== program || !isAccount('recipe', account.data))
+          return refuse('Unknown', `a vault follows ${address}, which is not a shared portfolio`);
+        return [address, decodeRecipe(account.data)] as const;
+      }),
     );
     let at = 0;
     return found.map(({ address, vault }, i) => {
       const held = (lists[i] ?? []).map((asset) =>
         holding(asset, amounts[at++]?.amount ?? 0n, snap),
       );
-      return vaultState(address, vault, held, snap, observedAt);
+      return vaultState(address, vault, held, recipes.get(vault.recipe) ?? null, snap, observedAt);
     });
   }
 
@@ -383,6 +481,18 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
     provenance,
 
     getConfig: () => guarded(async () => (await snapshot()).onchain),
+
+    getAssetList: () =>
+      guarded(async () => {
+        const [account] = await getAccounts(rpc, [await assetsAddress(program)], commitment);
+        if (!account || account.owner !== program || !isAccount('assets', account.data))
+          throw new ChainError(
+            'Unavailable',
+            `the vault program ${program} has no asset list on ${config.networkName}: not initialised`,
+            false,
+          );
+        return decodeAssetRegistry(account.data);
+      }),
 
     listAssets: () => guarded(async () => structuredClone(assets)),
 
@@ -486,13 +596,21 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
         return found.map((account) => account.address).sort();
       }),
 
-    getRecipe: () =>
-      guarded(async () =>
-        refuse(
-          'NotSupported',
-          'shared portfolios are not on chain yet: the registry arrives with SOL-2',
-        ),
-      ),
+    getRecipe: (recipeOnchainId) =>
+      guarded(async () => {
+        const address = solanaAddress(recipeOnchainId, 'recipeOnchainId');
+        const [account, clockAccount] = await getAccounts(rpc, [address, SYSVAR_CLOCK], commitment);
+        const recipe = readRecipe(address, account ?? null);
+        // Which version is in effect is a matter of the cluster's clock, as it is for the program.
+        const { active, pending } = versionsAt(
+          recipe,
+          decodeClock(clockAccount ?? null).unixTimestamp,
+        );
+        return {
+          active: recipeOf(address, recipe, active),
+          pending: pending ? recipeOf(address, recipe, pending) : null,
+        };
+      }),
 
     getWalletHoldings: (owner) =>
       guarded(async () => {
@@ -550,7 +668,7 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
       guarded(async () =>
         refuse(
           'NotSupported',
-          'the vault cannot swap yet: quotes arrive with the swap (SOL-2, ADS-2)',
+          'the reader does not quote: quotes arrive with the swap builder (ADS-2)',
         ),
       ),
 

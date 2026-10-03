@@ -9,6 +9,7 @@ import {
   Holding,
   Price,
   type Provenance,
+  Recipe,
   TxStatus,
   VaultState,
 } from '@colosseum/schemas';
@@ -20,9 +21,8 @@ import { assetId, type MintName, type VaultName, type World } from './world';
 // the program supports them today, against the world programs/tests builds. The same cases run on the
 // committed account bytes behind a node in memory, and on a local validator.
 //
-// What the contract's own function needs and this world cannot give yet is in the last case: a shared
-// portfolio to follow. `adapterContract()` reads one before its first case, so it cannot start until
-// SOL-2 puts the registry on chain and ADS-2 builds the transactions that set its fixture up.
+// The world has one shared portfolio and one vault that follows it. What the contract's own function
+// still needs is the builders (ADS-2): its fixture is set up with the transactions they build.
 
 export type ReadSetup = {
   reader: SolanaVaultReader;
@@ -154,12 +154,14 @@ export function readCases(name: string, setup: () => Promise<ReadSetup>): void {
         expect(one?.autoFollow).toBe(expected.vaults[vault].autoFollow);
         // No instruction sets a keeper of its own, so every vault has Config's default.
         expect(one?.keeper).toBe(names.keeper);
-        expect([
-          one?.recipeOnchainId,
-          one?.acceptedVersion,
-          one?.pending,
-          one?.lossUsedBps,
-        ]).toEqual([null, 0, null, 0]);
+        // What it follows, and the version whose weights it took.
+        const want = expected.vaults[vault];
+        expect([one?.recipeOnchainId, one?.acceptedVersion, one?.lossUsedBps]).toEqual([
+          want.recipe ? names.recipes[want.recipe] : null,
+          want.acceptedVersion,
+          0,
+        ]);
+        if (!want.recipe) expect(one?.pending).toBeNull();
       }
       // Another owner's vault, with the same plan id, is theirs alone.
       const theirs = await s.reader.getVaults(names.other);
@@ -269,7 +271,10 @@ export function readCases(name: string, setup: () => Promise<ReadSetup>): void {
       expect([...all].sort()).toEqual([vaults.following, vaults.partial].sort());
       expect(new Set(all).size).toBe(all.length);
       for (const address of all) expect((await s.reader.getVault(address))?.autoFollow).toBe(true);
-      // No vault follows a shared portfolio yet, so no address has followers.
+      // By the shared portfolio they follow: one vault follows the one there is, none follows a stranger.
+      expect(await s.reader.listAutoFollowVaults(s.world.names.recipes.core)).toEqual([
+        vaults.following,
+      ]);
       expect(await s.reader.listAutoFollowVaults(stranger)).toEqual([]);
       await refuses(s.reader.listAutoFollowVaults('not-an-address'), 'BadInput');
     });
@@ -349,11 +354,68 @@ export function readCases(name: string, setup: () => Promise<ReadSetup>): void {
       expect(failed.error?.message.length).toBeGreaterThan(0);
     });
 
-    it('refuses what is not on chain yet: a shared portfolio and a quote', async () => {
+    it('reads a shared portfolio: the version in effect, and the one that waits', async () => {
+      const { names, expected } = s.world;
+      const want = expected.recipes.core;
+      const lines = (list: { mint: MintName; weightBps: number }[]) =>
+        list.map((c) => ({ kind: 'asset', asset: assetId(c.mint), weightBps: c.weightBps }));
+      const { active, pending } = await s.reader.getRecipe(names.recipes.core);
+      for (const version of [active, ...(pending ? [pending] : [])]) {
+        exact(Recipe, version);
+        expect(version).toMatchObject({
+          chain: 'solana',
+          onchainId: names.recipes.core,
+          creator: names.creator,
+          kind: 'community',
+          familyId: want.familyId,
+          maxFeeBps: 0,
+          flags: 0,
+        });
+      }
+      expect([active.version, active.components]).toEqual([
+        want.active.version,
+        lines(want.active.components),
+      ]);
+      expect(active.effectiveAt).toBeGreaterThan(0);
+      if (!want.pending) expect(pending).toBeNull();
+      else {
+        expect([pending?.version, pending?.effectiveAt, pending?.components]).toEqual([
+          want.pending.version,
+          Number(want.pending.effectiveAt),
+          lines(want.pending.components),
+        ]);
+        expect(pending?.effectiveAt).toBeGreaterThan(active.effectiveAt);
+      }
+    });
+
+    it('tells a vault that follows what it has not applied yet, and which assets would be new to it', async () => {
+      const { expected } = s.world;
+      const following = await vaultOf('following');
+      const want = expected.recipes.core.pending;
+      if (!want) expect(following.pending).toBeNull();
+      else {
+        const targets = expected.vaults.following.targets.map((t) => t.mint);
+        expect(following.pending).toEqual({
+          version: want.version,
+          effectiveAt: Number(want.effectiveAt),
+          newAssets: want.components
+            .filter((c) => !targets.includes(c.mint))
+            .map((c) => assetId(c.mint)),
+        });
+        expect(following.pending?.newAssets.length).toBeGreaterThan(0);
+      }
+      // The targets are still those of the version it took.
+      expect(following.acceptedVersion).toBe(expected.recipes.core.active.version);
+    });
+
+    it('refuses what is not a shared portfolio, and does not quote', async () => {
       const { names } = s.world;
-      const recipe = await refuses(s.reader.getRecipe(names.stranger), 'NotSupported');
-      expect(recipe.message).toContain('SOL-2');
-      expect(recipe.retryable).toBe(false);
+      // Nothing there, the program's own Config, a vault, and a mint: none is a shared portfolio.
+      for (const address of [names.stranger, names.config, names.vaults.manual, names.mints.spyx]) {
+        const refused = await refuses(s.reader.getRecipe(address), 'RecipeNotFound');
+        expect(refused.retryable).toBe(false);
+      }
+      await refuses(s.reader.getRecipe('not-an-address'), 'BadInput');
       const trade = { sell: assetId('usdc'), buy: assetId('spyx'), amountInRaw: '50000000' };
       await refuses(s.reader.quote(trade, names.owner), 'NotSupported');
     });
