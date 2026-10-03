@@ -188,15 +188,17 @@ contract VaultFactoryTest is SwapFixture {
     }
 
     /// The address of a vault that does not exist yet comes from the proxy's creation code, which is part of
-    /// the factory's logic. A factory upgrade built with another compiler, other settings or another
-    /// OpenZeppelin would carry other creation code, and `vaultOf` would move for every vault not yet made:
-    /// a token sent to the old address in advance would be stranded there. This pins the code, so that such
-    /// a change is seen before an upgrade is built. Vaults that exist are unaffected: their addresses are
-    /// stored.
+    /// the factory's logic. The project is built with no metadata hash in the bytecode, so a comment or a
+    /// path changed in the proxy's sources does not move it. What still does: a change to the code of
+    /// OpenZeppelin's `BeaconProxy` or of what it inherits, or to what the compiler emits for it (another
+    /// solc, optimizer setting or pipeline). A factory upgrade built that way would move `vaultOf` for every
+    /// vault not yet made, and a token sent to the old address in advance would be stranded there. This pins
+    /// the code, so that such a change is seen before an upgrade is built. Vaults that exist are unaffected:
+    /// their addresses are stored.
     function test_vaultOf_theProxysCreationCodeIsPinned() public pure {
         assertEq(
             keccak256(type(BeaconProxy).creationCode),
-            0xa5e3e96d2fd0d717ac0a5b778f892aeeed2fdd14dca7496bcd6eeed68d4af40b,
+            0xe5c18af47c569fc62fb41736f452b3899de4c9b1e69c817bcc8de9a10a4e6f9e,
             "the proxy's creation code changed: vaultOf moves for every vault not yet created"
         );
     }
