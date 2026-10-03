@@ -44,6 +44,19 @@ export const PROGRAM_ERRORS = [
   'NotCashMint',
   /** The zero address where an address is needed. On EVM the vault and the config raise it too. */
   'ZeroAddress',
+  // Appended with the owner swap and the registries.
+  /** The router, the price owner and the cash mint are fixed once the config is launched. */
+  'LockedAtLaunch',
+  /** The mint runs a transfer hook program, or its extension list cannot be read. */
+  'HookNotAllowed',
+  /** The asset list already holds its 64 entries. */
+  'AssetListFull',
+  /** A swap from a mint to itself. */
+  'SameMint',
+  /** There is no waiting version to cancel. */
+  'NoPendingVersion',
+  /** Only the portfolio's creator or the guardian cancels a waiting version. */
+  'NotCreatorOrGuardian',
 ] as const;
 
 /** The errors of the EVM contracts (contracts/src/interfaces) that mean something no program error does. */
@@ -164,6 +177,12 @@ export const CHAIN_ERROR_RETRYABLE: Record<ChainErrorCode, boolean> = {
   InvalidTargets: false,
   NotCashMint: false,
   ZeroAddress: false,
+  LockedAtLaunch: false,
+  HookNotAllowed: false,
+  AssetListFull: false,
+  SameMint: false,
+  NoPendingVersion: false,
+  NotCreatorOrGuardian: false,
   NotOwner: false,
   CashTokenNotSet: false,
   DepositShortfall: false,

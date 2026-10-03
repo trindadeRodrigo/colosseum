@@ -79,6 +79,8 @@ Each case:
 
 TypeScript: `packages/basket/src/creator-limits.vectors.test.ts`, and through the mock registry in `packages/chain-mock/src/limits.test.ts`.
 
+Solana: `programs/tests/creator-limits.vectors.test.ts` builds each case's state with real publishes in LiteSVM, every scenario included, and reads the reason's number from the transaction log (`creator limit: reason=<number> <name>`). The cash token is on its asset list, so the cash cases are refused as `CashNotAllowed`.
+
 ## The meta hash
 
 A shared portfolio's name and copy stay off-chain. The registry stores their hash, so anyone can check the text against the chain. `meta-hash.json` has worked cases: the fields (`meta`), the exact text that is hashed (`canonical`), that text's bytes in hex (`utf8Hex`) and the hash (`sha256`).
