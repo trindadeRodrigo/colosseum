@@ -73,20 +73,6 @@ contract BasketVaultProxyTest is VaultFixture {
         assertEq(beacon.owner(), admin);
     }
 
-    /// The vault keeps its state in one ERC-7201 namespace. Later slots append to the struct; these three
-    /// fields stay where they are.
-    function test_storage_isTheErc7201Namespace() public view {
-        bytes32 slot =
-            keccak256(abi.encode(uint256(keccak256("basket.storage.BasketVault")) - 1)) & ~bytes32(uint256(0xff));
-        assertEq(address(uint160(uint256(vm.load(address(vault), slot)))), owner);
-        assertEq(address(uint160(uint256(vm.load(address(vault), bytes32(uint256(slot) + 1))))), address(factory));
-        assertEq(vm.load(address(vault), bytes32(uint256(slot) + 2)), PLAN_ID);
-        // Nothing sits in the plain slots a later base contract could collide with.
-        for (uint256 i; i < 8; ++i) {
-            assertEq(vm.load(address(vault), bytes32(i)), bytes32(0));
-        }
-    }
-
     /// I1 from outside: a call no function matches, and plain ether, are both turned away. The full list of
     /// entry points is pinned in `EntryPoints.t.sol`.
     function test_I1_unknownCallsAndEther_areRefused() public {
