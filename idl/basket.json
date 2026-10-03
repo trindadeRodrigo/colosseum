@@ -464,6 +464,14 @@
           }
         },
         {
+          "name": "cash_mint",
+          "docs": [
+            "The one mint a vault takes as a deposit. It has to be a mint of a token program: an",
+            "address that is not one, locked in by `launch()`, would mean no deposits until an",
+            "upgrade."
+          ]
+        },
+        {
           "name": "program",
           "docs": [
             "This program, to find its program data account."
@@ -981,7 +989,7 @@
       "name": "set_cash_mint",
       "docs": [
         "Admin, until `launch()`. The one mint a vault takes as a deposit: the chain's dollar",
-        "token."
+        "token, passed as an account, which has to be a mint of a token program."
       ],
       "discriminator": [
         27,
@@ -1019,14 +1027,12 @@
               }
             ]
           }
+        },
+        {
+          "name": "cash_mint"
         }
       ],
-      "args": [
-        {
-          "name": "cash_mint",
-          "type": "pubkey"
-        }
-      ]
+      "args": []
     },
     {
       "name": "set_params",
@@ -2473,10 +2479,6 @@
           },
           {
             "name": "price_owner",
-            "type": "pubkey"
-          },
-          {
-            "name": "cash_mint",
             "type": "pubkey"
           },
           {

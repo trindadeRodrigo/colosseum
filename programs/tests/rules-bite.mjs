@@ -110,6 +110,13 @@ const RULES = [
     fails: 'another signer cannot deposit into the vault',
   },
   {
+    rule: 'deposit: the owner signs',
+    file: 'src/instructions/deposit.rs',
+    find: SIGNER('owner'),
+    replace: UNSIGNED('owner'),
+    fails: 'the owner must sign a deposit',
+  },
+  {
     rule: 'deposit: the cash mint only',
     file: 'src/instructions/deposit.rs',
     find: /,\s+constraint = mint\.key\(\) == config\.cash_mint @ BasketError::NotCashMint/,
@@ -154,7 +161,7 @@ const RULES = [
     replace: 'constraint = true',
     fails: "refuses another program's data account",
   },
-  ...['guardian', 'default_keeper', 'router_program', 'price_owner', 'cash_mint'].map((field) => ({
+  ...['guardian', 'default_keeper', 'router_program', 'price_owner'].map((field) => ({
     rule: `init_config: ${field} is not the zero address`,
     file: 'src/instructions/config.rs',
     find: `        check_address(&args.${field})?;\n`,
@@ -169,8 +176,24 @@ const RULES = [
     fails: 'initialise refuses the token program as the router',
   },
   {
+    rule: 'init_config: the parameters are checked',
+    file: 'src/instructions/config.rs',
+    find: '        check_params(&args.params, false)?;\n',
+    replace: '',
+    fails: 'hard bounds on the parameters refuses a tolerance above 300 bps',
+  },
+  {
+    rule: 'init_config: the cash mint is a mint of a token program',
+    file: 'src/instructions/config.rs',
+    within: 'pub struct InitConfig',
+    find: "pub cash_mint: InterfaceAccount<'info, Mint>,",
+    replace: UNSIGNED('cash_mint'),
+    fails: 'refuses a cash mint that is not a mint of a token program',
+  },
+  {
     rule: 'admin: the signer is the admin',
     file: 'src/instructions/config.rs',
+    within: 'pub struct SetConfig',
     find: hasOne('admin'),
     replace: 'bump = config.bump',
     fails: 'cannot be changed by anyone else',
@@ -178,6 +201,7 @@ const RULES = [
   {
     rule: 'admin: the admin signs',
     file: 'src/instructions/config.rs',
+    within: 'pub struct SetConfig',
     find: SIGNER('admin'),
     replace: UNSIGNED('admin'),
     fails: 'is not enough: each must sign',
@@ -185,9 +209,65 @@ const RULES = [
   {
     rule: 'admin: Config is the one at its own address',
     file: 'src/instructions/config.rs',
+    within: 'pub struct SetConfig',
     find: pinnedWith('admin'),
     replace: 'has_one = admin',
     fails: 'refuses a forged Config at another address',
+  },
+  {
+    rule: 'set_cash_mint: the signer is the admin',
+    file: 'src/instructions/config.rs',
+    within: 'pub struct SetCashMint',
+    find: hasOne('admin'),
+    replace: 'bump = config.bump',
+    fails: 'cashMint cannot be changed by anyone else',
+  },
+  {
+    rule: 'set_cash_mint: the admin signs',
+    file: 'src/instructions/config.rs',
+    within: 'pub struct SetCashMint',
+    find: SIGNER('admin'),
+    replace: UNSIGNED('admin'),
+    fails: 'is not enough: each must sign',
+  },
+  {
+    rule: 'set_cash_mint: Config is the one at its own address',
+    file: 'src/instructions/config.rs',
+    within: 'pub struct SetCashMint',
+    find: pinnedWith('admin'),
+    replace: 'has_one = admin',
+    fails: 'refuses a forged Config at another address',
+  },
+  {
+    rule: 'set_cash_mint: the cash mint is a mint of a token program',
+    file: 'src/instructions/config.rs',
+    within: 'pub struct SetCashMint',
+    find: "pub cash_mint: InterfaceAccount<'info, Mint>,",
+    replace: UNSIGNED('cash_mint'),
+    fails: 'the cash mint cannot be set to what is not a mint of a token program',
+  },
+  {
+    rule: 'set_router: not the zero address',
+    file: 'src/instructions/config.rs',
+    within: 'pub fn set_router(',
+    find: '        check_address(&router_program)?;\n',
+    replace: '',
+    fails: 'routerProgram cannot be set to the zero address',
+  },
+  {
+    rule: 'set_price_owner: not the zero address',
+    file: 'src/instructions/config.rs',
+    within: 'pub fn set_price_owner(',
+    find: '        check_address(&price_owner)?;\n',
+    replace: '',
+    fails: 'priceOwner cannot be set to the zero address',
+  },
+  {
+    rule: 'set_params: the parameters are checked',
+    file: 'src/instructions/config.rs',
+    find: '        check_params(&params, config.launched)?;\n',
+    replace: '',
+    fails: 'holds the hard bounds: refuses a tolerance above 300 bps',
   },
   {
     rule: 'setters: not the zero address',
@@ -356,6 +436,20 @@ const RULES = [
     find: requireLine('    ', 'params\\.asset_cooldown_s >= MIN_ASSET_COOLDOWN_S'),
     replace: '',
     fails: 'refuses a cooldown under 600 s',
+  },
+  {
+    rule: 'params: cooldown at most 7 days',
+    file: 'src/checks.rs',
+    find: requireLine('    ', 'params\\.asset_cooldown_s <= MAX_ASSET_COOLDOWN_S'),
+    replace: '',
+    fails: 'refuses a cooldown over 7 days',
+  },
+  {
+    rule: 'params: publish delay at most 30 days',
+    file: 'src/checks.rs',
+    find: requireLine('    ', 'params\\.publish_delay_s <= MAX_PUBLISH_DELAY_S'),
+    replace: '',
+    fails: 'refuses a publish delay over 30 days',
   },
   {
     rule: 'params: publish delay at least 60 s',
@@ -603,6 +697,29 @@ const RULES = [
     fails: 'a later version brings in the cash token',
   },
   {
+    rule: 'publish_recipe: the time of the publish is recorded',
+    file: 'src/instructions/recipe.rs',
+    within: 'impl PublishRecipe',
+    find: '        recipe.last_publish_ts = now;\n',
+    replace: '',
+    fails: 'case 37: one second too soon, 48-hour delay',
+  },
+  {
+    rule: 'update_recipe: the time of the publish is recorded',
+    file: 'src/instructions/recipe.rs',
+    within: 'impl UpdateRecipe',
+    find: '        recipe.last_publish_ts = now;\n',
+    replace: '',
+    fails: 'case 48: a cancelled version does not give the slot back',
+  },
+  {
+    rule: 'update_recipe: a later version waits one publish delay',
+    file: 'src/instructions/recipe.rs',
+    find: 'let effective_at = now.saturating_add(config.publish_delay_s as i64);',
+    replace: 'let effective_at = now;',
+    fails: 'case 38: exactly on time, 48-hour delay',
+  },
+  {
     rule: 'cancel_pending: the creator or the guardian',
     file: 'src/instructions/recipe.rs',
     find: requireLine(
@@ -741,6 +858,14 @@ const RULES = [
   },
 
   // ---- create_vault ----
+  {
+    rule: 'create_vault: the address is derived from the owner',
+    file: 'src/instructions/create_vault.rs',
+    find: 'seeds = [VAULT_SEED, owner.key().as_ref(), &basket_id.to_le_bytes()],',
+    replace: 'seeds = [VAULT_SEED, &basket_id.to_le_bytes()],',
+    // Without the owner in the address, the first to use a plan id owns it for everyone.
+    fails: 'gives each plan id and each owner a vault of its own',
+  },
   {
     rule: 'create_vault: no version without a shared portfolio',
     file: 'src/instructions/create_vault.rs',

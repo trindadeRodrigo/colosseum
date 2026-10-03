@@ -49,6 +49,7 @@ import {
   SYSTEM_ACCOUNT_ALREADY_IN_USE,
   SYSTEM_PROGRAM,
   send,
+  unsigned,
   writable,
   writableSigner,
 } from './src/env';
@@ -957,6 +958,14 @@ describe('basket vault', () => {
         ]);
         expectError(result, ANCHOR.ConstraintHasOne);
         expectVaultUntouched();
+      });
+
+      it('the owner must sign a deposit: naming the owner is not enough', async () => {
+        await mintTo(svm, stranger, cash, owner.address, 1_000000n);
+        const named = await depositInstruction({ owner, vault, mint: cash, amount: 1_000000n });
+        expectError(await send(svm, stranger, [unsigned(named)]), ANCHOR.AccountNotSigner);
+        expectVaultUntouched();
+        expect(balance(svm, ownerCash)).toBe(1_000000n);
       });
 
       it("deposits only into the vault's associated token account", async () => {

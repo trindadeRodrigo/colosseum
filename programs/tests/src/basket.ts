@@ -205,12 +205,12 @@ const paramsEncoder = getStructEncoder([
   ['sessionCloseUtcS', getU32Encoder()],
 ]);
 
+// The cash mint is not among the arguments: it goes in as an account, which has to be a mint.
 const initConfigArgsEncoder = getStructEncoder([
   ['guardian', addressEncoder],
   ['defaultKeeper', addressEncoder],
   ['routerProgram', addressEncoder],
   ['priceOwner', addressEncoder],
-  ['cashMint', addressEncoder],
   ['params', paramsEncoder],
 ]);
 
@@ -356,7 +356,8 @@ export function trackedFor(svm: LiteSVM, vault: Address, mint: Address): bigint 
 
 // ---- instructions ----
 
-/** Accounts: authority (signer, pays), config, the program, its program data, system program. */
+/** Accounts: authority (signer, pays), config, the cash mint, the program, its program data,
+ * system program. */
 export async function initConfigInstruction(
   authority: TransactionSigner,
   args: InitConfigArgs,
@@ -367,6 +368,7 @@ export async function initConfigInstruction(
     accounts: [
       writableSigner(authority),
       writable(await configAddress()),
+      readonly(args.cashMint),
       readonly(overrides.program ?? BASKET_PROGRAM),
       readonly(overrides.programData ?? (await programDataAddress(BASKET_PROGRAM))),
       readonly(SYSTEM_PROGRAM),
@@ -375,9 +377,9 @@ export async function initConfigInstruction(
   };
 }
 
-/** The three admin setters share one shape. Accounts: admin (signer), config. */
+/** The router and the price owner are set by address. Accounts: admin (signer), config. */
 async function setAddressInstruction(
-  name: 'set_router' | 'set_price_owner' | 'set_cash_mint',
+  name: 'set_router' | 'set_price_owner',
   admin: TransactionSigner,
   value: Address,
   config?: Address,
@@ -396,11 +398,18 @@ export const setPriceOwnerInstruction = (
   value: Address,
   config?: Address,
 ) => setAddressInstruction('set_price_owner', admin, value, config);
-export const setCashMintInstruction = (
+/** The cash mint is set by account, and has to be a mint. Accounts: admin (signer), config, the mint. */
+export async function setCashMintInstruction(
   admin: TransactionSigner,
-  value: Address,
+  mint: Address,
   config?: Address,
-) => setAddressInstruction('set_cash_mint', admin, value, config);
+): Promise<Instruction> {
+  return {
+    programAddress: BASKET_PROGRAM,
+    accounts: [signer(admin), writable(config ?? (await configAddress())), readonly(mint)],
+    data: discriminator('set_cash_mint'),
+  };
+}
 
 /** The three setter events carry the old and the new value. */
 export function decodeAddressChange(payload: Uint8Array): { old: Address; new: Address } {

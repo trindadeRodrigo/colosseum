@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token_interface::Mint;
 
 use crate::checks::{check_address, check_params, check_router, LAUNCHED_PUBLISH_DELAY_S};
 use crate::errors::BasketError;
@@ -15,7 +16,6 @@ pub struct InitConfigArgs {
     pub default_keeper: Pubkey,
     pub router_program: Pubkey,
     pub price_owner: Pubkey,
-    pub cash_mint: Pubkey,
     pub params: Params,
 }
 
@@ -32,6 +32,10 @@ pub struct InitConfig<'info> {
         bump
     )]
     pub config: Box<Account<'info, Config>>,
+    /// The one mint a vault takes as a deposit. It has to be a mint of a token program: an
+    /// address that is not one, locked in by `launch()`, would mean no deposits until an
+    /// upgrade.
+    pub cash_mint: InterfaceAccount<'info, Mint>,
     /// This program, to find its program data account.
     #[account(
         constraint = program.programdata_address()? == Some(program_data.key())
@@ -53,7 +57,6 @@ impl InitConfig<'_> {
         check_address(&args.default_keeper)?;
         check_address(&args.router_program)?;
         check_address(&args.price_owner)?;
-        check_address(&args.cash_mint)?;
         check_router(&args.router_program)?;
         let config = &mut ctx.accounts.config;
         config.admin = ctx.accounts.authority.key();
@@ -61,7 +64,7 @@ impl InitConfig<'_> {
         config.default_keeper = args.default_keeper;
         config.router_program = args.router_program;
         config.price_owner = args.price_owner;
-        config.cash_mint = args.cash_mint;
+        config.cash_mint = ctx.accounts.cash_mint.key();
         config.bump = ctx.bumps.config;
         config.apply_params(&args.params);
         Ok(())
@@ -115,18 +118,6 @@ impl SetConfig<'_> {
         Ok(())
     }
 
-    pub fn set_cash_mint(ctx: Context<SetConfig>, cash_mint: Pubkey) -> Result<()> {
-        check_not_launched(&ctx.accounts.config)?;
-        check_address(&cash_mint)?;
-        let config = &mut ctx.accounts.config;
-        emit!(CashMintSet {
-            old: config.cash_mint,
-            new: cash_mint,
-        });
-        config.cash_mint = cash_mint;
-        Ok(())
-    }
-
     /// Every parameter at once, inside the hard bounds. After `launch()` the publish delay
     /// cannot go under two days.
     pub fn set_params(ctx: Context<SetConfig>, params: Params) -> Result<()> {
@@ -161,6 +152,35 @@ impl SetConfig<'_> {
     pub fn unpause_keeper(ctx: Context<SetConfig>) -> Result<()> {
         ctx.accounts.config.keeper_paused = false;
         emit!(KeeperPauseSet { paused: false });
+        Ok(())
+    }
+}
+
+/// The admin changes the cash mint, until `launch()`. The new one comes in as an account
+/// and has to be a mint of a token program.
+#[derive(Accounts)]
+pub struct SetCashMint<'info> {
+    pub admin: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [CONFIG_SEED],
+        bump = config.bump,
+        has_one = admin
+    )]
+    pub config: Box<Account<'info, Config>>,
+    pub cash_mint: InterfaceAccount<'info, Mint>,
+}
+
+impl SetCashMint<'_> {
+    pub fn set_cash_mint(ctx: Context<SetCashMint>) -> Result<()> {
+        check_not_launched(&ctx.accounts.config)?;
+        let cash_mint = ctx.accounts.cash_mint.key();
+        let config = &mut ctx.accounts.config;
+        emit!(CashMintSet {
+            old: config.cash_mint,
+            new: cash_mint,
+        });
+        config.cash_mint = cash_mint;
         Ok(())
     }
 }

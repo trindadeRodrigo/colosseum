@@ -16,7 +16,11 @@ pub const MAX_BAND_BPS: u16 = 500;
 pub const MAX_TWAP_DEV_BPS: u16 = 1_000;
 pub const MAX_PRICE_AGE_S: u16 = 600;
 pub const MIN_ASSET_COOLDOWN_S: u32 = 600;
+/// Seven days, the window of the loss cap: a longer cooldown is a pause by another name.
+pub const MAX_ASSET_COOLDOWN_S: u32 = 604_800;
 pub const MIN_PUBLISH_DELAY_S: u32 = 60;
+/// Thirty days, the ceiling of the EVM registry: past it no author could publish again.
+pub const MAX_PUBLISH_DELAY_S: u32 = 2_592_000;
 /// The floor on the publish delay once `launch()` has run: two days.
 pub const LAUNCHED_PUBLISH_DELAY_S: u32 = 172_800;
 /// 13:30 UTC, the New York open in summer time: no session opens before it.
@@ -50,7 +54,15 @@ pub fn check_params(params: &Params, launched: bool) -> Result<()> {
         BasketError::ParamOutOfBounds
     );
     require!(
+        params.asset_cooldown_s <= MAX_ASSET_COOLDOWN_S,
+        BasketError::ParamOutOfBounds
+    );
+    require!(
         params.publish_delay_s >= MIN_PUBLISH_DELAY_S,
+        BasketError::ParamOutOfBounds
+    );
+    require!(
+        params.publish_delay_s <= MAX_PUBLISH_DELAY_S,
         BasketError::ParamOutOfBounds
     );
     require!(
@@ -73,7 +85,8 @@ pub fn check_params(params: &Params, launched: bool) -> Result<()> {
 }
 
 /// An address the admin sets in Config. All zeros is the empty value, and it is also the
-/// system program's id: never a router, a price program, a mint, a guardian or a keeper.
+/// system program's id: never a router, a price program, a guardian or a keeper. The cash
+/// mint is not checked here: it comes in as an account and has to be a mint.
 pub fn check_address(address: &Pubkey) -> Result<()> {
     require!(*address != Pubkey::default(), BasketError::ZeroAddress);
     Ok(())

@@ -31,6 +31,7 @@ import {
   send,
   unsigned,
 } from './src/env';
+import { createMint, TOKEN_PROGRAM } from './src/tokens';
 
 const TWO_DAYS = 172_800;
 
@@ -53,7 +54,7 @@ describe('basket admin', () => {
       defaultKeeper: keeper.address,
       routerProgram: MOCK_ROUTER_PROGRAM,
       priceOwner: (await generateKeyPairSigner()).address,
-      cashMint: (await generateKeyPairSigner()).address,
+      cashMint: (await createMint(svm, admin, { program: TOKEN_PROGRAM, decimals: 6 })).address,
       params: DEFAULT_PARAMS,
     };
     expectOk(await send(svm, admin, [await initConfigInstruction(admin, args)]));
@@ -105,7 +106,9 @@ describe('basket admin', () => {
       ['a price deviation allowance above 1,000 bps', { twapDevBps: 1_001 }],
       ['a price older than 600 s', { maxPriceAgeS: 601 }],
       ['a cooldown under 600 s', { assetCooldownS: 599 }],
+      ['a cooldown over 7 days', { assetCooldownS: 604_801 }],
       ['a publish delay under 60 s', { publishDelayS: 59 }],
+      ['a publish delay over 30 days', { publishDelayS: 2_592_001 }],
       ['a session that opens before 13:30 UTC', { sessionOpenUtcS: 48_599 }],
       ['a session that closes after 21:00 UTC', { sessionCloseUtcS: 75_601 }],
       [
@@ -172,7 +175,9 @@ describe('basket admin', () => {
       ['the price owner', 'priceOwner', setPriceOwnerInstruction],
       ['the cash mint', 'cashMint', setCashMintInstruction],
     ] as const)('locks %s', async (_, field, set) => {
-      const replacement = (await generateKeyPairSigner()).address;
+      // A mint, so the cash mint's setter gets as far as the lock.
+      const replacement = (await createMint(svm, admin, { program: TOKEN_PROGRAM, decimals: 6 }))
+        .address;
       expectOk(await send(svm, admin, [await launchInstruction(admin)]));
       expectError(await send(svm, admin, [await set(admin, replacement)]), ERR.LockedAtLaunch);
       expect((await readConfig(svm))[field]).toBe(args[field]);
@@ -261,6 +266,7 @@ describe('basket admin', () => {
     expectOk(await send(svm, admin, [await proposeAdminInstruction(admin, keeper.address)]));
     const named = [
       await setParamsInstruction(admin, DEFAULT_PARAMS),
+      await setCashMintInstruction(admin, args.cashMint),
       await launchInstruction(admin),
       await pauseKeeperInstruction(guardian),
       await acceptAdminInstruction(keeper),

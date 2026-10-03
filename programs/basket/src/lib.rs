@@ -42,9 +42,9 @@ pub mod basket {
     }
 
     /// Admin, until `launch()`. The one mint a vault takes as a deposit: the chain's dollar
-    /// token.
-    pub fn set_cash_mint(ctx: Context<SetConfig>, cash_mint: Pubkey) -> Result<()> {
-        SetConfig::set_cash_mint(ctx, cash_mint)
+    /// token, passed as an account, which has to be a mint of a token program.
+    pub fn set_cash_mint(ctx: Context<SetCashMint>) -> Result<()> {
+        SetCashMint::set_cash_mint(ctx)
     }
 
     /// Admin. Every parameter, inside the hard bounds.
