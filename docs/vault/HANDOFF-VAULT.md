@@ -28,7 +28,7 @@ Three things around the engine and Bearing, and two smaller ones.
 
 ## What a person does
 
-1. **Says what the money needs to do,** in a sentence or a short form: the outcome, the amount, the date, how much risk, cash they must be able to reach. They connect a wallet or create one with a passkey, so the product sees what they already hold. The plan lives on that wallet's chain, and the product proposes only what exists there.
+1. **Says what the money needs to do,** in a sentence or a short form: the outcome, the amount, the date, how much risk, cash they must be able to reach. They connect a wallet or create one with a passkey, so the product sees what they already hold. Someone who creates a wallet picks its chain at that moment: the sign-up asks once, Solana or Robinhood Chain. The plan lives on that wallet's chain, and the product proposes only what exists there.
 2. **Confirms the sheet.** The goal and the limits, written down and editable.
 3. **Sees the plan before anything moves:** each line with its reason ("less Nvidia because you already hold $4k of it", "20% in dollar yield because you need the money in 18 months"), and the exit plan at their size: how much they can get back, how fast, at what cost.
 4. **Buys in one tap.** The trades run on the plan's chain and the assets land in their own vault.
@@ -43,9 +43,9 @@ A shared portfolio is a named, versioned list of assets and weights that anyone 
 
 - **It always goes through the goal.** Choosing one sets the themes on the sheet. The goal, the limits, what the person already holds and the exit plan then decide how much of it they hold, and the plan says why, line by line. Someone who only wants to hold it still gets the sheet, the reasons and the exit plan at their size.
 - **Following.** When its author publishes a new version, the people following it are told, with the change. They rebalance with one tap. A switch, off by default, lets the vault do it by itself: after a 48-hour delay, inside the vault's limits, and never into a new asset without the owner's tap.
-- **Limits on authors.** 3 to 12 assets, each between 2% and 50%; one new version every 48 hours; a version moves at most 20% of the portfolio. An asset's maximum weight is capped by its measured exit capacity, from Bearing.
+- **Limits on authors.** 3 to 12 assets, each between 2% and 50%; one new version every 48 hours; a version moves at most 20% of the portfolio. An asset's maximum weight is capped by its measured exit capacity, from Bearing. Where nothing is measured, the tier on the asset list stands in and is labelled as a fallback.
 - **Why have them.** They are the reason to come back and the thing to share, and each one carries the exit plan to whoever picks it up.
-- **At launch:** about six, serious assets only, no meme tokens. Names and weights are drafts in `research/open-questions/launch-shelf.md`.
+- **At launch:** about six, serious assets only, no meme tokens. Names and weights are drafts in `research/open-questions/launch-shelf.md`. The weights are brought under the measured caps before anything is published: on the measurements of Oct 1 to 2 the Tesla token's cap is near 6%, and two launch portfolios hold it at 14 to 15%.
 
 ## What changes the plan
 
@@ -53,7 +53,7 @@ Each input has to change the plan visibly. If it doesn't, it's a template.
 
 | Input | What it changes |
 |---|---|
-| Goal: grow, earn income, or protect | The mix between stocks, dollar yield and gold, and what the main chart shows |
+| Goal: grow, earn income, or protect | The mix between stocks, dollar yield and gold, and what the main chart shows. A plan to protect holds no stock tokens: dollar yield, gold and cash only. An income plan holds none either |
 | Amount | Which assets are allowed (some are too illiquid at larger sizes) |
 | Time frame | How much sits in dollar yield, and how it shifts as the date gets closer |
 | Risk comfort | Caps per asset and per issuer |
@@ -111,7 +111,7 @@ What Colosseum's form needs: a live app, a public GitHub repo, a 2–3 minute pi
 
 What must work live on mainnet, with real small amounts. These nine things are the MVP:
 
-1. **Sign in two ways.** Connect a wallet, or create one with just a passkey (no seed phrase), on Solana, Robinhood Chain or Base. The plan lives on that wallet's chain. The product shows what the chain needs in cash and gas, and does not bridge.
+1. **Sign in two ways.** Connect a wallet, or create one with just a passkey (no seed phrase). Someone who creates one is asked once for its chain, Solana or Robinhood Chain. The plan lives on that wallet's chain. The product shows what the chain needs in cash and gas, and does not bridge.
 2. **Shared portfolios.** At least six on the shelf with real assets, at least two published on more than one chain. A person is offered the ones with a recipe on their chain.
 3. **A plan from a sentence or a form,** with a reason on every line. Three test people must get three visibly different plans.
 4. **One-tap buy.** One confirmation places real swaps on the plan's chain, with a status per leg and a retry if one fails.
@@ -170,6 +170,9 @@ What agents can't do, and what therefore sets the pace: funding and testing real
 - Shared portfolios are in, with serious assets only at launch.
 - Solana and Robinhood Chain first; Base follows if there is time (Oct 2).
 - A plan lives on one chain: the chain of the wallet the person created or connected when signing in. The product proposes only what exists on that chain, and the deposit, the vault and every trade of the plan are there. A plan is never split across chains. A shared portfolio may be published on more than one chain, and a person gets the recipe of their own (Oct 3).
+- Someone who creates a wallet in the app picks its chain at that moment: the sign-up asks once, Solana or Robinhood Chain (Oct 3).
+- What an asset may weigh comes from Bearing's measured exit numbers: the cap per asset on chain, the ceiling per line in a plan and the exit cost shown. The tiers on the asset list rest on price impact alone; they are a fallback where nothing is measured, and are labelled as such (Oct 3).
+- A plan whose goal is to protect holds no stock tokens: dollar yield, gold and cash only. Income plans hold none either, and growth plans are unchanged. The asset registry's eligibility enforces it (Oct 3).
 - Wallet connect or a passkey wallet (Privy).
 - The product is not for US persons, and the terms say so. There is no location block and no banner.
 - When an author adds a new asset, each follower approves it with a tap. A new version takes effect for followers 48 hours after it is published.
@@ -190,6 +193,6 @@ What agents can't do, and what therefore sets the pace: funding and testing real
 4. The decisions in `DESIGN-VAULT.md`, section 17.
 5. Two lines of shipped copy that the vault touches. `DISCLAIMER` says "the decision and custody are yours", and `DISCLAIMER_SHORT` says "Policy in your wallet, not a fund." Only the owner can withdraw from a vault, so the first stays, with the "unaudited, team holds the upgrade keys" notice beside it. The second needs a word from Rodrigo, since the assets move from the wallet to a vault the person owns.
 6. Auto-follow against the voice rules, which say rebalancing is "never to follow a theme or a rate" and that the agent "proposes and explains". What it does: off by default; the person sees an author's change 48 hours ahead and can refuse; then the vault copies it inside its own limits, without re-checking the person's goal. Label: "Rebalance without asking when the portfolio I follow changes". Thom's decision is to keep it this way; the 48-hour notice is the proposal, and the person can refuse.
-7. Two things that follow from a plan living on one chain are assumed, not decided: someone who creates a wallet in the app picks its chain at that moment, and a person who signs in with a different wallet on another chain has a separate plan there.
+7. One thing that follows from a plan living on one chain is assumed, not decided: a person who signs in with a different wallet on another chain has a separate plan there.
 
 The research notes under `research/` were written before the brand strategy. They say "basket" and "community index" where this document says plan and shared portfolio.

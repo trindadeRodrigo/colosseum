@@ -14,7 +14,7 @@ Written on Thu Oct 1, at night. The freeze is Fri Oct 9 at 18:00 BRT and the sub
 Eight working days, two people, and agents doing most of the typing. What limits us is not typing. It is three things:
 
 1. **What only a person can do.** Keys, accounts, the name, the recordings. These are listed per day below so nobody finds one at 17:00.
-2. **The days left after the deploy.** Nothing is deployed before Mon Oct 5, so a full auto-follow cycle can be tried and filmed on Oct 5, 6 and 7. On mainnet two more limits would apply: auto-follow on stocks trades only Mon to Fri, 11:30 to 17:00 BRT, and `launch()` turns the delay into 48 hours.
+2. **The days left after the deploy.** The deploy is planned for Mon Oct 5 and may come sooner (see "Still to settle"), so a full auto-follow cycle can be tried and filmed on Oct 5, 6 and 7. On mainnet two more limits would apply: auto-follow on stocks trades only Mon to Fri, 11:30 to 17:00 BRT, and `launch()` turns the delay into 48 hours.
 3. **Review.** Every slot ends in a pull request into `staging` that someone other than its author reviews. One slot, one pull request.
 
 A slot is about half a day of one stream, named `<stream>-<n>`. A slot is done under the contract in `CLAUDE.md`, not when the code is written.
@@ -78,12 +78,12 @@ As in section 15 of the design. In short: Rodrigo owns the engine's numbers and 
 | What | Who | Bites on |
 |---|---|---|
 | `main` and `staging` protected (ORG-5) | Rodrigo | Now |
-| Two things assumed under gate `ONE-CHAIN`: a person who creates a wallet in the app picks its chain at that moment, and a different wallet on another chain means a separate plan | Thom | Sat Oct 3, with the sign-in screen (WEB-1) |
 | Who gives a new person test cash and gas on a test network. A passkey wallet starts empty; the cheap answer is a small, rate-limited hand-out from our own key (TNET-7) | Thom | Mon Oct 5 |
 | Whether mainnet follows the test networks before the freeze (gate `SHOW`). It needs about 5 SOL locked on Solana | Thom and Rodrigo | Wed Oct 7 |
 | Whether Jupiter's terms allow a second organisation | Thom | Fri Oct 2 |
 | One specification of the provenance pin; the final logo (DES-1) | Rodrigo | Sat Oct 3, with WEB-1 |
-| Who holds each admin key and who is guardian on call each day | Thom and Rodrigo | Sun Oct 4 |
+| Who holds each admin key and who is guardian on call each day. Still open on Oct 3 | Thom and Rodrigo | Sun Oct 4 |
+| The deploy to the test networks. Thom's word is given (Oct 3): it may happen before Mon Oct 5, once the security reviews of the Solana program and the EVM contracts have passed | Thom | When both reviews have passed |
 | Who runs the Solana sessions (deploy, config, rehearsals) | Thom and Rodrigo | Mon Oct 5 |
 | Which VM runs the keeper once it leaves a founder's machine | Thom | Mon Oct 5 |
 | Whether Vercel Hobby's non-commercial clause is acceptable for the hosted app | Thom | Mon Oct 5 |

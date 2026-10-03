@@ -28,6 +28,9 @@ Nothing here has run on mainnet. The three $10 runs come first in time.
 - Base comes after Solana and Robinhood Chain (decided on Oct 2). Its contracts are the same Solidity; it is deployed only if the first two are working by Tue Oct 6.
 - Built and shown on test networks first (decided on Oct 2): Solana devnet and the EVM test networks, with test tokens, a test exchange and test prices standing in for the stock tokens, Jupiter and the price feeds, labelled as test everywhere. So the router and the price source are set in each chain's config, never fixed in code. The vault's handling of the real tokens and pools is proven by tests on copies of mainnet. Mainnet maybe later, by configuration. Where the text below names a $10 run, a mainnet deploy or a mainnet rehearsal, `PLAN-VAULT.md` says what stands in for it.
 - A plan lives on one chain (decided on Oct 3, gate `ONE-CHAIN`): the chain of the wallet the person created or connected when signing in. The product proposes only what exists on that chain, and the deposit, the vault and every trade of the plan are there. A plan is never split across chains. The product still runs on several chains, and a shared portfolio may be published on more than one: a person gets the recipe of their own chain. Sections 3.6 and 7 still describe a plan placed over several chains; the engine's branch brings them in line.
+- A person who creates a wallet in the app picks its chain at that moment (decided on Oct 3, gate `CHAIN-PICK`): the sign-up asks once, Solana or Robinhood Chain, and the plan lives there.
+- Bearing's measured exit numbers are the one source for what an asset may weigh (decided on Oct 3, gate `EXIT-SOURCE`): the cap per asset on chain, the ceiling per line in a plan and the exit cost shown. The tiers on the asset list rest on price impact alone; they are a fallback where nothing is measured, and are labelled as such.
+- A plan whose goal is to protect holds no stock tokens (decided on Oct 3, gate `PROTECT-NO-STOCKS`): dollar yield, gold and cash only. Income plans hold none either, and growth plans are unchanged. The asset registry's eligibility enforces it, not the wording. For these two, sections 3.6 and 7 (the tier ceiling in the Amount rule, the sleeves of a protect goal) are brought in line on the engine's branch.
 - Build tools may be installed on Thom's machine. Already there: Anchor 0.31.1, Solana CLI 3.0.1, Rust, Foundry (1.2.3-nightly, older than the release CI pins), Docker. Missing: surfpool, solana-verify, Slither.
 
 ## 0. What changed from v1
@@ -68,7 +71,7 @@ Nothing here has run on mainnet. The three $10 runs come first in time.
 
 | # | MVP item | Pieces that deliver it |
 |---|---|---|
-| 1 | Sign in two ways; the wallet's chain is the plan's chain | Privy behind `WalletPort`; `users`, `user_wallets`; `GET /v1/funding` (cash plus gas on that chain) |
+| 1 | Sign in two ways; the wallet's chain is the plan's chain, picked at sign-up by a person who creates a wallet | Privy behind `WalletPort`; `users`, `user_wallets`; `GET /v1/funding` (cash plus gas on that chain) |
 | 2 | At least 6 shared portfolios, 2 published on more than one chain; a person gets the recipe of their own chain | Onchain registries; `index_families`, `recipes`, `recipe_versions`; shelf and shared-portfolio screens; a seed script from `launch-shelf.seed.json` |
 | 3 | Plan from a sentence or a form | `engine/src/personal/` (`compose`); `/v1/baskets/parse` and `/personalize`; fit screens; the three-profile test |
 | 4 | One-tap buy on the plan's chain, status per leg, retry | `POST /v1/orders`; legs and attempts; owner builders; `/orders/[id]` |
@@ -376,6 +379,8 @@ His provider ignores the window argument today (`packages/risk/src/provider.ts`)
 | `compose` (engine) | `exitCapacity(asset, 0.01)` × 0.25 | Dollar ceiling per token |
 | `rollUp` (basket) | `exitCost(asset, legUsd)`, `entry()` | Exit cost at your size, worst regime |
 | `scripts/ops/sync-asset-caps.ts` | `exitCapacity(asset, 0.01)` | Onchain `maxWeightBps` |
+
+These three calls are the one source for what an asset may weigh (gate `EXIT-SOURCE`): the ceiling per line in a plan, the exit cost shown and the cap on chain. Where the provider has no curve for an asset, the tier on the asset list stands in, and a ceiling or a cap that comes from a tier is labelled as a fallback wherever it is shown.
 
 `null` is shown as "not measured", never as zero. The keeper does not call the provider in the MVP: it skips a leg whose live quote costs more than the vault's tolerance against the reference price. A per-regime method (`exitCostIn(asset, usd, regime)`) is the later addition that lets it act on his curves.
 
@@ -700,11 +705,11 @@ Limits, checked by the registry. Constants, not per-portfolio settings. Shape li
 | Delay | `publishDelay`, 48 hours after `launch()`; computed by the registry, checked by the vault. One delay, not two: it is both the notice a follower gets and the least time between two versions, so `Limits.minInterval` in 3.8 goes away (EVM-2) |
 | Cancel | The creator or the guardian can cancel a pending version. A cancel does not give the slot back |
 
-**The cap from measured exit capacity.** Each listed asset has `maxWeightBps` in the onchain asset list. The registry rejects a component above `min(5000, maxWeightBps)`. An ops script sets it from Rodrigo's curves:
+**The cap from measured exit capacity.** Each listed asset has `maxWeightBps` in the onchain asset list. The registry rejects a component above `min(5000, maxWeightBps)`. An ops script sets it from Rodrigo's measured curves, which are the one source for it (gate `EXIT-SOURCE`):
 
 `maxWeightBps = 10_000 × shareOfDepth × exitCapacity(asset, τ) / indexCapacityUsd`, rounded down to a 50 bps step,
 
-with `shareOfDepth` 0.25 and `τ` 1% (his values), and `indexCapacityUsd` $250k on Solana and $50k on the EVM chains (from `creator-limits.md`). An asset with no measured curve keeps the ceiling of its shelf tier. The first values are written in the deploy session on Oct 5.
+with `shareOfDepth` 0.25 and `τ` 1% (his values), and `indexCapacityUsd` $250k on Solana and $50k on the EVM chains (from `creator-limits.md`). An asset with no measured curve falls back to the ceiling of its shelf tier, which rests on price impact alone, and that cap is labelled as a fallback. A launch portfolio that holds an asset above its cap changes before it is published: on the measurements of Oct 1 to 2, selling $50,000 of the Tesla token costs about 0.6% against the 0.35% its tier assumed, which puts its cap near 6%, and two launch portfolios hold it at 14 to 15%. The first values are written in the deploy session on Oct 5.
 
 The ceilings are written at deploy and do not move during the MVP, so no rule is built for a ceiling that falls below a live weight. The plain rule covers it: every weight of a new version is checked against the ceiling of the day, whether the weight changed or not.
 
@@ -765,7 +770,7 @@ The roll-up states the share of the plan that is measured.
 - **Privy**, free plan (0 to 499 monthly users) **[C 7]**. Login methods `passkey` and `wallet`. Embedded Solana and EVM wallets created on login, `showWalletUIs: false`. Each EVM chain is a viem `defineChain` made from its chain config, with a public RPC URL that carries no key. Privy is told both networks of each (Robinhood Chain 46630 and 4663, Base Sepolia and Base); the default, and the only one the wallet signs for, is the network `NEXT_PUBLIC_CHAIN_NETWORK_<CHAIN>` names, the test network when unset. `local` is refused in the browser: a signature for a copy of mainnet is valid on mainnet. At start the web asks `GET /v1/config` and compares networks and chain ids; if they differ or the API does not answer, sign-in is off and says why.
 - **One origin, decided by Oct 4 evening.** Passkeys bind to a domain and Privy does not accept a wildcard such as `*.vercel.app` **[C 7]**. Either a custom domain (about $10 a year, a person's decision under "free tiers only"), which lets the host change later, or one fixed Vercel project URL confirmed with Privy on Oct 2. No real wallet is created before that, and each demo wallet's key is exported once as the recovery path.
 - **Packages:** `@privy-io/react-auth` 3.46.0 and `viem` 2.56.0, pinned exactly, and `@solana/kit` 5.5.1 in `apps/web` only **[C 8]**: Privy asks for 3.0.3 or newer, and 5.5.1 is the copy its own dependency already brings. Privy's code also imports `@solana-program/memo`, `system` and `token`, so the web lists them (0.10.0, 0.10.0, 0.9.0). Wallet-adapter and `@solana/web3.js` 1.x stay until his screens are rebuilt (WEB-2), then go. Two kit versions coexist (2.3 in `chain-solana`, 5.5 in the web) and never meet: the web gets bytes.
-- **One person, one wallet, one chain.** A person signs in with one wallet, and its chain is where their plans live: the app proposes, funds and trades only there. A vault's owner is that wallet and never changes. One EVM address serves both EVM chains; with Base not deployed, an EVM wallet's chain is Robinhood Chain. Assumed, not decided (section 17): a person who creates a wallet picks its chain at that moment, and a person who signs in with a different wallet on another chain has a separate plan there. As built (WAL-1), a passkey sign-in makes an embedded wallet of each family, and nothing asks for a chain.
+- **One person, one wallet, one chain.** A person signs in with one wallet, and its chain is where their plans live: the app proposes, funds and trades only there. A person who creates a wallet picks its chain at that moment: the sign-up asks once, Solana or Robinhood Chain (gate `CHAIN-PICK`). A vault's owner is that wallet and never changes. One EVM address serves both EVM chains; with Base not deployed, a connected EVM wallet's chain is Robinhood Chain. Assumed, not decided (section 17): a person who signs in with a different wallet on another chain has a separate plan there. As built (WAL-1), a passkey sign-in makes an embedded wallet of each family and asks nothing; the pick is built with the first screens (WEB-1).
 - **API sign-in.** `plugins/auth.ts` verifies two Privy tokens locally with `jose`: the access token, which names the user, and the identity token (`privy-id-token`, ES256, switched on in the dashboard), which lists the linked wallets **[C 7]**. Wallets are read only from the identity token, never from what the client says. The `aud` claim is pinned to the app id of each environment. No Privy secret on the server.
 
 | Wallet | A buy |
@@ -855,7 +860,7 @@ Order of work:
 | Order | `/orders/[id]` | Execution list; primary button that names the action and amount | Review (summary, minimum received, warnings, consents); funding missing on the order's chain; a status per leg; resume on reload; wrong wallet |
 | Vault, public | `/vaults/[chain]/[address]` | Data table, explorer links | A read-only view of any vault, so a visitor with no funds sees real state |
 | Publish | `/publish` | Fields, error summary | One simple form; limit errors from `previewPublish`; a leg per chain |
-| Sign-in and notices | all | Buttons, cards | Passkey or wallet; a person who creates a wallet picks its chain (assumed, section 17); before the first deposit, the terms and the "unaudited, team holds the keys" notice |
+| Sign-in and notices | all | Buttons, cards | Passkey or wallet; a person who creates a wallet is asked once for its chain, Solana or Robinhood Chain; before the first deposit, the terms and the "unaudited, team holds the keys" notice |
 
 **Where his specs change what we build.**
 
@@ -950,7 +955,7 @@ A tier 2 failure blocks only if it shows a real way to lose funds.
 - `authority-check` is green with the disclosed admin key as admin, `launched` true and the delay at 172,800 s. The Supabase Data API is off.
 - The three-profile test passes: pairwise distance at least 3,000 bps, a reason on every line.
 
-**Supply chain.** Keep pnpm 11's one-day release hold and build-script approval. A pull request that changes the lockfile names the new packages and a person reads the diff. `security.yml` runs gitleaks, `pnpm audit --prod` and cargo-deny, on every pull request and weekly. The audit fails on a high or critical advisory that is not listed, with its reason, in `docs/vault/SECURITY-DEPS.md`.
+**Supply chain.** Keep pnpm 11's one-day release hold and build-script approval. A pull request that changes the lockfile names the new packages and a person reads the diff. `security.yml` runs gitleaks, `pnpm audit --prod` and cargo-deny, on every pull request and weekly. The audit fails on a high or critical advisory that is not listed, with its reason, in `docs/vault/SECURITY-DEPS.md`. One advisory is left failing on purpose, `braces` (GHSA-vfj7-8cjw-p6xm): a pull request may merge while it is the audit's only finding (gate `AUDIT-BRACES`).
 
 **First, today.** Revoke the two live approvals on Rodrigo's demo wallet (5 USDY and 5 syrupUSDC to the agent key). Do not deploy the current API publicly with `secrets/agent.json` present.
 
@@ -1053,7 +1058,7 @@ Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-L
 2. The licence: Apache-2.0.
 3. Adding files stays the default, to keep merges clean. Where an edit to an existing file makes the product better, we make it and say so in the pull request. The four edits are ours to make: the server-signing routes go behind `LEGACY_STRUCTURER` and are deleted once the vault path replaces them; `seed-assets.ts` moves to `scripts/` (done on Oct 2); the CI chores are done; and six lines in `scripts/risk/compute.ts`. `chain-solana` and `chain-evm` are Thom's. One branch at a time generates migrations.
 4. One of Thom's agents ports the personalization prototype into `engine/src/personal/` with sensible starting numbers. Rodrigo tunes the sleeve table, glide floors, caps and wording when he can.
-5. Stock tokens stay out of income plans, as his rule says.
+5. Stock tokens stay out of income plans, as his rule says, and out of plans whose goal is to protect (decided on Oct 3, gate `PROTECT-NO-STOCKS`): a protect plan holds dollar yield, gold and cash only. Growth plans are unchanged. The asset registry's eligibility enforces it, not the wording.
 6. Stocks and gold: no return assumed, with the dollar loss in a 20% fall shown. A sourced range can come later.
 7. The keeper may re-plan a leg that expired without landing, up to three times. A leg that reverted is never sent again, which keeps the point of his never-auto-retry rule.
 8. Risk sheets per issuer family with generated per-asset fields; a dated dump of curves first.
@@ -1084,17 +1089,17 @@ Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-L
 **Defaults taken, and what is still open**
 
 18. The name (Tenonfi is provisional on the `design` branch). It fixes the package scope, the server and skill names, the origin and the passkeys, and with it the working code names in the Words table are renamed.
-19. Oct 2: the Solana shared portfolio that shows auto-follow. It must hold only Scope-priced tokens: AAPLx, CRCLx, GOOGLx, HOODx, METAx, MSTRx, NVDAx, QQQx, SPYx, TSLAx **[C 3]**. Taken: a new launch portfolio of NVDAx 25%, AAPLx 20%, GOOGLx 20%, METAx 20%, TSLAx 15%. The Seven needs MSFTx and AMZNx, which Scope does not price.
+19. Oct 2: the Solana shared portfolio that shows auto-follow. It must hold only Scope-priced tokens: AAPLx, CRCLx, GOOGLx, HOODx, METAx, MSTRx, NVDAx, QQQx, SPYx, TSLAx **[C 3]**. Taken: a new launch portfolio of NVDAx, AAPLx, GOOGLx, METAx and TSLAx. Its weights come from the measured curves and are set before it is published: on the measurements of Oct 1 to 2 the cap for TSLAx is near 6% (gate `EXIT-SOURCE`). The Seven needs MSFTx and AMZNx, which Scope does not price.
 20. The 500 is a single-asset portfolio outside the registry (section 6).
 21. US visitors: decided on Oct 1. No location block and no banner; the terms say the app is not for US persons.
-22. If the capacity formula puts GLDx below Storm Cellar's 25%, the recipe changes; the capacity rule does not.
+22. If the measured cap puts an asset below its weight in a launch portfolio, the recipe changes; the rule does not (gate `EXIT-SOURCE`). That is the case for the Tesla token in two launch portfolios, and GLDx against Storm Cellar's 25% is checked the same way.
 23. Upgrade keys: decided on Oct 1, one disclosed key per chain. Still open: who holds each one and who is guardian on call each day. A mainnet deploy on Solana would lock about 5 SOL; mainnet is maybe later (gate `SHOW`).
 24. External wallets get one review screen and then several wallet prompts. The demo uses a passkey wallet.
 25. Auto-follow on stocks trades only Mon to Fri 14:30 to 20:00 UTC, and never on a listed closed day.
 26. Who opens the accounts (Supabase, Render, Vercel, Helius, Alchemy, UptimeRobot, the second Jupiter organisation), whether Jupiter's terms allow a second organisation, and whether Vercel Hobby's non-commercial clause is acceptable.
 27. Who fills `blockedCountries` per asset. Until it is filled, the self-declared country skips no token.
 28. A warning above $1,000 per vault, since there is no cap. No agent-run portfolio at launch.
-29. A plan lives on one chain, the chain of the person's wallet: decided on Oct 3 (gate `ONE-CHAIN`). Assumed until Thom says otherwise: a person who creates a wallet in the app picks its chain at that moment, and a person who signs in with a different wallet on another chain has a separate plan there. Still open: which chain an EVM wallet means once Base is deployed, since one address serves both EVM chains; and which chain a plan is built for when no wallet is known yet (the keyless plan routes, and an agent's `build_personal_basket`).
+29. A plan lives on one chain, the chain of the person's wallet: decided on Oct 3 (gate `ONE-CHAIN`). A person who creates a wallet in the app picks its chain at that moment: decided on Oct 3 (gate `CHAIN-PICK`). The sign-up asks once, Solana or Robinhood Chain, and the pick is built with the first screens (WEB-1). Assumed until Thom says otherwise: a person who signs in with a different wallet on another chain has a separate plan there. Still open: which chain an EVM wallet means once Base is deployed, since one address serves both EVM chains; and which chain a plan is built for when no wallet is known yet (the keyless plan routes, and an agent's `build_personal_basket`).
 
 **Flags on fixed decisions.** None is shown unworkable. Four carry risk.
 
