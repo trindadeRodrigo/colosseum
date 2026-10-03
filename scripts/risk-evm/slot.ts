@@ -112,11 +112,16 @@ export function slotLine(
   };
 }
 
-/** The line for a scheduled hour in which the collector did not run at all. */
+/**
+ * The line for a scheduled hour in which the collector did not run at all: a later hour had already
+ * come when it could run again ('passed'), or it came back with less than half the interval left
+ * before the next run ('late').
+ */
 export function missedLine(
   chain: { id: string; tokens: unknown[] },
   scheduledAt: number,
   backAt: number,
+  why: 'passed' | 'late' = 'passed',
 ) {
   return {
     event: 'slot' as const,
@@ -126,7 +131,10 @@ export function missedLine(
     rows: 0,
     tokens: chain.tokens.length,
     missing: [],
-    error: `not run: the collector was asleep or still on an earlier run at this hour; it came back at ${iso(backAt)}`,
+    error:
+      why === 'late'
+        ? `not run: the collector came back at ${iso(backAt)}, with less than half the interval left before the next run`
+        : `not run: the collector was asleep or still on an earlier run at this hour; it came back at ${iso(backAt)}`,
     ended: 'missed' as const,
   };
 }

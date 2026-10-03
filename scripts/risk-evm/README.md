@@ -62,8 +62,8 @@ pnpm risk-evm:import                 # load the JSONL into risk_asset_snapshots 
 
   `caffeinate -i` does not stop sleep from a closed lid or a low battery. If the machine sleeps anyway:
   - a run caught mid-way finishes on a fresh block when the machine wakes (above), or stops and is retried if the network is not back yet;
-  - on waking, the loop runs once for the latest scheduled hour, late, and does not catch up the hours it slept through;
-  - each hour it slept through gets a line in the run log saying so.
+  - on waking, the loop does not catch up the hours it slept through. It runs the latest scheduled hour, late, only if at least half the interval is left before the next scheduled run (with the hourly grid: it woke in the first 30 minutes of that hour). Otherwise it waits for the grid. So two samples are never closer than half an interval;
+  - each hour that got no run, slept through or woken into too late, gets a line in the run log saying which.
 - If a loop refuses to start after a crash and none is running, delete `data/risk-evm/loop.lock`.
 - Nothing here installs a scheduled job.
 

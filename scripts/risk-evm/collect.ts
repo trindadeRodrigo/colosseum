@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { CHAINS, type ChainConfig } from './config';
-import { acquireLock, runLoop, type Slot } from './loop';
+import { acquireLock, type MissedWhy, runLoop, type Slot } from './loop';
 import { collectOnce } from './run';
 import { type Attempt, attemptOf, missedLine, runSlot, slotLine } from './slot';
 
@@ -153,9 +153,9 @@ async function runAll(
 }
 
 /** A scheduled hour that passed with no run at all. */
-function recordMissed(at: number): void {
+function recordMissed(at: number, why: MissedWhy): void {
   for (const chain of chains) {
-    const line = missedLine(chain, at, Date.now());
+    const line = missedLine(chain, at, Date.now(), why);
     record(line);
     log({ ...line, event: 'slot_missed' });
   }

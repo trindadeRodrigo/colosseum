@@ -1392,6 +1392,14 @@ describe('run log', () => {
       ended: 'missed',
     });
     expect(line.rows < line.tokens).toBe(true);
+    // and an hour the collector came back too late for
+    expect(missedLine(chain, t0 + 2 * HOUR, t0 + 2 * HOUR + 58 * 60_000, 'late')).toMatchObject({
+      scheduledAt: '2026-10-03T04:23:42.000Z',
+      rows: 0,
+      ended: 'missed',
+      error:
+        'not run: the collector came back at 2026-10-03T05:21:42.000Z, with less than half the interval left before the next run',
+    });
   });
   it('keeps a run started by hand out of the hourly sample', () => {
     const line = slotLine(
@@ -1532,12 +1540,15 @@ describe('injected quoter artefact', () => {
 });
 
 describe('hourly loop', () => {
-  const HOUR = 3_600_000;
+  const MIN = 60_000;
+  const HOUR = 60 * MIN;
   // a clock that only moves when the loop sleeps, a run takes time, or the machine sleeps
   function harness(
     durations: number[],
     failAt: number[] = [],
-    asleep: Record<number, number> = {},
+    /** After run n the machine sleeps and wakes at this time. */
+    wakeAt: Record<number, number> = {},
+    opts: { intervalMs?: number; runs?: number } = {},
   ) {
     let now = 0;
     let active = 0;
@@ -1545,6 +1556,7 @@ describe('hourly loop', () => {
     const starts: number[] = [];
     const slots: Array<{ at: number; until: number }> = [];
     const missed: number[] = [];
+    const tooLate: number[] = [];
     const errors: unknown[] = [];
     const done = runLoop({
       runOnce: async (slot) => {
@@ -1557,21 +1569,30 @@ describe('hourly loop', () => {
         active--;
         if (failAt.includes(n)) throw new Error(`run ${n} failed`);
       },
-      intervalMs: HOUR,
+      intervalMs: opts.intervalMs ?? HOUR,
       now: () => now,
       sleep: async (ms) => {
-        // the machine falls asleep during the wait after run n
-        const nap = asleep[starts.length - 1];
-        if (nap) {
-          delete asleep[starts.length - 1];
-          now += nap;
+        const wake = wakeAt[starts.length - 1];
+        if (wake !== undefined) {
+          delete wakeAt[starts.length - 1];
+          now = wake;
         } else now += ms;
       },
-      stopped: () => starts.length >= 4 && active === 0,
+      stopped: () => starts.length >= (opts.runs ?? 4) && active === 0,
       onError: (e) => errors.push(e),
-      onMissed: (at) => missed.push(at),
+      onMissed: (at, why) => {
+        missed.push(at);
+        if (why === 'late') tooLate.push(at);
+      },
     });
-    return done.then(() => ({ starts, slots, missed, errors, overlapped: () => overlapped }));
+    return done.then(() => ({
+      starts,
+      slots,
+      missed,
+      tooLate,
+      errors,
+      overlapped: () => overlapped,
+    }));
   }
 
   it('runs at once, then once an hour, and tells each run when the next is due', async () => {
@@ -1591,16 +1612,57 @@ describe('hourly loop', () => {
     expect(r.starts).toEqual([0, HOUR, 3.5 * HOUR, 4 * HOUR]);
     expect(r.slots.map((s) => s.at)).toEqual([0, HOUR, 3 * HOUR, 4 * HOUR]);
     expect(r.missed).toEqual([2 * HOUR]);
+    expect(r.tooLate).toEqual([]);
     expect(r.overlapped()).toBe(false);
   });
-  it('after a sleeping machine wakes, runs the latest hour once and records the ones it slept through', async () => {
-    // asleep from just after the first run until 4 h 40 min
-    const r = await harness([], [], { 0: 4 * HOUR + 40 * 60_000 });
+  it('after a sleeping machine wakes in the first half of an hour, runs that hour once, late', async () => {
+    // asleep from just after the first run until 4 h 20 min: 40 minutes are left before 5 h
+    const r = await harness([], [], { 0: 4 * HOUR + 20 * MIN });
     expect(r.missed).toEqual([HOUR, 2 * HOUR, 3 * HOUR]);
+    expect(r.tooLate).toEqual([]);
     expect(r.slots[1]).toEqual({ at: 4 * HOUR, until: 5 * HOUR });
-    expect(r.starts[1]).toBeGreaterThan(4 * HOUR + 40 * 60_000 - 1);
-    expect(r.starts.slice(2)).toEqual([5 * HOUR, 6 * HOUR]);
+    expect(r.starts).toEqual([0, 4 * HOUR + 20 * MIN, 5 * HOUR, 6 * HOUR]);
     expect(r.overlapped()).toBe(false);
+  });
+  it('after it wakes in the second half, records that hour as missed too and waits for the grid', async () => {
+    // 4 h 40 min: a run now and the 5 h run would be 20 minutes apart
+    const r = await harness([], [], { 0: 4 * HOUR + 40 * MIN });
+    expect(r.missed).toEqual([HOUR, 2 * HOUR, 3 * HOUR, 4 * HOUR]);
+    expect(r.tooLate).toEqual([4 * HOUR]);
+    expect(r.starts).toEqual([0, 5 * HOUR, 6 * HOUR, 7 * HOUR]);
+    expect(r.slots[1]).toEqual({ at: 5 * HOUR, until: 6 * HOUR });
+
+    // two minutes before the hour: no sample at minute 298 and another at minute 300
+    const close = await harness([], [], { 0: 4 * HOUR + 58 * MIN });
+    expect(close.starts).toEqual([0, 5 * HOUR, 6 * HOUR, 7 * HOUR]);
+    expect(close.tooLate).toEqual([4 * HOUR]);
+  });
+  it('draws the line at half the interval, whatever the interval is', async () => {
+    // exactly half left: still run
+    const at = await harness([], [], { 0: 4.5 * HOUR }, { runs: 2 });
+    expect(at.starts).toEqual([0, 4.5 * HOUR]);
+    expect(at.tooLate).toEqual([]);
+    // a millisecond less than half: missed
+    const past = await harness([], [], { 0: 4.5 * HOUR + 1 }, { runs: 2 });
+    expect(past.starts).toEqual([0, 5 * HOUR]);
+    expect(past.tooLate).toEqual([4 * HOUR]);
+    // a ten-minute grid: the line is at five minutes
+    const ten = { intervalMs: 10 * MIN, runs: 2 };
+    const early = await harness([], [], { 0: 44 * MIN }, ten);
+    expect(early.starts).toEqual([0, 44 * MIN]);
+    expect(early.slots[1]).toEqual({ at: 40 * MIN, until: 50 * MIN });
+    const late = await harness([], [], { 0: 46 * MIN }, ten);
+    expect(late.starts).toEqual([0, 50 * MIN]);
+    expect(late.missed).toEqual([10 * MIN, 20 * MIN, 30 * MIN, 40 * MIN]);
+    expect(late.tooLate).toEqual([40 * MIN]);
+  });
+  it('runs are never closer than half the interval, however the machine sleeps', async () => {
+    for (const wake of [61, 89, 90, 91, 119, 120, 121, 179, 181, 299]) {
+      const r = await harness([], [], { 0: wake * MIN, 1: (wake + 95) * MIN }, { runs: 4 });
+      const gaps = r.starts.slice(1).map((t, i) => t - (r.starts[i] as number));
+      expect(Math.min(...gaps), `wake at minute ${wake}`).toBeGreaterThanOrEqual(HOUR / 2);
+      expect(r.overlapped()).toBe(false);
+    }
   });
 });
 
