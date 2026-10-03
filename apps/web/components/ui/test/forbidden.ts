@@ -4,14 +4,35 @@ import { BLUE_NAMES, colorsIn, isBlueOrViolet, parseColor } from './color';
 import { context, resolve } from './css';
 
 // What the design system forbids, as things a program can find (STYLE.md, "Never"):
-//   hue     a blue or a violet, in any colour written anywhere (the range is in color.ts)
-//   shadow  a box-shadow or a drop-shadow
-//   radius  a corner that is not 0 or 2px, outside the composer
-//   font    a typeface that is not Newsreader, IBM Plex Sans (with its condensed width) or IBM Plex
-//           Mono, or one of the fallbacks the spec lists after them
-//   host    a stylesheet or a font fetched from another origin at run time
+//   hue       a blue or a violet, in any colour written anywhere (the range is in color.ts)
+//   shadow    a box-shadow, a drop-shadow or a text-shadow (a glow)
+//   radius    a corner that is not 0 or 2px, outside the composer
+//   font      a typeface that is not Newsreader, IBM Plex Sans (with its condensed width) or IBM Plex
+//             Mono, or one of the fallbacks the spec lists after them
+//   host      a stylesheet or a font fetched from another origin at run time
+//   case      uppercase text, outside the MOCK plate
+//   italic    italic or oblique text
+//   weight    a font weight lighter than 400
+//   gradient  a gradient, outside the hatch (which is drawn with one)
+//   blur      a blur or a backdrop filter (glass)
+//   align     centred or justified text; the test lists the two places a spec allows it
+//
+// What STYLE.md also forbids and nothing here finds: the other colour families (mint, lime, neon,
+// amber), pure white or black grounds, patterns behind text, Newsreader where it does not belong,
+// motion that bounces, the icons on the list, and anything about words. Those are for review.
 
-export type Kind = 'hue' | 'shadow' | 'radius' | 'font' | 'host';
+export type Kind =
+  | 'hue'
+  | 'shadow'
+  | 'radius'
+  | 'font'
+  | 'host'
+  | 'case'
+  | 'italic'
+  | 'weight'
+  | 'gradient'
+  | 'blur'
+  | 'align';
 export type Finding = {
   kind: Kind;
   /** What was found, as written. */
@@ -108,6 +129,18 @@ const TW_SHADOWS = new Set([
   '--tw-inset-ring-shadow',
   '--tw-drop-shadow',
 ]);
+/** The one utility that sets uppercase: the plate that carries the word MOCK (mock-plate.md). */
+export const UPPERCASE_UTILITY = 'tf-mock-plate';
+/** The one utility drawn with a gradient: the 45° hatch (mock-plate.md). */
+export const GRADIENT_UTILITY = 'tf-hatch';
+
+/** A font weight as a number, or null when the value is not one. */
+function weightOf(value: string): number | null {
+  if (value === 'lighter') return 100;
+  const n = Number(value);
+  return value !== '' && Number.isFinite(n) ? n : null;
+}
+
 /** The two utilities of the typing box, and the corners they may have (composer.md). */
 export const COMPOSER_RADIUS: Record<string, string> = {
   'rounded-composer': '20px',
@@ -171,6 +204,41 @@ export function scanCss(root: Root, vars: Map<string, string>): Finding[] {
     if (TW_SHADOWS.has(prop) && !NO_SHADOW.has(value) && !KEYWORDS.has(value))
       add(decl, 'shadow', `${prop}: ${value}`);
     if (/drop-shadow\(/.test(value)) add(decl, 'shadow', `${prop}: ${value}`);
+    if (prop === 'text-shadow' && !NO_SHADOW.has(value) && !KEYWORDS.has(value))
+      if (!/^var\(--tw-/.test(value)) add(decl, 'shadow', `${prop}: ${value}`);
+
+    const classes = classesOf(selectors);
+    // An @font-face says what a file holds, not how text is set: a variable face lists its range.
+    const face = parent?.type === 'atrule' && (parent as { name?: string }).name === 'font-face';
+
+    // case: uppercase belongs to the word MOCK alone
+    if (prop === 'text-transform' && /\buppercase\b/.test(value))
+      if (!classes.includes(UPPERCASE_UTILITY)) add(decl, 'case', `${prop}: ${value}`);
+
+    // italic
+    if (!face && prop === 'font-style' && /\b(italic|oblique)\b/.test(value))
+      add(decl, 'italic', `${prop}: ${value}`);
+    if (prop === 'font' && /(^|\s)(italic|oblique)(\s|$)/.test(value))
+      add(decl, 'italic', `${prop}: ${value}`);
+
+    // weight: nothing lighter than 400
+    if (!face && (prop === 'font-weight' || /^--font-weight-/.test(prop))) {
+      const weight = weightOf(resolve(value, vars));
+      if (weight !== null && weight < 400) add(decl, 'weight', `${prop}: ${value}`);
+    }
+
+    // gradient: only the hatch is drawn with one
+    if (/gradient\(/.test(value) && !classes.includes(GRADIENT_UTILITY))
+      add(decl, 'gradient', `${prop}: ${value}`);
+
+    // blur and glass
+    if (/\bblur\(/.test(value)) add(decl, 'blur', `${prop}: ${value}`);
+    else if (/^(-webkit-)?backdrop-filter$/.test(prop) && value !== 'none' && !KEYWORDS.has(value))
+      add(decl, 'blur', `${prop}: ${value}`);
+
+    // align
+    if (prop === 'text-align' && /^(center|justify)$/.test(value))
+      add(decl, 'align', `${prop}: ${value}`);
 
     // radius
     if (RADIUS.test(prop)) {
@@ -229,6 +297,16 @@ export function classTokens(file: string, text: string): Set<string> {
 
 type SourceFinding = { kind: Kind; what: string };
 
+/** The forbidden things as they read when CSS is written as text. */
+const STYLE_TEXT: ReadonlyArray<readonly [Kind, RegExp]> = [
+  ['gradient', /gradient\(/],
+  ['blur', /\bblur\(|backdrop-filter\s*:\s*(?!none\b)\S/],
+  ['case', /text-transform\s*:\s*uppercase/],
+  ['italic', /font-style\s*:\s*(italic|oblique)/],
+  ['weight', /font-weight\s*:\s*([123]00|lighter)\b/],
+  ['align', /text-align\s*:\s*(center|justify)/],
+];
+
 /** Everything forbidden that is written straight into a TypeScript file: colours, inline styles, SVG attributes. */
 export function scanSource(file: string, text: string): SourceFinding[] {
   const found: SourceFinding[] = [];
@@ -244,6 +322,9 @@ export function scanSource(file: string, text: string): SourceFinding[] {
       if (/\bborder-radius\b|\bfont-family\b/.test(value))
         found.push({ kind: /radius/.test(value) ? 'radius' : 'font', what: value });
       if (/https?:\/\/fonts\./.test(value)) found.push({ kind: 'host', what: value });
+      // CSS written as text: a style element, an arbitrary property in a class name
+      for (const [kind, written] of STYLE_TEXT)
+        if (written.test(value)) found.push({ kind, what: value });
     }
     const named = (name: ts.PropertyName | ts.JsxAttributeName) =>
       ts.isIdentifier(name) || ts.isStringLiteral(name) ? name.text : name.getText(source);
@@ -252,6 +333,19 @@ export function scanSource(file: string, text: string): SourceFinding[] {
       const value = node.initializer?.getText(source) ?? '';
       if (/^(boxShadow|dropShadow|textShadow)$/.test(name))
         found.push({ kind: 'shadow', what: `${name}: ${value}` });
+      const bare = value.replace(/^[{"'`\s]+|[}"'`\s]+$/g, '');
+      if (name === 'textTransform' && bare === 'uppercase')
+        found.push({ kind: 'case', what: `${name}: ${value}` });
+      if (name === 'fontStyle' && /^(italic|oblique)/.test(bare))
+        found.push({ kind: 'italic', what: `${name}: ${value}` });
+      if (name === 'fontWeight' && (weightOf(bare) ?? 400) < 400)
+        found.push({ kind: 'weight', what: `${name}: ${value}` });
+      if (/^(backdropFilter|WebkitBackdropFilter)$/.test(name) && bare !== 'none')
+        found.push({ kind: 'blur', what: `${name}: ${value}` });
+      if (name === 'filter' && /blur\(/.test(value))
+        found.push({ kind: 'blur', what: `${name}: ${value}` });
+      if (name === 'textAlign' && /^(center|justify)$/.test(bare))
+        found.push({ kind: 'align', what: `${name}: ${value}` });
       if (
         /^border\w*Radius$/.test(name) &&
         !/^["'{]*(0|0px|2|2px)["'}]*$/.test(value) &&

@@ -24,17 +24,18 @@ import {
  * fails the test, so the list can only shrink. Nothing is added here: new code follows the rules.
  */
 const LEGACY: Record<string, readonly Kind[]> = {
-  // Rodrigo's pages and components: Tailwind's cool greys, blue links, 4px corners, chart colours
+  // Rodrigo's pages and components: Tailwind's cool greys, blue links, 4px corners, chart colours,
+  // and two uppercase labels
   'app/layout.tsx': ['hue'],
   'app/page.tsx': ['hue'],
   'app/monitor/page.tsx': ['hue', 'radius'],
-  'app/embed/[id]/layout.tsx': ['hue', 'radius'],
+  'app/embed/[id]/layout.tsx': ['hue', 'radius', 'case'],
   'app/risk/page.tsx': ['hue'],
   'app/risk/[asset]/page.tsx': ['hue'],
   'app/risk/methodology/page.tsx': ['hue'],
   'components/GoalFlow.tsx': ['hue', 'radius'],
   'components/PlanView.tsx': ['hue'],
-  'components/Provenance.tsx': ['radius'],
+  'components/Provenance.tsx': ['radius', 'case'],
   'components/StatsCard.tsx': ['hue', 'radius'],
   'components/ScheduleChart.tsx': ['hue'],
   'components/risk/CostCurveChart.tsx': ['hue'],
@@ -53,7 +54,18 @@ const LEGACY: Record<string, readonly Kind[]> = {
 const ADAPTER = {
   importedBy: 'app/providers.tsx',
   stylesheet: '@solana/wallet-adapter-react-ui/styles.css',
-  kinds: ['hue', 'shadow', 'radius', 'font', 'host'] as readonly Kind[],
+  kinds: ['hue', 'shadow', 'radius', 'font', 'host', 'align'] as readonly Kind[],
+};
+
+/**
+ * Where text may be centred, and by what. Centred or justified body text is forbidden (STYLE.md), so
+ * anything else that centres text fails, whichever file it is in.
+ */
+const CENTRED: Record<string, string> = {
+  'components/ui/SubscribeBlock.tsx':
+    'subscribe-block.md: the one centred composition on marketing, with a lede of three lines at most',
+  'components/ui/ExitPlanLine.tsx':
+    'exit-plan-line.md: the amount sits in the middle of its dimension line; a label on a drawing',
 };
 
 /** Tailwind's own base fonts, kept for those pages by the two `initial` lines in globals.css. */
@@ -88,6 +100,10 @@ function blame(findings: Finding[], root: postcss.Root): Blame[] {
     return { finding, files: [...new Set(classes.flatMap(users))] };
   });
 }
+
+/** Centred text that a spec allows: every file that uses the class is on the list. */
+const centred = (b: Blame) =>
+  b.finding.kind === 'align' && b.files.length > 0 && b.files.every((file) => file in CENTRED);
 
 const say = (b: Blame) =>
   `${b.finding.kind}: ${b.finding.what} in "${b.finding.where}", from ${b.files.join(', ') || 'no element: a word in a comment or a string that Tailwind took for a class'}`;
@@ -127,6 +143,91 @@ describe('the forbidden things', () => {
         'rgb(0 0 0 / 0.1)',
       ])
         expect(is(fine), fine).toBe(false);
+    });
+  });
+
+  describe('the rules, on a stylesheet and a file written to break them', () => {
+    const kinds = (css: string, vars = new Map<string, string>()) =>
+      scanCss(postcss.parse(css), vars).map((f) => f.kind);
+
+    it('finds uppercase anywhere but on the MOCK plate', () => {
+      expect(kinds('.label { text-transform: uppercase }')).toEqual(['case']);
+      expect(kinds('.hover\\:uppercase:hover { text-transform: uppercase }')).toEqual(['case']);
+      expect(kinds('.tf-mock-plate { text-transform: uppercase }')).toEqual([]);
+      expect(kinds('.label { text-transform: none }')).toEqual([]);
+    });
+
+    it('finds italic text and a weight under 400, and leaves a font file’s own description alone', () => {
+      expect(kinds('.a { font-style: italic }')).toEqual(['italic']);
+      expect(kinds('.a { font: italic 400 1rem/1.5 var(--font-sans) }')).toEqual(['italic']);
+      expect(kinds('.a { font-weight: 300 }')).toEqual(['weight']);
+      expect(kinds('.a { font-weight: lighter }')).toEqual(['weight']);
+      const light = new Map([['--font-weight-light', '300']]);
+      expect(kinds('.font-light { font-weight: var(--font-weight-light) }', light)).toEqual([
+        'weight',
+      ]);
+      expect(kinds('.a { font-weight: 400 } .b { font-weight: 600 }')).toEqual([]);
+      expect(
+        kinds('@font-face { font-family: Newsreader; font-style: normal; font-weight: 200 800 }'),
+      ).toEqual([]);
+    });
+
+    it('finds a gradient anywhere but in the hatch', () => {
+      expect(kinds('.a { background-image: linear-gradient(to right, #7a5a3a, #e6d3b7) }')).toEqual(
+        ['gradient'],
+      );
+      expect(kinds('.a { --tw-gradient-stops: radial-gradient(#7a5a3a, #e6d3b7) }')).toEqual([
+        'gradient',
+      ]);
+      expect(
+        kinds(
+          '.tf-hatch { background-image: repeating-linear-gradient(45deg, #6e655b 0 1px, transparent 1px 6px) }',
+        ),
+      ).toEqual([]);
+    });
+
+    it('finds a blur, a backdrop filter and a glow, written plainly or as Tailwind composes them', () => {
+      expect(kinds('.a { filter: blur(1px) }')).toEqual(['blur']);
+      expect(kinds('.blur-\\[1px\\] { --tw-blur: blur(1px) }')).toEqual(['blur']);
+      expect(
+        kinds('.a { backdrop-filter: var(--tw-backdrop-blur,) var(--tw-backdrop-saturate,) }'),
+      ).toEqual(['blur']);
+      expect(kinds('.a { -webkit-backdrop-filter: saturate(1.8) }')).toEqual(['blur']);
+      expect(kinds('.a { backdrop-filter: none }')).toEqual([]);
+      expect(kinds('.a { text-shadow: 0 0 8px #e6d3b7 }')).toEqual(['shadow']);
+    });
+
+    it('finds centred and justified text', () => {
+      expect(kinds('.a { text-align: center } .b { text-align: justify }')).toEqual([
+        'align',
+        'align',
+      ]);
+      expect(kinds('.a { text-align: left } .b { text-align: end }')).toEqual([]);
+    });
+
+    it('finds the same things written into a component: inline styles and CSS as text', () => {
+      const found = (code: string) => scanSource('x.tsx', code).map((f) => f.kind);
+      expect(found("const a = <p style={{ textTransform: 'uppercase' }}>x</p>;")).toEqual(['case']);
+      expect(found("const a = <p style={{ fontStyle: 'italic', fontWeight: 300 }}>x</p>;")).toEqual(
+        ['italic', 'weight'],
+      );
+      expect(found("const a = <p style={{ textAlign: 'center' }}>x</p>;")).toEqual(['align']);
+      expect(found("const a = <p style={{ backdropFilter: 'saturate(2)' }}>x</p>;")).toEqual([
+        'blur',
+      ]);
+      expect(found("const a = <p style={{ filter: 'blur(2px)' }}>x</p>;")).toEqual([
+        'blur',
+        'blur',
+      ]);
+      expect(found("const a = { background: 'linear-gradient(#7a5a3a, #e6d3b7)' };")).toEqual([
+        'gradient',
+      ]);
+      expect(
+        found('const a = <p className="[text-transform:uppercase] [font-style:italic]">x</p>;'),
+      ).toEqual(['case', 'italic']);
+      expect(found("const a = <p style={{ fontWeight: 500, textAlign: 'left' }}>x</p>;")).toEqual(
+        [],
+      );
     });
   });
 
@@ -176,7 +277,40 @@ describe('the forbidden things', () => {
     });
 
     it('finds nothing forbidden that a legacy page does not account for', () => {
-      expect(blamed.filter((b) => !base(b) && !legacy(b)).map(say)).toEqual([]);
+      expect(blamed.filter((b) => !base(b) && !legacy(b) && !centred(b)).map(say)).toEqual([]);
+    });
+
+    it('sets uppercase on the MOCK plate and nowhere else but two legacy labels', () => {
+      const upper: string[] = [];
+      root.walkDecls('text-transform', (decl) => {
+        if (/uppercase/.test(decl.value)) upper.push((decl.parent as postcss.Rule).selector);
+      });
+      expect(upper.sort()).toEqual(['.tf-mock-plate', '.uppercase']);
+      expect(users('uppercase').sort()).toEqual([
+        'app/embed/[id]/layout.tsx',
+        'components/Provenance.tsx',
+      ]);
+    });
+
+    it('centres text only where a spec allows it, and every such place still does', () => {
+      const centring = (file: string) =>
+        [...(tokens.get(file) ?? [])].some((token) => /(^|:)text-(center|justify)$/.test(token));
+      expect(scripts.filter(centring).sort()).toEqual(Object.keys(CENTRED).sort());
+      expect(blamed.filter(centred).length).toBeGreaterThan(0);
+    });
+
+    it('draws one gradient, the hatch, and makes no utility for an italic, a light weight or a blur', () => {
+      const gradients: string[] = [];
+      root.walkDecls((decl) => {
+        if (/gradient\(/.test(decl.value)) gradients.push((decl.parent as postcss.Rule).selector);
+      });
+      expect(gradients).toEqual(['.tf-hatch']);
+      const selectors = new Set<string>();
+      root.walkRules((rule) => {
+        selectors.add(rule.selector);
+      });
+      for (const name of ['.italic', '.font-light', '.font-thin', '.blur', '.backdrop-blur'])
+        expect(selectors.has(name), name).toBe(false);
     });
 
     it('keeps Tailwind’s base fonts only for the pages not yet rebuilt', () => {
@@ -264,7 +398,7 @@ describe('the forbidden things', () => {
               /(^|,)\s*(html|:host|code|kbd|samp|pre)\b/.test(b.finding.where);
             const legacy =
               b.files.length > 0 && b.files.every((f) => LEGACY[f]?.includes(b.finding.kind));
-            if (!known && !base && !legacy) problems.push(say(b));
+            if (!known && !base && !legacy && !centred(b)) problems.push(say(b));
           }
         }
         expect(source).toBeDefined();
