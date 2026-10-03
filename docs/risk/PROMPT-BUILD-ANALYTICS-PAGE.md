@@ -10,9 +10,9 @@ The design branch does not hold the fact-sheet routes, so the page reads them fr
 
 ```
 cd ~/Documents/Colosseum/.claude/worktrees/risk-analytics
-pnpm db:up
-pnpm --filter @colosseum/api dev        # http://localhost:3001, OpenAPI at /docs
-curl -s localhost:3001/risk/assets | head -c 300   # proves it answers
+pnpm db:migrate                                        # the colosseum-pg container is already up on 5433; `pnpm db:up` needs the docker compose plugin this machine lacks
+API_PORT=3011 pnpm --filter @colosseum/api dev         # 3001 is taken by another project's Next dev server
+curl -s localhost:3011/risk/assets | head -c 300       # proves it answers; OpenAPI at localhost:3011/docs
 ```
 
 Leave it running for the whole session. If the lending sheets are older than an hour, run `pnpm risk:lending-report && pnpm risk:facts-import` here first (or let item 18's job do it once it is installed).
@@ -31,7 +31,7 @@ Bearing is the product's liquidity and risk layer. This page is where a person (
 2. `.design/branding/working-brand/patterns/STYLE.md` in full. It is binding. Then these component specs in `patterns/components/`: `data-table.md`, `provenance-pin.md`, `mock-plate.md` (for the stale state), `card.md`, `bearing-heatmap-tile.md`, `disclaimer-block.md`, `compact-nav.md`, `token-mapping.md`.
 3. `.design/branding/working-brand/strategy/voice-and-tone.md` (answer, then reason, then risk, then action; sentence case; no exclamation marks).
 4. `patterns/prototypes/hero-3d.html` in full: it is the host. Its `:root` tokens, fonts, nav and `.wrap` are the shell you reuse; its sections, scene and scripts must keep working when the analytics view is closed. Read its head comment too: it lists what the prototype got wrong against the `.yml` (blurred nav, uppercase eyebrows). Do not repeat those in the new view.
-5. The API, live: `GET http://localhost:3001/docs/json` (OpenAPI) and `GET /risk/facts/methodology` (the methods in words; quote them, do not paraphrase them).
+5. The API, live: `GET http://localhost:3011/docs/json` (OpenAPI) and `GET /risk/facts/methodology` (the methods in words; quote them, do not paraphrase them).
 6. `packages/schemas/src/constants.ts` for `DISCLAIMER` (copy it verbatim into the page; it cannot be imported from a static file) and `packages/schemas/src/facts.ts` if it exists on this branch (it may not; the OpenAPI document has the same shapes).
 
 ### What the data is
@@ -67,7 +67,7 @@ What the API **does not serve yet**, and how the page treats it:
 
 ### Live and snapshot
 
-The page fetches the API at `http://localhost:3001` (a `data-api` attribute on `<html>`, so it can point elsewhere). On the first build, the session also **captures a snapshot**: every route the page reads, once, as JSON files under `prototypes/assets/analytics/` with a `captured_at` ISO time in a `manifest.json`. The page loads live first; when the API does not answer within 3 seconds it falls back to the snapshot and every figure takes the **stale** state: the hollow pin plus the word "stale" and its age computed from `fetchedAt` (the spec in `provenance-pin.md` and `mock-plate.md`). Never the MOCK state: these are measured figures, only old. A banner at the top says which it is: "Live from the collectors, as of 02:14 UTC" or "Snapshot captured 2026-10-03 02:14 UTC, the API is not running".
+The page fetches the API at `http://localhost:3011` (a `data-api` attribute on `<html>`, so it can point elsewhere). On the first build, the session also **captures a snapshot**: every route the page reads, once, as JSON files under `prototypes/assets/analytics/` with a `captured_at` ISO time in a `manifest.json`. The page loads live first; when the API does not answer within 3 seconds it falls back to the snapshot and every figure takes the **stale** state: the hollow pin plus the word "stale" and its age computed from `fetchedAt` (the spec in `provenance-pin.md` and `mock-plate.md`). Never the MOCK state: these are measured figures, only old. A banner at the top says which it is: "Live from the collectors, as of 02:14 UTC" or "Snapshot captured 2026-10-03 02:14 UTC, the API is not running".
 
 The snapshot holds no wallet. Check every captured file for base58 strings of 32–44 characters other than the pool and market accounts the page displays; the `/risk/facts/lending` route already publishes aggregates only, but check anyway and say what you found.
 
