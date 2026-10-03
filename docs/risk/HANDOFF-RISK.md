@@ -121,7 +121,7 @@ The running jobs are not listed in this section; nine are loaded, all `com.colos
 | Obligation enumeration (`getProgramAccounts`) | U, paid RPC | Optional in Phase 4; market aggregates come from reserve metrics first. |
 | Primary redemption: xStocks T+5, $5k minimum; Ondo 24/7 size limits | U | Scenario inputs, labelled. |
 | Whether Jupiter quote impact matches realised swap slippage | U | Compare against the `executions` rows from Sep 30 (SPYx, QQQx buys) and every later execution. |
-| Direct pool reads (Raydium, Orca, Meteora) as a second depth source | not started | Stretch; would remove the dependency on Jupiter's router. |
+| Direct pool reads (Raydium, Orca, Meteora) as a second depth source | done (`packages/risk/src/pools`) | Not a replacement for Jupiter's router: a trade done at once is quoted and run on Jupiter's route, a trade split over time is planned with ours (ROUTING in `docs/GATES.md`, 2026-10-03). |
 
 ## 8. Constraints for the plan
 
