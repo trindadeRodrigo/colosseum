@@ -6,6 +6,7 @@ import {
   type LiquidityProvider,
   type ObservationRef,
   PersonalParams,
+  type Verdict,
   type YieldObservation,
 } from '@colosseum/schemas';
 import { z } from 'zod';
@@ -144,11 +145,19 @@ export type PersonalObservation = Omit<ObservationRef, 'source' | 'fetchedAt'> &
  * the plan holds them (the plan bar of the design system shows sleeves, with the tokens under it),
  * and whose observations may lack a source or a time.
  */
-export type PersonalProposal = Omit<BasketProposal, 'sheet' | 'observations'> & {
+export type PersonalProposal = Omit<BasketProposal, 'sheet' | 'observations' | 'verdict'> & {
   sheet: PersonalSheet;
   sleeves: { sleeve: Sleeve; weightBps: number; amountUsd: number }[];
   observations: PersonalObservation[];
+  verdict?: PersonalVerdict;
 };
+
+/**
+ * LOCAL TYPE. The shared `Verdict`, with one sentence beside the ways: that no larger amount closes
+ * the gap. It is not a way to close it, so it is not listed among them, where a caller would show it
+ * as one. Every entry of `ways` closes the gap.
+ */
+export type PersonalVerdict = Verdict & { noAmountCloses?: string };
 
 export type PersonalErrorCode =
   | 'InvalidSheet'

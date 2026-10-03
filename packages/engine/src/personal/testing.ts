@@ -791,6 +791,21 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
     say(row?.weightBps === sleeveBps(plan, shelf, sleeve), `the ${sleeve} sleeve is not its lines`);
   }
 
+  // The verdict: met means met, a way is something that closes the gap, and "no amount closes it"
+  // is said apart from the ways.
+  if (plan.verdict) {
+    const v = plan.verdict;
+    say(v.met === (v.gapUsdMonthly === 0), 'the verdict: met with a gap, or not met with none');
+    say(
+      v.ways.every((way) => way.closesGap),
+      'the verdict: a way that does not close the gap',
+    );
+    say(
+      v.met ? v.ways.length === 0 && v.noAmountCloses === undefined : true,
+      'the verdict: met, and still says how to close a gap',
+    );
+  }
+
   // The card.
   const risky = sum(
     lines.filter((l) => sleeveOfClass(l.a.cls) !== 'dollarYield').map((l) => l.cents),

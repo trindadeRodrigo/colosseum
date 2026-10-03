@@ -5,7 +5,6 @@ import {
   DISCLAIMER,
   type Reason,
   type Shelf,
-  type Verdict,
 } from '@colosseum/schemas';
 import { cardOf } from './card';
 import {
@@ -20,7 +19,7 @@ import {
   tokensOf,
   unitsOf,
 } from './exposure';
-import { byName, split, sum, toCents, toUsd } from './money';
+import { byName, ceilCents, split, sum, toUsd } from './money';
 import { packageUp } from './packaging';
 import { Book, once, type Removed, type Sized, type Unit } from './placement';
 import { reason, text } from './templates';
@@ -28,6 +27,7 @@ import {
   type ComposeContext,
   type PersonalProposal,
   type PersonalSheet,
+  type PersonalVerdict,
   SLEEVES,
   type Sleeve,
 } from './types';
@@ -341,38 +341,36 @@ function build(
 
   // Income goals: whether the target is met at today's yields after haircut, and the ways to close a
   // gap. A way is listed only if it closes the gap: each one is tried by running the engine again.
-  let verdict: Verdict | undefined;
+  let verdict: PersonalVerdict | undefined;
   const target = sheet.incomeTargetUsdMonthly;
   if (sheet.goal === 'income' && target !== undefined) {
     if (yearlyLowUsd === null) w.flags.add('income_not_estimated');
     else {
       const monthly = yearlyLowUsd / MONTHS_IN_A_YEAR;
-      const gap = toUsd(Math.max(0, toCents(target) - toCents(monthly)));
-      const ways: Verdict['ways'] = [];
-      if (gap > 0 && withWays) {
+      // Met means met: the plan pays the target or more. A shortfall is written up to the next
+      // cent, so a target missed by a fraction of a cent has a gap and is not read as met.
+      const short = Math.max(0, ceilCents(target - monthly));
+      verdict = { met: short <= 0, gapUsdMonthly: toUsd(short), ways: [] };
+      if (short > 0 && withWays) {
         const meets = (amountUsd: number) =>
           build({ ...sheet, amountUsd }, shelf, context, false).verdict?.met === true;
         const enough = smallestThatMeets(sheet.amountUsd, P.wayStepUsd, meets);
-        ways.push(
-          enough === null
-            ? { change: text('NO_AMOUNT_CLOSES', {}, lang), closesGap: false }
-            : {
-                change: text(
-                  'WAY_AMOUNT',
-                  { addUsd: enough - sheet.amountUsd, toUsd: enough },
-                  lang,
-                ),
-                closesGap: true,
-              },
-        );
+        if (enough === null) {
+          // Not a way to close the gap, so not among the ways: said apart, and flagged.
+          verdict.noAmountCloses = text('NO_AMOUNT_CLOSES', {}, lang);
+          w.flags.add('income_no_amount_closes');
+        } else
+          verdict.ways.push({
+            change: text('WAY_AMOUNT', { addUsd: enough - sheet.amountUsd, toUsd: enough }, lang),
+            closesGap: true,
+          });
         const within = Math.floor(monthly);
         if (within > 0)
-          ways.push({
+          verdict.ways.push({
             change: text('WAY_TARGET', { toUsd: within, fromUsd: target }, lang),
             closesGap: true,
           });
       }
-      verdict = { met: gap <= 0, gapUsdMonthly: gap, ways };
     }
   }
 

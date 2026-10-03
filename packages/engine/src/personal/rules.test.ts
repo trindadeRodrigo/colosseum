@@ -207,15 +207,16 @@ describe.each(Object.entries(TABLES))('whatever the numbers: %s', (_name, table)
         0,
       );
       expect(made.card.expectedReturn.lowPct).toBeCloseTo((100 * low) / 40_000, 2);
-      // Every dollar-yield line has its observation on the plan (so do the tokens it was ranked
-      // against), and no stock, crypto or gold line has one.
+      // The yield observations on the plan are exactly those the dollar-yield tokens were ranked
+      // by: both tokens of this chain whenever anything was held in dollar yield or meant for it,
+      // whether or not each ended up with a line, and none otherwise.
       const observed = made.observations.filter((o) => o.kind === 'yield').map((o) => o.id);
-      for (const l of made.lines) {
-        const sleeve = sleeveOfClass(assets.get(l.assetId)?.cls ?? 'cash');
-        if (sleeve === 'dollarYield' && yields.has(l.assetId))
-          expect(observed).toContain(l.assetId);
-        if (sleeve === 'growth' || sleeve === 'gold') expect(observed).not.toContain(l.assetId);
-      }
+      const ranked = made.lines.some(
+        (l) =>
+          sleeveOfClass(assets.get(l.assetId)?.cls ?? 'cash') === 'dollarYield' ||
+          l.reasons.some((r) => ['UNPLACED', 'YIELD_TOO_SMALL'].includes(r.rule)),
+      );
+      expect(observed).toEqual(ranked ? ['solana:jlusdc', 'solana:syrupusdc'] : []);
     }
   });
 });

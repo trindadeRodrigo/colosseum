@@ -12,6 +12,13 @@ export const toUsd = (cents: number): number => cents / CENTS_IN_A_DOLLAR;
 /** Whole cents at or under a dollar figure: a ceiling is never rounded up. */
 export const floorCents = (usd: number): number => Math.floor(usd * CENTS_IN_A_DOLLAR);
 
+/**
+ * A dollar figure in whole cents, rounded up: a shortfall is never written smaller than it is. What
+ * is under a ten-thousandth of a cent is the dust of floating point, and is dropped first.
+ */
+export const ceilCents = (usd: number): number =>
+  Math.ceil(Math.round(usd * CENTS_IN_A_DOLLAR * BPS) / BPS);
+
 /** `bps` of `cents`, rounded down. */
 export const shareOf = (cents: number, bps: number): number => Math.floor((cents * bps) / BPS);
 

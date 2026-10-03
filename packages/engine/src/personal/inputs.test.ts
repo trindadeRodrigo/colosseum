@@ -70,8 +70,16 @@ describe('each input alone moves the plan and says so', () => {
   it('time frame', () => {
     const plan = changed({ horizonMonths: 12 });
     expect(movedBecauseOf('horizon', plan)).toEqual(['CASH_NEAR_DATE', 'GLIDE']);
+    // A year out: 60% in dollar yield at least and 5% in cash, which leaves 30% for stocks. The
+    // Seven fits whole at that size, and its seven parts with dollar yield make eight: no part is
+    // left for gold, whose 5% is held in dollar yield.
+    expect(sleeveBps(plan, shelf, 'growth')).toBe(3000);
+    expect(sleeveBps(plan, shelf, 'dollarYield')).toBe(6500);
+    expect(sleeveBps(plan, shelf, 'gold')).toBe(0);
     expect(sleeveBps(plan, shelf, 'cash')).toBe(500);
-    expect(sleeveBps(plan, shelf, 'dollarYield')).toBeGreaterThanOrEqual(6000);
+    expect(plan.removed.map((r) => [r.ref, r.reasons.map((x) => x.rule)])).toEqual([
+      ['GLD', ['MAX_LINES']],
+    ]);
   });
 
   it('amount', () => {
@@ -152,9 +160,12 @@ describe('each input alone moves the plan and says so', () => {
   it('what the person must not lose', () => {
     const plan = changed({ limits: { mustKeepUsd: 5_000 } });
     expect(movedBecauseOf('mustKeep', plan)).toEqual(['MUST_KEEP']);
-    expect(
-      sleeveBps(plan, shelf, 'dollarYield') + sleeveBps(plan, shelf, 'cash'),
-    ).toBeGreaterThanOrEqual(5000);
+    // Half the plan kept: 45% in stocks, The Seven whole. Its seven parts with dollar yield make
+    // eight, so the 5% meant for gold is held in dollar yield too.
+    expect(sleeveBps(plan, shelf, 'growth')).toBe(4500);
+    expect(sleeveBps(plan, shelf, 'dollarYield')).toBe(5500);
+    expect(sleeveBps(plan, shelf, 'gold')).toBe(0);
+    expect(sleeveBps(plan, shelf, 'cash')).toBe(0);
   });
 
   it('how soon they may need the money', () => {

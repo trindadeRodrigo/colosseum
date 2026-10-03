@@ -63,6 +63,19 @@ describe('a reason names what it is about', () => {
     for (const r of allReasons(plan))
       for (const value of Object.values(r.params)) expect(String(value), r.rule).not.toBe('');
   });
+
+  it('says once what stays in cash, with the whole of it: not one part of it, and not two halves as one', () => {
+    // $10 at medium risk: $1.50 for dollar yield is too small to hold, and so is the $1.50 that
+    // stocks and gold could not take. The cash line holds $3, and says $3.
+    const plan = compose(sheet({ amountUsd: 10 }), shelf, ctx);
+    expect(violations(plan, shelf, ctx)).toEqual([]);
+    const cash = line(plan, 'solana:usdc');
+    expect(cash?.amountUsd).toBe(3);
+    const stays = cash?.reasons.filter((r) => r.rule === 'YIELD_TOO_SMALL') ?? [];
+    expect(stays.map((r) => [r.params.usd, r.text])).toEqual([
+      [3, '$3 meant for dollar yield stays in cash: it is too small to be a part of your plan.'],
+    ]);
+  });
 });
 
 describe('a reason does not contradict what the person chose', () => {
@@ -387,7 +400,23 @@ describe('an income goal: what the verdict says is so', () => {
     // $50,000 and $30,000 in the two dollar-yield tokens: $272.63 a month after haircut.
     expect(monthly(plan)).toBeCloseTo(272.625, 6);
     expect(plan.verdict?.met).toBe(false);
-    expect(plan.verdict?.gapUsdMonthly).toBe(27.37);
+    // $27.375 short: written up to the next cent, so a gap is never shown smaller than it is.
+    expect(plan.verdict?.gapUsdMonthly).toBe(27.38);
+  });
+
+  it('met means met: a target missed by less than a cent is not met, and the gap is a cent', () => {
+    // The plan pays $272.625 a month. A target of $272.63 is half a cent more than that.
+    const just = compose({ ...carla, incomeTargetUsdMonthly: 272.63 }, shelf, ctx);
+    expect(just.verdict?.met).toBe(false);
+    expect(just.verdict?.gapUsdMonthly).toBe(0.01);
+    const under = compose({ ...carla, incomeTargetUsdMonthly: 272.629 }, shelf, ctx);
+    expect(under.verdict).toMatchObject({ met: false, gapUsdMonthly: 0.01 });
+    // At or under what it pays, the target is met, with no gap.
+    for (const target of [272.625, 272.62])
+      expect(
+        compose({ ...carla, incomeTargetUsdMonthly: target }, shelf, ctx).verdict,
+        String(target),
+      ).toEqual({ met: true, gapUsdMonthly: 0, ways: [] });
   });
 
   it('lists a way only if it closes the gap: the amount it names does, and one step less does not', () => {
@@ -404,13 +433,17 @@ describe('an income goal: what the verdict says is so', () => {
   it('says once that no amount closes the gap, when the tokens that pay are at their limits', () => {
     // Both dollar-yield tokens of this chain full: about $324 a month at most.
     const plan = compose({ ...carla, incomeTargetUsdMonthly: 400 }, shelf, ctx);
+    // It is not a way to close the gap, so it is not among the ways: a caller that lists them shows
+    // only what the person can do.
     expect(plan.verdict?.ways).toEqual([
-      {
-        change: 'No larger amount closes the gap with the dollar-yield tokens you can hold.',
-        closesGap: false,
-      },
       { change: 'You can aim for $272 a month instead of $400.', closesGap: true },
     ]);
+    expect(plan.verdict?.noAmountCloses).toBe(
+      'No larger amount closes the gap with the dollar-yield tokens you can hold.',
+    );
+    expect(plan.flags).toContain('income_no_amount_closes');
+    // Where an amount does close it, nothing of the kind is said.
+    expect(compose(carla, shelf, ctx).verdict).not.toHaveProperty('noAmountCloses');
     const most = compose(
       { ...carla, amountUsd: 1_000_000, incomeTargetUsdMonthly: 400 },
       shelf,
@@ -427,12 +460,8 @@ describe('an income goal: what the verdict says is so', () => {
     expect(plan.verdict).toEqual({
       met: false,
       gapUsdMonthly: 300,
-      ways: [
-        {
-          change: 'No larger amount closes the gap with the dollar-yield tokens you can hold.',
-          closesGap: false,
-        },
-      ],
+      ways: [],
+      noAmountCloses: 'No larger amount closes the gap with the dollar-yield tokens you can hold.',
     });
     // With no target there is no verdict, and still no cash flow to show.
     const { incomeTargetUsdMonthly: _, ...noTarget } = { ...carla, chains: ['base' as const] };
@@ -617,6 +646,12 @@ describe('the words', () => {
       'No return is assumed for this part of your plan. In a 20% fall it would lose $3.',
     );
     expect(small.card.expectedReturn.lossInFallUsd).toBe(2.28);
+    // $12.03: $11.43 in The 500, so the fall costs 228.6 cents. Up to the next cent on the line and
+    // on the card, never down.
+    const odd = compose(sheet({ amountUsd: 12.03, risk: 'high' }), shelf, ctx);
+    expect(line(odd, 'solana:spyx')?.amountUsd).toBe(11.43);
+    expect(line(odd, 'solana:spyx')?.reasons.at(-1)?.params.lossUsd).toBe(2.29);
+    expect(odd.card.expectedReturn.lossInFallUsd).toBe(2.29);
     expect(
       line(small, 'solana:usdc')?.reasons.find((r) => r.rule === 'YIELD_TOO_SMALL')?.text,
     ).toBe(
