@@ -36,11 +36,12 @@ export function buildConfig(
   };
 }
 
-export async function registerConfigRoute(app: FastifyInstance, env: EnvLike) {
-  const config = buildConfig(env);
+export function registerConfigRoute(app: FastifyInstance, config: ConfigResponse) {
   app.withTypeProvider<ZodTypeProvider>().get(
     '/v1/config',
     {
+      // Read before anybody is signed in: the web compares its networks with these first.
+      config: { auth: 'public', limit: 'standard' },
       schema: {
         summary: 'Feature flags and the chains this deployment runs on',
         description:

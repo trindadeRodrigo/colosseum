@@ -91,6 +91,51 @@ describe('chain-mock', () => {
     expect((await f.adapter.track(f.unknownTxId)).explorerUrl.startsWith('mock://')).toBe(true);
   });
 
+  it('opens a vault with no targets for a plan that is all cash, and keeps a deposit larger than its trades', async () => {
+    for (const chain of ['solana', 'robinhood'] as const) {
+      const { adapter, mock, owner, targets } = await funded(chain);
+      const land = async (tx: Parameters<typeof mock.send>[0]) =>
+        (await adapter.track((await mock.send(tx)).txId)).status;
+      if (adapter.capabilities.needsApprove)
+        expect(
+          await land(await adapter.buildApprove({ owner, basketId: '7', amountRaw: '2000000000' })),
+        ).toBe('confirmed');
+      // All cash: no target, no recipe, and the whole deposit stays in the vault as cash.
+      const cashOnly = await adapter.buildCreateVault({
+        owner,
+        basketId: '7',
+        targets: [],
+        autoFollow: false,
+        depositRaw: '1000000000',
+        slippageBps: 50,
+      });
+      expect(cashOnly.preview.minimums).toEqual([]);
+      expect(await land(cashOnly)).toBe('confirmed');
+      const [vault] = await adapter.getVaults(owner);
+      expect([vault?.cash.raw, vault?.positions, vault?.recipeOnchainId]).toEqual([
+        '1000000000',
+        [],
+        null,
+      ]);
+      // A deposit of 1,000 whose trades spend 950 of it: 50 stays as cash, beside what was there.
+      if (!adapter.capabilities.tradesInCreate) continue;
+      const first = targets[0];
+      if (!first) throw new Error('no target');
+      // The vault is open now, so the approval is to the vault itself.
+      expect(
+        await land(await adapter.buildApprove({ owner, basketId: '7', amountRaw: '1000000000' })),
+      ).toBe('confirmed');
+      const deposit = await adapter.buildDeposit({
+        vault: vault?.address ?? '',
+        amountRaw: '1000000000',
+        trades: [{ sell: mock.cash, buy: first.asset, amountInRaw: '950000000' }],
+        slippageBps: 50,
+      });
+      expect(await land(deposit)).toBe('confirmed');
+      expect((await adapter.getVault(vault?.address ?? ''))?.cash.raw).toBe('1050000000');
+    }
+  });
+
   it('settles a buy on Solana: open the vault, then one trade a transaction', async () => {
     const { adapter, mock, owner, targets } = await funded('solana');
     const create = await adapter.buildCreateVault({

@@ -63,6 +63,13 @@ export const LegBase = z.object({
   kind: LegKind,
   signer: z.enum(['owner', 'keeper']),
   description: z.string(),
+  /**
+   * The cash this step takes from the wallet, in the cash token's raw units: what a `create_vault` or
+   * a `deposit` puts into the vault, and what an `approve` lets the vault take. It is the whole
+   * deposit, which is more than the step's trades spend when the plan keeps a share in cash: the rest
+   * stays in the vault as cash. Absent on a step that moves no cash out of the wallet.
+   */
+  cashRaw: RawAmount.optional(),
   trades: z.array(Trade),
   /**
    * One entry per trade, in the order of `trades`: entry `i` is trade `i`. Empty for a leg with no
@@ -156,14 +163,23 @@ export const OrderBase = z.object({
   disclaimer: z.string(),
 });
 
-/** Every leg is the order's own, on a chain the owner has an address for. */
+/**
+ * Every leg is the order's own, on a chain the owner has an address for. A plan lives on one chain
+ * (gate ONE-CHAIN), so the legs of a buy, a rebalance, a follow, a withdrawal and a settings change are
+ * all on one chain: only a publish order, one recipe per chain, may have legs on more than one.
+ */
 export const Order = OrderBase.refine((o) => o.legs.every((l) => l.orderId === o.id), {
   message: "every leg carries the order's id",
   path: ['legs'],
-}).refine((o) => o.legs.every((l) => o.owner[chainFamily(l.chain)] !== undefined), {
-  message: 'the owner has an address for the chain of every leg',
-  path: ['legs'],
-});
+})
+  .refine((o) => o.legs.every((l) => o.owner[chainFamily(l.chain)] !== undefined), {
+    message: 'the owner has an address for the chain of every leg',
+    path: ['legs'],
+  })
+  .refine((o) => o.type === 'publish' || new Set(o.legs.map((l) => l.chain)).size <= 1, {
+    message: 'only a publish order has legs on more than one chain',
+    path: ['legs'],
+  });
 export type Order = z.infer<typeof Order>;
 
 /** The most a request may ask for. One place, so the schema, the server and a client agree. */
@@ -194,7 +210,7 @@ export const IntentRequest = z.discriminatedUnion('type', [
     maxSlippageBps: Bps.max(ORDER_LIMITS.maxSlippageBps).optional(),
     proposalId: z.string().optional(),
     family: z.string().optional(),
-    chains: z.array(ChainId).optional(),
+    // No chain is named: a buy is on the chain of the person's wallet, where the plan lives.
   }),
   z.object({
     type: z.literal('rebalance'),
@@ -269,6 +285,12 @@ export const OrderError = ApiError.extend({
       chainCode: ChainErrorCode.optional(),
       /** True when the same request can succeed later with nothing changed by the person. */
       retryable: z.boolean().optional(),
+      /**
+       * EVM: the step of another order of the same wallet whose transaction can still land. A step is
+       * not built while one is open, since both would be built on the wallet's next nonce and only
+       * one could land. Report that step or cancel it, then build again.
+       */
+      blocking: z.object({ orderId: z.string().min(1), legId: z.string().min(1) }).optional(),
     })
     .optional(),
 });

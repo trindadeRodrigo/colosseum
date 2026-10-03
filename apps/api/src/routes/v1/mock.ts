@@ -33,7 +33,7 @@ export function registerMockRoutes(scope: FastifyInstance, deps: OrderDeps) {
   f.post(
     '/v1/mock/fund',
     {
-      config: { auth: 'user' },
+      config: { auth: 'user', limit: 'standard' },
       schema: {
         tags,
         summary: 'MOCK: give the signed-in wallets mock cash and mock gas on one chain',
@@ -64,7 +64,7 @@ export function registerMockRoutes(scope: FastifyInstance, deps: OrderDeps) {
   f.post(
     '/v1/mock/orders/:id/legs/:legId/land',
     {
-      config: { auth: 'user' },
+      config: { auth: 'user', limit: 'standard' },
       schema: {
         tags,
         summary: "MOCK: land the transaction of a leg's latest attempt on the mock chain",

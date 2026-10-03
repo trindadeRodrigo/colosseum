@@ -1,9 +1,7 @@
 import { legAttempts, legs, orders, proposals, vaults } from '@colosseum/db';
 import {
   BasketTx,
-  BuildLegResponse,
   ChainError,
-  type ChainId,
   Order,
   OrderDetail,
   OrderError,
@@ -13,8 +11,11 @@ import { eq, inArray, or } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ChainRegistry } from '../../orders/chains';
+import { chainOf, orderFlow, type Sent, walletOf } from '../../testing/flow';
 import {
+  type HomeChain,
   type Person,
+  type PersonKind,
   person,
   planFixture,
   type TestIssuer,
@@ -23,21 +24,26 @@ import {
   testIssuer,
 } from '../../testing/harness';
 
-// API-1, the walking skeleton of M1 and the identity checks of G-LINK, through HTTP on the mock chain
-// and the real database. Every test makes its own wallets and its own orders; afterAll deletes the
-// rows that hang off them and nothing else.
+// The order routes through HTTP on the mock chain and the real database: the walking skeleton of M1,
+// the identity checks of G-LINK, and what API-2 added to them. An order is on one chain, the chain of
+// the person's wallet (gate ONE-CHAIN). Every test makes its own wallets and its own orders; afterAll
+// deletes the rows that hang off them and nothing else.
 
-// Every test here makes dozens of requests against a database other sessions share. A test that runs
-// past its time keeps running into the next one's mock chain, so the limit is set well above the
+// Every test here makes dozens of requests against a database other sessions may share. A test that
+// runs past its time keeps running into the next one's mock chain, so the limit is set well above the
 // slowest of them.
 vi.setConfig({ testTimeout: 60_000 });
+
+const CHAINS: HomeChain[] = ['solana', 'robinhood'];
+const NAME = { solana: 'Solana', robinhood: 'Robinhood Chain' };
 
 let issuer: TestIssuer;
 let stranger: TestIssuer;
 let data: Awaited<ReturnType<typeof testDb>>;
 let app: FastifyInstance;
 let registry: ChainRegistry;
-let planId: string;
+/** A stored plan per chain: the same three assets, nothing kept in cash. */
+let plans: Record<HomeChain, string>;
 
 // What beforeAll has made so far, to be taken away again even if it failed halfway.
 const undo: (() => Promise<unknown>)[] = [];
@@ -47,7 +53,10 @@ beforeAll(async () => {
   stranger = await testIssuer('other');
   data = await testDb();
   undo.push(() => data.cleanUp());
-  planId = await data.storePlan();
+  plans = {
+    solana: await data.storePlan(planFixture('solana')),
+    robinhood: await data.storePlan(planFixture('robinhood')),
+  };
   ({ app, registry } = await testApp({ issuer: issuer.issuer, db: data.db }));
   undo.push(() => app.close());
 });
@@ -55,277 +64,183 @@ afterAll(async () => {
   for (const step of undo.reverse()) await step();
 });
 
-const someone = async (from: TestIssuer = issuer) => data.track(await person(from));
+const someone = async (kind: PersonKind = 'solana', from: TestIssuer = issuer) =>
+  data.track(await person(from, kind));
 
-type Sent = { method: 'GET' | 'POST'; url: string; payload?: unknown };
-const call = (who: Pick<Person, 'headers'> | null, sent: Sent, on: FastifyInstance = app) =>
-  on.inject({
-    method: sent.method,
-    url: sent.url,
-    headers: who?.headers ?? {},
-    ...(sent.payload === undefined ? {} : { payload: sent.payload as object }),
-  });
-const post = (who: Person | null, url: string, payload?: unknown, on?: FastifyInstance) =>
-  call(who, { method: 'POST', url, payload }, on);
-const get = (who: Person | null, url: string, on?: FastifyInstance) =>
-  call(who, { method: 'GET', url }, on);
+const {
+  call,
+  post,
+  get,
+  put,
+  fund,
+  order,
+  legUrl,
+  build,
+  land,
+  report,
+  read,
+  legOf,
+  first,
+  settleAll,
+  toDeposit,
+  openVault,
+  attemptsOf,
+} = orderFlow({ app: () => app, registry: () => registry, plans: () => plans });
 
-async function fund(
-  who: Person,
-  chains: ChainId[] = ['solana', 'robinhood'],
-  on?: FastifyInstance,
-) {
-  for (const chain of chains) {
-    const res = await post(who, '/v1/mock/fund', { chain, cashUsd: 10_000 }, on);
-    expect(res.statusCode).toBe(200);
-    expect(res.json().provenance).toBe('mock');
-  }
-}
-
-async function order(
-  who: Person,
-  body: { amountUsd?: number; chains?: ChainId[]; maxSlippageBps?: number } = {},
-  on?: FastifyInstance,
-): Promise<OrderDetail> {
-  const res = await post(
-    who,
-    '/v1/orders',
-    { type: 'buy', owner: who.owner, amountUsd: 1000, proposalId: planId, ...body },
-    on,
-  );
-  expect(res.statusCode, res.body).toBe(200);
-  return OrderDetail.parse(res.json());
-}
-
-const legUrl = (o: { id: string }, legId: string, step: string) =>
-  `/v1/orders/${o.id}/legs/${legId}/${step}`;
-
-async function build(who: Person, o: OrderDetail, legId: string, on?: FastifyInstance) {
-  const res = await post(who, legUrl(o, legId, 'build'), undefined, on);
-  expect(res.statusCode, res.body).toBe(200);
-  return BuildLegResponse.parse(res.json());
-}
-
-/** Stands in for the wallet: the mock chain lands the leg's latest attempt and gives its id. */
-async function land(who: Person, o: OrderDetail, legId: string, on?: FastifyInstance) {
-  const res = await post(who, `/v1/mock/orders/${o.id}/legs/${legId}/land`, undefined, on);
-  expect(res.statusCode, res.body).toBe(200);
-  return res.json().txId as string;
-}
-
-async function report(
-  who: Person,
-  o: OrderDetail,
-  legId: string,
-  body: object,
-  on?: FastifyInstance,
-) {
-  const res = await post(who, legUrl(o, legId, 'report'), body, on);
-  expect(res.statusCode, res.body).toBe(200);
-  return OrderDetail.parse(res.json());
-}
-
-const read = async (who: Person, o: { id: string }) =>
-  OrderDetail.parse((await get(who, `/v1/orders/${o.id}`)).json());
-const legOf = (o: OrderDetail, legId: string) => {
-  const leg = o.legs.find((l) => l.id === legId);
-  if (!leg) throw new Error('no such leg');
-  return leg;
-};
-const first = (o: OrderDetail, chain: ChainId, seq = 0) => {
-  const leg = o.legs.find((l) => l.chain === chain && l.seq === seq);
-  if (!leg) throw new Error('no such leg');
-  return leg;
+const mockOf = (chain: HomeChain, reg = registry) => {
+  const { mock } = reg.get(chain);
+  if (!mock) throw new Error('not on the mock');
+  return mock;
 };
 
-/** Builds, lands and reports every leg in order. Returns the order as the last report left it. */
-async function settleAll(
-  who: Person,
-  o: OrderDetail,
-  on?: FastifyInstance,
-  until?: (leg: OrderDetail['legs'][number]) => boolean,
-): Promise<OrderDetail> {
-  let latest = o;
-  for (const leg of o.legs) {
-    if (until?.(leg)) break;
-    await build(who, o, leg.id, on);
-    latest = await report(who, o, leg.id, { txId: await land(who, o, leg.id, on) }, on);
-    expect(legOf(latest, leg.id).status).toBe('confirmed');
-  }
-  return latest;
-}
+describe('the walking skeleton: a buy on the chain of the person’s wallet, on the mock', () => {
+  it('goes from an intent to settled legs, and reads back in the portfolio, on each chain', async () => {
+    // One leg per step, in the order they are signed, all on the person's own chain. Solana opens the
+    // vault with the cash, then trades one asset per transaction; Robinhood Chain approves, then opens
+    // and buys in one. The step that moves the cash carries the whole deposit.
+    const steps = {
+      solana: [
+        ['solana', 0, 'create_vault', 0, '1000000000'],
+        ['solana', 1, 'swap', 1, undefined],
+        ['solana', 2, 'swap', 1, undefined],
+        ['solana', 3, 'swap', 1, undefined],
+      ],
+      robinhood: [
+        ['robinhood', 0, 'approve', 0, '1000000000'],
+        ['robinhood', 1, 'create_vault', 3, '1000000000'],
+      ],
+    };
+    for (const chain of CHAINS) {
+      const a = await someone(chain);
+      await fund(a);
 
-/**
- * A second buy of the plan on one chain, taken up to its deposit: the vault is open and every leg
- * before the deposit has settled. The deposit is the leg that moves the person's cash.
- */
-async function toDeposit(who: Person, chain: ChainId, on?: FastifyInstance, amountUsd = 10) {
-  const placed = await order(who, { amountUsd, chains: [chain] }, on);
-  const deposit = placed.legs.find((l) => l.kind === 'deposit');
-  if (!deposit) throw new Error('the vault is not open yet');
-  await settleAll(who, placed, on, (leg) => leg.id === deposit.id);
-  return { placed, deposit };
-}
-
-/** Opens the person's vault for the plan on one chain with a first, settled buy. */
-async function openVault(who: Person, chain: ChainId, on?: FastifyInstance, reg = registry) {
-  await fund(who, [chain], on);
-  await settleAll(who, await order(who, { amountUsd: 100, chains: [chain] }, on), on);
-  const wallet = chain === 'solana' ? who.solana : who.evm;
-  return async () => {
-    const held = await reg.get(chain).adapter.getWalletHoldings(wallet);
-    return BigInt(held.find((h) => h.asset === `${chain}:usdc`)?.raw ?? '0');
-  };
-}
-
-const attemptsOf = (o: OrderDetail, legId: string) =>
-  o.attempts.filter((x) => x.legId === legId).map((x) => [x.n, x.status]);
-
-describe('the walking skeleton: a buy across two chains on the mock', () => {
-  it('goes from an intent to settled legs, and reads back in the portfolio', async () => {
-    const a = await someone();
-    await fund(a);
-
-    const placed = await order(a);
-    expect(Order.parse(placed)).toMatchObject({ type: 'buy', status: 'open', owner: a.owner });
-    expect(placed.summary).toBe('Buy $1,000.00 of your plan on Solana and Robinhood Chain');
-    // One leg per step per chain, in the order they are signed. Solana opens the vault with the cash,
-    // then trades one asset per transaction; Robinhood Chain approves, then opens and buys in one.
-    expect(placed.legs.map((l) => [l.chain, l.seq, l.kind, l.trades.length])).toEqual([
-      ['solana', 0, 'create_vault', 0],
-      ['solana', 1, 'swap', 1],
-      ['solana', 2, 'swap', 1],
-      ['solana', 3, 'swap', 1],
-      ['robinhood', 0, 'approve', 0],
-      ['robinhood', 1, 'create_vault', 3],
-    ]);
-    expect(placed.legs.every((l) => l.status === 'planned' && l.provenance === 'mock')).toBe(true);
-    expect(placed.legs.every((l) => l.signer === 'owner' && l.attempt === 0)).toBe(true);
-    // The deposit is the dollar token only, and the trades buy the plan's assets in its proportions.
-    const cashIn = (chain: ChainId) =>
-      placed.legs.filter((l) => l.chain === chain).flatMap((l) => l.trades);
-    expect(cashIn('solana').map((t) => [t.sell, t.buy, t.amountInRaw])).toEqual([
-      ['solana:usdc', 'solana:spy', '300000000'],
-      ['solana:usdc', 'solana:nvda', '180000000'],
-      ['solana:usdc', 'solana:gold', '120000000'],
-    ]);
-    expect(cashIn('robinhood').map((t) => t.amountInRaw)).toEqual([
-      '200000000',
-      '120000000',
-      '80000000',
-    ]);
-    expect(placed.attempts).toEqual([]);
-    const open = placed.expiresAt - Date.parse(placed.createdAt) / 1000;
-    expect(open > 15 * 60 - 2 && open <= 15 * 60).toBe(true);
-
-    // Each leg: build it, the wallet sends it, report it.
-    let latest = placed;
-    for (const leg of placed.legs) {
-      const { tx, attempt } = await build(a, placed, leg.id);
-      expect(BasketTx.parse(tx)).toMatchObject({ legId: leg.id, attemptId: attempt.id });
-      // The signer of every built transaction is the signed-in wallet of that chain.
-      expect(tx.signer).toBe(leg.chain === 'solana' ? a.solana : a.evm);
-      expect([tx.provenance, tx.preview.provenance, tx.legKind]).toEqual([
-        'mock',
-        'mock',
-        leg.kind,
+      const placed = await order(a);
+      expect(Order.parse(placed)).toMatchObject({ type: 'buy', status: 'open', owner: a.owner });
+      expect(placed.summary).toBe(`Buy $1,000.00 of your plan on ${NAME[chain]}`);
+      expect(placed.legs.map((l) => [l.chain, l.seq, l.kind, l.trades.length, l.cashRaw])).toEqual(
+        steps[chain],
+      );
+      expect(placed.legs.every((l) => l.status === 'planned' && l.provenance === 'mock')).toBe(
+        true,
+      );
+      expect(placed.legs.every((l) => l.signer === 'owner' && l.attempt === 0)).toBe(true);
+      // The deposit is the dollar token only, and the trades buy the plan's assets in its proportions.
+      const trades = placed.legs.flatMap((l) => l.trades);
+      expect(trades.map((t) => [t.sell, t.buy, t.amountInRaw])).toEqual([
+        [`${chain}:usdc`, `${chain}:spy`, '500000000'],
+        [`${chain}:usdc`, `${chain}:nvda`, '300000000'],
+        [`${chain}:usdc`, `${chain}:gold`, '200000000'],
       ]);
-      expect(attempt).toMatchObject({ legId: leg.id, n: 1, status: 'built', txId: null });
-      expect(attempt.messageHash).toBe(tx.messageHash);
-      // On an EVM chain the attempt is the pair (message, nonce): the nonce the build stated is stored.
-      if (leg.chain === 'solana') expect([tx.evm, attempt.nonce]).toEqual([undefined, null]);
-      else {
-        expect(attempt.nonce).toBe(tx.evm?.nonce);
-        expect(tx.evm?.gas).toBeGreaterThan(0);
+      expect(placed.attempts).toEqual([]);
+      const open = placed.expiresAt - Date.parse(placed.createdAt) / 1000;
+      expect(open > 15 * 60 - 2 && open <= 15 * 60).toBe(true);
+
+      // Each leg: build it, the wallet sends it, report it.
+      let latest = placed;
+      for (const leg of placed.legs) {
+        const { tx, attempt } = await build(a, placed, leg.id);
+        expect(BasketTx.parse(tx)).toMatchObject({ legId: leg.id, attemptId: attempt.id });
+        // The signer of every built transaction is the signed-in wallet of that chain.
+        expect(tx.signer).toBe(walletOf(a));
+        expect([tx.provenance, tx.preview.provenance, tx.legKind]).toEqual([
+          'mock',
+          'mock',
+          leg.kind,
+        ]);
+        expect(attempt).toMatchObject({ legId: leg.id, n: 1, status: 'built', txId: null });
+        expect(attempt.messageHash).toBe(tx.messageHash);
+        // On an EVM chain the attempt is the pair (message, nonce): the nonce the build stated is stored.
+        if (chain === 'solana') expect([tx.evm, attempt.nonce]).toEqual([undefined, null]);
+        else {
+          expect(attempt.nonce).toBe(tx.evm?.nonce);
+          expect(tx.evm?.gas).toBeGreaterThan(0);
+        }
+
+        // One leg is handed over as signed bytes for the server to relay; the rest are sent by the
+        // wallet and reported by id.
+        const relayed = chain === 'solana' && leg.seq === 1;
+        const sent = relayed ? { signedTx: tx.payload } : { txId: await land(a, placed, leg.id) };
+        latest = await report(a, placed, leg.id, sent);
+        const settled = legOf(latest, leg.id);
+        expect(settled).toMatchObject({ status: 'confirmed', attempt: 1, error: null });
+        expect(settled.txId).toBeTruthy();
+        expect(settled.explorerUrl).toBe(`mock://${chain}/tx/${settled.txId}`);
       }
 
-      // One leg is handed over as signed bytes for the server to relay; the rest are sent by the
-      // wallet and reported by id.
-      const relayed = leg.chain === 'solana' && leg.seq === 1;
-      const sent = relayed ? { signedTx: tx.payload } : { txId: await land(a, placed, leg.id) };
-      latest = await report(a, placed, leg.id, sent);
-      const settled = legOf(latest, leg.id);
-      expect(settled).toMatchObject({ status: 'confirmed', attempt: 1, error: null });
-      expect(settled.txId).toBeTruthy();
-      expect(settled.explorerUrl).toBe(`mock://${leg.chain}/tx/${settled.txId}`);
-    }
+      expect(latest.status).toBe('done');
+      expect(latest.attempts).toHaveLength(placed.legs.length);
+      expect(latest.attempts.every((x) => x.status === 'confirmed' && x.n === 1 && x.txId)).toBe(
+        true,
+      );
+      // Signed once, the order stays open for a day.
+      expect(latest.expiresAt - placed.expiresAt).toBeGreaterThan(23 * 60 * 60);
+      expect(await read(a, placed)).toEqual(latest);
 
-    expect(latest.status).toBe('done');
-    expect(latest.attempts).toHaveLength(placed.legs.length);
-    expect(latest.attempts.every((x) => x.status === 'confirmed' && x.n === 1 && x.txId)).toBe(
-      true,
-    );
-    // Signed once, the order stays open for a day.
-    expect(latest.expiresAt - placed.expiresAt).toBeGreaterThan(23 * 60 * 60);
-    expect(await read(a, placed)).toEqual(latest);
-
-    // The portfolio, read back from the chain: what was bought, at its targets, all labelled MOCK.
-    const res = await get(a, '/v1/portfolio');
-    expect(res.statusCode, res.body).toBe(200);
-    const portfolio = PortfolioResponse.parse(res.json());
-    expect(portfolio.chains.map((c) => [c.chain, c.mode, c.provenance, c.vaults.length])).toEqual([
-      ['solana', 'mock', 'mock', 1],
-      ['robinhood', 'mock', 'mock', 1],
-    ]);
-    const [solana, robinhood] = portfolio.chains.map((c) => c.vaults[0]);
-    // Dollars as the shared view writes them: cut to six places, no trailing zeros.
-    expect(solana).toMatchObject({ owner: a.solana, valueUsd: '599.4', provenance: 'mock' });
-    expect(robinhood).toMatchObject({ owner: a.evm, valueUsd: '399.6', provenance: 'mock' });
-    for (const vault of [solana, robinhood]) {
+      // The portfolio, read back from the person's chain and no other: what was bought, at its
+      // targets, all labelled MOCK.
+      const res = await get(a, '/v1/portfolio');
+      expect(res.statusCode, res.body).toBe(200);
+      const portfolio = PortfolioResponse.parse(res.json());
+      expect(portfolio.chains.map((c) => [c.chain, c.mode, c.provenance, c.vaults.length])).toEqual(
+        [[chain, 'mock', 'mock', 1]],
+      );
+      const [vault] = portfolio.chains[0]?.vaults ?? [];
+      // Dollars as the shared view writes them: cut to six places, no trailing zeros.
+      expect(vault).toMatchObject({ owner: walletOf(a), valueUsd: '999', provenance: 'mock' });
+      // Targets that add up to the whole: nothing stays as cash.
       expect(vault?.cash.raw).toBe('0');
       expect(vault?.positions.map((p) => [p.targetBps, p.weightBps, p.driftBps])).toEqual([
         [5000, 5000, 0],
         [3000, 3000, 0],
         [2000, 2000, 0],
       ]);
-    }
-    expect(solana?.positions.map((p) => p.valueUsd)).toEqual(['299.7', '179.82', '119.88']);
-    const prices = portfolio.chains.flatMap((c) => c.prices);
-    expect(prices).toHaveLength(8);
-    expect(prices.every((p) => p.provenance === 'mock' && p.source && p.method)).toBe(true);
-    expect(res.body).not.toMatch(/"provenance":"(live|sandbox)"/);
+      expect(vault?.positions.map((p) => p.valueUsd)).toEqual(['499.5', '299.7', '199.8']);
+      const prices = portfolio.chains.flatMap((c) => c.prices);
+      expect(prices).toHaveLength(4);
+      expect(prices.every((p) => p.provenance === 'mock' && p.source && p.method)).toBe(true);
+      expect(res.body).not.toMatch(/"provenance":"(live|sandbox)"/);
 
-    // What was stored: an attempt per build with its label, and the vault cache the read refreshed.
-    const stored = await data.db
-      .select()
-      .from(legAttempts)
-      .where(
-        inArray(
-          legAttempts.legId,
-          placed.legs.map((l) => l.id),
-        ),
-      );
-    expect(stored).toHaveLength(6);
-    expect(stored.every((r) => r.provenance === 'mock' && r.source === 'chain-mock')).toBe(true);
-    const cached = await data.db
-      .select()
-      .from(vaults)
-      .where(or(eq(vaults.owner, a.solana), eq(vaults.owner, a.evm)));
-    expect(cached.map((v) => [v.chainId, v.valueUsd, v.provenance]).sort()).toEqual([
-      ['robinhood', '399.60', 'mock'],
-      ['solana', '599.40', 'mock'],
-    ]);
+      // What was stored: an attempt per build with its label, and the vault cache the read refreshed.
+      const stored = await data.db
+        .select()
+        .from(legAttempts)
+        .where(
+          inArray(
+            legAttempts.legId,
+            placed.legs.map((l) => l.id),
+          ),
+        );
+      expect(stored).toHaveLength(placed.legs.length);
+      expect(stored.every((r) => r.provenance === 'mock' && r.source === 'chain-mock')).toBe(true);
+      const cached = await data.db
+        .select()
+        .from(vaults)
+        .where(or(eq(vaults.owner, a.solana), eq(vaults.owner, a.evm)));
+      expect(cached.map((v) => [v.chainId, v.valueUsd, v.provenance])).toEqual([
+        [chain, '999.00', 'mock'],
+      ]);
+    }
   });
 
   it('buying the same plan again adds to the vault that is already there', async () => {
     const a = await someone();
-    await fund(a, ['solana']);
-    await settleAll(a, await order(a, { amountUsd: 600, chains: ['solana'] }));
+    await fund(a);
+    await settleAll(a, await order(a, { amountUsd: 600 }));
 
-    const again = await order(a, { amountUsd: 100, chains: ['solana'] });
+    const again = await order(a, { amountUsd: 100 });
     expect(again.legs.map((l) => l.kind)).toEqual(['deposit', 'swap', 'swap', 'swap']);
     expect((await settleAll(a, again)).status).toBe('done');
     const portfolio = PortfolioResponse.parse((await get(a, '/v1/portfolio')).json());
-    expect(portfolio.chains.map((c) => c.vaults.map((v) => v.valueUsd))).toEqual([['699.3'], []]);
+    expect(portfolio.chains.map((c) => c.vaults.map((v) => v.valueUsd))).toEqual([['699.3']]);
   });
 
   it('a transaction that reverts fails the leg with the chain’s reason, and a new build is a new attempt', async () => {
     const a = await someone();
-    await fund(a, ['solana']);
-    const placed = await order(a, { amountUsd: 600, chains: ['solana'] });
-    const leg = first(placed, 'solana');
+    await fund(a);
+    const placed = await order(a, { amountUsd: 600 });
+    const leg = first(placed);
     await build(a, placed, leg.id);
-    registry.get('solana').mock?.revertNext({ code: 'ReceivedTooLittle', message: 'price moved' });
+    mockOf('solana').revertNext({ code: 'ReceivedTooLittle', message: 'price moved' });
     const failed = await report(a, placed, leg.id, { txId: await land(a, placed, leg.id) });
     expect(failed.status).toBe('failed');
     expect(legOf(failed, leg.id)).toMatchObject({
@@ -345,6 +260,93 @@ describe('the walking skeleton: a buy across two chains on the mock', () => {
   });
 });
 
+describe('one chain per order (gate ONE-CHAIN)', () => {
+  it('puts every leg of a buy on the chain of the person’s wallet, and reads no chain from the request', async () => {
+    for (const chain of CHAINS) {
+      const a = await someone(chain);
+      // A request cannot name a chain: `chains` is no field of a buy, and one sent is not read.
+      const res = await post(a, '/v1/orders', {
+        type: 'buy',
+        owner: a.owner,
+        amountUsd: 1000,
+        proposalId: plans[chain],
+        chains: CHAINS,
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      const placed = OrderDetail.parse(res.json());
+      expect([...new Set(placed.legs.map((l) => l.chain))]).toEqual([chain]);
+      // The whole amount is on that chain: nothing is split off to another.
+      expect(placed.legs.find((l) => l.cashRaw)?.cashRaw).toBe('1000000000');
+    }
+  });
+
+  it('refuses a plan made for another chain, and one spread over several', async () => {
+    const a = await someone('solana');
+    const buy = (proposalId: string) =>
+      post(a, '/v1/orders', { type: 'buy', owner: a.owner, amountUsd: 1000, proposalId });
+
+    const elsewhere = await buy(plans.robinhood);
+    expect(elsewhere.statusCode).toBe(422);
+    expect(elsewhere.json().error).toBe(
+      'this plan was made for Robinhood Chain, and your plans live on Solana: make the plan again',
+    );
+
+    // A plan as API-1 took them: a recipe on each chain, the amount split 600 to 400.
+    const split = planFixture('solana');
+    const [recipe] = split.recipes;
+    if (!recipe) throw new Error('no recipe');
+    split.recipes = [
+      { ...recipe, amountUsd: 600 },
+      {
+        chain: 'robinhood',
+        amountUsd: 400,
+        components: planFixture('robinhood').recipes[0]?.components ?? [],
+      },
+    ];
+    const spread = await buy(await data.storePlan(split));
+    expect(spread.statusCode).toBe(422);
+    expect(spread.json().error).toMatch(/spread over 2 chains, and a plan lives on one/);
+
+    const none = planFixture('solana');
+    none.recipes = [];
+    const empty = await buy(await data.storePlan(none));
+    expect([empty.statusCode, empty.json().error]).toEqual([422, 'this plan names no chain']);
+
+    // Nothing was stored for any of them.
+    const made = await data.db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(eq(orders.ownerSolana, a.solana));
+    expect(made).toEqual([]);
+  });
+
+  it('an order on one chain with a failed leg is failed, not partial, though an earlier leg settled', async () => {
+    const a = await someone('solana');
+    await fund(a);
+    const placed = await order(a, { amountUsd: 600 });
+    const [create, swap] = [first(placed, 0), first(placed, 1)];
+    await build(a, placed, create.id);
+    await report(a, placed, create.id, { txId: await land(a, placed, create.id) });
+    await build(a, placed, swap.id);
+    mockOf('solana').revertNext({ code: 'SpentTooMuch', message: 'reverted' });
+    const after = await report(a, placed, swap.id, { txId: await land(a, placed, swap.id) });
+    expect(after.legs.map((l) => l.status)).toEqual(['confirmed', 'failed', 'planned', 'planned']);
+    expect(after.status).toBe('failed');
+    const [row] = await data.db.select().from(orders).where(eq(orders.id, placed.id));
+    expect(row?.status).toBe('failed');
+  });
+
+  it('reads the portfolio of the wallet’s chain only', async () => {
+    const [sol, rh] = [await someone('solana'), await someone('robinhood')];
+    for (const who of [sol, rh]) {
+      const portfolio = PortfolioResponse.parse((await get(who, '/v1/portfolio')).json());
+      expect(portfolio.chains.map((c) => [c.chain, c.name])).toEqual([
+        [chainOf(who), NAME[chainOf(who)]],
+      ]);
+    }
+  });
+});
+
 describe('sign-in', () => {
   /** Every /v1 route that needs a person, with a body that would pass if the caller were signed in. */
   const routes = (o: OrderDetail, who: Person): Sent[] => [
@@ -354,12 +356,15 @@ describe('sign-in', () => {
       payload: { type: 'buy', owner: who.owner, amountUsd: 10 },
     },
     { method: 'GET', url: `/v1/orders/${o.id}` },
-    { method: 'POST', url: legUrl(o, first(o, 'solana').id, 'build') },
-    { method: 'POST', url: legUrl(o, first(o, 'solana').id, 'report'), payload: { txId: 'x' } },
-    { method: 'POST', url: legUrl(o, first(o, 'solana').id, 'cancel') },
+    { method: 'POST', url: legUrl(o, first(o).id, 'build') },
+    { method: 'POST', url: legUrl(o, first(o).id, 'report'), payload: { txId: 'x' } },
+    { method: 'POST', url: legUrl(o, first(o).id, 'cancel') },
     { method: 'GET', url: '/v1/portfolio' },
+    { method: 'GET', url: '/v1/me' },
+    { method: 'PUT', url: '/v1/me/chain', payload: { chain: 'solana' } },
+    { method: 'GET', url: '/v1/funding' },
     { method: 'POST', url: '/v1/mock/fund', payload: { chain: 'solana', cashUsd: 1 } },
-    { method: 'POST', url: `/v1/mock/orders/${o.id}/legs/${first(o, 'solana').id}/land` },
+    { method: 'POST', url: `/v1/mock/orders/${o.id}/legs/${first(o).id}/land` },
   ];
 
   it('refuses every route with no token, a bad token, or a token from another issuer', async () => {
@@ -453,15 +458,15 @@ describe('sign-in', () => {
   });
 
   it('takes wallets from the identity token only, in their one form', async () => {
-    const a = await someone();
-    await fund(a, ['robinhood']);
+    const a = await someone('robinhood');
+    await fund(a);
     // The token lists the EVM address in upper case; the order and the built transaction carry it
     // lower-case, and a body that spells it the token's way is not an address at all.
-    const shouted = { ...a.owner, evm: `0x${a.evm.slice(2).toUpperCase()}` };
+    const shouted = { evm: `0x${a.evm.slice(2).toUpperCase()}` };
     const res = await post(a, '/v1/orders', { type: 'buy', owner: shouted, amountUsd: 10 });
     expect(res.statusCode).toBe(400);
-    const placed = await order(a, { chains: ['robinhood'] });
-    const { tx } = await build(a, placed, first(placed, 'robinhood').id);
+    const placed = await order(a);
+    const { tx } = await build(a, placed, first(placed).id);
     expect(tx.signer).toBe(a.evm);
   });
 });
@@ -471,33 +476,34 @@ describe('what a leg is expected to pay out', () => {
     ((BigInt(raw) * BigInt(10_000 - bps)) / 10_000n).toString();
 
   it('has one figure per trade, in trade order, and none for a step that trades nothing', async () => {
-    const a = await someone();
-    await fund(a);
-    const placed = await order(a);
-    for (const leg of placed.legs) {
-      expect(leg.expected, `${leg.chain} ${leg.kind}`).toHaveLength(leg.trades.length);
-      for (const [i, figure] of leg.expected.entries()) {
-        expect(figure.inRaw).toBe(leg.trades[i]?.amountInRaw);
-        expect(BigInt(figure.outRaw)).toBeGreaterThan(0n);
-        // The server's own slippage where the request names none: 100 bps.
-        expect(figure.minOutRaw).toBe(lessBps(figure.outRaw, 100));
+    for (const chain of CHAINS) {
+      const a = await someone(chain);
+      await fund(a);
+      const placed = await order(a);
+      for (const leg of placed.legs) {
+        expect(leg.expected, `${leg.chain} ${leg.kind}`).toHaveLength(leg.trades.length);
+        for (const [i, figure] of leg.expected.entries()) {
+          expect(figure.inRaw).toBe(leg.trades[i]?.amountInRaw);
+          expect(BigInt(figure.outRaw)).toBeGreaterThan(0n);
+          // The server's own slippage where the request names none: 100 bps.
+          expect(figure.minOutRaw).toBe(lessBps(figure.outRaw, 100));
+        }
       }
+      if (chain === 'robinhood') {
+        // On the EVM chain the first trades ride in the create: one leg, three trades, three figures.
+        expect(placed.legs.find((l) => l.kind === 'create_vault')?.expected).toHaveLength(3);
+        expect(first(placed, 0)).toMatchObject({ kind: 'approve', expected: [] });
+      }
+      // Solana trades one a transaction: three swap legs with one figure each.
+      else expect(placed.legs.map((l) => l.expected.length)).toEqual([0, 1, 1, 1]);
     }
-    // On the EVM chain the first trades ride in the create: one leg, three trades, three figures.
-    const create = placed.legs.find((l) => l.chain === 'robinhood' && l.kind === 'create_vault');
-    expect(create?.expected).toHaveLength(3);
-    expect(first(placed, 'robinhood', 0)).toMatchObject({ kind: 'approve', expected: [] });
-    // Solana trades one a transaction: three swap legs with one figure each.
-    expect(placed.legs.filter((l) => l.chain === 'solana').map((l) => l.expected.length)).toEqual([
-      0, 1, 1, 1,
-    ]);
   });
 
   it('shows the minimum that is in the bytes: the built transaction states it per trade', async () => {
-    const a = await someone();
-    await fund(a, ['robinhood']);
-    const placed = await order(a, { chains: ['robinhood'] });
-    const [approve, create] = [first(placed, 'robinhood', 0), first(placed, 'robinhood', 1)];
+    const a = await someone('robinhood');
+    await fund(a);
+    const placed = await order(a);
+    const [approve, create] = [first(placed, 0), first(placed, 1)];
     const approved = await build(a, placed, approve.id);
     expect(approved.tx.preview.minimums).toEqual([]);
     await report(a, placed, approve.id, { txId: await land(a, placed, approve.id) });
@@ -517,23 +523,23 @@ describe('what a leg is expected to pay out', () => {
 
   it('builds with the slippage the buy asked for, up to the cap and no further', async () => {
     const a = await someone();
-    await fund(a, ['solana']);
-    const tight = await order(a, { amountUsd: 600, chains: ['solana'], maxSlippageBps: 25 });
+    await fund(a);
+    const tight = await order(a, { amountUsd: 600, maxSlippageBps: 25 });
     const swaps = tight.legs.filter((l) => l.kind === 'swap');
     expect(swaps).toHaveLength(3);
     for (const leg of swaps)
       expect(leg.expected[0]?.minOutRaw).toBe(lessBps(leg.expected[0]?.outRaw ?? '0', 25));
     // The same figure is in the bytes of the build.
-    const create = first(tight, 'solana', 0);
+    const create = first(tight, 0);
     await build(a, tight, create.id);
     await report(a, tight, create.id, { txId: await land(a, tight, create.id) });
-    const swap = first(tight, 'solana', 1);
+    const swap = first(tight, 1);
     const { tx } = await build(a, tight, swap.id);
     const built = legOf(await read(a, tight), swap.id);
     expect(tx.preview.minimums?.[0]?.minOutRaw).toBe(lessBps(built.expected[0]?.outRaw ?? '0', 25));
     expect(built.expected[0]?.minOutRaw).toBe(tx.preview.minimums?.[0]?.minOutRaw);
 
-    const buy = { type: 'buy', owner: a.owner, amountUsd: 600, proposalId: planId };
+    const buy = { type: 'buy', owner: a.owner, amountUsd: 600, proposalId: plans.solana };
     expect((await post(a, '/v1/orders', { ...buy, maxSlippageBps: 300 })).statusCode).toBe(200);
     expect((await post(a, '/v1/orders', { ...buy, maxSlippageBps: 301 })).statusCode).toBe(400);
     expect((await post(a, '/v1/orders', { ...buy, maxSlippageBps: -1 })).statusCode).toBe(400);
@@ -543,7 +549,7 @@ describe('what a leg is expected to pay out', () => {
     const a = await someone();
     const placed = await order(a);
     // No cash yet: the chain's own code and whether to try again travel in details.
-    const refused = await post(a, legUrl(placed, first(placed, 'solana').id, 'build'));
+    const refused = await post(a, legUrl(placed, first(placed).id, 'build'));
     expect(refused.statusCode).toBe(409);
     expect(OrderError.parse(refused.json())).toEqual(refused.json());
     expect(refused.json()).toMatchObject({
@@ -560,7 +566,7 @@ describe('ownership: an order belongs to the wallets that made it', () => {
     const [a, b] = [await someone(), await someone()];
     await fund(a);
     const placed = await order(a);
-    const leg = first(placed, 'solana');
+    const leg = first(placed);
     const { tx } = await build(a, placed, leg.id);
     const before = await read(a, placed);
 
@@ -586,7 +592,7 @@ describe('ownership: an order belongs to the wallets that made it', () => {
   });
 
   it('hands out no transaction whose signer is not the order’s own wallet', async () => {
-    const [a, b] = [await someone(), await someone()];
+    const [a, b] = [await someone('robinhood'), await someone('robinhood')];
     // An adapter that builds for somebody else, whatever it is asked.
     const wrong = await testApp({
       issuer: issuer.issuer,
@@ -601,8 +607,8 @@ describe('ownership: an order belongs to the wallets that made it', () => {
         },
       }),
     });
-    const placed = await order(a, { amountUsd: 400, chains: ['robinhood'] }, wrong.app);
-    const leg = first(placed, 'robinhood');
+    const placed = await order(a, { amountUsd: 400 }, wrong.app);
+    const leg = first(placed);
     const res = await post(a, legUrl(placed, leg.id, 'build'), undefined, wrong.app);
     expect(res.statusCode).toBe(500);
     expect(res.body).not.toContain(b.evm);
@@ -613,18 +619,28 @@ describe('ownership: an order belongs to the wallets that made it', () => {
   });
 
   it('refuses an owner in the body that the token does not carry', async () => {
-    const [a, b] = [await someone(), await someone()];
+    // Both hold a wallet of each family, so the owner claimed is the only thing wrong.
+    const [a, b] = [await someone('passkey'), await someone('passkey')];
     const claims = [a.owner, { solana: a.solana }, { solana: b.solana, evm: a.evm }];
     for (const owner of claims) {
       const res = await post(b, '/v1/orders', {
         type: 'buy',
         owner,
         amountUsd: 1000,
-        proposalId: planId,
+        proposalId: plans.solana,
       });
       expect(res.statusCode).toBe(403);
       expect(res.json().error).toMatch(/not a wallet of the signed-in person/);
     }
+    // An address of the other family that the token does not list is refused the same way.
+    const sol = await someone('solana');
+    const half = await post(sol, '/v1/orders', {
+      type: 'buy',
+      owner: { solana: sol.solana, evm: sol.evm },
+      amountUsd: 1000,
+      proposalId: plans.solana,
+    });
+    expect(half.statusCode).toBe(403);
     const made = await data.db
       .select({ id: orders.id })
       .from(orders)
@@ -634,46 +650,66 @@ describe('ownership: an order belongs to the wallets that made it', () => {
 });
 
 describe('a leg settles only on the transaction that was built for it', () => {
-  it('an unrelated transaction, successful or not, does not confirm a leg', async () => {
-    const a = await someone();
-    await fund(a);
-    const placed = await order(a);
-    const [create, swap] = [first(placed, 'solana', 0), first(placed, 'solana', 1)];
-    await build(a, placed, create.id);
-    const createTx = await land(a, placed, create.id);
-    await report(a, placed, create.id, { txId: createTx });
-    const built = await build(a, placed, swap.id);
-    const before = await read(a, placed);
+  it('an unrelated transaction, successful or not, does not confirm a leg, on both chain families', async () => {
+    for (const chain of CHAINS) {
+      const [a, b] = [await someone(chain), await someone(chain)];
+      await fund(a);
+      await fund(b);
+      const placed = await order(a);
+      // The first step lands and is reported; the second is built and waits.
+      const [one, two] = [first(placed, 0), first(placed, 1)];
+      await build(a, placed, one.id);
+      const oneTx = await land(a, placed, one.id);
+      await report(a, placed, one.id, { txId: oneTx });
+      const built = await build(a, placed, two.id);
+      const before = await read(a, placed);
 
-    // A confirmed transaction of the same wallet, one of another chain, and one that never existed.
-    await build(a, placed, first(placed, 'robinhood').id);
-    const approveTx = await land(a, placed, first(placed, 'robinhood').id);
-    // The chain has the first, and it is another call: refused for good. It has never seen the other
-    // two (the second is another chain's): that is not a verdict on them, so the answer says to ask
-    // again, and is a different one.
-    const wrong = await post(a, legUrl(placed, swap.id, 'report'), { txId: createTx });
-    expect(wrong.statusCode).toBe(409);
-    expect(wrong.json()).toEqual({ error: 'that transaction is not the one built for this step' });
-    for (const txId of [approveTx, 'no-such-transaction']) {
-      const res = await post(a, legUrl(placed, swap.id, 'report'), { txId });
-      expect([txId, res.statusCode]).toEqual([txId, 409]);
-      expect(res.json()).toEqual({
+      // Another person's transaction for the same step of the same plan: the same call in every
+      // argument but the wallet that signs it.
+      const theirs = await order(b);
+      await build(b, theirs, first(theirs, 0).id);
+      await report(b, theirs, first(theirs, 0).id, {
+        txId: await land(b, theirs, first(theirs, 0).id),
+      });
+      const theirBuilt = await build(b, theirs, first(theirs, 1).id);
+      const theirTx = await land(b, theirs, first(theirs, 1).id);
+
+      // The chain has both of these and they are another call or another signer's: refused for good.
+      for (const txId of [oneTx, theirTx]) {
+        const wrong = await post(a, legUrl(placed, two.id, 'report'), { txId });
+        expect([chain, wrong.statusCode]).toEqual([chain, 409]);
+        expect(wrong.json()).toEqual({
+          error: 'that transaction is not the one built for this step',
+        });
+      }
+      // It has never seen this one: that is not a verdict on it, so the answer says to ask again,
+      // and is a different one.
+      const unseen = await post(a, legUrl(placed, two.id, 'report'), {
+        txId: 'no-such-transaction',
+      });
+      expect(unseen.statusCode).toBe(409);
+      expect(unseen.json()).toEqual({
         error: 'the chain has not seen that transaction yet',
         fix: 'Report it again in a moment.',
         details: { retryable: true },
       });
-    }
-    // Signed bytes that are not this leg's are not relayed.
-    const other = await post(a, legUrl(placed, swap.id, 'report'), { signedTx: 'bm90IG91cnM=' });
-    expect(other.statusCode).toBe(409);
-    expect(other.json().details).toEqual({ chainCode: 'NotBuiltHere', retryable: false });
-    // Both at once is neither.
-    const both = { txId: createTx, signedTx: built.tx.payload };
-    expect((await post(a, legUrl(placed, swap.id, 'report'), both)).statusCode).toBe(400);
+      // Signed bytes that are not this leg's are not relayed: bytes of nothing, and the other
+      // person's signed transaction for their own step.
+      const theirBytes = mockOf(chain).sign(theirBuilt.tx);
+      for (const signedTx of ['bm90IG91cnM=', '0x6e6f74206f757273', theirBytes]) {
+        const other = await post(a, legUrl(placed, two.id, 'report'), { signedTx });
+        expect([chain, signedTx, other.statusCode]).toEqual([chain, signedTx, 409]);
+        expect(other.json().details).toEqual({ chainCode: 'NotBuiltHere', retryable: false });
+      }
+      // Both at once is neither.
+      const both = { txId: oneTx, signedTx: built.tx.payload };
+      expect((await post(a, legUrl(placed, two.id, 'report'), both)).statusCode).toBe(400);
 
-    const after = await read(a, placed);
-    expect(legOf(after, swap.id)).toEqual(legOf(before, swap.id));
-    expect(legOf(after, swap.id)).toMatchObject({ status: 'built', txId: null });
+      const after = await read(a, placed);
+      expect(legOf(after, two.id)).toEqual(legOf(before, two.id));
+      expect(legOf(after, two.id)).toMatchObject({ status: 'built', txId: null });
+      expect(attemptsOf(after, two.id)).toEqual([[1, 'built']]);
+    }
   });
 
   it('a transaction reported before the chain has seen it settles when it is reported again', async () => {
@@ -696,9 +732,9 @@ describe('a leg settles only on the transaction that was built for it', () => {
       }),
     });
     const on = behind.app;
-    await fund(a, ['solana'], on);
-    const placed = await order(a, { amountUsd: 600, chains: ['solana'] }, on);
-    const leg = first(placed, 'solana');
+    await fund(a, on);
+    const placed = await order(a, { amountUsd: 600 }, on);
+    const leg = first(placed);
     await build(a, placed, leg.id, on);
     const txId = await land(a, placed, leg.id, on);
 
@@ -709,7 +745,7 @@ describe('a leg settles only on the transaction that was built for it', () => {
       details: { retryable: true },
     });
     // Nothing was written: the step is as it was built.
-    const waiting = OrderDetail.parse((await get(a, `/v1/orders/${placed.id}`, on)).json());
+    const waiting = await read(a, placed, on);
     expect(legOf(waiting, leg.id)).toMatchObject({ status: 'built', txId: null, error: null });
     // The same report a moment later settles it.
     const done = await report(a, placed, leg.id, { txId }, on);
@@ -720,9 +756,9 @@ describe('a leg settles only on the transaction that was built for it', () => {
 
   it('a leg reported twice settles once', async () => {
     const a = await someone();
-    await fund(a, ['solana']);
-    const placed = await order(a, { amountUsd: 600, chains: ['solana'] });
-    const leg = first(placed, 'solana');
+    await fund(a);
+    const placed = await order(a, { amountUsd: 600 });
+    const leg = first(placed);
     const { tx } = await build(a, placed, leg.id);
     const txId = await land(a, placed, leg.id);
     const once = await report(a, placed, leg.id, { txId });
@@ -759,13 +795,13 @@ describe('a leg settles only on the transaction that was built for it', () => {
       }),
     });
     const on = counted.app;
-    await fund(a, ['solana'], on);
-    const placed = await order(a, { amountUsd: 600, chains: ['solana'] }, on);
-    const leg = first(placed, 'solana');
+    await fund(a, on);
+    const placed = await order(a, { amountUsd: 600 }, on);
+    const leg = first(placed);
 
     // The first attempt reverts. Handing the same bytes over again sends nothing.
     const one = await build(a, placed, leg.id, on);
-    counted.registry.get('solana').mock?.revertNext({ code: 'SpentTooMuch', message: 'reverted' });
+    mockOf('solana', counted.registry).revertNext({ code: 'SpentTooMuch', message: 'reverted' });
     const failed = await report(a, placed, leg.id, { signedTx: one.tx.payload }, on);
     expect(legOf(failed, leg.id)).toMatchObject({ status: 'failed', error: { retryable: false } });
     expect(await report(a, placed, leg.id, { signedTx: one.tx.payload }, on)).toEqual(failed);
@@ -773,7 +809,7 @@ describe('a leg settles only on the transaction that was built for it', () => {
 
     // A new build is new bytes; those are relayed once too, and the old ones are never sent again.
     const two = await build(a, placed, leg.id, on);
-    const built = OrderDetail.parse((await get(a, `/v1/orders/${placed.id}`, on)).json());
+    const built = await read(a, placed, on);
     expect(await report(a, placed, leg.id, { signedTx: one.tx.payload }, on)).toEqual(built);
     expect(relays).toBe(1);
     const done = await report(a, placed, leg.id, { signedTx: two.tx.payload }, on);
@@ -785,10 +821,10 @@ describe('a leg settles only on the transaction that was built for it', () => {
 
   it('does not build a leg again while the transaction built before can still land', async () => {
     // The review's sequence, on the leg that moves cash: build, build again, land the first, report it.
-    for (const chain of ['solana', 'robinhood'] as const) {
-      const a = await someone();
-      const cash = await openVault(a, chain);
-      const { placed, deposit } = await toDeposit(a, chain);
+    for (const chain of CHAINS) {
+      const a = await someone(chain);
+      const cash = await openVault(a);
+      const { placed, deposit } = await toDeposit(a);
       const before = await cash();
       await build(a, placed, deposit.id);
       const again = await post(a, legUrl(placed, deposit.id, 'build'));
@@ -811,8 +847,8 @@ describe('a leg settles only on the transaction that was built for it', () => {
     let clock = Date.now();
     const timed = await testApp({ issuer: issuer.issuer, db: data.db, now: () => new Date(clock) });
     const on = timed.app;
-    const cash = await openVault(a, 'solana', on, timed.registry);
-    const { placed, deposit } = await toDeposit(a, 'solana', on);
+    const cash = await openVault(a, on, timed.registry);
+    const { placed, deposit } = await toDeposit(a, on);
     const before = await cash();
     const one = await build(a, placed, deposit.id, on);
     expect((await post(a, legUrl(placed, deposit.id, 'build'), undefined, on)).statusCode).toBe(
@@ -823,13 +859,13 @@ describe('a leg settles only on the transaction that was built for it', () => {
     clock += 2 * 60 * 1000;
     const two = await build(a, placed, deposit.id, on);
     expect(two.attempt.n).toBe(2);
-    const rebuilt = OrderDetail.parse((await get(a, `/v1/orders/${placed.id}`, on)).json());
+    const rebuilt = await read(a, placed, on);
     expect(attemptsOf(rebuilt, deposit.id)).toEqual([
       [1, 'expired'],
       [2, 'built'],
     ]);
-    const mock = timed.registry.get('solana').mock;
-    await expect(mock?.send({ messageHash: one.tx.messageHash })).rejects.toMatchObject({
+    const mock = mockOf('solana', timed.registry);
+    await expect(mock.send({ messageHash: one.tx.messageHash })).rejects.toMatchObject({
       code: 'Expired',
     });
     const done = await report(
@@ -852,8 +888,8 @@ describe('a leg settles only on the transaction that was built for it', () => {
     let clock = Date.now();
     const timed = await testApp({ issuer: issuer.issuer, db: data.db, now: () => new Date(clock) });
     const on = timed.app;
-    const cash = await openVault(a, 'solana', on, timed.registry);
-    const { placed, deposit } = await toDeposit(a, 'solana', on);
+    const cash = await openVault(a, on, timed.registry);
+    const { placed, deposit } = await toDeposit(a, on);
     const before = await cash();
     await build(a, placed, deposit.id, on);
     // The wallet sent it and it landed, but nobody told the API. Then its validity ran out.
@@ -862,17 +898,132 @@ describe('a leg settles only on the transaction that was built for it', () => {
     const again = await post(a, legUrl(placed, deposit.id, 'build'), undefined, on);
     expect(again.statusCode).toBe(409);
     expect(again.json().error).toMatch(/has landed/);
-    const after = OrderDetail.parse((await get(a, `/v1/orders/${placed.id}`, on)).json());
+    const after = await read(a, placed, on);
     expect(legOf(after, deposit.id)).toMatchObject({ status: 'confirmed', attempt: 1, txId });
     expect(attemptsOf(after, deposit.id)).toEqual([[1, 'confirmed']]);
     expect(before - (await cash())).toBe(10_000_000n);
     await on.close();
   });
 
-  it('on an EVM chain, builds again only after a cancel, and still settles on the attempt that landed', async () => {
+  it('cancels only an attempt that was built and has not landed', async () => {
+    const a = await someone('robinhood');
+    await openVault(a);
+    const { placed, deposit } = await toDeposit(a);
+    // Nothing built yet.
+    expect((await post(a, legUrl(placed, deposit.id, 'cancel'))).statusCode).toBe(409);
+    await build(a, placed, deposit.id);
+    // It landed, unreported: the cancel finds it and the leg settles instead.
+    const txId = await land(a, placed, deposit.id);
+    const res = await post(a, legUrl(placed, deposit.id, 'cancel'));
+    expect(res.statusCode).toBe(409);
+    expect(legOf(await read(a, placed), deposit.id)).toMatchObject({ status: 'confirmed', txId });
+
+    // On Solana an attempt cannot be cancelled while it can still land: only time closes it.
+    const s = await someone('solana');
+    await openVault(s);
+    const sol = await toDeposit(s);
+    await build(s, sol.placed, sol.deposit.id);
+    const early = await post(s, legUrl(sol.placed, sol.deposit.id, 'cancel'));
+    expect(early.statusCode).toBe(409);
+    expect(early.json().error).toMatch(/can still land/);
+    expect(attemptsOf(await read(s, sol.placed), sol.deposit.id)).toEqual([[1, 'built']]);
+  }, 60_000);
+
+  it('racing a build against the report of a landed transaction loses nothing, on both chains', async () => {
+    for (const chain of CHAINS) {
+      const a = await someone(chain);
+      const cash = await openVault(a);
+      const before = await cash();
+      const rounds = 12;
+      for (let i = 0; i < rounds; i++) {
+        const { placed, deposit } = await toDeposit(a);
+        await build(a, placed, deposit.id);
+        const txId = await land(a, placed, deposit.id);
+        const url = (step: string) => legUrl(placed, deposit.id, step);
+        const [rebuilt, ...reports] = await Promise.all([
+          post(a, url('build')),
+          post(a, url('report'), { txId }),
+          post(a, url('report'), { txId }),
+          get(a, `/v1/orders/${placed.id}`),
+        ]);
+        expect([chain, i, rebuilt.statusCode]).toEqual([chain, i, 409]);
+        expect(reports.map((r) => r.statusCode)).toEqual([200, 200, 200]);
+        const after = await read(a, placed);
+        expect(legOf(after, deposit.id)).toMatchObject({ status: 'confirmed', attempt: 1, txId });
+        expect(attemptsOf(after, deposit.id)).toEqual([[1, 'confirmed']]);
+      }
+      expect(before - (await cash())).toBe(BigInt(rounds) * 10_000_000n);
+    }
+  }, 60_000);
+
+  it('two builds at once make one attempt', async () => {
     const a = await someone();
-    const cash = await openVault(a, 'robinhood');
-    const { placed, deposit } = await toDeposit(a, 'robinhood');
+    await fund(a);
+    for (let i = 0; i < 8; i++) {
+      const placed = await order(a, { amountUsd: 600 });
+      const leg = first(placed);
+      const both = await Promise.all([
+        post(a, legUrl(placed, leg.id, 'build')),
+        post(a, legUrl(placed, leg.id, 'build')),
+        post(a, legUrl(placed, leg.id, 'build')),
+      ]);
+      expect(both.map((r) => r.statusCode).sort()).toEqual([200, 409, 409]);
+      expect(attemptsOf(await read(a, placed), leg.id)).toEqual([[1, 'built']]);
+    }
+  }, 60_000);
+
+  it('a transaction that never lands leaves the leg sent, then expired, and it is built again', async () => {
+    const a = await someone();
+    let clock = Date.now();
+    const timed = await testApp({ issuer: issuer.issuer, db: data.db, now: () => new Date(clock) });
+    const on = timed.app;
+    await fund(a, on);
+    const placed = await order(a, { amountUsd: 600 }, on);
+    const leg = first(placed);
+    await build(a, placed, leg.id, on);
+    mockOf('solana', timed.registry).dropNext();
+    const txId = await land(a, placed, leg.id, on);
+    const waiting = await report(a, placed, leg.id, { txId }, on);
+    expect(legOf(waiting, leg.id)).toMatchObject({ status: 'sent', txId });
+    expect(waiting.status).toBe('open');
+    // While it may still land, it is not built again.
+    expect((await post(a, legUrl(placed, leg.id, 'build'), undefined, on)).statusCode).toBe(409);
+
+    // Its validity runs out. The next read tracks it again and finds it expired.
+    clock += 2 * 60 * 1000;
+    const late = await read(a, placed, on);
+    expect(legOf(late, leg.id)).toMatchObject({ status: 'expired', txId, error: null });
+    expect(late.status).toBe('open');
+    const { attempt } = await build(a, placed, leg.id, on);
+    expect(attempt.n).toBe(2);
+    const done = await report(a, placed, leg.id, { txId: await land(a, placed, leg.id, on) }, on);
+    expect(done.attempts.map((x) => [x.n, x.status])).toEqual([
+      [1, 'expired'],
+      [2, 'confirmed'],
+    ]);
+    await on.close();
+  });
+
+  it('builds the legs in order, and not before the one before has settled', async () => {
+    const a = await someone();
+    await fund(a);
+    const placed = await order(a, { amountUsd: 600 });
+    const res = await post(a, legUrl(placed, first(placed, 1).id, 'build'));
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toMatch(/earlier step/);
+    // A report before any build has nothing to settle.
+    const early = await post(a, legUrl(placed, first(placed).id, 'report'), {
+      txId: 'x',
+    });
+    expect(early.statusCode).toBe(409);
+  });
+});
+
+describe('on an EVM chain an attempt is the pair (message, nonce)', () => {
+  it('builds again only after a cancel, on the same nonce, and settles on the newest attempt of the pair', async () => {
+    const a = await someone('robinhood');
+    const cash = await openVault(a);
+    const { placed, deposit } = await toDeposit(a);
     const before = await cash();
     const one = await build(a, placed, deposit.id);
     // No expiry on EVM: time does not free the leg. The person cancels the attempt.
@@ -897,47 +1048,136 @@ describe('a leg settles only on the transaction that was built for it', () => {
     ]);
     expect([one.attempt.nonce, two.attempt.nonce]).toEqual([one.tx.evm?.nonce, one.tx.evm?.nonce]);
 
-    // The wallet sends the cancelled one anyway. It lands, and its id is reported.
-    const stale = await registry.get('robinhood').mock?.send({ messageHash: one.tx.messageHash });
-    const done = await report(a, placed, deposit.id, { txId: stale?.txId });
+    // The wallet sends what it signed first. The two attempts are one transaction: the same call on
+    // the same nonce. It lands, its id is reported, and the leg settles on the newer of the two, the
+    // one that was still open.
+    const sent = await mockOf('robinhood').send({ messageHash: one.tx.messageHash });
+    const done = await report(a, placed, deposit.id, { txId: sent.txId });
     expect(legOf(done, deposit.id)).toMatchObject({
       status: 'confirmed',
-      attempt: 1,
-      txId: stale?.txId,
+      attempt: 2,
+      txId: sent.txId,
       error: null,
     });
-    // The second attempt is closed: the server will not relay it, and the leg is not built again.
     expect(attemptsOf(done, deposit.id)).toEqual([
-      [1, 'confirmed'],
-      [2, 'expired'],
+      [1, 'expired'],
+      [2, 'confirmed'],
     ]);
     // Its bytes are the bytes of the transaction that landed: handing them over sends nothing, and
     // answers with the order as it stands.
-    const late = await post(a, legUrl(placed, deposit.id, 'report'), { signedTx: two.tx.payload });
-    expect(late.statusCode).toBe(200);
-    expect(OrderDetail.parse(late.json())).toEqual(done);
+    for (const signedTx of [two.tx.payload, mockOf('robinhood').sign(two.tx)]) {
+      const late = await post(a, legUrl(placed, deposit.id, 'report'), { signedTx });
+      expect(late.statusCode, late.body).toBe(200);
+      expect(OrderDetail.parse(late.json())).toEqual(done);
+    }
     expect((await post(a, legUrl(placed, deposit.id, 'build'))).statusCode).toBe(409);
     expect(done.status).toBe('done');
     expect(before - (await cash())).toBe(10_000_000n);
   });
 
-  it('two orders with the identical deposit are two attempts: the second is not taken for the first', async () => {
-    const a = await someone();
-    const cash = await openVault(a, 'robinhood');
+  it('after a cancel and a rebuild, the signed bytes are relayed for the attempt that is open', async () => {
+    const a = await someone('robinhood');
+    const cash = await openVault(a);
+    const { placed, deposit } = await toDeposit(a);
     const before = await cash();
-    // The first order's deposit lands and is reported.
-    const one = await toDeposit(a, 'robinhood');
-    const first = await build(a, one.placed, one.deposit.id);
-    const firstTx = await land(a, one.placed, one.deposit.id);
-    const settled = await report(a, one.placed, one.deposit.id, { txId: firstTx });
-    expect(legOf(settled, one.deposit.id).status).toBe('confirmed');
+    await build(a, placed, deposit.id);
+    expect((await post(a, legUrl(placed, deposit.id, 'cancel'))).statusCode).toBe(200);
+    const two = await build(a, placed, deposit.id);
+    // The wallet signs what it was handed last, with the nonce it states.
+    const done = await report(a, placed, deposit.id, {
+      signedTx: mockOf('robinhood').sign(two.tx),
+    });
+    expect(legOf(done, deposit.id)).toMatchObject({ status: 'confirmed', attempt: 2 });
+    expect(attemptsOf(done, deposit.id)).toEqual([
+      [1, 'expired'],
+      [2, 'confirmed'],
+    ]);
+    expect(before - (await cash())).toBe(10_000_000n);
+  });
 
-    // The same person buys the same amount again: the deposit is the same call, so the same hash. It
-    // is told apart from the first by its nonce.
-    const two = await toDeposit(a, 'robinhood');
+  it('after a revert and a rebuild, the new attempt has its own nonce and is the one that settles', async () => {
+    const a = await someone('robinhood');
+    await fund(a);
+    const placed = await order(a, { amountUsd: 400 });
+    const approve = first(placed);
+    const one = await build(a, placed, approve.id);
+    mockOf('robinhood').revertNext({ code: 'GasTooLow', message: 'out of gas' });
+    const failed = await report(a, placed, approve.id, {
+      txId: await land(a, placed, approve.id),
+    });
+    expect(legOf(failed, approve.id)).toMatchObject({ status: 'failed', attempt: 1 });
+
+    // The same approval again: the same call, so the same message, on the nonce after the one the
+    // revert used.
+    const two = await build(a, placed, approve.id);
+    expect(two.tx.messageHash).toBe(one.tx.messageHash);
+    expect(two.attempt.nonce).toBe((one.attempt.nonce ?? 0) + 1);
+    // The reverted transaction, reported again, is the first attempt's and moves nothing.
+    const again = await report(a, placed, approve.id, { txId: legOf(failed, approve.id).txId });
+    expect(attemptsOf(again, approve.id)).toEqual([
+      [1, 'failed'],
+      [2, 'built'],
+    ]);
+    // The wallet signs the new one. Its bytes are relayed: they are not taken for the reverted
+    // attempt, which shares their message and not their nonce.
+    const done = await report(a, placed, approve.id, {
+      signedTx: mockOf('robinhood').sign(two.tx),
+    });
+    expect(legOf(done, approve.id)).toMatchObject({ status: 'confirmed', attempt: 2, error: null });
+    expect(attemptsOf(done, approve.id)).toEqual([
+      [1, 'failed'],
+      [2, 'confirmed'],
+    ]);
+    expect(done.attempts.map((x) => x.nonce)).toEqual([one.attempt.nonce, two.attempt.nonce]);
+  });
+
+  it('leaves the attempt carrying the nonce the wallet really used', async () => {
+    const a = await someone('robinhood');
+    await fund(a);
+    const mock = mockOf('robinhood');
+    const { adapter } = registry.get('robinhood');
+    /** A transaction of the same wallet that is no step of any order: it takes the next nonce. */
+    const elsewhere = async (basketId: string) =>
+      mock.send(await adapter.buildApprove({ owner: a.evm, basketId, amountRaw: '1' }));
+
+    // Reported by id. The build states nonce N; the wallet's own transaction takes N first, and the
+    // wallet then sends the step on the nonce after.
+    const byId = await order(a, { amountUsd: 400 });
+    const one = await build(a, byId, first(byId).id);
+    await elsewhere('901');
+    const sent = await mock.send({ messageHash: one.tx.messageHash });
+    const reported = await report(a, byId, first(byId).id, { txId: sent.txId });
+    expect(legOf(reported, first(byId).id)).toMatchObject({ status: 'confirmed', txId: sent.txId });
+    expect(reported.attempts.map((x) => x.nonce)).toEqual([(one.attempt.nonce ?? 0) + 1]);
+
+    // Handed over as signed bytes: an outside wallet signed with its own nonce, not the stated one.
+    const byBytes = await order(a, { amountUsd: 300 });
+    const two = await build(a, byBytes, first(byBytes).id);
+    await elsewhere('902');
+    const own = (two.attempt.nonce ?? 0) + 1;
+    if (!two.tx.evm) throw new Error('not an EVM transaction');
+    const signedTx = mock.sign({ ...two.tx, evm: { ...two.tx.evm, nonce: own } });
+    const relayed = await report(a, byBytes, first(byBytes).id, { signedTx });
+    expect(legOf(relayed, first(byBytes).id).status).toBe('confirmed');
+    expect(relayed.attempts.map((x) => x.nonce)).toEqual([own]);
+    expect(await adapter.nonceOf({ txId: legOf(relayed, first(byBytes).id).txId ?? '' })).toBe(own);
+  });
+
+  it('does not take one order’s transaction for another order’s identical step', async () => {
+    const a = await someone('robinhood');
+    const cash = await openVault(a);
+    const before = await cash();
+    // The first order's deposit lands. Nobody reports it yet.
+    const one = await toDeposit(a);
+    const first1 = await build(a, one.placed, one.deposit.id);
+    const firstTx = await land(a, one.placed, one.deposit.id);
+
+    // The same person buys the same amount again: the deposit is the same call, so the same message.
+    // It is told apart from the first by its nonce.
+    const two = await toDeposit(a);
     const second = await build(a, two.placed, two.deposit.id);
-    expect(second.tx.messageHash).toBe(first.tx.messageHash);
-    expect(second.attempt.nonce).toBeGreaterThan(first.attempt.nonce ?? -1);
+    expect(second.tx.messageHash).toBe(first1.tx.messageHash);
+    expect(second.attempt.nonce).toBeGreaterThan(first1.attempt.nonce ?? -1);
     // It has not landed because the first one did: a read leaves it built, and a second build is
     // refused because it can still land, not because it has.
     expect(legOf(await read(a, two.placed), two.deposit.id)).toMatchObject({
@@ -947,7 +1187,24 @@ describe('a leg settles only on the transaction that was built for it', () => {
     const refused = await post(a, legUrl(two.placed, two.deposit.id, 'build'));
     expect(refused.statusCode).toBe(409);
     expect(refused.json().error).toMatch(/can still land/);
-    // So it can be cancelled, and built again on the nonce it had.
+
+    // The first order's transaction, reported to the second order's step: it carries the same call,
+    // but on the nonce the first order's attempt stated. It is that step's, and is refused here.
+    const wrong = await post(a, legUrl(two.placed, two.deposit.id, 'report'), { txId: firstTx });
+    expect(wrong.statusCode).toBe(409);
+    expect(wrong.json()).toEqual({
+      error: 'that transaction was built for another step',
+      details: { chainCode: 'NotBuiltHere', retryable: false },
+    });
+    expect(legOf(await read(a, two.placed), two.deposit.id)).toMatchObject({
+      status: 'built',
+      txId: null,
+    });
+    // Reported where it belongs, it settles the first order.
+    const settled = await report(a, one.placed, one.deposit.id, { txId: firstTx });
+    expect(legOf(settled, one.deposit.id)).toMatchObject({ status: 'confirmed', txId: firstTx });
+
+    // The second can be cancelled, and built again on the nonce it had.
     const cancelled = await post(a, legUrl(two.placed, two.deposit.id, 'cancel'));
     expect(cancelled.statusCode, cancelled.body).toBe(200);
     const again = await build(a, two.placed, two.deposit.id);
@@ -962,67 +1219,85 @@ describe('a leg settles only on the transaction that was built for it', () => {
     expect(before - (await cash())).toBe(20_000_000n);
   });
 
-  it('cancels only an attempt that was built and has not landed', async () => {
-    const a = await someone();
-    await openVault(a, 'robinhood');
-    const { placed, deposit } = await toDeposit(a, 'robinhood');
-    // Nothing built yet.
-    expect((await post(a, legUrl(placed, deposit.id, 'cancel'))).statusCode).toBe(409);
-    await build(a, placed, deposit.id);
-    // It landed, unreported: the cancel finds it and the leg settles instead.
-    const txId = await land(a, placed, deposit.id);
-    const res = await post(a, legUrl(placed, deposit.id, 'cancel'));
-    expect(res.statusCode).toBe(409);
-    expect(legOf(await read(a, placed), deposit.id)).toMatchObject({ status: 'confirmed', txId });
+  it('does not build two orders of one wallet on the same nonce: the second waits for the first', async () => {
+    const a = await someone('robinhood');
+    await fund(a);
+    const [one, two] = [await order(a, { amountUsd: 400 }), await order(a, { amountUsd: 300 })];
+    const built = await build(a, one, first(one).id);
 
-    // On Solana an attempt cannot be cancelled while it can still land: only time closes it.
-    await openVault(a, 'solana');
-    const sol = await toDeposit(a, 'solana');
-    await build(a, sol.placed, sol.deposit.id);
-    const early = await post(a, legUrl(sol.placed, sol.deposit.id, 'cancel'));
-    expect(early.statusCode).toBe(409);
-    expect(early.json().error).toMatch(/can still land/);
-    expect(attemptsOf(await read(a, sol.placed), sol.deposit.id)).toEqual([[1, 'built']]);
-  }, 60_000);
+    // The first order holds a transaction that can still land on the wallet's next nonce.
+    const blocked = await post(a, legUrl(two, first(two).id, 'build'));
+    expect(blocked.statusCode).toBe(409);
+    expect(OrderError.parse(blocked.json())).toEqual({
+      error:
+        'another order of this wallet has a transaction on Robinhood Chain that can still land',
+      fix: 'Report that step or cancel it, then build this one again.',
+      details: { retryable: true, blocking: { orderId: one.id, legId: first(one).id } },
+    });
+    expect((await read(a, two)).attempts).toEqual([]);
 
-  it('racing a build against the report of a landed transaction loses nothing, on both chains', async () => {
-    for (const chain of ['solana', 'robinhood'] as const) {
-      const a = await someone();
-      const cash = await openVault(a, chain);
-      const before = await cash();
-      const rounds = 12;
-      for (let i = 0; i < rounds; i++) {
-        const { placed, deposit } = await toDeposit(a, chain);
-        await build(a, placed, deposit.id);
-        const txId = await land(a, placed, deposit.id);
-        const url = (step: string) => legUrl(placed, deposit.id, step);
-        const [rebuilt, ...reports] = await Promise.all([
-          post(a, url('build')),
-          post(a, url('report'), { txId }),
-          post(a, url('report'), { txId }),
-          get(a, `/v1/orders/${placed.id}`),
-        ]);
-        expect([chain, i, rebuilt.statusCode]).toEqual([chain, i, 409]);
-        expect(reports.map((r) => r.statusCode)).toEqual([200, 200, 200]);
-        const after = await read(a, placed);
-        expect(legOf(after, deposit.id)).toMatchObject({ status: 'confirmed', attempt: 1, txId });
-        expect(attemptsOf(after, deposit.id)).toEqual([[1, 'confirmed']]);
-      }
-      expect(before - (await cash())).toBe(BigInt(rounds) * 10_000_000n);
+    // Once it has landed and is reported, the second is built on the nonce after it.
+    await report(a, one, first(one).id, { txId: await land(a, one, first(one).id) });
+    const next = await build(a, two, first(two).id);
+    expect(next.attempt.nonce).toBe((built.attempt.nonce ?? 0) + 1);
+
+    // The other way out is a cancel. The first order's next step is blocked by the second's now.
+    const stuck = await post(a, legUrl(one, first(one, 1).id, 'build'));
+    expect(stuck.json().details.blocking).toEqual({ orderId: two.id, legId: first(two).id });
+    expect((await post(a, legUrl(two, first(two).id, 'cancel'))).statusCode).toBe(200);
+    const freed = await build(a, one, first(one, 1).id);
+    // A cancelled transaction can still be sent, so the next build shares its nonce: one can land.
+    expect(freed.attempt.nonce).toBe(next.attempt.nonce);
+
+    // A transaction of a step that has landed, unreported, does not stand in the way either.
+    const three = await order(a, { amountUsd: 200 });
+    await land(a, one, first(one, 1).id);
+    const after = await build(a, three, first(three).id);
+    expect(after.attempt.nonce).toBe((freed.attempt.nonce ?? 0) + 1);
+    // Solana has no nonce: two orders of one wallet are built side by side.
+    const s = await someone('solana');
+    await fund(s);
+    const [x, y] = [await order(s, { amountUsd: 400 }), await order(s, { amountUsd: 300 })];
+    await build(s, x, first(x).id);
+    await build(s, y, first(y).id);
+  });
+
+  it('two orders of one wallet built at the same moment: one is built, the other is refused', async () => {
+    const a = await someone('robinhood');
+    await fund(a);
+    for (let i = 0; i < 6; i++) {
+      const [one, two] = [
+        await order(a, { amountUsd: 400 + i }),
+        await order(a, { amountUsd: 300 + i }),
+      ];
+      const both = await Promise.all([
+        post(a, legUrl(one, first(one).id, 'build')),
+        post(a, legUrl(two, first(two).id, 'build')),
+      ]);
+      expect([i, ...both.map((r) => r.statusCode).sort()]).toEqual([i, 200, 409]);
+      const [won, lost] = both[0].statusCode === 200 ? [one, two] : [two, one];
+      const refused = both.find((r) => r.statusCode === 409);
+      expect(refused?.json().details.blocking).toEqual({
+        orderId: won.id,
+        legId: first(won).id,
+      });
+      expect((await read(a, lost)).attempts).toEqual([]);
+      // Cleared for the next round: the one that was built is cancelled.
+      expect((await post(a, legUrl(won, first(won).id, 'cancel'))).statusCode).toBe(200);
     }
   }, 60_000);
 
   it('finds a cancelled transaction that landed before the leg is built again', async () => {
-    const a = await someone();
-    await openVault(a, 'robinhood');
+    const a = await someone('robinhood');
+    await openVault(a);
     for (let i = 0; i < 6; i++) {
-      const { placed, deposit } = await toDeposit(a, 'robinhood');
+      const { placed, deposit } = await toDeposit(a);
       const one = await build(a, placed, deposit.id);
       expect((await post(a, legUrl(placed, deposit.id, 'cancel'))).statusCode).toBe(200);
-      const sent = await registry.get('robinhood').mock?.send({ messageHash: one.tx.messageHash });
+      const sent = await mockOf('robinhood').send({ messageHash: one.tx.messageHash });
       const [rebuilt, reported] = await Promise.all([
         post(a, legUrl(placed, deposit.id, 'build')),
-        post(a, legUrl(placed, deposit.id, 'report'), { txId: sent?.txId }),
+        post(a, legUrl(placed, deposit.id, 'report'), { txId: sent.txId }),
       ]);
       expect([i, rebuilt.statusCode, reported.statusCode]).toEqual([i, 409, 200]);
       const after = await read(a, placed);
@@ -1030,94 +1305,39 @@ describe('a leg settles only on the transaction that was built for it', () => {
       expect(attemptsOf(after, deposit.id)).toEqual([[1, 'confirmed']]);
     }
   }, 60_000);
-
-  it('two builds at once make one attempt', async () => {
-    const a = await someone();
-    await fund(a, ['solana']);
-    for (let i = 0; i < 8; i++) {
-      const placed = await order(a, { amountUsd: 600, chains: ['solana'] });
-      const leg = first(placed, 'solana');
-      const both = await Promise.all([
-        post(a, legUrl(placed, leg.id, 'build')),
-        post(a, legUrl(placed, leg.id, 'build')),
-        post(a, legUrl(placed, leg.id, 'build')),
-      ]);
-      expect(both.map((r) => r.statusCode).sort()).toEqual([200, 409, 409]);
-      expect(attemptsOf(await read(a, placed), leg.id)).toEqual([[1, 'built']]);
-    }
-  }, 60_000);
-
-  it('a transaction that never lands leaves the leg sent, then expired, and it is built again', async () => {
-    const a = await someone();
-    let clock = Date.now();
-    const timed = await testApp({ issuer: issuer.issuer, db: data.db, now: () => new Date(clock) });
-    const on = timed.app;
-    await fund(a, ['solana'], on);
-    const placed = await order(a, { amountUsd: 600, chains: ['solana'] }, on);
-    const leg = first(placed, 'solana');
-    await build(a, placed, leg.id, on);
-    timed.registry.get('solana').mock?.dropNext();
-    const txId = await land(a, placed, leg.id, on);
-    const waiting = await report(a, placed, leg.id, { txId }, on);
-    expect(legOf(waiting, leg.id)).toMatchObject({ status: 'sent', txId });
-    expect(waiting.status).toBe('open');
-    // While it may still land, it is not built again.
-    expect((await post(a, legUrl(placed, leg.id, 'build'), undefined, on)).statusCode).toBe(409);
-
-    // Its validity runs out. The next read tracks it again and finds it expired.
-    clock += 2 * 60 * 1000;
-    const late = OrderDetail.parse((await get(a, `/v1/orders/${placed.id}`, on)).json());
-    expect(legOf(late, leg.id)).toMatchObject({ status: 'expired', txId, error: null });
-    expect(late.status).toBe('open');
-    const { attempt } = await build(a, placed, leg.id, on);
-    expect(attempt.n).toBe(2);
-    const done = await report(a, placed, leg.id, { txId: await land(a, placed, leg.id, on) }, on);
-    expect(done.attempts.map((x) => [x.n, x.status])).toEqual([
-      [1, 'expired'],
-      [2, 'confirmed'],
-    ]);
-    await on.close();
-  });
-
-  it('builds the legs of one chain in order, and not before the one before has settled', async () => {
-    const a = await someone();
-    await fund(a, ['solana']);
-    const placed = await order(a, { amountUsd: 600, chains: ['solana'] });
-    const res = await post(a, legUrl(placed, first(placed, 'solana', 1).id, 'build'));
-    expect(res.statusCode).toBe(409);
-    expect(res.json().error).toMatch(/earlier step/);
-    // A report before any build has nothing to settle.
-    const early = await post(a, legUrl(placed, first(placed, 'solana').id, 'report'), {
-      txId: 'x',
-    });
-    expect(early.statusCode).toBe(409);
-  });
 });
 
 describe('refusals', () => {
   it('refuses a chain that is switched off, with the order code', async () => {
-    const a = await someone();
+    const [rh, sol] = [await someone('robinhood'), await someone('solana')];
     const off = await testApp({
       issuer: issuer.issuer,
       db: data.db,
       env: { CHAIN_MODE_ROBINHOOD: 'off' },
     });
-    const res = await post(
-      a,
-      '/v1/orders',
-      { type: 'buy', owner: a.owner, amountUsd: 1000, proposalId: planId },
-      off.app,
-    );
-    expect(res.statusCode).toBe(503);
-    expect(res.json()).toMatchObject({
+    const refusal = {
       error: 'Robinhood Chain is switched off on this server',
       code: 'CHAIN_UNAVAILABLE',
       details: { retryable: false },
-    });
-    // The chain that is on still works on that server, and the one that is off is not in the portfolio.
-    const solanaOnly = await order(a, { amountUsd: 600, chains: ['solana'] }, off.app);
+    };
+    const res = await post(
+      rh,
+      '/v1/orders',
+      { type: 'buy', owner: rh.owner, amountUsd: 1000, proposalId: plans.robinhood },
+      off.app,
+    );
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toMatchObject(refusal);
+    // Their portfolio and their funding are on that chain too, and answer the same.
+    for (const url of ['/v1/portfolio', '/v1/funding']) {
+      const read = await get(rh, url, off.app);
+      expect([url, read.statusCode]).toEqual([url, 503]);
+      expect(read.json()).toMatchObject(refusal);
+    }
+    // A person on the chain that is on still buys on that server, and reads their portfolio.
+    const solanaOnly = await order(sol, { amountUsd: 600 }, off.app);
     expect(solanaOnly.legs.every((l) => l.chain === 'solana')).toBe(true);
-    const portfolio = PortfolioResponse.parse((await get(a, '/v1/portfolio', off.app)).json());
+    const portfolio = PortfolioResponse.parse((await get(sol, '/v1/portfolio', off.app)).json());
     expect(portfolio.chains.map((c) => c.chain)).toEqual(['solana']);
     await off.app.close();
   });
@@ -1125,8 +1345,8 @@ describe('refusals', () => {
   it('maps a refused build onto the order code and keeps `retryable`', async () => {
     const a = await someone();
     // Not funded: the chain refuses, and nothing the person does not change will fix it.
-    const placed = await order(a, { amountUsd: 600, chains: ['solana'] });
-    const leg = first(placed, 'solana');
+    const placed = await order(a, { amountUsd: 600 });
+    const leg = first(placed);
     const res = await post(a, legUrl(placed, leg.id, 'build'));
     expect(res.statusCode).toBe(409);
     expect(res.json()).toMatchObject({
@@ -1180,16 +1400,16 @@ describe('refusals', () => {
     const cases: [object, number, RegExp][] = [
       [{ proposalId: undefined }, 400, /names the plan/],
       [{ proposalId: '4b1c0f0e-3f8e-4d0e-9d2b-0d7a3a6b1c2d' }, 404, /no plan/],
-      [{ chains: ['base'] }, 422, /nothing on base/],
+      [{ proposalId: plans.robinhood }, 422, /made for Robinhood Chain/],
       [{ proposalId: undefined, family: 'core' }, 501, /not built yet/],
-      [{ amountUsd: 0.0001, chains: ['solana'] }, 422, /less than one cent/],
+      [{ amountUsd: 0.0001 }, 422, /less than one cent/],
     ];
     for (const [change, status, error] of cases) {
       const res = await post(a, '/v1/orders', {
         type: 'buy',
         owner: a.owner,
         amountUsd: 1000,
-        proposalId: planId,
+        proposalId: plans.solana,
         ...change,
       });
       expect([JSON.stringify(change), res.statusCode]).toEqual([JSON.stringify(change), status]);
@@ -1197,14 +1417,17 @@ describe('refusals', () => {
     }
     const other = await post(a, '/v1/orders', { type: 'settings', vault: a.evm, autoFollow: true });
     expect(other.statusCode).toBe(501);
-    // An owner with no address for a chain of the plan.
-    const half = await post(a, '/v1/orders', {
+    // An owner with no address on the chain the plan lives on.
+    const both = await someone('passkey');
+    expect((await put(both, '/v1/me/chain', { chain: 'robinhood' })).statusCode).toBe(200);
+    const half = await post(both, '/v1/orders', {
       type: 'buy',
-      owner: { solana: a.solana },
+      owner: { solana: both.solana },
       amountUsd: 1000,
-      proposalId: planId,
+      proposalId: plans.robinhood,
     });
     expect(half.statusCode).toBe(422);
+    expect(half.json().error).toMatch(/the owner has no evm address/);
     expect((await get(a, '/v1/orders/not-an-id')).statusCode).toBe(400);
     expect((await get(a, '/v1/orders/4b1c0f0e-3f8e-4d0e-9d2b-0d7a3a6b1c2d')).statusCode).toBe(404);
   });
@@ -1214,15 +1437,13 @@ describe('refusals', () => {
     const buy = (proposalId: string, more: object = {}) =>
       post(a, '/v1/orders', { type: 'buy', owner: a.owner, amountUsd: 1000, proposalId, ...more });
 
-    // Weights that do not add up to a whole are not targets a vault can take.
-    const short = planFixture();
-    for (const recipe of short.recipes)
-      recipe.components = recipe.components.map((c, i) =>
-        i === 0 ? { ...c, weightBps: c.weightBps - 1000 } : c,
-      );
-    const res = await buy(await data.storePlan(short));
+    // Weights that add up to more than the whole are not targets a vault can take. Less than the
+    // whole is a plan that keeps cash, and is bought (cash.test.ts).
+    const over = planFixture('solana', { spy: 6000, nvda: 3000, gold: 2000 });
+    over.lines = planFixture('solana').lines;
+    const res = await buy(await data.storePlan(over));
     expect(res.statusCode).toBe(422);
-    expect(res.json().error).toMatch(/weights/);
+    expect(res.json().error).toMatch(/weights must add up to at most 10,000/);
 
     // A stored plan that no longer reads as a plan: a conflict with what is stored, not a server fault.
     const brokenId = await data.storePlan();
@@ -1236,11 +1457,11 @@ describe('refusals', () => {
 
     // The most one order may buy. The ceiling is in the request's own schema, so a request over it
     // is one the server cannot take (400), with the same sentence.
-    expect((await buy(planId, { amountUsd: 1_000_000 })).statusCode).toBe(200);
-    const over = await buy(planId, { amountUsd: 1_000_000.01 });
-    expect(over.statusCode).toBe(400);
-    expect(over.json().error).toMatch(/1,000,000/);
-    expect((await buy(planId, { amountUsd: 1e300 })).statusCode).toBe(400);
+    expect((await buy(plans.solana, { amountUsd: 1_000_000 })).statusCode).toBe(200);
+    const tooMuch = await buy(plans.solana, { amountUsd: 1_000_000.01 });
+    expect(tooMuch.statusCode).toBe(400);
+    expect(tooMuch.json().error).toMatch(/1,000,000/);
+    expect((await buy(plans.solana, { amountUsd: 1e300 })).statusCode).toBe(400);
   });
 
   it('answers a request it cannot read with a 4xx, never a 500', async () => {
@@ -1249,7 +1470,7 @@ describe('refusals', () => {
     const json = { ...a.headers, 'content-type': 'application/json' };
     const send = (url: string, headers: Record<string, string>, payload?: string) =>
       app.inject({ method: 'POST', url, headers, ...(payload === undefined ? {} : { payload }) });
-    const buildUrl = legUrl(placed, first(placed, 'solana').id, 'build');
+    const buildUrl = legUrl(placed, first(placed).id, 'build');
     const huge = JSON.stringify({ type: 'buy', owner: a.owner, pad: 'x'.repeat(2_000_000) });
     const cases: [string, Awaited<ReturnType<typeof send>>, number][] = [
       ['malformed JSON', await send('/v1/orders', json, '{"type":'), 400],
@@ -1277,39 +1498,38 @@ describe('refusals', () => {
   });
 
   it('a report does not reopen an expired order, and only a transaction the chain has seen extends one', async () => {
-    const a = await someone();
+    const a = await someone('robinhood');
     let clock = Date.now();
     const timed = await testApp({ issuer: issuer.issuer, db: data.db, now: () => new Date(clock) });
     const on = timed.app;
-    await fund(a, ['robinhood'], on);
-    const state = async (o: OrderDetail) =>
-      OrderDetail.parse((await get(a, `/v1/orders/${o.id}`, on)).json());
+    await fund(a, on);
 
     // An id that matches the attempt but was never sent: the chain has not seen it, the clock stays.
-    const unsent = await order(a, { amountUsd: 400, chains: ['robinhood'] }, on);
-    const approve = first(unsent, 'robinhood');
+    const unsent = await order(a, { amountUsd: 400 }, on);
+    const approve = first(unsent);
     const built = await build(a, unsent, approve.id, on);
-    const mock = timed.registry.get('robinhood').mock;
-    mock?.dropNext();
-    const never = await mock?.send({ messageHash: built.tx.messageHash });
-    const waiting = await report(a, unsent, approve.id, { txId: never?.txId }, on);
+    const mock = mockOf('robinhood', timed.registry);
+    mock.dropNext();
+    const never = await mock.send({ messageHash: built.tx.messageHash });
+    const waiting = await report(a, unsent, approve.id, { txId: never.txId }, on);
     expect(legOf(waiting, approve.id).status).toBe('sent');
     expect(waiting.expiresAt).toBe(unsent.expiresAt);
     clock += 20 * 60 * 1000;
-    expect((await state(unsent)).status).toBe('expired');
+    expect((await read(a, unsent, on)).status).toBe('expired');
 
     // A transaction that lands after the order expired is recorded, and the order stays expired. It
     // is for another amount than the first: on an EVM chain the same approval built on the same nonce
-    // would be the same transaction as the one that never landed.
-    const late = await order(a, { amountUsd: 300, chains: ['robinhood'] }, on);
-    const leg = first(late, 'robinhood');
+    // would be the same transaction as the one that never landed. The order that expired does not
+    // stand in the way of this one, though its transaction was never closed.
+    const late = await order(a, { amountUsd: 300 }, on);
+    const leg = first(late);
     await build(a, late, leg.id, on);
     const txId = await land(a, late, leg.id, on);
     clock += 20 * 60 * 1000;
     const after = await report(a, late, leg.id, { txId }, on);
     expect(legOf(after, leg.id).status).toBe('confirmed');
     expect([after.status, after.expiresAt]).toEqual(['expired', late.expiresAt]);
-    const next = await post(a, legUrl(late, first(late, 'robinhood', 1).id, 'build'), {}, on);
+    const next = await post(a, legUrl(late, first(late, 1).id, 'build'), {}, on);
     expect(next.statusCode).toBe(410);
     await on.close();
   });
@@ -1318,12 +1538,12 @@ describe('refusals', () => {
     const a = await someone();
     let clock = Date.now();
     const timed = await testApp({ issuer: issuer.issuer, db: data.db, now: () => new Date(clock) });
-    const placed = await order(a, { amountUsd: 600, chains: ['solana'] }, timed.app);
+    const placed = await order(a, { amountUsd: 600 }, timed.app);
     clock += 16 * 60 * 1000;
-    const res = await post(a, legUrl(placed, first(placed, 'solana').id, 'build'), {}, timed.app);
+    const res = await post(a, legUrl(placed, first(placed).id, 'build'), {}, timed.app);
     expect(res.statusCode).toBe(410);
     expect(res.json().code).toBe('ORDER_EXPIRED');
-    const after = OrderDetail.parse((await get(a, `/v1/orders/${placed.id}`, timed.app)).json());
+    const after = await read(a, placed, timed.app);
     expect(after.status).toBe('expired');
     const [row] = await data.db.select().from(orders).where(eq(orders.id, placed.id));
     expect(row?.status).toBe('expired');

@@ -10,19 +10,25 @@ import {
   type Order,
   type ReportLegRequest,
   stampTx,
+  type Trade,
 } from '@colosseum/schemas';
 import { assertBuilds, type ChainEntry, type ChainRegistry } from './chains';
 import { legErrorFromRevert, Refusal, refusing } from './errors';
-import { basketIdOf, expectedOf, ORDER_POLICY, slippageOf, targetsOf } from './prepare';
+import { basketIdOf, expectedOf, ORDER_POLICY, slippageOf, targetsOf, tradesFor } from './prepare';
 import {
+  blockedBy,
+  liveElsewhere,
+  loadFamilies,
   loadOrder,
   loadProposal,
   type Outcome,
+  pairElsewhere,
   recordBuild,
   recordOrderState,
   recordOutcome,
   recordRefusal,
   type StoredOrder,
+  TakenElsewhere,
 } from './store';
 
 // Building a leg and settling it (DESIGN-VAULT 3.3). The API builds unsigned transactions and relays
@@ -38,8 +44,10 @@ const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
 const settled = (leg: Leg) => leg.status === 'confirmed' || leg.status === 'skipped';
 
 /**
- * An order's status, from its legs and the clock. `partial` is one chain done and a failed leg on
- * another; an order past its time that is not done is `expired`.
+ * An order's status, from its legs and the clock. An order on one chain with a failed leg is `failed`:
+ * the chain with the failed leg is not done, and it is the only one. `partial` is one chain done and a
+ * failed leg on another, which takes legs on two chains, and only a publish order has those (the
+ * `Order` schema, gate ONE-CHAIN). An order past its time that is not done is `expired`.
  */
 export function orderStatus(legs: Leg[], expiresAt: number, nowSeconds: number): Order['status'] {
   if (legs.every(settled)) return 'done';
@@ -88,6 +96,23 @@ async function planVault(entry: ChainEntry, owner: Address, basketId: string) {
   return (await entry.adapter.getVaults(owner)).find((v) => v.basketId === basketId) ?? null;
 }
 
+/** The cash a step takes from the wallet: the whole deposit, whatever its trades spend. */
+function cashOf(leg: Leg): string {
+  if (leg.cashRaw === undefined)
+    throw new Refusal(
+      409,
+      'this order was planned before a step carried its deposit: make it again',
+    );
+  return leg.cashRaw;
+}
+
+const sameTrades = (a: Trade[], b: Trade[]) =>
+  a.length === b.length &&
+  a.every((t, i) => {
+    const o = b[i];
+    return o && t.sell === o.sell && t.buy === o.buy && t.amountInRaw === o.amountInRaw;
+  });
+
 /** One unsigned transaction for a leg, from the adapter. The owner is the order's, never the request's. */
 async function buildFor(
   deps: OrderDeps,
@@ -104,12 +129,6 @@ async function buildFor(
   const { adapter } = entry;
   const basketId = basketIdOf(request.proposalId);
   const slippageBps = slippageOf(request);
-  // The trades of a buy add up to the cash it deposits on that chain (prepare.ts).
-  const cashRaw = order.legs
-    .filter((l) => l.chain === leg.chain)
-    .flatMap((l) => l.trades)
-    .reduce((sum, t) => sum + BigInt(t.amountInRaw), 0n)
-    .toString();
   const trades = leg.trades.length ? leg.trades : undefined;
   const shared = nonce === undefined ? {} : { nonce };
   const vault = async () => {
@@ -120,17 +139,33 @@ async function buildFor(
   switch (leg.kind) {
     // The adapter works out who may take the cash from the plan: nobody here names a spender.
     case 'approve':
-      return adapter.buildApprove({ owner, basketId, amountRaw: cashRaw, ...shared });
+      return adapter.buildApprove({ owner, basketId, amountRaw: cashOf(leg), ...shared });
     case 'create_vault': {
       const proposal = await loadProposal(deps.db, request.proposalId);
       const recipe = proposal?.recipes.find((r) => r.chain === leg.chain);
       if (!recipe) throw new Refusal(409, 'the plan this order buys is no longer stored');
+      const assets = await adapter.listAssets();
+      const cash = assets.find((x) => x.cls === 'cash');
+      if (!cash) throw new Error(`${entry.chain} lists no cash token`);
+      const targets = await targetsOf(leg.chain, recipe.components, assets, (chain) =>
+        loadFamilies(deps.db, chain),
+      );
+      // The vault's targets are fixed here. They have to be the ones the order's trades were planned
+      // for: a shared portfolio in the plan that changed since the order was made gives others.
+      const planned = order.legs.flatMap((l) => l.trades);
+      if (!sameTrades(planned, tradesFor(targets, BigInt(cashOf(leg)), cash.id)))
+        throw new Refusal(
+          409,
+          'a shared portfolio in this plan has changed since the order was made',
+          { code: 'VERSION_CHANGED', fix: 'Make the order again.' },
+        );
       return adapter.buildCreateVault({
         owner,
         basketId,
-        targets: targetsOf(recipe.components),
+        targets,
         autoFollow: false,
-        depositRaw: cashRaw,
+        // The whole deposit. The trades spend the invested share of it; the rest stays as cash.
+        depositRaw: cashOf(leg),
         trades,
         slippageBps,
         ...shared,
@@ -139,7 +174,7 @@ async function buildFor(
     case 'deposit':
       return adapter.buildDeposit({
         vault: await vault(),
-        amountRaw: cashRaw,
+        amountRaw: cashOf(leg),
         trades,
         slippageBps,
         ...shared,
@@ -168,12 +203,16 @@ async function fateOf(entry: ChainEntry, attempt: Attempt, signer: Address) {
   return { state: status === 'expired' ? ('gone' as const) : ('open' as const) };
 }
 
-/** Asks the chain what became of an attempt's transaction and writes it down. */
+/**
+ * Asks the chain what became of an attempt's transaction and writes it down. `nonce` is the nonce of
+ * record where the caller read one from the transaction: the attempt then carries it.
+ */
 async function settle(
   deps: OrderDeps,
   leg: Leg,
   attempt: Attempt,
   sent: { txId: string; validUntil: string | null },
+  nonce: number | null = null,
 ): Promise<Outcome['status']> {
   const entry = deps.chains.get(leg.chain);
   const tracked = await refusing(() =>
@@ -188,6 +227,7 @@ async function settle(
     explorerUrl: tracked.explorerUrl || null,
     validUntil: sent.validUntil,
     error: status === 'failed' ? legErrorFromRevert(tracked.error) : null,
+    nonce,
   });
   return status;
 }
@@ -206,6 +246,35 @@ function afterOutcome(deps: OrderDeps, stored: StoredOrder, status: Outcome['sta
     stored.order.id,
     seen && first && open ? now + ORDER_POLICY.signedSeconds : undefined,
   );
+}
+
+/**
+ * The transaction of an attempt nobody reported has landed. The leg settles on it, unless that
+ * transaction is recorded against another step: one transaction settles one step. That happens on an
+ * EVM chain when two orders of one wallet hold the same call on the same nonce, a cancelled attempt and
+ * a later one. This attempt can then no longer land, and it is closed.
+ *
+ * Answers the outcome, or null when the transaction was another step's.
+ */
+async function settleLanding(
+  deps: OrderDeps,
+  leg: Leg,
+  attempt: Attempt,
+  txId: string,
+): Promise<Outcome['status'] | null> {
+  try {
+    return await settle(deps, leg, attempt, { txId, validUntil: attempt.validUntil });
+  } catch (e) {
+    if (!(e instanceof TakenElsewhere)) throw e;
+    await recordOutcome(deps.db, attempt, {
+      status: 'expired',
+      txId: attempt.txId,
+      explorerUrl: attempt.explorerUrl,
+      validUntil: attempt.validUntil,
+      error: null,
+    });
+    return null;
+  }
 }
 
 /**
@@ -228,7 +297,9 @@ async function assertNothingInFlight(
   if (!latest || final(latest)) return undefined;
   const fate = await fateOf(deps.chains.get(leg.chain), latest, ownerOn(stored.order, leg));
   if (fate.state === 'landed') {
-    const status = await settle(deps, leg, latest, { ...latest, txId: fate.txId });
+    const status = await settleLanding(deps, leg, latest, fate.txId);
+    // Another step's transaction took the nonce: this attempt is gone, and the next takes a fresh one.
+    if (status === null) return undefined;
     await afterOutcome(deps, stored, status);
     throw new Refusal(
       409,
@@ -244,6 +315,36 @@ async function assertNothingInFlight(
       details: { retryable: true },
     });
   return fate.state === 'open' && latest.nonce !== null ? latest.nonce : undefined;
+}
+
+/**
+ * EVM only. A wallet has one next nonce on a chain, and every build states it. Two orders of one
+ * wallet built side by side would both be built on that nonce, and only one of the two transactions
+ * could ever land. So a step is not built while another order of the same wallet holds a transaction
+ * on that chain that can still land: that one is reported or cancelled first. The refusal names it.
+ *
+ * Answers the attempts found that can no longer land, which do not stand in the way.
+ */
+async function assertNoOtherOrderInFlight(
+  deps: OrderDeps,
+  order: Order,
+  leg: Leg,
+  entry: ChainEntry,
+  owner: Address,
+): Promise<string[]> {
+  const others = await liveElsewhere(deps.db, {
+    chain: leg.chain,
+    owner,
+    orderId: order.id,
+    now: deps.now(),
+  });
+  const clear: string[] = [];
+  for (const other of others) {
+    const fate = await fateOf(entry, other.attempt, owner);
+    if (fate.state === 'open') throw blockedBy(entry.config.name, other);
+    clear.push(other.attempt.id);
+  }
+  return clear;
 }
 
 /**
@@ -276,6 +377,8 @@ export async function buildLeg(
   // attempt is built on its nonce, so only one of them can ever land.
   const nonce = await assertNothingInFlight(deps, stored, leg);
   const owner = ownerOn(order, leg);
+  const evm = chainFamily(leg.chain) === 'evm';
+  const clear = evm ? await assertNoOtherOrderInFlight(deps, order, leg, entry, owner) : [];
   let built: BuiltTx;
   let expected: Leg['expected'];
   try {
@@ -324,6 +427,10 @@ export async function buildLeg(
       provenance: built.preview.provenance,
     },
     builtAt: now,
+    // Two builds of one wallet at the same moment: the second to be recorded is refused.
+    ...(evm
+      ? { exclusive: { owner, orderId: order.id, chainName: entry.config.name, clear } }
+      : {}),
   });
   await reload(deps, order.id);
   return { tx: stampTx(built, { legId: leg.id, attemptId: attempt.id }), attempt };
@@ -338,12 +445,48 @@ async function refuseUnread<T>(work: () => Promise<T>): Promise<T> {
 }
 
 const NOT_BUILT_HERE = { details: { chainCode: 'NotBuiltHere', retryable: false } } as const;
+const NOT_THIS_STEP = 'that transaction is not the one built for this step';
+
+/**
+ * Which attempt at a step a transaction is. `same` are the attempts whose message the transaction
+ * carries, oldest first, and `nonce` is the nonce it was signed with, where it has one.
+ *
+ * On Solana a message names one attempt: every build is a new message. On an EVM chain the message is
+ * the call alone, so two builds of one step share it, and an attempt is the pair (message, nonce).
+ * - The nonce is one an attempt states: that pair. If one of them has landed, it is that one: a nonce
+ *   is used once. Otherwise the newest that can still land, and failing that the newest that was
+ *   closed. After a cancel and a rebuild both attempts state the pair, and the rebuilt one is the
+ *   one the person was last asked to sign. After a revert and a rebuild the new attempt has a nonce
+ *   of its own, so the reverted one is never taken for it.
+ * - The nonce is one no attempt states: an outside wallet chose its own. It is the newest attempt that
+ *   can still land, or was closed without landing. A step that is already settled takes no such
+ *   transaction: the same call on another nonce is another transaction.
+ * - No nonce (Solana, or bytes that state none): the newest that can still land, then one that landed,
+ *   then one that was closed.
+ */
+export function attemptFor(
+  same: Attempt[],
+  nonce: number | null,
+  legSettled: boolean,
+): Attempt | undefined {
+  const newest = (list: Attempt[]) =>
+    list.reduce<Attempt | undefined>((a, b) => (a && a.n > b.n ? a : b), undefined);
+  if (nonce === null)
+    return newest(same.filter(live)) ?? newest(same.filter(final)) ?? newest(same);
+  const pair = same.filter((a) => a.nonce === nonce);
+  if (pair.length) return newest(pair.filter(final)) ?? newest(pair.filter(live)) ?? newest(pair);
+  if (legSettled) return undefined;
+  return newest(same.filter(live)) ?? newest(same.filter((a) => !final(a)));
+}
 
 /**
  * The caller says a leg was sent: by its transaction id, or by handing over the signed bytes to relay.
  * The id or the bytes are matched against every attempt of the leg, and the leg settles on the attempt
  * that landed, whichever it is and whatever it was labelled. What matches no attempt is refused and
  * changes nothing. Bytes are relayed only for an attempt that is built and was never sent.
+ *
+ * On an EVM chain the match is by the pair (message, nonce), with the nonce read from the transaction
+ * itself (`nonceOf`), and the attempt is left carrying the nonce the wallet really used.
  */
 export async function reportLeg(
   deps: OrderDeps,
@@ -355,28 +498,58 @@ export async function reportLeg(
   const attempts = stored.attempts.filter((a) => a.legId === leg.id);
   if (!attempts.length) throw new Refusal(409, 'this step has not been built yet');
   const entry = deps.chains.get(leg.chain);
+  const { adapter } = entry;
+
+  /** A nonce no attempt of this step states: it must not be the pair of another step. */
+  const assertNotAnothers = async (attempt: Attempt, nonce: number | null) => {
+    if (nonce === null || attempt.nonce === nonce) return;
+    const other = await pairElsewhere(deps.db, {
+      chain: leg.chain,
+      messageHash: attempt.messageHash,
+      nonce,
+      legId: leg.id,
+    });
+    if (other)
+      throw new Refusal(409, 'that transaction was built for another step', NOT_BUILT_HERE);
+  };
 
   let attempt: Attempt | undefined;
   let sent: { txId: string; validUntil: string | null };
+  let nonce: number | null;
   if ('signedTx' in body) {
-    const hash = await refuseUnread(() => entry.adapter.messageHashOf(body.signedTx));
-    attempt = attempts.find((a) => a.messageHash === hash);
-    if (!attempt)
+    const hash = await refuseUnread(() => adapter.messageHashOf(body.signedTx));
+    const same = attempts.filter((a) => a.messageHash === hash);
+    if (!same.length)
       throw new Refusal(
         409,
         'these are not the bytes built for this step: nothing was sent',
         NOT_BUILT_HERE,
       );
+    nonce = await refuseUnread(() => adapter.nonceOf({ signedTx: body.signedTx }));
+    attempt = attemptFor(same, nonce, settled(leg));
+    if (!attempt)
+      throw new Refusal(
+        409,
+        'this step is settled by another transaction: nothing was sent',
+        NOT_BUILT_HERE,
+      );
+    await assertNotAnothers(attempt, nonce);
     // Its outcome is recorded. The same bytes are never sent a second time.
     if (final(attempt)) return stored;
     if (attempt.txId) sent = { txId: attempt.txId, validUntil: attempt.validUntil };
     else if (attempt.status === 'built') {
       assertBuilds(entry);
-      const relayed = await refusing(() => entry.adapter.relay(body.signedTx));
+      const relayed = await refusing(() => adapter.relay(body.signedTx));
       sent = { txId: relayed.txId, validUntil: relayed.validUntil ?? attempt.validUntil };
+      // Bytes that state no nonce landed on one all the same: the transaction says which.
+      nonce ??= await refusing(() => adapter.nonceOf({ txId: relayed.txId }));
     } else {
       // Closed before it was sent. The server does not send it now, but looks whether it landed anyway.
-      const fate = await fateOf(entry, attempt, ownerOn(stored.order, leg));
+      const fate = await fateOf(
+        entry,
+        { ...attempt, nonce: nonce ?? attempt.nonce },
+        ownerOn(stored.order, leg),
+      );
       if (fate.state !== 'landed')
         throw new Refusal(
           409,
@@ -387,27 +560,48 @@ export async function reportLeg(
     }
   } else {
     attempt = attempts.find((a) => a.txId === body.txId);
-    let unseen = false;
-    for (const a of attempts) {
-      if (attempt) break;
-      if (a.txId !== null) continue;
-      const carried = await refusing(() => entry.adapter.carries(body.txId, a.messageHash));
-      if (carried === 'this') attempt = a;
-      else if (carried === 'unseen') unseen = true;
+    if (attempt) {
+      if (final(attempt)) return stored;
+      nonce = await refusing(() => adapter.nonceOf({ txId: body.txId }));
+    } else {
+      // Ask the chain once per message, the newest first.
+      const hashes = [...new Set([...attempts].reverse().map((a) => a.messageHash))];
+      let hash: string | undefined;
+      let unseen = false;
+      for (const candidate of hashes) {
+        const carried = await refusing(() => adapter.carries(body.txId, candidate));
+        if (carried === 'this') {
+          hash = candidate;
+          break;
+        }
+        if (carried === 'unseen') unseen = true;
+      }
+      // A wallet that sent a moment ago can be ahead of the node. That is not the wrong transaction:
+      // the caller is told to report again, and nothing is written.
+      if (!hash && unseen)
+        throw new Refusal(409, 'the chain has not seen that transaction yet', {
+          fix: 'Report it again in a moment.',
+          details: { retryable: true },
+        });
+      if (!hash) throw new Refusal(409, NOT_THIS_STEP);
+      nonce = await refusing(() => adapter.nonceOf({ txId: body.txId }));
+      attempt = attemptFor(
+        attempts.filter((a) => a.messageHash === hash),
+        nonce,
+        settled(leg),
+      );
+      if (!attempt) throw new Refusal(409, NOT_THIS_STEP);
+      await assertNotAnothers(attempt, nonce);
+      // The pair has landed and is recorded, under the id it landed with.
+      if (final(attempt)) {
+        if (attempt.txId !== body.txId) throw new Refusal(409, NOT_THIS_STEP);
+        return stored;
+      }
     }
-    // A wallet that sent a moment ago can be ahead of the node. That is not the wrong transaction:
-    // the caller is told to report again, and nothing is written.
-    if (!attempt && unseen)
-      throw new Refusal(409, 'the chain has not seen that transaction yet', {
-        fix: 'Report it again in a moment.',
-        details: { retryable: true },
-      });
-    if (!attempt) throw new Refusal(409, 'that transaction is not the one built for this step');
-    if (final(attempt)) return stored;
     sent = { txId: body.txId, validUntil: attempt.validUntil };
   }
 
-  return afterOutcome(deps, stored, await settle(deps, leg, attempt, sent));
+  return afterOutcome(deps, stored, await settle(deps, leg, attempt, sent, nonce));
 }
 
 /**
@@ -426,7 +620,9 @@ export async function cancelLeg(
   if (!attempt || !live(attempt)) throw new Refusal(409, 'this step has no attempt to cancel');
   const fate = await fateOf(deps.chains.get(leg.chain), attempt, ownerOn(stored.order, leg));
   if (fate.state === 'landed') {
-    const status = await settle(deps, leg, attempt, { ...attempt, txId: fate.txId });
+    const status = await settleLanding(deps, leg, attempt, fate.txId);
+    // Another step's transaction took the nonce: the attempt is closed, which is what was asked.
+    if (status === null) return reload(deps, stored.order.id);
     await afterOutcome(deps, stored, status);
     throw new Refusal(409, 'the transaction of this step has landed: read the order again');
   }
