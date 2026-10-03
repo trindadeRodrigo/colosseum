@@ -153,9 +153,23 @@ type Answer = {
   quoteUsdSource: string | null;
 };
 
-/** The pool-liquidity reads with their caches; `now` and `reader` are seams for tests. */
+/** One pool's accounts as read in one slot, with its quote's USD price; bands are computed from it per request. */
+type Snapshot = {
+  fetchedAt: string;
+  slot: number;
+  head: Uint8Array;
+  kids: Uint8Array[];
+  q: { usd: number; source: string } | null;
+};
+
+/**
+ * The pool-liquidity reads with their caches; `now` and `reader` are seams for tests. The RPC read is kept per pool
+ * address for `ANSWER_TTL_MS`, whatever `bands` and `rangePct` are asked, so a page cannot hammer the RPC by varying
+ * them; the keys are registry pools only (the route answers 404 before reading anything else), and expired entries
+ * are dropped on every read.
+ */
 export function poolLiquidityService(reader: ChainReader, now: () => number = Date.now) {
-  const answers = new Map<string, { at: number; value: Promise<Answer> }>();
+  const reads = new Map<string, { at: number; value: Promise<Snapshot | null> }>();
   const kids = new Map<string, { at: number; keys: string[] }>();
   let sol: { at: number; value: Promise<{ usd: number; source: string } | null> } | null = null;
 
@@ -168,20 +182,9 @@ export function poolLiquidityService(reader: ChainReader, now: () => number = Da
 
   async function read(
     p: PoolRow & { program: string; quoteMint: string },
-    bands: number,
-    rangePct: number,
-  ): Promise<Answer> {
+  ): Promise<Snapshot | null> {
     const offsets = CHILD_OFFSETS[p.venue];
-    if (!offsets)
-      return {
-        midPrice: null,
-        fetchedAt: null,
-        slot: null,
-        distribution: null,
-        reason: 'not_applicable',
-        quoteUsd: null,
-        quoteUsdSource: null,
-      };
+    if (!offsets) return null;
     let k = kids.get(p.address);
     if (!k || now() - k.at > CHILDREN_TTL_MS) {
       const keys: string[] = [];
@@ -193,34 +196,58 @@ export function poolLiquidityService(reader: ChainReader, now: () => number = Da
     const { slot, data } = await reader.accounts([p.address, ...k.keys]);
     const head = data.get(p.address);
     if (!head) throw new Error('pool account not found on chain');
-    const q = await quotePrice(p.quoteMint);
-    const distribution = distributionFromBytes(
-      p,
-      head,
-      k.keys.map((x) => data.get(x)).filter((x): x is Uint8Array => !!x),
-      { quoteUsd: q?.usd ?? null, bands, rangePct },
-    );
     return {
-      midPrice: distribution?.midPrice ?? null,
       fetchedAt,
       slot,
-      distribution,
-      reason: distribution ? null : 'not_applicable',
-      quoteUsd: q?.usd ?? null,
-      quoteUsdSource: q?.source ?? null,
+      head,
+      kids: k.keys.map((x) => data.get(x)).filter((x): x is Uint8Array => !!x),
+      q: await quotePrice(p.quoteMint),
     };
   }
 
+  function snapshot(p: PoolRow & { program: string; quoteMint: string }) {
+    const t = now();
+    for (const [key, e] of reads) if (t - e.at > ANSWER_TTL_MS) reads.delete(key);
+    const hit = reads.get(p.address);
+    if (hit) return hit.value;
+    const value = read(p);
+    reads.set(p.address, { at: t, value });
+    // a failed read is not kept
+    value.catch(() => reads.delete(p.address));
+    return value;
+  }
+
   return {
-    get(p: PoolRow & { program: string; quoteMint: string }, bands: number, rangePct: number) {
-      const key = `${p.address}|${bands}|${rangePct}`;
-      const hit = answers.get(key);
-      if (hit && now() - hit.at <= ANSWER_TTL_MS) return hit.value;
-      const value = read(p, bands, rangePct);
-      answers.set(key, { at: now(), value });
-      // a failed read is not kept
-      value.catch(() => answers.delete(key));
-      return value;
+    async get(
+      p: PoolRow & { program: string; quoteMint: string },
+      bands: number,
+      rangePct: number,
+    ): Promise<Answer> {
+      const s = await snapshot(p);
+      if (!s)
+        return {
+          midPrice: null,
+          fetchedAt: null,
+          slot: null,
+          distribution: null,
+          reason: 'not_applicable',
+          quoteUsd: null,
+          quoteUsdSource: null,
+        };
+      const distribution = distributionFromBytes(p, s.head, s.kids, {
+        quoteUsd: s.q?.usd ?? null,
+        bands,
+        rangePct,
+      });
+      return {
+        midPrice: distribution?.midPrice ?? null,
+        fetchedAt: s.fetchedAt,
+        slot: s.slot,
+        distribution,
+        reason: distribution ? null : 'not_applicable',
+        quoteUsd: s.q?.usd ?? null,
+        quoteUsdSource: s.q?.source ?? null,
+      };
     },
   };
 }
@@ -501,16 +528,13 @@ export async function registerPoolLiquidityRoute(
         .limit(1);
       if (!p) return reply.code(404).send({ error: `unknown pool ${req.params.address}` });
       const since = now() - req.query.hours * 3_600_000;
-      const recs = CHILD_OFFSETS[p.venue] ? store.since(p.address, since) : [];
+      // the reference prices of the whole window, read once; the recordings one at a time (pool-recorded.ts)
       const mids =
-        recs.length && !STABLE_QUOTES.has(p.quoteMint)
-          ? await refMids(
-              p.assetMint,
-              Date.parse((recs[0] as Recorded).fetchedAt),
-              Date.parse((recs[recs.length - 1] as Recorded).fetchedAt),
-            )
+        CHILD_OFFSETS[p.venue] && !STABLE_QUOTES.has(p.quoteMint)
+          ? await refMids(p.assetMint, since, now())
           : [];
-      const points = recs.map((rec) => {
+      const points = [];
+      for (const rec of CHILD_OFFSETS[p.venue] ? store.since(p.address, since) : []) {
         const at = Date.parse(rec.fetchedAt);
         const r = decodeRecorded(
           p,
@@ -521,7 +545,7 @@ export async function registerPoolLiquidityRoute(
         );
         const d = r.d;
         const priced = d && d.totalAssetUsd != null && d.totalQuoteUsd != null;
-        return {
+        points.push({
           t: rec.fetchedAt,
           slot: rec.slot,
           midPrice: d?.midPrice ?? null,
@@ -530,8 +554,8 @@ export async function registerPoolLiquidityRoute(
           valueUsd: priced ? (d.totalAssetUsd as number) + (d.totalQuoteUsd as number) : null,
           quoteUsd: r.quoteUsd,
           usdNullReason: !d ? 'not_applicable' : priced ? null : 'no_quote_price',
-        };
-      });
+        });
+      }
       return {
         pool: p.address,
         venue: p.venue,

@@ -247,6 +247,20 @@ describe('pool liquidity: cache', () => {
     await expect(failing.get(p, 60, 0.3)).rejects.toThrow('did not answer');
     await expect(failing.get(p, 60, 0.3)).rejects.toThrow('did not answer');
   });
+
+  it('reads the RPC once per pool in 60 s whatever bands and range are asked, and answers each from that read', async () => {
+    const { reader, calls } = fakeReader(ORCA);
+    const t = 1_000_000;
+    const svc = poolLiquidityService(reader, () => t);
+    const p = { ...row(ORCA, 'orca_whirlpool', 6), program: 'x', quoteMint: USDC };
+    const answers = [];
+    for (let i = 0; i < 50; i++) answers.push(await svc.get(p, 2 + i, 0.3 + i * 1e-9));
+    expect(calls).toMatchObject({ accounts: 1, children: 2 });
+    expect(answers[10]?.distribution?.bands.length).not.toBe(
+      answers[20]?.distribution?.bands.length,
+    );
+    expect(answers[49]?.slot).toBe(answers[0]?.slot);
+  });
 });
 
 const { db, client } = createDb();

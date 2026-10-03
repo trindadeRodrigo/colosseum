@@ -43,7 +43,9 @@ if [ "$HOME_DIR" = "$DEFAULT_HOME" ]; then
 else
   REHEARSAL=1
   PLIST_DIR="$HOME_DIR/LaunchAgents"
-  echo "rehearsal: COLOSSEUM_HOME=$HOME_DIR is not the default; repo folders are copied, not moved or linked"
+  # the plists carry the live jobs' labels, so loading one would replace the running job: a rehearsal never loads
+  LOAD=0
+  echo "rehearsal: COLOSSEUM_HOME=$HOME_DIR is not the default; repo folders are copied, not moved or linked; nothing is loaded"
 fi
 WANT_SPLIT=0
 WANT_LENDING=0

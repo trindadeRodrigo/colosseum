@@ -83,20 +83,35 @@ export function hourOfFile(file: string): string | null {
   return m ? `${m[1]}T${m[2]}:00:00.000Z` : null;
 }
 
+/** How many decoded recordings are kept (about 0.7 MB of JSON each); the oldest used is dropped first. */
+export const RECORDED_KEEP = 64;
+
 /**
- * The recordings with caches: the index is re-read at most once a minute, decoded files are kept (they never change).
- * `now` is a seam for tests.
+ * The recordings with caches: the index is re-read at most once a minute; the newest recording of each pool asked
+ * is kept, at most `RECORDED_KEEP` of them. A pool's history is read one file at a time and nothing of it is kept,
+ * so a 31-day sweep holds one recording at a time. `now` is a seam for tests.
  */
 export function recordedStore(dir: string = recordedDir(), now: () => number = Date.now) {
   let index: { at: number; map: Map<string, string[]> } | null = null;
-  const files = new Map<string, Recorded | null>();
+  const kept = new Map<string, Recorded | null>();
   const idx = () => {
     if (!index || now() - index.at > 60_000) index = { at: now(), map: recordedIndex(dir) };
     return index.map;
   };
-  const read = (f: string) => {
-    if (!files.has(f)) files.set(f, readRecorded(f));
-    return files.get(f) ?? null;
+  const readKept = (f: string) => {
+    if (kept.has(f)) {
+      const r = kept.get(f) ?? null;
+      kept.delete(f);
+      kept.set(f, r);
+      return r;
+    }
+    const r = readRecorded(f);
+    kept.set(f, r);
+    for (const k of kept.keys()) {
+      if (kept.size <= RECORDED_KEEP) break;
+      kept.delete(k);
+    }
+    return r;
   };
   return {
     pools(): Array<{ pool: string; files: string[] }> {
@@ -106,20 +121,19 @@ export function recordedStore(dir: string = recordedDir(), now: () => number = D
     latest(pool: string): Recorded | null {
       const fs = idx().get(pool) ?? [];
       for (let i = fs.length - 1; i >= 0; i--) {
-        const r = read(fs[i] as string);
+        const r = readKept(fs[i] as string);
         if (r) return r;
       }
       return null;
     },
-    /** Every readable recording of a pool at or after `since` (ms), oldest first. */
-    since(pool: string, since: number): Recorded[] {
-      return (idx().get(pool) ?? [])
-        .filter((f) => {
-          const h = hourOfFile(f);
-          return !h || Date.parse(h) >= since - 3_600_000;
-        })
-        .map(read)
-        .filter((r): r is Recorded => !!r && Date.parse(r.fetchedAt) >= since);
+    /** Every readable recording of a pool at or after `since` (ms), oldest first, read one at a time. */
+    *since(pool: string, since: number): Generator<Recorded> {
+      for (const f of idx().get(pool) ?? []) {
+        const h = hourOfFile(f);
+        if (h && Date.parse(h) < since - 3_600_000) continue;
+        const r = readRecorded(f);
+        if (r && Date.parse(r.fetchedAt) >= since) yield r;
+      }
     },
   };
 }
