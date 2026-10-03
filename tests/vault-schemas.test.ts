@@ -25,6 +25,7 @@ import {
   creatorLimitReasonId,
   creatorLimitReasonOf,
   EvmAddress,
+  evmCallPreimage,
   IntentRequest,
   Leg,
   LegBase,
@@ -50,6 +51,7 @@ import {
   UnsignedTx,
   WalletAccount,
   WalletError,
+  WalletErrorCode,
 } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
 
@@ -386,6 +388,55 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
     expect(LimitResult.safeParse({ ...soon, allowedAt: 1.5 }).success).toBe(false);
     expect(LimitResult.safeParse({ ...soon, allowedAt: '1791385200' }).success).toBe(false);
     expect(new WalletError('no_gas')).toMatchObject({ code: 'no_gas', name: 'WalletError' });
+  });
+
+  it('names why a wallet call failed, where the first five codes could not say it', () => {
+    expect(WalletErrorCode.options).toEqual([
+      'rejected',
+      'expired',
+      'no_gas',
+      'wrong_chain',
+      'not_connected',
+      'wrong_account',
+      'unsupported',
+      'changed',
+      'unknown',
+    ]);
+    for (const code of ['not_connected', 'wrong_account', 'unsupported', 'changed'] as const)
+      expect(new WalletError(code, 'why')).toMatchObject({ code, message: 'why' });
+  });
+
+  it('defines the message hash of an EVM call from the call alone, in one form', () => {
+    const call = { chainId: 46630, signer: EVM, to: EVM, value: '7', data: '0xa9059cbb' };
+    expect(evmCallPreimage(call)).toBe(`evm:46630:${EVM}:${EVM}:7:0xa9059cbb`);
+    // Checksum case and upper-case hex are the same call.
+    const shouted = {
+      ...call,
+      signer: '0x204FAca1764B154221e35c0d20aBb3c525710498',
+      data: '0xA9059CBB',
+    };
+    expect(evmCallPreimage(shouted)).toBe(evmCallPreimage(call));
+    // Each of the five fields is part of it.
+    const others = [
+      { ...call, chainId: 4663 },
+      { ...call, signer: `0x${'11'.repeat(20)}` },
+      { ...call, to: `0x${'11'.repeat(20)}` },
+      { ...call, value: '8' },
+      { ...call, data: '0x' },
+    ];
+    expect(new Set([call, ...others].map(evmCallPreimage)).size).toBe(6);
+    for (const bad of [
+      { ...call, value: '0x7' },
+      { ...call, value: '-1' },
+      { ...call, data: 'a9059cbb' },
+      { ...call, data: '0xa9059cb' },
+      { ...call, to: SOL },
+      { ...call, chainId: 0.5 },
+    ])
+      expect(() => evmCallPreimage(bad), JSON.stringify(bad)).toThrow();
+    // A transaction's message hash is 32 bytes of lower-case hex: a SHA-256, on both families.
+    expect(BuiltTx.safeParse({ ...built, messageHash: 'x' }).success).toBe(false);
+    expect(BuiltTx.safeParse({ ...built, messageHash: HEX32.toUpperCase() }).success).toBe(false);
   });
 
   it('names the fourteen author-limit reasons as the shared vectors number them', () => {

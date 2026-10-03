@@ -303,13 +303,16 @@ On Solana, `create_vault` opens only the cash account. Each position's token acc
 const BuiltTx = UnsignedTx.omit({ kind: true, legAssetId: true, executionId: true }).extend({
   legKind,                                             // what an adapter returns
   chainId, signer, feePayer /* optional */,
-  messageHash,                                         // hash of the exact bytes to sign
+  messageHash,                                         // 32 bytes of hex, defined per family below
   preview });                                          // Sourced & { summary, simulated, feeNativeRaw,
                                                        //   changes: { holder: 'wallet' | 'vault', asset, deltaRaw }[] }
 const BasketTx = BuiltTx.extend({ legId, attemptId });  // strings, stamped by the API or the keeper (stampTx).
                                                        // The wallet, the web and the guard take only this.
 // Both check their fields against each other: `evm` on an EVM chain and nowhere else, lastValidBlockHeight
 // on Solana, chain = the family of chainId, a signer in that family's form.
+// messageHash. Solana: the SHA-256 of the message bytes, the serialized transaction less its signatures,
+// so signing does not change it. EVM: the SHA-256 of evmCallPreimage(), the text
+// `evm:<chain id>:<signer>:<to>:<value>:<data>`: the call alone, because the wallet sets nonce and fees.
 
 // order.ts
 type LegStatus = 'planned' | 'built' | 'sent' | 'confirmed' | 'failed' | 'expired' | 'skipped';
@@ -416,11 +419,16 @@ interface WalletPort {
   caps(chain: ChainId): { silent: boolean; batchSign: number; signOnly: boolean };
   signIn(method: 'passkey' | 'wallet'): Promise<void>; signOut(): Promise<void>;
   sign(chain: ChainId, txs: BasketTx[]): Promise<string[]>;         // Solana any wallet; EVM embedded
-  send(chain: ChainId, tx: BasketTx): Promise<{ txId: string }>;    // EVM external
+  send(chain: ChainId, tx: BasketTx): Promise<{ txId: string }>;    // an outside EVM wallet only
   exportKey(family: Chain): Promise<void>; authHeaders(): Promise<Record<string, string>>; }
-// throws WalletError { code: 'rejected' | 'expired' | 'no_gas' | 'wrong_chain' | 'unknown' }
+// throws WalletError { code: 'rejected' | 'expired' | 'no_gas' | 'wrong_chain' | 'not_connected'
+//   | 'wrong_account' | 'unsupported' | 'changed' | 'unknown' }
 // sign() and send() take BasketTx, never BuiltTx: nothing unstamped reaches a wallet
 ```
+
+- `sign()` sends nothing. Its answer has the same length and order as its input. On Solana each entry is base64 of the whole serialized transaction, signatures and message, with the account's signature in its slot. On EVM it is the 0x serialized signed transaction, with the nonce, gas and fee the wallet set. Either is what a report carries as `signedTx`.
+- `send()` is for an outside EVM wallet, which cannot sign without sending. It answers the transaction's hash, reported as `txId`. Solana and the embedded wallet use `sign()`.
+- `changed` means the wallet handed back something other than what it was given, signed. `wrong_account` means the transaction or the signature is another account's. `unsupported` means the wallet cannot do what was asked. `not_connected` means nobody is signed in or no wallet of that family is connected.
 
 ### 3.6 Personalization and `packages/basket`
 

@@ -4,6 +4,8 @@ import {
   AssetId,
   ChainId,
   chainFamily,
+  EvmAddress,
+  Hex32,
   isAddressOf,
   RawAmount,
   RawDelta,
@@ -40,10 +42,42 @@ export const BuiltTxBase = UnsignedTx.omit({
   chainId: ChainId,
   signer: Address,
   feePayer: Address.optional(),
-  /** Hash of the exact bytes to sign. */
-  messageHash: z.string().min(1),
+  /**
+   * What ties signed bytes and a landed transaction back to this build: 32 bytes of lower-case hex,
+   * a SHA-256, defined per family.
+   * - Solana: the SHA-256 of the message bytes, which is the serialized transaction in `payload`
+   *   less its signatures (the leading count and 64 bytes each). Signing changes the signatures and
+   *   not the message, so the signed transaction hashes to the same value.
+   * - EVM: the SHA-256 of the UTF-8 bytes of `evmCallPreimage(...)`: the call alone (chain id,
+   *   signer, to, value, data). The wallet sets the nonce and the fees, so the bytes that are signed
+   *   do not exist when the transaction is built. Two builds of the same call have the same hash.
+   */
+  messageHash: Hex32,
   preview: TxPreview,
 });
+
+/**
+ * The text whose SHA-256 is an EVM transaction's `messageHash`:
+ * `evm:<chain id>:<signer>:<to>:<value>:<data>`, the two addresses and the data in lower case, the
+ * chain id (`evm.chainId`, the network's own number) and the value in wei as decimal numbers. Pure, so
+ * the adapter that builds, the server that checks signed bytes and the guard in the browser agree on
+ * it to the byte. Throws on a field that is not in that form.
+ */
+export function evmCallPreimage(call: {
+  chainId: number;
+  signer: string;
+  to: string;
+  value: string;
+  data: string;
+}): string {
+  const data = call.data.toLowerCase();
+  if (!Number.isSafeInteger(call.chainId) || call.chainId < 0)
+    throw new Error('chainId: expected a whole number');
+  if (!/^0x(?:[0-9a-f]{2})*$/.test(data)) throw new Error('data: expected whole bytes of 0x hex');
+  const signer = EvmAddress.parse(call.signer.toLowerCase());
+  const to = EvmAddress.parse(call.to.toLowerCase());
+  return `evm:${call.chainId}:${signer}:${to}:${RawAmount.parse(call.value)}:${data}`;
+}
 
 type TxFields = z.infer<typeof BuiltTxBase>;
 /** The fields that must agree with each other. One list for both shapes. */
