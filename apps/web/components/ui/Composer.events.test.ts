@@ -26,8 +26,11 @@ describe('Composer, sending (composer.md)', () => {
     const host = await mount(composerToSend({ defaultValue: 'R$ 5.000 por mês' }, onSubmit));
     const shifted = await press(box(host), 'Enter', { shiftKey: true });
     const composing = await press(box(host), 'Enter', { isComposing: true });
+    // Safari: the composition has ended, and the key code still says the key was the input method's
+    const safari = await press(box(host), 'Enter', { isComposing: false, keyCode: 229 });
     expect(shifted.defaultPrevented).toBe(false);
     expect(composing.defaultPrevented).toBe(false);
+    expect(safari.defaultPrevented).toBe(false);
     expect(onSubmit).not.toHaveBeenCalled();
   });
 

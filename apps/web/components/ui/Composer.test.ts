@@ -71,6 +71,27 @@ describe('Composer (composer.md)', () => {
     expect(sendsOnKey({ key: 'a', shiftKey: false })).toBe(false);
   });
 
+  it('leaves to the input method the Enter that Safari reports after the composition has ended', () => {
+    // isComposing is already false there; the key code 229 is what is left to go by
+    expect(sendsOnKey({ key: 'Enter', shiftKey: false, nativeEvent: { keyCode: 229 } })).toBe(
+      false,
+    );
+    expect(sendsOnKey({ key: 'Enter', shiftKey: false, keyCode: 229 })).toBe(false);
+    expect(
+      sendsOnKey({
+        key: 'Enter',
+        shiftKey: false,
+        nativeEvent: { isComposing: false, keyCode: 13 },
+      }),
+    ).toBe(true);
+  });
+
+  it('names a button that shows a word by that word, unless it is handed another name', () => {
+    expect(parts(composer.worded).send.attrs['aria-label']).toBe('Subscribe');
+    expect(parts(composer.subscribe).send.attrs['aria-label']).toBe('Subscribe');
+    expect(parts(composer.typed).send.attrs['aria-label']).toBe('Fit it');
+  });
+
   it('names the send button, and mutes it while there is nothing to send', () => {
     const empty = parts(composer.empty).send;
     expect(empty.attrs['aria-label']).toBe('Fit it');

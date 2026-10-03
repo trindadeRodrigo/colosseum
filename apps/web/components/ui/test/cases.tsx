@@ -206,6 +206,38 @@ export const pin = {
       defaultOpen
     />
   ),
+  /** A provenance that is the name of something every object has: `kinds[provenance]` finds it. */
+  inheritedKind: (
+    <ProvenancePin
+      value={FIGURE.rate}
+      obs={{ ...LIVE_SPECIMEN, provenance: '__proto__' as PinSource['provenance'] }}
+      defaultOpen
+    />
+  ),
+  constructorKind: (
+    <ProvenancePin
+      value={FIGURE.rate}
+      obs={{ ...LIVE_SPECIMEN, provenance: 'constructor' as PinSource['provenance'] }}
+      defaultOpen
+    />
+  ),
+  blankSource: <ProvenancePin value={FIGURE.rate} obs={{ ...LIVE_SPECIMEN, source: ' ' }} />,
+  blankMethod: <ProvenancePin value={FIGURE.rate} obs={{ ...LIVE_SPECIMEN, method: '\t' }} />,
+  numberTime: <ProvenancePin value={FIGURE.rate} obs={{ ...LIVE_SPECIMEN, fetchedAt: '1' }} />,
+  zonelessTime: (
+    <ProvenancePin
+      value={FIGURE.rate}
+      obs={{ ...LIVE_SPECIMEN, fetchedAt: '2026-10-01T14:02:11' }}
+    />
+  ),
+  staleNoAge: (
+    <ProvenancePin
+      value={FIGURE.rate}
+      obs={{ ...LIVE_SPECIMEN, staleAgeSec: Number.NaN }}
+      defaultOpen
+    />
+  ),
+  staleNegative: <ProvenancePin value={FIGURE.rate} obs={{ ...LIVE_SPECIMEN, staleAgeSec: -90 }} />,
   open: (
     <ProvenancePin value={FIGURE.rate} obs={LIVE_SPECIMEN} detail={FIGURE.rateDetail} defaultOpen />
   ),
@@ -236,6 +268,7 @@ export const mockPlate = {
   quiet: <MockPlate announce={false} />,
   frame: <MockFrame heading="Sample plan">the body</MockFrame>,
   stale: <StalePlate ageSec={3 * 3600} />,
+  staleNoAge: <StalePlate ageSec={Number.NaN} />,
   // @ts-expect-error the plate takes no text: it says MOCK and nothing else
   reworded: <MockPlate word="LIVE">LIVE</MockPlate>,
   // @ts-expect-error there is no plate without its hatch band
@@ -467,6 +500,8 @@ export const composer = {
       onSubmit={noop}
     />
   ),
+  /** A worded button with no name handed over: it is named by its word. */
+  worded: <Composer variant="single" label="Email address" sendText="Subscribe" onSubmit={noop} />,
   // @ts-expect-error the typing box always has a label; a placeholder is never the only one
   unlabelled: <Composer placeholder="Your goal" onSubmit={noop} />,
 };

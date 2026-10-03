@@ -1,5 +1,4 @@
 'use client';
-import type { Provenance } from '@colosseum/schemas';
 import {
   type PointerEvent,
   type ReactNode,
@@ -11,10 +10,10 @@ import {
   useState,
 } from 'react';
 import { cn } from './cn';
-import { formatAge } from './format';
 import { Icon } from './Icon';
 import { MockWord } from './internal/mock-parts';
 import {
+  kindWords,
   PIN_CLOSE_MS,
   PIN_LABELS,
   PIN_OPEN_MS,
@@ -24,6 +23,7 @@ import {
   pinLabel,
   pinState,
   sourceLine,
+  staleWords,
 } from './provenance';
 
 export type { PinLabels, PinSource, PinState } from './provenance';
@@ -227,11 +227,8 @@ export function ProvenancePin({
     );
 
   const line = sourceLine(obs);
-  const age = state === 'stale' ? formatAge(obs.staleAgeSec ?? 0) : null;
-  const kind =
-    state === 'mock'
-      ? (text.kinds[obs.provenance as Exclude<Provenance, 'live'>] ?? text.unknownKind)
-      : null;
+  const stale = state === 'stale' ? staleWords(obs, text) : null;
+  const kind = state === 'mock' ? kindWords(obs.provenance, text) : null;
   const dialog = docs !== undefined;
 
   function toggle() {
@@ -290,12 +287,12 @@ export function ProvenancePin({
       >
         <PinGlyph state={state} drop={drop} />
       </button>
-      {age && (
+      {stale && (
         <span
           data-ui="stale-tag"
           className="ml-1.5 font-sans text-caption font-medium text-muted-foreground"
         >
-          {text.stale} · {age.short}
+          {stale}
         </span>
       )}
       {state === 'mock' && <MockWord className="ml-1.5" />}
@@ -319,11 +316,7 @@ export function ProvenancePin({
             {copied ? text.copied : ''}
           </span>
           {detail && <span>{detail}</span>}
-          {age && (
-            <span className="text-muted-foreground">
-              {text.stale} · {age.short}
-            </span>
-          )}
+          {stale && <span className="text-muted-foreground">{stale}</span>}
           {kind && <span className="text-muted-foreground">MOCK · {kind}</span>}
           {docs && (
             <a

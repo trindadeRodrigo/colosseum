@@ -24,13 +24,16 @@ export type PinSource = {
 
 export type PinState = 'live' | 'stale' | 'mock' | 'missing';
 
+const blank = (value: unknown) => typeof value !== 'string' || value.trim() === '';
+
 /**
  * The state of a figure. Only the exact word `live` is live: every other provenance, known or not, is
- * MOCK. A figure with no source, no time or no method is missing.
+ * MOCK. A figure is missing when its source or its method is empty or only spaces, or when its time
+ * is not an instant (a date-time with a zone).
  */
 export function pinState(obs: PinSource | null | undefined): PinState {
-  if (!obs?.source || !obs.method || !obs.fetchedAt || isoUtc(obs.fetchedAt) === null)
-    return 'missing';
+  if (!obs || blank(obs.source) || blank(obs.method) || blank(obs.fetchedAt)) return 'missing';
+  if (isoUtc(obs.fetchedAt) === null) return 'missing';
   if (obs.provenance !== 'live') return 'mock';
   return obs.staleAgeSec != null ? 'stale' : 'live';
 }
@@ -47,6 +50,8 @@ export type PinLabels = {
   staleSuffix: string;
   mockSuffix: string;
   stale: string;
+  /** In place of the age, when the API says a figure is stale and the age it gives is not one. */
+  ageUnknown: string;
   /** In place of a figure that has no source. */
   missing: string;
   /** The name of the popover when it holds a link. */
@@ -64,6 +69,7 @@ export const PIN_LABELS: PinLabels = {
   staleSuffix: ', stale, {age}',
   mockSuffix: ', mock data',
   stale: 'stale',
+  ageUnknown: 'age unknown',
   missing: 'no source yet',
   provenance: 'Provenance',
   copy: 'Copy source',
@@ -83,8 +89,31 @@ export function pinLabel(value: string, obs: PinSource, labels: PinLabels = PIN_
   const state = pinState(obs);
   if (state === 'mock') return name + labels.mockSuffix;
   if (state === 'stale')
-    return name + labels.staleSuffix.replace('{age}', formatAge(obs.staleAgeSec ?? 0).long);
+    return (
+      name +
+      labels.staleSuffix.replace(
+        '{age}',
+        formatAge(obs.staleAgeSec as number)?.long ?? labels.ageUnknown,
+      )
+    );
   return name;
+}
+
+/** Beside a hollow pin: "stale · 3 h", or "stale · age unknown" when the age handed over is not one. */
+export function staleWords(obs: PinSource, labels: PinLabels = PIN_LABELS): string {
+  return `${labels.stale} · ${formatAge(obs.staleAgeSec as number)?.short ?? labels.ageUnknown}`;
+}
+
+/**
+ * How a provenance other than `live` is named in the popover: "test network", "fixture". One this
+ * build does not know, or one that is the name of something every object has, is "not live".
+ */
+export function kindWords(provenance: unknown, labels: PinLabels = PIN_LABELS): string {
+  const known =
+    typeof provenance === 'string' && Object.hasOwn(labels.kinds, provenance)
+      ? (labels.kinds as Record<string, unknown>)[provenance]
+      : undefined;
+  return typeof known === 'string' && known.trim() !== '' ? known : labels.unknownKind;
 }
 
 /** The first line of the popover: `source · fetched_at · method`, the time in UTC. */

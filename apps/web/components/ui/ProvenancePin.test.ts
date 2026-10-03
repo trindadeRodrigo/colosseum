@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { FIGURE, LIVE_SPECIMEN, MOCK_OBS, SANDBOX_OBS, STALE_SPECIMEN } from './fixtures/mock';
-import { PIN_LABELS, type PinSource, pinLabel, pinState, sourceLine } from './provenance';
+import {
+  kindWords,
+  PIN_LABELS,
+  type PinSource,
+  pinLabel,
+  pinState,
+  sourceLine,
+  staleWords,
+} from './provenance';
 import { pin } from './test/cases';
 import { all, classes, html, name, one, render, role, tag, text, ui } from './test/html';
 
@@ -33,6 +41,24 @@ describe('ProvenancePin (provenance-pin.md)', () => {
       for (const key of ['source', 'fetchedAt', 'method'] as const)
         expect(pinState({ ...full, [key]: '' })).toBe('missing');
       expect(pinState({ ...full, fetchedAt: 'not a date' })).toBe('missing');
+    });
+
+    it('does not count spaces as a source or a method', () => {
+      for (const key of ['source', 'method', 'fetchedAt'] as const)
+        for (const spaces of [' ', '\t', '\n  '])
+          expect(pinState({ ...LIVE_SPECIMEN, [key]: spaces }), key).toBe('missing');
+      for (const node of [pin.blankSource, pin.blankMethod])
+        expect(text(render(node))).toBe('— no source yet');
+    });
+
+    it('does not count a number, a bare date or a time with no zone as the time it was fetched', () => {
+      // `Date.parse('1')` is a day in 2001, and a time with no zone is read in the reader's clock
+      for (const fetchedAt of ['1', '2026', '2026-10-01', '2026-10-01T14:02:11', '14:02'])
+        expect(pinState({ ...LIVE_SPECIMEN, fetchedAt }), fetchedAt).toBe('missing');
+      for (const node of [pin.numberTime, pin.zonelessTime]) {
+        expect(text(render(node))).toBe('— no source yet');
+        expect(text(render(node))).not.toContain('2001');
+      }
     });
   });
 
@@ -157,6 +183,23 @@ describe('ProvenancePin (provenance-pin.md)', () => {
       expect(all(render(pin.live), ui('stale-tag'))).toHaveLength(0);
     });
 
+    it('says "age unknown" when the age it is handed is not one, and never prints it', () => {
+      for (const staleAgeSec of [Number.NaN, -90, Number.POSITIVE_INFINITY, '3600' as never]) {
+        const obs = { ...LIVE_SPECIMEN, staleAgeSec };
+        expect(pinState(obs)).toBe('stale'); // the API said stale: it is not shown as live
+        expect(staleWords(obs)).toBe('stale · age unknown');
+        expect(pinLabel('6.40%', obs)).toBe('Source for 6.40%, stale, age unknown');
+      }
+      const root = render(pin.staleNoAge);
+      expect(text(one(root, ui('stale-tag')))).toBe('stale · age unknown');
+      expect(text(one(root, ui('pin-popover')))).toContain('stale · age unknown');
+      expect(text(root)).not.toMatch(/NaN|Infinity/);
+      expect(all(one(root, ui('pin-glyph')), tag('circle'))[0]?.attrs.fill).toBe('none');
+      expect(text(one(render(pin.staleNegative), ui('stale-tag')))).toBe('stale · age unknown');
+      // an age of nothing is still an age
+      expect(staleWords({ ...LIVE_SPECIMEN, staleAgeSec: 0 })).toBe('stale · 1 min');
+    });
+
     it('never shows mock data without the MOCK plate, and never with a solid pin', () => {
       for (const node of [pin.mock, pin.sandbox, pin.unknownKind]) {
         const root = render(node);
@@ -222,6 +265,22 @@ describe('ProvenancePin (provenance-pin.md)', () => {
         prior_dataset: 'prior dataset',
       });
       expect(SANDBOX_OBS.provenance).toBe('sandbox');
+    });
+
+    it('opens on a provenance named like something every object has, and calls it "not live"', () => {
+      for (const node of [pin.inheritedKind, pin.constructorKind]) {
+        const root = render(node); // `kinds['__proto__']` is an object: React cannot draw one
+        expect(text(one(root, ui('pin-popover')))).toContain('MOCK · not live');
+        expect(text(one(root, ui('mock-plate')))).toBe('MOCK');
+        expect(all(root, tag('circle'))).toHaveLength(0);
+      }
+      for (const odd of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', '', 'replayed'])
+        expect(kindWords(odd), odd).toBe('not live');
+      for (const odd of [null, undefined, 3, {}]) expect(kindWords(odd)).toBe('not live');
+      expect(kindWords('sandbox')).toBe('test network');
+      expect(
+        kindWords('fixture', { ...PIN_LABELS, kinds: { ...PIN_LABELS.kinds, fixture: ' ' } }),
+      ).toBe('not live');
     });
 
     it('offers the source line as something to copy', () => {

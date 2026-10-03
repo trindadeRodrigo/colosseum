@@ -85,6 +85,12 @@ describe('formatters', () => {
     expect(formatAge(3 * 3600)).toEqual({ short: '3 h', long: '3 hours old' });
     expect(formatAge(3600)).toEqual({ short: '1 h', long: '1 hour old' });
     expect(formatAge(3 * 86_400)).toEqual({ short: '3 d', long: '3 days old' });
+    expect(formatAge(0)).toEqual({ short: '1 min', long: '1 minute old' });
+  });
+
+  it('gives no age for what is not one', () => {
+    for (const not of [Number.NaN, -1, Number.POSITIVE_INFINITY, '90' as never, null as never])
+      expect(formatAge(not)).toBeNull();
   });
 
   it('cuts a hash in the middle', () => {

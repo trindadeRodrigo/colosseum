@@ -130,6 +130,8 @@ export function Composer({
     disabled ? 'text-muted-foreground' : 'text-foreground',
   );
   const wordy = variant === 'single' && sendText !== undefined;
+  // The button is named for what it shows: the word on it, unless the caller names it otherwise.
+  const sendName = labels?.send ?? (wordy ? sendText : text.send);
 
   return (
     <form
@@ -193,7 +195,7 @@ export function Composer({
         <button
           type="submit"
           data-ui="composer-send"
-          aria-label={text.send}
+          aria-label={sendName}
           aria-disabled={inert || undefined}
           aria-busy={busy || undefined}
           tabIndex={disabled ? -1 : undefined}

@@ -25,16 +25,17 @@ export type Age = {
 
 /**
  * An age in seconds as the stale tag shows it: minutes under an hour, hours under two days, then days.
- * The age comes from the API; nothing here reads the clock.
+ * The age comes from the API; nothing here reads the clock. Null when what was handed is not an age:
+ * not a number, not finite, or below zero. The caller then says the age is not known.
  */
-export function formatAge(seconds: number): Age {
-  const s = Math.max(0, seconds);
+export function formatAge(seconds: number): Age | null {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) return null;
   const [count, unit, word] =
-    s < 3600
-      ? ([Math.max(1, Math.round(s / 60)), 'min', 'minute'] as const)
-      : s < 172_800
-        ? ([Math.round(s / 3600), 'h', 'hour'] as const)
-        : ([Math.round(s / 86_400), 'd', 'day'] as const);
+    seconds < 3600
+      ? ([Math.max(1, Math.round(seconds / 60)), 'min', 'minute'] as const)
+      : seconds < 172_800
+        ? ([Math.round(seconds / 3600), 'h', 'hour'] as const)
+        : ([Math.round(seconds / 86_400), 'd', 'day'] as const);
   return { short: `${count} ${unit}`, long: `${count} ${word}${count === 1 ? '' : 's'} old` };
 }
 

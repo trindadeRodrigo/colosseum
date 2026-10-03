@@ -13,10 +13,13 @@ export type MockPlateLabels = {
   announce: string;
   /** The word on a stale plate. */
   stale: string;
+  /** In place of the age on a stale plate, when the age handed over is not one. */
+  ageUnknown: string;
 };
 export const MOCK_PLATE_LABELS: MockPlateLabels = {
   announce: MOCK_ANNOUNCE,
   stale: 'stale',
+  ageUnknown: 'age unknown',
 };
 
 export type MockPlateProps = {
@@ -90,7 +93,8 @@ export function StalePlate({ ageSec, labels, className }: StalePlateProps) {
     >
       <HatchBand />
       <span className="tf-stale-plate">
-        {labels?.stale ?? MOCK_PLATE_LABELS.stale} · {formatAge(ageSec).short}
+        {labels?.stale ?? MOCK_PLATE_LABELS.stale} ·{' '}
+        {formatAge(ageSec)?.short ?? labels?.ageUnknown ?? MOCK_PLATE_LABELS.ageUnknown}
       </span>
     </span>
   );

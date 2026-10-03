@@ -60,6 +60,7 @@ describe('MockPlate (mock-plate.md)', () => {
   it('says how stale on a stale plate, in sentence case, with the same band', () => {
     const plate = render(mockPlate.stale);
     expect(text(plate)).toBe('stale · 3 h');
+    expect(text(render(mockPlate.staleNoAge))).toBe('stale · age unknown');
     expect(all(plate, (el) => hasClass(el, 'tf-hatch'))).toHaveLength(1);
     expect(all(plate, (el) => hasClass(el, 'tf-mock-plate'))).toHaveLength(0);
   });

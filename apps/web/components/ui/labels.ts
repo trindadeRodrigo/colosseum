@@ -5,7 +5,7 @@
 // not a component.
 
 export type ComposerLabels = {
-  /** The name of the send button: "Fit it". */
+  /** The name of the send button: "Fit it". A button that shows a word is named by that word instead. */
   send: string;
   /** Said while the text is being read: "Reading your goal…". */
   busy: string;
