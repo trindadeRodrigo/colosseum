@@ -18,6 +18,8 @@ abstract contract VaultFixture is Test {
     /// The team's test cycle (gate AUTO-FOLLOW): before `launch()` a later version waits 300 s.
     uint32 internal constant PUBLISH_DELAY = 300;
 
+    address internal constant PERMIT2_ADDRESS = PERMIT2;
+
     address internal admin = makeAddr("admin");
     address internal owner = makeAddr("owner");
     address internal stranger = makeAddr("stranger");
