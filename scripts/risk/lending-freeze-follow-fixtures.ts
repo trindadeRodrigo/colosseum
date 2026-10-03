@@ -2,11 +2,13 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { LENDING_HISTORY_DIR, RISK_HOME } from './lib-lending';
+import { pseudonymise } from './lib-pseudonymise';
 
 // PLAN-ANALYTICS item 13 — freezes the transactions behind tests/risk-layer/lending-follow.test.ts from the latest
 // `pnpm risk:lending-follow` run: for the first liquidation of each outcome, its liquidation transaction (raw
 // history) and its outflow transaction (follow cache), with the liquidation row and the registry vaults of the pools
-// they touch. `pnpm risk:lending-freeze-follow-fixtures`.
+// they touch. Owners, liquidators and signatures are replaced by stand-ins (DA4, lib-pseudonymise.ts).
+// `pnpm risk:lending-freeze-follow-fixtures`.
 const DIR = join(LENDING_HISTORY_DIR, 'follow');
 const rowsFile = readdirSync(DIR)
   .filter((f) => f.startsWith('rows-'))
@@ -66,6 +68,6 @@ const vaults = registry
   .map((p) => ({ address: p.address, vault0: p.vault0, vault1: p.vault1 }));
 writeFileSync(
   'fixtures/risk/lending/follow.json',
-  `${JSON.stringify({ frozenFrom: rowsFile, programs: [...new Set(registry.map((p) => p.program))], vaults, cases })}\n`,
+  `${pseudonymise(JSON.stringify({ frozenFrom: rowsFile, programs: [...new Set(registry.map((p) => p.program))], vaults, cases }))}\n`,
 );
 console.log(JSON.stringify({ cases: cases.map((c) => c.outcome), vaults: vaults.length }));

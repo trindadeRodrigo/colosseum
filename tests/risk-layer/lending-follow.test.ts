@@ -140,4 +140,19 @@ describe('the summary publishes counts and medians by asset, no wallet', () => {
     ]);
     expect(JSON.stringify(s)).not.toMatch(/liquidator|owner|signature/);
   });
+
+  it('the fixture holds no wallet and no signature (DA4): owners, liquidators and signatures are stand-ins', () => {
+    const text = readFileSync('fixtures/risk/lending/follow.json', 'utf8');
+    const values = (re: RegExp) => [...text.matchAll(re)].map((m) => m[1]);
+    const owners = values(/"(?:owner|liquidator)":\s*"([^"]*)"/g);
+    expect(owners.length).toBeGreaterThan(0);
+    for (const o of owners) expect(o).toMatch(/^wallet-\d{3}$/);
+    for (const c of fx.cases) {
+      expect(c.liquidation.s).toMatch(/^sig-\d{3}$/);
+      for (const t of [c.liquidationTx, c.outTx])
+        for (const sig of (t as { transaction?: { signatures?: string[] } } | null)?.transaction
+          ?.signatures ?? [])
+          expect(sig).toMatch(/^sig-\d{3}$/);
+    }
+  });
 });
