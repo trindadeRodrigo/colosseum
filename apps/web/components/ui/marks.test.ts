@@ -1,0 +1,66 @@
+import { describe, expect, it } from 'vitest';
+import { formatAge, isoUtc, shorten } from './format';
+import { button, status } from './test/cases';
+import { all, classes, one, render, tag, text, ui } from './test/html';
+
+describe('StatusMark (STYLE.md, rule 6: a word, a shape and a colour)', () => {
+  it('draws three different shapes, each hidden from screen readers', () => {
+    const on = one(render(status.on), ui('status-mark'));
+    const watch = one(render(status.watch), ui('status-mark'));
+    const off = one(render(status.off), ui('status-mark'));
+    for (const mark of [on, watch, off]) expect(mark.attrs['aria-hidden']).toBe('true');
+    expect(all(on, tag('rect'))).toHaveLength(1); // a solid square
+    expect(all(watch, tag('rect'))).toHaveLength(2); // an outline, half filled
+    expect(all(off, tag('path'))).toHaveLength(1); // an outline with a notch
+    expect(one(off, tag('path')).attrs.fill).toBe('none');
+  });
+
+  it('colours each with its earth pigment', () => {
+    expect(classes(one(render(status.on), ui('status')))).toContain('text-status-on');
+    expect(classes(one(render(status.watch), ui('status-badge')))).toEqual(
+      expect.arrayContaining(['text-status-watch', 'bg-status-watch-bg', 'rounded-none', 'h-5']),
+    );
+    expect(classes(one(render(status.off), ui('status-mark')))).toContain('text-status-off');
+  });
+
+  it('always carries the word', () => {
+    expect(text(render(status.on))).toBe('On track · June 2028');
+    expect(text(render(status.watch))).toBe('Watch');
+    // `wordless` in test/cases.tsx is a type error.
+  });
+});
+
+describe('Icon (iconography.md)', () => {
+  it('draws with one 1.5px stroke at every size, square caps, miter joins, no fill', () => {
+    const icon = one(render(button.icon), ui('icon'));
+    expect(icon.attrs).toMatchObject({
+      viewBox: '0 0 24 24',
+      fill: 'none',
+      stroke: 'currentColor',
+      'stroke-linecap': 'square',
+      'stroke-linejoin': 'miter',
+    });
+    expect(Number(icon.attrs['stroke-width']) * (Number(icon.attrs.width) / 24)).toBeCloseTo(1.5);
+    expect(icon.attrs['aria-hidden']).toBe('true');
+  });
+});
+
+describe('formatters', () => {
+  it('writes an instant in ISO 8601 UTC, and nothing for what is not a date', () => {
+    expect(isoUtc('2026-10-01T14:02:11.000Z')).toBe('2026-10-01T14:02:11Z');
+    expect(isoUtc('2026-10-01T11:02:11-03:00')).toBe('2026-10-01T14:02:11Z');
+    expect(isoUtc('soon')).toBeNull();
+  });
+
+  it('writes an age in minutes, hours or days', () => {
+    expect(formatAge(90)).toEqual({ short: '2 min', long: '2 minutes old' });
+    expect(formatAge(3 * 3600)).toEqual({ short: '3 h', long: '3 hours old' });
+    expect(formatAge(3600)).toEqual({ short: '1 h', long: '1 hour old' });
+    expect(formatAge(3 * 86_400)).toEqual({ short: '3 d', long: '3 days old' });
+  });
+
+  it('cuts a hash in the middle', () => {
+    expect(shorten('4kZ9aaaaaaaaaaaamX2p')).toBe('4kZ9…mX2p');
+    expect(shorten('short')).toBe('short');
+  });
+});

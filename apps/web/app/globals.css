@@ -477,6 +477,22 @@
   }
 }
 
+/* The plate of a stale panel: the same box, in sentence case ("stale · 3 h"). */
+@utility tf-stale-plate {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--tf-mock-plate-border);
+  background: var(--tf-mock-plate);
+  color: var(--tf-mock-plate-fg);
+  font: 400 0.8125rem / 1.25rem var(--tf-font-mono);
+
+  @media (forced-colors: active) {
+    border-color: CanvasText;
+  }
+}
+
 /* Reduced motion: every slide becomes a 120ms crossfade and the pin appears without travel. */
 @layer utilities {
   @media (prefers-reduced-motion: reduce) {
