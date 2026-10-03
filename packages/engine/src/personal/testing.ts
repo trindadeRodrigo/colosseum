@@ -341,6 +341,16 @@ export function ceilingUsd(asset: BasketAsset, ctx: ComposeContext): number {
   return Math.min(tier, P.shareOfDepth * measured.capacityUsd);
 }
 
+/** The rules that say something was left out. */
+const LEFT_OUT = [
+  'MAX_LINES',
+  'BELOW_MINIMUM',
+  'EXCLUDED',
+  'NOT_FOR_GOAL',
+  'NOT_IN_COUNTRY',
+  'NOT_ON_CHAIN',
+];
+
 /**
  * Everything a plan must be, whatever the inputs and the numbers: the vault's target rules, the
  * ceilings and caps, nothing the person cannot hold, a reason on every line, sums that add up.
@@ -353,6 +363,7 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
     if (!ok) wrong.push(what);
   };
   const byId = new Map(shelf.assets.map((a) => [a.id, a]));
+  const portfolios = shelf.families.map((f) => f.meta.name);
   const s = plan.sheet;
   const amount = cents(s.amountUsd);
 
@@ -388,12 +399,27 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
     );
     for (const r of l.reasons) {
       say(r.rule in REASON_TEMPLATES, `${l.assetId}: unknown rule ${r.rule}`);
+      // No hole and no empty subject: every value is there, and the sentence starts with a word.
       say(
-        r.text.length > 0 && !/[{}]|undefined|NaN/.test(r.text),
+        r.text.length > 0 && !/[{}]|undefined|NaN|^\s|\s\s|\s[:,.]/.test(r.text),
         `${l.assetId}: a hole in "${r.text}"`,
+      );
+      say(
+        Object.values(r.params).every((v) => String(v).trim() !== ''),
+        `${l.assetId}: ${r.rule} has an empty value`,
       );
       for (const input of r.inputs)
         say((INPUT_NAMES as readonly string[]).includes(input), `unknown input ${input}`);
+      // What a reason says is true of the line it is on. "Left out" is about another token than this
+      // one, never about a shared portfolio the line holds a part of.
+      if (LEFT_OUT.includes(r.rule) && a.cls !== 'cash')
+        say(
+          ![a.symbol, a.underlying, ...portfolios].includes(String(r.params.asset)),
+          `${l.assetId} holds what its own reason says is left out: "${r.text}"`,
+        );
+      // "When you choose no shared portfolio" is said only to someone who chose none.
+      say(r.rule !== 'SLEEVE_DEFAULT' || s.themes.length === 0, `${l.assetId}: "${r.text}"`);
+      say(r.rule !== 'SLEEVE_FILLED' || s.themes.length > 0, `${l.assetId}: "${r.text}"`);
     }
     if (a.cls === 'cash') continue;
 

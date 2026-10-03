@@ -303,10 +303,11 @@ describe('what compose refuses, and what it says instead of pretending', () => {
       ['no-such-portfolio', ['THEME_UNKNOWN']],
       ['sand-to-server', ['THEME_NOT_ON_CHAIN']],
     ]);
-    // With nothing left to start from, the sleeve starts where it does when none is chosen.
+    // With nothing left to start from, the sleeve starts where the goal starts, and says that what
+    // was chosen did not fill it.
     expect(
       made.lines.find((l) => l.assetId === 'solana:spyx')?.reasons.map((r) => r.rule),
-    ).toContain('SLEEVE_DEFAULT');
+    ).toContain('SLEEVE_FILLED');
   });
 
   it('holds cash, with a reason, where a chain has no dollar yield: protect on Base alone', () => {

@@ -69,6 +69,11 @@ export const REASON_TEMPLATES = {
     '{what}: where {goal|goal} starts when you choose no shared portfolio.',
     '{what}: de onde parte {goal|goal} quando você não escolhe um portfólio compartilhado.',
   ),
+  SLEEVE_FILLED: rule(
+    ['themes'],
+    '{what} holds the {sleeve|sleeve} share of this plan: no shared portfolio you chose fills it.',
+    '{what} fica com a parcela de {sleeve|sleeve} deste plano: nenhum portfólio compartilhado que você escolheu a preenche.',
+  ),
   FOLLOWS: rule(
     ['themes'],
     'Held in the weights {theme} publishes, so this part can follow its updates.',
@@ -78,6 +83,26 @@ export const REASON_TEMPLATES = {
     ['themes'],
     '{theme} is held token by token here, in the weights of this plan, so this part does not follow its updates.',
     '{theme} entra aqui token por token, nos pesos deste plano, então esta parte não acompanha as atualizações.',
+  ),
+  NOT_WHOLE_PARTS: rule(
+    ['themes'],
+    '{theme} cannot be held whole: a plan holds at most {max} parts, and it would make {would}.',
+    '{theme} não cabe inteiro: um plano tem no máximo {max} partes, e ele faria {would}.',
+  ),
+  NOT_WHOLE_CEILING: rule(
+    ['amount'],
+    '{theme} cannot be held whole: {asset} takes at most {maxUsd|usd}.',
+    '{theme} não cabe inteiro: {asset} comporta no máximo {maxUsd|usd}.',
+  ),
+  NOT_WHOLE_ISSUER: rule(
+    ['risk'],
+    '{theme} cannot be held whole: more than {capBps|pct} of the plan would be with {issuer}, the most with one issuer at {risk|risk}.',
+    '{theme} não cabe inteiro: mais de {capBps|pct} do plano ficaria com {issuer}, o máximo com um só emissor com {risk|risk}.',
+  ),
+  NOT_WHOLE_SMALL: rule(
+    ['amount'],
+    '{theme} cannot be held whole: {asset} would be {usd|usd}, too small to be a part of your plan.',
+    '{theme} não cabe inteiro: {asset} seria {usd|usd}, pequeno demais para ser uma parte do seu plano.',
   ),
   ALREADY_HELD: rule(
     ['holdings'],
@@ -165,6 +190,11 @@ export const REASON_TEMPLATES = {
   ),
 
   // Cash.
+  YIELD_TOO_SMALL: rule(
+    ['amount'],
+    '{usd|usd} meant for dollar yield stays in cash: it is too small to be a part of your plan.',
+    '{usd|usd} que iria para renda em dólar fica em caixa: é pequeno demais para ser uma parte do seu plano.',
+  ),
   NO_DOLLAR_YIELD: rule(
     ['chain'],
     'No dollar-yield token you can hold is on {chain|chain}, so {usd|usd} stays in cash.',
@@ -317,7 +347,7 @@ export function placeholdersOf(template: string): { key: string; format: string 
 export function render(template: string, params: Record<string, Value>, lang: Language): string {
   return template.replace(PLACEHOLDER, (_, key: string, format: string | undefined) => {
     const value = params[key];
-    if (value === undefined) throw new Error(`template value ${key} is missing`);
+    if (value === undefined || value === '') throw new Error(`template value ${key} is missing`);
     if (!format) return String(value);
     const write = FORMATS[format];
     if (!write) throw new Error(`no template format called ${format}`);

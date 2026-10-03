@@ -16,13 +16,14 @@ import {
   resolveThemes,
   sizeSleeves,
   type Theme,
+  themeOf,
   themeReason,
   tokensOf,
   unitsOf,
 } from './exposure';
 import { byName, largestFirst, shareOf, split, sum, toCents, toUsd } from './money';
 import { packageUp } from './packaging';
-import { Book, once, type Removed, type Unit } from './placement';
+import { Book, once, type Removed, type Sized, type Unit } from './placement';
 import { reason, text } from './templates';
 import {
   type ComposeContext,
@@ -54,13 +55,68 @@ const hashOf = (value: unknown): string => sha256Hex(new TextEncoder().encode(ca
 type Named = { name: string; weight: number; reasons: Reason[] };
 
 /** The parts of a shared portfolio that sit in one sleeve and that the person can hold. */
-function partsIn(w: World, theme: Theme, sleeve: Sleeve, removed: Removed[]) {
+function partsIn(w: World, theme: Theme, sleeve: Sleeve, removed?: Removed[]) {
   return theme.parts.filter((part) => {
     if (w.sleeveOf(part.asset) !== sleeve) return false;
     const can = holdable(w, part.asset.underlying, sleeve);
-    if (!can.ok) removed.push({ ref: part.asset.underlying, reasons: can.why });
+    if (!can.ok) removed?.push({ ref: part.asset.underlying, reasons: can.why });
     return can.ok;
   });
+}
+
+/**
+ * Why a sleeve starts from something the person did not choose: the true reason differs when they
+ * chose a shared portfolio and it does not fill this sleeve.
+ */
+function startReason(w: World, what: string, sleeve: Sleeve): Reason {
+  return w.sheet.themes.length > 0
+    ? reason('SLEEVE_FILLED', { what, sleeve }, w.lang)
+    : reason('SLEEVE_DEFAULT', { what, goal: w.sheet.goal }, w.lang);
+}
+
+/** Why a part of a shared portfolio is in the plan: the person chose it, or the goal starts from it. */
+const fromTheme = (w: World, theme: Theme, sleeve: Sleeve): Reason[] => [
+  theme.chosen ? themeReason(w, theme) : startReason(w, theme.name, sleeve),
+];
+
+/**
+ * What fills a sleeve that no shared portfolio in the plan fills, as when none is chosen: the table's
+ * portfolio for the goal, if this chain has it and it holds this sleeve, and failing that the table's
+ * ticker. What neither can fill is handed to dollar yield.
+ */
+function fallback(
+  w: World,
+  book: Book,
+  sleeve: 'growth' | 'gold',
+  cents: number,
+  themes: Theme[],
+  says: Reason[],
+): Named[] {
+  const { P, lang } = w;
+  const slug = P.defaultTheme[w.sheet.goal];
+  const known = slug && !themes.some((t) => t.slug === slug) ? themeOf(w, slug, false) : null;
+  const theme = known && !Array.isArray(known) ? known : null;
+  const parts = theme ? partsIn(w, theme, sleeve) : [];
+  if (theme && parts.length > 0) {
+    const opened =
+      theme.family.meta.kind === 'index' ? [reason('OPENED', { theme: theme.name }, lang)] : [];
+    const each = split(
+      cents,
+      parts.map((p) => p.bps),
+    );
+    return parts.map((p, i) => ({
+      name: p.asset.underlying,
+      weight: each[i] ?? 0,
+      reasons: [...says, startReason(w, theme.name, sleeve), ...opened],
+    }));
+  }
+  const ticker = P.defaultUnderlying[sleeve];
+  const can = holdable(w, ticker, sleeve);
+  if (can.ok)
+    return [{ name: ticker, weight: cents, reasons: [...says, startReason(w, ticker, sleeve)] }];
+  book.removed.push({ ref: ticker, reasons: can.why });
+  book.spill(ticker, cents);
+  return [];
 }
 
 const capped = (asset: BasketAsset) => asset.cls === 'stock' || asset.cls === 'crypto';
@@ -150,7 +206,7 @@ function build(
     );
     growers.forEach((g, i) => {
       const cents = shares[i] ?? 0;
-      const base = [...sleeves.reasons.growth, themeReason(w, g.theme)];
+      const base = [...sleeves.reasons.growth, ...fromTheme(w, g.theme, 'growth')];
       const inTheWay = follow(w, book, g.theme, cents, base, followed);
       if (inTheWay === null) return;
       const opened =
@@ -169,21 +225,8 @@ function build(
         });
       });
     });
-    if (growers.length === 0) {
-      const ticker = P.defaultUnderlying.growth;
-      const can = holdable(w, ticker, 'growth');
-      const says = reason('SLEEVE_DEFAULT', { what: ticker, goal: sheet.goal }, lang);
-      if (can.ok)
-        growthParts.push({
-          name: ticker,
-          weight: growth,
-          reasons: [...sleeves.reasons.growth, says],
-        });
-      else {
-        book.removed.push({ ref: ticker, reasons: can.why });
-        book.spill(ticker, growth);
-      }
-    }
+    if (growers.length === 0)
+      growthParts.push(...fallback(w, book, 'growth', growth, themes, sleeves.reasons.growth));
   }
   const growthUnits = unitsOf(sum(growthParts.map((p) => p.weight)), growthParts);
 
@@ -197,33 +240,20 @@ function build(
           weight: p.bps,
           reasons: [
             ...sleeves.reasons.gold,
-            themeReason(w, theme),
+            ...fromTheme(w, theme, 'gold'),
             ...(theme.family.meta.kind === 'index'
               ? [reason('OPENED', { theme: theme.name }, lang)]
               : []),
           ],
         });
-    if (goldParts.length === 0) {
-      const ticker = P.defaultUnderlying.gold;
-      const can = holdable(w, ticker, 'gold');
-      const says = reason('SLEEVE_DEFAULT', { what: ticker, goal: sheet.goal }, lang);
-      if (can.ok)
-        goldParts.push({ name: ticker, weight: 1, reasons: [...sleeves.reasons.gold, says] });
-      else {
-        book.removed.push({ ref: ticker, reasons: can.why });
-        book.spill(ticker, gold);
-      }
-    }
+    if (goldParts.length === 0)
+      goldParts.push(...fallback(w, book, 'gold', gold, themes, sleeves.reasons.gold));
   }
   const goldUnits = goldParts.length > 0 ? unitsOf(gold, goldParts) : [];
 
   // ---- Exposure: what the person already holds, then the cap on one stock.
-  const yieldUnit: Unit = {
-    name: '',
-    cents: dollarYield,
-    reasons: [...sleeves.reasons.dollarYield],
-  };
-  const cashUnit: Unit = { name: '', cents: cash, reasons: [...sleeves.reasons.cash] };
+  const yieldUnit: Sized = { cents: dollarYield, reasons: [...sleeves.reasons.dollarYield] };
+  const cashUnit: Sized = { cents: cash, reasons: [...sleeves.reasons.cash] };
   const heldAlready = adjustForHoldings(
     w,
     [...growthUnits, ...goldUnits],
@@ -256,13 +286,16 @@ function build(
     return [reason('BY_YIELD', { chain: w.chain }, lang)];
   };
   /** Dollar yield takes what it can; what it cannot stays in cash, with why. */
-  const intoYield = (unit: Unit) => {
+  const intoYield = (unit: Sized) => {
     if (unit.cents <= 0) return;
-    const { left, why } = book.fill(unit, yielders, byYield);
+    const { left, why, tooSmall } = book.fill(unit, yielders, byYield);
     if (left <= 0) return;
-    const stays = canYield
-      ? reason('UNPLACED', { usd: toUsd(left) }, lang)
-      : reason('NO_DOLLAR_YIELD', { usd: toUsd(left), chain: w.chain }, lang);
+    const usd = toUsd(left);
+    const stays = !canYield
+      ? reason('NO_DOLLAR_YIELD', { usd, chain: w.chain }, lang)
+      : tooSmall
+        ? reason('YIELD_TOO_SMALL', { usd }, lang)
+        : reason('UNPLACED', { usd }, lang);
     book.cash.cents += left;
     book.cash.reasons.push(...unit.reasons, ...why, stays);
     w.flags.add(canYield ? 'unplaced' : 'no_dollar_yield');
@@ -281,7 +314,7 @@ function build(
   ))
     book.place(unit, tokensOf(w, unit.name, 'growth'));
   // What stocks, crypto and gold could not take is held in dollar yield, then in cash.
-  intoYield({ name: '', cents: book.overflow.cents, reasons: once(book.overflow.reasons) });
+  intoYield({ cents: book.overflow.cents, reasons: once(book.overflow.reasons) });
 
   // ---- Packaging: lines, one recipe per chain, the card.
   const { lines, recipes, sleeves: held } = packageUp(w, book);

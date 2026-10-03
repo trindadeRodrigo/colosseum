@@ -1,7 +1,7 @@
 import { apportion } from '@colosseum/basket';
 import type { BasketAsset, Reason } from '@colosseum/schemas';
 import { BPS, bpsOf, shareOf, split, sum, toCents, toUsd } from './money';
-import { once, type Removed, type Unit } from './placement';
+import { once, type Removed, type Sized, type Unit } from './placement';
 import { type RuleId, reason } from './templates';
 import { SLEEVES, type Sleeve } from './types';
 import type { Family, World } from './world';
@@ -169,7 +169,7 @@ function leftOut(w: World, rule: string, name: string): Reason {
  * A shared portfolio as the plan can use it: its recipe on the person's chain. When it cannot be
  * used, the reasons why: no such portfolio, no version on this chain, or no part the person can hold.
  */
-function themeOf(w: World, slug: string, chosen: boolean): Theme | Reason[] {
+export function themeOf(w: World, slug: string, chosen: boolean): Theme | Reason[] {
   const { lang } = w;
   const family = w.families.get(slug);
   if (!family) return [reason('THEME_UNKNOWN', { theme: slug }, lang)];
@@ -207,10 +207,9 @@ export function resolveThemes(w: World, removed: Removed[]): Theme[] {
   return Array.isArray(start) ? [] : [start];
 }
 
+/** Why a part of a shared portfolio the person chose is in the plan. */
 export const themeReason = (w: World, theme: Theme): Reason =>
-  theme.chosen
-    ? reason('FROM_THEME', { theme: theme.name, chain: w.chain }, w.lang)
-    : reason('SLEEVE_DEFAULT', { what: theme.name, goal: w.sheet.goal }, w.lang);
+  reason('FROM_THEME', { theme: theme.name, chain: w.chain }, w.lang);
 
 /** Splits a sleeve's cents among underlyings by weight, merging the same underlying. */
 export function unitsOf(
@@ -245,30 +244,33 @@ export function unitsOf(
 export function adjustForHoldings(
   w: World,
   units: Unit[],
-  fixed: Unit[],
+  fixed: Sized[],
   removed: Removed[],
 ): number {
   if (w.heldTotal <= 0) return 0;
-  const all = [...units, ...fixed];
+  const all: Sized[] = [...units, ...fixed];
   const free = sum(all.map((u) => u.cents));
   if (free <= 0) return 0;
   const wealth = BigInt(w.amount + w.heldTotal);
-  const heldOf = (u: Unit) => (units.includes(u) ? (w.held.get(u.name) ?? 0) : 0);
-  const buys = all.map((u) => {
-    const buy = BigInt(u.cents) * wealth - BigInt(heldOf(u)) * BigInt(w.amount);
+  const heldOf = (at: number) => w.held.get(units[at]?.name ?? '') ?? 0;
+  const buys = all.map((u, at) => {
+    const buy = BigInt(u.cents) * wealth - BigInt(heldOf(at)) * BigInt(w.amount);
     return buy > 0n ? buy : 0n;
   });
   const scaled = apportion(buys, BigInt(free)).map(Number);
   const counts = shareOf(w.amount, w.P.holdingMinBps);
-  all.forEach((u, i) => {
+  units.forEach((u, at) => {
     const before = u.cents;
-    u.cents = scaled[i] ?? 0;
-    const held = heldOf(u);
+    const held = heldOf(at);
     if (before <= 0 || held <= 0 || held < counts) return;
+    const now = scaled[at] ?? 0;
     const values = { asset: u.name, heldUsd: toUsd(held) };
-    if (u.cents <= 0)
+    if (now <= 0)
       removed.push({ ref: u.name, reasons: [reason('ALREADY_HELD_NONE', values, w.lang)] });
-    else if (u.cents < before) u.reasons.push(reason('ALREADY_HELD', values, w.lang));
+    else if (now < before) u.reasons.push(reason('ALREADY_HELD', values, w.lang));
+  });
+  all.forEach((u, at) => {
+    u.cents = scaled[at] ?? 0;
   });
   // When the person holds enough of everything, nothing is bought: the cents are handed back.
   return free - sum(all.map((u) => u.cents));

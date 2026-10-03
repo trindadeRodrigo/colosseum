@@ -8,8 +8,10 @@ import type { World } from './world';
 // and its measured exit capacity), an issuer up to its cap, and the plan up to its number of lines.
 // What a token cannot take is handed back to the caller, which holds it in dollar yield, then cash.
 
-/** A sized exposure waiting for a token: so many cents of one underlying, with why. */
-export type Unit = { name: string; cents: number; reasons: Reason[] };
+/** Cents waiting for a token, with why they are there. */
+export type Sized = { cents: number; reasons: Reason[] };
+/** A sized exposure waiting for a token: so many cents of one underlying, by its ticker. */
+export type Unit = Sized & { name: string };
 
 export type PlacedLine = {
   asset: BasketAsset;
@@ -32,7 +34,8 @@ export function once(reasons: Reason[]): Reason[] {
   });
 }
 
-export type Fill = { left: number; placed: boolean; why: Reason[] };
+/** What a fill left over: how much, whether any was placed, the limits met, and whether what is left is too small for a line of its own. */
+export type Fill = { left: number; placed: boolean; why: Reason[]; tooSmall: boolean };
 
 /** The plan as it is being placed: lines by token, and what is used of each issuer. */
 export class Book {
@@ -93,32 +96,34 @@ export class Book {
 
   /**
    * Whether the plan can take a shared portfolio whole, each part at its own size: null when it can,
-   * and the first limit in the way when it cannot.
+   * and the first limit in the way when it cannot, as a fact about the portfolio.
    */
-  wholeFits(name: string, parts: { asset: BasketAsset; cents: number }[]): Reason | null {
+  wholeFits(theme: string, parts: { asset: BasketAsset; cents: number }[]): Reason | null {
     const { w } = this;
-    if (parts.length === 0) return reason('BELOW_MINIMUM', { asset: name, usd: 0 }, w.lang);
-    const fresh = parts.filter((p) => !this.lines.has(p.asset.id)).length;
-    if (this.lines.size + fresh > w.P.maxLinesPerChain)
-      return reason('MAX_LINES', { asset: name, max: w.P.maxLinesPerChain }, w.lang);
+    const max = w.P.maxLinesPerChain;
+    const would = this.lines.size + parts.filter((p) => !this.lines.has(p.asset.id)).length;
+    if (would > max) return reason('NOT_WHOLE_PARTS', { theme, max, would }, w.lang);
     const asked = new Map<string, number>();
     for (const p of parts) {
+      const asset = p.asset.symbol;
       if (p.cents < w.minLine)
-        return reason('BELOW_MINIMUM', { asset: p.asset.symbol, usd: toUsd(p.cents) }, w.lang);
-      const room = this.room(p.asset);
+        return reason('NOT_WHOLE_SMALL', { theme, asset, usd: toUsd(p.cents) }, w.lang);
       const ofIssuer = (asked.get(p.asset.issuer) ?? 0) + p.cents;
       asked.set(p.asset.issuer, ofIssuer);
       if (ofIssuer > w.issuerCap - (this.withIssuer.get(p.asset.issuer) ?? 0))
         return reason(
-          'ISSUER_CAP',
+          'NOT_WHOLE_ISSUER',
           {
+            theme,
             capBps: w.P.capPerIssuerBps[w.sheet.risk] ?? 0,
             risk: w.sheet.risk,
             issuer: p.asset.issuer,
           },
           w.lang,
         );
-      if (p.cents > room.cents) return room.why;
+      const ceiling = w.ceilingOf(p.asset);
+      if (p.cents > ceiling - (this.lines.get(p.asset.id)?.cents ?? 0))
+        return reason('NOT_WHOLE_CEILING', { theme, asset, maxUsd: toUsd(ceiling) }, w.lang);
     }
     return null;
   }
@@ -127,7 +132,7 @@ export class Book {
    * Places a unit on the tokens that can take it, in the order given. A token the person cannot hold
    * is passed over. Returns what is left, whether anything was placed, and why not all of it.
    */
-  fill(unit: Unit, candidates: BasketAsset[], tag: (asset: BasketAsset) => Reason[]): Fill {
+  fill(unit: Sized, candidates: BasketAsset[], tag: (asset: BasketAsset) => Reason[]): Fill {
     const { w } = this;
     let left = unit.cents;
     let placed = false;
@@ -158,17 +163,16 @@ export class Book {
       left -= take;
       placed = true;
     }
-    if (left > 0 && tooSmall)
-      why.push(reason('BELOW_MINIMUM', { asset: unit.name, usd: toUsd(left) }, w.lang));
-    return { left, placed, why: once(why) };
+    return { left, placed, why: once(why), tooSmall: left > 0 && tooSmall };
   }
 
   /** Places a unit of stocks, crypto or gold; what no token takes waits to be held in dollar yield. */
   place(unit: Unit, candidates: BasketAsset[]): void {
     const { w } = this;
     if (unit.cents <= 0) return;
-    const { left, placed, why } = this.fill(unit, candidates, () => []);
+    const { left, placed, why, tooSmall } = this.fill(unit, candidates, () => []);
     if (left <= 0) return;
+    if (tooSmall) why.push(reason('BELOW_MINIMUM', { asset: unit.name, usd: toUsd(left) }, w.lang));
     const notHere = reason('NOT_ON_CHAIN', { asset: unit.name, chain: w.chain }, w.lang);
     if (!placed) this.removed.push({ ref: unit.name, reasons: why.length > 0 ? why : [notHere] });
     this.spill(unit.name, left);
