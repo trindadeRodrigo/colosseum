@@ -92,7 +92,7 @@ describe('three people, three goals, three plans', () => {
       'From Sand to Server, a shared portfolio you chose, in its version for Robinhood Chain.',
     );
     expect(line(bruno, 'solana:spyx')?.reasons.map((r) => r.text)).toContain(
-      '20% do plano em ações e cripto: um objetivo de proteger, com risco baixo.',
+      'Para um objetivo de proteção, com risco baixo, a parcela inicial de ações e cripto é 20%.',
     );
   });
 

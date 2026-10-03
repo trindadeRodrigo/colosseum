@@ -5,11 +5,13 @@ import type { Language, Reason } from '@colosseum/schemas';
 // parameter table. `templates.test.ts` bans what reads as advice or as a return promise.
 //
 // A value is written `{name}` (as it came) or `{name|format}`:
-//   usd     whole dollars                     $4,000          US$ 4.000
+//   usd     dollars, cents under one          $4,000  $0.40   US$ 4.000  US$ 0,40
+//   usdUp   the same, rounded up (a loss)     $229            US$ 229
 //   pct     basis points as a percentage      14.32%          14,32%
 //   month   a YYYY-MM month                   April 2028      abril de 2028
 //   months  a count of months                 18 months       18 meses
 //   goal, risk, sleeve, chain                 the word for it, from WORDS
+//   inCountry                                 in Brazil       no Brasil
 
 /** The inputs a person gives. A reason names the ones that caused it. */
 export const INPUT_NAMES = [
@@ -34,13 +36,13 @@ export const REASON_TEMPLATES = {
   // Exposure: how big each sleeve is.
   SLEEVE: rule(
     ['goal', 'risk'],
-    '{sleeveBps|pct} of the plan in {sleeve|sleeve}: {goal|goal}, at {risk|risk}.',
-    '{sleeveBps|pct} do plano em {sleeve|sleeve}: {goal|goal}, com {risk|risk}.',
+    'For {goal|goal} at {risk|risk}, the starting share of {sleeve|sleeve} is {sleeveBps|pct}.',
+    'Para {goal|goal}, com {risk|risk}, a parcela inicial de {sleeve|sleeve} é {sleeveBps|pct}.',
   ),
   GLIDE: rule(
     ['horizon'],
     'At least {floorBps|pct} in dollar yield: you need this money in {months|months}, by {by|month}.',
-    'Pelo menos {floorBps|pct} em renda em dólar: você precisa deste dinheiro em {months|months}, até {by|month}.',
+    'Pelo menos {floorBps|pct} em rendimento em dólar: você precisa deste dinheiro em {months|months}, até {by|month}.',
   ),
   CASH_NEAR_DATE: rule(
     ['horizon'],
@@ -55,7 +57,7 @@ export const REASON_TEMPLATES = {
   MUST_KEEP: rule(
     ['mustKeep'],
     'At least {floorBps|pct} stays in dollar yield and cash, out of stocks, crypto and gold: you must not lose {keepUsd|usd}.',
-    'Pelo menos {floorBps|pct} fica em renda em dólar e caixa, fora de ações, cripto e ouro: você não pode perder {keepUsd|usd}.',
+    'Pelo menos {floorBps|pct} fica em rendimento em dólar e caixa, fora de ações, cripto e ouro: você não pode perder {keepUsd|usd}.',
   ),
 
   // Exposure: what is inside each sleeve.
@@ -72,17 +74,17 @@ export const REASON_TEMPLATES = {
   SLEEVE_FILLED: rule(
     ['themes'],
     '{what} holds the {sleeve|sleeve} share of this plan: no shared portfolio you chose fills it.',
-    '{what} fica com a parcela de {sleeve|sleeve} deste plano: nenhum portfólio compartilhado que você escolheu a preenche.',
+    '{what} fica com a parcela de {sleeve|sleeve} deste plano: nenhum portfólio compartilhado que você escolheu preenche essa parcela.',
   ),
   FOLLOWS: rule(
     ['themes'],
-    'Held in the weights {theme} publishes, so this part can follow its updates.',
-    'Mantido nos pesos que {theme} publica, então esta parte pode acompanhar as atualizações.',
+    'Held in the weights {theme} publishes, so this part of your plan can follow its updates.',
+    'Mantido nos pesos que {theme} publica, então esta parte do seu plano pode acompanhar as atualizações.',
   ),
   OPENED: rule(
     ['themes'],
-    '{theme} is held token by token here, in the weights of this plan, so this part does not follow its updates.',
-    '{theme} entra aqui token por token, nos pesos deste plano, então esta parte não acompanha as atualizações.',
+    '{theme} is held token by token here, in the weights of this plan, so this part of your plan does not follow its updates.',
+    '{theme} entra aqui token por token, nos pesos deste plano, então esta parte do seu plano não acompanha as atualizações.',
   ),
   NOT_WHOLE_PARTS: rule(
     ['themes'],
@@ -122,7 +124,7 @@ export const REASON_TEMPLATES = {
   SINGLE_STOCK_CAP: rule(
     ['risk'],
     '{asset} is held to {capBps|pct} of the plan: the most in one stock or one crypto asset at {risk|risk}.',
-    '{asset} fica limitado a {capBps|pct} do plano: o máximo em uma ação ou um criptoativo com {risk|risk}.',
+    '{asset} fica limitado a {capBps|pct} do plano: o máximo em uma só ação ou cripto com {risk|risk}.',
   ),
   THEME_UNKNOWN: rule(
     ['themes'],
@@ -139,17 +141,17 @@ export const REASON_TEMPLATES = {
   NOT_FOR_GOAL: rule(
     ['goal'],
     '{asset} is left out: the asset list does not allow it in a plan for {goal|goal}.',
-    '{asset} fica de fora: a lista de ativos não o permite em um plano para {goal|goal}.',
+    '{asset} fica de fora: a lista de ativos não permite esse ativo em um plano para {goal|goal}.',
   ),
   EXCLUDED: rule(
     ['cannotHold'],
     '{asset} is left out: you said you cannot hold it.',
-    '{asset} fica de fora: você disse que não pode tê-lo.',
+    '{asset} fica de fora: você disse que não pode ter esse ativo.',
   ),
   NOT_IN_COUNTRY: rule(
     ['country'],
-    '{asset} is left out: it is not offered in {country}.',
-    '{asset} fica de fora: não é oferecido em {country}.',
+    '{asset} is left out: it is not offered {country|inCountry}.',
+    '{asset} fica de fora: não é oferecido {country|inCountry}.',
   ),
   NOT_ON_CHAIN: rule(
     ['chain'],
@@ -161,12 +163,12 @@ export const REASON_TEMPLATES = {
   BY_YIELD: rule(
     ['chain'],
     'Chosen by its yield after haircut, among the dollar-yield tokens you can hold on {chain|chain}.',
-    'Escolhido pelo rendimento após o desconto, entre os tokens de renda em dólar que você pode ter na {chain|chain}.',
+    'Escolhido pelo rendimento após o deságio, entre os tokens de rendimento em dólar que você pode ter na {chain|chain}.',
   ),
   YIELD_NOT_READ: rule(
     [],
     'There is no yield reading for this token, so the plan counts none for it.',
-    'Não há leitura de rendimento para este token, então o plano não conta nenhum para ele.',
+    'Não há leitura de rendimento para este token, então o plano não considera rendimento para ele.',
   ),
   EXIT_CEILING: rule(
     ['amount'],
@@ -180,13 +182,13 @@ export const REASON_TEMPLATES = {
   ),
   MAX_LINES: rule(
     ['themes'],
-    '{asset} is left out: a plan holds at most {max} lines.',
-    '{asset} fica de fora: um plano tem no máximo {max} linhas.',
+    '{asset} is left out: a plan holds at most {max} parts.',
+    '{asset} fica de fora: um plano tem no máximo {max} partes.',
   ),
   BELOW_MINIMUM: rule(
     ['amount'],
-    '{asset} is left out: {usd|usd} is too small to hold as a line.',
-    '{asset} fica de fora: {usd|usd} é pequeno demais para ser uma linha.',
+    '{asset} is left out: {usd|usd} is too small to be a part of your plan.',
+    '{asset} fica de fora: {usd|usd} é pequeno demais para ser uma parte do seu plano.',
   ),
   OVERFLOW: rule(
     ['amount'],
@@ -198,12 +200,12 @@ export const REASON_TEMPLATES = {
   YIELD_TOO_SMALL: rule(
     ['amount'],
     '{usd|usd} meant for dollar yield stays in cash: it is too small to be a part of your plan.',
-    '{usd|usd} que iria para renda em dólar fica em caixa: é pequeno demais para ser uma parte do seu plano.',
+    '{usd|usd} que iria para rendimento em dólar fica em caixa: é pequeno demais para ser uma parte do seu plano.',
   ),
   NO_DOLLAR_YIELD: rule(
     ['chain'],
     'No dollar-yield token you can hold is on {chain|chain}, so {usd|usd} stays in cash.',
-    'Nenhum token de renda em dólar que você pode ter está na {chain|chain}, então {usd|usd} fica em caixa.',
+    'Nenhum token de rendimento em dólar que você pode ter está na {chain|chain}, então {usd|usd} fica em caixa.',
   ),
   UNPLACED: rule(
     ['amount'],
@@ -219,8 +221,8 @@ export const REASON_TEMPLATES = {
   // The card, line by line.
   NO_RETURN_ASSUMED: rule(
     [],
-    'No return is assumed for this line. In a {fallBps|pct} fall it would lose {lossUsd|usd}.',
-    'Nenhum retorno é presumido para esta linha. Em uma queda de {fallBps|pct}, ela perderia {lossUsd|usd}.',
+    'No return is assumed for this part of your plan. In a {fallBps|pct} fall it would lose {lossUsd|usdUp}.',
+    'Nenhum retorno é presumido para esta parte do seu plano. Em uma queda de {fallBps|pct}, ela perderia {lossUsd|usdUp}.',
   ),
 } as const satisfies Record<string, Template>;
 
@@ -231,16 +233,16 @@ type Text = { en: string; pt: string };
 /** The sentences of the card and of the verdict. */
 export const TEXT_TEMPLATES = {
   RETURN_BASIS: {
-    en: 'A yearly range on the dollar-yield part only: after haircut at the low end, as quoted at the high end. Rates change. No return is assumed for stocks, crypto and gold.',
-    pt: 'Faixa anual só sobre a parte em renda em dólar: após o desconto no piso, como cotado no teto. As taxas mudam. Nenhum retorno é presumido para ações, cripto e ouro.',
+    en: 'A yearly range for the dollar-yield part only. The low end is its yield after haircut; the high end is its quoted yield. Rates change. No return is assumed for stocks, crypto and gold.',
+    pt: 'Faixa anual, só para a parte em rendimento em dólar. O piso é o rendimento após o deságio; o teto é o rendimento cotado. As taxas mudam. Nenhum retorno é presumido para ações, cripto e ouro.',
   },
   RETURN_NOT_READ: {
     en: 'There is no yield reading for the dollar-yield part yet, so no figure is shown. No return is assumed for stocks, crypto and gold.',
-    pt: 'Ainda não há leitura de rendimento para a parte em renda em dólar, então nenhum número é mostrado. Nenhum retorno é presumido para ações, cripto e ouro.',
+    pt: 'Ainda não há leitura de rendimento para a parte em rendimento em dólar, então nenhum número é mostrado. Nenhum retorno é presumido para ações, cripto e ouro.',
   },
   RETURN_NONE: {
     en: 'This plan holds no dollar yield, and no return is assumed for stocks, crypto and gold.',
-    pt: 'Este plano não tem renda em dólar, e nenhum retorno é presumido para ações, cripto e ouro.',
+    pt: 'Este plano não tem rendimento em dólar, e nenhum retorno é presumido para ações, cripto e ouro.',
   },
   EXIT_MEASURED: {
     en: 'You can withdraw the tokens to your own wallet at any time. Selling everything in the worst hours measured would cost about {costBps|pct}; that is measured for {shareBps|pct} of the plan.',
@@ -260,13 +262,13 @@ export const TEXT_TEMPLATES = {
   },
   NO_AMOUNT_CLOSES: {
     en: 'No larger amount closes the gap with the dollar-yield tokens you can hold.',
-    pt: 'Nenhum valor maior fecha a diferença com os tokens de renda em dólar que você pode ter.',
+    pt: 'Nenhum valor maior fecha a diferença com os tokens de rendimento em dólar que você pode ter.',
   },
 } as const satisfies Record<string, Text>;
 
 export type TextId = keyof typeof TEXT_TEMPLATES;
 
-type Words = Record<'goal' | 'risk' | 'sleeve' | 'chain', Record<string, string>>;
+type Words = Record<'goal' | 'risk' | 'sleeve' | 'chain' | 'inCountry', Record<string, string>>;
 
 export const WORDS: Record<Language, Words> = {
   en: {
@@ -279,21 +281,73 @@ export const WORDS: Record<Language, Words> = {
       cash: 'cash',
     },
     chain: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
+    // A country by its name. One this list does not hold is written by its code.
+    inCountry: {
+      AE: 'in the United Arab Emirates',
+      AR: 'in Argentina',
+      AU: 'in Australia',
+      BR: 'in Brazil',
+      CA: 'in Canada',
+      CH: 'in Switzerland',
+      CL: 'in Chile',
+      CO: 'in Colombia',
+      DE: 'in Germany',
+      ES: 'in Spain',
+      FR: 'in France',
+      GB: 'in the United Kingdom',
+      IE: 'in Ireland',
+      IT: 'in Italy',
+      JP: 'in Japan',
+      MX: 'in Mexico',
+      NL: 'in the Netherlands',
+      PE: 'in Peru',
+      PT: 'in Portugal',
+      PY: 'in Paraguay',
+      SG: 'in Singapore',
+      US: 'in the United States',
+      UY: 'in Uruguay',
+    },
   },
   pt: {
     goal: {
-      grow: 'um objetivo de crescer',
+      grow: 'um objetivo de crescimento',
       income: 'um objetivo de renda',
-      protect: 'um objetivo de proteger',
+      protect: 'um objetivo de proteção',
     },
     risk: { low: 'risco baixo', medium: 'risco médio', high: 'risco alto' },
+    // "Rendimento em dólar", not "renda em dólar": "renda" is the income goal.
     sleeve: {
       growth: 'ações e cripto',
-      dollarYield: 'renda em dólar',
+      dollarYield: 'rendimento em dólar',
       gold: 'ouro',
       cash: 'caixa',
     },
     chain: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
+    inCountry: {
+      AE: 'nos Emirados Árabes Unidos',
+      AR: 'na Argentina',
+      AU: 'na Austrália',
+      BR: 'no Brasil',
+      CA: 'no Canadá',
+      CH: 'na Suíça',
+      CL: 'no Chile',
+      CO: 'na Colômbia',
+      DE: 'na Alemanha',
+      ES: 'na Espanha',
+      FR: 'na França',
+      GB: 'no Reino Unido',
+      IE: 'na Irlanda',
+      IT: 'na Itália',
+      JP: 'no Japão',
+      MX: 'no México',
+      NL: 'nos Países Baixos',
+      PE: 'no Peru',
+      PT: 'em Portugal',
+      PY: 'no Paraguai',
+      SG: 'em Singapura',
+      US: 'nos Estados Unidos',
+      UY: 'no Uruguai',
+    },
   },
 };
 
@@ -318,11 +372,27 @@ const number = (value: Value, key: string): number => {
   return value;
 };
 
+const CENTS = 100;
+
+/**
+ * Dollars: whole above a dollar, with cents under one, so a small amount is never written as zero.
+ * `up` rounds away from zero-cost: a loss or a cost is never written smaller than it is.
+ */
+function dollars(amount: number, lang: Language, up: boolean): string {
+  const round = up ? Math.ceil : Math.round;
+  const cents = round(amount * CENTS);
+  const small = cents > 0 && cents < CENTS;
+  const digits = small
+    ? `0${lang === 'pt' ? ',' : '.'}${String(cents).padStart(2, '0')}`
+    : grouped(up ? Math.ceil(cents / CENTS) : Math.round(amount), lang);
+  return lang === 'pt' ? `US$ ${digits}` : `$${digits}`;
+}
+
 const FORMATS: Record<string, (value: Value, lang: Language, key: string) => string> = {
-  usd: (value, lang, key) => {
-    const whole = grouped(Math.round(number(value, key)), lang);
-    return lang === 'pt' ? `US$ ${whole}` : `$${whole}`;
-  },
+  usd: (value, lang, key) => dollars(number(value, key), lang, false),
+  usdUp: (value, lang, key) => dollars(number(value, key), lang, true),
+  inCountry: (value, lang) =>
+    WORDS[lang].inCountry[String(value)] ?? `${lang === 'pt' ? 'em' : 'in'} ${value}`,
   pct: (value, lang, key) => {
     // Basis points over a hundred, with no trailing zeros: 8000 is 80, 1432 is 14.32.
     const text = String(Math.round(number(value, key)) / 100);

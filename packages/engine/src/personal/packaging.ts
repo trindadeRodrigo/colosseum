@@ -1,6 +1,6 @@
 import { FlattenError, flattenReport } from '@colosseum/basket';
 import type { BasketAsset, BasketLine, Component, Reason, Recipe } from '@colosseum/schemas';
-import { BPS, byName, largestFirst, shareOf, split, sum, toUsd } from './money';
+import { BPS, byName, largestFirst, shareOf, shareOfUp, split, sum, toUsd } from './money';
 import { type Book, once } from './placement';
 import { reason } from './templates';
 import { type PersonalProposal, SLEEVES, type Sleeve } from './types';
@@ -205,7 +205,7 @@ export function packageUp(w: World, book: Book): Packaged {
         reasons.push(
           reason(
             'NO_RETURN_ASSUMED',
-            { fallBps: P.fallBps, lossUsd: toUsd(shareOf(row.cents, P.fallBps)) },
+            { fallBps: P.fallBps, lossUsd: toUsd(shareOfUp(row.cents, P.fallBps)) },
             lang,
           ),
         );

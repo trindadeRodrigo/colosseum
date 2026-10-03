@@ -67,6 +67,8 @@ const BRAND_BANNED = [
 const SAMPLE: Record<string, string | number> = {
   pct: 1432,
   usd: 4000,
+  usdUp: 4000,
+  inCountry: 'BR',
   chain: 'robinhood',
   goal: 'grow',
   risk: 'medium',
@@ -173,12 +175,37 @@ describe('explanation templates', () => {
       '$4,000 · 80% · 14.32% · April 2028 · 18 months · 1 month · Robinhood Chain · dollar yield',
     );
     expect(render(line, values, 'pt')).toBe(
-      'US$ 4.000 · 80% · 14,32% · abril de 2028 · 18 meses · 1 mês · Robinhood Chain · renda em dólar',
+      'US$ 4.000 · 80% · 14,32% · abril de 2028 · 18 meses · 1 mês · Robinhood Chain · rendimento em dólar',
     );
     expect(render('{a|usd}', { a: 1_250_000 }, 'en')).toBe('$1,250,000');
-    expect(render('{a|usd}', { a: 0.4 }, 'pt')).toBe('US$ 0');
     // A chain or a word this file does not know is printed as it came, never dropped.
     expect(render('{g|chain}', { g: 'arbitrum' }, 'en')).toBe('arbitrum');
+  });
+
+  it('never writes a small amount as zero, and rounds a loss up', () => {
+    // Under a dollar, the cents are shown.
+    expect(render('{a|usd}', { a: 0.4 }, 'en')).toBe('$0.40');
+    expect(render('{a|usd}', { a: 0.4 }, 'pt')).toBe('US$ 0,40');
+    expect(render('{a|usd}', { a: 0.004 }, 'en')).toBe('$0');
+    expect(render('{a|usd}', { a: 0 }, 'en')).toBe('$0');
+    expect(render('{a|usd}', { a: 0.996 }, 'en')).toBe('$1');
+    expect(render('{a|usd}', { a: 1.4 }, 'en')).toBe('$1');
+    // A loss is never written smaller than it is: $1.40 is "$2", and four tenths of a cent is a cent.
+    expect(render('{a|usdUp}', { a: 1.4 }, 'en')).toBe('$2');
+    expect(render('{a|usdUp}', { a: 228.48 }, 'en')).toBe('$229');
+    expect(render('{a|usdUp}', { a: 2000 }, 'pt')).toBe('US$ 2.000');
+    expect(render('{a|usdUp}', { a: 0.004 }, 'en')).toBe('$0.01');
+    expect(render('{a|usdUp}', { a: 0 }, 'en')).toBe('$0');
+  });
+
+  it('writes a country by its name, and by its code only when it does not know the name', () => {
+    expect(render('{c|inCountry}', { c: 'BR' }, 'en')).toBe('in Brazil');
+    expect(render('{c|inCountry}', { c: 'BR' }, 'pt')).toBe('no Brasil');
+    expect(render('{c|inCountry}', { c: 'US' }, 'pt')).toBe('nos Estados Unidos');
+    expect(render('{c|inCountry}', { c: 'PT' }, 'pt')).toBe('em Portugal');
+    expect(render('{c|inCountry}', { c: 'XX' }, 'en')).toBe('in XX');
+    expect(render('{c|inCountry}', { c: 'XX' }, 'pt')).toBe('em XX');
+    expect(Object.keys(WORDS.en.inCountry).sort()).toEqual(Object.keys(WORDS.pt.inCountry).sort());
   });
 
   it('builds a reason: the rule, the inputs it names, the values and the text', () => {

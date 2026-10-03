@@ -1,6 +1,6 @@
 import { rollUp } from '@colosseum/basket';
 import type { BasketCard, BasketLine } from '@colosseum/schemas';
-import { BPS, shareOf, sum, toCents, toUsd } from './money';
+import { BPS, shareOfUp, sum, toCents, toUsd } from './money';
 import { text } from './templates';
 import type { World } from './world';
 
@@ -70,7 +70,7 @@ export function cardOf(w: World, lines: BasketLine[]): Carded {
         lowPct: twoPlaces((PERCENT * low) / sheet.amountUsd),
         highPct: twoPlaces((PERCENT * high) / sheet.amountUsd),
         basis: text(basis, {}, lang),
-        lossInFallUsd: toUsd(shareOf(sum(priced.map((l) => toCents(l.amountUsd))), P.fallBps)),
+        lossInFallUsd: toUsd(shareOfUp(sum(priced.map((l) => toCents(l.amountUsd))), P.fallBps)),
       },
       exit: {
         text:

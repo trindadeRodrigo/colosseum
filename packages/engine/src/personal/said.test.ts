@@ -494,3 +494,57 @@ describe('a recipe never asks a vault for more of a token than its limit', () =>
       );
   });
 });
+
+describe('the words', () => {
+  it('a sleeve reason says where the sleeve starts, which stays true when the plan moves it', () => {
+    // Twelve months out, stocks are 30% of the plan, not the 80% the table starts from.
+    const near = compose(sheet({ themes: ['the-seven'], horizonMonths: 12 }), shelf, ctx);
+    expect(near.sleeves.find((s) => s.sleeve === 'growth')?.weightBps).toBe(3000);
+    expect(line(near, 'solana:nvdax')?.reasons[0]?.text).toBe(
+      'For a goal to grow at medium risk, the starting share of stocks and crypto is 80%.',
+    );
+    // On Base an income plan is all cash, and no line claims a share the plan does not hold.
+    const cash = compose(sheet({ goal: 'income', chains: ['base'] }), shelf, ctx);
+    expect(cash.lines.map((l) => [l.assetId, l.weightBps])).toEqual([['base:usdc', 10_000]]);
+    for (const r of allReasons(cash)) expect(r.text).not.toMatch(/of the plan in/);
+    expect(cash.lines[0]?.reasons.map((r) => r.text)).toEqual([
+      'For a goal of income at medium risk, the starting share of dollar yield is 100%.',
+      'No dollar-yield token you can hold is on Base, so $10,000 stays in cash.',
+    ]);
+  });
+
+  it('names a country, not its code, and reads as a Brazilian would say it', () => {
+    const blocked = {
+      ...shelf,
+      assets: shelf.assets.map((a) =>
+        a.id === 'solana:nvdax' ? { ...a, blockedCountries: ['BR'] } : a,
+      ),
+    };
+    const said = (language: 'en' | 'pt') =>
+      compose(sheet({ themes: ['the-seven'], language }), blocked, ctx)
+        .removed.find((r) => r.ref === 'NVDA')
+        ?.reasons.map((r) => r.text);
+    expect(said('en')).toEqual(['NVDAx is left out: it is not offered in Brazil.']);
+    expect(said('pt')).toEqual(['NVDAx fica de fora: não é oferecido no Brasil.']);
+    const pt = compose(sheet({ language: 'pt' }), shelf, ctx);
+    expect(line(pt, 'solana:syrupusdc')?.reasons.map((r) => r.text)).toEqual([
+      'Para um objetivo de crescimento, com risco médio, a parcela inicial de rendimento em dólar é 15%.',
+      'Escolhido pelo rendimento após o deságio, entre os tokens de rendimento em dólar que você pode ter na Solana.',
+      'Inclui US$ 1.500 que SPY não comporta neste tamanho.',
+    ]);
+  });
+
+  it('writes a loss rounded up, and an amount under a dollar with its cents', () => {
+    // $10 at high risk: $9.50 in The 500, so a 20% fall costs $1.90, written "$2".
+    const small = compose(sheet({ amountUsd: 10, risk: 'high' }), shelf, ctx);
+    expect(line(small, 'solana:spyx')?.reasons.at(-1)?.text).toBe(
+      'No return is assumed for this part of your plan. In a 20% fall it would lose $2.',
+    );
+    expect(small.card.expectedReturn.lossInFallUsd).toBe(1.9);
+    expect(
+      line(small, 'solana:usdc')?.reasons.find((r) => r.rule === 'YIELD_TOO_SMALL')?.text,
+    ).toBe(
+      '$0.50 meant for dollar yield stays in cash: it is too small to be a part of your plan.',
+    );
+  });
+});

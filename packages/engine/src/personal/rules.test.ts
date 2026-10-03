@@ -242,7 +242,7 @@ describe('a near date, on the starting table', () => {
   it('says the loss in a fall in the words of the line', () => {
     const made = plan({ goal: 'protect', amountUsd: 50_000, horizonMonths: 18, risk: 'low' }, P);
     expect(made.lines.find((l) => l.assetId === 'solana:spyx')?.reasons.at(-1)?.text).toBe(
-      'No return is assumed for this line. In a 20% fall it would lose $2,000.',
+      'No return is assumed for this part of your plan. In a 20% fall it would lose $2,000.',
     );
     expect(made.card.expectedReturn.lossInFallUsd).toBe(4000);
   });

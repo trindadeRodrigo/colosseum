@@ -15,6 +15,9 @@ export const floorCents = (usd: number): number => Math.floor(usd * CENTS_IN_A_D
 /** `bps` of `cents`, rounded down. */
 export const shareOf = (cents: number, bps: number): number => Math.floor((cents * bps) / BPS);
 
+/** `bps` of `cents`, rounded up: a loss is never written smaller than it is. */
+export const shareOfUp = (cents: number, bps: number): number => Math.ceil((cents * bps) / BPS);
+
 /** What share of `whole` a part is, in basis points, rounded up. */
 export const bpsOf = (part: number, whole: number): number => Math.ceil((part * BPS) / whole);
 
