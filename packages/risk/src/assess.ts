@@ -1,5 +1,5 @@
-import { costAt, type DepthCurve, maxNotionalAt } from './curves';
-import { type Regime, type RegimeParams, regimeAt, regimesIn } from './time';
+import { costAt, type DepthCurve, maxNotionalAt, usableCount } from './curves';
+import { REGIMES, type Regime, type RegimeParams, regimeAt, regimesIn } from './time';
 
 /** Sell-side curves per regime for one asset. Missing regimes fall back as documented in `curveFor`. */
 export type AssetCurves = { assetId: string; byRegime: Partial<Record<Regime, DepthCurve>> };
@@ -16,6 +16,43 @@ export function curveFor(
   return { curve: null, regimeUsed: r };
 }
 
+export type RegimeGap = { regime: Regime; reason: 'no_samples_in_regime' | 'insufficient_samples' };
+
+/**
+ * Which regimes an asset's curves measure (PLAN-ANALYTICS DA2). A regime with no snapshot, or whose curve has
+ * no grid point with enough samples, is not measured: it is named with its reason and never read as zero
+ * capacity. us_holiday counts as measured through the weekend curve (`curveFor`).
+ */
+export function measuredRegimes(
+  a: AssetCurves,
+  regimes: readonly Regime[] = REGIMES,
+): { measured: Regime[]; missing: RegimeGap[] } {
+  const measured: Regime[] = [];
+  const missing: RegimeGap[] = [];
+  for (const r of regimes) {
+    const { curve } = curveFor(a, r);
+    if (!curve) missing.push({ regime: r, reason: 'no_samples_in_regime' });
+    else if (usableCount(curve) === 0) missing.push({ regime: r, reason: 'insufficient_samples' });
+    else measured.push(r);
+  }
+  return { measured, missing };
+}
+
+/**
+ * Exit capacity at tau in the worst measured regime among `regimes`. When none of them is measured, the worst
+ * of every measured regime stands in (`fallback: true`); null when the asset has no measured regime at all.
+ */
+export function worstMeasuredCapacity(a: AssetCurves, regimes: readonly Regime[], tau: number) {
+  const inWindow = measuredRegimes(a, regimes);
+  const use = inWindow.measured.length ? inWindow.measured : measuredRegimes(a).measured;
+  if (!use.length) return null;
+  return {
+    ...worstCapacity(a, use, tau),
+    regimesMissing: inWindow.missing,
+    fallback: inWindow.measured.length === 0,
+  };
+}
+
 /** Exit capacity at tolerance tau in the worst regime among `regimes` (0 when a regime has no curve). */
 export function worstCapacity(a: AssetCurves, regimes: Regime[], tau: number) {
   let worst: { regime: Regime; capacityUsd: number; lowerBound: boolean } | null = null;
@@ -28,11 +65,11 @@ export function worstCapacity(a: AssetCurves, regimes: Regime[], tau: number) {
   return worst ?? { regime: 'weekend' as Regime, capacityUsd: 0, lowerBound: false };
 }
 
-/** Weekend / market-hours exit capacity ratio at tau; null when either curve is missing. */
+/** Weekend / market-hours exit capacity ratio at tau; null when either regime is not measured. */
 export function weekendRatio(a: AssetCurves, tau: number): number | null {
   const w = a.byRegime.weekend;
   const m = a.byRegime.us_market_hours;
-  if (!w || !m) return null;
+  if (!w || !m || usableCount(w) === 0 || usableCount(m) === 0) return null;
   const cm = maxNotionalAt(m, tau).notionalUsd;
   return cm > 0 ? maxNotionalAt(w, tau).notionalUsd / cm : null;
 }
@@ -153,15 +190,21 @@ export function recoverableValue(
 
 // ---------------------------------------------------------------- liquidity score
 
-/** Fraction of nRef exitable within the horizon at ≤ tau, in the worst regime the horizon can contain. */
+/**
+ * Fraction of nRef exitable within the horizon at ≤ tau, in the worst measured regime the horizon can contain. A
+ * regime the curves do not measure is skipped and named in `regimesMissing` (DA2); when none is measured the score,
+ * regime and capacity are null, never zero.
+ */
 export function liquidityScore(a: AssetCurves, regimes: Regime[], tau: number, nRef: number) {
-  const w = worstCapacity(a, regimes, tau);
+  const { measured, missing } = measuredRegimes(a, regimes);
+  const w = measured.length ? worstCapacity(a, measured, tau) : null;
   return {
     assetId: a.assetId,
-    score: nRef > 0 ? Math.min(1, w.capacityUsd / nRef) : 0,
-    worstRegime: w.regime,
-    capacityUsd: w.capacityUsd,
-    lowerBound: w.lowerBound,
+    score: w ? (nRef > 0 ? Math.min(1, w.capacityUsd / nRef) : 0) : null,
+    worstRegime: w?.regime ?? null,
+    capacityUsd: w?.capacityUsd ?? null,
+    lowerBound: w?.lowerBound ?? false,
+    regimesMissing: missing,
     tau,
     nRef,
   };

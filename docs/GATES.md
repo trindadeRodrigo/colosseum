@@ -34,7 +34,7 @@ From `docs/vault/HANDOFF-VAULT.md`. Either founder can reopen one.
 | **SIGN-IN** | DECIDED | Wallet connect or a passkey wallet (Privy) | `docs/vault/research/open-questions/wallet-providers.md` |
 | **BRANCH** — where the vault work lands | DECIDED | Short-lived branches, each with a pull request into `staging`; `staging` goes into `main`. `pnpm verify` is the check, locally and in CI | Rodrigo merged the risk layer and the design system into `main` on Oct 1; `staging` was created from `main` the same day |
 | **RISK-DATA** — risk data for the demo | OPEN | Hosted collector or a dated snapshot | The collectors run under launchd on one machine today |
-| **NAME** | OPEN | Tenonfi is provisional on the `design` branch; final after the trademark, domain and native-speaker checks | — |
+| **NAME** | DECIDED | Tenonfi. Decided on 2026-10-03 (see `NAME` below) | — |
 | **LICENCE** | DECIDED | Apache-2.0 | The repo was public with no licence |
 | **AUTO-FOLLOW** | DECIDED | Off by default, per plan. A new version of a followed portfolio takes effect 48 hours (172,800 s) after it is published, and the person can refuse it. Team test cycles before `launch()` run at 300 s. The vault copies the change inside its own limits and does not re-check the person's goal | `docs/vault/DESIGN-VAULT.md`, section 17 |
 | **SIGN-IN-LABEL** | DECIDED | The button says "Sign in" and opens a choice of passkey or wallet | His landing page says "Connect wallet" |
@@ -72,3 +72,12 @@ The risk layer's reference price, the oracle standard (`docs/risk/PLAN-RISK.md` 
 | Gate | Status | Decision | Facts |
 |---|---|---|---|
 | **ONE-CHAIN** | DECIDED | A plan lives on one chain: the chain of the wallet the person created or connected when signing in. The product proposes only what exists on that chain: the assets there, and the shared portfolios that have a recipe there. The deposit, the vault and every trade of the plan are on that chain. A plan is never split across chains. The product still runs on several chains (Solana and Robinhood Chain now, Base later), and a shared portfolio may still be published on more than one: a person gets the recipe of their own chain | A person signs in with one wallet and should not have to fund, sign and follow their plan in two places. It also takes buys and rebalances across chains, and funding per chain, out of the build. Assumed until Thom says otherwise, not decided: someone who creates a wallet in the app picks its chain at that moment; a person who signs in with a different wallet on another chain has a separate plan there |
+| **NAME** | DECIDED | The project keeps the name Tenonfi, the provisional name from the brand work. The rename of the package scope, the server and skill names and the working code names follows as one change (FRAME-4) | The name fixes the package scope, the origin and the passkeys, so it had to be settled before the app is hosted. The trademark, domain and native-speaker checks named when the gate was opened are still to do; they no longer hold the name back |
+
+## Decided on 2026-10-03 (Rodrigo)
+
+Which route prices and runs a trade. Either founder can reopen it.
+
+| Gate | Status | Decision | Facts |
+|---|---|---|---|
+| **ROUTING** — Jupiter's route or ours | DECIDED | A trade done at once (one transaction) is quoted and run on Jupiter's route. A trade split over time is planned with our router (`routeTrade`): the analytics simulation's flow chart shows its slices, pools and cost. The client is offered the cheaper of the two. Every swap the vault sends, slices included, still goes through `Config.router_program` (Jupiter on mainnet), so the vault program does not change | Our router against the collector's Jupiter quotes, 10 xStocks, Oct 2 23:37Z to Oct 3 17:15Z (off-hours and weekend only), 2,306 pairs: median gap at most 0.5 bp at $1k and $10k, Jupiter better by 27 bp (sell) and 19 bp (buy) at $100k. With the same pools on both sides the $100k gap is 2.9 bp; the rest is pools we do not model: Byreal (excluded, D4 in `docs/risk/PLAN-RISK.md`), prop AMMs and an order book, and the two-hop pools |

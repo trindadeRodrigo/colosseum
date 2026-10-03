@@ -84,7 +84,6 @@ As in section 15 of the design. In short: Rodrigo owns the engine's numbers and 
 | Whether Jupiter's terms allow a second organisation | Thom | Fri Oct 2 |
 | One specification of the provenance pin; the final logo (DES-1) | Rodrigo | Sat Oct 3, with WEB-1 |
 | Who holds each admin key and who is guardian on call each day | Thom and Rodrigo | Sun Oct 4 |
-| The name. It fixes the package scope, the origin and the passkeys, so a change after Sunday costs a re-deploy of sign-in (FRAME-4) | Rodrigo | Sun Oct 4, with the origin |
 | Who runs the Solana sessions (deploy, config, rehearsals) | Thom and Rodrigo | Mon Oct 5 |
 | Which VM runs the keeper once it leaves a founder's machine | Thom | Mon Oct 5 |
 | Whether Vercel Hobby's non-commercial clause is acceptable for the hosted app | Thom | Mon Oct 5 |

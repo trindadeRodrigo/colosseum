@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { FactRegime } from './facts';
 
 /**
  * The seam between the structurer (packages/engine) and the liquidity & risk layer (packages/risk).
@@ -46,6 +47,8 @@ export const LiquidityAssessment = z.object({
   monthsAtRisk: z.array(z.string()),
   orders: z.array(LiquidityOrder),
   params: z.record(z.string(), z.number()),
+  /** Regimes inside a withdrawal's window that a leg's curves do not measure; capacity came from the others. */
+  regimesMissing: z.array(z.object({ assetId: z.string(), regime: z.string() })).optional(),
   methodVersion: z.string(),
 });
 export type LiquidityAssessment = z.infer<typeof LiquidityAssessment>;
@@ -88,6 +91,36 @@ export interface LiquidityProvider {
     ctx: { tau: number; windowDays: number; legAmountUsd: number },
   ): LiquidityEntry | null;
   assess(input: LiquidityAssessInput): LiquidityAssessment;
+}
+
+/** One regime's answer for a trade size. `cost` is null with the reason it is not measured, never zero. */
+export type RegimeCost = {
+  cost: number | null;
+  reason: 'no_samples_in_regime' | 'insufficient_samples' | 'beyond_measured_size' | null;
+  regime: FactRegime;
+  /** The regime whose curve answered (a holiday reads the weekend curve). */
+  regimeUsed: FactRegime;
+  samples: number;
+  dataFrom: string | null;
+  dataTo: string | null;
+};
+
+export type RegimeGap = {
+  regime: FactRegime;
+  reason: 'no_samples_in_regime' | 'insufficient_samples';
+};
+
+/**
+ * Per-regime answers beside the worst-regime ones (PLAN-ANALYTICS item 6). Every method returns null for an
+ * asset the provider does not cover.
+ */
+export interface RegimeLiquidityProvider extends LiquidityProvider {
+  regimes(assetId: string): { measured: FactRegime[]; missing: RegimeGap[] } | null;
+  exitCostIn(assetId: string, notionalUsd: number, regime: FactRegime): RegimeCost | null;
+  /** Cost of buying `notionalUsd` of the asset; null when the provider holds no buy curves for it. */
+  entryCostIn(assetId: string, notionalUsd: number, regime: FactRegime): RegimeCost | null;
+  /** Exit capacity at cost ≤ tau in one regime; null when that regime is not measured. */
+  exitCapacityIn(assetId: string, tau: number, regime: FactRegime): ExitCapacity | null;
 }
 
 /** Policy trigger for liquidity (optional): when a likely breach is found, propose illiquid → USDC orders. */
