@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as schemas from '@colosseum/schemas';
 import {
@@ -15,8 +15,10 @@ import {
   BuildLegResponse,
   BuiltTx,
   BuiltTxBase,
+  CHAIN_ERROR_RETRYABLE,
   ChainError,
   ChainErrorCode,
+  CONTRACT_ERROR_CODE,
   ConsentRequest,
   CreatorLimitReason,
   chainFamily,
@@ -31,6 +33,7 @@ import {
   normalizeAddress,
   Order,
   Owner,
+  PROGRAM_ERRORS,
   RawAmount,
   RawDelta,
   RebalancePlan,
@@ -565,6 +568,89 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
     ]);
     expect(ChainErrorCode.options).toContain('BadInput');
     expect(new Set(ChainErrorCode.options).size).toBe(ChainErrorCode.options.length);
+  });
+
+  it("lists the program's errors first, in the program's own order, the appended four included", () => {
+    const idl: { errors: { code: number; name: string }[] } = JSON.parse(
+      readFileSync(join(__dirname, '..', 'idl', 'basket.json'), 'utf8'),
+    );
+    expect(idl.errors.map((e) => e.name)).toEqual([...PROGRAM_ERRORS]);
+    expect(idl.errors.map((e) => e.code)).toEqual(PROGRAM_ERRORS.map((_, i) => 6000 + i));
+    expect(ChainErrorCode.options.slice(0, PROGRAM_ERRORS.length)).toEqual([...PROGRAM_ERRORS]);
+    expect(PROGRAM_ERRORS.slice(23)).toEqual([
+      'ParamOutOfBounds',
+      'NotUpgradeAuthority',
+      'InvalidTargets',
+      'NotCashMint',
+      'ZeroAddress',
+    ]);
+  });
+
+  it('gives every custom error of the EVM contracts a code, and no code to an error they do not have', () => {
+    const dir = join(__dirname, '..', 'contracts', 'src');
+    const sources = (readdirSync(dir, { recursive: true }) as string[])
+      .filter((name) => name.endsWith('.sol'))
+      .map((name) => readFileSync(join(dir, name), 'utf8'));
+    const declared = new Set(
+      sources.flatMap((text) =>
+        [...text.matchAll(/^\s*error\s+(\w+)\s*\(/gm)].map((m) => m[1] ?? ''),
+      ),
+    );
+    expect(declared.size).toBeGreaterThanOrEqual(14);
+    expect(Object.keys(CONTRACT_ERROR_CODE).sort()).toEqual([...declared].sort());
+    for (const code of Object.values(CONTRACT_ERROR_CODE))
+      expect(ChainErrorCode.safeParse(code).success, code).toBe(true);
+    // The same name where the rule is the same, and one code where two errors mean one thing.
+    expect(CONTRACT_ERROR_CODE).toMatchObject({
+      ZeroAddress: 'ZeroAddress',
+      ParamOutOfBounds: 'ParamOutOfBounds',
+      InvalidPull: 'ParamOutOfBounds',
+      AssetNotListed: 'MintNotAccepted',
+      FeedRequired: 'AssetNotPriced',
+      NotPendingAdmin: 'NotAdmin',
+    });
+    // A new code only where no program error means the same.
+    const added = [...new Set(Object.values(CONTRACT_ERROR_CODE))].filter(
+      (code) => !(PROGRAM_ERRORS as readonly string[]).includes(code),
+    );
+    expect(added.sort()).toEqual(
+      [
+        'AssetIsRouter',
+        'CashTokenNotSet',
+        'DepositShortfall',
+        'GasTooLow',
+        'NoCode',
+        'NotAdmin',
+        'NotOwner',
+        'RouterIsAsset',
+      ].sort(),
+    );
+  });
+
+  it('says of every code whether building again can succeed on its own', () => {
+    expect(Object.keys(CHAIN_ERROR_RETRYABLE).sort()).toEqual([...ChainErrorCode.options].sort());
+    const retryable = ChainErrorCode.options.filter((code) => CHAIN_ERROR_RETRYABLE[code]);
+    expect(retryable.sort()).toEqual(
+      [
+        'KeeperPaused',
+        'ReceivedTooLittle',
+        'PriceStale',
+        'PriceDeviation',
+        'MarketClosed',
+        'MultiplierWindow',
+        'Cooldown',
+        'GasTooLow',
+        'Expired',
+        'Unavailable',
+      ].sort(),
+    );
+    for (const code of ChainErrorCode.options)
+      expect(new ChainError(code, '').retryable, code).toBe(CHAIN_ERROR_RETRYABLE[code]);
+    expect(new ChainError('InvalidTargets', '').toJSON()).toEqual({
+      code: 'InvalidTargets',
+      message: '',
+      retryable: false,
+    });
   });
 
   it('exports the plain object beside each refined schema, since zod refuses to reshape a refined one', () => {
