@@ -1,9 +1,13 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   type Address,
   generateKeyPairSigner,
   getAddressDecoder,
   getAddressEncoder,
   type KeyPairSigner,
+  lamports,
+  some,
 } from '@solana/kit';
 import { extension } from '@solana-program/token-2022';
 import type { LiteSVM } from 'litesvm';
@@ -31,6 +35,7 @@ import {
   expectOk,
   fundedSigner,
   loadHook,
+  REPO_ROOT,
   SYSTEM_ACCOUNT_ALREADY_IN_USE,
   SYSTEM_PROGRAM,
   send,
@@ -40,9 +45,11 @@ import { setHook } from './src/hook';
 import {
   createAta,
   createMint,
+  mintExtensionEntries,
   type TestMint,
   TOKEN_2022_PROGRAM,
   TOKEN_PROGRAM,
+  TRANSFER_HOOK_EXTENSION,
 } from './src/tokens';
 
 // The platform's list of tokens a vault may hold (DESIGN-VAULT.md section 3.7), written by the admin.
@@ -258,6 +265,127 @@ describe('the asset list', () => {
       expect(registry.assets.map((a) => [a.mint, a.maxWeightBps])).toEqual([
         [stock.address, 5_000],
       ]);
+    });
+
+    // The hook is found wherever it sits in the mint. The stock tokens have theirs behind two
+    // extensions the token crate this program is built with does not know.
+    it.each([
+      [
+        'a scaled UI amount',
+        (issuer: Address) =>
+          extension('ScaledUiAmountConfig', {
+            authority: issuer,
+            multiplier: 1,
+            newMultiplierEffectiveTimestamp: 0n,
+            newMultiplier: 1,
+          }),
+      ],
+      [
+        'pausable',
+        (issuer: Address) =>
+          extension('PausableConfig', { authority: some(issuer), paused: false }),
+      ],
+    ])('refuses a hook program that sits after %s in the mint', async (_, first) => {
+      const hook = await loadHook(svm);
+      const hooked = await createMint(svm, admin, {
+        program: TOKEN_2022_PROGRAM,
+        decimals: 8,
+        extensions: (issuer) => [
+          first(issuer),
+          extension('TransferHook', { authority: issuer, programId: hook }),
+        ],
+      });
+      expectError(
+        await send(svm, admin, [await upsertAssetInstruction(admin, hooked.address)]),
+        ERR.HookNotAllowed,
+      );
+      expect((await readAssets(svm)).count).toBe(0);
+    });
+
+    describe('the real stock mint, as it was on mainnet', () => {
+      // SPYx, frozen with the route in fixtures/solana-vault/jupiter-route.json.
+      type Frozen = {
+        outputMint: Address;
+        accounts: { address: Address; owner: Address; lamports: string; data: string }[];
+      };
+      const frozen = JSON.parse(
+        readFileSync(join(REPO_ROOT, 'fixtures', 'solana-vault', 'jupiter-route.json'), 'utf8'),
+      ) as Frozen;
+      const real = frozen.accounts.find((a) => a.address === frozen.outputMint);
+      if (!real) throw new Error('the fixture has no stock mint');
+      const bytes = () => new Uint8Array(Buffer.from(real.data, 'base64'));
+      const hookOf = (data: Uint8Array) => {
+        const entry = mintExtensionEntries(data).find((e) => e.type === TRANSFER_HOOK_EXTENSION);
+        if (!entry) throw new Error('the real mint has no hook entry');
+        return entry;
+      };
+      /** Puts the mint on the chain with these bytes, as no transaction of ours can. */
+      const put = (data: Uint8Array) =>
+        svm.setAccount({
+          address: real.address,
+          data,
+          executable: false,
+          lamports: lamports(BigInt(real.lamports)),
+          programAddress: real.owner,
+          space: BigInt(data.length),
+        });
+      const list = async () =>
+        send(svm, admin, [await upsertAssetInstruction(admin, real.address)]);
+
+      it('has its hook behind a scaled UI amount and pausable, and the test stock mint has the same order', () => {
+        const order = mintExtensionEntries(bytes()).map((e) => e.type);
+        expect(order).toEqual([18, 12, 6, 25, 26, 4, 14, 19]);
+        const ours = svm.getAccount(stock.address);
+        if (!ours.exists) throw new Error('no test stock mint');
+        // The test mint leaves out the last one, the metadata text.
+        expect(mintExtensionEntries(new Uint8Array(ours.data)).map((e) => e.type)).toEqual(
+          order.slice(0, -1),
+        );
+      });
+
+      it('is listed as it is: a hook authority and no program', async () => {
+        const data = bytes();
+        const hook = hookOf(data);
+        expect(data.slice(hook.at + 32, hook.at + 64).every((b) => b === 0)).toBe(true);
+        put(data);
+        expectOk(await list());
+        expect((await readAssets(svm)).assets.map((a) => [a.mint, a.decimals])).toEqual([
+          [real.address, 8],
+        ]);
+      });
+
+      it('is refused once its hook names a program', async () => {
+        // What the issuer's hook authority can do with one instruction.
+        const data = bytes();
+        data.set(getAddressEncoder().encode(await loadHook(svm)), hookOf(data).at + 32);
+        put(data);
+        expectError(await list(), ERR.HookNotAllowed);
+        expect((await readAssets(svm)).count).toBe(0);
+      });
+
+      // No token program writes a list like these. A list that cannot be read to its end is
+      // refused, never taken as "no hook".
+      it('is refused when an entry says it is longer than the mint', async () => {
+        const data = bytes();
+        new DataView(data.buffer).setUint16(hookOf(data).at - 2, 0xffff, true);
+        put(data);
+        expectError(await list(), ERR.HookNotAllowed);
+      });
+
+      it('is refused when the list is cut off inside an entry', async () => {
+        // Two more bytes after the last entry: a type, and no room for its length.
+        const data = new Uint8Array([...bytes(), TRANSFER_HOOK_EXTENSION, 0]);
+        put(data);
+        expectError(await list(), ERR.HookNotAllowed);
+      });
+
+      it('is refused when its hook entry is too short to hold a program', async () => {
+        const data = bytes();
+        new DataView(data.buffer).setUint16(hookOf(data).at - 2, 32, true);
+        put(data);
+        expectError(await list(), ERR.HookNotAllowed);
+        expect((await readAssets(svm)).count).toBe(0);
+      });
     });
 
     it.each([

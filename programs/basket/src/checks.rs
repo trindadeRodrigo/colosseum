@@ -147,6 +147,49 @@ pub fn check_targets(
     Ok(())
 }
 
+// ---- a mint's transfer hook ----
+
+/// Where a Token-2022 mint's extensions start: after the base mint, its padding to the
+/// length of a token account, and the byte that says "mint".
+const MINT_EXTENSIONS_AT: usize = 166;
+/// The extension type of a transfer hook, and the bytes of its value: an authority, then
+/// the hook program.
+const TRANSFER_HOOK_TYPE: u16 = 14;
+const TRANSFER_HOOK_LEN: usize = 64;
+
+/// True when the mint names a transfer hook program. `data` is a Token-2022 mint the caller
+/// has already read as a mint.
+///
+/// The extensions are a list of entries: a type (u16), a length (u16), then that many
+/// bytes. The list is walked here by hand and every type is stepped over by its length,
+/// known or not: the token crate this program is built with stops with an error at the
+/// first type newer than itself, and the stock tokens carry two of those ahead of their
+/// hook. A list that cannot be read to its end is refused, not taken as "no hook".
+pub fn mint_has_hook_program(data: &[u8]) -> Result<bool> {
+    let mut found = false;
+    let mut at = MINT_EXTENSIONS_AT;
+    // Fewer than two bytes left cannot name a type: the list is over.
+    while at + 2 <= data.len() {
+        let kind = u16::from_le_bytes([data[at], data[at + 1]]);
+        // Type zero is space no extension has taken; nothing is written after it.
+        if kind == 0 {
+            break;
+        }
+        require!(at + 4 <= data.len(), BasketError::HookNotAllowed);
+        let length = u16::from_le_bytes([data[at + 2], data[at + 3]]) as usize;
+        let value = at + 4;
+        require!(value + length <= data.len(), BasketError::HookNotAllowed);
+        if kind == TRANSFER_HOOK_TYPE {
+            require!(length >= TRANSFER_HOOK_LEN, BasketError::HookNotAllowed);
+            if data[value + 32..value + TRANSFER_HOOK_LEN] != [0u8; 32] {
+                found = true;
+            }
+        }
+        at = value + length;
+    }
+    Ok(found)
+}
+
 // ---- the author limits (DESIGN-VAULT.md section 6, fixtures/creator-limits) ----
 
 pub const MIN_COMPONENTS: usize = 3;

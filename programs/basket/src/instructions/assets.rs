@@ -1,10 +1,7 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token_2022::spl_token_2022::{
-    extension::{transfer_hook::TransferHook, BaseStateWithExtensions, StateWithExtensions},
-    state::Mint as MintState,
-};
 use anchor_spl::token_interface::Mint;
 
+use crate::checks::mint_has_hook_program;
 use crate::errors::BasketError;
 use crate::events::AssetSet;
 use crate::state::{
@@ -141,14 +138,11 @@ impl UpsertAsset<'_> {
 
 /// True when the mint names a transfer hook program. A hook runs inside every transfer of
 /// the token, with whatever accounts it asks for, so a token that has one is not listed.
-/// The stock tokens carry the extension with no program set: that is not a hook.
+/// The stock tokens carry the extension with no program set: that is not a hook. Only a
+/// Token-2022 mint can have one.
 fn has_hook_program(mint: &AccountInfo) -> Result<bool> {
     if *mint.owner != anchor_spl::token_2022::ID {
         return Ok(false);
     }
-    let data = mint.try_borrow_data()?;
-    let state = StateWithExtensions::<MintState>::unpack(&data)?;
-    Ok(state
-        .get_extension::<TransferHook>()
-        .is_ok_and(|hook| Option::<Pubkey>::from(hook.program_id).is_some()))
+    mint_has_hook_program(&mint.try_borrow_data()?)
 }

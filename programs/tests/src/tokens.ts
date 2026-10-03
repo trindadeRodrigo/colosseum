@@ -47,30 +47,52 @@ export type TestMint = {
   issuer: KeyPairSigner;
 };
 
-/** The extensions SPYx carries on mainnet (docs/vault/research/test-networks.md, section 3):
- * a transfer hook with an authority and no program, a permanent delegate, pausable, a scaled
- * UI amount, default account state "initialized", confidential transfers configured without
- * auto-approve, and a metadata pointer. The metadata text itself is left out. */
+/** The extensions SPYx carries on mainnet (docs/vault/research/test-networks.md, section 3), in the
+ * order the real mint has them: a metadata pointer, a permanent delegate, default account state
+ * "initialized", a scaled UI amount, pausable, confidential transfers configured without
+ * auto-approve, and last a transfer hook with an authority and no program. The order matters to
+ * anything that walks the list: the hook sits behind two types an older token crate does not know.
+ * The metadata text itself, which the real mint carries after the hook, is left out. */
 export function stockExtensions(issuer: Address, mint: Address): ExtensionArgs[] {
   return [
-    extension('TransferHook', { authority: issuer, programId: SYSTEM_PROGRAM }),
+    extension('MetadataPointer', { authority: some(issuer), metadataAddress: some(mint) }),
     extension('PermanentDelegate', { delegate: issuer }),
-    extension('PausableConfig', { authority: some(issuer), paused: false }),
+    extension('DefaultAccountState', { state: AccountState.Initialized }),
     extension('ScaledUiAmountConfig', {
       authority: issuer,
       multiplier: 1.003909,
       newMultiplierEffectiveTimestamp: 0n,
       newMultiplier: 1.005715,
     }),
-    extension('DefaultAccountState', { state: AccountState.Initialized }),
+    extension('PausableConfig', { authority: some(issuer), paused: false }),
     extension('ConfidentialTransferMint', {
       authority: some(issuer),
       autoApproveNewAccounts: false,
       auditorElgamalPubkey: none(),
     }),
-    extension('MetadataPointer', { authority: some(issuer), metadataAddress: some(mint) }),
+    extension('TransferHook', { authority: issuer, programId: SYSTEM_PROGRAM }),
   ];
 }
+
+/** The extension types of a Token-2022 mint in the order they sit in the account, and where the
+ * value of each starts. Entries are a type (u16), a length (u16), then the value, from byte 166. */
+export function mintExtensionEntries(
+  data: Uint8Array,
+): { type: number; at: number; length: number }[] {
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const entries = [];
+  for (let at = 166; at + 4 <= data.length; ) {
+    const type = view.getUint16(at, true);
+    if (type === 0) break;
+    const length = view.getUint16(at + 2, true);
+    entries.push({ type, at: at + 4, length });
+    at += 4 + length;
+  }
+  return entries;
+}
+
+/** Token-2022's number for the transfer hook extension of a mint. */
+export const TRANSFER_HOOK_EXTENSION = 14;
 
 export async function createMint(
   svm: LiteSVM,
