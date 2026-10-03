@@ -99,6 +99,17 @@ export async function fundedSigner(svm: LiteSVM, sol = 10n): Promise<KeyPairSign
   return signer;
 }
 
+/** Sets the chain's clock, in unix seconds. Only a test can; it may also go back. */
+export function setClock(svm: LiteSVM, unixSeconds: bigint | number): void {
+  const clock = svm.getClock();
+  clock.unixTimestamp = BigInt(unixSeconds);
+  svm.setClock(clock);
+}
+
+export function now(svm: LiteSVM): bigint {
+  return svm.getClock().unixTimestamp;
+}
+
 export type SendResult = TransactionMetadata | FailedTransactionMetadata;
 
 /** Signs with the fee payer and every signer named in the instructions, then runs it. */
