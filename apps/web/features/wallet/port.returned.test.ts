@@ -44,7 +44,7 @@ describe('Solana: what the wallet hands back is the transaction it was given', (
           cluster,
         ),
     });
-    expect(await reasonOf(port.sign('solana', [solanaTx(solana)]))).toEqual(['unknown', 'changed']);
+    expect(await reasonOf(port.sign('solana', [solanaTx(solana)]))).toEqual(['changed', 'changed']);
   });
 
   it('refuses a batch that comes back in another order', async () => {
@@ -54,7 +54,7 @@ describe('Solana: what the wallet hands back is the transaction it was given', (
         (await driver.signSolana(address, sent, cluster)).reverse(),
     });
     const txs = [1n, 2n, 3n].map((lamports) => solanaTx(solana, {}, lamports));
-    expect(await reasonOf(port.sign('solana', txs))).toEqual(['unknown', 'changed']);
+    expect(await reasonOf(port.sign('solana', txs))).toEqual(['changed', 'changed']);
   });
 
   it('refuses a batch that comes back shorter or longer', async () => {
@@ -68,14 +68,14 @@ describe('Solana: what the wallet hands back is the transaction it was given', (
         signSolana: async (address, sent, cluster) =>
           resize(await driver.signSolana(address, sent, cluster)),
       });
-      expect(await reasonOf(port.sign('solana', txs))).toEqual(['unknown', 'changed']);
+      expect(await reasonOf(port.sign('solana', txs))).toEqual(['changed', 'changed']);
     }
   });
 
   it('refuses a transaction that comes back unsigned', async () => {
     const { driver, solana } = await signedIn();
     const port = over(driver, { signSolana: async (_address, sent) => sent });
-    expect(await reasonOf(port.sign('solana', [solanaTx(solana)]))).toEqual(['unknown', 'changed']);
+    expect(await reasonOf(port.sign('solana', [solanaTx(solana)]))).toEqual(['changed', 'changed']);
   });
 
   it("refuses a signature that is not this account's", async () => {
@@ -91,7 +91,7 @@ describe('Solana: what the wallet hands back is the transaction it was given', (
       },
     });
     expect(await reasonOf(port.sign('solana', [solanaTx(solana)]))).toEqual([
-      'unknown',
+      'wrong_account',
       'wrong_account',
     ]);
     // A slot that only starts with a zero is a signature, a wrong one, and not an empty slot.
@@ -101,7 +101,7 @@ describe('Solana: what the wallet hands back is the transaction it was given', (
         sent.map((bytes) => withSolanaSignature(bytes, 0, startsWithZero)),
     });
     expect(await reasonOf(filled.sign('solana', [solanaTx(solana)]))).toEqual([
-      'unknown',
+      'wrong_account',
       'wrong_account',
     ]);
   });
@@ -109,7 +109,7 @@ describe('Solana: what the wallet hands back is the transaction it was given', (
   it('refuses bytes that are not a transaction', async () => {
     const { driver, solana } = await signedIn();
     const port = over(driver, { signSolana: async () => [Uint8Array.from([1, 2, 3])] });
-    expect(await reasonOf(port.sign('solana', [solanaTx(solana)]))).toEqual(['unknown', 'changed']);
+    expect(await reasonOf(port.sign('solana', [solanaTx(solana)]))).toEqual(['changed', 'changed']);
   });
 
   describe('where the browser cannot check an Ed25519 signature', () => {
@@ -123,7 +123,7 @@ describe('Solana: what the wallet hands back is the transaction it was given', (
           ? Promise.reject(new DOMException('Unrecognized name.', 'NotSupportedError'))
           : (real as (...a: unknown[]) => Promise<CryptoKey>)(...args)) as never);
       expect(await reasonOf(port.sign('solana', [solanaTx(solana)]))).toEqual([
-        'unknown',
+        'unsupported',
         'unsupported',
       ]);
     });
@@ -199,7 +199,7 @@ describe('EVM: what the wallet hands back is checked before it is returned as si
     ];
     for (const change of changes) {
       const port = over(driver, signing(driver, change));
-      expect(await reasonOf(port.sign('robinhood', [evmTx(evm)]))).toEqual(['unknown', 'changed']);
+      expect(await reasonOf(port.sign('robinhood', [evmTx(evm)]))).toEqual(['changed', 'changed']);
     }
     // The same driver, changing nothing, is accepted.
     const same = over(
@@ -216,7 +216,7 @@ describe('EVM: what the wallet hands back is checked before it is returned as si
         stranger.signTransaction({ type: 'eip1559', ...request, ...fees }),
     });
     expect(await reasonOf(port.sign('robinhood', [evmTx(evm)]))).toEqual([
-      'unknown',
+      'wrong_account',
       'wrong_account',
     ]);
   });
@@ -225,7 +225,7 @@ describe('EVM: what the wallet hands back is checked before it is returned as si
     const { driver, evm } = await signedIn();
     for (const back of ['0x', '0x1234', `0x${'ab'.repeat(32)}`] as const) {
       const port = over(driver, { signEvm: async () => back });
-      expect(await reasonOf(port.sign('robinhood', [evmTx(evm)]))).toEqual(['unknown', 'changed']);
+      expect(await reasonOf(port.sign('robinhood', [evmTx(evm)]))).toEqual(['changed', 'changed']);
     }
   });
 
@@ -236,12 +236,12 @@ describe('EVM: what the wallet hands back is checked before it is returned as si
         serializeTransaction({ type: 'eip1559', ...request, ...fees }),
     });
     expect(await reasonOf(unsigned.sign('robinhood', [evmTx(evm)]))).toEqual([
-      'unknown',
+      'changed',
       'changed',
     ]);
     for (const none of [{ gas: 0n }, { maxFeePerGas: 0n, maxPriorityFeePerGas: 0n }]) {
       const { port, evm: own } = await signedIn({ prepareEvm: async () => ({ ...fees, ...none }) });
-      expect(await reasonOf(port.sign('robinhood', [evmTx(own)]))).toEqual(['unknown', 'changed']);
+      expect(await reasonOf(port.sign('robinhood', [evmTx(own)]))).toEqual(['changed', 'changed']);
     }
   });
 
@@ -253,7 +253,7 @@ describe('EVM: what the wallet hands back is checked before it is returned as si
 
     const hostile = await withFees(30_000_000n, 10n ** 15n);
     expect(await reasonOf(hostile.port.sign('robinhood', [evmTx(hostile.evm)]))).toEqual([
-      'unknown',
+      'changed',
       'changed',
     ]);
 
@@ -264,7 +264,7 @@ describe('EVM: what the wallet hands back is checked before it is returned as si
 
     const justOver = await withFees(21_000n, (stated * 10n) / 21_000n + 1n);
     expect(await reasonOf(justOver.port.sign('robinhood', [evmTx(justOver.evm)]))).toEqual([
-      'unknown',
+      'changed',
       'changed',
     ]);
   });
@@ -285,7 +285,7 @@ describe('EVM: what the wallet hands back is checked before it is returned as si
     });
     expect(
       await reasonOf(above.port.sign('robinhood', [evmTx(above.evm, 'robinhood', unstated)])),
-    ).toEqual(['unknown', 'changed']);
+    ).toEqual(['changed', 'changed']);
     // Solana's fee is in the bytes the API built, so the chain has no ceiling of this kind.
     expect(chains.solana.feeCeilingRaw).toBeNull();
   });
@@ -303,7 +303,7 @@ describe('EVM: what the wallet hands back is checked before it is returned as si
     const [signed] = await over(driver, legacy(1_000_000_000n)).sign('robinhood', [tx]);
     expect(parseTransaction(signed as `0x${string}`).type).toBe('legacy');
     expect(await reasonOf(over(driver, legacy(10n ** 15n)).sign('robinhood', [tx]))).toEqual([
-      'unknown',
+      'changed',
       'changed',
     ]);
     expect(evm).not.toBe(account.address.toLowerCase());
@@ -345,7 +345,7 @@ describe('EVM: what the wallet hands back is checked before it is returned as si
         accounts: [{ family: 'evm', address: account.address, kind: 'embedded' }],
         signEvm: (_address, request) => signEvm(request),
       });
-      expect(await reasonOf(port.sign('robinhood', [tx]))).toEqual(['unknown', 'changed']);
+      expect(await reasonOf(port.sign('robinhood', [tx]))).toEqual(['changed', 'changed']);
     }
   });
 });
@@ -412,18 +412,18 @@ describe('guards that had no test of their own', () => {
       const port = over(driver, { status, signSolana, signEvmMessage });
       expect(port.accounts).toHaveLength(2);
       expect(await reasonOf(port.sign('solana', [solanaTx(solana)]))).toEqual([
-        'unknown',
+        'not_connected',
         'not_connected',
       ]);
       expect(await reasonOf(port.send('robinhood', evmTx(evm)))).toEqual([
-        'unknown',
+        'not_connected',
         'not_connected',
       ]);
       expect(await reasonOf(port.signMessage('evm', 'hello'))).toEqual([
-        'unknown',
+        'not_connected',
         'not_connected',
       ]);
-      expect(await reasonOf(port.exportKey('evm'))).toEqual(['unknown', 'not_connected']);
+      expect(await reasonOf(port.exportKey('evm'))).toEqual(['not_connected', 'not_connected']);
     }
     expect(signSolana).not.toHaveBeenCalled();
     expect(signEvmMessage).not.toHaveBeenCalled();
@@ -445,7 +445,7 @@ describe('guards that had no test of their own', () => {
       port.signMessage('evm', 'hello'),
       port.exportKey('evm'),
     ])
-      expect(await reasonOf(run)).toEqual(['unknown', 'not_connected']);
+      expect(await reasonOf(run)).toEqual(['not_connected', 'not_connected']);
     for (const spy of [signEvm, sendEvm, signEvmMessage, exportKey])
       expect(spy).not.toHaveBeenCalled();
   });
@@ -520,7 +520,7 @@ describe('guards that had no test of their own', () => {
 
     const outside = await signedIn({ kind: 'external' });
     const port = over(outside.driver, { exportKey });
-    expect(await reasonOf(port.exportKey('solana'))).toEqual(['unknown', 'unsupported']);
+    expect(await reasonOf(port.exportKey('solana'))).toEqual(['unsupported', 'unsupported']);
     expect(exportKey).toHaveBeenCalledTimes(1);
   });
 

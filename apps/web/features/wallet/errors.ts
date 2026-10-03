@@ -1,8 +1,8 @@
-import { WalletError, type WalletErrorCode } from '@colosseum/schemas';
+import { WalletError, WalletErrorCode } from '@colosseum/schemas';
 
 /**
- * Why a call failed, where the five codes of WalletError cannot say it. `code` stays one of the five,
- * so a caller that reads only `code` still gets a value it knows.
+ * Why a call failed, in this app's own words. Four of them are codes of WalletError too and are
+ * carried as `code`; `not_configured` and `bad_transaction` are this app's alone and go under `unknown`.
  */
 export type WalletReason =
   | 'not_configured'
@@ -13,11 +13,11 @@ export type WalletReason =
   | 'changed';
 
 /**
- * The reasons that are a WalletErrorCode of their own. None is yet: `not_connected`, `wrong_account`,
- * `unsupported` and `changed` go in this list in the change that adds them to packages/schemas, and
- * from then on each is carried as `code` too.
+ * The reasons that are a WalletErrorCode of their own: `not_connected`, `wrong_account`, `unsupported`
+ * and `changed`. Each is carried as `code` too. The list is the shared one, so a reason that becomes a
+ * code there is carried here with no change.
  */
-const CODES_OF_THEIR_OWN: readonly string[] = [];
+const CODES_OF_THEIR_OWN: readonly string[] = WalletErrorCode.options;
 
 export class WalletPortError extends WalletError {
   readonly reason: WalletReason | null;
@@ -83,14 +83,14 @@ function classify(e: Loose, text: string): [WalletErrorCode, WalletReason | null
   )
     return ['expired', null];
   if (e.code === 4900 || privy === 'must_be_authenticated' || /disconnected/i.test(text))
-    return ['unknown', 'not_connected'];
+    return ['not_connected', 'not_connected'];
   if (
     e.code === 4200 ||
     privy === 'not_supported' ||
     privy === 'unsupported_wallet_type' ||
     /not (supported|implemented)|does not support/i.test(text)
   )
-    return ['unknown', 'unsupported'];
+    return ['unsupported', 'unsupported'];
   return null;
 }
 

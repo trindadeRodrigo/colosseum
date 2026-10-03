@@ -1,4 +1,13 @@
-import type { AssetId, Price, Target, Trade, VaultState } from '@colosseum/schemas';
+import type {
+  AssetId,
+  AssetUnits,
+  Price,
+  RebalancePlan,
+  RebalancePolicy,
+  Target,
+  Trade,
+  VaultState,
+} from '@colosseum/schemas';
 import {
   BasketInputError,
   ONE_USD,
@@ -8,7 +17,7 @@ import {
   usdFromNumber,
   usdValue,
 } from './amounts';
-import { type AssetUnits, lookups } from './view';
+import { lookups } from './view';
 
 // The trades that bring a vault back to its targets. Pure: the vault, the targets, the prices and the
 // asset list come in as arguments, and the same inputs give the same trades.
@@ -21,37 +30,6 @@ export class RebalanceError extends Error {
     this.code = code;
   }
 }
-
-export type RebalancePolicy = {
-  /** A weight within this many bps of its target is in place. 0 when planning a deposit. */
-  bandBps: number;
-  /**
-   * The dust threshold: no trade worth less than this many dollars. A float, and safe as one: it is a
-   * setting that a value is compared against, never an amount that moves.
-   */
-  minTradeUsd: number;
-  /**
-   * LOCAL FIELD, not in DESIGN-VAULT 3.6. The most a trade is expected to lose, in bps. The purchases
-   * count on each sale bringing in this much less, so that sales and purchases sent together do not
-   * run out of cash. Default 0: the plan is exact at the given prices.
-   */
-  costBps?: number;
-};
-
-/** A plan, and what it had to leave out. */
-export type RebalancePlan = {
-  trades: Trade[];
-  /**
-   * Assets that are held or are targets and have no price (or are not on the asset list). None of
-   * them is traded.
-   */
-  unpriced: AssetId[];
-  /**
-   * False when one of the unpriced assets is both held and a target. The vault's value is then
-   * unknown, every weight with it, and no trade is planned.
-   */
-  weighed: boolean;
-};
 
 type Row = {
   asset: string;

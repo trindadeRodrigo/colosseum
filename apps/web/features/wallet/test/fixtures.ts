@@ -28,6 +28,7 @@ export const preview: BasketTx['preview'] = {
   simulated: false,
   feeNativeRaw: '5000',
   changes: [],
+  minimums: [],
 };
 const ids = {
   legKind: 'deposit',
