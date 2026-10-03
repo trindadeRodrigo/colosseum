@@ -26,7 +26,10 @@ export type Execution = {
   explorerUrl: string | null;
   /** The explorer's name: "Solana Explorer". */
   explorer: string;
-  /** Anything but `live` (a test network, a sandbox, a mock) carries the MOCK plate. */
+  /**
+   * Anything but `live` carries the hatch and the MOCK plate. A transaction on a test network
+   * (`sandbox`) also says "test network" after the plate: a row has no popover to say it in.
+   */
   provenance: Provenance;
 };
 
@@ -34,6 +37,8 @@ export type ExecutionListLabels = {
   status: Record<ExecutionStatus, string>;
   /** For a status this build does not know. It is said, never left blank. */
   unknownStatus: string;
+  /** After the plate of a transaction on a test network (CLAUDE.md: the same plate, with these words). */
+  testNetwork: string;
   notRetried: string;
   signature: string;
   link?: Partial<ExplorerLinkLabels>;
@@ -47,6 +52,7 @@ export const EXECUTION_LIST_LABELS: ExecutionListLabels = {
     failed: 'failed',
   },
   unknownStatus: 'status unknown',
+  testNetwork: 'test network',
   notRetried: '(not retried)',
   signature: 'signature',
 };
@@ -111,6 +117,11 @@ export function ExecutionList({ executions, labels, className }: ExecutionListPr
               {utcMinute(e.at)}
             </time>
             {mock && <MockWord />}
+            {e.provenance === 'sandbox' && (
+              <span data-ui="execution-network" className="text-caption text-muted-foreground">
+                {text.testNetwork}
+              </span>
+            )}
             {e.signature && (
               <span className="ml-auto inline-flex items-center gap-2">
                 <ExplorerLink

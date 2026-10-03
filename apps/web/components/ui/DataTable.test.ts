@@ -170,6 +170,13 @@ describe('ExecutionList and ExplorerLink (data-table.md)', () => {
     expect(text(cell)).toBe('9aQ1…Lk7c link unavailable');
   });
 
+  it('says "test network" after the plate of a transaction on one, and not after a mock', () => {
+    // EXECUTIONS: the swap is `sandbox`, the failed deposit is `mock`
+    expect(text(one(confirmed as never, ui('execution-network')))).toBe('test network');
+    expect(text(confirmed as never)).toContain('MOCKtest network');
+    expect(all(failed as never, ui('execution-network'))).toHaveLength(0);
+  });
+
   it('puts the hatch band and the MOCK plate on a transaction that is not on mainnet', () => {
     for (const row of [confirmed, failed]) {
       expect(all(row as never, ui('mock-plate'))).toHaveLength(1);
