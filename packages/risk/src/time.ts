@@ -78,11 +78,22 @@ export function regimeAt(at: Date, p: RegimeParams): Regime {
   return 'us_offhours_weekday';
 }
 
-/** Distinct regimes met stepping hourly through [at, at + hours] (inclusive of both ends). */
+/**
+ * Distinct regimes met stepping hourly through [at, at + hours] (inclusive of both ends). The walk stops once the
+ * three regimes of an ordinary week are met: after that only `us_holiday` can join, and it does exactly when a
+ * holiday falls between the ET dates of the first and last step, since hourly steps skip no calendar date. A year's
+ * window then costs about a week of steps instead of 8,760 (PLAN-ANALYTICS item 2).
+ */
 export function regimesIn(at: Date, hours: number, p: RegimeParams): Regime[] {
   const seen = new Set<Regime>();
   for (let k = 0; k <= Math.ceil(hours); k++) {
     seen.add(regimeAt(new Date(at.getTime() + Math.min(k, hours) * 3_600_000), p));
+    if (seen.has('weekend') && seen.has('us_market_hours') && seen.has('us_offhours_weekday')) {
+      const from = etParts(at).date;
+      const to = etParts(new Date(at.getTime() + hours * 3_600_000)).date;
+      for (const d of p.holidays) if (d >= from && d <= to) seen.add('us_holiday');
+      break;
+    }
   }
   return REGIMES.filter((r) => seen.has(r));
 }

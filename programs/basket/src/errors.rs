@@ -61,4 +61,17 @@ pub enum BasketError {
     NotCashMint,
     #[msg("the zero address, which is also the system program, is not accepted here")]
     ZeroAddress,
+    // Appended with the swap and the registry.
+    #[msg("fixed at launch; changing it needs a program upgrade")]
+    LockedAtLaunch,
+    #[msg("the mint has a transfer hook program")]
+    HookNotAllowed,
+    #[msg("the asset list is full")]
+    AssetListFull,
+    #[msg("a swap needs two different mints")]
+    SameMint,
+    #[msg("no version is waiting")]
+    NoPendingVersion,
+    #[msg("signer is neither the creator nor the guardian")]
+    NotCreatorOrGuardian,
 }

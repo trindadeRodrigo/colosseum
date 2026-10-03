@@ -13,6 +13,7 @@ export * from './config';
 export * from './constants';
 export * from './constraint-sheet';
 export * from './enums';
+export * from './facts';
 export * from './flags';
 export * from './keeper';
 export * from './liquidity';

@@ -99,7 +99,10 @@
     {
       "name": "init_router",
       "docs": [
-        "Creates the one router account. Its address also owns the reserve token accounts."
+        "Creates the one router account. Its address also owns the reserve token accounts.",
+        "The signer must be the program's upgrade authority and becomes the admin, who sets",
+        "the prices: whoever got there first could otherwise name any price on a network",
+        "where people try the product."
       ],
       "discriminator": [
         234,
@@ -114,6 +117,9 @@
       "accounts": [
         {
           "name": "admin",
+          "docs": [
+            "The program's upgrade authority. It becomes the admin."
+          ],
           "writable": true,
           "signer": true
         },
@@ -135,6 +141,16 @@
               }
             ]
           }
+        },
+        {
+          "name": "program",
+          "docs": [
+            "This program, to find its program data account."
+          ],
+          "address": "2ticePjZZ6e34bNUgUXz7v3uHm3jS8jvV13gesdvKn4f"
+        },
+        {
+          "name": "program_data"
         },
         {
           "name": "system_program",
@@ -481,6 +497,11 @@
       "code": 6002,
       "name": "BelowMinOut",
       "msg": "output is below min_out"
+    },
+    {
+      "code": 6003,
+      "name": "NotUpgradeAuthority",
+      "msg": "signer is not the program's upgrade authority"
     }
   ],
   "types": [

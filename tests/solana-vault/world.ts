@@ -10,7 +10,9 @@ import type { Address } from '@solana/kit';
 
 export type MintName = 'usdc' | 'spyx' | 'nvdax' | 'gold' | 'tslax';
 export type VaultName = 'following' | 'manual' | 'partial' | 'others';
+export type RecipeName = 'core';
 type Amounts = Partial<Record<MintName, string>>;
+type Weights = { mint: MintName; weightBps: number }[];
 
 export type World = {
   names: {
@@ -21,11 +23,16 @@ export type World = {
     keeper: string;
     router: string;
     priceOwner: string;
+    /** The platform's asset list. */
+    assets: string;
+    /** The wallet that published the shared portfolios. */
+    creator: string;
     owner: string;
     other: string;
     stranger: string;
     mints: Record<MintName, string>;
     vaults: Record<VaultName, string>;
+    recipes: Record<RecipeName, string>;
   };
   expected: {
     mints: Record<
@@ -43,12 +50,24 @@ export type World = {
         owner: 'owner' | 'other';
         basketId: string;
         autoFollow: boolean;
+        /** The shared portfolio the vault follows, and the version whose weights it took. */
+        recipe: RecipeName | null;
+        acceptedVersion: number;
         targets: { mint: MintName; targetBps: number }[];
         held: Amounts;
         tracked: Amounts;
       }
     >;
     wallets: Record<'owner' | 'other', Amounts>;
+    recipes: Record<
+      RecipeName,
+      {
+        familyId: string;
+        active: { version: number; components: Weights };
+        /** Null on a chain whose clock the script cannot move: a second version needs a delay to pass. */
+        pending: { version: number; effectiveAt: string; components: Weights } | null;
+      }
+    >;
   };
   prices: {
     account: string;

@@ -1,0 +1,1403 @@
+{
+  "from": "data/risk/history-full/report/report-20261002T1618.json (Step 5b history replay); trades without signature or pool",
+  "largeShare": 0.05,
+  "method": "history-report-0.1",
+  "trades": [
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-04T02:35:47.000Z",
+      "recover50Min": 1.37,
+      "recover90Min": 3.9
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-04T02:36:12.000Z",
+      "recover50Min": 0,
+      "recover90Min": 0.52
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-04T12:30:02.000Z",
+      "recover50Min": null,
+      "recover90Min": null
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-04T13:27:39.000Z",
+      "recover50Min": 2.38,
+      "recover90Min": 2.4
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-04T13:39:39.000Z",
+      "recover50Min": null,
+      "recover90Min": null
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-04T19:49:59.000Z",
+      "recover50Min": 3.23,
+      "recover90Min": 3.33
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "weekend",
+      "at": "2026-09-05T03:41:40.000Z",
+      "recover50Min": 0,
+      "recover90Min": null
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "weekend",
+      "at": "2026-09-05T03:41:40.000Z",
+      "recover50Min": 186.72,
+      "recover90Min": 368.33
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "weekend",
+      "at": "2026-09-06T00:21:13.000Z",
+      "recover50Min": 0.18,
+      "recover90Min": 5.17
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "weekend",
+      "at": "2026-09-06T09:23:54.000Z",
+      "recover50Min": 0,
+      "recover90Min": 6.1
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "weekend",
+      "at": "2026-09-06T20:03:21.000Z",
+      "recover50Min": 0.02,
+      "recover90Min": 55.88
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "weekend",
+      "at": "2026-09-06T20:07:39.000Z",
+      "recover50Min": 0,
+      "recover90Min": 7.42
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "weekend",
+      "at": "2026-09-06T20:07:39.000Z",
+      "recover50Min": 679.07,
+      "recover90Min": 688.85
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_holiday",
+      "at": "2026-09-07T04:29:55.000Z",
+      "recover50Min": 0.02,
+      "recover90Min": 34.27
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_holiday",
+      "at": "2026-09-07T04:29:56.000Z",
+      "recover50Min": 1414.87,
+      "recover90Min": null
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_holiday",
+      "at": "2026-09-07T08:32:00.000Z",
+      "recover50Min": 0,
+      "recover90Min": 103.5
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_holiday",
+      "at": "2026-09-07T21:00:18.000Z",
+      "recover50Min": 1.78,
+      "recover90Min": 13.67
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-08T13:31:19.000Z",
+      "recover50Min": 0.35,
+      "recover90Min": 1.42
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-08T13:32:48.000Z",
+      "recover50Min": 7.27,
+      "recover90Min": 7.27
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-08T13:32:51.000Z",
+      "recover50Min": 0.48,
+      "recover90Min": 0.48
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-08T17:41:46.000Z",
+      "recover50Min": 63.43,
+      "recover90Min": 63.47
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-09T13:27:59.000Z",
+      "recover50Min": 396.47,
+      "recover90Min": 410.5
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-09T13:30:02.000Z",
+      "recover50Min": 0.28,
+      "recover90Min": 101.13
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-09T13:31:13.000Z",
+      "recover50Min": 100.67,
+      "recover90Min": 111.67
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-09T13:31:13.000Z",
+      "recover50Min": 99.95,
+      "recover90Min": 100.13
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-09T13:31:13.000Z",
+      "recover50Min": 98.32,
+      "recover90Min": 98.6
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-09T13:31:13.000Z",
+      "recover50Min": 32.15,
+      "recover90Min": 32.27
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-09T13:33:54.000Z",
+      "recover50Min": 0.72,
+      "recover90Min": 14.85
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-09T14:03:22.000Z",
+      "recover50Min": 0.98,
+      "recover90Min": 8.1
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-09T23:13:56.000Z",
+      "recover50Min": 0.05,
+      "recover90Min": 25.92
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-10T13:30:12.000Z",
+      "recover50Min": 2.28,
+      "recover90Min": 2.32
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-10T14:19:05.000Z",
+      "recover50Min": 0.23,
+      "recover90Min": 0.35
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-10T14:26:16.000Z",
+      "recover50Min": 0.05,
+      "recover90Min": 0.28
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-10T18:34:26.000Z",
+      "recover50Min": 4.38,
+      "recover90Min": 5.78
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-11T13:30:00.000Z",
+      "recover50Min": 0.08,
+      "recover90Min": 2.62
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-11T13:30:02.000Z",
+      "recover50Min": 1.57,
+      "recover90Min": 1.58
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-11T13:30:34.000Z",
+      "recover50Min": 0.5,
+      "recover90Min": 0.55
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-11T13:31:32.000Z",
+      "recover50Min": 0.07,
+      "recover90Min": 0.3
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-11T13:31:36.000Z",
+      "recover50Min": 0.23,
+      "recover90Min": 0.88
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-11T13:31:36.000Z",
+      "recover50Min": 0.22,
+      "recover90Min": null
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-11T13:31:49.000Z",
+      "recover50Min": null,
+      "recover90Min": null
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-11T13:31:49.000Z",
+      "recover50Min": null,
+      "recover90Min": null
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-11T13:46:07.000Z",
+      "recover50Min": 1.65,
+      "recover90Min": 1.73
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-11T19:50:25.000Z",
+      "recover50Min": 0.77,
+      "recover90Min": 3.95
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "weekend",
+      "at": "2026-09-13T00:39:24.000Z",
+      "recover50Min": 0,
+      "recover90Min": 0.02
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "weekend",
+      "at": "2026-09-13T12:44:43.000Z",
+      "recover50Min": 7.38,
+      "recover90Min": 80.38
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-14T00:00:00.000Z",
+      "recover50Min": 0.03,
+      "recover90Min": 0.03
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-14T13:27:39.000Z",
+      "recover50Min": 56.4,
+      "recover90Min": 56.48
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-14T13:31:07.000Z",
+      "recover50Min": 5.72,
+      "recover90Min": 5.75
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-14T13:31:07.000Z",
+      "recover50Min": 5.45,
+      "recover90Min": 5.57
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-14T16:04:28.000Z",
+      "recover50Min": 0.13,
+      "recover90Min": 3.27
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-15T00:52:33.000Z",
+      "recover50Min": 0,
+      "recover90Min": 2.77
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-15T00:52:33.000Z",
+      "recover50Min": 767.45,
+      "recover90Min": 901.47
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-15T01:56:43.000Z",
+      "recover50Min": 0.03,
+      "recover90Min": 17.17
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-15T01:56:43.000Z",
+      "recover50Min": 199.82,
+      "recover90Min": 346.32
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-15T06:20:41.000Z",
+      "recover50Min": 0,
+      "recover90Min": 281.62
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-15T13:30:42.000Z",
+      "recover50Min": 0.33,
+      "recover90Min": 0.33
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-15T13:31:02.000Z",
+      "recover50Min": 7.77,
+      "recover90Min": 7.92
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-15T13:49:27.000Z",
+      "recover50Min": 0.08,
+      "recover90Min": 0.25
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-15T13:53:29.000Z",
+      "recover50Min": 90.72,
+      "recover90Min": 90.92
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-15T14:21:04.000Z",
+      "recover50Min": 6.48,
+      "recover90Min": 46.83
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-17T09:28:44.000Z",
+      "recover50Min": 3.2,
+      "recover90Min": 42.73
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-17T13:30:00.000Z",
+      "recover50Min": 0.18,
+      "recover90Min": 0.18
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-17T13:30:48.000Z",
+      "recover50Min": 0.67,
+      "recover90Min": 0.67
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-17T13:31:30.000Z",
+      "recover50Min": 0.2,
+      "recover90Min": 0.67
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-18T13:30:01.000Z",
+      "recover50Min": 0.03,
+      "recover90Min": 0.05
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-18T19:49:59.000Z",
+      "recover50Min": 14.97,
+      "recover90Min": 39.35
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "weekend",
+      "at": "2026-09-20T15:13:56.000Z",
+      "recover50Min": 7.88,
+      "recover90Min": 9.87
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "weekend",
+      "at": "2026-09-20T15:25:57.000Z",
+      "recover50Min": 0,
+      "recover90Min": 13.62
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "weekend",
+      "at": "2026-09-20T15:26:06.000Z",
+      "recover50Min": 0,
+      "recover90Min": 0
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-21T09:47:38.000Z",
+      "recover50Min": 6.82,
+      "recover90Min": 201.92
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-21T13:32:00.000Z",
+      "recover50Min": 2.65,
+      "recover90Min": 2.65
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-21T14:36:42.000Z",
+      "recover50Min": 0,
+      "recover90Min": 0
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-21T14:36:42.000Z",
+      "recover50Min": 629.6,
+      "recover90Min": 632.43
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-23T11:36:55.000Z",
+      "recover50Min": 97.6,
+      "recover90Min": 108.3
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-23T11:38:01.000Z",
+      "recover50Min": 0.02,
+      "recover90Min": 17.03
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-23T13:30:06.000Z",
+      "recover50Min": 5.8,
+      "recover90Min": 5.8
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-23T18:22:22.000Z",
+      "recover50Min": 0.15,
+      "recover90Min": 21.4
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-23T18:45:53.000Z",
+      "recover50Min": 0.1,
+      "recover90Min": 217.23
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-23T19:12:17.000Z",
+      "recover50Min": 0,
+      "recover90Min": 0.28
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-23T19:12:17.000Z",
+      "recover50Min": 17.98,
+      "recover90Min": 31.65
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-23T19:15:08.000Z",
+      "recover50Min": 0,
+      "recover90Min": 8.17
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-23T19:15:08.000Z",
+      "recover50Min": 14.5,
+      "recover90Min": 525.87
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-23T19:29:38.000Z",
+      "recover50Min": 0,
+      "recover90Min": 4.02
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-23T19:29:38.000Z",
+      "recover50Min": 20.82,
+      "recover90Min": 20.82
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-23T19:50:27.000Z",
+      "recover50Min": 0,
+      "recover90Min": 0
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-23T19:50:27.000Z",
+      "recover50Min": 3.32,
+      "recover90Min": 491.72
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-23T19:53:46.000Z",
+      "recover50Min": 0,
+      "recover90Min": 0
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-23T19:53:46.000Z",
+      "recover50Min": 4.2,
+      "recover90Min": 4.2
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-23T19:57:58.000Z",
+      "recover50Min": 0.02,
+      "recover90Min": 1.12
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-23T19:57:59.000Z",
+      "recover50Min": 4.52,
+      "recover90Min": 4.52
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-23T20:02:30.000Z",
+      "recover50Min": 0,
+      "recover90Min": 9.48
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-23T20:02:30.000Z",
+      "recover50Min": 4.05,
+      "recover90Min": 14.85
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-23T20:06:33.000Z",
+      "recover50Min": 0,
+      "recover90Min": 0.07
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-23T20:06:33.000Z",
+      "recover50Min": 10.8,
+      "recover90Min": 493.25
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-23T20:17:21.000Z",
+      "recover50Min": 0,
+      "recover90Min": 2.45
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-23T20:17:21.000Z",
+      "recover50Min": 4.92,
+      "recover90Min": 4.92
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-23T20:22:16.000Z",
+      "recover50Min": 0,
+      "recover90Min": 1.15
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-23T20:22:16.000Z",
+      "recover50Min": 457.85,
+      "recover90Min": 460.23
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-23T20:25:45.000Z",
+      "recover50Min": 2.32,
+      "recover90Min": 9.6
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-24T17:04:38.000Z",
+      "recover50Min": 0.33,
+      "recover90Min": 0.52
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-24T17:52:42.000Z",
+      "recover50Min": 784.43,
+      "recover90Min": 802.35
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-24T19:54:59.000Z",
+      "recover50Min": 585.02,
+      "recover90Min": 622.45
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-25T13:00:21.000Z",
+      "recover50Min": 5.52,
+      "recover90Min": 5.68
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-25T13:00:21.000Z",
+      "recover50Min": 0.08,
+      "recover90Min": 0.2
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-25T13:00:21.000Z",
+      "recover50Min": 0.05,
+      "recover90Min": 0.07
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-25T13:00:25.000Z",
+      "recover50Min": 0.03,
+      "recover90Min": 0.03
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-25T13:05:00.000Z",
+      "recover50Min": 27.35,
+      "recover90Min": 27.35
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-25T13:25:39.000Z",
+      "recover50Min": 6.1,
+      "recover90Min": 6.15
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-25T13:27:49.000Z",
+      "recover50Min": 0.17,
+      "recover90Min": 0.17
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-25T13:27:59.000Z",
+      "recover50Min": 2.02,
+      "recover90Min": 2.07
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-25T13:30:09.000Z",
+      "recover50Min": 0.07,
+      "recover90Min": 0.22
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-25T13:31:51.000Z",
+      "recover50Min": null,
+      "recover90Min": null
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-25T13:32:21.000Z",
+      "recover50Min": null,
+      "recover90Min": null
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-25T13:33:05.000Z",
+      "recover50Min": 12.52,
+      "recover90Min": 13.45
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-25T13:34:25.000Z",
+      "recover50Min": 0.73,
+      "recover90Min": 0.73
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-25T13:35:25.000Z",
+      "recover50Min": 0.08,
+      "recover90Min": 0.12
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-25T14:28:04.000Z",
+      "recover50Min": 30.5,
+      "recover90Min": 30.57
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-25T15:33:20.000Z",
+      "recover50Min": 0.25,
+      "recover90Min": 0.28
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-25T15:50:11.000Z",
+      "recover50Min": 0.25,
+      "recover90Min": 4.02
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-25T20:39:01.000Z",
+      "recover50Min": 49.27,
+      "recover90Min": 235.25
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-25T20:44:37.000Z",
+      "recover50Min": 0,
+      "recover90Min": 0
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-25T20:44:37.000Z",
+      "recover50Min": 17.22,
+      "recover90Min": 17.22
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-25T21:01:50.000Z",
+      "recover50Min": 0,
+      "recover90Min": 2.4
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "weekend",
+      "at": "2026-09-27T07:42:49.000Z",
+      "recover50Min": 430.92,
+      "recover90Min": 1017.68
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-28T04:23:51.000Z",
+      "recover50Min": 0,
+      "recover90Min": 45.23
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-28T04:23:51.000Z",
+      "recover50Min": 184.03,
+      "recover90Min": 184.52
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-28T09:07:11.000Z",
+      "recover50Min": 0,
+      "recover90Min": 0
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-28T09:07:11.000Z",
+      "recover50Min": 263.08,
+      "recover90Min": 264.9
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-28T13:31:29.000Z",
+      "recover50Min": null,
+      "recover90Min": null
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-28T20:07:24.000Z",
+      "recover50Min": 0.02,
+      "recover90Min": 0.6
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-28T20:07:25.000Z",
+      "recover50Min": 142.35,
+      "recover90Min": 163.13
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-28T21:09:25.000Z",
+      "recover50Min": 240.93,
+      "recover90Min": 243.32
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-29T03:45:13.000Z",
+      "recover50Min": 0,
+      "recover90Min": 15.27
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-29T03:45:13.000Z",
+      "recover50Min": 177.7,
+      "recover90Min": 204.82
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-29T04:21:39.000Z",
+      "recover50Min": 8.08,
+      "recover90Min": 9.25
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-29T16:51:30.000Z",
+      "recover50Min": 0,
+      "recover90Min": 0.02
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-29T16:51:30.000Z",
+      "recover50Min": 1061.85,
+      "recover90Min": 1062.5
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-29T22:00:20.000Z",
+      "recover50Min": 0.07,
+      "recover90Min": 0.25
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-30T10:30:43.000Z",
+      "recover50Min": 161.67,
+      "recover90Min": 162.22
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-30T10:44:55.000Z",
+      "recover50Min": 6.6,
+      "recover90Min": 9.78
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-30T23:18:10.000Z",
+      "recover50Min": 0,
+      "recover90Min": 78.22
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-30T23:18:10.000Z",
+      "recover50Min": 175.9,
+      "recover90Min": 194.68
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-09T13:27:59.000Z",
+      "recover50Min": 575.4,
+      "recover90Min": 626.17
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-09T13:30:04.000Z",
+      "recover50Min": 0.15,
+      "recover90Min": 0.15
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-09T13:30:13.000Z",
+      "recover50Min": 1.18,
+      "recover90Min": 34.52
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-09T13:31:26.000Z",
+      "recover50Min": 31.93,
+      "recover90Min": 31.93
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-09T13:31:32.000Z",
+      "recover50Min": 4.67,
+      "recover90Min": 31.48
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-09T14:03:22.000Z",
+      "recover50Min": 1.28,
+      "recover90Min": 2.23
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-09T16:47:11.000Z",
+      "recover50Min": 8.57,
+      "recover90Min": 17.67
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-09T23:03:00.000Z",
+      "recover50Min": 0,
+      "recover90Min": 57.75
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-09T23:03:00.000Z",
+      "recover50Min": 0.38,
+      "recover90Min": 772.65
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-09T23:03:23.000Z",
+      "recover50Min": 0,
+      "recover90Min": 0
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-09T23:03:23.000Z",
+      "recover50Min": 769.93,
+      "recover90Min": 778.75
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-09T23:03:23.000Z",
+      "recover50Min": 762.8,
+      "recover90Min": 764.73
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-11T12:30:07.000Z",
+      "recover50Min": 22.77,
+      "recover90Min": 23
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-11T13:33:34.000Z",
+      "recover50Min": 0.93,
+      "recover90Min": 0.93
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "weekend",
+      "at": "2026-09-12T19:35:04.000Z",
+      "recover50Min": 0,
+      "recover90Min": 0.02
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "weekend",
+      "at": "2026-09-12T19:35:27.000Z",
+      "recover50Min": 0,
+      "recover90Min": 27.87
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "weekend",
+      "at": "2026-09-12T19:35:27.000Z",
+      "recover50Min": 5.37,
+      "recover90Min": null
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "weekend",
+      "at": "2026-09-12T19:40:49.000Z",
+      "recover50Min": 0,
+      "recover90Min": 8.03
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-15T00:52:33.000Z",
+      "recover50Min": 52.27,
+      "recover90Min": 257.55
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-15T15:21:26.000Z",
+      "recover50Min": 0,
+      "recover90Min": 0
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-15T15:21:26.000Z",
+      "recover50Min": 11.93,
+      "recover90Min": 13.22
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-15T15:26:53.000Z",
+      "recover50Min": 0.03,
+      "recover90Min": 2.18
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-15T15:26:53.000Z",
+      "recover50Min": 6.48,
+      "recover90Min": 7.62
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-15T15:33:22.000Z",
+      "recover50Min": 0,
+      "recover90Min": 16.85
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-15T15:33:22.000Z",
+      "recover50Min": 121.15,
+      "recover90Min": 123.02
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-15T15:33:22.000Z",
+      "recover50Min": 1.28,
+      "recover90Min": 120.35
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-15T15:34:39.000Z",
+      "recover50Min": 0,
+      "recover90Min": 0
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-15T15:34:39.000Z",
+      "recover50Min": 9.22,
+      "recover90Min": 119.45
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-15T15:43:52.000Z",
+      "recover50Min": 0.02,
+      "recover90Min": 6.05
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-15T15:43:52.000Z",
+      "recover50Min": 107.75,
+      "recover90Min": 107.93
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-15T15:52:19.000Z",
+      "recover50Min": 0,
+      "recover90Min": 0
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-17T13:30:48.000Z",
+      "recover50Min": 6.62,
+      "recover90Min": 6.62
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "weekend",
+      "at": "2026-09-20T01:11:08.000Z",
+      "recover50Min": 18.2,
+      "recover90Min": 1348.02
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-23T11:38:01.000Z",
+      "recover50Min": 107.82,
+      "recover90Min": 109.4
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-23T20:06:33.000Z",
+      "recover50Min": 0.07,
+      "recover90Min": 136.58
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-25T13:00:21.000Z",
+      "recover50Min": 5.88,
+      "recover90Min": 5.9
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-25T13:00:21.000Z",
+      "recover50Min": 5.68,
+      "recover90Min": 5.7
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-25T13:00:21.000Z",
+      "recover50Min": 0.07,
+      "recover90Min": 5.52
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-25T13:00:25.000Z",
+      "recover50Min": 2.52,
+      "recover90Min": 2.9
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-25T13:05:00.000Z",
+      "recover50Min": 27.47,
+      "recover90Min": null
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-25T13:25:39.000Z",
+      "recover50Min": 6.2,
+      "recover90Min": 6.2
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-25T13:27:49.000Z",
+      "recover50Min": 3.87,
+      "recover90Min": null
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-25T13:31:51.000Z",
+      "recover50Min": null,
+      "recover90Min": null
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "at": "2026-09-28T09:07:11.000Z",
+      "recover50Min": 36.13,
+      "recover90Min": 97.47
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-28T13:31:29.000Z",
+      "recover50Min": null,
+      "recover90Min": null
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-28T13:32:05.000Z",
+      "recover50Min": null,
+      "recover90Min": null
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "at": "2026-09-29T16:51:30.000Z",
+      "recover50Min": 68.62,
+      "recover90Min": 73.23
+    }
+  ],
+  "table": [
+    {
+      "asset": "TSLAx",
+      "regime": "us_holiday",
+      "trades": 4,
+      "medShareOfDepth": 0.0932,
+      "medMoveBps": 19.38,
+      "medRecover50Min": 0.02,
+      "medRecover90Min": 34.27,
+      "unrecovered90Share": 0.25,
+      "lpRemovesPerTrade": 0,
+      "lpRemovesBaseline": 0.21,
+      "lpAddsPerTrade": 0.75,
+      "lpAddsBaseline": 0.35,
+      "lpRangeMovesPerTrade": 0,
+      "medLpNetNearPct": 0.83
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_market_hours",
+      "trades": 97,
+      "medShareOfDepth": 0.0713,
+      "medMoveBps": 13.82,
+      "medRecover50Min": 0.98,
+      "medRecover90Min": 5.57,
+      "unrecovered90Share": 0.1,
+      "lpRemovesPerTrade": 0.48,
+      "lpRemovesBaseline": 0.21,
+      "lpAddsPerTrade": 0.77,
+      "lpAddsBaseline": 0.35,
+      "lpRangeMovesPerTrade": 0.05,
+      "medLpNetNearPct": 0
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "us_offhours_weekday",
+      "trades": 71,
+      "medShareOfDepth": 0.0962,
+      "medMoveBps": 17.94,
+      "medRecover50Min": 3.87,
+      "medRecover90Min": 17.03,
+      "unrecovered90Share": 0.04,
+      "lpRemovesPerTrade": 0.11,
+      "lpRemovesBaseline": 0.21,
+      "lpAddsPerTrade": 0.38,
+      "lpAddsBaseline": 0.35,
+      "lpRangeMovesPerTrade": 0.01,
+      "medLpNetNearPct": 0
+    },
+    {
+      "asset": "TSLAx",
+      "regime": "weekend",
+      "trades": 18,
+      "medShareOfDepth": 0.0784,
+      "medMoveBps": 16.14,
+      "medRecover50Min": 0,
+      "medRecover90Min": 9.87,
+      "unrecovered90Share": 0.11,
+      "lpRemovesPerTrade": 0.56,
+      "lpRemovesBaseline": 0.21,
+      "lpAddsPerTrade": 1.06,
+      "lpAddsBaseline": 0.35,
+      "lpRangeMovesPerTrade": 0,
+      "medLpNetNearPct": 0
+    }
+  ]
+}

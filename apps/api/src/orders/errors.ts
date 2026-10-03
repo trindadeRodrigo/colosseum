@@ -1,38 +1,26 @@
-import { ApiError, ChainError, ChainErrorCode, OrderErrorCode } from '@colosseum/schemas';
-import { z } from 'zod';
+import {
+  ChainError,
+  ChainErrorCode,
+  type OrderError,
+  type OrderErrorCode,
+} from '@colosseum/schemas';
 
-// What an order route answers when it says no (DESIGN-VAULT 3.3): the existing error shape plus `code`
-// and `fix`. A refusal that came from a chain keeps the chain's own code and its `retryable` in
-// `details`, so a client can tell "try again" from "change something first".
-
-// WORKAROUND: `OrderError` in packages/schemas has no place for the chain's code or `retryable`, and
-// needs a `code` on every answer. This shape stays here until it does.
-export const RefusalBody = ApiError.extend({
-  /** One of the ten order codes, where one fits. Absent for a refusal that is none of them. */
-  code: OrderErrorCode.optional(),
-  fix: z.string().optional(),
-  details: z
-    .object({
-      /** The chain adapter's own code. */
-      chainCode: ChainErrorCode.optional(),
-      /** True when the same request can succeed later with nothing changed by the person. */
-      retryable: z.boolean().optional(),
-    })
-    .optional(),
-});
-export type RefusalBody = z.infer<typeof RefusalBody>;
+// What an order route answers when it says no is the shared `OrderError` (DESIGN-VAULT 3.3): the
+// existing error shape plus `code`, `fix` and `details`. A refusal that came from a chain keeps the
+// chain's own code and its `retryable` in `details`, so a client can tell "try again" from "change
+// something first".
 
 /** Thrown anywhere under /v1 and turned into its status and body by the scope's error handler. */
 export class Refusal extends Error {
   readonly status: number;
-  readonly extra: Omit<RefusalBody, 'error'>;
-  constructor(status: number, message: string, extra: Omit<RefusalBody, 'error'> = {}) {
+  readonly extra: Omit<OrderError, 'error'>;
+  constructor(status: number, message: string, extra: Omit<OrderError, 'error'> = {}) {
     super(message);
     this.name = 'Refusal';
     this.status = status;
     this.extra = extra;
   }
-  body(): RefusalBody {
+  body(): OrderError {
     return { error: this.message, ...this.extra };
   }
 }

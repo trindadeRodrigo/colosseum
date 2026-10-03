@@ -1,4 +1,4 @@
-import { BasketTx } from '@colosseum/schemas';
+import { BasketTx, evmCallPreimage } from '@colosseum/schemas';
 import { base58Decode, base64Encode, bytesToHex } from '../bytes';
 import type { WalletChain } from '../chains';
 import { evmRpc, solanaRpc } from './rpc';
@@ -78,6 +78,8 @@ export async function solanaSelfTransfer(chain: WalletChain, owner: string): Pro
       // Solana charges 5,000 lamports per signature; this transaction has one.
       feeNativeRaw: '5000',
       changes: [],
+      // A transfer to oneself trades nothing.
+      minimums: [],
     },
   });
 }
@@ -105,9 +107,17 @@ export async function evmSelfTransfer(chain: WalletChain, owner: string): Promis
     provenance: chain.provenance,
     signer: owner,
     // The wallet sets the nonce and the fee, so the bytes it signs do not exist yet: this is the hash
-    // of the call alone.
+    // of the call alone, as packages/schemas defines it for an EVM transaction.
     messageHash: await sha256Hex(
-      new TextEncoder().encode(`${evmChainId}:${owner}:${request.value}:${request.data}`),
+      new TextEncoder().encode(
+        evmCallPreimage({
+          chainId: evmChainId,
+          signer: owner,
+          to: owner,
+          value: request.value.toString(),
+          data: request.data,
+        }),
+      ),
     ),
     preview: {
       source: new URL(chain.rpcUrl).host,
@@ -118,6 +128,8 @@ export async function evmSelfTransfer(chain: WalletChain, owner: string): Promis
       simulated: false,
       feeNativeRaw: (fees.gas * fees.maxFeePerGas).toString(),
       changes: [],
+      // A transfer to oneself trades nothing.
+      minimums: [],
     },
   });
 }

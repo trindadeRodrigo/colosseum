@@ -1,25 +1,16 @@
-import { type ChildProcess, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   type Address,
-  appendTransactionMessageInstructions,
   createSolanaRpc,
-  createTransactionMessage,
   generateKeyPairSigner,
   getAddressEncoder,
-  getBase64EncodedWireTransaction,
-  getSignatureFromTransaction,
-  type Instruction,
-  pipe,
-  setTransactionMessageFeePayerSigner,
-  setTransactionMessageLifetimeUsingBlockhash,
-  signTransactionMessageWithSigners,
-  type TransactionSigner,
 } from '@solana/kit';
 import { depositInstruction } from './src/basket';
 import { BASKET_PROGRAM, MOCK_ROUTER_PROGRAM, REPO_ROOT } from './src/env';
+import { sendAndWait, waitUntilUp } from './src/validator';
 import { buildWorld, type Ledger, type MintName } from './src/world';
 
 // Starts a local validator with the two built programs loaded, builds the same world of vaults the
@@ -85,55 +76,6 @@ function priceAccountFile(address: Address, startedAt: number): string {
   return file;
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-async function waitUntilUp(validator: ChildProcess): Promise<void> {
-  for (let i = 0; i < 240; i++) {
-    if (validator.exitCode !== null) throw new Error('the validator stopped while starting');
-    try {
-      // Healthy, and a few confirmed slots in: a transaction sent at slot 0 is refused.
-      const healthy = (await rpc.getHealth().send()) === 'ok';
-      if (healthy && (await rpc.getSlot({ commitment: 'confirmed' }).send()) > 3n) return;
-    } catch {
-      // Not listening yet.
-    }
-    await sleep(500);
-  }
-  throw new Error('the validator did not come up in two minutes');
-}
-
-/** Sends one transaction and waits for a confirmed block. Returns its signature and whether it failed. */
-async function sendAndWait(
-  payer: TransactionSigner,
-  instructions: Instruction[],
-  skipPreflight = false,
-): Promise<{ signature: string; failed: boolean }> {
-  const { value: blockhash } = await rpc.getLatestBlockhash({ commitment: 'confirmed' }).send();
-  const message = pipe(
-    createTransactionMessage({ version: 0 }),
-    (m) => setTransactionMessageFeePayerSigner(payer, m),
-    (m) => setTransactionMessageLifetimeUsingBlockhash(blockhash, m),
-    (m) => appendTransactionMessageInstructions(instructions, m),
-  );
-  const transaction = await signTransactionMessageWithSigners(message);
-  const signature = getSignatureFromTransaction(transaction);
-  await rpc
-    .sendTransaction(getBase64EncodedWireTransaction(transaction), {
-      encoding: 'base64',
-      skipPreflight,
-      preflightCommitment: 'confirmed',
-    })
-    .send();
-  for (let i = 0; i < 120; i++) {
-    const { value } = await rpc.getSignatureStatuses([signature]).send();
-    const status = value[0];
-    if (status?.confirmationStatus === 'confirmed' || status?.confirmationStatus === 'finalized')
-      return { signature, failed: status.err !== null };
-    await sleep(250);
-  }
-  throw new Error(`transaction ${signature} did not confirm`);
-}
-
 async function main(): Promise<void> {
   for (const binary of ['basket.so', 'mock_router.so'])
     if (!existsSync(join(REPO_ROOT, 'target', 'deploy', binary)))
@@ -171,11 +113,11 @@ async function main(): Promise<void> {
   process.stdin.resume();
 
   try {
-    await waitUntilUp(validator);
+    await waitUntilUp(rpc, validator);
     const signatures: string[] = [];
     const ledger: Ledger = {
       send: async (payer, instructions) => {
-        const { signature, failed } = await sendAndWait(payer, instructions);
+        const { signature, failed } = await sendAndWait(rpc, payer, instructions);
         if (failed) throw new Error(`transaction ${signature} failed`);
         signatures.push(signature);
       },
@@ -186,6 +128,7 @@ async function main(): Promise<void> {
     // One transaction that lands and fails with the vault's own error: a deposit of a token that is
     // not the cash mint. Sent without the node's dry run, which would refuse it before it lands.
     const refused = await sendAndWait(
+      rpc,
       world.signers.owner,
       [
         await depositInstruction({
@@ -195,7 +138,7 @@ async function main(): Promise<void> {
           amount: 1n,
         }),
       ],
-      true,
+      { skipPreflight: true },
     );
     if (!refused.failed) throw new Error('the vault took a deposit that is not cash');
 

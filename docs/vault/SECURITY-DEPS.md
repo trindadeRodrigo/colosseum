@@ -14,4 +14,6 @@
 
 When an override lands, its line leaves `pnpm-workspace.yaml` and its row leaves this table. A new advisory is never added here without a row that says why.
 
+One high advisory is left out of this table and out of the accepted list on purpose (gate `AUDIT-BRACES`, Oct 3): GHSA-vfj7-8cjw-p6xm in `braces` 3.0.3 has no fixed release, and every path to it runs through React Native's bundler under the sign-in library, which the web build never loads, so the audit check stays red and a pull request may merge while that advisory is its only finding, until a fixed release is published and the override lands (SEC-4).
+
 The Rust side is `deny.toml`: two "unmaintained" notices under `solana-program` are ignored there by id, each with its reason.

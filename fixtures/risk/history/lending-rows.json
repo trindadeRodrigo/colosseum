@@ -1,0 +1,22 @@
+{
+  "note": "Hand-made lending snapshot values for tests/risk-layer/history-routes.test.ts (provenance fixture). Times are set by the test relative to its clock.",
+  "reserve": {
+    "supplied": 1000000,
+    "borrowed": 900000,
+    "available": 100000,
+    "shareLentOut": 0.9,
+    "supplyApy": 0.05,
+    "borrowApy": 0.06,
+    "priceUsd": 0.9999,
+    "suppliedUsd": 999900,
+    "borrowedUsd": 899910
+  },
+  "vault": {
+    "supplied": 10,
+    "borrowed": 2000,
+    "shareLentOut": 0.8,
+    "priceUsd": 700,
+    "suppliedUsd": 7000,
+    "borrowedUsd": 2000
+  }
+}
