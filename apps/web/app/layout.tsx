@@ -1,6 +1,7 @@
 import { DISCLAIMER } from '@colosseum/schemas';
 import type { ReactNode } from 'react';
 import { Nav } from '@/components/Nav';
+import { fontVariables } from './fonts';
 import './globals.css';
 import { Providers } from './providers';
 
@@ -11,7 +12,7 @@ export const metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" className={fontVariables}>
       <body className="min-h-screen bg-white text-gray-900 antialiased">
         <Providers>
           <div className="mx-auto max-w-4xl px-4">

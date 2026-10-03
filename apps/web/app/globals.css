@@ -1,1 +1,488 @@
 @import "tailwindcss";
+
+/*
+ * The design system as tokens. Source of truth: .design/branding/working-brand/patterns/working-brand.yml
+ * (where another file disagrees, the .yml wins). The mapping follows patterns/components/token-mapping.md:
+ *   A. semantic variables with shadcn's names, on :root and .dark
+ *   B. brand extensions, prefixed --tf-
+ *   C. the Tailwind theme, which turns A and B into utilities (bg-card, text-muted-foreground, font-display)
+ * components/ui/tokens.test.ts fails when a value here differs from the .yml.
+ */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------------------------------------------
+ * A. Semantic variables. OKLCH as in working-brand.theme.json; the comment is the .yml name and hex.
+ * `.light` is :root again, so a light sample can sit inside a dark page (the showcase).
+ * ------------------------------------------------------------------------------------------------- */
+:root,
+.light {
+  color-scheme: light;
+  --background: oklch(95.96% 0.013 82.4); /* paper #F6F1E8 */
+  --foreground: oklch(20.88% 0.0125 67.03); /* ink #1C1712 */
+  --card: oklch(97.98% 0.0085 84.59); /* paper-raised #FBF8F2 */
+  --card-foreground: oklch(20.88% 0.0125 67.03); /* ink */
+  --popover: oklch(97.98% 0.0085 84.59); /* paper-raised */
+  --popover-foreground: oklch(20.88% 0.0125 67.03); /* ink */
+  --primary: oklch(49.32% 0.0626 65.5); /* hardwood #7A5A3A: the brand wood on paper */
+  --primary-foreground: oklch(97.98% 0.0085 84.59); /* paper-raised */
+  --secondary: oklch(92.72% 0.0177 81.33); /* paper-sunk #EDE6DA */
+  --secondary-foreground: oklch(20.88% 0.0125 67.03); /* ink */
+  --accent: oklch(92.72% 0.0177 81.33); /* paper-sunk: a hover surface, not a second hue */
+  --accent-foreground: oklch(37.95% 0.0615 60.46); /* heartwood #5A3A1E */
+  --muted: oklch(92.72% 0.0177 81.33); /* paper-sunk: table heads, input wells */
+  --muted-foreground: oklch(51.21% 0.0192 70.28); /* stone #6E655B */
+  --destructive: oklch(50.01% 0.1535 12.83); /* madder #A8324A */
+  --border: oklch(85.32% 0.0278 78.16); /* hair #D9CDBB: decoration only, never a control edge */
+  --input: oklch(60.39% 0.0272 71.23); /* member #8C7F70: every control edge */
+  --ring: oklch(49.32% 0.0626 65.5); /* hardwood */
+  --sidebar: oklch(95.96% 0.013 82.4); /* paper */
+  --sidebar-foreground: oklch(20.88% 0.0125 67.03); /* ink */
+  --sidebar-primary: oklch(49.32% 0.0626 65.5); /* hardwood */
+  --sidebar-primary-foreground: oklch(97.98% 0.0085 84.59); /* paper-raised */
+  --sidebar-accent: oklch(92.72% 0.0177 81.33); /* paper-sunk */
+  --sidebar-accent-foreground: oklch(37.95% 0.0615 60.46); /* heartwood */
+  --sidebar-border: oklch(85.32% 0.0278 78.16); /* hair */
+  --sidebar-ring: oklch(49.32% 0.0626 65.5); /* hardwood */
+  --success: oklch(37.8% 0.0621 140.63); /* forest #2F4A2A: on track */
+  --warning: oklch(50.78% 0.108 73.3); /* ochre #8A5A00: watch */
+  --info: oklch(20.88% 0.0125 67.03); /* ink: there is no blue info colour */
+  --chart-1: oklch(49.32% 0.0626 65.5); /* hardwood: plan leg 1 */
+  --chart-2: oklch(37.95% 0.0615 60.46); /* heartwood: leg 2 */
+  --chart-3: oklch(59.77% 0.0712 65.74); /* wood-400 #9D7751: leg 3 */
+  --chart-4: oklch(51.21% 0.0192 70.28); /* stone: leg 4 */
+  --chart-5: oklch(20.88% 0.0125 67.03); /* ink: the base-case line */
+  --radius: 2px;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: oklch(15.13% 0.0055 67.77); /* black #0D0B09 */
+  --foreground: oklch(92.14% 0.0206 81.78); /* washi #ECE4D6 */
+  --card: oklch(20.7% 0.0075 67.36); /* char #1A1714 */
+  --card-foreground: oklch(92.14% 0.0206 81.78); /* washi */
+  --popover: oklch(24.62% 0.011 73.4); /* char-2 #24201B */
+  --popover-foreground: oklch(92.14% 0.0206 81.78); /* washi */
+  --primary: oklch(87.52% 0.0429 77.6); /* hinoki #E6D3B7: the brand wood on warm black */
+  --primary-foreground: oklch(15.13% 0.0055 67.77); /* black */
+  --secondary: oklch(24.62% 0.011 73.4); /* char-2 */
+  --secondary-foreground: oklch(92.14% 0.0206 81.78); /* washi */
+  --accent: oklch(24.62% 0.011 73.4); /* char-2 */
+  --accent-foreground: oklch(87.52% 0.0429 77.6); /* hinoki */
+  --muted: oklch(24.62% 0.011 73.4); /* char-2 */
+  --muted-foreground: oklch(69.14% 0.0208 72.45); /* stone-d #A49A8E */
+  --destructive: oklch(73.48% 0.1134 4.6); /* madder-d #E58AA0 */
+  --border: oklch(32.31% 0.0179 67.1); /* hair-d #3A322A */
+  --input: oklch(54.28% 0.0267 69.27); /* member-d #7A6D5F */
+  --ring: oklch(87.52% 0.0429 77.6); /* hinoki */
+  --sidebar: oklch(20.7% 0.0075 67.36); /* char */
+  --sidebar-foreground: oklch(92.14% 0.0206 81.78); /* washi */
+  --sidebar-primary: oklch(87.52% 0.0429 77.6); /* hinoki */
+  --sidebar-primary-foreground: oklch(15.13% 0.0055 67.77); /* black */
+  --sidebar-accent: oklch(24.62% 0.011 73.4); /* char-2 */
+  --sidebar-accent-foreground: oklch(87.52% 0.0429 77.6); /* hinoki */
+  --sidebar-border: oklch(32.31% 0.0179 67.1); /* hair-d */
+  --sidebar-ring: oklch(87.52% 0.0429 77.6); /* hinoki */
+  --success: oklch(67.75% 0.0712 141.65); /* forest-d #7FA37A */
+  --warning: oklch(75.07% 0.1294 79.85); /* ochre-d #D9A441 */
+  --info: oklch(92.14% 0.0206 81.78); /* washi */
+  --chart-1: oklch(87.52% 0.0429 77.6); /* hinoki */
+  --chart-2: oklch(76.45% 0.0623 77.35); /* hinoki-deep #C9AE86 */
+  --chart-3: oklch(59.77% 0.0712 65.74); /* wood-400 */
+  --chart-4: oklch(69.14% 0.0208 72.45); /* stone-d */
+  --chart-5: oklch(92.14% 0.0206 81.78); /* washi */
+}
+
+/* ---------------------------------------------------------------------------------------------------
+ * B. Brand extensions. Hex verbatim from the .yml (tokens.brand-color, provenance, status, shape,
+ * spacing, motion, typography.measure).
+ * ------------------------------------------------------------------------------------------------- */
+:root,
+.light {
+  /* species-press */
+  --tf-primary-hover: #63482e; /* wood-600 */
+  --tf-primary-pressed: #5a3a1e; /* heartwood */
+  /* provenance pin: the pin is the species opposite the ground */
+  --tf-pin-outline: #6e655b; /* stone */
+  --tf-pin: #7a5a3a; /* hardwood */
+  /* the hatch means MOCK or stale, and nothing else */
+  --tf-hatch: #6e655b; /* stone */
+  --tf-mock-plate: #fbf8f2; /* paper-raised */
+  --tf-mock-plate-fg: #1c1712; /* ink */
+  --tf-mock-plate-border: #6e655b; /* stone */
+  /* status: a word, a shape and a colour, never the colour alone */
+  --tf-status-on: #2f4a2a; /* forest */
+  --tf-status-on-bg: #deeedb;
+  --tf-status-watch: #8a5a00; /* ochre */
+  --tf-status-watch-bg: #ffeadb;
+  --tf-status-off: #a8324a; /* madder */
+  --tf-status-off-bg: #faeaec;
+  /* the three warm layers: depth without shadows */
+  --tf-layer-sunk: #ede6da;
+  --tf-layer-ground: #f6f1e8;
+  --tf-layer-raised: #fbf8f2;
+  /* Bearing heatmap, low to high depth */
+  --tf-heat-1: #f2e6d3;
+  --tf-heat-2: #c9ae86;
+  --tf-heat-3: #8a6c4b;
+  --tf-heat-4: #5a3a1e;
+  --tf-heat-5: #1a1714;
+}
+
+.dark {
+  --tf-primary-hover: #d7c09e;
+  --tf-primary-pressed: #c9ae86; /* hinoki-deep */
+  --tf-pin-outline: #a49a8e; /* stone-d */
+  --tf-pin: #e6d3b7; /* hinoki */
+  --tf-hatch: #a49a8e; /* stone-d */
+  --tf-mock-plate: #1a1714; /* char */
+  --tf-mock-plate-fg: #ece4d6; /* washi */
+  --tf-mock-plate-border: #a49a8e; /* stone-d */
+  --tf-status-on: #7fa37a; /* forest-d */
+  --tf-status-on-bg: #050d04;
+  --tf-status-watch: #d9a441; /* ochre-d */
+  --tf-status-watch-bg: #180c00;
+  --tf-status-off: #e58aa0; /* madder-d */
+  --tf-status-off-bg: #220409;
+  --tf-layer-sunk: #0d0b09;
+  --tf-layer-ground: #1a1714;
+  --tf-layer-raised: #24201b;
+  --tf-heat-1: #1a1714;
+  --tf-heat-2: #5a3a1e;
+  --tf-heat-3: #8a6c4b;
+  --tf-heat-4: #c9ae86;
+  --tf-heat-5: #f2e6d3;
+}
+
+:root {
+  /* hatch pitch: 6px on surfaces, 3px inside a glyph */
+  --tf-hatch-pitch-ui: 6px;
+  --tf-hatch-pitch-glyph: 3px;
+  /* shape: square. The typing box and its send button are the only rounded things */
+  --tf-radius-composer: 20px;
+  --tf-radius-round: 9999px;
+  --tf-border-width: 1px;
+  --tf-border-width-key: 1.5px;
+  --tf-focus-ring-width: 2px;
+  --tf-focus-ring-offset: 2px;
+  /* spacing: the 4px grid. Tailwind's own scale is the same grid (p-6 is --space-5) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
+  /* motion: slide on one axis, seat, then the pin drops */
+  --tf-dur-fade: 160ms;
+  --tf-dur-slide: 320ms;
+  --tf-delay-pin: 120ms;
+  --tf-dur-reduced: 120ms;
+  --tf-stagger: 60ms;
+  --tf-ease-seat: cubic-bezier(0.2, 0, 0, 1);
+  /* layout */
+  --tf-measure-body: 66ch;
+  --tf-measure-docs: 72ch;
+  --tf-measure-display: 18ch;
+  --tf-page-max: 1280px;
+  --tf-hit-min: 24px;
+  --tf-row-dense: 28px;
+  --tf-row-comfortable: 32px;
+  /*
+   * The three typefaces. The first name in each stack is the variable next/font sets on <html>
+   * (app/fonts.ts); the rest is the .yml stack. The partner embed swaps these for the partner's own.
+   */
+  --tf-font-sans:
+    var(--font-plex-sans, "IBM Plex Sans"), "IBM Plex Sans", "Plex Sans Fallback", system-ui,
+    -apple-system, "Segoe UI", Arial, sans-serif;
+  --tf-font-display:
+    var(--font-newsreader, "Newsreader"), "Newsreader Variable", "Newsreader",
+    "Newsreader Fallback", Georgia, "Times New Roman", serif;
+  --tf-font-mono:
+    var(--font-plex-mono, "IBM Plex Mono"), "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+  /* Bearing only. The condensed face is not loaded yet, so this is IBM Plex Sans for now. */
+  --tf-font-condensed:
+    "IBM Plex Sans Condensed", var(--font-plex-sans, "IBM Plex Sans"), "IBM Plex Sans",
+    "Arial Narrow", system-ui, sans-serif;
+}
+
+/* ---------------------------------------------------------------------------------------------------
+ * C. The Tailwind theme.
+ * ------------------------------------------------------------------------------------------------- */
+@theme inline {
+  /* colour utilities, shadcn's names */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+
+  /* brand utilities */
+  --color-primary-hover: var(--tf-primary-hover);
+  --color-primary-pressed: var(--tf-primary-pressed);
+  --color-pin: var(--tf-pin);
+  --color-pin-outline: var(--tf-pin-outline);
+  --color-hatch: var(--tf-hatch);
+  --color-mock-plate: var(--tf-mock-plate);
+  --color-mock-plate-foreground: var(--tf-mock-plate-fg);
+  --color-mock-plate-border: var(--tf-mock-plate-border);
+  --color-status-on: var(--tf-status-on);
+  --color-status-on-bg: var(--tf-status-on-bg);
+  --color-status-watch: var(--tf-status-watch);
+  --color-status-watch-bg: var(--tf-status-watch-bg);
+  --color-status-off: var(--tf-status-off);
+  --color-status-off-bg: var(--tf-status-off-bg);
+  --color-leg-1: var(--chart-1);
+  --color-leg-2: var(--chart-2);
+  --color-leg-3: var(--chart-3);
+  --color-leg-4: var(--chart-4);
+  --color-heat-1: var(--tf-heat-1);
+  --color-heat-2: var(--tf-heat-2);
+  --color-heat-3: var(--tf-heat-3);
+  --color-heat-4: var(--tf-heat-4);
+  --color-heat-5: var(--tf-heat-5);
+
+  /* shape: 0 or 2px. A stray rounded-full or rounded-xl comes out square */
+  --radius-none: 0px;
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+  --radius-3xl: var(--radius);
+  --radius-4xl: var(--radius);
+  --radius-full: var(--radius);
+  /* the typing box only: components/ui/Composer.tsx */
+  --radius-composer: var(--tf-radius-composer);
+  --radius-round: var(--tf-radius-round);
+
+  /* type */
+  --font-sans: var(--tf-font-sans);
+  --font-display: var(--tf-font-display);
+  --font-mono: var(--tf-font-mono);
+  --font-condensed: var(--tf-font-condensed);
+
+  /* expressive scale: marketing, the plan view, the API docs */
+  --text-display: clamp(3.0625rem, 2.5834rem + 2.0442vw, 4.2188rem);
+  --text-display--line-height: clamp(3.5rem, 2.982rem + 2.2099vw, 4.75rem);
+  --text-display--letter-spacing: -0.015em;
+  --text-h1: clamp(2.4375rem, 2.1397rem + 1.2707vw, 3.1562rem);
+  --text-h1--line-height: clamp(3rem, 2.6892rem + 1.326vw, 3.75rem);
+  --text-h1--letter-spacing: -0.01em;
+  --text-h2: clamp(1.9375rem, 1.7562rem + 0.7735vw, 2.375rem);
+  --text-h2--line-height: clamp(2.5rem, 2.2928rem + 0.884vw, 3rem);
+  --text-h2--letter-spacing: -0.015em;
+  --text-h3: clamp(1.5625rem, 1.4719rem + 0.3867vw, 1.7812rem);
+  --text-h3--line-height: clamp(2rem, 1.8964rem + 0.442vw, 2.25rem);
+  --text-h3--letter-spacing: -0.01em;
+  --text-h4: clamp(1.25rem, 1.2112rem + 0.1657vw, 1.3438rem);
+  --text-h4--line-height: 1.75rem;
+  --text-h4--letter-spacing: -0.005em;
+  --text-body-lg: 1.125rem;
+  --text-body-lg--line-height: 1.75rem;
+  --text-body: 1rem;
+  --text-body--line-height: 1.5rem;
+  --text-body-sm: 0.875rem;
+  --text-body-sm--line-height: 1.5rem;
+  --text-body-sm--letter-spacing: 0.01em;
+  --text-caption: 0.78125rem;
+  --text-caption--line-height: 1.25rem;
+  --text-caption--letter-spacing: 0.015em;
+  --text-source: 0.8125rem;
+  --text-source--line-height: 1.25rem;
+  /* productive scale: Bearing. Fixed sizes */
+  --text-b-kpi: 1.4688rem;
+  --text-b-kpi--line-height: 2rem;
+  --text-b-title: 1.3125rem;
+  --text-b-title--line-height: 1.75rem;
+  --text-b-section: 1.0313rem;
+  --text-b-section--line-height: 1.5rem;
+  --text-b-emph: 0.9063rem;
+  --text-b-emph--line-height: 1.25rem;
+  --text-b-cell: 0.8125rem;
+  --text-b-cell--line-height: 1.25rem;
+  --text-b-head: 0.75rem;
+  --text-b-head--line-height: 1rem;
+  --text-b-meta: 0.75rem;
+  --text-b-meta--line-height: 1rem;
+
+  /* no shadows: depth is three layers and hairlines */
+  --shadow-2xs: none;
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --shadow-2xl: none;
+
+  /* motion */
+  --ease-seat: var(--tf-ease-seat);
+  --animate-seat: seat var(--tf-dur-slide) var(--tf-ease-seat) both;
+  --animate-pin-drop: pin-drop var(--tf-dur-fade) var(--tf-ease-seat) var(--tf-delay-pin) both;
+  --default-transition-duration: 160ms;
+  --default-transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+
+  /* layout */
+  --container-page: 1280px;
+}
+
+@keyframes seat {
+  from {
+    transform: translateX(var(--travel, -24px));
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes pin-drop {
+  from {
+    transform: translateY(-6px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/*
+ * Until the shell is rebuilt on the design system (WEB-1), the pages that exist keep Tailwind's own
+ * base fonts: these two lines stop its base styles from reading --font-sans and --font-mono. Delete
+ * them when `tf-app` goes on the shell. A `font-mono` class reads the token itself, so the few places
+ * that already use one are set in IBM Plex Mono from now on.
+ */
+@theme {
+  --default-font-family: initial;
+  --default-mono-font-family: initial;
+}
+
+/* ---------------------------------------------------------------------------------------------------
+ * Base. The spec puts these on html and body; here they sit under one class, `tf-app`, so that a page
+ * takes the design system by adding the class to its shell and the others are left as they are.
+ * ------------------------------------------------------------------------------------------------- */
+@layer base {
+  .tf-app {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--tf-font-sans);
+    font-variant-numeric: lining-nums tabular-nums;
+  }
+
+  .tf-app :focus-visible {
+    outline: var(--tf-focus-ring-width) solid var(--ring);
+    outline-offset: var(--tf-focus-ring-offset);
+  }
+
+  .tf-app :is(h1, h2, h3) {
+    text-wrap: balance;
+  }
+
+  .tf-app :is(p, li) {
+    text-wrap: pretty;
+  }
+
+  .dark {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* ---------------------------------------------------------------------------------------------------
+ * Utilities the specs name.
+ * ------------------------------------------------------------------------------------------------- */
+
+/* A number that carries a pin: tabular lining figures, in any face (typography.md, section 4). */
+@utility tf-figure {
+  font-variant-numeric: lining-nums tabular-nums;
+  font-feature-settings:
+    "tnum" 1,
+    "lnum" 1;
+}
+
+/*
+ * The section hatch (mock-plate.md). It means MOCK or stale and always travels with the word; text
+ * never sits on it. components/ui/hatch.test.ts fails on a hatch with no plate beside it.
+ */
+@utility tf-hatch {
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--tf-hatch) 0 1px,
+    transparent 1px var(--tf-hatch-pitch-ui)
+  );
+
+  @media (forced-colors: active) {
+    background-image: none;
+    border-inline-start: 1px dashed CanvasText;
+  }
+}
+
+/* The solid plate that carries the word MOCK: the only uppercase word in the system. */
+@utility tf-mock-plate {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--tf-mock-plate-border);
+  background: var(--tf-mock-plate);
+  color: var(--tf-mock-plate-fg);
+  font: 500 0.78125rem / 1.25rem var(--tf-font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+
+  @media (forced-colors: active) {
+    border-color: CanvasText;
+  }
+}
+
+/* Reduced motion: every slide becomes a 120ms crossfade and the pin appears without travel. */
+@layer utilities {
+  @media (prefers-reduced-motion: reduce) {
+    .animate-seat,
+    .animate-pin-drop {
+      animation: fade var(--tf-dur-reduced) linear both;
+    }
+  }
+}
