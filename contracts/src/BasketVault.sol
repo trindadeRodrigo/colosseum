@@ -62,7 +62,8 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
         uint32 acceptedVersion;
         // Off until the owner switches it on (EVM-3). Nothing here sets it.
         bool autoFollow;
-        // Reserved (section 3.8). Nothing here sets it.
+        // Reserved (section 3.8). Nothing here sets it. It shares a slot with the two fields above: bits 0 to
+        // 31 the version, 32 to 39 auto-follow, 40 to 199 the operator.
         address operator;
         // Sorted by token. The owner's own, or a copy of the followed portfolio's accepted version.
         Weight[] targets;
@@ -432,7 +433,7 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
         }
     }
 
-    function _vault() private pure returns (VaultStorage storage $) {
+    function _vault() internal pure returns (VaultStorage storage $) {
         assembly {
             $.slot := VAULT_STORAGE
         }

@@ -5,6 +5,13 @@ import {BasketVault} from "../src/BasketVault.sol";
 import {Weight} from "../src/interfaces/Types.sol";
 import {SwapFixture} from "./helpers/SwapFixture.sol";
 
+/// The vault logic with one more view, so that the place of a field nothing reads yet can be shown.
+contract VaultOperatorReader is BasketVault {
+    function operatorForTest() external view returns (address) {
+        return _vault().operator;
+    }
+}
+
 /// Where each contract keeps its state. The three contracts behind proxies each use one ERC-7201 namespace,
 /// and a later version may only add fields after the ones pinned here. A test fails when a field moves, so
 /// an upgrade that would read old state at the wrong place is caught before it is deployed.
@@ -72,13 +79,43 @@ contract StorageLayoutTest is SwapFixture {
     }
 
     /// `autoFollow` and `operator` share a slot with `acceptedVersion`. Nothing sets them yet, so their
-    /// places are shown by writing the slot and reading it back through the vault.
-    function test_storage_ofAVault_theSlotAutoFollowSharesWithTheVersion() public {
+    /// places are shown by writing the slot and reading it back: the version in bits 0 to 31, auto-follow
+    /// in bits 32 to 39, the operator in bits 40 to 199. The operator has no getter until the keeper path,
+    /// so the beacon is moved to the same logic with one more view.
+    function test_storage_ofAVault_theSlotAutoFollowAndTheOperatorShareWithTheVersion() public {
         uint256 s = _namespace("basket.storage.BasketVault");
-        vm.store(address(follower), bytes32(s + 6), bytes32((uint256(1) << 32) | 7));
+        address operator = makeAddr("operator");
+        vm.store(
+            address(follower), bytes32(s + 6), bytes32((uint256(uint160(operator)) << 40) | (uint256(1) << 32) | 7)
+        );
         (, uint32 version, bool autoFollow) = follower.following();
         assertEq(version, 7);
         assertTrue(autoFollow);
+
+        VaultOperatorReader reader = new VaultOperatorReader();
+        vm.prank(admin);
+        beacon.upgradeTo(address(reader));
+        assertEq(VaultOperatorReader(payable(address(follower))).operatorForTest(), operator);
+        assertEq(VaultOperatorReader(payable(address(vault))).operatorForTest(), address(0));
+    }
+
+    /// Three structs are stored where they cannot grow: `Params` inline in the config with fields after it,
+    /// `Weight` as an array element, and the registry's stored version twice in a fixed array. Each fills
+    /// one slot or a fixed run of them, pinned here by what sits right after.
+    function test_storage_theStructsThatCannotGrow() public view {
+        uint256 c = _namespace("basket.storage.VaultConfig");
+        assertEq(_word(address(factory), c + 11) >> 144, 0, "Params ends at bit 143 of its slot");
+        assertEq(_addr(address(factory), c + 10), keeper, "the field before Params");
+        assertEq(_addr(address(factory), c + 14), address(registry), "and the fields after it");
+
+        uint256 v = _namespace("basket.storage.BasketVault");
+        uint256 first = uint256(keccak256(abi.encode(v + 7)));
+        Weight[] memory targets = _threeStocks();
+        for (uint256 i; i < targets.length; ++i) {
+            uint256 element = _word(address(follower), first + i);
+            assertEq(address(uint160(element)), targets[i].token, "a Weight is one slot");
+            assertEq(element >> 176, 0, "token and weight, nothing more");
+        }
     }
 
     function test_storage_ofTheFactory_theConfigNamespace() public {

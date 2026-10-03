@@ -21,7 +21,8 @@ import {IndexInfo, IndexVersion, Limits, Weight} from "./interfaces/Types.sol";
 /// It has no admin of its own. The factory's admin sets the publish delay and replaces this logic; the
 /// factory's guardian can cancel a waiting version; the factory's `launched()` raises the delay's floor.
 contract IndexRegistry is Initializable, UUPSUpgradeable, IIndexRegistry {
-    /// One version as stored. `version == 0` means the slot is empty.
+    /// One version as stored. `version == 0` means the slot is empty. It sits twice, side by side, in
+    /// `Index.slots`: a field added here would move the second version. It cannot grow.
     struct StoredVersion {
         uint32 version;
         uint64 effectiveAt;

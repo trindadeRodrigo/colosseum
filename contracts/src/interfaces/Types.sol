@@ -4,6 +4,8 @@ pragma solidity ^0.8.24;
 // The shared structs of DESIGN-VAULT.md section 3.8. Field order is part of the ABI: append, never reorder.
 
 /// One asset of a portfolio and its weight. Lists are sorted by token, with no duplicates.
+/// Stored as the element of arrays, one slot each: a field added here would move every element after the
+/// first. It cannot grow.
 struct Weight {
     address token;
     uint16 bps;
@@ -47,6 +49,8 @@ struct Limits {
 }
 
 /// The keeper's limits (section 5). The config bounds them: see `IVaultConfig.setParams`.
+/// Stored inline in the config's storage, with fields after it: it cannot grow. A new limit is a new field
+/// at the end of the config's storage, not a field here.
 struct Params {
     uint16 toleranceBps;
     uint16 lossCapBps;
