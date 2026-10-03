@@ -258,17 +258,18 @@ export function unitsOf(
  * Fills gaps and avoids doubling up. The target is set on the amount plus what the person holds,
  * what they hold of each underlying is taken off it, and the units are scaled back to what they had
  * between them. `fixed` are units no holding touches (dollar yield and cash): they are scaled too.
+ * Returns the cents that no unit took.
  */
 export function adjustForHoldings(
   w: World,
   units: Unit[],
   fixed: Unit[],
   removed: Removed[],
-): void {
-  if (w.heldTotal <= 0) return;
+): number {
+  if (w.heldTotal <= 0) return 0;
   const all = [...units, ...fixed];
   const free = sum(all.map((u) => u.cents));
-  if (free <= 0) return;
+  if (free <= 0) return 0;
   const wealth = BigInt(w.amount + w.heldTotal);
   const heldOf = (u: Unit) => (units.includes(u) ? (w.held.get(u.name) ?? 0) : 0);
   const buys = all.map((u) => {
@@ -287,6 +288,8 @@ export function adjustForHoldings(
       removed.push({ ref: u.name, reasons: [reason('ALREADY_HELD_NONE', values, w.lang)] });
     else if (u.cents < before) u.reasons.push(reason('ALREADY_HELD', values, w.lang));
   });
+  // When the person holds enough of everything, nothing is bought: the cents are handed back.
+  return free - sum(all.map((u) => u.cents));
 }
 
 /**

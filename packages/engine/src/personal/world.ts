@@ -204,7 +204,8 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
     yields: pickPrimaryYield(context.yields ?? []),
     liquidity,
     goalMonth: monthAfter(context.now, sheet.horizonMonths),
-    minLine: Math.max(toCents(P.minLineUsd), Math.ceil((amount * P.minLineBps) / BPS)),
+    // A vault's target is at least one basis point, so a line is too, whatever the table says.
+    minLine: Math.max(toCents(P.minLineUsd), Math.ceil((amount * Math.max(1, P.minLineBps)) / BPS)),
     issuerCap: shareOf(amount, capIssuer),
     stockCap: shareOf(amount, capStock),
     flags,
