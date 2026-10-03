@@ -114,6 +114,11 @@ export const REASON_TEMPLATES = {
     'No {asset}: you already hold {heldUsd|usd} of it.',
     'Sem {asset}: você já tem {heldUsd|usd}.',
   ),
+  MORE_BECAUSE_HELD: rule(
+    ['holdings'],
+    'A larger share here: you already hold {heldUsd|usd} of {asset}, so this plan buys less of it.',
+    'Uma parcela maior aqui: você já tem {heldUsd|usd} de {asset}, então este plano compra menos desse ativo.',
+  ),
   SINGLE_STOCK_CAP: rule(
     ['risk'],
     '{asset} is held to {capBps|pct} of the plan: the most in one stock or one crypto asset at {risk|risk}.',

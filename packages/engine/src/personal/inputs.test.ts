@@ -89,7 +89,7 @@ describe('each input alone moves the plan and says so', () => {
 
   it('holdings', () => {
     const plan = changed({}, { holdings: [{ underlying: 'NVDA', valueUsd: 4_000 }] });
-    expect(movedBecauseOf('holdings', plan)).toEqual(['ALREADY_HELD_NONE']);
+    expect(movedBecauseOf('holdings', plan)).toEqual(['ALREADY_HELD_NONE', 'MORE_BECAUSE_HELD']);
     expect(plan.lines.some((l) => /nvda/.test(l.assetId))).toBe(false);
     expect(plan.removed.find((r) => r.ref === 'NVDA')?.reasons[0]?.text).toBe(
       'No NVDA: you already hold $4,000 of it.',

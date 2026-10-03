@@ -47,7 +47,7 @@ export type World = {
   /** Every token on the shelf, on any chain: a holding may be of one the person's chain lacks. */
   byId: Map<string, BasketAsset>;
   families: Map<string, Family>;
-  /** What the person holds, in cents, by the ticker of the underlying; and all of it. */
+  /** What the person holds that counts (at or over the threshold), in cents, by ticker; and its sum. */
   held: Map<string, number>;
   heldTotal: number;
   yields: Map<string, YieldObservation>;
@@ -160,14 +160,17 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
   const tokens = listed.filter((a) => a.chain === chain && a.cls !== 'cash');
 
   const amount = toCents(sheet.amountUsd);
-  const held = new Map<string, number>();
-  let heldTotal = 0;
+  // What the person holds, by underlying. A holding under the threshold is ignored everywhere: it
+  // moves nothing and counts for nothing.
+  const all = new Map<string, number>();
   if (sheet.rules.useHoldings)
     for (const h of parsedHoldings.data) {
       const underlying = h.underlying ?? (h.asset ? byId.get(h.asset)?.underlying : undefined);
-      heldTotal += toCents(h.valueUsd);
-      if (underlying) held.set(underlying, (held.get(underlying) ?? 0) + toCents(h.valueUsd));
+      if (underlying) all.set(underlying, (all.get(underlying) ?? 0) + toCents(h.valueUsd));
     }
+  const counts = shareOf(amount, P.holdingMinBps);
+  const held = new Map([...all].filter(([, cents]) => cents > 0 && cents >= counts));
+  const heldTotal = [...held.values()].reduce((n, cents) => n + cents, 0);
 
   const lang = sheet.language;
   const no = sheet.limits?.cannotHold;

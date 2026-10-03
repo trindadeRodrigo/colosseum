@@ -1,6 +1,6 @@
 import { apportion } from '@colosseum/basket';
 import type { BasketAsset, Reason } from '@colosseum/schemas';
-import { BPS, bpsOf, shareOf, split, sum, toCents, toUsd } from './money';
+import { BPS, bpsOf, split, sum, toCents, toUsd } from './money';
 import { once, type Removed, type Sized, type Unit } from './placement';
 import { type RuleId, reason } from './templates';
 import { SLEEVES, type Sleeve } from './types';
@@ -239,6 +239,8 @@ export function unitsOf(
  * Fills gaps and avoids doubling up. The target is set on the amount plus what the person holds,
  * what they hold of each underlying is taken off it, and the units are scaled back to what they had
  * between them. `fixed` are units no holding touches (dollar yield and cash): they are scaled too.
+ *
+ * Every unit a holding moved says so: the one that is cut, and each one that grew in its place.
  * Returns the cents that no unit took.
  */
 export function adjustForHoldings(
@@ -258,19 +260,23 @@ export function adjustForHoldings(
     return buy > 0n ? buy : 0n;
   });
   const scaled = apportion(buys, BigInt(free)).map(Number);
-  const counts = shareOf(w.amount, w.P.holdingMinBps);
+
+  // The units that are cut, and why each other unit is larger for it.
+  const larger: Reason[] = [];
   units.forEach((u, at) => {
-    const before = u.cents;
     const held = heldOf(at);
-    if (before <= 0 || held <= 0 || held < counts) return;
     const now = scaled[at] ?? 0;
+    if (u.cents <= 0 || held <= 0 || now >= u.cents) return;
     const values = { asset: u.name, heldUsd: toUsd(held) };
+    larger.push(reason('MORE_BECAUSE_HELD', values, w.lang));
     if (now <= 0)
       removed.push({ ref: u.name, reasons: [reason('ALREADY_HELD_NONE', values, w.lang)] });
-    else if (now < before) u.reasons.push(reason('ALREADY_HELD', values, w.lang));
+    else u.reasons.push(reason('ALREADY_HELD', values, w.lang));
   });
   all.forEach((u, at) => {
-    u.cents = scaled[at] ?? 0;
+    const now = scaled[at] ?? 0;
+    if (now > u.cents) u.reasons.push(...larger);
+    u.cents = now;
   });
   // When the person holds enough of everything, nothing is bought: the cents are handed back.
   return free - sum(all.map((u) => u.cents));

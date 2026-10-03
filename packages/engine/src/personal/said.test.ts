@@ -11,7 +11,7 @@ import {
   sheet,
   violations,
 } from './testing';
-import { PersonalInputError, type PersonalProposal } from './types';
+import { PersonalInputError, type PersonalProposal, type PersonalSheet } from './types';
 
 // What a plan says has to be true where it says it. Each case here is one a review found: a reason
 // with no subject, a reason that contradicted what the person chose, a reason that said "left out"
@@ -245,5 +245,73 @@ describe('what compose is handed is checked before it is used', () => {
     // The lower one counts: jlUSDC stays behind syrupUSDC.
     expect(plans[0]?.lines.some((l) => l.assetId === 'solana:syrupusdc')).toBe(true);
     expect(plans[0]?.lines.some((l) => l.assetId === 'solana:jlusdc')).toBe(false);
+  });
+});
+
+describe('what the person already holds', () => {
+  const BASE = sheet({ themes: ['the-seven'] });
+  const base = compose(BASE, shelf, ctx);
+  const withHeld = (valueUsd: number, over = BASE) =>
+    compose(over, shelf, fixtureContext({ holdings: [{ underlying: 'NVDA', valueUsd }] }));
+
+  it('a holding under the threshold is ignored everywhere: $60 of NVDA beside a $10,000 plan', () => {
+    // The threshold is 1% of the amount: $100 here.
+    expect(withHeld(60).lines).toEqual(base.lines);
+    expect(withHeld(99.99).lines).toEqual(base.lines);
+    expect(withHeld(100).lines).not.toEqual(base.lines);
+  });
+
+  it('a holding that counts leaves a reason on every line it moved, gold and dollar yield too', () => {
+    const movedBy = (over: PersonalSheet) => {
+      const without = compose(over, shelf, ctx);
+      const plan = withHeld(4_000, over);
+      const before = new Map(without.lines.map((l) => [l.assetId, l.amountUsd]));
+      const moved = plan.lines.filter((l) => before.get(l.assetId) !== l.amountUsd);
+      for (const l of moved)
+        expect(
+          l.reasons.some((r) => r.inputs.includes('holdings')),
+          `${l.assetId} moved from ${before.get(l.assetId)} to ${l.amountUsd} with no reason naming holdings`,
+        ).toBe(true);
+      return { plan, moved: moved.map((l) => l.assetId) };
+    };
+    const grow = movedBy(BASE);
+    expect(grow.moved).toEqual(expect.arrayContaining(['solana:gldx', 'solana:aaplx']));
+    expect(
+      line(grow.plan, 'solana:gldx')?.reasons.find((r) => r.rule === 'MORE_BECAUSE_HELD')?.text,
+    ).toBe('A larger share here: you already hold $4,000 of NVDA, so this plan buys less of it.');
+    // A plan to protect has room under the issuer cap, so its dollar yield moves too, and says why.
+    const protect = movedBy({ ...BASE, goal: 'protect' });
+    expect(protect.moved).toEqual(
+      expect.arrayContaining(['solana:gldx', 'solana:syrupusdc', 'solana:aaplx']),
+    );
+    expect(rulesOn(protect.plan, 'solana:syrupusdc')).toContain('MORE_BECAUSE_HELD');
+  });
+
+  it('sets the target on the amount plus the holding, then takes the holding off', () => {
+    // Grow at high risk: 95% in The Seven, so $1,360.40 of NVDA. With $1,000 of it held the target is
+    // set on $11,000: $1,496.44, less the $1,000 held. The other lines are scaled by the same 1.1.
+    const plan = withHeld(1_000, sheet({ themes: ['the-seven'], risk: 'high' }));
+    expect(line(plan, 'solana:nvdax')?.amountUsd).toBe(496.44);
+    expect(line(plan, 'solana:aaplx')?.amountUsd).toBe(1492.26);
+    expect(line(plan, 'solana:syrupusdc')?.amountUsd).toBe(550);
+    expect(rulesOn(plan, 'solana:nvdax')).toContain('ALREADY_HELD');
+  });
+
+  it('a shared portfolio with a held part is not followed whole: the held part is cut on its own line', () => {
+    const ana = sheet({
+      amountUsd: 2_000,
+      risk: 'high',
+      themes: ['sand-to-server'],
+      chains: ['robinhood'],
+    });
+    const whole = compose(ana, shelf, ctx);
+    expect(whole.lines.filter((l) => l.viaIndex === 'sand-to-server')).toHaveLength(7);
+    const plan = withHeld(300, ana);
+    expect(plan.lines.every((l) => l.viaIndex === undefined)).toBe(true);
+    expect(plan.recipes[0]?.components.every((c) => c.kind === 'asset')).toBe(true);
+    expect(rulesOn(plan, 'robinhood:nvda')).toEqual(
+      expect.arrayContaining(['OPENED', 'ALREADY_HELD']),
+    );
+    expect(line(plan, 'robinhood:nvda')?.amountUsd).toBeLessThan(570);
   });
 });

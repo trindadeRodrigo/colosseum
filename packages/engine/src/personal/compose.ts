@@ -20,7 +20,7 @@ import {
   tokensOf,
   unitsOf,
 } from './exposure';
-import { byName, largestFirst, shareOf, split, sum, toCents, toUsd } from './money';
+import { byName, largestFirst, split, sum, toCents, toUsd } from './money';
 import { packageUp } from './packaging';
 import { Book, once, type Removed, type Sized, type Unit } from './placement';
 import { reason, text } from './templates';
@@ -133,7 +133,7 @@ function follow(
   base: Reason[],
   followed: Map<string, number>,
 ): Reason[] | null {
-  const { P, lang } = w;
+  const { lang } = w;
   if (theme.family.meta.kind !== 'index') return [];
   const fits = theme.parts.every(
     (p) => w.sleeveOf(p.asset) === 'growth' && w.blockOf(p.asset) === null,
@@ -145,11 +145,7 @@ function follow(
   );
   const parts = theme.parts.map((p, i) => ({ asset: p.asset, cents: shares[i] ?? 0 }));
   // What the person already holds, or a part over the single-stock cap, is cut on its own line.
-  const counts = shareOf(w.amount, P.holdingMinBps);
-  const held = parts.some((p) => {
-    const has = w.held.get(p.asset.underlying) ?? 0;
-    return has > 0 && has >= counts;
-  });
+  const held = parts.some((p) => w.held.has(p.asset.underlying));
   const overCap = parts.some(
     (p) => capped(p.asset) && (followed.get(p.asset.underlying) ?? 0) + p.cents > w.stockCap,
   );
