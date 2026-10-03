@@ -1,4 +1,4 @@
-import { createDb, riskLendingCoverage, riskLendingFacts } from '@colosseum/db';
+import { assets, createDb, riskLendingCoverage, riskLendingFacts } from '@colosseum/db';
 import { buildLendingPoolFacts, type LendingPoolFactsInput } from '@colosseum/risk';
 import { LendingPoolFacts, PlanFacts } from '@colosseum/schemas';
 import { eq } from 'drizzle-orm';
@@ -104,6 +104,7 @@ const report: LendingReportFile = {
     ],
   },
 };
+const CASH_ID = 'fixturecash';
 const { db, client } = createDb();
 
 beforeAll(async () => {
@@ -111,10 +112,27 @@ beforeAll(async () => {
   expect(facts.rejected).toEqual([]);
   await db.insert(riskLendingFacts).values(facts.rows).onConflictDoNothing();
   await db.insert(riskLendingCoverage).values(lendingCoverageRows(report)).onConflictDoNothing();
+  // a cash leg of the plan: its own registry row, so the test does not depend on the seeded `usdc`
+  await db
+    .insert(assets)
+    .values({
+      id: CASH_ID,
+      symbol: 'FIXTURECASH',
+      name: 'Fixture cash',
+      kind: 'cash',
+      chain: 'solana',
+      eligibleProfiles: [],
+      capWeight: '1',
+      mintPath: 'dex_swap',
+      metadata: {},
+      provenance: 'fixture',
+    })
+    .onConflictDoNothing();
 });
 afterAll(async () => {
   await db.delete(riskLendingFacts).where(eq(riskLendingFacts.account, ACCOUNT));
   await db.delete(riskLendingCoverage).where(eq(riskLendingCoverage.asset, 'FIXTUREX'));
+  await db.delete(assets).where(eq(assets.id, CASH_ID));
   await client.end();
 });
 
@@ -171,7 +189,7 @@ describe('lending, plan and coverage routes', () => {
     const app = await buildRiskApp();
     const positions = [
       { assetId: 'FIXTUREnotAnAsset', valueUsd: 1_000 },
-      { assetId: 'usdc', valueUsd: 3_000 },
+      { assetId: CASH_ID, valueUsd: 3_000 },
     ];
     const res = await app.inject({
       method: 'POST',
