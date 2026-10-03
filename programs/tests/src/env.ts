@@ -206,6 +206,17 @@ export const writableSigner = (s: TransactionSigner): AccountSignerMeta => ({
   signer: s,
 });
 
+/** An address in a signer's place when an instruction is built for a program to sign by
+ * itself (a vault, the puppet's own address). It never signs a transaction. */
+export function programSigner(addr: Address): TransactionSigner {
+  return {
+    address: addr,
+    signTransactions: async () => {
+      throw new Error(`${addr} is signed for by a program, never by a key`);
+    },
+  };
+}
+
 /** Anchor's own error codes that the tests name. */
 export const ANCHOR = {
   IdlInstructionStub: 1000,

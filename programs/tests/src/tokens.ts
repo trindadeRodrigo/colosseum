@@ -170,6 +170,23 @@ export async function mintTo(
   return token;
 }
 
+/** Mints to one token account, wherever it is. */
+export async function mintToAccount(
+  svm: LiteSVM,
+  payer: TransactionSigner,
+  mint: TestMint,
+  token: Address,
+  amount: bigint,
+): Promise<void> {
+  const result = await send(svm, payer, [
+    getMintToInstruction(
+      { mint: mint.address, token, mintAuthority: mint.issuer, amount },
+      { programAddress: mint.program },
+    ),
+  ]);
+  expectOk(result);
+}
+
 /** A token account that is not the associated one. Only for mints without extensions:
  * the account is the base 165 bytes. */
 export async function createLooseTokenAccount(
