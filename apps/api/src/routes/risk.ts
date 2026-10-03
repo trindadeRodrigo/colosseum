@@ -37,6 +37,7 @@ import { z } from 'zod';
 import { loadAssetFacts, loadPlanFacts } from '../facts';
 import { FACTS_METHODOLOGY } from '../facts-methodology';
 import { registerRiskHistoryRoutes } from './risk-history';
+import { registerPoolLiquidityRoute } from './risk-pool-liquidity';
 
 /**
  * Liquidity & risk API (`/risk/*`). Mounted by apps/api and, alone, by apps/risk-api. Every number carries
@@ -102,6 +103,8 @@ export async function registerRiskRoutes(app: FastifyInstance) {
   }
   // time series for line charts: capacity, reference price, lending pool (risk-history.ts)
   await registerRiskHistoryRoutes(app, db, resolveAsset, REGIME_PARAMS);
+  // one pool's liquidity by price band, read live over RPC (risk-pool-liquidity.ts)
+  await registerPoolLiquidityRoute(app, db);
 
   f.get(
     '/risk/assets',
