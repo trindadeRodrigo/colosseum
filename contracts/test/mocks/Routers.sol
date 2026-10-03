@@ -159,3 +159,16 @@ contract MockRouter {
         return ret;
     }
 }
+
+/// Looks at an allowance inside Permit2 when it is called, and keeps what it saw. A router calls it in the
+/// middle of a swap, which is the only moment the vault's allowance there can be seen.
+contract Permit2Witness {
+    address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+
+    uint160 public amount;
+    uint48 public expiration;
+
+    function look(address user, address token, address spender) external {
+        (amount, expiration,) = MockPermit2(PERMIT2).allowance(user, token, spender);
+    }
+}

@@ -568,6 +568,13 @@ const RULES = [
     expect: 'test_exactApproval_permit2_theAmountInsidePermit2IsExact',
   },
   {
+    id: 'vault-swap-permit2-approval-ends-with-the-block',
+    file: VAULT,
+    find: 'SafeCast.toUint160(amount), uint48(block.timestamp)',
+    replace: 'SafeCast.toUint160(amount), type(uint48).max',
+    expect: 'test_exactApproval_permit2_endsWithTheBlock',
+  },
+  {
     id: 'vault-swap-permit2-amount-not-cut-down',
     file: VAULT,
     find: 'SafeCast.toUint160(amount), uint48(block.timestamp)',

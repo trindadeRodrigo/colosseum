@@ -9,7 +9,7 @@ import {IBasketVault} from "../src/interfaces/IBasketVault.sol";
 import {IVaultConfig} from "../src/interfaces/IVaultConfig.sol";
 import {Swap, Weight} from "../src/interfaces/Types.sol";
 import {SwapFixture} from "./helpers/SwapFixture.sol";
-import {GreedyPermit2, MockRouter, StickyPermit2} from "./mocks/Routers.sol";
+import {GreedyPermit2, MockRouter, Permit2Witness, StickyPermit2} from "./mocks/Routers.sol";
 import {
     BackdoorToken,
     BrickableBackdoorToken,
@@ -403,6 +403,29 @@ abstract contract OwnerSwapTest is SwapFixture {
             )
         );
         assertEq(loose.balanceOf(address(vault)), 1000 * USD);
+    }
+
+    /// Inside Permit2 the allowance is also short-lived: it ends with the block the swap is in. Seen from
+    /// the middle of a swap, after the router took 100 of the 300 it was approved for.
+    function test_exactApproval_permit2_endsWithTheBlock() public {
+        vm.warp(1_791_212_400);
+        Permit2Witness witness = new Permit2Witness();
+        Swap memory s = _swap(viaPermit2, address(cash), address(stockA), 300 * USD, unit);
+        s.data = abi.encodeCall(
+            MockRouter.swapAndCall,
+            (
+                address(cash),
+                address(stockA),
+                100 * USD,
+                unit,
+                address(witness),
+                abi.encodeCall(Permit2Witness.look, (address(vault), address(cash), address(viaPermit2)))
+            )
+        );
+        _run(s);
+        assertEq(witness.amount(), 200 * USD, "what was left of the approval while the swap ran");
+        assertEq(witness.expiration(), block.timestamp, "good for this block and no longer");
+        _assertNoAllowance(address(vault), address(cash), address(viaPermit2));
     }
 
     // ---- A11 and I3: no allowance outlives the swap
