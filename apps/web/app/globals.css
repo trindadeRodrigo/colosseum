@@ -9,6 +9,19 @@
  * components/ui/tokens.test.ts fails when a value here differs from the .yml.
  */
 
+/*
+ * Tailwind makes a utility for every word in the source that looks like a class name, comments
+ * included. Tests and notes are not rendered, so they are not read; and the utilities the design
+ * system forbids are never made, whatever a comment happens to say: a shadow, a ring (which is a
+ * box-shadow; focus uses `outline`) and a blur.
+ */
+@source not "../**/*.test.ts";
+@source not "../components/ui/test";
+@source not "../**/*.md";
+@source not inline("{,inset-}{shadow,ring}{,-0,-1,-2,-4,-8,-2xs,-xs,-sm,-md,-lg,-xl,-2xl,-inner,-none}");
+@source not inline("{,backdrop-}blur{,-xs,-sm,-md,-lg,-xl,-2xl,-3xl,-none}");
+@source not inline("drop-shadow{,-xs,-sm,-md,-lg,-xl,-2xl,-none}");
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ---------------------------------------------------------------------------------------------------
