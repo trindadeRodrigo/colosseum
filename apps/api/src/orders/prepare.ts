@@ -69,6 +69,10 @@ const usd = (cents: bigint) =>
  * A plan's components on one chain as the targets a vault takes: each asset once, the weights adding up
  * to exactly 10,000. A plan that does not give that is refused here, when the order is made. A shared
  * portfolio inside a plan is not flattened here.
+ *
+ * A vault itself takes targets that add up to less (`Targets`: the rest is the plan's cash share). A buy
+ * does not yet: it spends the whole deposit on the plan's assets, and a later build reads the deposit
+ * back as the sum of the trades.
  */
 export function targetsOf(components: Component[]): Target[] {
   const targets = components.map((c) => {
@@ -84,6 +88,12 @@ export function targetsOf(components: Component[]): Target[] {
     throw new Refusal(
       422,
       `this plan's weights cannot be a vault's targets: ${checked.error.issues[0]?.message ?? 'not valid'}`,
+    );
+  const sum = checked.data.reduce((n, t) => n + t.weightBps, 0);
+  if (sum !== 10_000)
+    throw new Refusal(
+      422,
+      `this plan's weights on one chain add up to ${sum} bps, and a buy needs exactly 10,000: it spends the whole deposit on the plan's assets`,
     );
   return checked.data;
 }

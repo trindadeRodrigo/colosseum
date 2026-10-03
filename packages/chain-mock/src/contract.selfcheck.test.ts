@@ -147,6 +147,30 @@ const FAULTS: { fault: string; wrap: Wrap; caught: string[] }[] = [
     caught: ['setting targets stores exactly those, stops following, and switches auto-follow off'],
   },
   {
+    fault: "holds a person's own targets to exactly 10,000",
+    wrap: (real) => ({
+      buildSetTargets: async (a) => {
+        if (a.targets.reduce((n, t) => n + t.weightBps, 0) !== 10_000)
+          throw new ChainError('BadInput', 'targets: weights must add up to exactly 10,000');
+        return real.buildSetTargets(a);
+      },
+    }),
+    caught: [
+      'targets that leave a share in cash are stored as they are: at most 10,000, not exactly',
+    ],
+  },
+  {
+    fault: 'takes targets that add up to more than the whole',
+    wrap: (real, f) => ({
+      buildSetTargets: (a) =>
+        real.buildSetTargets(a).catch(async (e) => {
+          if (!(e instanceof ChainError) || e.code !== 'BadInput') throw e;
+          return real.buildSetAutoFollow({ vault: f.manualVault, on: false });
+        }),
+    }),
+    caught: ['arguments that are not what the schema says: BadInput, never another kind of error'],
+  },
+  {
     fault: 'switches auto-follow on whatever was asked',
     wrap: (real) => ({
       buildSetAutoFollow: (a) => real.buildSetAutoFollow({ vault: a.vault, on: true }),

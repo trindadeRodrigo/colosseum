@@ -150,7 +150,8 @@ Frozen in two steps. **v0 on Oct 2**, with the first types and the mock: streams
 | Point | What the code does |
 |---|---|
 | Refined schemas | zod refuses `.omit()`, `.pick()` and `.partial()` on an object with refinements, so each refined schema has its plain object beside it: `RecipeBase`, `BuiltTxBase`, `BasketTxBase`, `LegBase`, `OrderBase`, `OwnerBase`, `WalletAccountBase`, `BasketAssetBase`, `TradeBase`, `BasketProposalBase` |
-| A recipe's components | Each asset or family once; each weight at least 1 bp; the sum exactly 10,000; assets on the recipe's own chain; a shared portfolio lists assets only. `Targets` holds a vault's targets to the same |
+| A recipe's components | Each asset or family once; each weight at least 1 bp; the sum exactly 10,000; assets on the recipe's own chain; a shared portfolio lists assets only |
+| A person's own targets | `Targets`: each asset once; each weight at least 1 bp; the sum at most 10,000. What is left of 10,000 is the plan's cash share, and cash is never a target. The program and the planner work the same way (3.7, `InvalidTargets`). The program also takes a zero weight; the schema does not, so no builder sends one |
 | A trade | Two different assets on one chain |
 | An order | Every leg carries the order's id and is on a chain the owner has an address for |
 | Inline arguments | Named so a route can validate one: `CreateVaultArgs`, `DepositArgs`, `OwnerSwapArgs`, `SetTargetsArgs`, `AcceptVersionArgs`, `SetAutoFollowArgs`, `WithdrawInKindArgs`, `PublishRecipeArgs`, `ApproveArgs`, `FundingNeed` |
@@ -191,6 +192,7 @@ type Recipe = { schemaVersion: 1; familyId: string; chain: ChainId; onchainId: s
   components: Component[];                            // sum is exactly 10_000
   metaHash: string; maxFeeBps: 0; flags: 0 };         // both stored onchain and required to be zero in the MVP
 type Target = { asset: AssetId; weightBps: number };  // what a vault stores; an asset appears once
+type Targets = Target[];                              // a person's own: sum at most 10_000, the rest is cash
 type FamilyMeta = { familyId: string; slug: string; name: string; copy: string;
   kind: 'index' | 'single'; chains: ChainId[] };
 

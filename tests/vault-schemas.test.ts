@@ -28,6 +28,7 @@ import {
   RawDelta,
   Recipe,
   RecipeBase,
+  RecipeDraft,
   ReportLegRequest,
   SolanaAddress,
   stampTx,
@@ -128,7 +129,26 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
     expect(Recipe.safeParse({ ...recipe, maxFeeBps: 25 }).success).toBe(false);
     expect(Recipe.safeParse({ ...recipe, flags: 1 }).success).toBe(false);
     expect(Targets.safeParse([{ asset: 'solana:spyx', weightBps: 10_000 }]).success).toBe(true);
-    expect(Targets.safeParse([{ asset: 'solana:spyx', weightBps: 9_950 }]).success).toBe(false);
+  });
+
+  it("holds a person's own targets to at most 10,000: what is left is the plan's cash share", () => {
+    const spy = { asset: 'solana:spyx', weightBps: 6000 };
+    const nvda = { asset: 'solana:nvdax', weightBps: 3950 };
+    expect(Targets.safeParse([{ ...spy, weightBps: 9_950 }]).success).toBe(true);
+    expect(Targets.safeParse([spy, nvda]).success).toBe(true);
+    expect(Targets.safeParse([spy, { ...nvda, weightBps: 4000 }]).success).toBe(true);
+    // Over the whole is refused, and so are a weight of nothing, a repeated asset and an empty list.
+    expect(Targets.safeParse([spy, { ...nvda, weightBps: 4001 }]).success).toBe(false);
+    expect(Targets.safeParse([spy, { ...nvda, weightBps: 0 }]).success).toBe(false);
+    expect(Targets.safeParse([spy, { ...spy, weightBps: 1000 }]).success).toBe(false);
+    expect(Targets.safeParse([]).success).toBe(false);
+    // A shared portfolio still adds up to exactly 10,000, on the page and in a publish request.
+    const short = [recipe.components[0], { ...recipe.components[1], weightBps: 3950 }];
+    expect(Recipe.safeParse({ ...recipe, components: short }).success).toBe(false);
+    expect(RecipeDraft.safeParse({ chain: 'solana', components: short }).success).toBe(false);
+    expect(RecipeDraft.safeParse({ chain: 'solana', components: recipe.components }).success).toBe(
+      true,
+    );
   });
 
   it('builds the transaction types from UnsignedTx without its structurer fields', () => {

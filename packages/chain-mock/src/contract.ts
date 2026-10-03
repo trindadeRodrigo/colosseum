@@ -250,17 +250,23 @@ group('reads', {
     }
   },
 
-  'stores targets that add up to 10,000, on listed assets, never on cash': async (c) => {
-    for (const address of [c.f.vault, c.f.manualVault, c.f.newAssetVault]) {
-      const vault = await vaultAt(c, address);
-      expect(vault.positions.reduce((n, p) => n + p.targetBps, 0)).toBe(10_000);
-      expect(BigInt(vault.cash.raw)).toBeGreaterThan(0n);
-      expect(vault.cash.asset).toBe(c.cash.id);
-      for (const p of vault.positions) expect(p.asset).not.toBe(c.cash.id);
-    }
-    const vault = await vaultAt(c, c.f.vault);
-    expect(vault.positions.some((p) => BigInt(p.raw) > 0n)).toBe(true);
-  },
+  'stores targets that add up to at most 10,000, and to exactly that when it follows, on listed assets, never on cash':
+    async (c) => {
+      for (const address of [c.f.vault, c.f.manualVault, c.f.newAssetVault]) {
+        const vault = await vaultAt(c, address);
+        // A person's own targets may leave a share in cash; a shared portfolio is always the whole.
+        const sum = vault.positions.reduce((n, p) => n + p.targetBps, 0);
+        expect(sum).toBeGreaterThan(0);
+        expect(sum).toBeLessThanOrEqual(10_000);
+        if (vault.recipeOnchainId !== null) expect(sum).toBe(10_000);
+        for (const p of vault.positions) expect(p.targetBps).toBeGreaterThanOrEqual(0);
+        expect(BigInt(vault.cash.raw)).toBeGreaterThan(0n);
+        expect(vault.cash.asset).toBe(c.cash.id);
+        for (const p of vault.positions) expect(p.asset).not.toBe(c.cash.id);
+      }
+      const vault = await vaultAt(c, c.f.vault);
+      expect(vault.positions.some((p) => BigInt(p.raw) > 0n)).toBe(true);
+    },
 
   'lists exactly the vaults with auto-follow on, and filters them by recipe': async (c) => {
     const all = await c.a.listAutoFollowVaults();
@@ -542,8 +548,11 @@ group('refusals', {
       c.a.buildDeposit({ vault: 'not-an-address', amountRaw: '1', slippageBps: 100 }),
       'BadInput',
     );
-    const short = [first, { ...second, weightBps: 10_000 - first.weightBps - 1 }];
-    await refuses(c.a.buildSetTargets({ vault, targets: short }), 'BadInput');
+    // Over the whole, by one basis point. Under it is allowed: the rest is the plan's cash share.
+    const over = [first, { ...second, weightBps: 10_000 - first.weightBps + 1 }];
+    await refuses(c.a.buildSetTargets({ vault, targets: over }), 'BadInput');
+    const nothing = [first, { ...second, weightBps: 0 }];
+    await refuses(c.a.buildSetTargets({ vault, targets: nothing }), 'BadInput');
     const twice = [
       { asset: first.asset, weightBps: 5000 },
       { asset: first.asset, weightBps: 5000 },
@@ -781,6 +790,28 @@ group('state after a transaction lands', {
     ]);
     expect(await c.a.listAutoFollowVaults()).not.toContain(c.f.newAssetVault);
     await refuses(c.a.buildKeeperLeg(c.f.newAssetVault, c.f.keeperTrade), 'AutoFollowOff');
+  },
+
+  'targets that leave a share in cash are stored as they are: at most 10,000, not exactly': async (
+    c,
+  ) => {
+    const [first, second] = c.targets;
+    if (!first || !second) throw new Error('the fixture recipe has fewer than two assets');
+    // 85% in two assets: the other 15% is the plan's cash share, and no asset is given it.
+    const targets = [
+      { asset: first.asset, weightBps: 6000 },
+      { asset: second.asset, weightBps: 2500 },
+    ];
+    const tx = await c.a.buildSetTargets({ vault: c.f.manualVault, targets });
+    checkTx(c, tx, 'set_targets', c.f.owner);
+    await land(c, tx);
+    const after = await vaultAt(c, c.f.manualVault);
+    const stored = after.positions.filter((p) => p.targetBps > 0);
+    expect(new Map(stored.map((p) => [p.asset, p.targetBps]))).toEqual(
+      new Map(targets.map((t) => [t.asset, t.weightBps])),
+    );
+    expect(after.positions.reduce((n, p) => n + p.targetBps, 0)).toBe(8500);
+    expect(after.positions.map((p) => p.asset)).not.toContain(c.cash.id);
   },
 
   'a withdrawal hands every token to the owner, and to nobody else': async (c) => {
