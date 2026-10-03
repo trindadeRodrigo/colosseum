@@ -21,6 +21,7 @@ It decodes the program's four accounts: Config, Vault, the asset list (`getAsset
 
 - `getRecipe(address)` answers the version in effect and the one that waits, by the cluster's clock: a version whose time has come is the active one with no transaction, as it is for the program (`versionsAt`). The account's `current` and `pending` fields alone do not say which is in effect.
 - Anything that is not a Recipe account of this program is `RecipeNotFound`. A line on a mint the caller's list does not have is `MintNotAccepted`, and a vault that follows that portfolio refuses with it.
+- A version number names one set of weights for good: a cancelled version keeps its number, so the version that waits can be the active one plus two.
 - `onchainId` is the Recipe account's address: seeds `["recipe", creator, family id]` (`recipeAddress`). `familyId` and `metaHash` are 64 lower-case hex characters.
 - `listAutoFollowVaults(recipe)` filters on the vault's `recipe` at byte 40.
 

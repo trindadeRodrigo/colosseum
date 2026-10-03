@@ -53,6 +53,7 @@ impl PublishRecipe<'_> {
         recipe.creator = ctx.accounts.creator.key();
         recipe.family_id = family_id;
         recipe.current = RecipeVersion::new(1, now, meta_hash, &components);
+        recipe.last_version = 1;
         recipe.last_publish_ts = now;
         recipe.max_fee_bps = max_fee_bps;
         recipe.flags = flags;
@@ -112,9 +113,10 @@ impl UpdateRecipe<'_> {
         ))?;
         refuse_limit(check_no_cash(&components, &config.cash_mint))?;
 
-        let version = recipe.current.version + 1;
+        let version = recipe.next_version();
         let effective_at = now.saturating_add(config.publish_delay_s as i64);
         recipe.pending = RecipeVersion::new(version, effective_at, meta_hash, &components);
+        recipe.last_version = version;
         recipe.last_publish_ts = now;
 
         emit!(RecipePublished {
@@ -131,7 +133,8 @@ impl UpdateRecipe<'_> {
 }
 
 /// Creator or guardian: takes back a version that is waiting. The time of its publish
-/// stays, so a cancel does not give the slot back.
+/// stays, so a cancel does not give the slot back, and so does its number: the next version
+/// published takes the one after it.
 #[derive(Accounts)]
 pub struct CancelPending<'info> {
     pub signer: Signer<'info>,

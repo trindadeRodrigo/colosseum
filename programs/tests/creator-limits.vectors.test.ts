@@ -234,7 +234,10 @@ describe('the author limits, from the shared vectors (A16)', () => {
         const meta = expectOk(result);
         const after = readRecipe(svm, recipe);
         const published = first ? after.current : after.pending;
-        expect(published.version).toBe(first ? 1 : (inEffect?.version ?? 0) + 1);
+        // One past the highest number ever given out: a cancelled version keeps its number.
+        expect(published.version).toBe(first ? 1 : (before?.lastVersion ?? 0) + 1);
+        if (c.scenario === 'cancelled') expect(published.version).toBe(3);
+        expect(after.lastVersion).toBe(published.version);
         expect(Number(published.effectiveAt)).toBe(c.expect.effectiveAt);
         expect(published.components).toEqual(components(c.next));
         expect(Number(after.lastPublishTs)).toBe(now);

@@ -192,7 +192,9 @@ const recipeDecoder = getStructDecoder([
   ['maxFeeBps', getU16Decoder()],
   ['flags', getU8Decoder()],
   ['vetoed', strictBoolean],
-  ['reserved', bytes32],
+  // The highest version number ever given out; zero on an account older than the field.
+  ['lastVersion', getU32Decoder()],
+  ['reserved', fixDecoderSize(getBytesDecoder(), 28)],
 ]);
 
 export type ConfigAccount = Omit<ReturnType<typeof configDecoder.decode>, 'discriminator'>;

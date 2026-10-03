@@ -475,7 +475,8 @@ pub struct AssetEntry {                            // packed, 96 bytes; offsets 
   source_check: [u8; 32] /*43; zero = off; section 5*/, reserved: [u8; 21] /*75*/ }
 pub struct Recipe { creator: Pubkey /*8*/, family_id: [u8; 32] /*40*/, current: RecipeVersion /*72*/,
   pending: RecipeVersion /*525; version 0 = none*/, last_publish_ts: i64 /*978*/, max_fee_bps: u16, flags: u8,
-  vetoed: bool /*not written*/, reserved: [u8; 32] }           // Borsh, 1,022 bytes
+  vetoed: bool /*not written*/, last_version: u32 /*990; the highest number ever given out*/,
+  reserved: [u8; 28] }                             // Borsh, 1,022 bytes
 pub struct RecipeVersion { version: u32, effective_at: i64, meta_hash: [u8; 32], count: u8,
   components: [Component; 12] }                    // 453 bytes; Component { mint: Pubkey, weight_bps: u16 }
 pub struct Vault {                                 // Borsh, 1,063 bytes; this field order is frozen for memcmp filters
@@ -720,7 +721,7 @@ The ceilings are written at deploy and do not move during the MVP, so no rule is
 - A shared portfolio is one `Recipe` account at seeds `["recipe", creator, family_id]`; that address is its `onchainId`. It holds the version in effect (`current`) and at most one that waits (`pending`). History is in the `RecipePublished` events, which carry the components, the effective time, the turnover and the meta hash.
 - `publish_recipe` writes version 1, in effect at once. `update_recipe` writes the next version, in effect `publish_delay_s` later. `cancel_pending` takes back a version that waits; the creator or the guardian signs.
 - A version that waited and whose time has come is the one in effect with no transaction: `create_vault` reads it that way, and `update_recipe` moves it into `current` before it measures the new version against it. So the `current` field alone does not say which version is in effect; a reader compares `pending.effective_at` with the chain's clock.
-- A version's number is the number of the version in effect plus one. A cancelled version never took effect, and its number is used again by the next one published.
+- A version number is never used twice, on either chain (decided on Oct 3, after the SOL-2 review). The registry keeps the highest number it ever gave out (`Recipe.last_version`) and the next version takes the one after it, so a cancelled version keeps its number and the version that waits can be the one in effect plus two. Otherwise an author could publish version 2, cancel it, and publish other weights as version 2: a create or an accept that names the version a person reviewed would be consent to weights they never saw. An account written before the counter existed holds zero there, and numbers from the version in effect.
 - The four limits are checked in the order of the vectors' reason numbers, and a refusal is always `CreatorLimit` (6020). Which rule it was goes in the transaction's log as `creator limit: reason=<number> <name>`, with the numbers of `fixtures/creator-limits/README.md`. All 87 cases pass against the program, each driven through real publishes in LiteSVM (`programs/tests/creator-limits.vectors.test.ts`).
 - The ceilings are `max_weight_bps` in the asset list, written by `upsert_asset`. The cash mint may be on the list and is refused as a component by its own rule (`CashNotAllowed`, reason 14).
 - There is no view call: to check before paying, simulate the publish and read the log. `last_publish_ts` is the time of the last publish, cancelled or not, so the next version is allowed at `last_publish_ts + publish_delay_s`.

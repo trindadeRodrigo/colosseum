@@ -2640,7 +2640,8 @@
       "docs": [
         "A shared portfolio: one per creator per family, at seeds [\"recipe\", creator, family_id].",
         "1,022 bytes. Only the version in effect and the one waiting live here; history is in the",
-        "`RecipePublished` events."
+        "`RecipePublished` events. `last_version` took four bytes of what was reserved: the size",
+        "and every other offset are as they were."
       ],
       "type": {
         "kind": "struct",
@@ -2706,11 +2707,20 @@
             "type": "bool"
           },
           {
+            "name": "last_version",
+            "docs": [
+              "The highest version number ever given out, cancelled ones included, so a number is",
+              "never used twice. Zero on an account written before this field existed: the number",
+              "of the version in effect stands in for it."
+            ],
+            "type": "u32"
+          },
+          {
             "name": "reserved",
             "type": {
               "array": [
                 "u8",
-                32
+                28
               ]
             }
           }

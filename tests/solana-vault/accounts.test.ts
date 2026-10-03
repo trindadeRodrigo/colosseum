@@ -461,7 +461,9 @@ describe('the decoders against bytes the program wrote', () => {
     expect(recipe.lastPublishTs).toBe(clock);
     expect(recipe.pending.effectiveAt - clock).toBe(60n);
     expect([recipe.maxFeeBps, recipe.flags, recipe.vetoed]).toEqual([0, 0, false]);
-    expect(recipe.reserved).toEqual(new Uint8Array(32));
+    // The highest version number given out: the one that waits.
+    expect(recipe.lastVersion).toBe(want.pending.version);
+    expect(recipe.reserved).toEqual(new Uint8Array(28));
 
     // In effect by the clock: the waiting version from the second its time comes, the first until then.
     const before = versionsAt(recipe, recipe.pending.effectiveAt - 1n);

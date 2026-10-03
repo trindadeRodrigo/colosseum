@@ -635,6 +635,20 @@ const RULES = [
     fails: 'there is nothing to cancel once nothing waits',
   },
   {
+    rule: 'recipe: the number a version takes is recorded, cancelled or not',
+    file: 'src/instructions/recipe.rs',
+    find: '        recipe.last_version = version;\n',
+    replace: '',
+    fails: 'a cancelled version keeps its number',
+  },
+  {
+    rule: 'recipe: a version number is never given out twice',
+    file: 'src/state.rs',
+    find: 'self.last_version.max(self.current.version) + 1',
+    replace: 'self.current.version + 1',
+    fails: 'a cancelled version keeps its number',
+  },
+  {
     rule: 'recipe: a version whose time has come no longer waits',
     file: 'src/state.rs',
     find: 'self.pending.version != 0 && now < self.pending.effective_at',

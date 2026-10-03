@@ -310,7 +310,8 @@ const recipeDecoder = getStructDecoder([
   ['maxFeeBps', getU16Decoder()],
   ['flags', getU8Decoder()],
   ['vetoed', getBooleanDecoder()],
-  ['reserved', bytes32],
+  ['lastVersion', getU32Decoder()],
+  ['reserved', fixDecoderSize(getBytesDecoder(), 28)],
 ]);
 
 function accountData(svm: LiteSVM, addr: Address, what: string): Uint8Array {

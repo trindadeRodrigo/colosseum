@@ -181,7 +181,8 @@ impl RecipeVersion {
 
 /// A shared portfolio: one per creator per family, at seeds ["recipe", creator, family_id].
 /// 1,022 bytes. Only the version in effect and the one waiting live here; history is in the
-/// `RecipePublished` events.
+/// `RecipePublished` events. `last_version` took four bytes of what was reserved: the size
+/// and every other offset are as they were.
 #[account]
 #[derive(InitSpace)]
 pub struct Recipe {
@@ -198,7 +199,11 @@ pub struct Recipe {
     pub flags: u8,
     /// Not written yet: the guardian's veto is `cancel_pending`.
     pub vetoed: bool,
-    pub reserved: [u8; 32],
+    /// The highest version number ever given out, cancelled ones included, so a number is
+    /// never used twice. Zero on an account written before this field existed: the number
+    /// of the version in effect stands in for it.
+    pub last_version: u32,
+    pub reserved: [u8; 28],
 }
 
 impl Recipe {
@@ -215,6 +220,13 @@ impl Recipe {
         } else {
             &self.current
         }
+    }
+
+    /// The number the next version takes: one past the highest ever given out. A version
+    /// that was cancelled keeps its number, so what a person reviewed under a number is the
+    /// only content that number ever names.
+    pub fn next_version(&self) -> u32 {
+        self.last_version.max(self.current.version) + 1
     }
 
     /// Moves a waiting version whose time has come into `current`. Whatever writes to a

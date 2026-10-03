@@ -22,6 +22,7 @@ import {
   publishRecipeInstruction,
   RECIPE_SIZE,
   readRecipe,
+  readVault,
   recipeAddress,
   updateRecipeInstruction,
   vaultAddress,
@@ -130,6 +131,7 @@ describe('the shared-portfolio registry', () => {
       expect(state.pending).toEqual(empty);
       expect(state.lastPublishTs).toBe(START);
       expect([state.maxFeeBps, state.flags, state.vetoed]).toEqual([0, 0, false]);
+      expect(state.lastVersion).toBe(1);
       expect(state.reserved.every((byte) => byte === 0)).toBe(true);
 
       expect(events(meta, 'RecipePublished').map(decodeRecipePublished)).toEqual([
@@ -355,6 +357,66 @@ describe('the shared-portfolio registry', () => {
         ANCHOR.ConstraintSeeds,
       );
       expect(readRecipe(svm, recipe).pending.version).toBe(2);
+    });
+
+    // What a person reviewed under a number is the only content that number ever names.
+    it('a cancelled version keeps its number: the next one published takes the one after', async () => {
+      const shown = readRecipe(svm, recipe).pending;
+      expect([shown.version, shown.components]).toEqual([2, second]);
+      // One second before it would take effect the author takes it back, and at the very second
+      // it would have taken effect publishes other weights.
+      setClock(svm, shown.effectiveAt - 1n);
+      expectOk(await cancel(creator));
+      expect(readRecipe(svm, recipe).lastVersion).toBe(2);
+      setClock(svm, shown.effectiveAt);
+      const swapped = [
+        { mint: a, weightBps: 3_000 },
+        { mint: b, weightBps: 3_000 },
+        { mint: c, weightBps: 2_000 },
+        { mint: d, weightBps: 2_000 },
+      ];
+      const meta = expectOk(await update(swapped));
+      const state = readRecipe(svm, recipe);
+      expect([state.pending.version, state.pending.components]).toEqual([3, swapped]);
+      expect([state.current.version, state.lastVersion]).toEqual([1, 3]);
+      expect(events(meta, 'RecipePublished').map(decodeRecipePublished)[0]?.version).toBe(3);
+
+      // Once it is in effect, the portfolio's version is 3. No version 2 was ever in effect, and a
+      // vault created against "version 2" is refused: it cannot be handed the other weights.
+      setClock(svm, state.pending.effectiveAt);
+      const create = async (expectedVersion: number, basketId: bigint) =>
+        send(svm, stranger, [
+          await createVaultInstruction({ owner: stranger, basketId, recipe, expectedVersion }),
+        ]);
+      expectError(await create(2, 1n), ERR.VersionMismatch);
+      expectOk(await create(3, 1n));
+      const vault = readVault(svm, await vaultAddress(stranger.address, 1n));
+      expect(vault.acceptedVersion).toBe(3);
+      expect(vault.positions.slice(0, vault.count).map((p) => p.mint)).toEqual([a, b, c, d]);
+
+      // And the one after that is 4, measured against 3.
+      setClock(svm, state.pending.effectiveAt + DELAY);
+      expectOk(await update(second));
+      const later = readRecipe(svm, recipe);
+      expect([later.current.version, later.pending.version, later.lastVersion]).toEqual([3, 4, 4]);
+    });
+
+    it('a portfolio written before the counter existed numbers from the version in effect', async () => {
+      // The counter sits in what was reserved space, so such an account holds zero there.
+      expectOk(await cancel(creator));
+      const account = svm.getAccount(recipe);
+      if (!account.exists) throw new Error('no recipe');
+      const data = new Uint8Array(account.data);
+      const lastVersionAt = RECIPE_SIZE - 32;
+      expect(new DataView(data.buffer).getUint32(lastVersionAt, true)).toBe(2);
+      data.set([0, 0, 0, 0], lastVersionAt);
+      svm.setAccount({ ...account, data });
+      expect(readRecipe(svm, recipe).lastVersion).toBe(0);
+
+      setClock(svm, START + DELAY + DELAY);
+      expectOk(await update());
+      const state = readRecipe(svm, recipe);
+      expect([state.pending.version, state.lastVersion]).toEqual([2, 2]);
     });
 
     it('there is nothing to cancel once nothing waits', async () => {

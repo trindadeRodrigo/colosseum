@@ -213,6 +213,7 @@ describe('the committed IDL', () => {
         'maxFeeBps',
         'flags',
         'vetoed',
+        'lastVersion',
         'reserved',
       ].map(snake),
     );
