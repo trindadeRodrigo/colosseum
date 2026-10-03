@@ -1,11 +1,16 @@
 'use client';
-import type { ComponentPropsWithoutRef, MouseEvent, ReactNode } from 'react';
+import type { ComponentPropsWithoutRef, KeyboardEvent, MouseEvent, ReactNode } from 'react';
 import { type ButtonSize, type ButtonVariant, buttonClass } from './button-class';
 import { cn } from './cn';
 
 // button.md. One primary per view, and a button that signs is always primary and names the action and
 // the amount ("Sign: swap 5 USDC → USDY"). A busy button changes its label; there is no spinner. A
 // failed mainnet action is never tried again by the button: it returns to rest beside the error.
+//
+// A busy or disabled button stays focusable (`aria-disabled`, never the `disabled` attribute), so it
+// has to refuse the action itself: one click handler serves the button and the link, and while the
+// button is busy or disabled it cancels the click, which is also what a browser fires at a form's
+// submit button when Enter is pressed in a field. Nothing is submitted, followed or called.
 
 export type { ButtonSize, ButtonVariant } from './button-class';
 
@@ -21,9 +26,14 @@ type Shared = {
   disabled?: boolean;
   /** Called when a disabled button is clicked: to move focus to the reason. */
   onDisabledClick?: () => void;
+  /** Called on a click at rest, on a button and on a link alike. Never while busy or disabled. */
+  onClick?: (event: MouseEvent<HTMLElement>) => void;
   /** A toggle: sets `aria-pressed`. For chips and icon buttons. */
   pressed?: boolean;
-  /** With `href` the button is a link (`<a>`): for navigation. */
+  /**
+   * With `href` the button is a link (`<a>`): for navigation. Busy or disabled, it keeps its place in
+   * the tab order and loses its address, so it cannot be followed by a click, a key or a menu.
+   */
   href?: string;
   target?: string;
   rel?: string;
@@ -33,7 +43,7 @@ type Shared = {
 
 type Native = Omit<
   ComponentPropsWithoutRef<'button'>,
-  'children' | 'className' | 'disabled' | 'aria-label'
+  'children' | 'className' | 'disabled' | 'aria-label' | 'onClick'
 >;
 
 export type ButtonProps = Native &
@@ -92,8 +102,21 @@ export function Button({
     title: variant === 'icon' ? rest['aria-label'] : rest.title,
   } as const;
 
+  const click = (event: MouseEvent<HTMLElement>) => {
+    if (inert) {
+      event.preventDefault();
+      if (!busy) onDisabledClick?.();
+      return;
+    }
+    onClick?.(event);
+  };
+
   if (href !== undefined) {
     const external = target === '_blank';
+    // A link with no address hears no Enter, so the key is handled here while it is inert.
+    const key = (event: KeyboardEvent<HTMLAnchorElement>) => {
+      if (event.key === 'Enter' && !busy) onDisabledClick?.();
+    };
     return (
       <a
         aria-label={rest['aria-label']}
@@ -101,8 +124,12 @@ export function Button({
         id={rest.id}
         {...state}
         href={inert ? undefined : href}
+        role={inert ? 'link' : undefined}
+        tabIndex={inert ? 0 : undefined}
         target={target}
         rel={rel ?? (external ? 'noopener' : undefined)}
+        onClick={click}
+        onKeyDown={inert ? key : undefined}
         className={classes}
       >
         {content}
@@ -110,14 +137,6 @@ export function Button({
     );
   }
 
-  const click = (event: MouseEvent<HTMLButtonElement>) => {
-    if (busy) return;
-    if (disabled) {
-      onDisabledClick?.();
-      return;
-    }
-    onClick?.(event);
-  };
   return (
     <button {...rest} {...state} type={type} onClick={click} className={classes}>
       {content}
