@@ -1,6 +1,7 @@
 import { flatten } from '@colosseum/basket';
 import { type Recipe, type Shelf, Targets } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
+import { sizeSleeves } from './exposure';
 import { compose } from './index';
 import { PERSONAL_PARAMS } from './params';
 import { sleeveOfClass } from './registry';
@@ -23,6 +24,7 @@ import {
   type PersonalProposal,
   type PersonalSheet,
 } from './types';
+import { buildWorld } from './world';
 
 // The rules that hold whatever the numbers in the parameter table are. Each is tried on the starting
 // table and on tables Rodrigo might set, some of them unkind.
@@ -147,21 +149,29 @@ describe.each(Object.entries(TABLES))('whatever the numbers: %s', (_name, table)
       }
   });
 
-  it('a plan for a near date never holds less in cash and dollar yield together than for a far one', () => {
-    // Cash alone can be larger at a far date, when stocks that found no room end up in it: the size
-    // of the cash sleeve itself is held to the same rule in properties.test.ts.
-    const kept = (made: PersonalProposal) =>
-      sleeveBps(made, shelf, 'cash') + sleeveBps(made, shelf, 'dollarYield');
+  it('a plan for a near date never holds less in cash and dollar yield than a far date is sized for', () => {
+    // The sleeves never shrink as the date nears, and a plan never holds less than its sleeves ask.
+    // A far plan can still hold extra in dollar yield, when its stocks found no room.
+    const ctx = fixtureContext({ params: table });
     for (const goal of GOALS)
       for (const risk of RISKS) {
-        const dates = [1, 3, 6, 12, 18, 24, 36, 60, 120, 480].map((horizonMonths) =>
-          plan({ goal, risk, horizonMonths, themes: ['the-seven'] }, table),
-        );
-        for (let i = 1; i < dates.length; i += 1) {
-          const [near, far] = [dates[i - 1], dates[i]];
-          if (!near || !far) throw new Error('no plan');
-          const where = `${goal} at ${risk} risk, ${near.sheet.horizonMonths} against ${far.sheet.horizonMonths} months`;
-          expect(kept(near), where).toBeGreaterThanOrEqual(kept(far));
+        let before: { cash: number; kept: number } | null = null;
+        for (const horizonMonths of [1, 3, 6, 12, 18, 24, 36, 60, 120, 480]) {
+          const person = { goal, risk, horizonMonths, themes: ['the-seven'] };
+          const { sized } = sizeSleeves(buildWorld(sheet(person), shelf, ctx));
+          const asked = { cash: sized.cash, kept: sized.cash + sized.dollarYield };
+          const made = plan(person, table);
+          const where = `${goal} at ${risk} risk, ${horizonMonths} months`;
+          expect(sleeveBps(made, shelf, 'cash'), where).toBeGreaterThanOrEqual(asked.cash);
+          expect(
+            sleeveBps(made, shelf, 'cash') + sleeveBps(made, shelf, 'dollarYield'),
+            where,
+          ).toBeGreaterThanOrEqual(asked.kept);
+          if (before) {
+            expect(before.cash, where).toBeGreaterThanOrEqual(asked.cash);
+            expect(before.kept, where).toBeGreaterThanOrEqual(asked.kept);
+          }
+          before = asked;
         }
       }
   });

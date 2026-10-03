@@ -538,12 +538,24 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
     );
     for (const t of targets) {
       const line = held.find((l) => l.assetId === t.asset);
-      // A target is whole basis points of its chain, so it is the line to within one of them.
+      // A target is whole basis points of its chain, and so is each component that feeds it: it is
+      // its line to within one basis point for each of them, and one more where a shared portfolio
+      // is opened into whole basis points again.
+      const through = r.components.filter(
+        (c) =>
+          c.kind === 'index' &&
+          shelf.families
+            .find((f) => f.meta.slug === c.family)
+            ?.recipes.find((x) => x.chain === r.chain)
+            ?.components.some((x) => x.kind === 'asset' && x.asset === t.asset),
+      ).length;
+      const direct = r.components.some((c) => c.kind === 'asset' && c.asset === t.asset) ? 1 : 0;
       const exact = (cents(r.amountUsd) * t.weightBps) / 10_000;
       const oneBp = cents(r.amountUsd) / 10_000;
       if (line)
         say(
-          Math.abs(cents(line.amountUsd) - exact) <= oneBp + 1,
+          Math.abs(cents(line.amountUsd) - exact) <=
+            (direct + through + (through > 0 ? 1 : 0)) * oneBp + 1,
           `${t.asset}: its target is not its line`,
         );
     }
