@@ -9,8 +9,8 @@ import {IBasketVault} from "../src/interfaces/IBasketVault.sol";
 import {IVaultConfig} from "../src/interfaces/IVaultConfig.sol";
 import {Swap, Weight} from "../src/interfaces/Types.sol";
 import {SwapFixture} from "./helpers/SwapFixture.sol";
-import {MockRouter, StickyPermit2} from "./mocks/Routers.sol";
-import {BackdoorToken, FreezableToken, MockToken, StickyToken} from "./mocks/Tokens.sol";
+import {GreedyPermit2, MockRouter, StickyPermit2} from "./mocks/Routers.sol";
+import {BackdoorToken, FreezableToken, MockToken, PermissiveToken, StickyToken} from "./mocks/Tokens.sol";
 
 /// The owner's swap. The vault judges what its own balances did and never what the router says, so most of
 /// this file is a router trying each way to cheat. Every test runs with the stock tokens at 6, 8 and 18
@@ -295,6 +295,109 @@ abstract contract OwnerSwapTest is SwapFixture {
         assertEq(cash.balanceOf(address(vault)), 900 * USD);
     }
 
+    /// The trade is honest, and a token that was no part of it stops answering for its balance. The vault
+    /// cannot tell that it still holds it, so the swap fails.
+    function test_hostile_makesAnotherTokenUnreadable() public {
+        FreezableToken frozen = new FreezableToken(dec);
+        _list(address(frozen), dec);
+        frozen.mint(address(direct), 10 * unit);
+        _run(_swap(direct, address(cash), address(frozen), 100 * USD, 2 * unit));
+
+        Swap memory s = _swap(direct, address(cash), address(stockA), 600 * USD, 3 * unit);
+        s.data = abi.encodeCall(
+            MockRouter.swapAndCall,
+            (
+                address(cash),
+                address(stockA),
+                600 * USD,
+                3 * unit,
+                address(frozen),
+                abi.encodeCall(FreezableToken.setBricked, (true))
+            )
+        );
+        _expectRevert(
+            s,
+            abi.encodeWithSelector(
+                IBasketVault.OtherTokenDebited.selector, address(frozen), 2 * unit, type(uint256).max
+            )
+        );
+        assertEq(cash.balanceOf(address(vault)), 900 * USD);
+    }
+
+    /// A token that was sent to the vault from outside is not in `tokens`. Once the owner trades it, it is:
+    /// its balance is held to the swap's limit like any other, and `withdrawAll` covers what is left.
+    function test_ownerSwap_aTokenSentInFromOutside_isTrackedOnceTraded() public {
+        stockB.mint(address(vault), 10 * unit);
+        assertEq(vault.tokens().length, 1);
+
+        Swap memory greedy = _swap(direct, address(stockB), address(cash), unit, 100 * USD);
+        greedy.data = abi.encodeCall(
+            MockRouter.swapAndSeize, (address(stockB), address(cash), unit, 100 * USD, address(stockB), 1)
+        );
+        _expectRevert(
+            greedy, abi.encodeWithSelector(IBasketVault.SpentTooMuch.selector, address(stockB), unit + 1, unit)
+        );
+
+        _run(_swap(direct, address(stockB), address(cash), unit, 100 * USD));
+        address[] memory tracked = vault.tokens();
+        assertEq(tracked.length, 2);
+        assertEq(tracked[1], address(stockB));
+
+        vm.prank(owner);
+        assertEq(vault.withdrawAll().length, 0);
+        assertEq(stockB.balanceOf(owner), 9 * unit);
+    }
+
+    // ---- the approval is for exactly `amountIn`
+
+    /// A router that simply asks the token for more than `amountIn` gets nothing: the allowance is exact.
+    function test_exactApproval_direct_aLargerPullFailsAtTheToken() public {
+        Swap memory s = _swap(direct, address(cash), address(stockA), 600 * USD, 3 * unit);
+        s.data = abi.encodeCall(MockRouter.swap, (address(cash), address(stockA), 600 * USD + 1, 3 * unit));
+        _expectRevert(
+            s,
+            abi.encodeWithSelector(
+                IBasketVault.RouterFailed.selector, address(direct), abi.encodePacked(MockRouter.PullFailed.selector)
+            )
+        );
+        _assertUntouched();
+    }
+
+    /// Through Permit2 there are two allowances, and each is exact on its own. Here Permit2 keeps no count,
+    /// so the only limit is the vault's allowance to Permit2 on the token.
+    function test_exactApproval_permit2_theTokenAllowanceIsExact() public {
+        vm.etch(PERMIT2_ADDRESS, address(new GreedyPermit2()).code);
+        Swap memory s = _swap(viaPermit2, address(cash), address(stockA), 600 * USD, 3 * unit);
+        s.data = abi.encodeCall(MockRouter.swap, (address(cash), address(stockA), 600 * USD + 1, 3 * unit));
+        _expectRevert(
+            s,
+            abi.encodeWithSelector(
+                IBasketVault.RouterFailed.selector,
+                address(viaPermit2),
+                abi.encodePacked(MockRouter.PullFailed.selector)
+            )
+        );
+        _assertUntouched();
+    }
+
+    /// And here the token lets Permit2 move anything, so the only limit is the amount inside Permit2.
+    function test_exactApproval_permit2_theAmountInsidePermit2IsExact() public {
+        PermissiveToken loose = new PermissiveToken(6);
+        _list(address(loose), 6);
+        loose.mint(address(vault), 1000 * USD);
+        Swap memory s = _swap(viaPermit2, address(loose), address(stockA), 600 * USD, 3 * unit);
+        s.data = abi.encodeCall(MockRouter.swap, (address(loose), address(stockA), 600 * USD + 1, 3 * unit));
+        _expectRevert(
+            s,
+            abi.encodeWithSelector(
+                IBasketVault.RouterFailed.selector,
+                address(viaPermit2),
+                abi.encodePacked(MockRouter.PullFailed.selector)
+            )
+        );
+        assertEq(loose.balanceOf(address(vault)), 1000 * USD);
+    }
+
     // ---- A11 and I3: no allowance outlives the swap
 
     /// The router takes less than it was approved for. What it did not use is taken back, both ways of
@@ -426,6 +529,44 @@ abstract contract OwnerSwapTest is SwapFixture {
         }
         assertEq(cash.balanceOf(address(mine)), 1000 * USD, "no inner call ran");
         assertEq(stockA.balanceOf(address(mine)), 0);
+    }
+
+    /// The first swaps of a new vault run inside `start`, under the same guard: a router that is also the
+    /// owner cannot withdraw in the middle of the first buy.
+    function test_A17_reentryDuringTheFirstBuy_isRefused() public {
+        MockRouter both = new MockRouter(false);
+        vm.prank(admin);
+        factory.setRouter(address(both), 1);
+        stockA.mint(address(both), 100 * unit);
+        cash.mint(address(both), 1000 * USD);
+        bytes32 planId = keccak256("plan-router");
+        address predicted = factory.vaultOf(address(both), planId);
+        both.act(address(cash), abi.encodeCall(IERC20.approve, (predicted, type(uint256).max)));
+
+        Swap memory s = _swap(both, address(cash), address(stockA), 600 * USD, 3 * unit);
+        s.data = abi.encodeCall(
+            MockRouter.swapAndCall,
+            (
+                address(cash),
+                address(stockA),
+                600 * USD,
+                3 * unit,
+                predicted,
+                abi.encodeCall(BasketVault.withdraw, (address(cash), 400 * USD))
+            )
+        );
+        bytes memory create = abi.encodeCall(
+            factory.createVaultAndBuy, (planId, new Weight[](0), bytes32(0), 0, false, 1000 * USD, _swaps(s))
+        );
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IBasketVault.RouterFailed.selector,
+                address(both),
+                abi.encodePacked(ReentrancyGuardTransient.ReentrancyGuardReentrantCall.selector)
+            )
+        );
+        both.act(address(factory), create);
+        assertEq(predicted.code.length, 0);
     }
 
     /// A router that is not the owner re-enters and meets the owner check; `start` is not the owner's and

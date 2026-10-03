@@ -388,3 +388,17 @@ contract StickyToken is MockToken {
         return true;
     }
 }
+
+/// A token that lets Permit2 move anyone's balance with no allowance, as some tokens do for it by default.
+/// Against it the only limit left is the amount the vault approved inside Permit2.
+contract PermissiveToken is MockToken {
+    address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+
+    constructor(uint8 decimals_) MockToken(decimals_) {}
+
+    function transferFrom(address from, address to, uint256 amount) external override returns (bool) {
+        if (msg.sender != PERMIT2) require(_spend(from, msg.sender, amount), InsufficientAllowance());
+        require(_move(from, to, amount), InsufficientBalance());
+        return true;
+    }
+}

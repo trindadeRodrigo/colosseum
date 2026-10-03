@@ -34,7 +34,7 @@ contract MockPermit2 {
         allowed.expiration = expiration == 0 ? uint48(block.timestamp) : expiration;
     }
 
-    function transferFrom(address from, address to, uint160 amount, address token) external {
+    function transferFrom(address from, address to, uint160 amount, address token) external virtual {
         PackedAllowance storage allowed = allowance[from][token][msg.sender];
         require(block.timestamp <= allowed.expiration, AllowanceExpired(allowed.expiration));
         uint256 most = allowed.amount;
@@ -54,6 +54,15 @@ contract StickyPermit2 is MockPermit2 {
         PackedAllowance storage allowed = allowance[msg.sender][token][spender];
         allowed.amount = amount;
         allowed.expiration = expiration == 0 ? uint48(block.timestamp) : expiration;
+    }
+}
+
+/// A Permit2 that keeps no count: it moves whatever it is asked to, as far as the token lets it. Against it
+/// the only limit left is the allowance the vault gave Permit2 on the token itself.
+contract GreedyPermit2 is MockPermit2 {
+    function transferFrom(address from, address to, uint160 amount, address token) external override {
+        (bool ok, bytes memory ret) = token.call(abi.encodeCall(IPullable.transferFrom, (from, to, amount)));
+        require(ok && (ret.length == 0 || abi.decode(ret, (bool))), TransferFailed());
     }
 }
 
