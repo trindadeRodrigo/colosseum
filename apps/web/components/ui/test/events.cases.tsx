@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Button } from '../Button';
+import { CompactNav } from '../CompactNav';
 import { Composer } from '../Composer';
 import { ConstraintSheet } from '../ConstraintSheet';
 import { SHEET_CAPITAL, sheetGroups } from '../fixtures/mock';
@@ -137,4 +138,27 @@ export const twoPins = (obs: PinSource) => (
       <ProvenancePin value="4.10%" obs={obs} />
     </li>
   </ul>
+);
+
+// The landing's nav, compact, with something after it on the page.
+
+export const navOnPage = (
+  <div>
+    <CompactNav
+      symbol={<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" />}
+      wordmark="tenonfi"
+      homeLabel="tenonfi home"
+      links={[
+        { label: 'Products', href: '#products' },
+        { label: 'Invest', href: '#invest' },
+      ]}
+      cta={{ label: 'Sign in', href: '#simulate' }}
+      contentId="content"
+    />
+    <main id="content">
+      <button type="button" id="elsewhere">
+        elsewhere
+      </button>
+    </main>
+  </div>
 );

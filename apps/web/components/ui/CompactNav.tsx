@@ -1,5 +1,5 @@
 'use client';
-import { type ReactNode, useEffect, useId, useState } from 'react';
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { Button } from './Button';
 import { buttonClass } from './button-class';
 import { cn } from './cn';
@@ -74,6 +74,9 @@ export function CompactNav({
   const [seen, setSeen] = useState(stage === undefined);
   const [open, setOpen] = useState(false);
   const sheet = useId();
+  const header = useRef<HTMLElement>(null);
+  const menu = useRef<HTMLButtonElement>(null);
+  const firstLink = useRef<HTMLAnchorElement>(null);
   const compact = controlled ?? seen;
   const compactAt = stage?.compactAt;
   const releaseAbove = stage?.releaseAbove;
@@ -108,8 +111,32 @@ export function CompactNav({
     if (!compact) setOpen(false);
   }, [compact]);
 
+  // The sheet of links on a phone. It is not next to its button in the page (the call to action sits
+  // between), so opening it takes focus to its first link. Escape closes it and gives focus back to
+  // the button. A press outside the header closes it, and so does focus that moves out of the header.
+  useEffect(() => {
+    if (!open) return;
+    firstLink.current?.focus();
+    const outside = (event: PointerEvent | FocusEvent) => {
+      if (header.current && !header.current.contains(event.target as Node)) setOpen(false);
+    };
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setOpen(false);
+      menu.current?.focus();
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('focusin', outside);
+    document.addEventListener('keydown', onEscape);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('focusin', outside);
+      document.removeEventListener('keydown', onEscape);
+    };
+  }, [open]);
+
   return (
-    <header data-ui="compact-nav" data-compact={compact} className={className}>
+    <header ref={header} data-ui="compact-nav" data-compact={compact} className={className}>
       <a
         href={`#${contentId}`}
         className={cn(
@@ -165,6 +192,7 @@ export function CompactNav({
             </a>
           ))}
           <button
+            ref={menu}
             type="button"
             aria-label={text.menu}
             title={text.menu}
@@ -186,9 +214,10 @@ export function CompactNav({
         hidden={!open}
         className="fixed top-[calc(env(safe-area-inset-top,0px)+78px)] right-4 left-4 z-30 flex flex-col rounded-md border border-border bg-card p-2 min-[820px]:hidden"
       >
-        {links.map((link) => (
+        {links.map((link, index) => (
           <a
             key={link.href}
+            ref={index === 0 ? firstLink : undefined}
             href={link.href}
             aria-current={link.current ? 'true' : undefined}
             onClick={() => setOpen(false)}
