@@ -1,4 +1,4 @@
-import { createElement } from 'react';
+import { createElement, isValidElement } from 'react';
 import { describe, expect, it } from 'vitest';
 import { goalCard } from './test/cases';
 import { all, classes, name, one, render, role, tag, text, ui } from './test/html';
@@ -97,7 +97,9 @@ describe('GoalCard (goal-card.md)', () => {
   });
 
   it('shows no picture, ring or bar', () => {
-    for (const node of Object.values(goalCard))
+    const cards = Object.values(goalCard).filter((node) => isValidElement(node));
+    expect(cards.length).toBeGreaterThan(4);
+    for (const node of cards)
       expect(
         all(render(node), (e) => ['img', 'progress', 'meter', 'picture'].includes(e.tag)),
       ).toHaveLength(0);
