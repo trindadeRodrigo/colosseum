@@ -39,6 +39,7 @@ import {
   SYSTEM_ACCOUNT_ALREADY_IN_USE,
   send,
   setClock,
+  unsigned,
 } from './src/env';
 import { createMint, TOKEN_PROGRAM } from './src/tokens';
 
@@ -255,6 +256,9 @@ describe('the shared-portfolio registry', () => {
     it('is the creator alone', async () => {
       for (const who of [stranger, guardian, admin])
         expectError(await update(second, who), ANCHOR.ConstraintHasOne);
+      // Naming the creator is not enough: the creator signs.
+      const named = await updateRecipeInstruction({ creator, recipe, components: second });
+      expectError(await send(svm, stranger, [unsigned(named)]), ANCHOR.AccountNotSigner);
       expect(readRecipe(svm, recipe).pending).toEqual(empty);
     });
 
@@ -322,6 +326,11 @@ describe('the shared-portfolio registry', () => {
 
     it('nobody else can, the admin included', async () => {
       for (const who of [stranger, admin]) expectError(await cancel(who), ERR.NotCreatorOrGuardian);
+      // Naming the creator or the guardian is not enough: they sign.
+      for (const who of [creator, guardian]) {
+        const named = await cancelPendingInstruction({ signer: who, recipe });
+        expectError(await send(svm, stranger, [unsigned(named)]), ANCHOR.AccountNotSigner);
+      }
       expect(readRecipe(svm, recipe).pending.version).toBe(2);
     });
 

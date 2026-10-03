@@ -37,10 +37,10 @@ import {
   expectError,
   expectOk,
   fundedSigner,
-  readonly,
   SYSTEM_PROGRAM,
   send,
   setClock,
+  unsigned,
 } from './src/env';
 import { createAta, createMint, mintTo, type TestMint, TOKEN_PROGRAM } from './src/tokens';
 
@@ -385,12 +385,8 @@ describe('a vault and its targets', () => {
     it('is the owner alone, and the owner must sign', async () => {
       expectOk(await follow(1));
       expectError(await setTargets(own(), stranger), ANCHOR.ConstraintHasOne);
-      const instruction = await setTargetsInstruction({ owner, vault, targets: own() });
-      const unsigned = {
-        ...instruction,
-        accounts: [readonly(owner.address), ...(instruction.accounts ?? []).slice(1)],
-      };
-      expectError(await send(svm, stranger, [unsigned]), ANCHOR.AccountNotSigner);
+      const named = await setTargetsInstruction({ owner, vault, targets: own() });
+      expectError(await send(svm, stranger, [unsigned(named)]), ANCHOR.AccountNotSigner);
       expect(targetsOf(vault)).toEqual(first);
     });
 

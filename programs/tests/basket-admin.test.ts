@@ -29,6 +29,7 @@ import {
   MOCK_ROUTER_PROGRAM,
   SYSTEM_PROGRAM,
   send,
+  unsigned,
 } from './src/env';
 
 const TWO_DAYS = 172_800;
@@ -254,6 +255,20 @@ describe('basket admin', () => {
         ANCHOR.ConstraintSeeds,
       );
     });
+  });
+
+  it('naming the admin, the guardian or the proposed admin is not enough: each must sign', async () => {
+    expectOk(await send(svm, admin, [await proposeAdminInstruction(admin, keeper.address)]));
+    const named = [
+      await setParamsInstruction(admin, DEFAULT_PARAMS),
+      await launchInstruction(admin),
+      await pauseKeeperInstruction(guardian),
+      await acceptAdminInstruction(keeper),
+    ];
+    const before = await readConfig(svm);
+    for (const instruction of named)
+      expectError(await send(svm, stranger, [unsigned(instruction)]), ANCHOR.AccountNotSigner);
+    expect(await readConfig(svm)).toEqual(before);
   });
 
   describe('the keeper pause', () => {

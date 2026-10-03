@@ -86,7 +86,11 @@ impl UpsertAsset<'_> {
         );
         require!(args.price_kind <= 1, BasketError::ParamOutOfBounds);
         require!(
-            args.price_index < PRICE_ENTRIES && args.twap_index < PRICE_ENTRIES,
+            args.price_index < PRICE_ENTRIES,
+            BasketError::ParamOutOfBounds
+        );
+        require!(
+            args.twap_index < PRICE_ENTRIES,
             BasketError::ParamOutOfBounds
         );
         require!(args.session <= 1, BasketError::ParamOutOfBounds);

@@ -19,9 +19,11 @@ import {
   discriminator,
   expectError,
   expectOk,
+  MOCK_ROUTER_PROGRAM,
   readonly,
   SYSTEM_PROGRAM,
   send,
+  unsigned,
   writable,
 } from './src/env';
 import { setPriceInstruction } from './src/mock-router';
@@ -197,25 +199,18 @@ describe('owner_swap through the allowed router', () => {
         await swapThroughExchange(w, { amountIn: 10_000000n, signer: w.stranger }),
         ANCHOR.ConstraintHasOne,
       );
-      const result = await send(w.svm, w.stranger, [
-        await (async () => {
-          const instruction = await ownerSwapInstruction({
-            owner: w.owner,
-            vault: w.vault,
-            inputMint: w.cash,
-            outputMint: w.stock,
-            maxIn: 1n,
-            minOut: 0n,
-            router: (await readConfig(w.svm)).routerProgram,
-            data: discriminator('route_v2'),
-            routerAccounts: [],
-          });
-          return {
-            ...instruction,
-            accounts: [readonly(w.owner.address), ...(instruction.accounts ?? []).slice(1)],
-          };
-        })(),
-      ]);
+      const named = await ownerSwapInstruction({
+        owner: w.owner,
+        vault: w.vault,
+        inputMint: w.cash,
+        outputMint: w.stock,
+        maxIn: 1n,
+        minOut: 0n,
+        router: (await readConfig(w.svm)).routerProgram,
+        data: discriminator('route_v2'),
+        routerAccounts: [],
+      });
+      const result = await send(w.svm, w.stranger, [unsigned(named)]);
       expectError(result, ANCHOR.AccountNotSigner);
       expect(held()).toEqual(untouched);
     });
@@ -241,6 +236,19 @@ describe('owner_swap through the allowed router', () => {
       );
       expect(held()).toEqual(untouched);
       expect(balance(w.svm, looseCash)).toBe(50_000000n);
+    });
+
+    it('an account of another program that only looks like a token account of the vault is not one', async () => {
+      // The bytes of the vault's cash account, under a program that is not a token program: no
+      // token program will move anything on its word, so it is no business of the vault's.
+      const real = w.svm.getAccount(w.vaultCash);
+      if (!real.exists) throw new Error('no cash account');
+      const lookalike = (await generateKeyPairSigner()).address;
+      w.svm.setAccount({ ...real, address: lookalike, programAddress: MOCK_ROUTER_PROGRAM });
+      expectOk(
+        await swapThroughExchange(w, { amountIn: 10_000000n, extra: [writable(lookalike)] }),
+      );
+      expect(held()).toEqual({ cash: CASH - 10_000000n, stock: 2_000000n });
     });
 
     it('refuses a token program that is not the one the mint belongs to', async () => {

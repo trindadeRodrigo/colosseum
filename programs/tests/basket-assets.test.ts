@@ -34,6 +34,7 @@ import {
   SYSTEM_ACCOUNT_ALREADY_IN_USE,
   SYSTEM_PROGRAM,
   send,
+  unsigned,
 } from './src/env';
 import { setHook } from './src/hook';
 import {
@@ -188,6 +189,11 @@ describe('the asset list', () => {
       expectError(
         await send(svm, stranger, [await upsertAssetInstruction(stranger, stock.address)]),
         ANCHOR.ConstraintHasOne,
+      );
+      // Naming the admin is not enough: the admin signs.
+      expectError(
+        await send(svm, stranger, [unsigned(await upsertAssetInstruction(admin, stock.address))]),
+        ANCHOR.AccountNotSigner,
       );
       expect((await readAssets(svm)).count).toBe(0);
     });

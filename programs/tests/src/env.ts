@@ -15,6 +15,7 @@ import {
   getAddressEncoder,
   getProgramDerivedAddress,
   type Instruction,
+  isWritableRole,
   type KeyPairSigner,
   lamports,
   pipe,
@@ -214,6 +215,22 @@ export function programSigner(addr: Address): TransactionSigner {
     signTransactions: async () => {
       throw new Error(`${addr} is signed for by a program, never by a key`);
     },
+  };
+}
+
+/** The instruction with its first account, the one that should sign, named but not signing. */
+export function unsigned(instruction: Instruction): Instruction {
+  const [first, ...rest] = instruction.accounts ?? [];
+  if (!first) throw new Error('the instruction has no accounts');
+  return {
+    ...instruction,
+    accounts: [
+      {
+        address: first.address,
+        role: isWritableRole(first.role) ? AccountRole.WRITABLE : AccountRole.READONLY,
+      },
+      ...rest,
+    ],
   };
 }
 

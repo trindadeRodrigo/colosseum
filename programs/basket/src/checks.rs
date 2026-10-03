@@ -299,7 +299,6 @@ pub fn refuse_limit<T>(result: core::result::Result<T, LimitReason>) -> Result<T
 
 /// What the program reads of a token account, of either token program.
 pub struct TokenView {
-    pub mint: Pubkey,
     pub owner: Pubkey,
     pub amount: u64,
     pub has_delegate: bool,
@@ -316,7 +315,6 @@ pub fn token_view(account: &AccountInfo) -> Option<TokenView> {
     let data = account.try_borrow_data().ok()?;
     let state = StateWithExtensions::<TokenAccountState>::unpack(&data).ok()?;
     Some(TokenView {
-        mint: state.base.mint,
         owner: state.base.owner,
         amount: state.base.amount,
         has_delegate: state.base.delegate.is_some(),

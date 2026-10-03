@@ -1,4 +1,4 @@
-import type { Address, KeyPairSigner } from '@solana/kit';
+import type { AccountMeta, Address, KeyPairSigner } from '@solana/kit';
 import type { LiteSVM } from 'litesvm';
 import {
   createVaultInstruction,
@@ -146,6 +146,8 @@ export type SwapOptions = {
   vaultOutput?: Address;
   config?: Address;
   assets?: Address;
+  /** More accounts after the exchange's own, which it ignores. */
+  extra?: AccountMeta[];
 };
 
 /** An owner swap through the test exchange: cash for the stock unless the mints say otherwise. */
@@ -177,6 +179,7 @@ export async function swapThroughExchange(w: SwapWorld, o: SwapOptions): Promise
       config: o.config,
       assets: o.assets,
       ...route,
+      routerAccounts: [...route.routerAccounts, ...(o.extra ?? [])],
     }),
   ]);
 }
