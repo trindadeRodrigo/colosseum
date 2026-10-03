@@ -115,11 +115,9 @@ async function buildFor(
     return found.address;
   };
   switch (leg.kind) {
-    case 'approve': {
-      const existing = await planVault(entry, owner, basketId);
-      const spender = entry.approveSpender(existing?.address ?? null);
-      return adapter.buildApprove({ owner, spender, amountRaw: cashRaw });
-    }
+    // The adapter works out who may take the cash from the plan: nobody here names a spender.
+    case 'approve':
+      return adapter.buildApprove({ owner, basketId, amountRaw: cashRaw });
     case 'create_vault': {
       const proposal = await loadProposal(deps.db, request.proposalId);
       const recipe = proposal?.recipes.find((r) => r.chain === leg.chain);
@@ -152,9 +150,9 @@ async function buildFor(
  * What the chain knows of an attempt: by its transaction id when one was reported, by its bytes when
  * none was.
  */
-async function fateOf(entry: ChainEntry, attempt: Attempt) {
-  const { txId, validUntil } = attempt;
-  if (!txId) return refusing(() => entry.probe.fate(attempt));
+async function fateOf(entry: ChainEntry, attempt: Attempt, signer: Address) {
+  const { txId, validUntil, messageHash, nonce } = attempt;
+  if (!txId) return refusing(() => entry.adapter.fate({ messageHash, signer, validUntil, nonce }));
   const { status } = await refusing(() => entry.adapter.track(txId, validUntil ?? undefined));
   if (status === 'confirmed' || status === 'reverted') return { state: 'landed' as const, txId };
   return { state: status === 'expired' ? ('gone' as const) : ('open' as const) };
@@ -210,7 +208,7 @@ function afterOutcome(deps: OrderDeps, stored: StoredOrder, status: Outcome['sta
 async function assertNothingInFlight(deps: OrderDeps, stored: StoredOrder, leg: Leg) {
   const latest = latestAttempt(stored, leg);
   if (!latest || final(latest)) return;
-  const fate = await fateOf(deps.chains.get(leg.chain), latest);
+  const fate = await fateOf(deps.chains.get(leg.chain), latest, ownerOn(stored.order, leg));
   if (fate.state === 'landed') {
     const status = await settle(deps, leg, latest, { ...latest, txId: fate.txId });
     await afterOutcome(deps, stored, status);
@@ -298,9 +296,9 @@ export async function buildLeg(
   return { tx: stampTx(built, { legId: leg.id, attemptId: attempt.id }), attempt };
 }
 
-function refuseUnread<T>(work: () => T): T {
+async function refuseUnread<T>(work: () => Promise<T>): Promise<T> {
   try {
-    return work();
+    return await work();
   } catch {
     throw new Refusal(422, 'the signed transaction cannot be read');
   }
@@ -328,7 +326,7 @@ export async function reportLeg(
   let attempt: Attempt | undefined;
   let sent: { txId: string; validUntil: string | null };
   if ('signedTx' in body) {
-    const hash = refuseUnread(() => entry.probe.messageHashOf(body.signedTx));
+    const hash = await refuseUnread(() => entry.adapter.messageHashOf(body.signedTx));
     attempt = attempts.find((a) => a.messageHash === hash);
     if (!attempt)
       throw new Refusal(
@@ -341,11 +339,11 @@ export async function reportLeg(
     if (attempt.txId) sent = { txId: attempt.txId, validUntil: attempt.validUntil };
     else if (attempt.status === 'built') {
       assertBuilds(entry);
-      const relayed = await refusing(() => entry.probe.relay(body.signedTx, hash));
+      const relayed = await refusing(() => entry.adapter.relay(body.signedTx));
       sent = { txId: relayed.txId, validUntil: relayed.validUntil ?? attempt.validUntil };
     } else {
       // Closed before it was sent. The server does not send it now, but looks whether it landed anyway.
-      const fate = await fateOf(entry, attempt);
+      const fate = await fateOf(entry, attempt, ownerOn(stored.order, leg));
       if (fate.state !== 'landed')
         throw new Refusal(
           409,
@@ -358,7 +356,10 @@ export async function reportLeg(
     attempt = attempts.find((a) => a.txId === body.txId);
     for (const a of attempts) {
       if (attempt) break;
-      if (a.txId === null && (await refusing(() => entry.probe.carries(body.txId, a.messageHash))))
+      if (
+        a.txId === null &&
+        (await refusing(() => entry.adapter.carries(body.txId, a.messageHash)))
+      )
         attempt = a;
     }
     if (!attempt) throw new Refusal(409, 'that transaction is not the one built for this step');
@@ -383,7 +384,7 @@ export async function cancelLeg(
   const leg = legOf(stored, legId);
   const attempt = latestAttempt(stored, leg);
   if (!attempt || !live(attempt)) throw new Refusal(409, 'this step has no attempt to cancel');
-  const fate = await fateOf(deps.chains.get(leg.chain), attempt);
+  const fate = await fateOf(deps.chains.get(leg.chain), attempt, ownerOn(stored.order, leg));
   if (fate.state === 'landed') {
     const status = await settle(deps, leg, attempt, { ...attempt, txId: fate.txId });
     await afterOutcome(deps, stored, status);

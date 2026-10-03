@@ -595,11 +595,11 @@ describe('a leg settles only on the transaction that was built for it', () => {
         ...inner,
         get: (chain) => {
           const entry = inner.get(chain);
-          const relay: typeof entry.probe.relay = (signedTx, hash) => {
+          const relay: typeof entry.adapter.relay = (signedTx) => {
             relays += 1;
-            return entry.probe.relay(signedTx, hash);
+            return entry.adapter.relay(signedTx);
           };
-          return { ...entry, probe: { ...entry.probe, relay } };
+          return { ...entry, adapter: { ...entry.adapter, relay } };
         },
       }),
     });

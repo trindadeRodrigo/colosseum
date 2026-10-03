@@ -1,9 +1,16 @@
-import { BasketTx, BuiltTx, ChainError, type ChainId, stampTx } from '@colosseum/schemas';
+import {
+  BasketTx,
+  BuiltTx,
+  ChainError,
+  type ChainId,
+  evmCallPreimage,
+  stampTx,
+} from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
 import { createMockAdapter } from './adapter';
 import { displayAmount, fromScaled, valueScaled } from './amounts';
 import { mockFixture } from './fixture';
-import { mockAddress } from './ids';
+import { mockAddress, sha256Hex } from './ids';
 
 // What the mock does beyond the adapter contract: it settles what it built, so a walking skeleton can
 // run a whole order on it, and it does so the same way every time.
@@ -134,8 +141,7 @@ describe('chain-mock', () => {
       slippageBps: 50,
     };
     expect(await code(adapter.buildCreateVault(args))).toBe('AllowanceTooLow');
-    const spender = mock.addresses.factory;
-    await mock.send(await adapter.buildApprove({ owner, spender, amountRaw: '1000000000' }));
+    await mock.send(await adapter.buildApprove({ owner, basketId: '42', amountRaw: '1000000000' }));
     await mock.send(await adapter.buildCreateVault(args));
     const vault = (await adapter.getVaults(owner))[0];
     expect(vault?.cash.raw).toBe('0');
@@ -359,9 +365,12 @@ describe('chain-mock', () => {
 
   it('refuses bad arguments as BadInput, never as another kind of error', async () => {
     const { adapter, mock, owner, targets } = await funded('robinhood');
-    const spender = mock.addresses.factory;
-    expect(await code(adapter.buildApprove({ owner, spender, amountRaw: '1.5' }))).toBe('BadInput');
-    expect(await code(adapter.buildApprove({ owner, spender, amountRaw: '-5' }))).toBe('BadInput');
+    const approve = { owner, basketId: '1' };
+    expect(await code(adapter.buildApprove({ ...approve, amountRaw: '1.5' }))).toBe('BadInput');
+    expect(await code(adapter.buildApprove({ ...approve, amountRaw: '-5' }))).toBe('BadInput');
+    // A caller cannot name who may take the cash: the adapter works it out from the plan.
+    const named = { ...approve, amountRaw: '5', spender: mock.addresses.factory };
+    expect(await code(adapter.buildApprove(named))).toBe('BadInput');
     const create = { owner, basketId: '1', targets, autoFollow: false, slippageBps: 50 };
     expect(await code(adapter.buildCreateVault({ ...create, owner: 'nobody' }))).toBe('BadInput');
     expect(await code(adapter.buildCreateVault({ ...create, depositRaw: '1.5' }))).toBe('BadInput');
@@ -418,12 +427,11 @@ describe('chain-mock', () => {
 
   it('spends an EVM approval by what is deposited, not all at once', async () => {
     const { adapter, mock, owner, targets } = await funded('robinhood');
-    const spender = mock.addresses.factory;
-    await mock.send(await adapter.buildApprove({ owner, spender, amountRaw: '1000' }));
+    await mock.send(await adapter.buildApprove({ owner, basketId: '1', amountRaw: '1000' }));
     const create = { owner, basketId: '1', targets, autoFollow: false, slippageBps: 50 };
     await mock.send(await adapter.buildCreateVault({ ...create, depositRaw: '1000' }));
     const vault = (await adapter.getVaults(owner))[0]?.address ?? '';
-    await mock.send(await adapter.buildApprove({ owner, spender, amountRaw: '10' }));
+    await mock.send(await adapter.buildApprove({ owner, basketId: '1', amountRaw: '10' }));
     const deposit = (amountRaw: string) =>
       adapter.buildDeposit({ vault, amountRaw, slippageBps: 50 });
     await mock.send(await deposit('4'));
@@ -433,13 +441,149 @@ describe('chain-mock', () => {
     expect((await adapter.getVault(vault))?.cash.raw).toBe('1010');
   });
 
+  it('approves the factory before the vault exists and the vault after, from the plan id alone', async () => {
+    const { adapter, mock, owner, targets } = await funded('robinhood');
+    const cashToken = (await adapter.listAssets()).find((a) => a.id === mock.cash)?.address;
+    const first = await adapter.buildApprove({ owner, basketId: '9', amountRaw: '1000' });
+    // An approval is a call to the cash token; who may take the cash is in its bytes.
+    expect(first.evm?.to).toBe(cashToken);
+    const spenderOf = (payload: string) =>
+      JSON.parse(Buffer.from(payload.slice(2), 'hex').toString()).op.a.spender;
+    expect(spenderOf(first.payload)).toBe(mock.addresses.factory);
+    await mock.send(first);
+    const create = { owner, basketId: '9', targets, autoFollow: false, slippageBps: 50 };
+    await mock.send(await adapter.buildCreateVault({ ...create, depositRaw: '1000' }));
+    const vault = (await adapter.getVaults(owner))[0]?.address ?? '';
+    const later = await adapter.buildApprove({ owner, basketId: '9', amountRaw: '500' });
+    expect(spenderOf(later.payload)).toBe(vault);
+    // Another plan of the same owner has no vault yet: its approval goes to the factory again.
+    const other = await adapter.buildApprove({ owner, basketId: '10', amountRaw: '500' });
+    expect(spenderOf(other.payload)).toBe(mock.addresses.factory);
+  });
+
+  it('hashes the message of a Solana transaction, so signing it does not change the hash', async () => {
+    const { adapter, mock, owner, targets } = await funded('solana');
+    const args = { owner, basketId: '1', targets, autoFollow: false, slippageBps: 50 };
+    const tx = await adapter.buildCreateVault({ ...args, depositRaw: '1000000' });
+    const bytes = Buffer.from(tx.payload, 'base64');
+    // Laid out as a transaction: one signature slot, empty, then the message.
+    expect(bytes[0]).toBe(1);
+    expect(bytes.subarray(1, 65).every((b) => b === 0)).toBe(true);
+    expect(tx.messageHash).toBe(sha256Hex(bytes.subarray(65)));
+    expect(tx.messageHash).not.toBe(sha256Hex(bytes));
+    expect(await adapter.messageHashOf(tx.payload)).toBe(tx.messageHash);
+    const signed = mock.sign(tx);
+    expect(signed).not.toBe(tx.payload);
+    expect(Buffer.from(signed, 'base64').subarray(65)).toEqual(bytes.subarray(65));
+    expect(await adapter.messageHashOf(signed)).toBe(tx.messageHash);
+  });
+
+  it('hashes an EVM transaction as the call alone: chain id, signer, to, value, data', async () => {
+    const { adapter, mock, owner } = await funded('robinhood');
+    const tx = await adapter.buildApprove({ owner, basketId: '1', amountRaw: '1000' });
+    const call = {
+      chainId: tx.evm?.chainId ?? -1,
+      signer: tx.signer,
+      to: tx.evm?.to ?? '',
+      value: tx.evm?.value ?? '',
+      data: tx.payload,
+    };
+    expect(tx.messageHash).toBe(sha256Hex(evmCallPreimage(call)));
+    expect(await adapter.messageHashOf(mock.sign(tx))).toBe(tx.messageHash);
+    // The same call to another target, or from another signer, is another message.
+    expect(sha256Hex(evmCallPreimage({ ...call, to: owner }))).not.toBe(tx.messageHash);
+  });
+
+  it('relays signed bytes it built, once, and nothing else', async () => {
+    for (const chain of ['solana', 'robinhood'] as const) {
+      const { adapter, mock, owner, targets } = await funded(chain);
+      if (adapter.capabilities.needsApprove)
+        await mock.send(await adapter.buildApprove({ owner, basketId: '1', amountRaw: '1000' }));
+      const args = { owner, basketId: '1', targets, autoFollow: false, slippageBps: 50 };
+      const tx = await adapter.buildCreateVault({ ...args, depositRaw: '1000' });
+      const signed = mock.sign(tx);
+      // One byte of the message changed: not what was built, and not relayed.
+      const altered =
+        chain === 'solana'
+          ? Buffer.from(
+              Buffer.from(signed, 'base64').map((b, i, all) => (i === all.length - 1 ? b ^ 1 : b)),
+            ).toString('base64')
+          : `${signed.slice(0, -1)}${signed.endsWith('0') ? '1' : '0'}`;
+      expect(await adapter.messageHashOf(altered)).not.toBe(tx.messageHash);
+      expect(await code(adapter.relay(altered))).toBe('NotBuiltHere');
+      expect(await code(adapter.relay('bm90IG91cnM='))).toBe('NotBuiltHere');
+      expect(await adapter.getVaults(owner)).toEqual([]);
+
+      const { txId } = await adapter.relay(signed);
+      expect((await adapter.track(txId)).status).toBe('confirmed');
+      expect(await adapter.getVaults(owner)).toHaveLength(1);
+      // The same bytes again: the same id, and nothing happens twice.
+      expect((await adapter.relay(signed)).txId).toBe(txId);
+      expect(await adapter.getVaults(owner)).toHaveLength(1);
+      expect(await adapter.carries(txId, tx.messageHash)).toBe(true);
+      expect(await adapter.carries(txId, 'f'.repeat(64))).toBe(false);
+    }
+  });
+
+  it('says what became of an attempt nobody reported: open, landed with its id, or gone', async () => {
+    const { adapter, mock, owner, targets } = await funded('solana');
+    const args = { owner, basketId: '1', targets, autoFollow: false, slippageBps: 50 };
+    const tx = await adapter.buildCreateVault({ ...args, depositRaw: '1000' });
+    const attempt = {
+      messageHash: tx.messageHash,
+      signer: owner,
+      validUntil: String(tx.lastValidBlockHeight),
+      nonce: null,
+    };
+    expect(await adapter.fate(attempt)).toEqual({ state: 'open' });
+    const { txId } = await mock.send(tx);
+    expect(await adapter.fate(attempt)).toEqual({ state: 'landed', txId });
+
+    const never = await adapter.buildDeposit({
+      vault: (await adapter.getVaults(owner))[0]?.address ?? '',
+      amountRaw: '5',
+      slippageBps: 50,
+    });
+    const stale = { ...attempt, messageHash: never.messageHash };
+    stale.validUntil = String(never.lastValidBlockHeight);
+    expect(await adapter.fate(stale)).toEqual({ state: 'open' });
+    mock.advance(61);
+    expect(await adapter.fate(stale)).toEqual({ state: 'gone' });
+    // A reverted transaction landed too.
+    const reverts = await adapter.buildDeposit({
+      vault: (await adapter.getVaults(owner))[0]?.address ?? '',
+      amountRaw: '6',
+      slippageBps: 50,
+    });
+    mock.revertNext({ code: 'SpentTooMuch', message: 'reverted' });
+    const reverted = await mock.send(reverts);
+    expect(
+      await adapter.fate({ ...attempt, messageHash: reverts.messageHash, validUntil: null }),
+    ).toEqual({ state: 'landed', txId: reverted.txId });
+    // An EVM transaction never expires: with no validity it is never gone.
+    const evm = await funded('robinhood');
+    const approve = await evm.adapter.buildApprove({
+      owner: evm.owner,
+      basketId: '1',
+      amountRaw: '1',
+    });
+    evm.mock.advance(10 * 24 * 3600);
+    expect(
+      await evm.adapter.fate({
+        messageHash: approve.messageHash,
+        signer: evm.owner,
+        validUntil: null,
+        nonce: null,
+      }),
+    ).toEqual({ state: 'open' });
+  });
+
   it('never repeats a transaction id across restarts when given a seed', async () => {
     const first = async (seed?: string) => {
       const adapter = createMockAdapter({ chain: 'robinhood', seed });
       const owner = mockAddress('robinhood', 'owner');
       adapter.mock.fund(owner, { gasRaw: '1000000000000000000' });
-      const spender = adapter.mock.addresses.factory;
-      const tx = await adapter.buildApprove({ owner, spender, amountRaw: '1000000' });
+      const tx = await adapter.buildApprove({ owner, basketId: '1', amountRaw: '1000000' });
       return (await adapter.mock.send(tx)).txId;
     };
     expect(await first('start-1')).not.toBe(await first('start-2'));

@@ -43,10 +43,10 @@ export async function mockFixture(
     flags: 0,
   });
   const send = async (tx: Promise<Parameters<typeof mock.send>[0]>) => mock.send(await tx);
-  const approve = async (dollars: number) => {
+  // An approval names the plan: it goes to the factory before the plan's vault exists, to the vault after.
+  const approve = async (basketId: string, dollars: number) => {
     if (!adapter.capabilities.needsApprove) return;
-    const spender = mock.addresses.factory;
-    await send(adapter.buildApprove({ owner, spender, amountRaw: usd(dollars) }));
+    await send(adapter.buildApprove({ owner, basketId, amountRaw: usd(dollars) }));
   };
   const publish = (familyId: string, weights: Record<string, number>) =>
     send(adapter.buildPublishRecipe({ creator: owner, recipe: recipe(familyId, weights) }));
@@ -78,7 +78,8 @@ export async function mockFixture(
   const recipeOnchainId = mockRecipeId(chain, owner, FAMILY);
   const newAssetRecipeId = mockRecipeId(chain, owner, NEW_ASSET_FAMILY);
 
-  await approve(1600);
+  // The three vaults are opened through the factory, which takes the cash of each from one approval.
+  await approve('1', 1600);
   const vault = await open('1', 1000, recipeOnchainId);
   const manualVault = await open('2', 500);
   const newAssetVault = await open('3', 100, newAssetRecipeId);
@@ -92,7 +93,10 @@ export async function mockFixture(
   await publish(NEW_ASSET_FAMILY, { spy: 4000, nvda: 3000, gold: 2000, tsla: 1000 });
   mock.advance(301);
   await publish(NEW_ASSET_FAMILY, { spy: 4000, nvda: 2500, gold: 2000, tsla: 1500 });
-  await approve(2000);
+  // What the contract cases deposit: twice into the first vault, once into the second, once into a new one.
+  await approve('1', 2000);
+  await approve('2', 1000);
+  await approve('7', 1000);
 
   // One hundredth of a token of SPY, which is under its target: selling it moves away.
   const spy = (await adapter.listAssets()).find((x) => x.id === `${chain}:spy`);
@@ -101,6 +105,7 @@ export async function mockFixture(
   return {
     adapter,
     send: (tx) => mock.send(tx),
+    sign: async (tx) => mock.sign(tx),
     provenance: 'mock',
     notBefore,
     quoteSlippageBps: mock.quoteSlippageBps,
@@ -113,7 +118,6 @@ export async function mockFixture(
     newAssetVault,
     newAssetRecipeId,
     freshBasketId: '7',
-    spender: mock.addresses.factory,
     depositRaw: usd(1000),
     ownerTrade: { sell: mock.cash, buy: `${chain}:spy`, amountInRaw: usd(50) },
     keeperTrade: { sell: mock.cash, buy: `${chain}:nvda`, amountInRaw: usd(100) },

@@ -3,8 +3,11 @@ import { join } from 'node:path';
 import * as schemas from '@colosseum/schemas';
 import {
   Address,
+  ApproveArgs,
   AssetId,
   AssetUnits,
+  AttemptFate,
+  AttemptRef,
   BasketAsset,
   BasketId,
   BasketProposal,
@@ -437,6 +440,26 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
     // A transaction's message hash is 32 bytes of lower-case hex: a SHA-256, on both families.
     expect(BuiltTx.safeParse({ ...built, messageHash: 'x' }).success).toBe(false);
     expect(BuiltTx.safeParse({ ...built, messageHash: HEX32.toUpperCase() }).success).toBe(false);
+  });
+
+  it('takes an approval by its plan, never by a spender a caller names', () => {
+    const approve = { owner: EVM, basketId: '7', amountRaw: '1000000' };
+    expect(ApproveArgs.parse(approve)).toEqual(approve);
+    expect(ApproveArgs.safeParse({ ...approve, spender: EVM }).success).toBe(false);
+    expect(ApproveArgs.safeParse({ owner: EVM, spender: EVM, amountRaw: '1' }).success).toBe(false);
+    expect(ApproveArgs.safeParse({ ...approve, basketId: '-1' }).success).toBe(false);
+  });
+
+  it('says what became of an attempt nobody reported: open, gone, or landed with its id', () => {
+    for (const fate of [{ state: 'open' }, { state: 'gone' }, { state: 'landed', txId: 'abc' }])
+      expect(AttemptFate.parse(fate)).toEqual(fate);
+    expect(AttemptFate.safeParse({ state: 'landed' }).success).toBe(false);
+    expect(AttemptFate.safeParse({ state: 'confirmed', txId: 'abc' }).success).toBe(false);
+    const attempt = { messageHash: HEX32, signer: SOL, validUntil: '1000', nonce: null };
+    expect(AttemptRef.parse(attempt)).toEqual(attempt);
+    expect(AttemptRef.safeParse({ ...attempt, validUntil: null, nonce: 3 }).success).toBe(true);
+    const { signer: _, ...unsigned } = attempt;
+    expect(AttemptRef.safeParse(unsigned).success).toBe(false);
   });
 
   it('names the fourteen author-limit reasons as the shared vectors number them', () => {

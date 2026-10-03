@@ -250,7 +250,9 @@ interface ChainReader {
 }
 interface OwnerBuilder {          // each call returns ONE transaction; the planner splits by the capabilities
   // BuiltTx is BasketTx without legId and attemptId (3.3): a builder takes no leg
-  buildApprove(a: { owner: Address; spender: Address; amountRaw: RawAmount }): Promise<BuiltTx>;
+  buildApprove(a: { owner: Address; basketId: string; amountRaw: RawAmount }): Promise<BuiltTx>;
+    // the plan, never a spender: the adapter derives who may take the cash (EVM: the factory until the
+    // plan's vault exists, the vault after). A `spender` in the arguments is refused as BadInput
   buildCreateVault(a: { owner: Address; basketId: string; targets: Target[]; recipeOnchainId?: string;
     expectedVersion?: number; autoFollow: boolean; depositRaw?: RawAmount; trades?: Trade[];
     slippageBps: number }): Promise<BuiltTx>;
@@ -266,7 +268,14 @@ interface KeeperBuilder {
   buildAdoptVersion(vault: Address): Promise<BuiltTx>;
   buildKeeperLeg(vault: Address, trade: Trade): Promise<BuiltTx>;
 }
-type ChainAdapter = ChainReader & OwnerBuilder & KeeperBuilder;
+interface TxProbe {               // ties signed bytes and a landed transaction back to what was built
+  messageHashOf(signedTx: string): Promise<string>;     // of what WalletPort.sign() returns; BadInput if unreadable
+  relay(signedTx: string): Promise<{ txId: string; validUntil?: string }>;   // broadcasts; does not wait
+  carries(txId: string, messageHash: string): Promise<boolean>;              // this message, and no other
+  fate(attempt: { messageHash: string; signer: Address; validUntil: string | null; nonce: number | null }):
+    Promise<{ state: 'open' | 'gone' } | { state: 'landed'; txId: string }>;
+}
+type ChainAdapter = ChainReader & OwnerBuilder & KeeperBuilder & TxProbe;
 ```
 
 `chain-mock/src/contract.ts` holds the contract tests every adapter must pass. No builder sets a vault's keeper or operator.
@@ -290,7 +299,8 @@ type ChainAdapter = ChainReader & OwnerBuilder & KeeperBuilder;
   | none | `RouterIsAsset` | `RouterIsAsset` | no |
 
   `CONTRACT_ERROR_CODE` holds the contract column as data, and a root test fails on a custom error under `contracts/src` that has no row in it. The same test holds `PROGRAM_ERRORS` to `idl/basket.json`. An error a later slot adds to the program or to a contract gets its code in the same pull request.
-- **The contract.** `adapterContract(name, setup)` from `@colosseum/chain-mock/contract`. `setup` returns a `ContractFixture`: the adapter, a `send(tx)` that signs and broadcasts (on the mock, `mock.send`), an owner with three vaults (one following with auto-follow on, one with its own targets and auto-follow off, one a version behind a recipe that adds an asset), and the trades to try. The cases read, build, check each refusal's code, then send and read the state back. `contract.selfcheck.test.ts` runs the same cases against adapters broken on purpose and expects them to fail.
+- **Signed bytes and landings (`TxProbe`).** An adapter keeps no record of what it built: the order layer stores each attempt's `messageHash` and asks. `messageHashOf` reads the hash back from signed bytes, so signing must not change it (3.3 defines it per family). `relay` is called only after that hash matched an attempt this server built. `carries` is true only for the transaction built for that message. `fate` says what became of an attempt nobody reported: `open` while its bytes can still land, `gone` once the chain is past `validUntil` (never on EVM, where nothing expires), `landed` with the id once the chain has it, confirmed or reverted. It is handed the signer and the nonce, which is what a real chain needs to look.
+- **The contract.** `adapterContract(name, setup)` from `@colosseum/chain-mock/contract`. `setup` returns a `ContractFixture`: the adapter, a `send(tx)` that signs and broadcasts (on the mock, `mock.send`), a `sign(tx)` that signs and hands the bytes back as a wallet does, an owner with three vaults (one following with auto-follow on, one with its own targets and auto-follow off, one a version behind a recipe that adds an asset), and the trades to try. The cases read, build, check each refusal's code, then send and read the state back. `contract.selfcheck.test.ts` runs the same cases against adapters broken on purpose and expects them to fail.
 - **Readings fixed in v0.** A create that follows a recipe takes empty `targets` and the `expectedVersion`. `getPrices` returns one price per asset asked for and must price every asset whose `priceKind` is not `none`. `quote` applies the adapter's own slippage to `minOutRaw`. `validUntil` is opaque outside the adapter: a block height on Solana, absent on EVM. A deposit is the chain's cash token and nothing else.
 
 On Solana, `create_vault` opens only the cash account. Each position's token account is created, idempotently, in the swap leg that first buys it. That should keep a 12-asset create inside the 1,232-byte transaction limit; the SOL stream measures create and first-buy sizes for 7 and 12 assets on Oct 3.
@@ -379,7 +389,7 @@ Leg rules:
 - `expected` is filled for a leg with one trade and null otherwise: one figure cannot stand for trades into different assets. `minOutRaw` is the quote less 100 bps, the slippage every build is given.
 - Every order route answers with the `Order` plus `attempts`, every attempt at its legs. A read tracks a leg that was sent and has not settled; there is no worker.
 - Legs on one chain are built in order. A leg is not built again while the transaction built before can still land, so nobody is asked to sign twice for one step: on Solana until the chain is past the attempt's `validUntil`; on an EVM chain, where nothing expires, until the attempt is reported or the person cancels it with `POST /v1/orders/{id}/legs/{legId}/cancel` (no body, answers the order). A cancel is refused on Solana while the transaction can still land. A real EVM adapter must give the next attempt the first one's nonce, so only one can land (`apps/api/src/orders/README.md`).
-- A report, by `txId` or by `signedTx`, is matched against every attempt at the leg, and the leg settles on the attempt that landed, whatever it was labelled. An attempt the chain has confirmed or reverted is never rewritten. Signed bytes are relayed once, and only for an attempt that was built and never sent. A transaction that carries the bytes of no attempt is refused and changes nothing. `ChainAdapter` has no call for these checks yet: the API holds them in a small local type (`TxProbe`) that the mock fills in, and they move into the adapter interface with the real adapters (API-2).
+- A report, by `txId` or by `signedTx`, is matched against every attempt at the leg, and the leg settles on the attempt that landed, whatever it was labelled. An attempt the chain has confirmed or reverted is never rewritten. Signed bytes are relayed once, and only for an attempt that was built and never sent. A transaction that carries the bytes of no attempt is refused and changes nothing. The checks are the adapter's four `TxProbe` calls of 3.2 (`messageHashOf`, `relay`, `carries`, `fate`); the mock is the only adapter that has them so far.
 - The 24 hours start when the chain has seen an order's first transaction (confirmed or reverted), not when one is claimed. Nothing reopens an order that has expired: a transaction that lands afterwards is recorded and the order stays expired.
 - One order buys at most $1,000,000 (`ORDER_POLICY.maxAmountUsd`, the ceiling of a plan's own amount), until `IntentRequest` carries a limit. A stored plan whose weights are not valid targets is refused when the order is made.
 - A chain's refusal that fits none of the ten order codes answers with no `code`; the chain's own code and `retryable` are in `details` in every case.

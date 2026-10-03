@@ -4,6 +4,8 @@ import {
   Address,
   ApproveArgs,
   AssetId,
+  type AttemptFate,
+  AttemptRef,
   type BasketAsset,
   type BuiltTx,
   type Capabilities,
@@ -15,6 +17,7 @@ import {
   chainFamily,
   DecimalString,
   DepositArgs,
+  evmCallPreimage,
   type Funding,
   FundingNeed,
   type Holding,
@@ -51,6 +54,10 @@ const TRADE_COST_BPS = 10;
 const VALID_BLOCKS = 60;
 /** The slippage `quote()` allows for in `minOutRaw`. */
 const QUOTE_SLIPPAGE_BPS = 50;
+/** A Solana signature. A mock transaction has one slot for it, ahead of the message. */
+const SIGNATURE_BYTES = 64;
+/** Chain id 0 is no network: nothing the mock builds can be sent to a real one. */
+const MOCK_EVM_CHAIN_ID = 0;
 const refuse = (code: ChainErrorCode, message: string): never => {
   throw new ChainError(code, message);
 };
@@ -96,7 +103,8 @@ type State = {
 };
 
 type Op =
-  | { kind: 'approve'; a: ApproveArgs }
+  // `spender` is worked out when the approval is built: the caller never names one.
+  | { kind: 'approve'; a: ApproveArgs & { spender: Address } }
   | { kind: 'create_vault'; a: CreateVaultArgs }
   | { kind: 'deposit'; a: DepositArgs }
   | { kind: 'swap'; a: OwnerSwapArgs }
@@ -152,6 +160,12 @@ export type MockControl = {
    * `messageHash`. Sending the same one twice returns the same id and changes nothing.
    */
   send(tx: Pick<BuiltTx, 'messageHash'>): Promise<{ txId: string; validUntil?: string }>;
+  /**
+   * Stands in for a wallet's signature, and sends nothing. On Solana the transaction's one signature
+   * slot is filled, and the message after it is untouched. An EVM payload comes back as it is: the
+   * mock has no EVM signature, and its bytes say who signs them.
+   */
+  sign(tx: Pick<BuiltTx, 'payload' | 'signer'>): string;
   /** The next send lands and reverts with this error. */
   revertNext(error: { code: ChainErrorCode; message: string }): void;
   /** The next send never lands: it stays pending, then expires when its validity runs out. */
@@ -623,12 +637,34 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
 
     // A counter stands in for the blockhash or nonce, so two builds of one step are two transactions.
     buildSeq += 1;
-    const body = JSON.stringify({ mock: true, chain, seed, seq: buildSeq, op });
+    const to = evmTarget(op, vaultAddress);
+    const message = Buffer.from(
+      JSON.stringify({
+        mock: true,
+        chain,
+        seed,
+        seq: buildSeq,
+        signer,
+        ...(family === 'evm' ? { to } : {}),
+        op,
+      }),
+    );
+    // The message hash as basket-tx.ts defines it for each family.
+    // Solana: the bytes are laid out as a transaction, one empty signature slot and then the message,
+    // and the hash is of the message alone. EVM: the payload is the call data, and the hash is of the
+    // call: chain id, signer, target, value and data.
     const payload =
       family === 'solana'
-        ? Buffer.from(body).toString('base64')
-        : `0x${Buffer.from(body).toString('hex')}`;
-    const messageHash = sha256Hex(payload);
+        ? Buffer.concat([Buffer.from([1]), Buffer.alloc(SIGNATURE_BYTES), message]).toString(
+            'base64',
+          )
+        : `0x${message.toString('hex')}`;
+    const messageHash =
+      family === 'solana'
+        ? sha256Hex(message)
+        : sha256Hex(
+            evmCallPreimage({ chainId: MOCK_EVM_CHAIN_ID, signer, to, value: '0', data: payload }),
+          );
     const validUntil = family === 'solana' ? before.seconds + VALID_BLOCKS : null;
     const slippage = slippageOf(op);
     built.set(messageHash, {
@@ -642,8 +678,7 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
       chain: family,
       payload,
       ...(family === 'evm'
-        ? // chainId 0 is no network: nothing the mock builds can be sent to a real one.
-          { evm: { to: evmTarget(op, vaultAddress), value: '0', chainId: 0 } }
+        ? { evm: { to, value: '0', chainId: MOCK_EVM_CHAIN_ID } }
         : { lastValidBlockHeight: before.seconds + VALID_BLOCKS, feePayer: signer }),
       description: DESCRIPTION[op.kind],
       provenance: 'mock',
@@ -664,6 +699,37 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
     const owner = vaultOf(live(), op.a.vault).owner;
     return build(op, owner, { wallet: owner, vault: op.a.vault });
   };
+
+  /**
+   * The message hash of signed bytes, as `build` works it out. The mock reads anything: bytes that are
+   * not laid out as one of its own transactions hash to a value it never built, so they are refused
+   * as `NotBuiltHere` when relayed and never taken for a transaction of this server.
+   */
+  function hashOfSigned(signedTx: string): string {
+    if (family === 'solana') {
+      const bytes = Buffer.from(signedTx, 'base64');
+      const start = 1 + SIGNATURE_BYTES;
+      // One signature slot, whatever is in it, then the message.
+      return bytes[0] === 1 && bytes.length > start
+        ? sha256Hex(bytes.subarray(start))
+        : sha256Hex(bytes);
+    }
+    const data = signedTx.toLowerCase();
+    try {
+      const said = JSON.parse(Buffer.from(data.slice(2), 'hex').toString());
+      return sha256Hex(
+        evmCallPreimage({
+          chainId: MOCK_EVM_CHAIN_ID,
+          signer: said.signer,
+          to: said.to,
+          value: '0',
+          data,
+        }),
+      );
+    } catch {
+      return sha256Hex(data);
+    }
+  }
 
   /** Nothing but a ChainError leaves the adapter: an error of any other kind is a bug, reported as Unknown. */
   async function guarded<T>(work: () => T | Promise<T>): Promise<T> {
@@ -775,7 +841,12 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
       guarded(() => {
         if (!capabilities.needsApprove) refuse('NotSupported', `${chain} needs no approval`);
         const args = input(ApproveArgs, a, 'approve');
-        return build({ kind: 'approve', a: args }, args.owner, { wallet: args.owner });
+        // The factory takes the cash that opens a vault; once the plan's vault exists, it takes its own.
+        const vault = mockAddress(chain, `vault:${args.owner}:${args.basketId}`);
+        const spender = live().vaults.has(vault) ? vault : factory;
+        return build({ kind: 'approve', a: { ...args, spender } }, args.owner, {
+          wallet: args.owner,
+        });
       }),
     buildCreateVault: (a) =>
       guarded(() => {
@@ -829,6 +900,25 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
           a: { vault: address, trade: input(Trade, trade, 'trade') },
         };
         return build(op, keeper, { wallet: keeper, vault: address });
+      }),
+
+    messageHashOf: (signedTx) =>
+      guarded(() => hashOfSigned(input(z.string(), signedTx, 'signedTx'))),
+    relay: (signedTx) =>
+      guarded(() =>
+        adapter.mock.send({ messageHash: hashOfSigned(input(z.string(), signedTx, 'signedTx')) }),
+      ),
+    // The mock derives a transaction's id from its message, so it can say this of a transaction that
+    // was never sent. A real adapter fetches the transaction, and answers false for one it cannot find.
+    carries: (txId, messageHash) => guarded(() => txId === mockTxId(chain, messageHash)),
+    fate: (attempt) =>
+      guarded(async (): Promise<AttemptFate> => {
+        const { messageHash, validUntil } = input(AttemptRef, attempt, 'attempt');
+        // For the same reason it can be asked about an attempt nobody reported, by its message alone.
+        const txId = mockTxId(chain, messageHash);
+        const { status } = await adapter.track(txId, validUntil ?? undefined);
+        if (status === 'confirmed' || status === 'reverted') return { state: 'landed', txId };
+        return { state: status === 'expired' ? 'gone' : 'open' };
       }),
 
     mock: {
@@ -895,6 +985,19 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
           );
           return { txId: b.txId, validUntil };
         }),
+      sign(tx) {
+        if (family !== 'solana') return tx.payload;
+        const bytes = Buffer.from(tx.payload, 'base64');
+        // 64 bytes that depend on the signer and the message, as a signature does.
+        const message = bytes.subarray(1 + SIGNATURE_BYTES);
+        const half = (salt: string) =>
+          Buffer.from(
+            sha256Hex(Buffer.concat([Buffer.from(`${salt}:${tx.signer}:`), message])),
+            'hex',
+          );
+        Buffer.concat([half('r'), half('s')]).copy(bytes, 1);
+        return bytes.toString('base64');
+      },
       revertNext(error) {
         nextRevert = error;
       },

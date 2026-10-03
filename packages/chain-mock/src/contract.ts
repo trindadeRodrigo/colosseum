@@ -1,5 +1,6 @@
 import {
   type Address,
+  AttemptFate,
   BasketAsset,
   BuiltTx,
   Capabilities,
@@ -44,6 +45,17 @@ export type ContractFixture = {
    * landed. On the mock this is `mock.send`.
    */
   send(tx: BuiltTx): Promise<{ txId: string; validUntil?: string }>;
+  /**
+   * Signs as `tx.signer` and hands the signed transaction back, as `WalletPort.sign()` does: base64 of
+   * the whole serialized transaction on Solana, the 0x serialized signed transaction on EVM. Nothing is
+   * sent. On the mock this is `mock.sign`.
+   */
+  sign(tx: BuiltTx): Promise<string>;
+  /**
+   * How long a transaction handed to `relay()` may take to land, in milliseconds. `relay` does not
+   * wait for the chain, so the cases ask `track` until then. Left out, it is 0: the mock lands at once.
+   */
+  relayWaitMs?: number;
   /** The label everything this adapter returns must carry: 'mock', or 'sandbox' on a test network or a fork. */
   provenance: Provenance;
   /** ISO time. No price, quote or preview is stamped earlier than this. */
@@ -77,8 +89,10 @@ export type ContractFixture = {
   newAssetRecipeId: string;
   /** A plan id `owner` has not used. */
   freshBasketId: string;
-  /** Who a cash approval goes to. Where the chain needs approvals it holds one for twice `depositRaw`. */
-  spender: Address;
+  /**
+   * What the cases deposit. Where the chain needs approvals, `owner` has approved twice this for
+   * `vault`, this once for `manualVault`, and this once for the plan `freshBasketId`.
+   */
   depositRaw: RawAmount;
   /** A trade the owner can make inside `vault` now. */
   ownerTrade: Trade;
@@ -167,6 +181,29 @@ async function land(c: Ctx, tx: BuiltTx) {
   expect(status.status).toBe('confirmed');
   expect(status.error).toBeUndefined();
 }
+/** A relay does not wait for the chain: asks until the transaction is no longer pending, or time is up. */
+async function settled(c: Ctx, txId: string, validUntil?: string): Promise<TxStatus> {
+  const until = Date.now() + (c.f.relayWaitMs ?? 0);
+  for (;;) {
+    const status = exact(TxStatus, await c.a.track(txId, validUntil));
+    if (status.status !== 'pending' || Date.now() >= until) return status;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
+/** The same signed bytes with the last one changed: base64 on Solana, 0x hex on EVM. */
+function altered(c: Ctx, signed: string): string {
+  if (chainFamily(c.a.chain) === 'evm')
+    return `${signed.slice(0, -1)}${signed.endsWith('0') ? '1' : '0'}`;
+  const bytes = Buffer.from(signed, 'base64');
+  bytes[bytes.length - 1] = (bytes[bytes.length - 1] ?? 0) ^ 1;
+  return bytes.toString('base64');
+}
+/** What a refusal was, or 'answered' when there was none. */
+const outcomeOf = (work: Promise<unknown>) =>
+  work.then(
+    () => 'answered' as const,
+    (e: unknown) => e,
+  );
 
 const CASES: Case[] = [];
 const group = (name: string, cases: Record<string, (c: Ctx) => Promise<void>>) => {
@@ -366,11 +403,22 @@ group('reads', {
 });
 
 group('builds', {
-  'approves cash where the chain needs it, and refuses where it does not': async (c) => {
-    const args = { owner: c.f.owner, spender: c.f.spender, amountRaw: c.f.depositRaw };
-    if (c.a.capabilities.needsApprove)
-      checkTx(c, await c.a.buildApprove(args), 'approve', c.f.owner);
-    else await refuses(c.a.buildApprove(args), 'NotSupported');
+  'approves cash for a plan where the chain needs it, and refuses where it does not': async (c) => {
+    // The caller names the plan. Who may take the cash is the adapter's to work out.
+    const args = { owner: c.f.owner, basketId: c.f.freshBasketId, amountRaw: c.f.depositRaw };
+    if (!c.a.capabilities.needsApprove) {
+      await refuses(c.a.buildApprove(args), 'NotSupported');
+      return;
+    }
+    const tx = await c.a.buildApprove(args);
+    checkTx(c, tx, 'approve', c.f.owner);
+    // An approval is a call to the cash token, and moves nothing.
+    expect(tx.evm?.to).toBe(c.cash.address);
+    expect(tx.preview.changes).toEqual([]);
+    const used = (await vaultAt(c, c.f.vault)).basketId;
+    checkTx(c, await c.a.buildApprove({ ...args, basketId: used }), 'approve', c.f.owner);
+    const named = { ...args, spender: c.f.stranger };
+    await refuses(c.a.buildApprove(named), 'BadInput');
   },
 
   'opens a vault with its own targets and a first deposit of cash': async (c) => {
@@ -562,7 +610,7 @@ group('refusals', {
     await refuses(c.a.buildOwnerSwap({ vault, trades: [sameSide], slippageBps: 100 }), 'BadInput');
     if (c.a.capabilities.needsApprove)
       await refuses(
-        c.a.buildApprove({ owner: c.f.owner, spender: c.f.spender, amountRaw: '1.5' }),
+        c.a.buildApprove({ owner: c.f.owner, basketId: c.f.freshBasketId, amountRaw: '1.5' }),
         'BadInput',
       );
   },
@@ -654,6 +702,81 @@ group('refusals', {
       const stale = (await vaultAt(c, c.f.newAssetVault)).acceptedVersion;
       await refuses(c.a.buildAcceptVersion({ ...args, expectedVersion: stale }), 'VersionMismatch');
     },
+});
+
+group('signed bytes', {
+  'reads the hash it built back from the signed bytes, relays them, and finds them on the chain':
+    async (c) => {
+      const amount = BigInt(c.f.depositRaw) / 4n;
+      const before = await vaultAt(c, c.f.vault);
+      const tx = await c.a.buildDeposit({
+        vault: c.f.vault,
+        amountRaw: amount.toString(),
+        slippageBps: 100,
+      });
+      const attempt = {
+        messageHash: tx.messageHash,
+        signer: tx.signer,
+        validUntil: tx.lastValidBlockHeight === undefined ? null : String(tx.lastValidBlockHeight),
+        nonce: null,
+      };
+      // Built and not sent: it can still land.
+      expect(exact(AttemptFate, await c.a.fate(attempt))).toEqual({ state: 'open' });
+
+      const signed = await c.f.sign(tx);
+      // Signing changes the signature and not the message.
+      expect(await c.a.messageHashOf(signed)).toBe(tx.messageHash);
+      const { txId, validUntil } = await c.a.relay(signed);
+      expect((await settled(c, txId, validUntil)).status).toBe('confirmed');
+      expect(BigInt((await vaultAt(c, c.f.vault)).cash.raw) - BigInt(before.cash.raw)).toBe(amount);
+
+      expect(await c.a.carries(txId, tx.messageHash)).toBe(true);
+      expect(exact(AttemptFate, await c.a.fate(attempt))).toEqual({ state: 'landed', txId });
+
+      // The same bytes a second time land nothing more, whether the adapter answers or refuses.
+      const again = await outcomeOf(c.a.relay(signed));
+      if (again !== 'answered') expect(again).toBeInstanceOf(ChainError);
+      expect(BigInt((await vaultAt(c, c.f.vault)).cash.raw) - BigInt(before.cash.raw)).toBe(amount);
+    },
+
+  'does not take altered bytes for the ones it built, and lands nothing when asked to relay them':
+    async (c) => {
+      const before = await vaultAt(c, c.f.vault);
+      const wallet = await walletRaw(c, c.f.owner, c.cash.id);
+      const tx = await c.a.buildDeposit({
+        vault: c.f.vault,
+        amountRaw: (BigInt(c.f.depositRaw) / 4n).toString(),
+        slippageBps: 100,
+      });
+      const wrong = altered(c, await c.f.sign(tx));
+      // Either it cannot be read at all, or it is another message.
+      const hash = await outcomeOf(
+        c.a.messageHashOf(wrong).then((h) => expect(h).not.toBe(tx.messageHash)),
+      );
+      if (hash !== 'answered') {
+        expect(hash).toBeInstanceOf(ChainError);
+        expect((hash as ChainError).code).toBe('BadInput');
+      }
+      const relayed = await outcomeOf(c.a.relay(wrong));
+      expect(relayed, 'altered bytes are refused').toBeInstanceOf(ChainError);
+      expect(await vaultAt(c, c.f.vault)).toEqual({ ...before, observedAt: expect.any(String) });
+      expect(await walletRaw(c, c.f.owner, c.cash.id)).toBe(wallet);
+    },
+
+  'says a transaction carries the message it was built from, and no other': async (c) => {
+    const [one, other] = [
+      await c.a.buildSetAutoFollow({ vault: c.f.manualVault, on: false }),
+      await c.a.buildSetAutoFollow({ vault: c.f.vault, on: true }),
+    ];
+    expect(one.messageHash).not.toBe(other.messageHash);
+    const { txId } = await c.f.send(one);
+    expect(await c.a.carries(txId, one.messageHash)).toBe(true);
+    // An unrelated transaction of the same wallet does not stand for another step.
+    expect(await c.a.carries(txId, other.messageHash)).toBe(false);
+    // And an id the chain never saw carries nothing.
+    expect(await c.a.carries(c.f.unknownTxId, one.messageHash)).toBe(false);
+    expect(await c.a.carries(c.f.unknownTxId, other.messageHash)).toBe(false);
+  },
 });
 
 group('state after a transaction lands', {

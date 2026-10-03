@@ -77,8 +77,7 @@ describe('the chain registry', () => {
     const owner = '0x00000000000000000000000000000000000000aa';
     const built = async (seed: string) => {
       const { adapter, mock } = registry({}, seed).get('robinhood');
-      const spender = mock?.addresses.factory ?? '';
-      const tx = await adapter.buildApprove({ owner, spender, amountRaw: '1' });
+      const tx = await adapter.buildApprove({ owner, basketId: '1', amountRaw: '1' });
       mock?.fund(owner, { gasRaw: '1000000000000000000' });
       return { hash: tx.messageHash, txId: (await mock?.send(tx))?.txId };
     };

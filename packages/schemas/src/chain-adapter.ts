@@ -37,7 +37,16 @@ export const FundingNeed = z.object({
 });
 export type FundingNeed = z.infer<typeof FundingNeed>;
 
-export const ApproveArgs = z.object({ owner: Address, spender: Address, amountRaw: RawAmount });
+/**
+ * An approval of the chain's cash token, for one plan. The caller names the plan and the amount, never
+ * who may take the cash: the adapter derives that (on EVM the factory until the plan's vault exists,
+ * and the vault after). Strict, so a `spender` sent by a caller is refused and not ignored.
+ */
+export const ApproveArgs = z.strictObject({
+  owner: Address,
+  basketId: BasketId,
+  amountRaw: RawAmount,
+});
 export type ApproveArgs = z.infer<typeof ApproveArgs>;
 
 export const CreateVaultArgs = z.object({
@@ -125,5 +134,65 @@ export interface KeeperBuilder {
   buildKeeperLeg(vault: Address, trade: Trade): Promise<BuiltTx>;
 }
 
+/**
+ * An attempt as a chain can look for it: the message that was built, who signs it, and how long it can
+ * land. `signer` and `nonce` are what a real chain needs to find a transaction nobody reported: on
+ * Solana the signer's recent signatures, on EVM the account's nonce.
+ */
+export const AttemptRef = z.object({
+  messageHash: z.string().min(1),
+  signer: Address,
+  /** As the build gave it: a block height on Solana, null on EVM. */
+  validUntil: z.string().nullable(),
+  /** The EVM nonce the attempt was built for, where one is known. */
+  nonce: z.number().int().nonnegative().nullable(),
+});
+export type AttemptRef = z.infer<typeof AttemptRef>;
+
+/**
+ * What became of an attempt whose transaction id nobody reported.
+ * - `open`: its bytes can still land.
+ * - `gone`: they no longer can, because the chain is past `validUntil`. A chain with no expiry (EVM,
+ *   `validUntil` null) never answers `gone`.
+ * - `landed`: the chain has the transaction, confirmed or reverted, with its id. `track` says which.
+ */
+export const AttemptFate = z.discriminatedUnion('state', [
+  z.object({ state: z.literal('open') }),
+  z.object({ state: z.literal('gone') }),
+  z.object({ state: z.literal('landed'), txId: z.string().min(1) }),
+]);
+export type AttemptFate = z.infer<typeof AttemptFate>;
+
+/**
+ * What the order layer needs to tie signed bytes and a landed transaction back to what was built. A
+ * leg may only settle on the transaction that was built for it, and signed bytes are only relayed when
+ * they are bytes this server built. It holds no key and signs nothing.
+ */
+export interface TxProbe {
+  /**
+   * The `messageHash` of signed bytes (what `WalletPort.sign()` returns), computed as the adapter that
+   * built them does (basket-tx.ts): on Solana the hash of the message, whatever the signatures; on EVM
+   * the hash of the call, with the signer recovered from the signature. Refuses with `BadInput` bytes
+   * that are not a transaction of this chain. The caller compares the answer with the attempts it
+   * stored: an adapter keeps no record of what it built.
+   */
+  messageHashOf(signedTx: string): Promise<string>;
+  /**
+   * Broadcasts signed bytes and answers the transaction's id, without waiting for it to land. Called
+   * only after `messageHashOf` matched an attempt this server built. Refuses with a `ChainError` bytes
+   * the chain will not take; an adapter that can tell they are not its own says `NotBuiltHere`.
+   * Sending the same bytes twice lands them once.
+   */
+  relay(signedTx: string): Promise<{ txId: string; validUntil?: string }>;
+  /**
+   * True when the transaction with this id carries the message with this hash, and no other: the
+   * same signer, target and call data (on Solana, the same message). False for any other
+   * transaction, and for an id the chain does not have.
+   */
+  carries(txId: string, messageHash: string): Promise<boolean>;
+  /** What became of an attempt whose transaction id nobody reported. */
+  fate(attempt: AttemptRef): Promise<AttemptFate>;
+}
+
 /** No builder sets a vault's keeper or operator. */
-export type ChainAdapter = ChainReader & OwnerBuilder & KeeperBuilder;
+export type ChainAdapter = ChainReader & OwnerBuilder & KeeperBuilder & TxProbe;

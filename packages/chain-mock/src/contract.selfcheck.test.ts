@@ -53,7 +53,10 @@ function spoilErrors(
   return out as Partial<ChainAdapter>;
 }
 
-const FAULTS: { fault: string; wrap: Wrap; caught: string[] }[] = [
+type MockChain = 'solana' | 'robinhood';
+const BOTH: MockChain[] = ['solana', 'robinhood'];
+/** `chains` narrows a fault to where it can show: an approval exists on an EVM chain only. */
+const FAULTS: { fault: string; wrap: Wrap; caught: string[]; chains?: MockChain[] }[] = [
   {
     fault: 'gives every transaction the same hash',
     wrap: (real) => spoilTx(real, (tx) => ({ ...tx, messageHash: 'f'.repeat(64) })),
@@ -171,6 +174,73 @@ const FAULTS: { fault: string; wrap: Wrap; caught: string[] }[] = [
     caught: ['arguments that are not what the schema says: BadInput, never another kind of error'],
   },
   {
+    fault: 'lets a caller name who may take the cash',
+    wrap: (real) => ({
+      buildApprove: ({ owner, basketId, amountRaw }) =>
+        real.buildApprove({ owner, basketId, amountRaw }),
+    }),
+    caught: ['approves cash for a plan where the chain needs it, and refuses where it does not'],
+    chains: ['robinhood'],
+  },
+  {
+    fault: 'hashes any signed bytes to the last transaction it built',
+    wrap: (real) => {
+      let last = '';
+      return {
+        ...spoilTx(real, (tx) => {
+          last = tx.messageHash;
+          return tx;
+        }),
+        messageHashOf: async () => last,
+      };
+    },
+    caught: [
+      'does not take altered bytes for the ones it built, and lands nothing when asked to relay them',
+    ],
+  },
+  {
+    fault: 'relays altered bytes as the transaction it built',
+    wrap: (real, f) => {
+      let last: BuiltTx | undefined;
+      return {
+        ...spoilTx(real, (tx) => {
+          last = tx;
+          return tx;
+        }),
+        relay: (signed) =>
+          real.relay(signed).catch((e) => {
+            if (!last || !(e instanceof ChainError)) throw e;
+            return f.send(last);
+          }),
+      };
+    },
+    caught: [
+      'does not take altered bytes for the ones it built, and lands nothing when asked to relay them',
+    ],
+  },
+  {
+    fault: 'hashes the signature along with the message',
+    wrap: (real) => ({
+      messageHashOf: async (signed) =>
+        `${(await real.messageHashOf(signed)).slice(0, 56)}${'0'.repeat(8)}`,
+    }),
+    caught: [
+      'reads the hash it built back from the signed bytes, relays them, and finds them on the chain',
+    ],
+  },
+  {
+    fault: 'says every transaction carries every message',
+    wrap: () => ({ carries: async () => true }),
+    caught: ['says a transaction carries the message it was built from, and no other'],
+  },
+  {
+    fault: 'never finds an attempt that landed and nobody reported',
+    wrap: () => ({ fate: async () => ({ state: 'open' as const }) }),
+    caught: [
+      'reads the hash it built back from the signed bytes, relays them, and finds them on the chain',
+    ],
+  },
+  {
     fault: 'switches auto-follow on whatever was asked',
     wrap: (real) => ({
       buildSetAutoFollow: (a) => real.buildSetAutoFollow({ vault: a.vault, on: true }),
@@ -248,7 +318,7 @@ const FAULTS: { fault: string; wrap: Wrap; caught: string[] }[] = [
   },
 ];
 
-async function failures(chain: 'solana' | 'robinhood', wrap: Wrap): Promise<string[]> {
+async function failures(chain: MockChain, wrap: Wrap): Promise<string[]> {
   const results = await runContract(async () => {
     const f = await mockFixture(chain);
     return { ...f, adapter: { ...f.adapter, ...wrap(f.adapter, f) } as ChainAdapter };
@@ -265,9 +335,9 @@ describe('the adapter contract fails a wrong adapter', () => {
     }
   });
 
-  for (const { fault, wrap, caught } of FAULTS)
+  for (const { fault, wrap, caught, chains } of FAULTS)
     it(`catches an adapter that ${fault}`, async () => {
-      for (const chain of ['solana', 'robinhood'] as const)
+      for (const chain of chains ?? BOTH)
         expect(await failures(chain, wrap)).toEqual(expect.arrayContaining(caught));
     });
 
