@@ -14,6 +14,7 @@ The order layer behind `/v1/orders` (DESIGN-VAULT 3.3). It plans the legs of an 
 
 - A leg is not built again while the transaction built before can still land. On Solana that is until the chain is past the attempt's `validUntil`. On an EVM chain nothing expires, so the attempt stays open until it is reported or the person cancels it (`POST .../cancel`).
 - A report, by id or by signed bytes, is matched against every attempt of the leg. The leg settles on the attempt that landed, whatever that attempt was labelled.
+- A reported id the chain has not seen yet is not the wrong transaction. The answer is 409 with `details.retryable` true, nothing is written, and the caller reports again.
 - An attempt that the chain has confirmed or reverted is never rewritten. Anything else (`built`, `sent`, `expired`) can still be corrected by what the chain says.
 - Signed bytes are relayed once, and only for an attempt that is `built`.
 - The first transaction the chain has seen keeps an open order open for 24 hours. A transaction that is only claimed does not, and nothing reopens an order that expired.

@@ -339,6 +339,16 @@ export async function recordOrderState(
     .where(eq(orders.id, id));
 }
 
+/**
+ * A dollar figure cut to cents, never rounded: '599.999999' is '599.99'. The cache column holds two
+ * places and Postgres would round a longer figure up, so a vault a hair under $600 would be stored as
+ * $600.00. The view's own figure, to six places, is what a response carries.
+ */
+export function cutToCents(value: string): string {
+  const [whole = '0', frac = ''] = value.split('.');
+  return `${whole}.${frac.padEnd(2, '0').slice(0, 2)}`;
+}
+
 /** Writes the last state read from a vault into the cache. The chain stays the truth. */
 export async function cacheVault(db: Db, view: VaultView, provenance: Provenance): Promise<void> {
   const row = {
@@ -364,7 +374,7 @@ export async function cacheVault(db: Db, view: VaultView, provenance: Provenance
         }),
       ),
     },
-    valueUsd: view.valueUsd,
+    valueUsd: cutToCents(view.valueUsd),
     observedAt: new Date(view.observedAt),
     provenance,
   };
