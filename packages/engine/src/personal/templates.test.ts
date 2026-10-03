@@ -75,6 +75,7 @@ const SAMPLE: Record<string, string | number> = {
   sleeve: 'growth',
   month: '2028-04',
   months: 18,
+  regimes: 'weekend,us_holiday',
   '': 'NVDA',
 };
 const sampleParams = (text: string) =>
@@ -182,6 +183,19 @@ describe('explanation templates', () => {
     expect(render('{a|usd}', { a: 1_250_000 }, 'en')).toBe('$1,250,000');
     // A chain or a word this file does not know is printed as it came, never dropped.
     expect(render('{g|chain}', { g: 'arbitrum' }, 'en')).toBe('arbitrum');
+  });
+
+  it('writes the times of the week in one order, whatever order they come in', () => {
+    const when = (codes: string, lang: 'en' | 'pt') => render('{w|regimes}', { w: codes }, lang);
+    expect(when('weekend', 'en')).toBe('at the weekend');
+    expect(when('us_holiday,weekend', 'en')).toBe('at the weekend and on US holidays');
+    expect(when('us_holiday,weekend,us_offhours_weekday,us_market_hours', 'en')).toBe(
+      'in US market hours, on weekdays outside US market hours, at the weekend and on US holidays',
+    );
+    expect(when('weekend,us_holiday', 'pt')).toBe('no fim de semana e em feriados dos EUA');
+    expect(Object.keys(WORDS.en.regime)).toEqual(Object.keys(WORDS.pt.regime));
+    // A time of the week this file does not know is an error, never a blank.
+    expect(() => when('weekend,full_moon', 'en')).toThrow(/times of the week/);
   });
 
   it('never writes a small amount as zero, and rounds a loss up', () => {

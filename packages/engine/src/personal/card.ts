@@ -49,7 +49,12 @@ export function cardOf(w: World, lines: BasketLine[]): Carded {
   for (const flag of exit.flags)
     if ((flag.startsWith('exit_') || flag.startsWith('measured_')) && !flag.includes('quote'))
       w.flags.add(flag);
-  const cost = exit.exit.measuredWorstBps;
+  // A sale measured above the reference price comes as a cost under zero. The card shows zero and
+  // says how, and the plan carries a flag: a negative cost is never shown as a gain.
+  const measured = exit.exit.measuredWorstBps;
+  if (measured !== null && measured < 0) w.flags.add('exit_cost_below_zero');
+  const cost = measured === null ? null : Math.max(0, measured);
+  const shareBps = Math.min(BPS, exit.exit.measuredShareBps);
 
   const yieldBps = sum(yielding.map((l) => l.weightBps));
   return {
@@ -76,12 +81,10 @@ export function cardOf(w: World, lines: BasketLine[]): Carded {
         text:
           cost === null
             ? text('EXIT_NOT_MEASURED', {}, lang)
-            : text(
-                'EXIT_MEASURED',
-                // A cost is never written smaller than it is: up to the next whole basis point.
-                { costBps: Math.ceil(cost), shareBps: Math.min(BPS, exit.exit.measuredShareBps) },
-                lang,
-              ),
+            : cost <= 0
+              ? text('EXIT_MEASURED_ZERO', { shareBps }, lang)
+              : // A cost is never written smaller than it is: up to the next whole basis point.
+                text('EXIT_MEASURED', { costBps: Math.ceil(cost), shareBps }, lang),
         costBps: cost,
       },
     },

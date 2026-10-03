@@ -5,12 +5,14 @@ import {
   type ChainId,
   chainFamily,
   DISCLAIMER,
-  type LiquidityProvider,
+  type FactRegime,
   normalizeAddress,
   type Reason,
   type Recipe,
+  type RegimeLiquidityProvider,
   type Shelf,
   type Target,
+  Targets,
   YieldObservation,
 } from '@colosseum/schemas';
 import { z } from 'zod';
@@ -206,9 +208,13 @@ export function fixtureYields(): YieldObservation[] {
   return z.array(YieldObservation).parse(yieldRows);
 }
 
+const REGIMES: FactRegime[] = ['us_market_hours', 'us_offhours_weekday', 'weekend', 'us_holiday'];
+
 /**
  * A liquidity provider over a table of exit capacities in dollars. Thin gold on Solana by default,
- * as measured on Oct 1 (gold works up to about $10k per plan there).
+ * as measured on Oct 1 (gold works up to about $10k per plan there). Like the risk layer's own, it
+ * says which times of the week each figure was measured in: all of them, unless `notMeasured` names
+ * some for a token.
  */
 export function fixtureLiquidity(
   capacityUsd: Record<string, number> = {
@@ -219,7 +225,9 @@ export function fixtureLiquidity(
   samples = 40,
   /** The end of the data a capacity was measured on, as the provider gives it. Null: it gives none. */
   measuredTo: string | null = MEASURED_TO,
-): LiquidityProvider {
+  /** The times of the week a token's figure leaves out, by asset id. */
+  notMeasured: Record<string, FactRegime[]> = {},
+): RegimeLiquidityProvider {
   const capacity = (id: string) => {
     const usd = capacityUsd[id];
     return usd === undefined
@@ -247,6 +255,20 @@ export function fixtureLiquidity(
     assess: () => {
       throw new Error('the fixture provider does not assess');
     },
+    regimes: (id) => {
+      if (capacityUsd[id] === undefined) return null;
+      const gaps = notMeasured[id] ?? [];
+      return {
+        measured: REGIMES.filter((regime) => !gaps.includes(regime)),
+        missing: REGIMES.filter((regime) => gaps.includes(regime)).map((regime) => ({
+          regime,
+          reason: 'insufficient_samples' as const,
+        })),
+      };
+    },
+    exitCostIn: () => null,
+    entryCostIn: () => null,
+    exitCapacityIn: () => null,
   };
 }
 
@@ -334,14 +356,22 @@ export function sleeveBps(plan: PersonalProposal, shelf: Shelf, sleeve: Sleeve):
   );
 }
 
-/** The most dollars one token may hold: its tier's ceiling, and its measured exit capacity if any. */
+/** A token's measured exit capacity in dollars, or null when the provider has no measurement of it. */
+export function measuredCapacityUsd(asset: BasketAsset, ctx: ComposeContext): number | null {
+  if (!ctx.liquidity?.covers(asset.id)) return null;
+  const P = ctx.params ?? PERSONAL_PARAMS;
+  const measured = ctx.liquidity.exitCapacity(asset.id, P.tau, EXIT_WINDOW_DAYS);
+  return measured && measured.samples > 0 ? measured.capacityUsd : null;
+}
+
+/**
+ * The most dollars one token may hold (gate EXIT-SOURCE): where its exit capacity is measured, the
+ * share of it a plan may count on; where it is not, the ceiling of its tier.
+ */
 export function ceilingUsd(asset: BasketAsset, ctx: ComposeContext): number {
   const P = ctx.params ?? PERSONAL_PARAMS;
-  const tier = P.tierCeilingUsd[asset.tier];
-  if (!ctx.liquidity?.covers(asset.id)) return tier;
-  const measured = ctx.liquidity.exitCapacity(asset.id, P.tau, EXIT_WINDOW_DAYS);
-  if (!measured || measured.samples < P.minExitSamples) return tier;
-  return Math.min(tier, P.shareOfDepth * measured.capacityUsd);
+  const capacity = measuredCapacityUsd(asset, ctx);
+  return capacity === null ? P.tierCeilingUsd[asset.tier] : P.shareOfDepth * capacity;
 }
 
 /**
@@ -525,6 +555,33 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
       cents(l.amountUsd) <= Math.floor(ceilingUsd(a, ctx) * 100),
       `${a.id} holds ${l.amountUsd}, over its ceiling of ${ceilingUsd(a, ctx)}`,
     );
+    // A ceiling that came from a tier, not a measurement, is said on the line and flagged; one that
+    // was measured is not called a tier. A measurement that leaves out a time of the week says so.
+    const fromTier = measuredCapacityUsd(a, ctx) === null;
+    // A line may also carry the limit of the token before it, to say why it holds the rest: the
+    // check is on what the line says of its own token.
+    const rules = l.reasons.filter((r) => r.params.asset === a.symbol).map((r) => r.rule);
+    say(
+      rules.includes('TIER_CEILING') === fromTier,
+      `${a.id}: its ceiling is ${fromTier ? 'a tier and the line does not say so' : 'measured and the line calls it a tier'}`,
+    );
+    say(
+      plan.flags.includes(`ceiling_from_tier:${a.id}`) === fromTier,
+      `${a.id}: the tier-ceiling flag is ${fromTier ? 'missing' : 'misplaced'}`,
+    );
+    const provider = ctx.liquidity as Partial<RegimeLiquidityProvider> | undefined;
+    const gaps = fromTier ? [] : (provider?.regimes?.(a.id)?.missing ?? []);
+    say(
+      rules.includes('EXIT_PARTLY_MEASURED') === gaps.length > 0,
+      `${a.id}: ${gaps.length} times of the week are not measured, and the line ${gaps.length ? 'does not say so' : 'says some are'}`,
+    );
+    for (const gap of gaps)
+      say(
+        plan.flags.includes(`exit_regime_not_measured:${a.id}:${gap.regime}`),
+        `${a.id}: no flag for ${gap.regime}`,
+      );
+    if (!fromTier && typeof provider?.regimes !== 'function')
+      say(plan.flags.includes('exit_regimes_not_reported'), `${a.id}: regimes unknown, no flag`);
 
     // Stocks, crypto and gold: no return assumed, and the loss in the fall shown.
     const priced = sleeveOfClass(a.cls) !== 'dollarYield';
@@ -639,6 +696,9 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
       targets = report.targets;
     }
     // The vault's own rules: at most 16 targets, each asset once, at most 10,000 with the rest as cash.
+    // The shared `Targets` holds the same, for a plan that has any target at all.
+    if (targets.length > 0)
+      say(Targets.safeParse(targets).success, `${r.chain}: not the shared Targets`);
     say(
       targets.length <= Math.min(16, P.maxLinesPerChain),
       `${r.chain}: ${targets.length} targets`,

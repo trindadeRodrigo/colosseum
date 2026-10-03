@@ -433,6 +433,26 @@ describe('the hash of the inputs pins everything that shaped the plan', () => {
     );
   });
 
+  it('pins a measured capacity, and the times of the week it covers, even where no line moves', () => {
+    // SPYx is not in this plan, and the cost of selling each line is the same in all three.
+    const usual = fixtureLiquidity();
+    const deeper: typeof usual = {
+      ...usual,
+      exitCapacity: (id, tau, days) => {
+        const read = usual.exitCapacity(id, tau, days);
+        return read && id === 'solana:spyx' ? { ...read, capacityUsd: read.capacityUsd * 2 } : read;
+      },
+    };
+    const weekdays = fixtureLiquidity(undefined, 40, undefined, { 'solana:spyx': ['weekend'] });
+    const [a, b, c] = [usual, deeper, weekdays].map((liquidity) =>
+      compose(person, shelf, fixtureContext({ liquidity })),
+    );
+    expect(b?.lines).toEqual(a?.lines);
+    expect(c?.lines).toEqual(a?.lines);
+    expect(b?.inputsHash).not.toBe(a?.inputsHash);
+    expect(c?.inputsHash).not.toBe(a?.inputsHash);
+  });
+
   it('two liquidity tables that give different plans never share a hash', () => {
     const thin = compose(
       person,
@@ -530,6 +550,7 @@ describe('the words', () => {
       'Para um objetivo de crescimento, com risco médio, a parcela inicial de rendimento em dólar é 15%.',
       'Escolhido pelo rendimento após o deságio, entre os tokens de rendimento em dólar que você pode ter na Solana.',
       'Inclui US$ 1.500 que SPY não comporta neste tamanho.',
+      'syrupUSDC comporta no máximo US$ 50.000: o custo de vender ainda não está medido, então o limite é o da faixa dele na lista de ativos.',
     ]);
   });
 

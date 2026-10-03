@@ -97,8 +97,6 @@ export const PersonalParameters = PersonalParams.extend({
   fallBps: Bps,
   /** From this share in dollar yield, a plan that is not for income shows its cash flow as "at the end". */
   atEndMinBps: Bps,
-  /** A measured exit capacity counts from this many samples. */
-  minExitSamples: z.number().int().nonnegative(),
   /** A way to close an income gap names an amount rounded up to this many dollars. */
   wayStepUsd: z.number().positive(),
   /** The shared portfolio a goal starts from when the person chooses none: a slug, or none. */

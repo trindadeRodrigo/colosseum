@@ -4,8 +4,9 @@ import { reason } from './templates';
 import type { World } from './world';
 
 // Placement: which token carries each exposure, on the person's chain. A plan lives on one chain, so
-// there is no choice of chain here. A token takes dollars up to its ceiling (its tier on the shelf,
-// and its measured exit capacity), an issuer up to its cap, and the plan up to its number of lines.
+// there is no choice of chain here. A token takes dollars up to its ceiling (from its measured exit
+// capacity, or from its tier where none is measured), an issuer up to its cap, and the plan up to its
+// number of lines.
 // What a token cannot take is handed back to the caller, which holds it in dollar yield, then cash.
 
 /** Cents waiting for a token, with why they are there. */
@@ -67,10 +68,7 @@ export class Book {
           w.lang,
         ),
       };
-    return {
-      cents: Math.max(0, underCeiling),
-      why: reason('EXIT_CEILING', { asset: asset.symbol, maxUsd: toUsd(ceiling) }, w.lang),
-    };
+    return { cents: Math.max(0, underCeiling), why: w.ceilingWhy(asset) };
   }
 
   /** The reason a token gets no line of its own when the plan is full, or null when it may. */

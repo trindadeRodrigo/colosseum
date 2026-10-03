@@ -5,12 +5,13 @@ import {
   type Language,
   type LiquidityProvider,
   type Reason,
+  type RegimeLiquidityProvider,
   type Shelf,
   YieldObservation,
 } from '@colosseum/schemas';
 import { z } from 'zod';
 import { pickPrimaryYield } from '../risk/index';
-import { BPS, byName, floorCents, shareOf, toCents } from './money';
+import { BPS, byName, floorCents, shareOf, toCents, toUsd } from './money';
 import { PERSONAL_PARAMS } from './params';
 import { eligibleForGoal, sleeveOfClass } from './registry';
 import { reason } from './templates';
@@ -67,9 +68,26 @@ export type World = {
   sleeveOf(asset: BasketAsset): Sleeve;
   /** Why the person cannot hold this token, or null when they can. */
   blockOf(asset: BasketAsset): Reason | null;
-  /** The most cents this token may take: its tier's ceiling, and its measured exit capacity. */
+  /**
+   * The most cents this token may take. Where its exit capacity is measured, the share of it a plan
+   * may count on. Where it is not, the ceiling of its tier on the asset list, as a fallback.
+   */
   ceilingOf(asset: BasketAsset): number;
+  /** Why this token takes no more than that: the measured cost of selling, or its tier. */
+  ceilingWhy(asset: BasketAsset): Reason;
+  /**
+   * What a line of this token says about where its limit came from: that it is a tier and not a
+   * measurement, or that the measurement leaves out a time of the week. Nothing when it is measured
+   * through the whole week.
+   */
+  ceilingNotes(asset: BasketAsset): Reason[];
 };
+
+/** A provider that says which times of the week its figures were measured in. */
+export const reportsRegimes = (p: LiquidityProvider): p is RegimeLiquidityProvider =>
+  typeof (p as Partial<RegimeLiquidityProvider>).regimes === 'function';
+
+type Ceiling = { cents: number; why: Reason; notes: Reason[] };
 
 const issues = (error: z.ZodError) =>
   error.issues.map((i) => ({ path: i.path.join('.'), message: i.message }));
@@ -196,16 +214,18 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
   const flags = new Set<string>();
   const observations = new Map<string, PersonalObservation>();
   const liquidity = context.liquidity;
-  const ceilings = new Map<string, number>();
-  const ceilingOf = (a: BasketAsset): number => {
+  const ceilings = new Map<string, Ceiling>();
+  const ceiling = (a: BasketAsset): Ceiling => {
     const known = ceilings.get(a.id);
-    if (known !== undefined) return known;
-    let usd = P.tierCeilingUsd[a.tier];
-    const measured = liquidity?.covers(a.id)
-      ? liquidity.exitCapacity(a.id, P.tau, EXIT_WINDOW_DAYS)
-      : null;
-    if (liquidity && measured && measured.samples >= P.minExitSamples) {
-      usd = Math.min(usd, P.shareOfDepth * measured.capacityUsd);
+    if (known) return known;
+    const covered = liquidity?.covers(a.id) ?? false;
+    const measured =
+      liquidity && covered ? liquidity.exitCapacity(a.id, P.tau, EXIT_WINDOW_DAYS) : null;
+    let made: Ceiling;
+    // A capacity read from no sample is not a measurement, whatever figure comes with it.
+    if (liquidity && measured && measured.samples > 0) {
+      // The measured exit is the one source for what a token may weigh: the tier is not read.
+      const cents = floorCents(P.shareOfDepth * measured.capacityUsd);
       // The figure is on the plan whether it left the token room or none. Its time is the end of the
       // provider's data and its source is what the caller said: neither is made up when missing.
       const at = IsoTime.safeParse(measured.dataTo);
@@ -220,10 +240,29 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
         fetchedAt: at.success ? at.data : null,
         provenance: liquidity.provenance,
       });
-    } else if (measured) flags.add(`exit_capacity_thin:${a.id}`);
-    const cents = floorCents(usd);
-    ceilings.set(a.id, cents);
-    return cents;
+      // The risk layer skips a time of the week it has too few samples for, so a capacity can be a
+      // weekday figure. Which times it left out is on the plan; so is a provider that cannot say.
+      const notes: Reason[] = [];
+      const gaps = reportsRegimes(liquidity) ? liquidity.regimes(a.id) : null;
+      if (!gaps) flags.add('exit_regimes_not_reported');
+      else if (gaps.missing.length > 0) {
+        const when = gaps.missing.map((gap) => gap.regime);
+        for (const regime of when) flags.add(`exit_regime_not_measured:${a.id}:${regime}`);
+        notes.push(reason('EXIT_PARTLY_MEASURED', { asset: a.symbol, when: when.join(',') }, lang));
+      }
+      const why = reason('EXIT_CEILING', { asset: a.symbol, maxUsd: toUsd(cents) }, lang);
+      made = { cents, why, notes };
+    } else {
+      // Nothing measured: the tier on the asset list stands in, and the plan says that it does. A
+      // token the provider has curves for and no figure is flagged as that, never passed in silence.
+      const cents = floorCents(P.tierCeilingUsd[a.tier]);
+      flags.add(`ceiling_from_tier:${a.id}`);
+      if (covered) flags.add(`exit_capacity_thin:${a.id}`);
+      const why = reason('TIER_CEILING', { asset: a.symbol, maxUsd: toUsd(cents) }, lang);
+      made = { cents, why, notes: [why] };
+    }
+    ceilings.set(a.id, made);
+    return made;
   };
 
   return {
@@ -256,6 +295,8 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
     observations,
     sleeveOf: (a) => sleeveOfClass(a.cls),
     blockOf,
-    ceilingOf,
+    ceilingOf: (a) => ceiling(a).cents,
+    ceilingWhy: (a) => ceiling(a).why,
+    ceilingNotes: (a) => ceiling(a).notes,
   };
 }

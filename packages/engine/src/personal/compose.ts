@@ -31,7 +31,7 @@ import {
   SLEEVES,
   type Sleeve,
 } from './types';
-import { buildWorld, type World } from './world';
+import { buildWorld, reportsRegimes, type World } from './world';
 
 export const PERSONAL_ENGINE_VERSION = 'personal-0.1';
 
@@ -431,6 +431,7 @@ function build(
           capacity: w.tokens.map((a) => [
             a.id,
             liquidity.covers(a.id) ? liquidity.exitCapacity(a.id, P.tau, EXIT_WINDOW_DAYS) : null,
+            reportsRegimes(liquidity) ? liquidity.regimes(a.id) : null,
           ]),
           cost: lines.map((l) => [
             l.assetId,

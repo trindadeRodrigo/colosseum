@@ -200,6 +200,8 @@ export function packageUp(w: World, book: Book): Packaged {
             : undefined;
         return slug ? [reason('OPENED', { theme: String(r.params.theme) }, lang)] : [r];
       });
+      // Where the line's limit came from, when it is not a measurement of the whole week.
+      if (row !== cash) reasons.push(...w.ceilingNotes(row.asset));
       // Stocks, crypto and gold: no return assumed, and what a fall would cost.
       if (sleeve === 'growth' || sleeve === 'gold')
         reasons.push(

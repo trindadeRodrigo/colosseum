@@ -12,6 +12,7 @@ import type { Language, Reason } from '@colosseum/schemas';
 //   months  a count of months                 18 months       18 meses
 //   goal, risk, sleeve, chain                 the word for it, from WORDS
 //   inCountry                                 in Brazil       no Brasil
+//   regimes  times of the week, by their codes   at the weekend and on US holidays
 
 /** The inputs a person gives. A reason names the ones that caused it. */
 export const INPUT_NAMES = [
@@ -181,6 +182,16 @@ export const REASON_TEMPLATES = {
     '{asset} is limited to {maxUsd|usd}: beyond that, selling it would cost too much.',
     '{asset} fica limitado a {maxUsd|usd}: acima disso, vender custaria caro demais.',
   ),
+  TIER_CEILING: rule(
+    ['amount'],
+    '{asset} takes at most {maxUsd|usd}: what selling it costs is not measured yet, so the limit is the one for its tier on the asset list.',
+    '{asset} comporta no máximo {maxUsd|usd}: o custo de vender ainda não está medido, então o limite é o da faixa dele na lista de ativos.',
+  ),
+  EXIT_PARTLY_MEASURED: rule(
+    [],
+    'The limit for {asset} comes from part of the week only: selling it {when|regimes} is not measured, and may cost more.',
+    'O limite de {asset} vem de só uma parte da semana: a venda {when|regimes} não está medida, e pode custar mais.',
+  ),
   ISSUER_CAP: rule(
     ['risk'],
     'No more than {capBps|pct} of the plan with one issuer at {risk|risk}: {issuer} is at that limit.',
@@ -254,6 +265,10 @@ export const TEXT_TEMPLATES = {
     en: 'You can withdraw the tokens to your own wallet at any time. Selling everything in the worst hours measured would cost about {costBps|pct}; that is measured for {shareBps|pct} of the plan.',
     pt: 'Você pode sacar os tokens para a sua carteira a qualquer momento. Vender tudo nas piores horas medidas custaria cerca de {costBps|pct}; isso está medido para {shareBps|pct} do plano.',
   },
+  EXIT_MEASURED_ZERO: {
+    en: 'You can withdraw the tokens to your own wallet at any time. In the worst hours measured, selling everything cost nothing: the sale price was at or above the reference price. That is measured for {shareBps|pct} of the plan.',
+    pt: 'Você pode sacar os tokens para a sua carteira a qualquer momento. Nas piores horas medidas, vender tudo não custou nada: o preço de venda ficou igual ou acima do preço de referência. Isso está medido para {shareBps|pct} do plano.',
+  },
   EXIT_NOT_MEASURED: {
     en: 'You can withdraw the tokens to your own wallet at any time. The cost of selling is not measured for this plan yet.',
     pt: 'Você pode sacar os tokens para a sua carteira a qualquer momento. O custo de vender ainda não está medido para este plano.',
@@ -274,7 +289,10 @@ export const TEXT_TEMPLATES = {
 
 export type TextId = keyof typeof TEXT_TEMPLATES;
 
-type Words = Record<'goal' | 'risk' | 'sleeve' | 'chain' | 'inCountry', Record<string, string>>;
+type Words = Record<
+  'goal' | 'risk' | 'sleeve' | 'chain' | 'inCountry' | 'regime',
+  Record<string, string>
+> & { and: string };
 
 export const WORDS: Record<Language, Words> = {
   en: {
@@ -287,6 +305,14 @@ export const WORDS: Record<Language, Words> = {
       cash: 'cash',
     },
     chain: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
+    // The times of the week the risk layer measures apart, in the order they are written.
+    regime: {
+      us_market_hours: 'in US market hours',
+      us_offhours_weekday: 'on weekdays outside US market hours',
+      weekend: 'at the weekend',
+      us_holiday: 'on US holidays',
+    },
+    and: 'and',
     // A country by its name. One this list does not hold is written by its code.
     inCountry: {
       AE: 'in the United Arab Emirates',
@@ -329,6 +355,13 @@ export const WORDS: Record<Language, Words> = {
       cash: 'caixa',
     },
     chain: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
+    regime: {
+      us_market_hours: 'no horário do mercado dos EUA',
+      us_offhours_weekday: 'em dias úteis fora do horário do mercado dos EUA',
+      weekend: 'no fim de semana',
+      us_holiday: 'em feriados dos EUA',
+    },
+    and: 'e',
     inCountry: {
       AE: 'nos Emirados Árabes Unidos',
       AR: 'na Argentina',
@@ -414,6 +447,16 @@ const FORMATS: Record<string, (value: Value, lang: Language, key: string) => str
     const count = number(value, key);
     const unit = lang === 'pt' ? (count === 1 ? 'mês' : 'meses') : count === 1 ? 'month' : 'months';
     return `${count} ${unit}`;
+  },
+  // Codes joined by commas, written in the order of the list above: "a, b and c".
+  regimes: (value, lang, key) => {
+    const given = String(value).split(',');
+    const known = Object.keys(WORDS[lang].regime).filter((code) => given.includes(code));
+    const words = known.map((code) => WORDS[lang].regime[code] ?? code);
+    const last = words.pop();
+    if (last === undefined || known.length !== given.length)
+      throw new Error(`template value ${key} must be times of the week`);
+    return words.length > 0 ? `${words.join(', ')} ${WORDS[lang].and} ${last}` : last;
   },
   goal: (value, lang) => WORDS[lang].goal[String(value)] ?? String(value),
   risk: (value, lang) => WORDS[lang].risk[String(value)] ?? String(value),

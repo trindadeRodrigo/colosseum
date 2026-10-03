@@ -45,13 +45,14 @@ export const PERSONAL_PARAMS: PersonalParameters = {
   // The most of the plan with one issuer, by risk.
   capPerIssuerBps: { low: 5000, medium: 7000, high: 10_000 },
 
-  // The most dollars one token takes, by its tier on the shelf.
-  tierCeilingUsd: { A: 50_000, B: 10_000, C: 1500 },
-  // Of a token's measured exit capacity, the share one plan may count on.
+  // Of a token's measured exit capacity, the share one plan may count on: the most dollars a line of
+  // it holds (gate EXIT-SOURCE, Oct 3).
   shareOfDepth: 0.25,
   // The exit cost at which that capacity is read: 1%.
   tau: 0.01,
-  minExitSamples: 1,
+  // The fallback where no capacity is measured: the most dollars one token takes, by its tier on the
+  // shelf. A plan that uses it says so on the line.
+  tierCeilingUsd: { A: 50_000, B: 10_000, C: 1500 },
 
   minLineBps: 50,
   minLineUsd: 5,
@@ -88,16 +89,14 @@ export const PERSONAL_PARAMS_STATUS: Record<Exclude<keyof PersonalParameters, 'v
   tierCeilingUsd: {
     status: 'starting',
     from: 'The prototype, from the sizes that define the tiers of the launch shelf: a leg up to $50k, up to $10k, up to about $1k to $2k.',
+    changed:
+      'Oct 3, gate EXIT-SOURCE: a fallback only. Where an exit capacity is measured, a line may hold shareOfDepth of it and the tier is not read.',
   },
   shareOfDepth: {
     status: 'starting',
     from: 'The value the structurer and the risk layer use (0.25).',
   },
   tau: { status: 'starting', from: 'The value the structurer and the risk layer use (1%).' },
-  minExitSamples: {
-    status: 'starting',
-    from: 'New here: a capacity read from no sample is not a measurement. The risk layer has its own floor per curve.',
-  },
   minLineBps: { status: 'starting', from: 'DESIGN-VAULT 3.6: 50 in the MVP.' },
   minLineUsd: { status: 'starting', from: 'The prototype (minLineUsd), unchanged.' },
   maxLinesPerChain: {

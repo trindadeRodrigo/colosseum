@@ -121,7 +121,6 @@ const table: fc.Arbitrary<PersonalParameters> = fc
     capPerIssuerBps: byRisk(bps),
     tierCeilingUsd: fc.record({ A: dollars, B: dollars, C: dollars }),
     shareOfDepth: fc.double({ min: 0.01, max: 1, noNaN: true }),
-    minExitSamples: fc.integer({ min: 0, max: 50 }),
     minLineBps: fc.integer({ min: 0, max: 600 }),
     minLineUsd: fc.integer({ min: 0, max: 200 }),
     maxLinesPerChain: fc.integer({ min: 1, max: 16 }),
@@ -174,6 +173,14 @@ const world = fc.record({
     { maxLength: 12 },
   ),
   samples: fc.integer({ min: 0, max: 60 }),
+  // Times of the week a token's measurement leaves out.
+  notMeasured: fc.array(
+    fc.tuple(
+      fc.constantFrom(...TOKENS.map((a) => a.id)),
+      fc.subarray(['us_market_hours', 'us_offhours_weekday', 'weekend', 'us_holiday'] as const),
+    ),
+    { maxLength: 4 },
+  ),
   read: fc.subarray(fixtureYields().map((y) => y.assetId)),
   holdings,
   params: fc.oneof(fc.constant(PERSONAL_PARAMS), table),
@@ -190,7 +197,12 @@ function made(raw: World): { shelf: Shelf; context: ComposeContext } {
       now: NOW,
       holdings: raw.holdings,
       yields: fixtureYields().filter((y) => raw.read.includes(y.assetId)),
-      liquidity: fixtureLiquidity(Object.fromEntries(raw.measured), raw.samples),
+      liquidity: fixtureLiquidity(
+        Object.fromEntries(raw.measured),
+        raw.samples,
+        undefined,
+        Object.fromEntries(raw.notMeasured.map(([id, gaps]) => [id, [...gaps]])),
+      ),
       params: raw.params,
     },
   };
