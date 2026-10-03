@@ -62,6 +62,8 @@
     "risk:facts-lending": "tsx scripts/risk/facts/lending-facts.ts",
     "risk:facts-import": "tsx scripts/risk/facts/import-lending.ts",
     "risk:recovery-import": "tsx scripts/risk/facts/import-recovery.ts",
+    "risk:flow-import": "tsx scripts/risk/facts/import-flow.ts",
+    "risk:freeze-flow-fixture": "tsx scripts/risk/facts/freeze-flow-fixture.ts && biome format --write fixtures/risk/history/flow-tslax.json",
     "risk:facts-methodology": "tsx scripts/risk/facts/gen-methodology.ts",
     "risk:split-snapshot": "tsx scripts/risk/split-snapshot.ts",
     "risk:cost-breakdown": "tsx scripts/risk/facts/cost-breakdown.ts",

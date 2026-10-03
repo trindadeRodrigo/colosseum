@@ -170,6 +170,20 @@ export type DataCoverage = z.infer<typeof DataCoverage>;
 export const GapFact = z.object({ gapPct: z.number().positive(), value: Fact });
 export type GapFact = z.infer<typeof GapFact>;
 
+/** Swap flow in one bucket (item 16): USD from priced swaps only; `netSellPressure` = (sell − buy) ÷ volume;
+ *  `turnoverPerHour` = volume per hourly row ÷ the median ±2% sell depth. */
+export const FlowFacts = z.object({
+  volumeUsd: Fact,
+  sellUsd: Fact,
+  buyUsd: Fact,
+  swaps: Fact,
+  netSellPressure: Fact,
+  turnoverPerHour: Fact,
+  /** Swaps in an hour with no quote price: in `swaps`, not in any USD figure. */
+  unpricedSwaps: Fact,
+});
+export type FlowFacts = z.infer<typeof FlowFacts>;
+
 export const AssetFacts = z.object({
   assetId: z.string().min(1),
   symbol: z.string().min(1),
@@ -229,6 +243,41 @@ export const AssetFacts = z.object({
     /** Share of weekends whose close-to-open move exceeded each gap. */
     weekendGapFrequency: z.array(GapFact),
   }),
+  /** Volume, net sell pressure and turnover from the decoded swap history (item 16); absent on older sheets. */
+  flow: z
+    .object({
+      /** The 28-day window of `byRegime` and `byPool`: the history's last 672 hours, to its newest event. */
+      window: z.object({ from: z.string().datetime(), to: z.string().datetime() }).nullable(),
+      byRegime: z.array(FlowFacts.extend({ regime: FactRegime })),
+      /** Every regime, over the last 24 hours, 7 days and 28 days of the history. */
+      byWindow: z.array(
+        FlowFacts.extend({
+          window: z.enum(['24h', '7d', '28d']),
+          from: z.string().datetime().nullable(),
+          to: z.string().datetime().nullable(),
+        }),
+      ),
+      byPool: z.array(
+        z.object({
+          pool: z.string().min(1),
+          venue: z.string().min(1),
+          quote: z.string().min(1),
+          volume28dUsd: Fact,
+          swaps: Fact,
+          unpricedSwaps: Fact,
+          /** The pool's share of the asset's priced 28-day volume over its value pools. */
+          share: Fact,
+        }),
+      ),
+      /** Where the token sits (item 16, part 2). */
+      holders: z.object({
+        top10Share: Fact,
+        inWalletsShare: Fact,
+        inLendingShare: Fact,
+        inPoolsShare: Fact,
+      }),
+    })
+    .optional(),
   coverage: DataCoverage,
   methodVersion: z.string().min(1),
   provenance: Provenance,

@@ -565,3 +565,38 @@ export const riskDepthRecovery = pgTable(
     }),
   ],
 );
+
+/** Swap flow of one value pool in one regime ('all': every regime) and one window of the Step 5b history
+ *  (PLAN-ANALYTICS item 16, `pnpm risk:flow-import`). Aggregates only: no wallet, no signature. */
+export const riskPoolFlow = pgTable(
+  'risk_pool_flow',
+  {
+    pool: text('pool').notNull(),
+    assetMint: text('asset_mint').notNull(),
+    assetSymbol: text('asset_symbol').notNull(),
+    regime: text('regime').notNull(),
+    /** 24h | 7d | 28d: the last 24, 168 or 672 hours of the history, ending at its newest event. */
+    window: text('window').notNull(),
+    swaps: integer('swaps').notNull(),
+    sellSwaps: integer('sell_swaps').notNull(),
+    buySwaps: integer('buy_swaps').notNull(),
+    /** Swaps in an hour with no quote price: counted in `swaps`, left out of the USD sums. */
+    unpricedSwaps: integer('unpriced_swaps').notNull(),
+    sellUsd: doublePrecision('sell_usd').notNull(),
+    buyUsd: doublePrecision('buy_usd').notNull(),
+    /** Hourly rows of the pool in the regime and window, and the median ±2% sell depth over them. */
+    hours: integer('hours').notNull(),
+    medianDepthSellUsd: doublePrecision('median_depth_sell_usd'),
+    dataFrom: ts('data_from').notNull(),
+    dataTo: ts('data_to').notNull(),
+    methodVersion: text('method_version').notNull(),
+    ...provenanceCols,
+  },
+  (t) => [
+    primaryKey({
+      name: 'risk_pool_flow_pk',
+      columns: [t.pool, t.regime, t.window, t.dataTo],
+    }),
+    index('risk_pool_flow_asset_idx').on(t.assetMint, t.dataTo),
+  ],
+);

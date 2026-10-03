@@ -14,6 +14,7 @@ import { type AssetCurves, curveFor, type IssuerModel, measuredRegimes } from '.
 import { costAt, type DepthCurve, maxNotionalAt, usableCount } from '../curves';
 import { REGIMES, type Regime } from '../time';
 import { splitAt } from './breakdown';
+import { type FlowInput, flowFacts } from './flow';
 import {
   dailyCloses,
   gapFrequency,
@@ -97,6 +98,10 @@ export type AssetFactsInput = {
   depthRecovery?:
     | (RowMeta & { rows: DepthRecoveryRow[]; largeShare: number; fetchedAt: string })
     | null;
+  /** Flow aggregates of the asset's value pools from the swap history (item 16); absent: not collected. */
+  flow?: FlowInput | null;
+  /** Priced swaps needed in a flow bucket; default `defaultFactsParams().flowMinSwaps`. */
+  flowMinSwaps?: number;
   /** Median network fee per swap, or why it is not measured (item 4). */
   networkFee?:
     | (RowMeta & { usd: number; fetchedAt: string; dataFrom: string; samples: number })
@@ -125,6 +130,8 @@ export const defaultFactsParams = () => ({
   marketRiskMinReturns: 20,
   /** Weekends needed before a gap frequency is given. */
   minWeekends: 8,
+  /** Priced swaps needed in a flow bucket before its volume, pressure and turnover are given (item 16). */
+  flowMinSwaps: 8,
 });
 
 const NOT_SPLIT =
@@ -467,6 +474,7 @@ export function buildAssetFacts(inp: AssetFactsInput): AssetFacts {
       settlementHours: issuerFact(inp.issuer?.settlementHours ?? 0, 'hours'),
     },
     marketRisk: marketRiskFacts(inp),
+    flow: flowFacts(inp.flow, inp.flowMinSwaps ?? defaultFactsParams().flowMinSwaps),
     coverage: {
       regimesMeasured: regimes.measured,
       regimesMissing: regimes.missing.map((m) => m.regime),

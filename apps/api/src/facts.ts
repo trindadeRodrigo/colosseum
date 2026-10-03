@@ -10,6 +10,7 @@ import {
   riskLendingPositions,
   riskLpConcentration,
   riskNetworkFees,
+  riskPoolFlow,
   riskPools,
   riskReferencePrices,
 } from '@colosseum/db';
@@ -23,6 +24,9 @@ import {
   defaultFactsParams,
   defaultLendingReportParams,
   defaultRegimeParams,
+  FLOW_METHOD_VERSION,
+  type FlowAggregate,
+  type FlowWindow,
   fitCurve,
   type IssuerModel,
   maxNotionalAt,
@@ -143,6 +147,80 @@ export async function loadDepthRecovery(
   };
 }
 
+/**
+ * Swap flow of the asset's value pools from the newest import of the Step 5b history (item 16), or null when the
+ * asset has no pool there.
+ */
+export async function loadFlow(db: Db, mint: string | null): Promise<AssetFactsInput['flow']> {
+  if (!mint) return null;
+  const [latest] = await db
+    .select({ dataTo: riskPoolFlow.dataTo })
+    .from(riskPoolFlow)
+    .where(
+      and(eq(riskPoolFlow.assetMint, mint), eq(riskPoolFlow.methodVersion, FLOW_METHOD_VERSION)),
+    )
+    .orderBy(desc(riskPoolFlow.dataTo))
+    .limit(1);
+  if (!latest) return null;
+  const rows = await db
+    .select({
+      flow: riskPoolFlow,
+      venue: riskPools.venue,
+      quoteSymbol: riskPools.quoteSymbol,
+      quoteMint: riskPools.quoteMint,
+    })
+    .from(riskPoolFlow)
+    .leftJoin(riskPools, eq(riskPools.address, riskPoolFlow.pool))
+    .where(
+      and(
+        eq(riskPoolFlow.assetMint, mint),
+        eq(riskPoolFlow.methodVersion, FLOW_METHOD_VERSION),
+        eq(riskPoolFlow.dataTo, latest.dataTo),
+      ),
+    );
+  const head = rows[0]?.flow;
+  if (!head) return null;
+  const pools = new Map<string, NonNullable<AssetFactsInput['flow']>['pools'][number]>();
+  for (const r of rows) {
+    const f = r.flow;
+    const p = pools.get(f.pool) ?? {
+      pool: f.pool,
+      venue: r.venue ?? 'unknown',
+      quote: r.quoteSymbol ?? r.quoteMint ?? 'unknown',
+      rows: [],
+    };
+    p.rows.push({
+      regime: f.regime as FlowAggregate['regime'],
+      window: f.window as FlowWindow,
+      from: f.dataFrom.toISOString(),
+      to: f.dataTo.toISOString(),
+      swaps: f.swaps,
+      sellSwaps: f.sellSwaps,
+      buySwaps: f.buySwaps,
+      unpricedSwaps: f.unpricedSwaps,
+      sellUsd: f.sellUsd,
+      buyUsd: f.buyUsd,
+      hours: f.hours,
+      medianDepthSellUsd: f.medianDepthSellUsd,
+    });
+    pools.set(f.pool, p);
+  }
+  return {
+    source: `risk_pool_flow (${head.source})`,
+    method: head.method,
+    methodVersion: head.methodVersion,
+    provenance: head.provenance,
+    // the largest pool first, as the sheet lists them
+    pools: [...pools.values()].sort((a, b) => {
+      const v = (p: typeof a) =>
+        p.rows
+          .filter((x) => x.regime === 'all' && x.window === '28d')
+          .reduce((s, x) => s + x.sellUsd + x.buyUsd, 0);
+      return v(b) - v(a) || a.pool.localeCompare(b.pool);
+    }),
+  };
+}
+
 /** Median network fee per swap from risk_network_fees, or why it is not measured. */
 export async function loadNetworkFee(
   db: Db,
@@ -251,6 +329,7 @@ export async function loadAssetFacts(
       tracking: [],
       issuer: null,
       marketRisk: await loadMarketSeries(db, mint, now, params.marketRiskWindowDays),
+      flow: await loadFlow(db, mint),
     });
 
   const side = (s: 'sell' | 'buy'): AssetCurves | null => {
@@ -456,6 +535,7 @@ export async function loadAssetFacts(
     curveMeta,
     splitMeta: SPLIT_META,
     depthRecovery: await loadDepthRecovery(db, symbol),
+    flow: await loadFlow(db, mint),
     marketRisk: await loadMarketSeries(db, mint, now, params.marketRiskWindowDays),
     splitMinSamples: params.splitMinSamples,
     networkFee: await loadNetworkFee(db, params.splitMinSamples),

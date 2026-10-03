@@ -1,6 +1,17 @@
 import { readFileSync } from 'node:fs';
-import { createDb, riskDepthCurves, riskPools } from '@colosseum/db';
-import { costAt, type DepthCurve, fitCurve, type Regime, roundTripCost } from '@colosseum/risk';
+import { createDb, riskDepthCurves, riskPoolFlow, riskPools } from '@colosseum/db';
+import {
+  addSwap,
+  costAt,
+  type DepthCurve,
+  FLOW_METHOD_VERSION,
+  type FlowBucket,
+  type FlowHour,
+  fitCurve,
+  poolFlow,
+  type Regime,
+  roundTripCost,
+} from '@colosseum/risk';
 import { AssetFacts, collectFacts } from '@colosseum/schemas';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -29,7 +40,63 @@ const sell: Partial<Record<Regime, DepthCurve>> = {
 const buy: Partial<Record<Regime, DepthCurve>> = { us_market_hours: curve(syn.us_market_hours, 3) };
 const { db, client } = createDb();
 
+// flow (item 16): ten priced sales of 100 USD in one market-hours row, three purchases on a weekend row
+const FLOW_TO = '2026-09-07T10:00:00.000Z';
+const flowHours: FlowHour[] = [
+  {
+    hour: '2026-09-04T15:00:00.000Z',
+    regime: 'us_market_hours',
+    quoteUsd: 1,
+    depth2pctSellUsd: 2_000,
+  },
+  { hour: '2026-09-05T15:00:00.000Z', regime: 'weekend', quoteUsd: 1, depth2pctSellUsd: 1_000 },
+];
+const flowBuckets = new Map<string, FlowBucket>();
+const hm = new Map(flowHours.map((h) => [h.hour, h]));
+for (let i = 0; i < 10; i++)
+  addSwap(
+    flowBuckets,
+    { t: Date.parse(flowHours[0]?.hour as string) / 1000 + i, side: 'sell', quote: 100 },
+    hm,
+    () => 'us_market_hours',
+  );
+for (let i = 0; i < 3; i++)
+  addSwap(
+    flowBuckets,
+    { t: Date.parse(flowHours[1]?.hour as string) / 1000 + i, side: 'buy', quote: 50 },
+    hm,
+    () => 'weekend',
+  );
+const flowRows = poolFlow(flowBuckets.values(), flowHours, FLOW_TO);
+
 beforeAll(async () => {
+  await db
+    .insert(riskPoolFlow)
+    .values(
+      flowRows.map((g) => ({
+        pool: POOL,
+        assetMint: MINT,
+        assetSymbol: SYMBOL,
+        regime: g.regime,
+        window: g.window,
+        swaps: g.swaps,
+        sellSwaps: g.sellSwaps,
+        buySwaps: g.buySwaps,
+        unpricedSwaps: g.unpricedSwaps,
+        sellUsd: g.sellUsd,
+        buyUsd: g.buyUsd,
+        hours: g.hours,
+        medianDepthSellUsd: g.medianDepthSellUsd,
+        dataFrom: new Date(g.from),
+        dataTo: new Date(g.to),
+        methodVersion: FLOW_METHOD_VERSION,
+        source: 'fixture flow rows',
+        method: 'fixture',
+        fetchedAt: new Date(),
+        provenance: 'fixture' as const,
+      })),
+    )
+    .onConflictDoNothing();
   const now = new Date();
   await db
     .insert(riskPools)
@@ -81,6 +148,7 @@ beforeAll(async () => {
         .onConflictDoNothing();
 });
 afterAll(async () => {
+  await db.delete(riskPoolFlow).where(eq(riskPoolFlow.assetMint, MINT));
   await db.delete(riskDepthCurves).where(eq(riskDepthCurves.assetMint, MINT));
   await db.delete(riskPools).where(eq(riskPools.address, POOL));
   await client.end();
@@ -136,6 +204,40 @@ describe('GET /risk/facts/assets/:id', () => {
     expect(sheet.coverage.regimesMeasured).toEqual(['us_market_hours']);
     expect(sheet.liquidityStability.lpTop1Share).toMatchObject({ value: null });
     expect(sheet.lendingUse.collateralUsd).toMatchObject({ value: null, reason: 'not_applicable' });
+    await app.close();
+  });
+
+  it('serves the flow block from risk_pool_flow; a bucket too thin arrives as null with its reason', async () => {
+    const app = await buildRiskApp();
+    const sheet = AssetFacts.parse(
+      (await app.inject({ url: `/risk/facts/assets/${SYMBOL}` })).json(),
+    );
+    expect(collectFacts(sheet).invalid).toEqual([]);
+    const flow = sheet.flow;
+    const mh = flow?.byRegime.find((r) => r.regime === 'us_market_hours');
+    expect(mh?.volumeUsd).toMatchObject({
+      value: 1_000,
+      quality: 'lower_bound',
+      fetchedAt: FLOW_TO,
+      source: 'risk_pool_flow (fixture flow rows)',
+      methodVersion: FLOW_METHOD_VERSION,
+      provenance: 'fixture',
+    });
+    expect(mh?.netSellPressure.value).toBe(1);
+    // 1,000 USD in one hourly row against 2,000 USD of ±2% sell depth
+    expect(mh?.turnoverPerHour.value).toBe(0.5);
+    const we = flow?.byRegime.find((r) => r.regime === 'weekend');
+    expect(we?.swaps.value).toBe(3);
+    expect(we?.volumeUsd).toEqual({
+      value: null,
+      reason: 'insufficient_samples',
+      unit: 'usd',
+      regime: 'weekend',
+      detail: '3 priced swaps (0 unpriced), 8 needed',
+    });
+    expect(flow?.byPool).toHaveLength(1);
+    expect(flow?.byPool[0]).toMatchObject({ pool: POOL, venue: 'fixture', quote: 'fixture' });
+    expect(flow?.holders.top10Share).toMatchObject({ value: null, reason: 'not_collected' });
     await app.close();
   });
 

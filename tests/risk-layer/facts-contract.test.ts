@@ -97,6 +97,52 @@ const sheet: AssetFacts = {
     maxDrawdown: missing('no_reference_price', 'fraction'),
     weekendGapFrequency: [{ gapPct: 5, value: missing('no_reference_price', 'fraction') }],
   },
+  flow: {
+    window: { from: '2026-09-03T13:00:00.000Z', to: '2026-10-01T12:02:31.000Z' },
+    byRegime: [
+      {
+        regime: 'us_market_hours',
+        volumeUsd: measured(1_000_000, 'usd'),
+        sellUsd: measured(600_000, 'usd'),
+        buyUsd: measured(400_000, 'usd'),
+        swaps: measured(5_000, 'count'),
+        netSellPressure: measured(0.2, 'ratio'),
+        turnoverPerHour: measured(0.5, 'ratio'),
+        unpricedSwaps: measured(3, 'count'),
+      },
+    ],
+    byWindow: [
+      {
+        window: '24h',
+        from: null,
+        to: null,
+        volumeUsd: missing('insufficient_samples', 'usd'),
+        sellUsd: missing('insufficient_samples', 'usd'),
+        buyUsd: missing('insufficient_samples', 'usd'),
+        swaps: measured(4, 'count'),
+        netSellPressure: missing('insufficient_samples', 'ratio'),
+        turnoverPerHour: missing('insufficient_samples', 'ratio'),
+        unpricedSwaps: measured(0, 'count'),
+      },
+    ],
+    byPool: [
+      {
+        pool: 'FIXTUREpool',
+        venue: 'raydium_clmm',
+        quote: 'USDC',
+        volume28dUsd: measured(1_000_000, 'usd'),
+        swaps: measured(5_000, 'count'),
+        unpricedSwaps: measured(3, 'count'),
+        share: measured(1, 'fraction'),
+      },
+    ],
+    holders: {
+      top10Share: missing('not_collected', 'fraction'),
+      inWalletsShare: missing('not_collected', 'fraction'),
+      inLendingShare: missing('not_collected', 'fraction'),
+      inPoolsShare: missing('not_collected', 'fraction'),
+    },
+  },
   coverage: {
     regimesMeasured: ['us_market_hours'],
     regimesMissing: ['weekend', 'us_holiday', 'us_offhours_weekday'],
@@ -140,13 +186,19 @@ describe('fact contract', () => {
     const weekend = facts.filter((f) => f.path.startsWith('costs[1].exit.total'));
     expect(weekend).toHaveLength(1);
     expect(weekend[0]?.fact.value).toBeNull();
+    // the flow block (item 16) is walked like the rest
+    expect(facts.filter((f) => f.path.startsWith('flow.'))).toHaveLength(22);
   });
 
   it('collectFacts reports a bare number stored as a fact', () => {
     const bad = structuredClone(sheet) as unknown as { weekendRatio: unknown };
     bad.weekendRatio = { value: 0, unit: 'ratio' };
+    (bad as unknown as { flow: { byPool: Array<{ share: unknown }> } }).flow.byPool[0] = {
+      ...(sheet.flow?.byPool[0] as object),
+      share: { value: 0, unit: 'fraction' },
+    } as { share: unknown };
     const { invalid } = collectFacts(bad);
-    expect(invalid.map((i) => i.path)).toEqual(['weekendRatio']);
+    expect(invalid.map((i) => i.path)).toEqual(['weekendRatio', 'flow.byPool[0].share']);
     expect(AssetFacts.safeParse(bad).success).toBe(false);
   });
 });
