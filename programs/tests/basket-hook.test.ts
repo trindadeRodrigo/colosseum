@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   createVaultInstruction,
   depositInstruction,
-  initConfig,
+  initPlatform,
   setCashMintInstruction,
   trackedFor,
   vaultAddress,
@@ -64,7 +64,7 @@ describe('a transfer hook set after the vault holds the token (A9b)', () => {
 
     cash = await createMint(svm, owner, { program: TOKEN_PROGRAM, decimals: 6 });
     stock = await createMint(svm, owner, { program: TOKEN_2022_PROGRAM, decimals: 8, stock: true });
-    expectOk(await initConfig(svm, deployer, { cashMint: cash.address }));
+    await initPlatform(svm, deployer, { cashMint: cash.address }, [stock.address]);
     vault = await vaultAddress(owner.address, 1n);
     await mintTo(svm, owner, cash, owner.address, CASH);
     expectOk(

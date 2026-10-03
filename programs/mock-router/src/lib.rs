@@ -2,13 +2,16 @@
 //!
 //! It stands in for Jupiter in LiteSVM tests and on devnet, where Jupiter does not exist.
 //! It takes the input token from the trader's token account and pays the output token
-//! from its own reserve, at a price its admin sets per pair. TNET-4 finishes it (the price
-//! read from a test price account, a spread, who may initialise it on devnet).
+//! from its own reserve, at a price its admin sets per pair. Only the program's upgrade
+//! authority can initialise it, and becomes that admin. TNET-4 finishes it (the price read
+//! from a test price account, a spread).
 
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{
     transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
 };
+
+use crate::program::MockRouter;
 
 declare_id!("2ticePjZZ6e34bNUgUXz7v3uHm3jS8jvV13gesdvKn4f");
 
@@ -20,6 +23,9 @@ pub mod mock_router {
     use super::*;
 
     /// Creates the one router account. Its address also owns the reserve token accounts.
+    /// The signer must be the program's upgrade authority and becomes the admin, who sets
+    /// the prices: whoever got there first could otherwise name any price on a network
+    /// where people try the product.
     pub fn init_router(ctx: Context<InitRouter>) -> Result<()> {
         let router = &mut ctx.accounts.router;
         router.admin = ctx.accounts.admin.key();
@@ -114,10 +120,22 @@ pub struct Pair {
 
 #[derive(Accounts)]
 pub struct InitRouter<'info> {
+    /// The program's upgrade authority. It becomes the admin.
     #[account(mut)]
     pub admin: Signer<'info>,
     #[account(init, payer = admin, space = 8 + Router::INIT_SPACE, seeds = [ROUTER_SEED], bump)]
     pub router: Account<'info, Router>,
+    /// This program, to find its program data account.
+    #[account(
+        constraint = program.programdata_address()? == Some(program_data.key())
+            @ MockRouterError::NotUpgradeAuthority
+    )]
+    pub program: Program<'info, MockRouter>,
+    #[account(
+        constraint = program_data.upgrade_authority_address == Some(admin.key())
+            @ MockRouterError::NotUpgradeAuthority
+    )]
+    pub program_data: Account<'info, ProgramData>,
     pub system_program: Program<'info, System>,
 }
 
@@ -198,4 +216,6 @@ pub enum MockRouterError {
     Overflow,
     #[msg("output is below min_out")]
     BelowMinOut,
+    #[msg("signer is not the program's upgrade authority")]
+    NotUpgradeAuthority,
 }

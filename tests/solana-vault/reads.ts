@@ -10,6 +10,7 @@ import {
   Holding,
   Price,
   type Provenance,
+  Recipe,
   TxStatus,
   VaultState,
 } from '@colosseum/schemas';
@@ -21,13 +22,14 @@ import { assetId, type MintName, type VaultName, type World } from './world';
 // committed account bytes behind a node in memory, and on a local validator.
 //
 // First the adapter contract's own `reads` group (packages/chain-mock/src/contract.ts), the cases every
-// adapter is held to. It asks for a reader and nothing else, and reads no shared portfolio, so it runs
-// today. Then what this reader shows beyond the contract: the exact balances, targets and prices of the
-// world, both token programs, a landed and a reverted transaction, and what it refuses.
+// adapter is held to. It asks for a reader and nothing else, and reads no shared portfolio. Then what
+// this reader shows beyond the contract: the exact balances, targets and prices of the world, both
+// token programs, a landed and a reverted transaction, the shared portfolio the first vault follows
+// with the version that waits, and what it refuses.
 //
-// The contract's other groups wait for the chain: `shared portfolios` for the registry (SOL-2), `quotes`
-// and every group that builds for the swap and the builders (SOL-2, ADS-2). The last case here pins
-// what the reader answers until then.
+// The contract's other groups wait for the builders (ADS-2): their fixture is a full adapter, set up
+// with the transactions it builds. `shared portfolios` among them: the registry is on chain and read
+// here, but that group's fixture needs a second portfolio and a vault one version behind it.
 
 export type ReadSetup = {
   reader: SolanaVaultReader;
@@ -176,12 +178,14 @@ export function readCases(name: string, setup: () => Promise<ReadSetup>): void {
         expect(one?.autoFollow).toBe(expected.vaults[vault].autoFollow);
         // No instruction sets a keeper of its own, so every vault has Config's default.
         expect(one?.keeper).toBe(names.keeper);
-        expect([
-          one?.recipeOnchainId,
-          one?.acceptedVersion,
-          one?.pending,
-          one?.lossUsedBps,
-        ]).toEqual([null, 0, null, 0]);
+        // What it follows, and the version whose weights it took.
+        const want = expected.vaults[vault];
+        expect([one?.recipeOnchainId, one?.acceptedVersion, one?.lossUsedBps]).toEqual([
+          want.recipe ? names.recipes[want.recipe] : null,
+          want.acceptedVersion,
+          0,
+        ]);
+        if (!want.recipe) expect(one?.pending).toBeNull();
       }
       // Another owner's vault, with the same plan id, is theirs alone.
       const theirs = await s.reader.getVaults(names.other);
@@ -291,7 +295,10 @@ export function readCases(name: string, setup: () => Promise<ReadSetup>): void {
       expect([...all].sort()).toEqual([vaults.following, vaults.partial].sort());
       expect(new Set(all).size).toBe(all.length);
       for (const address of all) expect((await s.reader.getVault(address))?.autoFollow).toBe(true);
-      // No vault follows a shared portfolio yet, so no address has followers.
+      // By the shared portfolio they follow: one vault follows the one there is, none follows a stranger.
+      expect(await s.reader.listAutoFollowVaults(s.world.names.recipes.core)).toEqual([
+        vaults.following,
+      ]);
       expect(await s.reader.listAutoFollowVaults(stranger)).toEqual([]);
       await refuses(s.reader.listAutoFollowVaults('not-an-address'), 'BadInput');
     });
@@ -371,11 +378,68 @@ export function readCases(name: string, setup: () => Promise<ReadSetup>): void {
       expect(failed.error?.message.length).toBeGreaterThan(0);
     });
 
-    it('refuses what is not on chain yet: a shared portfolio and a quote', async () => {
+    it('reads a shared portfolio: the version in effect, and the one that waits', async () => {
+      const { names, expected } = s.world;
+      const want = expected.recipes.core;
+      const lines = (list: { mint: MintName; weightBps: number }[]) =>
+        list.map((c) => ({ kind: 'asset', asset: assetId(c.mint), weightBps: c.weightBps }));
+      const { active, pending } = await s.reader.getRecipe(names.recipes.core);
+      for (const version of [active, ...(pending ? [pending] : [])]) {
+        exact(Recipe, version);
+        expect(version).toMatchObject({
+          chain: 'solana',
+          onchainId: names.recipes.core,
+          creator: names.creator,
+          kind: 'community',
+          familyId: want.familyId,
+          maxFeeBps: 0,
+          flags: 0,
+        });
+      }
+      expect([active.version, active.components]).toEqual([
+        want.active.version,
+        lines(want.active.components),
+      ]);
+      expect(active.effectiveAt).toBeGreaterThan(0);
+      if (!want.pending) expect(pending).toBeNull();
+      else {
+        expect([pending?.version, pending?.effectiveAt, pending?.components]).toEqual([
+          want.pending.version,
+          Number(want.pending.effectiveAt),
+          lines(want.pending.components),
+        ]);
+        expect(pending?.effectiveAt).toBeGreaterThan(active.effectiveAt);
+      }
+    });
+
+    it('tells a vault that follows what it has not applied yet, and which assets would be new to it', async () => {
+      const { expected } = s.world;
+      const following = await vaultOf('following');
+      const want = expected.recipes.core.pending;
+      if (!want) expect(following.pending).toBeNull();
+      else {
+        const targets = expected.vaults.following.targets.map((t) => t.mint);
+        expect(following.pending).toEqual({
+          version: want.version,
+          effectiveAt: Number(want.effectiveAt),
+          newAssets: want.components
+            .filter((c) => !targets.includes(c.mint))
+            .map((c) => assetId(c.mint)),
+        });
+        expect(following.pending?.newAssets.length).toBeGreaterThan(0);
+      }
+      // The targets are still those of the version it took.
+      expect(following.acceptedVersion).toBe(expected.recipes.core.active.version);
+    });
+
+    it('refuses what is not a shared portfolio, and does not quote', async () => {
       const { names } = s.world;
-      const recipe = await refuses(s.reader.getRecipe(names.stranger), 'NotSupported');
-      expect(recipe.message).toContain('SOL-2');
-      expect(recipe.retryable).toBe(false);
+      // Nothing there, the program's own Config, a vault, and a mint: none is a shared portfolio.
+      for (const address of [names.stranger, names.config, names.vaults.manual, names.mints.spyx]) {
+        const refused = await refuses(s.reader.getRecipe(address), 'RecipeNotFound');
+        expect(refused.retryable).toBe(false);
+      }
+      await refuses(s.reader.getRecipe('not-an-address'), 'BadInput');
       const trade = { sell: assetId('usdc'), buy: assetId('spyx'), amountInRaw: '50000000' };
       await refuses(s.reader.quote(trade, names.owner), 'NotSupported');
     });

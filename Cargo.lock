@@ -1175,6 +1175,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "puppet-router"
+version = "0.1.0"
+dependencies = [
+ "solana-program",
+]
+
+[[package]]
 name = "qstring"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
