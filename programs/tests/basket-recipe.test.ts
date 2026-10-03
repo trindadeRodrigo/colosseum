@@ -272,6 +272,18 @@ describe('the shared-portfolio registry', () => {
         ]),
         ANCHOR.ConstraintSeeds,
       );
+      // A copy of the asset list at another address, and Config in the list's place.
+      setClock(svm, START + DELAY);
+      const real = svm.getAccount(await assetsAddress());
+      if (!real.exists) throw new Error('no asset list');
+      const copy = (await generateKeyPairSigner()).address;
+      svm.setAccount({ ...real, address: copy });
+      expectError(
+        await send(svm, creator, [
+          await updateRecipeInstruction({ creator, recipe, components: second, assets: copy }),
+        ]),
+        ANCHOR.ConstraintSeeds,
+      );
       expectError(
         await send(svm, creator, [
           await updateRecipeInstruction({

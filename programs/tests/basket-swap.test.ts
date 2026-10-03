@@ -2,6 +2,8 @@ import { type Address, generateKeyPairSigner, isSome } from '@solana/kit';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   assetsAddress,
+  createVaultInstruction,
+  depositInstruction,
   ERR,
   forgeConfig,
   forwarded,
@@ -10,7 +12,10 @@ import {
   pauseKeeperInstruction,
   readConfig,
   readVault,
+  setTargetsInstruction,
   trackedFor,
+  vaultAddress,
+  withdrawInstruction,
 } from './src/basket';
 import {
   ANCHOR,
@@ -37,8 +42,11 @@ import {
   tokenAccountFor,
 } from './src/swap';
 import {
+  ata,
   balance,
+  createAtaInstruction,
   createLooseTokenAccount,
+  mintTo,
   mintToAccount,
   TOKEN_2022_PROGRAM,
   TOKEN_PROGRAM,
@@ -355,11 +363,45 @@ describe('owner_swap through the allowed router', () => {
     });
   });
 
-  it('works while the keeper is paused, and reads no price', async () => {
-    // No price account exists anywhere in this world, and the owner trades all the same.
+  it('the whole owner path works while the keeper is paused, and reads no price', async () => {
+    // No price account exists anywhere in this world, and the pause is on: the owner still
+    // creates, deposits, trades, sets targets and withdraws.
     expectOk(await send(w.svm, w.guardian, [await pauseKeeperInstruction(w.guardian)]));
     expect((await readConfig(w.svm)).keeperPaused).toBe(true);
+
     expectOk(await swapThroughExchange(w, { amountIn: 10_000000n }));
     expect(held()).toEqual({ cash: CASH - 10_000000n, stock: 2_000000n });
+
+    await mintTo(w.svm, w.admin, w.cash, w.owner.address, 5_000000n);
+    const second = await vaultAddress(w.owner.address, 99n);
+    expectOk(
+      await send(w.svm, w.owner, [
+        await createVaultInstruction({
+          owner: w.owner,
+          basketId: 99n,
+          targets: [{ mint: w.stock.address, targetBps: 10_000 }],
+        }),
+        await createAtaInstruction(w.owner, second, w.cash),
+        await depositInstruction({
+          owner: w.owner,
+          vault: second,
+          mint: w.cash,
+          amount: 5_000000n,
+        }),
+        await setTargetsInstruction({
+          owner: w.owner,
+          vault: second,
+          targets: [{ mint: w.other.address, targetBps: 5_000 }],
+        }),
+        await withdrawInstruction({
+          owner: w.owner,
+          vault: second,
+          mint: w.cash,
+          amount: 5_000000n,
+        }),
+      ]),
+    );
+    expect(balance(w.svm, await ata(second, w.cash))).toBe(0n);
+    expect(balance(w.svm, await ata(w.owner.address, w.cash))).toBe(5_000000n);
   });
 });

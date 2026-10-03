@@ -478,7 +478,8 @@ const RULES = [
     file: 'src/instructions/recipe.rs',
     find: 'seeds = [RECIPE_SEED, creator.key().as_ref(), &family_id],',
     replace: 'seeds = [RECIPE_SEED, &family_id],',
-    fails: 'cannot be published at the address of another creator',
+    // Without the creator in the address, whoever publishes a family id first owns it.
+    fails: 'is one per creator per family',
   },
   {
     rule: 'publish_recipe: Config is the one at its own address',
