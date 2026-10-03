@@ -1,5 +1,5 @@
 import { apportion } from '@colosseum/basket';
-import type { BasketAsset, ChainId, Reason } from '@colosseum/schemas';
+import type { BasketAsset, Reason } from '@colosseum/schemas';
 import { BPS, bpsOf, shareOf, split, sum, toCents, toUsd } from './money';
 import { once, type Removed, type Unit } from './placement';
 import { type RuleId, reason } from './templates';
@@ -126,25 +126,19 @@ export function sizeSleeves(w: World): SleevePlan {
 
 export type Part = { asset: BasketAsset; bps: number };
 
-/** A shared portfolio the plan starts from, with the recipe its weights are read from. */
+/** A shared portfolio the plan starts from: its recipe on the person's chain. */
 export type Theme = {
   slug: string;
   name: string;
   /** False for the one a goal starts from when the person chose none. */
   chosen: boolean;
   family: Family;
-  /** Its recipe on each chain the person funded, in their order. */
-  recipes: { chain: ChainId; parts: Part[] }[];
-  start: { chain: ChainId; parts: Part[] };
+  parts: Part[];
 };
 
-/** The tokens of one underlying in one sleeve, on the chains the person funded, in their order. */
+/** The tokens of one underlying in one sleeve, on the person's chain. */
 export function tokensOf(w: World, underlying: string, sleeve: Sleeve): BasketAsset[] {
-  return w.tokens
-    .filter(
-      (a) => a.underlying === underlying && w.sleeveOf(a) === sleeve && w.chains.includes(a.chain),
-    )
-    .sort((a, b) => w.chains.indexOf(a.chain) - w.chains.indexOf(b.chain));
+  return w.tokens.filter((a) => a.underlying === underlying && w.sleeveOf(a) === sleeve);
 }
 
 /** Whether any token of this underlying can be held, and why not when none can. */
@@ -153,14 +147,11 @@ export function holdable(
   underlying: string,
   sleeve: Sleeve,
 ): { ok: boolean; why: Reason[] } {
-  const tokens = tokensOf(w, underlying, sleeve);
-  const blocks = tokens.map((a) => w.blockOf(a));
+  const blocks = tokensOf(w, underlying, sleeve).map((a) => w.blockOf(a));
   if (blocks.some((b) => b === null)) return { ok: true, why: [] };
   const why = once(blocks.flatMap((b) => (b ? [b] : [])));
-  return {
-    ok: false,
-    why: why.length > 0 ? why : [reason('NOT_ON_YOUR_CHAINS', { asset: underlying }, w.lang)],
-  };
+  const notHere = reason('NOT_ON_CHAIN', { asset: underlying, chain: w.chain }, w.lang);
+  return { ok: false, why: why.length > 0 ? why : [notHere] };
 }
 
 /** The reason a whole shared portfolio is left out, for the rule that left its parts out. */
@@ -171,63 +162,54 @@ function leftOut(w: World, rule: string, name: string): Reason {
   if (rule === 'NOT_IN_COUNTRY')
     return reason('NOT_IN_COUNTRY', { asset: name, country: sheet.country }, lang);
   if (rule === 'EXCLUDED') return reason('EXCLUDED', { asset: name }, lang);
-  return reason('NOT_ON_YOUR_CHAINS', { asset: name }, lang);
+  return reason('NOT_ON_CHAIN', { asset: name, chain: w.chain }, lang);
 }
 
-/** The shared portfolios the plan starts from. What cannot be used is listed in `removed`, with why. */
-export function resolveThemes(w: World, removed: Removed[]): Theme[] {
-  const { sheet, P, lang } = w;
-  const chosen = [...new Set(sheet.themes)];
-  const fallback = P.defaultTheme[sheet.goal];
-  const slugs = chosen.length > 0 ? chosen : fallback ? [fallback] : [];
-  const themes: Theme[] = [];
-  for (const slug of slugs) {
-    const isChosen = chosen.length > 0;
-    const family = w.families.get(slug);
-    if (!family) {
-      if (isChosen)
-        removed.push({ ref: slug, reasons: [reason('THEME_UNKNOWN', { theme: slug }, lang)] });
-      continue;
-    }
-    const name = family.meta.name;
-    const recipes = w.chains.flatMap((chain) => {
-      const recipe = family.recipes.find((r) => r.chain === chain);
-      if (!recipe) return [];
-      const parts = recipe.components.flatMap((c): Part[] => {
-        const asset = c.kind === 'asset' ? w.byId.get(c.asset) : undefined;
-        return asset ? [{ asset, bps: c.weightBps }] : [];
-      });
-      return parts.length > 0 ? [{ chain, parts }] : [];
-    });
-    const [first] = recipes;
-    if (!first) {
-      if (isChosen)
-        removed.push({
-          ref: slug,
-          reasons: [reason('THEME_NOT_ON_YOUR_CHAINS', { theme: name }, lang)],
-        });
-      continue;
-    }
-    // Read the weights from the first chain that can hold all of it; failing that, from the first.
-    const start = recipes.find((r) => r.parts.every((p) => w.blockOf(p.asset) === null)) ?? first;
-
-    // A portfolio none of whose parts the person can hold is left out as one, with why.
-    const blocks = start.parts.map((p) => holdable(w, p.asset.underlying, w.sleeveOf(p.asset)));
-    if (blocks.every((b) => !b.ok)) {
-      if (isChosen) {
-        const rules = [...new Set(blocks.flatMap((b) => b.why.map((r) => r.rule)))].sort();
-        removed.push({ ref: slug, reasons: rules.map((rule) => leftOut(w, rule, name)) });
-      }
-      continue;
-    }
-    themes.push({ slug, name, chosen: isChosen, family, recipes, start });
+/**
+ * A shared portfolio as the plan can use it: its recipe on the person's chain. When it cannot be
+ * used, the reasons why: no such portfolio, no version on this chain, or no part the person can hold.
+ */
+function themeOf(w: World, slug: string, chosen: boolean): Theme | Reason[] {
+  const { lang } = w;
+  const family = w.families.get(slug);
+  if (!family) return [reason('THEME_UNKNOWN', { theme: slug }, lang)];
+  const name = family.meta.name;
+  const recipe = family.recipes.find((r) => r.chain === w.chain);
+  const parts = (recipe?.components ?? []).flatMap((c): Part[] => {
+    const asset = c.kind === 'asset' ? w.byId.get(c.asset) : undefined;
+    return asset ? [{ asset, bps: c.weightBps }] : [];
+  });
+  if (parts.length === 0)
+    return [reason('THEME_NOT_ON_CHAIN', { theme: name, chain: w.chain }, lang)];
+  const blocks = parts.map((p) => holdable(w, p.asset.underlying, w.sleeveOf(p.asset)));
+  if (blocks.every((b) => !b.ok)) {
+    const rules = [...new Set(blocks.flatMap((b) => b.why.map((r) => r.rule)))].sort();
+    return rules.map((rule) => leftOut(w, rule, name));
   }
-  return themes;
+  return { slug, name, chosen, family, parts };
+}
+
+/**
+ * The shared portfolios the plan starts from. A chosen one that cannot be used is listed in
+ * `removed`, with why. When none is chosen, or none of the chosen can be used, the plan starts where
+ * the goal starts: the table's portfolio for it, if this chain has it.
+ */
+export function resolveThemes(w: World, removed: Removed[]): Theme[] {
+  const themes: Theme[] = [];
+  for (const slug of new Set(w.sheet.themes)) {
+    const theme = themeOf(w, slug, true);
+    if (Array.isArray(theme)) removed.push({ ref: slug, reasons: theme });
+    else themes.push(theme);
+  }
+  if (themes.length > 0) return themes;
+  const fallback = w.P.defaultTheme[w.sheet.goal];
+  const start = fallback ? themeOf(w, fallback, false) : [];
+  return Array.isArray(start) ? [] : [start];
 }
 
 export const themeReason = (w: World, theme: Theme): Reason =>
   theme.chosen
-    ? reason('FROM_THEME', { theme: theme.name }, w.lang)
+    ? reason('FROM_THEME', { theme: theme.name, chain: w.chain }, w.lang)
     : reason('SLEEVE_DEFAULT', { what: theme.name, goal: w.sheet.goal }, w.lang);
 
 /** Splits a sleeve's cents among underlyings by weight, merging the same underlying. */

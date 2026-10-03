@@ -38,12 +38,14 @@ export type World = {
   now: string;
   /** The amount, in cents. */
   amount: number;
-  /** The chains the person funded that list a cash token, in the person's order. */
-  chains: ChainId[];
-  /** Every token on the shelf, by id. */
+  /** The person's chain: the one chain the plan lives on. */
+  chain: ChainId;
+  /** That chain's cash token, which a vault is funded in. */
+  cash: BasketAsset;
+  /** What the chain lists that a plan can hold, by id. The cash token is not one of them. */
   tokens: BasketAsset[];
+  /** Every token on the shelf, on any chain: a holding may be of one the person's chain lacks. */
   byId: Map<string, BasketAsset>;
-  cashOf: Map<ChainId, BasketAsset>;
   families: Map<string, Family>;
   /** What the person holds, in cents, by the ticker of the underlying; and all of it. */
   held: Map<string, number>;
@@ -109,9 +111,9 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
   if (!parsedHoldings.success)
     throw new PersonalInputError('InvalidContext', issues(parsedHoldings.error));
 
-  const tokens = byName(shelf.assets, (a) => a.id);
-  const byId = new Map(tokens.map((a) => [a.id, a]));
-  if (byId.size !== tokens.length)
+  const listed = byName(shelf.assets, (a) => a.id);
+  const byId = new Map(listed.map((a) => [a.id, a]));
+  if (byId.size !== listed.length)
     throw new PersonalInputError('InvalidShelf', [
       { path: 'assets', message: 'a token is listed twice' },
     ]);
@@ -121,14 +123,15 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
       { path: 'families', message: 'a shared portfolio is listed twice' },
     ]);
 
-  const cashOf = new Map<ChainId, BasketAsset>();
-  for (const a of tokens) if (a.cls === 'cash' && !cashOf.has(a.chain)) cashOf.set(a.chain, a);
+  // The sheet names exactly one chain (PersonalSheet holds it to that).
+  const [chain] = sheet.chains;
+  const cash = listed.find((a) => a.chain === chain && a.cls === 'cash');
   // A vault is funded in its chain's dollar token, so a chain with none listed cannot hold a plan.
-  const chains = [...new Set(sheet.chains)].filter((chain) => cashOf.has(chain));
-  if (chains.length === 0)
+  if (!chain || !cash)
     throw new PersonalInputError('InvalidShelf', [
-      { path: 'assets', message: 'the shelf lists no cash token on a chain that was funded' },
+      { path: 'assets', message: `the shelf lists no cash token on ${chain}` },
     ]);
+  const tokens = listed.filter((a) => a.chain === chain && a.cls !== 'cash');
 
   const amount = toCents(sheet.amountUsd);
   const held = new Map<string, number>();
@@ -145,10 +148,9 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
   const noAssets = new Set(no?.assets ?? []);
   const noClasses = new Set<string>(no?.classes ?? []);
   const noUnderlyings = new Set((no?.underlyings ?? []).map((u) => u.toLowerCase()));
-  const funded = new Set<string>(chains);
 
   const blockOf = (a: BasketAsset): Reason | null => {
-    if (!funded.has(a.chain)) return reason('NOT_ON_YOUR_CHAINS', { asset: a.underlying }, lang);
+    if (a.chain !== chain) return reason('NOT_ON_CHAIN', { asset: a.underlying, chain }, lang);
     if (noAssets.has(a.id)) return reason('EXCLUDED', { asset: a.symbol }, lang);
     if (noClasses.has(a.cls) || noUnderlyings.has(a.underlying.toLowerCase()))
       return reason('EXCLUDED', { asset: a.underlying }, lang);
@@ -194,10 +196,10 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
     shelf,
     now: context.now,
     amount,
-    chains,
+    chain,
+    cash,
     tokens,
     byId,
-    cashOf,
     families,
     held,
     heldTotal,

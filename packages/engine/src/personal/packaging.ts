@@ -1,25 +1,17 @@
 import { FlattenError, flattenReport } from '@colosseum/basket';
-import type {
-  BasketAsset,
-  BasketLine,
-  ChainId,
-  Component,
-  Reason,
-  Recipe,
-} from '@colosseum/schemas';
+import type { BasketAsset, BasketLine, Component, Reason, Recipe } from '@colosseum/schemas';
 import { BPS, byName, largestFirst, shareOf, split, sum, toUsd } from './money';
 import { type Book, once } from './placement';
 import { reason } from './templates';
 import { type PersonalProposal, SLEEVES, type Sleeve } from './types';
 import type { World } from './world';
 
-// Packaging: the plan as lines, and one recipe per chain that a vault can take.
+// Packaging: the plan as lines, and the one recipe a vault on the person's chain can take.
 //
-// A line is the plan: its dollars are what placement gave it, to the cent, and the lines add up to the
-// amount. A recipe is that chain's lines in whole basis points of the chain's own amount, so a target
-// is its line to within one basis point of that amount. Targets add up to at most 10,000: what a
-// recipe leaves out is the chain's cash. A shared portfolio held whole stays one component, and
-// `flatten` of packages/basket is what opens it into the lines.
+// A line's dollars are what placement gave it, to the cent, and the lines add up to the amount. The
+// recipe is those lines in whole basis points of the amount, which is the deposit. Its targets add up
+// to at most 10,000: what it leaves out is cash. A shared portfolio held whole stays one component,
+// and `flatten` of packages/basket is what opens it into the lines.
 
 type Row = {
   asset: BasketAsset;
@@ -34,14 +26,14 @@ export type Packaged = Pick<PersonalProposal, 'lines' | 'recipes' | 'sleeves'>;
 /** A family id and a meta hash are 32 bytes in hex. A personal recipe has neither: all zeros. */
 const NO_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
 
-/** A chain's components as the `Recipe` that `flatten` reads. Only the chain and the components count. */
-function asRecipe(w: World, chain: ChainId, components: Component[]): Recipe {
+/** The components as the `Recipe` that `flatten` reads. Only the chain and the components count. */
+function asRecipe(w: World, components: Component[]): Recipe {
   return {
     schemaVersion: 1,
     familyId: NO_HASH,
-    chain,
+    chain: w.chain,
     onchainId: null,
-    creator: w.cashOf.get(chain)?.address ?? '',
+    creator: w.cash.address,
     kind: 'personal',
     version: 1,
     effectiveAt: 0,
@@ -55,16 +47,10 @@ function asRecipe(w: World, chain: ChainId, components: Component[]): Recipe {
 const keyOf = (c: Component) => (c.kind === 'asset' ? c.asset : `index:${c.family}`);
 
 /**
- * One chain's lines as components, with the shared portfolios in `whole` kept as one component each.
- * Returns null when `flatten` would not give back exactly these lines.
+ * The lines as components, with the shared portfolios in `whole` kept as one component each. Returns
+ * null when `flatten` would not give back exactly these lines.
  */
-function componentsOf(
-  w: World,
-  chain: ChainId,
-  here: Row[],
-  cash: number,
-  whole: string[],
-): Component[] | null {
+function componentsOf(w: World, rows: Row[], cash: number, whole: string[]): Component[] | null {
   const entries: {
     component: { kind: 'index'; family: string } | { kind: 'asset'; asset: string };
     cents: number;
@@ -72,9 +58,9 @@ function componentsOf(
   for (const slug of whole)
     entries.push({
       component: { kind: 'index', family: slug },
-      cents: sum(here.map((row) => row.via.get(slug) ?? 0)),
+      cents: sum(rows.map((row) => row.via.get(slug) ?? 0)),
     });
-  for (const row of here) {
+  for (const row of rows) {
     const direct = row.cents - sum(whole.map((slug) => row.via.get(slug) ?? 0));
     if (direct > 0)
       entries.push({ component: { kind: 'asset', asset: row.asset.id }, cents: direct });
@@ -84,14 +70,14 @@ function componentsOf(
     const weightBps = weights[i] ?? 0;
     return weightBps > 0 ? [{ ...e.component, weightBps }] : [];
   });
-  if (components.length === 0) return here.length === 0 ? [] : null;
+  if (components.length === 0) return rows.length === 0 ? [] : null;
   try {
-    const report = flattenReport(asRecipe(w, chain, components), w.shelf, {
+    const report = flattenReport(asRecipe(w, components), w.shelf, {
       minLineBps: w.P.minLineBps,
       maxLines: w.P.maxLinesPerChain,
     });
     const targets = report.targets.map((t) => t.asset).sort();
-    const lines = here.map((row) => row.asset.id).sort();
+    const lines = rows.map((row) => row.asset.id).sort();
     if (report.dropped.length > 0 || targets.join() !== lines.join()) return null;
   } catch (error) {
     if (error instanceof FlattenError) return null;
@@ -106,36 +92,25 @@ export function packageUp(w: World, book: Book): Packaged {
     [...book.lines.values()].filter((line) => line.cents > 0),
     (line) => line.asset.id,
   ).map((line) => ({ ...line, sleeve: w.sleeveOf(line.asset) }));
-
-  // Cash sits on the chain that holds the most of the plan.
-  const cashChain = book.mainChain();
-  const cashToken = w.cashOf.get(cashChain);
   const cash = book.cash.cents;
 
-  const recipes: Packaged['recipes'] = [];
+  // One recipe: the plan lives on one chain, and the amount is the deposit.
+  const whole = [...new Set(rows.flatMap((row) => [...row.via.keys()]))].sort();
   const opened = new Set<string>();
-  for (const chain of w.chains) {
-    const here = rows.filter((row) => row.asset.chain === chain);
-    const cashHere = chain === cashChain ? cash : 0;
-    const total = sum(here.map((row) => row.cents)) + cashHere;
-    if (total <= 0) continue;
-    const whole = [...new Set(here.flatMap((row) => [...row.via.keys()]))].sort();
-    let components = componentsOf(w, chain, here, cashHere, whole);
-    if (components === null) {
-      // Whole basis points would lose a line of a shared portfolio: hold its parts one by one.
-      for (const slug of whole) opened.add(slug);
-      components = componentsOf(w, chain, here, cashHere, []);
-    }
-    if (components === null)
-      throw new Error(`the plan on ${chain} cannot be written as targets a vault takes`);
-    recipes.push({ chain, amountUsd: toUsd(total), components });
+  let components = componentsOf(w, rows, cash, whole);
+  if (components === null) {
+    // Whole basis points would lose a line of a shared portfolio: hold its parts one by one.
+    for (const slug of whole) opened.add(slug);
+    components = componentsOf(w, rows, cash, []);
   }
+  if (components === null) throw new Error('the plan cannot be written as targets a vault takes');
+  const recipes: Packaged['recipes'] = [{ chain: w.chain, amountUsd: toUsd(w.amount), components }];
 
-  if (cash > 0 && cashToken)
+  if (cash > 0)
     rows.push({
-      asset: cashToken,
+      asset: w.cash,
       cents: cash,
-      reasons: [...book.cash.reasons, reason('CASH_ON_CHAIN', { chain: cashChain }, lang)],
+      reasons: [...book.cash.reasons],
       sleeve: 'cash',
       via: new Map(),
     });

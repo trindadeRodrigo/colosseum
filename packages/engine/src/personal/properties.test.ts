@@ -53,41 +53,43 @@ const cannotHold = fc
   })
   .map(filled);
 
-const person: fc.Arbitrary<PersonalSheet> = fc
-  .record({
-    goal: fc.constantFrom(...GOALS),
-    amountUsd: fc.oneof(
-      fc.integer({ min: 10, max: 1_000_000 }),
-      fc.integer({ min: 1000, max: 100_000_000 }).map((cents) => cents / 100),
-      fc.constantFrom(10, 999.99, 10_000, 50_000, 1_000_000),
-    ),
-    horizonMonths: fc.oneof(
-      fc.integer({ min: 1, max: 480 }),
-      fc.constantFrom(1, 6, 12, 24, 36, 60),
-    ),
-    risk: fc.constantFrom(...RISKS),
-    themes: fc.uniqueArray(fc.constantFrom(...SLUGS, 'no-such-portfolio'), { maxLength: 3 }),
-    country: fc.constantFrom('BR', 'XX', 'DE'),
-    chains: fc.shuffledSubarray(CHAINS, { minLength: 1 }),
-    incomeTargetUsdMonthly: maybe(fc.integer({ min: 1, max: 5000 })),
-    rules: fc.record({ useHoldings: fc.boolean(), glide: fc.boolean() }),
-    language: fc.constantFrom('en' as const, 'pt' as const),
-    keepShare: maybe(fc.double({ min: 0, max: 1, noNaN: true })),
-    mayNeedInMonths: maybe(fc.integer({ min: 1, max: 480 })),
-    cannotHold: maybe(cannotHold),
-  })
-  .map(({ keepShare, mayNeedInMonths, cannotHold: no, ...rest }) => {
-    const mustKeepUsd =
-      keepShare === undefined ? undefined : Math.floor(rest.amountUsd * keepShare);
-    const limits = filled({ mustKeepUsd, mayNeedInMonths, cannotHold: no });
-    return PersonalSheet.parse(
-      filled({
-        basketType: 'standard' as const,
-        ...rest,
-        limits: Object.keys(limits).length ? limits : undefined,
-      }),
-    );
-  });
+/** A person on one chain: a plan lives on the chain of the wallet they signed in with. */
+const personOn = (chain: ChainId): fc.Arbitrary<PersonalSheet> =>
+  fc
+    .record({
+      goal: fc.constantFrom(...GOALS),
+      amountUsd: fc.oneof(
+        fc.integer({ min: 10, max: 1_000_000 }),
+        fc.integer({ min: 1000, max: 100_000_000 }).map((cents) => cents / 100),
+        fc.constantFrom(10, 999.99, 10_000, 50_000, 1_000_000),
+      ),
+      horizonMonths: fc.oneof(
+        fc.integer({ min: 1, max: 480 }),
+        fc.constantFrom(1, 6, 12, 24, 36, 60),
+      ),
+      risk: fc.constantFrom(...RISKS),
+      themes: fc.uniqueArray(fc.constantFrom(...SLUGS, 'no-such-portfolio'), { maxLength: 3 }),
+      country: fc.constantFrom('BR', 'XX', 'DE'),
+      chains: fc.constant([chain]),
+      incomeTargetUsdMonthly: maybe(fc.integer({ min: 1, max: 5000 })),
+      rules: fc.record({ useHoldings: fc.boolean(), glide: fc.boolean() }),
+      language: fc.constantFrom('en' as const, 'pt' as const),
+      keepShare: maybe(fc.double({ min: 0, max: 1, noNaN: true })),
+      mayNeedInMonths: maybe(fc.integer({ min: 1, max: 480 })),
+      cannotHold: maybe(cannotHold),
+    })
+    .map(({ keepShare, mayNeedInMonths, cannotHold: no, ...rest }) => {
+      const mustKeepUsd =
+        keepShare === undefined ? undefined : Math.floor(rest.amountUsd * keepShare);
+      const limits = filled({ mustKeepUsd, mayNeedInMonths, cannotHold: no });
+      return PersonalSheet.parse(
+        filled({
+          basketType: 'standard' as const,
+          ...rest,
+          limits: Object.keys(limits).length ? limits : undefined,
+        }),
+      );
+    });
 
 const sleeveRow = fc.tuple(bps, bps, bps).map(([growth, dollarYield, gold]) => {
   const growthBps = growth;
@@ -193,7 +195,9 @@ function made(raw: World): { shelf: Shelf; context: ComposeContext } {
   };
 }
 
-describe('for any valid sheet', () => {
+describe.each(CHAINS)('for any valid sheet, on %s alone', (chain) => {
+  const person = personOn(chain);
+
   it(
     'the plan keeps the vault’s target rules, every ceiling and cap, and holds nothing ruled out',
     () => {

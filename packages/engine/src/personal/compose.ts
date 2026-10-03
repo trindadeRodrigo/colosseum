@@ -55,7 +55,7 @@ type Named = { name: string; weight: number; reasons: Reason[] };
 
 /** The parts of a shared portfolio that sit in one sleeve and that the person can hold. */
 function partsIn(w: World, theme: Theme, sleeve: Sleeve, removed: Removed[]) {
-  return theme.start.parts.filter((part) => {
+  return theme.parts.filter((part) => {
     if (w.sleeveOf(part.asset) !== sleeve) return false;
     const can = holdable(w, part.asset.underlying, sleeve);
     if (!can.ok) removed.push({ ref: part.asset.underlying, reasons: can.why });
@@ -66,8 +66,8 @@ function partsIn(w: World, theme: Theme, sleeve: Sleeve, removed: Removed[]) {
 const capped = (asset: BasketAsset) => asset.cls === 'stock' || asset.cls === 'crypto';
 
 /**
- * Holds a shared portfolio whole, on the first chain the person funded that can take it: every part a
- * token they can hold, at its own size, within every ceiling and cap. Returns null when it did, and
+ * Holds a shared portfolio whole, as one component that can follow its updates: every part a token
+ * the person can hold, at its own size, within every ceiling and cap. Returns null when it did, and
  * otherwise the limit that was in the way, if one was.
  */
 function follow(
@@ -80,52 +80,43 @@ function follow(
 ): Reason[] | null {
   const { P, lang } = w;
   if (theme.family.meta.kind !== 'index') return [];
+  const fits = theme.parts.every(
+    (p) => w.sleeveOf(p.asset) === 'growth' && w.blockOf(p.asset) === null,
+  );
+  if (!fits) return [];
+  const shares = split(
+    cents,
+    theme.parts.map((p) => p.bps),
+  );
+  const parts = theme.parts.map((p, i) => ({ asset: p.asset, cents: shares[i] ?? 0 }));
+  // What the person already holds, or a part over the single-stock cap, is cut on its own line.
   const counts = shareOf(w.amount, P.holdingMinBps);
-  let inTheWay: Reason | null = null;
-  for (const recipe of theme.recipes) {
-    const fits = recipe.parts.every(
-      (p) => w.sleeveOf(p.asset) === 'growth' && w.blockOf(p.asset) === null,
+  const held = parts.some((p) => {
+    const has = w.held.get(p.asset.underlying) ?? 0;
+    return has > 0 && has >= counts;
+  });
+  const overCap = parts.some(
+    (p) => capped(p.asset) && (followed.get(p.asset.underlying) ?? 0) + p.cents > w.stockCap,
+  );
+  if (held || overCap) return [];
+  const limit = book.wholeFits(theme.name, parts);
+  if (limit) return [limit];
+  for (const p of parts) {
+    book.put(
+      p.asset,
+      p.cents,
+      [...base, reason('FOLLOWS', { theme: theme.name }, lang)],
+      theme.slug,
     );
-    if (!fits) continue;
-    const shares = split(
-      cents,
-      recipe.parts.map((p) => p.bps),
-    );
-    const parts = recipe.parts.map((p, i) => ({ asset: p.asset, cents: shares[i] ?? 0 }));
-    // What the person already holds, or a part over the single-stock cap, is cut on its own line.
-    const held = parts.some((p) => {
-      const has = w.held.get(p.asset.underlying) ?? 0;
-      return has > 0 && has >= counts;
-    });
-    const overCap = parts.some(
-      (p) => capped(p.asset) && (followed.get(p.asset.underlying) ?? 0) + p.cents > w.stockCap,
-    );
-    if (held || overCap) return [];
-    const limit = book.wholeFits(theme.name, parts);
-    if (limit) {
-      inTheWay ??= limit;
-      continue;
-    }
-    for (const p of parts) {
-      const says = [
-        ...base,
-        reason('FOLLOWS', { theme: theme.name }, lang),
-        reason('ON_CHAIN', { asset: p.asset.symbol, chain: p.asset.chain }, lang),
-      ];
-      book.put(p.asset, p.cents, says, theme.slug);
-      followed.set(p.asset.underlying, (followed.get(p.asset.underlying) ?? 0) + p.cents);
-    }
-    return null;
+    followed.set(p.asset.underlying, (followed.get(p.asset.underlying) ?? 0) + p.cents);
   }
-  return inTheWay ? [inTheWay] : [];
+  return null;
 }
 
-/** The dollar-yield tokens on the chains the person funded: best yield after haircut first. */
+/** The dollar-yield tokens of the person's chain: best yield after haircut first. */
 function yieldTokens(w: World): BasketAsset[] {
   const rate = (a: BasketAsset) => w.yields.get(a.id)?.haircutYield ?? -1;
-  return w.tokens
-    .filter((a) => w.sleeveOf(a) === 'dollarYield' && w.chains.includes(a.chain))
-    .sort((a, b) => rate(b) - rate(a) || w.chains.indexOf(a.chain) - w.chains.indexOf(b.chain));
+  return w.tokens.filter((a) => w.sleeveOf(a) === 'dollarYield').sort((a, b) => rate(b) - rate(a));
 }
 
 function build(
@@ -262,14 +253,16 @@ function build(
       fetchedAt,
       provenance,
     });
-    return [reason('BY_YIELD', {}, lang)];
+    return [reason('BY_YIELD', { chain: w.chain }, lang)];
   };
   /** Dollar yield takes what it can; what it cannot stays in cash, with why. */
   const intoYield = (unit: Unit) => {
     if (unit.cents <= 0) return;
     const { left, why } = book.fill(unit, yielders, byYield);
     if (left <= 0) return;
-    const stays = reason(canYield ? 'UNPLACED' : 'NO_DOLLAR_YIELD', { usd: toUsd(left) }, lang);
+    const stays = canYield
+      ? reason('UNPLACED', { usd: toUsd(left) }, lang)
+      : reason('NO_DOLLAR_YIELD', { usd: toUsd(left), chain: w.chain }, lang);
     book.cash.cents += left;
     book.cash.reasons.push(...unit.reasons, ...why, stays);
     w.flags.add(canYield ? 'unplaced' : 'no_dollar_yield');

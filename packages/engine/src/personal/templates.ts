@@ -20,7 +20,7 @@ export const INPUT_NAMES = [
   'themes',
   'holdings',
   'country',
-  'chains',
+  'chain',
   'cannotHold',
   'mustKeep',
   'mayNeed',
@@ -60,9 +60,9 @@ export const REASON_TEMPLATES = {
 
   // Exposure: what is inside each sleeve.
   FROM_THEME: rule(
-    ['themes'],
-    'From {theme}, a shared portfolio you chose.',
-    'De {theme}, um portfólio compartilhado que você escolheu.',
+    ['themes', 'chain'],
+    'From {theme}, a shared portfolio you chose, in its version for {chain|chain}.',
+    'De {theme}, um portfólio compartilhado que você escolheu, na versão para a {chain|chain}.',
   ),
   SLEEVE_DEFAULT: rule(
     ['goal'],
@@ -99,10 +99,10 @@ export const REASON_TEMPLATES = {
     '{theme} is left out: no shared portfolio has that name.',
     '{theme} fica de fora: nenhum portfólio compartilhado tem esse nome.',
   ),
-  THEME_NOT_ON_YOUR_CHAINS: rule(
-    ['chains', 'themes'],
-    '{theme} is left out: it is not published on a chain you funded.',
-    '{theme} fica de fora: não está publicado em nenhuma das suas redes.',
+  THEME_NOT_ON_CHAIN: rule(
+    ['chain', 'themes'],
+    '{theme} is left out: it has no version on {chain|chain}.',
+    '{theme} fica de fora: não tem versão na {chain|chain}.',
   ),
 
   // What a person cannot hold, and why.
@@ -121,22 +121,17 @@ export const REASON_TEMPLATES = {
     '{asset} is left out: it is not offered in {country}.',
     '{asset} fica de fora: não é oferecido em {country}.',
   ),
-  NOT_ON_YOUR_CHAINS: rule(
-    ['chains'],
-    '{asset} is left out: no chain you funded lists it.',
-    '{asset} fica de fora: nenhuma das suas redes o lista.',
+  NOT_ON_CHAIN: rule(
+    ['chain'],
+    '{asset} is left out: {chain|chain} does not list it.',
+    '{asset} fica de fora: a {chain|chain} não tem esse ativo.',
   ),
 
-  // Placement: which chain's token carries each exposure.
-  ON_CHAIN: rule(
-    ['chains'],
-    '{asset} on {chain|chain}: of the chains you funded, the first that lists it and has room.',
-    '{asset} na {chain|chain}: das suas redes, a primeira que o lista e tem espaço.',
-  ),
+  // Placement: which token carries each exposure, on the person's chain.
   BY_YIELD: rule(
-    [],
-    'Chosen among the dollar-yield tokens you can hold by its yield after haircut.',
-    'Escolhido entre os tokens de renda em dólar que você pode ter pelo rendimento após o desconto.',
+    ['chain'],
+    'Chosen by its yield after haircut, among the dollar-yield tokens you can hold on {chain|chain}.',
+    'Escolhido pelo rendimento após o desconto, entre os tokens de renda em dólar que você pode ter na {chain|chain}.',
   ),
   YIELD_NOT_READ: rule(
     [],
@@ -145,8 +140,8 @@ export const REASON_TEMPLATES = {
   ),
   EXIT_CEILING: rule(
     ['amount'],
-    '{asset} on {chain|chain} is limited to {maxUsd|usd}: beyond that, selling it would cost too much.',
-    '{asset} na {chain|chain} fica limitado a {maxUsd|usd}: acima disso, vender custaria caro demais.',
+    '{asset} is limited to {maxUsd|usd}: beyond that, selling it would cost too much.',
+    '{asset} fica limitado a {maxUsd|usd}: acima disso, vender custaria caro demais.',
   ),
   ISSUER_CAP: rule(
     ['risk'],
@@ -155,8 +150,8 @@ export const REASON_TEMPLATES = {
   ),
   MAX_LINES: rule(
     ['themes'],
-    '{asset} is left out on {chain|chain}: a plan holds at most {max} lines on one chain.',
-    '{asset} fica de fora na {chain|chain}: um plano tem no máximo {max} linhas em uma rede.',
+    '{asset} is left out: a plan holds at most {max} lines.',
+    '{asset} fica de fora: um plano tem no máximo {max} linhas.',
   ),
   BELOW_MINIMUM: rule(
     ['amount'],
@@ -171,9 +166,9 @@ export const REASON_TEMPLATES = {
 
   // Cash.
   NO_DOLLAR_YIELD: rule(
-    ['chains'],
-    'No dollar-yield token you can hold is on a chain you funded, so {usd|usd} stays in cash.',
-    'Nenhum token de renda em dólar que você pode ter está nas suas redes, então {usd|usd} fica em caixa.',
+    ['chain'],
+    'No dollar-yield token you can hold is on {chain|chain}, so {usd|usd} stays in cash.',
+    'Nenhum token de renda em dólar que você pode ter está na {chain|chain}, então {usd|usd} fica em caixa.',
   ),
   UNPLACED: rule(
     ['amount'],
@@ -184,11 +179,6 @@ export const REASON_TEMPLATES = {
     ['amount'],
     '{usd|usd} stays in cash: targets are whole basis points, and no line may pass its limit.',
     '{usd|usd} fica em caixa: os alvos são pontos-base inteiros, e nenhuma linha pode passar do limite.',
-  ),
-  CASH_ON_CHAIN: rule(
-    ['chains'],
-    'The cash sits on {chain|chain}, the chain that holds the most of this plan.',
-    'O caixa fica na {chain|chain}, a rede que concentra a maior parte deste plano.',
   ),
 
   // The card, line by line.

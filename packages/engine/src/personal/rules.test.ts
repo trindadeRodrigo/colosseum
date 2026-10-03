@@ -81,6 +81,7 @@ const TABLES: Record<string, PersonalParameters> = {
   },
 };
 
+const CHAINS = ['solana', 'robinhood', 'base'] as const;
 const GOALS = ['grow', 'income', 'protect'] as const;
 const RISKS = ['low', 'medium', 'high'] as const;
 const classOf = (onShelf: Shelf) => new Map(onShelf.assets.map((a) => [a.id, a]));
@@ -137,16 +138,19 @@ describe.each(Object.entries(TABLES))('whatever the numbers: %s', (_name, table)
   });
 
   it('no line exceeds its ceiling, at any size', () => {
-    for (const amountUsd of [10, 137.5, 9_999.99, 250_000, 1_000_000])
-      for (const goal of GOALS) {
-        const ctx = fixtureContext({ params: table });
-        const made = plan({ goal, amountUsd, themes: ['the-seven', 'sand-to-server'] }, table);
-        for (const l of made.lines) {
-          const a = assets.get(l.assetId);
-          if (a && a.cls !== 'cash')
-            expect(l.amountUsd, l.assetId).toBeLessThanOrEqual(ceilingUsd(a, ctx));
+    for (const chain of CHAINS)
+      for (const amountUsd of [10, 137.5, 9_999.99, 250_000, 1_000_000])
+        for (const goal of GOALS) {
+          const ctx = fixtureContext({ params: table });
+          const themes = ['the-seven', 'sand-to-server'];
+          const made = plan({ goal, amountUsd, themes, chains: [chain] }, table);
+          for (const l of made.lines) {
+            const a = assets.get(l.assetId);
+            expect(l.chain, l.assetId).toBe(chain);
+            if (a && a.cls !== 'cash')
+              expect(l.amountUsd, l.assetId).toBeLessThanOrEqual(ceilingUsd(a, ctx));
+          }
         }
-      }
   });
 
   it('a plan for a near date never holds less in cash and dollar yield than a far date is sized for', () => {
@@ -242,7 +246,7 @@ describe('a near date, on the starting table', () => {
     expect(made.lines.find((l) => l.assetId === 'solana:spyx')?.reasons.at(-1)?.text).toBe(
       'No return is assumed for this line. In a 20% fall it would lose $2,000.',
     );
-    expect(made.card.expectedReturn.lossInFallUsd).toBe(4500);
+    expect(made.card.expectedReturn.lossInFallUsd).toBe(4000);
   });
 });
 
@@ -265,6 +269,7 @@ describe('what compose refuses, and what it says instead of pretending', () => {
       { horizonMonths: 0 },
       { country: 'Brazil' },
       { chains: [] },
+      { chains: ['solana', 'robinhood'] },
       { themes: ['a', 'b', 'c', 'd'] },
       { limits: { mustKeepUsd: 20_000 } },
       { goal: 'speculate' as never },
@@ -292,11 +297,11 @@ describe('what compose refuses, and what it says instead of pretending', () => {
     expect(code(() => compose(sheet(), noCash, fixtureContext()))).toBe('InvalidShelf');
   });
 
-  it('leaves out a shared portfolio it does not know, or that is not on a funded chain, and says so', () => {
+  it('leaves out a shared portfolio it does not know, or that has no version on this chain, and says so', () => {
     const made = plan({ themes: ['no-such-portfolio', 'sand-to-server'], chains: ['solana'] }, P);
     expect(made.removed.map((r) => [r.ref, r.reasons.map((x) => x.rule)])).toEqual([
       ['no-such-portfolio', ['THEME_UNKNOWN']],
-      ['sand-to-server', ['THEME_NOT_ON_YOUR_CHAINS']],
+      ['sand-to-server', ['THEME_NOT_ON_CHAIN']],
     ]);
     // With nothing left to start from, the sleeve starts where it does when none is chosen.
     expect(
@@ -396,7 +401,13 @@ describe('the same inputs, the same plan', () => {
 describe('a recipe is what a vault takes', () => {
   it('flattens, through packages/basket, to a set of targets with no cash to spare when the plan holds none', () => {
     const made = plan(
-      { goal: 'grow', amountUsd: 2_000, risk: 'high', themes: ['sand-to-server'] },
+      {
+        goal: 'grow',
+        amountUsd: 2_000,
+        risk: 'high',
+        themes: ['sand-to-server'],
+        chains: ['robinhood'],
+      },
       P,
     );
     for (const r of made.recipes) {

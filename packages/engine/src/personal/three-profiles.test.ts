@@ -6,6 +6,10 @@ import type { HeldPosition, PersonalProposal, PersonalSheet } from './types';
 // The three-profile test (DESIGN-VAULT section 13; on the never-cut list, and part of the gate before
 // the link is shared): three people with different goals get three plans at least 3,000 basis points
 // apart, with a reason on every line. It runs on the launch shelf and the starting numbers.
+//
+// A plan lives on one chain, the chain of the wallet the person signed in with. Ana is on Robinhood
+// Chain, the only chain where the shared portfolio she chose is published. Bruno and Carla are on
+// Solana, which lists gold and two dollar-yield tokens.
 
 const shelf = launchShelf();
 
@@ -18,6 +22,7 @@ const PEOPLE: Record<string, { sheet: PersonalSheet; holdings: HeldPosition[] }>
       horizonMonths: 120,
       risk: 'high',
       themes: ['sand-to-server'],
+      chains: ['robinhood'],
     }),
     holdings: [],
   },
@@ -84,7 +89,7 @@ describe('three people, three goals, three plans', () => {
       }
     }
     expect(line(ana, 'robinhood:nvda')?.reasons.map((r) => r.text)).toContain(
-      'From Sand to Server, a shared portfolio you chose.',
+      'From Sand to Server, a shared portfolio you chose, in its version for Robinhood Chain.',
     );
     expect(line(bruno, 'solana:spyx')?.reasons.map((r) => r.text)).toContain(
       '20% do plano em ações e cripto: um objetivo de proteger, com risco baixo.',
@@ -103,36 +108,40 @@ describe('three people, three goals, three plans', () => {
     expect([ana, bruno, carla].map((p) => p.card.cashFlow)).toEqual(['none', 'at_end', 'monthly']);
     expect(sleeveBps(ana, shelf, 'growth')).toBe(9500);
     expect(sleeveBps(bruno, shelf, 'growth')).toBe(2000);
-    expect(sleeveBps(bruno, shelf, 'gold')).toBe(2500);
+    expect(sleeveBps(bruno, shelf, 'gold')).toBe(2000);
     expect(sleeveBps(carla, shelf, 'dollarYield')).toBe(10_000);
   });
 
-  it('Ana follows the shared portfolio she chose, whole, on the one chain that has it', () => {
+  it('Ana follows the shared portfolio she chose, whole, in one recipe on her chain', () => {
     expect(ana.recipes).toEqual([
       {
-        chain: 'solana',
-        amountUsd: 100,
-        components: [{ kind: 'asset', asset: 'solana:syrupusdc', weightBps: 10_000 }],
-      },
-      {
         chain: 'robinhood',
-        amountUsd: 1900,
-        components: [{ kind: 'index', family: 'sand-to-server', weightBps: 10_000 }],
+        amountUsd: 2000,
+        components: [
+          { kind: 'index', family: 'sand-to-server', weightBps: 9500 },
+          { kind: 'asset', asset: 'robinhood:sgov', weightBps: 500 },
+        ],
       },
     ]);
     expect(ana.lines.filter((l) => l.viaIndex === 'sand-to-server')).toHaveLength(7);
     expect(line(ana, 'robinhood:nvda')).toMatchObject({ weightBps: 2850, amountUsd: 570 });
+    expect(ana.lines.every((l) => l.chain === 'robinhood')).toBe(true);
   });
 
-  it('Bruno: gold on Solana stops at its exit capacity and the rest sits on Robinhood Chain', () => {
+  it('Bruno: gold stops at its exit capacity, and the rest is held in dollar yield on the same chain', () => {
+    expect(bruno.lines.every((l) => l.chain === 'solana')).toBe(true);
+    expect(bruno.recipes.map((r) => [r.chain, r.amountUsd])).toEqual([['solana', 50_000]]);
     expect(line(bruno, 'solana:gldx')).toMatchObject({ amountUsd: 10_000, weightBps: 2000 });
-    expect(line(bruno, 'robinhood:gld')).toMatchObject({ amountUsd: 2500, weightBps: 500 });
     expect(line(bruno, 'solana:gldx')?.reasons.map((r) => r.text)).toContain(
-      'GLDx na Solana fica limitado a US$ 10.000: acima disso, vender custaria caro demais.',
+      'GLDx fica limitado a US$ 10.000: acima disso, vender custaria caro demais.',
     );
-    // Half the plan with one issuer at most, at low risk: the dollar yield is split over two.
+    // Half the plan with one issuer at most, at low risk: the dollar yield is split over two, and the
+    // second takes the $2,500 that gold could not.
     expect(line(bruno, 'solana:syrupusdc')).toMatchObject({ weightBps: 5000 });
-    expect(line(bruno, 'solana:jlusdc')).toMatchObject({ weightBps: 500 });
+    expect(line(bruno, 'solana:jlusdc')).toMatchObject({ weightBps: 1000 });
+    expect(line(bruno, 'solana:jlusdc')?.reasons.map((r) => r.text)).toContain(
+      'Inclui US$ 2.500 que GLD não comporta neste tamanho.',
+    );
     // He holds Nvidia already; this plan holds none, so there is nothing to cut.
     expect(bruno.lines.some((l) => l.assetId.includes('nvda'))).toBe(false);
   });

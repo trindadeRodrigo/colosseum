@@ -268,7 +268,7 @@ export function fixtureContext(over: Partial<ComposeContext> = {}): ComposeConte
   return { now: NOW, yields: fixtureYields(), liquidity: fixtureLiquidity(), ...over };
 }
 
-/** A sheet for a person who funded Solana and Robinhood Chain, the two chains switched on. */
+/** A sheet for a person on Solana: a plan lives on one chain, the one the person signed in with. */
 export function sheet(over: Partial<PersonalSheet> = {}): PersonalSheet {
   return {
     basketType: 'standard',
@@ -278,7 +278,7 @@ export function sheet(over: Partial<PersonalSheet> = {}): PersonalSheet {
     risk: 'medium',
     themes: [],
     country: 'BR',
-    chains: ['solana', 'robinhood'],
+    chains: ['solana'],
     rules: { useHoldings: true, glide: true },
     language: 'en',
     ...over,
@@ -459,10 +459,22 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
       `${name} holds ${held / 100}, over the single-stock cap of ${stockCap / 100}`,
     );
 
-  // One recipe per chain, and each is what a vault takes.
+  // A plan lives on one chain: every line is on it, no reason names another, and there is one
+  // recipe, whose amount is the deposit.
+  const [chain] = s.chains;
   say(
-    new Set(plan.recipes.map((r) => r.chain)).size === plan.recipes.length,
-    'two recipes on one chain',
+    plan.lines.every((l) => l.chain === chain),
+    'a line is on another chain',
+  );
+  say(
+    allReasons(plan).every((r) => r.params.chain === undefined || r.params.chain === chain),
+    'a reason names a chain the plan is not on',
+  );
+  say(
+    plan.recipes.length === 1 &&
+      plan.recipes[0]?.chain === chain &&
+      cents(plan.recipes[0]?.amountUsd ?? 0) === amount,
+    'the plan does not have one recipe for the whole amount on its chain',
   );
   for (const chain of new Set(plan.lines.map((l) => l.chain)))
     say(

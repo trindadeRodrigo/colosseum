@@ -1,12 +1,12 @@
-import type { BasketAsset, ChainId, Reason } from '@colosseum/schemas';
-import { largestFirst, sum, toUsd } from './money';
+import type { BasketAsset, Reason } from '@colosseum/schemas';
+import { toUsd } from './money';
 import { reason } from './templates';
 import type { World } from './world';
 
-// Placement: which chain's token carries each exposure. A token takes dollars up to its ceiling
-// (its tier on the shelf, and its measured exit capacity), an issuer up to its cap, and a chain up to
-// its number of lines. What a token cannot take goes to the same exposure on the next chain the
-// person funded, and what none can take is handed back to the caller.
+// Placement: which token carries each exposure, on the person's chain. A plan lives on one chain, so
+// there is no choice of chain here. A token takes dollars up to its ceiling (its tier on the shelf,
+// and its measured exit capacity), an issuer up to its cap, and the plan up to its number of lines.
+// What a token cannot take is handed back to the caller, which holds it in dollar yield, then cash.
 
 /** A sized exposure waiting for a token: so many cents of one underlying, with why. */
 export type Unit = { name: string; cents: number; reasons: Reason[] };
@@ -34,7 +34,7 @@ export function once(reasons: Reason[]): Reason[] {
 
 export type Fill = { left: number; placed: boolean; why: Reason[] };
 
-/** The plan as it is being placed: lines by token, and what is used of each issuer and each chain. */
+/** The plan as it is being placed: lines by token, and what is used of each issuer. */
 export class Book {
   readonly lines = new Map<string, PlacedLine>();
   readonly removed: Removed[] = [];
@@ -44,10 +44,6 @@ export class Book {
   private readonly withIssuer = new Map<string, number>();
 
   constructor(private readonly w: World) {}
-
-  private linesOn(chain: ChainId): number {
-    return [...this.lines.values()].filter((l) => l.asset.chain === chain).length;
-  }
 
   /** How many more cents a token takes, and the limit that stops it there. */
   room(asset: BasketAsset): { cents: number; why: Reason } {
@@ -70,22 +66,15 @@ export class Book {
       };
     return {
       cents: Math.max(0, underCeiling),
-      why: reason(
-        'EXIT_CEILING',
-        { asset: asset.symbol, chain: asset.chain, maxUsd: toUsd(ceiling) },
-        w.lang,
-      ),
+      why: reason('EXIT_CEILING', { asset: asset.symbol, maxUsd: toUsd(ceiling) }, w.lang),
     };
   }
 
-  private noLineLeft(asset: BasketAsset, name: string): Reason | null {
+  /** The reason a token gets no line of its own when the plan is full, or null when it may. */
+  private noLineLeft(asset: BasketAsset): Reason | null {
     const { w } = this;
-    if (this.lines.has(asset.id) || this.linesOn(asset.chain) < w.P.maxLinesPerChain) return null;
-    return reason(
-      'MAX_LINES',
-      { asset: name, chain: asset.chain, max: w.P.maxLinesPerChain },
-      w.lang,
-    );
+    if (this.lines.has(asset.id) || this.lines.size < w.P.maxLinesPerChain) return null;
+    return reason('MAX_LINES', { asset: asset.symbol, max: w.P.maxLinesPerChain }, w.lang);
   }
 
   put(asset: BasketAsset, cents: number, reasons: Reason[], via?: string): void {
@@ -103,29 +92,23 @@ export class Book {
   }
 
   /**
-   * Whether a chain can take a shared portfolio whole, each part at its own size: null when it can,
+   * Whether the plan can take a shared portfolio whole, each part at its own size: null when it can,
    * and the first limit in the way when it cannot.
    */
   wholeFits(name: string, parts: { asset: BasketAsset; cents: number }[]): Reason | null {
     const { w } = this;
-    const [first] = parts;
-    if (!first) return reason('BELOW_MINIMUM', { asset: name, usd: 0 }, w.lang);
+    if (parts.length === 0) return reason('BELOW_MINIMUM', { asset: name, usd: 0 }, w.lang);
     const fresh = parts.filter((p) => !this.lines.has(p.asset.id)).length;
-    if (this.linesOn(first.asset.chain) + fresh > w.P.maxLinesPerChain)
-      return reason(
-        'MAX_LINES',
-        { asset: name, chain: first.asset.chain, max: w.P.maxLinesPerChain },
-        w.lang,
-      );
-    const byIssuer = new Map<string, number>();
+    if (this.lines.size + fresh > w.P.maxLinesPerChain)
+      return reason('MAX_LINES', { asset: name, max: w.P.maxLinesPerChain }, w.lang);
+    const asked = new Map<string, number>();
     for (const p of parts) {
       if (p.cents < w.minLine)
         return reason('BELOW_MINIMUM', { asset: p.asset.symbol, usd: toUsd(p.cents) }, w.lang);
       const room = this.room(p.asset);
-      const asked = (byIssuer.get(p.asset.issuer) ?? 0) + p.cents;
-      byIssuer.set(p.asset.issuer, asked);
-      const withIssuer = w.issuerCap - (this.withIssuer.get(p.asset.issuer) ?? 0);
-      if (asked > withIssuer)
+      const ofIssuer = (asked.get(p.asset.issuer) ?? 0) + p.cents;
+      asked.set(p.asset.issuer, ofIssuer);
+      if (ofIssuer > w.issuerCap - (this.withIssuer.get(p.asset.issuer) ?? 0))
         return reason(
           'ISSUER_CAP',
           {
@@ -141,9 +124,8 @@ export class Book {
   }
 
   /**
-   * Places a unit on the first tokens that can take it, in the order given. A token the person cannot
-   * hold is passed over, and the line that takes its place says so. Returns what is left, whether
-   * anything was placed, and why not all of it.
+   * Places a unit on the tokens that can take it, in the order given. A token the person cannot hold
+   * is passed over. Returns what is left, whether anything was placed, and why not all of it.
    */
   fill(unit: Unit, candidates: BasketAsset[], tag: (asset: BasketAsset) => Reason[]): Fill {
     const { w } = this;
@@ -153,14 +135,9 @@ export class Book {
     const why: Reason[] = [];
     for (const asset of candidates) {
       if (left <= 0) break;
-      const blocked = w.blockOf(asset);
+      const blocked = w.blockOf(asset) ?? this.noLineLeft(asset);
       if (blocked) {
         why.push(blocked);
-        continue;
-      }
-      const full = this.noLineLeft(asset, asset.symbol);
-      if (full) {
-        why.push(full);
         continue;
       }
       const room = this.room(asset);
@@ -190,17 +167,10 @@ export class Book {
   place(unit: Unit, candidates: BasketAsset[]): void {
     const { w } = this;
     if (unit.cents <= 0) return;
-    const onChain = (a: BasketAsset) => [
-      reason('ON_CHAIN', { asset: a.symbol, chain: a.chain }, w.lang),
-    ];
-    const { left, placed, why } = this.fill(unit, candidates, onChain);
+    const { left, placed, why } = this.fill(unit, candidates, () => []);
     if (left <= 0) return;
-    if (!placed)
-      this.removed.push({
-        ref: unit.name,
-        reasons:
-          why.length > 0 ? why : [reason('NOT_ON_YOUR_CHAINS', { asset: unit.name }, w.lang)],
-      });
+    const notHere = reason('NOT_ON_CHAIN', { asset: unit.name, chain: w.chain }, w.lang);
+    if (!placed) this.removed.push({ ref: unit.name, reasons: why.length > 0 ? why : [notHere] });
     this.spill(unit.name, left);
   }
 
@@ -209,14 +179,5 @@ export class Book {
     if (cents <= 0) return;
     this.overflow.cents += cents;
     this.overflow.reasons.push(reason('OVERFLOW', { asset: name, usd: toUsd(cents) }, this.w.lang));
-  }
-
-  /** The chain that holds the most of the plan; the person's first chain when nothing is placed. */
-  mainChain(): ChainId {
-    const { w } = this;
-    const held = (chain: ChainId) =>
-      sum([...this.lines.values()].filter((l) => l.asset.chain === chain).map((l) => l.cents));
-    const [main] = largestFirst(w.chains, held, (chain) => String(w.chains.indexOf(chain)));
-    return main ?? (w.chains[0] as ChainId);
   }
 }

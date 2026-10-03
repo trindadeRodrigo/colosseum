@@ -17,7 +17,7 @@ import type { ComposeContext, PersonalProposal, PersonalSheet } from './types';
 // names it.
 
 const shelf = launchShelf();
-const BASE = sheet({ themes: ['the-seven'] }); // grow $10,000 over ten years at medium risk
+const BASE = sheet({ themes: ['the-seven'] }); // grow $10,000 over ten years at medium risk, on Solana
 const base = compose(BASE, shelf, fixtureContext());
 
 /** The plan with one thing changed, held to every rule a plan must keep. */
@@ -43,8 +43,10 @@ function movedBecauseOf(input: string, plan: PersonalProposal): string[] {
 describe('each input alone moves the plan and says so', () => {
   it('the base plan is in order', () => {
     expect(violations(base, shelf, fixtureContext())).toEqual([]);
-    expect(sleeveBps(base, shelf, 'growth')).toBe(8000);
-    expect(sleeveBps(base, shelf, 'dollarYield')).toBe(1500);
+    // 80% in stocks by the table; one issuer may hold 70% at medium risk, and on Solana every stock
+    // token and the gold token share one. The rest is held in dollar yield.
+    expect(sleeveBps(base, shelf, 'growth')).toBe(6500);
+    expect(sleeveBps(base, shelf, 'dollarYield')).toBe(3000);
     expect(sleeveBps(base, shelf, 'gold')).toBe(500);
     expect(sleeveBps(base, shelf, 'cash')).toBe(0);
   });
@@ -58,29 +60,31 @@ describe('each input alone moves the plan and says so', () => {
   it('risk', () => {
     const plan = changed({ risk: 'low' });
     expect(movedBecauseOf('risk', plan)).toEqual(expect.arrayContaining(['SLEEVE', 'ISSUER_CAP']));
-    expect(sleeveBps(plan, shelf, 'growth')).toBe(6000);
+    // 60% in stocks by the table, 50% with one issuer at most, 10% of it already in gold.
+    expect(sleeveBps(plan, shelf, 'growth')).toBe(4000);
   });
 
   it('time frame', () => {
     const plan = changed({ horizonMonths: 12 });
     expect(movedBecauseOf('horizon', plan)).toEqual(['CASH_NEAR_DATE', 'GLIDE']);
-    expect(sleeveBps(plan, shelf, 'dollarYield')).toBe(6000);
     expect(sleeveBps(plan, shelf, 'cash')).toBe(500);
+    expect(sleeveBps(plan, shelf, 'dollarYield')).toBeGreaterThanOrEqual(6000);
   });
 
   it('amount', () => {
     const plan = changed({ amountUsd: 400_000 });
     expect(movedBecauseOf('amount', plan)).toEqual(
-      expect.arrayContaining(['EXIT_CEILING', 'OVERFLOW']),
+      expect.arrayContaining(['EXIT_CEILING', 'OVERFLOW', 'UNPLACED']),
     );
-    // What the stock tokens cannot take at this size is held in dollar yield, not forced in.
-    expect(sleeveBps(plan, shelf, 'growth')).toBeLessThan(8000);
+    // What the tokens cannot take at this size is held in dollar yield, then in cash: not forced in.
+    expect(sleeveBps(plan, shelf, 'growth')).toBeLessThan(6500);
+    expect(sleeveBps(plan, shelf, 'cash')).toBeGreaterThan(0);
   });
 
   it('themes', () => {
-    const plan = changed({ themes: ['sand-to-server'] });
+    const plan = changed({ themes: ['crypto-in-a-suit'] });
     expect(movedBecauseOf('themes', plan)).toContain('FROM_THEME');
-    expect(plan.lines.some((l) => l.assetId === 'robinhood:tsm')).toBe(true);
+    expect(plan.lines.some((l) => l.assetId === 'solana:mstrx')).toBe(true);
   });
 
   it('holdings', () => {
@@ -109,16 +113,21 @@ describe('each input alone moves the plan and says so', () => {
     const plan = changed({ country: 'XX' }, {}, blocked);
     expect(movedBecauseOf('country', plan)).toEqual(['NOT_IN_COUNTRY']);
     expect(plan.lines.some((l) => l.assetId === 'solana:nvdax')).toBe(false);
-    expect(
-      plan.lines.find((l) => l.assetId === 'robinhood:nvda')?.reasons.map((r) => r.text),
-    ).toContain('NVDAx is left out: it is not offered in XX.');
+    // No part of The Seven can be held there, so it is left out as one, and says why.
+    expect(plan.removed.find((r) => r.ref === 'the-seven')?.reasons.map((r) => r.text)).toEqual([
+      'The Seven is left out: it is not offered in XX.',
+    ]);
+    expect(plan.lines.some((l) => l.assetId === 'solana:spyx')).toBe(true);
   });
 
-  it('chains funded', () => {
+  it('the chain the person is on', () => {
     const plan = changed({ chains: ['robinhood'] });
-    expect(movedBecauseOf('chains', plan)).toContain('ON_CHAIN');
+    expect(movedBecauseOf('chain', plan)).toEqual(
+      expect.arrayContaining(['BY_YIELD', 'FROM_THEME']),
+    );
     expect(plan.lines.every((l) => l.chain === 'robinhood')).toBe(true);
     expect(plan.recipes.map((r) => r.chain)).toEqual(['robinhood']);
+    expect(distanceBps(base, plan)).toBe(10_000);
   });
 
   it('what the person cannot hold', () => {
@@ -126,13 +135,15 @@ describe('each input alone moves the plan and says so', () => {
     expect(movedBecauseOf('cannotHold', plan)).toEqual(['EXCLUDED']);
     expect(plan.lines.some((l) => /tsla/.test(l.assetId))).toBe(false);
     // The rest of the stocks take its place: the sleeve keeps its size.
-    expect(sleeveBps(plan, shelf, 'growth')).toBe(8000);
+    expect(sleeveBps(plan, shelf, 'growth')).toBe(6500);
   });
 
   it('what the person must not lose', () => {
     const plan = changed({ limits: { mustKeepUsd: 5_000 } });
     expect(movedBecauseOf('mustKeep', plan)).toEqual(['MUST_KEEP']);
-    expect(sleeveBps(plan, shelf, 'dollarYield') + sleeveBps(plan, shelf, 'cash')).toBe(5000);
+    expect(
+      sleeveBps(plan, shelf, 'dollarYield') + sleeveBps(plan, shelf, 'cash'),
+    ).toBeGreaterThanOrEqual(5000);
   });
 
   it('how soon they may need the money', () => {
@@ -163,7 +174,8 @@ describe('what does not move the plan', () => {
   });
 
   it('the glide rule, switched off, takes the date out of the sleeves', () => {
-    const near = { ...BASE, horizonMonths: 6 };
+    // At high risk one issuer may hold the whole plan, so the sleeves are as the table sizes them.
+    const near = { ...BASE, risk: 'high' as const, horizonMonths: 6 };
     const on = compose(near, shelf, fixtureContext());
     const off = compose(
       { ...near, rules: { useHoldings: true, glide: false } },
@@ -171,7 +183,8 @@ describe('what does not move the plan', () => {
       fixtureContext(),
     );
     expect(sleeveBps(on, shelf, 'dollarYield')).toBe(8000);
-    expect(sleeveBps(off, shelf, 'dollarYield')).toBe(1500);
+    expect(sleeveBps(on, shelf, 'cash')).toBe(1000);
+    expect(sleeveBps(off, shelf, 'dollarYield')).toBe(500);
     expect(sleeveBps(off, shelf, 'cash')).toBe(0);
   });
 });

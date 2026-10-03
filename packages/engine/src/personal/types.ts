@@ -43,14 +43,21 @@ export const PersonalLimits = z.object({
 });
 export type PersonalLimits = z.infer<typeof PersonalLimits>;
 
-/** LOCAL TYPE. `BasketSheet` with the person's limits. This is what `compose` validates and runs on. */
-export const PersonalSheet = BasketSheet.extend({ limits: PersonalLimits.optional() }).refine(
-  (s) => (s.limits?.mustKeepUsd ?? 0) <= s.amountUsd,
-  {
+/**
+ * LOCAL TYPE. `BasketSheet` with the person's limits. This is what `compose` validates and runs on.
+ *
+ * A plan lives on one chain: the chain of the wallet the person signed in with (decided on
+ * 2026-10-03). `chains` keeps the list shape of the shared type and must name exactly one.
+ */
+export const PersonalSheet = BasketSheet.extend({ limits: PersonalLimits.optional() })
+  .refine((s) => (s.limits?.mustKeepUsd ?? 0) <= s.amountUsd, {
     message: 'what must not be lost cannot be more than the amount',
     path: ['limits', 'mustKeepUsd'],
-  },
-);
+  })
+  .refine((s) => s.chains.length === 1, {
+    message: 'a plan lives on one chain: name exactly one',
+    path: ['chains'],
+  });
 export type PersonalSheet = z.infer<typeof PersonalSheet>;
 
 /**
