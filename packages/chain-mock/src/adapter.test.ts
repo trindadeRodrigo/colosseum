@@ -4,6 +4,7 @@ import {
   ChainError,
   type ChainId,
   evmCallPreimage,
+  isStalePrice,
   stampTx,
 } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
@@ -750,6 +751,40 @@ describe('chain-mock', () => {
     expect(await solana.adapter.nonceOf({ signedTx: solana.mock.sign(create) })).toBeNull();
     const landed = await solana.mock.send(create);
     expect(await solana.adapter.nonceOf({ txId: landed.txId })).toBeNull();
+  });
+
+  it("takes a deposit from the allowance of the vault alone, and a create from the factory's alone", async () => {
+    const { adapter, mock, owner, targets } = await funded('robinhood');
+    const create = { owner, basketId: '1', targets, autoFollow: false, slippageBps: 50 };
+    await mock.send(await adapter.buildApprove({ owner, basketId: '1', amountRaw: '1000' }));
+    await mock.send(await adapter.buildCreateVault({ ...create, depositRaw: '400' }));
+    const vault = (await adapter.getVaults(owner))[0]?.address ?? '';
+    const deposit = (amountRaw: string) =>
+      adapter.buildDeposit({ vault, amountRaw, slippageBps: 50 });
+    // The factory still holds an allowance of 600. It opens vaults; it is not the vault's to spend.
+    expect(await code(deposit('1'))).toBe('AllowanceTooLow');
+    await mock.send(await adapter.buildApprove({ owner, basketId: '1', amountRaw: '50' }));
+    await mock.send(await deposit('50'));
+    expect(await code(deposit('1'))).toBe('AllowanceTooLow');
+    // And the vault's allowance opens no other vault: a second plan draws on the factory's.
+    await mock.send(await adapter.buildApprove({ owner, basketId: '1', amountRaw: '500' }));
+    const second = { ...create, basketId: '2' };
+    expect(await code(adapter.buildCreateVault({ ...second, depositRaw: '601' }))).toBe(
+      'AllowanceTooLow',
+    );
+    await mock.send(await adapter.buildCreateVault({ ...second, depositRaw: '600' }));
+    expect((await adapter.getVaults(owner)).map((v) => v.cash.raw).sort()).toEqual(['450', '600']);
+  });
+
+  it('gives a price the age it is told, so a stale one reads as stale', async () => {
+    const { adapter, mock } = await funded('solana');
+    mock.setPriceAge('solana:gold', 121);
+    const [gold, spy] = await adapter.getPrices(['solana:gold', 'solana:spy']);
+    expect([gold?.ageSeconds, gold?.maxAgeSeconds, spy?.ageSeconds]).toEqual([121, 120, 0]);
+    expect([gold, spy].map((p) => (p ? isStalePrice(p) : null))).toEqual([true, false]);
+    mock.setPriceAge('solana:gold', 0);
+    expect((await adapter.getPrices(['solana:gold']))[0]?.ageSeconds).toBe(0);
+    expect(await code((async () => mock.setPriceAge('solana:gold', -1))())).toBe('BadInput');
   });
 
   it('never repeats a transaction id across restarts when given a seed', async () => {

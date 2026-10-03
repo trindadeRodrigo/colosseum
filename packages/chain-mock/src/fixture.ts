@@ -98,6 +98,13 @@ export async function mockFixture(
   await approve('2', 1000);
   await approve('7', 1000);
 
+  // What the reads are held to: one price older than the vault accepts, and one multiplier an issuer
+  // has scheduled for a month from now. Neither asset is traded by the cases.
+  const stalePriced = `${chain}:tsla`;
+  mock.setPriceAge(stalePriced, 500);
+  const scheduledAsset = `${chain}:nvda`;
+  mock.scheduleMultiplier(scheduledAsset, '2', mock.now() + 30 * 86_400);
+
   // One hundredth of a token of SPY, which is under its target: selling it moves away.
   const spy = (await adapter.listAssets()).find((x) => x.id === `${chain}:spy`);
   const aLittleSpy = (10n ** BigInt((spy?.decimals ?? 2) - 2)).toString();
@@ -106,6 +113,19 @@ export async function mockFixture(
     adapter,
     send: (tx) => mock.send(tx),
     sign: async (tx) => mock.sign(tx),
+    // The mock has one price per asset, for the exchange and the reference alike.
+    withPriceMoved: async (asset, bps, work) => {
+      const [was] = await adapter.getPrices([asset]);
+      if (!was) throw new Error(`${asset} has no price to move`);
+      mock.setPrice(asset, ((Number(was.usdPerToken) * (10_000 + bps)) / 10_000).toFixed(6));
+      try {
+        await work();
+      } finally {
+        mock.setPrice(asset, was.usdPerToken);
+      }
+    },
+    stalePriced,
+    scheduledAsset,
     provenance: 'mock',
     notBefore,
     quoteSlippageBps: mock.quoteSlippageBps,

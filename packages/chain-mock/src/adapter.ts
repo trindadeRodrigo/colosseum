@@ -103,6 +103,8 @@ type State = {
   recipes: Map<string, MockRecipe>;
   prices: Map<AssetId, string>;
   multipliers: Map<AssetId, string>;
+  /** How old each price says it is, in seconds. An asset with no entry is zero seconds old. */
+  priceAges: Map<AssetId, number>;
   /** A multiplier that takes over at a unix second of the mock clock. */
   scheduled: Map<AssetId, { multiplier: string; effectiveAt: number }>;
 };
@@ -153,8 +155,8 @@ export type MockOptions = {
    */
   bandBps?: number;
   /**
-   * What every price carries as `maxAgeSeconds`. Default 120, the Solana program's starting value. The
-   * mock's prices are never older than zero seconds, so nothing here is ever stale.
+   * What every price carries as `maxAgeSeconds`. Default 120, the Solana program's starting value. A
+   * mock price is zero seconds old unless `mock.setPriceAge` says otherwise.
    */
   maxPriceAgeSeconds?: number;
   /**
@@ -179,6 +181,11 @@ export type MockControl = {
   advance(seconds: number): void;
   fund(owner: Address, amounts: { gasRaw?: string; assets?: Record<string, string> }): void;
   setPrice(asset: AssetId, usdPerToken: string): void;
+  /**
+   * How old the price of `asset` says it is. The mock's prices are zero seconds old unless told; an age
+   * past `maxPriceAgeSeconds` makes the price read as stale. Nothing else in the mock looks at it.
+   */
+  setPriceAge(asset: AssetId, seconds: number): void;
   setMultiplier(asset: AssetId, multiplier: string): void;
   /**
    * Schedules a multiplier as an issuer does: holdings of the asset carry it as `scheduled` until the
@@ -252,6 +259,7 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
     recipes: new Map(),
     prices: new Map(Object.entries(options.prices ?? mockPrices(chain))),
     multipliers: new Map(),
+    priceAges: new Map(),
     scheduled: new Map(),
   };
   const maxPriceAge = options.maxPriceAgeSeconds ?? 120;
@@ -394,16 +402,19 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
     }
     return w;
   }
-  /** A deposit is always the chain's cash token, from the vault's owner. */
-  function pullCash(s: State, v: MockVault, amount: bigint) {
+  /**
+   * A deposit is always the chain's cash token, from the vault's owner. Where the chain needs an
+   * approval, the cash is taken by `spender` and by nobody else: the factory when it opens the vault,
+   * the vault itself afterwards. An allowance given to one is not the other's to spend.
+   */
+  function pullCash(s: State, v: MockVault, amount: bigint, spender: Address) {
     const w = walletOf(s, v.owner);
     if ((w.get(cash) ?? 0n) < amount) refuse('NotFunded', 'the wallet holds less cash than this');
     if (capabilities.needsApprove) {
-      const key = [factory, v.address]
-        .map((spender) => `${v.owner}>${spender}`)
-        .find((k) => (s.allowances.get(k) ?? 0n) >= amount);
-      if (!key) throw new ChainError('AllowanceTooLow', 'approve the cash first');
-      s.allowances.set(key, (s.allowances.get(key) ?? 0n) - amount);
+      const key = `${v.owner}>${spender}`;
+      const allowed = s.allowances.get(key) ?? 0n;
+      if (allowed < amount) throw new ChainError('AllowanceTooLow', 'approve the cash first');
+      s.allowances.set(key, allowed - amount);
     }
     w.set(cash, (w.get(cash) ?? 0n) - amount);
     v.cash += amount;
@@ -460,14 +471,14 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
           setTargets(v, input(SetTargetsArgs.shape.targets, a.targets, 'targets'));
         }
         s.vaults.set(address, v);
-        if (a.depositRaw) pullCash(s, v, BigInt(a.depositRaw));
+        if (a.depositRaw) pullCash(s, v, BigInt(a.depositRaw), factory);
         checkTrades(a.trades, true);
         for (const t of a.trades ?? []) swap(s, v, t, run);
         return;
       }
       case 'deposit': {
         const v = vaultOf(s, op.a.vault);
-        pullCash(s, v, BigInt(op.a.amountRaw));
+        pullCash(s, v, BigInt(op.a.amountRaw), v.address);
         checkTrades(op.a.trades, false);
         for (const t of op.a.trades ?? []) swap(s, v, t, run);
         return;
@@ -922,7 +933,7 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
           ...stamp(s, id === cash ? 'cash counted as one dollar' : 'fixed mock price'),
           asset: id,
           usdPerToken: price(s, id),
-          ageSeconds: 0,
+          ageSeconds: s.priceAges.get(id) ?? 0,
           maxAgeSeconds: maxPriceAge,
           market: marketOpen(s, asset(id).session),
         }));
@@ -1151,6 +1162,10 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
         const value = input(DecimalString, usdPerToken, 'price');
         if (toScaled(value) === 0n) refuse('BadInput', 'a price is more than zero');
         state.prices.set(asset(id).id, value);
+      },
+      setPriceAge(id, seconds) {
+        const age = input(z.number().int().nonnegative(), seconds, 'seconds');
+        state.priceAges.set(asset(id).id, age);
       },
       setMultiplier(id, multiplier) {
         state.multipliers.set(asset(id).id, input(DecimalString, multiplier, 'multiplier'));

@@ -82,6 +82,10 @@ export function readsFixture(s: ReadSetup): ReadsFixture {
     // The owner's wallet holds 3,400 of the cash token: more than twice this.
     depositRaw: '1000000000',
     unknownTxId: s.unknownTxId,
+    // Gold's entry is 400 seconds old against a limit of 120.
+    stalePriced: assetId('gold'),
+    // NVDAx has a multiplier scheduled for the year 2100; the following vault has it as a target.
+    scheduledAsset: assetId('nvdax'),
   };
 }
 

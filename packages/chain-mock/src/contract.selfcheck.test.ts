@@ -2,6 +2,7 @@ import { type BuiltTx, type ChainAdapter, ChainError, type ChainReader } from '@
 import { describe, expect, it } from 'vitest';
 import { CONTRACT_GROUPS, type ContractFixture, type ReadsFixture, runContract } from './contract';
 import { mockFixture } from './fixture';
+import { sha256Hex } from './ids';
 
 // The contract is only worth running if a wrong adapter fails it. Each adapter below is the mock with
 // one thing broken; the test names the cases that must catch it. A fault that no case catches is a hole
@@ -396,6 +397,167 @@ const FAULTS: { fault: string; wrap: Wrap; caught: string[]; chains?: MockChain[
     caught: ['a nonce on a chain that has none: NotSupported'],
     chains: ['solana'],
   },
+  // ---- what the review of FRAME-1b found: five adapters that were wrong on the money path and passed.
+  {
+    fault: "approves the factory even when the plan's vault exists",
+    wrap: (real) => ({
+      // An approval for a plan nobody has: its vault never exists, so the spender is always the factory.
+      buildApprove: (a) =>
+        'spender' in a
+          ? real.buildApprove(a)
+          : real.buildApprove({ owner: a.owner, basketId: '999999', amountRaw: a.amountRaw }),
+    }),
+    caught: ['an approval is for the plan it names: its vault takes that much, and no more'],
+    chains: ['robinhood'],
+  },
+  {
+    fault: 'opens a vault with other targets than asked, and with auto-follow on',
+    wrap: (real) => ({
+      buildCreateVault: (a) => {
+        const [x, y, ...rest] = a.targets;
+        const targets =
+          x && y
+            ? [{ ...x, weightBps: y.weightBps }, { ...y, weightBps: x.weightBps }, ...rest]
+            : a.targets;
+        return real.buildCreateVault({
+          ...a,
+          targets,
+          autoFollow: a.recipeOnchainId ? a.autoFollow : true,
+        });
+      },
+    }),
+    caught: [
+      'opening a vault stores the targets and the switch it was asked for, and takes its first deposit',
+    ],
+  },
+  {
+    fault: 'reports a reverted transaction as confirmed',
+    wrap: (real) => ({
+      track: async (id, until) => {
+        const status = await real.track(id, until);
+        return status.status === 'reverted'
+          ? { status: 'confirmed' as const, explorerUrl: status.explorerUrl }
+          : status;
+      },
+    }),
+    caught: [
+      "a price that moves past a trade's minimum reverts it, and the transaction is tracked as reverted",
+    ],
+  },
+  {
+    fault: 'states a minimum in the preview and puts none in the bytes',
+    wrap: (real) => ({
+      buildOwnerSwap: async (a) => {
+        const stated = await real.buildOwnerSwap(a);
+        const loose = await real.buildOwnerSwap({ ...a, slippageBps: 10_000 });
+        return { ...loose, preview: { ...loose.preview, minimums: stated.preview.minimums } };
+      },
+    }),
+    caught: [
+      "a price that moves past a trade's minimum reverts it, and the transaction is tracked as reverted",
+    ],
+  },
+  {
+    fault: 'hashes a transaction by a rule of its own',
+    wrap: (real) => {
+      // Its own hash, consistent with itself: what it builds and what it reads back from signed bytes
+      // agree, so only a check against the family's rule can tell.
+      const own = (hash: string) => sha256Hex(`own:${hash}`);
+      return {
+        ...spoilTx(real, (tx) => ({ ...tx, messageHash: own(tx.messageHash) })),
+        messageHashOf: async (signed) => own(await real.messageHashOf(signed)),
+      };
+    },
+    caught: ['previews a deposit as cash leaving the wallet for the vault, and nothing else'],
+  },
+  {
+    fault: 'answers what became of an attempt from its own memory of what it relayed',
+    wrap: (real) => {
+      const relayed = new Map<string, string>();
+      return {
+        relay: async (signed) => {
+          const sent = await real.relay(signed);
+          relayed.set(await real.messageHashOf(signed), sent.txId);
+          return sent;
+        },
+        fate: async (attempt) => {
+          const txId = relayed.get(attempt.messageHash);
+          return txId ? { state: 'landed' as const, txId } : { state: 'open' as const };
+        },
+      };
+    },
+    caught: [
+      'says of a transaction whether it is this call, another call, or one the chain has not seen',
+    ],
+  },
+  // ---- and what it asked for beside them.
+  {
+    fault: "takes one wallet's transaction for the same call by another wallet",
+    wrap: (real) => {
+      // It matches a transaction on its call and not on its signer: the same approval by two wallets
+      // is one message to it.
+      const first = new Map<string, string>();
+      const twin = new Map<string, string>();
+      return {
+        buildApprove: async (a) => {
+          const tx = await real.buildApprove(a);
+          const call = `${a.basketId}:${a.amountRaw}`;
+          const seen = first.get(call);
+          if (seen === undefined) first.set(call, tx.messageHash);
+          else twin.set(tx.messageHash, seen);
+          return tx;
+        },
+        carries: (txId, hash) => real.carries(txId, twin.get(hash) ?? hash),
+      };
+    },
+    caught: ["does not take one wallet's transaction for the same call by another wallet"],
+    chains: ['robinhood'],
+  },
+  {
+    fault: 'says no price is ever stale',
+    wrap: (real) => ({
+      getPrices: async (ids) => (await real.getPrices(ids)).map((p) => ({ ...p, ageSeconds: 0 })),
+    }),
+    caught: [
+      'prices what it is asked for, once each, freshly, and every asset that has a price source',
+    ],
+  },
+  {
+    fault: 'never shows a multiplier that is scheduled',
+    wrap: (real) => {
+      const plain = <H extends { scheduled?: unknown }>({ scheduled: _scheduled, ...h }: H) => h;
+      const vault = (v: Awaited<ReturnType<ChainAdapter['getVault']>>) =>
+        v ? { ...v, cash: plain(v.cash), positions: v.positions.map(plain) } : v;
+      return {
+        getVault: async (address) => vault(await real.getVault(address)),
+        getVaults: async (owner) => (await real.getVaults(owner)).flatMap((v) => vault(v) ?? []),
+        getWalletHoldings: async (owner) => (await real.getWalletHoldings(owner)).map(plain),
+      };
+    },
+    caught: ['shows each holding as raw × multiplier / 10^decimals'],
+  },
+  {
+    fault: 'says every refusal can be tried again',
+    wrap: (real) => spoilErrors(real, (e) => new ChainError(e.code, e.message, true)),
+    caught: [
+      'a vault that does not exist: VaultNotFound',
+      'a deposit of more cash than the wallet holds: NotFunded',
+    ],
+  },
+  {
+    fault: 'publishes other weights than it was sent',
+    wrap: (real) => ({
+      buildPublishRecipe: ({ creator, recipe, nonce }) => {
+        const [x, y, ...rest] = recipe.components;
+        const components =
+          x && y
+            ? [{ ...x, weightBps: y.weightBps }, { ...y, weightBps: x.weightBps }, ...rest]
+            : recipe.components;
+        return real.buildPublishRecipe({ creator, recipe: { ...recipe, components }, nonce });
+      },
+    }),
+    caught: ['publishing a version makes it the one that waits, with the weights that were sent'],
+  },
   {
     fault: 'switches auto-follow on whatever was asked',
     wrap: (real) => ({
@@ -625,6 +787,8 @@ describe('the adapter contract fails a wrong adapter', () => {
         newAssetVault: f.newAssetVault,
         depositRaw: f.depositRaw,
         unknownTxId: f.unknownTxId,
+        stalePriced: f.stalePriced,
+        scheduledAsset: f.scheduledAsset,
       }),
       { groups: ['reads'] },
     );
