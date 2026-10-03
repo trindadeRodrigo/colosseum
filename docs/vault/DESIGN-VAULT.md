@@ -830,14 +830,14 @@ GitHub Actions is the later home for the keeper, not the MVP one. It needs Rodri
 
 **The contract.** Rodrigo's design system is on `main` and it is binding: `.design/branding/working-brand/patterns/STYLE.md`, the component specs beside it, and `working-brand.theme.json`. A screen that breaks one of its seven rules is wrong, however good it looks. In short: a provenance pin after every yield, price and FX figure; MOCK always as a hatch plus the word; the disclaimer from the one `DISCLAIMER` constant; no Japanese words or clichés; nothing like Teiten; no blue or violet; the brand recedes in a partner embed. Everything is square (2px radius, no shadows, no pills) except the typing box. Light and dark both ship. His voice rules apply to every string: answer, then reason, then risk, then action; "I" for the agent; no exclamation marks; MOCK is the only uppercase word.
 
-Stack kept: Next 16.3.8, React 19.3.0, Tailwind 4.3.3. There is no UI library: tokens go into `globals.css` through Tailwind's `@theme`, with shadcn-compatible variable names, as his `token-mapping.md` lays out. Added: Privy, viem, TanStack Query, next-intl, `lucide-react` behind his one icon wrapper, Playwright with axe. `cacheComponents` stays off. No Server Functions for writes; the Fastify API is the one backend.
+Stack kept: Next 16.3.8, React 19.3.0, Tailwind 4.3.3. There is no UI library: tokens go into `globals.css` through Tailwind's `@theme`, with shadcn-compatible variable names, as his `token-mapping.md` lays out. Added: Privy, viem, TanStack Query, next-intl, `lucide-react` behind his one icon wrapper (the wrapper is built and draws its seven icons itself; the package is not installed yet), Playwright with axe. `cacheComponents` stays off. No Server Functions for writes; the Fastify API is the one backend.
 
 **His screens are extended, not replaced.** His specs already describe the product flow: the composer, the constraint sheet, the goal card, the plan legs, the exit-plan line, the execution list. They name the screens they belong to: home, the plan view and the monitor. So the web app is those three screens, rebuilt on his primitives, with the vault under them, plus the screens his system has no spec for. This replaces the earlier idea of parallel screens with his switched off.
 
 Order of work:
 
-1. **The design system is applied first.** Tokens, fonts and the primitives in `components/ui/` (button, field, card, data table, status mark, provenance pin, MOCK plate, explorer link, icon) come from his specs. His brand pipeline can apply them; Rodrigo is asked to run it as soon as the branches are merged (section 17).
-2. **Route groups, as his embed spec requires:** `app/(app)/` for the product, `app/(marketing)/` for his landing page, and a bare `app/embed/[id]/`. The embed is his, stays, and is read-only.
+1. **The design system is applied first.** Tokens, fonts and the primitives in `components/ui/` (button, field, card, data table, status mark, provenance pin, MOCK plate, explorer link, icon) come from his specs. Done by hand in BRAND-1 (Oct 3), for Rodrigo to review; his brand pipeline has not been run. What exists is under "The design system in the app" below.
+2. **Route groups, as his embed spec requires:** `app/(app)/` for the product, `app/(marketing)/` for his landing page, and a bare `app/embed/[id]/`. The embed is his, stays, and is read-only. Not done in BRAND-1: the groups move his three pages, so they come with the first screens slot (WEB-1). Until then `/embed/[id]` still inherits the nav and the wallet button.
 3. **Then one agent per screen,** against the mock adapter.
 
 - **Same for everyone** (the shelf, a shared portfolio's page, risk sheets): statically generated with `revalidate: 60` and a 3-second fetch timeout, so a slow or sleeping API serves the last good copy.
@@ -855,6 +855,51 @@ Order of work:
 | Publish | `/publish` | Fields, error summary | One simple form; limit errors from `previewPublish`; a leg per chain |
 | Sign-in and notices | all | Buttons, cards | Passkey or wallet; before the first deposit, the terms and the "unaudited, team holds the keys" notice |
 
+**The design system in the app (BRAND-1).** `/dev/ui` under `pnpm dev` shows every primitive in every state, in light beside dark, under the name of its spec, with made-up content labelled MOCK. It is a development route (`app/dev/ui/page.dev.tsx`): a production build has no such route, and `scripts/check-build.mjs` fails one that does.
+
+- **Tokens:** `apps/web/app/globals.css`, in the three layers of his `token-mapping.md`: the semantic variables on `:root` and `.dark` (and `.light`, so a light sample can sit in a dark page), the `--tf-*` extensions, and the Tailwind theme. `components/ui/tokens.test.ts` compares every value with `working-brand.yml`.
+- **Fonts:** `apps/web/app/fonts.ts` loads Newsreader, IBM Plex Sans and IBM Plex Mono with `next/font/google`: the files are downloaded when the app is built and served from our origin, each with a fallback whose metrics match. Nothing is preloaded until a layout uses a face. IBM Plex Sans Condensed is not loaded; `font-condensed` is IBM Plex Sans until a Bearing screen loads it.
+- **The pages that exist look as they did.** The base styles of the spec (ground, ink, face, tabular figures, focus ring) sit under one class, `tf-app`, not on `html` and `body`, and two lines at the end of the theme keep Tailwind's base fonts. WEB-1 puts `tf-app` on the shell and deletes the two lines. One thing did change: text with the `font-mono` class (`app/risk/[asset]/page.tsx`, `features/wallet/SignIn.tsx`) is now in IBM Plex Mono, because the class reads the token.
+- **Primitives** are in `apps/web/components/ui/`, each with a test beside it:
+
+| His spec | File | What it gives |
+|---|---|---|
+| `button.md` | `Button.tsx`, `button-class.ts` | `Button`: primary, secondary, link, chip, icon, destructive; dense; busy; disabled |
+| `field.md` | `Field.tsx` | `Field`, `Input`, `Select`, `Textarea` |
+| `card.md` | `Card.tsx` | `Card`, `CardHeader`, `CardBody`, `CardFooter`, `Stat`, `StatRow`, `CardLoading`, `CardEmpty` |
+| `provenance-pin.md` | `ProvenancePin.tsx` | `ProvenancePin` (the figure, the glyph, the popover), `pinState`, the `PinSource` type |
+| `mock-plate.md` | `MockPlate.tsx` | `MockPlate`, `HatchBand`, `MockFrame`, `StalePlate` |
+| `disclaimer-block.md` | `Disclaimer.tsx` | `Disclaimer`, which takes a language and no text |
+| `data-table.md` | `DataTable.tsx`, `ExecutionList.tsx`, `ExplorerLink.tsx`, `CopyButton.tsx` | the table, the execution list, the `Tx` link |
+| `goal-card.md` | `GoalCard.tsx` | `GoalCard`, as a card and as the plan view's header |
+| `plan-leg.md` | `PlanLegs.tsx` | `PlanLegs`; a fifth leg throws |
+| `exit-plan-line.md` | `ExitPlanLine.tsx` | `ExitPlanLine` (tiers), `ExitPlanPanel` ("Access to cash") |
+| `constraint-sheet.md` | `ConstraintSheet.tsx` | `ConstraintSheet`, to edit and to read |
+| `composer.md` | `Composer.tsx` | `Composer`, on several lines or one |
+| `compact-nav.md` | `CompactNav.tsx` | `CompactNav` |
+| `embed-shell.md` | `EmbedShell.tsx`, `tf-embed` in `globals.css` | `EmbedShell` |
+| `subscribe-block.md` | `SubscribeBlock.tsx` | `SubscribeBlock` |
+| `STYLE.md`, `iconography.md` | `StatusMark.tsx`, `Icon.tsx`, `Lattice.tsx` | the status mark with its word, the icon wrapper, the still lattice for a wait or an empty state |
+
+- **Not built:** `bearing-heatmap-tile.md` (it needs the condensed face and a decision on a cell with no sample), `goal-showcase-case.md` (photographs, and a chart with no spec of its own), `joint-stage.md` (the 3D model and the final logo), the `code` placement of the MOCK plate (the API serves its own docs), the assembling loader (the primitives use the still lattice their specs ask for), and the restyle of the wallet adapter (it changes his nav, so it goes with the shell).
+- **What a figure is handed.** A yield, a price or an FX figure is shown through `ProvenancePin`, which takes `source`, `fetchedAt`, `method` and `provenance` (the `Sourced` shape) and `staleAgeSec`. Without a source, a time and a method it shows a dash and "no source yet", never the figure. Only the word `live` is live: every other provenance, one this build does not know included, is drawn as MOCK. Stale is what the API states in `staleAgeSec`; the pin never works it out from the time. The field's name is the spec's own hint and changes with the freeze of `Sourced`.
+- **Words.** The few words a primitive says itself (the pin's name, "stale", "failed (not retried)") are English defaults, and every primitive takes them back through a `labels` prop, for the dictionary.
+
+**Where his files disagreed or left a choice, and the reading taken.** Any of these is his to reopen.
+
+1. The pin's glyph is drawn from `provenance-pin.md` and the `.yml`: an 18 by 12 box, 0.75em tall, a stone outline, the pin in the brand wood, a 3px hatch, a hollow ring as wide as the pin. `logo-directions.md` (a 12 by 12 box, a 1.25 stroke) and `typography.md` (`1cap`) say otherwise.
+2. The words beside a hollow pin ("stale · 3 h") are caption text in the sans face, as `provenance-pin.md` says; `typography.md` and `guidelines.html` set stale labels in mono.
+3. A figure from a test network (`sandbox`) is MOCK like any other figure that is not live: the hatched glyph and the plate (STYLE.md, rule 2). "test network", the label of section 2, is the line the popover adds. If it should also be read without opening the pin, that is a word to add beside the plate.
+4. The popover is a tooltip, or a dialog when it holds a link, as the spec says. Its source line is a button in both, because the spec asks that a click on it copies the line.
+5. The popover is placed against the window, not inside its parent, so a table that scrolls cannot cut it off.
+6. The disclaimer's box is a hairline (`--border`), as `disclaimer-block.md` says; `guidelines.html` draws it in member.
+7. In the embed, mono text takes `--embed-mono` and falls back to the system's monospace (`token-mapping.md` section 8, `embed-shell.md`); `typography.md` names `--tf-mono` and falls back to Plex Mono. The shell takes `--embed-radius` or inherits; boxes inside it are square when the partner sets none. A status keeps its word and shape and takes the partner's text colour.
+8. IBM Plex Sans Condensed counts as IBM Plex Sans for the rule of three typefaces: `typography.md` says "three faces, two families".
+9. The MOCK badge has 6px between band and plate, as in `guidelines.html`. A stale plate is the same box in sentence case.
+10. The plan-lock is the recipe of STYLE.md: the legs seat one after another, 60ms apart, then the pins drop. A leg's "why" line is always shown unless the screen drives "Why this plan?", when it shows only while the bar is parted.
+11. A busy button keeps its fill and changes its label. A month on the sheet is a plain `YYYY-MM` field, the same in every browser.
+12. Shadows, rings and blurs are never generated by Tailwind (a blocklist in `globals.css`), which is stronger than setting them to `none`. Bare `rounded` is still 4px, because the pages not yet rebuilt use it; when they are, `--radius` goes into the theme.
+
 **Where his specs change what we build.**
 
 - **The goal comes first.** The home screen is the composer, not the shelf. A shared portfolio is reached from the plan or the shelf and always leads back to the goal screen.
@@ -868,7 +913,7 @@ Order of work:
 - **Languages.** Strings live in a dictionary keyed by language from day one, with human labels for every sheet field. English and Portuguese both, since his home screen is Portuguese today.
 
 - **Order executor.** The web uses `execute()` from `packages/sdk` with a `WalletPort`-backed signer; there is one state machine, not two. It writes every transition to the API before the next step. On reload, `sent` legs are tracked and `built` or `expired` legs are rebuilt; signed bytes are never re-sent. A failed leg stops its chain only. Status changes go to an `aria-live` region with the explorer link.
-- **Checks.** Every Playwright spec runs axe at 375 px in light and dark. A DOM test fails the build if a hatch appears without the word MOCK or "stale" in the same component, as his spec asks. A CI grep rejects raw palette classes and any blue. An unknown provenance never renders as live.
+- **Checks.** Every Playwright spec runs axe at 375 px in light and dark. A DOM test fails the build if a hatch appears without the word MOCK or "stale" in the same component, as his spec asks. A CI grep rejects raw palette classes and any blue. An unknown provenance never renders as live. BRAND-1 wrote the ones that need no browser, in `apps/web/components/ui/`: `forbidden.test.ts` (in the source and in the compiled stylesheet: a hue between 200° and 330° in OKLCH with a chroma of 0.008 or more, a shadow, a corner that is not 0 or 2px outside the composer, a typeface outside the three; the pages written before the design system are listed by name, and the list fails when an entry no longer matches), `hatch.test.ts` (the hatch rule, on every primitive and on the showcase; `test/hatch.ts` gives it to a screen's own test), `contrast.test.ts` (WCAG AA for 80 token pairs in light and dark), `tokens.test.ts`, `shipped.test.ts` (nothing shipped imports the showcase or its sample content), and one test per primitive. They read the markup React's server renderer writes; no DOM library was added. The two checks that read the output of `next build` run only after a build, so `pnpm verify`, which tests before it builds, skips them.
 - His `/risk/*` pages stay as they are.
 
 ## 12. Agent surface
@@ -1063,6 +1108,7 @@ Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-L
 **From his design system** (read on Oct 1)
 
 - The provenance pin is specified three ways across his files (size, outline colour, hatch pitch). We build it from `patterns/components/provenance-pin.md` and `working-brand.yml`, since his own rule is that the `.yml` wins.
+- BRAND-1 took a reading wherever his files disagreed or left a choice: twelve, listed at the end of "The design system in the app" in section 11. They stand until he says otherwise.
 - Open: there is no final logo artwork yet. The spec says to draw the outlines from it.
 - The pin's stale state needs a staleness field from the API (his open item). It is added to `Sourced` at the first interface freeze.
 - The goal card needs a status from the engine, and his showcase prints odds. The design computes a verdict for income goals only. Rodrigo builds the status for other goals and the odds estimate; until then the card shows the verdict where one exists and no percentage.
