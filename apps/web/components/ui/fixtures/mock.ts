@@ -3,7 +3,7 @@ import type { DataTableProps } from '../DataTable';
 import type { Execution } from '../ExecutionList';
 import type { ExitPanelTier, ExitTier } from '../ExitPlanLine';
 import type { PlanLeg } from '../PlanLegs';
-import type { PinSource } from '../ProvenancePin';
+import type { PinSource } from '../provenance';
 
 // Made-up content for the showcase page and for the tests of the primitives. Nothing here is a real
 // rate, price or transaction, and nothing the product ships may import this file

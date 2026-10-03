@@ -3,7 +3,8 @@ import { Card, CardBody, CardHeader } from './Card';
 import { cn } from './cn';
 import { DataTable } from './DataTable';
 import { HatchBand, MockPlate } from './MockPlate';
-import { type PinSource, ProvenancePin, pinState } from './ProvenancePin';
+import { ProvenancePin } from './ProvenancePin';
+import { type PinSource, pinState } from './provenance';
 import { Status, type StatusKind } from './StatusMark';
 
 // exit-plan-line.md. Every portfolio says how the money comes back out before the agent invests: how

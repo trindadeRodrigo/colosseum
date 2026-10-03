@@ -3,7 +3,8 @@ import { Button } from './Button';
 import { cn } from './cn';
 import { LatticeStatus } from './Lattice';
 import { HatchBand, MockPlate } from './MockPlate';
-import { type PinSource, ProvenancePin } from './ProvenancePin';
+import { ProvenancePin } from './ProvenancePin';
+import type { PinSource } from './provenance';
 import { Status, type StatusKind } from './StatusMark';
 
 // goal-card.md. One goal, one sentence, where it stands, and where to look next. The card answers a

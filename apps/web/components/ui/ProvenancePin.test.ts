@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FIGURE, LIVE_SPECIMEN, MOCK_OBS, SANDBOX_OBS, STALE_SPECIMEN } from './fixtures/mock';
-import { PIN_LABELS, type PinSource, pinLabel, pinState, sourceLine } from './ProvenancePin';
+import { PIN_LABELS, type PinSource, pinLabel, pinState, sourceLine } from './provenance';
 import { pin } from './test/cases';
 import { all, classes, html, name, one, render, role, tag, text, ui } from './test/html';
 

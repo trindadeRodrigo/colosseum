@@ -40,7 +40,8 @@ import { GoalCard } from '../GoalCard';
 import { Icon } from '../Icon';
 import { MockFrame, MockPlate, StalePlate } from '../MockPlate';
 import { PlanLegs } from '../PlanLegs';
-import { type PinSource, ProvenancePin } from '../ProvenancePin';
+import { ProvenancePin } from '../ProvenancePin';
+import type { PinSource } from '../provenance';
 import { Status, StatusBadge, StatusMark } from '../StatusMark';
 import { SubscribeBlock } from '../SubscribeBlock';
 

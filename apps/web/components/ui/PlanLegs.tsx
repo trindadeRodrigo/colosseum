@@ -2,7 +2,8 @@ import type { AssetKind, Profile } from '@colosseum/schemas';
 import type { CSSProperties } from 'react';
 import { cn } from './cn';
 import { HatchBand, MockPlate } from './MockPlate';
-import { type PinSource, ProvenancePin, pinState } from './ProvenancePin';
+import { ProvenancePin } from './ProvenancePin';
+import { type PinSource, pinState } from './provenance';
 
 // plan-leg.md. The plan as pieces: a stacked bar of at most four legs, each with its own label right
 // under it. The bar shows proportion; the labels carry the meaning. Never a legend away from the bar,
