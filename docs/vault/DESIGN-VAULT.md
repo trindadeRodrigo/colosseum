@@ -433,8 +433,10 @@ type BasketProposal = { sheet: BasketSheet; engineVersion: string; paramsHash: s
   removed: { ref: string; reasons: Reason[] }[]; card: BasketCard; verdict?: Verdict;
   flags: string[]; observations: ObservationRef[]; disclaimer: string };
 // packages/engine/src/personal/index.ts: pure. No clock, no network, no env. Calls flatten() from basket.
-function compose(i: { sheet: BasketSheet; holdings: Holding[]; shelf: Shelf; yields: YieldObservation[];
-  liquidity?: LiquidityProvider; params: PersonalParams; now: string }): BasketProposal;
+// As built (ENG-2): the sheet and the shelf, then a context that carries the time and the data.
+function compose(sheet: PersonalSheet, shelf: Shelf, context: { now: string; holdings?: HeldPosition[];
+  yields?: YieldObservation[]; liquidity?: LiquidityProvider; params?: PersonalParameters }): PersonalProposal;
+function draftFromRules(text: string, nowMonth: string, hint?: Language): { draft: BasketSheetDraft; outcome: ParseOutcome };
 
 // packages/basket
 type Share = { key: string; bps: number };
@@ -451,6 +453,17 @@ function checkCreatorLimits(prev: Target[] | null, next: Target[], ctx: LimitCon
 function rollUp(lines: { asset: AssetId; amountUsd: number }[], ctx: RollUpContext): RiskRollUp;
 function metaHash(family: FamilyMeta): string;
 ```
+
+**Personalization as built (ENG-2, Oct 3).** `compose` validates the sheet with zod before anything else and throws `PersonalInputError` on a sheet, a context, a parameter table or a shelf it cannot use. Four types are local to `packages/engine/src/personal/types.ts`, each marked `LOCAL TYPE`, because the shared ones have no field for what the engine needs. They move to `packages/schemas` when the frame takes them.
+
+| Local type | What the shared type lacks |
+|---|---|
+| `PersonalSheet` = `BasketSheet` plus `limits?: { mustKeepUsd?, mayNeedInMonths?, cannotHold?: { classes?, underlyings?, assets? } }` | What the person must not lose, how soon they may need the money, and what they cannot hold. `BasketProposal.sheet` is a `BasketSheet`, so parsing a plan with the shared schema drops the limits |
+| `HeldPosition` = `{ asset?: AssetId; underlying?: string; valueUsd: number }` | `Holding` is raw units with no price; the rule on holdings works in dollars |
+| `PersonalParameters` = `PersonalParams` plus `cashFloor`, `minLineUsd`, `holdingMinBps`, `fallBps`, `atEndMinBps`, `minExitSamples`, `wayStepUsd`, `defaultTheme`, `defaultUnderlying` | The cash share and the other numbers the engine uses. Nothing tunable is left in the logic: `params.test.ts` reads the source for numbers |
+| `PersonalProposal` = `BasketProposal` plus `sleeves: { sleeve, weightBps, amountUsd }[]`, with `sheet: PersonalSheet` | The four sleeves as the plan holds them, for the plan bar (section 17) |
+
+A plan can hold cash, so a chain's components add up to at most 10,000 and the rest is that chain's cash, as the vault itself allows (3.7). `Targets` in `packages/schemas` and `targetsOf` in `apps/api` still ask for exactly 10,000, and `targetsOf` refuses a component that points at a shared portfolio: the API slot that exposes `compose` relaxes the first and calls `flatten` for the second.
 
 ### 3.7 Solana program (`programs/basket`, `idl/basket.json`)
 
@@ -710,9 +723,9 @@ The ceilings are written at deploy and do not move during the MVP, so no rule is
 
 ## 7. Personalization engine
 
-Rodrigo's `solve()`, parser, registry and `ConstraintSheet` are not edited; they are tied to reais and eight Solana assets. A new module `packages/engine/src/personal/` sits beside them and reuses `applyHaircut`, `YieldObservation`, `LiquidityProvider` and `Language`. His baseline snapshot test stays green.
+Rodrigo's `solve()`, parser, registry and `ConstraintSheet` are not edited; they are tied to reais and eight Solana assets. A new module `packages/engine/src/personal/` sits beside them and reuses `isEligible`, `pickPrimaryYield`, `parseGoalRules`, `YieldObservation`, `LiquidityProvider` and `Language`. His baseline snapshot test stays green.
 
-Who builds it: one of Thom's agents ports the working prototype (`docs/vault/research/design-v2/personalization-proto/`) into the module on Oct 2 and 3 with placeholder numbers, as new files only, so the three-profile test is green early. Rodrigo then reviews it and owns the parameter table and the template wording. The package has no `exports` map, so the API imports the module by path until he adds an export line.
+Who builds it: one of Thom's agents ports the working prototype (`docs/vault/research/design-v2/personalization-proto/`) into the module on Oct 2 and 3 with placeholder numbers, as new files only, so the three-profile test is green early. Rodrigo then reviews it and owns the parameter table and the template wording. The engine's `index.ts` exports the module (one line, added on Oct 3).
 
 Three pure steps. **Exposure:** how big each sleeve is (stocks and crypto, dollar yield, gold) and what is inside it. **Placement:** which chain's token carries each exposure. **Packaging:** one recipe per chain in basis points, a reason on every line, the five-field card.
 
@@ -733,6 +746,45 @@ Three pure steps. **Exposure:** how big each sleeve is (stocks and crypto, dolla
 - Checks after the model, in pure code: the amount and time frame must appear in the text; themes must be shelf slugs; any disagreement with the regex parser is flagged per field. The form is always the confirm step. Model down: the regex parser pre-fills it. That fails: it opens with defaults.
 - Shared portfolio names never reach the model. Explanation text is one template per rule, in English and Portuguese. A 12-goal evaluation set guards the parser.
 - A test bans "recommend", "suitable" and "best for you" in templates; the disclaimer stays in its one constant (section 17). This is positioning only: a plan built from a person's circumstances can count as advice whatever the wording.
+
+**As built (ENG-2, Oct 3).** New files only, in `packages/engine/src/personal/`; the engine's `index.ts` gained one export line. Every number below is a starting value: Rodrigo sets them in `packages/engine/src/personal/params.ts`, where each carries a mark (`starting` or `set`) and where it came from. The wording is his too, in `templates.ts`.
+
+| File | What it holds |
+|---|---|
+| `params.ts` | The one parameter table, `PERSONAL_PARAMS`, and `PERSONAL_PARAMS_STATUS` |
+| `registry.ts` | A class's sleeve, and eligibility: each token is given the registry row the structurer's `isEligible` reads, and that function decides |
+| `exposure.ts` | Sleeve sizes (`sizeSleeves`), the shared portfolios a plan starts from, holdings, the cap on one stock |
+| `placement.ts` | Tokens by chain, within ceilings, issuer caps and lines per chain |
+| `packaging.ts`, `card.ts` | Lines, one recipe per chain checked through `flattenReport`, the card (its exit figure from `rollUp`) |
+| `compose.ts`, `world.ts` | The entry and its validation |
+| `templates.ts` | One template per rule in English and Portuguese, 31 rules, and the card's sentences |
+| `draft.ts` | `draftFromRules`: what the structurer's rules parser reads of a sentence, as a `BasketSheetDraft` |
+| `fixtures/goals-eval.json` | The 12-goal evaluation set |
+
+| Parameter | Starting value | From |
+|---|---|---|
+| `sleeves` (stocks and crypto / dollar yield / gold, the rest cash) | grow 60/30/10, 80/15/5, 95/5/0; protect 20/55/25, 35/40/25, 50/25/25; income 0/100/0 at every risk | The prototype for grow and protect. Income is new: the prototype gave it a stock sleeve |
+| `glideFloor` (least dollar yield by months left) | 6: 80%, 12: 60%, 24: 40%, 36: 20%, 60: 10% | The prototype |
+| `cashFloor` (least cash by months left) | 3: 20%, 6: 10%, 12: 5% | New; the top step is the structurer's `cashMax` |
+| `capPerStockBps`, `capPerIssuerBps` | 10/20/35% and 50/70/100% by risk | The prototype |
+| `tierCeilingUsd` | A $50,000, B $10,000, C $1,500 | The prototype, from the sizes that define the shelf's tiers |
+| `shareOfDepth`, `tau`, `minExitSamples` | 0.25, 1%, 1 | The structurer's values; the last is new |
+| `minLineBps`, `minLineUsd`, `maxLinesPerChain` | 50, $5, 8 | Section 3.6 and the prototype |
+| `holdingMinBps`, `fallBps`, `atEndMinBps`, `wayStepUsd` | 1%, 20%, 30%, $100 | The prototype; section 17, item 6 |
+| `defaultTheme`, `defaultUnderlying` | grow: the-500, protect: storm-cellar, income: none; SPY and GLD | The prototype |
+
+What the code does where the text above left a choice:
+
+- **Four sleeves.** Cash is the fourth. A row of the table may add up to less than 10,000; the rest is cash. The date raises a floor on dollar yield and one on cash, each filled from stocks and crypto first, then gold. A nearer date never gives less cash, nor less in cash and dollar yield together, whatever the table (`floorAt` takes the largest step the date has not passed). With `rules.glide` off the date sets neither floor.
+- **The person's limits.** `mustKeepUsd` is a floor on dollar yield plus cash. `mayNeedInMonths` sets the cash floor when it is sooner than the date. `cannotHold` removes a class, a ticker or a token; what is left of the sleeve takes its place, so the sleeve keeps its size.
+- **Income plans hold dollar yield and cash.** Stock tokens are refused by the registry's own `isEligible`, as CLAUDE.md asks. Gold, commodities and crypto are given the same registry kind (`equity`: "stocks and gold pay no coupon"), so they stay out too. Risk still moves an income plan, through the issuer cap.
+- **Following.** A shared portfolio made only of stocks and crypto is held whole, as one `index` component, on the first chain the person funded where every part fits: a token they can hold, within its ceiling, the issuer cap, the cap on one stock and the lines left on the chain. Otherwise it is opened into its parts, in the weights of the plan, and the lines say they no longer follow it.
+- **Placement order.** Shared portfolios held whole, then dollar yield (best yield after haircut first), then gold, then stocks and crypto, largest first. A token takes the first chain in the person's order that lists it and has room. What no token takes goes to dollar yield, then to cash.
+- **Lines and recipes.** A line's dollars are exact and the lines add up to the amount. A recipe is its chain's lines in whole basis points of the chain's own amount, so a target is its line to within a basis point per component. Cash sits on the chain that holds the most of the plan.
+- **The verdict.** Monthly income is the dollar-yield lines at their yield after haircut. The two ways to close a gap are a larger amount, tried by running the engine again, and a lower target.
+- **Not built here:** the model call and the checks after it (`apps/api`), a dollar-aware rules parser, and the routes.
+
+**The rules parser on the 12 goals (Oct 3).** `goals-eval.test.ts` runs the set against `parseGoalRules`, unchanged, through `draftFromRules`. It gets 0 of 12 wholly right, and the record is in the test. It never reads an amount (it reads reais only, and as the goal's target), a "protect" goal, a named portfolio, a chain or a country. It reads the language in 11, the goal in 8, the time frame in 5 and the risk in 4. It turns "no stocks" into high risk, reads "risco alto" and "risco baixo" as medium, and counts "for 5 years" only as the length of a monthly goal.
 
 ## 8. Risk sheet
 
