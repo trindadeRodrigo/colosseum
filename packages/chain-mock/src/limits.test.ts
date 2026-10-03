@@ -96,6 +96,13 @@ async function arrange(c: Case) {
     mock.advance(delay);
     await publish(c.waiting);
   }
+  if (c.scenario === 'cancelled') {
+    // As `pending`, and the waiting version is then taken back.
+    await publish(c.prev);
+    mock.advance(delay);
+    await publish(c.waiting);
+    mock.cancelPending(RECIPE_ID);
+  }
   if (c.scenario === 'matured') {
     // The older version goes into effect; one delay later `prev` is published, waits, and matures.
     await publish(c.older);
@@ -107,11 +114,8 @@ async function arrange(c: Case) {
   return adapter;
 }
 
-/**
- * What the mock cannot be brought to: it has no cancel, and one publish delay and one asset list for
- * its lifetime.
- */
-const NOT_ON_THE_MOCK = ['cancelled', 'pending_delay_lowered', 'next_ceiling_lowered'];
+/** What the mock cannot be brought to: it has one publish delay and one asset list for its lifetime. */
+const NOT_ON_THE_MOCK = ['pending_delay_lowered', 'next_ceiling_lowered'];
 const runnable = vectors.cases.filter((c) => !NOT_ON_THE_MOCK.includes(c.scenario));
 
 describe('chain-mock: publishing a shared portfolio is held to the author limits', () => {
@@ -132,7 +136,10 @@ describe('chain-mock: publishing a shared portfolio is held to the author limits
       const { active, pending } = await adapter.getRecipe(RECIPE_ID);
       const published = c.prev.exists === 1 ? pending : active;
       expect(published?.effectiveAt).toBe(c.expect.effectiveAt);
-      expect(published?.version).toBe(c.prev.exists === 1 ? active.version + 1 : 1);
+      // Version 1 is `prev`, or the one before it. A version that waited or was cancelled took number 2,
+      // and a number is never used twice.
+      const skipped = c.scenario === 'cancelled' ? 1 : 0;
+      expect(published?.version).toBe(c.prev.exists === 1 ? active.version + 1 + skipped : 1);
       expect(published?.components).toEqual(args.recipe.components);
       seen.accepted += 1;
       return;
@@ -151,7 +158,8 @@ describe('chain-mock: publishing a shared portfolio is held to the author limits
   });
 
   it('ran every scenario the mock can be brought to, and met most of the rules on the way', () => {
-    expect(vectors.cases.length - runnable.length).toBe(5);
+    expect(vectors.cases.length - runnable.length).toBe(3);
+    expect(runnable.filter((c) => c.scenario === 'cancelled').length).toBe(2);
     expect(runnable.filter((c) => c.scenario === 'matured').length).toBeGreaterThanOrEqual(3);
     expect(seen.accepted).toBeGreaterThan(15);
     expect(seen.badInput).toBeGreaterThan(10);

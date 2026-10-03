@@ -264,6 +264,34 @@ describe('chain-mock', () => {
     expect(await f.adapter.buildWithdrawInKind({ vault: f.vault })).toEqual([]);
   });
 
+  it('never uses a version number twice: after a cancel the next version skips the cancelled one', async () => {
+    const f = await mockFixture('robinhood', { newVersion: false });
+    const { adapter } = f;
+    const { mock } = adapter;
+    const publish = async () =>
+      mock.send(await adapter.buildPublishRecipe({ creator: f.owner, recipe: f.publishRecipe }));
+    expect(() => mock.cancelPending(f.recipeOnchainId)).toThrow(/no version of this portfolio/);
+
+    await publish();
+    const waiting = await adapter.getRecipe(f.recipeOnchainId);
+    expect([waiting.active.version, waiting.pending?.version]).toEqual([1, 2]);
+    mock.cancelPending(f.recipeOnchainId);
+    const cancelled = await adapter.getRecipe(f.recipeOnchainId);
+    expect(cancelled.pending).toBeNull();
+    expect(cancelled.active).toEqual(waiting.active);
+
+    // A cancel does not give the slot back: the wait still counts from the cancelled publish.
+    const tooSoon = adapter.buildPublishRecipe({ creator: f.owner, recipe: f.publishRecipe });
+    expect(await code(tooSoon)).toBe('CreatorLimit');
+    mock.advance(300);
+    await publish();
+    // And it does not give the number back: what waits now is version 3, two above the active one.
+    const again = await adapter.getRecipe(f.recipeOnchainId);
+    expect([again.active.version, again.pending?.version]).toEqual([1, 3]);
+    mock.advance(300);
+    expect((await adapter.getRecipe(f.recipeOnchainId)).active.version).toBe(3);
+  });
+
   it('applies a new version after the delay: weights by anyone, a new asset only by the owner', async () => {
     const f = await mockFixture('solana', { newVersion: false });
     const { adapter } = f;

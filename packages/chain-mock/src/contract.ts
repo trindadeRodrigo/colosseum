@@ -528,7 +528,7 @@ group('shared portfolios', {
       expect((await vaultAt(c, address)).recipeOnchainId).toBe(c.f.recipeOnchainId);
   },
 
-  'reads a recipe: the active version, and a pending one only as the next number': async (c) => {
+  'reads a recipe: the active version, and a pending one with a number above it': async (c) => {
     const { active, pending } = await c.a.getRecipe(c.f.recipeOnchainId);
     exact(Recipe, active);
     expect(active.onchainId).toBe(c.f.recipeOnchainId);
@@ -539,7 +539,8 @@ group('shared portfolios', {
     const other = await c.a.getRecipe(c.f.newAssetRecipeId);
     exact(Recipe, other.active);
     const next = exact(Recipe.nullable(), other.pending);
-    expect(next?.version).toBe(other.active.version + 1);
+    // Above the active one, and not always by one: a cancelled version keeps its number for good.
+    expect(next?.version).toBeGreaterThan(other.active.version);
     expect(next?.effectiveAt).toBeGreaterThan(other.active.effectiveAt);
     expect(next?.onchainId).toBe(c.f.newAssetRecipeId);
   },
@@ -1389,7 +1390,8 @@ group('state after a transaction lands', {
     // The version in effect is untouched; the new one waits its delay.
     expect(active).toEqual(before.active);
     const waiting = exact(Recipe.nullable(), pending);
-    expect(waiting?.version).toBe(active.version + 1);
+    // A number is never used twice, so it is above the active one and need not be the next after it.
+    expect(waiting?.version).toBeGreaterThan(active.version);
     expect(waiting?.effectiveAt).toBeGreaterThan(active.effectiveAt);
     expect(waiting?.components).toEqual(c.f.publishRecipe.components);
     expect([waiting?.creator, waiting?.onchainId]).toEqual([c.f.owner, c.f.recipeOnchainId]);

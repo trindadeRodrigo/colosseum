@@ -91,6 +91,11 @@ type MockRecipe = {
   pending: Recipe | null;
   /** Unix seconds of the last publish: the next one waits a publish delay from it. */
   lastPublishAt: number;
+  /**
+   * The number of the last version published. A number names one list of weights for good: a version
+   * that was cancelled keeps its number, so the next one skips it, as on both chains.
+   */
+  lastVersion: number;
 };
 type State = {
   /** Unix seconds of the mock clock, and the mock block height. */
@@ -186,6 +191,12 @@ export type MockControl = {
    * past `maxPriceAgeSeconds` makes the price read as stale. Nothing else in the mock looks at it.
    */
   setPriceAge(asset: AssetId, seconds: number): void;
+  /**
+   * Takes back the version of a shared portfolio that is waiting, as its creator or the guardian does
+   * on a chain. The wait before the next version still counts from when it was published, and its
+   * number is not used again. With nothing waiting it refuses with `NoPendingVersion`.
+   */
+  cancelPending(recipeOnchainId: string): void;
   setMultiplier(asset: AssetId, multiplier: string): void;
   /**
    * Schedules a multiplier as an issuer does: holdings of the asset carry it as `scheduled` until the
@@ -559,13 +570,15 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
             active: { ...recipe, onchainId: id, version: 1, effectiveAt: s.seconds },
             pending: null,
             lastPublishAt: s.seconds,
+            lastVersion: 1,
           });
           return;
         }
+        existing.lastVersion += 1;
         existing.pending = {
           ...recipe,
           onchainId: id,
-          version: existing.active.version + 1,
+          version: existing.lastVersion,
           effectiveAt: s.seconds + publishDelay,
         };
         existing.lastPublishAt = s.seconds;
@@ -1168,6 +1181,12 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
       setPriceAge(id, seconds) {
         const age = input(z.number().int().nonnegative(), seconds, 'seconds');
         state.priceAges.set(asset(id).id, age);
+      },
+      cancelPending(recipeOnchainId) {
+        const r = recipeOf(settle(state), recipeOnchainId);
+        if (!r.pending) refuse('NoPendingVersion', 'no version of this portfolio is waiting');
+        // Neither `lastPublishAt` nor `lastVersion` moves: the slot and the number are both spent.
+        r.pending = null;
       },
       setMultiplier(id, multiplier) {
         state.multipliers.set(asset(id).id, input(DecimalString, multiplier, 'multiplier'));
