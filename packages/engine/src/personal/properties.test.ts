@@ -6,6 +6,7 @@ import { compose } from './index';
 import { PERSONAL_PARAMS } from './params';
 import {
   editShelf,
+  expectedSleeves,
   fixtureLiquidity,
   fixtureYields,
   launchShelf,
@@ -237,7 +238,7 @@ describe.each(CHAINS)('for any valid sheet, on %s alone', (chain) => {
   );
 
   it(
-    'the sleeves add up, and a nearer date never gives less cash or less in cash and dollar yield',
+    'the sleeves are what the table says, and a nearer date never gives less cash or less in cash and dollar yield',
     () => {
       fc.assert(
         fc.property(
@@ -247,12 +248,17 @@ describe.each(CHAINS)('for any valid sheet, on %s alone', (chain) => {
           fc.integer({ min: 1, max: 480 }),
           (sheet, raw, a, b) => {
             const { shelf, context } = made(raw);
-            const at = (horizonMonths: number) =>
+            // What the table asks, worked out apart from the engine, and what the engine sizes.
+            const asked = (horizonMonths: number) =>
+              expectedSleeves({ ...sheet, horizonMonths }, raw.params);
+            const sized = (horizonMonths: number) =>
               sizeSleeves(buildWorld({ ...sheet, horizonMonths }, shelf, context)).sized;
-            const [near, far] = [at(Math.min(a, b)), at(Math.max(a, b))];
-            for (const sized of [near, far]) {
-              expect(SLEEVES.reduce((n, sleeve) => n + sized[sleeve], 0)).toBe(10_000);
-              for (const sleeve of SLEEVES) expect(sized[sleeve]).toBeGreaterThanOrEqual(0);
+            const [near, far] = [asked(Math.min(a, b)), asked(Math.max(a, b))];
+            expect(sized(Math.min(a, b))).toEqual(near);
+            expect(sized(Math.max(a, b))).toEqual(far);
+            for (const sleeves of [near, far]) {
+              expect(SLEEVES.reduce((n, sleeve) => n + sleeves[sleeve], 0)).toBe(10_000);
+              for (const sleeve of SLEEVES) expect(sleeves[sleeve]).toBeGreaterThanOrEqual(0);
             }
             expect(near.cash).toBeGreaterThanOrEqual(far.cash);
             expect(near.cash + near.dollarYield).toBeGreaterThanOrEqual(far.cash + far.dollarYield);
@@ -267,7 +273,7 @@ describe.each(CHAINS)('for any valid sheet, on %s alone', (chain) => {
   );
 
   it(
-    'the plan never holds less in cash and dollar yield than its sleeves ask, so than its date asks',
+    'the plan never holds less in cash and dollar yield than the table asks, so than its date asks',
     () => {
       // Placement only ever moves money out of stocks, crypto and gold: what finds no token goes to
       // dollar yield, then to cash. With the property above, a plan for a nearer date holds at least
@@ -277,12 +283,115 @@ describe.each(CHAINS)('for any valid sheet, on %s alone', (chain) => {
         fc.property(person, world, (sheet, raw) => {
           const { shelf, context } = made(raw);
           const plan = compose(sheet, shelf, context);
-          const { sized } = sizeSleeves(buildWorld(sheet, shelf, context));
+          const sized = expectedSleeves(sheet, raw.params);
           const kept = (sleeve: 'cash' | 'dollarYield') =>
             plan.sleeves.find((x) => x.sleeve === sleeve)?.amountUsd ?? 0;
           const asked = (sheet.amountUsd * (sized.cash + sized.dollarYield)) / 10_000;
           // Two sleeves, each a whole number of cents.
           expect(kept('cash') + kept('dollarYield')).toBeGreaterThanOrEqual(asked - 0.02);
+        }),
+        { numRuns: RUNS * 2 },
+      );
+    },
+    PATIENCE,
+  );
+});
+
+// A plan that is all cash keeps every rule above. This is the other half: where there is room, a plan
+// holds what the table asks, sleeve by sleeve. Room is a table with no cap or ceiling in the way, on
+// a chain that lists what each sleeve starts from, for a person who holds nothing and rules nothing
+// out. What the table asks is worked out by `expectedSleeves`, apart from the engine.
+describe.each(['solana', 'robinhood'] as const)('where there is room, on %s', (chain) => {
+  // Sleeves and floors in whole percents, so no part of a sleeve is under the least a line can be.
+  const percent = fc.integer({ min: 0, max: 100 }).map((points) => points * 100);
+  const wholeRow = fc.tuple(percent, percent, percent).map(([growth, dollarYield, gold]) => {
+    const growthBps = growth;
+    const dollarYieldBps = Math.min(dollarYield, 10_000 - growthBps);
+    const goldBps = Math.min(gold, 10_000 - growthBps - dollarYieldBps);
+    return { growthBps, dollarYieldBps, goldBps };
+  });
+  const roomy = fc
+    .record({
+      rows: fc.array(wholeRow, { minLength: 9, maxLength: 9 }),
+      glideFloor: fc.array(
+        fc.record({ monthsLeft: fc.integer({ min: 0, max: 480 }), dollarYieldBps: percent }),
+        { maxLength: 5 },
+      ),
+      cashFloor: fc.array(
+        fc.record({ monthsLeft: fc.integer({ min: 0, max: 480 }), cashBps: percent }),
+        { maxLength: 4 },
+      ),
+    })
+    .map(({ rows, ...floors }) =>
+      PersonalParameters.parse({
+        ...PERSONAL_PARAMS,
+        ...floors,
+        version: 'generated, with room',
+        sleeves: Object.fromEntries(
+          GOALS.flatMap((goal, g) =>
+            RISKS.map((risk, r) => [`${goal}:${risk}`, rows[g * RISKS.length + r]]),
+          ),
+        ),
+        capPerStockBps: { low: 10_000, medium: 10_000, high: 10_000 },
+        capPerIssuerBps: { low: 10_000, medium: 10_000, high: 10_000 },
+        tierCeilingUsd: { A: 10_000_000, B: 10_000_000, C: 10_000_000 },
+        minLineBps: 1,
+        minLineUsd: 0,
+        maxLinesPerChain: 16,
+      }),
+    );
+  const someone = fc
+    .record({
+      goal: fc.constantFrom(...GOALS),
+      // Whole hundreds of dollars: a basis point is then a whole number of cents.
+      amountUsd: fc.integer({ min: 1, max: 10_000 }).map((hundreds) => hundreds * 100),
+      horizonMonths: fc.integer({ min: 1, max: 480 }),
+      risk: fc.constantFrom(...RISKS),
+      glide: fc.boolean(),
+      keepShare: maybe(fc.integer({ min: 0, max: 100 })),
+      mayNeedInMonths: maybe(fc.integer({ min: 1, max: 480 })),
+      language: fc.constantFrom('en' as const, 'pt' as const),
+    })
+    .map(({ glide, keepShare, mayNeedInMonths, ...rest }) => {
+      const mustKeepUsd = keepShare === undefined ? undefined : (rest.amountUsd * keepShare) / 100;
+      const limits = filled({ mustKeepUsd, mayNeedInMonths });
+      return PersonalSheet.parse(
+        filled({
+          basketType: 'standard' as const,
+          ...rest,
+          themes: [],
+          country: 'BR',
+          chains: [chain],
+          rules: { useHoldings: true, glide },
+          limits: Object.keys(limits).length ? limits : undefined,
+        }),
+      );
+    });
+
+  it(
+    'a plan holds what the table asks, sleeve by sleeve',
+    () => {
+      fc.assert(
+        fc.property(someone, roomy, (sheet, params) => {
+          const context: ComposeContext = { now: NOW, yields: fixtureYields(), params };
+          const plan = compose(sheet, launch, context);
+          expect(violations(plan, launch, context)).toEqual([]);
+          const asked = expectedSleeves(sheet, params);
+          // An income plan holds only what pays: its stocks and gold are held in dollar yield.
+          const income = sheet.goal === 'income';
+          const expected = income
+            ? {
+                growth: 0,
+                dollarYield: asked.growth + asked.dollarYield + asked.gold,
+                gold: 0,
+                cash: asked.cash,
+              }
+            : asked;
+          expect(Object.fromEntries(plan.sleeves.map((x) => [x.sleeve, x.weightBps]))).toEqual(
+            expected,
+          );
+          for (const x of plan.sleeves)
+            expect(x.amountUsd).toBeCloseTo((sheet.amountUsd * expected[x.sleeve]) / 10_000, 2);
         }),
         { numRuns: RUNS * 2 },
       );

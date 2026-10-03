@@ -1,13 +1,13 @@
 import { flatten } from '@colosseum/basket';
 import { type Recipe, type Shelf, Targets } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
-import { sizeSleeves } from './exposure';
 import { compose } from './index';
 import { PERSONAL_PARAMS } from './params';
 import { sleeveOfClass } from './registry';
 import {
   ceilingUsd,
   editShelf,
+  expectedSleeves,
   fixtureContext,
   fixtureLiquidity,
   fixtureYields,
@@ -24,7 +24,6 @@ import {
   type PersonalProposal,
   type PersonalSheet,
 } from './types';
-import { buildWorld } from './world';
 
 // The rules that hold whatever the numbers in the parameter table are. Each is tried on the starting
 // table and on tables Rodrigo might set, some of them unkind.
@@ -155,14 +154,14 @@ describe.each(Object.entries(TABLES))('whatever the numbers: %s', (_name, table)
 
   it('a plan for a near date never holds less in cash and dollar yield than a far date is sized for', () => {
     // The sleeves never shrink as the date nears, and a plan never holds less than its sleeves ask.
-    // A far plan can still hold extra in dollar yield, when its stocks found no room.
-    const ctx = fixtureContext({ params: table });
+    // A far plan can still hold extra in dollar yield, when its stocks found no room. What the
+    // sleeves ask is worked out from the table by `expectedSleeves`, apart from the engine.
     for (const goal of GOALS)
       for (const risk of RISKS) {
         let before: { cash: number; kept: number } | null = null;
         for (const horizonMonths of [1, 3, 6, 12, 18, 24, 36, 60, 120, 480]) {
           const person = { goal, risk, horizonMonths, themes: ['the-seven'] };
-          const { sized } = sizeSleeves(buildWorld(sheet(person), shelf, ctx));
+          const sized = expectedSleeves(sheet(person), table);
           const asked = { cash: sized.cash, kept: sized.cash + sized.dollarYield };
           const made = plan(person, table);
           const where = `${goal} at ${risk} risk, ${horizonMonths} months`;
@@ -218,6 +217,30 @@ describe.each(Object.entries(TABLES))('whatever the numbers: %s', (_name, table)
         if (sleeve === 'growth' || sleeve === 'gold') expect(observed).not.toContain(l.assetId);
       }
     }
+  });
+});
+
+describe('the floors, on the starting table', () => {
+  const sleevesOf = (made: PersonalProposal) =>
+    Object.fromEntries(made.sleeves.map((x) => [x.sleeve, x.weightBps]));
+
+  it('the date fills dollar yield from stocks first, and from gold only then', () => {
+    // Protect at medium risk starts at 35% stocks, 40% dollar yield, 25% gold. Six months out dollar
+    // yield is 80% at least: all the stocks go, then 5 points of gold; then 10 points of gold to cash.
+    const made = plan({ goal: 'protect', risk: 'medium', horizonMonths: 6 }, P);
+    expect(sleevesOf(made)).toEqual({ growth: 0, dollarYield: 8000, gold: 1000, cash: 1000 });
+    // A year out: 60% at least, so 20 points of stocks go, and no gold; then 5 points to cash.
+    const year = plan({ goal: 'protect', risk: 'medium', horizonMonths: 12 }, P);
+    expect(sleevesOf(year)).toEqual({ growth: 1000, dollarYield: 6000, gold: 2500, cash: 500 });
+  });
+
+  it('what must not be lost takes from stocks first, then from gold, and is honoured', () => {
+    // Protect at low risk starts at 20% stocks, 55% dollar yield, 25% gold. $9,000 of $10,000 must
+    // be kept: all the stocks go, then 15 points of gold.
+    const made = plan({ goal: 'protect', risk: 'low', limits: { mustKeepUsd: 9_000 } }, P);
+    expect(sleevesOf(made)).toEqual({ growth: 0, dollarYield: 9000, gold: 1000, cash: 0 });
+    const all = plan({ goal: 'protect', risk: 'low', limits: { mustKeepUsd: 10_000 } }, P);
+    expect(sleevesOf(all)).toEqual({ growth: 0, dollarYield: 10_000, gold: 0, cash: 0 });
   });
 });
 

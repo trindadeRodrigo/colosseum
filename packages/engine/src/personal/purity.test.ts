@@ -1,10 +1,16 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { draftFromRules } from './draft';
 
 // DESIGN-VAULT 3.6: `compose` is pure. No clock, no network, no environment, nothing random: the time
 // and the data come in as arguments. This reads the source of the folder to hold that, and to hold
-// what it may import: schemas, basket, and the three pieces of the engine it reuses.
+// what its own files import: schemas, basket, and three pieces of the engine.
+//
+// What this does not say: that nothing else is loaded. `draft.ts` imports the structurer's rules
+// parser, and that file imports the schedule, which imports the solver. Those modules are loaded
+// with it and are not called by this folder; the parser's one read of the clock is a default that
+// `draftFromRules` never leaves to it, which the last test here holds by moving the clock.
 
 const dir = fileURLToPath(new URL('.', import.meta.url));
 const sources = readdirSync(dir)
@@ -30,9 +36,22 @@ describe('packages/engine/src/personal', () => {
       for (const from of importsOf(text)) expect(allowed(from), `${name}: ${from}`).toBe(true);
       expect(text, name).not.toMatch(/\brequire\(/);
     }
-    // The parser's model path, the feeds and the solver are not reached from here.
+    // None of these files imports the parser's model path, the feeds or the solver itself.
     for (const { name, text } of sources)
       expect(text, name).not.toMatch(/parser\/(index|llm)|\/feeds\/|\/solver\//);
+    // Only `draft.ts` reaches the rules parser, and `compose` does not reach `draft.ts`.
+    const reach = (name: string) => sources.find((x) => x.name === name)?.text ?? '';
+    for (const { name, text } of sources)
+      if (name !== 'draft.ts') expect(text, name).not.toMatch(/parser\/rules/);
+    for (const name of [
+      'compose.ts',
+      'world.ts',
+      'exposure.ts',
+      'placement.ts',
+      'packaging.ts',
+      'card.ts',
+    ])
+      expect(reach(name), name).not.toMatch(/from '\.\/draft'/);
     const planted = "import { parseGoal } from '../parser/index';\nimport fs from 'node:fs';";
     expect(importsOf(planted).filter((from) => !allowed(from))).toHaveLength(2);
   });
@@ -51,5 +70,22 @@ describe('packages/engine/src/personal', () => {
     ];
     for (const { name, text } of sources)
       for (const pattern of banned) expect(text, `${name}: ${pattern}`).not.toMatch(pattern);
+  });
+
+  it('draftFromRules gives the same draft whatever the clock says: the month is its argument', () => {
+    const text = 'Juntar R$50 mil em 18 meses';
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-10-03T12:00:00Z'));
+      const now = draftFromRules(text, '2026-10');
+      vi.setSystemTime(new Date('2031-01-15T12:00:00Z'));
+      expect(draftFromRules(text, '2026-10')).toEqual(now);
+      expect(now.draft.horizonMonths).toBe(18);
+      // The month it is given is the one that counts.
+      expect(draftFromRules('Juntar R$50 mil até 2030', '2026-10').draft.horizonMonths).toBe(39);
+      expect(draftFromRules('Juntar R$50 mil até 2030', '2029-01').draft.horizonMonths).toBe(12);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

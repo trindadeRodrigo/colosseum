@@ -21,6 +21,7 @@ import { eligibleForGoal, sleeveOfClass } from './registry';
 import { INPUT_NAMES, REASON_TEMPLATES } from './templates';
 import {
   type ComposeContext,
+  type PersonalParameters,
   type PersonalProposal,
   type PersonalSheet,
   SLEEVES,
@@ -331,6 +332,70 @@ export function ceilingUsd(asset: BasketAsset, ctx: ComposeContext): number {
   const measured = ctx.liquidity.exitCapacity(asset.id, P.tau, EXIT_WINDOW_DAYS);
   if (!measured || measured.samples < P.minExitSamples) return tier;
   return Math.min(tier, P.shareOfDepth * measured.capacityUsd);
+}
+
+/**
+ * What the sleeves of a plan should be, worked out here from the table's numbers alone. It shares no
+ * code with the engine, so a test that compares the two holds the engine to the table, not to itself.
+ *
+ * The row for the goal and the risk gives stocks and crypto, dollar yield and gold; cash is the rest.
+ * Then three floors, each filled from stocks first and then gold: dollar yield for the date, cash for
+ * how soon the money may be needed (which may also take from dollar yield), and dollar yield plus
+ * cash for what must not be lost. A floor is the largest step whose months have not passed.
+ */
+export function expectedSleeves(
+  sheetOf: PersonalSheet,
+  table: PersonalParameters,
+): Record<Sleeve, number> {
+  const row = table.sleeves[`${sheetOf.goal}:${sheetOf.risk}`];
+  if (!row) throw new Error('no row');
+  let growth = row.growthBps;
+  let dollarYield = row.dollarYieldBps;
+  let gold = row.goldBps;
+  let cash = 10_000 - growth - dollarYield - gold;
+  const fromStocksThenGold = (need: number) => {
+    const stocks = Math.min(growth, need);
+    const metal = Math.min(gold, need - stocks);
+    growth -= stocks;
+    gold -= metal;
+    return stocks + metal;
+  };
+  const floorOf = (
+    steps: { monthsLeft: number }[],
+    months: number,
+    read: (step: never) => number,
+  ) =>
+    Math.max(
+      0,
+      ...steps.filter((step) => months <= step.monthsLeft).map((step) => read(step as never)),
+    );
+
+  const { glide } = sheetOf.rules;
+  if (glide) {
+    const least = floorOf(
+      table.glideFloor,
+      sheetOf.horizonMonths,
+      (s: { dollarYieldBps: number }) => s.dollarYieldBps,
+    );
+    if (dollarYield < least) dollarYield += fromStocksThenGold(least - dollarYield);
+  }
+  const said = sheetOf.limits?.mayNeedInMonths;
+  const soon = glide ? Math.min(said ?? sheetOf.horizonMonths, sheetOf.horizonMonths) : said;
+  if (soon !== undefined) {
+    const least = floorOf(table.cashFloor, soon, (s: { cashBps: number }) => s.cashBps);
+    if (cash < least) {
+      const found = fromStocksThenGold(least - cash);
+      const fromYield = Math.min(dollarYield, least - cash - found);
+      dollarYield -= fromYield;
+      cash += found + fromYield;
+    }
+  }
+  const keep = sheetOf.limits?.mustKeepUsd ?? 0;
+  if (keep > 0) {
+    const least = Math.min(10_000, Math.ceil((cents(keep) * 10_000) / cents(sheetOf.amountUsd)));
+    if (dollarYield + cash < least) dollarYield += fromStocksThenGold(least - dollarYield - cash);
+  }
+  return { growth, dollarYield, gold, cash };
 }
 
 /** The rules that say something was left out. */

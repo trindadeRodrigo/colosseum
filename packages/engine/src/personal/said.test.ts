@@ -548,3 +548,31 @@ describe('the words', () => {
     );
   });
 });
+
+describe('the card', () => {
+  const bruno = sheet({ goal: 'protect', amountUsd: 50_000, horizonMonths: 18, risk: 'low' });
+
+  it('gives a range: after haircut at the low end, as quoted at the high end, and they differ', () => {
+    // $25,000 and $5,000 in the two dollar-yield tokens of a $50,000 plan.
+    const { expectedReturn } = compose(bruno, shelf, ctx).card;
+    const ys = new Map(fixtureYields().map((y) => [y.assetId, y]));
+    const part = (pick: 'haircutYield' | 'quotedYield') =>
+      (25_000 * (ys.get('solana:syrupusdc')?.[pick] ?? 0) +
+        5_000 * (ys.get('solana:jlusdc')?.[pick] ?? 0)) /
+      500;
+    expect(expectedReturn.lowPct).toBe(2.65);
+    expect(expectedReturn.highPct).toBe(3.01);
+    expect(expectedReturn.lowPct).toBeCloseTo(part('haircutYield'), 2);
+    expect(expectedReturn.highPct).toBeCloseTo(part('quotedYield'), 2);
+    expect(expectedReturn.highPct).toBeGreaterThan(expectedReturn.lowPct);
+  });
+
+  it('writes the exit cost rounded up, never down', () => {
+    const { exit } = compose(bruno, shelf, ctx).card;
+    // 12.75 basis points measured: "about 0.13%", not 0.12%.
+    expect(exit.costBps).toBe(12.75);
+    expect(exit.text).toBe(
+      'You can withdraw the tokens to your own wallet at any time. Selling everything in the worst hours measured would cost about 0.13%; that is measured for 40% of the plan.',
+    );
+  });
+});
