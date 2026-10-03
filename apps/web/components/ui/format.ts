@@ -1,7 +1,16 @@
 // Small formatters the primitives share. They format what they are handed and decide nothing.
 
-/** An ISO 8601 instant in UTC with no fraction: `2026-10-01T14:02:11Z`. Null when the input is not a date. */
+// The date-time format ECMAScript promises to read the same way everywhere: a date, `T`, a time, and
+// a zone (`Z` or an offset). Without the zone a time is read as local, so it is not an instant; a bare
+// year or a number is not one either, though `Date.parse` would take both.
+const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+/**
+ * An ISO 8601 instant in UTC with no fraction: `2026-10-01T14:02:11Z`. Null when the input is not an
+ * instant: not a date, a date with no time, or a time with no zone.
+ */
 export function isoUtc(value: string): string | null {
+  if (typeof value !== 'string' || !INSTANT.test(value)) return null;
   const time = Date.parse(value);
   if (Number.isNaN(time)) return null;
   return new Date(time).toISOString().replace(/\.\d{3}Z$/, 'Z');

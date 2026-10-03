@@ -320,8 +320,21 @@ export const table = {
   ),
 };
 
+const SWAP = EXECUTIONS[0] as (typeof EXECUTIONS)[number];
+
 export const executions = {
   list: <ExecutionList executions={EXECUTIONS} />,
+  /** What the API might send that this build does not know: a new status, a time with no zone. */
+  odd: (
+    <ExecutionList
+      executions={[
+        { ...SWAP, id: 'o1', status: 'settled' as never },
+        { ...SWAP, id: 'o2', status: 'constructor' as never },
+        { ...SWAP, id: 'o3', at: '2026-09-30T14:02:00' },
+        { ...SWAP, id: 'o4', at: 'yesterday' },
+      ]}
+    />
+  ),
   link: (
     <ExplorerLink
       signature="4kZ9sampleSignaturemX2p"

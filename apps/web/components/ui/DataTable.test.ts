@@ -122,6 +122,26 @@ describe('ExecutionList and ExplorerLink (data-table.md)', () => {
     expect(text(confirmed as never)).toContain('2026-09-30 14:02 UTC');
   });
 
+  it('shows a time with no zone as it was given, and never calls it UTC', () => {
+    const [, , zoneless, vague] = all(render(executions.odd), tag('li'));
+    expect(utcMinute('2026-09-30T14:02:00')).toBe('2026-09-30T14:02:00');
+    const time = one(zoneless as never, tag('time'));
+    expect(text(time)).toBe('2026-09-30T14:02:00');
+    expect(text(zoneless as never)).not.toContain('UTC');
+    expect('datetime' in time.attrs).toBe(false);
+    expect(text(one(vague as never, tag('time')))).toBe('yesterday');
+  });
+
+  it('says a status it does not know in words, and never leaves it blank or calls it confirmed', () => {
+    const [unknown, inherited] = all(render(executions.odd), tag('li'));
+    for (const row of [unknown, inherited]) {
+      expect(text(row as never)).toContain('·status unknown·');
+      expect(text(row as never)).not.toMatch(/confirmed|failed/);
+      expect(all(row as never, ui('status-mark'))).toHaveLength(0);
+    }
+    expect((unknown as { attrs: Record<string, string> }).attrs['data-status']).toBe('settled');
+  });
+
   it('links the transaction as "Tx", the signature cut in the middle, with a name that says where it goes', () => {
     const link = one(confirmed as never, ui('explorer-link'));
     expect(link.tag).toBe('a');

@@ -60,7 +60,24 @@ describe('formatters', () => {
   it('writes an instant in ISO 8601 UTC, and nothing for what is not a date', () => {
     expect(isoUtc('2026-10-01T14:02:11.000Z')).toBe('2026-10-01T14:02:11Z');
     expect(isoUtc('2026-10-01T11:02:11-03:00')).toBe('2026-10-01T14:02:11Z');
+    expect(isoUtc('2026-10-01T14:02Z')).toBe('2026-10-01T14:02:00Z');
+    expect(isoUtc('2026-10-01T14:02:11.123456Z')).toBe('2026-10-01T14:02:11Z');
     expect(isoUtc('soon')).toBeNull();
+  });
+
+  it('takes no number, bare date or time with no zone for an instant', () => {
+    // `Date.parse` reads each of these, the last one in the clock of whoever runs it
+    for (const not of [
+      '1',
+      '2026',
+      '2026-10',
+      '2026-10-01',
+      '2026-10-01T14:02:11',
+      '2026-13-01T00:00:00Z',
+      '',
+    ])
+      expect(isoUtc(not), not).toBeNull();
+    expect(isoUtc(undefined as never)).toBeNull();
   });
 
   it('writes an age in minutes, hours or days', () => {

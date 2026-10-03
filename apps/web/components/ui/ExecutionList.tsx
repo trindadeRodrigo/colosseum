@@ -8,7 +8,8 @@ import { StatusMark } from './StatusMark';
 
 // data-table.md, "Execution list". One line per execution, shared by the plan view and the monitor.
 // A failed line says so in words and is never retried: there is no retry button here, because a new
-// attempt is a new action the person signs. A row is never dropped for lack of a link.
+// attempt is a new action the person signs. A row is never dropped for lack of a link, and a status
+// this build does not know is said in words, not left blank.
 
 export type Execution = {
   id: string;
@@ -31,6 +32,8 @@ export type Execution = {
 
 export type ExecutionListLabels = {
   status: Record<ExecutionStatus, string>;
+  /** For a status this build does not know. It is said, never left blank. */
+  unknownStatus: string;
   notRetried: string;
   signature: string;
   link?: Partial<ExplorerLinkLabels>;
@@ -43,11 +46,15 @@ export const EXECUTION_LIST_LABELS: ExecutionListLabels = {
     confirmed: 'confirmed',
     failed: 'failed',
   },
+  unknownStatus: 'status unknown',
   notRetried: '(not retried)',
   signature: 'signature',
 };
 
-/** `2026-09-30 14:02 UTC`. */
+/**
+ * `2026-09-30 14:02 UTC` for an instant. A time with no zone is not an instant: it is shown as it was
+ * given, with no "UTC" after it, because nothing says which hour it was.
+ */
 export function utcMinute(at: string): string {
   const iso = isoUtc(at);
   return iso === null ? at : `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
@@ -92,7 +99,9 @@ export function ExecutionList({ executions, labels, className }: ExecutionListPr
                 </span>
               </span>
             ) : (
-              <span>{text.status[e.status]}</span>
+              <span>
+                {Object.hasOwn(text.status, e.status) ? text.status[e.status] : text.unknownStatus}
+              </span>
             )}
             <span aria-hidden="true">·</span>
             <time
