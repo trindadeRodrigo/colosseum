@@ -27,7 +27,7 @@ Each is a check anyone can run. If one is missed by a day, the cut beside it is 
 
 | When | What must be true | If missed |
 |---|---|---|
-| **M1** Sat Oct 3, night | The walking skeleton on the mock: a buy across three chains goes through the API as an order with a leg per chain, the legs settle, and the result reads back through the API. Every figure labelled MOCK. The contract tests pass on `chain-mock`. The three-profile test is green on starting numbers | Nothing is cut. The TypeScript streams add nothing new until it passes |
+| **M1** Sat Oct 3, night | The walking skeleton on the mock: a buy on each chain the mock runs goes through the API as an order with its legs on that one chain, the legs settle, and the result reads back through the API. Every figure labelled MOCK. The contract tests pass on `chain-mock`. The three-profile test is green on starting numbers | Nothing is cut. The TypeScript streams add nothing new until it passes |
 | **M2** Mon Oct 5, night | The program and the contracts are deployed and `authority-check` is green. On Solana devnet: create a vault, buy into it, see it, withdraw the tokens to the owner | The deploy moves to Tue morning. A chain not deployed by Tue 12:00 BRT is read-only, Base first |
 | **M3** Tue Oct 6, night | The same owner path on Robinhood Chain with a passkey wallet. A shared portfolio is published and followed. Rehearsal 1 recorded on Solana and Robinhood Chain, with a first auto-follow cycle on each | Auto-follow on Robinhood Chain becomes owner-signed only |
 | **M4** Wed Oct 7, night | Auto-follow has run a full cycle on Solana in market hours and is filmed. Portfolio and rebalance work end to end. Risk sheets render. An outside agent builds a plan and a person approves it from the link | Auto-follow on Solana becomes the one-tap prompt. The five extra agent tools stay out |
@@ -46,7 +46,7 @@ Slot ids point at rows in `STATE-VAULT.md`. "In session" means in market hours, 
 | **Sat Oct 3** | FRAME-2 (the import-rules test, the CI workflows). BAS-1, with the shared limit vectors first. SOL-2 (the swap route on surfpool, the registry, sizes at 7 and 12 assets). EVM-2 (factory and registry). ADS-1, ADE-1 (read side). API-1 (sign-in, orders, the portfolio read). AGT-1 (guard and executor). WEB-1 (the app shell on the design system, on the mock). ENG-2 ends. OPS-4 starts (the ops scripts). TNET-1, TNET-4 (the test tokens, the test price source, the Solana test exchange). Feed ages logged over the weekend. **M1** | Review. Rodrigo: the sleeve table and the wording for ENG-2 when he can; one specification of the pin (DES-1) |
 | **Sun Oct 4** | Morning: SOL-3, EVM-3 (the keeper path and the hostile cases). Afternoon: ADS-2, ADE-2 (every builder, simulated). API-2. WEB-2 (his three screens on the primitives). SEC-1 (`authority-check` and the expected values, written before the deploy). OPS-4 ends. TNET-2, TNET-5, TNET-6 (pools on Robinhood Chain's test network, the price updater, swaps on devnet). Evening: the interfaces freeze and the hash test turns on (FRAME-3) | **Thom:** the origin decided (a domain or one fixed URL); the admin, guardian, keeper and platform-creator keys created; the deploy dry run read line by line (OPS-5) |
 | **Mon Oct 5** | KEEP-1 (the keeper against Solana). WEB-3 (plan, buy, order status on the real API, with the terms and the trust notice). SEC-2 (`SECURITY.md`, `INCIDENT.md`, the rehearsal script) | **In session:** deploy, config, caps, the launch portfolios published, hand-over to the admin key, hosting, the cold-start test. The owner path on Solana devnet, then on Robinhood Chain's test network if the session allows (OPS-6). A first keeper leg on Solana in the last hour, or on Tuesday. **M2** |
-| **Tue Oct 6** | Morning: KEEP-2 (Robinhood Chain). WEB-4 (the shelf, publish and follow). API-3. AGT-2 (SDK and MCP on the real API, hosted) | **In session:** a three-chain buy with a passkey wallet; auto-follow cycles on Solana and Robinhood Chain; rehearsal 1 (OPS-7). **M3** |
+| **Tue Oct 6** | Morning: KEEP-2 (Robinhood Chain). WEB-4 (the shelf, publish and follow). API-3. AGT-2 (SDK and MCP on the real API, hosted) | **In session:** a buy with a passkey wallet on Solana, and one on Robinhood Chain; auto-follow cycles on both; rehearsal 1 (OPS-7). **M3** |
 | **Wed Oct 7** | WEB-5 (portfolio and rebalance). RISK-2 (sheets render). AGT-3 (skill, `llms.txt`). SEC-3 (tier 2 runs). Add-backs decided | **In session:** rehearsal 2 and the market-open footage (OPS-8). The last day a full auto-follow cycle can be shown. **M4** |
 | **Thu Oct 8** | Fixes only, from the rehearsals and the gates | **12:00 BRT:** `G-SEC` per chain. Then `launch()`, `G-LINK`, the pause drill, the link shared, a new version of the demo portfolio published (OPS-9). **M5** |
 | **Fri Oct 9** | Fixes only | Freeze at 18:00 BRT; tag (OPS-10) |
@@ -67,7 +67,7 @@ Never cut: withdrawing the tokens to the owner; tier 1 on any chain where auto-f
 
 Out from the start, back only if ahead: Base (decided on Oct 6), Portuguese copy, five more agent tools, auto-follow on Base and the hourly copy of the curves (each decided on Oct 7), and the 28-day EVM backfill (decided on Oct 6). The full table is in section 16 of the design.
 
-**The floor.** With every cut taken, the submission is still: sign in two ways; a plan from a sentence; a one-tap buy into the person's own vault on Solana and Robinhood Chain; the portfolio with drift; a one-tap rebalance; shared portfolios published and followed with a prompt; the exit plan and risk sheet; the agent surface; and every withdrawal going to the owner only.
+**The floor.** With every cut taken, the submission is still: sign in two ways; a plan from a sentence; a one-tap buy into the person's own vault, on Solana or on Robinhood Chain; the portfolio with drift; a one-tap rebalance; shared portfolios published and followed with a prompt; the exit plan and risk sheet; the agent surface; and every withdrawal going to the owner only.
 
 ## Who owns what
 
@@ -78,6 +78,7 @@ As in section 15 of the design. In short: Rodrigo owns the engine's numbers and 
 | What | Who | Bites on |
 |---|---|---|
 | `main` and `staging` protected (ORG-5) | Rodrigo | Now |
+| Two things assumed under gate `ONE-CHAIN`: a person who creates a wallet in the app picks its chain at that moment, and a different wallet on another chain means a separate plan | Thom | Sat Oct 3, with the sign-in screen (WEB-1) |
 | Who gives a new person test cash and gas on a test network. A passkey wallet starts empty; the cheap answer is a small, rate-limited hand-out from our own key (TNET-7) | Thom | Mon Oct 5 |
 | Whether mainnet follows the test networks before the freeze (gate `SHOW`). It needs about 5 SOL locked on Solana | Thom and Rodrigo | Wed Oct 7 |
 | Whether Jupiter's terms allow a second organisation | Thom | Fri Oct 2 |
