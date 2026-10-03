@@ -36,8 +36,6 @@ import { buildWorld, type World } from './world';
 export const PERSONAL_ENGINE_VERSION = 'personal-0.1';
 
 const MONTHS_IN_A_YEAR = 12;
-/** A way to close a gap names an amount in round hundreds of dollars. */
-const ROUND_TO_USD = 100;
 
 /** JSON with every object's keys in order, so the same value always gives the same text. */
 function canonical(value: unknown): string {
@@ -307,7 +305,7 @@ function build(
       const ways: Verdict['ways'] = [];
       if (gap > 0 && withWays) {
         const most = BasketSheet.shape.amountUsd.maxValue ?? sheet.amountUsd;
-        const more = Math.ceil((sheet.amountUsd * target) / monthly / ROUND_TO_USD) * ROUND_TO_USD;
+        const more = Math.ceil((sheet.amountUsd * target) / monthly / P.wayStepUsd) * P.wayStepUsd;
         if (monthly > 0 && more > sheet.amountUsd && more <= most) {
           const bigger = build({ ...sheet, amountUsd: more }, shelf, context, false);
           ways.push({

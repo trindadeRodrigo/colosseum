@@ -91,6 +91,8 @@ export const PersonalParameters = PersonalParams.extend({
   atEndMinBps: Bps,
   /** A measured exit capacity counts from this many samples. */
   minExitSamples: z.number().int().nonnegative(),
+  /** A way to close an income gap names an amount rounded up to this many dollars. */
+  wayStepUsd: z.number().positive(),
   /** The shared portfolio a goal starts from when the person chooses none: a slug, or none. */
   defaultTheme: z.record(GoalKind, z.string().nullable()),
   /** What fills a sleeve when no shared portfolio does: the ticker of an underlying. */

@@ -131,7 +131,7 @@ export const REASON_TEMPLATES = {
   ON_CHAIN: rule(
     ['chains'],
     '{asset} on {chain|chain}: of the chains you funded, the first that lists it and has room.',
-    '{asset} em {chain|chain}: das suas redes, a primeira que o lista e tem espaço.',
+    '{asset} na {chain|chain}: das suas redes, a primeira que o lista e tem espaço.',
   ),
   BY_YIELD: rule(
     [],
@@ -146,17 +146,17 @@ export const REASON_TEMPLATES = {
   EXIT_CEILING: rule(
     ['amount'],
     '{asset} on {chain|chain} is limited to {maxUsd|usd}: beyond that, selling it would cost too much.',
-    '{asset} em {chain|chain} fica limitado a {maxUsd|usd}: acima disso, vender custaria caro demais.',
+    '{asset} na {chain|chain} fica limitado a {maxUsd|usd}: acima disso, vender custaria caro demais.',
   ),
   ISSUER_CAP: rule(
     ['risk'],
     'No more than {capBps|pct} of the plan with one issuer at {risk|risk}: {issuer} is at that limit.',
-    'No máximo {capBps|pct} do plano com um emissor com {risk|risk}: {issuer} está nesse limite.',
+    'No máximo {capBps|pct} do plano com um só emissor, com {risk|risk}: {issuer} está nesse limite.',
   ),
   MAX_LINES: rule(
     ['themes'],
     '{asset} is left out on {chain|chain}: a plan holds at most {max} lines on one chain.',
-    '{asset} fica de fora em {chain|chain}: um plano tem no máximo {max} linhas em uma rede.',
+    '{asset} fica de fora na {chain|chain}: um plano tem no máximo {max} linhas em uma rede.',
   ),
   BELOW_MINIMUM: rule(
     ['amount'],
@@ -188,7 +188,7 @@ export const REASON_TEMPLATES = {
   CASH_ON_CHAIN: rule(
     ['chains'],
     'The cash sits on {chain|chain}, the chain that holds the most of this plan.',
-    'O caixa fica em {chain|chain}, a rede que concentra a maior parte deste plano.',
+    'O caixa fica na {chain|chain}, a rede que concentra a maior parte deste plano.',
   ),
 
   // The card, line by line.

@@ -58,6 +58,7 @@ export const PERSONAL_PARAMS: PersonalParameters = {
   holdingMinBps: 100,
   fallBps: 2000,
   atEndMinBps: 3000,
+  wayStepUsd: 100,
 
   defaultTheme: { grow: 'the-500', income: null, protect: 'storm-cellar' },
   defaultUnderlying: { growth: 'SPY', gold: 'GLD' },
@@ -103,6 +104,7 @@ export const PERSONAL_PARAMS_STATUS: Record<Exclude<keyof PersonalParameters, 'v
     status: 'starting',
     from: 'The prototype: from 30% in dollar yield the card shows a cash flow.',
   },
+  wayStepUsd: { status: 'starting', from: 'The prototype: round hundreds of dollars.' },
   defaultTheme: {
     status: 'starting',
     from: 'The prototype for grow and protect. None for income: an income plan holds dollar yield only.',

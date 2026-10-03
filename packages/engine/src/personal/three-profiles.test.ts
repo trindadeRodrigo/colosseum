@@ -128,7 +128,7 @@ describe('three people, three goals, three plans', () => {
     expect(line(bruno, 'solana:gldx')).toMatchObject({ amountUsd: 10_000, weightBps: 2000 });
     expect(line(bruno, 'robinhood:gld')).toMatchObject({ amountUsd: 2500, weightBps: 500 });
     expect(line(bruno, 'solana:gldx')?.reasons.map((r) => r.text)).toContain(
-      'GLDx em Solana fica limitado a US$ 10.000: acima disso, vender custaria caro demais.',
+      'GLDx na Solana fica limitado a US$ 10.000: acima disso, vender custaria caro demais.',
     );
     // Half the plan with one issuer at most, at low risk: the dollar yield is split over two.
     expect(line(bruno, 'solana:syrupusdc')).toMatchObject({ weightBps: 5000 });

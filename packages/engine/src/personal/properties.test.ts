@@ -125,6 +125,7 @@ const table: fc.Arbitrary<PersonalParameters> = fc
     holdingMinBps: fc.integer({ min: 0, max: 2000 }),
     fallBps: bps,
     atEndMinBps: bps,
+    wayStepUsd: fc.constantFrom(1, 100, 2500),
     defaultTheme: fc.record({
       grow: fc.constantFrom(...SLUGS, null, 'no-such-portfolio'),
       income: fc.constantFrom(...SLUGS, null),
