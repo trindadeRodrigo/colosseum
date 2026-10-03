@@ -334,7 +334,10 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
               aria-describedby={blocked && count > 0 ? fixId : undefined}
               onDisabledClick={() => summary.current?.focus()}
               onClick={() => {
-                if (valid !== null && count === 0) onBuild(valid);
+                // The button refuses a click while it is disabled or busy. This is the sheet's own
+                // check, and it holds without the button's: only a parsed sheet with nothing left to
+                // fix is handed on, and never while a plan is already being built.
+                if (!solving && valid !== null && count === 0) onBuild(valid);
               }}
             >
               {text.build}
