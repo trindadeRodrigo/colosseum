@@ -647,8 +647,8 @@ describe('one run, replayed from the recording', () => {
     untilMin?: number;
     /** Answers before the recording does; 'unreachable' makes the request fail as a dead network does. */
     override?: (call: Seen, world: World) => RpcReply | 'unreachable' | undefined;
-    /** Called when the run asks for a block after its first; 'unreachable' as above. */
-    onRepin?: (world: World) => 'unreachable' | undefined;
+    /** Called when the run asks for a block after its first: 'unreachable' as above, or the endpoint's refusal. */
+    onRepin?: (world: World) => RpcReply | 'unreachable' | undefined;
   };
   const unreachable = () =>
     new RpcUnreachable('RPC unreachable after 3 tries (TypeError ENOTFOUND)');
@@ -682,8 +682,9 @@ describe('one run, replayed from the recording', () => {
       }
       if (r.method === 'eth_getBlockByNumber') {
         world.seen.push({ method: r.method, data: '', tag: '' });
-        if (world.head > BLOCK_A && scenario.onRepin?.(world) === 'unreachable')
-          throw unreachable();
+        const refused = world.head > BLOCK_A ? scenario.onRepin?.(world) : undefined;
+        if (refused === 'unreachable') throw unreachable();
+        if (refused) return refused;
         const n = world.head;
         world.head += STEP;
         return {
@@ -1072,6 +1073,62 @@ describe('one run, replayed from the recording', () => {
         aborted: 'RPC unreachable after 3 tries (TypeError ENOTFOUND)',
       });
       expect(repin.summary.tokens[0]).toMatchObject({ retry: true, sell10k: null });
+    });
+    it('stops, and keeps the hour open, when the endpoint refuses the fresh block', async () => {
+      // the state is gone for the first token, then the call for a new block is refused for rate
+      const r = await run({
+        tokens: ['NVDA', 'NVDB', 'NVDC'],
+        override: (q) =>
+          q.data === v3Sell && q.tag === tag ? { error: { message: HISTORICAL_STATE } } : undefined,
+        onRepin: () => ({ error: { code: -32016, message: 'over rate limit' } }),
+      });
+      const refusal = 'no fresh block: eth_getBlockByNumber: over rate limit';
+      expect(r.rows).toEqual([]);
+      expect(r.summary).toMatchObject({ rows: 0, aborted: refusal });
+      expect(r.summary.tokens.map((t) => [t.asset, t.error, t.retry ?? false])).toEqual([
+        ['NVDA', refusal, true],
+        ['NVDB', `not tried: ${refusal}`, true],
+        ['NVDC', `not tried: ${refusal}`, true],
+      ]);
+      // one refusal ends the run: the other tokens do not each ask for a block in turn
+      expect(r.seen.filter((q) => q.method === 'eth_getBlockByNumber')).toHaveLength(2);
+
+      // so the hour tries all three again, instead of ending after one attempt with nothing to retry
+      let clock = 0;
+      const tried: Array<string[] | null> = [];
+      const outcome = await runSlot({
+        attempt: async (only, n) => {
+          tried.push(only ? [...only] : null);
+          return n === 1 ? attemptOf(r.summary) : { rows: [...(only ?? [])], missing: [] };
+        },
+        retryAfterMs: [2 * 60_000],
+        until: 3_600_000,
+        marginMs: 2 * 60_000,
+        now: () => clock,
+        sleep: async (ms) => {
+          clock += ms;
+        },
+        stopped: () => false,
+      });
+      expect(tried).toEqual([null, ['NVDA', 'NVDB', 'NVDC']]);
+      expect(outcome).toMatchObject({ attempts: 2, ended: 'complete', missing: [] });
+      expect(outcome.rows).toEqual(['NVDA', 'NVDB', 'NVDC']);
+    });
+    it('does the same when the run was paused and the fresh block it then asks for is refused', async () => {
+      const r = await run({
+        tokens: ['NVDA', 'NVDB'],
+        override: (q, world) => {
+          if (q.data === v4Buy.castCalldata && world.seen.filter(isQuote).length === 4)
+            world.clock += 30 * 60_000;
+          return undefined;
+        },
+        onRepin: () => ({ error: { message: 'Request timeout on the free plan' } }),
+      });
+      expect(r.rows.map((row) => row.asset)).toEqual(['NVDA']);
+      expect(r.summary.tokens[1]).toMatchObject({
+        error: 'no fresh block: eth_getBlockByNumber: Request timeout on the free plan',
+        retry: true,
+      });
     });
     it('says which gaps are not worth another try: no pool, or a call that reverted', async () => {
       const r = await run({

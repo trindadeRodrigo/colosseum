@@ -73,6 +73,11 @@ class BlockGone extends Error {}
 /** The endpoint answered a call with an error of its own (rate, plan limit, no reply for the call). */
 class EndpointRefused extends Error {}
 /**
+ * The endpoint was reached and would not give a fresh block. Nothing more can be measured until it
+ * does, so the run stops there and the hour tries again, as it does when the endpoint is unreachable.
+ */
+class PinRefused extends EndpointRefused {}
+/**
  * Whether a token left without a row is worth another try within the hour: yes when the network, the
  * endpoint or the block's state was the reason, no when the call itself is at fault (it reverted, or
  * the collector's own data is wrong), because the same call gives the same answer.
@@ -133,7 +138,7 @@ export type RunSummary = {
   blockTime: string;
   /** How many times the run took a fresh block: its own grew too old, or its state was gone. */
   repins: number;
-  /** Set when the run stopped early: the endpoint could not be reached, or the next scheduled run was due. */
+  /** Set when the run stopped early: the endpoint could not be reached or refused a fresh block, or the next scheduled run was due. */
   aborted?: string;
   rows: number;
   tokens: TokenResult[];
@@ -282,8 +287,15 @@ function toPin(head: unknown, takenAt: number): Pin {
   };
 }
 
-const pinLatest = async (rpc: Rpc, now: () => number): Promise<Pin> =>
-  toPin(await rpc.call('eth_getBlockByNumber', ['latest', false]), now());
+async function pinLatest(rpc: Rpc, now: () => number): Promise<Pin> {
+  try {
+    return toPin(await rpc.call('eth_getBlockByNumber', ['latest', false]), now());
+  } catch (e) {
+    if (e instanceof RpcUnreachable) throw e;
+    // rpc.call raises a plain error when the endpoint answers with one: a refusal, not a dead network
+    throw new PinRefused(`no fresh block: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
 
 type TokenPools = { token: TokenConfig; pools: PoolRef[] };
 /** Pool prices read at one block. Quotes for these tokens are asked at the same block, never another. */
@@ -487,8 +499,8 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
         }
         result.error = e instanceof BlockGone ? `the block's state was gone: ${message}` : message;
         if (worthRetrying(e)) result.retry = true;
-        if (e instanceof RpcUnreachable) {
-          // the other tokens would only wait out the same timeouts
+        if (e instanceof RpcUnreachable || e instanceof PinRefused) {
+          // the other tokens would only wait out the same timeouts, or meet the same refusal
           aborted = message;
           left = { error: `not tried: ${message}`, retry: true };
         }
