@@ -493,6 +493,105 @@
   }
 }
 
+/*
+ * The partner embed (embed-shell.md, token-mapping.md section 8). Inside it the brand recedes: every
+ * semantic variable above is pointed at the partner's own (--embed-*), with system colours when the
+ * partner sets none, so nothing in the shell can read a wood colour, a brand typeface or our radius.
+ * What survives is structure: the pin, the hatch with its word, hairlines, the disclaimer.
+ */
+@utility tf-embed {
+  container-type: inline-size;
+  color-scheme: light dark;
+
+  --tf-embed-fg: var(--embed-fg, CanvasText);
+  --tf-embed-muted: var(--embed-muted, GrayText);
+  --tf-embed-bg: var(--embed-bg, Canvas);
+  --tf-embed-border: var(--embed-border, color-mix(in oklab, var(--tf-embed-fg) 40%, transparent));
+  --tf-embed-accent: var(--embed-accent, var(--tf-embed-fg));
+
+  --background: var(--tf-embed-bg);
+  --foreground: var(--tf-embed-fg);
+  --card: var(--tf-embed-bg);
+  --card-foreground: var(--tf-embed-fg);
+  --popover: var(--tf-embed-bg);
+  --popover-foreground: var(--tf-embed-fg);
+  --primary: var(--tf-embed-accent);
+  --primary-foreground: var(--tf-embed-bg);
+  --secondary: var(--tf-embed-bg);
+  --secondary-foreground: var(--tf-embed-fg);
+  --accent: var(--tf-embed-bg);
+  --accent-foreground: var(--tf-embed-fg);
+  --muted: var(--tf-embed-bg);
+  --muted-foreground: var(--tf-embed-muted);
+  --destructive: var(--tf-embed-fg);
+  --border: var(--tf-embed-border);
+  --input: var(--tf-embed-border);
+  --ring: var(--tf-embed-accent);
+  --success: var(--tf-embed-fg);
+  --warning: var(--tf-embed-fg);
+  --info: var(--tf-embed-fg);
+  /* plan legs: shades of the partner's text colour, so they stay apart without brand wood */
+  --chart-1: color-mix(in oklab, var(--tf-embed-fg) 85%, var(--tf-embed-bg));
+  --chart-2: color-mix(in oklab, var(--tf-embed-fg) 65%, var(--tf-embed-bg));
+  --chart-3: color-mix(in oklab, var(--tf-embed-fg) 45%, var(--tf-embed-bg));
+  --chart-4: color-mix(in oklab, var(--tf-embed-fg) 30%, var(--tf-embed-bg));
+  --chart-5: var(--tf-embed-fg);
+  --tf-primary-hover: var(--tf-embed-accent);
+  --tf-primary-pressed: var(--tf-embed-accent);
+  --tf-pin: var(--tf-embed-muted);
+  --tf-pin-outline: var(--tf-embed-muted);
+  --tf-hatch: var(--tf-embed-muted);
+  --tf-mock-plate: var(--tf-embed-bg);
+  --tf-mock-plate-fg: var(--tf-embed-fg);
+  --tf-mock-plate-border: var(--tf-embed-muted);
+  --tf-status-on: var(--tf-embed-fg);
+  --tf-status-on-bg: var(--tf-embed-bg);
+  --tf-status-watch: var(--tf-embed-fg);
+  --tf-status-watch-bg: var(--tf-embed-bg);
+  --tf-status-off: var(--tf-embed-fg);
+  --tf-status-off-bg: var(--tf-embed-bg);
+  --tf-font-mono: var(--embed-mono, ui-monospace, monospace);
+  /* boxes inside take the partner's radius, and are square when the partner sets none */
+  --radius: var(--embed-radius, 0px);
+  /* sizes in em of the partner's own text, on a 1.2 ratio */
+  --tf-e-title: 1.44em;
+  --tf-e-lead: 1.2em;
+  --tf-e-body: 1em;
+  --tf-e-small: 0.8333em;
+  --tf-e-credit: max(0.6944em, 11px);
+  --tf-e-leading: 1.5;
+
+  background-color: var(--tf-embed-bg);
+  color: var(--tf-embed-fg);
+  font-family: var(--embed-font, inherit);
+  line-height: 1.5;
+  border-radius: var(--embed-radius, inherit);
+}
+
+/* Inside the embed, type is the partner's: their face, and sizes in em of their text. */
+@layer utilities {
+  .tf-embed :is(.font-sans, .font-display, .font-condensed) {
+    font-family: var(--embed-font, inherit);
+  }
+
+  .tf-embed :is(.text-body, .text-body-sm, .text-body-lg) {
+    font-size: var(--tf-e-body);
+    line-height: var(--tf-e-leading);
+    letter-spacing: normal;
+  }
+
+  .tf-embed :is(.text-caption, .text-source, .tf-mock-plate, .tf-stale-plate) {
+    font-size: var(--tf-e-small);
+    line-height: var(--tf-e-leading);
+  }
+
+  .tf-embed .text-h4 {
+    font-size: var(--tf-e-lead);
+    line-height: 1.25;
+    letter-spacing: normal;
+  }
+}
+
 /* Reduced motion: every slide becomes a 120ms crossfade and the pin appears without travel. */
 @layer utilities {
   @media (prefers-reduced-motion: reduce) {

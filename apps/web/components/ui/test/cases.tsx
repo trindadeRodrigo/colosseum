@@ -9,10 +9,12 @@ import {
   Stat,
   StatRow,
 } from '../Card';
+import { CompactNav } from '../CompactNav';
 import { Composer } from '../Composer';
 import { ConstraintSheet } from '../ConstraintSheet';
 import { DataTable } from '../DataTable';
 import { Disclaimer } from '../Disclaimer';
+import { EmbedShell } from '../EmbedShell';
 import { ExecutionList } from '../ExecutionList';
 import { ExitPlanLine, ExitPlanPanel } from '../ExitPlanLine';
 import { ExplorerLink } from '../ExplorerLink';
@@ -489,4 +491,62 @@ export const sheet = {
       onBuild={noop}
     />
   ),
+};
+
+const LINKS = [
+  { label: 'Products', href: '#products' },
+  { label: 'Invest', href: '#invest', current: true },
+  { label: 'Resources', href: '#resources' },
+];
+const MARK = <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" />;
+
+export const nav = {
+  full: (
+    <CompactNav
+      symbol={MARK}
+      wordmark="tenonfi"
+      homeLabel="tenonfi home"
+      links={LINKS}
+      cta={{ label: 'Sign in', href: '#simulate' }}
+      contentId="content"
+      stage={{ compactAt: 'step-03', releaseAbove: 'step-02' }}
+    />
+  ),
+  compact: (
+    <CompactNav
+      symbol={MARK}
+      wordmark="tenonfi"
+      homeLabel="tenonfi home"
+      links={LINKS}
+      cta={{ label: 'Open app', href: '/' }}
+      contentId="content"
+    />
+  ),
+};
+
+const CREDIT = { name: 'tenonfi', href: 'https://example.com/plans/sample' };
+
+export const embed = {
+  ready: (
+    <EmbedShell
+      label="Plan by tenonfi"
+      lang="en"
+      title="Apartment fund"
+      lead="$40,000 by June 2028 · cash within 7 days"
+      credit={CREDIT}
+      schedule={<p>the schedule chart</p>}
+    >
+      <PlanLegs legs={LEGS} />
+      <ExitPlanLine tiers={EXIT_TIERS} />
+      <Disclaimer lang="en" />
+      <ExecutionList executions={EXECUTIONS} />
+    </EmbedShell>
+  ),
+  faint: (
+    <EmbedShell label="Plan by tenonfi" title="Apartment fund" credit={CREDIT} suppressHatch>
+      <PlanLegs legs={LEGS} />
+    </EmbedShell>
+  ),
+  loading: <EmbedShell label="Plan by tenonfi" state="loading" />,
+  unavailable: <EmbedShell label="Plan by tenonfi" state="unavailable" />,
 };
