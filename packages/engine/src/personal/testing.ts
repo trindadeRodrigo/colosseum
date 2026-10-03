@@ -749,6 +749,42 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
     }
   }
 
+  // What a plan says of its own shape is so. Each floor it names is held; an issuer it calls "at
+  // that limit" is at it, to within the least a line can be; and the money it says is held in dollar
+  // yield or cash instead of where it was meant to go is no more than those two hold.
+  const inSleeve = (sleeve: Sleeve) =>
+    sum(
+      plan.lines
+        .filter((l) => sleeveOfClass(byId.get(l.assetId)?.cls ?? 'cash') === sleeve)
+        .map((l) => cents(l.amountUsd)),
+    );
+  const kept = inSleeve('dollarYield') + inSleeve('cash');
+  const share = (bps: unknown) => (amount * Number(bps)) / 10_000;
+  const said = new Map(allReasons(plan).map((r) => [`${r.rule} ${JSON.stringify(r.params)}`, r]));
+  const leastLine = Math.max(cents(P.minLineUsd), Math.ceil((amount * P.minLineBps) / 10_000));
+  let instead = 0;
+  for (const r of said.values()) {
+    if (r.rule === 'GLIDE' || r.rule === 'MUST_KEEP')
+      say(kept >= share(r.params.floorBps) - 2, `"${r.text}", and the plan keeps ${kept / 100}`);
+    if (r.rule === 'CASH_NEAR_DATE' || r.rule === 'CASH_MAY_NEED')
+      say(
+        inSleeve('cash') >= share(r.params.floorBps) - 1,
+        `"${r.text}", and the plan holds ${inSleeve('cash') / 100} in cash`,
+      );
+    if (r.rule === 'ISSUER_CAP' || r.rule === 'OVERFLOW_ISSUER') {
+      const with_ = total((a) => a.issuer).get(String(r.params.issuer)) ?? 0;
+      say(
+        with_ >= share(r.params.capBps) - Math.max(leastLine, share(3)),
+        `"${r.text}", and it holds ${with_ / 100}`,
+      );
+    }
+    if (r.rule.startsWith('OVERFLOW_')) instead += cents(Number(r.params.usd));
+  }
+  say(
+    instead <= kept,
+    `${instead / 100} is said to be held in dollar yield or cash, which hold ${kept / 100}`,
+  );
+
   // The four sleeves, as the plan holds them.
   for (const sleeve of SLEEVES) {
     const row = plan.sleeves.find((x) => x.sleeve === sleeve);

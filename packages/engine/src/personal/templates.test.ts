@@ -76,6 +76,7 @@ const SAMPLE: Record<string, string | number> = {
   month: '2028-04',
   months: 18,
   regimes: 'weekend,us_holiday',
+  list: 'AAPL,NVDA',
   '': 'NVDA',
 };
 const sampleParams = (text: string) =>
@@ -196,6 +197,15 @@ describe('explanation templates', () => {
     expect(Object.keys(WORDS.en.regime)).toEqual(Object.keys(WORDS.pt.regime));
     // A time of the week this file does not know is an error, never a blank.
     expect(() => when('weekend,full_moon', 'en')).toThrow(/times of the week/);
+  });
+
+  it('writes a list of names as a person would: one, two with "and", more with commas', () => {
+    const names = (list: string, lang: 'en' | 'pt') => render('{n|list}', { n: list }, lang);
+    expect(names('SPY', 'en')).toBe('SPY');
+    expect(names('AAPL,NVDA', 'en')).toBe('AAPL and NVDA');
+    expect(names('AAPL,MSFT,NVDA', 'en')).toBe('AAPL, MSFT and NVDA');
+    expect(names('AAPL,MSFT,NVDA', 'pt')).toBe('AAPL, MSFT e NVDA');
+    expect(() => names('AAPL,,NVDA', 'en')).toThrow(/list of names/);
   });
 
   it('never writes a small amount as zero, and rounds a loss up', () => {

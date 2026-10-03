@@ -173,7 +173,7 @@ describe('three people, three goals, three plans', () => {
     expect(line(bruno, 'solana:jlusdc')).toMatchObject({ weightBps: 3000 });
     expect(bruno.lines).toHaveLength(3);
     expect(line(bruno, 'solana:jlusdc')?.reasons.map((r) => r.text)).toContain(
-      'Inclui US$ 2.500 que GLD não comporta neste tamanho.',
+      'US$ 2.500 que iria para GLD fica em rendimento em dólar ou caixa: GLDx comporta no máximo US$ 10.000.',
     );
     // He holds Nvidia already; this plan holds none, so there is nothing to cut.
     expect(bruno.lines.some((l) => l.assetId.includes('nvda'))).toBe(false);

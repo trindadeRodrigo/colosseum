@@ -76,9 +76,15 @@ describe('each input alone moves the plan and says so', () => {
 
   it('amount', () => {
     const plan = changed({ amountUsd: 400_000 });
-    expect(movedBecauseOf('amount', plan)).toEqual(
-      expect.arrayContaining(['EXIT_CEILING', 'OVERFLOW', 'UNPLACED']),
-    );
+    // Gold meets its measured limit and four stocks the limit of their tier; The Seven no longer
+    // fits whole; what they cannot take is held in dollar yield, and what that cannot take, in cash.
+    expect(movedBecauseOf('amount', plan)).toEqual([
+      'EXIT_CEILING',
+      'NOT_WHOLE_CEILING',
+      'OVERFLOW_CEILING',
+      'TIER_CEILING',
+      'UNPLACED',
+    ]);
     // What the tokens cannot take at this size is held in dollar yield, then in cash: not forced in.
     expect(sleeveBps(plan, shelf, 'growth')).toBeLessThan(6500);
     expect(sleeveBps(plan, shelf, 'cash')).toBeGreaterThan(0);
@@ -134,10 +140,12 @@ describe('each input alone moves the plan and says so', () => {
   });
 
   it('what the person cannot hold', () => {
-    const plan = changed({ limits: { cannotHold: { underlyings: ['TSLA'] } } });
+    // AAPL is one of the six stocks the base plan holds. (TSLA, the seventh, has no line in it.)
+    const plan = changed({ limits: { cannotHold: { underlyings: ['AAPL'] } } });
     expect(movedBecauseOf('cannotHold', plan)).toEqual(['EXCLUDED']);
-    expect(plan.lines.some((l) => /tsla/.test(l.assetId))).toBe(false);
-    // The rest of the stocks take its place: the sleeve keeps its size.
+    expect(plan.lines.some((l) => /aapl/.test(l.assetId))).toBe(false);
+    // The rest of the stocks take its place, TSLA among them: the sleeve keeps its size.
+    expect(plan.lines.some((l) => l.assetId === 'solana:tslax')).toBe(true);
     expect(sleeveBps(plan, shelf, 'growth')).toBe(6500);
   });
 

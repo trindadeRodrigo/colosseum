@@ -13,6 +13,7 @@ import type { Language, Reason } from '@colosseum/schemas';
 //   goal, risk, sleeve, chain                 the word for it, from WORDS
 //   inCountry                                 in Brazil       no Brasil
 //   regimes  times of the week, by their codes   at the weekend and on US holidays
+//   list     names joined by commas            AAPL, MSFT and NVDA   AAPL, MSFT e NVDA
 
 /** The inputs a person gives. A reason names the ones that caused it. */
 export const INPUT_NAMES = [
@@ -40,10 +41,12 @@ export const REASON_TEMPLATES = {
     'For {goal|goal} at {risk|risk}, the starting share of {sleeve|sleeve} is {sleeveBps|pct}.',
     'Para {goal|goal}, com {risk|risk}, a parcela inicial de {sleeve|sleeve} é {sleeveBps|pct}.',
   ),
+  // The date sets a floor on dollar yield. What dollar yield has no room for stays in cash, so the
+  // sentence names both: it is true of every plan, whatever the chain lists and whatever is capped.
   GLIDE: rule(
     ['horizon'],
-    'At least {floorBps|pct} in dollar yield: you need this money in {months|months}, by {by|month}.',
-    'Pelo menos {floorBps|pct} em rendimento em dólar: você precisa deste dinheiro em {months|months}, até {by|month}.',
+    'At least {floorBps|pct} is kept out of stocks, crypto and gold, in dollar yield or cash: you need this money in {months|months}, by {by|month}.',
+    'Pelo menos {floorBps|pct} fica fora de ações, cripto e ouro, em rendimento em dólar ou caixa: você precisa deste dinheiro em {months|months}, até {by|month}.',
   ),
   CASH_NEAR_DATE: rule(
     ['horizon'],
@@ -207,10 +210,59 @@ export const REASON_TEMPLATES = {
     '{asset} is left out: {usd|usd} is too small to be a part of your plan.',
     '{asset} fica de fora: {usd|usd} é pequeno demais para ser uma parte do seu plano.',
   ),
-  OVERFLOW: rule(
+
+  // Money meant for something this plan could not hold, or not in full: where it is held instead, and
+  // what kept it out. One sentence for each cause: `placement.ts` picks it by the rule that did. It is
+  // said on the dollar-yield line that took it in and, where dollar yield had no room, on the cash line.
+  OVERFLOW_CEILING: rule(
     ['amount'],
-    'Includes {usd|usd} that {asset} could not take at this size.',
-    'Inclui {usd|usd} que {asset} não comporta neste tamanho.',
+    '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: {asset} takes at most {maxUsd|usd}.',
+    '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: {asset} comporta no máximo {maxUsd|usd}.',
+  ),
+  OVERFLOW_ISSUER: rule(
+    ['risk'],
+    '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: no more than {capBps|pct} of the plan is with one issuer at {risk|risk}, and {issuer} is at that limit.',
+    '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: no máximo {capBps|pct} do plano fica com um só emissor, com {risk|risk}, e {issuer} está nesse limite.',
+  ),
+  OVERFLOW_STOCK_CAP: rule(
+    ['risk'],
+    '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: no more than {capBps|pct} of the plan is in one stock or one crypto asset at {risk|risk}.',
+    '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: no máximo {capBps|pct} do plano fica em uma só ação ou cripto, com {risk|risk}.',
+  ),
+  OVERFLOW_MAX_LINES: rule(
+    ['themes'],
+    '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: a plan holds at most {max} parts.',
+    '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: um plano tem no máximo {max} partes.',
+  ),
+  OVERFLOW_TOO_SMALL: rule(
+    ['amount'],
+    '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: it is too small to be a part of your plan.',
+    '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: é pequeno demais para ser uma parte do seu plano.',
+  ),
+  OVERFLOW_NOT_ON_CHAIN: rule(
+    ['chain'],
+    '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: {chain|chain} does not list it.',
+    '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: a {chain|chain} não tem esse ativo.',
+  ),
+  OVERFLOW_EXCLUDED: rule(
+    ['cannotHold'],
+    '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: you said you cannot hold it.',
+    '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: você disse que não pode ter esse ativo.',
+  ),
+  OVERFLOW_NOT_FOR_GOAL: rule(
+    ['goal'],
+    '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: the asset list does not allow it in a plan for {goal|goal}.',
+    '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: a lista de ativos não permite esse ativo em um plano para {goal|goal}.',
+  ),
+  OVERFLOW_NOT_IN_COUNTRY: rule(
+    ['country'],
+    '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: it is not offered {country|inCountry}.',
+    '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: não é oferecido {country|inCountry}.',
+  ),
+  OVERFLOW_HELD: rule(
+    ['holdings'],
+    '{usd|usd} this plan does not put in {assets|list} is held in dollar yield or cash instead: you already hold {heldUsd|usd} of it.',
+    '{usd|usd} que este plano não coloca em {assets|list} fica em rendimento em dólar ou caixa: você já tem {heldUsd|usd} desse ativo.',
   ),
 
   // Cash.
@@ -427,6 +479,12 @@ function dollars(amount: number, lang: Language, up: boolean): string {
   return lang === 'pt' ? `US$ ${digits}` : `$${digits}`;
 }
 
+/** "a", "a and b", "a, b and c". */
+const listed = (words: string[], lang: Language): string =>
+  words.length > 1
+    ? `${words.slice(0, -1).join(', ')} ${WORDS[lang].and} ${words.at(-1)}`
+    : (words[0] ?? '');
+
 const FORMATS: Record<string, (value: Value, lang: Language, key: string) => string> = {
   usd: (value, lang, key) => dollars(number(value, key), lang, false),
   usdUp: (value, lang, key) => dollars(number(value, key), lang, true),
@@ -452,11 +510,19 @@ const FORMATS: Record<string, (value: Value, lang: Language, key: string) => str
   regimes: (value, lang, key) => {
     const given = String(value).split(',');
     const known = Object.keys(WORDS[lang].regime).filter((code) => given.includes(code));
-    const words = known.map((code) => WORDS[lang].regime[code] ?? code);
-    const last = words.pop();
-    if (last === undefined || known.length !== given.length)
+    if (known.length === 0 || known.length !== given.length)
       throw new Error(`template value ${key} must be times of the week`);
-    return words.length > 0 ? `${words.join(', ')} ${WORDS[lang].and} ${last}` : last;
+    return listed(
+      known.map((code) => WORDS[lang].regime[code] ?? code),
+      lang,
+    );
+  },
+  // Names joined by commas, written as they came: "a, b and c".
+  list: (value, lang, key) => {
+    const names = String(value).split(',');
+    if (names.some((name) => name.trim() === ''))
+      throw new Error(`template value ${key} must be a list of names`);
+    return listed(names, lang);
   },
   goal: (value, lang) => WORDS[lang].goal[String(value)] ?? String(value),
   risk: (value, lang) => WORDS[lang].risk[String(value)] ?? String(value),

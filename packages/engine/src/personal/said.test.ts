@@ -141,12 +141,13 @@ describe('a reason on a line is true of that line', () => {
     ).toBe(
       'The Seven cannot be held whole: more than 70% of the plan would be with Backed (xStocks), the most with one issuer at medium risk.',
     );
-    // "Backed is at that limit" is said only on the line that was cut short by it.
+    // "Backed is at that limit" is said on the lines the cut fell on: the six stocks held, alike.
     expect(
       plan.lines
         .filter((l) => l.reasons.some((r) => r.rule === 'ISSUER_CAP'))
-        .map((l) => l.assetId),
-    ).toEqual(['solana:msftx']);
+        .map((l) => l.assetId)
+        .sort(),
+    ).toEqual(['aaplx', 'amznx', 'googlx', 'metax', 'msftx', 'nvdax'].map((s) => `solana:${s}`));
   });
 });
 
@@ -195,6 +196,60 @@ describe('a figure that shaped the plan is on the plan', () => {
     expect(plan.flags).toContain('liquidity_unsourced');
     expect(JSON.stringify(plan.observations)).not.toContain(NOW);
     expect(violations(plan, shelf, bare)).toEqual([]);
+  });
+});
+
+describe('the date sentence is true of the plan it is on', () => {
+  // The date sets a floor on dollar yield. Where dollar yield has no room for it (one issuer for the
+  // whole chain, a ceiling, no dollar-yield token at all) the rest stays in cash. The sentence names
+  // both, so it holds on every chain; "at least 80% in dollar yield" did not.
+  const sleeve = (plan: PersonalProposal, name: string) =>
+    plan.sleeves.find((x) => x.sleeve === name)?.weightBps ?? 0;
+  const dated = (plan: PersonalProposal) =>
+    plan.lines.flatMap((l) => l.reasons).filter((r) => r.rule === 'GLIDE');
+
+  it.each([
+    ['Robinhood Chain, $1,000 in 6 months', { chains: ['robinhood'], amountUsd: 1_000 }, 8000],
+    [
+      'Robinhood Chain, The Seven in 24 months',
+      { chains: ['robinhood'], themes: ['the-seven'], horizonMonths: 24 },
+      4000,
+    ],
+    ['Solana, $200,000 in 6 months', { chains: ['solana'], amountUsd: 200_000 }, 8000],
+    ['Base, in 6 months', { chains: ['base'] }, 8000],
+    [
+      'Base, The Seven in 12 months',
+      { chains: ['base'], themes: ['the-seven'], horizonMonths: 12 },
+      6000,
+    ],
+  ] as [string, Partial<PersonalSheet>, number][])('%s', (_name, over, floor) => {
+    const plan = compose(sheet({ horizonMonths: 6, ...over }), shelf, ctx);
+    expect(violations(plan, shelf, ctx)).toEqual([]);
+    const said = dated(plan);
+    expect(said.length).toBeGreaterThan(0);
+    for (const r of said) expect(r.params.floorBps).toBe(floor);
+    // What the sentence says: at least the floor, out of stocks, crypto and gold.
+    expect(sleeve(plan, 'dollarYield') + sleeve(plan, 'cash')).toBeGreaterThanOrEqual(floor);
+    // And why it cannot say "in dollar yield": dollar yield alone is under the floor here.
+    expect(sleeve(plan, 'dollarYield')).toBeLessThan(floor);
+  });
+
+  it('reads the same in both languages, on the dollar-yield line and on the cash line', () => {
+    const person = { chains: ['robinhood' as const], horizonMonths: 6, amountUsd: 1_000 };
+    const en = compose(sheet(person), shelf, ctx);
+    expect(en.lines.map((l) => [l.assetId, l.weightBps])).toEqual([
+      ['robinhood:sgov', 7000],
+      ['robinhood:usdg', 3000],
+    ]);
+    for (const l of en.lines)
+      expect(l.reasons.map((r) => r.text)).toContain(
+        'At least 80% is kept out of stocks, crypto and gold, in dollar yield or cash: you need this money in 6 months, by April 2027.',
+      );
+    const pt = compose(sheet({ ...person, language: 'pt' }), shelf, ctx);
+    for (const l of pt.lines)
+      expect(l.reasons.map((r) => r.text)).toContain(
+        'Pelo menos 80% fica fora de ações, cripto e ouro, em rendimento em dólar ou caixa: você precisa deste dinheiro em 6 meses, até abril de 2027.',
+      );
   });
 });
 
@@ -549,7 +604,7 @@ describe('the words', () => {
     expect(line(pt, 'solana:syrupusdc')?.reasons.map((r) => r.text)).toEqual([
       'Para um objetivo de crescimento, com risco médio, a parcela inicial de rendimento em dólar é 15%.',
       'Escolhido pelo rendimento após o deságio, entre os tokens de rendimento em dólar que você pode ter na Solana.',
-      'Inclui US$ 1.500 que SPY não comporta neste tamanho.',
+      'US$ 1.500 que iria para SPY fica em rendimento em dólar ou caixa: no máximo 70% do plano fica com um só emissor, com risco médio, e Backed (xStocks) está nesse limite.',
       'syrupUSDC comporta no máximo US$ 50.000: o custo de vender ainda não está medido, então o limite é o da faixa dele na lista de ativos.',
     ]);
   });

@@ -20,7 +20,7 @@ import {
   tokensOf,
   unitsOf,
 } from './exposure';
-import { byName, largestFirst, split, sum, toCents, toUsd } from './money';
+import { byName, split, sum, toCents, toUsd } from './money';
 import { packageUp } from './packaging';
 import { Book, once, type Removed, type Sized, type Unit } from './placement';
 import { reason, text } from './templates';
@@ -137,7 +137,8 @@ function fallback(
   if (can.ok)
     return [{ name: ticker, weight: cents, reasons: [...says, startReason(w, ticker, sleeve)] }];
   book.removed.push({ ref: ticker, reasons: can.why });
-  book.spill(ticker, cents);
+  const [cause] = can.why;
+  if (cause) book.spill([ticker], cents, cause);
   return [];
 }
 
@@ -272,17 +273,14 @@ function build(
   // ---- Exposure: what the person already holds, then the cap on one stock.
   const yieldUnit: Sized = { cents: dollarYield, reasons: [...sleeves.reasons.dollarYield] };
   const cashUnit: Sized = { cents: cash, reasons: [...sleeves.reasons.cash] };
-  const heldAlready = adjustForHoldings(
-    w,
-    [...growthUnits, ...goldUnits],
-    [yieldUnit, cashUnit],
-    book.removed,
-  );
-  book.spill(growthUnits[0]?.name ?? goldUnits[0]?.name ?? P.defaultUnderlying.growth, heldAlready);
   const isCapped = (unit: Unit) => tokensOf(w, unit.name, 'growth').some(capped);
-  const overCap = capSingleStocks(w, growthUnits, isCapped, followed, book.removed);
-  const [firstCapped] = byName(growthUnits.filter(isCapped), (u) => u.name);
-  if (overCap > 0) book.spill(firstCapped?.name ?? P.defaultUnderlying.growth, overCap);
+  // What neither leaves a unit to take is held in dollar yield, with the holding or the cap that
+  // kept it out.
+  for (const { names, cents, cause } of [
+    ...adjustForHoldings(w, [...growthUnits, ...goldUnits], [yieldUnit, cashUnit], book.removed),
+    ...capSingleStocks(w, growthUnits, isCapped, followed, book.removed),
+  ])
+    book.spill(names, cents, cause);
   book.cash.cents = cashUnit.cents;
   book.cash.reasons.push(...cashUnit.reasons);
 
@@ -310,37 +308,32 @@ function build(
       });
     }
   };
+  /** What dollar yield could not take and so stays in cash, in cents, by the reason it stays. */
+  const stays = new Map<'NO_DOLLAR_YIELD' | 'YIELD_TOO_SMALL' | 'UNPLACED', number>();
   /** Dollar yield takes what it can; what it cannot stays in cash, with why. */
   const intoYield = (unit: Sized) => {
     if (unit.cents <= 0) return;
     ranked();
     const { left, why, tooSmall } = book.fill(unit, yielders, byYield);
     if (left <= 0) return;
-    const usd = toUsd(left);
-    const stays = !canYield
-      ? reason('NO_DOLLAR_YIELD', { usd, chain: w.chain }, lang)
-      : tooSmall
-        ? reason('YIELD_TOO_SMALL', { usd }, lang)
-        : reason('UNPLACED', { usd }, lang);
+    const rule = !canYield ? 'NO_DOLLAR_YIELD' : tooSmall ? 'YIELD_TOO_SMALL' : 'UNPLACED';
+    stays.set(rule, (stays.get(rule) ?? 0) + left);
     book.cash.cents += left;
-    book.cash.reasons.push(...unit.reasons, ...why, stays);
+    book.cash.reasons.push(...unit.reasons, ...why);
     w.flags.add(canYield ? 'unplaced' : 'no_dollar_yield');
   };
   intoYield(yieldUnit);
-  for (const unit of largestFirst(
-    goldUnits,
-    (u) => u.cents,
-    (u) => u.name,
-  ))
-    book.place(unit, tokensOf(w, unit.name, 'gold'));
-  for (const unit of largestFirst(
-    growthUnits,
-    (u) => u.cents,
-    (u) => u.name,
-  ))
-    book.place(unit, tokensOf(w, unit.name, 'growth'));
+  book.placeTogether(goldUnits, (unit) => tokensOf(w, unit.name, 'gold'));
+  book.placeTogether(growthUnits, (unit) => tokensOf(w, unit.name, 'growth'));
   // What stocks, crypto and gold could not take is held in dollar yield, then in cash.
-  intoYield({ cents: book.overflow.cents, reasons: once(book.overflow.reasons) });
+  intoYield(book.overflow());
+  // One sentence for each reason money meant for dollar yield stays in cash, with the whole of it.
+  for (const [rule, cents] of stays) {
+    const usd = toUsd(cents);
+    book.cash.reasons.push(
+      reason(rule, rule === 'NO_DOLLAR_YIELD' ? { usd, chain: w.chain } : { usd }, lang),
+    );
+  }
 
   // ---- Packaging: lines, one recipe per chain, the card.
   const { lines, recipes, sleeves: held } = packageUp(w, book);
@@ -416,9 +409,13 @@ function build(
     shelf: {
       version: shelf.version,
       assets: byName(shelf.assets, (a) => a.id),
+      // A shelf's content, not the order it is listed in: tokens, portfolios, recipes and parts.
       families: byName(shelf.families, (f) => f.meta.slug).map((f) => ({
         meta: f.meta,
-        recipes: byName(f.recipes, (r) => r.chain),
+        recipes: byName(f.recipes, (r) => r.chain).map((r) => ({
+          ...r,
+          components: byName(r.components, (c) => (c.kind === 'asset' ? c.asset : c.family)),
+        })),
       })),
     },
     holdings: w.given.holdings,

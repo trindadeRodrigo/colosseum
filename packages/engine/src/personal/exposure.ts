@@ -177,10 +177,14 @@ export function themeOf(w: World, slug: string, chosen: boolean): Theme | Reason
   if (!family) return [reason('THEME_UNKNOWN', { theme: slug }, lang)];
   const name = family.meta.name;
   const recipe = family.recipes.find((r) => r.chain === w.chain);
-  const parts = (recipe?.components ?? []).flatMap((c): Part[] => {
-    const asset = c.kind === 'asset' ? w.byId.get(c.asset) : undefined;
-    return asset ? [{ asset, bps: c.weightBps }] : [];
-  });
+  // In the order of their ids: the order a shelf lists a portfolio's parts in decides nothing.
+  const parts = byName(
+    (recipe?.components ?? []).flatMap((c): Part[] => {
+      const asset = c.kind === 'asset' ? w.byId.get(c.asset) : undefined;
+      return asset ? [{ asset, bps: c.weightBps }] : [];
+    }),
+    (part) => part.asset.id,
+  );
   if (parts.length === 0)
     return [reason('THEME_NOT_ON_CHAIN', { theme: name, chain: w.chain }, lang)];
   // A portfolio that holds a token the goal does not allow is left out whole: a plan to protect
@@ -247,9 +251,13 @@ export function unitsOf(
   return names.map((name, i) => ({
     name,
     cents: shares[i] ?? 0,
+    asked: shares[i] ?? 0,
     reasons: once(merged.get(name)?.reasons ?? []),
   }));
 }
+
+/** Cents that no unit took, with the name they were meant for and what kept them out. */
+export type Unbought = { names: string[]; cents: number; cause: Reason };
 
 /**
  * Fills gaps and avoids doubling up. The target is set on the amount plus what the person holds,
@@ -257,18 +265,18 @@ export function unitsOf(
  * between them. `fixed` are units no holding touches (dollar yield and cash): they are scaled too.
  *
  * Every unit a holding moved says so: the one that is cut, and each one that grew in its place.
- * Returns the cents that no unit took.
+ * Returns the cents that no unit took: when the person holds enough of everything, nothing is bought.
  */
 export function adjustForHoldings(
   w: World,
   units: Unit[],
   fixed: Sized[],
   removed: Removed[],
-): number {
-  if (w.heldTotal <= 0) return 0;
+): Unbought[] {
+  if (w.heldTotal <= 0) return [];
   const all: Sized[] = [...units, ...fixed];
   const free = sum(all.map((u) => u.cents));
-  if (free <= 0) return 0;
+  if (free <= 0) return [];
   const wealth = BigInt(w.amount + w.heldTotal);
   const heldOf = (at: number) => w.held.get(units[at]?.name ?? '') ?? 0;
   const buys = all.map((u, at) => {
@@ -279,29 +287,38 @@ export function adjustForHoldings(
 
   // The units that are cut, and why each other unit is larger for it.
   const larger: Reason[] = [];
+  const none = new Map<Unit, Reason>();
   units.forEach((u, at) => {
     const held = heldOf(at);
     const now = scaled[at] ?? 0;
     if (u.cents <= 0 || held <= 0 || now >= u.cents) return;
     const values = { asset: u.name, heldUsd: toUsd(held) };
     larger.push(reason('MORE_BECAUSE_HELD', values, w.lang));
-    if (now <= 0)
-      removed.push({ ref: u.name, reasons: [reason('ALREADY_HELD_NONE', values, w.lang)] });
-    else u.reasons.push(reason('ALREADY_HELD', values, w.lang));
+    if (now <= 0) {
+      const why = reason('ALREADY_HELD_NONE', values, w.lang);
+      none.set(u, why);
+      removed.push({ ref: u.name, reasons: [why] });
+    } else u.reasons.push(reason('ALREADY_HELD', values, w.lang));
   });
+  // When the person holds enough of everything, nothing is bought, and no unit grew: each unit's
+  // cents are handed back, with the holding that kept them out.
+  const nothingBought = sum(scaled) <= 0;
+  const back: Unbought[] = [];
   all.forEach((u, at) => {
     const now = scaled[at] ?? 0;
+    const why = none.get(u as Unit);
+    if (nothingBought && why) back.push({ names: [(u as Unit).name], cents: u.cents, cause: why });
     if (now > u.cents) u.reasons.push(...larger);
     u.cents = now;
   });
-  // When the person holds enough of everything, nothing is bought: the cents are handed back.
-  return free - sum(all.map((u) => u.cents));
+  return back;
 }
 
 /**
  * Holds each stock and each crypto asset to the cap for the person's risk. What is over the cap goes
- * to the other units of the sleeve that have room, in proportion; what none can take is returned.
- * `already` is what a followed shared portfolio holds of each underlying.
+ * to the other units of the sleeve that have room, in proportion; what none can take is returned,
+ * with the units that are at the cap. `already` is what a followed shared portfolio holds of each
+ * underlying.
  */
 export function capSingleStocks(
   w: World,
@@ -309,7 +326,7 @@ export function capSingleStocks(
   capped: (unit: Unit) => boolean,
   already: Map<string, number>,
   removed: Removed[],
-): number {
+): Unbought[] {
   const roomOf = (u: Unit) =>
     capped(u) ? Math.max(0, w.stockCap - (already.get(u.name) ?? 0)) : Number.POSITIVE_INFINITY;
   const atCap = new Set<Unit>();
@@ -343,5 +360,8 @@ export function capSingleStocks(
   }
   for (const u of units)
     if (u.cents <= 0 && atCap.has(u)) removed.push({ ref: u.name, reasons: once(u.reasons) });
-  return over;
+  const [first] = byName([...atCap], (u) => u.name);
+  const cause = first?.reasons.find((r) => r.rule === 'SINGLE_STOCK_CAP');
+  if (over <= 0 || !cause) return [];
+  return [{ names: [...atCap].map((u) => u.name), cents: over, cause }];
 }

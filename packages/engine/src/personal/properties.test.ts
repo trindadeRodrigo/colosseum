@@ -236,10 +236,25 @@ describe.each(CHAINS)('for any valid sheet, on %s alone', (chain) => {
           expect(compose(sheet, shelf, context)).toEqual(plan);
           const order = (id: string) =>
             [...id].reduce((n, ch) => (n * seed + ch.charCodeAt(0)) % 9973, seed);
+          // The tokens, the portfolios, each portfolio's recipes and each recipe's parts.
           const shuffled: Shelf = {
             ...shelf,
             assets: [...shelf.assets].sort((a, b) => order(a.id) - order(b.id)),
-            families: [...shelf.families].sort((a, b) => order(a.meta.slug) - order(b.meta.slug)),
+            families: [...shelf.families]
+              .sort((a, b) => order(a.meta.slug) - order(b.meta.slug))
+              .map((f) => ({
+                ...f,
+                recipes: [...f.recipes]
+                  .sort((a, b) => order(a.chain) - order(b.chain))
+                  .map((r) => ({
+                    ...r,
+                    components: [...r.components].sort(
+                      (a, b) =>
+                        order(a.kind === 'asset' ? a.asset : a.family) -
+                        order(b.kind === 'asset' ? b.asset : b.family),
+                    ),
+                  })),
+              })),
           };
           expect(compose(sheet, shuffled, context)).toEqual(plan);
         }),

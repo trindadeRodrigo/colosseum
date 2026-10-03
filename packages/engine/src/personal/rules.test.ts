@@ -368,7 +368,7 @@ describe('what compose refuses, and what it says instead of pretending', () => {
     expect(sleeveBps(made, shelf, 'growth') + sleeveBps(made, shelf, 'gold')).toBe(7000);
     expect(
       made.lines.find((l) => l.assetId === 'solana:syrupusdc')?.reasons.map((r) => r.rule),
-    ).toContain('OVERFLOW');
+    ).toContain('OVERFLOW_ISSUER');
   });
 
   it('does not let a capacity read from no sample decide a ceiling', () => {
@@ -408,7 +408,16 @@ describe('the same inputs, the same plan', () => {
         assets: [...shelf.assets]
           .sort((a, b) => ((a.id.length * turn) % 7) - ((b.id.length * turn) % 7))
           .reverse(),
-        families: [...shelf.families].reverse(),
+        families: [...shelf.families].reverse().map((f) => ({
+          ...f,
+          recipes: [...f.recipes].reverse().map((r) => ({
+            ...r,
+            components:
+              turn % 2
+                ? [...r.components].reverse()
+                : [...r.components.slice(turn), ...r.components.slice(0, turn)],
+          })),
+        })),
       };
       expect(compose(person, shuffled, ctx)).toEqual(made);
     }
