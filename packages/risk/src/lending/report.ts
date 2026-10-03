@@ -10,7 +10,7 @@
 //                  position), against the routed DEX sale capacity at a cost equal to the liquidation bonus in the
 //                  worst regime: the liquidation coverage ratio.
 
-import { type AssetCurves, worstCapacity } from '../assess';
+import { type AssetCurves, measuredRegimes, worstCapacity } from '../assess';
 import { quantileOf } from '../curves';
 import type { Regime } from '../time';
 
@@ -26,6 +26,11 @@ export type LendingReportParams = {
   bandPct: number;
   /** A 5-minute lending row and a routed reference mid are compared when they are at most this far apart. */
   oracleMatchSec: number;
+  /** A liquidation counts toward capacity while the liquidator's margin is at least this (percent; item 8). */
+  minLiquidatorMarginPct: number;
+  /** Seizure size buckets of the observed routes (USD edges; item 9). */
+  sizeBucketsUsd: number[];
+  followHours: number;
 };
 
 export const defaultLendingReportParams = (): LendingReportParams => ({
@@ -35,6 +40,10 @@ export const defaultLendingReportParams = (): LendingReportParams => ({
   jlCloseFactor: 1,
   bandPct: 1,
   oracleMatchSec: 180,
+  minLiquidatorMarginPct: 0,
+  sizeBucketsUsd: [1_000, 10_000, 100_000],
+  /** Hours a seized position is followed after its liquidation (item 13). */
+  followHours: 72,
 });
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -153,6 +162,8 @@ export type GapDeposit = {
   liqBonusMin?: number;
   /** True for an xStock: the gap applies to it. */
   stock: boolean;
+  /** The venue oracle that prices this deposit, as the report labels it; seizures are also split by it. */
+  oracle?: string;
 };
 
 export type GapPosition = {
@@ -175,6 +186,8 @@ export type GapAssetRow = {
   minBonus: number | null;
   /** Seized USD by liquidation bonus (key: bonus in bps). */
   seizedByBonusBps: Record<string, number>;
+  /** Seized USD and smallest sale-cost tolerance by venue oracle (deposits that name one). */
+  byOracle: Record<string, { seizedUsd: number; minBonus: number }>;
 };
 
 /**
@@ -229,6 +242,7 @@ export function lendingGapSim(positions: readonly GapPosition[], gapPct: number,
         seizedUsd: 0,
         minBonus: null,
         seizedByBonusBps: {},
+        byOracle: {},
       };
       if (!touched.has(d.asset)) row.positions++;
       touched.add(d.asset);
@@ -239,6 +253,12 @@ export function lendingGapSim(positions: readonly GapPosition[], gapPct: number,
       row.seizedByBonusBps[bps] = (row.seizedByBonusBps[bps] ?? 0) + part;
       const tol = d.liqBonusMin ?? d.liqBonus;
       row.minBonus = row.minBonus === null ? tol : Math.min(row.minBonus, tol);
+      if (d.oracle) {
+        const o = row.byOracle[d.oracle];
+        row.byOracle[d.oracle] = o
+          ? { seizedUsd: o.seizedUsd + part, minBonus: Math.min(o.minBonus, tol) }
+          : { seizedUsd: part, minBonus: tol };
+      }
       byAsset.set(d.asset, row);
     }
   }
@@ -255,15 +275,18 @@ export function lendingGapSim(positions: readonly GapPosition[], gapPct: number,
 }
 
 /** Routed DEX sale capacity at cost ≤ tau in the worst of `regimes` (assess.ts `worstCapacity`). A derived weekend
- *  capacity (measured capacity × the measured weekend depth ratio) is used instead when it is lower. */
+ *  capacity (measured capacity × the measured weekend depth ratio) is used instead when it is lower. A regime whose
+ *  curve has too few samples is skipped, never read as zero capacity (DA2); with none measured the answer is null. */
 export function saleCapacity(
   curves: AssetCurves,
   regimes: readonly Regime[],
   tau: number,
   weekend?: { ratio: number; from: Regime } | null,
 ) {
-  const measured = worstCapacity(curves, [...regimes], tau);
-  if (weekend && regimes.includes(weekend.from)) {
+  const usable = measuredRegimes(curves, [...regimes]).measured;
+  if (!usable.length) return null;
+  const measured = worstCapacity(curves, usable, tau);
+  if (weekend && usable.includes(weekend.from)) {
     const base = worstCapacity(curves, [weekend.from], tau);
     const derived = base.capacityUsd * weekend.ratio;
     if (derived < measured.capacityUsd)

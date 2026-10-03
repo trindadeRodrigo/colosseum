@@ -8,22 +8,23 @@ import {
   defaultRegimeParams,
   type Regime,
 } from '@colosseum/risk';
-import type { Asset, LiquidityProvider } from '@colosseum/schemas';
+import type { Asset, RegimeLiquidityProvider } from '@colosseum/schemas';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 
 const ROOT = process.env.REPO_ROOT ?? join(import.meta.dirname, '..', '..', '..');
 export const RISK_METHOD_VERSION = 'risk-0.3';
 
 /**
- * Builds the structurer's LiquidityProvider from the risk layer's stored curves (sell side, current method
- * version), keyed by registry asset id through the asset's mint. Returns undefined when disabled
+ * Builds the structurer's LiquidityProvider from the risk layer's stored curves (current method version),
+ * keyed by registry asset id through the asset's mint. Sell curves answer every exit question; buy curves
+ * answer `entryCostIn` only. Returns undefined when disabled
  * (RISK_LIQUIDITY=off) or when no curve exists for any registry asset: the engine then behaves exactly as
  * before the risk layer.
  */
 export async function loadLiquidityProvider(
   db: Db,
   assets: Asset[],
-): Promise<LiquidityProvider | undefined> {
+): Promise<RegimeLiquidityProvider | undefined> {
   if (process.env.RISK_LIQUIDITY === 'off') return undefined;
   const byMint = new Map(assets.filter((a) => a.mint).map((a) => [a.mint as string, a.id]));
   if (byMint.size === 0) return undefined;
@@ -33,16 +34,18 @@ export async function loadLiquidityProvider(
     .where(
       and(
         inArray(riskDepthCurves.assetMint, [...byMint.keys()]),
-        eq(riskDepthCurves.side, 'sell'),
+        inArray(riskDepthCurves.side, ['sell', 'buy']),
         eq(riskDepthCurves.methodVersion, RISK_METHOD_VERSION),
       ),
     );
-  if (rows.length === 0) return undefined;
+  if (!rows.some((r) => r.side === 'sell')) return undefined;
   const curves = new Map<string, AssetCurves>();
+  const buyCurves = new Map<string, AssetCurves>();
   for (const r of rows) {
     const id = byMint.get(r.assetMint);
     if (!id) continue;
-    const a = curves.get(id) ?? { assetId: id, byRegime: {} };
+    const side = r.side === 'sell' ? curves : buyCurves;
+    const a = side.get(id) ?? { assetId: id, byRegime: {} };
     a.byRegime[r.regime as Regime] = {
       points: r.points as DepthCurve['points'],
       insufficientFrom: r.insufficientFrom,
@@ -52,7 +55,7 @@ export async function loadLiquidityProvider(
       to: r.dataTo?.toISOString() ?? null,
       samples: r.samples,
     };
-    curves.set(id, a);
+    side.set(id, a);
   }
   // LP-exit stress: latest concentration row of each asset's largest exit pool
   const lpCurve = new Map<string, Array<{ notionalUsd: number; costPct: number }>>();
@@ -77,6 +80,7 @@ export async function loadLiquidityProvider(
   );
   return createLiquidityProvider({
     curves,
+    buyCurves,
     regimeParams: defaultRegimeParams(calendar),
     methodVersion: RISK_METHOD_VERSION,
     provenance: 'live',

@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -11,34 +11,37 @@ import {
   riskPools,
   riskQuotes,
 } from '@colosseum/db';
+import { max } from 'drizzle-orm';
+import { dayFilesFrom, jsonlChunks } from './lib-import';
 
 // Imports the collectors' files (~/.colosseum/risk) into the risk tables. Idempotent: every table has a
 // natural primary key and inserts skip existing rows. Snapshots for pools not in risk_pools are skipped.
+// Each table reads only the day files from its newest imported day on, streamed in chunks of 500 (PLAN-ANALYTICS
+// item 2: re-reading all history grew the heap by about 0.24 GB per collected day). RISK_IMPORT_ALL=1 re-reads all.
 const HOME = process.env.RISK_HOME ?? join(homedir(), '.colosseum', 'risk');
 const { db, client } = createDb();
 const known = new Set((await db.select({ a: riskPools.address }).from(riskPools)).map((r) => r.a));
-const lines = (dir: string) =>
-  existsSync(dir)
-    ? readdirSync(dir)
-        .filter((n) => n.endsWith('.jsonl'))
-        .sort()
-        .flatMap((n) =>
-          readFileSync(join(dir, n), 'utf8')
-            .split('\n')
-            .filter(Boolean)
-            .map((l) => JSON.parse(l) as Record<string, unknown>),
-        )
-    : [];
+const ALL = process.env.RISK_IMPORT_ALL === '1';
+type Row = Record<string, unknown>;
+/** Every chunk of the day files of `sub` from the table's newest imported day on. */
+async function* rowsOf(
+  sub: string,
+  newest: () => Promise<Array<{ t: Date | null }>>,
+): AsyncGenerator<Row[]> {
+  const last = ALL ? null : ((await newest())[0]?.t ?? null);
+  for (const f of dayFilesFrom(join(HOME, sub), last)) yield* jsonlChunks<Row>(f, 500);
+}
 const counts = { assets: 0, snapshots: 0, events: 0, lp: 0, quotes: 0, skippedUnknownPool: 0 };
-const chunk = <T>(xs: T[], n = 500) =>
-  Array.from({ length: Math.ceil(xs.length / n) }, (_, i) => xs.slice(i * n, i * n + n));
 
-const snaps = lines(join(HOME, 'pools')).filter((r) => {
-  const ok = known.has(r.pool as string);
-  if (!ok) counts.skippedUnknownPool++;
-  return ok && r.sell && r.buy;
-});
-for (const c of chunk(snaps)) {
+for await (const all of rowsOf('pools', () =>
+  db.select({ t: max(riskPoolSnapshots.fetchedAt) }).from(riskPoolSnapshots),
+)) {
+  const c = all.filter((r) => {
+    const ok = known.has(r.pool as string);
+    if (!ok) counts.skippedUnknownPool++;
+    return ok && r.sell && r.buy;
+  });
+  if (!c.length) continue;
   const res = await db
     .insert(riskPoolSnapshots)
     .values(
@@ -62,13 +65,17 @@ for (const c of chunk(snaps)) {
     .returning({ p: riskPoolSnapshots.pool });
   counts.snapshots += res.length;
 }
-const evs = existsSync(join(HOME, 'events.jsonl'))
-  ? readFileSync(join(HOME, 'events.jsonl'), 'utf8')
-      .split('\n')
-      .filter(Boolean)
-      .map((l) => JSON.parse(l) as Record<string, unknown>)
+// events.jsonl is one file: streamed, rows before the newest imported day skipped
+const lastEvent = ALL
+  ? null
+  : ((await db.select({ t: max(riskEvents.fetchedAt) }).from(riskEvents))[0]?.t ?? null);
+const eventsFrom = lastEvent ? lastEvent.toISOString().slice(0, 10) : '';
+const eventChunks = existsSync(join(HOME, 'events.jsonl'))
+  ? jsonlChunks<Row>(join(HOME, 'events.jsonl'), 500)
   : [];
-for (const c of chunk(evs)) {
+for await (const all of eventChunks) {
+  const c = all.filter((e) => String(e.fetchedAt) >= eventsFrom);
+  if (!c.length) continue;
   const res = await db
     .insert(riskEvents)
     .values(
@@ -85,8 +92,9 @@ for (const c of chunk(evs)) {
     .returning({ p: riskEvents.pool });
   counts.events += res.length;
 }
-const lps = lines(join(HOME, 'lp'));
-for (const c of chunk(lps)) {
+for await (const c of rowsOf('lp', () =>
+  db.select({ t: max(riskLpConcentration.fetchedAt) }).from(riskLpConcentration),
+)) {
   const res = await db
     .insert(riskLpConcentration)
     .values(
@@ -114,10 +122,11 @@ for (const c of chunk(lps)) {
     .returning({ p: riskLpConcentration.pool });
   counts.lp += res.length;
 }
-const qs = lines(join(HOME, 'quotes')).filter(
-  (q) => q.runId && q.assetMint && q.side && q.notionalUsd,
-);
-for (const c of chunk(qs)) {
+for await (const all of rowsOf('quotes', () =>
+  db.select({ t: max(riskQuotes.fetchedAt) }).from(riskQuotes),
+)) {
+  const c = all.filter((q) => q.runId && q.assetMint && q.side && q.notionalUsd);
+  if (!c.length) continue;
   const res = await db
     .insert(riskQuotes)
     .values(
@@ -141,8 +150,9 @@ for (const c of chunk(qs)) {
     .returning({ p: riskQuotes.runId });
   counts.quotes += res.length;
 }
-const as = lines(join(HOME, 'assets'));
-for (const c of chunk(as)) {
+for await (const c of rowsOf('assets', () =>
+  db.select({ t: max(riskAssetSnapshots.fetchedAt) }).from(riskAssetSnapshots),
+)) {
   const res = await db
     .insert(riskAssetSnapshots)
     .values(
