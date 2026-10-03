@@ -452,3 +452,151 @@ export const riskReferencePrices = pgTable(
     }),
   ],
 );
+
+/**
+ * LendingPoolFacts sheets built by the lending report (PLAN-ANALYTICS items 10–11): one row per lending pool and
+ * report run, the sheet as the API serves it. Facts inside carry their own source and time; aggregates only (D13).
+ */
+export const riskLendingFacts = pgTable(
+  'risk_lending_facts',
+  {
+    account: text('account').notNull(),
+    /** The report run that built the sheet. */
+    reportAt: ts('report_at').notNull(),
+    chain: text('chain').notNull(),
+    venue: text('venue').notNull(),
+    market: text('market').notNull(),
+    symbol: text('symbol').notNull(),
+    sheet: jsonb('sheet').notNull(),
+    methodVersion: text('method_version').notNull(),
+    ...provenanceCols,
+  },
+  (t) => [
+    primaryKey({
+      name: 'risk_lending_facts_pk',
+      columns: [t.account, t.reportAt, t.methodVersion],
+    }),
+  ],
+);
+
+/**
+ * Liquidation coverage per report run, price gap and collateral asset (PLAN-ANALYTICS items 8 and 11): the earlier
+ * ratio (sale cost ≤ the bonus) beside the ratio on the liquidator's margin. A ratio that is not measured is null
+ * with its reason in `null_reason`, never zero.
+ */
+export const riskLendingCoverage = pgTable(
+  'risk_lending_coverage',
+  {
+    reportAt: ts('report_at').notNull(),
+    gapPct: doublePrecision('gap_pct').notNull(),
+    asset: text('asset').notNull(),
+    seizedUsd: doublePrecision('seized_usd').notNull(),
+    earlierCapacityUsd: doublePrecision('earlier_capacity_usd'),
+    earlierRegime: text('earlier_regime'),
+    earlierRatio: doublePrecision('earlier_ratio'),
+    capacityUsd: doublePrecision('capacity_usd'),
+    regime: text('regime'),
+    lowerBound: boolean('lower_bound'),
+    derived: boolean('derived'),
+    tau: doublePrecision('tau'),
+    ratio: doublePrecision('ratio'),
+    nullReason: text('null_reason'),
+    limitingOracle: text('limiting_oracle'),
+    regimesMissing: jsonb('regimes_missing').notNull(),
+    positionsHour: text('positions_hour'),
+    methodVersion: text('method_version').notNull(),
+    ...provenanceCols,
+  },
+  (t) => [
+    primaryKey({
+      name: 'risk_lending_coverage_pk',
+      columns: [t.reportAt, t.gapPct, t.asset, t.methodVersion],
+    }),
+  ],
+);
+
+/**
+ * The network fee of real swap transactions (PLAN-ANALYTICS item 4): `meta.fee` (base plus priority fee, in
+ * lamports) read from each confirmed swap the product sent (`executions`), with the SOL price when it was read.
+ * The fact sheets give the median per swap. No wallet is stored.
+ */
+export const riskNetworkFees = pgTable('risk_network_fees', {
+  signature: text('signature').primaryKey(),
+  chain: text('chain').notNull(),
+  /** Where the signature came from: `executions` (our own swaps). */
+  origin: text('origin').notNull(),
+  slot: doublePrecision('slot').notNull(),
+  blockTime: ts('block_time').notNull(),
+  feeLamports: doublePrecision('fee_lamports').notNull(),
+  computeUnits: doublePrecision('compute_units'),
+  solUsd: doublePrecision('sol_usd').notNull(),
+  feeUsd: doublePrecision('fee_usd').notNull(),
+  methodVersion: text('method_version').notNull(),
+  ...provenanceCols,
+});
+
+/**
+ * Depth recovery after large trades (PLAN-ANALYTICS item 15), from the Step 5b history replay: per asset and regime,
+ * the trades of at least `large_share` of a pool's ±2% depth, the median minutes until the depth is back to half
+ * and to 90%, and the share not back to 90% within 24 hours. One row per asset, regime and history report.
+ */
+export const riskDepthRecovery = pgTable(
+  'risk_depth_recovery',
+  {
+    asset: text('asset').notNull(),
+    regime: text('regime').notNull(),
+    reportAt: ts('report_at').notNull(),
+    largeShare: doublePrecision('large_share').notNull(),
+    trades: integer('trades').notNull(),
+    /** Trades whose depth came back to 90% within 24 hours (the medians are over these). */
+    recovered: integer('recovered').notNull(),
+    minutesTo50: doublePrecision('minutes_to_50'),
+    minutesTo90: doublePrecision('minutes_to_90'),
+    notRecovered24h: doublePrecision('not_recovered_24h').notNull(),
+    dataFrom: ts('data_from').notNull(),
+    dataTo: ts('data_to').notNull(),
+    methodVersion: text('method_version').notNull(),
+    ...provenanceCols,
+  },
+  (t) => [
+    primaryKey({
+      name: 'risk_depth_recovery_pk',
+      columns: [t.asset, t.regime, t.reportAt, t.methodVersion],
+    }),
+  ],
+);
+
+/** Swap flow of one value pool in one regime ('all': every regime) and one window of the Step 5b history
+ *  (PLAN-ANALYTICS item 16, `pnpm risk:flow-import`). Aggregates only: no wallet, no signature. */
+export const riskPoolFlow = pgTable(
+  'risk_pool_flow',
+  {
+    pool: text('pool').notNull(),
+    assetMint: text('asset_mint').notNull(),
+    assetSymbol: text('asset_symbol').notNull(),
+    regime: text('regime').notNull(),
+    /** 24h | 7d | 28d: the last 24, 168 or 672 hours of the history, ending at its newest event. */
+    window: text('window').notNull(),
+    swaps: integer('swaps').notNull(),
+    sellSwaps: integer('sell_swaps').notNull(),
+    buySwaps: integer('buy_swaps').notNull(),
+    /** Swaps in an hour with no quote price: counted in `swaps`, left out of the USD sums. */
+    unpricedSwaps: integer('unpriced_swaps').notNull(),
+    sellUsd: doublePrecision('sell_usd').notNull(),
+    buyUsd: doublePrecision('buy_usd').notNull(),
+    /** Hourly rows of the pool in the regime and window, and the median ±2% sell depth over them. */
+    hours: integer('hours').notNull(),
+    medianDepthSellUsd: doublePrecision('median_depth_sell_usd'),
+    dataFrom: ts('data_from').notNull(),
+    dataTo: ts('data_to').notNull(),
+    methodVersion: text('method_version').notNull(),
+    ...provenanceCols,
+  },
+  (t) => [
+    primaryKey({
+      name: 'risk_pool_flow_pk',
+      columns: [t.pool, t.regime, t.window, t.dataTo],
+    }),
+    index('risk_pool_flow_asset_idx').on(t.assetMint, t.dataTo),
+  ],
+);

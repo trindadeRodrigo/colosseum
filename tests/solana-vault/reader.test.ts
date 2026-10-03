@@ -8,7 +8,7 @@ import {
   toBase58,
   VAULT_SIZE,
 } from '@colosseum/chain-solana/vault';
-import { ChainError, type ChainErrorCode } from '@colosseum/schemas';
+import { ChainError, type ChainErrorCode, isStalePrice } from '@colosseum/schemas';
 import { type Address, getAddressEncoder } from '@solana/kit';
 import { describe, expect, it } from 'vitest';
 import { readCases } from './reads';
@@ -167,6 +167,46 @@ describe('Solana reader: what the config decides', () => {
   });
 });
 
+describe('Solana reader: a multiplier that is scheduled', () => {
+  it('shows it on every holding of that mint, in a vault and in a wallet, and on no other', async () => {
+    const { reader } = world();
+    const want = fixture.expected.mints.nvdax.scheduled;
+    if (!want) throw new Error('the fixture schedules no multiplier for nvdax');
+    const scheduled = {
+      multiplier: String(want.multiplier),
+      effectiveAt: Number(want.effectiveAt),
+    };
+    // Later than the fixture's clock: it is not in force yet.
+    expect(scheduled.effectiveAt).toBeGreaterThan(Number(fixture.clock.unixTimestamp));
+    const vault = await reader.getVault(names.vaults.following);
+    const nvdax = vault?.positions.find((p) => p.asset === assetId('nvdax'));
+    expect(nvdax?.scheduled).toEqual(scheduled);
+    // The one in force is still the mint's own.
+    expect(nvdax?.multiplier).toBe(String(fixture.expected.mints.nvdax.multiplier));
+    for (const p of vault?.positions ?? [])
+      if (p.asset !== assetId('nvdax')) expect(p).not.toHaveProperty('scheduled');
+    expect(vault?.cash).not.toHaveProperty('scheduled');
+    for (const h of await reader.getWalletHoldings(names.owner))
+      if (h.asset === assetId('nvdax')) expect(h.scheduled).toEqual(scheduled);
+      else expect(h).not.toHaveProperty('scheduled');
+  });
+
+  it('shows nothing scheduled once its time has passed: it is the multiplier in force', async () => {
+    const want = fixture.expected.mints.nvdax.scheduled;
+    if (!want) throw new Error('the fixture schedules no multiplier for nvdax');
+    const at = accountOf(fixture, 'clock');
+    const clock = new Uint8Array(at.data);
+    new DataView(clock.buffer).setBigInt64(32, BigInt(want.effectiveAt), true);
+    const { reader } = world({
+      edit: (node) => node.accounts.set(at.address, { ...at, data: clock }),
+    });
+    const vault = await reader.getVault(names.vaults.following);
+    const nvdax = vault?.positions.find((p) => p.asset === assetId('nvdax'));
+    expect(nvdax?.multiplier).toBe(String(want.multiplier));
+    expect(nvdax).not.toHaveProperty('scheduled');
+  });
+});
+
 describe('Solana reader: prices', () => {
   it('reads the price account and the clock in one call, and nothing at all for no priced asset', async () => {
     const { node, reader } = world();
@@ -183,6 +223,19 @@ describe('Solana reader: prices', () => {
     expect(await reader.getPrices([assetId('usdc')])).toEqual([]);
     expect(await reader.getPrices([])).toEqual([]);
     expect(node.calls).toEqual([]);
+  });
+
+  it("gives every price the age the program's Config allows, so a price says whether it is stale", async () => {
+    const { reader } = world();
+    const config = await reader.getConfig();
+    const prices = await reader.getPrices([assetId('spyx'), assetId('gold')]);
+    expect(prices.map((p) => p.maxAgeSeconds)).toEqual([config.maxPriceAgeS, config.maxPriceAgeS]);
+    expect(config.maxPriceAgeS).toBe(120);
+    // 30 seconds old is fresh; 400 is older than the keeper accepts, and the price says so itself.
+    expect(prices.map((p) => [p.ageSeconds, isStalePrice(p)])).toEqual([
+      [30, false],
+      [400, true],
+    ]);
   });
 
   it('prices the cash token only when the list gives it a source', async () => {
@@ -685,6 +738,33 @@ describe('Solana reader: gas', () => {
     );
     expect(largest).toBe(179);
     expect(TOKEN_ACCOUNT_BYTES_BOUND).toBeGreaterThanOrEqual(largest);
+  });
+
+  it('charges rent for as many token accounts as the caller says the steps open, where it says', async () => {
+    const { reader } = world();
+    const rent = (bytes: number) => BigInt(bytes + 128) * 6_960n;
+    const need = { cashRaw: '0', legs: 3, newVault: true };
+    const gas = async (newAccounts?: number) =>
+      BigInt(
+        (
+          await reader.funding(names.owner, {
+            ...need,
+            ...(newAccounts === undefined ? {} : { newAccounts }),
+          })
+        ).gasNeedRaw,
+      );
+    const base = rent(0) + 3n * 5_000n + rent(VAULT_SIZE);
+    // Left out, every step is taken to open one: the bound of before.
+    expect(await gas()).toBe(base + 3n * rent(TOKEN_ACCOUNT_BYTES_BOUND));
+    // The vault's cash account and one new position: two accounts, whatever the number of steps.
+    expect(await gas(2)).toBe(base + 2n * rent(TOKEN_ACCOUNT_BYTES_BOUND));
+    // A deposit into positions that all exist opens none.
+    expect(await gas(0)).toBe(base);
+    expect(await gas(5)).toBe(base + 5n * rent(TOKEN_ACCOUNT_BYTES_BOUND));
+    await refusal(reader.funding(names.owner, { ...need, newAccounts: -1 }), 'BadInput');
+    // Nothing to send needs nothing, however many accounts are named.
+    const nothing = { cashRaw: '0', legs: 0, newVault: false, newAccounts: 4 };
+    expect((await reader.funding(names.owner, nothing)).gasNeedRaw).toBe('0');
   });
 
   it('asks for the rent figures once', async () => {

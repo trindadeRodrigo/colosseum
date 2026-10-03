@@ -13,7 +13,7 @@ import {
 } from '@colosseum/schemas';
 import { assertBuilds, type ChainEntry, type ChainRegistry } from './chains';
 import { legErrorFromRevert, Refusal, refusing } from './errors';
-import { basketIdOf, expectedOf, ORDER_POLICY, targetsOf } from './prepare';
+import { basketIdOf, expectedOf, ORDER_POLICY, slippageOf, targetsOf } from './prepare';
 import {
   loadOrder,
   loadProposal,
@@ -95,13 +95,15 @@ async function buildFor(
   leg: Leg,
   entry: ChainEntry,
   owner: Address,
+  /** EVM: the nonce of the step's earlier attempt that can still land, for the rebuild to share. */
+  nonce: number | undefined,
 ): Promise<BuiltTx> {
   const { request, order } = stored;
   if (request.type !== 'buy' || !request.proposalId)
     throw new Refusal(501, `a ${request.type} order cannot be built yet`);
   const { adapter } = entry;
   const basketId = basketIdOf(request.proposalId);
-  const slippageBps = ORDER_POLICY.slippageBps;
+  const slippageBps = slippageOf(request);
   // The trades of a buy add up to the cash it deposits on that chain (prepare.ts).
   const cashRaw = order.legs
     .filter((l) => l.chain === leg.chain)
@@ -109,17 +111,16 @@ async function buildFor(
     .reduce((sum, t) => sum + BigInt(t.amountInRaw), 0n)
     .toString();
   const trades = leg.trades.length ? leg.trades : undefined;
+  const shared = nonce === undefined ? {} : { nonce };
   const vault = async () => {
     const found = await planVault(entry, owner, basketId);
     if (!found) throw new ChainError('VaultNotFound', 'the vault for this plan is not open yet');
     return found.address;
   };
   switch (leg.kind) {
-    case 'approve': {
-      const existing = await planVault(entry, owner, basketId);
-      const spender = entry.approveSpender(existing?.address ?? null);
-      return adapter.buildApprove({ owner, spender, amountRaw: cashRaw });
-    }
+    // The adapter works out who may take the cash from the plan: nobody here names a spender.
+    case 'approve':
+      return adapter.buildApprove({ owner, basketId, amountRaw: cashRaw, ...shared });
     case 'create_vault': {
       const proposal = await loadProposal(deps.db, request.proposalId);
       const recipe = proposal?.recipes.find((r) => r.chain === leg.chain);
@@ -132,6 +133,7 @@ async function buildFor(
         depositRaw: cashRaw,
         trades,
         slippageBps,
+        ...shared,
       });
     }
     case 'deposit':
@@ -140,9 +142,15 @@ async function buildFor(
         amountRaw: cashRaw,
         trades,
         slippageBps,
+        ...shared,
       });
     case 'swap':
-      return adapter.buildOwnerSwap({ vault: await vault(), trades: leg.trades, slippageBps });
+      return adapter.buildOwnerSwap({
+        vault: await vault(),
+        trades: leg.trades,
+        slippageBps,
+        ...shared,
+      });
     default:
       throw new Refusal(501, `a ${leg.kind} step cannot be built yet`);
   }
@@ -152,9 +160,9 @@ async function buildFor(
  * What the chain knows of an attempt: by its transaction id when one was reported, by its bytes when
  * none was.
  */
-async function fateOf(entry: ChainEntry, attempt: Attempt) {
-  const { txId, validUntil } = attempt;
-  if (!txId) return refusing(() => entry.probe.fate(attempt));
+async function fateOf(entry: ChainEntry, attempt: Attempt, signer: Address) {
+  const { txId, validUntil, messageHash, nonce } = attempt;
+  if (!txId) return refusing(() => entry.adapter.fate({ messageHash, signer, validUntil, nonce }));
   const { status } = await refusing(() => entry.adapter.track(txId, validUntil ?? undefined));
   if (status === 'confirmed' || status === 'reverted') return { state: 'landed' as const, txId };
   return { state: status === 'expired' ? ('gone' as const) : ('open' as const) };
@@ -206,11 +214,19 @@ function afterOutcome(deps: OrderDeps, stored: StoredOrder, status: Outcome['sta
  * and nobody reported it, the leg settles on it here.
  * - Solana: an attempt can land until the chain is past its `validUntil`. Only time closes it.
  * - EVM: there is no expiry. The attempt stays open until it is reported or the person cancels it.
+ *
+ * Answers the nonce the next build must share. On an EVM chain a cancelled attempt can still be sent
+ * by the wallet that signed it, so the rebuild is given its nonce: at most one of the two can land.
+ * Undefined where there is nothing to share: Solana, a first build, or a nonce another call has used.
  */
-async function assertNothingInFlight(deps: OrderDeps, stored: StoredOrder, leg: Leg) {
+async function assertNothingInFlight(
+  deps: OrderDeps,
+  stored: StoredOrder,
+  leg: Leg,
+): Promise<number | undefined> {
   const latest = latestAttempt(stored, leg);
-  if (!latest || final(latest)) return;
-  const fate = await fateOf(deps.chains.get(leg.chain), latest);
+  if (!latest || final(latest)) return undefined;
+  const fate = await fateOf(deps.chains.get(leg.chain), latest, ownerOn(stored.order, leg));
   if (fate.state === 'landed') {
     const status = await settle(deps, leg, latest, { ...latest, txId: fate.txId });
     await afterOutcome(deps, stored, status);
@@ -227,6 +243,7 @@ async function assertNothingInFlight(deps: OrderDeps, stored: StoredOrder, leg: 
           : 'Report it, or wait until it has expired, before building this step again.',
       details: { retryable: true },
     });
+  return fate.state === 'open' && latest.nonce !== null ? latest.nonce : undefined;
 }
 
 /**
@@ -255,17 +272,16 @@ export async function buildLeg(
 
   const entry = deps.chains.get(leg.chain);
   assertBuilds(entry);
-  // API-2: on an EVM chain a cancelled or failed attempt can still be sent by the wallet that signed
-  // it. A real EVM adapter must build the next attempt with the first attempt's nonce
-  // (`leg_attempts.nonce` is there for it), so only one of them can ever land. The mock has no nonce.
-  await assertNothingInFlight(deps, stored, leg);
+  // On an EVM chain a cancelled attempt can still be sent by the wallet that signed it. The next
+  // attempt is built on its nonce, so only one of them can ever land.
+  const nonce = await assertNothingInFlight(deps, stored, leg);
   const owner = ownerOn(order, leg);
   let built: BuiltTx;
   let expected: Leg['expected'];
   try {
     [built, expected] = await refusing(async () => [
-      BuiltTx.parse(await buildFor(deps, stored, leg, entry, owner)),
-      await expectedOf(entry, leg.trades, owner),
+      BuiltTx.parse(await buildFor(deps, stored, leg, entry, owner, nonce)),
+      await expectedOf(entry, leg.trades, owner, slippageOf(stored.request)),
     ]);
   } catch (e) {
     const chain = e instanceof Refusal ? e.extra.details : undefined;
@@ -280,9 +296,24 @@ export async function buildLeg(
   // Whatever an adapter returns, the API hands out a transaction only for the order's own wallet.
   if (built.signer !== owner || built.chainId !== leg.chain || built.legKind !== leg.kind)
     throw new Error('the adapter built a transaction for another signer, chain or step');
+  // And only for the leg's own trades. The minimum a person is shown is the one the adapter put in the
+  // bytes, which it states per trade: the leg takes it from there, not from the quote beside it.
+  const { minimums } = built.preview;
+  const same =
+    minimums.length === leg.trades.length &&
+    minimums.every((m, i) => {
+      const t = leg.trades[i];
+      return t && m.sell === t.sell && m.buy === t.buy && m.inRaw === t.amountInRaw;
+    });
+  if (!same) throw new Error('the adapter built other trades than the step has');
+  expected = expected.map((figure, i) => ({
+    ...figure,
+    minOutRaw: minimums[i]?.minOutRaw ?? figure.minOutRaw,
+  }));
 
   const attempt = await recordBuild(deps.db, leg, {
     messageHash: built.messageHash,
+    nonce: built.evm?.nonce ?? null,
     validUntil:
       built.lastValidBlockHeight === undefined ? null : String(built.lastValidBlockHeight),
     expected,
@@ -298,9 +329,9 @@ export async function buildLeg(
   return { tx: stampTx(built, { legId: leg.id, attemptId: attempt.id }), attempt };
 }
 
-function refuseUnread<T>(work: () => T): T {
+async function refuseUnread<T>(work: () => Promise<T>): Promise<T> {
   try {
-    return work();
+    return await work();
   } catch {
     throw new Refusal(422, 'the signed transaction cannot be read');
   }
@@ -328,7 +359,7 @@ export async function reportLeg(
   let attempt: Attempt | undefined;
   let sent: { txId: string; validUntil: string | null };
   if ('signedTx' in body) {
-    const hash = refuseUnread(() => entry.probe.messageHashOf(body.signedTx));
+    const hash = await refuseUnread(() => entry.adapter.messageHashOf(body.signedTx));
     attempt = attempts.find((a) => a.messageHash === hash);
     if (!attempt)
       throw new Refusal(
@@ -341,11 +372,11 @@ export async function reportLeg(
     if (attempt.txId) sent = { txId: attempt.txId, validUntil: attempt.validUntil };
     else if (attempt.status === 'built') {
       assertBuilds(entry);
-      const relayed = await refusing(() => entry.probe.relay(body.signedTx, hash));
+      const relayed = await refusing(() => entry.adapter.relay(body.signedTx));
       sent = { txId: relayed.txId, validUntil: relayed.validUntil ?? attempt.validUntil };
     } else {
       // Closed before it was sent. The server does not send it now, but looks whether it landed anyway.
-      const fate = await fateOf(entry, attempt);
+      const fate = await fateOf(entry, attempt, ownerOn(stored.order, leg));
       if (fate.state !== 'landed')
         throw new Refusal(
           409,
@@ -356,11 +387,21 @@ export async function reportLeg(
     }
   } else {
     attempt = attempts.find((a) => a.txId === body.txId);
+    let unseen = false;
     for (const a of attempts) {
       if (attempt) break;
-      if (a.txId === null && (await refusing(() => entry.probe.carries(body.txId, a.messageHash))))
-        attempt = a;
+      if (a.txId !== null) continue;
+      const carried = await refusing(() => entry.adapter.carries(body.txId, a.messageHash));
+      if (carried === 'this') attempt = a;
+      else if (carried === 'unseen') unseen = true;
     }
+    // A wallet that sent a moment ago can be ahead of the node. That is not the wrong transaction:
+    // the caller is told to report again, and nothing is written.
+    if (!attempt && unseen)
+      throw new Refusal(409, 'the chain has not seen that transaction yet', {
+        fix: 'Report it again in a moment.',
+        details: { retryable: true },
+      });
     if (!attempt) throw new Refusal(409, 'that transaction is not the one built for this step');
     if (final(attempt)) return stored;
     sent = { txId: body.txId, validUntil: attempt.validUntil };
@@ -383,7 +424,7 @@ export async function cancelLeg(
   const leg = legOf(stored, legId);
   const attempt = latestAttempt(stored, leg);
   if (!attempt || !live(attempt)) throw new Refusal(409, 'this step has no attempt to cancel');
-  const fate = await fateOf(deps.chains.get(leg.chain), attempt);
+  const fate = await fateOf(deps.chains.get(leg.chain), attempt, ownerOn(stored.order, leg));
   if (fate.state === 'landed') {
     const status = await settle(deps, leg, attempt, { ...attempt, txId: fate.txId });
     await afterOutcome(deps, stored, status);
@@ -394,7 +435,7 @@ export async function cancelLeg(
       fix: 'Report it, or wait until it has expired.',
       details: { retryable: true },
     });
-  // API-2: see buildLeg. On an EVM chain the next attempt must reuse this one's nonce.
+  // See buildLeg: on an EVM chain the next attempt is built on this one's nonce.
   await recordOutcome(deps.db, attempt, {
     status: 'expired',
     txId: attempt.txId,

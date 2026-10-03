@@ -12,6 +12,15 @@ export type ChainPresets = Record<
 >;
 
 const JUPITER_V6 = 'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4';
+/**
+ * Kamino Scope on Solana mainnet, both read from mainnet on Oct 2: the price account the stock tokens'
+ * entries are in, and the program that owns it. The program is what `Config.price_owner` is set to at a
+ * mainnet deploy: the vault refuses a price account any other program owns.
+ */
+export const SCOPE_MAINNET = {
+  prices: '3t4JZcueEzTbVP6kLxXrL3VpWx45jDer4eqysweBchNH',
+  program: 'HFn8GnPADiny6XqUoWE8uRPPxb29ikn4yTuPa9MF2fWJ',
+} as const;
 /** Universal Router 2.1.2 on Robinhood Chain (DESIGN-VAULT section 5), lower-cased. */
 const ROBINHOOD_UNIVERSAL_ROUTER = '0x204faca1764b154221e35c0d20abb3c525710498';
 
@@ -20,8 +29,7 @@ const solanaMainnet: ChainPreset = {
   evmChainId: null,
   explorerTx: 'https://solscan.io/tx/{txId}',
   router: JUPITER_V6,
-  // The Scope prices account is not written in full anywhere in this repo: set CHAIN_PRICE_SOURCE_SOLANA.
-  priceSource: { kind: 'scope', address: null },
+  priceSource: { kind: 'scope', address: SCOPE_MAINNET.prices },
 };
 const robinhoodMainnet: ChainPreset = {
   networkName: 'Robinhood Chain',

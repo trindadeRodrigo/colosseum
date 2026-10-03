@@ -1,10 +1,15 @@
-import { type Price, type Target, Trade, type VaultState } from '@colosseum/schemas';
+import {
+  type AssetUnits,
+  type Price,
+  type Target,
+  Trade,
+  type VaultState,
+} from '@colosseum/schemas';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { parseDecimal } from './amounts';
 import { batchTrades, planRebalance, RebalanceError, rebalancePlan } from './plan-rebalance';
 import { asset, price, vault } from './testing';
-import type { AssetUnits } from './view';
 
 const CASH = 'solana:usdc';
 const USDC = asset(CASH, { decimals: 6, cls: 'cash' });

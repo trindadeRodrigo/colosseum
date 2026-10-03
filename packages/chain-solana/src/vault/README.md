@@ -16,6 +16,7 @@ It decodes the program's four accounts: Config, Vault, the asset list (`getAsset
 - A vault whose `recipe` is not a shared portfolio of this program refuses with `Unknown`: the program never writes one.
 - Balances are the associated token account for (holder, mint, the mint's token program) and nothing else. `Position.tracked` is never read. A listed token a vault holds with no target on it is a position with `targetBps: 0`. A token that is not listed is not seen.
 - A frozen token account's balance is reported as held: it is still the holder's and a vault's value includes it. `funding` does not count frozen cash, because it cannot be deposited.
+- A holding of a mint whose issuer has scheduled a multiplier carries `scheduled { multiplier, effectiveAt }` until the cluster's clock reaches that time. From then on it is the multiplier in force and nothing is scheduled.
 
 **Shared portfolios**
 
@@ -27,7 +28,7 @@ It decodes the program's four accounts: Config, Vault, the asset list (`getAsset
 
 **Prices**
 
-- A stale price is returned, with its age and with `market: 'open'` if the session is open. The caller compares `ageSeconds` with `Config.max_price_age_s` (`getConfig()`).
+- A stale price is returned, with its age and with `market: 'open'` if the session is open. Every price carries `maxAgeSeconds`, which is `Config.max_price_age_s` from the same read: `isStalePrice(price)` says whether the keeper would refuse it.
 - A price stamped ahead of the cluster's clock by more than `Config.max_price_age_s` is refused with `AssetNotPriced`. Inside that bound it is clock skew and reads as zero seconds old.
 - Cash has no price unless the list gives it a Scope index. An asset with `priceKind: 'none'` gets no entry in the answer.
 - One bad entry refuses the whole call, and the message names the asset and the index. Ask per asset where a partial answer is wanted.
@@ -41,7 +42,7 @@ It decodes the program's four accounts: Config, Vault, the asset list (`getAsset
 
 **Gas**
 
-- `funding` charges every leg a fee and the rent of one token account, plus the vault's rent for a new vault and the wallet's own rent floor. `FundingNeed` cannot say which legs open an account, so it is a bound, not a quote. No priority fee is counted yet.
+- `funding` charges every leg a fee, plus the vault's rent for a new vault and the wallet's own rent floor. Token accounts: where the caller says how many the legs open (`FundingNeed.newAccounts`: the vault's cash account when the vault is new, and one per asset bought for the first time), that many are charged; where it does not, one per leg, which is a bound and not a quote. No priority fee is counted yet.
 
 ## The market rule the reader assumes (for SOL-3 to match)
 
@@ -64,4 +65,5 @@ A stock token is open when all of these hold, on the cluster's clock:
 ## Tests
 
 - `tests/solana-vault/`: against `fixtures/solana-vault/world.json`, account bytes the built program wrote in LiteSVM. `pnpm --dir programs/tests fixtures` rewrites it.
+- The reader passes the adapter contract's own `reads` group (`adapterContract(name, setup, { groups: ['reads'] })` in `tests/solana-vault/reads.ts`), on the fixture and on a local validator. The groups left are `shared portfolios` (needs the registry, SOL-2), `quotes` and everything that builds (SOL-2, ADS-2): add each to the list as the chain gets it.
 - `SOLANA_LOCAL_VALIDATOR=1 pnpm exec vitest run tests/solana-vault/local-validator.test.ts`: the same read cases on a local validator, with real transactions.

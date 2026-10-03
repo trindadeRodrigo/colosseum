@@ -92,6 +92,7 @@ export function price(id: string, usdPerToken: string): Price {
     asset: id,
     usdPerToken,
     ageSeconds: 0,
+    maxAgeSeconds: 120,
     market: 'open',
   };
 }

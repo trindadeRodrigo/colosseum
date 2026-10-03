@@ -12,10 +12,19 @@ export type Rpc = {
   stats: () => { httpRequests: number; rpcCalls: number };
 };
 
-/** Refused for rate, or asked of a node that has not caught up to the pinned block yet: worth asking again. */
+/** The endpoint could not be reached at all: no DNS, no route, timeouts. Nothing about the chain is known. */
+export class RpcUnreachable extends Error {}
+
+/**
+ * Refused for rate, or asked of a node that has not caught up to a block another node just reported:
+ * worth asking again after a short wait. The wordings are the ones the two Robinhood Chain endpoints
+ * use (fixtures/risk-evm/rpc-errors.json).
+ */
 const isTransient = (r: RpcReply) =>
   r.error?.code === 429 ||
-  /rate limit|too many requests|header not found|unknown block/i.test(r.error?.message ?? '');
+  /rate limit|too many requests|header not found|block not found|unknown block|unsupported block number/i.test(
+    r.error?.message ?? '',
+  );
 
 export type RpcOptions = {
   timeoutMs?: number;
@@ -58,7 +67,7 @@ export function createRpc(url: string, opts: RpcOptions = {}): Rpc {
         last = `${e instanceof Error ? e.name : 'network error'}${code ? ` ${code}` : ''}`;
       }
     }
-    throw new Error(`RPC unreachable after ${retries + 1} tries (${last})`);
+    throw new RpcUnreachable(`RPC unreachable after ${retries + 1} tries (${last})`);
   }
 
   async function send(requests: RpcRequest[]): Promise<RpcReply[]> {

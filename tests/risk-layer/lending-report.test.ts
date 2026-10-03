@@ -10,6 +10,7 @@ import {
   lendingGapSim,
   liquidationTable,
   maxNotionalAt,
+  measuredRegimes,
   type Regime,
   reallocationSummary,
   saleCapacity,
@@ -244,8 +245,13 @@ describe('capacity and coverage', () => {
     for (const [, a] of curvesOf) {
       const regimes = Object.keys(a.byRegime) as Regime[];
       const s = saleCapacity(a, regimes, 0.03, null);
-      expect(s.derived).toBe(false);
-      expect(s.capacityUsd).toBe(worstCapacity(a, regimes, 0.03).capacityUsd);
+      const usable = measuredRegimes(a, regimes).measured;
+      if (!usable.length) {
+        expect(s).toBeNull();
+        continue;
+      }
+      expect(s?.derived).toBe(false);
+      expect(s?.capacityUsd).toBe(worstCapacity(a, usable, 0.03).capacityUsd);
     }
   });
 
@@ -253,12 +259,44 @@ describe('capacity and coverage', () => {
     const a = [...curvesOf.values()].find((c) => c.byRegime.us_market_hours) as AssetCurves;
     const regimes = Object.keys(a.byRegime) as Regime[];
     const base = maxNotionalAt(a.byRegime.us_market_hours as DepthCurve, 0.03).notionalUsd;
-    const low = saleCapacity(a, regimes, 0.03, { ratio: 0.1, from: 'us_market_hours' });
+    const low = saleCapacity(a, regimes, 0.03, {
+      ratio: 0.1,
+      from: 'us_market_hours',
+    }) as NonNullable<ReturnType<typeof saleCapacity>>;
     expect(low.derived).toBe(true);
     expect(low.regime).toBe('weekend');
     expect(low.capacityUsd).toBeCloseTo(base * 0.1, 6);
-    const high = saleCapacity(a, regimes, 0.03, { ratio: 10, from: 'us_market_hours' });
+    const high = saleCapacity(a, regimes, 0.03, {
+      ratio: 10,
+      from: 'us_market_hours',
+    }) as NonNullable<ReturnType<typeof saleCapacity>>;
     expect(high.derived).toBe(false);
+  });
+
+  it('a regime whose curve is too thin is skipped, never zero capacity (DA2; report of 2026-10-03 00:43Z)', () => {
+    // the first weekend curve arrived with fewer samples than the minimum: the report read it as $0 capacity
+    const a = [...curvesOf.values()].find((c) => c.byRegime.us_market_hours) as AssetCurves;
+    const rth = a.byRegime.us_market_hours as DepthCurve;
+    const thin: AssetCurves = {
+      ...a,
+      byRegime: {
+        ...a.byRegime,
+        weekend: {
+          ...rth,
+          points: rth.points.map((p) => ({ ...p, samples: 1 })),
+          insufficientFrom: 0,
+        },
+      },
+    };
+    const regimes = Object.keys(thin.byRegime) as Regime[];
+    const s = saleCapacity(thin, regimes, 0.03, null);
+    expect(s?.regime).not.toBe('weekend');
+    expect(s?.capacityUsd).toBe(
+      saleCapacity(a, Object.keys(a.byRegime) as Regime[], 0.03, null)?.capacityUsd,
+    );
+    expect(s?.capacityUsd).toBeGreaterThan(0);
+    // nothing measured at all: no capacity, not $0
+    expect(saleCapacity(thin, ['weekend'], 0.03, null)).toBeNull();
   });
 
   it('coverage ratio is capacity over seized, null with nothing seized', () => {

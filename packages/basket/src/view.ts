@@ -1,4 +1,4 @@
-import type { AssetId, BasketAsset, Price, VaultState, VaultView } from '@colosseum/schemas';
+import type { AssetId, AssetUnits, Price, VaultState, VaultView } from '@colosseum/schemas';
 import {
   apportion,
   BasketInputError,
@@ -14,12 +14,9 @@ import {
 // (DESIGN-VAULT 3.1). value = raw × usdPerToken / 10^decimals, with no multiplier: the reference price
 // is for one whole token and already includes it.
 
-/**
- * LOCAL TYPE. Neither `VaultState` nor `Price` says how many decimals a token has, and a value cannot
- * be worked out without it, so `view` and `planRebalance` take the chain's asset list as one more
- * argument than DESIGN-VAULT 3.6 writes. A `BasketAsset[]` fits.
- */
-export type AssetUnits = Pick<BasketAsset, 'id' | 'decimals'>;
+// Neither `VaultState` nor `Price` says how many decimals a token has, and a value cannot be worked out
+// without them, so `view` and `planRebalance` take the chain's asset list (`AssetUnits[]`; a
+// `BasketAsset[]` fits).
 
 export type Measured = {
   asset: AssetId;

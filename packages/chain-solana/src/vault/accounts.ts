@@ -1,3 +1,4 @@
+import { PROGRAM_ERRORS } from '@colosseum/schemas';
 import {
   type Address,
   fixDecoderSize,
@@ -44,43 +45,11 @@ export const VAULT_AUTO_FOLLOW_OFFSET = 76;
 /** All zeros: the empty value of an address field, and also the system program's id. */
 export const ZERO_ADDRESS = '11111111111111111111111111111111' as Address;
 
-/** `BasketError`, in the program's order. Anchor numbers them from 6000. */
-export const VAULT_ERRORS = [
-  'NotKeeper',
-  'AutoFollowOff',
-  'KeeperPaused',
-  'MintNotAccepted',
-  'RouterNotAllowed',
-  'SpentTooMuch',
-  'ReceivedTooLittle',
-  'OtherAccountDebited',
-  'AccountTampered',
-  'PriceStale',
-  'PriceDeviation',
-  'MarketClosed',
-  'MultiplierWindow',
-  'NotTowardTarget',
-  'PastTarget',
-  'Cooldown',
-  'LossCapReached',
-  'AssetNotPriced',
-  'NewAssetNeedsOwner',
-  'VersionNotEffective',
-  'CreatorLimit',
-  'VersionMismatch',
-  'WrongDestination',
-  'ParamOutOfBounds',
-  'NotUpgradeAuthority',
-  'InvalidTargets',
-  'NotCashMint',
-  'ZeroAddress',
-  'LockedAtLaunch',
-  'HookNotAllowed',
-  'AssetListFull',
-  'SameMint',
-  'NoPendingVersion',
-  'NotCreatorOrGuardian',
-] as const;
+/**
+ * `BasketError`, in the program's order: the first block of `ChainErrorCode` in packages/schemas, which
+ * is the one list. Anchor numbers them from 6000.
+ */
+export const VAULT_ERRORS = PROGRAM_ERRORS;
 export const VAULT_ERROR_BASE = 6000;
 
 /** The program's name for a custom error code, or null when the code is not one of its own. */
