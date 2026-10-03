@@ -38,6 +38,7 @@ import { loadAssetFacts, loadPlanFacts } from '../facts';
 import { FACTS_METHODOLOGY } from '../facts-methodology';
 import { registerRiskHistoryRoutes } from './risk-history';
 import { registerPoolLiquidityRoute } from './risk-pool-liquidity';
+import { registerRiskSplitRoute } from './risk-split';
 
 /**
  * Liquidity & risk API (`/risk/*`). Mounted by apps/api and, alone, by apps/risk-api. Every number carries
@@ -105,6 +106,8 @@ export async function registerRiskRoutes(app: FastifyInstance) {
   await registerRiskHistoryRoutes(app, db, resolveAsset, REGIME_PARAMS);
   // one pool's liquidity by price band, read live over RPC (risk-pool-liquidity.ts)
   await registerPoolLiquidityRoute(app, db);
+  // how a routed sale divides across the pools, leg by leg, from the hourly split snapshot (risk-split.ts)
+  await registerRiskSplitRoute(app, db, resolveAsset, REGIME_PARAMS);
 
   f.get(
     '/risk/assets',
