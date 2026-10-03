@@ -130,8 +130,8 @@ export const REASON_TEMPLATES = {
   // Placement: which chain's token carries each exposure.
   ON_CHAIN: rule(
     ['chains'],
-    'On {chain|chain}: of the chains you funded, the first that lists it and has room.',
-    'Em {chain|chain}: das suas redes, a primeira que o lista e tem espaço.',
+    '{asset} on {chain|chain}: of the chains you funded, the first that lists it and has room.',
+    '{asset} em {chain|chain}: das suas redes, a primeira que o lista e tem espaço.',
   ),
   BY_YIELD: rule(
     [],
