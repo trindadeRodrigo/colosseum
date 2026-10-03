@@ -3,12 +3,12 @@ import { useEffect, useRef, useState } from 'react';
 import { buttonClass } from './button-class';
 import { cn } from './cn';
 import { Icon } from './Icon';
+import { COPY_BUTTON_LABELS, type CopyButtonLabels } from './labels';
 
 // Copies a value: the copy icon turns into a check for 1.5 seconds and the result is announced
 // (data-table.md, the execution list). The check is used for nothing else.
 
-export type CopyButtonLabels = { copy: string; copied: string };
-export const COPY_BUTTON_LABELS: CopyButtonLabels = { copy: 'Copy', copied: 'Copied' };
+export type { CopyButtonLabels } from './labels';
 
 export type CopyButtonProps = {
   /** The full value, not the shortened one on screen. */

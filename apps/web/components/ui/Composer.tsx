@@ -9,8 +9,10 @@ import {
   useState,
 } from 'react';
 import { cn } from './cn';
+import { sendsOnKey } from './composer-keys';
 import { Icon } from './Icon';
 import { LatticeGlyph } from './Lattice';
+import { COMPOSER_LABELS, type ComposerLabels } from './labels';
 import { StatusMark } from './StatusMark';
 
 // composer.md. The typing box: the one place where a person talks to us in their own words, and the
@@ -18,24 +20,7 @@ import { StatusMark } from './StatusMark';
 // square. It sends the text and nothing else: what reads it, and what happens next, is the caller's.
 // It never shows a figure, so it carries no pin.
 
-export type ComposerLabels = {
-  /** The name of the send button: "Fit it". */
-  send: string;
-  /** Said while the text is being read: "Reading your goal…". */
-  busy: string;
-};
-export const COMPOSER_LABELS: ComposerLabels = { send: 'Fit it', busy: 'Reading your goal…' };
-
-/** Enter sends. Shift+Enter is a new line. While an input method is composing, Enter is its own. */
-export function sendsOnKey(event: {
-  key: string;
-  shiftKey: boolean;
-  nativeEvent?: { isComposing?: boolean };
-  isComposing?: boolean;
-}): boolean {
-  const composing = event.nativeEvent?.isComposing ?? event.isComposing ?? false;
-  return event.key === 'Enter' && !event.shiftKey && !composing;
-}
+export type { ComposerLabels } from './labels';
 
 const MAX_HEIGHT = 120; // five lines of 24px
 

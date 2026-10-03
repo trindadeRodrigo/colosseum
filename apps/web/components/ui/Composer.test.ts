@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sendsOnKey } from './Composer';
+import { sendsOnKey } from './composer-keys';
 import { composer } from './test/cases';
 import { all, classes, name, one, render, tag, text, ui } from './test/html';
 

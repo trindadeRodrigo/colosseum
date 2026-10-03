@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SUBSCRIBE_LABELS } from './SubscribeBlock';
+import { SUBSCRIBE_LABELS } from './labels';
 import { subscribe } from './test/cases';
 import { all, classes, name, one, render, role, tag, text, ui } from './test/html';
 

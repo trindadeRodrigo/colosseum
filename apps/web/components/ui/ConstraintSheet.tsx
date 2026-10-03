@@ -6,6 +6,7 @@ import { cn } from './cn';
 import { Field, Input, Select, Textarea } from './Field';
 import { isoUtc } from './format';
 import { LatticeStatus } from './Lattice';
+import { CONSTRAINT_SHEET_LABELS, type ConstraintSheetLabels } from './labels';
 import { MockPlate } from './MockPlate';
 import { StatusMark } from './StatusMark';
 
@@ -57,36 +58,7 @@ export type SheetSource = {
   provenance: Provenance;
 };
 
-export type ConstraintSheetLabels = {
-  title: string;
-  parser: string;
-  /** The error summary. `{n}` is the number of things to fix. */
-  summaryOne: string;
-  summaryOther: string;
-  goToField: string;
-  build: string;
-  building: string;
-  /** Under a blocked button. `{n}` is the number of fields. */
-  fixOne: string;
-  fixOther: string;
-  reading: string;
-  noPlan: string;
-  editSheet: string;
-};
-export const CONSTRAINT_SHEET_LABELS: ConstraintSheetLabels = {
-  title: 'How we read your goal',
-  parser: 'parser',
-  summaryOne: '1 thing doesn’t fit yet. Fix it to build the plan.',
-  summaryOther: '{n} things don’t fit yet. Fix them to build the plan.',
-  goToField: 'Go to field',
-  build: 'Build my plan',
-  building: 'Building your plan…',
-  fixOne: 'Fix the field above to continue.',
-  fixOther: 'Fix the {n} fields above to continue.',
-  reading: 'Reading your goal…',
-  noPlan: 'No plan fits these limits.',
-  editSheet: 'Edit sheet',
-};
+export type { ConstraintSheetLabels } from './labels';
 
 type Common = {
   /** The goal as the person wrote it. Shown quoted, and kept when they go back. */

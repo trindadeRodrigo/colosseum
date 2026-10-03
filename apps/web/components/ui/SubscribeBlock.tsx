@@ -2,6 +2,7 @@
 import { useEffect, useId, useState } from 'react';
 import { Composer } from './Composer';
 import { cn } from './cn';
+import { SUBSCRIBE_LABELS, type SubscribeLabels, type SubscribeStatus } from './labels';
 
 // subscribe-block.md. The landing's closing section: a line above, the serif heading, a short lede, a
 // framed photograph, and an email field in the shape of the composer. It is the one composition on
@@ -10,39 +11,7 @@ import { cn } from './cn';
 // What the visitor gets wrong, and what happened to the request, is the page's to work out: this block
 // is told the status and says it.
 
-export type SubscribeStatus =
-  | 'rest'
-  /** On submit: the address does not look complete. */
-  | 'invalid-email'
-  | 'no-option'
-  | 'submitting'
-  | 'success'
-  | 'already'
-  | 'error';
-
-export type SubscribeLabels = {
-  email: string;
-  subscribe: string;
-  subscribing: string;
-  /** The name of the group of checkboxes. */
-  group: string;
-  status: Record<SubscribeStatus, string>;
-};
-export const SUBSCRIBE_LABELS: SubscribeLabels = {
-  email: 'Email address',
-  subscribe: 'Subscribe',
-  subscribing: 'Subscribing…',
-  group: 'What to receive',
-  status: {
-    rest: 'Unsubscribe any time.',
-    'invalid-email': 'That email doesn’t look complete. Check for an @ and a domain.',
-    'no-option': 'Pick at least one: product updates or the newsletter.',
-    submitting: 'Subscribing…',
-    success: 'Check your inbox to confirm.',
-    already: 'You’re already on the list.',
-    error: 'We couldn’t save that just now. Try again in a minute.',
-  },
-};
+export type { SubscribeLabels, SubscribeStatus } from './labels';
 
 export type SubscribeOption = {
   id: string;

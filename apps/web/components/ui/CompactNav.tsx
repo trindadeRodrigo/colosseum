@@ -4,6 +4,7 @@ import { Button } from './Button';
 import { buttonClass } from './button-class';
 import { cn } from './cn';
 import { Icon } from './Icon';
+import { COMPACT_NAV_LABELS, type CompactNavLabels } from './labels';
 
 // compact-nav.md. The landing header: a quiet full-width bar (the mark and the wordmark, nothing else)
 // that, from the third step of the hero onward, compacts into a centred bar with the menu and the one
@@ -19,12 +20,7 @@ export type NavLink = {
   current?: boolean;
 };
 
-export type CompactNavLabels = { skip: string; main: string; menu: string };
-export const COMPACT_NAV_LABELS: CompactNavLabels = {
-  skip: 'Skip to content',
-  main: 'Main',
-  menu: 'Menu',
-};
+export type { CompactNavLabels } from './labels';
 
 export type CompactNavProps = {
   /** The symbol, 24px. It takes the brand wood of the ground it is on. */
