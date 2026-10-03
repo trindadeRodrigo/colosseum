@@ -1307,11 +1307,13 @@ group('state after a transaction lands', {
         slippageBps: 100,
       };
       if (c.a.capabilities.needsApprove) {
-        // No vault yet, so the approval for this plan is the factory's to spend: exactly `amount`.
+        // No vault yet. The approval for this plan is to the address its vault will have, and the vault
+        // spends it as it is opened. It is for twice `amount`: the create takes half, and the other half
+        // is shown further down to be the same vault's.
         const approve = { owner: c.f.owner, basketId: c.f.freshBasketId };
-        await land(c, await c.a.buildApprove({ ...approve, amountRaw: amount.toString() }));
+        await land(c, await c.a.buildApprove({ ...approve, amountRaw: (amount * 2n).toString() }));
         await refuses(
-          c.a.buildCreateVault({ ...args, depositRaw: (amount + 1n).toString() }),
+          c.a.buildCreateVault({ ...args, depositRaw: (amount * 2n + 1n).toString() }),
           'AllowanceTooLow',
         );
       }
@@ -1341,6 +1343,17 @@ group('state after a transaction lands', {
       );
       // The plan id is used now.
       await refuses(c.a.buildCreateVault(args), 'VaultExists');
+      if (c.a.capabilities.needsApprove) {
+        // What the create left of the approval made before the vault existed is the vault's: a deposit
+        // takes it with no second approval, and not one unit more. Had the first approval gone to
+        // anyone else, the factory included, this deposit would find nothing to take.
+        const deposit = (raw: bigint) =>
+          c.a.buildDeposit({ vault: opened.address, amountRaw: raw.toString(), slippageBps: 100 });
+        await refuses(deposit(amount + 1n), 'AllowanceTooLow');
+        await land(c, await deposit(amount));
+        expect(BigInt((await vaultAt(c, opened.address)).cash.raw)).toBe(amount * 2n);
+        await refuses(deposit(1n), 'AllowanceTooLow');
+      }
     },
 
   'a withdrawal hands every token to the owner, and to nobody else': async (c) => {

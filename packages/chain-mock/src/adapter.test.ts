@@ -442,7 +442,7 @@ describe('chain-mock', () => {
     expect((await adapter.getVault(vault))?.cash.raw).toBe('1010');
   });
 
-  it('approves the factory before the vault exists and the vault after, from the plan id alone', async () => {
+  it("approves the plan's vault, by its address, before it exists and after, and never the factory", async () => {
     const { adapter, mock, owner, targets } = await funded('robinhood');
     const cashToken = (await adapter.listAssets()).find((a) => a.id === mock.cash)?.address;
     const first = await adapter.buildApprove({ owner, basketId: '9', amountRaw: '1000' });
@@ -450,16 +450,20 @@ describe('chain-mock', () => {
     expect(first.evm?.to).toBe(cashToken);
     const spenderOf = (payload: string) =>
       JSON.parse(Buffer.from(payload.slice(2), 'hex').toString()).op.a.spender;
-    expect(spenderOf(first.payload)).toBe(mock.addresses.factory);
+    const before = spenderOf(first.payload);
+    expect(before).not.toBe(mock.addresses.factory);
     await mock.send(first);
     const create = { owner, basketId: '9', targets, autoFollow: false, slippageBps: 50 };
     await mock.send(await adapter.buildCreateVault({ ...create, depositRaw: '1000' }));
+    // The address approved before the vault existed is the address the vault now has.
     const vault = (await adapter.getVaults(owner))[0]?.address ?? '';
+    expect(before).toBe(vault);
     const later = await adapter.buildApprove({ owner, basketId: '9', amountRaw: '500' });
     expect(spenderOf(later.payload)).toBe(vault);
-    // Another plan of the same owner has no vault yet: its approval goes to the factory again.
+    // Another plan of the same owner has another vault, not made yet: its approval goes to that address.
     const other = await adapter.buildApprove({ owner, basketId: '10', amountRaw: '500' });
-    expect(spenderOf(other.payload)).toBe(mock.addresses.factory);
+    expect(spenderOf(other.payload)).not.toBe(vault);
+    expect(spenderOf(other.payload)).not.toBe(mock.addresses.factory);
   });
 
   it('hashes the message of a Solana transaction, so signing it does not change the hash', async () => {
@@ -753,7 +757,7 @@ describe('chain-mock', () => {
     expect(await solana.adapter.nonceOf({ txId: landed.txId })).toBeNull();
   });
 
-  it("takes a deposit from the allowance of the vault alone, and a create from the factory's alone", async () => {
+  it("takes a create and every deposit from the allowance of the plan's own vault, and no other plan's", async () => {
     const { adapter, mock, owner, targets } = await funded('robinhood');
     const create = { owner, basketId: '1', targets, autoFollow: false, slippageBps: 50 };
     await mock.send(await adapter.buildApprove({ owner, basketId: '1', amountRaw: '1000' }));
@@ -761,19 +765,22 @@ describe('chain-mock', () => {
     const vault = (await adapter.getVaults(owner))[0]?.address ?? '';
     const deposit = (amountRaw: string) =>
       adapter.buildDeposit({ vault, amountRaw, slippageBps: 50 });
-    // The factory still holds an allowance of 600. It opens vaults; it is not the vault's to spend.
+    // The create left 600 of the approval. It was given to the vault, so the vault's deposits use it.
+    expect(await code(deposit('601'))).toBe('AllowanceTooLow');
+    await mock.send(await deposit('600'));
     expect(await code(deposit('1'))).toBe('AllowanceTooLow');
-    await mock.send(await adapter.buildApprove({ owner, basketId: '1', amountRaw: '50' }));
-    await mock.send(await deposit('50'));
-    expect(await code(deposit('1'))).toBe('AllowanceTooLow');
-    // And the vault's allowance opens no other vault: a second plan draws on the factory's.
+    // And one plan's allowance opens no other plan's vault: a second plan needs its own approval.
     await mock.send(await adapter.buildApprove({ owner, basketId: '1', amountRaw: '500' }));
     const second = { ...create, basketId: '2' };
+    expect(await code(adapter.buildCreateVault({ ...second, depositRaw: '1' }))).toBe(
+      'AllowanceTooLow',
+    );
+    await mock.send(await adapter.buildApprove({ owner, basketId: '2', amountRaw: '600' }));
     expect(await code(adapter.buildCreateVault({ ...second, depositRaw: '601' }))).toBe(
       'AllowanceTooLow',
     );
     await mock.send(await adapter.buildCreateVault({ ...second, depositRaw: '600' }));
-    expect((await adapter.getVaults(owner)).map((v) => v.cash.raw).sort()).toEqual(['450', '600']);
+    expect((await adapter.getVaults(owner)).map((v) => v.cash.raw).sort()).toEqual(['1000', '600']);
   });
 
   it('gives a price the age it is told, so a stale one reads as stale', async () => {

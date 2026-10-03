@@ -404,8 +404,10 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
   }
   /**
    * A deposit is always the chain's cash token, from the vault's owner. Where the chain needs an
-   * approval, the cash is taken by `spender` and by nobody else: the factory when it opens the vault,
-   * the vault itself afterwards. An allowance given to one is not the other's to spend.
+   * approval, the cash is taken by `spender` and by nobody else, and the spender is always the plan's
+   * vault: the owner approves the vault's address, which is known before the vault exists, and the
+   * vault pulls the cash itself, when it is opened and at every deposit after. The factory is never
+   * approved (DESIGN-VAULT 3.8: the contracts are the truth).
    */
   function pullCash(s: State, v: MockVault, amount: bigint, spender: Address) {
     const w = walletOf(s, v.owner);
@@ -471,7 +473,7 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
           setTargets(v, input(SetTargetsArgs.shape.targets, a.targets, 'targets'));
         }
         s.vaults.set(address, v);
-        if (a.depositRaw) pullCash(s, v, BigInt(a.depositRaw), factory);
+        if (a.depositRaw) pullCash(s, v, BigInt(a.depositRaw), v.address);
         checkTrades(a.trades, true);
         for (const t of a.trades ?? []) swap(s, v, t, run);
         return;
@@ -1022,9 +1024,9 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
       guarded(() => {
         if (!capabilities.needsApprove) refuse('NotSupported', `${chain} needs no approval`);
         const { nonce, ...args } = input(ApproveArgs, a, 'approve');
-        // The factory takes the cash that opens a vault; once the plan's vault exists, it takes its own.
-        const vault = mockAddress(chain, `vault:${args.owner}:${args.basketId}`);
-        const spender = live().vaults.has(vault) ? vault : factory;
+        // The plan's vault takes its own cash, before it exists and after: its address is derived from the
+        // owner and the plan alone. The factory is never the spender.
+        const spender = mockAddress(chain, `vault:${args.owner}:${args.basketId}`);
         const op: Op = { kind: 'approve', a: { ...args, spender } };
         return build(op, args.owner, { wallet: args.owner }, nonce);
       }),

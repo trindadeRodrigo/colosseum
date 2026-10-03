@@ -269,8 +269,9 @@ interface OwnerBuilder {          // each call returns ONE transaction; the plan
   // signer's next. It is for the rebuild of a step whose earlier attempt is still open, so the two share
   // a nonce and at most one can land. A chain with no nonce refuses it with NotSupported
   buildApprove(a: { owner: Address; basketId: string; amountRaw: RawAmount }): Promise<BuiltTx>;
-    // the plan, never a spender: the adapter derives who may take the cash (EVM: the factory until the
-    // plan's vault exists, the vault after). A `spender` in the arguments is refused as BadInput
+    // the plan, never a spender: the adapter derives who may take the cash (EVM: always the plan's vault,
+    // by its address, which is known before the vault exists; never the factory). A `spender` in the
+    // arguments is refused as BadInput
   buildCreateVault(a: { owner: Address; basketId: string; targets: Target[]; recipeOnchainId?: string;
     expectedVersion?: number; autoFollow: boolean; depositRaw?: RawAmount; trades?: Trade[];
     slippageBps: number }): Promise<BuiltTx>;
