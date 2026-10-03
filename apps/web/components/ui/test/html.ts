@@ -88,6 +88,13 @@ export function text(el: El | string): string {
   return el.children.map(text).join('');
 }
 
+/** The text a screen reader meets: `text`, without what is hidden from it (`aria-hidden`). */
+export function spoken(el: El | string): string {
+  if (typeof el === 'string') return el;
+  if ('hidden' in el.attrs || el.attrs['aria-hidden'] === 'true') return '';
+  return el.children.map(spoken).join('');
+}
+
 export const classes = (el: El): string[] => (el.attrs.class ?? '').split(/\s+/).filter(Boolean);
 export const hasClass = (el: El, name: string): boolean => classes(el).includes(name);
 export const tag = (name: string) => (el: El) => el.tag === name;

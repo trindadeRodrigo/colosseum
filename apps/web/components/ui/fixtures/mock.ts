@@ -1,3 +1,4 @@
+import type { SheetGroup, SheetSource } from '../ConstraintSheet';
 import type { DataTableProps } from '../DataTable';
 import type { Execution } from '../ExecutionList';
 import type { ExitPanelTier, ExitTier } from '../ExitPlanLine';
@@ -177,3 +178,109 @@ export const DRIFT_ROWS: DriftRow[] = [
   },
 ];
 export type DriftTable = DataTableProps<DriftRow>;
+
+export const SHEET_SOURCE: SheetSource = {
+  method: 'sample-parser',
+  model: 'no model',
+  fetchedAt: AT,
+  provenance: 'fixture',
+};
+
+const PROFILES = [
+  { value: 'income', label: 'Income' },
+  { value: 'accumulation', label: 'Accumulation' },
+  { value: 'high_risk', label: 'High risk' },
+];
+const BUDGETS = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+];
+
+/** A sheet as the caller hands it over: human labels, draft values as text, and what does not fit. */
+export function sheetGroups(wrong: boolean): SheetGroup[] {
+  return [
+    {
+      legend: 'Goal',
+      fields: [
+        {
+          id: 'sheet-kind',
+          label: 'Kind',
+          schemaKey: 'target.kind',
+          kind: 'select',
+          value: 'monthly_cashflow',
+          options: [
+            { value: 'monthly_cashflow', label: 'Monthly income' },
+            { value: 'balance', label: 'A balance by a date' },
+          ],
+        },
+        {
+          id: 'sheet-amount',
+          label: 'Amount (BRL)',
+          schemaKey: 'target.amountBrl',
+          kind: 'amount',
+          value: '5.000',
+          hint: 'In reais. Your target, not a promise.',
+        },
+        {
+          id: 'sheet-from',
+          label: 'From',
+          schemaKey: 'target.startMonth',
+          kind: 'month',
+          value: '2029-01',
+        },
+      ],
+    },
+    {
+      legend: 'Profile and risk',
+      fields: [
+        {
+          id: 'sheet-profile',
+          label: 'Profile',
+          schemaKey: 'profile',
+          kind: 'select',
+          value: wrong ? 'accumulation' : 'income',
+          options: PROFILES,
+          edited: true,
+          caption: wrong ? undefined : 'Income plans don’t include tokenized stocks.',
+          error: wrong ? 'A monthly income goal needs the income profile.' : undefined,
+        },
+        {
+          id: 'sheet-risk',
+          label: 'Risk budget',
+          schemaKey: 'riskBudget',
+          kind: 'select',
+          value: 'low',
+          options: BUDGETS,
+        },
+      ],
+    },
+    {
+      legend: 'Time and cash',
+      fields: [
+        {
+          id: 'sheet-horizon',
+          label: 'Horizon (months)',
+          schemaKey: 'horizonMonths',
+          kind: 'number',
+          value: wrong ? '' : '36',
+          error: wrong ? 'Enter how many months the plan runs.' : undefined,
+        },
+        {
+          id: 'sheet-window',
+          label: 'Cash within (days)',
+          schemaKey: 'liquidityWindowDays',
+          kind: 'number',
+          value: '7',
+        },
+      ],
+    },
+  ];
+}
+export const SHEET_CAPITAL = {
+  id: 'sheet-capital',
+  label: 'Capital (USD)',
+  schemaKey: 'initialCapitalUsd',
+  kind: 'amount' as const,
+  value: '1.000',
+};

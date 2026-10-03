@@ -9,6 +9,8 @@ import {
   Stat,
   StatRow,
 } from '../Card';
+import { Composer } from '../Composer';
+import { ConstraintSheet } from '../ConstraintSheet';
 import { DataTable } from '../DataTable';
 import { Disclaimer } from '../Disclaimer';
 import { ExecutionList } from '../ExecutionList';
@@ -26,7 +28,10 @@ import {
   LIVE_SPECIMEN,
   MOCK_OBS,
   SANDBOX_OBS,
+  SHEET_CAPITAL,
+  SHEET_SOURCE,
   STALE_SPECIMEN,
+  sheetGroups,
   TREASURIES,
 } from '../fixtures/mock';
 import { GoalCard } from '../GoalCard';
@@ -373,4 +378,115 @@ export const exitPlan = {
   ),
   unsourced: <ExitPlanLine unsourced="Yields and exit costs are sourced live after you connect." />,
   panel: <ExitPlanPanel tiers={EXIT_PANEL_TIERS} />,
+};
+
+const noop = () => {};
+
+export const composer = {
+  empty: (
+    <Composer
+      label="Your goal"
+      placeholder="$40,000 by June 2028, cash within 7 days"
+      hint="Enter to fit · Shift+Enter for a new line"
+      onSubmit={noop}
+    />
+  ),
+  typed: (
+    <Composer label="Your goal" labelHidden defaultValue="$40,000 by June 2028" onSubmit={noop} />
+  ),
+  busy: <Composer label="Your goal" defaultValue="$40,000 by June 2028" busy onSubmit={noop} />,
+  error: (
+    <Composer
+      label="Your goal"
+      defaultValue="soon, a lot"
+      error="We couldn’t read that. Try an amount and a date."
+      onSubmit={noop}
+    />
+  ),
+  disabled: (
+    <Composer label="Your goal" defaultValue="$40,000 by June 2028" disabled onSubmit={noop} />
+  ),
+  subscribe: (
+    <Composer
+      variant="single"
+      label="Email address"
+      inputType="email"
+      autoComplete="email"
+      name="email"
+      defaultValue="you@example.com"
+      sendText="Subscribe"
+      labels={{ send: 'Subscribe' }}
+      onSubmit={noop}
+    />
+  ),
+  // @ts-expect-error the typing box always has a label; a placeholder is never the only one
+  unlabelled: <Composer placeholder="Your goal" onSubmit={noop} />,
+};
+
+type ParsedSheet = { readonly parsed: true };
+const PARSED: ParsedSheet = { parsed: true };
+
+export const sheet = {
+  valid: (
+    <ConstraintSheet<ParsedSheet>
+      goalText="R$ 5.000 por mês a partir de 2029, posso precisar em 7 dias"
+      source={SHEET_SOURCE}
+      groups={sheetGroups(false)}
+      capital={SHEET_CAPITAL}
+      valid={PARSED}
+      onChange={noop}
+      onBuild={noop}
+    />
+  ),
+  invalid: (
+    <ConstraintSheet<ParsedSheet>
+      groups={sheetGroups(true)}
+      capital={SHEET_CAPITAL}
+      valid={null}
+      otherIssues={['The server could not read the sheet. Try again.']}
+      onChange={noop}
+      onBuild={noop}
+    />
+  ),
+  parsing: (
+    <ConstraintSheet<ParsedSheet>
+      state="parsing"
+      groups={[]}
+      valid={null}
+      onChange={noop}
+      onBuild={noop}
+    />
+  ),
+  solving: (
+    <ConstraintSheet<ParsedSheet>
+      state="solving"
+      groups={sheetGroups(false)}
+      capital={SHEET_CAPITAL}
+      valid={PARSED}
+      onChange={noop}
+      onBuild={noop}
+    />
+  ),
+  noPlan: (
+    <ConstraintSheet<ParsedSheet>
+      state="no-plan"
+      groups={sheetGroups(false)}
+      valid={PARSED}
+      binding="The 7-day window binds: nothing in the low risk budget pays R$ 5.000 a month from this capital."
+      onChange={noop}
+      onBuild={noop}
+    />
+  ),
+  read: (
+    <ConstraintSheet mode="read" groups={sheetGroups(false)} source={SHEET_SOURCE} editHref="/" />
+  ),
+  unvalidated: (
+    <ConstraintSheet<ParsedSheet>
+      groups={sheetGroups(false)}
+      // @ts-expect-error only a parsed sheet can be handed over: a draft is not one
+      valid={{ draft: 'R$ 5.000' }}
+      onChange={noop}
+      onBuild={noop}
+    />
+  ),
 };
