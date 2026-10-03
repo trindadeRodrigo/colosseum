@@ -21,6 +21,7 @@ import {
   FROZEN_ERRORS,
   forgeConfig,
   type InitConfigArgs,
+  initAssetsInstruction,
   initConfigInstruction,
   type Params,
   readConfig,
@@ -46,6 +47,7 @@ import {
   SYSTEM_PROGRAM,
   send,
 } from './src/env';
+import { TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from './src/tokens';
 
 type Setter = (admin: TransactionSigner, value: Address, config?: Address) => Promise<Instruction>;
 
@@ -153,6 +155,23 @@ describe('basket config', () => {
       expectError(await init(deployer), ERR.NotUpgradeAuthority);
     });
 
+    // All zeros is the empty value and the system program: none of the five is ever that.
+    it.each(['guardian', 'defaultKeeper', 'routerProgram', 'priceOwner', 'cashMint'] as const)(
+      'refuses the zero address as %s',
+      async (field) => {
+        expectError(await init(deployer, { [field]: SYSTEM_PROGRAM }), ERR.ZeroAddress);
+        expect(svm.getAccount(await configAddress()).exists).toBe(false);
+      },
+    );
+
+    it.each([
+      ['the token program', TOKEN_PROGRAM],
+      ['the Token-2022 program', TOKEN_2022_PROGRAM],
+      ['the vault program itself', BASKET_PROGRAM],
+    ])('refuses %s as the router', async (_, program) => {
+      expectError(await init(deployer, { routerProgram: program }), ERR.RouterNotAllowed);
+    });
+
     it('cannot be initialised twice', async () => {
       expectOk(await init(deployer));
       const other = (await generateKeyPairSigner()).address;
@@ -166,8 +185,21 @@ describe('basket config', () => {
     const outOfBounds: [string, Partial<Params>][] = [
       ['a tolerance above 300 bps', { toleranceBps: 301 }],
       ['a weekly loss cap above 500 bps', { lossCapBps: 501 }],
+      ['a band above 500 bps', { bandBps: 501 }],
+      ['a price deviation allowance above 1,000 bps', { twapDevBps: 1_001 }],
+      ['a price older than 600 s', { maxPriceAgeS: 601 }],
       ['a cooldown under 600 s', { assetCooldownS: 599 }],
       ['a publish delay under 60 s', { publishDelayS: 59 }],
+      ['a session that opens before 13:30 UTC', { sessionOpenUtcS: 48_599 }],
+      ['a session that closes after 21:00 UTC', { sessionCloseUtcS: 75_601 }],
+      [
+        'a session that closes when it opens',
+        { sessionOpenUtcS: 60_000, sessionCloseUtcS: 60_000 },
+      ],
+      [
+        'a session that closes before it opens',
+        { sessionOpenUtcS: 70_000, sessionCloseUtcS: 60_000 },
+      ],
     ];
 
     it.each(outOfBounds)('refuses %s', async (_, change) => {
@@ -179,11 +211,15 @@ describe('basket config', () => {
 
     it('accepts each bound itself', async () => {
       const atTheBounds = {
-        ...DEFAULT_PARAMS,
         toleranceBps: 300,
         lossCapBps: 500,
+        bandBps: 500,
+        twapDevBps: 1_000,
+        maxPriceAgeS: 600,
         assetCooldownS: 600,
         publishDelayS: 60,
+        sessionOpenUtcS: 48_600,
+        sessionCloseUtcS: 75_600,
       };
       expectOk(await init(deployer, { params: atTheBounds }));
       expect(await readConfig(svm)).toMatchObject(atTheBounds);
@@ -230,6 +266,19 @@ describe('basket config', () => {
       });
     });
 
+    // A token program would read the vault's signature as leave to move its tokens.
+    it.each([
+      ['the token program', TOKEN_PROGRAM],
+      ['the Token-2022 program', TOKEN_2022_PROGRAM],
+      ['the vault program itself', BASKET_PROGRAM],
+    ])('the router cannot be set to %s', async (_, program) => {
+      expectError(
+        await send(svm, deployer, [await setRouterInstruction(deployer, program)]),
+        ERR.RouterNotAllowed,
+      );
+      expect((await readConfig(svm)).routerProgram).toBe(MOCK_ROUTER_PROGRAM);
+    });
+
     // Config is one account at one address. Anything else passed in its place is refused,
     // whatever it holds.
     describe('only the real Config is accepted', () => {
@@ -251,6 +300,7 @@ describe('basket config', () => {
 
       it("refuses the attacker's own Vault, whose owner sits where the admin does", async () => {
         const theirVault = await vaultAddress(attacker.address, 1n);
+        expectOk(await send(svm, deployer, [await initAssetsInstruction(deployer)]));
         expectOk(
           await send(svm, attacker, [
             await createVaultInstruction({ owner: attacker, basketId: 1n }),

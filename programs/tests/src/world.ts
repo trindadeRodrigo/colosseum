@@ -20,7 +20,9 @@ import {
   createVaultInstruction,
   DEFAULT_PARAMS,
   depositInstruction,
+  initAssetsInstruction,
   initConfigInstruction,
+  upsertAssetInstruction,
   vaultAddress,
   withdrawInstruction,
 } from './basket';
@@ -210,6 +212,16 @@ export async function buildWorld(
       cashMint: mints.usdc.address,
       params: DEFAULT_PARAMS,
     }),
+  ]);
+
+  // The platform's list: the four assets. Cash is never a position, so it is not listed.
+  await ledger.send(deployer, [
+    await initAssetsInstruction(deployer),
+    ...(await Promise.all(
+      (['spyx', 'nvdax', 'gold', 'tslax'] as const).map((name) =>
+        upsertAssetInstruction(deployer, mints[name].address),
+      ),
+    )),
   ]);
 
   await mintTo(ledger, deployer, mints.usdc, owner.address, usdc(5_000n));
