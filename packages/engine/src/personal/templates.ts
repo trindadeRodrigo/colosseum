@@ -251,12 +251,16 @@ export const TEXT_TEMPLATES = {
     pt: 'Você pode sacar os tokens para a sua carteira a qualquer momento. O custo de vender ainda não está medido para este plano.',
   },
   WAY_AMOUNT: {
-    en: 'Put in {toUsd|usd} instead of {fromUsd|usd}.',
-    pt: 'Aplicar {toUsd|usd} em vez de {fromUsd|usd}.',
+    en: 'You can add {addUsd|usd}, for {toUsd|usd} in all.',
+    pt: 'Você pode aplicar mais {addUsd|usd}, {toUsd|usd} no total.',
   },
   WAY_TARGET: {
-    en: 'Aim for {toUsd|usd} a month instead of {fromUsd|usd}.',
-    pt: 'Mirar {toUsd|usd} por mês em vez de {fromUsd|usd}.',
+    en: 'You can aim for {toUsd|usd} a month instead of {fromUsd|usd}.',
+    pt: 'Você pode mirar {toUsd|usd} por mês em vez de {fromUsd|usd}.',
+  },
+  NO_AMOUNT_CLOSES: {
+    en: 'No larger amount closes the gap with the dollar-yield tokens you can hold.',
+    pt: 'Nenhum valor maior fecha a diferença com os tokens de renda em dólar que você pode ter.',
   },
 } as const satisfies Record<string, Text>;
 

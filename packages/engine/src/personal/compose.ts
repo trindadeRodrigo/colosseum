@@ -37,6 +37,29 @@ export const PERSONAL_ENGINE_VERSION = 'personal-0.1';
 
 const MONTHS_IN_A_YEAR = 12;
 
+/**
+ * The smallest amount above `from`, in whole steps and within what a sheet allows, for which `meets`
+ * holds; null when even the largest does not. Each candidate is tried, so the answer is one that does.
+ */
+function smallestThatMeets(
+  from: number,
+  step: number,
+  meets: (amountUsd: number) => boolean,
+): number | null {
+  const most = BasketSheet.shape.amountUsd.maxValue ?? from;
+  const top = Math.floor(most / step) * step;
+  if (top <= from || !meets(top)) return null;
+  // More money never pays less, so halve the range: `low` does not meet, `high` does.
+  let low = Math.floor(from / step);
+  let high = top / step;
+  while (high - low > 1) {
+    const middle = Math.floor((low + high) / 2);
+    if (meets(middle * step)) high = middle;
+    else low = middle;
+  }
+  return high * step;
+}
+
 /** JSON with every object's keys in order, so the same value always gives the same text. */
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
@@ -323,25 +346,32 @@ function build(
   const { lines, recipes, sleeves: held } = packageUp(w, book);
   const { card, yearlyLowUsd } = cardOf(w, lines);
 
-  // Income goals: whether the target is met at today's yields after haircut, and each way to close a gap.
+  // Income goals: whether the target is met at today's yields after haircut, and the ways to close a
+  // gap. A way is listed only if it closes the gap: each one is tried by running the engine again.
   let verdict: Verdict | undefined;
   const target = sheet.incomeTargetUsdMonthly;
   if (sheet.goal === 'income' && target !== undefined) {
     if (yearlyLowUsd === null) w.flags.add('income_not_estimated');
     else {
       const monthly = yearlyLowUsd / MONTHS_IN_A_YEAR;
-      const gap = toUsd(Math.max(0, toCents(target) - Math.floor(toCents(monthly))));
+      const gap = toUsd(Math.max(0, toCents(target) - toCents(monthly)));
       const ways: Verdict['ways'] = [];
       if (gap > 0 && withWays) {
-        const most = BasketSheet.shape.amountUsd.maxValue ?? sheet.amountUsd;
-        const more = Math.ceil((sheet.amountUsd * target) / monthly / P.wayStepUsd) * P.wayStepUsd;
-        if (monthly > 0 && more > sheet.amountUsd && more <= most) {
-          const bigger = build({ ...sheet, amountUsd: more }, shelf, context, false);
-          ways.push({
-            change: text('WAY_AMOUNT', { toUsd: more, fromUsd: sheet.amountUsd }, lang),
-            closesGap: bigger.verdict?.met === true,
-          });
-        }
+        const meets = (amountUsd: number) =>
+          build({ ...sheet, amountUsd }, shelf, context, false).verdict?.met === true;
+        const enough = smallestThatMeets(sheet.amountUsd, P.wayStepUsd, meets);
+        ways.push(
+          enough === null
+            ? { change: text('NO_AMOUNT_CLOSES', {}, lang), closesGap: false }
+            : {
+                change: text(
+                  'WAY_AMOUNT',
+                  { addUsd: enough - sheet.amountUsd, toUsd: enough },
+                  lang,
+                ),
+                closesGap: true,
+              },
+        );
         const within = Math.floor(monthly);
         if (within > 0)
           ways.push({

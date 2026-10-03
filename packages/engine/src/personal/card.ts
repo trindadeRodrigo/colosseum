@@ -16,7 +16,10 @@ const twoPlaces = (n: number) => Math.round(n * PERCENT) / PERCENT;
 
 export type Carded = {
   card: BasketCard;
-  /** Dollars a year the dollar-yield part pays after haircut, or null when no yield is read. */
+  /**
+   * Dollars a year the dollar-yield part pays after haircut. Nothing in dollar yield pays nothing:
+   * zero. Null only when the plan holds dollar yield and no yield was read for it.
+   */
   yearlyLowUsd: number | null;
 };
 
@@ -50,11 +53,19 @@ export function cardOf(w: World, lines: BasketLine[]): Carded {
 
   const yieldBps = sum(yielding.map((l) => l.weightBps));
   return {
-    yearlyLowUsd: read.length === 0 ? null : low,
+    yearlyLowUsd: yielding.length > 0 && read.length === 0 ? null : low,
     card: {
       moneyTodayUsd: sheet.amountUsd,
       termMonths: sheet.horizonMonths,
-      cashFlow: sheet.goal === 'income' ? 'monthly' : yieldBps >= P.atEndMinBps ? 'at_end' : 'none',
+      // An income plan pays monthly from its dollar yield. With none, it pays nothing.
+      cashFlow:
+        yieldBps <= 0
+          ? 'none'
+          : sheet.goal === 'income'
+            ? 'monthly'
+            : yieldBps >= P.atEndMinBps
+              ? 'at_end'
+              : 'none',
       expectedReturn: {
         lowPct: twoPlaces((PERCENT * low) / sheet.amountUsd),
         highPct: twoPlaces((PERCENT * high) / sheet.amountUsd),

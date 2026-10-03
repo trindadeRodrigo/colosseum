@@ -315,3 +315,80 @@ describe('what the person already holds', () => {
     expect(line(plan, 'robinhood:nvda')?.amountUsd).toBeLessThan(570);
   });
 });
+
+describe('an income goal: what the verdict says is so', () => {
+  const carla = sheet({
+    goal: 'income',
+    amountUsd: 80_000,
+    horizonMonths: 60,
+    incomeTargetUsdMonthly: 300,
+  });
+  const yields = new Map(fixtureYields().map((y) => [y.assetId, y.haircutYield]));
+  const monthly = (plan: PersonalProposal) =>
+    plan.lines.reduce((n, l) => n + l.amountUsd * (yields.get(l.assetId) ?? 0), 0) / 12;
+
+  it('states the gap to the cent, at the yield after haircut', () => {
+    const plan = compose(carla, shelf, ctx);
+    // $50,000 and $30,000 in the two dollar-yield tokens: $272.63 a month after haircut.
+    expect(monthly(plan)).toBeCloseTo(272.625, 6);
+    expect(plan.verdict?.met).toBe(false);
+    expect(plan.verdict?.gapUsdMonthly).toBe(27.37);
+  });
+
+  it('lists a way only if it closes the gap: the amount it names does, and one step less does not', () => {
+    const plan = compose(carla, shelf, ctx);
+    expect(plan.verdict?.ways).toEqual([
+      { change: 'You can add $10,600, for $90,600 in all.', closesGap: true },
+      { change: 'You can aim for $272 a month instead of $300.', closesGap: true },
+    ]);
+    expect(compose({ ...carla, amountUsd: 90_600 }, shelf, ctx).verdict?.met).toBe(true);
+    expect(compose({ ...carla, amountUsd: 90_500 }, shelf, ctx).verdict?.met).toBe(false);
+    expect(compose({ ...carla, incomeTargetUsdMonthly: 272 }, shelf, ctx).verdict?.met).toBe(true);
+  });
+
+  it('says once that no amount closes the gap, when the tokens that pay are at their limits', () => {
+    // Both dollar-yield tokens of this chain full: about $324 a month at most.
+    const plan = compose({ ...carla, incomeTargetUsdMonthly: 400 }, shelf, ctx);
+    expect(plan.verdict?.ways).toEqual([
+      {
+        change: 'No larger amount closes the gap with the dollar-yield tokens you can hold.',
+        closesGap: false,
+      },
+      { change: 'You can aim for $272 a month instead of $400.', closesGap: true },
+    ]);
+    const most = compose(
+      { ...carla, amountUsd: 1_000_000, incomeTargetUsdMonthly: 400 },
+      shelf,
+      ctx,
+    );
+    expect(most.verdict?.met).toBe(false);
+  });
+
+  it('an income plan that holds nothing in dollar yield pays nothing: not met, the gap is the target, no cash flow', () => {
+    // Base lists no dollar-yield token today.
+    const plan = compose({ ...carla, chains: ['base'] }, shelf, ctx);
+    expect(plan.lines.map((l) => l.assetId)).toEqual(['base:usdc']);
+    expect(plan.card.cashFlow).toBe('none');
+    expect(plan.verdict).toEqual({
+      met: false,
+      gapUsdMonthly: 300,
+      ways: [
+        {
+          change: 'No larger amount closes the gap with the dollar-yield tokens you can hold.',
+          closesGap: false,
+        },
+      ],
+    });
+    // With no target there is no verdict, and still no cash flow to show.
+    const { incomeTargetUsdMonthly: _, ...noTarget } = { ...carla, chains: ['base' as const] };
+    const quiet = compose(noTarget, shelf, ctx);
+    expect(quiet.verdict).toBeUndefined();
+    expect(quiet.card.cashFlow).toBe('none');
+  });
+
+  it('a met target has no gap and no way to list', () => {
+    const plan = compose({ ...carla, incomeTargetUsdMonthly: 200 }, shelf, ctx);
+    expect(plan.verdict).toEqual({ met: true, gapUsdMonthly: 0, ways: [] });
+    expect(plan.card.cashFlow).toBe('monthly');
+  });
+});
