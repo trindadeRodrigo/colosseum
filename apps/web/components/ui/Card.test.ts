@@ -51,12 +51,22 @@ describe('Card (card.md)', () => {
     expect(c.attrs['aria-current']).toBe('page');
   });
 
-  it('when mocked has a hatch band on its edge and the word, and never a hatched body', () => {
+  it('when mocked draws the hatch band on its edge and the word itself, and never a hatched body', () => {
     const { tree, card: c } = root(card.mock);
     expect(all(c, ui('hatch-band'))).toHaveLength(1);
     expect(all(tree, ui('mock-plate'))).toHaveLength(1);
+    expect(text(one(tree, ui('mock-plate')))).toBe('MOCK: sample data, not live');
     expect(classes(c)).not.toContain('tf-hatch');
     expect(all(tree, (e) => classes(e).includes('tf-hatch') && text(e) !== '')).toHaveLength(0);
+    // with nothing inside it but a body, and with nothing at all: the card needs no help
+    for (const node of [card.mockBody, card.mockEmpty]) {
+      const bare = root(node);
+      expect(all(bare.card, ui('hatch-band'))).toHaveLength(1);
+      expect(all(bare.card, ui('mock-plate'))).toHaveLength(1);
+    }
+    // a body alone still has no hairline above it: the plate is not its elder sibling
+    const body = one(root(card.mockBody).tree, ui('card-body'));
+    expect(body.parent?.children[0]).toBe(body);
   });
 
   it('has square corners as a table panel', () => {

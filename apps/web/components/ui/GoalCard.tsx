@@ -1,8 +1,8 @@
 import { useId } from 'react';
 import { Button } from './Button';
 import { cn } from './cn';
+import { HatchBand, MockWord } from './internal/mock-parts';
 import { LatticeStatus } from './Lattice';
-import { HatchBand, MockPlate } from './MockPlate';
 import { ProvenancePin } from './ProvenancePin';
 import type { PinSource } from './provenance';
 import { Status, type StatusKind } from './StatusMark';
@@ -108,7 +108,7 @@ export function GoalCard(props: GoalCardProps) {
               <Status status={props.status.kind}>
                 {props.status.word} · {props.status.date}
               </Status>
-              {mock && <MockPlate announce />}
+              {mock && <MockWord announce />}
             </div>
             {props.reason && <p className="text-body-sm text-foreground">{props.reason}</p>}
             {(props.amount || props.detail) && (
@@ -127,7 +127,7 @@ export function GoalCard(props: GoalCardProps) {
           </>
         )}
 
-        {props.state === 'draft' && mock && <MockPlate announce />}
+        {props.state === 'draft' && mock && <MockWord announce />}
         {header && meta && <p className="text-caption text-muted-foreground">{meta}</p>}
         <Button
           variant="link"

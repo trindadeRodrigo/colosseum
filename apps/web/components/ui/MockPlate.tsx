@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react';
 import { cn } from './cn';
 import { formatAge } from './format';
+import { HatchBand, MOCK_ANNOUNCE, MockWord } from './internal/mock-parts';
 
 // mock-plate.md. MOCK is the hatch and the word, together, every time: a band of 45° hatch beside a
 // solid plate that says MOCK. Text never sits on the hatch. The plate is not interactive and has no
-// states. The `code` placement (an API docs example) is not built: the API serves its own docs.
+// states. Everything exported here is whole: there is no plate without its hatch and no hatch without
+// its word. The `code` placement (an API docs example) is not built: the API serves its own docs.
 
 export type MockPlateLabels = {
   /** Read once per panel by a screen reader, after the word MOCK. */
@@ -13,52 +15,35 @@ export type MockPlateLabels = {
   stale: string;
 };
 export const MOCK_PLATE_LABELS: MockPlateLabels = {
-  announce: ': sample data, not live',
+  announce: MOCK_ANNOUNCE,
   stale: 'stale',
 };
 
-/** The 6px band of hatch: the left edge of a mocked card, row or leg label. Never without a plate. */
-export function HatchBand({ className }: { className?: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      data-ui="hatch-band"
-      className={cn('tf-hatch block w-1.5 shrink-0 self-stretch', className)}
-    />
-  );
-}
-
 export type MockPlateProps = {
-  /**
-   * `inline`: the plate alone, after a figure and its hatched pin.
-   * `badge`: the hatch band, then the plate: a card or pane header.
-   */
-  placement?: 'inline' | 'badge';
-  /** Adds the hidden sentence for screen readers. Once per panel; a `badge` has it unless told not to. */
+  /** The hidden sentence for screen readers. Once per panel: pass false on a second plate in it. */
   announce?: boolean;
   labels?: Partial<MockPlateLabels>;
   className?: string;
 };
 
-/** The word MOCK on its solid plate. There is no way to make it say anything else. */
-export function MockPlate({ placement = 'inline', announce, labels, className }: MockPlateProps) {
-  const say = announce ?? placement === 'badge';
-  const hidden = say && (
-    <span className="sr-only">{labels?.announce ?? MOCK_PLATE_LABELS.announce}</span>
-  );
-  if (placement === 'inline')
-    return (
-      <span data-ui="mock-plate" className={cn('tf-mock-plate align-middle', className)}>
-        MOCK{hidden}
-      </span>
-    );
+/**
+ * The 6px hatch band and, beside it, the word MOCK on its solid plate: for a pane header, a source
+ * line, anywhere a screen has to say that what is beside it is not live. There is no way to make it
+ * say anything else, and no way to have the plate without the band.
+ */
+export function MockPlate({ announce = true, labels, className }: MockPlateProps) {
   return (
     <span
       data-ui="mock-plate"
       className={cn('inline-flex h-5 items-stretch gap-1.5 align-middle', className)}
     >
       <HatchBand />
-      <span className="tf-mock-plate">MOCK{hidden}</span>
+      <span className="tf-mock-plate">
+        MOCK
+        {announce && (
+          <span className="sr-only">{labels?.announce ?? MOCK_PLATE_LABELS.announce}</span>
+        )}
+      </span>
     </span>
   );
 }
@@ -81,7 +66,7 @@ export function MockFrame({ heading, children, labels, className }: MockFramePro
       <div className="bg-card text-card-foreground">
         <div className="flex items-center justify-between gap-4 border-b border-border px-6 py-4">
           <div className="min-w-0 text-h4 font-semibold">{heading}</div>
-          <MockPlate announce labels={labels} />
+          <MockWord announce sentence={labels?.announce} />
         </div>
         <div className="p-6">{children}</div>
       </div>

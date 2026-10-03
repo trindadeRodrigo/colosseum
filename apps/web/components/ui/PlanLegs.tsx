@@ -1,7 +1,7 @@
 import type { AssetKind, Profile } from '@colosseum/schemas';
 import type { CSSProperties } from 'react';
 import { cn } from './cn';
-import { HatchBand, MockPlate } from './MockPlate';
+import { HatchBand, MockWord } from './internal/mock-parts';
 import { ProvenancePin } from './ProvenancePin';
 import { type PinSource, pinState } from './provenance';
 
@@ -181,9 +181,7 @@ export function PlanLegs({
                     </span>
                   )}
                   {sourced && <span>{text.afterHaircut}</span>}
-                  {mock && (leg.rate === null || pinState(leg.rate.obs) !== 'mock') && (
-                    <MockPlate />
-                  )}
+                  {mock && (leg.rate === null || pinState(leg.rate.obs) !== 'mock') && <MockWord />}
                   {sourced && leg.rate?.quoted && (
                     <>
                       <span aria-hidden="true">·</span>

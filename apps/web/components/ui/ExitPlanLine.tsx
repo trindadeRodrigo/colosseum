@@ -2,7 +2,7 @@ import { Fragment, type ReactNode } from 'react';
 import { Card, CardBody, CardHeader } from './Card';
 import { cn } from './cn';
 import { DataTable } from './DataTable';
-import { HatchBand, MockPlate } from './MockPlate';
+import { HatchBand, MockWord } from './internal/mock-parts';
 import { ProvenancePin } from './ProvenancePin';
 import { type PinSource, pinState } from './provenance';
 import { Status, type StatusKind } from './StatusMark';
@@ -136,7 +136,10 @@ export function ExitPlanLine({
             return (
               <Fragment key={tier.text}>
                 <span aria-hidden="true">·</span>
-                <span className={cn('inline-flex items-center gap-2', mock && 'h-5')}>
+                <span
+                  data-mock={mock || undefined}
+                  className={cn('inline-flex items-center gap-2', mock && 'h-5')}
+                >
                   {mock && <HatchBand />}
                   <span>
                     {tier.text}
@@ -152,7 +155,7 @@ export function ExitPlanLine({
                       </>
                     )}
                   </span>
-                  {mock && !plated && <MockPlate />}
+                  {mock && !plated && <MockWord />}
                 </span>
               </Fragment>
             );

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { cn } from './cn';
+import { HatchBand, MockWord } from './internal/mock-parts';
 import { LatticeGlyph, LatticeStatus } from './Lattice';
-import { HatchBand, MockPlate } from './MockPlate';
 
 // card.md. A card is a planed face: lighter than the ground, a hairline edge, no shadow, and at most
 // one serif line. Depth comes from the three layers, never from a shadow. No photograph and no
@@ -26,8 +26,8 @@ export type CardProps = {
   /** Sets `aria-current` on a selected card. */
   current?: 'page' | 'true';
   /**
-   * The data inside is not live: a hatch band runs down the left edge. The word goes with it, always:
-   * set `mock` on the `CardHeader` too, or place a `MockPlate` in the body.
+   * The data inside is not live. The card draws both halves itself: a hatch band down its left edge
+   * and the MOCK plate at its top right, level with the header's title. Nothing else is needed.
    */
   mock?: boolean;
   as?: 'div' | 'section' | 'article' | 'li';
@@ -65,8 +65,21 @@ export function Card({
         className,
       )}
     >
-      {mock && <HatchBand />}
-      {mock ? <div className="min-w-0 flex-1">{children}</div> : children}
+      {mock ? (
+        <>
+          <HatchBand />
+          <div className="min-w-0 flex-1">
+            {/* Floated, so the header sits beside it and a body with no header wraps around it. */}
+            <MockWord
+              announce
+              className={cn('float-right ml-4', density === 'dense' ? 'mt-4.5 mr-4' : 'mt-7 mr-6')}
+            />
+            <div className="contents">{children}</div>
+          </div>
+        </>
+      ) : (
+        children
+      )}
     </Tag>
   );
 }
@@ -77,8 +90,6 @@ export type CardHeaderProps = {
   href?: string;
   /** At the right, in muted caption text. */
   meta?: ReactNode;
-  /** Shows the MOCK plate at the right. */
-  mock?: boolean;
   density?: CardDensity;
   /** The heading level in the page outline. */
   level?: 2 | 3 | 4;
@@ -90,7 +101,6 @@ export function CardHeader({
   title,
   href,
   meta,
-  mock = false,
   density = 'default',
   level = 3,
   id,
@@ -114,12 +124,7 @@ export function CardHeader({
           </a>
         )}
       </Heading>
-      {(meta || mock) && (
-        <div className="flex shrink-0 items-center gap-3 text-caption text-muted-foreground">
-          {meta}
-          {mock && <MockPlate announce />}
-        </div>
-      )}
+      {meta && <div className="shrink-0 text-caption text-muted-foreground">{meta}</div>}
     </div>
   );
 }

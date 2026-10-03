@@ -12,8 +12,10 @@ describe('ConstraintSheet (constraint-sheet.md)', () => {
       expect(text(root)).toContain('“R$ 5.000 por mês a partir de 2029, posso precisar em 7 dias”');
     });
 
-    it('marks a reading that came from a fixture with the MOCK plate', () => {
-      expect(all(root, ui('mock-plate'))).toHaveLength(1);
+    it('marks a reading that came from a fixture with the hatch band and the MOCK plate', () => {
+      const plate = one(root, ui('mock-plate'));
+      expect(all(plate, ui('hatch-band'))).toHaveLength(1);
+      expect(text(plate)).toBe('MOCK: sample data, not live');
     });
 
     it('groups the fields in fieldsets with legends', () => {

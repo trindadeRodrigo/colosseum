@@ -153,10 +153,16 @@ export const card = {
   ),
   mock: (
     <Card mock>
-      <CardHeader title="Sample plan" mock />
+      <CardHeader title="Sample plan" meta="as of 14:02 UTC" />
       <CardBody>body</CardBody>
     </Card>
   ),
+  mockBody: (
+    <Card mock>
+      <CardBody>The feed is not connected.</CardBody>
+    </Card>
+  ),
+  mockEmpty: <Card mock>{null}</Card>,
   table: (
     <Card table>
       <CardBody>table</CardBody>
@@ -226,13 +232,14 @@ export const pin = {
 };
 
 export const mockPlate = {
-  inline: <MockPlate />,
-  badge: <MockPlate placement="badge" />,
-  badgeQuiet: <MockPlate placement="badge" announce={false} />,
+  plate: <MockPlate />,
+  quiet: <MockPlate announce={false} />,
   frame: <MockFrame heading="Sample plan">the body</MockFrame>,
   stale: <StalePlate ageSec={3 * 3600} />,
   // @ts-expect-error the plate takes no text: it says MOCK and nothing else
   reworded: <MockPlate word="LIVE">LIVE</MockPlate>,
+  // @ts-expect-error there is no plate without its hatch band
+  bare: <MockPlate placement="inline" />,
 };
 
 export const disclaimer = {

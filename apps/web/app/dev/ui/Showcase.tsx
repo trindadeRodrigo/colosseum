@@ -100,7 +100,7 @@ function Section({
           <div key={mode} className={`tf-app ${mode} min-w-0 px-6 pt-4 pb-10`}>
             <div className="mb-6 flex items-center justify-between gap-4 border-b border-border pb-2">
               <span className="text-caption font-medium text-muted-foreground">{mode}</span>
-              <MockPlate placement="badge" />
+              <MockPlate />
             </div>
             <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] items-start gap-x-6 gap-y-8">
               {children}
@@ -263,7 +263,7 @@ export function Showcase() {
       <header className="flex flex-col gap-3 px-6 py-10">
         <div className="flex flex-wrap items-center gap-4">
           <h1 className="text-h2 font-semibold">Design system</h1>
-          <MockPlate placement="badge" />
+          <MockPlate />
         </div>
         <p className="max-w-(--tf-measure-body) text-body">
           Every primitive in every state, on paper and on warm black, under the name of its spec.
@@ -506,9 +506,9 @@ export function Showcase() {
             <CardHeader title="Trip fund" meta="March 2029" />
           </Card>
         </Specimen>
-        <Specimen state="MOCK: band on the edge, plate in the header">
+        <Specimen state="MOCK: band on the edge, plate at the top right">
           <Card mock>
-            <CardHeader title="Sample plan" mock />
+            <CardHeader title="Sample plan" meta="as of 14:02 UTC" />
             <CardBody>
               <p className="text-body-sm">The feed is not connected. Shown for layout only.</p>
             </CardBody>
@@ -618,11 +618,13 @@ export function Showcase() {
         title="MOCK plate"
         note="The hatch and the word, together, every time. Text never sits on the hatch."
       >
-        <Specimen state="inline: after a figure">
-          <MockPlate />
+        <Specimen state="inline: after a figure and its hatched pin">
+          <p className="text-h4 font-medium">
+            <ProvenancePin value={FIGURE.rate} obs={MOCK_OBS} />
+          </p>
         </Specimen>
-        <Specimen state="badge: a card or pane header">
-          <MockPlate placement="badge" announce={false} />
+        <Specimen state="badge: the band and the plate, for a pane header or a source line">
+          <MockPlate announce={false} />
         </Specimen>
         <Specimen state="stale plate: a stale panel or tile">
           <StalePlate ageSec={9 * 3600} />

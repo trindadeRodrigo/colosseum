@@ -145,9 +145,12 @@ describe('ExecutionList and ExplorerLink (data-table.md)', () => {
     expect(text(cell)).toBe('9aQ1…Lk7c link unavailable');
   });
 
-  it('puts the MOCK plate on a transaction that is not on mainnet', () => {
-    expect(all(confirmed as never, ui('mock-plate'))).toHaveLength(1);
-    expect(all(failed as never, ui('mock-plate'))).toHaveLength(1);
+  it('puts the hatch band and the MOCK plate on a transaction that is not on mainnet', () => {
+    for (const row of [confirmed, failed]) {
+      expect(all(row as never, ui('mock-plate'))).toHaveLength(1);
+      expect(all(row as never, ui('hatch-band'))).toHaveLength(1);
+      expect((row as { attrs: Record<string, string> }).attrs['data-mock']).toBe('true');
+    }
   });
 
   it('copies the full signature, and announces it', () => {

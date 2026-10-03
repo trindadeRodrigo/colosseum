@@ -13,7 +13,7 @@ import {
 import { cn } from './cn';
 import { formatAge } from './format';
 import { Icon } from './Icon';
-import { MockPlate } from './MockPlate';
+import { MockWord } from './internal/mock-parts';
 import {
   PIN_LABELS,
   type PinLabels,
@@ -283,7 +283,7 @@ export function ProvenancePin({
           {text.stale} · {age.short}
         </span>
       )}
-      {state === 'mock' && <MockPlate className="ml-1.5" />}
+      {state === 'mock' && <MockWord className="ml-1.5" />}
       {open && (
         <Popover ref={panel} id={popover} name={dialog ? text.provenance : null} place={place}>
           <button

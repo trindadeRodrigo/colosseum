@@ -3,20 +3,29 @@ import { mockPlate } from './test/cases';
 import { all, classes, hasClass, one, render, text, ui } from './test/html';
 
 describe('MockPlate (mock-plate.md)', () => {
-  it('always carries the word MOCK, in every placement', () => {
-    expect(text(render(mockPlate.inline))).toBe('MOCK');
-    expect(text(render(mockPlate.badgeQuiet))).toBe('MOCK');
-    expect(text(render(mockPlate.badge))).toContain('MOCK');
+  it('always carries the word MOCK', () => {
+    expect(text(render(mockPlate.quiet))).toBe('MOCK');
+    expect(text(render(mockPlate.plate))).toContain('MOCK');
     expect(text(render(mockPlate.frame))).toContain('MOCK');
+  });
+
+  it('is never a plate without its hatch band, whatever it is handed', () => {
+    // `bare` in test/cases.tsx asks for the plate alone: a type error, and the band is drawn anyway.
+    for (const node of [mockPlate.plate, mockPlate.quiet, mockPlate.bare, mockPlate.reworded]) {
+      const plate = one(render(node), ui('mock-plate'));
+      expect(all(plate, ui('hatch-band'))).toHaveLength(1);
+      expect(all(plate, (el) => hasClass(el, 'tf-mock-plate'))).toHaveLength(1);
+    }
   });
 
   it('cannot be made to say anything else', () => {
     // `reworded` in test/cases.tsx is a type error, and the props are ignored if forced through.
-    expect(text(render(mockPlate.reworded))).toBe('MOCK');
+    expect(text(render(mockPlate.reworded))).toBe('MOCK: sample data, not live');
+    expect(text(render(mockPlate.reworded))).not.toContain('LIVE');
   });
 
   it('puts the word on a solid plate beside the hatch, never on it', () => {
-    const badge = render(mockPlate.badge);
+    const badge = render(mockPlate.plate);
     const hatch = one(badge, (el) => hasClass(el, 'tf-hatch'), 'hatch');
     expect(text(hatch)).toBe('');
     expect(hatch.attrs['aria-hidden']).toBe('true');
@@ -27,14 +36,14 @@ describe('MockPlate (mock-plate.md)', () => {
   });
 
   it('is not interactive', () => {
-    for (const node of [mockPlate.inline, mockPlate.badge, mockPlate.frame])
+    for (const node of [mockPlate.plate, mockPlate.quiet, mockPlate.frame])
       expect(all(render(node), (el) => el.tag === 'button' || el.tag === 'a')).toHaveLength(0);
   });
 
   it('tells a screen reader once per panel that the data is a sample', () => {
-    expect(text(render(mockPlate.badge))).toBe('MOCK: sample data, not live');
+    expect(text(render(mockPlate.plate))).toBe('MOCK: sample data, not live');
     expect(all(render(mockPlate.frame), (el) => hasClass(el, 'sr-only'))).toHaveLength(1);
-    expect(all(render(mockPlate.inline), (el) => hasClass(el, 'sr-only'))).toHaveLength(0);
+    expect(all(render(mockPlate.quiet), (el) => hasClass(el, 'sr-only'))).toHaveLength(0);
   });
 
   it('frames a mocked panel: hatch in an 8px margin, everything on a solid surface inside', () => {

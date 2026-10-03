@@ -3,7 +3,7 @@ import { CopyButton } from './CopyButton';
 import { cn } from './cn';
 import { ExplorerLink, type ExplorerLinkLabels } from './ExplorerLink';
 import { isoUtc } from './format';
-import { MockPlate } from './MockPlate';
+import { HatchBand, MockWord } from './internal/mock-parts';
 import { StatusMark } from './StatusMark';
 
 // data-table.md, "Execution list". One line per execution, shared by the plan view and the monitor.
@@ -67,44 +67,55 @@ export function ExecutionList({ executions, labels, className }: ExecutionListPr
   };
   return (
     <ul data-ui="execution-list" className={cn('divide-y divide-border', className)}>
-      {executions.map((e) => (
-        <li
-          key={e.id}
-          data-status={e.status}
-          className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2 text-body-sm"
-        >
-          <span className="font-medium">{e.verb}</span>
-          <span className="tabular-nums">{e.detail}</span>
-          <span aria-hidden="true">·</span>
-          {e.status === 'failed' ? (
-            <span className="inline-flex items-center gap-1.5 text-status-off">
-              <StatusMark status="off-track" />
-              <span>
-                {text.status.failed}
-                {e.error ? `: ${e.error}` : ''} {text.notRetried}
+      {executions.map((e) => {
+        const mock = e.provenance !== 'live';
+        return (
+          <li
+            key={e.id}
+            data-status={e.status}
+            data-mock={mock || undefined}
+            className={cn(
+              'relative flex flex-wrap items-center gap-x-2 gap-y-1 py-2 text-body-sm',
+              mock && 'pl-4.5',
+            )}
+          >
+            {mock && <HatchBand className="absolute inset-y-0 left-0" />}
+            <span className="font-medium">{e.verb}</span>
+            <span className="tabular-nums">{e.detail}</span>
+            <span aria-hidden="true">·</span>
+            {e.status === 'failed' ? (
+              <span className="inline-flex items-center gap-1.5 text-status-off">
+                <StatusMark status="off-track" />
+                <span>
+                  {text.status.failed}
+                  {e.error ? `: ${e.error}` : ''} {text.notRetried}
+                </span>
               </span>
-            </span>
-          ) : (
-            <span>{text.status[e.status]}</span>
-          )}
-          <span aria-hidden="true">·</span>
-          <time dateTime={isoUtc(e.at) ?? undefined} className="tabular-nums text-muted-foreground">
-            {utcMinute(e.at)}
-          </time>
-          {e.provenance !== 'live' && <MockPlate />}
-          {e.signature && (
-            <span className="ml-auto inline-flex items-center gap-2">
-              <ExplorerLink
-                signature={e.signature}
-                href={e.explorerUrl}
-                explorer={e.explorer}
-                labels={text.link}
-              />
-              <CopyButton value={e.signature} what={text.signature} />
-            </span>
-          )}
-        </li>
-      ))}
+            ) : (
+              <span>{text.status[e.status]}</span>
+            )}
+            <span aria-hidden="true">·</span>
+            <time
+              dateTime={isoUtc(e.at) ?? undefined}
+              className="tabular-nums text-muted-foreground"
+            >
+              {utcMinute(e.at)}
+            </time>
+            {mock && <MockWord />}
+            {e.signature && (
+              <span className="ml-auto inline-flex items-center gap-2">
+                <ExplorerLink
+                  signature={e.signature}
+                  href={e.explorerUrl}
+                  explorer={e.explorer}
+                  labels={text.link}
+                />
+                <CopyButton value={e.signature} what={text.signature} />
+              </span>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }

@@ -1,6 +1,6 @@
 import { type ReactNode, useId } from 'react';
 import { cn } from './cn';
-import { MockPlate } from './MockPlate';
+import { MockWord } from './internal/mock-parts';
 import { Status, type StatusKind, statusTint } from './StatusMark';
 
 // data-table.md. A financial table: a caption, scoped headers, figures in the mono face on the right,
@@ -158,7 +158,7 @@ export function DataTable<Row>({
                           />
                         )}
                         {column.cell(row)}
-                        {first && mock && <MockPlate className="ml-2" />}
+                        {first && mock && <MockWord className="ml-2" />}
                       </>
                     );
                     const classes = cn(cellClass(column), first && mock && 'relative pl-4.5');
@@ -206,7 +206,7 @@ export function DataTable<Row>({
                   )}
                   <p className="flex flex-wrap items-center gap-2 text-body-sm font-medium">
                     {head?.cell(row)}
-                    {mock && <MockPlate />}
+                    {mock && <MockWord />}
                   </p>
                   <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-body-sm">
                     {columns

@@ -157,7 +157,7 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
               {source.model ? ` (${source.model})` : ''}
               {when ? ` · ${when}` : ''}
             </span>
-            {source.provenance !== 'live' && <MockPlate announce />}
+            {source.provenance !== 'live' && <MockPlate />}
           </p>
         )}
       </div>
