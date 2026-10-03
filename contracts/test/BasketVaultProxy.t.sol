@@ -87,13 +87,22 @@ contract BasketVaultProxyTest is VaultFixture {
         vm.stopPrank();
     }
 
+    /// The vault does not inherit `IBasketVault` until it implements all of it, so the compiler does not hold
+    /// the two to each other. This does, for everything built so far.
     function test_selectors_matchSection38() public pure {
+        assertEq(BasketVault.initialize.selector, IBasketVault.initialize.selector);
+        assertEq(BasketVault.start.selector, IBasketVault.start.selector);
         assertEq(BasketVault.deposit.selector, IBasketVault.deposit.selector);
         assertEq(BasketVault.withdraw.selector, IBasketVault.withdraw.selector);
         assertEq(BasketVault.withdrawAll.selector, IBasketVault.withdrawAll.selector);
+        assertEq(BasketVault.ownerSwap.selector, IBasketVault.ownerSwap.selector);
+        assertEq(BasketVault.setTargets.selector, IBasketVault.setTargets.selector);
+        assertEq(bytes4(keccak256("multicall(bytes[])")), IBasketVault.multicall.selector);
         assertEq(BasketVault.owner.selector, IBasketVault.owner.selector);
         assertEq(BasketVault.planId.selector, IBasketVault.planId.selector);
         assertEq(BasketVault.config.selector, IBasketVault.config.selector);
         assertEq(BasketVault.tokens.selector, IBasketVault.tokens.selector);
+        assertEq(BasketVault.targets.selector, IBasketVault.targets.selector);
+        assertEq(BasketVault.following.selector, IBasketVault.following.selector);
     }
 }
