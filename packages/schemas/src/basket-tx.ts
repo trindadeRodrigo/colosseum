@@ -40,12 +40,17 @@ export const TxPreview = Sourced.extend({
     z.object({ holder: z.enum(['wallet', 'vault']), asset: AssetId, deltaRaw: RawDelta }),
   ),
   /**
-   * One entry per trade the transaction makes, in the order it makes them, with the amounts that are
-   * in its bytes. An adapter always states it, empty for a transaction that trades nothing, so the
-   * guard can hold the bytes to what the review screen showed (`Leg.expected[i].minOutRaw`). Absent
-   * only on a transaction no adapter built.
+   * One entry per trade whose minimum is in the transaction's bytes, in the order the transaction
+   * makes them, with the amounts as the bytes carry them. Always stated: a transaction that trades
+   * nothing states an empty list. The guard holds the bytes to it, and to what the review screen
+   * showed (`Leg.expected[i].minOutRaw`).
+   *
+   * An owner's trade always carries its minimum. A keeper leg states one only where its bytes carry
+   * one: EVM's `keeperSwap` takes `minOut` in its call data, so the list has that entry; Solana's
+   * `keeper_leg` takes an amount in and nothing else, the program works the minimum out from the
+   * reference price, and the list is empty.
    */
-  minimums: z.array(TradeMinimum).optional(),
+  minimums: z.array(TradeMinimum),
 });
 export type TxPreview = z.infer<typeof TxPreview>;
 
@@ -111,7 +116,7 @@ function checkTx(tx: TxFields, ctx: z.RefinementCtx) {
   if (!tx.preview.changes.every((c) => c.asset.startsWith(`${tx.chainId}:`)))
     fail('preview', "every change is in an asset of the tx's chain");
   const onChain = (asset: string) => asset.startsWith(`${tx.chainId}:`);
-  if (!(tx.preview.minimums ?? []).every((m) => onChain(m.sell) && onChain(m.buy)))
+  if (!tx.preview.minimums.every((m) => onChain(m.sell) && onChain(m.buy)))
     fail('preview', "every trade is in assets of the tx's chain");
 }
 

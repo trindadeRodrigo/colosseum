@@ -93,13 +93,26 @@ const FAULTS: { fault: string; wrap: Wrap; caught: string[]; chains?: MockChain[
     caught: ['previews a deposit as cash leaving the wallet for the vault, and nothing else'],
   },
   {
+    fault: 'states a minimum for a keeper leg whose bytes carry none, or none where they carry one',
+    wrap: (real, f) => ({
+      buildKeeperLeg: async (vault, trade) => {
+        const tx = await real.buildKeeperLeg(vault, trade);
+        const stated = tx.preview.minimums.length
+          ? []
+          : [{ sell: trade.sell, buy: trade.buy, inRaw: trade.amountInRaw, minOutRaw: '1' }];
+        return vault === f.vault ? { ...tx, preview: { ...tx.preview, minimums: stated } } : tx;
+      },
+    }),
+    caught: ['a keeper trade moves the vault toward its target and stamps the asset'],
+  },
+  {
     fault: 'accepts any output: every minimum is zero',
     wrap: (real) =>
       spoilTx(real, (tx) => ({
         ...tx,
         preview: {
           ...tx.preview,
-          minimums: tx.preview.minimums?.map((m) => ({ ...m, minOutRaw: '0' })),
+          minimums: tx.preview.minimums.map((m) => ({ ...m, minOutRaw: '0' })),
         },
       })),
     caught: ['states the least each trade accepts, one entry per trade and in their order'],

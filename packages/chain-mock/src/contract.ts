@@ -181,8 +181,6 @@ function checkTx(c: Ctx, tx: BuiltTx, kind: LegKind, signer: Address) {
   expect(tx.provenance).toBe(c.f.provenance);
   expect(tx.preview.provenance).toBe(c.f.provenance);
   expect(tx.preview.simulated).toBe(true);
-  // An adapter always says what its trades accept at the least: nothing, for a step that trades nothing.
-  expect(tx.preview.minimums, 'the preview states its trades').toBeDefined();
   expect(tx.preview.fetchedAt >= c.f.notBefore).toBe(true);
   expect(BigInt(tx.preview.feeNativeRaw)).toBeGreaterThan(0n);
   expect(tx.description.length).toBeGreaterThan(0);
@@ -569,7 +567,7 @@ group('builds', {
     checkTx(c, tx, 'create_vault', c.f.owner);
     expect(delta(tx, 'vault', first.asset)).toBeGreaterThan(0n);
     expect(delta(tx, 'vault', c.cash.id)).toBe(0n);
-    expect(tx.preview.minimums?.map((m) => [m.sell, m.buy, m.inRaw])).toEqual([
+    expect(tx.preview.minimums.map((m) => [m.sell, m.buy, m.inRaw])).toEqual([
       [c.cash.id, first.asset, c.f.depositRaw],
     ]);
   },
@@ -606,7 +604,7 @@ group('builds', {
     const trades = c.a.capabilities.maxTradesPerTx > 1 ? [half, half] : [c.f.ownerTrade];
     const slippageBps = 100;
     const tx = await c.a.buildOwnerSwap({ vault: c.f.vault, trades, slippageBps });
-    const minimums = tx.preview.minimums ?? [];
+    const { minimums } = tx.preview;
     expect(minimums.map((m) => [m.sell, m.buy, m.inRaw])).toEqual(
       trades.map((t) => [t.sell, t.buy, t.amountInRaw]),
     );
@@ -618,7 +616,7 @@ group('builds', {
     expect(least).toBeGreaterThanOrEqual((out * BigInt(10_000 - 2 * slippageBps)) / 10_000n);
     // A tighter slippage is a higher floor.
     const tight = await c.a.buildOwnerSwap({ vault: c.f.vault, trades, slippageBps: 0 });
-    const tightLeast = (tight.preview.minimums ?? []).reduce((n, m) => n + BigInt(m.minOutRaw), 0n);
+    const tightLeast = tight.preview.minimums.reduce((n, m) => n + BigInt(m.minOutRaw), 0n);
     expect(tightLeast).toBeGreaterThan(least);
   },
 
@@ -962,6 +960,14 @@ group('state after a transaction lands', {
     const before = await vaultAt(c, c.f.vault);
     const tx = await c.a.buildKeeperLeg(c.f.vault, c.f.keeperTrade);
     checkTx(c, tx, 'keeper_leg', c.keeper);
+    // A keeper leg states a minimum only where its bytes carry one: EVM's keeperSwap takes minOut,
+    // Solana's keeper_leg takes none and the program works it out.
+    if (chainFamily(c.a.chain) === 'evm') {
+      expect(tx.preview.minimums.map((m) => [m.sell, m.buy, m.inRaw])).toEqual([
+        [sell, buy, amountInRaw],
+      ]);
+      expect(BigInt(tx.preview.minimums[0]?.minOutRaw ?? 0)).toBeGreaterThan(0n);
+    } else expect(tx.preview.minimums).toEqual([]);
     await land(c, tx);
     const after = await vaultAt(c, c.f.vault);
     expect(held(before, sell) - held(after, sell)).toBe(BigInt(amountInRaw));

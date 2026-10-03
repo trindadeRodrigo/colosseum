@@ -645,10 +645,17 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
   const evmTarget = (op: Op, vault: Address | undefined) =>
     op.kind === 'approve' ? asset(cash).address : (vault ?? factory);
   /**
-   * The slippage a transaction's trades were built with. A keeper trade has none of its own: the vault
-   * holds it to the reference price, which the mock always trades at.
+   * Whether a transaction's bytes carry a minimum for each of its trades. An owner's always do. A
+   * keeper leg's do on an EVM chain, where `keeperSwap` takes `minOut`; on Solana `keeper_leg` takes
+   * none, and the vault holds the trade to the reference price, which the mock always trades at.
    */
-  const slippageOf = (op: Op) => ('slippageBps' in op.a ? op.a.slippageBps : 10_000);
+  const carriesMinimums = (op: Op) => op.kind !== 'keeper_leg' || family === 'evm';
+  /**
+   * The slippage a transaction's trades are built with: the caller's for an owner's trade, the
+   * adapter's own for a keeper leg that carries a minimum, and none where the bytes carry no minimum.
+   */
+  const slippageOf = (op: Op) =>
+    'slippageBps' in op.a ? op.a.slippageBps : carriesMinimums(op) ? QUOTE_SLIPPAGE_BPS : 10_000;
   /** The trades a transaction makes, in the order it makes them. */
   const tradesOf = (op: Op): Trade[] =>
     op.kind === 'keeper_leg' ? [op.a.trade] : 'trades' in op.a ? (op.a.trades ?? []) : [];
@@ -715,13 +722,16 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
     const slippage = slippageOf(op);
     const mins = run.outs.map((out) => lessBps(out, slippage));
     built.set(messageHash, { op, signer, validUntil, txId: mockTxId(chain, messageHash), mins });
-    // The trades as the transaction makes them, each with the floor the send holds it to.
-    const minimums = tradesOf(op).map((t, i) => ({
-      sell: t.sell,
-      buy: t.buy,
-      inRaw: t.amountInRaw,
-      minOutRaw: (mins[i] ?? 0n).toString(),
-    }));
+    // The trades as the transaction makes them, each with the floor the send holds it to. Nothing is
+    // stated where the bytes carry no minimum.
+    const minimums = carriesMinimums(op)
+      ? tradesOf(op).map((t, i) => ({
+          sell: t.sell,
+          buy: t.buy,
+          inRaw: t.amountInRaw,
+          minOutRaw: (mins[i] ?? 0n).toString(),
+        }))
+      : [];
     return {
       chain: family,
       payload,

@@ -328,8 +328,10 @@ const BuiltTx = UnsignedTx.omit({ kind: true, legAssetId: true, executionId: tru
   preview });                                          // Sourced & { summary, simulated, feeNativeRaw,
                                                        //   changes: { holder: 'wallet' | 'vault', asset, deltaRaw }[],
                                                        //   minimums: { sell, buy, inRaw, minOutRaw }[] }
-                                                       // minimums: one per trade, in order, as in the bytes;
-                                                       // an adapter always states it, empty for no trade
+                                                       // minimums: required. One per trade whose minimum is
+                                                       // in the bytes, in order; empty for no trade. A keeper
+                                                       // leg states one on EVM (keeperSwap carries minOut)
+                                                       // and none on Solana (keeper_leg carries none)
 const BasketTx = BuiltTx.extend({ legId, attemptId });  // strings, stamped by the API or the keeper (stampTx).
                                                        // The wallet, the web and the guard take only this.
 // Both check their fields against each other: `evm` on an EVM chain and nowhere else, lastValidBlockHeight
@@ -722,7 +724,7 @@ Units: weights are integer basis points; token amounts are raw units in `numeric
 
 **The owner can always** deposit cash, swap with their own signature and slippage through an allowed router, set targets, switch auto-follow, and withdraw every token in kind to their own wallet. Withdrawal is per token and calls no router, feed, factory or registry. Only a program or beacon upgrade can block it. Owner trades are allowed at any hour; outside the session the app shows a warning.
 
-**The keeper can call one function,** and the vault checks each call. Starting values are not yet calibrated.
+**The keeper can call one function,** and the vault checks each call. Starting values are not yet calibrated. What a keeper leg's preview states follows its bytes: on EVM `keeperSwap` carries `minOut`, so `preview.minimums` has that one entry and the send is held to it; on Solana `keeper_leg` carries an amount in and no minimum, the program works one out from the reference price (check 4), and the list is empty.
 
 | # | Check | Solana | EVM | Parameter, start |
 |---|---|---|---|---|

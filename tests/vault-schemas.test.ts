@@ -222,6 +222,7 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
       simulated: true,
       feeNativeRaw: '5000',
       changes: [{ holder: 'wallet', asset: 'solana:usdc', deltaRaw: '-1000000' }],
+      minimums: [],
     },
   } as const;
 
@@ -357,8 +358,14 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
     const floor = { sell: 'solana:usdc', buy: 'solana:spyx', inRaw: '1000000', minOutRaw: '990' };
     const swap = { ...built, legKind: 'swap', preview: { ...built.preview, minimums: [floor] } };
     expect(BuiltTx.parse(swap).preview.minimums).toEqual([floor]);
-    // Left out by a transaction no adapter built; an adapter always states it.
-    expect(BuiltTx.parse(built).preview.minimums).toBeUndefined();
+    // A transaction that trades nothing says so with an empty list. Leaving the field out is refused:
+    // a preview that is silent about its trades cannot be held to its bytes.
+    expect(BuiltTx.parse(built).preview.minimums).toEqual([]);
+    const { minimums: _, ...silent } = built.preview;
+    expect(BuiltTx.safeParse({ ...built, preview: silent }).success).toBe(false);
+    expect(
+      BasketTx.safeParse({ ...built, legId: 'l', attemptId: 'a', preview: silent }).success,
+    ).toBe(false);
     const bad = [
       { ...floor, buy: 'solana:usdc' }, // one asset on both sides
       { ...floor, buy: 'base:spy' }, // another chain's asset

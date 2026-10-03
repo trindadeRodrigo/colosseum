@@ -280,20 +280,18 @@ export async function buildLeg(
     throw new Error('the adapter built a transaction for another signer, chain or step');
   // And only for the leg's own trades. The minimum a person is shown is the one the adapter put in the
   // bytes, which it states per trade: the leg takes it from there, not from the quote beside it.
-  const minimums = built.preview.minimums;
-  if (minimums) {
-    const same =
-      minimums.length === leg.trades.length &&
-      minimums.every((m, i) => {
-        const t = leg.trades[i];
-        return t && m.sell === t.sell && m.buy === t.buy && m.inRaw === t.amountInRaw;
-      });
-    if (!same) throw new Error('the adapter built other trades than the step has');
-    expected = expected.map((figure, i) => ({
-      ...figure,
-      minOutRaw: minimums[i]?.minOutRaw ?? figure.minOutRaw,
-    }));
-  }
+  const { minimums } = built.preview;
+  const same =
+    minimums.length === leg.trades.length &&
+    minimums.every((m, i) => {
+      const t = leg.trades[i];
+      return t && m.sell === t.sell && m.buy === t.buy && m.inRaw === t.amountInRaw;
+    });
+  if (!same) throw new Error('the adapter built other trades than the step has');
+  expected = expected.map((figure, i) => ({
+    ...figure,
+    minOutRaw: minimums[i]?.minOutRaw ?? figure.minOutRaw,
+  }));
 
   const attempt = await recordBuild(deps.db, leg, {
     messageHash: built.messageHash,

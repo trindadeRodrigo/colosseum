@@ -678,6 +678,34 @@ describe('chain-mock', () => {
     expect(wide.mock.bandBps).toBe(300);
   });
 
+  it('states a minimum for a keeper leg only where the bytes carry one: on EVM, not on Solana', async () => {
+    // Solana's keeper_leg takes an amount in and no minimum: the program works one out from the
+    // reference price. The preview states none, and the send is held to none.
+    const solana = await mockFixture('solana');
+    const leg = await solana.adapter.buildKeeperLeg(solana.vault, solana.keeperTrade);
+    expect(leg.preview.minimums).toEqual([]);
+    // EVM's keeperSwap carries minOut in its call data: the preview states it, and the send holds to it.
+    const evm = await mockFixture('robinhood');
+    const swap = await evm.adapter.buildKeeperLeg(evm.vault, evm.keeperTrade);
+    const { sell, buy, amountInRaw } = evm.keeperTrade;
+    const quote = await evm.adapter.quote(evm.keeperTrade, evm.owner);
+    expect(swap.preview.minimums).toEqual([
+      { sell, buy, inRaw: amountInRaw, minOutRaw: quote.minOutRaw },
+    ]);
+    expect(BigInt(quote.minOutRaw)).toBeGreaterThan(0n);
+    // The price moves a tenth, past the minimum, before the leg is sent: the leg reverts.
+    evm.adapter.mock.setPrice(buy, '55');
+    const { txId } = await evm.adapter.mock.send(swap);
+    expect(await evm.adapter.track(txId)).toMatchObject({
+      status: 'reverted',
+      error: { code: 'ReceivedTooLittle' },
+    });
+    // On Solana the same move does not: nothing in the bytes says a minimum.
+    solana.adapter.mock.setPrice(buy.replace('robinhood', 'solana'), '55');
+    const sent = await solana.adapter.mock.send(leg);
+    expect((await solana.adapter.track(sent.txId)).status).toBe('confirmed');
+  });
+
   it('stops the keeper at the target, and outside the stock session', async () => {
     const f = await mockFixture('solana');
     const { adapter } = f;
