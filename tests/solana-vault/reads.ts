@@ -1,7 +1,8 @@
 import { displayAmount } from '@colosseum/chain-mock';
+import { adapterContract, type ReadsFixture } from '@colosseum/chain-mock/contract';
 import type { SolanaVaultReader } from '@colosseum/chain-solana/vault';
 import {
-  BasketAsset,
+  type BasketAsset,
   Capabilities,
   ChainError,
   type ChainErrorCode,
@@ -16,13 +17,17 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import type { z } from 'zod';
 import { assetId, type MintName, type VaultName, type World } from './world';
 
-// The read cases of the adapter contract (packages/chain-mock/src/contract.ts, group "reads"), as far as
-// the program supports them today, against the world programs/tests builds. The same cases run on the
+// The Solana reader against the world programs/tests builds, twice over. The same cases run on the
 // committed account bytes behind a node in memory, and on a local validator.
 //
-// What the contract's own function needs and this world cannot give yet is in the last case: a shared
-// portfolio to follow. `adapterContract()` reads one before its first case, so it cannot start until
-// SOL-2 puts the registry on chain and ADS-2 builds the transactions that set its fixture up.
+// First the adapter contract's own `reads` group (packages/chain-mock/src/contract.ts), the cases every
+// adapter is held to. It asks for a reader and nothing else, and reads no shared portfolio, so it runs
+// today. Then what this reader shows beyond the contract: the exact balances, targets and prices of the
+// world, both token programs, a landed and a reverted transaction, and what it refuses.
+//
+// The contract's other groups wait for the chain: `shared portfolios` for the registry (SOL-2), `quotes`
+// and every group that builds for the swap and the builders (SOL-2, ADS-2). The last case here pins
+// what the reader answers until then.
 
 export type ReadSetup = {
   reader: SolanaVaultReader;
@@ -59,8 +64,33 @@ async function refuses(work: Promise<unknown>, code: ChainErrorCode): Promise<Ch
   return outcome as ChainError;
 }
 
+/** The world as the contract's `reads` group asks for it: the owner's three vaults and two wallets. */
+export function readsFixture(s: ReadSetup): ReadsFixture {
+  const { names } = s.world;
+  return {
+    adapter: s.reader,
+    provenance: s.provenance,
+    notBefore: s.notBefore,
+    owner: names.owner,
+    stranger: names.stranger,
+    // Auto-follow on, cash and two positions held.
+    vault: names.vaults.following,
+    // Its own targets, auto-follow off.
+    manualVault: names.vaults.manual,
+    // Auto-follow on, cash only, and targets that leave three quarters in cash.
+    newAssetVault: names.vaults.partial,
+    // The owner's wallet holds 3,400 of the cash token: more than twice this.
+    depositRaw: '1000000000',
+    unknownTxId: s.unknownTxId,
+  };
+}
+
 export function readCases(name: string, setup: () => Promise<ReadSetup>): void {
-  describe(`Solana reader: ${name}`, () => {
+  adapterContract(`the Solana reader, ${name}`, async () => readsFixture(await setup()), {
+    groups: ['reads'],
+  });
+
+  describe(`Solana reader, beyond the contract: ${name}`, () => {
     let s: ReadSetup;
     let assets: BasketAsset[];
     const vaultOf = async (vault: VaultName) => {
@@ -84,18 +114,6 @@ export function readCases(name: string, setup: () => Promise<ReadSetup>): void {
       });
       expect(s.reader.provenance).toBe(s.provenance);
       expect(s.reader.program).toBe(s.world.names.program);
-    });
-
-    it('lists its assets: unique ids on its own chain, exactly one cash token', () => {
-      expect(assets.length).toBeGreaterThan(1);
-      for (const x of assets) {
-        exact(BasketAsset, x);
-        expect(x.chain).toBe('solana');
-        expect(x.provenance).toBe(s.provenance);
-      }
-      expect(new Set(assets.map((x) => x.id)).size).toBe(assets.length);
-      expect(new Set(assets.map((x) => x.address)).size).toBe(assets.length);
-      expect(assets.filter((x) => x.cls === 'cash')).toHaveLength(1);
     });
 
     it('prices what it is asked for, once each, and every asset that has a price source', async () => {

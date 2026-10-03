@@ -1,6 +1,6 @@
-import { type BuiltTx, type ChainAdapter, ChainError } from '@colosseum/schemas';
+import { type BuiltTx, type ChainAdapter, ChainError, type ChainReader } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
-import { type ContractFixture, runContract } from './contract';
+import { CONTRACT_GROUPS, type ContractFixture, type ReadsFixture, runContract } from './contract';
 import { mockFixture } from './fixture';
 
 // The contract is only worth running if a wrong adapter fails it. Each adapter below is the mock with
@@ -177,7 +177,7 @@ const FAULTS: { fault: string; wrap: Wrap; caught: string[]; chains?: MockChain[
     wrap: (real, f) => ({
       listAutoFollowVaults: async (id) => [...(await real.listAutoFollowVaults(id)), f.manualVault],
     }),
-    caught: ['lists exactly the vaults with auto-follow on, and filters them by recipe'],
+    caught: ['lists exactly the vaults with auto-follow on'],
   },
   {
     fault: 'never sees a transaction land',
@@ -394,6 +394,100 @@ describe('the adapter contract fails a wrong adapter', () => {
         expect(await failures(chain, wrap)).toEqual(expect.arrayContaining(caught));
     });
 
+  it('runs the groups it is asked for, and reads no shared portfolio for the ones that need none', async () => {
+    expect(CONTRACT_GROUPS).toEqual([
+      'reads',
+      'shared portfolios',
+      'quotes',
+      'builds',
+      'refusals',
+      'signed bytes',
+      'state after a transaction lands',
+    ]);
+    const all = await runContract(() => mockFixture('solana'));
+    const reads = await runContract(() => mockFixture('solana'), { groups: ['reads'] });
+    expect(reads.length).toBeGreaterThan(8);
+    expect(reads.length).toBeLessThan(all.length);
+    expect(reads.every((r) => r.passed)).toBe(true);
+    expect(all.slice(0, reads.length).map((r) => r.name)).toEqual(reads.map((r) => r.name));
+    // Every case is in exactly one group, and the groups together are the whole contract.
+    let total = 0;
+    for (const group of CONTRACT_GROUPS)
+      total += (await runContract(() => mockFixture('solana'), { groups: [group] })).length;
+    expect(total).toBe(all.length);
+    await expect(
+      runContract(() => mockFixture('solana'), { groups: ['read' as 'reads'] }),
+    ).rejects.toThrow(/no group called read/);
+
+    // An adapter whose registry is not there yet: the reads and the quotes still run and pass.
+    const noRegistry: Wrap = () => ({
+      getRecipe: async () => {
+        throw new ChainError('NotSupported', 'shared portfolios are not on chain yet');
+      },
+    });
+    for (const groups of [['reads'], ['quotes'], ['reads', 'quotes']] as const) {
+      const results = await runContract(
+        async () => {
+          const f = await mockFixture('robinhood');
+          return { ...f, adapter: { ...f.adapter, ...noRegistry(f.adapter, f) } as ChainAdapter };
+        },
+        { groups: [...groups] },
+      );
+      expect(results.filter((r) => !r.passed)).toEqual([]);
+    }
+    // With a group that needs one, the same adapter cannot even start.
+    await expect(
+      runContract(
+        async () => {
+          const f = await mockFixture('robinhood');
+          return { ...f, adapter: { ...f.adapter, ...noRegistry(f.adapter, f) } as ChainAdapter };
+        },
+        { groups: ['shared portfolios'] },
+      ),
+    ).rejects.toThrow(/not on chain yet/);
+  });
+
+  it('runs the reads on an adapter that has only its read side', async () => {
+    const f = await mockFixture('solana');
+    const a = f.adapter;
+    // Ten read calls and nothing else: no builder, no relay, and no registry or quote behind them.
+    const refuse = async (): Promise<never> => {
+      throw new ChainError('NotSupported', 'not on chain yet');
+    };
+    const reader: ChainReader = {
+      chain: a.chain,
+      capabilities: { ...a.capabilities, trade: 'readonly' },
+      provenance: a.provenance,
+      listAssets: a.listAssets,
+      getPrices: a.getPrices,
+      getVaults: a.getVaults,
+      getVault: a.getVault,
+      listAutoFollowVaults: a.listAutoFollowVaults,
+      getRecipe: refuse,
+      getWalletHoldings: a.getWalletHoldings,
+      funding: a.funding,
+      quote: refuse,
+      track: a.track,
+    };
+    const results = await runContract(
+      (): ReadsFixture => ({
+        adapter: reader,
+        provenance: f.provenance,
+        notBefore: f.notBefore,
+        owner: f.owner,
+        stranger: f.stranger,
+        vault: f.vault,
+        manualVault: f.manualVault,
+        newAssetVault: f.newAssetVault,
+        depositRaw: f.depositRaw,
+        unknownTxId: f.unknownTxId,
+      }),
+      { groups: ['reads'] },
+    );
+    expect(results.filter((r) => !r.passed)).toEqual([]);
+    expect(results.length).toBeGreaterThan(8);
+  });
+
   it('catches the adapter the review of FRAME-1 wrote, which passed every case before', async () => {
     // Garbage bytes and one hash for every transaction, nothing simulated, no chain fields, quotes with
     // no floor, prices of nothing, free gas, a transaction that never lands, and builders that ignore
@@ -423,7 +517,7 @@ describe('the adapter contract fails a wrong adapter', () => {
       expect(failed).toEqual(
         expect.arrayContaining([
           'prices what it is asked for, once each, freshly, and every asset that has a price source',
-          'lists exactly the vaults with auto-follow on, and filters them by recipe',
+          'lists exactly the vaults with auto-follow on',
           'says whether a wallet can pay: cash and gas, and ok only when both are there',
           'quotes a trade: the same trade back, a floor under the output, a cost in range',
           'builds a different transaction, with a different hash, for every different step',

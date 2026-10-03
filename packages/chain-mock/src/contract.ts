@@ -8,6 +8,7 @@ import {
   ChainError,
   type ChainErrorCode,
   ChainId,
+  type ChainReader,
   chainFamily,
   Funding,
   Holding,
@@ -33,12 +34,73 @@ import { displayAmount } from './amounts';
 //   adapterContract('solana, local fork', async () => ({ adapter, send, provenance: 'sandbox', ... }));
 //
 // The setup function brings the chain to the state `ContractFixture` describes and returns it. The
-// cases run in the order written: first everything that only reads and builds, then the refusals, then
-// the cases that send a transaction and read the state it left. A fixture is used once.
+// cases are in groups, and run in the order written: first everything that only reads and builds, then
+// the refusals, then the cases that send a transaction and read the state it left. A fixture is used
+// once.
+//
+// An adapter that has only part of the interface runs the groups it can:
+//
+//   adapterContract('solana reader', setup, { groups: ['reads'] });
+//
+// The `reads` group takes a `ReadsFixture`, which asks for a `ChainReader` and no more, and its setup
+// reads no shared portfolio and builds nothing.
 // `contract.selfcheck.test.ts` runs the same cases against adapters that are wrong on purpose and
 // expects them to fail: a case that cannot fail does not belong here.
 
-export type ContractFixture = {
+/** The groups, in the order they run. */
+export const CONTRACT_GROUPS = [
+  /** What a reader shows of a chain as it stands: assets, prices, vaults, wallets, funding, a status. */
+  'reads',
+  /** Reads that need the registry: a shared portfolio, its versions, and the vaults that follow it. */
+  'shared portfolios',
+  'quotes',
+  'builds',
+  'refusals',
+  'signed bytes',
+  'state after a transaction lands',
+] as const;
+export type ContractGroup = (typeof CONTRACT_GROUPS)[number];
+/** The groups whose setup reads no shared portfolio: an adapter with no registry behind it can run them. */
+const NO_RECIPE: ReadonlySet<ContractGroup> = new Set(['reads', 'quotes']);
+
+export type ContractOptions = {
+  /** The groups to run, by name. Left out: all of them. They run in the contract's order either way. */
+  groups?: readonly ContractGroup[];
+};
+
+/** What the `reads` group needs: an adapter's read side, and the vaults and wallets it is asked about. */
+export type ReadsFixture = {
+  adapter: ChainReader;
+  /** The label everything this adapter returns must carry: 'mock', or 'sandbox' on a test network or a fork. */
+  provenance: Provenance;
+  /** ISO time. No price, quote or preview is stamped earlier than this. */
+  notBefore: string;
+  /** A wallet with cash for `depositRaw` twice over and gas for a dozen transactions. It owns the three vaults. */
+  owner: Address;
+  /** A wallet that holds nothing and owns no vault. */
+  stranger: Address;
+  /**
+   * A vault of `owner`: auto-follow on, holding cash and at least one position. In a `ContractFixture`
+   * it follows `recipeOnchainId`, and at least one listed asset is not among its positions.
+   */
+  vault: Address;
+  /** A second vault of `owner`: its own targets, auto-follow off, following nothing, holding cash. */
+  manualVault: Address;
+  /**
+   * A third vault of `owner`: auto-follow on, holding cash. In a `ContractFixture` it follows
+   * `newAssetRecipeId` at a version before the active one.
+   */
+  newAssetVault: Address;
+  /**
+   * What the cases deposit. Where the chain needs approvals, `owner` has approved twice this for
+   * `vault`, this once for `manualVault`, and this once for the plan `freshBasketId`.
+   */
+  depositRaw: RawAmount;
+  /** An id in the chain's own format that was never sent. */
+  unknownTxId: string;
+};
+
+export type ContractFixture = ReadsFixture & {
   adapter: ChainAdapter;
   /**
    * Signs as `tx.signer` (the owner or the keeper), broadcasts, and resolves once the transaction has
@@ -56,32 +118,12 @@ export type ContractFixture = {
    * wait for the chain, so the cases ask `track` until then. Left out, it is 0: the mock lands at once.
    */
   relayWaitMs?: number;
-  /** The label everything this adapter returns must carry: 'mock', or 'sandbox' on a test network or a fork. */
-  provenance: Provenance;
-  /** ISO time. No price, quote or preview is stamped earlier than this. */
-  notBefore: string;
   /** The slippage the adapter allows for in `quote().minOutRaw`. */
   quoteSlippageBps: number;
-  /** A wallet with cash for `depositRaw` twice over and gas for a dozen transactions. It owns the three vaults. */
-  owner: Address;
-  /** A wallet that holds nothing and owns no vault. */
-  stranger: Address;
-  /**
-   * A vault of `owner`: auto-follow on, following `recipeOnchainId`, holding cash and at least one
-   * position. At least one listed asset is not among its positions.
-   */
-  vault: Address;
-  /** A published shared portfolio with no pending version. `owner` is its creator. */
+  /** A published shared portfolio with no pending version. `owner` is its creator. `vault` follows it. */
   recipeOnchainId: string;
   /** True when a newer version has taken effect and only changes weights, so `vault` can adopt it now. */
   adoptable: boolean;
-  /** A second vault of `owner`: its own targets, auto-follow off, following nothing, holding cash. */
-  manualVault: Address;
-  /**
-   * A third vault of `owner`: auto-follow on, following `newAssetRecipeId` at a version before the
-   * active one.
-   */
-  newAssetVault: Address;
   /**
    * A shared portfolio whose active version adds an asset to the one `newAssetVault` accepted, and which
    * has a further version published and not yet in effect.
@@ -89,11 +131,6 @@ export type ContractFixture = {
   newAssetRecipeId: string;
   /** A plan id `owner` has not used. */
   freshBasketId: string;
-  /**
-   * What the cases deposit. Where the chain needs approvals, `owner` has approved twice this for
-   * `vault`, this once for `manualVault`, and this once for the plan `freshBasketId`.
-   */
-  depositRaw: RawAmount;
   /** A trade the owner can make inside `vault` now. */
   ownerTrade: Trade;
   /** A trade the keeper can make inside `vault` now: toward a target, and not past it. */
@@ -105,21 +142,19 @@ export type ContractFixture = {
    * (DESIGN-VAULT section 6), so three assets or more, and a publish delay after the last version.
    */
   publishRecipe: Recipe;
-  /** An id in the chain's own format that was never sent. */
-  unknownTxId: string;
 };
 
-type Ctx = {
+/** What a case of the `reads` group is handed: a reader and nothing a builder or a registry gives. */
+type ReadCtx = { f: ReadsFixture; a: ChainReader; assets: BasketAsset[]; cash: BasketAsset };
+type Ctx = ReadCtx & {
   f: ContractFixture;
   a: ChainAdapter;
-  assets: BasketAsset[];
-  cash: BasketAsset;
   keeper: Address;
   /** The active version of the fixture recipe, as targets. */
   targets: Target[];
   activeVersion: number;
 };
-type Case = { group: string; name: string; run(c: Ctx): Promise<void> };
+type Case = { group: ContractGroup; name: string; run(c: Ctx): Promise<void> };
 
 /** Parses, and fails on a field the schema does not name: the frozen shape, nothing more. */
 function exact<S extends z.ZodType>(schema: S, value: unknown): z.infer<S> {
@@ -163,7 +198,7 @@ async function refuses(work: Promise<unknown>, code: ChainErrorCode) {
   expect(typeof (outcome as ChainError).retryable).toBe('boolean');
 }
 
-async function vaultAt(c: Ctx, address: Address): Promise<VaultState> {
+async function vaultAt(c: ReadCtx, address: Address): Promise<VaultState> {
   const v = await c.a.getVault(address);
   if (!v) throw new Error(`no vault at ${address}`);
   return v;
@@ -172,7 +207,7 @@ const held = (v: VaultState, asset: string) =>
   BigInt(
     asset === v.cash.asset ? v.cash.raw : (v.positions.find((p) => p.asset === asset)?.raw ?? 0),
   );
-async function walletRaw(c: Ctx, owner: Address, asset: string): Promise<bigint> {
+async function walletRaw(c: ReadCtx, owner: Address, asset: string): Promise<bigint> {
   const holdings = await c.a.getWalletHoldings(owner);
   return BigInt(holdings.find((h) => h.asset === asset)?.raw ?? 0);
 }
@@ -208,11 +243,14 @@ const outcomeOf = (work: Promise<unknown>) =>
   );
 
 const CASES: Case[] = [];
-const group = (name: string, cases: Record<string, (c: Ctx) => Promise<void>>) => {
+const group = (name: ContractGroup, cases: Record<string, (c: Ctx) => Promise<void>>) => {
   for (const [title, run] of Object.entries(cases)) CASES.push({ group: name, name: title, run });
 };
+/** A group whose cases see a reader only: the type keeps a builder and the registry out of them. */
+const readerGroup = (name: 'reads', cases: Record<string, (c: ReadCtx) => Promise<void>>) =>
+  group(name, cases);
 
-group('reads', {
+readerGroup('reads', {
   'names its chain, its capabilities and the label on its figures': async ({ a, f }) => {
     ChainId.parse(a.chain);
     exact(Capabilities, a.capabilities);
@@ -267,7 +305,7 @@ group('reads', {
       expect({ ...listed, observedAt: '' }).toEqual({ ...one, observedAt: '' });
     }
     const [following, manual] = [await vaultAt(c, c.f.vault), await vaultAt(c, c.f.manualVault)];
-    expect([following.autoFollow, following.recipeOnchainId]).toEqual([true, c.f.recipeOnchainId]);
+    expect(following.autoFollow).toBe(true);
     expect([manual.autoFollow, manual.recipeOnchainId, manual.pending]).toEqual([
       false,
       null,
@@ -311,13 +349,62 @@ group('reads', {
       expect(vault.positions.some((p) => BigInt(p.raw) > 0n)).toBe(true);
     },
 
-  'lists exactly the vaults with auto-follow on, and filters them by recipe': async (c) => {
+  'lists exactly the vaults with auto-follow on': async (c) => {
     const all = await c.a.listAutoFollowVaults();
     expect(all).toContain(c.f.vault);
     expect(all).toContain(c.f.newAssetVault);
     expect(all).not.toContain(c.f.manualVault);
     expect(new Set(all).size).toBe(all.length);
     for (const address of all) expect((await vaultAt(c, address)).autoFollow).toBe(true);
+  },
+
+  'reads what a wallet holds': async (c) => {
+    const holdings = await c.a.getWalletHoldings(c.f.owner);
+    for (const h of holdings) exact(Holding, h);
+    const cash = holdings.find((h) => h.asset === c.cash.id);
+    expect(BigInt(cash?.raw ?? 0)).toBeGreaterThanOrEqual(2n * BigInt(c.f.depositRaw));
+  },
+
+  'says whether a wallet can pay: cash and gas, and ok only when both are there': async (c) => {
+    const need = { cashRaw: c.f.depositRaw, legs: 2, newVault: true };
+    for (const who of [c.f.owner, c.f.stranger]) {
+      const r = exact(Funding, await c.a.funding(who, need));
+      expect(r.chain).toBe(c.a.chain);
+      expect(r.cashNeedRaw).toBe(c.f.depositRaw);
+      // Two transactions and a new vault cost something on every chain.
+      expect(BigInt(r.gasNeedRaw)).toBeGreaterThan(0n);
+      expect(r.ok).toBe(
+        BigInt(r.cashHaveRaw) >= BigInt(r.cashNeedRaw) &&
+          BigInt(r.gasHaveRaw) >= BigInt(r.gasNeedRaw),
+      );
+    }
+    const owner = await c.a.funding(c.f.owner, need);
+    expect(owner.ok).toBe(true);
+    expect(BigInt(owner.cashHaveRaw)).toBe(await walletRaw(c, c.f.owner, c.cash.id));
+    expect((await c.a.funding(c.f.stranger, need)).ok).toBe(false);
+    const more = await c.a.funding(c.f.owner, { ...need, legs: 6 });
+    expect(BigInt(more.gasNeedRaw)).toBeGreaterThan(BigInt(owner.gasNeedRaw));
+    // Told how many accounts the steps open, it never asks for more than when it has to assume.
+    const none = exact(Funding, await c.a.funding(c.f.owner, { ...need, newAccounts: 0 }));
+    const some = await c.a.funding(c.f.owner, { ...need, newAccounts: 2 });
+    expect(BigInt(none.gasNeedRaw)).toBeLessThanOrEqual(BigInt(owner.gasNeedRaw));
+    expect(BigInt(some.gasNeedRaw)).toBeGreaterThanOrEqual(BigInt(none.gasNeedRaw));
+    expect(BigInt(none.gasNeedRaw)).toBeGreaterThan(0n);
+  },
+
+  'tracks an id it has never seen as pending or expired, never as landed': async (c) => {
+    const s = exact(TxStatus, await c.a.track(c.f.unknownTxId));
+    expect(['pending', 'expired']).toContain(s.status);
+  },
+});
+
+group('shared portfolios', {
+  'a vault that follows names the shared portfolio it follows': async (c) => {
+    const following = await vaultAt(c, c.f.vault);
+    expect([following.autoFollow, following.recipeOnchainId]).toEqual([true, c.f.recipeOnchainId]);
+  },
+
+  'filters the auto-follow list by the shared portfolio a vault follows': async (c) => {
     const followers = await c.a.listAutoFollowVaults(c.f.recipeOnchainId);
     expect(followers).toContain(c.f.vault);
     expect(followers).not.toContain(c.f.newAssetVault);
@@ -355,41 +442,9 @@ group('reads', {
       expect(vault.pending).toMatchObject({ version: c.activeVersion, newAssets: [] });
     else expect(vault.pending).toBeNull();
   },
+});
 
-  'reads what a wallet holds': async (c) => {
-    const holdings = await c.a.getWalletHoldings(c.f.owner);
-    for (const h of holdings) exact(Holding, h);
-    const cash = holdings.find((h) => h.asset === c.cash.id);
-    expect(BigInt(cash?.raw ?? 0)).toBeGreaterThanOrEqual(2n * BigInt(c.f.depositRaw));
-  },
-
-  'says whether a wallet can pay: cash and gas, and ok only when both are there': async (c) => {
-    const need = { cashRaw: c.f.depositRaw, legs: 2, newVault: true };
-    for (const who of [c.f.owner, c.f.stranger]) {
-      const r = exact(Funding, await c.a.funding(who, need));
-      expect(r.chain).toBe(c.a.chain);
-      expect(r.cashNeedRaw).toBe(c.f.depositRaw);
-      // Two transactions and a new vault cost something on every chain.
-      expect(BigInt(r.gasNeedRaw)).toBeGreaterThan(0n);
-      expect(r.ok).toBe(
-        BigInt(r.cashHaveRaw) >= BigInt(r.cashNeedRaw) &&
-          BigInt(r.gasHaveRaw) >= BigInt(r.gasNeedRaw),
-      );
-    }
-    const owner = await c.a.funding(c.f.owner, need);
-    expect(owner.ok).toBe(true);
-    expect(BigInt(owner.cashHaveRaw)).toBe(await walletRaw(c, c.f.owner, c.cash.id));
-    expect((await c.a.funding(c.f.stranger, need)).ok).toBe(false);
-    const more = await c.a.funding(c.f.owner, { ...need, legs: 6 });
-    expect(BigInt(more.gasNeedRaw)).toBeGreaterThan(BigInt(owner.gasNeedRaw));
-    // Told how many accounts the steps open, it never asks for more than when it has to assume.
-    const none = exact(Funding, await c.a.funding(c.f.owner, { ...need, newAccounts: 0 }));
-    const some = await c.a.funding(c.f.owner, { ...need, newAccounts: 2 });
-    expect(BigInt(none.gasNeedRaw)).toBeLessThanOrEqual(BigInt(owner.gasNeedRaw));
-    expect(BigInt(some.gasNeedRaw)).toBeGreaterThanOrEqual(BigInt(none.gasNeedRaw));
-    expect(BigInt(none.gasNeedRaw)).toBeGreaterThan(0n);
-  },
-
+group('quotes', {
   'quotes a trade: the same trade back, a floor under the output, a cost in range': async (c) => {
     const q = exact(Quote, await c.a.quote(c.f.ownerTrade, c.f.owner));
     expect(q.trade).toEqual(c.f.ownerTrade);
@@ -406,11 +461,6 @@ group('reads', {
       amountInRaw: (2n * BigInt(c.f.ownerTrade.amountInRaw)).toString(),
     };
     expect(BigInt((await c.a.quote(double, c.f.owner)).outRaw)).toBeGreaterThan(BigInt(q.outRaw));
-  },
-
-  'tracks an id it has never seen as pending or expired, never as landed': async (c) => {
-    const s = exact(TxStatus, await c.a.track(c.f.unknownTxId));
-    expect(['pending', 'expired']).toContain(s.status);
   },
 });
 
@@ -997,32 +1047,72 @@ group('state after a transaction lands', {
   },
 });
 
-async function context(setup: () => ContractFixture | Promise<ContractFixture>): Promise<Ctx> {
+type Setup<F> = () => F | Promise<F>;
+
+/** The groups asked for, in the contract's order. A name that is no group is a mistake, not an empty run. */
+function selected(options: ContractOptions): ContractGroup[] {
+  for (const name of options.groups ?? [])
+    if (!CONTRACT_GROUPS.includes(name))
+      throw new Error(`the contract has no group called ${name}`);
+  return CONTRACT_GROUPS.filter((g) => !options.groups || options.groups.includes(g));
+}
+
+/**
+ * What the cases are handed. The fixture's shared portfolio is read only when a selected group needs
+ * it, so an adapter with only its read side, or with no registry yet, can run the groups that do not.
+ */
+async function context(setup: Setup<ReadsFixture>, groups: ContractGroup[]): Promise<Ctx> {
   const f = await setup();
   const a = f.adapter;
   const assets = await a.listAssets();
   const cash = assets.find((x) => x.cls === 'cash');
   if (!cash) throw new Error('the adapter lists no cash token');
-  const vault = await a.getVault(f.vault);
+  const read: ReadCtx = { f, a, assets, cash };
+  // No selected group looks at a recipe, a keeper or a builder: the reader's context is all they see.
+  if (groups.every((g) => NO_RECIPE.has(g))) return read as Ctx;
+  const full = f as ContractFixture;
+  const vault = await a.getVault(full.vault);
   if (!vault) throw new Error('the fixture vault does not exist');
-  const { active } = await a.getRecipe(f.recipeOnchainId);
+  const { active } = await a.getRecipe(full.recipeOnchainId);
   const targets = active.components.flatMap((x) =>
     x.kind === 'asset' ? [{ asset: x.asset, weightBps: x.weightBps }] : [],
   );
-  return { f, a, assets, cash, keeper: vault.keeper, targets, activeVersion: active.version };
+  return {
+    ...read,
+    f: full,
+    a: full.adapter,
+    keeper: vault.keeper,
+    targets,
+    activeVersion: active.version,
+  };
 }
 
-/** Registers the contract as vitest cases. */
+/**
+ * Registers the contract as vitest cases. With `groups`, only those; the `reads` group alone takes a
+ * `ReadsFixture`, which an adapter with only its read side can give.
+ */
 export function adapterContract(
   name: string,
-  setup: () => ContractFixture | Promise<ContractFixture>,
+  setup: Setup<ReadsFixture>,
+  options: { groups: readonly ['reads'] },
+): void;
+export function adapterContract(
+  name: string,
+  setup: Setup<ContractFixture>,
+  options?: ContractOptions,
+): void;
+export function adapterContract(
+  name: string,
+  setup: Setup<ReadsFixture>,
+  options: ContractOptions = {},
 ): void {
+  const groups = selected(options);
   describe(`adapter contract: ${name}`, () => {
     let c: Ctx;
     beforeAll(async () => {
-      c = await context(setup);
+      c = await context(setup, groups);
     });
-    for (const groupName of new Set(CASES.map((k) => k.group)))
+    for (const groupName of groups)
       describe(groupName, () => {
         for (const k of CASES.filter((x) => x.group === groupName)) it(k.name, () => k.run(c));
       });
@@ -1034,11 +1124,21 @@ export function adapterContract(
  * show that a wrong adapter fails.
  */
 export async function runContract(
-  setup: () => ContractFixture | Promise<ContractFixture>,
+  setup: Setup<ReadsFixture>,
+  options: { groups: readonly ['reads'] },
+): Promise<{ name: string; passed: boolean; error?: string }[]>;
+export async function runContract(
+  setup: Setup<ContractFixture>,
+  options?: ContractOptions,
+): Promise<{ name: string; passed: boolean; error?: string }[]>;
+export async function runContract(
+  setup: Setup<ReadsFixture>,
+  options: ContractOptions = {},
 ): Promise<{ name: string; passed: boolean; error?: string }[]> {
-  const c = await context(setup);
+  const groups = selected(options);
+  const c = await context(setup, groups);
   const results: { name: string; passed: boolean; error?: string }[] = [];
-  for (const k of CASES) {
+  for (const k of CASES.filter((x) => groups.includes(x.group))) {
     try {
       await k.run(c);
       results.push({ name: k.name, passed: true });
