@@ -624,6 +624,134 @@ describe('chain-mock', () => {
     expect(await code(adapter.funding(owner, { ...need, newAccounts: -1 }))).toBe('BadInput');
   });
 
+  it("states the signer's next nonce and a gas limit on every EVM build, and neither on Solana", async () => {
+    const { adapter, mock, owner, targets } = await funded('robinhood');
+    const approve = await adapter.buildApprove({ owner, basketId: '1', amountRaw: '1000' });
+    expect(approve.evm).toMatchObject({ nonce: 0 });
+    expect(approve.evm?.gas).toBeGreaterThan(21_000);
+    // A second build before anything is sent is on the same nonce: the chain has not moved.
+    const again = await adapter.buildApprove({ owner, basketId: '1', amountRaw: '2000' });
+    expect(again.evm?.nonce).toBe(0);
+    await mock.send(approve);
+    const create = { owner, basketId: '1', targets, autoFollow: false, slippageBps: 50 };
+    const second = await adapter.buildCreateVault({ ...create, depositRaw: '1000' });
+    expect(second.evm?.nonce).toBe(1);
+    // A reverted transaction uses its nonce up too.
+    mock.revertNext({ code: 'SpentTooMuch', message: 'reverted' });
+    await mock.send(second);
+    expect((await adapter.buildCreateVault({ ...create, depositRaw: '1000' })).evm?.nonce).toBe(2);
+    // The keeper has a nonce of its own.
+    const f = await mockFixture('robinhood');
+    expect((await f.adapter.buildKeeperLeg(f.vault, f.keeperTrade)).evm?.nonce).toBe(0);
+
+    const solana = await funded('solana');
+    const onSolana = { ...create, owner: solana.owner, targets: solana.targets };
+    expect((await solana.adapter.buildCreateVault(onSolana)).evm).toBeUndefined();
+    expect(await code(solana.adapter.buildCreateVault({ ...onSolana, nonce: 0 }))).toBe(
+      'NotSupported',
+    );
+  });
+
+  it('gives two builds of one EVM call the same hash, and tells the attempts apart by their nonce', async () => {
+    const { adapter, mock, owner, targets } = await funded('robinhood');
+    await mock.send(await adapter.buildApprove({ owner, basketId: '1', amountRaw: '1000' }));
+    const create = { owner, basketId: '1', targets, autoFollow: false, slippageBps: 50 };
+    await mock.send(await adapter.buildCreateVault({ ...create, depositRaw: '1000' }));
+    const vault = (await adapter.getVaults(owner))[0]?.address ?? '';
+    await mock.send(await adapter.buildApprove({ owner, basketId: '1', amountRaw: '100' }));
+    const deposit = { vault, amountRaw: '40', slippageBps: 50 };
+
+    const first = await adapter.buildDeposit(deposit);
+    const { txId } = await mock.send(first);
+    // The identical deposit, built for another order: the same call, so the same bytes and hash.
+    const second = await adapter.buildDeposit(deposit);
+    expect([second.payload, second.messageHash]).toEqual([first.payload, first.messageHash]);
+    expect(second.evm?.nonce).toBe((first.evm?.nonce ?? 0) + 1);
+    const attempt = (tx: typeof first) => ({
+      messageHash: tx.messageHash,
+      signer: owner,
+      validUntil: null,
+      nonce: tx.evm?.nonce ?? null,
+    });
+    expect(await adapter.fate(attempt(first))).toEqual({ state: 'landed', txId });
+    // The second has not landed because the first did: it is its own attempt, and still open.
+    expect(await adapter.fate(attempt(second))).toEqual({ state: 'open' });
+    expect(await adapter.carries(txId, second.messageHash)).toBe('this');
+    const sent = await mock.send(second);
+    expect(sent.txId).not.toBe(txId);
+    expect(await adapter.fate(attempt(second))).toEqual({ state: 'landed', txId: sent.txId });
+    expect((await adapter.getVault(vault))?.cash.raw).toBe('1080');
+    // With no nonce an EVM attempt cannot be looked for.
+    expect(await adapter.fate({ ...attempt(first), nonce: null })).toEqual({ state: 'open' });
+  });
+
+  it('lands one of two EVM transactions built on one nonce, and the other is gone', async () => {
+    const f = await mockFixture('robinhood');
+    const { adapter } = f;
+    const { mock } = adapter;
+    const [off, on] = [
+      await adapter.buildSetAutoFollow({ vault: f.manualVault, on: false }),
+      await adapter.buildSetAutoFollow({ vault: f.manualVault, on: true }),
+    ];
+    expect(off.evm?.nonce).toBe(on.evm?.nonce);
+    expect(off.messageHash).not.toBe(on.messageHash);
+    const attempt = (tx: typeof off) => ({
+      messageHash: tx.messageHash,
+      signer: f.owner,
+      validUntil: null,
+      nonce: tx.evm?.nonce ?? null,
+    });
+    expect(await adapter.fate(attempt(on))).toEqual({ state: 'open' });
+    const { txId } = await mock.send(off);
+    expect(await adapter.fate(attempt(off))).toEqual({ state: 'landed', txId });
+    // Another call used the nonce: this one can never land.
+    expect(await adapter.fate(attempt(on))).toEqual({ state: 'gone' });
+    expect(await code(mock.send(on))).toBe('Expired');
+    expect((await adapter.getVault(f.manualVault))?.autoFollow).toBe(false);
+
+    // A rebuild is given the open attempt's nonce: the same call on the same nonce is one transaction.
+    const open = await adapter.buildSetAutoFollow({ vault: f.manualVault, on: true });
+    const rebuilt = await adapter.buildSetAutoFollow({
+      vault: f.manualVault,
+      on: true,
+      nonce: open.evm?.nonce,
+    });
+    expect([rebuilt.messageHash, rebuilt.evm?.nonce]).toEqual([open.messageHash, open.evm?.nonce]);
+    const landed = await mock.send(rebuilt);
+    expect((await mock.send(open)).txId).toBe(landed.txId);
+    expect((await adapter.getVault(f.manualVault))?.autoFollow).toBe(true);
+    // A nonce ahead of the signer's is not queued by the mock.
+    const ahead = await adapter.buildSetAutoFollow({ vault: f.manualVault, on: false, nonce: 500 });
+    expect(ahead.evm?.nonce).toBe(500);
+    expect(await code(mock.send(ahead))).toBe('NotSupported');
+  });
+
+  it('reads the nonce of record from signed bytes and from a transaction it has seen', async () => {
+    const { adapter, mock, owner } = await funded('robinhood');
+    const tx = await adapter.buildApprove({ owner, basketId: '1', amountRaw: '1000' });
+    const signed = mock.sign(tx);
+    // A signed EVM transaction carries its nonce; the unsigned call data does not.
+    expect(signed).not.toBe(tx.payload);
+    expect(await adapter.messageHashOf(signed)).toBe(tx.messageHash);
+    expect(await adapter.messageHashOf(tx.payload)).toBe(tx.messageHash);
+    expect(await adapter.nonceOf({ signedTx: signed })).toBe(0);
+    expect(await adapter.nonceOf({ signedTx: tx.payload })).toBeNull();
+    const { txId } = await adapter.relay(signed);
+    expect(await adapter.nonceOf({ txId })).toBe(0);
+    expect(await adapter.nonceOf({ txId: mockAddress('robinhood', 'never sent') })).toBeNull();
+    // A wallet that signs with its own nonce: the bare call data lands on the signer's next one.
+    const next = await adapter.buildApprove({ owner, basketId: '1', amountRaw: '2000' });
+    const sent = await adapter.relay(next.payload);
+    expect(await adapter.nonceOf({ txId: sent.txId })).toBe(1);
+
+    const solana = await funded('solana');
+    const args = { owner: solana.owner, basketId: '1', autoFollow: false, slippageBps: 50 };
+    const create = await solana.adapter.buildCreateVault({ ...args, targets: solana.targets });
+    expect(await solana.adapter.nonceOf({ signedTx: solana.mock.sign(create) })).toBeNull();
+    const landed = await solana.mock.send(create);
+    expect(await solana.adapter.nonceOf({ txId: landed.txId })).toBeNull();
+  });
+
   it('never repeats a transaction id across restarts when given a seed', async () => {
     const first = async (seed?: string) => {
       const adapter = createMockAdapter({ chain: 'robinhood', seed });

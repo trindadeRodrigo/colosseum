@@ -46,6 +46,13 @@ export const FundingNeed = z.object({
 export type FundingNeed = z.infer<typeof FundingNeed>;
 
 /**
+ * EVM only, on every owner builder: the nonce to build on, in place of the signer's next one. It is for
+ * the rebuild of a step whose earlier attempt is still open: the two share the nonce, so at most one of
+ * them can land. A chain with no nonce refuses it with `NotSupported`.
+ */
+const RebuildNonce = z.number().int().nonnegative().optional();
+
+/**
  * An approval of the chain's cash token, for one plan. The caller names the plan and the amount, never
  * who may take the cash: the adapter derives that (on EVM the factory until the plan's vault exists,
  * and the vault after). Strict, so a `spender` sent by a caller is refused and not ignored.
@@ -54,6 +61,7 @@ export const ApproveArgs = z.strictObject({
   owner: Address,
   basketId: BasketId,
   amountRaw: RawAmount,
+  nonce: RebuildNonce,
 });
 export type ApproveArgs = z.infer<typeof ApproveArgs>;
 
@@ -68,6 +76,7 @@ export const CreateVaultArgs = z.object({
   depositRaw: RawAmount.optional(),
   trades: z.array(Trade).optional(),
   slippageBps: Bps,
+  nonce: RebuildNonce,
 });
 export type CreateVaultArgs = z.infer<typeof CreateVaultArgs>;
 
@@ -76,6 +85,7 @@ export const DepositArgs = z.object({
   amountRaw: RawAmount,
   trades: z.array(Trade).optional(),
   slippageBps: Bps,
+  nonce: RebuildNonce,
 });
 export type DepositArgs = z.infer<typeof DepositArgs>;
 
@@ -83,26 +93,40 @@ export const OwnerSwapArgs = z.object({
   vault: Address,
   trades: z.array(Trade).min(1),
   slippageBps: Bps,
+  nonce: RebuildNonce,
 });
 export type OwnerSwapArgs = z.infer<typeof OwnerSwapArgs>;
 
-export const SetTargetsArgs = z.object({ vault: Address, targets: Targets });
+export const SetTargetsArgs = z.object({ vault: Address, targets: Targets, nonce: RebuildNonce });
 export type SetTargetsArgs = z.infer<typeof SetTargetsArgs>;
 
 export const AcceptVersionArgs = z.object({
   vault: Address,
   recipeOnchainId: z.string().min(1),
   expectedVersion: z.number().int().min(1),
+  nonce: RebuildNonce,
 });
 export type AcceptVersionArgs = z.infer<typeof AcceptVersionArgs>;
 
-export const SetAutoFollowArgs = z.object({ vault: Address, on: z.boolean() });
+export const SetAutoFollowArgs = z.object({
+  vault: Address,
+  on: z.boolean(),
+  nonce: RebuildNonce,
+});
 export type SetAutoFollowArgs = z.infer<typeof SetAutoFollowArgs>;
 
-export const WithdrawInKindArgs = z.object({ vault: Address, assets: z.array(AssetId).optional() });
+export const WithdrawInKindArgs = z.object({
+  vault: Address,
+  assets: z.array(AssetId).optional(),
+  nonce: RebuildNonce,
+});
 export type WithdrawInKindArgs = z.infer<typeof WithdrawInKindArgs>;
 
-export const PublishRecipeArgs = z.object({ creator: Address, recipe: Recipe });
+export const PublishRecipeArgs = z.object({
+  creator: Address,
+  recipe: Recipe,
+  nonce: RebuildNonce,
+});
 export type PublishRecipeArgs = z.infer<typeof PublishRecipeArgs>;
 
 export interface ChainReader {
@@ -157,7 +181,10 @@ export const AttemptRef = z.object({
   signer: Address,
   /** As the build gave it: a block height on Solana, null on EVM. */
   validUntil: z.string().nullable(),
-  /** The EVM nonce the attempt was built for, where one is known. */
+  /**
+   * EVM: the nonce of record. It is the one the build stated (`evm.nonce`), or the one in the signed or
+   * sent transaction where the wallet chose its own (`nonceOf`). Null on Solana.
+   */
   nonce: z.number().int().nonnegative().nullable(),
 });
 export type AttemptRef = z.infer<typeof AttemptRef>;
@@ -165,9 +192,14 @@ export type AttemptRef = z.infer<typeof AttemptRef>;
 /**
  * What became of an attempt whose transaction id nobody reported.
  * - `open`: its bytes can still land.
- * - `gone`: they no longer can, because the chain is past `validUntil`. A chain with no expiry (EVM,
- *   `validUntil` null) never answers `gone`.
+ * - `gone`: they no longer can.
  * - `landed`: the chain has the transaction, confirmed or reverted, with its id. `track` says which.
+ *
+ * Solana: an attempt is its message. It is `gone` once the chain is past `validUntil`.
+ * EVM: an attempt is the pair (messageHash, nonce), since two builds of one call share a hash. It is
+ * `landed` when the transaction at the signer's nonce is this call, `gone` when the signer's nonce has
+ * passed the attempt's and another call used it, and `open` otherwise. Nothing expires by time. An
+ * attempt with no nonce cannot be looked for and is `open`.
  */
 export const AttemptFate = z.discriminatedUnion('state', [
   z.object({ state: z.literal('open') }),
@@ -213,8 +245,14 @@ export interface TxProbe {
    * settles a step on `this` only, refuses `another`, and asks again later on `unseen`.
    */
   carries(txId: string, messageHash: string): Promise<Carried>;
-  /** What became of an attempt whose transaction id nobody reported. */
+  /** What became of an attempt whose transaction id nobody reported (`AttemptFate`). */
   fate(attempt: AttemptRef): Promise<AttemptFate>;
+  /**
+   * EVM: the nonce a transaction was signed with, read from signed bytes or from a transaction the
+   * node has. An outside wallet may sign with another nonce than the build stated; this is the nonce of
+   * record. Null on Solana, and for an id the node does not have.
+   */
+  nonceOf(seen: { signedTx: string } | { txId: string }): Promise<number | null>;
 }
 
 /** No builder sets a vault's keeper or operator. */

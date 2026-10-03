@@ -203,6 +203,8 @@ export async function recordBuild(
   leg: Leg,
   a: {
     messageHash: string;
+    /** EVM: the nonce the build stated. With the message hash it names the attempt. Null on Solana. */
+    nonce: number | null;
     validUntil: string | null;
     expected: Leg['expected'];
     stamp: Stamp;
@@ -238,6 +240,7 @@ export async function recordBuild(
         chainId: leg.chain,
         n,
         messageHash: a.messageHash,
+        nonce: a.nonce,
         status: 'built',
         validUntil: a.validUntil,
         builtAt: a.builtAt,

@@ -333,6 +333,70 @@ const FAULTS: { fault: string; wrap: Wrap; caught: string[]; chains?: MockChain[
     ],
   },
   {
+    fault: 'states no nonce and no gas limit on an EVM transaction',
+    wrap: (real) =>
+      spoilTx(real, (tx) =>
+        tx.evm
+          ? { ...tx, evm: { to: tx.evm.to, value: tx.evm.value, chainId: tx.evm.chainId } }
+          : tx,
+      ),
+    caught: ['previews a deposit as cash leaving the wallet for the vault, and nothing else'],
+    chains: ['robinhood'],
+  },
+  {
+    fault: 'answers what became of an attempt from its message alone, whatever its nonce',
+    wrap: (real) => ({
+      fate: async (attempt) => {
+        // Any landed transaction of the same call counts, as if the hash named the attempt.
+        for (let nonce = 0; nonce < (attempt.nonce ?? 0); nonce += 1) {
+          const earlier = await real.fate({ ...attempt, nonce });
+          if (earlier.state === 'landed') return earlier;
+        }
+        return real.fate(attempt);
+      },
+    }),
+    caught: [
+      'the same call built again is its own attempt: open, not landed because the first one did',
+    ],
+    chains: ['robinhood'],
+  },
+  {
+    fault: 'never says an attempt is gone',
+    wrap: (real) => ({
+      fate: async (attempt) => {
+        const answer = await real.fate(attempt);
+        return answer.state === 'gone' ? { state: 'open' as const } : answer;
+      },
+    }),
+    caught: ['two calls built on one nonce: one lands, and the other is gone'],
+    chains: ['robinhood'],
+  },
+  {
+    fault: 'ignores the nonce a rebuild is given',
+    wrap: (real) => ({
+      buildSetAutoFollow: ({ vault, on }) => real.buildSetAutoFollow({ vault, on }),
+    }),
+    caught: ['two calls built on one nonce: one lands, and the other is gone'],
+    chains: ['robinhood'],
+  },
+  {
+    fault: 'reads no nonce from signed bytes or from a transaction it has seen',
+    wrap: () => ({ nonceOf: async () => null }),
+    caught: [
+      'reads the hash it built back from the signed bytes, relays them, and finds them on the chain',
+    ],
+    chains: ['robinhood'],
+  },
+  {
+    fault: 'takes a nonce on a chain that has none',
+    wrap: (real) => ({
+      buildSetAutoFollow: ({ vault, on }) => real.buildSetAutoFollow({ vault, on }),
+      buildDeposit: ({ nonce: _nonce, ...rest }) => real.buildDeposit(rest),
+    }),
+    caught: ['a nonce on a chain that has none: NotSupported'],
+    chains: ['solana'],
+  },
+  {
     fault: 'switches auto-follow on whatever was asked',
     wrap: (real) => ({
       buildSetAutoFollow: (a) => real.buildSetAutoFollow({ vault: a.vault, on: true }),

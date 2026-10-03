@@ -67,6 +67,7 @@ async function oneLeg(): Promise<Leg> {
 const build = (leg: Leg) =>
   recordBuild(data.db, leg, {
     messageHash: `hash-${randomUUID()}`,
+    nonce: null,
     validUntil: null,
     expected: [],
     stamp: {

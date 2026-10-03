@@ -54,11 +54,35 @@ export const TxPreview = Sourced.extend({
 });
 export type TxPreview = z.infer<typeof TxPreview>;
 
+/**
+ * The EVM half of a built transaction: `to`, `value` and `chainId` as tx.ts has them, with the nonce
+ * and the gas limit the adapter states.
+ */
+export const EvmCall = z.object({
+  to: z.string(),
+  value: z.string(),
+  chainId: z.number(),
+  /**
+   * The nonce to sign with: the signer's next nonce when the transaction was built, or the one a
+   * rebuild was given. An embedded wallet signs with it. An outside wallet may ignore it; the nonce of
+   * record is then the one in the signed or sent transaction (`TxProbe.nonceOf`). An adapter always
+   * states it.
+   */
+  nonce: z.number().int().nonnegative().optional(),
+  /**
+   * The gas limit to sign with. An adapter always states it. A transaction that reverted with
+   * `GasTooLow` is built again with a higher one.
+   */
+  gas: z.number().int().positive().optional(),
+});
+export type EvmCall = z.infer<typeof EvmCall>;
+
 export const BuiltTxBase = UnsignedTx.omit({
   kind: true,
   legAssetId: true,
   executionId: true,
 }).extend({
+  evm: EvmCall.optional(),
   legKind: LegKind,
   chainId: ChainId,
   signer: Address,
@@ -70,8 +94,11 @@ export const BuiltTxBase = UnsignedTx.omit({
    *   less its signatures (the leading count and 64 bytes each). Signing changes the signatures and
    *   not the message, so the signed transaction hashes to the same value.
    * - EVM: the SHA-256 of the UTF-8 bytes of `evmCallPreimage(...)`: the call alone (chain id,
-   *   signer, to, value, data). The wallet sets the nonce and the fees, so the bytes that are signed
-   *   do not exist when the transaction is built. Two builds of the same call have the same hash.
+   *   signer, to, value, data), without the nonce, the gas limit or the fees. The adapter states a
+   *   nonce and a gas limit (`evm.nonce`, `evm.gas`), but a wallet may sign with others, and the
+   *   fees are the wallet's, so the bytes that are signed do not exist when the transaction is
+   *   built. Two builds of the same call have the same hash, so the hash alone does not name an
+   *   attempt on EVM: the pair (messageHash, nonce) does.
    */
   messageHash: Hex32,
   preview: TxPreview,

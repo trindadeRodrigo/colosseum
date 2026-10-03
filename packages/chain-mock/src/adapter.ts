@@ -59,6 +59,8 @@ const QUOTE_SLIPPAGE_BPS = 50;
 const SIGNATURE_BYTES = 64;
 /** Chain id 0 is no network: nothing the mock builds can be sent to a real one. */
 const MOCK_EVM_CHAIN_ID = 0;
+/** The gas limit a mock EVM transaction states: a base, and more for each trade it makes. */
+const MOCK_GAS = { base: 300_000, perTrade: 150_000 };
 const refuse = (code: ChainErrorCode, message: string): never => {
   throw new ChainError(code, message);
 };
@@ -121,8 +123,16 @@ type Op =
 
 /** What a run of an op hands back: what each trade paid out, and the least each may pay. */
 type Run = { outs: bigint[]; mins?: bigint[] };
-type Built = { op: Op; signer: Address; validUntil: number | null; txId: string; mins: bigint[] };
-type Sent = { status: TxStatus['status']; validUntil: number | null; error?: TxStatus['error'] };
+type Built = { op: Op; signer: Address; validUntil: number | null; mins: bigint[] };
+/** A transaction the chain was sent: what it carried, who signed it and, on EVM, on which nonce. */
+type Sent = {
+  status: TxStatus['status'];
+  validUntil: number | null;
+  error?: TxStatus['error'];
+  messageHash: string;
+  signer: Address;
+  nonce: number | null;
+};
 
 export type MockOptions = {
   chain: ChainId;
@@ -177,15 +187,20 @@ export type MockControl = {
   scheduleMultiplier(asset: AssetId, multiplier: string, effectiveAt: number): void;
   /**
    * Stands in for sign-and-broadcast. Only a transaction this adapter built is accepted, found by its
-   * `messageHash`. Sending the same one twice returns the same id and changes nothing.
+   * `messageHash`. On an EVM chain it lands on the nonce it states, or on the signer's next one where
+   * it states none: a nonce another transaction has used is refused as `Expired`, and one ahead of the
+   * signer's is not queued. Sending the same one twice returns the same id and changes nothing.
    */
-  send(tx: Pick<BuiltTx, 'messageHash'>): Promise<{ txId: string; validUntil?: string }>;
+  send(tx: {
+    messageHash: string;
+    evm?: { nonce?: number };
+  }): Promise<{ txId: string; validUntil?: string }>;
   /**
    * Stands in for a wallet's signature, and sends nothing. On Solana the transaction's one signature
-   * slot is filled, and the message after it is untouched. An EVM payload comes back as it is: the
-   * mock has no EVM signature, and its bytes say who signs them.
+   * slot is filled, and the message after it is untouched. On EVM the call data is wrapped with the
+   * nonce and the gas limit the transaction states, as a signed transaction carries them.
    */
-  sign(tx: Pick<BuiltTx, 'payload' | 'signer'>): string;
+  sign(tx: Pick<BuiltTx, 'payload' | 'signer' | 'evm'>): string;
   /** The next send lands and reverts with this error. */
   revertNext(error: { code: ChainErrorCode; message: string }): void;
   /** The next send never lands: it stays pending, then expires when its validity runs out. */
@@ -245,6 +260,13 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
     throw new Error('chain-mock: the band is a whole number of bps, 0 to 10,000');
   const built = new Map<string, Built>();
   const sent = new Map<string, Sent>();
+  /** EVM chains: each signer's next nonce, and the transaction that landed on each nonce used. */
+  const nonces = new Map<Address, number>();
+  const landedOn = new Map<string, string>();
+  const nextNonce = (signer: Address) => nonces.get(signer) ?? 0;
+  /** A transaction's id. On EVM two transactions of one call differ by their nonce. */
+  const txIdOf = (messageHash: string, nonce: number | null) =>
+    mockTxId(chain, nonce === null ? messageHash : `${messageHash}:${nonce}`);
   let buildSeq = 0;
   let nextRevert: { code: ChainErrorCode; message: string } | null = null;
   let nextDrop = false;
@@ -661,8 +683,18 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
   const tradesOf = (op: Op): Trade[] =>
     op.kind === 'keeper_leg' ? [op.a.trade] : 'trades' in op.a ? (op.a.trades ?? []) : [];
 
-  /** Runs the op on a copy, so a transaction that would fail is refused here and never built. */
-  function build(op: Op, signer: Address, watch: { wallet: Address; vault?: Address }): BuiltTx {
+  /**
+   * Runs the op on a copy, so a transaction that would fail is refused here and never built. `nonce`
+   * is the one a rebuild shares with an attempt that is still open; left out, the signer's next.
+   */
+  function build(
+    op: Op,
+    signer: Address,
+    watch: { wallet: Address; vault?: Address },
+    nonce?: number,
+  ): BuiltTx {
+    if (nonce !== undefined && family !== 'evm')
+      refuse('NotSupported', `a transaction on ${chain} has no nonce`);
     const before = live();
     const after = structuredClone(before);
     const run: Run = { outs: [] };
@@ -689,7 +721,11 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
         return v ? balance(v, id) : undefined;
       });
 
-    // A counter stands in for the blockhash or nonce, so two builds of one step are two transactions.
+    const slippage = slippageOf(op);
+    const mins = run.outs.map((out) => lessBps(out, slippage));
+    // On Solana a counter stands in for the blockhash, so two builds of one step are two messages. On
+    // EVM the same call is the same bytes whenever it is built: what tells two transactions of it
+    // apart is the nonce, which is no part of the call. The minimums are in the bytes on both.
     buildSeq += 1;
     const to = evmTarget(op, vaultAddress);
     const message = Buffer.from(
@@ -697,10 +733,9 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
         mock: true,
         chain,
         seed,
-        seq: buildSeq,
-        signer,
-        ...(family === 'evm' ? { to } : {}),
+        ...(family === 'evm' ? { signer, to } : { seq: buildSeq, signer }),
         op,
+        mins: carriesMinimums(op) ? mins.map(String) : [],
       }),
     );
     // The message hash as basket-tx.ts defines it for each family.
@@ -720,9 +755,7 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
             evmCallPreimage({ chainId: MOCK_EVM_CHAIN_ID, signer, to, value: '0', data: payload }),
           );
     const validUntil = family === 'solana' ? before.seconds + VALID_BLOCKS : null;
-    const slippage = slippageOf(op);
-    const mins = run.outs.map((out) => lessBps(out, slippage));
-    built.set(messageHash, { op, signer, validUntil, txId: mockTxId(chain, messageHash), mins });
+    built.set(messageHash, { op, signer, validUntil, mins });
     // The trades as the transaction makes them, each with the floor the send holds it to. Nothing is
     // stated where the bytes carry no minimum.
     const minimums = carriesMinimums(op)
@@ -737,7 +770,15 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
       chain: family,
       payload,
       ...(family === 'evm'
-        ? { evm: { to, value: '0', chainId: MOCK_EVM_CHAIN_ID } }
+        ? {
+            evm: {
+              to,
+              value: '0',
+              chainId: MOCK_EVM_CHAIN_ID,
+              nonce: nonce ?? nextNonce(signer),
+              gas: MOCK_GAS.base + MOCK_GAS.perTrade * tradesOf(op).length,
+            },
+          }
         : { lastValidBlockHeight: before.seconds + VALID_BLOCKS, feePayer: signer }),
       description: DESCRIPTION[op.kind],
       provenance: 'mock',
@@ -755,40 +796,107 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
       },
     };
   }
-  const ownerTx = (op: Op & { a: { vault: Address } }) => {
+  const ownerTx = (op: Op & { a: { vault: Address } }, nonce?: number) => {
     const owner = vaultOf(live(), op.a.vault).owner;
-    return build(op, owner, { wallet: owner, vault: op.a.vault });
+    return build(op, owner, { wallet: owner, vault: op.a.vault }, nonce);
   };
 
   /**
-   * The message hash of signed bytes, as `build` works it out. The mock reads anything: bytes that are
-   * not laid out as one of its own transactions hash to a value it never built, so they are refused
-   * as `NotBuiltHere` when relayed and never taken for a transaction of this server.
+   * The message hash of signed bytes, as `build` works it out, and the nonce they were signed with. The
+   * mock reads anything: bytes that are not laid out as one of its own transactions hash to a value it
+   * never built, so they are refused as `NotBuiltHere` when relayed and never taken for a transaction
+   * of this server.
    */
-  function hashOfSigned(signedTx: string): string {
+  function readSigned(signedTx: string): { hash: string; nonce: number | null } {
     if (family === 'solana') {
       const bytes = Buffer.from(signedTx, 'base64');
       const start = 1 + SIGNATURE_BYTES;
       // One signature slot, whatever is in it, then the message.
-      return bytes[0] === 1 && bytes.length > start
-        ? sha256Hex(bytes.subarray(start))
-        : sha256Hex(bytes);
+      const hash =
+        bytes[0] === 1 && bytes.length > start
+          ? sha256Hex(bytes.subarray(start))
+          : sha256Hex(bytes);
+      return { hash, nonce: null };
     }
     const data = signedTx.toLowerCase();
+    const json = (hex: string) => JSON.parse(Buffer.from(hex.slice(2), 'hex').toString());
     try {
-      const said = JSON.parse(Buffer.from(data.slice(2), 'hex').toString());
-      return sha256Hex(
+      // Either what `mock.sign` wraps (the call data with a nonce and a gas limit), or the bare call
+      // data, which names no nonce: a wallet that was handed it signs on its own next one.
+      const outer = json(data);
+      const call: string = outer.mockSigned === true ? String(outer.call) : data;
+      const said = outer.mockSigned === true ? json(call) : outer;
+      const hash = sha256Hex(
         evmCallPreimage({
           chainId: MOCK_EVM_CHAIN_ID,
           signer: said.signer,
           to: said.to,
           value: '0',
-          data,
+          data: call,
         }),
       );
+      const nonce = outer.mockSigned === true && Number.isInteger(outer.nonce) ? outer.nonce : null;
+      return { hash, nonce };
     } catch {
-      return sha256Hex(data);
+      return { hash: sha256Hex(data), nonce: null };
     }
+  }
+
+  /** Lands a built transaction, or refuses to. The one place a transaction reaches the chain. */
+  function land(messageHash: string, stated?: number): { txId: string; validUntil?: string } {
+    const b = built.get(messageHash);
+    if (!b) throw new ChainError('NotBuiltHere', 'the mock only sends what it built');
+    const validUntil = b.validUntil === null ? undefined : String(b.validUntil);
+    const next = nextNonce(b.signer);
+    const nonce = family === 'evm' ? (stated ?? next) : null;
+    const txId = txIdOf(messageHash, nonce);
+    if (sent.has(txId)) return { txId, validUntil };
+    const record = { validUntil: b.validUntil, messageHash, signer: b.signer, nonce };
+    // A nonce is used once. Behind the signer's, another transaction took it; ahead of it, a real node
+    // would hold the transaction until the gap closes, which the mock does not model.
+    if (nonce !== null && nonce < next)
+      throw new ChainError('Expired', `nonce ${nonce} was used by another transaction`);
+    if (nonce !== null && nonce > next)
+      throw new ChainError(
+        'NotSupported',
+        'the mock does not queue a transaction ahead of its nonce',
+      );
+    const s = live();
+    if (nextDrop) {
+      nextDrop = false;
+      sent.set(txId, { status: 'pending', ...record });
+      return { txId, validUntil };
+    }
+    if (b.validUntil !== null && s.seconds > b.validUntil)
+      throw new ChainError('Expired', 'built too long ago; build it again');
+    const cost = fee + (b.op.kind === 'create_vault' ? newVaultGas : 0n);
+    if (b.signer !== keeper) {
+      const have = s.gas.get(b.signer) ?? 0n;
+      if (have < cost) throw new ChainError('NoGas', 'the wallet cannot pay the network fee');
+      s.gas.set(b.signer, have - cost);
+    }
+    let error = nextRevert;
+    nextRevert = null;
+    if (!error) {
+      const after = structuredClone(s);
+      try {
+        apply(after, b.op, { outs: [], mins: b.mins });
+        state = after;
+      } catch (e) {
+        if (!(e instanceof ChainError)) throw e;
+        error = { code: e.code, message: e.message };
+      }
+    }
+    sent.set(
+      txId,
+      error ? { status: 'reverted', error, ...record } : { status: 'confirmed', ...record },
+    );
+    // A transaction that landed used its nonce, whether it went through or reverted.
+    if (nonce !== null) {
+      nonces.set(b.signer, nonce + 1);
+      landedOn.set(`${b.signer}:${nonce}`, txId);
+    }
+    return { txId, validUntil };
   }
 
   /** Nothing but a ChainError leaves the adapter: an error of any other kind is a bug, reported as Unknown. */
@@ -902,34 +1010,49 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
     buildApprove: (a) =>
       guarded(() => {
         if (!capabilities.needsApprove) refuse('NotSupported', `${chain} needs no approval`);
-        const args = input(ApproveArgs, a, 'approve');
+        const { nonce, ...args } = input(ApproveArgs, a, 'approve');
         // The factory takes the cash that opens a vault; once the plan's vault exists, it takes its own.
         const vault = mockAddress(chain, `vault:${args.owner}:${args.basketId}`);
         const spender = live().vaults.has(vault) ? vault : factory;
-        return build({ kind: 'approve', a: { ...args, spender } }, args.owner, {
-          wallet: args.owner,
-        });
+        const op: Op = { kind: 'approve', a: { ...args, spender } };
+        return build(op, args.owner, { wallet: args.owner }, nonce);
       }),
+    // The nonce a rebuild is given is no part of the call: it is taken out before the call is made.
     buildCreateVault: (a) =>
       guarded(() => {
-        const args = input(CreateVaultArgs, a, 'create');
-        return build({ kind: 'create_vault', a: args }, args.owner, { wallet: args.owner });
+        const { nonce, ...args } = input(CreateVaultArgs, a, 'create');
+        return build({ kind: 'create_vault', a: args }, args.owner, { wallet: args.owner }, nonce);
       }),
     buildDeposit: (a) =>
-      guarded(() => ownerTx({ kind: 'deposit', a: input(DepositArgs, a, 'deposit') })),
+      guarded(() => {
+        const { nonce, ...args } = input(DepositArgs, a, 'deposit');
+        return ownerTx({ kind: 'deposit', a: args }, nonce);
+      }),
     buildOwnerSwap: (a) =>
-      guarded(() => ownerTx({ kind: 'swap', a: input(OwnerSwapArgs, a, 'swap') })),
+      guarded(() => {
+        const { nonce, ...args } = input(OwnerSwapArgs, a, 'swap');
+        return ownerTx({ kind: 'swap', a: args }, nonce);
+      }),
     buildSetTargets: (a) =>
-      guarded(() => ownerTx({ kind: 'set_targets', a: input(SetTargetsArgs, a, 'targets') })),
+      guarded(() => {
+        const { nonce, ...args } = input(SetTargetsArgs, a, 'targets');
+        return ownerTx({ kind: 'set_targets', a: args }, nonce);
+      }),
     buildAcceptVersion: (a) =>
-      guarded(() => ownerTx({ kind: 'accept_version', a: input(AcceptVersionArgs, a, 'accept') })),
+      guarded(() => {
+        const { nonce, ...args } = input(AcceptVersionArgs, a, 'accept');
+        return ownerTx({ kind: 'accept_version', a: args }, nonce);
+      }),
     buildSetAutoFollow: (a) =>
-      guarded(() =>
-        ownerTx({ kind: 'set_auto_follow', a: input(SetAutoFollowArgs, a, 'auto-follow') }),
-      ),
+      guarded(() => {
+        const { nonce, ...args } = input(SetAutoFollowArgs, a, 'auto-follow');
+        return ownerTx({ kind: 'set_auto_follow', a: args }, nonce);
+      }),
     buildWithdrawInKind: (a) =>
       guarded(() => {
         const args = input(WithdrawInKindArgs, a, 'withdraw');
+        if (args.nonce !== undefined && family !== 'evm')
+          refuse('NotSupported', `a transaction on ${chain} has no nonce`);
         const v = vaultOf(live(), args.vault);
         for (const id of args.assets ?? []) asset(id);
         const held = [cash, ...v.positions.keys()].filter((id) => balance(v, id) > 0n);
@@ -937,14 +1060,15 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
         // Solana withdraws one mint per call; EVM takes everything in one.
         const groups =
           family === 'solana' ? wanted.map((id) => [id]) : wanted.length ? [wanted] : [];
+        // On EVM the one transaction takes the nonce; Solana, which makes several, has none.
         return groups.map((ids) =>
-          ownerTx({ kind: 'withdraw', a: { vault: args.vault, assets: ids } }),
+          ownerTx({ kind: 'withdraw', a: { vault: args.vault, assets: ids } }, args.nonce),
         );
       }),
     buildPublishRecipe: (a) =>
       guarded(() => {
-        const args = input(PublishRecipeArgs, a, 'publish');
-        return build({ kind: 'publish', a: args }, args.creator, { wallet: args.creator });
+        const { nonce, ...args } = input(PublishRecipeArgs, a, 'publish');
+        return build({ kind: 'publish', a: args }, args.creator, { wallet: args.creator }, nonce);
       }),
     buildAdoptVersion: (vault) =>
       guarded(() => {
@@ -965,26 +1089,46 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
       }),
 
     messageHashOf: (signedTx) =>
-      guarded(() => hashOfSigned(input(z.string(), signedTx, 'signedTx'))),
+      guarded(() => readSigned(input(z.string(), signedTx, 'signedTx')).hash),
+    // Bytes that state a nonce land on it; bare call data lands on the signer's next, as a wallet that
+    // picks its own nonce would send it.
     relay: (signedTx) =>
-      guarded(() =>
-        adapter.mock.send({ messageHash: hashOfSigned(input(z.string(), signedTx, 'signedTx')) }),
-      ),
+      guarded(() => {
+        const { hash, nonce } = readSigned(input(z.string(), signedTx, 'signedTx'));
+        return land(hash, nonce ?? undefined);
+      }),
     // A transaction the mock was never sent is not seen, as on a node: the caller asks again.
     carries: (txId, messageHash) =>
       guarded((): Carried => {
-        if (!sent.has(txId)) return 'unseen';
-        return txId === mockTxId(chain, messageHash) ? 'this' : 'another';
+        const tx = sent.get(txId);
+        if (!tx) return 'unseen';
+        return tx.messageHash === messageHash ? 'this' : 'another';
       }),
     fate: (attempt) =>
       guarded(async (): Promise<AttemptFate> => {
-        const { messageHash, validUntil } = input(AttemptRef, attempt, 'attempt');
-        // For the same reason it can be asked about an attempt nobody reported, by its message alone.
-        const txId = mockTxId(chain, messageHash);
+        const { messageHash, signer, validUntil, nonce } = input(AttemptRef, attempt, 'attempt');
+        if (family === 'evm') {
+          // An attempt is the pair (message, nonce). With no nonce there is nothing to look for.
+          if (nonce === null) return { state: 'open' };
+          const txId = landedOn.get(`${signer}:${nonce}`);
+          if (!txId) return { state: 'open' };
+          // The nonce is used: by this call, which landed, or by another, and this one never can.
+          return sent.get(txId)?.messageHash === messageHash
+            ? { state: 'landed', txId }
+            : { state: 'gone' };
+        }
+        // On Solana the message names the attempt, and its validity is the only thing that closes it.
+        const txId = txIdOf(messageHash, null);
         const { status } = await adapter.track(txId, validUntil ?? undefined);
         if (status === 'confirmed' || status === 'reverted') return { state: 'landed', txId };
         return { state: status === 'expired' ? 'gone' : 'open' };
       }),
+    nonceOf: (seen) =>
+      guarded(() =>
+        'txId' in seen
+          ? (sent.get(input(z.string(), seen.txId, 'txId'))?.nonce ?? null)
+          : readSigned(input(z.string(), seen.signedTx, 'signedTx')).nonce,
+      ),
 
     mock: {
       addresses: { factory, keeper },
@@ -1017,48 +1161,17 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
         const at = input(z.number().int().nonnegative(), effectiveAt, 'effectiveAt');
         state.scheduled.set(asset(id).id, { multiplier: value, effectiveAt: at });
       },
-      send: (tx) =>
-        guarded(() => {
-          const b = built.get(tx.messageHash);
-          if (!b) throw new ChainError('NotBuiltHere', 'the mock only sends what it built');
-          const validUntil = b.validUntil === null ? undefined : String(b.validUntil);
-          if (sent.has(b.txId)) return { txId: b.txId, validUntil };
-          const s = live();
-          if (nextDrop) {
-            nextDrop = false;
-            sent.set(b.txId, { status: 'pending', validUntil: b.validUntil });
-            return { txId: b.txId, validUntil };
-          }
-          if (b.validUntil !== null && s.seconds > b.validUntil)
-            throw new ChainError('Expired', 'built too long ago; build it again');
-          const cost = fee + (b.op.kind === 'create_vault' ? newVaultGas : 0n);
-          if (b.signer !== keeper) {
-            const have = s.gas.get(b.signer) ?? 0n;
-            if (have < cost) throw new ChainError('NoGas', 'the wallet cannot pay the network fee');
-            s.gas.set(b.signer, have - cost);
-          }
-          let error = nextRevert;
-          nextRevert = null;
-          if (!error) {
-            const next = structuredClone(s);
-            try {
-              apply(next, b.op, { outs: [], mins: b.mins });
-              state = next;
-            } catch (e) {
-              if (!(e instanceof ChainError)) throw e;
-              error = { code: e.code, message: e.message };
-            }
-          }
-          sent.set(
-            b.txId,
-            error
-              ? { status: 'reverted', validUntil: b.validUntil, error }
-              : { status: 'confirmed', validUntil: b.validUntil },
-          );
-          return { txId: b.txId, validUntil };
-        }),
+      send: (tx) => guarded(() => land(tx.messageHash, tx.evm?.nonce)),
       sign(tx) {
-        if (family !== 'solana') return tx.payload;
+        if (family !== 'solana') {
+          const signed = {
+            mockSigned: true,
+            nonce: tx.evm?.nonce,
+            gas: tx.evm?.gas,
+            call: tx.payload,
+          };
+          return `0x${Buffer.from(JSON.stringify(signed)).toString('hex')}`;
+        }
         const bytes = Buffer.from(tx.payload, 'base64');
         // 64 bytes that depend on the signer and the message, as a signature does.
         const message = bytes.subarray(1 + SIGNATURE_BYTES);

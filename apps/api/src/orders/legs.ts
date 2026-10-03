@@ -95,6 +95,8 @@ async function buildFor(
   leg: Leg,
   entry: ChainEntry,
   owner: Address,
+  /** EVM: the nonce of the step's earlier attempt that can still land, for the rebuild to share. */
+  nonce: number | undefined,
 ): Promise<BuiltTx> {
   const { request, order } = stored;
   if (request.type !== 'buy' || !request.proposalId)
@@ -109,6 +111,7 @@ async function buildFor(
     .reduce((sum, t) => sum + BigInt(t.amountInRaw), 0n)
     .toString();
   const trades = leg.trades.length ? leg.trades : undefined;
+  const shared = nonce === undefined ? {} : { nonce };
   const vault = async () => {
     const found = await planVault(entry, owner, basketId);
     if (!found) throw new ChainError('VaultNotFound', 'the vault for this plan is not open yet');
@@ -117,7 +120,7 @@ async function buildFor(
   switch (leg.kind) {
     // The adapter works out who may take the cash from the plan: nobody here names a spender.
     case 'approve':
-      return adapter.buildApprove({ owner, basketId, amountRaw: cashRaw });
+      return adapter.buildApprove({ owner, basketId, amountRaw: cashRaw, ...shared });
     case 'create_vault': {
       const proposal = await loadProposal(deps.db, request.proposalId);
       const recipe = proposal?.recipes.find((r) => r.chain === leg.chain);
@@ -130,6 +133,7 @@ async function buildFor(
         depositRaw: cashRaw,
         trades,
         slippageBps,
+        ...shared,
       });
     }
     case 'deposit':
@@ -138,9 +142,15 @@ async function buildFor(
         amountRaw: cashRaw,
         trades,
         slippageBps,
+        ...shared,
       });
     case 'swap':
-      return adapter.buildOwnerSwap({ vault: await vault(), trades: leg.trades, slippageBps });
+      return adapter.buildOwnerSwap({
+        vault: await vault(),
+        trades: leg.trades,
+        slippageBps,
+        ...shared,
+      });
     default:
       throw new Refusal(501, `a ${leg.kind} step cannot be built yet`);
   }
@@ -204,10 +214,18 @@ function afterOutcome(deps: OrderDeps, stored: StoredOrder, status: Outcome['sta
  * and nobody reported it, the leg settles on it here.
  * - Solana: an attempt can land until the chain is past its `validUntil`. Only time closes it.
  * - EVM: there is no expiry. The attempt stays open until it is reported or the person cancels it.
+ *
+ * Answers the nonce the next build must share. On an EVM chain a cancelled attempt can still be sent
+ * by the wallet that signed it, so the rebuild is given its nonce: at most one of the two can land.
+ * Undefined where there is nothing to share: Solana, a first build, or a nonce another call has used.
  */
-async function assertNothingInFlight(deps: OrderDeps, stored: StoredOrder, leg: Leg) {
+async function assertNothingInFlight(
+  deps: OrderDeps,
+  stored: StoredOrder,
+  leg: Leg,
+): Promise<number | undefined> {
   const latest = latestAttempt(stored, leg);
-  if (!latest || final(latest)) return;
+  if (!latest || final(latest)) return undefined;
   const fate = await fateOf(deps.chains.get(leg.chain), latest, ownerOn(stored.order, leg));
   if (fate.state === 'landed') {
     const status = await settle(deps, leg, latest, { ...latest, txId: fate.txId });
@@ -225,6 +243,7 @@ async function assertNothingInFlight(deps: OrderDeps, stored: StoredOrder, leg: 
           : 'Report it, or wait until it has expired, before building this step again.',
       details: { retryable: true },
     });
+  return fate.state === 'open' && latest.nonce !== null ? latest.nonce : undefined;
 }
 
 /**
@@ -253,16 +272,15 @@ export async function buildLeg(
 
   const entry = deps.chains.get(leg.chain);
   assertBuilds(entry);
-  // API-2: on an EVM chain a cancelled or failed attempt can still be sent by the wallet that signed
-  // it. A real EVM adapter must build the next attempt with the first attempt's nonce
-  // (`leg_attempts.nonce` is there for it), so only one of them can ever land. The mock has no nonce.
-  await assertNothingInFlight(deps, stored, leg);
+  // On an EVM chain a cancelled attempt can still be sent by the wallet that signed it. The next
+  // attempt is built on its nonce, so only one of them can ever land.
+  const nonce = await assertNothingInFlight(deps, stored, leg);
   const owner = ownerOn(order, leg);
   let built: BuiltTx;
   let expected: Leg['expected'];
   try {
     [built, expected] = await refusing(async () => [
-      BuiltTx.parse(await buildFor(deps, stored, leg, entry, owner)),
+      BuiltTx.parse(await buildFor(deps, stored, leg, entry, owner, nonce)),
       await expectedOf(entry, leg.trades, owner, slippageOf(stored.request)),
     ]);
   } catch (e) {
@@ -295,6 +313,7 @@ export async function buildLeg(
 
   const attempt = await recordBuild(deps.db, leg, {
     messageHash: built.messageHash,
+    nonce: built.evm?.nonce ?? null,
     validUntil:
       built.lastValidBlockHeight === undefined ? null : String(built.lastValidBlockHeight),
     expected,
@@ -416,7 +435,7 @@ export async function cancelLeg(
       fix: 'Report it, or wait until it has expired.',
       details: { retryable: true },
     });
-  // API-2: see buildLeg. On an EVM chain the next attempt must reuse this one's nonce.
+  // See buildLeg: on an EVM chain the next attempt is built on this one's nonce.
   await recordOutcome(deps.db, attempt, {
     status: 'expired',
     txId: attempt.txId,

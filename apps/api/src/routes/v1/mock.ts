@@ -81,7 +81,13 @@ export function registerMockRoutes(scope: FastifyInstance, deps: OrderDeps) {
       const attempt = stored.attempts.find((a) => a.legId === leg.id && a.n === leg.attempt);
       if (!attempt) throw new Refusal(409, 'this step has not been built yet');
       const { mock } = mockOf(leg.chain);
-      const sent = await refusing(() => mock.send({ messageHash: attempt.messageHash }));
+      // As a wallet that signs what it was handed: on the nonce the build stated, where there is one.
+      const sent = await refusing(() =>
+        mock.send({
+          messageHash: attempt.messageHash,
+          ...(attempt.nonce === null ? {} : { evm: { nonce: attempt.nonce } }),
+        }),
+      );
       return { txId: sent.txId, provenance: 'mock' as const };
     },
   );

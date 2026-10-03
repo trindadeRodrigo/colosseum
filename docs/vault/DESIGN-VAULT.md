@@ -260,7 +260,10 @@ interface ChainReader {
   track(txId: string, validUntil?: string): Promise<TxStatus>;
 }
 interface OwnerBuilder {          // each call returns ONE transaction; the planner splits by the capabilities
-  // BuiltTx is BasketTx without legId and attemptId (3.3): a builder takes no leg
+  // BuiltTx is BasketTx without legId and attemptId (3.3): a builder takes no leg.
+  // Every argument below also takes `nonce?: number` (EVM only): the nonce to build on in place of the
+  // signer's next. It is for the rebuild of a step whose earlier attempt is still open, so the two share
+  // a nonce and at most one can land. A chain with no nonce refuses it with NotSupported
   buildApprove(a: { owner: Address; basketId: string; amountRaw: RawAmount }): Promise<BuiltTx>;
     // the plan, never a spender: the adapter derives who may take the cash (EVM: the factory until the
     // plan's vault exists, the vault after). A `spender` in the arguments is refused as BadInput
@@ -285,6 +288,7 @@ interface TxProbe {               // ties signed bytes and a landed transaction 
   carries(txId: string, messageHash: string): Promise<'this' | 'another' | 'unseen'>;   // unseen: ask again
   fate(attempt: { messageHash: string; signer: Address; validUntil: string | null; nonce: number | null }):
     Promise<{ state: 'open' | 'gone' } | { state: 'landed'; txId: string }>;
+  nonceOf(seen: { signedTx: string } | { txId: string }): Promise<number | null>;   // EVM: the nonce of record
 }
 type ChainAdapter = ChainReader & OwnerBuilder & KeeperBuilder & TxProbe;
 ```
@@ -310,7 +314,8 @@ type ChainAdapter = ChainReader & OwnerBuilder & KeeperBuilder & TxProbe;
   | none | `RouterIsAsset` | `RouterIsAsset` | no |
 
   `CONTRACT_ERROR_CODE` holds the contract column as data, and a root test fails on a custom error under `contracts/src` that has no row in it. The same test holds `PROGRAM_ERRORS` to `idl/basket.json`. An error a later slot adds to the program or to a contract gets its code in the same pull request.
-- **Signed bytes and landings (`TxProbe`).** An adapter keeps no record of what it built: the order layer stores each attempt's `messageHash` and asks. `messageHashOf` reads the hash back from signed bytes, so signing must not change it (3.3 defines it per family). `relay` is called only after that hash matched an attempt this server built. `carries` has three answers, because a node that has not seen a transaction is not saying it is the wrong one: `this` for the transaction built for that message, `another` for a transaction the node has that is another call or another signer's, `unseen` for one it does not have. `fate` says what became of an attempt nobody reported: `open` while its bytes can still land, `gone` once the chain is past `validUntil` (never on EVM, where nothing expires), `landed` with the id once the chain has it, confirmed or reverted. It is handed the signer and the nonce, which is what a real chain needs to look.
+- **Signed bytes and landings (`TxProbe`).** An adapter keeps no record of what it built: the order layer stores each attempt's `messageHash` and asks. `messageHashOf` reads the hash back from signed bytes, so signing must not change it (3.3 defines it per family). `relay` is called only after that hash matched an attempt this server built. `carries` has three answers, because a node that has not seen a transaction is not saying it is the wrong one: `this` for the transaction built for that message, `another` for a transaction the node has that is another call or another signer's, `unseen` for one it does not have. `fate` says what became of an attempt nobody reported: `open` while its bytes can still land, `gone` once they no longer can, `landed` with the id once the chain has it, confirmed or reverted. On Solana an attempt is its message, and it is `gone` once the chain is past `validUntil`. On EVM an attempt is the pair (messageHash, nonce), because two builds of one call share a hash: it is `landed` when the transaction at the signer's nonce is this call, `gone` when the signer's nonce has passed the attempt's and another call used it, and `open` otherwise; nothing expires by time.
+- **The EVM nonce and gas limit** (decided on Oct 3). The adapter that builds states the signer's next nonce and a gas limit in `evm.nonce` and `evm.gas`. An embedded wallet signs with both. An outside wallet may ignore the nonce; the nonce of record is then the one in the signed or sent transaction, which `nonceOf` reads from signed bytes or from a transaction the node has. A rebuild of a step whose earlier attempt is still open is built with that attempt's nonce (every owner builder takes an optional `nonce`), so at most one of the two can land. The message hash does not change: it is of the call, without nonce or gas. A transaction that reverted with `GasTooLow` is built again with a higher `gas`.
 - **The contract.** `adapterContract(name, setup)` from `@colosseum/chain-mock/contract`. `setup` returns a `ContractFixture`: the adapter, a `send(tx)` that signs and broadcasts (on the mock, `mock.send`), a `sign(tx)` that signs and hands the bytes back as a wallet does, an owner with three vaults (one following with auto-follow on, one with its own targets and auto-follow off, one a version behind a recipe that adds an asset), and the trades to try. The cases read, build, check each refusal's code, then send and read the state back. They are in seven groups, run in this order: `reads`, `shared portfolios`, `quotes`, `builds`, `refusals`, `signed bytes`, `state after a transaction lands`. `adapterContract(name, setup, { groups })` and `runContract(setup, { groups })` run only the groups named, so an adapter that has part of the interface is held to that part: the `reads` group takes a `ReadsFixture` (a `ChainReader`, an owner with three vaults, a stranger), and its setup reads no shared portfolio and builds nothing. The Solana reader runs it today. `contract.selfcheck.test.ts` runs the same cases against adapters broken on purpose and expects them to fail.
 - **Readings fixed in v0.** A create that follows a recipe takes empty `targets` and the `expectedVersion`. `getPrices` returns one price per asset asked for and must price every asset whose `priceKind` is not `none`. `quote` applies the adapter's own slippage to `minOutRaw`. `validUntil` is opaque outside the adapter: a block height on Solana, absent on EVM. A deposit is the chain's cash token and nothing else.
 
@@ -324,6 +329,8 @@ On Solana, `create_vault` opens only the cash account. Each position's token acc
 const BuiltTx = UnsignedTx.omit({ kind: true, legAssetId: true, executionId: true }).extend({
   legKind,                                             // what an adapter returns
   chainId, signer, feePayer /* optional */,
+  evm,                                                 // his { to, value, chainId } plus nonce and gas, which
+                                                       // an adapter always states (optional in the shape)
   messageHash,                                         // 32 bytes of hex, defined per family below
   preview });                                          // Sourced & { summary, simulated, feeNativeRaw,
                                                        //   changes: { holder: 'wallet' | 'vault', asset, deltaRaw }[],
@@ -338,7 +345,8 @@ const BasketTx = BuiltTx.extend({ legId, attemptId });  // strings, stamped by t
 // on Solana, chain = the family of chainId, a signer in that family's form.
 // messageHash. Solana: the SHA-256 of the message bytes, the serialized transaction less its signatures,
 // so signing does not change it. EVM: the SHA-256 of evmCallPreimage(), the text
-// `evm:<chain id>:<signer>:<to>:<value>:<data>`: the call alone, because the wallet sets nonce and fees.
+// `evm:<chain id>:<signer>:<to>:<value>:<data>`: the call alone, without the nonce, the gas limit or the
+// fees. Two builds of one call have one hash, so on EVM an attempt is the pair (messageHash, nonce).
 
 // order.ts
 type LegStatus = 'planned' | 'built' | 'sent' | 'confirmed' | 'failed' | 'expired' | 'skipped';
@@ -410,7 +418,7 @@ Leg rules:
 - Legs per chain, in order: `approve` where the chain needs it; `create_vault` or `deposit`; then `swap` legs of at most `maxTradesPerTx` trades. Where `tradesInCreate` is true the first trades ride in the create or the deposit. Each chain takes the share of the amount the plan gives it, and its trades add up to exactly that cash.
 - `expected` has one figure per trade, in the order of the leg's trades, and is empty for a leg that trades nothing. `minOutRaw` is the quote less the order's slippage: the buy's `maxSlippageBps` where it names one, the server's 100 bps where it does not. Once a leg is built, its `minOutRaw` is the number the adapter put in the bytes, which the transaction states per trade in `preview.minimums`; the API refuses to hand out a transaction whose stated trades are not the leg's.
 - Every order route answers with the `Order` plus `attempts`, every attempt at its legs (`OrderDetail`). A read tracks a leg that was sent and has not settled; there is no worker.
-- Legs on one chain are built in order. A leg is not built again while the transaction built before can still land, so nobody is asked to sign twice for one step: on Solana until the chain is past the attempt's `validUntil`; on an EVM chain, where nothing expires, until the attempt is reported or the person cancels it with `POST /v1/orders/{id}/legs/{legId}/cancel` (no body, answers the order). A cancel is refused on Solana while the transaction can still land. A real EVM adapter must give the next attempt the first one's nonce, so only one can land (`apps/api/src/orders/README.md`).
+- Legs on one chain are built in order. A leg is not built again while the transaction built before can still land, so nobody is asked to sign twice for one step: on Solana until the chain is past the attempt's `validUntil`; on an EVM chain, where nothing expires, until the attempt is reported or the person cancels it with `POST /v1/orders/{id}/legs/{legId}/cancel` (no body, answers the order). A cancel is refused on Solana while the transaction can still land. On an EVM chain the nonce the build stated is stored on the attempt (`leg_attempts.nonce`), handed to `fate`, and given to the rebuild of a step whose earlier attempt can still land, so only one of the two can. Two orders of one person with the identical step are told apart by it: the second is not taken for the first.
 - A report, by `txId` or by `signedTx`, is matched against every attempt at the leg, and the leg settles on the attempt that landed, whatever it was labelled. An attempt the chain has confirmed or reverted is never rewritten. Signed bytes are relayed once, and only for an attempt that was built and never sent. A transaction that carries the bytes of no attempt is refused and changes nothing. A reported id the chain has not seen yet is not refused as the wrong one: the answer is 409 with `details.retryable` true and nothing is written, so the web reports again after a moment. The checks are the adapter's four `TxProbe` calls of 3.2 (`messageHashOf`, `relay`, `carries`, `fate`); the mock is the only adapter that has them so far.
 - The 24 hours start when the chain has seen an order's first transaction (confirmed or reverted), not when one is claimed. Nothing reopens an order that has expired: a transaction that lands afterwards is recorded and the order stays expired.
 - One order buys at most $1,000,000 and trades with at most 300 bps of slippage (`ORDER_LIMITS` in `packages/schemas`, held by the request's own schema, so a request over either answers 400). A stored plan whose weights on a chain do not add up to exactly 10,000 is refused when the order is made: a buy spends the whole deposit on the plan's assets.
@@ -458,7 +466,7 @@ interface WalletPort {
 // sign() and send() take BasketTx, never BuiltTx: nothing unstamped reaches a wallet
 ```
 
-- `sign()` sends nothing. Its answer has the same length and order as its input. On Solana each entry is base64 of the whole serialized transaction, signatures and message, with the account's signature in its slot. On EVM it is the 0x serialized signed transaction, with the nonce, gas and fee the wallet set. Either is what a report carries as `signedTx`.
+- `sign()` sends nothing. Its answer has the same length and order as its input. On Solana each entry is base64 of the whole serialized transaction, signatures and message, with the account's signature in its slot. On EVM it is the 0x serialized signed transaction: an embedded wallet signs with the nonce and the gas limit the transaction states and sets the fee; an outside wallet may choose its own nonce. Either is what a report carries as `signedTx`.
 - `send()` is for an outside EVM wallet, which cannot sign without sending. It answers the transaction's hash, reported as `txId`. Solana and the embedded wallet use `sign()`.
 - `changed` means the wallet handed back something other than what it was given, signed. `wrong_account` means the transaction or the signature is another account's. `unsupported` means the wallet cannot do what was asked. `not_connected` means nobody is signed in or no wallet of that family is connected.
 

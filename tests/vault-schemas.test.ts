@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as schemas from '@colosseum/schemas';
 import {
+  AcceptVersionArgs,
   Address,
   ApproveArgs,
   AssetId,
@@ -25,10 +26,12 @@ import {
   ChainErrorCode,
   CONTRACT_ERROR_CODE,
   ConsentRequest,
+  CreateVaultArgs,
   CreatorLimitReason,
   chainFamily,
   creatorLimitReasonId,
   creatorLimitReasonOf,
+  DepositArgs,
   EvmAddress,
   evmCallPreimage,
   FundingNeed,
@@ -47,9 +50,11 @@ import {
   OrderError,
   OrderRouteParams,
   Owner,
+  OwnerSwapArgs,
   PortfolioResponse,
   PROGRAM_ERRORS,
   Price,
+  PublishRecipeArgs,
   parseChainConfigs,
   parseFlags,
   RawAmount,
@@ -62,6 +67,8 @@ import {
   ReportLegRequest,
   type RollUpContext,
   SCOPE_MAINNET,
+  SetAutoFollowArgs,
+  SetTargetsArgs,
   SolanaAddress,
   stampTx,
   Targets,
@@ -71,6 +78,7 @@ import {
   WalletAccount,
   WalletError,
   WalletErrorCode,
+  WithdrawInKindArgs,
 } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
 
@@ -585,6 +593,67 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
     // A transaction's message hash is 32 bytes of lower-case hex: a SHA-256, on both families.
     expect(BuiltTx.safeParse({ ...built, messageHash: 'x' }).success).toBe(false);
     expect(BuiltTx.safeParse({ ...built, messageHash: HEX32.toUpperCase() }).success).toBe(false);
+  });
+
+  it('lets an EVM transaction state its nonce and its gas limit, and a rebuild name the nonce to share', () => {
+    const evm = { to: EVM, value: '0', chainId: 46630 };
+    const { lastValidBlockHeight: _, ...noHeight } = built;
+    const onRobinhood = {
+      ...noHeight,
+      chain: 'evm',
+      chainId: 'robinhood',
+      signer: EVM,
+      preview: { ...built.preview, changes: [] },
+    };
+    const stated = { ...onRobinhood, evm: { ...evm, nonce: 7, gas: 300_000 } };
+    expect(BuiltTx.parse(stated).evm).toEqual({ ...evm, nonce: 7, gas: 300_000 });
+    // Both are optional in the shape: a transaction no adapter built may leave them to the wallet.
+    expect(BuiltTx.safeParse({ ...onRobinhood, evm }).success).toBe(true);
+    expect(BuiltTx.parse({ ...onRobinhood, evm: { ...evm, nonce: 0 } }).evm?.nonce).toBe(0);
+    for (const bad of [
+      { nonce: -1 },
+      { nonce: 1.5 },
+      { nonce: '7' },
+      { gas: 0 },
+      { gas: 21_000.5 },
+    ])
+      expect(
+        BuiltTx.safeParse({ ...onRobinhood, evm: { ...evm, ...bad } }).success,
+        JSON.stringify(bad),
+      ).toBe(false);
+    // The hash is of the call alone: the nonce and the gas are no part of it.
+    const call = { chainId: 46630, signer: EVM, to: EVM, value: '0', data: '0x' };
+    expect(evmCallPreimage({ ...call, ...{ nonce: 7, gas: 300_000 } })).toBe(evmCallPreimage(call));
+
+    // Every owner builder takes the nonce a rebuild shares with the attempt that is still open.
+    const vault = EVM;
+    const withNonce: [{ safeParse(v: unknown): { success: boolean } }, object][] = [
+      [ApproveArgs, { owner: EVM, basketId: '7', amountRaw: '1' }],
+      [
+        CreateVaultArgs,
+        { owner: EVM, basketId: '7', targets: [], autoFollow: false, slippageBps: 100 },
+      ],
+      [DepositArgs, { vault, amountRaw: '1', slippageBps: 100 }],
+      [
+        OwnerSwapArgs,
+        {
+          vault,
+          trades: [{ sell: 'robinhood:usdc', buy: 'robinhood:spy', amountInRaw: '1' }],
+          slippageBps: 100,
+        },
+      ],
+      [SetTargetsArgs, { vault, targets: [{ asset: 'robinhood:spy', weightBps: 5000 }] }],
+      [AcceptVersionArgs, { vault, recipeOnchainId: 'r', expectedVersion: 2 }],
+      [SetAutoFollowArgs, { vault, on: true }],
+      [WithdrawInKindArgs, { vault }],
+      [PublishRecipeArgs, { creator: SOL, recipe }],
+    ];
+    for (const [schema, args] of withNonce) {
+      expect(schema.safeParse(args).success).toBe(true);
+      expect(schema.safeParse({ ...args, nonce: 12 }).success).toBe(true);
+      expect(schema.safeParse({ ...args, nonce: -1 }).success).toBe(false);
+      expect(schema.safeParse({ ...args, nonce: 1.5 }).success).toBe(false);
+    }
   });
 
   it('takes an approval by its plan, never by a spender a caller names', () => {

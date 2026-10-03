@@ -232,6 +232,12 @@ describe('the walking skeleton: a buy across two chains on the mock', () => {
       ]);
       expect(attempt).toMatchObject({ legId: leg.id, n: 1, status: 'built', txId: null });
       expect(attempt.messageHash).toBe(tx.messageHash);
+      // On an EVM chain the attempt is the pair (message, nonce): the nonce the build stated is stored.
+      if (leg.chain === 'solana') expect([tx.evm, attempt.nonce]).toEqual([undefined, null]);
+      else {
+        expect(attempt.nonce).toBe(tx.evm?.nonce);
+        expect(tx.evm?.gas).toBeGreaterThan(0);
+      }
 
       // One leg is handed over as signed bytes for the server to relay; the rest are sent by the
       // wallet and reported by id.
@@ -883,6 +889,13 @@ describe('a leg settles only on the transaction that was built for it', () => {
     expect((await post(a, legUrl(placed, deposit.id, 'cancel'))).statusCode).toBe(409);
     const two = await build(a, placed, deposit.id);
     expect(two.attempt.n).toBe(2);
+    // The same call, built on the cancelled attempt's nonce: whichever of the two is sent, at most
+    // one transaction can land.
+    expect([two.tx.messageHash, two.tx.evm?.nonce]).toEqual([
+      one.tx.messageHash,
+      one.tx.evm?.nonce,
+    ]);
+    expect([one.attempt.nonce, two.attempt.nonce]).toEqual([one.tx.evm?.nonce, one.tx.evm?.nonce]);
 
     // The wallet sends the cancelled one anyway. It lands, and its id is reported.
     const stale = await registry.get('robinhood').mock?.send({ messageHash: one.tx.messageHash });
@@ -898,11 +911,55 @@ describe('a leg settles only on the transaction that was built for it', () => {
       [1, 'confirmed'],
       [2, 'expired'],
     ]);
+    // Its bytes are the bytes of the transaction that landed: handing them over sends nothing, and
+    // answers with the order as it stands.
     const late = await post(a, legUrl(placed, deposit.id, 'report'), { signedTx: two.tx.payload });
-    expect(late.statusCode).toBe(409);
+    expect(late.statusCode).toBe(200);
+    expect(OrderDetail.parse(late.json())).toEqual(done);
     expect((await post(a, legUrl(placed, deposit.id, 'build'))).statusCode).toBe(409);
     expect(done.status).toBe('done');
     expect(before - (await cash())).toBe(10_000_000n);
+  });
+
+  it('two orders with the identical deposit are two attempts: the second is not taken for the first', async () => {
+    const a = await someone();
+    const cash = await openVault(a, 'robinhood');
+    const before = await cash();
+    // The first order's deposit lands and is reported.
+    const one = await toDeposit(a, 'robinhood');
+    const first = await build(a, one.placed, one.deposit.id);
+    const firstTx = await land(a, one.placed, one.deposit.id);
+    const settled = await report(a, one.placed, one.deposit.id, { txId: firstTx });
+    expect(legOf(settled, one.deposit.id).status).toBe('confirmed');
+
+    // The same person buys the same amount again: the deposit is the same call, so the same hash. It
+    // is told apart from the first by its nonce.
+    const two = await toDeposit(a, 'robinhood');
+    const second = await build(a, two.placed, two.deposit.id);
+    expect(second.tx.messageHash).toBe(first.tx.messageHash);
+    expect(second.attempt.nonce).toBeGreaterThan(first.attempt.nonce ?? -1);
+    // It has not landed because the first one did: a read leaves it built, and a second build is
+    // refused because it can still land, not because it has.
+    expect(legOf(await read(a, two.placed), two.deposit.id)).toMatchObject({
+      status: 'built',
+      txId: null,
+    });
+    const refused = await post(a, legUrl(two.placed, two.deposit.id, 'build'));
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error).toMatch(/can still land/);
+    // So it can be cancelled, and built again on the nonce it had.
+    const cancelled = await post(a, legUrl(two.placed, two.deposit.id, 'cancel'));
+    expect(cancelled.statusCode, cancelled.body).toBe(200);
+    const again = await build(a, two.placed, two.deposit.id);
+    expect([again.attempt.n, again.attempt.nonce]).toEqual([2, second.attempt.nonce]);
+    expect(again.tx.evm?.nonce).toBe(second.tx.evm?.nonce);
+    // And it lands as its own transaction.
+    const secondTx = await land(a, two.placed, two.deposit.id);
+    expect(secondTx).not.toBe(firstTx);
+    const done = await report(a, two.placed, two.deposit.id, { txId: secondTx });
+    expect(legOf(done, two.deposit.id)).toMatchObject({ status: 'confirmed', txId: secondTx });
+    expect(done.status).toBe('done');
+    expect(before - (await cash())).toBe(20_000_000n);
   });
 
   it('cancels only an attempt that was built and has not landed', async () => {
@@ -1241,8 +1298,10 @@ describe('refusals', () => {
     clock += 20 * 60 * 1000;
     expect((await state(unsent)).status).toBe('expired');
 
-    // A transaction that lands after the order expired is recorded, and the order stays expired.
-    const late = await order(a, { amountUsd: 400, chains: ['robinhood'] }, on);
+    // A transaction that lands after the order expired is recorded, and the order stays expired. It
+    // is for another amount than the first: on an EVM chain the same approval built on the same nonce
+    // would be the same transaction as the one that never landed.
+    const late = await order(a, { amountUsd: 300, chains: ['robinhood'] }, on);
     const leg = first(late, 'robinhood');
     await build(a, late, leg.id, on);
     const txId = await land(a, late, leg.id, on);

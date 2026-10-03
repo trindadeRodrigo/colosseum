@@ -2,6 +2,7 @@ import { view } from '@colosseum/basket';
 import {
   type Address,
   AttemptFate,
+  type AttemptRef,
   BasketAsset,
   BuiltTx,
   Capabilities,
@@ -111,7 +112,8 @@ export type ContractFixture = ReadsFixture & {
   send(tx: BuiltTx): Promise<{ txId: string; validUntil?: string }>;
   /**
    * Signs as `tx.signer` and hands the signed transaction back, as `WalletPort.sign()` does: base64 of
-   * the whole serialized transaction on Solana, the 0x serialized signed transaction on EVM. Nothing is
+   * the whole serialized transaction on Solana, the 0x serialized signed transaction on EVM, signed
+   * with the nonce and the gas limit the transaction states, as an embedded wallet does. Nothing is
    * sent. On the mock this is `mock.sign`.
    */
   sign(tx: BuiltTx): Promise<string>;
@@ -187,7 +189,19 @@ function checkTx(c: Ctx, tx: BuiltTx, kind: LegKind, signer: Address) {
   expect(tx.description.length).toBeGreaterThan(0);
   expect(tx.payload.length).toBeGreaterThan(8);
   expect(tx.messageHash.length).toBeGreaterThanOrEqual(32);
+  // An EVM transaction states the nonce and the gas limit to sign with.
+  if (chainFamily(c.a.chain) === 'evm') {
+    expect(Number.isInteger(tx.evm?.nonce) && (tx.evm?.nonce ?? -1) >= 0, 'evm.nonce').toBe(true);
+    expect(tx.evm?.gas ?? 0, 'evm.gas').toBeGreaterThanOrEqual(21_000);
+  }
 }
+/** An attempt as the order layer would store it for a transaction it had built. */
+const attemptOf = (tx: BuiltTx): AttemptRef => ({
+  messageHash: tx.messageHash,
+  signer: tx.signer,
+  validUntil: tx.lastValidBlockHeight === undefined ? null : String(tx.lastValidBlockHeight),
+  nonce: tx.evm?.nonce ?? null,
+});
 const delta = (tx: BuiltTx, holder: 'wallet' | 'vault', asset: string) =>
   tx.preview.changes
     .filter((x) => x.holder === holder && x.asset === asset)
@@ -815,6 +829,18 @@ group('refusals', {
     await refuses(publish(again), 'CreatorLimit');
   },
 
+  'a nonce on a chain that has none: NotSupported': async (c) => {
+    if (chainFamily(c.a.chain) === 'evm') return;
+    await refuses(
+      c.a.buildSetAutoFollow({ vault: c.f.manualVault, on: true, nonce: 0 }),
+      'NotSupported',
+    );
+    await refuses(
+      c.a.buildDeposit({ vault: c.f.vault, amountRaw: '1', slippageBps: 100, nonce: 3 }),
+      'NotSupported',
+    );
+  },
+
   'adopting a version that adds an asset: NewAssetNeedsOwner': async (c) => {
     await refuses(c.a.buildAdoptVersion(c.f.newAssetVault), 'NewAssetNeedsOwner');
   },
@@ -852,12 +878,7 @@ group('signed bytes', {
         amountRaw: amount.toString(),
         slippageBps: 100,
       });
-      const attempt = {
-        messageHash: tx.messageHash,
-        signer: tx.signer,
-        validUntil: tx.lastValidBlockHeight === undefined ? null : String(tx.lastValidBlockHeight),
-        nonce: null,
-      };
+      const attempt = attemptOf(tx);
       // Built and not sent: it can still land.
       expect(exact(AttemptFate, await c.a.fate(attempt))).toEqual({ state: 'open' });
 
@@ -870,6 +891,12 @@ group('signed bytes', {
 
       expect(await c.a.carries(txId, tx.messageHash)).toBe('this');
       expect(exact(AttemptFate, await c.a.fate(attempt))).toEqual({ state: 'landed', txId });
+      // The nonce of record is in the signed bytes and on the transaction the chain has: the one the
+      // build stated, since the fixture signs with it. Solana has none.
+      const nonce = chainFamily(c.a.chain) === 'evm' ? (tx.evm?.nonce ?? null) : null;
+      expect(await c.a.nonceOf({ signedTx: signed })).toBe(nonce);
+      expect(await c.a.nonceOf({ txId })).toBe(nonce);
+      expect(await c.a.nonceOf({ txId: c.f.unknownTxId })).toBeNull();
 
       // The same bytes a second time land nothing more, whether the adapter answers or refuses.
       const again = await outcomeOf(c.a.relay(signed));
@@ -915,6 +942,50 @@ group('signed bytes', {
       // An id the chain never saw is neither: it may yet arrive, and the caller asks again.
       expect(await c.a.carries(c.f.unknownTxId, one.messageHash)).toBe('unseen');
       expect(await c.a.carries(c.f.unknownTxId, other.messageHash)).toBe('unseen');
+    },
+
+  'two calls built on one nonce: one lands, and the other is gone': async (c) => {
+    if (chainFamily(c.a.chain) !== 'evm') return;
+    // Neither changes anything: the first vault is already off, the second already on.
+    const [one, other] = [
+      await c.a.buildSetAutoFollow({ vault: c.f.manualVault, on: false }),
+      await c.a.buildSetAutoFollow({ vault: c.f.vault, on: true }),
+    ];
+    // Both are built on the signer's next nonce: the chain has not moved between them.
+    expect(other.evm?.nonce).toBe(one.evm?.nonce);
+    expect(await c.a.fate(attemptOf(other))).toEqual({ state: 'open' });
+    const { txId } = await c.f.send(one);
+    expect(await c.a.fate(attemptOf(one))).toEqual({ state: 'landed', txId });
+    // Another call used the nonce, so this one can never land: nothing is left to wait for.
+    expect(exact(AttemptFate, await c.a.fate(attemptOf(other)))).toEqual({ state: 'gone' });
+
+    // A rebuild is given the nonce of the attempt that is still open, and states it. The hash is of
+    // the call alone, so the same call on any nonce has the same hash.
+    const open = await c.a.buildSetAutoFollow({ vault: c.f.vault, on: true });
+    expect(open.evm?.nonce).toBe((one.evm?.nonce ?? 0) + 1);
+    const nonce = (open.evm?.nonce ?? 0) + 3;
+    const rebuilt = await c.a.buildSetAutoFollow({ vault: c.f.vault, on: true, nonce });
+    expect(rebuilt.evm?.nonce).toBe(nonce);
+    expect(rebuilt.messageHash).toBe(open.messageHash);
+  },
+
+  'the same call built again is its own attempt: open, not landed because the first one did':
+    async (c) => {
+      if (chainFamily(c.a.chain) !== 'evm') return;
+      const deposit = {
+        vault: c.f.vault,
+        amountRaw: (BigInt(c.f.depositRaw) / 8n).toString(),
+        slippageBps: 100,
+      };
+      const first = await c.a.buildDeposit(deposit);
+      const { txId } = await c.f.send(first);
+      // An identical deposit, as a second order of the same person would build it.
+      const second = await c.a.buildDeposit(deposit);
+      expect(second.messageHash).toBe(first.messageHash);
+      expect(second.evm?.nonce).toBe((first.evm?.nonce ?? 0) + 1);
+      expect(await c.a.fate(attemptOf(first))).toEqual({ state: 'landed', txId });
+      // Told apart by the nonce: the second has not been sent, and can still land.
+      expect(await c.a.fate(attemptOf(second))).toEqual({ state: 'open' });
     },
 });
 
