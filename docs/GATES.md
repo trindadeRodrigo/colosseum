@@ -67,3 +67,8 @@ The risk layer's reference price, the oracle standard (`docs/risk/PLAN-RISK.md` 
 | **LTV-BASIS** (D21) | DECIDED | The hourly loan-to-value tables use the venue's own oracle for the whole history. USD totals stay on the valuation price. The old hourly lending rows in Postgres are deleted and imported again | A venue liquidates on its own oracle. The tables used the pool mid for the last 28 days and the oracle before that, so the basis changed inside one series |
 | **PRICE-JOB** (D22) | DECIDED | The hourly price job is installed now, not after Oct 12. It is a new job with its own installer: no existing collector file is edited and no running job is reloaded | The rule in `CLAUDE.md` protects the weekend collection; a new job beside the others leaves it untouched, and the log times of the six running jobs are checked before and after |
 
+## Decided on 2026-10-03 (in Thom's session)
+
+| Gate | Status | Decision | Facts |
+|---|---|---|---|
+| **COMPOSE-SIGNATURE** | DECIDED | The personalization engine's entry is `compose(sheet, shelf, context)`: the sheet and the shelf as arguments of their own, and one context for the time and the data (holdings, yields, the liquidity provider and its source, the parameter table). It replaces the one-object form that design section 3.6 froze on Oct 2 | The sheet and the shelf are what every caller has; the rest is optional data that comes with a time, and keeping it in one argument is what lets a test hold "no clock, no network, no environment". The sheet is the local `PersonalSheet`, which adds the person's limits. Nothing in `packages/schemas` changed. Design 3.6 and 7 show the form as built |
