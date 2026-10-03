@@ -30,6 +30,7 @@ export type LendingReportParams = {
   minLiquidatorMarginPct: number;
   /** Seizure size buckets of the observed routes (USD edges; item 9). */
   sizeBucketsUsd: number[];
+  followHours: number;
 };
 
 export const defaultLendingReportParams = (): LendingReportParams => ({
@@ -41,6 +42,8 @@ export const defaultLendingReportParams = (): LendingReportParams => ({
   oracleMatchSec: 180,
   minLiquidatorMarginPct: 0,
   sizeBucketsUsd: [1_000, 10_000, 100_000],
+  /** Hours a seized position is followed after its liquidation (item 13). */
+  followHours: 72,
 });
 
 // ---------------------------------------------------------------------------------------------------------------

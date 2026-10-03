@@ -1435,6 +1435,32 @@ const sheetChecks = lendingPoolFacts.map((sh) => {
 });
 
 // =============================================================================================== output
+// =========================================================================================== 10. seized collateral
+// PLAN-ANALYTICS item 13: where the collateral of the not_followed liquidations went, from the latest
+// `pnpm risk:lending-follow` summary (aggregates by asset and outcome; the per-liquidation rows stay local).
+const followFile = join(LENDING_HISTORY_DIR, 'follow', 'summary.json');
+type FollowSummaryFile = {
+  generatedAt: string;
+  followHours: number;
+  liquidations: number;
+  counts: Record<string, number>;
+  byAsset: Array<{
+    asset: string;
+    outcome: string;
+    liquidations: number;
+    seizedUsd: number | null;
+    seizedUsdKnown?: number;
+    medianHours: number | null;
+    medianShare: number | null;
+    realisedVsOracle: { median: number | null; samples: number };
+  }>;
+};
+const seizedFollow: FollowSummaryFile | { reason: 'not_collected'; detail: string } = existsSync(
+  followFile,
+)
+  ? (JSON.parse(readFileSync(followFile, 'utf8')) as FollowSummaryFile)
+  : { reason: 'not_collected', detail: 'run pnpm risk:lending-follow' };
+
 const report = {
   method: METHOD,
   source:
@@ -1513,6 +1539,7 @@ const report = {
       'size buckets by seized USD; pools are pool accounts, never wallets',
     ],
   },
+  seizedFollow,
   lendingPoolFacts: {
     sheets: lendingPoolFacts,
     note: `PLAN-ANALYTICS item 10: one sheet per Kamino debt reserve and Jupiter Lend vault; routes at a seized $${SHEET_ROUTE_SIZE_USD} in each regime; coverage by gap is asset-wide (section 7)`,
@@ -1779,6 +1806,32 @@ table(
 console.log(
   `  liquidations ${observedTotals.from?.slice(0, 10)} → ${observedTotals.to?.slice(0, 10)}; routed curves from ${String(observedTotals.routedCurvesFrom).slice(0, 10)}; simVsObs = observed − simulated recovered value`,
 );
+if ('byAsset' in seizedFollow)
+  table(
+    `10. Seized collateral after the transaction — ${seizedFollow.liquidations} not_followed liquidations followed for ${seizedFollow.followHours} h (${seizedFollow.generatedAt.slice(0, 16)}Z): ${Object.entries(
+      seizedFollow.counts,
+    )
+      .map(([k, v]) => `${k} ${v}`)
+      .join(', ')}`,
+    seizedFollow.byAsset.map((r) => ({
+      asset: r.asset,
+      outcome: r.outcome,
+      liq: r.liquidations,
+      seized:
+        r.seizedUsd === null
+          ? 'no_reference_price'
+          : `${usd(r.seizedUsd)}${r.seizedUsdKnown !== undefined && r.seizedUsdKnown < r.liquidations ? ` (${r.seizedUsdKnown} priced)` : ''}`,
+      medianHours: r.medianHours === null ? '—' : r.medianHours.toFixed(2),
+      share: r.medianShare === null ? '—' : pct(r.medianShare, 0),
+      vsOracle: r.realisedVsOracle.samples
+        ? `${pct(r.realisedVsOracle.median as number, 2)} n=${r.realisedVsOracle.samples}`
+        : '—',
+    })),
+  );
+else
+  console.log(
+    `\n10. Seized collateral after the transaction — not_collected (${seizedFollow.detail})`,
+  );
 console.log(
   '\n* derived weekend capacity; + capacity beyond the top of the measured grid (lower bound); ~ rests on an assumption',
 );

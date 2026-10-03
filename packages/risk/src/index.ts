@@ -14,6 +14,7 @@ export * from './facts/market';
 export * from './facts/plan';
 export * from './facts/returns';
 export * from './lending/aggregate';
+export * from './lending/follow';
 export * from './lending/ix-names';
 export * from './lending/jupiter-lend';
 export * from './lending/kamino';

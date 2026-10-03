@@ -6,7 +6,7 @@
 
 ## Where this stands (2026-10-03 00:40Z, for a fresh session)
 
-Done: items 1–12, and A-C for Step 11's reference prices (§7 of the plan has the evidence for each). Item 4 is built end to end, and its split facts read `insufficient_samples` until the split snapshot has run 8 times in a regime; they then fill with no code change. Item 4 added migration `0009_risk_network_fees.sql` (item 11's is 0008). To do: items 13–17 (Phase 2; 13 is small and can start now under DA3; 14, 16 and 17 wait for Mon Oct 5). The branch has `risk` and `staging` merged in (`origin/staging` has one merge commit more, PR #18, with no new migration), and `pnpm verify` passes (1,306 tests). Nothing is pushed.
+Done: items 1–13, and A-C for Step 11's reference prices (§7 of the plan has the evidence for each). Item 4 is built end to end, and its split facts read `insufficient_samples` until the split snapshot has run 8 times in a regime; they then fill with no code change. Item 4 added migration `0009_risk_network_fees.sql` (item 11's is 0008). To do: items 14–17 (Phase 2; 15 can start now; 14, 16 and 17 wait for Mon Oct 5 under DA3). The branch has `risk` and `staging` merged in (`origin/staging` has one merge commit more, PR #18, with no new migration), and `pnpm verify` passes (1,317 tests). Nothing is pushed.
 
 Waiting on a person (not on the next session): the refresh job's new bundle (item 2, steps in §7); hourly launchd jobs for `pnpm risk:lending-report && pnpm risk:facts-import` and for `pnpm risk:split-snapshot && pnpm risk:cost-breakdown` (after minute 10: until the refresh bundle is replaced, its `compute` drops the split keys each hour); `pnpm risk:network-fees` after new swaps; and reading one asset sheet and one lending sheet on `/docs`.
 

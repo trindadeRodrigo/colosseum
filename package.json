@@ -83,6 +83,8 @@
     "risk:lending-reconstruct": "NODE_OPTIONS=--max-old-space-size=12288 tsx scripts/risk/lending-reconstruct.ts",
     "risk:lending-freeze-report-fixtures": "tsx scripts/risk/lending-freeze-report-fixtures.ts",
     "risk:lending-freeze-liquidation-fixtures": "tsx scripts/risk/lending-freeze-liquidation-fixtures.ts",
+    "risk:lending-follow": "tsx scripts/risk/lending-follow.ts",
+    "risk:lending-freeze-follow-fixtures": "tsx scripts/risk/lending-freeze-follow-fixtures.ts && biome format --write fixtures/risk/lending/follow.json",
     "risk:lending-report": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/lending-report.ts",
     "risk:lending-freeze-verify-fixtures": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/lending-freeze-verify-fixtures.ts",
     "risk:prices-extract": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk/prices/extract.ts",
