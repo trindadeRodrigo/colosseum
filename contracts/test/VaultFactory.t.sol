@@ -30,7 +30,7 @@ contract ProxyMaker is ConfigHarness {
 
     function make(address beacon, address owner, bytes32 planId) external returns (BasketVault) {
         bytes memory init = abi.encodeCall(BasketVault.initialize, (owner, planId));
-        return BasketVault(address(new BeaconProxy(beacon, init)));
+        return BasketVault(payable(address(new BeaconProxy(beacon, init))));
     }
 
     function start(BasketVault made) external {
@@ -117,10 +117,10 @@ contract VaultFactoryTest is SwapFixture {
         assertEq(made, predicted);
         assertEq(factory.vaultOf(owner, PLAN_2), made, "the same answer after it exists");
         assertGt(made.code.length, 0);
-        assertEq(BasketVault(made).owner(), owner);
-        assertEq(BasketVault(made).planId(), PLAN_2);
-        assertEq(BasketVault(made).config(), address(factory));
-        (bytes32 indexId, uint32 version, bool autoFollow) = BasketVault(made).following();
+        assertEq(BasketVault(payable(made)).owner(), owner);
+        assertEq(BasketVault(payable(made)).planId(), PLAN_2);
+        assertEq(BasketVault(payable(made)).config(), address(factory));
+        (bytes32 indexId, uint32 version, bool autoFollow) = BasketVault(payable(made)).following();
         assertEq(indexId, bytes32(0));
         assertEq(version, 0);
         assertFalse(autoFollow);
@@ -189,7 +189,7 @@ contract VaultFactoryTest is SwapFixture {
         address strangers = _create(stranger, PLAN_2);
 
         assertTrue(strangers != alices);
-        assertEq(BasketVault(strangers).owner(), stranger);
+        assertEq(BasketVault(payable(strangers)).owner(), stranger);
         assertEq(alices.code.length, 0);
         assertFalse(factory.isVault(alices));
         assertEq(factory.vaultsOf(owner).length, 1);
@@ -235,15 +235,15 @@ contract VaultFactoryTest is SwapFixture {
 
         vm.startPrank(stranger);
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        BasketVault(made).initialize(stranger, PLAN_2);
+        BasketVault(payable(made)).initialize(stranger, PLAN_2);
         vm.expectRevert(IBasketVault.NotCreating.selector);
-        BasketVault(made).start(bytes32(0), 0, none, 0, noSwaps);
+        BasketVault(payable(made)).start(bytes32(0), 0, none, 0, noSwaps);
         vm.expectRevert(abi.encodeWithSelector(IBasketVault.NotOwner.selector, stranger));
-        BasketVault(made).withdraw(address(stockA), 5 * unit);
+        BasketVault(payable(made)).withdraw(address(stockA), 5 * unit);
         vm.stopPrank();
 
         vm.prank(owner);
-        BasketVault(made).withdraw(address(stockA), 5 * unit);
+        BasketVault(payable(made)).withdraw(address(stockA), 5 * unit);
         assertEq(stockA.balanceOf(owner), 5 * unit);
     }
 
@@ -295,7 +295,7 @@ contract VaultFactoryTest is SwapFixture {
         vm.expectEmit(predicted);
         emit IBasketVault.TargetsSet(predicted, targets);
         vm.prank(owner);
-        BasketVault made = BasketVault(factory.createVault(PLAN_2, targets, bytes32(0), 0, false));
+        BasketVault made = BasketVault(payable(factory.createVault(PLAN_2, targets, bytes32(0), 0, false)));
 
         Weight[] memory stored = made.targets();
         assertEq(stored.length, 2);
@@ -337,7 +337,7 @@ contract VaultFactoryTest is SwapFixture {
         assertEq(cash.allowance(owner, made), 0, "the owner's approval was used up");
 
         // Every way in adds the token to `tokens`, so `withdrawAll` leaves nothing behind.
-        address[] memory tracked = BasketVault(made).tokens();
+        address[] memory tracked = BasketVault(payable(made)).tokens();
         assertEq(tracked.length, 3);
         assertEq(tracked[0], address(cash));
         assertEq(tracked[1], address(stockA));
@@ -347,7 +347,7 @@ contract VaultFactoryTest is SwapFixture {
         _assertNoAllowance(made, address(cash), address(viaPermit2));
 
         vm.prank(owner);
-        assertEq(BasketVault(made).withdrawAll().length, 0);
+        assertEq(BasketVault(payable(made)).withdrawAll().length, 0);
         assertEq(stockA.balanceOf(owner), 3 * unit);
         assertEq(stockB.balanceOf(owner), 2 * unit);
         assertEq(cash.balanceOf(made), 0);
@@ -424,7 +424,7 @@ contract VaultFactoryTest is SwapFixture {
         vm.expectEmit(predicted);
         emit IBasketVault.Followed(predicted, id, 1);
         vm.prank(owner);
-        BasketVault made = BasketVault(factory.createVault(PLAN_2, none, id, 1, false));
+        BasketVault made = BasketVault(payable(factory.createVault(PLAN_2, none, id, 1, false)));
 
         (bytes32 indexId, uint32 version, bool autoFollow) = made.following();
         assertEq(indexId, id);
@@ -457,7 +457,7 @@ contract VaultFactoryTest is SwapFixture {
         assertEq(factory.vaultOf(owner, PLAN_2).code.length, 0);
 
         vm.prank(owner);
-        BasketVault made = BasketVault(factory.createVault(PLAN_2, none, id, 2, false));
+        BasketVault made = BasketVault(payable(factory.createVault(PLAN_2, none, id, 2, false)));
         assertEq(keccak256(abi.encode(made.targets())), keccak256(abi.encode(next)));
     }
 

@@ -124,7 +124,7 @@ abstract contract BasketVaultTest is VaultFixture {
     /// that did not create it.
     function test_initialize_takesItsCreatorAsTheConfig() public {
         bytes memory init = abi.encodeCall(BasketVault.initialize, (owner, PLAN_ID));
-        BasketVault bare = BasketVault(address(new BeaconProxy(address(beacon), init)));
+        BasketVault bare = BasketVault(payable(address(new BeaconProxy(address(beacon), init))));
         assertEq(bare.config(), address(this));
         assertFalse(factory.isVault(address(bare)));
     }

@@ -654,7 +654,8 @@ abstract contract OwnerSwapTest is SwapFixture {
         vm.prank(stranger);
         bytes32 id = registry.create(keccak256("family"), _threeStocks(), bytes32(uint256(1)), 0, 0);
         vm.prank(owner);
-        BasketVault follower = BasketVault(factory.createVault(keccak256("plan-follow"), new Weight[](0), id, 1, false));
+        BasketVault follower =
+            BasketVault(payable(factory.createVault(keccak256("plan-follow"), new Weight[](0), id, 1, false)));
 
         Weight[] memory targets = _targets(address(stockA), 6000, address(stockB), 2500);
         vm.expectEmit(address(follower));

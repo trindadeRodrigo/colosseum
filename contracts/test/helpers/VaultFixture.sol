@@ -80,7 +80,7 @@ abstract contract VaultFixture is Test {
 
     function _createVault(VaultFactory factory_, address owner_, bytes32 planId_) internal returns (BasketVault) {
         vm.prank(owner_);
-        return BasketVault(factory_.createVault(planId_, new Weight[](0), bytes32(0), 0, false));
+        return BasketVault(payable(factory_.createVault(planId_, new Weight[](0), bytes32(0), 0, false)));
     }
 
     /// A priced asset as the platform would list it: a Chainlink-style feed with 8 decimals, 26 hours of age.

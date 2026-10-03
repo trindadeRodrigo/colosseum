@@ -224,7 +224,7 @@ contract RobinhoodForkSwapTest is VaultFixture {
         assertEq(made, predicted);
         assertEq(IRealToken(USDG).balanceOf(made), 20e6);
         assertGe(IRealToken(NVDA).balanceOf(made), s.minOut);
-        assertEq(BasketVault(made).tokens().length, 2);
+        assertEq(BasketVault(payable(made)).tokens().length, 2);
         _assertNothingApproved(made, USDG);
         console2.log("createVaultAndBuy: a new vault, 40 USDG in, 20 of it into NVDA");
         console2.log("  NVDA received (18 decimals):", IRealToken(NVDA).balanceOf(made));
@@ -250,11 +250,11 @@ contract RobinhoodForkSwapTest is VaultFixture {
         factory.createVaultAndBuy(PLAN_2, targets, bytes32(0), 0, false, 40e6, _swaps(first));
         console2.log("gas, createVaultAndBuy with one swap:", _lastGas());
 
-        BasketVault(predicted).deposit(10e6);
+        BasketVault(payable(predicted)).deposit(10e6);
         console2.log("gas, deposit:", _lastGas());
 
         Swap memory buy = _buy(10e6, address(0));
-        BasketVault(predicted).ownerSwap(_swaps(buy));
+        BasketVault(payable(predicted)).ownerSwap(_swaps(buy));
         console2.log("gas, ownerSwap USDG -> NVDA (a token already held):", _lastGas());
 
         uint256 held = IRealToken(NVDA).balanceOf(predicted);
@@ -266,13 +266,13 @@ contract RobinhoodForkSwapTest is VaultFixture {
             minOut: 1,
             data: UniV4Calldata.exactInSingle(_pool(), NVDA, held / 2, 1, address(0), block.timestamp + 300)
         });
-        BasketVault(predicted).ownerSwap(_swaps(sell));
+        BasketVault(payable(predicted)).ownerSwap(_swaps(sell));
         console2.log("gas, ownerSwap NVDA -> USDG:", _lastGas());
 
-        BasketVault(predicted).setTargets(targets);
+        BasketVault(payable(predicted)).setTargets(targets);
         console2.log("gas, setTargets with one target:", _lastGas());
 
-        BasketVault(predicted).withdrawAll();
+        BasketVault(payable(predicted)).withdrawAll();
         console2.log("gas, withdrawAll of two tokens:", _lastGas());
 
         factory.createVault(keccak256("plan-3"), targets, bytes32(0), 0, false);

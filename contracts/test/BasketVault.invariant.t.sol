@@ -313,7 +313,7 @@ contract VaultHandler is Test {
         vm.prank(caller);
         address made = factory.createVault(planId, new Weight[](0), bytes32(0), 0, false);
         assertTrue(made != address(vault));
-        assertEq(BasketVault(made).owner(), caller);
+        assertEq(BasketVault(payable(made)).owner(), caller);
         ++strangerVaults;
     }
 

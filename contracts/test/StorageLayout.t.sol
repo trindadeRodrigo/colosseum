@@ -24,7 +24,7 @@ contract StorageLayoutTest is SwapFixture {
         vm.prank(stranger);
         id = registry.create(FAMILY, _threeStocks(), META, 0, 0);
         vm.startPrank(owner);
-        follower = BasketVault(factory.createVault(keccak256("plan-follow"), new Weight[](0), id, 1, false));
+        follower = BasketVault(payable(factory.createVault(keccak256("plan-follow"), new Weight[](0), id, 1, false)));
         cash.approve(address(follower), 10 * USD);
         follower.deposit(10 * USD);
         vm.stopPrank();
