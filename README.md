@@ -1,4 +1,4 @@
-# tenonfi (provisional name)
+# tenonfi
 
 Tell it what your money needs to do. It builds the portfolio that gets it there, plans the exit before it invests, and shows where every number comes from.
 

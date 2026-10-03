@@ -73,7 +73,7 @@ Settled on Oct 1 unless marked open. Each keeps its trade-off, so it can be reop
 - [x] **Process.** Parallel streams against frozen interfaces, beside his slot plan, with slot ids of the form `<stream>-<n>`. His rules stay: provenance, MOCK labels, deterministic engine, explorer links, no advice claim. One rule needs his word: "never auto-retry" against a keeper that re-plans a leg which expired without landing.
 - [x] **The `risk-layer` branch.** Merged into `main` on Oct 1, with the design system. The vault work builds on `main`.
 - [x] **Four small edits to his files,** which we make: the routes that sign on the server go behind a flag and are deleted once the vault path replaces them, `seed-assets.ts` moves to `scripts/` (done), the CI chores (done), and six lines in `compute.ts`.
-- [ ] **Smaller ones.** Still open: where the Bearing data runs for the demo, revoking the two live approvals on the demo wallet, and who runs the Solana mainnet sessions. The licence is Apache-2.0. The name (Tenonfi is provisional on the `design` branch), which also decides the `@colosseum/` scope and the working code names.
+- [ ] **Smaller ones.** Still open: where the Bearing data runs for the demo, revoking the two live approvals on the demo wallet, and who runs the Solana mainnet sessions. The licence is Apache-2.0. The name is Tenonfi (decided on Oct 3); the `@colosseum/` scope and the working code names are renamed once, as FRAME-4.
 
 ## Pull requests
 

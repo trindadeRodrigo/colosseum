@@ -4,7 +4,7 @@
 
 The positioning stays as it is: tell us what your money needs to do, and the product builds the portfolio that gets it there, with an exit plan before it invests and every joint in sight. This document is about what it takes to make each part of that sentence hold on chain, for every asset, on more than one chain.
 
-The name is provisional (Tenonfi on the `design` branch), so this document says "the product".
+The name is Tenonfi (decided on Oct 3, gate `NAME` in `docs/GATES.md`). This document says "the product".
 
 ## What this adds
 
@@ -149,7 +149,7 @@ Along the narrative arc in `messaging.md`.
 - Days 8–9: real-money rehearsals on all three chains.
 - Days 10–11: videos and submission.
 
-What agents can't do, and what therefore sets the pace: funding and testing real wallets on mainnet, recording the videos, and deciding the name and voice. The days, the milestones and the cut order are in `PLAN-VAULT.md`.
+What agents can't do, and what therefore sets the pace: funding and testing real wallets on mainnet, recording the videos, and deciding the voice. The days, the milestones and the cut order are in `PLAN-VAULT.md`.
 
 ## Tests for the first two days
 
@@ -184,15 +184,15 @@ What agents can't do, and what therefore sets the pace: funding and testing real
 - The keeper runs on a founder's machine while testing, and on a small VM at deploy.
 - The work lands in short-lived branches in this repo, each with a pull request into `staging`; `staging` goes into `main`. Thom and Rodrigo are both on the team, in the prior-work note and in the registration.
 - The structurer is the engine that cuts the plan, and Bearing is the source of the exit plan.
+- The name is Tenonfi (Oct 3). The code names and the package scope are renamed once, as FRAME-4, when the open pull requests have merged.
 
 ## Still open
 
-1. The name.
-2. The Privy apps, and whether mainnet follows the test networks (gate `SHOW` in `docs/GATES.md`).
-3. Where the Bearing data runs for the demo: a hosted collector or a dated snapshot.
-4. The decisions in `DESIGN-VAULT.md`, section 17.
-5. Two lines of shipped copy that the vault touches. `DISCLAIMER` says "the decision and custody are yours", and `DISCLAIMER_SHORT` says "Policy in your wallet, not a fund." Only the owner can withdraw from a vault, so the first stays, with the "unaudited, team holds the upgrade keys" notice beside it. The second needs a word from Rodrigo, since the assets move from the wallet to a vault the person owns.
-6. Auto-follow against the voice rules, which say rebalancing is "never to follow a theme or a rate" and that the agent "proposes and explains". What it does: off by default; the person sees an author's change 48 hours ahead and can refuse; then the vault copies it inside its own limits, without re-checking the person's goal. Label: "Rebalance without asking when the portfolio I follow changes". Thom's decision is to keep it this way; the 48-hour notice is the proposal, and the person can refuse.
-7. One thing that follows from a plan living on one chain is assumed, not decided: a person who signs in with a different wallet on another chain has a separate plan there.
+1. The Privy apps, and whether mainnet follows the test networks (gate `SHOW` in `docs/GATES.md`).
+2. Where the Bearing data runs for the demo: a hosted collector or a dated snapshot.
+3. The decisions in `DESIGN-VAULT.md`, section 17.
+4. Two lines of shipped copy that the vault touches. `DISCLAIMER` says "the decision and custody are yours", and `DISCLAIMER_SHORT` says "Policy in your wallet, not a fund." Only the owner can withdraw from a vault, so the first stays, with the "unaudited, team holds the upgrade keys" notice beside it. The second needs a word from Rodrigo, since the assets move from the wallet to a vault the person owns.
+5. Auto-follow against the voice rules, which say rebalancing is "never to follow a theme or a rate" and that the agent "proposes and explains". What it does: off by default; the person sees an author's change 48 hours ahead and can refuse; then the vault copies it inside its own limits, without re-checking the person's goal. Label: "Rebalance without asking when the portfolio I follow changes". Thom's decision is to keep it this way; the 48-hour notice is the proposal, and the person can refuse.
+6. One thing that follows from a plan living on one chain is assumed, not decided: a person who signs in with a different wallet on another chain has a separate plan there.
 
 The research notes under `research/` were written before the brand strategy. They say "basket" and "community index" where this document says plan and shared portfolio.

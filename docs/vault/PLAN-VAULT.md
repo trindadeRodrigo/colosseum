@@ -13,7 +13,7 @@ Written on Thu Oct 1, at night. The freeze is Fri Oct 9 at 18:00 BRT and the sub
 
 Eight working days, two people, and agents doing most of the typing. What limits us is not typing. It is three things:
 
-1. **What only a person can do.** Keys, accounts, the name, the recordings. These are listed per day below so nobody finds one at 17:00.
+1. **What only a person can do.** Keys, accounts, the recordings. These are listed per day below so nobody finds one at 17:00.
 2. **The days left after the deploy.** The deploy is planned for Mon Oct 5 and may come sooner (see "Still to settle"), so a full auto-follow cycle can be tried and filmed on Oct 5, 6 and 7. On mainnet two more limits would apply: auto-follow on stocks trades only Mon to Fri, 11:30 to 17:00 BRT, and `launch()` turns the delay into 48 hours.
 3. **Review.** Every slot ends in a pull request into `staging` that someone other than its author reviews. One slot, one pull request.
 

@@ -8,7 +8,7 @@ Nothing here has run on mainnet. The three $10 runs come first in time.
 
 **Changed on Oct 1, night:** the delay between an author publishing a new version and a vault applying it is 48 hours after launch, up from 12. The person has two days to see the change and refuse it.
 
-**Words.** The product words follow the brand strategy on the `design` branch. The code names in the listings are working names, chosen before the strategy. They are renamed once, together with the package scope, when the name is final (section 17, item 18).
+**Words.** The product words follow the brand strategy on the `design` branch. The code names in the listings are working names, chosen before the strategy. The name is Tenonfi (gate `NAME`, decided on Oct 3): the code names and the package scope are renamed once, as FRAME-4, when the open pull requests have merged (section 17, item 18).
 
 | Product word | What it is | Working code name |
 |---|---|---|
@@ -1088,7 +1088,7 @@ Only the TypeScript streams wait for PR1a. `SOL`, `EVM`, `RISK`, `BRAND`, `OPS`,
 | REVM | EVM depth | Thom | 8 | The hourly collector | RISK's `compute.ts` change | Curves for five tokens per EVM chain, 8 samples per regime |
 | SEC | Security, rehearsal | Thom | 13 | `SECURITY.md`, `INCIDENT.md`, the rehearsal script, `authority-check` | SOL, EVM, API | `G-SEC` recorded per chain; `G-LINK` recorded |
 | OPS | Mainnet work a person does | Thom; Rodrigo is asked to take the Solana sessions | 10, 13, 16 | `docs/vault/RUNBOOK-OPS.md`: a checklist per session with a name per item. Hosting, accounts, admin keys, funded wallets, deploys, config, seeding, rehearsals, footage | Accounts opened | The public URL serves the app; `authority-check` is green |
-| BRAND | Design system in the app | Rodrigo | `.design/branding/working-brand/patterns/` | Tokens and fonts in `globals.css`, the primitives in `components/ui/`, route groups, his three screens on them; the final name and logo artwork | none | The primitives exist and his screens render on them in light and dark |
+| BRAND | Design system in the app | Rodrigo | `.design/branding/working-brand/patterns/` | Tokens and fonts in `globals.css`, the primitives in `components/ui/`, route groups, his three screens on them; the final logo artwork | none | The primitives exist and his screens render on them in light and dark |
 
 OPS sets the pace and is planned like a stream. It is three $10 runs, three deploys, about 50 asset entries, about 13 recipe publishes, three admin keys, funded wallets, two rehearsals, a pause drill and the footage, mostly inside five sessions of 5.5 hours. Every `scripts/ops/*` script is idempotent, has a dry run that prints the exact transactions, and reads one JSON file of assets, feeds and recipes. The deployer writes config in the deploy session; later changes go through the admin key as one batch.
 
@@ -1175,7 +1175,7 @@ Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-L
 
 **Defaults taken, and what is still open**
 
-18. The name (Tenonfi is provisional on the `design` branch). It fixes the package scope, the server and skill names, the origin and the passkeys, and with it the working code names in the Words table are renamed.
+18. The name is Tenonfi: decided on Oct 3 (gate `NAME`). It fixes the package scope, the server and skill names, the origin and the passkeys. The working code names in the Words table and the package scope are renamed once, as FRAME-4, when the open pull requests have merged.
 19. Oct 2: the Solana shared portfolio that shows auto-follow. It must hold only Scope-priced tokens: AAPLx, CRCLx, GOOGLx, HOODx, METAx, MSTRx, NVDAx, QQQx, SPYx, TSLAx **[C 3]**. Taken: a new launch portfolio of NVDAx, AAPLx, GOOGLx, METAx and TSLAx. Its weights come from the measured curves and are set before it is published: on the measurements of Oct 1 to 2 the cap for TSLAx is near 6% (gate `EXIT-SOURCE`). The Seven needs MSFTx and AMZNx, which Scope does not price.
 20. The 500 is a single-asset portfolio outside the registry (section 6).
 21. US visitors: decided on Oct 1. No location block and no banner; the terms say the app is not for US persons.
