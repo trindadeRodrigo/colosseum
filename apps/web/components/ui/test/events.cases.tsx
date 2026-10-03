@@ -127,3 +127,14 @@ export const pinOnPage = (obs: PinSource | null, props: Partial<ProvenancePinPro
     </button>
   </div>
 );
+
+export const twoPins = (obs: PinSource) => (
+  <ul>
+    <li>
+      <ProvenancePin value="6.40%" obs={obs} />
+    </li>
+    <li>
+      <ProvenancePin value="4.10%" obs={obs} />
+    </li>
+  </ul>
+);

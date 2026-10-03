@@ -15,7 +15,9 @@ import { formatAge } from './format';
 import { Icon } from './Icon';
 import { MockWord } from './internal/mock-parts';
 import {
+  PIN_CLOSE_MS,
   PIN_LABELS,
+  PIN_OPEN_MS,
   type PinLabels,
   type PinSource,
   type PinState,
@@ -148,6 +150,7 @@ export function ProvenancePin({
   const button = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLSpanElement>(null);
   const hover = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const leave = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reset = useRef<ReturnType<typeof setTimeout> | null>(null);
   const popover = useId();
 
@@ -181,8 +184,10 @@ export function ProvenancePin({
 
   useEffect(() => {
     if (!open) return;
-    // A press anywhere else closes it. Escape closes it and gives focus back to the pin.
-    const outside = (event: globalThis.PointerEvent) => {
+    // A press anywhere else closes it, and so does focus that moves to something else on the page.
+    // Focus that goes nowhere (a press on the popover's own text, another window) leaves it open.
+    // Escape closes it and gives focus back to the pin.
+    const outside = (event: globalThis.PointerEvent | globalThis.FocusEvent) => {
       if (wrap.current && !wrap.current.contains(event.target as Node)) {
         setOpen(false);
         setPinned(false);
@@ -196,9 +201,11 @@ export function ProvenancePin({
       if (inside) button.current?.focus();
     };
     document.addEventListener('pointerdown', outside);
+    document.addEventListener('focusin', outside);
     document.addEventListener('keydown', onEscape);
     return () => {
       document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('focusin', outside);
       document.removeEventListener('keydown', onEscape);
     };
   }, [open]);
@@ -206,6 +213,7 @@ export function ProvenancePin({
   useEffect(
     () => () => {
       if (hover.current) clearTimeout(hover.current);
+      if (leave.current) clearTimeout(leave.current);
       if (reset.current) clearTimeout(reset.current);
     },
     [],
@@ -231,14 +239,19 @@ export function ProvenancePin({
     setOpen(next);
     setPinned(next);
   }
-  // A mouse that rests on the pin for 300ms opens it, and the popover can be hovered in turn.
+  // A mouse that rests on the pin opens it, and the popover can be hovered in turn (WCAG 1.4.13):
+  // the popover is inside this element, and leaving does not close at once, so the pointer has time
+  // to cross the gap between the two.
   function onPointerEnter(event: PointerEvent<HTMLSpanElement>) {
-    if (event.pointerType !== 'mouse' || open) return;
-    hover.current = setTimeout(() => setOpen(true), 300);
+    if (event.pointerType !== 'mouse') return;
+    if (leave.current) clearTimeout(leave.current);
+    leave.current = null;
+    if (!open) hover.current = setTimeout(() => setOpen(true), PIN_OPEN_MS);
   }
   function onPointerLeave() {
     if (hover.current) clearTimeout(hover.current);
-    if (!pinned) setOpen(false);
+    if (!open || pinned) return;
+    leave.current = setTimeout(() => setOpen(false), PIN_CLOSE_MS);
   }
   async function copy() {
     try {
@@ -258,7 +271,9 @@ export function ProvenancePin({
       data-state={state}
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
-      className={cn('relative z-10 inline-block whitespace-nowrap', className)}
+      // Above a card's link overlay, and above every other figure while it is open: each figure is
+      // its own layer, so a later one would otherwise be painted over this one's popover.
+      className={cn('relative inline-block whitespace-nowrap', open ? 'z-30' : 'z-10', className)}
     >
       <span className="tf-figure">{value}</span>
       {' '}
@@ -344,6 +359,8 @@ function Popover({ ref, id, name, place, children }: PopoverProps) {
     style: place ? ({ position: 'fixed', top: place.top, left: place.left } as const) : undefined,
     className: cn(
       'z-20 flex w-max max-w-[min(44ch,calc(100vw-2rem))] flex-col items-start gap-1 rounded-md border border-border bg-popover px-3 py-2 text-left font-mono text-source font-normal whitespace-normal text-popover-foreground',
+      // The 8px between the pin and the popover belong to the popover, on whichever side the pin is.
+      "before:absolute before:inset-x-0 before:-top-2 before:h-2 before:content-[''] after:absolute after:inset-x-0 after:-bottom-2 after:h-2 after:content-['']",
       !place && 'absolute top-full left-0 mt-2',
     ),
   };

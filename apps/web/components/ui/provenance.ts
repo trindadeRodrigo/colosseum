@@ -35,6 +35,11 @@ export function pinState(obs: PinSource | null | undefined): PinState {
   return obs.staleAgeSec != null ? 'stale' : 'live';
 }
 
+/** A mouse that rests on the pin this long opens it (provenance-pin.md: 300ms). */
+export const PIN_OPEN_MS = 300;
+/** How long the pointer has to cross from the pin to its popover before the popover closes. */
+export const PIN_CLOSE_MS = 200;
+
 export type PinLabels = {
   /** The accessible name. `{value}` is the figure. */
   sourceFor: string;
