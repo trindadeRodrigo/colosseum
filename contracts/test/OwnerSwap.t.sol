@@ -10,7 +10,14 @@ import {IVaultConfig} from "../src/interfaces/IVaultConfig.sol";
 import {Swap, Weight} from "../src/interfaces/Types.sol";
 import {SwapFixture} from "./helpers/SwapFixture.sol";
 import {GreedyPermit2, MockRouter, StickyPermit2} from "./mocks/Routers.sol";
-import {BackdoorToken, FreezableToken, MockToken, PermissiveToken, StickyToken} from "./mocks/Tokens.sol";
+import {
+    BackdoorToken,
+    BrickableBackdoorToken,
+    FreezableToken,
+    MockToken,
+    PermissiveToken,
+    StickyToken
+} from "./mocks/Tokens.sol";
 
 /// The owner's swap. The vault judges what its own balances did and never what the router says, so most of
 /// this file is a router trying each way to cheat. Every test runs with the stock tokens at 6, 8 and 18
@@ -670,6 +677,97 @@ abstract contract OwnerSwapTest is SwapFixture {
 
         Swap memory sell = _swap(direct, address(frozen), address(cash), unit, 1);
         _expectRevert(sell, abi.encodeWithSelector(IBasketVault.BalanceUnreadable.selector, address(frozen)));
+    }
+
+    /// The output token stops answering for its balance in the middle of the swap, and the router pays
+    /// nothing. An unreadable balance is not a large one: the swap is refused whatever its `minOut`.
+    function test_hostile_theOutputStopsAnsweringMidSwap_isRefused() public {
+        FreezableToken frozen = new FreezableToken(dec);
+        _list(address(frozen), dec);
+        Swap memory s = _swap(direct, address(cash), address(frozen), 600 * USD, 3 * unit);
+        s.data = abi.encodeCall(
+            MockRouter.swapAndCall,
+            (
+                address(cash),
+                address(frozen),
+                600 * USD,
+                0,
+                address(frozen),
+                abi.encodeCall(FreezableToken.setBricked, (true))
+            )
+        );
+        _expectRevert(s, abi.encodeWithSelector(IBasketVault.BalanceUnreadable.selector, address(frozen)));
+        assertEq(cash.balanceOf(address(vault)), 1000 * USD, "600 cash was not paid for nothing");
+    }
+
+    /// The same for the input: nine units more than `amountIn` are taken through the token's back door and
+    /// its balance read is switched off. An unreadable balance is not "nothing spent".
+    function test_hostile_theInputStopsAnsweringMidSwap_isRefused() public {
+        BrickableBackdoorToken x = new BrickableBackdoorToken(dec);
+        _list(address(x), dec);
+        x.mint(address(vault), 10 * unit);
+        Swap memory s = _swap(direct, address(x), address(cash), unit, 100 * USD);
+        s.data = abi.encodeCall(
+            MockRouter.swapAndCall,
+            (
+                address(x),
+                address(cash),
+                unit,
+                100 * USD,
+                address(x),
+                abi.encodeCall(BrickableBackdoorToken.seizeAndBrick, (address(vault), attacker, 9 * unit))
+            )
+        );
+        _expectRevert(s, abi.encodeWithSelector(IBasketVault.BalanceUnreadable.selector, address(x)));
+        x.setBricked(false);
+        assertEq(x.balanceOf(address(vault)), 10 * unit, "ten units were not taken against an amountIn of one");
+    }
+
+    /// A token that could not be read before the swap is refused as its input even if it answers again by
+    /// the end: what the vault had of it is unknown, so what it spent is too.
+    function test_ownerSwap_anInputUnreadableBeforeTheSwap_isRefused() public {
+        BrickableBackdoorToken x = new BrickableBackdoorToken(dec);
+        _list(address(x), dec);
+        x.mint(address(vault), 10 * unit);
+        x.setBricked(true);
+        Swap memory s = _swap(direct, address(x), address(cash), unit, 100 * USD);
+        s.data = abi.encodeCall(
+            MockRouter.swapAndCall,
+            (
+                address(x),
+                address(cash),
+                unit,
+                100 * USD,
+                address(x),
+                abi.encodeCall(BrickableBackdoorToken.setBricked, (false))
+            )
+        );
+        _expectRevert(s, abi.encodeWithSelector(IBasketVault.BalanceUnreadable.selector, address(x)));
+        x.setBricked(false);
+        assertEq(x.balanceOf(address(vault)), 10 * unit);
+    }
+
+    /// The limit of the "no other token went down" check, stated as it is. A tracked token that could not be
+    /// read before the swap is left out of it, so that a token frozen by its issuer does not stop trades in
+    /// the others. If that token also has a back door, a debit during the swap is not seen. Only the token's
+    /// own issuer can do both. For the keeper path this trade is still to be decided.
+    function test_ownerSwap_aTokenUnreadableBeforeTheSwap_isNotWatchedDuringIt() public {
+        BrickableBackdoorToken x = new BrickableBackdoorToken(dec);
+        _list(address(x), dec);
+        x.mint(address(direct), 10 * unit);
+        _run(_swap(direct, address(cash), address(x), 100 * USD, 2 * unit));
+        assertEq(x.balanceOf(address(vault)), 2 * unit);
+
+        x.setBricked(true);
+        Swap memory s = _swap(direct, address(cash), address(stockA), 600 * USD, 3 * unit);
+        s.data = abi.encodeCall(
+            MockRouter.swapAndSeize, (address(cash), address(stockA), 600 * USD, 3 * unit, address(x), 2 * unit)
+        );
+        _run(s);
+
+        x.setBricked(false);
+        assertEq(x.balanceOf(address(vault)), 0, "the debit went through unseen");
+        assertEq(stockA.balanceOf(address(vault)), 3 * unit);
     }
 
     // ---- the owner's own targets

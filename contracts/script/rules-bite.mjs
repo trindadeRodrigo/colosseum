@@ -57,6 +57,8 @@ const SHORTFALL =
 const OUTPUT_OK =
   'require(s.tokenOut != s.tokenIn && cfg.isAsset(s.tokenOut), IBasketVault.TokenNotAccepted(s.tokenOut));';
 const ROUTER_OK = 'router != address(this) && router != PERMIT2 && !$.tokens.contains(router),';
+const TRADED_READABLE =
+  'require(!traded || (was != UNREADABLE && left != UNREADABLE), IBasketVault.BalanceUnreadable(token));';
 const RECEIVED =
   'require(received >= s.minOut, IBasketVault.ReceivedTooLittle(token, received, s.minOut));';
 const TOKEN_RESET = 'IERC20(token).forceApprove(spender, 0);';
@@ -502,9 +504,30 @@ const RULES = [
     expect: 'test_hostile_makesAnotherTokenUnreadable',
   },
   {
+    id: 'vault-swap-output-readable-after',
+    file: VAULT,
+    find: TRADED_READABLE,
+    replace: TRADED_READABLE.replace(' && left != UNREADABLE', ''),
+    expect: 'test_hostile_theOutputStopsAnsweringMidSwap_isRefused',
+  },
+  {
+    id: 'vault-swap-input-readable-after',
+    file: VAULT,
+    find: TRADED_READABLE,
+    replace: TRADED_READABLE.replace(' && left != UNREADABLE', ''),
+    expect: 'test_hostile_theInputStopsAnsweringMidSwap_isRefused',
+  },
+  {
+    id: 'vault-swap-input-readable-before',
+    file: VAULT,
+    find: TRADED_READABLE,
+    replace: TRADED_READABLE.replace('was != UNREADABLE && ', ''),
+    expect: 'test_ownerSwap_anInputUnreadableBeforeTheSwap_isRefused',
+  },
+  {
     id: 'vault-swap-traded-tokens-readable',
     file: VAULT,
-    find: 'require(!traded || (was != UNREADABLE && left != UNREADABLE), IBasketVault.BalanceUnreadable(token));',
+    find: TRADED_READABLE,
     replace: '',
     expect: 'test_ownerSwap_anUnreadableTokenBlocksOnlyItsOwnTrades',
   },

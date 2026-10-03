@@ -10,6 +10,7 @@ import {IndexRegistry} from "../src/IndexRegistry.sol";
 import {IIndexRegistry} from "../src/interfaces/IIndexRegistry.sol";
 import {IndexInfo, Limits, Weight} from "../src/interfaces/Types.sol";
 import {SwapFixture} from "./helpers/SwapFixture.sol";
+import {MockToken} from "./mocks/Tokens.sol";
 
 /// A stand-in for the next version of the registry logic: the same contract with one more function.
 contract IndexRegistryV2Dummy is IndexRegistry {
@@ -414,6 +415,82 @@ contract IndexRegistryTest is SwapFixture {
         vm.prank(author);
         (, uint64 effectiveAt) = registry.publish(id, _moved(), META_2);
         assertEq(effectiveAt, block.timestamp + 172_800);
+    }
+
+    /// The limit of the launch latch, stated as it is. Anyone may be an author before launch. A version
+    /// published one second before `launch()` takes effect after the delay of the time, with the 48-hour
+    /// floor already in force. Before launch the team lets waiting versions take effect or cancels them.
+    function test_launch_doesNotLengthenAWaitAlreadyBegun() public {
+        vm.warp(createdAt + PUBLISH_DELAY);
+        vm.prank(author);
+        (, uint64 effectiveAt) = registry.publish(id, _moved(), META_2);
+        vm.warp(block.timestamp + 1);
+        vm.prank(admin);
+        factory.launch();
+        assertEq(registry.publishDelay(), 172_800);
+
+        vm.warp(effectiveAt);
+        (uint32 active,) = registry.active(id);
+        assertEq(active, 2, "in effect 299 seconds after launch");
+    }
+
+    /// The limit of asset removal, stated as it is, and the way out. Two assets at 15% each are taken off
+    /// the list. Neither is above 20%, yet both must leave in the same version, which moves 30%: the
+    /// portfolio cannot publish. The admin lists one again, and the author steps down over two versions.
+    function test_removedAssets_above20PercentTogether_trapAPortfolioUntilOneIsListedAgain() public {
+        address[] memory t = new address[](4);
+        for (uint256 i; i < 4; ++i) {
+            t[i] = address(new MockToken(18));
+            _list(t[i], 18);
+        }
+        for (uint256 i = 1; i < 4; ++i) {
+            address a = t[i];
+            uint256 j = i;
+            for (; j > 0 && t[j - 1] > a; --j) {
+                t[j] = t[j - 1];
+            }
+            t[j] = a;
+        }
+        Weight[] memory v1 = new Weight[](4);
+        v1[0] = Weight(t[0], 5000);
+        v1[1] = Weight(t[1], 2000);
+        v1[2] = Weight(t[2], 1500);
+        v1[3] = Weight(t[3], 1500);
+        vm.prank(author);
+        bytes32 trapped = registry.create(keccak256("trapped"), v1, META_1, 0, 0);
+
+        vm.startPrank(admin);
+        factory.removeAsset(t[2]);
+        factory.removeAsset(t[3]);
+        vm.stopPrank();
+        vm.warp(block.timestamp + PUBLISH_DELAY);
+
+        // Unchanged, or dropping only one of the two: an asset that is not listed, rule 5.
+        (bytes4 err, uint8 reason,,,) = registry.previewPublish(trapped, v1);
+        assertEq(err, IIndexRegistry.CreatorLimit.selector);
+        assertEq(reason, 5);
+        Weight[] memory dropOne = new Weight[](3);
+        dropOne[0] = Weight(t[0], 5000);
+        dropOne[1] = Weight(t[1], 3500);
+        dropOne[2] = Weight(t[2], 1500);
+        (, reason,,,) = registry.previewPublish(trapped, dropOne);
+        assertEq(reason, 5);
+
+        // Dropping both: 3,000 bps out and 3,000 in, 6,000 moved against a limit of 4,000, rule 13.
+        Weight[] memory dropBoth = new Weight[](3);
+        dropBoth[0] = Weight(t[0], 5000);
+        dropBoth[1] = Weight(t[1], 3000);
+        dropBoth[2] = Weight(address(stockA), 2000);
+        dropBoth = _sort(dropBoth);
+        vm.prank(author);
+        vm.expectRevert(abi.encodeWithSelector(IIndexRegistry.CreatorLimit.selector, uint8(13)));
+        registry.publish(trapped, dropBoth, META_2);
+
+        // The way out is the admin's: one of them is listed again, and dropping the other moves 15%.
+        _list(t[2], 18);
+        vm.prank(author);
+        (uint32 version,) = registry.publish(trapped, dropOne, META_2);
+        assertEq(version, 2);
     }
 
     function test_limits_areTheFourRules() public view {

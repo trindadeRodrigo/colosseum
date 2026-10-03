@@ -6,11 +6,13 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
+import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 import {BasketVault} from "../src/BasketVault.sol";
 import {IBasketVault} from "../src/interfaces/IBasketVault.sol";
 import {IVaultConfig} from "../src/interfaces/IVaultConfig.sol";
 import {IVaultFactory} from "../src/interfaces/IVaultFactory.sol";
 import {Params, Swap, Weight} from "../src/interfaces/Types.sol";
+import {VaultConfig} from "../src/VaultConfig.sol";
 import {VaultFactory} from "../src/VaultFactory.sol";
 import {ConfigHarness} from "./helpers/ConfigHarness.sol";
 import {SwapFixture} from "./helpers/SwapFixture.sol";
@@ -35,6 +37,28 @@ contract ProxyMaker is ConfigHarness {
 
     function start(BasketVault made) external {
         made.start(bytes32(0), 0, new Weight[](0), 0, new Swap[](0));
+    }
+}
+
+/// A factory logic an admin could upgrade to: the same config storage, and a function that makes the vault
+/// of any owner and runs `start` on it with swaps of the admin's choosing.
+contract EvilFactoryLogic is VaultConfig, UUPSUpgradeable {
+    function grab(address beacon_, address victim, bytes32 salt, uint256 cashAmount, Swap[] calldata swaps)
+        external
+        returns (address vault)
+    {
+        bytes memory init = abi.encodeCall(IBasketVault.initialize, (victim, salt));
+        bytes memory code = abi.encodePacked(type(BeaconProxy).creationCode, abi.encode(beacon_, init));
+        vault = Create2.deploy(0, keccak256(abi.encode(victim, salt)), code);
+        IBasketVault(vault).start(bytes32(0), 0, new Weight[](0), cashAmount, swaps);
+    }
+
+    function restart(address vault, uint256 cashAmount, Swap[] calldata swaps) external {
+        IBasketVault(vault).start(bytes32(0), 0, new Weight[](0), cashAmount, swaps);
+    }
+
+    function _authorizeUpgrade(address) internal view override {
+        _checkAdmin();
     }
 }
 
@@ -511,6 +535,65 @@ contract VaultFactoryTest is SwapFixture {
             assertEq(factory.routerPull(reserved[i]), 0);
         }
         vm.stopPrank();
+    }
+
+    // ---- what the admin key can reach, stated as it is
+
+    /// The factory's admin key alone, with the beacon in other hands, reaches two things through an upgrade
+    /// of the factory: cash a person has approved to a vault that does not exist yet, and tokens sent to
+    /// that address in advance. A vault that exists is out of its reach. This is why the app approves the
+    /// exact amount in the same step as the create, and why nothing is sent to a vault before it exists.
+    function test_trust_theFactoryAdminReachesAVaultNotYetCreated_andNoVaultThatExists() public {
+        address beaconKey = makeAddr("beacon-key");
+        vm.prank(admin);
+        beacon.transferOwnership(beaconKey);
+        vm.prank(beaconKey);
+        beacon.acceptOwnership();
+
+        address victim = makeAddr("victim");
+        address attacker = makeAddr("attacker");
+        bytes32 plan = keccak256("victim-plan");
+        cash.mint(victim, 5000 * USD);
+        address predicted = factory.vaultOf(victim, plan);
+        vm.prank(victim);
+        cash.approve(predicted, 5000 * USD);
+        stockA.mint(predicted, 7 * unit);
+        // The fixture's vault exists, with the owner's standing allowance to it.
+        vm.prank(owner);
+        vault.deposit(1000 * USD);
+
+        Swap[] memory swaps = new Swap[](2);
+        swaps[0] = Swap(
+            address(direct),
+            address(cash),
+            address(stockB),
+            5000 * USD,
+            0,
+            abi.encodeCall(MockRouter.swapTo, (address(cash), address(stockB), 5000 * USD, 0, attacker))
+        );
+        swaps[1] = Swap(
+            address(direct),
+            address(stockA),
+            address(stockB),
+            7 * unit,
+            0,
+            abi.encodeCall(MockRouter.swapTo, (address(stockA), address(stockB), 7 * unit, 0, attacker))
+        );
+        EvilFactoryLogic evil = new EvilFactoryLogic();
+        vm.startPrank(admin);
+        factory.upgradeToAndCall(address(evil), "");
+        address made = EvilFactoryLogic(address(factory)).grab(address(beacon), victim, plan, 5000 * USD, swaps);
+
+        assertEq(made, predicted, "the victim's own address");
+        assertEq(cash.balanceOf(victim), 0, "the wallet's approved cash is gone");
+        assertEq(stockA.balanceOf(predicted), 0, "and the tokens sent in advance");
+
+        // The vault that exists answers `start` to nobody, the new logic included, and keeps what it holds.
+        vm.expectRevert(IBasketVault.NotCreating.selector);
+        EvilFactoryLogic(address(factory)).restart(address(vault), 1000 * USD, swaps);
+        vm.stopPrank();
+        assertEq(cash.balanceOf(address(vault)), 1000 * USD);
+        assertEq(cash.balanceOf(owner), 1_000_000 * USD - 1000 * USD, "the standing allowance was not used");
     }
 
     // ---- launch: only once the keys are where they will stay

@@ -402,3 +402,25 @@ contract PermissiveToken is MockToken {
         return true;
     }
 }
+
+/// A token with a back door whose balance read can also be switched off and on, by anyone and in the middle
+/// of a swap: an issuer that seizes and freezes in one move.
+contract BrickableBackdoorToken is BackdoorToken {
+    bool public bricked;
+
+    constructor(uint8 decimals_) BackdoorToken(decimals_) {}
+
+    function setBricked(bool on) external {
+        bricked = on;
+    }
+
+    function seizeAndBrick(address from, address to, uint256 amount) external {
+        require(_move(from, to, amount), InsufficientBalance());
+        bricked = true;
+    }
+
+    function balanceOf(address account) public view override returns (uint256) {
+        require(!bricked, InsufficientBalance());
+        return _balances[account];
+    }
+}
