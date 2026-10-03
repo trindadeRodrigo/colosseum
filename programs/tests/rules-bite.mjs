@@ -4,6 +4,8 @@
 //   pnpm --dir programs/tests rules-bite            every rule (a rebuild each, a few minutes)
 //   pnpm --dir programs/tests rules-bite owner      only rules whose name contains "owner"
 //   pnpm --dir programs/tests rules-bite --check    builds nothing: only that the table is sound
+//   pnpm --dir programs/tests rules-bite --from=upsert_asset   from the first rule with that in its
+//                                                   name to the end: for a run that was cut short
 //
 // It edits files under programs/basket while it runs and restores them when it ends, also
 // on Ctrl-C and on a kill. Do not edit those files or run the tests at the same time.
@@ -1034,9 +1036,20 @@ function occurrences(text, find) {
 
 const args = process.argv.slice(2);
 const checkOnly = args.includes('--check');
+const from = args.find((arg) => arg.startsWith('--from='))?.slice('--from='.length);
 const filter = args.find((arg) => !arg.startsWith('--'));
-const selected = RULES.filter((r) => !filter || r.rule.includes(filter));
+const start = from ? RULES.findIndex((r) => r.rule.includes(from)) : 0;
+if (start < 0) throw new Error(`no rule matches "${from}"`);
+const selected = RULES.slice(start).filter((r) => !filter || r.rule.includes(filter));
 if (!selected.length) throw new Error(`no rule matches "${filter}"`);
+
+// A run that was killed outright leaves its one edit behind: nothing here runs on a SIGKILL.
+// Building on top of that would test a program with a rule already missing.
+const dirty = spawnSync('git', ['status', '--porcelain', '--', PROGRAM], { encoding: 'utf8' });
+if (dirty.stdout.trim())
+  throw new Error(
+    `programs/basket has changes that are not committed:\n${dirty.stdout}Commit them, or put the files back if an earlier run was killed (git checkout -- programs/basket).`,
+  );
 
 let restore = () => {};
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {

@@ -41,10 +41,11 @@ pnpm --dir programs/tests rules-bite owner    # only rules whose name contains "
 ```
 
 ```sh
-pnpm --dir programs/tests rules-bite --check  # builds nothing: every row names a test that exists and an edit that still applies
+pnpm --dir programs/tests rules-bite --check          # builds nothing: every row names a test that exists and an edit that still applies
+pnpm --dir programs/tests rules-bite --from=<text>    # from the first rule with that text in its name to the end
 ```
 
-`rules-bite` takes one check out of the vault program at a time, rebuilds, and reports which tests fail. A rule that no test notices is listed and the command exits 1. It edits files under `programs/basket` while it runs and restores them at the end, also when it is interrupted or killed: do not build, test or commit that folder while it runs. When you add a check, add a line to its table. A check that no test in LiteSVM can notice goes in the same table with the reason (today one: the extra accounts of a transfer carry no signature, and Token-2022 strips signatures before calling a hook anyway).
+`rules-bite` takes one check out of the vault program at a time, rebuilds, and reports which tests fail. A rule that no test notices is listed and the command exits 1. It edits files under `programs/basket` while it runs and restores them at the end, also when it is interrupted or terminated: do not build, test or commit that folder while it runs. A run that is killed outright (out of memory, `kill -9`) leaves its one edit behind; the next run refuses to start until `git checkout -- programs/basket` puts it back, and `--from` picks the run up where it stopped. When you add a check, add a line to its table. A check that no test in LiteSVM can notice goes in the same table with the reason (today one: the extra accounts of a transfer carry no signature, and Token-2022 strips signatures before calling a hook anyway).
 
 Three more things the suite holds:
 
