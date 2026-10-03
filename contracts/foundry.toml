@@ -28,12 +28,13 @@ via_ir = true
 # the compiler emits for the proxy does. A test pins that code.
 bytecode_hash = "none"
 cbor_metadata = false
-# The entry-point tests read the built ABIs, the registry tests read the shared limit vectors, and the deploy
-# script reads its per-network config.
+# The entry-point tests read the built ABIs, the registry tests read the shared limit vectors, the deploy
+# script reads its per-network config, and one test holds the committed ABIs to the build.
 fs_permissions = [
   { access = "read", path = "./out" },
   { access = "read", path = "../fixtures/creator-limits" },
   { access = "read", path = "./script/config" },
+  { access = "read", path = "../idl/evm" },
 ]
 
 [fuzz]

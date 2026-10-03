@@ -24,6 +24,8 @@ RH_FORK_URL=https://robinhood.drpc.org pnpm test:contracts   # also the tests on
 
 The fork tests read a pinned block and send nothing. Without `RH_FORK_URL` they are skipped.
 
+The ABIs of the five contracts are committed in `idl/evm/`, beside the Solana interface files: `BasketVault`, `VaultFactory`, `VaultConfig` (the settings half of the factory), `IndexRegistry`, `VaultBeacon`. After a change to a contract's interface, `cd contracts && forge build && node script/abi.mjs` writes them again; `test/Abi.t.sol` fails while they are not what the build gives.
+
 Run forge from this folder, not with `--root`: with `--root` a failing run writes a `cache/` folder where it was called from.
 
 `rules-bite.mjs` works on copies of the project in a temporary folder and never edits the checkout. It runs one compiler at a time unless told otherwise (`--jobs 3` needs a machine with memory for three), and a full run takes about an hour and a half that way; `--from` and `--count` run it in pieces, and `RULES_BITE_DIR` keeps the copy between them. A rule bites only when its named test fails: a set-up that fails with the rule removed does not count. `--check` verifies in a second that each rule's text and test still exist, and prints how many rules and distinct removals there are, by file.
