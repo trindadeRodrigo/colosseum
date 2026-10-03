@@ -535,16 +535,17 @@ describe('the words', () => {
   });
 
   it('writes a loss rounded up, and an amount under a dollar with its cents', () => {
-    // $10 at high risk: $9.50 in The 500, so a 20% fall costs $1.90, written "$2".
-    const small = compose(sheet({ amountUsd: 10, risk: 'high' }), shelf, ctx);
+    // $12 at high risk: $11.40 in The 500, so a 20% fall costs $2.28, written "$3", never "$2".
+    const small = compose(sheet({ amountUsd: 12, risk: 'high' }), shelf, ctx);
+    expect(line(small, 'solana:spyx')?.amountUsd).toBe(11.4);
     expect(line(small, 'solana:spyx')?.reasons.at(-1)?.text).toBe(
-      'No return is assumed for this part of your plan. In a 20% fall it would lose $2.',
+      'No return is assumed for this part of your plan. In a 20% fall it would lose $3.',
     );
-    expect(small.card.expectedReturn.lossInFallUsd).toBe(1.9);
+    expect(small.card.expectedReturn.lossInFallUsd).toBe(2.28);
     expect(
       line(small, 'solana:usdc')?.reasons.find((r) => r.rule === 'YIELD_TOO_SMALL')?.text,
     ).toBe(
-      '$0.50 meant for dollar yield stays in cash: it is too small to be a part of your plan.',
+      '$0.60 meant for dollar yield stays in cash: it is too small to be a part of your plan.',
     );
   });
 });
