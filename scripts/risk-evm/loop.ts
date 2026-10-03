@@ -2,19 +2,29 @@
 import { linkSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
+export type Slot = {
+  /** The scheduled time of this run. */
+  at: number;
+  /** The scheduled time of the next one. */
+  until: number;
+};
+
 export type LoopDeps = {
-  runOnce: () => Promise<unknown>;
+  runOnce: (slot: Slot) => Promise<unknown>;
   intervalMs: number;
   now: () => number;
   sleep: (ms: number) => Promise<void>;
   stopped: () => boolean;
-  onError: (error: unknown) => void;
+  onError: (error: unknown, slot: Slot) => void;
+  /** A scheduled time that passed with no run: the machine was asleep, or an earlier run was still going. */
+  onMissed?: (at: number) => void;
 };
 
 /**
  * Runs now, then on a fixed grid of `intervalMs` from the first start. Runs never overlap: the next
- * one starts only after the last one returned, and slots missed by a long run (or a sleeping laptop)
- * are skipped, not caught up. A run that throws is reported and the loop carries on.
+ * one starts only after the last one returned. When several scheduled times have passed (a sleeping
+ * laptop, a long run), only the latest is run, late; the earlier ones are reported as missed and not
+ * caught up. A run that throws is reported and the loop carries on.
  */
 export async function runLoop(d: LoopDeps): Promise<void> {
   let next = d.now();
@@ -25,13 +35,18 @@ export async function runLoop(d: LoopDeps): Promise<void> {
       await d.sleep(Math.min(wait, 30_000));
       continue;
     }
-    try {
-      await d.runOnce();
-    } catch (e) {
-      d.onError(e);
+    let at = next;
+    while (at + d.intervalMs <= d.now()) {
+      d.onMissed?.(at);
+      at += d.intervalMs;
     }
-    do next += d.intervalMs;
-    while (next <= d.now());
+    next = at + d.intervalMs;
+    const slot = { at, until: next };
+    try {
+      await d.runOnce(slot);
+    } catch (e) {
+      d.onError(e, slot);
+    }
   }
 }
 
