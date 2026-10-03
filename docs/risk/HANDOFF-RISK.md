@@ -75,7 +75,7 @@ Out of scope for this handoff (later work the founder listed): the agent layer, 
 | `packages/db` | `depth_observations` | keep; add `risk_depth_curves`, `risk_liquidity_scores`, `risk_redemption_models`, `risk_market_params`, `risk_market_snapshots`, `risk_assessments` |
 | `scripts/` | `depth-snapshot.mjs`, `depth-import.ts` | add `risk-collect.mjs`, `risk-import.ts`, `risk-report.ts`; leave the originals alone until Oct 12, then fold the old collector into the new one |
 
-The running jobs are not listed in this section; seven are loaded (`depth-snapshot`, `risk-pools`, `risk-quotes`, `risk-refresh`, `risk-lending`, `risk-lending-import`, `risk-prices`, all `com.colosseum.*`). PLAN-ANALYTICS item 18 adds two, installed by `scripts/risk/jobs/install.sh` from `~/.colosseum/risk` with their files in `~/.colosseum/risk/data` (`RISK_DATA_DIR`): `com.colosseum.risk-facts-split` at minute 15 (split snapshot, then cost breakdown) and `com.colosseum.risk-facts-lending` at minute 20 (lending report, then facts import; blocked until its bundle loads, see item 18's row).
+The running jobs are not listed in this section; seven are loaded (`depth-snapshot`, `risk-pools`, `risk-quotes`, `risk-refresh`, `risk-lending`, `risk-lending-import`, `risk-prices`, all `com.colosseum.*`). PLAN-ANALYTICS item 18 adds two, installed by `scripts/risk/jobs/install.sh` from `~/.colosseum/risk` with their files in `~/.colosseum/risk/data` (`RISK_DATA_DIR`): `com.colosseum.risk-facts-split` at minute 15 (split snapshot, then cost breakdown) and `com.colosseum.risk-facts-lending` at minute 20 (lending report, then facts import).
 
 ## 6. Acceptance checks per phase
 

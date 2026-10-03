@@ -52,18 +52,6 @@ case "$JOB" in
   facts-lending) WANT_LENDING=1 ;;
   all) WANT_SPLIT=1; WANT_LENDING=1 ;;
 esac
-# The lending bundle builds and passes node --check but stops at load: klend-sdk pulls in @orca-so/whirlpools-core,
-# which reads its .wasm beside the module through __dirname (PLAN-ANALYTICS item 18, 2026-10-03). Until that is
-# decided, facts-lending is not installed; set FACTS_LENDING_REHEARSAL=1 to rehearse its data folder and bundle.
-LENDING_BLOCKED="facts-lending is blocked: its bundle does not load (klend-sdk -> @orca-so/whirlpools-core .wasm via __dirname); see PLAN-ANALYTICS item 18"
-if [ "$WANT_LENDING" = 1 ] && [ "${FACTS_LENDING_REHEARSAL:-0}" != 1 ]; then
-  if [ "$JOB" = facts-lending ]; then echo "$LENDING_BLOCKED"; exit 1; fi
-  echo "skipped: $LENDING_BLOCKED"
-  WANT_LENDING=0
-fi
-if [ "$WANT_LENDING" = 1 ] && [ "$LOAD" = 1 ]; then
-  echo "FACTS_LENDING_REHEARSAL=1 needs --no-load"; exit 1
-fi
 
 ESBUILD="$REPO/node_modules/.bin/esbuild"
 if [ ! -x "$ESBUILD" ]; then
@@ -175,12 +163,26 @@ if ! grep -q '^SOLANA_RPC_URL=' "$ENV_FILE"; then
 fi
 
 # ------------------------------------------------------------------ bundle, plist, load
+# Copies the whirlpools-core .wasm of the exact version the bundle contains (esbuild's path comments name it).
+copy_wasm() {
+  local bundle=$1 wasm=orca_whirlpools_core_js_bindings_bg.wasm
+  local pkg
+  pkg="$(grep -o 'node_modules/\.pnpm/@orca-so+whirlpools-core@[^/]*/node_modules/@orca-so/whirlpools-core' "$bundle" | sort -u)"
+  if [ -z "$pkg" ] || [ "$(echo "$pkg" | wc -l | tr -d ' ')" != 1 ]; then
+    echo "cannot tell which @orca-so/whirlpools-core the bundle holds (found: ${pkg:-none}); $wasm not copied"
+    exit 1
+  fi
+  local src="$REPO/$pkg/dist/nodejs/$wasm"
+  [ -f "$src" ] || { echo "$wasm not found at $src (run pnpm install)"; exit 1; }
+  cp "$src" "$(dirname "$bundle")/$wasm"
+  echo "copied $src -> $(dirname "$bundle")/$wasm"
+}
 install_job() {
-  local name=$1 label=$2 node_args=$3; shift 3
+  local name=$1 label=$2 node_args=$3 banner_extra=$4; shift 4
   local out="$HOME_DIR/risk-$name.mjs"
   "$ESBUILD" "$REPO/scripts/risk/jobs/$name.ts" --bundle --platform=node \
     --format=esm --target=node22 --tsconfig="$REPO/tsconfig.json" --outfile="$out" --log-level=warning \
-    --banner:js="import { createRequire as __cr } from 'module'; const require = __cr(import.meta.url);"
+    --banner:js="import { createRequire as __cr } from 'module'; const require = __cr(import.meta.url);$banner_extra"
   "$NODE_BIN/node" --check "$out"
   echo "bundled $out ($(du -h "$out" | cut -f1))"
   local minutes=""
@@ -202,7 +204,7 @@ install_job() {
 
 if [ "$WANT_SPLIT" = 1 ]; then
   link_repo_folder "$REPO_SPLIT" "$DATA/split" jsonl
-  install_job facts-split com.colosseum.risk-facts-split "" 15
+  install_job facts-split com.colosseum.risk-facts-split "" "" 15
 fi
 if [ "$WANT_LENDING" = 1 ]; then
   copy_input "$REPO/data/risk/history-full/hourly" "$DATA/history-full/hourly"
@@ -213,5 +215,9 @@ if [ "$WANT_LENDING" = 1 ]; then
   echo "copied $REPO/fixtures/risk/issuer-models.json -> $HOME_DIR/issuer-models.json"
   append_env RISK_ISSUER_MODELS "$HOME_DIR/issuer-models.json"
   link_repo_folder "$REPO_REPORT" "$DATA/lending-history/report" json
-  install_job facts-lending com.colosseum.risk-facts-lending " --max-old-space-size=8192" 20
+  # klend-sdk pulls in @orca-so/whirlpools-core (through kliquidity-sdk), which reads its .wasm beside its own file
+  # through __dirname: the banner defines __filename/__dirname for the ESM bundle, and the .wasm is copied beside it.
+  install_job facts-lending com.colosseum.risk-facts-lending " --max-old-space-size=8192" \
+    " const __filename = import.meta.filename; const __dirname = import.meta.dirname;" 20
+  copy_wasm "$HOME_DIR/risk-facts-lending.mjs"
 fi
