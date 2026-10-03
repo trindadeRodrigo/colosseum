@@ -21,7 +21,7 @@ Leave it running for the whole session. If the lending sheets are older than an 
 
 ## The prompt
 
-Build the **Bearing analytics page** as a prototype in this design worktree: `.design/branding/working-brand/patterns/prototypes/analytics.html`, beside `hero-3d.html`, plus a data snapshot under `prototypes/assets/analytics/`. Add an "Analytics" link to the compact menu in `hero-3d.html` that opens it. Commit on `design` with the `design:` prefix. Do not push unless I ask.
+Build the **Bearing analytics page** inside the landing prototype in this design worktree, `.design/branding/working-brand/patterns/prototypes/hero-3d.html`: a new view in the same document, reached from an "Analytics" item in the compact menu and from the hash `#analytics`. When the view is open, the landing sections (stage, showcases, simulator, closing) are hidden and the 3D scene is paused; `#top` brings the landing back. Keep the landing exactly as it is otherwise: it is locked by the founder (STATE.md, 2026-10-01). Put the page's script and styles in `prototypes/assets/analytics.js` and `prototypes/assets/analytics.css`, loaded by `hero-3d.html`, so the HTML stays readable; the data snapshot goes under `prototypes/assets/analytics/`. Commit on `design` with the `design:` prefix. Do not push unless I ask.
 
 Bearing is the product's liquidity and risk layer. This page is where a person (or an agent reading over their shoulder) sees what the layer measures today: what each tokenized stock costs to sell at a size, who provides the liquidity and how concentrated they are, how the lending pools that take these stocks as collateral are funded and covered, which way a liquidation would be sold, and what a liquidation right now would lose. Everything on it is measured on-chain by our collectors or computed from those measurements by a stated method. Nothing is a promise.
 
@@ -30,7 +30,7 @@ Bearing is the product's liquidity and risk layer. This page is where a person (
 1. `CLAUDE.md` at the repo root and `apps/web/CLAUDE.md` (the seven binding screen rules).
 2. `.design/branding/working-brand/patterns/STYLE.md` in full. It is binding. Then these component specs in `patterns/components/`: `data-table.md`, `provenance-pin.md`, `mock-plate.md` (for the stale state), `card.md`, `bearing-heatmap-tile.md`, `disclaimer-block.md`, `compact-nav.md`, `token-mapping.md`.
 3. `.design/branding/working-brand/strategy/voice-and-tone.md` (answer, then reason, then risk, then action; sentence case; no exclamation marks).
-4. `patterns/prototypes/hero-3d.html`: its `:root` tokens, fonts, nav and `.wrap` are the shell you reuse. Read its head comment too: it lists what the prototype got wrong against the `.yml` (blurred nav, uppercase eyebrows). Do not repeat those.
+4. `patterns/prototypes/hero-3d.html` in full: it is the host. Its `:root` tokens, fonts, nav and `.wrap` are the shell you reuse; its sections, scene and scripts must keep working when the analytics view is closed. Read its head comment too: it lists what the prototype got wrong against the `.yml` (blurred nav, uppercase eyebrows). Do not repeat those in the new view.
 5. The API, live: `GET http://localhost:3001/docs/json` (OpenAPI) and `GET /risk/facts/methodology` (the methods in words; quote them, do not paraphrase them).
 6. `packages/schemas/src/constants.ts` for `DISCLAIMER` (copy it verbatim into the page; it cannot be imported from a static file) and `packages/schemas/src/facts.ts` if it exists on this branch (it may not; the OpenAPI document has the same shapes).
 
@@ -136,7 +136,7 @@ When the exit cost at that size and regime is `null` (beyond the measured size, 
 
 ### Checks before you commit
 
-1. Open the page with the API running and with it stopped. Screenshot both states (light and dark, desktop and 390 px wide) into `prototypes/assets/analytics/screenshots/`. Confirm the stale state appears only when the snapshot is used.
+1. Open the page with the API running and with it stopped. Screenshot both states (light and dark, desktop and 390 px wide) into `prototypes/assets/analytics/screenshots/`. Confirm the stale state appears only when the snapshot is used. Then open `hero-3d.html` at `#top`, `?at=show`, `?at=sim` and `?demo=1`: the landing must behave as before the change (scene, compact nav, showcases, simulator).
 2. Pick TSLAx at $250k: the page's exit cost, fee split and loss in dollars equal `GET /risk/facts/assets/TSLAx?sizeUsd=250000` to the displayed precision. Pick one lending market: the coverage table equals `/risk/lending/coverage` for its collateral at each gap. Paste both comparisons in the commit message body or in a `prototypes/assets/analytics/CHECKS.md`.
 3. Run the simulator for SPYx at $100k in market hours on the xStocks market and compute the margin by hand from the three printed inputs with the methodology's formula. They must agree to the displayed precision.
 4. A DOM check in the page's script (dev only, behind `?check=1`): every element with a numeric figure class has a pin; no element uses the hatch class; log the count of each to the console.
