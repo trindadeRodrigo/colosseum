@@ -56,7 +56,7 @@ abstract contract TokenBase {
 contract MockToken is TokenBase {
     constructor(uint8 decimals_) TokenBase(decimals_) {}
 
-    function approve(address spender, uint256 amount) external returns (bool) {
+    function approve(address spender, uint256 amount) external virtual returns (bool) {
         _approve(msg.sender, spender, amount);
         return true;
     }
@@ -366,5 +366,25 @@ contract ShortAnswerToken is MockToken {
             }
         }
         return _balances[account];
+    }
+}
+
+/// A token with a back door: anyone can move anyone's balance, as an issuer's seizure or a hook would. A
+/// router uses it to take what the vault never approved.
+contract BackdoorToken is MockToken {
+    constructor(uint8 decimals_) MockToken(decimals_) {}
+
+    function seize(address from, address to, uint256 amount) external {
+        require(_move(from, to, amount), InsufficientBalance());
+    }
+}
+
+/// A token that does not take an allowance back: `approve` with a zero amount changes nothing.
+contract StickyToken is MockToken {
+    constructor(uint8 decimals_) MockToken(decimals_) {}
+
+    function approve(address spender, uint256 amount) external override returns (bool) {
+        if (amount != 0) _approve(msg.sender, spender, amount);
+        return true;
     }
 }

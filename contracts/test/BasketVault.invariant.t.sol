@@ -3,7 +3,7 @@ pragma solidity 0.8.37;
 
 import {Test} from "forge-std/Test.sol";
 import {BasketVault} from "../src/BasketVault.sol";
-import {ConfigHarness} from "./helpers/ConfigHarness.sol";
+import {VaultFactory} from "../src/VaultFactory.sol";
 import {VaultFixture} from "./helpers/VaultFixture.sol";
 import {MockToken, NoReturnToken} from "./mocks/Tokens.sol";
 
@@ -16,7 +16,7 @@ interface IBalance {
 /// left the vault other than by the owner's call and to the owner.
 contract VaultHandler is Test {
     BasketVault internal vault;
-    ConfigHarness internal config;
+    VaultFactory internal factory;
     address internal owner;
     address internal admin;
     address[] internal tokens;
@@ -35,14 +35,14 @@ contract VaultHandler is Test {
 
     constructor(
         BasketVault vault_,
-        ConfigHarness config_,
+        VaultFactory factory_,
         address owner_,
         address admin_,
         address[] memory tokens_,
         address[] memory insiders_
     ) {
         vault = vault_;
-        config = config_;
+        factory = factory_;
         owner = owner_;
         admin = admin_;
         tokens = tokens_;
@@ -71,7 +71,7 @@ contract VaultHandler is Test {
         address token = tokens[tokenSeed % tokens.length];
         amount = bound(amount, 0, IBalance(token).balanceOf(owner));
         vm.prank(admin);
-        config.setCashToken(token);
+        factory.setCashToken(token);
         vm.prank(owner);
         vault.deposit(amount);
         ++deposits;
@@ -104,7 +104,7 @@ contract VaultHandler is Test {
             abi.encodeCall(BasketVault.withdraw, (token, amount)),
             abi.encodeCall(BasketVault.withdrawAll, ()),
             abi.encodeCall(BasketVault.deposit, (amount)),
-            abi.encodeCall(BasketVault.initialize, (caller, bytes32(0), address(config))),
+            abi.encodeCall(BasketVault.initialize, (caller, bytes32(0))),
             abi.encodeWithSignature("deposit(address,uint256)", token, amount),
             abi.encodeWithSignature("withdraw(address,uint256,address)", token, amount, caller),
             abi.encodeWithSignature("withdrawAll(address)", caller)
@@ -171,7 +171,7 @@ contract BasketVaultInvariantTest is VaultFixture {
         tokens.push(address(new MockToken(6)));
         tokens.push(address(new MockToken(18)));
         tokens.push(address(new NoReturnToken(8)));
-        insiders.push(address(config));
+        insiders.push(address(factory));
         insiders.push(address(beacon));
         insiders.push(address(logic));
         insiders.push(admin);
@@ -190,7 +190,7 @@ contract BasketVaultInvariantTest is VaultFixture {
             NoReturnToken(tokens[i]).approve(address(vault), type(uint256).max);
         }
 
-        handler = new VaultHandler(vault, config, owner, admin, tokens, insiders);
+        handler = new VaultHandler(vault, factory, owner, admin, tokens, insiders);
         bytes4[] memory selectors = new bytes4[](6);
         selectors[0] = VaultHandler.ownerDeposit.selector;
         selectors[1] = VaultHandler.ownerWithdraw.selector;

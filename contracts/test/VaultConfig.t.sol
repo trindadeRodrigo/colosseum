@@ -3,7 +3,7 @@ pragma solidity 0.8.37;
 
 import {Test} from "forge-std/Test.sol";
 import {IVaultConfig} from "../src/interfaces/IVaultConfig.sol";
-import {AssetConfig} from "../src/interfaces/Types.sol";
+import {AssetConfig, Params} from "../src/interfaces/Types.sol";
 import {ConfigHarness} from "./helpers/ConfigHarness.sol";
 import {MockToken} from "./mocks/Tokens.sol";
 
@@ -21,10 +21,21 @@ contract VaultConfigTest is Test {
     ConfigHarness internal config;
 
     function setUp() public {
-        config = new ConfigHarness(admin);
+        config = new ConfigHarness(admin, _params());
         tokenA = address(new MockToken(18));
         tokenB = address(new MockToken(6));
         router = address(new RouterStub());
+    }
+
+    function _params() internal pure returns (Params memory) {
+        return Params({
+            toleranceBps: 125,
+            lossCapBps: 200,
+            bandBps: 50,
+            assetCooldown: 3600,
+            sessionOpen: 52_200,
+            sessionClose: 72_000
+        });
     }
 
     function _priced(address feed, uint8 tokenDecimals) internal pure returns (AssetConfig memory) {
@@ -69,7 +80,7 @@ contract VaultConfigTest is Test {
 
     function test_init_revertsOnZeroAdmin() public {
         vm.expectRevert(IVaultConfig.ZeroAddress.selector);
-        new ConfigHarness(address(0));
+        new ConfigHarness(address(0), _params());
     }
 
     function test_adminHandover_takesTwoSteps() public {
@@ -175,7 +186,7 @@ contract VaultConfigTest is Test {
         assertEq(config.asset(tokenA).feed, address(0));
     }
 
-    /// A halt belongs to the guardian (EVM-3). A feed update by the admin must not lift it, and a listing
+    /// A halt belongs to the guardian. A feed update by the admin must not lift it, and a listing
     /// cannot start one: `setAsset` keeps whatever halt is stored and ignores the one it is given.
     function test_setAsset_keepsTheStoredHalt() public {
         AssetConfig memory a = _good();
@@ -184,7 +195,8 @@ contract VaultConfigTest is Test {
         config.setAsset(tokenA, a);
         assertEq(config.asset(tokenA).haltUntil, 0, "a listing cannot start a halt");
 
-        config.haltForTest(tokenA, 1_800_000_000);
+        vm.prank(admin);
+        config.haltAsset(tokenA, 1_800_000_000);
         AssetConfig memory a2 = _priced(makeAddr("feedA2"), 18);
         AssetConfig memory stored = _priced(makeAddr("feedA2"), 18);
         stored.haltUntil = 1_800_000_000;

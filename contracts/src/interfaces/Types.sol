@@ -34,7 +34,8 @@ struct AssetConfig {
     uint64 haltUntil;
 }
 
-/// The author limits the registry checks on every version of a shared portfolio.
+/// The author limits the registry checks on every version of a shared portfolio. One delay, not two:
+/// `publishDelay` is both the notice a follower gets and the least time between two versions.
 struct Limits {
     uint8 minAssets;
     uint8 maxAssets;
@@ -42,8 +43,17 @@ struct Limits {
     uint16 maxWeightBps;
     uint16 stepBps;
     uint16 maxTurnoverBps;
-    uint32 minInterval;
     uint32 publishDelay;
+}
+
+/// The keeper's limits (section 5). The config bounds them: see `IVaultConfig.setParams`.
+struct Params {
+    uint16 toleranceBps;
+    uint16 lossCapBps;
+    uint16 bandBps;
+    uint32 assetCooldown;
+    uint32 sessionOpen; // seconds after midnight UTC
+    uint32 sessionClose;
 }
 
 /// One read of a vault for the app and for agents.

@@ -5,11 +5,22 @@ import {IVaultConfig} from "./IVaultConfig.sol";
 import {Swap, Weight} from "./Types.sol";
 
 /// Creates the vaults and holds the platform's settings for one chain (DESIGN-VAULT.md section 3.8). A UUPS
-/// proxy. `asset`, `assets`, `isAsset`, `routerPull` and `cashToken` come from `IVaultConfig`.
+/// proxy whose upgrade is the admin's. The settings, the roles and the guardian's switches are
+/// `IVaultConfig`.
 ///
-/// Events still to be declared by the slot that emits them: VaultCreated, with vault and id indexed.
+/// A vault is a beacon proxy at an address fixed by this factory, its owner and the plan id. The owner is
+/// always the caller: there is no way to create a vault in someone else's name. The app and the keeper
+/// trust only the vaults listed here (`isVault`, `vaultAt`, `vaultsOf`), never an address that merely runs
+/// the same code.
 interface IVaultFactory is IVaultConfig {
-    /// `indexId != 0`: targets must be empty.
+    event VaultCreated(address indexed vault, address indexed owner, bytes32 indexed planId);
+
+    error VaultExists(address vault);
+    /// Auto-follow is switched on by the vault's own `setAutoFollow`, which arrives with the keeper path.
+    error AutoFollowUnavailable();
+
+    /// Creates the caller's vault for the plan `salt`. With `indexId` set, `targets` must be empty and the
+    /// vault copies the shared portfolio's active version, which must be `expectedVersion`.
     function createVault(
         bytes32 salt,
         Weight[] calldata targets,
@@ -18,6 +29,8 @@ interface IVaultFactory is IVaultConfig {
         bool autoFollow
     ) external returns (address vault);
 
+    /// The same, then pulls `cashAmount` of the cash token from the caller into the vault and runs `swaps`
+    /// as the owner's first trades. The caller approves the vault's address, `vaultOf(caller, salt)`, before.
     function createVaultAndBuy(
         bytes32 salt,
         Weight[] calldata targets,
@@ -28,8 +41,11 @@ interface IVaultFactory is IVaultConfig {
         Swap[] calldata swaps
     ) external returns (address vault);
 
-    /// Known before the vault exists.
+    /// The vault `owner` has, or would get, for the plan `salt`. Known before it exists.
     function vaultOf(address owner, bytes32 salt) external view returns (address);
+
+    /// Whether this factory created `vault`.
+    function isVault(address vault) external view returns (bool);
 
     function vaultCount() external view returns (uint256);
 
@@ -37,40 +53,10 @@ interface IVaultFactory is IVaultConfig {
 
     function vaultsOf(address owner) external view returns (address[] memory);
 
-    function keeper() external view returns (address);
+    function vaultCountOf(address owner) external view returns (uint256);
 
-    function guardian() external view returns (address);
+    function vaultOfAt(address owner, uint256 i) external view returns (address);
 
-    function sequencerFeed() external view returns (address);
-
-    function keeperPaused() external view returns (bool);
-
-    function launched() external view returns (bool);
-
-    function closedUntil() external view returns (uint64);
-
-    /// Days since 1970, UTC.
-    function closedDay(uint32 day) external view returns (bool);
-
-    function params()
-        external
-        view
-        returns (
-            uint16 toleranceBps,
-            uint16 lossCapBps,
-            uint16 bandBps,
-            uint32 assetCooldown,
-            uint32 sessionOpen,
-            uint32 sessionClose
-        );
-
-    // ---- guardian: each call can only tighten. Only the admin unpauses, shortens, removes or rotates the guardian
-
-    function pauseKeeper() external;
-
-    function haltAsset(address token, uint64 until) external;
-
-    function extendClosedUntil(uint64 until) external;
-
-    function addClosedDay(uint32 day) external;
+    /// The beacon every vault reads its logic from.
+    function beacon() external view returns (address);
 }
