@@ -52,7 +52,8 @@ import { type LocalRpc, type Sent, sendAndWait, waitUntilUp } from './src/valida
 //
 //   pnpm exec tsx programs/tests/jupiter-replay.ts replay <dir> <rpc port>
 //       Starts a local validator with the vault program, the programs of the route cloned from
-//       mainnet (read-only) and the frozen accounts, then sends real transactions to it: a vault
+//       mainnet as they are that day (read-only) and the frozen accounts, then sends real
+//       transactions to it: a vault
 //       buys the stock token through `owner_swap`, the same route is tried with the output sent to
 //       someone else (hostile case A1), and create-and-buy is measured at 7 and 12 targets.
 //       Prints a report and writes <dir>/report.json.
@@ -329,6 +330,44 @@ async function executionOf(rpc: LocalRpc, signature: string) {
   };
 }
 
+/**
+ * Why a landed transaction failed, from its own logs: which program raised the error, and the
+ * name and number Anchor logged for it. An error number alone does not say whose it is: every
+ * Anchor program numbers its own from 6000, and a route runs three of them.
+ */
+async function failureOf(rpc: LocalRpc, signature: string) {
+  const tx = await rpc
+    .getTransaction(signature as never, {
+      commitment: 'confirmed',
+      encoding: 'json',
+      maxSupportedTransactionVersion: 0,
+    })
+    .send();
+  const logs = tx?.meta?.logMessages ?? [];
+  const running: string[] = [];
+  const succeeded: string[] = [];
+  let raisedBy: string | null = null;
+  let error: { name: string; number: number } | null = null;
+  let firstToFail: string | null = null;
+  for (const line of logs) {
+    const invoked = line.match(/^Program (\w+) invoke \[\d+\]/);
+    if (invoked?.[1]) running.push(invoked[1]);
+    const anchor = line.match(/AnchorError .*Error Code: (\w+)\. Error Number: (\d+)\./);
+    if (anchor?.[1] && !error) {
+      error = { name: anchor[1], number: Number(anchor[2]) };
+      // The program that is running when the line is written is the one that raised it.
+      raisedBy = running.at(-1) ?? null;
+    }
+    const ended = line.match(/^Program (\w+) (success|failed)/);
+    if (ended?.[1]) {
+      running.pop();
+      if (ended[2] === 'success') succeeded.push(ended[1]);
+      else firstToFail ??= ended[1];
+    }
+  }
+  return { raisedBy, error, firstToFail, succeeded };
+}
+
 async function replay(dir: string, port: number): Promise<void> {
   if (!existsSync(FIXTURE)) throw new Error('no frozen route: run `jupiter-replay.ts freeze`');
   const fixture = JSON.parse(readFileSync(FIXTURE, 'utf8')) as RouteFixture;
@@ -407,7 +446,10 @@ async function replay(dir: string, port: number): Promise<void> {
       ...['--faucet-port', String(port + 2), '--gossip-port', String(port + 3)],
       ...['--dynamic-port-range', `${port + 10}-${port + 40}`],
       ...['--mint', deployer.address],
-      // Read-only: the programs of the route are fetched from mainnet, at the slot of the snapshot.
+      // Read-only. The validator clones the programs of the route from mainnet as they are today,
+      // not as they were when the route was frozen. `--warp-slot` only starts this chain's slot
+      // count at the snapshot's slot, so the frozen lookup table and pool read as current. If
+      // either program is upgraded in a way this route does not survive, the replay fails and says so.
       ...['--url', MAINNET_RPC, '--warp-slot', fixture.slot],
       ...fixture.programs.flatMap((program) => ['--clone-upgradeable-program', program]),
       ...[
@@ -563,9 +605,20 @@ async function replay(dir: string, port: number): Promise<void> {
       tables,
       skipPreflight: true,
     });
-    const code = JSON.stringify(diverted.err, bigintSafe);
-    if (!diverted.failed || !code.includes(String(ERR.ReceivedTooLittle)))
-      throw new Error(`a route paid to someone else was not refused as expected: ${code}`);
+    // It is the vault program that refuses, with its own error, after the router has run and
+    // returned: read from the logs, since the router's programs number their errors from 6000 too.
+    const refusal = await failureOf(rpc, diverted.signature);
+    if (
+      !diverted.failed ||
+      refusal.raisedBy !== BASKET_PROGRAM ||
+      refusal.firstToFail !== BASKET_PROGRAM ||
+      refusal.error?.name !== 'ReceivedTooLittle' ||
+      refusal.error.number !== ERR.ReceivedTooLittle ||
+      !refusal.succeeded.includes(fixture.instruction.programId)
+    )
+      throw new Error(
+        `a route paid to someone else was not refused as expected: ${JSON.stringify({ err: diverted.err, refusal }, bigintSafe)}`,
+      );
     const unchanged = await tokenState(rpc, vaultCash);
     const attackerGot = (await tokenState(rpc, attackerStock))?.amount ?? 0n;
     if (unchanged?.amount !== cashAfter.amount || attackerGot !== 0n)
@@ -620,8 +673,9 @@ async function replay(dir: string, port: number): Promise<void> {
         },
       },
       a1: {
-        refusedWith: 'ReceivedTooLittle',
-        err: diverted.err,
+        refusedBy: refusal.raisedBy,
+        error: refusal.error,
+        routerItself: 'succeeded',
         attackerGot: attackerGot.toString(),
       },
       createAndFirstBuy: sizes,

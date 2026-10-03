@@ -62,7 +62,7 @@ pnpm exec tsx programs/tests/jupiter-replay.ts replay <dir> <rpc port>
 
 `freeze` asks Jupiter's `/swap/v2/build` for one route (USDC into SPYx through one Raydium pool, for a placeholder taker) and reads the accounts it names from mainnet over the public RPC. It sends nothing. What it keeps is in `fixtures/solana-vault/jupiter-route.json`: the instruction bytes and account list, the lookup table's contents, and 13 accounts (the pool, its tick arrays, both mints) as they were at that slot, 47,594 bytes in all. The two programs of the route are named, not kept.
 
-`replay` starts `solana-test-validator` with the vault program, clones Jupiter and the pool's program from mainnet at start (read-only, so it needs the network), loads the frozen accounts, and sends real transactions to it. The vault of the replay takes the taker's place in the account list, and its token accounts the place of the taker's. Nothing leaves the machine but those two reads.
+`replay` starts `solana-test-validator` with the vault program, clones Jupiter and the pool's program from mainnet at start (read-only, so it needs the network; it gets the programs as they are that day, not as they were at the frozen slot), loads the frozen accounts, and sends real transactions to it. The vault of the replay takes the taker's place in the account list, and its token accounts the place of the taker's. Nothing leaves the machine but those two reads.
 
 On Oct 3, with the route frozen at slot 452,983,734 (`route_v2`, 29 accounts):
 
@@ -70,7 +70,7 @@ On Oct 3, with the route frozen at slot 452,983,734 (`route_v2`, 29 accounts):
 |---|---|
 | A vault buys SPYx with 10 USDC through `owner_swap` | Lands. The vault spent 10,000,000 and received 1,290,137 raw units, the amount Jupiter quoted. 659 bytes with the token account opened in the same transaction, 26 accounts, 116,717 compute units, deepest call 4 |
 | After it (hostile case A11) | Neither token account of the vault has a delegate or a close authority, and the vault owns both |
-| The same route with the output paid to another wallet's account (hostile case A1) | Fails on chain with `ReceivedTooLittle` (6006). The other wallet got nothing and the vault's cash did not move |
+| The same route with the output paid to another wallet's account (hostile case A1) | Fails on chain with `ReceivedTooLittle` (6006), raised by the vault program after Jupiter itself succeeded (read from the logs: the route's own programs number their errors from 6000 too). The other wallet got nothing and the vault's cash did not move |
 | Create with 7 targets, deposit and the first buy, one transaction | Lands: 1,000 bytes, 186,532 compute units, with Jupiter's lookup table and one of the platform's own |
 | The same with 12 targets | Lands: 1,170 bytes of the 1,232 allowed, 186,131 compute units |
 
@@ -95,7 +95,9 @@ Left for SOL-3. None of it is built.
 - `sync_balances` before any valuation. `tracked` is not a balance, and cash is not tracked at all.
 - `accept_version` and `adopt_version` read the version in effect through `Recipe::active(now)`, never `current` alone, and write the targets through `Vault::set_positions`, which keeps `tracked` and `last_keeper_ts` for a mint that stays. The fields they write (`recipe`, `accepted_version`, `auto_follow`) are in place.
 - The asset list has no writer for `price_accounts`, and `AssetEntry.flags` must be zero until a bit means something. `Recipe.vetoed` is never written: the guardian's veto is `cancel_pending`.
-- Not built from the admin's and the guardian's lists: `set_guardian`, `set_closed`, `extend_closed_until`, `add_closed_day`. Until `set_guardian` exists the guardian named at `init_config` cannot be changed.
+- Not built from the admin's and the guardian's lists: `set_guardian`, `set_closed`, `extend_closed_until`, `add_closed_day`. No instruction sets the guardian or the default keeper after `init_config`: until one does, rotating either key takes a program upgrade, and a guardian key in the wrong hands can cancel every version that waits and pause the keeper again and again.
+- The asset list has no way to take a token off it or to mark one as closed to new buys, and `upsert_asset` refuses a listed mint once its issuer gives it a hook program, so the entry of exactly the token that turned cannot be rewritten. A delist flag in `AssetEntry.flags` is the place for it.
+- A ceiling lowered under a weight a shared portfolio already holds leaves that portfolio with no version it can publish when the weight is above 20%: leaving the weight breaks the ceiling, and taking it out moves more than a version may. A version should be allowed to lower an over-ceiling weight toward its ceiling.
 - A version published before `launch()` keeps the delay it was published under. Publish nothing in the last short delay before launching, or cancel what waits.
 - The reader (`packages/chain-solana/src/vault`) refuses a vault with a non-zero `loss_accum` until the keeper leg defines its unit.
 - When `close_vault` arrives, an owner-only sweep of token accounts the vault owns that are not the associated ones. Tokens sent to such an account cannot be withdrawn today, and such an account in a router's list makes the swap fail.
