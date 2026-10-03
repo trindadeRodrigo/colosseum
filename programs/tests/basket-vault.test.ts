@@ -6,6 +6,7 @@ import {
   getU64Decoder,
   isSome,
   type KeyPairSigner,
+  lamports,
 } from '@solana/kit';
 import { getCreateAccountInstruction } from '@solana-program/system';
 import {
@@ -17,12 +18,14 @@ import {
 import type { LiteSVM } from 'litesvm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  assetsAddress,
   configAddress,
   createVaultInstruction,
   depositInstruction,
   ERR,
   forgeConfig,
-  initConfig,
+  initPlatform,
+  listAssets,
   MAX_POSITIONS,
   readVault,
   setCashMintInstruction,
@@ -46,6 +49,7 @@ import {
   SYSTEM_ACCOUNT_ALREADY_IN_USE,
   SYSTEM_PROGRAM,
   send,
+  unsigned,
   writable,
   writableSigner,
 } from './src/env';
@@ -81,6 +85,28 @@ describe('basket vault', () => {
 
   const randomAddress = async () => (await generateKeyPairSigner()).address;
 
+  /** New mints, each on the platform list: what a vault may name as a target. */
+  async function listedMints(count: number): Promise<Address[]> {
+    const mints: Address[] = [];
+    for (let i = 0; i < count; i++)
+      mints.push((await createMint(svm, owner, { program: TOKEN_PROGRAM, decimals: 8 })).address);
+    await listAssets(svm, deployer, mints);
+    return mints;
+  }
+  const listedMint = async () => (await listedMints(1))[0] as Address;
+
+  /** Removes an account, as no transaction can: for what must work without it. */
+  function wipe(address: Address): void {
+    svm.setAccount({
+      address,
+      data: new Uint8Array(0),
+      executable: false,
+      lamports: lamports(0n),
+      programAddress: SYSTEM_PROGRAM,
+      space: 0n,
+    });
+  }
+
   /** Creates the owner's vault for PLAN and its token accounts for the given mints. */
   async function createVault(targets: Target[], mints: TestMint[]): Promise<Address> {
     const vault = await vaultAddress(owner.address, PLAN);
@@ -94,8 +120,15 @@ describe('basket vault', () => {
   }
 
   describe('create', () => {
+    let cash: TestMint;
+
+    beforeEach(async () => {
+      cash = await createMint(svm, owner, { program: TOKEN_PROGRAM, decimals: 6 });
+      await initPlatform(svm, deployer, { cashMint: cash.address });
+    });
+
     it('creates the vault at the address derived from the owner and the plan id', async () => {
-      const [a, b] = [await randomAddress(), await randomAddress()];
+      const [a, b] = (await listedMints(2)) as [Address, Address];
       const vault = await vaultAddress(owner.address, PLAN);
       const targets = [
         { mint: a, targetBps: 6_000 },
@@ -154,14 +187,14 @@ describe('basket vault', () => {
     });
 
     it('refuses a second vault for the same owner and plan id', async () => {
-      const first = await randomAddress();
+      const [first, second] = (await listedMints(2)) as [Address, Address];
       const vault = await createVault([{ mint: first, targetBps: 10_000 }], []);
 
       const again = await send(svm, owner, [
         await createVaultInstruction({
           owner,
           basketId: PLAN,
-          targets: [{ mint: await randomAddress(), targetBps: 5_000 }],
+          targets: [{ mint: second, targetBps: 5_000 }],
         }),
       ]);
       expectError(again, SYSTEM_ACCOUNT_ALREADY_IN_USE);
@@ -218,10 +251,10 @@ describe('basket vault', () => {
     });
 
     it('refuses the same mint twice in the targets', async () => {
-      const mint = await randomAddress();
+      const [mint, other] = (await listedMints(2)) as [Address, Address];
       const targets = [
         { mint, targetBps: 4_000 },
-        { mint: await randomAddress(), targetBps: 2_000 },
+        { mint: other, targetBps: 2_000 },
         { mint, targetBps: 4_000 },
       ];
       expectError(
@@ -231,9 +264,10 @@ describe('basket vault', () => {
     });
 
     it('refuses targets that add up to more than the whole', async () => {
+      const [a, b] = (await listedMints(2)) as [Address, Address];
       const targets = [
-        { mint: await randomAddress(), targetBps: 6_000 },
-        { mint: await randomAddress(), targetBps: 4_001 },
+        { mint: a, targetBps: 6_000 },
+        { mint: b, targetBps: 4_001 },
       ];
       expectError(
         await send(svm, owner, [await createVaultInstruction({ owner, basketId: PLAN, targets })]),
@@ -243,7 +277,7 @@ describe('basket vault', () => {
 
     it('refuses the zero address as a target: it is what an empty slot holds', async () => {
       const targets = [
-        { mint: await randomAddress(), targetBps: 5_000 },
+        { mint: await listedMint(), targetBps: 5_000 },
         { mint: SYSTEM_PROGRAM, targetBps: 0 },
       ];
       expectError(
@@ -253,16 +287,75 @@ describe('basket vault', () => {
     });
 
     it('accepts a full vault: sixteen targets that add up to the whole', async () => {
-      const targets = await Promise.all(
-        Array.from({ length: MAX_POSITIONS }, async () => ({
-          mint: await randomAddress(),
-          targetBps: 10_000 / MAX_POSITIONS,
-        })),
-      );
+      const targets = (await listedMints(MAX_POSITIONS)).map((mint) => ({
+        mint,
+        targetBps: 10_000 / MAX_POSITIONS,
+      }));
       const vault = await createVault(targets, []);
       const state = readVault(svm, vault);
       expect(state.count).toBe(MAX_POSITIONS);
       expect(state.positions.map((p) => p.mint)).toEqual(targets.map((t) => t.mint));
+    });
+
+    it('refuses a target that is not on the platform list', async () => {
+      const unlisted = await createMint(svm, owner, { program: TOKEN_PROGRAM, decimals: 8 });
+      const targets = [
+        { mint: await listedMint(), targetBps: 5_000 },
+        { mint: unlisted.address, targetBps: 5_000 },
+      ];
+      expectError(
+        await send(svm, owner, [await createVaultInstruction({ owner, basketId: PLAN, targets })]),
+        ERR.MintNotAccepted,
+      );
+    });
+
+    it('refuses the cash mint as a target, listed or not: cash is never a position', async () => {
+      const targets = [{ mint: cash.address, targetBps: 5_000 }];
+      const create = async () =>
+        send(svm, owner, [await createVaultInstruction({ owner, basketId: PLAN, targets })]);
+      expectError(await create(), ERR.MintNotAccepted);
+      await listAssets(svm, deployer, [cash.address]);
+      expectError(await create(), ERR.MintNotAccepted);
+    });
+
+    it('takes the cash mint and the list from the real Config and the real asset list only', async () => {
+      const mint = await listedMint();
+      // A copy of Config that names another cash mint, so the real one would pass as a target.
+      const forged = await forgeConfig(svm, { cashMint: mint });
+      expectError(
+        await send(svm, owner, [
+          await createVaultInstruction({
+            owner,
+            basketId: PLAN,
+            targets: [{ mint: cash.address, targetBps: 10_000 }],
+            config: forged,
+          }),
+        ]),
+        ANCHOR.ConstraintSeeds,
+      );
+      // A copy of the asset list at another address, and Config in the list's place.
+      const real = svm.getAccount(await assetsAddress());
+      if (!real.exists) throw new Error('no asset list');
+      const copy = await randomAddress();
+      svm.setAccount({ ...real, address: copy });
+      const targets = [{ mint, targetBps: 10_000 }];
+      expectError(
+        await send(svm, owner, [
+          await createVaultInstruction({ owner, basketId: PLAN, targets, assets: copy }),
+        ]),
+        ANCHOR.ConstraintSeeds,
+      );
+      expectError(
+        await send(svm, owner, [
+          await createVaultInstruction({
+            owner,
+            basketId: PLAN,
+            targets,
+            assets: await configAddress(),
+          }),
+        ]),
+        ANCHOR.AccountDiscriminatorMismatch,
+      );
     });
 
     it('refuses an expected version when no shared portfolio is passed', async () => {
@@ -300,9 +393,9 @@ describe('basket vault', () => {
     it('as the cash mint: the owner deposits it, then withdraws it to their own token account', async () => {
       const unit = 10n ** BigInt(kind.decimals);
       const mint = await createMint(svm, owner, kind);
-      expectOk(await initConfig(svm, deployer, { cashMint: mint.address }));
+      await initPlatform(svm, deployer, { cashMint: mint.address });
       const ownerTokens = await mintTo(svm, owner, mint, owner.address, 10n * unit);
-      const vault = await createVault([{ mint: await randomAddress(), targetBps: 10_000 }], [mint]);
+      const vault = await createVault([{ mint: await listedMint(), targetBps: 10_000 }], [mint]);
       const vaultTokens = await ata(vault, mint);
       const before = readVault(svm, vault);
 
@@ -339,8 +432,8 @@ describe('basket vault', () => {
     it('as any other token: a deposit is refused, and what arrives from outside withdraws to the owner', async () => {
       const unit = 10n ** BigInt(kind.decimals);
       const cash = await createMint(svm, owner, { program: TOKEN_PROGRAM, decimals: 6 });
-      expectOk(await initConfig(svm, deployer, { cashMint: cash.address }));
       const mint = await createMint(svm, owner, kind);
+      await initPlatform(svm, deployer, { cashMint: cash.address }, [mint.address]);
       const ownerTokens = await mintTo(svm, owner, mint, owner.address, 4n * unit);
       const vault = await createVault([{ mint: mint.address, targetBps: 10_000 }], [mint]);
       const vaultTokens = await ata(vault, mint);
@@ -377,16 +470,22 @@ describe('basket vault', () => {
     });
   });
 
-  it('withdraws with no Config account at all', async () => {
+  it('withdraws with no Config account and no asset list at all', async () => {
     // DESIGN-VAULT.md section 5: withdrawal calls no router, feed or registry, and reads no config.
     const mint = await createMint(svm, owner, {
       program: TOKEN_2022_PROGRAM,
       decimals: 8,
       stock: true,
     });
+    const cash = await createMint(svm, owner, { program: TOKEN_PROGRAM, decimals: 6 });
+    await initPlatform(svm, deployer, { cashMint: cash.address }, [mint.address]);
     const vault = await createVault([{ mint: mint.address, targetBps: 10_000 }], [mint]);
     await mintTo(svm, owner, mint, vault, 3_00000000n);
+    // Both accounts gone, as no transaction can make them: the worst a broken platform could be.
+    wipe(await configAddress());
+    wipe(await assetsAddress());
     expect(svm.getAccount(await configAddress()).exists).toBe(false);
+    expect(svm.getAccount(await assetsAddress()).exists).toBe(false);
 
     const ownerTokens = await createAta(svm, owner, owner.address, mint);
     expectOk(
@@ -403,10 +502,15 @@ describe('basket vault', () => {
       decimals: 6,
       extensions: onePercentFee,
     });
-    expectOk(await initConfig(svm, deployer, { cashMint: fee.address }));
+    // A second one that is an asset, so the vault records what it sees of it on a withdrawal.
+    const asset = await createMint(svm, owner, {
+      program: TOKEN_2022_PROGRAM,
+      decimals: 6,
+      extensions: onePercentFee,
+    });
+    await initPlatform(svm, deployer, { cashMint: fee.address }, [asset.address]);
     const ownerTokens = await mintTo(svm, owner, fee, owner.address, 1_000_000n);
-    // Listed as a target too, so the vault records what it sees on a withdrawal.
-    const vault = await createVault([{ mint: fee.address, targetBps: 10_000 }], [fee]);
+    const vault = await createVault([{ mint: asset.address, targetBps: 10_000 }], [fee, asset]);
     const vaultTokens = await ata(vault, fee);
 
     expectOk(
@@ -424,7 +528,18 @@ describe('basket vault', () => {
     );
     expect(balance(svm, vaultTokens)).toBe(590_000n);
     expect(balance(svm, ownerTokens)).toBe(396_000n);
-    expect(trackedFor(svm, vault, fee.address)).toBe(590_000n);
+
+    // The asset arrives from outside and leaves by a withdrawal: the vault records what is left.
+    const vaultAsset = await mintTo(svm, owner, asset, vault, 1_000_000n);
+    const ownerAsset = await createAta(svm, owner, owner.address, asset);
+    expectOk(
+      await send(svm, owner, [
+        await withdrawInstruction({ owner, vault, mint: asset, amount: 400_000n }),
+      ]),
+    );
+    expect(balance(svm, vaultAsset)).toBe(600_000n);
+    expect(balance(svm, ownerAsset)).toBe(396_000n);
+    expect(trackedFor(svm, vault, asset.address)).toBe(600_000n);
   });
 
   describe('with a funded vault', () => {
@@ -446,7 +561,7 @@ describe('basket vault', () => {
         decimals: 8,
         stock: true,
       });
-      expectOk(await initConfig(svm, deployer, { cashMint: cash.address }));
+      await initPlatform(svm, deployer, { cashMint: cash.address }, [stock.address]);
       ownerCash = await mintTo(svm, owner, cash, owner.address, CASH);
       ownerStock = await createAta(svm, owner, owner.address, stock);
       vault = await createVault([{ mint: stock.address, targetBps: 10_000 }], [cash, stock]);
@@ -843,6 +958,14 @@ describe('basket vault', () => {
         ]);
         expectError(result, ANCHOR.ConstraintHasOne);
         expectVaultUntouched();
+      });
+
+      it('the owner must sign a deposit: naming the owner is not enough', async () => {
+        await mintTo(svm, stranger, cash, owner.address, 1_000000n);
+        const named = await depositInstruction({ owner, vault, mint: cash, amount: 1_000000n });
+        expectError(await send(svm, stranger, [unsigned(named)]), ANCHOR.AccountNotSigner);
+        expectVaultUntouched();
+        expect(balance(svm, ownerCash)).toBe(1_000000n);
       });
 
       it("deposits only into the vault's associated token account", async () => {

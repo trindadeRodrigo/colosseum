@@ -1,0 +1,111 @@
+{
+  "asset": "TSLAx",
+  "assetMint": "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB",
+  "fetchedAt": "2026-10-03T02:07:02.711Z",
+  "refMidUsd": 370.97426651642695,
+  "pools": 6,
+  "sell": [
+    {
+      "outUsd": 99.91509944251897,
+      "costPct": 0.08490055748103797,
+      "poolsUsed": 2,
+      "notionalUsd": 100
+    },
+    {
+      "outUsd": 499.49444027863717,
+      "costPct": 0.10111194427256942,
+      "poolsUsed": 2,
+      "notionalUsd": 500
+    },
+    {
+      "outUsd": 2496.8306497164444,
+      "costPct": 0.12677401134222333,
+      "poolsUsed": 2,
+      "notionalUsd": 2500
+    },
+    {
+      "outUsd": 9978.573428583073,
+      "costPct": 0.21426571416927054,
+      "poolsUsed": 2,
+      "notionalUsd": 10000
+    },
+    {
+      "outUsd": 49688.647435232364,
+      "costPct": 0.6227051295352726,
+      "poolsUsed": 4,
+      "notionalUsd": 50000
+    },
+    {
+      "outUsd": 243613.48341499583,
+      "costPct": 2.554606634001666,
+      "poolsUsed": 4,
+      "notionalUsd": 250000
+    },
+    {
+      "outUsd": 875428.8230961916,
+      "costPct": 12.457117690380837,
+      "poolsUsed": 3,
+      "notionalUsd": 1000000
+    },
+    {
+      "outUsd": 894728.120169355,
+      "costPct": 82.1054375966129,
+      "poolsUsed": 6,
+      "notionalUsd": 5000000
+    }
+  ],
+  "buy": [
+    {
+      "outUsd": 100.00315797930233,
+      "costPct": -0.003157979302326197,
+      "poolsUsed": 2,
+      "notionalUsd": 100
+    },
+    {
+      "outUsd": 499.8081857447371,
+      "costPct": 0.03836285105257575,
+      "poolsUsed": 2,
+      "notionalUsd": 500
+    },
+    {
+      "outUsd": 2497.415938668862,
+      "costPct": 0.10336245324551463,
+      "poolsUsed": 4,
+      "notionalUsd": 2500
+    },
+    {
+      "outUsd": 9981.137539302841,
+      "costPct": 0.188624606971588,
+      "poolsUsed": 4,
+      "notionalUsd": 10000
+    },
+    {
+      "outUsd": 49716.63350907673,
+      "costPct": 0.5667329818465405,
+      "poolsUsed": 4,
+      "notionalUsd": 50000
+    },
+    {
+      "outUsd": 244144.25310321187,
+      "costPct": 2.3422987587152555,
+      "poolsUsed": 4,
+      "notionalUsd": 250000
+    },
+    {
+      "outUsd": 915891.7260494711,
+      "costPct": 8.41082739505289,
+      "poolsUsed": 4,
+      "notionalUsd": 1000000
+    },
+    {
+      "outUsd": 1711216.7683801448,
+      "costPct": 65.7756646323971,
+      "poolsUsed": 6,
+      "notionalUsd": 5000000
+    }
+  ],
+  "source": "pool simulations of this run (Solana RPC pool state)",
+  "method": "routed_greedy_32_chunks",
+  "methodVersion": "pools-0.1",
+  "frozenFrom": "risk_asset_snapshots, latest TSLAx row, 2026-10-03 (one routed snapshot, no wallet)"
+}

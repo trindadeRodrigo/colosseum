@@ -80,6 +80,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@colosseum/basket':
+        specifier: workspace:*
+        version: link:../../packages/basket
       '@colosseum/chain-evm':
         specifier: workspace:*
         version: link:../../packages/chain-evm

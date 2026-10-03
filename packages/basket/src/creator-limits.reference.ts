@@ -1,5 +1,5 @@
-import type { Target } from '@colosseum/schemas';
-import type { CreatorLimitContext, RecipeHeader } from './creator-limits';
+import type { LimitContext, Target } from '@colosseum/schemas';
+import type { RecipeHeader } from './creator-limits';
 
 // A second, slow statement of the author limits, used only by the tests. It is written from the rule
 // table in fixtures/creator-limits/README.md and shares nothing with creator-limits.ts: its own
@@ -59,7 +59,7 @@ export function referenceMovedBps(prev: readonly Target[], next: readonly Target
 export function referenceBreaks(
   prev: readonly Target[] | null,
   next: readonly Target[],
-  ctx: CreatorLimitContext,
+  ctx: LimitContext,
   header: RecipeHeader,
 ): string[] {
   const broken = new Set<string>();

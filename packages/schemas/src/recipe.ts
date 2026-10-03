@@ -15,7 +15,7 @@ export const Component = z.discriminatedUnion('kind', [
 ]);
 export type Component = z.infer<typeof Component>;
 
-/** What a vault stores. */
+/** What a vault stores: one asset and its weight. A weight of nothing is not a target. */
 export const Target = z.object({ asset: AssetId, weightBps: Weight });
 export type Target = z.infer<typeof Target>;
 
@@ -23,11 +23,16 @@ const sumBps = (rows: { weightBps: number }[]) => rows.reduce((n, r) => n + r.we
 const unique = (keys: string[]) => new Set(keys).size === keys.length;
 const componentKey = (c: Component) => (c.kind === 'asset' ? c.asset : `index:${c.family}`);
 
-/** A full set of targets: each asset once, and the weights add up to exactly 10,000. */
+/**
+ * A person's own vault targets: each asset once, each weight at least 1 bp, and the weights add up to
+ * at most 10,000. What is left of 10,000 is the plan's cash share: cash is never a target. The vaults
+ * hold to the same rule (DESIGN-VAULT 3.7, `InvalidTargets`), and the planner leaves that share in
+ * cash. A shared portfolio is `Components`, which adds up to exactly 10,000.
+ */
 export const Targets = z
   .array(Target)
   .min(1)
-  .refine((t) => sumBps(t) === 10_000, 'weights must add up to exactly 10,000')
+  .refine((t) => sumBps(t) <= 10_000, 'weights must add up to at most 10,000')
   .refine((t) => unique(t.map((x) => x.asset)), 'an asset appears once');
 export type Targets = z.infer<typeof Targets>;
 

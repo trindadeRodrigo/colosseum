@@ -2,8 +2,10 @@ use anchor_lang::prelude::*;
 
 use crate::checks::check_targets;
 use crate::errors::BasketError;
-use crate::events::VaultCreated;
-use crate::state::{Target, Vault, VAULT_SEED};
+use crate::events::{Followed, VaultCreated};
+use crate::state::{
+    AssetRegistry, Config, Recipe, Target, Vault, ASSETS_SEED, CONFIG_SEED, VAULT_SEED,
+};
 
 #[derive(Accounts)]
 #[instruction(basket_id: u64)]
@@ -18,6 +20,20 @@ pub struct CreateVault<'info> {
         bump
     )]
     pub vault: Box<Account<'info, Vault>>,
+    /// Read for the cash mint, which is never a target.
+    #[account(
+        seeds = [CONFIG_SEED],
+        bump = config.bump
+    )]
+    pub config: Box<Account<'info, Config>>,
+    #[account(
+        seeds = [ASSETS_SEED],
+        bump
+    )]
+    pub assets: AccountLoader<'info, AssetRegistry>,
+    /// The shared portfolio to follow. Left out (the program's own id in its place) for a
+    /// vault with targets of its own.
+    pub recipe: Option<Box<Account<'info, Recipe>>>,
     pub system_program: Program<'info, System>,
 }
 
@@ -29,20 +45,47 @@ impl CreateVault<'_> {
         auto_follow: bool,
         expected_version: u32,
     ) -> Result<()> {
-        // The version a person reviewed must be the one the vault takes. No shared portfolio
-        // is passed yet, so there is no version to match and only zero is right.
-        require!(expected_version == 0, BasketError::VersionMismatch);
-        check_targets(&targets)?;
-
         let vault = &mut ctx.accounts.vault;
         vault.owner = ctx.accounts.owner.key();
         vault.auto_follow = auto_follow;
         vault.basket_id = basket_id;
         vault.bump = ctx.bumps.vault;
-        vault.count = targets.len() as u8;
-        for (position, target) in vault.positions.iter_mut().zip(targets.iter()) {
-            position.mint = target.mint;
-            position.target_bps = target.target_bps;
+
+        match &ctx.accounts.recipe {
+            Some(recipe) => {
+                // The vault takes the weights of the version in effect, and only if that is
+                // the version the person reviewed: a create signed against version N that
+                // lands after N+1 took effect fails.
+                let active = recipe.active(Clock::get()?.unix_timestamp);
+                require!(
+                    expected_version == active.version,
+                    BasketError::VersionMismatch
+                );
+                require!(targets.is_empty(), BasketError::InvalidTargets);
+                vault.recipe = recipe.key();
+                vault.accepted_version = active.version;
+                vault.set_positions(
+                    active
+                        .components()
+                        .iter()
+                        .map(|component| (component.mint, component.weight_bps)),
+                );
+                emit!(Followed {
+                    vault: vault.key(),
+                    recipe: vault.recipe,
+                    version: vault.accepted_version,
+                });
+            }
+            None => {
+                // No shared portfolio, so no version to match: only zero is right.
+                require!(expected_version == 0, BasketError::VersionMismatch);
+                check_targets(
+                    &targets,
+                    &*ctx.accounts.assets.load()?,
+                    &ctx.accounts.config.cash_mint,
+                )?;
+                vault.set_positions(targets.iter().map(|t| (t.mint, t.target_bps)));
+            }
         }
 
         emit!(VaultCreated {

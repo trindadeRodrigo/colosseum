@@ -1,0 +1,42 @@
+{
+  "provenance": "fixture",
+  "source": "error messages returned by https://rpc.mainnet.chain.robinhood.com and https://robinhood.drpc.org (Robinhood Chain, chain 4663)",
+  "method": "the first three are copied from the collector's run log of 2026-10-02 to 2026-10-03, when the machine slept during runs; the rest are the answers to eth_call at a block far ahead of the head, an out-of-gas call and a rate refusal, asked on 2026-10-02 and 2026-10-03",
+  "fetchedAt": "2026-10-03T14:50:00.000Z",
+  "blockGone": [
+    {
+      "from": "rpc.mainnet.chain.robinhood.com",
+      "when": "eth_call at a block pinned 16 to 94 minutes earlier",
+      "message": "historical state 51b2a295e781f86487deec69dea7ea076def4e9229de719b41a942699ea856ca is not available"
+    },
+    {
+      "from": "rpc.mainnet.chain.robinhood.com",
+      "when": "eth_call at a pinned block while the node dropped that state",
+      "message": "missing trie node 9b04e0df9548096bc818d00bb60065b724a750d6af0e3dc93757f92817ae27a8 (path 00) layer stale"
+    },
+    {
+      "from": "rpc.mainnet.chain.robinhood.com",
+      "when": "eth_call at a pinned block 17 seconds into a run that was not paused",
+      "message": "[0x1a545f0a2c1ca7c90cc6a7e5b30d61ebe5c106a6b2f5b9348731fe0b52e14356] layer stale"
+    },
+    {
+      "from": "rpc.mainnet.chain.robinhood.com",
+      "when": "eth_call at a block the node does not have",
+      "message": "unsupported block number 179167244"
+    },
+    {
+      "from": "robinhood.drpc.org",
+      "when": "eth_call at a block the node does not have",
+      "message": "Unknown block"
+    }
+  ],
+  "notBlockGone": [
+    { "from": "rpc.mainnet.chain.robinhood.com", "message": "out of gas" },
+    { "from": "mainnet.base.org", "message": "over rate limit" },
+    {
+      "from": "robinhood.drpc.org",
+      "message": "Request timeout on the free plan, please upgrade to paid plan"
+    },
+    { "from": "rpc.mainnet.chain.robinhood.com", "message": "execution reverted" }
+  ]
+}

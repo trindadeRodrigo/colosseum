@@ -39,8 +39,30 @@ import {
   factoryCalls,
   type PoolRef,
 } from '../scripts/risk-evm/pools';
-import { createRpc, type Rpc, type RpcReply, type RpcRequest } from '../scripts/risk-evm/rpc';
-import { collectOnce, decodeQuotes, quoteRequest } from '../scripts/risk-evm/run';
+import {
+  createRpc,
+  type Rpc,
+  type RpcReply,
+  type RpcRequest,
+  RpcUnreachable,
+} from '../scripts/risk-evm/rpc';
+import {
+  collectOnce,
+  decodeQuotes,
+  isBlockGone,
+  MAX_PIN_AGE_MS,
+  MAX_REPINS_PER_TOKEN,
+  quoteRequest,
+} from '../scripts/risk-evm/run';
+import {
+  type Attempt,
+  attemptOf,
+  missedLine,
+  RETRY_AFTER_MIN,
+  RETRY_MARGIN_MS,
+  runSlot,
+  slotLine,
+} from '../scripts/risk-evm/slot';
 
 // REVM-1. Nothing here may reach the network: the chain's answers come from a recorded fixture.
 beforeAll(() => {
@@ -50,6 +72,8 @@ beforeAll(() => {
 });
 
 const robinhood = CHAINS.find((c) => c.id === 'robinhood') as (typeof CHAINS)[number];
+const repeat = <T>(items: T[], times: number): T[] =>
+  Array.from({ length: times }, () => items).flat();
 const NVDA = robinhood.tokens.find((t) => t.symbol === 'NVDA') as { address: string };
 const D = { token: 18, dollar: 6 };
 const quote = (out: bigint, filledIn: bigint) => ({ out, filledIn });
@@ -581,61 +605,119 @@ function aggregate3Result(items: Array<{ success: boolean; data: string }>): str
   return `0x${word(0x20)}${word(items.length)}${heads.join('')}${bodies.join('')}`;
 }
 
+type RpcErrors = {
+  provenance: string;
+  blockGone: Array<{ from: string; message: string }>;
+  notBlockGone: Array<{ from: string; message: string }>;
+};
+const rpcErrors = JSON.parse(
+  readFileSync('fixtures/risk-evm/rpc-errors.json', 'utf8'),
+) as RpcErrors;
+/** The two answers the overnight run of Oct 2 to 3 met when the machine slept during a run. */
+const HISTORICAL_STATE = rpcErrors.blockGone[0]?.message as string;
+const LAYER_STALE = rpcErrors.blockGone[1]?.message as string;
+
 describe('one run, replayed from the recording', () => {
   const fx = JSON.parse(
     readFileSync('fixtures/risk-evm/robinhood-nvda-quotes.json', 'utf8'),
   ) as Fixture;
-  const tag = `0x${fx.block.toString(16)}`;
-  const chain = { ...robinhood, tokens: robinhood.tokens.filter((t) => t.symbol === 'NVDA') };
+  const BLOCK_A = fx.block;
+  const STEP = 1_000; // each new pin is this many blocks, and 100 seconds, after the last
+  const tagOf = (n: number) => `0x${n.toString(16)}`;
+  const tag = tagOf(BLOCK_A);
+  const timeOf = (n: number) =>
+    new Date(Date.parse(fx.fetchedAt) + ((n - BLOCK_A) / STEP) * 100_000).toISOString();
+  const nvda = robinhood.tokens.find((t) => t.symbol === 'NVDA') as (typeof robinhood.tokens)[0];
   const recorded = new Map<string, string>();
   for (const f of [fx.v3, fx.v4]) for (const s of f.sides) recorded.set(s.castCalldata, s.result);
-  const midsCall = encodeAggregate3([
+  const midCalls = [
     { target: fx.v3.pool.id, callData: '0x3850c7bd' },
     { target: robinhood.v4?.stateView as string, callData: encodeGetSlot0(fx.v4.pool.id) },
-  ]);
+  ];
+  const slot0s = [
+    { success: true, data: fx.v3.slot0 },
+    { success: true, data: fx.v4.slot0 },
+  ];
+  // the price call for the pools of one, two or three tokens: calldata, and how many tokens it covers
+  const mids = new Map([1, 2, 3].map((k) => [encodeAggregate3(repeat(midCalls, k)), k]));
   const v3Sell = fx.v3.sides[0]?.castCalldata as string;
   const v4Buy = fx.v4.sides[1] as Fixture['v4']['sides'][number];
 
-  /** Runs collectOnce against a client that answers from the fixture, unless `override` answers first. */
-  async function run(override: (data: string) => RpcReply | undefined = () => undefined) {
+  type Seen = { method: string; data: string; tag: string };
+  type World = { clock: number; head: number; seen: Seen[] };
+  type Scenario = {
+    /** Symbols to list, all with NVDA's address and pools. */
+    tokens?: string[];
+    /** Symbols listed with no pool at all. */
+    noPools?: string[];
+    only?: Set<string>;
+    /** Minutes after the start at which the next scheduled run is due. */
+    untilMin?: number;
+    /** Answers before the recording does; 'unreachable' makes the request fail as a dead network does. */
+    override?: (call: Seen, world: World) => RpcReply | 'unreachable' | undefined;
+    /** Called when the run asks for a block after its first: 'unreachable' as above, or the endpoint's refusal. */
+    onRepin?: (world: World) => RpcReply | 'unreachable' | undefined;
+  };
+  const unreachable = () =>
+    new RpcUnreachable('RPC unreachable after 3 tries (TypeError ENOTFOUND)');
+
+  /** Runs collectOnce against a client that answers from the fixture, with a clock the scenario moves. */
+  async function run(scenario: Scenario = {}) {
+    const symbols = scenario.tokens ?? ['NVDA'];
+    const empty = new Set(scenario.noPools ?? []);
+    const chain = { ...robinhood, tokens: symbols.map((symbol) => ({ ...nvda, symbol })) };
     const dir = mkdtempSync(join(tmpdir(), 'risk-evm-run-'));
+    const listed = { address: NVDA.address, pools: [fx.v3.pool, fx.v4.pool], skipped: {} };
+    const world: World = { clock: Date.parse(fx.fetchedAt), head: BLOCK_A, seen: [] };
     writeFileSync(
       join(dir, 'pools-robinhood.json'),
       JSON.stringify({
         chain: 'robinhood',
         chainId: 4663,
-        discoveredAt: new Date().toISOString(),
+        discoveredAt: new Date(world.clock).toISOString(),
         source: 'test',
         method: 'test',
         maxPools: 3,
-        tokens: { NVDA: { address: NVDA.address, pools: [fx.v3.pool, fx.v4.pool], skipped: {} } },
+        tokens: Object.fromEntries(
+          symbols.map((symbol) => [symbol, empty.has(symbol) ? { ...listed, pools: [] } : listed]),
+        ),
       }),
     );
-    const seen: RpcRequest[] = [];
     const answer = (r: RpcRequest): RpcReply => {
-      seen.push(r);
-      if (r.method === 'eth_chainId') return { result: '0x1237' };
-      if (r.method === 'eth_getBlockByNumber')
+      if (r.method === 'eth_chainId') {
+        world.seen.push({ method: r.method, data: '', tag: '' });
+        return { result: '0x1237' };
+      }
+      if (r.method === 'eth_getBlockByNumber') {
+        world.seen.push({ method: r.method, data: '', tag: '' });
+        const refused = world.head > BLOCK_A ? scenario.onRepin?.(world) : undefined;
+        if (refused === 'unreachable') throw unreachable();
+        if (refused) return refused;
+        const n = world.head;
+        world.head += STEP;
         return {
-          result: { number: tag, timestamp: `0x${(Date.parse(fx.fetchedAt) / 1000).toString(16)}` },
+          result: { number: tagOf(n), timestamp: tagOf(Date.parse(timeOf(n)) / 1000) },
         };
-      const [call] = r.params as [{ data: string }];
-      const forced = override(call.data);
+      }
+      const [call, at] = r.params as [{ data: string }, string];
+      const seen = { method: r.method, data: call.data, tag: at };
+      world.seen.push(seen);
+      const forced = scenario.override?.(seen, world);
+      if (forced === 'unreachable') throw unreachable();
       if (forced) return forced;
-      if (call.data === midsCall)
-        return {
-          result: aggregate3Result([
-            { success: true, data: fx.v3.slot0 },
-            { success: true, data: fx.v4.slot0 },
-          ]),
-        };
+      const tokens = mids.get(call.data);
+      if (tokens) return { result: aggregate3Result(repeat(slot0s, tokens)) };
       const result = recorded.get(call.data);
       return result ? { result } : { error: { message: 'not in the recording' } };
     };
     const rpc: Rpc = {
       batch: async (requests) => requests.map(answer),
-      call: async <T>(method: string, params: unknown[]) => answer({ method, params }).result as T,
-      stats: () => ({ httpRequests: 0, rpcCalls: seen.length }),
+      call: async <T>(method: string, params: unknown[]) => {
+        const reply = answer({ method, params });
+        if (reply.error) throw new Error(`${method}: ${reply.error.message}`);
+        return reply.result as T;
+      },
+      stats: () => ({ httpRequests: 0, rpcCalls: world.seen.length }),
     };
     const events: Record<string, unknown>[] = [];
     const summary = await collectOnce(chain, {
@@ -644,20 +726,34 @@ describe('one run, replayed from the recording', () => {
       minLiquidityUsd: 10_000,
       poolsMaxAgeHours: 24,
       rediscover: false,
+      only: scenario.only,
+      until: scenario.untilMin === undefined ? undefined : world.clock + scenario.untilMin * 60_000,
       env: { RISK_EVM_RH_RPC_URL: 'https://example.invalid/v2/a-key' },
       rpc,
+      now: () => world.clock,
+      sleep: async () => {},
       log: (e) => events.push(e),
     });
     const file = join(dir, 'assets', `${fx.fetchedAt.slice(0, 10)}.jsonl`);
     const lines = existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(Boolean) : [];
-    return { summary, events, seen, rows: lines.map((l) => parseRow(JSON.parse(l))) };
+    const rows = lines.map(
+      (l) => parseRow(JSON.parse(l)) as NonNullable<ReturnType<typeof parseRow>>,
+    );
+    return { summary, events, seen: world.seen, rows };
   }
+  const calls = (seen: Seen[]) => seen.filter((q) => q.method === 'eth_call');
+  const isQuote = (q: Seen) => recorded.has(q.data);
 
   it('writes one row at the pinned block, in seven calls, without the RPC URL', async () => {
     const r = await run();
-    expect(r.summary).toMatchObject({ rows: 1, block: fx.block, poolsRediscovered: false });
+    expect(r.summary).toMatchObject({
+      rows: 1,
+      block: fx.block,
+      repins: 0,
+      poolsRediscovered: false,
+    });
     expect(r.rows).toHaveLength(1);
-    const row = r.rows[0] as NonNullable<(typeof r.rows)[number]>;
+    const row = r.rows[0] as (typeof r.rows)[number];
     expect(row).toMatchObject({
       asset: 'NVDA',
       assetMint: NVDA.address,
@@ -670,44 +766,49 @@ describe('one run, replayed from the recording', () => {
     });
     const out10k = Number(fx.v3.sides[0]?.castDecoded.outs[3]) / 1e6;
     expect(row.sell[3]?.costPct).toBeCloseTo((1 - out10k / 10_000) * 100, 9);
-    expect(r.summary.tokens[0]?.sell10k).toBe(row.sell[3]?.costPct);
+    expect(r.summary.tokens[0]).toMatchObject({ sell10k: row.sell[3]?.costPct, block: fx.block });
     expect(row.sell.map((p) => p.quoted)).toEqual([2, 2, 2, 2, 2, 1, 1, 1]);
     // chain id and block, the mids, then one call per pool and side
     expect(r.seen).toHaveLength(7);
-    const calls = r.seen.filter((q) => q.method === 'eth_call');
-    expect(calls.every((q) => q.params[1] === tag)).toBe(true);
+    expect(calls(r.seen).every((q) => q.tag === tag)).toBe(true);
     // the URL from the environment may carry a key: it is named, never written
     expect(row.source).toContain('the RPC in RISK_EVM_RH_RPC_URL');
     expect(JSON.stringify([row, r.summary, r.events])).not.toMatch(/example\.invalid|a-key/);
   });
   it('writes no row when the deepest pool did not answer, rather than pass off the thin one', async () => {
-    const r = await run((data) =>
-      data === v3Sell ? { error: { code: -32016, message: 'over rate limit' } } : undefined,
-    );
+    const r = await run({
+      override: (q) =>
+        q.data === v3Sell ? { error: { code: -32016, message: 'over rate limit' } } : undefined,
+    });
     expect(r.rows).toEqual([]);
     expect(r.summary.rows).toBe(0);
     expect(r.summary.tokens[0]?.error).toMatch(
       /sell quote from pool 0xd4EB.* failed: over rate limit/,
     );
+    // worth another try within the hour, and no cost is reported for it
+    expect(r.summary.tokens[0]).toMatchObject({ retry: true, sell10k: null, sell50k: null });
   });
   it('asks a v4 pool again with fewer sizes when the call runs out of gas', async () => {
     const all = decodeAggregate3(v4Buy.result);
-    const r = await run((data) => {
-      if (data === v4Buy.castCalldata) return { error: { message: 'out of gas' } };
-      // the second try carries seven sizes, so it is not in the recording
-      const known = data === midsCall || recorded.has(data);
-      return known ? undefined : { result: aggregate3Result(all.slice(0, 7)) };
+    const r = await run({
+      override: (q) => {
+        if (q.data === v4Buy.castCalldata) return { error: { message: 'out of gas' } };
+        // the second try carries seven sizes, so it is not in the recording
+        const known = mids.has(q.data) || recorded.has(q.data);
+        return known ? undefined : { result: aggregate3Result(all.slice(0, 7)) };
+      },
     });
     expect(r.seen).toHaveLength(8);
     expect(r.rows).toHaveLength(1);
     expect(r.rows[0]?.buy.map((p) => p.quoted)).toEqual([2, 2, 2, 2, 2, 1, 1, 1]);
   });
   it('leaves out a pool that is still out of gas after three smaller tries, and says so', async () => {
-    const r = await run((data) =>
-      data === midsCall || (recorded.has(data) && data !== v4Buy.castCalldata)
-        ? undefined
-        : { error: { message: 'out of gas' } },
-    );
+    const r = await run({
+      override: (q) =>
+        mids.has(q.data) || (recorded.has(q.data) && q.data !== v4Buy.castCalldata)
+          ? undefined
+          : { error: { message: 'out of gas' } },
+    });
     expect(r.seen).toHaveLength(10);
     expect(r.events).toEqual([
       { event: 'quote_out_of_gas', asset: 'NVDA', pool: fx.v4.pool.id, side: 'buy' },
@@ -718,7 +819,7 @@ describe('one run, replayed from the recording', () => {
   it('refuses an endpoint that answers for another chain', async () => {
     await expect(
       collectOnce(
-        { ...chain, chainId: 46630 },
+        { ...robinhood, chainId: 46630 },
         {
           dir: mkdtempSync(join(tmpdir(), 'risk-evm-run-')),
           maxPools: 3,
@@ -739,6 +840,714 @@ describe('one run, replayed from the recording', () => {
         },
       ),
     ).rejects.toThrow('answers for chain 4663, not 46630');
+  });
+
+  describe('when the pinned block can no longer be read', () => {
+    const BLOCK_B = BLOCK_A + STEP;
+
+    it('knows the wordings the two Robinhood Chain endpoints use, and no others', () => {
+      expect(rpcErrors.provenance).toBe('fixture');
+      expect(rpcErrors.blockGone.length).toBeGreaterThanOrEqual(5);
+      for (const e of rpcErrors.blockGone) expect(isBlockGone(e.message), e.message).toBe(true);
+      for (const e of rpcErrors.notBlockGone) expect(isBlockGone(e.message), e.message).toBe(false);
+      expect(isBlockGone(undefined)).toBe(false);
+      expect(HISTORICAL_STATE).toMatch(/^historical state [0-9a-f]{64} is not available$/);
+      expect(LAYER_STALE).toMatch(/^missing trie node [0-9a-f]{64} \(path 00\) layer stale$/);
+    });
+
+    for (const [name, message] of [
+      ['historical state', HISTORICAL_STATE],
+      ['layer stale', LAYER_STALE],
+    ] as const) {
+      it(`measures the token again on a fresh block, prices included (${name})`, async () => {
+        const r = await run({
+          override: (q) =>
+            q.data === v3Sell && q.tag === tag ? { error: { code: -32000, message } } : undefined,
+        });
+        expect(r.summary).toMatchObject({ rows: 1, repins: 1, block: BLOCK_A });
+        expect(r.rows).toHaveLength(1);
+        // the row belongs to the second block entirely: number, time and source
+        expect(r.rows[0]).toMatchObject({ slot: BLOCK_B, fetchedAt: timeOf(BLOCK_B) });
+        expect(r.rows[0]?.source).toContain(`block ${BLOCK_B} `);
+        expect(r.summary.tokens[0]).toMatchObject({ block: BLOCK_B });
+        // first block: prices and four quotes, one of them refused. Then a new block, and all five again.
+        const all = calls(r.seen);
+        expect(all.map((q) => q.tag)).toEqual([
+          ...repeat([tag], 5),
+          ...repeat([tagOf(BLOCK_B)], 5),
+        ]);
+        const second = all.slice(5);
+        expect(mids.has(second[0]?.data as string)).toBe(true);
+        expect(second.slice(1).every(isQuote)).toBe(true);
+        expect(r.events).toEqual([
+          {
+            event: 'repinned',
+            reason: 'block_gone',
+            asset: 'NVDA',
+            fromBlock: BLOCK_A,
+            error: message,
+          },
+        ]);
+      });
+    }
+
+    it('takes a fresh block when the price call itself finds the state gone', async () => {
+      const r = await run({
+        override: (q) =>
+          mids.has(q.data) && q.tag === tag ? { error: { message: HISTORICAL_STATE } } : undefined,
+      });
+      expect(r.summary).toMatchObject({ rows: 1, repins: 1 });
+      expect(r.rows[0]).toMatchObject({ slot: BLOCK_B, fetchedAt: timeOf(BLOCK_B) });
+      // no quote was ever asked at the first block
+      expect(
+        calls(r.seen)
+          .filter(isQuote)
+          .every((q) => q.tag === tagOf(BLOCK_B)),
+      ).toBe(true);
+    });
+
+    it('writes no row, and no cost, when every fresh block fails the same way', async () => {
+      const r = await run({
+        override: (q) => (q.data === v3Sell ? { error: { message: HISTORICAL_STATE } } : undefined),
+      });
+      expect(r.rows).toEqual([]);
+      expect(r.summary).toMatchObject({ rows: 0, repins: MAX_REPINS_PER_TOKEN });
+      expect(r.summary.tokens[0]).toMatchObject({
+        error: `the block's state was gone: ${HISTORICAL_STATE}`,
+        retry: true,
+        sell10k: null,
+        sell50k: null,
+      });
+      expect(r.summary.tokens[0]?.block).toBeUndefined();
+      // three blocks were tried, each with its own prices
+      expect(
+        calls(r.seen)
+          .filter((q) => mids.has(q.data))
+          .map((q) => q.tag),
+      ).toEqual([tag, tagOf(BLOCK_B), tagOf(BLOCK_B + STEP)]);
+    });
+
+    it('only redoes the token that failed: rows already written keep their block', async () => {
+      let refused = false;
+      const r = await run({
+        tokens: ['NVDA', 'NVDB'],
+        override: (q, world) => {
+          // the second token's first quote, at the first block
+          const quotesSoFar = world.seen.filter(isQuote).length;
+          if (!refused && q.data === v3Sell && quotesSoFar === 5) {
+            refused = true;
+            return { error: { message: LAYER_STALE } };
+          }
+          return undefined;
+        },
+      });
+      expect(r.rows.map((row) => [row.asset, row.slot])).toEqual([
+        ['NVDA', BLOCK_A],
+        ['NVDB', BLOCK_B],
+      ]);
+      expect(r.summary).toMatchObject({ rows: 2, repins: 1 });
+    });
+  });
+
+  describe('when the run was paused (a sleeping machine)', () => {
+    const BLOCK_B = BLOCK_A + STEP;
+    const twoTokens = (pauseMs: number) =>
+      run({
+        tokens: ['NVDA', 'NVDB'],
+        override: (q, world) => {
+          // the clock jumps while the first token's last quote is on the wire
+          if (q.data === v4Buy.castCalldata && world.seen.filter(isQuote).length === 4)
+            world.clock += pauseMs;
+          return undefined;
+        },
+      });
+
+    it('keeps one block for the whole run when nothing pauses it', async () => {
+      const r = await twoTokens(MAX_PIN_AGE_MS);
+      expect(r.summary).toMatchObject({ rows: 2, repins: 0 });
+      expect(r.rows.map((row) => row.slot)).toEqual([BLOCK_A, BLOCK_A]);
+      // one price call covers both tokens
+      expect(calls(r.seen).filter((q) => mids.has(q.data))).toHaveLength(1);
+      expect(r.seen).toHaveLength(2 + 1 + 8);
+    });
+    it('starts what is left on a fresh block once the pin is older than the limit', async () => {
+      const r = await twoTokens(30 * 60_000);
+      expect(r.summary).toMatchObject({ rows: 2, repins: 1, block: BLOCK_A });
+      expect(r.rows.map((row) => [row.asset, row.slot, row.fetchedAt])).toEqual([
+        ['NVDA', BLOCK_A, fx.fetchedAt],
+        ['NVDB', BLOCK_B, timeOf(BLOCK_B)],
+      ]);
+      // the second token's prices were read again, at its own block, before its quotes
+      const second = calls(r.seen).filter((q) => q.tag === tagOf(BLOCK_B));
+      expect(second).toHaveLength(5);
+      expect(mids.get(second[0]?.data as string)).toBe(1);
+      expect(second.slice(1).every(isQuote)).toBe(true);
+      expect(r.events).toEqual([
+        {
+          event: 'repinned',
+          reason: 'pin_too_old',
+          asset: 'NVDB',
+          fromBlock: BLOCK_A,
+          ageMs: 30 * 60_000,
+        },
+      ]);
+    });
+    it('leaves what is left to the next run when it wakes after that run was due', async () => {
+      const r = await run({
+        tokens: ['NVDA', 'NVDB', 'NVDC'],
+        untilMin: 60,
+        override: (q, world) => {
+          if (q.data === v4Buy.castCalldata && world.seen.filter(isQuote).length === 4)
+            world.clock += 94 * 60_000;
+          return undefined;
+        },
+      });
+      // no second sample of the same tokens a minute before the next run takes its own
+      expect(r.rows.map((row) => row.asset)).toEqual(['NVDA']);
+      expect(r.summary).toMatchObject({
+        rows: 1,
+        repins: 0,
+        aborted: 'the next scheduled run is due',
+      });
+      expect(r.summary.tokens.slice(1).map((t) => [t.error, t.retry ?? false])).toEqual([
+        ['not tried: the next scheduled run is due', false],
+        ['not tried: the next scheduled run is due', false],
+      ]);
+      expect(r.seen).toHaveLength(2 + 1 + 4);
+    });
+    describe("with a token's quotes on the wire, which then find their block gone", () => {
+      const asleepFor = (minutes: number) => {
+        let slept = false;
+        return run({
+          tokens: ['NVDA', 'NVDB', 'NVDC'],
+          untilMin: 60,
+          override: (q, world) => {
+            // the second token's quotes, at the first block
+            if (isQuote(q) && q.tag === tag && world.seen.filter(isQuote).length > 4) {
+              if (!slept) {
+                slept = true;
+                world.clock += minutes * 60_000;
+              }
+              return { error: { code: -32000, message: HISTORICAL_STATE } };
+            }
+            return undefined;
+          },
+        });
+      };
+
+      it('does not finish that token on a fresh block once the next run is due', async () => {
+        const r = await asleepFor(94);
+        // one row, from before the pause; nothing is written 34 minutes into the next hour
+        expect(r.rows.map((row) => [row.asset, row.slot, row.fetchedAt])).toEqual([
+          ['NVDA', BLOCK_A, fx.fetchedAt],
+        ]);
+        expect(r.summary).toMatchObject({
+          rows: 1,
+          repins: 0,
+          aborted: 'the next scheduled run is due',
+        });
+        expect(r.summary.tokens.map((t) => [t.asset, t.error ?? null, t.retry ?? false])).toEqual([
+          ['NVDA', null, false],
+          ['NVDB', 'not measured: the next scheduled run is due', false],
+          ['NVDC', 'not tried: the next scheduled run is due', false],
+        ]);
+        expect(r.summary.tokens[1]).toMatchObject({ sell10k: null, sell50k: null });
+        // no fresh block was asked for, and nothing was read at any other block
+        expect(r.seen.filter((q) => q.method === 'eth_getBlockByNumber')).toHaveLength(1);
+        expect(calls(r.seen).every((q) => q.tag === tag)).toBe(true);
+        expect(r.events).toEqual([]);
+      });
+      it('finishes it on a fresh block when the machine wakes inside the hour', async () => {
+        const r = await asleepFor(30);
+        expect(r.rows.map((row) => [row.asset, row.slot])).toEqual([
+          ['NVDA', BLOCK_A],
+          ['NVDB', BLOCK_B],
+          ['NVDC', BLOCK_B],
+        ]);
+        expect(r.summary).toMatchObject({ rows: 3, repins: 1 });
+        expect(r.summary.aborted).toBeUndefined();
+        expect(r.events).toEqual([
+          {
+            event: 'repinned',
+            reason: 'block_gone',
+            asset: 'NVDB',
+            fromBlock: BLOCK_A,
+            error: HISTORICAL_STATE,
+          },
+        ]);
+      });
+    });
+    it('uses a limit of a few minutes', () => {
+      expect(MAX_PIN_AGE_MS).toBeGreaterThanOrEqual(60_000);
+      expect(MAX_PIN_AGE_MS).toBeLessThanOrEqual(5 * 60_000);
+    });
+  });
+
+  describe('when the network is down', () => {
+    it('stops at the first token it cannot reach and marks the rest for another try', async () => {
+      const r = await run({
+        tokens: ['NVDA', 'NVDB', 'NVDC'],
+        override: (q, world) =>
+          isQuote(q) && world.seen.filter(isQuote).length > 4 ? 'unreachable' : undefined,
+      });
+      expect(r.rows.map((row) => row.asset)).toEqual(['NVDA']);
+      expect(r.summary).toMatchObject({
+        rows: 1,
+        aborted: 'RPC unreachable after 3 tries (TypeError ENOTFOUND)',
+      });
+      expect(r.summary.tokens.map((t) => [t.asset, t.error ?? null, t.retry ?? false])).toEqual([
+        ['NVDA', null, false],
+        ['NVDB', 'RPC unreachable after 3 tries (TypeError ENOTFOUND)', true],
+        ['NVDC', 'not tried: RPC unreachable after 3 tries (TypeError ENOTFOUND)', true],
+      ]);
+      // nothing was asked for the third token
+      expect(r.seen.filter(isQuote)).toHaveLength(5);
+    });
+    it('fails as a whole when even the first call cannot get through', async () => {
+      await expect(
+        collectOnce(robinhood, {
+          dir: mkdtempSync(join(tmpdir(), 'risk-evm-run-')),
+          maxPools: 3,
+          minLiquidityUsd: 10_000,
+          poolsMaxAgeHours: 24,
+          rediscover: false,
+          rpc: {
+            batch: async () => {
+              throw new RpcUnreachable('RPC unreachable after 3 tries (TypeError ENOTFOUND)');
+            },
+            call: async () => {
+              throw new Error('unexpected call');
+            },
+            stats: () => ({ httpRequests: 0, rpcCalls: 0 }),
+          },
+          log: () => {},
+        }),
+      ).rejects.toBeInstanceOf(RpcUnreachable);
+    });
+    it('stops the same way when the price call or a fresh block cannot get through', async () => {
+      const prices = await run({
+        tokens: ['NVDA', 'NVDB'],
+        override: (q) => (mids.has(q.data) ? 'unreachable' : undefined),
+      });
+      expect(prices.rows).toEqual([]);
+      expect(prices.summary.tokens.map((t) => t.retry)).toEqual([true, true]);
+      expect(prices.seen.filter(isQuote)).toEqual([]);
+
+      const repin = await run({
+        override: (q) => (q.data === v3Sell ? { error: { message: LAYER_STALE } } : undefined),
+        onRepin: () => 'unreachable',
+      });
+      expect(repin.rows).toEqual([]);
+      expect(repin.summary).toMatchObject({
+        rows: 0,
+        aborted: 'RPC unreachable after 3 tries (TypeError ENOTFOUND)',
+      });
+      expect(repin.summary.tokens[0]).toMatchObject({ retry: true, sell10k: null });
+    });
+    it('stops, and keeps the hour open, when the endpoint refuses the fresh block', async () => {
+      // the state is gone for the first token, then the call for a new block is refused for rate
+      const r = await run({
+        tokens: ['NVDA', 'NVDB', 'NVDC'],
+        override: (q) =>
+          q.data === v3Sell && q.tag === tag ? { error: { message: HISTORICAL_STATE } } : undefined,
+        onRepin: () => ({ error: { code: -32016, message: 'over rate limit' } }),
+      });
+      const refusal = 'no fresh block: eth_getBlockByNumber: over rate limit';
+      expect(r.rows).toEqual([]);
+      expect(r.summary).toMatchObject({ rows: 0, aborted: refusal });
+      expect(r.summary.tokens.map((t) => [t.asset, t.error, t.retry ?? false])).toEqual([
+        ['NVDA', refusal, true],
+        ['NVDB', `not tried: ${refusal}`, true],
+        ['NVDC', `not tried: ${refusal}`, true],
+      ]);
+      // one refusal ends the run: the other tokens do not each ask for a block in turn
+      expect(r.seen.filter((q) => q.method === 'eth_getBlockByNumber')).toHaveLength(2);
+
+      // so the hour tries all three again, instead of ending after one attempt with nothing to retry
+      let clock = 0;
+      const tried: Array<string[] | null> = [];
+      const outcome = await runSlot({
+        attempt: async (only, n) => {
+          tried.push(only ? [...only] : null);
+          return n === 1 ? attemptOf(r.summary) : { rows: [...(only ?? [])], missing: [] };
+        },
+        retryAfterMs: [2 * 60_000],
+        until: 3_600_000,
+        marginMs: 2 * 60_000,
+        now: () => clock,
+        sleep: async (ms) => {
+          clock += ms;
+        },
+        stopped: () => false,
+      });
+      expect(tried).toEqual([null, ['NVDA', 'NVDB', 'NVDC']]);
+      expect(outcome).toMatchObject({ attempts: 2, ended: 'complete', missing: [] });
+      expect(outcome.rows).toEqual(['NVDA', 'NVDB', 'NVDC']);
+    });
+    it('does the same when the run was paused and the fresh block it then asks for is refused', async () => {
+      const r = await run({
+        tokens: ['NVDA', 'NVDB'],
+        override: (q, world) => {
+          if (q.data === v4Buy.castCalldata && world.seen.filter(isQuote).length === 4)
+            world.clock += 30 * 60_000;
+          return undefined;
+        },
+        onRepin: () => ({ error: { message: 'Request timeout on the free plan' } }),
+      });
+      expect(r.rows.map((row) => row.asset)).toEqual(['NVDA']);
+      expect(r.summary.tokens[1]).toMatchObject({
+        error: 'no fresh block: eth_getBlockByNumber: Request timeout on the free plan',
+        retry: true,
+      });
+    });
+    it('says which gaps are not worth another try: no pool, or a call that reverted', async () => {
+      const r = await run({
+        tokens: ['NOPOOL', 'NVDA', 'NVDB', 'LATER'],
+        noPools: ['NOPOOL', 'LATER'],
+        override: (q, world) => {
+          const quotes = world.seen.filter(isQuote).length;
+          if (q.data === v3Sell && quotes === 1)
+            return { error: { message: 'execution reverted' } };
+          return isQuote(q) && quotes > 4 ? 'unreachable' : undefined;
+        },
+      });
+      expect(r.rows).toEqual([]);
+      expect(r.summary.tokens.map((t) => [t.asset, t.error, t.retry ?? false])).toEqual([
+        ['NOPOOL', 'no eligible pool', false],
+        ['NVDA', `sell quote from pool ${fx.v3.pool.id} failed: execution reverted`, false],
+        ['NVDB', 'RPC unreachable after 3 tries (TypeError ENOTFOUND)', true],
+        // not reached, and it has no pool anyway: nothing to retry
+        ['LATER', 'no eligible pool', false],
+      ]);
+    });
+    it('measures only the tokens it is asked for on a second attempt', async () => {
+      const r = await run({ tokens: ['NVDA', 'NVDB', 'NVDC'], only: new Set(['NVDB', 'NVDC']) });
+      expect(r.rows.map((row) => row.asset)).toEqual(['NVDB', 'NVDC']);
+      expect(r.summary.tokens.map((t) => t.asset)).toEqual(['NVDB', 'NVDC']);
+      expect(mids.get(calls(r.seen)[0]?.data as string)).toBe(2);
+    });
+  });
+});
+
+describe('second chances within the hour', () => {
+  const MIN = 60_000;
+  const HOUR = 60 * MIN;
+  const down = { error: 'RPC unreachable after 3 tries (TypeError ENOTFOUND)', retry: true };
+  /** `script[n]` is what attempt n+1 does; the clock moves only when runSlot waits. */
+  async function slot(
+    script: Array<Attempt | Error>,
+    opts: {
+      until?: number;
+      retryAfterMin?: number[];
+      stopAfterSleeps?: number;
+      /** The machine sleeps this long during the first wait. */
+      asleepMs?: number;
+    } = {},
+  ) {
+    let now = 0;
+    let sleeps = 0;
+    const tried: Array<{ at: number; only: string[] | null }> = [];
+    const outcome = await runSlot({
+      attempt: async (only, n) => {
+        tried.push({ at: now, only: only ? [...only] : null });
+        const step = script[n - 1];
+        if (!step) throw new Error('more attempts than the test expects');
+        if (step instanceof Error) throw step;
+        return step;
+      },
+      retryAfterMs: (opts.retryAfterMin ?? [2, 4, 8, 16]).map((m) => m * MIN),
+      until: opts.until ?? HOUR,
+      marginMs: 2 * MIN,
+      now: () => now,
+      sleep: async (ms) => {
+        now += sleeps++ === 0 && opts.asleepMs ? opts.asleepMs : ms;
+      },
+      stopped: () => opts.stopAfterSleeps !== undefined && sleeps >= opts.stopAfterSleeps,
+    });
+    return { outcome, tried, endedAt: now };
+  }
+  const all = (...assets: string[]): Attempt => ({ rows: assets, missing: [] });
+
+  it('does not retry a run that wrote every row', async () => {
+    const r = await slot([all('NVDA', 'SPY')]);
+    expect(r.outcome).toEqual({
+      attempts: 1,
+      rows: ['NVDA', 'SPY'],
+      missing: [],
+      error: null,
+      ended: 'complete',
+    });
+  });
+  it('tries again after two minutes, then four, when the network was down, so a ten-minute outage keeps the hour', async () => {
+    const r = await slot([
+      new Error(down.error),
+      new Error(down.error),
+      new Error(down.error),
+      all('NVDA', 'SPY'),
+    ]);
+    // attempts at 0, 2, 6 and 14 minutes: the outage ended somewhere between minute 6 and 14
+    expect(r.tried.map((t) => t.at / MIN)).toEqual([0, 2, 6, 14]);
+    expect(r.tried.every((t) => t.only === null)).toBe(true);
+    expect(r.outcome).toMatchObject({ attempts: 4, rows: ['NVDA', 'SPY'], ended: 'complete' });
+    expect(r.outcome.error).toBeNull();
+  });
+  it('retries only the tokens that are missing for a reason that may pass', async () => {
+    const r = await slot([
+      {
+        rows: ['SPY'],
+        missing: [
+          { asset: 'NVDA', ...down },
+          { asset: 'GLD', ...down },
+          { asset: 'SLV', error: 'no eligible pool', retry: false },
+        ],
+      },
+      { rows: ['NVDA'], missing: [{ asset: 'GLD', ...down }] },
+      all('GLD'),
+    ]);
+    expect(r.tried.map((t) => t.only)).toEqual([null, ['NVDA', 'GLD'], ['GLD']]);
+    expect(r.outcome).toEqual({
+      attempts: 3,
+      rows: ['SPY', 'NVDA', 'GLD'],
+      missing: [{ asset: 'SLV', error: 'no eligible pool' }],
+      error: null,
+      ended: 'nothing to retry',
+    });
+  });
+  it('does not retry a token whose pools are the reason', async () => {
+    const r = await slot([
+      { rows: [], missing: [{ asset: 'SLV', error: 'no pool gave a sell quote', retry: false }] },
+    ]);
+    expect(r.outcome).toMatchObject({ attempts: 1, ended: 'nothing to retry' });
+  });
+  it('gives up after the last wait and says what is still missing and why', async () => {
+    const r = await slot([1, 2, 3, 4, 5].map(() => new Error(down.error)));
+    expect(r.tried.map((t) => t.at / MIN)).toEqual([0, 2, 6, 14, 30]);
+    expect(r.outcome).toEqual({
+      attempts: 5,
+      rows: [],
+      missing: [],
+      error: down.error,
+      ended: 'out of attempts',
+    });
+  });
+  it('keeps the rows it has, and the reasons, when the retries run out or a later attempt fails', async () => {
+    const stillDown = { rows: [], missing: [{ asset: 'GLD', ...down }] };
+    const out = await slot([
+      { rows: ['SPY'], missing: [{ asset: 'GLD', ...down }] },
+      stillDown,
+      stillDown,
+      stillDown,
+      stillDown,
+    ]);
+    expect(out.outcome).toEqual({
+      attempts: 5,
+      rows: ['SPY'],
+      missing: [{ asset: 'GLD', error: down.error }],
+      error: null,
+      ended: 'out of attempts',
+    });
+    const thrown = await slot(
+      [
+        { rows: ['SPY'], missing: [{ asset: 'GLD', ...down }] },
+        new Error('another run holds the lock'),
+      ],
+      { retryAfterMin: [2] },
+    );
+    expect(thrown.tried.map((t) => t.only)).toEqual([null, ['GLD']]);
+    expect(thrown.outcome).toEqual({
+      attempts: 2,
+      rows: ['SPY'],
+      missing: [{ asset: 'GLD', error: down.error }],
+      error: 'another run holds the lock',
+      ended: 'out of attempts',
+    });
+  });
+  it('never starts a retry within two minutes of the next scheduled run', async () => {
+    // the next run is due at minute 15: a retry at minute 14 would run into it
+    const r = await slot(
+      [1, 2, 3].map(() => new Error(down.error)),
+      { until: 15 * MIN },
+    );
+    expect(r.tried.map((t) => t.at / MIN)).toEqual([0, 2, 6]);
+    expect(r.outcome).toMatchObject({ attempts: 3, ended: 'next run is due', error: down.error });
+    // and it does not sit out the wait first: the hour's summary is written at once
+    expect(r.endedAt).toBe(6 * MIN);
+  });
+  it('gives the hour up when the machine slept through the wait into the next run', async () => {
+    const r = await slot([new Error(down.error)], { asleepMs: 2 * HOUR });
+    expect(r.tried).toHaveLength(1);
+    expect(r.outcome).toMatchObject({ attempts: 1, ended: 'next run is due' });
+  });
+  describe('with the waits the loop uses', () => {
+    /** The network is down for `minutes`; every attempt that starts before it is back fails. */
+    const outage = (minutes: number, attemptMs = 0) => {
+      let now = 0;
+      const tried: number[] = [];
+      return runSlot({
+        attempt: async () => {
+          tried.push(now);
+          const failed = now < minutes * MIN;
+          now += attemptMs;
+          if (failed) throw new Error(down.error);
+          return all('NVDA', 'SPY');
+        },
+        retryAfterMs: RETRY_AFTER_MIN.map((m) => m * MIN),
+        until: HOUR,
+        marginMs: RETRY_MARGIN_MS,
+        now: () => now,
+        sleep: async (ms) => {
+          now += ms;
+        },
+        stopped: () => false,
+      }).then((outcome) => ({ outcome, tried: tried.map((t) => t / MIN), endedAt: now / MIN }));
+    };
+
+    it('tries at about 2, 6, 14, 30 and 50 minutes, and the last wait ends before the margin', () => {
+      const starts = RETRY_AFTER_MIN.map((_, i) =>
+        RETRY_AFTER_MIN.slice(0, i + 1).reduce((a, b) => a + b, 0),
+      );
+      expect(starts).toEqual([2, 6, 14, 30, 50]);
+      expect((starts.at(-1) as number) * MIN).toBeLessThan(HOUR - RETRY_MARGIN_MS);
+      expect(RETRY_MARGIN_MS).toBe(2 * MIN);
+    });
+    it('keeps the hour through a 35-minute outage, which a last try at minute 30 would lose', async () => {
+      const r = await outage(35);
+      expect(r.tried).toEqual([0, 2, 6, 14, 30, 50]);
+      expect(r.outcome).toMatchObject({ attempts: 6, rows: ['NVDA', 'SPY'], ended: 'complete' });
+      const shorter = await outage(10);
+      expect(shorter.tried).toEqual([0, 2, 6, 14]);
+      expect(shorter.outcome).toMatchObject({ attempts: 4, ended: 'complete' });
+    });
+    it('gives the hour up after the sixth attempt and does not wait any longer', async () => {
+      const r = await outage(60);
+      expect(r.tried).toEqual([0, 2, 6, 14, 30, 50]);
+      expect(r.outcome).toMatchObject({
+        attempts: 6,
+        rows: [],
+        error: down.error,
+        ended: 'out of attempts',
+      });
+      expect(r.endedAt).toBe(50);
+    });
+    it('starts no retry inside the margin even when every failed attempt waits out its timeouts', async () => {
+      // three 30 s timeouts and the client's own waits: about 95 s per failed attempt
+      const slow = await outage(60, 95_000);
+      expect(slow.tried).toHaveLength(6);
+      for (const t of slow.tried) expect(t * MIN).toBeLessThanOrEqual(HOUR - RETRY_MARGIN_MS);
+      expect(slow.endedAt).toBeLessThan(60);
+      // slower still, three minutes each: the last retry is dropped, not run into the next hour
+      const slower = await outage(60, 3 * MIN);
+      expect(slower.tried).toHaveLength(5);
+      expect(slower.outcome).toMatchObject({ attempts: 5, ended: 'next run is due' });
+    });
+  });
+  it('makes one attempt only when no waits are given (a one-off run)', async () => {
+    const r = await slot([new Error(down.error)], { retryAfterMin: [], until: Infinity });
+    expect(r.outcome).toMatchObject({ attempts: 1, ended: 'out of attempts' });
+  });
+  it('stops waiting when the collector is told to stop', async () => {
+    const r = await slot([new Error(down.error)], { stopAfterSleeps: 1 });
+    expect(r.outcome).toMatchObject({ attempts: 1, ended: 'stopped' });
+  });
+});
+
+describe('run log', () => {
+  const HOUR = 3_600_000;
+  const t0 = Date.parse('2026-10-03T02:23:42.000Z');
+  const chain = { id: 'robinhood', tokens: ['SPY', 'NVDA', 'GLD'] };
+
+  it('counts a token as a row exactly when it has no error', () => {
+    expect(
+      attemptOf({
+        tokens: [
+          { asset: 'SPY' },
+          {
+            asset: 'NVDA',
+            error: 'RPC unreachable after 3 tries (TypeError ENOTFOUND)',
+            retry: true,
+          },
+          { asset: 'GLD', error: 'no eligible pool' },
+        ],
+      }),
+    ).toEqual({
+      rows: ['SPY'],
+      missing: [
+        {
+          asset: 'NVDA',
+          error: 'RPC unreachable after 3 tries (TypeError ENOTFOUND)',
+          retry: true,
+        },
+        { asset: 'GLD', error: 'no eligible pool', retry: false },
+      ],
+    });
+  });
+  it('closes each scheduled hour with what it got, what it lacks and why', () => {
+    const line = slotLine(
+      'slot',
+      chain,
+      { scheduledAt: t0, startedAt: t0 + 5, finishedAt: t0 + 14 * 60_000 },
+      {
+        attempts: 3,
+        rows: ['SPY', 'NVDA'],
+        missing: [{ asset: 'GLD', error: 'no pool gave a sell quote' }],
+        error: null,
+        ended: 'nothing to retry',
+      },
+    );
+    expect(line).toEqual({
+      event: 'slot',
+      chain: 'robinhood',
+      scheduledAt: '2026-10-03T02:23:42.000Z',
+      startedAt: '2026-10-03T02:23:42.005Z',
+      finishedAt: '2026-10-03T02:37:42.000Z',
+      attempts: 3,
+      rows: 2,
+      tokens: 3,
+      missing: [{ asset: 'GLD', error: 'no pool gave a sell quote' }],
+      error: null,
+      ended: 'nothing to retry',
+    });
+    // what the README's gap query selects
+    expect(line.event === 'slot' && line.rows < line.tokens).toBe(true);
+  });
+  it('records an hour with no run at all, and when the collector came back', () => {
+    const line = missedLine(chain, t0 + HOUR, t0 + 3 * HOUR + 17 * 60_000);
+    expect(line).toEqual({
+      event: 'slot',
+      chain: 'robinhood',
+      scheduledAt: '2026-10-03T03:23:42.000Z',
+      attempts: 0,
+      rows: 0,
+      tokens: 3,
+      missing: [],
+      error:
+        'not run: the collector was asleep or still on an earlier run at this hour; it came back at 2026-10-03T05:40:42.000Z',
+      ended: 'missed',
+    });
+    expect(line.rows < line.tokens).toBe(true);
+    // and an hour the collector came back too late for
+    expect(missedLine(chain, t0 + 2 * HOUR, t0 + 2 * HOUR + 58 * 60_000, 'late')).toMatchObject({
+      scheduledAt: '2026-10-03T04:23:42.000Z',
+      rows: 0,
+      ended: 'missed',
+      error:
+        'not run: the collector came back at 2026-10-03T05:21:42.000Z, with less than half the interval left before the next run',
+    });
+  });
+  it('keeps a run started by hand out of the hourly sample', () => {
+    const line = slotLine(
+      'one_off',
+      chain,
+      { scheduledAt: t0, startedAt: t0, finishedAt: t0 },
+      {
+        attempts: 1,
+        rows: [],
+        missing: [],
+        error: 'another run holds the lock',
+        ended: 'out of attempts',
+      },
+    );
+    expect(line.event).toBe('one_off');
   });
 });
 
@@ -826,9 +1635,27 @@ describe('RPC client', () => {
     ]);
     expect(await rpc.call('eth_chainId', [])).toBe('0x1');
     const down = client([1, 2, 3].map(() => () => new TypeError('https://rpc.invalid/v2/a-key')));
-    const failure = await down.rpc.call('eth_chainId', []).catch((e: Error) => e.message);
-    expect(failure).toBe('RPC unreachable after 3 tries (TypeError)');
-    expect(failure).not.toContain('a-key');
+    const failure = await down.rpc.call('eth_chainId', []).catch((e: Error) => e);
+    // its own error type, so a run can tell "the network is down" from "the endpoint said no"
+    expect(failure).toBeInstanceOf(RpcUnreachable);
+    expect((failure as Error).message).toBe('RPC unreachable after 3 tries (TypeError)');
+    expect((failure as Error).message).not.toContain('a-key');
+  });
+  it('waits and asks again when a node has not caught up to the block yet', async () => {
+    for (const e of rpcErrors.blockGone.slice(3)) {
+      const { rpc, sent } = client([
+        () => reply([{ id: 0, error: { code: -32000, message: e.message } }]),
+        () => reply([{ id: 0, result: '0xd' }]),
+      ]);
+      expect(await rpc.call('eth_call', []), e.message).toBe('0xd');
+      expect(sent).toHaveLength(2);
+    }
+    // state that is gone does not come back: that one is for the run to handle, with a fresh block
+    const { rpc, sent } = client([
+      () => reply([{ id: 0, error: { code: -32000, message: HISTORICAL_STATE } }]),
+    ]);
+    await expect(rpc.call('eth_call', [])).rejects.toThrow(HISTORICAL_STATE);
+    expect(sent).toHaveLength(1);
   });
 });
 
@@ -846,48 +1673,129 @@ describe('injected quoter artefact', () => {
 });
 
 describe('hourly loop', () => {
-  const HOUR = 3_600_000;
-  // a clock that only moves when the loop sleeps or a run takes time
-  function harness(durations: number[], failAt: number[] = []) {
+  const MIN = 60_000;
+  const HOUR = 60 * MIN;
+  // a clock that only moves when the loop sleeps, a run takes time, or the machine sleeps
+  function harness(
+    durations: number[],
+    failAt: number[] = [],
+    /** After run n the machine sleeps and wakes at this time. */
+    wakeAt: Record<number, number> = {},
+    opts: { intervalMs?: number; runs?: number } = {},
+  ) {
     let now = 0;
     let active = 0;
     let overlapped = false;
     const starts: number[] = [];
+    const slots: Array<{ at: number; until: number }> = [];
+    const missed: number[] = [];
+    const tooLate: number[] = [];
     const errors: unknown[] = [];
     const done = runLoop({
-      runOnce: async () => {
+      runOnce: async (slot) => {
         if (active > 0) overlapped = true;
         active++;
         const n = starts.push(now) - 1;
+        slots.push(slot);
         await Promise.resolve();
         now += durations[n] ?? 1_000;
         active--;
         if (failAt.includes(n)) throw new Error(`run ${n} failed`);
       },
-      intervalMs: HOUR,
+      intervalMs: opts.intervalMs ?? HOUR,
       now: () => now,
       sleep: async (ms) => {
-        now += ms;
+        const wake = wakeAt[starts.length - 1];
+        if (wake !== undefined) {
+          delete wakeAt[starts.length - 1];
+          now = wake;
+        } else now += ms;
       },
-      stopped: () => starts.length >= 4 && active === 0,
+      stopped: () => starts.length >= (opts.runs ?? 4) && active === 0,
       onError: (e) => errors.push(e),
+      onMissed: (at, why) => {
+        missed.push(at);
+        if (why === 'late') tooLate.push(at);
+      },
     });
-    return done.then(() => ({ starts, errors, overlapped: () => overlapped }));
+    return done.then(() => ({
+      starts,
+      slots,
+      missed,
+      tooLate,
+      errors,
+      overlapped: () => overlapped,
+    }));
   }
 
-  it('runs at once, then once an hour', async () => {
+  it('runs at once, then once an hour, and tells each run when the next is due', async () => {
     const r = await harness([]);
     expect(r.starts).toEqual([0, HOUR, 2 * HOUR, 3 * HOUR]);
+    expect(r.slots).toEqual([0, 1, 2, 3].map((k) => ({ at: k * HOUR, until: (k + 1) * HOUR })));
+    expect(r.missed).toEqual([]);
   });
   it('logs a failed run and carries on', async () => {
     const r = await harness([], [1]);
     expect(r.starts).toEqual([0, HOUR, 2 * HOUR, 3 * HOUR]);
     expect(r.errors.map(String)).toEqual(['Error: run 1 failed']);
   });
-  it('never overlaps: a run longer than an hour pushes the next one to the following slot', async () => {
+  it('never overlaps: after a run longer than an hour, the hour it ran through is recorded as missed', async () => {
     const r = await harness([1_000, 2.5 * HOUR]);
-    expect(r.starts).toEqual([0, HOUR, 4 * HOUR, 5 * HOUR]);
+    // the second run ends at 3.5 h: the 2 h slot is gone, the 3 h slot is run late, then 4 h on time
+    expect(r.starts).toEqual([0, HOUR, 3.5 * HOUR, 4 * HOUR]);
+    expect(r.slots.map((s) => s.at)).toEqual([0, HOUR, 3 * HOUR, 4 * HOUR]);
+    expect(r.missed).toEqual([2 * HOUR]);
+    expect(r.tooLate).toEqual([]);
     expect(r.overlapped()).toBe(false);
+  });
+  it('after a sleeping machine wakes in the first half of an hour, runs that hour once, late', async () => {
+    // asleep from just after the first run until 4 h 20 min: 40 minutes are left before 5 h
+    const r = await harness([], [], { 0: 4 * HOUR + 20 * MIN });
+    expect(r.missed).toEqual([HOUR, 2 * HOUR, 3 * HOUR]);
+    expect(r.tooLate).toEqual([]);
+    expect(r.slots[1]).toEqual({ at: 4 * HOUR, until: 5 * HOUR });
+    expect(r.starts).toEqual([0, 4 * HOUR + 20 * MIN, 5 * HOUR, 6 * HOUR]);
+    expect(r.overlapped()).toBe(false);
+  });
+  it('after it wakes in the second half, records that hour as missed too and waits for the grid', async () => {
+    // 4 h 40 min: a run now and the 5 h run would be 20 minutes apart
+    const r = await harness([], [], { 0: 4 * HOUR + 40 * MIN });
+    expect(r.missed).toEqual([HOUR, 2 * HOUR, 3 * HOUR, 4 * HOUR]);
+    expect(r.tooLate).toEqual([4 * HOUR]);
+    expect(r.starts).toEqual([0, 5 * HOUR, 6 * HOUR, 7 * HOUR]);
+    expect(r.slots[1]).toEqual({ at: 5 * HOUR, until: 6 * HOUR });
+
+    // two minutes before the hour: no sample at minute 298 and another at minute 300
+    const close = await harness([], [], { 0: 4 * HOUR + 58 * MIN });
+    expect(close.starts).toEqual([0, 5 * HOUR, 6 * HOUR, 7 * HOUR]);
+    expect(close.tooLate).toEqual([4 * HOUR]);
+  });
+  it('draws the line at half the interval, whatever the interval is', async () => {
+    // exactly half left: still run
+    const at = await harness([], [], { 0: 4.5 * HOUR }, { runs: 2 });
+    expect(at.starts).toEqual([0, 4.5 * HOUR]);
+    expect(at.tooLate).toEqual([]);
+    // a millisecond less than half: missed
+    const past = await harness([], [], { 0: 4.5 * HOUR + 1 }, { runs: 2 });
+    expect(past.starts).toEqual([0, 5 * HOUR]);
+    expect(past.tooLate).toEqual([4 * HOUR]);
+    // a ten-minute grid: the line is at five minutes
+    const ten = { intervalMs: 10 * MIN, runs: 2 };
+    const early = await harness([], [], { 0: 44 * MIN }, ten);
+    expect(early.starts).toEqual([0, 44 * MIN]);
+    expect(early.slots[1]).toEqual({ at: 40 * MIN, until: 50 * MIN });
+    const late = await harness([], [], { 0: 46 * MIN }, ten);
+    expect(late.starts).toEqual([0, 50 * MIN]);
+    expect(late.missed).toEqual([10 * MIN, 20 * MIN, 30 * MIN, 40 * MIN]);
+    expect(late.tooLate).toEqual([40 * MIN]);
+  });
+  it('runs are never closer than half the interval, however the machine sleeps', async () => {
+    for (const wake of [61, 89, 90, 91, 119, 120, 121, 179, 181, 299]) {
+      const r = await harness([], [], { 0: wake * MIN, 1: (wake + 95) * MIN }, { runs: 4 });
+      const gaps = r.starts.slice(1).map((t, i) => t - (r.starts[i] as number));
+      expect(Math.min(...gaps), `wake at minute ${wake}`).toBeGreaterThanOrEqual(HOUR / 2);
+      expect(r.overlapped()).toBe(false);
+    }
   });
 });
 

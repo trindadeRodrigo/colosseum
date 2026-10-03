@@ -9,14 +9,28 @@ import {
 } from '@solana/kit';
 import { describe, expect, it } from 'vitest';
 import {
+  acceptAdminInstruction,
+  cancelPendingInstruction,
   createVaultInstruction,
   DEFAULT_PARAMS,
   depositInstruction,
   FROZEN_ERRORS,
+  familyId,
+  initAssetsInstruction,
   initConfigInstruction,
+  launchInstruction,
+  ownerSwapInstruction,
+  pauseKeeperInstruction,
+  proposeAdminInstruction,
+  publishRecipeInstruction,
   setCashMintInstruction,
+  setParamsInstruction,
   setPriceOwnerInstruction,
   setRouterInstruction,
+  setTargetsInstruction,
+  unpauseKeeperInstruction,
+  updateRecipeInstruction,
+  upsertAssetInstruction,
   vaultAddress,
   withdrawInstruction,
 } from './src/basket';
@@ -34,7 +48,11 @@ type Idl = {
   address: string;
   instructions: { name: string; discriminator: number[]; accounts: IdlAccount[] }[];
   errors: { code: number; name: string }[];
-  types: { name: string; type: { fields: { name: string }[] } }[];
+  types: {
+    name: string;
+    repr?: { kind: string; packed?: boolean };
+    type: { fields: { name: string }[] };
+  }[];
 };
 
 const readIdl = (name: string): Idl =>
@@ -87,8 +105,39 @@ describe('the committed IDL', () => {
       set_router: await setRouterInstruction(signer, other),
       set_price_owner: await setPriceOwnerInstruction(signer, other),
       set_cash_mint: await setCashMintInstruction(signer, other),
+      set_params: await setParamsInstruction(signer, DEFAULT_PARAMS),
+      launch: await launchInstruction(signer),
+      propose_admin: await proposeAdminInstruction(signer, other),
+      accept_admin: await acceptAdminInstruction(signer),
+      pause_keeper: await pauseKeeperInstruction(signer),
+      unpause_keeper: await unpauseKeeperInstruction(signer),
+      init_assets: await initAssetsInstruction(signer),
+      upsert_asset: await upsertAssetInstruction(signer, other),
+      publish_recipe: await publishRecipeInstruction({
+        creator: signer,
+        familyId: familyId('one'),
+        components: [],
+      }),
+      update_recipe: await updateRecipeInstruction({
+        creator: signer,
+        recipe: other,
+        components: [],
+      }),
+      cancel_pending: await cancelPendingInstruction({ signer, recipe: other }),
       create_vault: await createVaultInstruction({ owner: signer, basketId: 1n }),
+      set_targets: await setTargetsInstruction({ owner: signer, vault, targets: [] }),
       deposit: await depositInstruction({ owner: signer, vault, mint, amount: 1n }),
+      owner_swap: await ownerSwapInstruction({
+        owner: signer,
+        vault,
+        inputMint: mint,
+        outputMint: { ...mint, address: vault },
+        maxIn: 1n,
+        minOut: 1n,
+        router: other,
+        data: new Uint8Array(8),
+        routerAccounts: [],
+      }),
       withdraw: await withdrawInstruction({ owner: signer, vault, mint, amount: 1n }),
     };
     expect(Object.keys(built).sort()).toEqual(basket.instructions.map((i) => i.name).sort());
@@ -130,6 +179,48 @@ describe('the committed IDL', () => {
     const names = basket.errors.map((e) => e.name);
     expect(names.slice(0, FROZEN_ERRORS.length)).toEqual([...FROZEN_ERRORS]);
     expect(basket.errors.map((e) => e.code)).toEqual(names.map((_, i) => 6000 + i));
+  });
+
+  it('lays the asset list and a shared portfolio out in the order the tests decode', () => {
+    const type = (name: string) => basket.types.find((t) => t.name === name);
+    const fields = (name: string) => type(name)?.type.fields.map((f) => f.name);
+    expect(fields('AssetRegistry')).toEqual(['priceAccounts', 'count', 'assets'].map(snake));
+    expect(fields('AssetEntry')).toEqual(
+      [
+        'mint',
+        'priceSlot',
+        'priceIndex',
+        'twapIndex',
+        'decimals',
+        'priceKind',
+        'session',
+        'maxWeightBps',
+        'flags',
+        'sourceCheck',
+        'reserved',
+      ].map(snake),
+    );
+    // Packed: no padding between the fields, so the offsets are the sizes added up.
+    for (const name of ['AssetRegistry', 'AssetEntry'])
+      expect([name, type(name)?.repr]).toEqual([name, { kind: 'rust', packed: true }]);
+    expect(fields('Recipe')).toEqual(
+      [
+        'creator',
+        'familyId',
+        'current',
+        'pending',
+        'lastPublishTs',
+        'maxFeeBps',
+        'flags',
+        'vetoed',
+        'lastVersion',
+        'reserved',
+      ].map(snake),
+    );
+    expect(fields('RecipeVersion')).toEqual(
+      ['version', 'effectiveAt', 'metaHash', 'count', 'components'].map(snake),
+    );
+    expect(fields('Component')).toEqual(['mint', 'weightBps'].map(snake));
   });
 
   it('lays Vault and Config out in the order the tests decode', () => {

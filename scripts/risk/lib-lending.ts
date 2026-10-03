@@ -20,6 +20,9 @@ import { rpc } from './lib-pools';
 export const LENDING_DATA = process.env.RISK_DATA_DIR ?? 'data/risk';
 export const LENDING_MEASURE_DIR = join(LENDING_DATA, 'lending-measure');
 export const LENDING_HISTORY_DIR = join(LENDING_DATA, 'lending-history');
+/** PLAN-ANALYTICS item 18.1: the split snapshots (`split-0.1`), written by split-snapshot.ts, read by the cost
+ * breakdown and the fixture freezer. Follows RISK_DATA_DIR so the hourly job (DA8) and hand runs agree. */
+export const SPLIT_DIR = join(LENDING_DATA, 'split');
 export const RISK_HOME = process.env.RISK_HOME ?? join(homedir(), '.colosseum', 'risk');
 export const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 export const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';

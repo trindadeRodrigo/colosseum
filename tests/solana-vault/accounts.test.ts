@@ -2,13 +2,23 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  ASSETS_DISCRIMINATOR,
+  ASSETS_SIZE,
+  assetsAddress,
   CONFIG_DISCRIMINATOR,
   CONFIG_SIZE,
   configAddress,
+  decodeAssetRegistry,
   decodeConfig,
+  decodeRecipe,
   decodeVault,
   isAccount,
+  MAX_ASSETS,
+  MAX_COMPONENTS,
   MAX_POSITIONS,
+  RECIPE_DISCRIMINATOR,
+  RECIPE_SIZE,
+  recipeAddress,
   VAULT_ACCEPTED_VERSION_OFFSET,
   VAULT_AUTO_FOLLOW_OFFSET,
   VAULT_DISCRIMINATOR,
@@ -19,6 +29,7 @@ import {
   VAULT_SIZE,
   vaultAddress,
   vaultErrorName,
+  versionsAt,
   ZERO_ADDRESS,
 } from '@colosseum/chain-solana/vault';
 import { type Address, getAddressDecoder } from '@solana/kit';
@@ -58,7 +69,8 @@ const SCALAR_BYTES: Record<string, number> = {
   pubkey: 32,
 };
 
-/** How many bytes Borsh writes for a type of the IDL. Every type these two accounts use is fixed-size. */
+/** How many bytes a type of the IDL takes. Every type these accounts use is fixed-size, and none is
+ * padded: Borsh writes the fields one after another, and the asset list is packed. */
 function sizeOf(type: IdlType): number {
   if (typeof type === 'string') {
     const bytes = SCALAR_BYTES[type];
@@ -129,7 +141,11 @@ function plant(type: IdlType, data: Uint8Array, at: number, seed: { n: number })
   throw new Error('unsupported type');
 }
 
-function planted(name: 'Config' | 'Vault', tag: Uint8Array, size: number) {
+function planted(
+  name: 'Config' | 'Vault' | 'AssetRegistry' | 'Recipe',
+  tag: Uint8Array,
+  size: number,
+) {
   const data = new Uint8Array(size);
   data.set(tag, 0);
   const want = plant({ defined: { name } }, data, 8, { n: 5 }) as Record<string, unknown>;
@@ -139,20 +155,34 @@ function planted(name: 'Config' | 'Vault', tag: Uint8Array, size: number) {
 const anchorTag = (name: string) =>
   new Uint8Array(createHash('sha256').update(`account:${name}`).digest().subarray(0, 8));
 
-describe('the Config and Vault layouts against idl/basket.json', () => {
+describe('the account layouts against idl/basket.json', () => {
   it("uses the discriminators the IDL lists, which are Anchor's for those names", () => {
     const listed = (name: string) =>
       new Uint8Array(idl.accounts.find((a) => a.name === name)?.discriminator ?? []);
-    expect(CONFIG_DISCRIMINATOR).toEqual(listed('Config'));
-    expect(VAULT_DISCRIMINATOR).toEqual(listed('Vault'));
-    expect(CONFIG_DISCRIMINATOR).toEqual(anchorTag('Config'));
-    expect(VAULT_DISCRIMINATOR).toEqual(anchorTag('Vault'));
+    for (const [name, tag] of [
+      ['Config', CONFIG_DISCRIMINATOR],
+      ['Vault', VAULT_DISCRIMINATOR],
+      ['AssetRegistry', ASSETS_DISCRIMINATOR],
+      ['Recipe', RECIPE_DISCRIMINATOR],
+    ] as const) {
+      expect([name, tag]).toEqual([name, listed(name)]);
+      expect([name, tag]).toEqual([name, anchorTag(name)]);
+    }
+    expect(idl.accounts).toHaveLength(4);
   });
 
   it('has the sizes and the frozen offsets the IDL adds up to', () => {
     expect(offsetsOf('Config').$end).toBe(CONFIG_SIZE);
     expect(offsetsOf('Vault').$end).toBe(VAULT_SIZE);
-    expect([CONFIG_SIZE, VAULT_SIZE]).toEqual([396, 1063]);
+    expect(offsetsOf('AssetRegistry').$end).toBe(ASSETS_SIZE);
+    expect(offsetsOf('Recipe').$end).toBe(RECIPE_SIZE);
+    expect([CONFIG_SIZE, VAULT_SIZE, ASSETS_SIZE, RECIPE_SIZE]).toEqual([396, 1063, 6281, 1022]);
+    // The asset list: the count at byte 136, entry i at 137 + 96·i.
+    expect([offsetsOf('AssetRegistry').count, offsetsOf('AssetRegistry').assets]).toEqual([
+      136, 137,
+    ]);
+    expect(sizeOf({ defined: { name: 'AssetEntry' } })).toBe(96);
+    expect(sizeOf({ defined: { name: 'RecipeVersion' } })).toBe(453);
     const vault = offsetsOf('Vault');
     expect([vault.owner, vault.recipe, vault.accepted_version, vault.auto_follow]).toEqual([
       VAULT_OWNER_OFFSET,
@@ -183,6 +213,37 @@ describe('the Config and Vault layouts against idl/basket.json', () => {
     expect((want.positions as unknown[]).length).toBe(MAX_POSITIONS);
   });
 
+  it('decodes every field of the asset list the IDL names, and only the entries in use', () => {
+    const { data, want } = planted('AssetRegistry', ASSETS_DISCRIMINATOR, ASSETS_SIZE);
+    const count = 37;
+    data[offsetsOf('AssetRegistry').count ?? 0] = count;
+    expect(decodeAssetRegistry(data)).toEqual({
+      ...want,
+      count,
+      assets: (want.assets as unknown[]).slice(0, count),
+    });
+    expect((want.assets as unknown[]).length).toBe(MAX_ASSETS);
+  });
+
+  it('decodes every field of a shared portfolio the IDL names, and only the lines in use', () => {
+    const { data, want } = planted('Recipe', RECIPE_DISCRIMINATOR, RECIPE_SIZE);
+    const recipe = offsetsOf('Recipe');
+    const countAt = (version: 'current' | 'pending') => (recipe[version] ?? 0) + 4 + 8 + 32;
+    data[countAt('current')] = 5;
+    data[countAt('pending')] = MAX_COMPONENTS;
+    type Version = { count: number; components: unknown[] };
+    const used = (version: unknown, count: number) => ({
+      ...(version as Version),
+      count,
+      components: (version as Version).components.slice(0, count),
+    });
+    expect(decodeRecipe(data)).toEqual({
+      ...want,
+      current: used(want.current, 5),
+      pending: used(want.pending, MAX_COMPONENTS),
+    });
+  });
+
   it("names the program's errors in the IDL's order", () => {
     expect(idl.errors.map((e) => e.name)).toEqual([...VAULT_ERRORS]);
     for (const e of idl.errors) expect(vaultErrorName(e.code)).toBe(e.name);
@@ -205,6 +266,23 @@ describe('the Config and Vault layouts against idl/basket.json', () => {
     const overfull = new Uint8Array(vault);
     overfull[offsetsOf('Vault').count ?? 0] = MAX_POSITIONS + 1;
     expect(() => decodeVault(overfull)).toThrow(/positions in use/);
+
+    const assets = planted('AssetRegistry', ASSETS_DISCRIMINATOR, ASSETS_SIZE).data;
+    const recipe = planted('Recipe', RECIPE_DISCRIMINATOR, RECIPE_SIZE).data;
+    recipe[(offsetsOf('Recipe').current ?? 0) + 44] = 3;
+    recipe[(offsetsOf('Recipe').pending ?? 0) + 44] = 3;
+    assets[offsetsOf('AssetRegistry').count ?? 0] = 3;
+    expect(() => decodeAssetRegistry(recipe)).toThrow(/not an asset list/);
+    expect(() => decodeRecipe(vault)).toThrow(/not a Recipe/);
+    expect(() => decodeRecipe(recipe.subarray(0, RECIPE_SIZE - 1))).toThrow(/not a Recipe/);
+    expect(isAccount('recipe', recipe)).toBe(true);
+    expect(isAccount('assets', recipe)).toBe(false);
+    const tooMany = new Uint8Array(assets);
+    tooMany[offsetsOf('AssetRegistry').count ?? 0] = MAX_ASSETS + 1;
+    expect(() => decodeAssetRegistry(tooMany)).toThrow(/entries/);
+    const tooLong = new Uint8Array(recipe);
+    tooLong[(offsetsOf('Recipe').pending ?? 0) + 44] = MAX_COMPONENTS + 1;
+    expect(() => decodeRecipe(tooLong)).toThrow(/lines/);
   });
 });
 
@@ -286,8 +364,8 @@ describe('the decoders against bytes the program wrote', () => {
       const vault = decodeVault(account.data);
       expect(vault).toMatchObject({
         owner: names[want.owner],
-        recipe: ZERO_ADDRESS,
-        acceptedVersion: 0,
+        recipe: want.recipe ? names.recipes[want.recipe] : ZERO_ADDRESS,
+        acceptedVersion: want.acceptedVersion,
         autoFollow: want.autoFollow,
         basketId: BigInt(want.basketId),
         keeper: ZERO_ADDRESS,
@@ -317,8 +395,80 @@ describe('the decoders against bytes the program wrote', () => {
     const at = (offset: number) =>
       getAddressDecoder().decode(account.data.subarray(offset, offset + 32));
     expect(at(VAULT_OWNER_OFFSET)).toBe(names.owner);
-    expect(at(VAULT_RECIPE_OFFSET)).toBe(ZERO_ADDRESS);
+    expect(at(VAULT_RECIPE_OFFSET)).toBe(names.recipes.core);
+    expect(new DataView(account.data.buffer).getUint32(VAULT_ACCEPTED_VERSION_OFFSET, true)).toBe(
+      1,
+    );
     expect(account.data[VAULT_AUTO_FOLLOW_OFFSET]).toBe(1);
-    expect(accountOf(fixture, 'vault:manual').data[VAULT_AUTO_FOLLOW_OFFSET]).toBe(0);
+    const manual = accountOf(fixture, 'vault:manual').data;
+    expect(manual[VAULT_AUTO_FOLLOW_OFFSET]).toBe(0);
+    expect(
+      manual.subarray(VAULT_RECIPE_OFFSET, VAULT_RECIPE_OFFSET + 32).every((b) => b === 0),
+    ).toBe(true);
+  });
+
+  it('decodes the asset list: the four assets in the order they were listed, at its own address', async () => {
+    const account = accountOf(fixture, 'assets');
+    expect(account.owner).toBe(names.program);
+    expect(account.data.length).toBe(ASSETS_SIZE);
+    expect(await assetsAddress(names.program as Address)).toBe(account.address);
+    expect(account.address).toBe(names.assets);
+    const list = decodeAssetRegistry(account.data);
+    expect(list.count).toBe(4);
+    expect(list.priceAccounts).toEqual(Array.from({ length: 4 }, () => ZERO_ADDRESS));
+    expect(list.assets).toEqual(
+      (['spyx', 'nvdax', 'gold', 'tslax'] as const).map((name) => ({
+        mint: names.mints[name],
+        priceSlot: 0,
+        priceIndex: 0,
+        twapIndex: 0,
+        decimals: expected.mints[name].decimals,
+        priceKind: 0,
+        session: 0,
+        maxWeightBps: 5_000,
+        flags: 0,
+        sourceCheck: new Uint8Array(32),
+        reserved: new Uint8Array(21),
+      })),
+    );
+  });
+
+  it('decodes the shared portfolio: its creator, its family, the version in effect and the one that waits', async () => {
+    const account = accountOf(fixture, 'recipe:core');
+    const want = expected.recipes.core;
+    expect(account.owner).toBe(names.program);
+    expect(account.data.length).toBe(RECIPE_SIZE);
+    const recipe = decodeRecipe(account.data);
+    const familyId = new Uint8Array(Buffer.from(want.familyId, 'hex'));
+    expect(recipe.creator).toBe(names.creator);
+    expect(recipe.familyId).toEqual(familyId);
+    expect(await recipeAddress(names.program as Address, names.creator as Address, familyId)).toBe(
+      account.address,
+    );
+    expect(account.address).toBe(names.recipes.core);
+    const lines = (list: { mint: MintName; weightBps: number }[]) =>
+      list.map((c) => ({ mint: names.mints[c.mint], weightBps: c.weightBps }));
+    expect([recipe.current.version, recipe.current.components]).toEqual([
+      want.active.version,
+      lines(want.active.components),
+    ]);
+    if (!want.pending) throw new Error('the fixture has a version that waits');
+    expect([recipe.pending.version, recipe.pending.effectiveAt, recipe.pending.components]).toEqual(
+      [want.pending.version, BigInt(want.pending.effectiveAt), lines(want.pending.components)],
+    );
+    // One publish delay after the second publish, which is the fixture's clock.
+    const clock = BigInt(fixture.clock.unixTimestamp);
+    expect(recipe.lastPublishTs).toBe(clock);
+    expect(recipe.pending.effectiveAt - clock).toBe(60n);
+    expect([recipe.maxFeeBps, recipe.flags, recipe.vetoed]).toEqual([0, 0, false]);
+    // The highest version number given out: the one that waits.
+    expect(recipe.lastVersion).toBe(want.pending.version);
+    expect(recipe.reserved).toEqual(new Uint8Array(28));
+
+    // In effect by the clock: the waiting version from the second its time comes, the first until then.
+    const before = versionsAt(recipe, recipe.pending.effectiveAt - 1n);
+    expect([before.active.version, before.pending?.version]).toEqual([1, 2]);
+    const from = versionsAt(recipe, recipe.pending.effectiveAt);
+    expect([from.active.version, from.pending]).toEqual([2, null]);
   });
 });

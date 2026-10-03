@@ -2,13 +2,13 @@ import {
   createSolanaVaultReader,
   getAccounts,
   type RawAccount,
+  RECIPE_SIZE,
   type SolanaVaultReader,
   TOKEN_ACCOUNT_BYTES_BOUND,
   toBase58,
-  VAULT_RECIPE_OFFSET,
   VAULT_SIZE,
 } from '@colosseum/chain-solana/vault';
-import { ChainError, type ChainErrorCode } from '@colosseum/schemas';
+import { ChainError, type ChainErrorCode, isStalePrice } from '@colosseum/schemas';
 import { type Address, getAddressEncoder } from '@solana/kit';
 import { describe, expect, it } from 'vitest';
 import { readCases } from './reads';
@@ -167,6 +167,46 @@ describe('Solana reader: what the config decides', () => {
   });
 });
 
+describe('Solana reader: a multiplier that is scheduled', () => {
+  it('shows it on every holding of that mint, in a vault and in a wallet, and on no other', async () => {
+    const { reader } = world();
+    const want = fixture.expected.mints.nvdax.scheduled;
+    if (!want) throw new Error('the fixture schedules no multiplier for nvdax');
+    const scheduled = {
+      multiplier: String(want.multiplier),
+      effectiveAt: Number(want.effectiveAt),
+    };
+    // Later than the fixture's clock: it is not in force yet.
+    expect(scheduled.effectiveAt).toBeGreaterThan(Number(fixture.clock.unixTimestamp));
+    const vault = await reader.getVault(names.vaults.following);
+    const nvdax = vault?.positions.find((p) => p.asset === assetId('nvdax'));
+    expect(nvdax?.scheduled).toEqual(scheduled);
+    // The one in force is still the mint's own.
+    expect(nvdax?.multiplier).toBe(String(fixture.expected.mints.nvdax.multiplier));
+    for (const p of vault?.positions ?? [])
+      if (p.asset !== assetId('nvdax')) expect(p).not.toHaveProperty('scheduled');
+    expect(vault?.cash).not.toHaveProperty('scheduled');
+    for (const h of await reader.getWalletHoldings(names.owner))
+      if (h.asset === assetId('nvdax')) expect(h.scheduled).toEqual(scheduled);
+      else expect(h).not.toHaveProperty('scheduled');
+  });
+
+  it('shows nothing scheduled once its time has passed: it is the multiplier in force', async () => {
+    const want = fixture.expected.mints.nvdax.scheduled;
+    if (!want) throw new Error('the fixture schedules no multiplier for nvdax');
+    const at = accountOf(fixture, 'clock');
+    const clock = new Uint8Array(at.data);
+    new DataView(clock.buffer).setBigInt64(32, BigInt(want.effectiveAt), true);
+    const { reader } = world({
+      edit: (node) => node.accounts.set(at.address, { ...at, data: clock }),
+    });
+    const vault = await reader.getVault(names.vaults.following);
+    const nvdax = vault?.positions.find((p) => p.asset === assetId('nvdax'));
+    expect(nvdax?.multiplier).toBe(String(want.multiplier));
+    expect(nvdax).not.toHaveProperty('scheduled');
+  });
+});
+
 describe('Solana reader: prices', () => {
   it('reads the price account and the clock in one call, and nothing at all for no priced asset', async () => {
     const { node, reader } = world();
@@ -185,6 +225,19 @@ describe('Solana reader: prices', () => {
     expect(node.calls).toEqual([]);
   });
 
+  it("gives every price the age the program's Config allows, so a price says whether it is stale", async () => {
+    const { reader } = world();
+    const config = await reader.getConfig();
+    const prices = await reader.getPrices([assetId('spyx'), assetId('gold')]);
+    expect(prices.map((p) => p.maxAgeSeconds)).toEqual([config.maxPriceAgeS, config.maxPriceAgeS]);
+    expect(config.maxPriceAgeS).toBe(120);
+    // 30 seconds old is fresh; 400 is older than the keeper accepts, and the price says so itself.
+    expect(prices.map((p) => [p.ageSeconds, isStalePrice(p)])).toEqual([
+      [30, false],
+      [400, true],
+    ]);
+  });
+
   it('prices the cash token only when the list gives it a source', async () => {
     const assets = assetsOf(fixture).map((a) =>
       a.cls === 'cash'
@@ -196,8 +249,9 @@ describe('Solana reader: prices', () => {
   });
 
   it("says a stock token's market is closed outside the session the program keeps", async () => {
-    // The Saturday after the entries were written.
-    const saturday = BigInt(Date.parse('2026-10-10T15:00:00Z') / 1000);
+    // The Saturday after the entries were written: five days on from the fixture's own clock.
+    const saturday = BigInt(fixture.clock.unixTimestamp) + 5n * 86_400n;
+    expect(new Date(Number(saturday) * 1000).getUTCDay()).toBe(6);
     const clock = new Uint8Array(40);
     new DataView(clock.buffer).setBigInt64(32, saturday, true);
     const { reader } = world({
@@ -432,20 +486,135 @@ describe('Solana reader: vaults', () => {
   });
 
   it('finds the followers of a shared portfolio by the recipe at its frozen offset', async () => {
-    // No transaction can make a vault follow a recipe yet, so the bytes are set by hand.
-    const vault = accountOf(fixture, 'vault:following');
-    const recipe = names.guardian as Address;
-    const following = patched(vault, [
-      { at: VAULT_RECIPE_OFFSET, bytes: getAddressEncoder().encode(recipe) },
-    ]);
-    const { reader } = world({ edit: (node) => node.accounts.set(vault.address, following) });
-    expect(await reader.listAutoFollowVaults(recipe)).toEqual([vault.address]);
+    const { reader } = world();
+    expect(await reader.listAutoFollowVaults(names.recipes.core)).toEqual([names.vaults.following]);
     expect(await reader.listAutoFollowVaults(names.stranger)).toEqual([]);
     expect(await reader.listAutoFollowVaults()).toHaveLength(2);
-    // Reading that vault needs the registry, which is not on chain: a refusal, not a guess at `pending`.
-    const e = await refusal(reader.getVault(vault.address), 'NotSupported');
-    expect(e.message).toContain('SOL-2');
-    await refusal(reader.getVaults(names.owner), 'NotSupported');
+  });
+
+  describe('a vault that follows a shared portfolio', () => {
+    // Where the waiting version sits in a Recipe account: after the discriminator, the creator, the
+    // family id and the 453 bytes of the version in effect.
+    const PENDING = 8 + 32 + 32 + 453;
+    const recipe = accountOf(fixture, 'recipe:core');
+    const clock = BigInt(fixture.clock.unixTimestamp);
+    const i64 = (value: bigint) => {
+      const bytes = new Uint8Array(8);
+      new DataView(bytes.buffer).setBigInt64(0, value, true);
+      return bytes;
+    };
+    const u16 = (value: number) => new Uint8Array([value & 0xff, value >> 8]);
+    /** The fixture with some bytes of the shared portfolio changed, read through the reader. */
+    const read = async (edits: { at: number; bytes: ArrayLike<number> }[]) => {
+      const edited = patched(recipe, edits);
+      const { reader } = world({ edit: (node) => node.accounts.set(recipe.address, edited) });
+      return {
+        portfolio: await reader.getRecipe(names.recipes.core),
+        vault: await reader.getVault(names.vaults.following),
+      };
+    };
+
+    it('reads the recipe in the same call as the balances', async () => {
+      const { node, reader } = world();
+      const state = await reader.getVault(names.vaults.following);
+      expect(state?.recipeOnchainId).toBe(names.recipes.core);
+      expect(node.calls).toEqual(['getMultipleAccounts', 'getMultipleAccounts']);
+    });
+
+    it("a version whose time has come is the one in effect, with no transaction, by the cluster's clock", async () => {
+      const waiting = await read([{ at: PENDING + 4, bytes: i64(clock + 1n) }]);
+      expect([waiting.portfolio.active.version, waiting.portfolio.pending?.version]).toEqual([
+        1, 2,
+      ]);
+      expect(waiting.vault?.pending).toEqual({
+        version: 2,
+        effectiveAt: Number(clock + 1n),
+        newAssets: [assetId('tslax')],
+      });
+
+      const inEffect = await read([{ at: PENDING + 4, bytes: i64(clock) }]);
+      expect([inEffect.portfolio.active.version, inEffect.portfolio.pending]).toEqual([2, null]);
+      expect(inEffect.portfolio.active.components).toHaveLength(4);
+      // The vault still holds the weights of version 1: version 2 is what it has not applied.
+      expect(inEffect.vault?.acceptedVersion).toBe(1);
+      expect(inEffect.vault?.pending).toEqual({
+        version: 2,
+        effectiveAt: Number(clock),
+        newAssets: [assetId('tslax')],
+      });
+    });
+
+    it('has nothing pending when no version waits and the vault took the one in effect', async () => {
+      const none = await read([{ at: PENDING, bytes: [0, 0, 0, 0] }]);
+      expect(none.portfolio.pending).toBeNull();
+      expect(none.vault?.pending).toBeNull();
+    });
+
+    it('names no new asset for a version that only moves weights', async () => {
+      // The waiting version cut to its first three lines, which the vault already has, adding up
+      // to the whole again. Set by hand; the version the script published adds a fourth.
+      const weightsOnly = await read([
+        { at: PENDING + 44, bytes: [3] },
+        { at: PENDING + 45 + 32, bytes: u16(5_000) },
+      ]);
+      expect(weightsOnly.portfolio.pending?.components).toHaveLength(3);
+      expect(weightsOnly.vault?.pending).toMatchObject({ version: 2, newAssets: [] });
+    });
+
+    it('refuses a shared portfolio that holds a mint the asset list does not have', async () => {
+      const withoutTsla = assetsOf(fixture).filter((a) => a.id !== assetId('tslax'));
+      const { reader } = world({ assets: withoutTsla });
+      const e = await refusal(reader.getRecipe(names.recipes.core), 'MintNotAccepted');
+      expect(e.message).toContain(names.mints.tslax);
+      // The vault is told about that version too, so it is refused with it.
+      await refusal(reader.getVault(names.vaults.following), 'MintNotAccepted');
+      expect((await reader.getVault(names.vaults.manual))?.pending).toBeNull();
+    });
+
+    it('refuses a vault whose shared portfolio is not there, or is not one', async () => {
+      const gone = world({ edit: (node) => node.accounts.delete(recipe.address) }).reader;
+      const e = await refusal(gone.getVault(names.vaults.following), 'Unknown');
+      expect(e.message).toContain(names.recipes.core);
+      await refusal(gone.getVaults(names.owner), 'Unknown');
+      await refusal(gone.getRecipe(names.recipes.core), 'RecipeNotFound');
+
+      // The same bytes under another program are not a shared portfolio.
+      const foreign = world({
+        edit: (node) =>
+          node.accounts.set(recipe.address, { ...recipe, owner: names.router as Address }),
+      }).reader;
+      await refusal(foreign.getRecipe(names.recipes.core), 'RecipeNotFound');
+      await refusal(foreign.getVault(names.vaults.following), 'Unknown');
+    });
+
+    it('refuses a shared portfolio that carries a fee or flags, which the program never stores', async () => {
+      const feeAt = RECIPE_SIZE - 32 - 1 - 1 - 2;
+      for (const edit of [
+        { at: feeAt, bytes: u16(1) },
+        { at: feeAt + 2, bytes: [1] },
+      ]) {
+        const edited = patched(recipe, [edit]);
+        const { reader } = world({ edit: (node) => node.accounts.set(recipe.address, edited) });
+        await refusal(reader.getRecipe(names.recipes.core), 'Unknown');
+      }
+    });
+  });
+
+  it("reads the program's own asset list: the mints a vault may hold, and each one's entry", async () => {
+    const { reader } = world();
+    const list = await reader.getAssetList();
+    expect(list.count).toBe(4);
+    expect(list.assets.map((a) => [a.mint, a.decimals, a.maxWeightBps])).toEqual(
+      (['spyx', 'nvdax', 'gold', 'tslax'] as const).map((name) => [
+        names.mints[name],
+        fixture.expected.mints[name].decimals,
+        5_000,
+      ]),
+    );
+    // Cash is never on it.
+    expect(list.assets.map((a) => a.mint)).not.toContain(names.mints.usdc);
+    const none = world({ edit: (node) => node.accounts.delete(names.assets) }).reader;
+    expect((await refusal(none.getAssetList(), 'Unavailable')).retryable).toBe(false);
   });
 
   it('refuses to report a loss counter before the keeper leg defines it', async () => {
@@ -569,6 +738,33 @@ describe('Solana reader: gas', () => {
     );
     expect(largest).toBe(179);
     expect(TOKEN_ACCOUNT_BYTES_BOUND).toBeGreaterThanOrEqual(largest);
+  });
+
+  it('charges rent for as many token accounts as the caller says the steps open, where it says', async () => {
+    const { reader } = world();
+    const rent = (bytes: number) => BigInt(bytes + 128) * 6_960n;
+    const need = { cashRaw: '0', legs: 3, newVault: true };
+    const gas = async (newAccounts?: number) =>
+      BigInt(
+        (
+          await reader.funding(names.owner, {
+            ...need,
+            ...(newAccounts === undefined ? {} : { newAccounts }),
+          })
+        ).gasNeedRaw,
+      );
+    const base = rent(0) + 3n * 5_000n + rent(VAULT_SIZE);
+    // Left out, every step is taken to open one: the bound of before.
+    expect(await gas()).toBe(base + 3n * rent(TOKEN_ACCOUNT_BYTES_BOUND));
+    // The vault's cash account and one new position: two accounts, whatever the number of steps.
+    expect(await gas(2)).toBe(base + 2n * rent(TOKEN_ACCOUNT_BYTES_BOUND));
+    // A deposit into positions that all exist opens none.
+    expect(await gas(0)).toBe(base);
+    expect(await gas(5)).toBe(base + 5n * rent(TOKEN_ACCOUNT_BYTES_BOUND));
+    await refusal(reader.funding(names.owner, { ...need, newAccounts: -1 }), 'BadInput');
+    // Nothing to send needs nothing, however many accounts are named.
+    const nothing = { cashRaw: '0', legs: 0, newVault: false, newAccounts: 4 };
+    expect((await reader.funding(names.owner, nothing)).gasNeedRaw).toBe('0');
   });
 
   it('asks for the rent figures once', async () => {
