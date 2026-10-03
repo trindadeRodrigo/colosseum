@@ -211,7 +211,12 @@ describe('the forbidden things', () => {
     });
   });
 
+  // A plain test run skips these two when there is no build, or one older than the source. The web
+  // `build` script ends with scripts/check-build.mjs, which runs this file once more with
+  // REQUIRE_WEB_BUILD=1, and then they are not skipped: a missing or stale build fails. That is how
+  // CI reads the real output.
   describe('in the output of `next build`, when there is a fresh one', () => {
+    const required = process.env.REQUIRE_WEB_BUILD === '1';
     const out = join(WEB, '.next');
     const chunks = join(out, 'static');
     const css: string[] = [];
@@ -233,7 +238,12 @@ describe('the forbidden things', () => {
     const fresh = built > newest && existsSync(chunks);
     if (fresh) walk(chunks);
 
-    it.skipIf(!fresh)(
+    it.runIf(required)('has a build to read, newer than every source file', () => {
+      expect(built, 'there is no build in apps/web/.next').toBeGreaterThan(0);
+      expect(fresh, 'the build in apps/web/.next is older than the source').toBe(true);
+    });
+
+    it.skipIf(!fresh && !required)(
       'finds nothing forbidden beyond the legacy pages and the wallet adapter’s stylesheet',
       async () => {
         expect(css.length).toBeGreaterThan(0);
@@ -264,7 +274,7 @@ describe('the forbidden things', () => {
       },
     );
 
-    it.skipIf(!fresh)(
+    it.skipIf(!fresh && !required)(
       'serves the three typefaces from this origin, each with a metric-matched fallback',
       () => {
         const all = css.map((path) => readFileSync(path, 'utf8')).join('\n');

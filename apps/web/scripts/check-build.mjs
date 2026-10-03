@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 // Runs after `next build` (see "build" in package.json). The build fails if the output holds anything
 // that exists for development only: the throwaway wallet, the dev page, any route under /dev, or any
-// file of features/wallet/dev/ or features/wallet/test/ in what a route was built from.
+// file of a development-only folder (DEV_ONLY below) in what a route was built from.
 // It also looks for one string every build ships and one file every route is built from, so a change
 // in where Next writes its output makes this check fail instead of pass on nothing.
+// Last, it runs the design system's test of the built stylesheet and fonts, which a plain test run
+// skips for want of a build (components/ui/forbidden.test.ts).
+import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { createRequire } from 'node:module';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /** Strings that must not be in a production build. Each is a constant in the file named. */
@@ -53,8 +57,13 @@ function routes(out) {
   return [...found];
 }
 
-/** Folders whose files are for development and tests only. No built route may come from them. */
-export const DEV_ONLY = /(^|\/)features\/wallet\/(dev|test)\//;
+/**
+ * Folders whose files are for development and tests only. No built route may come from them: the
+ * wallet's dev page and test driver, the design system's sample content and test helpers, and every
+ * page under app/dev (the showcase). components/ui/shipped.test.ts reads the imports for the same.
+ */
+export const DEV_ONLY =
+  /(^|\/)(features\/wallet\/(dev|test)|components\/ui\/(fixtures|test)|app\/dev)\//;
 /** A file every route is built from: the proof that the source maps name our files. */
 export const ALWAYS_BUILT = 'features/wallet/WalletProvider.tsx';
 
@@ -111,11 +120,33 @@ export function checkBuild(out) {
   return problems;
 }
 
+/** The test file that reads the built stylesheet and fonts, as a path from the repository root. */
+export const BUILT_CSS_TEST = 'apps/web/components/ui/forbidden.test.ts';
+
+/**
+ * Runs that test once more, now that there is a build to read. REQUIRE_WEB_BUILD makes its two build
+ * checks fail on a missing or stale build instead of being skipped. Returns the exit code.
+ */
+function builtStylesheetCheck() {
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+  const require = createRequire(join(root, 'package.json'));
+  const vitest = join(dirname(require.resolve('vitest/package.json')), 'vitest.mjs');
+  const run = spawnSync(process.execPath, [vitest, 'run', '--root', root, BUILT_CSS_TEST], {
+    stdio: 'inherit',
+    env: { ...process.env, REQUIRE_WEB_BUILD: '1' },
+  });
+  return run.status ?? 1;
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const out = resolve(process.argv[2] ?? '.next');
   const problems = checkBuild(out);
   if (problems.length) {
     console.error(`Build check failed:\n${problems.map((p) => `  - ${p}`).join('\n')}`);
     process.exitCode = 1;
-  } else console.log('Build check: no development-only code or route in the build.');
+  } else {
+    console.log('Build check: no development-only code or route in the build.');
+    // Only for the build in its usual place: the test reads apps/web/.next and nothing else.
+    if (process.argv[2] === undefined) process.exitCode = builtStylesheetCheck();
+  }
 }
