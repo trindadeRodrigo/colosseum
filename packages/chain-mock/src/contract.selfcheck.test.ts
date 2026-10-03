@@ -296,8 +296,34 @@ const FAULTS: { fault: string; wrap: Wrap; caught: string[]; chains?: MockChain[
   },
   {
     fault: 'says every transaction carries every message',
-    wrap: () => ({ carries: async () => true }),
-    caught: ['says a transaction carries the message it was built from, and no other'],
+    wrap: () => ({ carries: async () => 'this' as const }),
+    caught: [
+      'says of a transaction whether it is this call, another call, or one the chain has not seen',
+    ],
+  },
+  {
+    fault: 'says a transaction it has not seen is another call',
+    wrap: (real) => ({
+      carries: async (txId, hash) => {
+        const answer = await real.carries(txId, hash);
+        return answer === 'unseen' ? 'another' : answer;
+      },
+    }),
+    caught: [
+      'says of a transaction whether it is this call, another call, or one the chain has not seen',
+    ],
+  },
+  {
+    fault: 'says it has not seen a transaction that is another call',
+    wrap: (real) => ({
+      carries: async (txId, hash) => {
+        const answer = await real.carries(txId, hash);
+        return answer === 'another' ? 'unseen' : answer;
+      },
+    }),
+    caught: [
+      'says of a transaction whether it is this call, another call, or one the chain has not seen',
+    ],
   },
   {
     fault: 'never finds an attempt that landed and nobody reported',

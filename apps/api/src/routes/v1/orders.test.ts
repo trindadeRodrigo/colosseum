@@ -642,10 +642,20 @@ describe('a leg settles only on the transaction that was built for it', () => {
     // A confirmed transaction of the same wallet, one of another chain, and one that never existed.
     await build(a, placed, first(placed, 'robinhood').id);
     const approveTx = await land(a, placed, first(placed, 'robinhood').id);
-    for (const txId of [createTx, approveTx, 'no-such-transaction']) {
+    // The chain has the first, and it is another call: refused for good. It has never seen the other
+    // two (the second is another chain's): that is not a verdict on them, so the answer says to ask
+    // again, and is a different one.
+    const wrong = await post(a, legUrl(placed, swap.id, 'report'), { txId: createTx });
+    expect(wrong.statusCode).toBe(409);
+    expect(wrong.json()).toEqual({ error: 'that transaction is not the one built for this step' });
+    for (const txId of [approveTx, 'no-such-transaction']) {
       const res = await post(a, legUrl(placed, swap.id, 'report'), { txId });
       expect([txId, res.statusCode]).toEqual([txId, 409]);
-      expect(res.json().error).toBe('that transaction is not the one built for this step');
+      expect(res.json()).toEqual({
+        error: 'the chain has not seen that transaction yet',
+        fix: 'Report it again in a moment.',
+        details: { retryable: true },
+      });
     }
     // Signed bytes that are not this leg's are not relayed.
     const other = await post(a, legUrl(placed, swap.id, 'report'), { signedTx: 'bm90IG91cnM=' });
@@ -658,6 +668,48 @@ describe('a leg settles only on the transaction that was built for it', () => {
     const after = await read(a, placed);
     expect(legOf(after, swap.id)).toEqual(legOf(before, swap.id));
     expect(legOf(after, swap.id)).toMatchObject({ status: 'built', txId: null });
+  });
+
+  it('a transaction reported before the chain has seen it settles when it is reported again', async () => {
+    const a = await someone();
+    // A node a moment behind the wallet: the first time it is asked, it has not seen the transaction.
+    let asked = 0;
+    const behind = await testApp({
+      issuer: issuer.issuer,
+      db: data.db,
+      wrap: (inner) => ({
+        ...inner,
+        get: (chain) => {
+          const entry = inner.get(chain);
+          const carries: typeof entry.adapter.carries = async (txId, hash) => {
+            asked += 1;
+            return asked === 1 ? 'unseen' : entry.adapter.carries(txId, hash);
+          };
+          return { ...entry, adapter: { ...entry.adapter, carries } };
+        },
+      }),
+    });
+    const on = behind.app;
+    await fund(a, ['solana'], on);
+    const placed = await order(a, { amountUsd: 600, chains: ['solana'] }, on);
+    const leg = first(placed, 'solana');
+    await build(a, placed, leg.id, on);
+    const txId = await land(a, placed, leg.id, on);
+
+    const early = await post(a, legUrl(placed, leg.id, 'report'), { txId }, on);
+    expect(early.statusCode).toBe(409);
+    expect(early.json()).toMatchObject({
+      error: 'the chain has not seen that transaction yet',
+      details: { retryable: true },
+    });
+    // Nothing was written: the step is as it was built.
+    const waiting = OrderDetail.parse((await get(a, `/v1/orders/${placed.id}`, on)).json());
+    expect(legOf(waiting, leg.id)).toMatchObject({ status: 'built', txId: null, error: null });
+    // The same report a moment later settles it.
+    const done = await report(a, placed, leg.id, { txId }, on);
+    expect(legOf(done, leg.id)).toMatchObject({ status: 'confirmed', txId, attempt: 1 });
+    expect(asked).toBe(2);
+    await on.close();
   });
 
   it('a leg reported twice settles once', async () => {

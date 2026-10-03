@@ -5,6 +5,7 @@ import {
   BasketAsset,
   BuiltTx,
   Capabilities,
+  Carried,
   type ChainAdapter,
   ChainError,
   type ChainErrorCode,
@@ -867,7 +868,7 @@ group('signed bytes', {
       expect((await settled(c, txId, validUntil)).status).toBe('confirmed');
       expect(BigInt((await vaultAt(c, c.f.vault)).cash.raw) - BigInt(before.cash.raw)).toBe(amount);
 
-      expect(await c.a.carries(txId, tx.messageHash)).toBe(true);
+      expect(await c.a.carries(txId, tx.messageHash)).toBe('this');
       expect(exact(AttemptFate, await c.a.fate(attempt))).toEqual({ state: 'landed', txId });
 
       // The same bytes a second time land nothing more, whether the adapter answers or refuses.
@@ -900,20 +901,21 @@ group('signed bytes', {
       expect(await walletRaw(c, c.f.owner, c.cash.id)).toBe(wallet);
     },
 
-  'says a transaction carries the message it was built from, and no other': async (c) => {
-    const [one, other] = [
-      await c.a.buildSetAutoFollow({ vault: c.f.manualVault, on: false }),
-      await c.a.buildSetAutoFollow({ vault: c.f.vault, on: true }),
-    ];
-    expect(one.messageHash).not.toBe(other.messageHash);
-    const { txId } = await c.f.send(one);
-    expect(await c.a.carries(txId, one.messageHash)).toBe(true);
-    // An unrelated transaction of the same wallet does not stand for another step.
-    expect(await c.a.carries(txId, other.messageHash)).toBe(false);
-    // And an id the chain never saw carries nothing.
-    expect(await c.a.carries(c.f.unknownTxId, one.messageHash)).toBe(false);
-    expect(await c.a.carries(c.f.unknownTxId, other.messageHash)).toBe(false);
-  },
+  'says of a transaction whether it is this call, another call, or one the chain has not seen':
+    async (c) => {
+      const [one, other] = [
+        await c.a.buildSetAutoFollow({ vault: c.f.manualVault, on: false }),
+        await c.a.buildSetAutoFollow({ vault: c.f.vault, on: true }),
+      ];
+      expect(one.messageHash).not.toBe(other.messageHash);
+      const { txId } = await c.f.send(one);
+      expect(Carried.parse(await c.a.carries(txId, one.messageHash))).toBe('this');
+      // An unrelated transaction of the same wallet does not stand for another step.
+      expect(await c.a.carries(txId, other.messageHash)).toBe('another');
+      // An id the chain never saw is neither: it may yet arrive, and the caller asks again.
+      expect(await c.a.carries(c.f.unknownTxId, one.messageHash)).toBe('unseen');
+      expect(await c.a.carries(c.f.unknownTxId, other.messageHash)).toBe('unseen');
+    },
 });
 
 group('state after a transaction lands', {

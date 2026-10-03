@@ -520,8 +520,13 @@ describe('chain-mock', () => {
       // The same bytes again: the same id, and nothing happens twice.
       expect((await adapter.relay(signed)).txId).toBe(txId);
       expect(await adapter.getVaults(owner)).toHaveLength(1);
-      expect(await adapter.carries(txId, tx.messageHash)).toBe(true);
-      expect(await adapter.carries(txId, 'f'.repeat(64))).toBe(false);
+      expect(await adapter.carries(txId, tx.messageHash)).toBe('this');
+      expect(await adapter.carries(txId, 'f'.repeat(64))).toBe('another');
+      // Built and never sent: the chain has not seen its id, whatever message is asked about.
+      const never = await adapter.buildCreateVault({ ...args, basketId: '2' });
+      const unsent = mockAddress(chain, 'no such transaction');
+      expect(await adapter.carries(unsent, never.messageHash)).toBe('unseen');
+      expect(await adapter.carries(unsent, tx.messageHash)).toBe('unseen');
     }
   });
 

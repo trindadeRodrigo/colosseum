@@ -368,14 +368,21 @@ export async function reportLeg(
     }
   } else {
     attempt = attempts.find((a) => a.txId === body.txId);
+    let unseen = false;
     for (const a of attempts) {
       if (attempt) break;
-      if (
-        a.txId === null &&
-        (await refusing(() => entry.adapter.carries(body.txId, a.messageHash)))
-      )
-        attempt = a;
+      if (a.txId !== null) continue;
+      const carried = await refusing(() => entry.adapter.carries(body.txId, a.messageHash));
+      if (carried === 'this') attempt = a;
+      else if (carried === 'unseen') unseen = true;
     }
+    // A wallet that sent a moment ago can be ahead of the node. That is not the wrong transaction:
+    // the caller is told to report again, and nothing is written.
+    if (!attempt && unseen)
+      throw new Refusal(409, 'the chain has not seen that transaction yet', {
+        fix: 'Report it again in a moment.',
+        details: { retryable: true },
+      });
     if (!attempt) throw new Refusal(409, 'that transaction is not the one built for this step');
     if (final(attempt)) return stored;
     sent = { txId: body.txId, validUntil: attempt.validUntil };

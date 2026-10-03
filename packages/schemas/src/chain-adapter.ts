@@ -177,6 +177,17 @@ export const AttemptFate = z.discriminatedUnion('state', [
 export type AttemptFate = z.infer<typeof AttemptFate>;
 
 /**
+ * What a node says of a reported transaction against a message that was built.
+ * - `this`: the transaction carries this message and no other: the same signer, target and call data
+ *   (on Solana, the same message).
+ * - `another`: the node has the transaction, and it is another call or another signer's.
+ * - `unseen`: the node does not have the transaction. A wallet that sent it a moment ago may be ahead
+ *   of the node, so this is not a refusal of the transaction: the caller reports again later.
+ */
+export const Carried = z.enum(['this', 'another', 'unseen']);
+export type Carried = z.infer<typeof Carried>;
+
+/**
  * What the order layer needs to tie signed bytes and a landed transaction back to what was built. A
  * leg may only settle on the transaction that was built for it, and signed bytes are only relayed when
  * they are bytes this server built. It holds no key and signs nothing.
@@ -198,11 +209,10 @@ export interface TxProbe {
    */
   relay(signedTx: string): Promise<{ txId: string; validUntil?: string }>;
   /**
-   * True when the transaction with this id carries the message with this hash, and no other: the
-   * same signer, target and call data (on Solana, the same message). False for any other
-   * transaction, and for an id the chain does not have.
+   * Whether the transaction with this id carries the message with this hash (`Carried`). The caller
+   * settles a step on `this` only, refuses `another`, and asks again later on `unseen`.
    */
-  carries(txId: string, messageHash: string): Promise<boolean>;
+  carries(txId: string, messageHash: string): Promise<Carried>;
   /** What became of an attempt whose transaction id nobody reported. */
   fate(attempt: AttemptRef): Promise<AttemptFate>;
 }

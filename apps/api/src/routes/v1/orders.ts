@@ -118,7 +118,7 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
         tags,
         summary: 'Report a leg as sent, by its transaction id or by signed bytes to relay',
         description:
-          'Exactly one of `txId` and `signedTx`. Both are matched against every attempt at the leg, and the leg settles on the attempt that landed. Signed bytes are relayed only for an attempt that was built and never sent. A transaction that carries the bytes of no attempt, successful or not, is refused and changes nothing. Reporting the same transaction again answers with the order as it stands.',
+          'Exactly one of `txId` and `signedTx`. Both are matched against every attempt at the leg, and the leg settles on the attempt that landed. Signed bytes are relayed only for an attempt that was built and never sent. A transaction that carries the bytes of no attempt, successful or not, is refused and changes nothing. A transaction the chain has not seen yet answers 409 with `details.retryable` true: report it again in a moment. Reporting the same transaction again answers with the order as it stands.',
         params: LegRouteParams,
         body: ReportLegRequest,
         response: { 200: OrderDetail, default: OrderError },

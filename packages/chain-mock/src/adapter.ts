@@ -9,6 +9,7 @@ import {
   type BasketAsset,
   type BuiltTx,
   type Capabilities,
+  type Carried,
   type ChainAdapter,
   ChainError,
   type ChainErrorCode,
@@ -969,9 +970,12 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
       guarded(() =>
         adapter.mock.send({ messageHash: hashOfSigned(input(z.string(), signedTx, 'signedTx')) }),
       ),
-    // The mock derives a transaction's id from its message, so it can say this of a transaction that
-    // was never sent. A real adapter fetches the transaction, and answers false for one it cannot find.
-    carries: (txId, messageHash) => guarded(() => txId === mockTxId(chain, messageHash)),
+    // A transaction the mock was never sent is not seen, as on a node: the caller asks again.
+    carries: (txId, messageHash) =>
+      guarded((): Carried => {
+        if (!sent.has(txId)) return 'unseen';
+        return txId === mockTxId(chain, messageHash) ? 'this' : 'another';
+      }),
     fate: (attempt) =>
       guarded(async (): Promise<AttemptFate> => {
         const { messageHash, validUntil } = input(AttemptRef, attempt, 'attempt');
