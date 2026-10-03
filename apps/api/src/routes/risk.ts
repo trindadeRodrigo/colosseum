@@ -36,6 +36,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { loadAssetFacts, loadPlanFacts } from '../facts';
 import { FACTS_METHODOLOGY } from '../facts-methodology';
+import { registerRiskHistoryRoutes } from './risk-history';
 
 /**
  * Liquidity & risk API (`/risk/*`). Mounted by apps/api and, alone, by apps/risk-api. Every number carries
@@ -99,6 +100,8 @@ export async function registerRiskRoutes(app: FastifyInstance) {
       };
     return { assetId: mint, byRegime };
   }
+  // time series for line charts: capacity, reference price, lending pool (risk-history.ts)
+  await registerRiskHistoryRoutes(app, db, resolveAsset, REGIME_PARAMS);
 
   f.get(
     '/risk/assets',

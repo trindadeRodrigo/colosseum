@@ -27,9 +27,7 @@ import {
   FLOW_METHOD_VERSION,
   type FlowAggregate,
   type FlowWindow,
-  fitCurve,
   type IssuerModel,
-  maxNotionalAt,
   measuredRegimes,
   networkFeePerSwap,
   type PlanLeg,
@@ -39,6 +37,7 @@ import {
 } from '@colosseum/risk';
 import type { AssetFacts, PlanFacts } from '@colosseum/schemas';
 import { and, desc, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm';
+import { capacityAtTau } from './history';
 
 const ROOT = process.env.REPO_ROOT ?? join(import.meta.dirname, '..', '..', '..');
 const CURVE_METHOD_VERSION = 'risk-0.3';
@@ -419,16 +418,10 @@ export async function loadAssetFacts(
     );
   const series: Partial<Record<Regime, number[]>> = {};
   for (const s of snaps) {
-    const pts = (s.sell as Array<{ notionalUsd: number; outUsd: number }>).filter((p) =>
-      Number.isFinite(p.outUsd),
-    );
-    if (!pts.length) continue;
-    const c = fitCurve(
-      pts.map((p) => ({ notionalUsd: p.notionalUsd, cost: 1 - p.outUsd / p.notionalUsd })),
-      { quantile: 0.5, minSamples: 1 },
-    );
+    const cap = capacityAtTau(s.sell, tau).capacityUsd;
+    if (cap === null) continue;
     const r = regimeAt(s.fetchedAt, regimeParams);
-    series[r] = [...(series[r] ?? []), maxNotionalAt(c, tau).notionalUsd];
+    series[r] = [...(series[r] ?? []), cap];
   }
   const lastSnap = snaps.reduce<(typeof snaps)[number] | null>(
     (a, s) => (!a || s.fetchedAt > a.fetchedAt ? s : a),
