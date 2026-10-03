@@ -1,18 +1,27 @@
+import { view } from '@colosseum/basket';
 import {
   type Address,
+  type AssetId,
+  AttemptFate,
+  type AttemptRef,
   BasketAsset,
   BuiltTx,
   Capabilities,
+  Carried,
+  CHAIN_ERROR_RETRYABLE,
   type ChainAdapter,
   ChainError,
   type ChainErrorCode,
   ChainId,
+  type ChainReader,
   chainFamily,
+  evmCallPreimage,
   Funding,
   Holding,
+  isStalePrice,
   type LegKind,
   Price,
-  type Provenance,
+  Provenance,
   Quote,
   type RawAmount,
   Recipe,
@@ -24,6 +33,7 @@ import {
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { z } from 'zod';
 import { displayAmount } from './amounts';
+import { sha256Hex } from './ids';
 
 // The tests every ChainAdapter must pass (DESIGN-VAULT 3.2). The mock passes them here; the Solana and
 // EVM adapters run the same function against a fork.
@@ -32,44 +42,115 @@ import { displayAmount } from './amounts';
 //   adapterContract('solana, local fork', async () => ({ adapter, send, provenance: 'sandbox', ... }));
 //
 // The setup function brings the chain to the state `ContractFixture` describes and returns it. The
-// cases run in the order written: first everything that only reads and builds, then the refusals, then
-// the cases that send a transaction and read the state it left. A fixture is used once.
+// cases are in groups, and run in the order written: first everything that only reads and builds, then
+// the refusals, then the cases that send a transaction and read the state it left. A fixture is used
+// once.
+//
+// An adapter that has only part of the interface runs the groups it can:
+//
+//   adapterContract('solana reader', setup, { groups: ['reads'] });
+//
+// The `reads` group takes a `ReadsFixture`, which asks for a `ChainReader` and no more, and its setup
+// reads no shared portfolio and builds nothing.
 // `contract.selfcheck.test.ts` runs the same cases against adapters that are wrong on purpose and
 // expects them to fail: a case that cannot fail does not belong here.
 
-export type ContractFixture = {
-  adapter: ChainAdapter;
-  /**
-   * Signs as `tx.signer` (the owner or the keeper), broadcasts, and resolves once the transaction has
-   * landed. On the mock this is `mock.send`.
-   */
-  send(tx: BuiltTx): Promise<{ txId: string; validUntil?: string }>;
+/** The groups, in the order they run. */
+export const CONTRACT_GROUPS = [
+  /** What a reader shows of a chain as it stands: assets, prices, vaults, wallets, funding, a status. */
+  'reads',
+  /** Reads that need the registry: a shared portfolio, its versions, and the vaults that follow it. */
+  'shared portfolios',
+  'quotes',
+  'builds',
+  'refusals',
+  'signed bytes',
+  'state after a transaction lands',
+] as const;
+export type ContractGroup = (typeof CONTRACT_GROUPS)[number];
+/** The groups whose setup reads no shared portfolio: an adapter with no registry behind it can run them. */
+const NO_RECIPE: ReadonlySet<ContractGroup> = new Set(['reads', 'quotes']);
+
+export type ContractOptions = {
+  /** The groups to run, by name. Left out: all of them. They run in the contract's order either way. */
+  groups?: readonly ContractGroup[];
+};
+
+/** What the `reads` group needs: an adapter's read side, and the vaults and wallets it is asked about. */
+export type ReadsFixture = {
+  adapter: ChainReader;
   /** The label everything this adapter returns must carry: 'mock', or 'sandbox' on a test network or a fork. */
   provenance: Provenance;
   /** ISO time. No price, quote or preview is stamped earlier than this. */
   notBefore: string;
-  /** The slippage the adapter allows for in `quote().minOutRaw`. */
-  quoteSlippageBps: number;
-  /** A wallet with cash for `depositRaw` twice over and gas for a dozen transactions. It owns the three vaults. */
+  /** A wallet with cash for `depositRaw` twice over and gas for thirty transactions. It owns the three vaults. */
   owner: Address;
   /** A wallet that holds nothing and owns no vault. */
   stranger: Address;
   /**
-   * A vault of `owner`: auto-follow on, following `recipeOnchainId`, holding cash and at least one
-   * position. At least one listed asset is not among its positions.
+   * A vault of `owner`: auto-follow on, holding cash and at least one position. In a `ContractFixture`
+   * it follows `recipeOnchainId`, and at least one listed asset is not among its positions.
    */
   vault: Address;
-  /** A published shared portfolio with no pending version. `owner` is its creator. */
-  recipeOnchainId: string;
-  /** True when a newer version has taken effect and only changes weights, so `vault` can adopt it now. */
-  adoptable: boolean;
   /** A second vault of `owner`: its own targets, auto-follow off, following nothing, holding cash. */
   manualVault: Address;
   /**
-   * A third vault of `owner`: auto-follow on, following `newAssetRecipeId` at a version before the
-   * active one.
+   * A third vault of `owner`: auto-follow on, holding cash. In a `ContractFixture` it follows
+   * `newAssetRecipeId` at a version before the active one.
    */
   newAssetVault: Address;
+  /**
+   * What the cases deposit. Where the chain needs approvals, `owner` has approved twice this for
+   * `vault`, this once for `manualVault`, and this once for the plan `freshBasketId`.
+   */
+  depositRaw: RawAmount;
+  /** An id in the chain's own format that was never sent. */
+  unknownTxId: string;
+  /**
+   * An asset whose price is older right now than the chain's vault accepts, where the world has one.
+   * The reads then hold its price to saying so. Left out, no price may read as stale.
+   */
+  stalePriced?: AssetId;
+  /**
+   * An asset whose issuer has scheduled a multiplier that is not in force yet, where the world has
+   * one. `vault` has it among its positions, or `owner` holds it. Left out, no holding is expected to
+   * show one.
+   */
+  scheduledAsset?: AssetId;
+};
+
+export type ContractFixture = ReadsFixture & {
+  adapter: ChainAdapter;
+  /**
+   * Signs as `tx.signer` (the owner or the keeper), broadcasts, and resolves once the transaction has
+   * landed, whether it went through or reverted. It sends what it was given with no check of its own:
+   * no preflight on Solana, and the gas limit the transaction states on EVM, so a transaction that
+   * will revert still lands. On the mock this is `mock.send`.
+   */
+  send(tx: BuiltTx): Promise<{ txId: string; validUntil?: string }>;
+  /**
+   * Moves the price the chain's exchange trades `asset` at by `bps` (up when positive), runs `work`,
+   * and puts the price back. It is how a case makes a built trade pay out less than its minimum.
+   */
+  withPriceMoved(asset: AssetId, bps: number, work: () => Promise<void>): Promise<void>;
+  /**
+   * Signs as `tx.signer` and hands the signed transaction back, as `WalletPort.sign()` does: base64 of
+   * the whole serialized transaction on Solana, the 0x serialized signed transaction on EVM, signed
+   * with the nonce and the gas limit the transaction states, as an embedded wallet does. Nothing is
+   * sent. On the mock this is `mock.sign`.
+   */
+  sign(tx: BuiltTx): Promise<string>;
+  /**
+   * How long a transaction handed to `relay()` may take to land, in milliseconds. `relay` does not
+   * wait for the chain, so the cases ask `track` until then. Left out, it is 0: the mock lands at once.
+   */
+  relayWaitMs?: number;
+  /** The slippage the adapter allows for in `quote().minOutRaw`. */
+  quoteSlippageBps: number;
+  /** A published shared portfolio with no pending version. `owner` is its creator. `vault` follows it. */
+  recipeOnchainId: string;
+  /** True when a newer version has taken effect and only changes weights, so `vault` can adopt it now. */
+  adoptable: boolean;
   /**
    * A shared portfolio whose active version adds an asset to the one `newAssetVault` accepted, and which
    * has a further version published and not yet in effect.
@@ -77,13 +158,16 @@ export type ContractFixture = {
   newAssetRecipeId: string;
   /** A plan id `owner` has not used. */
   freshBasketId: string;
-  /** Who a cash approval goes to. Where the chain needs approvals it holds one for twice `depositRaw`. */
-  spender: Address;
-  depositRaw: RawAmount;
   /** A trade the owner can make inside `vault` now. */
   ownerTrade: Trade;
-  /** A trade the keeper can make inside `vault` now: toward a target, and not past it. */
+  /**
+   * A trade the keeper can make inside `vault` now: toward a target, ending short of it or inside the
+   * band. The vault can afford to take the same asset 2% of its value past the target: the cases size
+   * trades that end inside the band and outside it from this one.
+   */
   keeperTrade: Trade;
+  /** The band the chain's vault allows around a target, in bps (DESIGN-VAULT section 5, check 5). */
+  bandBps: number;
   /** A trade in one of `vault`'s assets that moves it away from its target. */
   awayTrade: Trade;
   /**
@@ -91,21 +175,19 @@ export type ContractFixture = {
    * (DESIGN-VAULT section 6), so three assets or more, and a publish delay after the last version.
    */
   publishRecipe: Recipe;
-  /** An id in the chain's own format that was never sent. */
-  unknownTxId: string;
 };
 
-type Ctx = {
+/** What a case of the `reads` group is handed: a reader and nothing a builder or a registry gives. */
+type ReadCtx = { f: ReadsFixture; a: ChainReader; assets: BasketAsset[]; cash: BasketAsset };
+type Ctx = ReadCtx & {
   f: ContractFixture;
   a: ChainAdapter;
-  assets: BasketAsset[];
-  cash: BasketAsset;
   keeper: Address;
   /** The active version of the fixture recipe, as targets. */
   targets: Target[];
   activeVersion: number;
 };
-type Case = { group: string; name: string; run(c: Ctx): Promise<void> };
+type Case = { group: ContractGroup; name: string; run(c: Ctx): Promise<void> };
 
 /** Parses, and fails on a field the schema does not name: the frozen shape, nothing more. */
 function exact<S extends z.ZodType>(schema: S, value: unknown): z.infer<S> {
@@ -129,8 +211,49 @@ function checkTx(c: Ctx, tx: BuiltTx, kind: LegKind, signer: Address) {
   expect(BigInt(tx.preview.feeNativeRaw)).toBeGreaterThan(0n);
   expect(tx.description.length).toBeGreaterThan(0);
   expect(tx.payload.length).toBeGreaterThan(8);
-  expect(tx.messageHash.length).toBeGreaterThanOrEqual(32);
+  // The hash is the family's, worked out here from the bytes: not a rule of the adapter's own.
+  expect(tx.messageHash, 'messageHash by the rule of basket-tx.ts').toBe(hashByRule(tx));
+  // An EVM transaction states the nonce and the gas limit to sign with.
+  if (chainFamily(c.a.chain) === 'evm') {
+    expect(Number.isInteger(tx.evm?.nonce) && (tx.evm?.nonce ?? -1) >= 0, 'evm.nonce').toBe(true);
+    expect(tx.evm?.gas ?? 0, 'evm.gas').toBeGreaterThanOrEqual(21_000);
+  }
 }
+/**
+ * A transaction's message hash as basket-tx.ts defines it for its family, from its own bytes. Solana:
+ * the SHA-256 of the serialized transaction less its signatures (a count, then 64 bytes each). EVM:
+ * the SHA-256 of `evmCallPreimage` over the chain id, the signer, the target, the value and the data.
+ */
+function hashByRule(tx: BuiltTx): string {
+  if (tx.chain === 'evm')
+    return sha256Hex(
+      evmCallPreimage({
+        chainId: tx.evm?.chainId ?? -1,
+        signer: tx.signer,
+        to: tx.evm?.to ?? '',
+        value: tx.evm?.value ?? '',
+        data: tx.payload,
+      }),
+    );
+  const bytes = Buffer.from(tx.payload, 'base64');
+  // The count of signatures is a compact-u16: seven bits a byte, the high bit says another follows.
+  let [count, at, shift] = [0, 0, 0];
+  for (;;) {
+    const byte = bytes[at] ?? 0;
+    at += 1;
+    count |= (byte & 0x7f) << shift;
+    if (!(byte & 0x80) || at >= 3) break;
+    shift += 7;
+  }
+  return sha256Hex(bytes.subarray(at + 64 * count));
+}
+/** An attempt as the order layer would store it for a transaction it had built. */
+const attemptOf = (tx: BuiltTx): AttemptRef => ({
+  messageHash: tx.messageHash,
+  signer: tx.signer,
+  validUntil: tx.lastValidBlockHeight === undefined ? null : String(tx.lastValidBlockHeight),
+  nonce: tx.evm?.nonce ?? null,
+});
 const delta = (tx: BuiltTx, holder: 'wallet' | 'vault', asset: string) =>
   tx.preview.changes
     .filter((x) => x.holder === holder && x.asset === asset)
@@ -144,10 +267,11 @@ async function refuses(work: Promise<unknown>, code: ChainErrorCode) {
   );
   expect(outcome, `expected a refusal with ${code}`).toBeInstanceOf(ChainError);
   expect((outcome as ChainError).code).toBe(code);
-  expect(typeof (outcome as ChainError).retryable).toBe('boolean');
+  // Whether to try again is the code's own answer, the same from every adapter.
+  expect((outcome as ChainError).retryable, `${code} retryable`).toBe(CHAIN_ERROR_RETRYABLE[code]);
 }
 
-async function vaultAt(c: Ctx, address: Address): Promise<VaultState> {
+async function vaultAt(c: ReadCtx, address: Address): Promise<VaultState> {
   const v = await c.a.getVault(address);
   if (!v) throw new Error(`no vault at ${address}`);
   return v;
@@ -156,7 +280,7 @@ const held = (v: VaultState, asset: string) =>
   BigInt(
     asset === v.cash.asset ? v.cash.raw : (v.positions.find((p) => p.asset === asset)?.raw ?? 0),
   );
-async function walletRaw(c: Ctx, owner: Address, asset: string): Promise<bigint> {
+async function walletRaw(c: ReadCtx, owner: Address, asset: string): Promise<bigint> {
   const holdings = await c.a.getWalletHoldings(owner);
   return BigInt(holdings.find((h) => h.asset === asset)?.raw ?? 0);
 }
@@ -167,16 +291,72 @@ async function land(c: Ctx, tx: BuiltTx) {
   expect(status.status).toBe('confirmed');
   expect(status.error).toBeUndefined();
 }
+/** A relay does not wait for the chain: asks until the transaction is no longer pending, or time is up. */
+async function settled(c: Ctx, txId: string, validUntil?: string): Promise<TxStatus> {
+  const until = Date.now() + (c.f.relayWaitMs ?? 0);
+  for (;;) {
+    const status = exact(TxStatus, await c.a.track(txId, validUntil));
+    if (status.status !== 'pending' || Date.now() >= until) return status;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
+/** The same signed bytes with the last one changed: base64 on Solana, 0x hex on EVM. */
+function altered(c: Ctx, signed: string): string {
+  if (chainFamily(c.a.chain) === 'evm')
+    return `${signed.slice(0, -1)}${signed.endsWith('0') ? '1' : '0'}`;
+  const bytes = Buffer.from(signed, 'base64');
+  bytes[bytes.length - 1] = (bytes[bytes.length - 1] ?? 0) ^ 1;
+  return bytes.toString('base64');
+}
+/** What a refusal was, or 'answered' when there was none. */
+const outcomeOf = (work: Promise<unknown>) =>
+  work.then(
+    () => 'answered' as const,
+    (e: unknown) => e,
+  );
+
+/**
+ * The fixture's keeper trade, sized so the asset ends `pastBps` beyond its target on the far side: over
+ * it for a purchase, under it for a sale. Weights are as the vault counts them: a share of everything
+ * it holds, cash at one dollar. Sized at the reference prices, so a trade's cost leaves it a little
+ * short of the figure; the cases keep clear of the band's edge by more than that.
+ */
+async function keeperTradePast(c: Ctx, pastBps: number): Promise<Trade> {
+  const { sell, buy } = c.f.keeperTrade;
+  const buying = sell === c.cash.id;
+  const other = buying ? buy : sell;
+  const state = await vaultAt(c, c.f.vault);
+  const seen = view(state, await c.a.getPrices(c.assets.map((x) => x.id)), c.assets);
+  const position = seen.positions.find((p) => p.asset === other);
+  const asset = c.assets.find((x) => x.id === other);
+  const price = (await c.a.getPrices([other]))[0];
+  if (!position || !asset || !price)
+    throw new Error(`${other} is not a priced position of the vault`);
+  const total = Number(seen.valueUsd);
+  const held = Number(position.valueUsd ?? 0);
+  const far = position.targetBps + (buying ? pastBps : -pastBps);
+  const usd = buying ? (total * far) / 10_000 - held : held - (total * far) / 10_000;
+  if (!(usd > 0)) throw new Error('the fixture vault is not on the near side of that target');
+  const raw = buying
+    ? usd * 10 ** c.cash.decimals
+    : (usd / Number(price.usdPerToken)) * 10 ** asset.decimals;
+  return { sell, buy, amountInRaw: BigInt(Math.floor(raw)).toString() };
+}
 
 const CASES: Case[] = [];
-const group = (name: string, cases: Record<string, (c: Ctx) => Promise<void>>) => {
+const group = (name: ContractGroup, cases: Record<string, (c: Ctx) => Promise<void>>) => {
   for (const [title, run] of Object.entries(cases)) CASES.push({ group: name, name: title, run });
 };
+/** A group whose cases see a reader only: the type keeps a builder and the registry out of them. */
+const readerGroup = (name: 'reads', cases: Record<string, (c: ReadCtx) => Promise<void>>) =>
+  group(name, cases);
 
-group('reads', {
-  'names its chain and its capabilities': async ({ a }) => {
+readerGroup('reads', {
+  'names its chain, its capabilities and the label on its figures': async ({ a, f }) => {
     ChainId.parse(a.chain);
     exact(Capabilities, a.capabilities);
+    // The adapter says itself what everything it returns is labelled.
+    expect(Provenance.parse(a.provenance)).toBe(f.provenance);
   },
 
   'lists its assets: unique ids on its own chain, exactly one cash token': async (c) => {
@@ -201,9 +381,17 @@ group('reads', {
         expect(Number(p.usdPerToken)).toBeGreaterThan(0);
         expect(p.provenance).toBe(c.f.provenance);
         expect(p.fetchedAt >= c.f.notBefore).toBe(true);
+        // Its age, and the age past which the chain's vault no longer trades on it.
+        expect(Number.isInteger(p.maxAgeSeconds) && p.maxAgeSeconds > 0).toBe(true);
         // The dollar token is worth about a dollar wherever it has a price at all.
         if (p.asset === c.cash.id) expect(Math.abs(Number(p.usdPerToken) - 1)).toBeLessThan(0.1);
       }
+      // A price older than the chain's limit is still handed over, and says of itself that it is
+      // stale. Where the fixture names none, none is. (On a running clock the others age too, so
+      // nothing is said of them where one is named.)
+      const stale = prices.filter((p) => isStalePrice(p)).map((p) => p.asset);
+      if (c.f.stalePriced) expect(stale).toContain(c.f.stalePriced);
+      else expect(stale).toEqual([]);
       const priced = prices.map((p) => p.asset);
       expect(new Set(priced).size).toBe(priced.length);
       for (const x of c.assets) if (x.priceKind !== 'none') expect(priced).toContain(x.id);
@@ -224,7 +412,7 @@ group('reads', {
       expect({ ...listed, observedAt: '' }).toEqual({ ...one, observedAt: '' });
     }
     const [following, manual] = [await vaultAt(c, c.f.vault), await vaultAt(c, c.f.manualVault)];
-    expect([following.autoFollow, following.recipeOnchainId]).toEqual([true, c.f.recipeOnchainId]);
+    expect(following.autoFollow).toBe(true);
     expect([manual.autoFollow, manual.recipeOnchainId, manual.pending]).toEqual([
       false,
       null,
@@ -248,27 +436,91 @@ group('reads', {
       expect(decimals, `${h.asset} is listed`).toBeDefined();
       expect(h.display).toBe(displayAmount(h.raw, h.multiplier, decimals ?? 0));
     }
-  },
-
-  'stores targets that add up to 10,000, on listed assets, never on cash': async (c) => {
-    for (const address of [c.f.vault, c.f.manualVault, c.f.newAssetVault]) {
-      const vault = await vaultAt(c, address);
-      expect(vault.positions.reduce((n, p) => n + p.targetBps, 0)).toBe(10_000);
-      expect(BigInt(vault.cash.raw)).toBeGreaterThan(0n);
-      expect(vault.cash.asset).toBe(c.cash.id);
-      for (const p of vault.positions) expect(p.asset).not.toBe(c.cash.id);
+    // A multiplier the issuer has scheduled shows beside the one in force, on that asset alone.
+    const scheduled = holdings.filter((h) => h.scheduled !== undefined);
+    expect([...new Set(scheduled.map((h) => h.asset))]).toEqual(
+      c.f.scheduledAsset ? [c.f.scheduledAsset] : [],
+    );
+    for (const h of scheduled) {
+      expect(Number(h.scheduled?.multiplier)).toBeGreaterThan(0);
+      expect(h.scheduled?.effectiveAt).toBeGreaterThan(Date.parse(c.f.notBefore) / 1000);
     }
-    const vault = await vaultAt(c, c.f.vault);
-    expect(vault.positions.some((p) => BigInt(p.raw) > 0n)).toBe(true);
   },
 
-  'lists exactly the vaults with auto-follow on, and filters them by recipe': async (c) => {
+  'stores targets that add up to at most 10,000, and to exactly that when it follows, on listed assets, never on cash':
+    async (c) => {
+      for (const address of [c.f.vault, c.f.manualVault, c.f.newAssetVault]) {
+        const vault = await vaultAt(c, address);
+        // A person's own targets may leave a share in cash; a shared portfolio is always the whole.
+        const sum = vault.positions.reduce((n, p) => n + p.targetBps, 0);
+        expect(sum).toBeGreaterThan(0);
+        expect(sum).toBeLessThanOrEqual(10_000);
+        if (vault.recipeOnchainId !== null) expect(sum).toBe(10_000);
+        for (const p of vault.positions) expect(p.targetBps).toBeGreaterThanOrEqual(0);
+        expect(BigInt(vault.cash.raw)).toBeGreaterThan(0n);
+        expect(vault.cash.asset).toBe(c.cash.id);
+        for (const p of vault.positions) expect(p.asset).not.toBe(c.cash.id);
+      }
+      const vault = await vaultAt(c, c.f.vault);
+      expect(vault.positions.some((p) => BigInt(p.raw) > 0n)).toBe(true);
+    },
+
+  'lists exactly the vaults with auto-follow on': async (c) => {
     const all = await c.a.listAutoFollowVaults();
     expect(all).toContain(c.f.vault);
     expect(all).toContain(c.f.newAssetVault);
     expect(all).not.toContain(c.f.manualVault);
     expect(new Set(all).size).toBe(all.length);
     for (const address of all) expect((await vaultAt(c, address)).autoFollow).toBe(true);
+  },
+
+  'reads what a wallet holds': async (c) => {
+    const holdings = await c.a.getWalletHoldings(c.f.owner);
+    for (const h of holdings) exact(Holding, h);
+    const cash = holdings.find((h) => h.asset === c.cash.id);
+    expect(BigInt(cash?.raw ?? 0)).toBeGreaterThanOrEqual(2n * BigInt(c.f.depositRaw));
+  },
+
+  'says whether a wallet can pay: cash and gas, and ok only when both are there': async (c) => {
+    const need = { cashRaw: c.f.depositRaw, legs: 2, newVault: true };
+    for (const who of [c.f.owner, c.f.stranger]) {
+      const r = exact(Funding, await c.a.funding(who, need));
+      expect(r.chain).toBe(c.a.chain);
+      expect(r.cashNeedRaw).toBe(c.f.depositRaw);
+      // Two transactions and a new vault cost something on every chain.
+      expect(BigInt(r.gasNeedRaw)).toBeGreaterThan(0n);
+      expect(r.ok).toBe(
+        BigInt(r.cashHaveRaw) >= BigInt(r.cashNeedRaw) &&
+          BigInt(r.gasHaveRaw) >= BigInt(r.gasNeedRaw),
+      );
+    }
+    const owner = await c.a.funding(c.f.owner, need);
+    expect(owner.ok).toBe(true);
+    expect(BigInt(owner.cashHaveRaw)).toBe(await walletRaw(c, c.f.owner, c.cash.id));
+    expect((await c.a.funding(c.f.stranger, need)).ok).toBe(false);
+    const more = await c.a.funding(c.f.owner, { ...need, legs: 6 });
+    expect(BigInt(more.gasNeedRaw)).toBeGreaterThan(BigInt(owner.gasNeedRaw));
+    // Told how many accounts the steps open, it never asks for more than when it has to assume.
+    const none = exact(Funding, await c.a.funding(c.f.owner, { ...need, newAccounts: 0 }));
+    const some = await c.a.funding(c.f.owner, { ...need, newAccounts: 2 });
+    expect(BigInt(none.gasNeedRaw)).toBeLessThanOrEqual(BigInt(owner.gasNeedRaw));
+    expect(BigInt(some.gasNeedRaw)).toBeGreaterThanOrEqual(BigInt(none.gasNeedRaw));
+    expect(BigInt(none.gasNeedRaw)).toBeGreaterThan(0n);
+  },
+
+  'tracks an id it has never seen as pending or expired, never as landed': async (c) => {
+    const s = exact(TxStatus, await c.a.track(c.f.unknownTxId));
+    expect(['pending', 'expired']).toContain(s.status);
+  },
+});
+
+group('shared portfolios', {
+  'a vault that follows names the shared portfolio it follows': async (c) => {
+    const following = await vaultAt(c, c.f.vault);
+    expect([following.autoFollow, following.recipeOnchainId]).toEqual([true, c.f.recipeOnchainId]);
+  },
+
+  'filters the auto-follow list by the shared portfolio a vault follows': async (c) => {
     const followers = await c.a.listAutoFollowVaults(c.f.recipeOnchainId);
     expect(followers).toContain(c.f.vault);
     expect(followers).not.toContain(c.f.newAssetVault);
@@ -306,35 +558,9 @@ group('reads', {
       expect(vault.pending).toMatchObject({ version: c.activeVersion, newAssets: [] });
     else expect(vault.pending).toBeNull();
   },
+});
 
-  'reads what a wallet holds': async (c) => {
-    const holdings = await c.a.getWalletHoldings(c.f.owner);
-    for (const h of holdings) exact(Holding, h);
-    const cash = holdings.find((h) => h.asset === c.cash.id);
-    expect(BigInt(cash?.raw ?? 0)).toBeGreaterThanOrEqual(2n * BigInt(c.f.depositRaw));
-  },
-
-  'says whether a wallet can pay: cash and gas, and ok only when both are there': async (c) => {
-    const need = { cashRaw: c.f.depositRaw, legs: 2, newVault: true };
-    for (const who of [c.f.owner, c.f.stranger]) {
-      const r = exact(Funding, await c.a.funding(who, need));
-      expect(r.chain).toBe(c.a.chain);
-      expect(r.cashNeedRaw).toBe(c.f.depositRaw);
-      // Two transactions and a new vault cost something on every chain.
-      expect(BigInt(r.gasNeedRaw)).toBeGreaterThan(0n);
-      expect(r.ok).toBe(
-        BigInt(r.cashHaveRaw) >= BigInt(r.cashNeedRaw) &&
-          BigInt(r.gasHaveRaw) >= BigInt(r.gasNeedRaw),
-      );
-    }
-    const owner = await c.a.funding(c.f.owner, need);
-    expect(owner.ok).toBe(true);
-    expect(BigInt(owner.cashHaveRaw)).toBe(await walletRaw(c, c.f.owner, c.cash.id));
-    expect((await c.a.funding(c.f.stranger, need)).ok).toBe(false);
-    const more = await c.a.funding(c.f.owner, { ...need, legs: 6 });
-    expect(BigInt(more.gasNeedRaw)).toBeGreaterThan(BigInt(owner.gasNeedRaw));
-  },
-
+group('quotes', {
   'quotes a trade: the same trade back, a floor under the output, a cost in range': async (c) => {
     const q = exact(Quote, await c.a.quote(c.f.ownerTrade, c.f.owner));
     expect(q.trade).toEqual(c.f.ownerTrade);
@@ -352,19 +578,25 @@ group('reads', {
     };
     expect(BigInt((await c.a.quote(double, c.f.owner)).outRaw)).toBeGreaterThan(BigInt(q.outRaw));
   },
-
-  'tracks an id it has never seen as pending or expired, never as landed': async (c) => {
-    const s = exact(TxStatus, await c.a.track(c.f.unknownTxId));
-    expect(['pending', 'expired']).toContain(s.status);
-  },
 });
 
 group('builds', {
-  'approves cash where the chain needs it, and refuses where it does not': async (c) => {
-    const args = { owner: c.f.owner, spender: c.f.spender, amountRaw: c.f.depositRaw };
-    if (c.a.capabilities.needsApprove)
-      checkTx(c, await c.a.buildApprove(args), 'approve', c.f.owner);
-    else await refuses(c.a.buildApprove(args), 'NotSupported');
+  'approves cash for a plan where the chain needs it, and refuses where it does not': async (c) => {
+    // The caller names the plan. Who may take the cash is the adapter's to work out.
+    const args = { owner: c.f.owner, basketId: c.f.freshBasketId, amountRaw: c.f.depositRaw };
+    if (!c.a.capabilities.needsApprove) {
+      await refuses(c.a.buildApprove(args), 'NotSupported');
+      return;
+    }
+    const tx = await c.a.buildApprove(args);
+    checkTx(c, tx, 'approve', c.f.owner);
+    // An approval is a call to the cash token, and moves nothing.
+    expect(tx.evm?.to).toBe(c.cash.address);
+    expect(tx.preview.changes).toEqual([]);
+    const used = (await vaultAt(c, c.f.vault)).basketId;
+    checkTx(c, await c.a.buildApprove({ ...args, basketId: used }), 'approve', c.f.owner);
+    const named = { ...args, spender: c.f.stranger };
+    await refuses(c.a.buildApprove(named), 'BadInput');
   },
 
   'opens a vault with its own targets and a first deposit of cash': async (c) => {
@@ -418,6 +650,9 @@ group('builds', {
     checkTx(c, tx, 'create_vault', c.f.owner);
     expect(delta(tx, 'vault', first.asset)).toBeGreaterThan(0n);
     expect(delta(tx, 'vault', c.cash.id)).toBe(0n);
+    expect(tx.preview.minimums.map((m) => [m.sell, m.buy, m.inRaw])).toEqual([
+      [c.cash.id, first.asset, c.f.depositRaw],
+    ]);
   },
 
   'previews a deposit as cash leaving the wallet for the vault, and nothing else': async (c) => {
@@ -427,6 +662,7 @@ group('builds', {
       slippageBps: 100,
     });
     checkTx(c, tx, 'deposit', c.f.owner);
+    expect(tx.preview.minimums).toEqual([]);
     expect(tx.preview.changes).toHaveLength(2);
     expect(delta(tx, 'wallet', c.cash.id)).toBe(-BigInt(c.f.depositRaw));
     expect(delta(tx, 'vault', c.cash.id)).toBe(BigInt(c.f.depositRaw));
@@ -442,6 +678,29 @@ group('builds', {
     expect(delta(tx, 'vault', c.f.ownerTrade.sell)).toBe(-BigInt(c.f.ownerTrade.amountInRaw));
     expect(delta(tx, 'vault', c.f.ownerTrade.buy)).toBeGreaterThan(0n);
     expect(tx.preview.changes.filter((x) => x.holder === 'wallet')).toEqual([]);
+  },
+
+  'states the least each trade accepts, one entry per trade and in their order': async (c) => {
+    const { sell, buy, amountInRaw } = c.f.ownerTrade;
+    const half = { sell, buy, amountInRaw: (BigInt(amountInRaw) / 2n).toString() };
+    // As many trades as one transaction takes here: two where the chain allows, one where it does not.
+    const trades = c.a.capabilities.maxTradesPerTx > 1 ? [half, half] : [c.f.ownerTrade];
+    const slippageBps = 100;
+    const tx = await c.a.buildOwnerSwap({ vault: c.f.vault, trades, slippageBps });
+    const { minimums } = tx.preview;
+    expect(minimums.map((m) => [m.sell, m.buy, m.inRaw])).toEqual(
+      trades.map((t) => [t.sell, t.buy, t.amountInRaw]),
+    );
+    const out = delta(tx, 'vault', buy);
+    const least = minimums.reduce((n, m) => n + BigInt(m.minOutRaw), 0n);
+    for (const m of minimums) expect(BigInt(m.minOutRaw)).toBeGreaterThan(0n);
+    // A floor under what the simulation paid out, and no further under it than twice the slippage.
+    expect(least).toBeLessThanOrEqual(out);
+    expect(least).toBeGreaterThanOrEqual((out * BigInt(10_000 - 2 * slippageBps)) / 10_000n);
+    // A tighter slippage is a higher floor.
+    const tight = await c.a.buildOwnerSwap({ vault: c.f.vault, trades, slippageBps: 0 });
+    const tightLeast = tight.preview.minimums.reduce((n, m) => n + BigInt(m.minOutRaw), 0n);
+    expect(tightLeast).toBeGreaterThan(least);
   },
 
   'previews a withdrawal as the tokens themselves going to the owner': async (c) => {
@@ -476,6 +735,15 @@ group('builds', {
     ];
     expect(new Set(txs.map((tx) => tx.messageHash)).size).toBe(txs.length);
     expect(new Set(txs.map((tx) => tx.payload)).size).toBe(txs.length);
+  },
+
+  'lets the keeper end inside the band, short of the target or a little past it': async (c) => {
+    expect(c.f.bandBps).toBeGreaterThan(0);
+    // Half a band short, on the target, and half a band past it: all three are where a leg may end.
+    for (const past of [-c.f.bandBps / 2, 0, c.f.bandBps / 2]) {
+      const tx = await c.a.buildKeeperLeg(c.f.vault, await keeperTradePast(c, past));
+      checkTx(c, tx, 'keeper_leg', c.keeper);
+    }
   },
 
   'has no builder that sets a keeper or an operator': async ({ a }) => {
@@ -542,8 +810,11 @@ group('refusals', {
       c.a.buildDeposit({ vault: 'not-an-address', amountRaw: '1', slippageBps: 100 }),
       'BadInput',
     );
-    const short = [first, { ...second, weightBps: 10_000 - first.weightBps - 1 }];
-    await refuses(c.a.buildSetTargets({ vault, targets: short }), 'BadInput');
+    // Over the whole, by one basis point. Under it is allowed: the rest is the plan's cash share.
+    const over = [first, { ...second, weightBps: 10_000 - first.weightBps + 1 }];
+    await refuses(c.a.buildSetTargets({ vault, targets: over }), 'BadInput');
+    const nothing = [first, { ...second, weightBps: 0 }];
+    await refuses(c.a.buildSetTargets({ vault, targets: nothing }), 'BadInput');
     const twice = [
       { asset: first.asset, weightBps: 5000 },
       { asset: first.asset, weightBps: 5000 },
@@ -553,7 +824,7 @@ group('refusals', {
     await refuses(c.a.buildOwnerSwap({ vault, trades: [sameSide], slippageBps: 100 }), 'BadInput');
     if (c.a.capabilities.needsApprove)
       await refuses(
-        c.a.buildApprove({ owner: c.f.owner, spender: c.f.spender, amountRaw: '1.5' }),
+        c.a.buildApprove({ owner: c.f.owner, basketId: c.f.freshBasketId, amountRaw: '1.5' }),
         'BadInput',
       );
   },
@@ -594,6 +865,12 @@ group('refusals', {
     await refuses(c.a.buildKeeperLeg(c.f.vault, c.f.awayTrade), 'NotTowardTarget');
   },
 
+  'the keeper, past a target by more than the band: PastTarget': async (c) => {
+    // Three bands past the target, and 2% of the vault past it: both end outside the band.
+    for (const past of [3 * c.f.bandBps, Math.max(200, 3 * c.f.bandBps)])
+      await refuses(c.a.buildKeeperLeg(c.f.vault, await keeperTradePast(c, past)), 'PastTarget');
+  },
+
   'a shared portfolio outside the author limits: CreatorLimit': async (c) => {
     const [first, second, ...rest] = c.f.publishRecipe.components;
     if (!first || !second || rest.length === 0)
@@ -620,6 +897,18 @@ group('refusals', {
     await refuses(publish(again), 'CreatorLimit');
   },
 
+  'a nonce on a chain that has none: NotSupported': async (c) => {
+    if (chainFamily(c.a.chain) === 'evm') return;
+    await refuses(
+      c.a.buildSetAutoFollow({ vault: c.f.manualVault, on: true, nonce: 0 }),
+      'NotSupported',
+    );
+    await refuses(
+      c.a.buildDeposit({ vault: c.f.vault, amountRaw: '1', slippageBps: 100, nonce: 3 }),
+      'NotSupported',
+    );
+  },
+
   'adopting a version that adds an asset: NewAssetNeedsOwner': async (c) => {
     await refuses(c.a.buildAdoptVersion(c.f.newAssetVault), 'NewAssetNeedsOwner');
   },
@@ -644,6 +933,146 @@ group('refusals', {
       );
       const stale = (await vaultAt(c, c.f.newAssetVault)).acceptedVersion;
       await refuses(c.a.buildAcceptVersion({ ...args, expectedVersion: stale }), 'VersionMismatch');
+    },
+});
+
+group('signed bytes', {
+  'reads the hash it built back from the signed bytes, relays them, and finds them on the chain':
+    async (c) => {
+      const amount = BigInt(c.f.depositRaw) / 4n;
+      const before = await vaultAt(c, c.f.vault);
+      const tx = await c.a.buildDeposit({
+        vault: c.f.vault,
+        amountRaw: amount.toString(),
+        slippageBps: 100,
+      });
+      const attempt = attemptOf(tx);
+      // Built and not sent: it can still land.
+      expect(exact(AttemptFate, await c.a.fate(attempt))).toEqual({ state: 'open' });
+
+      const signed = await c.f.sign(tx);
+      // Signing changes the signature and not the message.
+      expect(await c.a.messageHashOf(signed)).toBe(tx.messageHash);
+      const { txId, validUntil } = await c.a.relay(signed);
+      expect((await settled(c, txId, validUntil)).status).toBe('confirmed');
+      expect(BigInt((await vaultAt(c, c.f.vault)).cash.raw) - BigInt(before.cash.raw)).toBe(amount);
+
+      expect(await c.a.carries(txId, tx.messageHash)).toBe('this');
+      expect(exact(AttemptFate, await c.a.fate(attempt))).toEqual({ state: 'landed', txId });
+      // The nonce of record is in the signed bytes and on the transaction the chain has: the one the
+      // build stated, since the fixture signs with it. Solana has none.
+      const nonce = chainFamily(c.a.chain) === 'evm' ? (tx.evm?.nonce ?? null) : null;
+      expect(await c.a.nonceOf({ signedTx: signed })).toBe(nonce);
+      expect(await c.a.nonceOf({ txId })).toBe(nonce);
+      expect(await c.a.nonceOf({ txId: c.f.unknownTxId })).toBeNull();
+
+      // The same bytes a second time land nothing more, whether the adapter answers or refuses.
+      const again = await outcomeOf(c.a.relay(signed));
+      if (again !== 'answered') expect(again).toBeInstanceOf(ChainError);
+      expect(BigInt((await vaultAt(c, c.f.vault)).cash.raw) - BigInt(before.cash.raw)).toBe(amount);
+    },
+
+  'does not take altered bytes for the ones it built, and lands nothing when asked to relay them':
+    async (c) => {
+      const before = await vaultAt(c, c.f.vault);
+      const wallet = await walletRaw(c, c.f.owner, c.cash.id);
+      const tx = await c.a.buildDeposit({
+        vault: c.f.vault,
+        amountRaw: (BigInt(c.f.depositRaw) / 4n).toString(),
+        slippageBps: 100,
+      });
+      const wrong = altered(c, await c.f.sign(tx));
+      // Either it cannot be read at all, or it is another message.
+      const hash = await outcomeOf(
+        c.a.messageHashOf(wrong).then((h) => expect(h).not.toBe(tx.messageHash)),
+      );
+      if (hash !== 'answered') {
+        expect(hash).toBeInstanceOf(ChainError);
+        expect((hash as ChainError).code).toBe('BadInput');
+      }
+      const relayed = await outcomeOf(c.a.relay(wrong));
+      expect(relayed, 'altered bytes are refused').toBeInstanceOf(ChainError);
+      expect(await vaultAt(c, c.f.vault)).toEqual({ ...before, observedAt: expect.any(String) });
+      expect(await walletRaw(c, c.f.owner, c.cash.id)).toBe(wallet);
+    },
+
+  'says of a transaction whether it is this call, another call, or one the chain has not seen':
+    async (c) => {
+      const [one, other] = [
+        await c.a.buildSetAutoFollow({ vault: c.f.manualVault, on: false }),
+        await c.a.buildSetAutoFollow({ vault: c.f.vault, on: true }),
+      ];
+      expect(one.messageHash).not.toBe(other.messageHash);
+      const { txId } = await c.f.send(one);
+      expect(Carried.parse(await c.a.carries(txId, one.messageHash))).toBe('this');
+      // The wallet sent it itself and nobody reported it: the adapter finds it on the chain, not in a
+      // memory of what it relayed.
+      expect(await c.a.fate(attemptOf(one))).toEqual({ state: 'landed', txId });
+      // An unrelated transaction of the same wallet does not stand for another step.
+      expect(await c.a.carries(txId, other.messageHash)).toBe('another');
+      // An id the chain never saw is neither: it may yet arrive, and the caller asks again.
+      expect(await c.a.carries(c.f.unknownTxId, one.messageHash)).toBe('unseen');
+      expect(await c.a.carries(c.f.unknownTxId, other.messageHash)).toBe('unseen');
+    },
+
+  "does not take one wallet's transaction for the same call by another wallet": async (c) => {
+    if (!c.a.capabilities.needsApprove) return;
+    // The same approval, for the same plan id and amount, by two wallets: the call data is the same
+    // and the signer is not. The keeper is the second wallet: it can pay for a simulation.
+    const approval = { basketId: c.f.freshBasketId, amountRaw: c.f.depositRaw };
+    const [mine, theirs] = [
+      await c.a.buildApprove({ owner: c.f.owner, ...approval }),
+      await c.a.buildApprove({ owner: c.keeper, ...approval }),
+    ];
+    expect(theirs.signer).toBe(c.keeper);
+    expect(theirs.messageHash).not.toBe(mine.messageHash);
+    const { txId } = await c.f.send(mine);
+    expect(await c.a.carries(txId, mine.messageHash)).toBe('this');
+    expect(await c.a.carries(txId, theirs.messageHash)).toBe('another');
+  },
+
+  'two calls built on one nonce: one lands, and the other is gone': async (c) => {
+    if (chainFamily(c.a.chain) !== 'evm') return;
+    // Neither changes anything: the first vault is already off, the second already on.
+    const [one, other] = [
+      await c.a.buildSetAutoFollow({ vault: c.f.manualVault, on: false }),
+      await c.a.buildSetAutoFollow({ vault: c.f.vault, on: true }),
+    ];
+    // Both are built on the signer's next nonce: the chain has not moved between them.
+    expect(other.evm?.nonce).toBe(one.evm?.nonce);
+    expect(await c.a.fate(attemptOf(other))).toEqual({ state: 'open' });
+    const { txId } = await c.f.send(one);
+    expect(await c.a.fate(attemptOf(one))).toEqual({ state: 'landed', txId });
+    // Another call used the nonce, so this one can never land: nothing is left to wait for.
+    expect(exact(AttemptFate, await c.a.fate(attemptOf(other)))).toEqual({ state: 'gone' });
+
+    // A rebuild is given the nonce of the attempt that is still open, and states it. The hash is of
+    // the call alone, so the same call on any nonce has the same hash.
+    const open = await c.a.buildSetAutoFollow({ vault: c.f.vault, on: true });
+    expect(open.evm?.nonce).toBe((one.evm?.nonce ?? 0) + 1);
+    const nonce = (open.evm?.nonce ?? 0) + 3;
+    const rebuilt = await c.a.buildSetAutoFollow({ vault: c.f.vault, on: true, nonce });
+    expect(rebuilt.evm?.nonce).toBe(nonce);
+    expect(rebuilt.messageHash).toBe(open.messageHash);
+  },
+
+  'the same call built again is its own attempt: open, not landed because the first one did':
+    async (c) => {
+      if (chainFamily(c.a.chain) !== 'evm') return;
+      const deposit = {
+        vault: c.f.vault,
+        amountRaw: (BigInt(c.f.depositRaw) / 8n).toString(),
+        slippageBps: 100,
+      };
+      const first = await c.a.buildDeposit(deposit);
+      const { txId } = await c.f.send(first);
+      // An identical deposit, as a second order of the same person would build it.
+      const second = await c.a.buildDeposit(deposit);
+      expect(second.messageHash).toBe(first.messageHash);
+      expect(second.evm?.nonce).toBe((first.evm?.nonce ?? 0) + 1);
+      expect(await c.a.fate(attemptOf(first))).toEqual({ state: 'landed', txId });
+      // Told apart by the nonce: the second has not been sent, and can still land.
+      expect(await c.a.fate(attemptOf(second))).toEqual({ state: 'open' });
     },
 });
 
@@ -685,12 +1114,45 @@ group('state after a transaction lands', {
     expect(await c.a.getWalletHoldings(c.f.owner)).toEqual(wallet);
   },
 
+  "a price that moves past a trade's minimum reverts it, and the transaction is tracked as reverted":
+    async (c) => {
+      const trade = c.f.ownerTrade;
+      const buying = trade.sell === c.cash.id;
+      const before = await vaultAt(c, c.f.vault);
+      const tx = await c.a.buildOwnerSwap({ vault: c.f.vault, trades: [trade], slippageBps: 50 });
+      expect(BigInt(tx.preview.minimums[0]?.minOutRaw ?? 0)).toBeGreaterThan(0n);
+      // After the build the price moves 3% against the trade: six times the slippage it was built
+      // with. The minimum is in the bytes, so the transaction lands and reverts.
+      let status: TxStatus | undefined;
+      await c.f.withPriceMoved(buying ? trade.buy : trade.sell, buying ? 300 : -300, async () => {
+        const { txId, validUntil } = await c.f.send(tx);
+        status = exact(TxStatus, await c.a.track(txId, validUntil));
+      });
+      expect(status?.status).toBe('reverted');
+      expect(status?.error?.code).toBe('ReceivedTooLittle');
+      expect(status?.error?.message.length).toBeGreaterThan(0);
+      // Nothing moved.
+      const after = await vaultAt(c, c.f.vault);
+      expect([after.cash.raw, after.positions.map((p) => [p.asset, p.raw])]).toEqual([
+        before.cash.raw,
+        before.positions.map((p) => [p.asset, p.raw]),
+      ]);
+    },
+
   'a keeper trade moves the vault toward its target and stamps the asset': async (c) => {
     const { sell, buy, amountInRaw } = c.f.keeperTrade;
     const other = sell === c.cash.id ? buy : sell;
     const before = await vaultAt(c, c.f.vault);
     const tx = await c.a.buildKeeperLeg(c.f.vault, c.f.keeperTrade);
     checkTx(c, tx, 'keeper_leg', c.keeper);
+    // A keeper leg states a minimum only where its bytes carry one: EVM's keeperSwap takes minOut,
+    // Solana's keeper_leg takes none and the program works it out.
+    if (chainFamily(c.a.chain) === 'evm') {
+      expect(tx.preview.minimums.map((m) => [m.sell, m.buy, m.inRaw])).toEqual([
+        [sell, buy, amountInRaw],
+      ]);
+      expect(BigInt(tx.preview.minimums[0]?.minOutRaw ?? 0)).toBeGreaterThan(0n);
+    } else expect(tx.preview.minimums).toEqual([]);
     await land(c, tx);
     const after = await vaultAt(c, c.f.vault);
     expect(held(before, sell) - held(after, sell)).toBe(BigInt(amountInRaw));
@@ -783,6 +1245,104 @@ group('state after a transaction lands', {
     await refuses(c.a.buildKeeperLeg(c.f.newAssetVault, c.f.keeperTrade), 'AutoFollowOff');
   },
 
+  'targets that leave a share in cash are stored as they are: at most 10,000, not exactly': async (
+    c,
+  ) => {
+    const [first, second] = c.targets;
+    if (!first || !second) throw new Error('the fixture recipe has fewer than two assets');
+    // 85% in two assets: the other 15% is the plan's cash share, and no asset is given it.
+    const targets = [
+      { asset: first.asset, weightBps: 6000 },
+      { asset: second.asset, weightBps: 2500 },
+    ];
+    const tx = await c.a.buildSetTargets({ vault: c.f.manualVault, targets });
+    checkTx(c, tx, 'set_targets', c.f.owner);
+    await land(c, tx);
+    const after = await vaultAt(c, c.f.manualVault);
+    const stored = after.positions.filter((p) => p.targetBps > 0);
+    expect(new Map(stored.map((p) => [p.asset, p.targetBps]))).toEqual(
+      new Map(targets.map((t) => [t.asset, t.weightBps])),
+    );
+    expect(after.positions.reduce((n, p) => n + p.targetBps, 0)).toBe(8500);
+    expect(after.positions.map((p) => p.asset)).not.toContain(c.cash.id);
+  },
+
+  'an approval is for the plan it names: its vault takes that much, and no more': async (c) => {
+    if (!c.a.capabilities.needsApprove) return;
+    const manual = await vaultAt(c, c.f.manualVault);
+    const amount = BigInt(c.f.depositRaw) / 8n;
+    const deposit = (raw: bigint) =>
+      c.a.buildDeposit({ vault: c.f.manualVault, amountRaw: raw.toString(), slippageBps: 100 });
+    // An approval replaces the one before it: after this the plan's vault may take exactly `amount`.
+    const approve = await c.a.buildApprove({
+      owner: c.f.owner,
+      basketId: manual.basketId,
+      amountRaw: amount.toString(),
+    });
+    await land(c, approve);
+    await refuses(deposit(amount + 1n), 'AllowanceTooLow');
+    await land(c, await deposit(amount));
+    const after = await vaultAt(c, c.f.manualVault);
+    expect(BigInt(after.cash.raw) - BigInt(manual.cash.raw)).toBe(amount);
+    // Spent by what was deposited.
+    await refuses(deposit(1n), 'AllowanceTooLow');
+  },
+
+  'opening a vault stores the targets and the switch it was asked for, and takes its first deposit':
+    async (c) => {
+      const [first, second] = c.targets;
+      if (!first || !second) throw new Error('the fixture recipe has fewer than two assets');
+      // Two weights that are not each other's, and a share left in cash.
+      const targets = [
+        { asset: first.asset, weightBps: 6100 },
+        { asset: second.asset, weightBps: 2400 },
+      ];
+      const amount = BigInt(c.f.depositRaw) / 8n;
+      const args = {
+        owner: c.f.owner,
+        basketId: c.f.freshBasketId,
+        targets,
+        autoFollow: false,
+        depositRaw: amount.toString(),
+        slippageBps: 100,
+      };
+      if (c.a.capabilities.needsApprove) {
+        // No vault yet, so the approval for this plan is the factory's to spend: exactly `amount`.
+        const approve = { owner: c.f.owner, basketId: c.f.freshBasketId };
+        await land(c, await c.a.buildApprove({ ...approve, amountRaw: amount.toString() }));
+        await refuses(
+          c.a.buildCreateVault({ ...args, depositRaw: (amount + 1n).toString() }),
+          'AllowanceTooLow',
+        );
+      }
+      const wallet = await walletRaw(c, c.f.owner, c.cash.id);
+      const tx = await c.a.buildCreateVault(args);
+      checkTx(c, tx, 'create_vault', c.f.owner);
+      await land(c, tx);
+
+      const opened = (await c.a.getVaults(c.f.owner)).find((v) => v.basketId === c.f.freshBasketId);
+      if (!opened) throw new Error('the owner does not list the vault that was opened');
+      expect([opened.owner, opened.autoFollow, opened.recipeOnchainId, opened.pending]).toEqual([
+        c.f.owner,
+        false,
+        null,
+        null,
+      ]);
+      const stored = opened.positions.filter((p) => p.targetBps > 0);
+      expect(new Map(stored.map((p) => [p.asset, p.targetBps]))).toEqual(
+        new Map(targets.map((t) => [t.asset, t.weightBps])),
+      );
+      expect(BigInt(opened.cash.raw)).toBe(amount);
+      for (const p of opened.positions) expect(BigInt(p.raw)).toBe(0n);
+      expect(wallet - (await walletRaw(c, c.f.owner, c.cash.id))).toBe(amount);
+      expect(await c.a.listAutoFollowVaults()).not.toContain(opened.address);
+      expect(exact(VaultState.nullable(), await c.a.getVault(opened.address))?.basketId).toBe(
+        c.f.freshBasketId,
+      );
+      // The plan id is used now.
+      await refuses(c.a.buildCreateVault(args), 'VaultExists');
+    },
+
   'a withdrawal hands every token to the owner, and to nobody else': async (c) => {
     const before = await vaultAt(c, c.f.vault);
     const holdings = [before.cash, ...before.positions].filter((h) => BigInt(h.raw) > 0n);
@@ -802,34 +1362,98 @@ group('state after a transaction lands', {
     expect(await c.a.getWalletHoldings(c.f.stranger)).toEqual([]);
     expect(await c.a.buildWithdrawInKind({ vault: c.f.vault })).toEqual([]);
   },
+
+  'publishing a version makes it the one that waits, with the weights that were sent': async (
+    c,
+  ) => {
+    const before = await c.a.getRecipe(c.f.recipeOnchainId);
+    expect(before.pending).toBeNull();
+    const tx = await c.a.buildPublishRecipe({ creator: c.f.owner, recipe: c.f.publishRecipe });
+    checkTx(c, tx, 'publish', c.f.owner);
+    expect(tx.preview.changes).toEqual([]);
+    await land(c, tx);
+    const { active, pending } = await c.a.getRecipe(c.f.recipeOnchainId);
+    // The version in effect is untouched; the new one waits its delay.
+    expect(active).toEqual(before.active);
+    const waiting = exact(Recipe.nullable(), pending);
+    expect(waiting?.version).toBe(active.version + 1);
+    expect(waiting?.effectiveAt).toBeGreaterThan(active.effectiveAt);
+    expect(waiting?.components).toEqual(c.f.publishRecipe.components);
+    expect([waiting?.creator, waiting?.onchainId]).toEqual([c.f.owner, c.f.recipeOnchainId]);
+    // One version at a time: a second cannot be published while this one waits.
+    await refuses(
+      c.a.buildPublishRecipe({ creator: c.f.owner, recipe: c.f.publishRecipe }),
+      'CreatorLimit',
+    );
+  },
 });
 
-async function context(setup: () => ContractFixture | Promise<ContractFixture>): Promise<Ctx> {
+type Setup<F> = () => F | Promise<F>;
+
+/** The groups asked for, in the contract's order. A name that is no group is a mistake, not an empty run. */
+function selected(options: ContractOptions): ContractGroup[] {
+  for (const name of options.groups ?? [])
+    if (!CONTRACT_GROUPS.includes(name))
+      throw new Error(`the contract has no group called ${name}`);
+  return CONTRACT_GROUPS.filter((g) => !options.groups || options.groups.includes(g));
+}
+
+/**
+ * What the cases are handed. The fixture's shared portfolio is read only when a selected group needs
+ * it, so an adapter with only its read side, or with no registry yet, can run the groups that do not.
+ */
+async function context(setup: Setup<ReadsFixture>, groups: ContractGroup[]): Promise<Ctx> {
   const f = await setup();
   const a = f.adapter;
   const assets = await a.listAssets();
   const cash = assets.find((x) => x.cls === 'cash');
   if (!cash) throw new Error('the adapter lists no cash token');
-  const vault = await a.getVault(f.vault);
+  const read: ReadCtx = { f, a, assets, cash };
+  // No selected group looks at a recipe, a keeper or a builder: the reader's context is all they see.
+  if (groups.every((g) => NO_RECIPE.has(g))) return read as Ctx;
+  const full = f as ContractFixture;
+  const vault = await a.getVault(full.vault);
   if (!vault) throw new Error('the fixture vault does not exist');
-  const { active } = await a.getRecipe(f.recipeOnchainId);
+  const { active } = await a.getRecipe(full.recipeOnchainId);
   const targets = active.components.flatMap((x) =>
     x.kind === 'asset' ? [{ asset: x.asset, weightBps: x.weightBps }] : [],
   );
-  return { f, a, assets, cash, keeper: vault.keeper, targets, activeVersion: active.version };
+  return {
+    ...read,
+    f: full,
+    a: full.adapter,
+    keeper: vault.keeper,
+    targets,
+    activeVersion: active.version,
+  };
 }
 
-/** Registers the contract as vitest cases. */
+/**
+ * Registers the contract as vitest cases. With `groups`, only those; the `reads` group alone takes a
+ * `ReadsFixture`, which an adapter with only its read side can give.
+ */
 export function adapterContract(
   name: string,
-  setup: () => ContractFixture | Promise<ContractFixture>,
+  setup: Setup<ReadsFixture>,
+  options: { groups: readonly ['reads'] },
+): void;
+export function adapterContract(
+  name: string,
+  setup: Setup<ContractFixture>,
+  options?: ContractOptions,
+): void;
+export function adapterContract(
+  name: string,
+  setup: Setup<ReadsFixture>,
+  options: ContractOptions = {},
 ): void {
+  const groups = selected(options);
   describe(`adapter contract: ${name}`, () => {
     let c: Ctx;
     beforeAll(async () => {
-      c = await context(setup);
+      c = await context(setup, groups);
     });
-    for (const groupName of new Set(CASES.map((k) => k.group)))
+    for (const groupName of groups)
       describe(groupName, () => {
         for (const k of CASES.filter((x) => x.group === groupName)) it(k.name, () => k.run(c));
       });
@@ -841,11 +1465,21 @@ export function adapterContract(
  * show that a wrong adapter fails.
  */
 export async function runContract(
-  setup: () => ContractFixture | Promise<ContractFixture>,
+  setup: Setup<ReadsFixture>,
+  options: { groups: readonly ['reads'] },
+): Promise<{ name: string; passed: boolean; error?: string }[]>;
+export async function runContract(
+  setup: Setup<ContractFixture>,
+  options?: ContractOptions,
+): Promise<{ name: string; passed: boolean; error?: string }[]>;
+export async function runContract(
+  setup: Setup<ReadsFixture>,
+  options: ContractOptions = {},
 ): Promise<{ name: string; passed: boolean; error?: string }[]> {
-  const c = await context(setup);
+  const groups = selected(options);
+  const c = await context(setup, groups);
   const results: { name: string; passed: boolean; error?: string }[] = [];
-  for (const k of CASES) {
+  for (const k of CASES.filter((x) => groups.includes(x.group))) {
     try {
       await k.run(c);
       results.push({ name: k.name, passed: true });

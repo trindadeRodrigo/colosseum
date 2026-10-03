@@ -16,17 +16,38 @@ export const Price = Sourced.extend({
   asset: AssetId,
   /** USD for one whole token (10^decimals raw units). It already includes the multiplier. */
   usdPerToken: DecimalString,
+  /** How old the price is on the chain's own clock. A stale price is still returned, with its age. */
   ageSeconds: z.number().nonnegative(),
+  /**
+   * The oldest a price of this asset may be for the chain's vault to trade on it (DESIGN-VAULT section
+   * 5, check 8), read from the chain: `Config.max_price_age_s` on Solana, the asset's `maxAge` on EVM.
+   * It travels with the price so a caller that holds only the price can tell stale from fresh.
+   */
+  maxAgeSeconds: z.number().int().nonnegative(),
   market: z.enum(['open', 'closed', 'unknown']),
 });
 export type Price = z.infer<typeof Price>;
 
+/** True when the price is older than the chain's vault accepts: the keeper will not trade on it. */
+export function isStalePrice(price: Pick<Price, 'ageSeconds' | 'maxAgeSeconds'>): boolean {
+  return price.ageSeconds > price.maxAgeSeconds;
+}
+
 export const Holding = z.object({
   asset: AssetId,
   raw: RawAmount,
+  /** The multiplier in force now. '1' for a token that has none. */
   multiplier: DecimalString,
   /** raw × multiplier / 10^decimals: shares of the underlying, for display only. */
   display: DecimalString,
+  /**
+   * A multiplier the token's issuer has scheduled and that is not in force yet: its value, and the unix
+   * second from which it applies. Present only when the mint has one waiting. The keeper does not trade
+   * the asset within 24 hours of that time (section 5, check 10).
+   */
+  scheduled: z
+    .object({ multiplier: DecimalString, effectiveAt: z.number().int().nonnegative() })
+    .optional(),
 });
 export type Holding = z.infer<typeof Holding>;
 

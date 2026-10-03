@@ -1,9 +1,20 @@
 import { randomUUID } from 'node:crypto';
-import { type Attempt, DISCLAIMER, type Leg, type Order } from '@colosseum/schemas';
+import { mockAddress } from '@colosseum/chain-mock';
+import { vaults } from '@colosseum/db';
+import { type Attempt, DISCLAIMER, type Leg, type Order, type VaultView } from '@colosseum/schemas';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Person, person, testDb, testIssuer } from '../testing/harness';
 import { Refusal } from './errors';
-import { insertOrder, loadOrder, type Outcome, recordBuild, recordOutcome } from './store';
+import {
+  cacheVault,
+  cutToCents,
+  insertOrder,
+  loadOrder,
+  type Outcome,
+  recordBuild,
+  recordOutcome,
+} from './store';
 
 // The order store under two writers at once, on the real database. The review found a build and a
 // report deadlocking, a report answered with nothing recorded, and a leg left `built` beside a
@@ -34,7 +45,7 @@ async function oneLeg(): Promise<Leg> {
     signer: 'owner',
     description: 'test',
     trades: [],
-    expected: null,
+    expected: [],
     status: 'planned',
     attempt: 0,
     txId: null,
@@ -67,8 +78,9 @@ async function oneLeg(): Promise<Leg> {
 const build = (leg: Leg) =>
   recordBuild(data.db, leg, {
     messageHash: `hash-${randomUUID()}`,
+    nonce: null,
     validUntil: null,
-    expected: null,
+    expected: [],
     stamp: {
       source: 'test',
       method: 'test',
@@ -214,5 +226,51 @@ describe('the leg store under two writers', () => {
     expect(again).toBeInstanceOf(Refusal);
     expect((again as Refusal).status).toBe(409);
     expect((await state(y)).leg).toEqual(['built', 1, null]);
+  });
+});
+
+describe('the vault cache', () => {
+  it('cuts a dollar figure to cents and never rounds it up', () => {
+    expect(cutToCents('599.999999')).toBe('599.99');
+    expect(cutToCents('599.995')).toBe('599.99');
+    expect(cutToCents('599.4')).toBe('599.40');
+    expect(cutToCents('250')).toBe('250.00');
+    expect(cutToCents('0.009999')).toBe('0.00');
+    expect(cutToCents('0')).toBe('0.00');
+    expect(cutToCents('1234567.895001')).toBe('1234567.89');
+  });
+
+  it('stores the value of a vault cut to cents: the column holds two places and would round', async () => {
+    const view: VaultView = {
+      chain: 'solana',
+      address: mockAddress('solana', `cache:${randomUUID()}`),
+      owner: owner.solana,
+      basketId: '1',
+      recipeOnchainId: null,
+      acceptedVersion: 0,
+      autoFollow: false,
+      keeper: owner.solana,
+      cash: { asset: 'solana:usdc', raw: '0', multiplier: '1', display: '0' },
+      positions: [],
+      lossUsedBps: 0,
+      observedAt: new Date().toISOString(),
+      pending: null,
+      // Six places, as the shared view writes a value: a hair under $600.
+      valueUsd: '599.999999',
+    };
+    const stored = async () => {
+      const [row] = await data.db
+        .select({ valueUsd: vaults.valueUsd })
+        .from(vaults)
+        .where(and(eq(vaults.chainId, view.chain), eq(vaults.address, view.address)));
+      return row?.valueUsd;
+    };
+    await cacheVault(data.db, view, 'mock');
+    // Not 600.00: a cache that says more than the vault holds is wrong in the direction that matters.
+    expect(await stored()).toBe('599.99');
+    await cacheVault(data.db, { ...view, valueUsd: '250.005' }, 'mock');
+    expect(await stored()).toBe('250.00');
+    await cacheVault(data.db, { ...view, valueUsd: '399.6' }, 'mock');
+    expect(await stored()).toBe('399.60');
   });
 });
