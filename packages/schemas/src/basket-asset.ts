@@ -34,6 +34,13 @@ export const BasketAssetBase = z.object({
   issuer: z.string().min(1),
   tier: AssetTier,
   priceKind: PriceKind,
+  /**
+   * Where the price is, by `priceKind`.
+   * - `scope`: the entry index as a decimal string, 0 to 511, in the chain's price account
+   *   (`ChainConfig.priceSource.address`).
+   * - `chainlink`: the address of the asset's feed.
+   * - `none`: empty.
+   */
   priceRef: z.string(),
   session: z.enum(['always', 'us_equity']),
   autoFollowEligible: z.boolean(),

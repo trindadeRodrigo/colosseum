@@ -5,8 +5,9 @@ import { type ChainId, chainFamily } from '@colosseum/schemas';
 
 const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 
-export function sha256Hex(text: string): string {
-  return createHash('sha256').update(text).digest('hex');
+/** The SHA-256 of a text's UTF-8 bytes, or of the bytes given, in lower-case hex. */
+export function sha256Hex(data: string | Uint8Array): string {
+  return createHash('sha256').update(data).digest('hex');
 }
 
 function base58(hex: string): string {
