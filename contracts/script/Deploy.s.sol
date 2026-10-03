@@ -63,6 +63,8 @@ contract Deploy is Script {
 
     error WrongChain(uint256 configIsFor, uint256 runningOn);
     error NoAdmin();
+    /// A number in the file is too large for its field, or a selector is not four bytes long.
+    error ValueDoesNotFit(string key, uint256 value, uint256 most);
 
     function run() external returns (Deployed memory d) {
         string memory fallbackPath = string.concat("script/config/", vm.toString(block.chainid), ".json");
@@ -112,20 +114,25 @@ contract Deploy is Script {
     }
 
     function readConfig(string memory path) public view returns (Config memory cfg) {
-        string memory json = vm.readFile(path);
+        return parseConfig(vm.readFile(path));
+    }
+
+    /// Every number is held to the size of the field it goes into: a value that does not fit is refused, not
+    /// cut down (a `pull` of 257 would otherwise be read as 1).
+    function parseConfig(string memory json) public view returns (Config memory cfg) {
         cfg.chainId = json.readUint(".chainId");
         cfg.admin = json.readAddress(".admin");
         cfg.guardian = json.readAddress(".guardian");
         cfg.keeper = json.readAddress(".keeper");
         cfg.sequencerFeed = json.readAddress(".sequencerFeed");
-        cfg.publishDelay = uint32(json.readUint(".publishDelay"));
+        cfg.publishDelay = uint32(_fit(json, ".publishDelay", type(uint32).max));
         cfg.params = Params({
-            toleranceBps: uint16(json.readUint(".params.toleranceBps")),
-            lossCapBps: uint16(json.readUint(".params.lossCapBps")),
-            bandBps: uint16(json.readUint(".params.bandBps")),
-            assetCooldown: uint32(json.readUint(".params.assetCooldown")),
-            sessionOpen: uint32(json.readUint(".params.sessionOpen")),
-            sessionClose: uint32(json.readUint(".params.sessionClose"))
+            toleranceBps: uint16(_fit(json, ".params.toleranceBps", type(uint16).max)),
+            lossCapBps: uint16(_fit(json, ".params.lossCapBps", type(uint16).max)),
+            bandBps: uint16(_fit(json, ".params.bandBps", type(uint16).max)),
+            assetCooldown: uint32(_fit(json, ".params.assetCooldown", type(uint32).max)),
+            sessionOpen: uint32(_fit(json, ".params.sessionOpen", type(uint32).max)),
+            sessionClose: uint32(_fit(json, ".params.sessionClose", type(uint32).max))
         });
         cfg.cashToken = json.readAddress(".cashToken");
 
@@ -136,15 +143,15 @@ contract Deploy is Script {
             cfg.assets[i].token = json.readAddress(string.concat(entry, ".token"));
             cfg.assets[i].config = AssetConfig({
                 feed: json.readAddress(string.concat(entry, ".feed")),
-                tokenDecimals: uint8(json.readUint(string.concat(entry, ".tokenDecimals"))),
-                feedDecimals: uint8(json.readUint(string.concat(entry, ".feedDecimals"))),
-                maxAge: uint32(json.readUint(string.concat(entry, ".maxAge"))),
-                session: uint8(json.readUint(string.concat(entry, ".session"))),
-                source: uint8(json.readUint(string.concat(entry, ".source"))),
-                maxWeightBps: uint16(json.readUint(string.concat(entry, ".maxWeightBps"))),
+                tokenDecimals: uint8(_fit(json, string.concat(entry, ".tokenDecimals"), type(uint8).max)),
+                feedDecimals: uint8(_fit(json, string.concat(entry, ".feedDecimals"), type(uint8).max)),
+                maxAge: uint32(_fit(json, string.concat(entry, ".maxAge"), type(uint32).max)),
+                session: uint8(_fit(json, string.concat(entry, ".session"), type(uint8).max)),
+                source: uint8(_fit(json, string.concat(entry, ".source"), type(uint8).max)),
+                maxWeightBps: uint16(_fit(json, string.concat(entry, ".maxWeightBps"), type(uint16).max)),
                 pauseProbe: json.readAddress(string.concat(entry, ".pauseProbe")),
-                pauseSelector: bytes4(json.readBytes(string.concat(entry, ".pauseSelector"))),
-                scheduleSelector: bytes4(json.readBytes(string.concat(entry, ".scheduleSelector"))),
+                pauseSelector: _selector(json, string.concat(entry, ".pauseSelector")),
+                scheduleSelector: _selector(json, string.concat(entry, ".scheduleSelector")),
                 haltUntil: 0
             });
         }
@@ -155,19 +162,32 @@ contract Deploy is Script {
             string memory entry = string.concat(".routers[", vm.toString(i), "]");
             cfg.routers[i] = Router({
                 router: json.readAddress(string.concat(entry, ".router")),
-                pull: uint8(json.readUint(string.concat(entry, ".pull")))
+                pull: uint8(_fit(json, string.concat(entry, ".pull"), type(uint8).max))
             });
         }
 
         n = _count(json, ".closedDays");
         cfg.closedDays = new uint32[](n);
         for (uint256 i; i < n; ++i) {
-            cfg.closedDays[i] = uint32(json.readUint(string.concat(".closedDays[", vm.toString(i), "]")));
+            string memory entry = string.concat(".closedDays[", vm.toString(i), "]");
+            cfg.closedDays[i] = uint32(_fit(json, entry, type(uint32).max));
         }
     }
 
     function _count(string memory json, string memory list) private view returns (uint256 n) {
         while (vm.keyExistsJson(json, string.concat(list, "[", vm.toString(n), "]"))) ++n;
+    }
+
+    function _fit(string memory json, string memory key, uint256 most) private pure returns (uint256 value) {
+        value = json.readUint(key);
+        require(value <= most, ValueDoesNotFit(key, value, most));
+    }
+
+    /// A selector is exactly four bytes.
+    function _selector(string memory json, string memory key) private pure returns (bytes4) {
+        bytes memory raw = json.readBytes(key);
+        require(raw.length == 4, ValueDoesNotFit(key, raw.length, 4));
+        return bytes4(raw);
     }
 
     function _print(Config memory cfg, Deployed memory d, address deployer) private view {

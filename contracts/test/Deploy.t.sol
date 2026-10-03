@@ -208,6 +208,61 @@ contract DeployTest is Test {
         script.deploy(cfg, deployer);
     }
 
+    /// A number too large for its field is refused, never cut down: `"pull": 257` is not pull 1, and a
+    /// `maxWeightBps` of 70,536 is not 5,000.
+    function test_parseConfig_refusesANumberThatDoesNotFitItsField() public {
+        string memory example = vm.readFile("script/config/example.json");
+        script.parseConfig(example);
+
+        _expectNoFit(example, '"pull": 2', '"pull": 257', ".routers[0].pull", 257, type(uint8).max);
+        _expectNoFit(example, '"tokenDecimals": 18', '"tokenDecimals": 274', ".assets[1].tokenDecimals", 274, 255);
+        _expectNoFit(example, '"feedDecimals": 8', '"feedDecimals": 264', ".assets[0].feedDecimals", 264, 255);
+        _expectNoFit(example, '"session": 1', '"session": 257', ".assets[1].session", 257, 255);
+        _expectNoFit(example, '"source": 1', '"source": 257', ".assets[0].source", 257, 255);
+        _expectNoFit(
+            example, '"maxWeightBps": 2500', '"maxWeightBps": 70536', ".assets[1].maxWeightBps", 70_536, 65_535
+        );
+        _expectNoFit(
+            example, '"maxAge": 93600', '"maxAge": 4294967297', ".assets[0].maxAge", 4_294_967_297, 2 ** 32 - 1
+        );
+        _expectNoFit(
+            example, '"publishDelay": 172800', '"publishDelay": 4295140096', ".publishDelay", 4_295_140_096, 2 ** 32 - 1
+        );
+        _expectNoFit(example, '"toleranceBps": 125', '"toleranceBps": 65661', ".params.toleranceBps", 65_661, 65_535);
+        _expectNoFit(
+            example,
+            '"assetCooldown": 3600',
+            '"assetCooldown": 4294970896',
+            ".params.assetCooldown",
+            4_294_970_896,
+            2 ** 32 - 1
+        );
+        _expectNoFit(
+            example, '"closedDays": [20813]', '"closedDays": [4294988109]', ".closedDays[0]", 4_294_988_109, 2 ** 32 - 1
+        );
+    }
+
+    function test_parseConfig_refusesASelectorThatIsNotFourBytes() public {
+        string memory example = vm.readFile("script/config/example.json");
+        string memory bad = vm.replace(example, '"pauseSelector": "0x5c975abb"', '"pauseSelector": "0x5c975abb00"');
+        vm.expectRevert(abi.encodeWithSelector(Deploy.ValueDoesNotFit.selector, ".assets[1].pauseSelector", 5, 4));
+        script.parseConfig(bad);
+    }
+
+    function _expectNoFit(
+        string memory example,
+        string memory from,
+        string memory to,
+        string memory key,
+        uint256 value,
+        uint256 most
+    ) internal {
+        string memory bad = vm.replace(example, from, to);
+        assertTrue(keccak256(bytes(bad)) != keccak256(bytes(example)), from);
+        vm.expectRevert(abi.encodeWithSelector(Deploy.ValueDoesNotFit.selector, key, value, most));
+        script.parseConfig(bad);
+    }
+
     function _asset(uint8 tokenDecimals, uint8 session, uint16 maxWeightBps) internal returns (AssetConfig memory) {
         return AssetConfig({
             feed: makeAddr("feed"),
