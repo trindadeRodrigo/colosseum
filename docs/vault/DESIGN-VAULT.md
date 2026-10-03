@@ -438,21 +438,39 @@ type BasketProposal = { sheet: BasketSheet; engineVersion: string; paramsHash: s
 function compose(i: { sheet: BasketSheet; holdings: Holding[]; shelf: Shelf; yields: YieldObservation[];
   liquidity?: LiquidityProvider; params: PersonalParams; now: string }): BasketProposal;
 
-// packages/basket
+// packages/basket. Its types are in packages/schemas/src/basket.ts.
 type Share = { key: string; bps: number };
-type LimitContext = { assets: BasketAsset[]; now: number; lastPublishAt: number | null; hasPending: boolean };
-type LimitResult = { ok: true; turnoverBps: number } | { ok: false; code: string; detail: string };
-type RollUpContext = { shelf: Shelf; liquidity?: LiquidityProvider; quotes: Quote[] };
+type CreatorLimitReason = 'FeeNotZero' | 'FlagsNotZero' | 'TooFewAssets' | 'TooManyAssets' | 'AssetNotListed'
+  | 'DuplicateAsset' | 'WeightBelowMin' | 'WeightOffStep' | 'WeightAboveCeiling' | 'WeightSum'
+  | 'VersionPending' | 'VersionTooSoon' | 'TurnoverTooHigh' | 'CashNotAllowed';
+  // numbered 1 to 14 in this order, as fixtures/creator-limits/vectors.json; creatorLimitReasonId(reason)
+type LimitContext = { assets: Pick<BasketAsset, 'id' | 'maxWeightBps' | 'cls'>[];   // a BasketAsset[] fits
+  now: number; lastPublishAt: number | null; hasPending: boolean;
+  publishDelay: number };        // seconds: between two versions, and before a later version takes effect
+type LimitResult = { ok: true; turnoverBps: number }
+  | { ok: false; code: CreatorLimitReason; detail: string;
+      allowedAt?: number };      // unix seconds, only when waiting is all it takes
+type AssetUnits = Pick<BasketAsset, 'id' | 'decimals'>;                             // a BasketAsset[] fits
+type RebalancePolicy = { bandBps: number; minTradeUsd: number;
+  costBps?: number };            // the most a trade may lose; an owner sending sales and purchases together
+type RebalancePlan = { trades: Trade[]; unpriced: AssetId[]; weighed: boolean };
+type RollUpContext = { shelf: Shelf; liquidity?: LiquidityProvider; quotes: Quote[];
+  now: string };                 // ISO time: tells a fresh stored quote from a stale one
 type RiskRollUp = { byIssuer: Share[]; byChain: Share[]; byClass: Share[]; flags: string[];
   exit: { quotedBps: number | null; quotedAt: string | null; measuredWorstBps: number | null; measuredShareBps: number } };
 function flatten(recipe: Recipe, shelf: Shelf, p: { minLineBps: number; maxLines: number }): Target[];
-function view(v: VaultState, prices: Price[]): VaultView;
-function planRebalance(v: VaultState, targets: Target[], prices: Price[],
-  policy: { bandBps: number; minTradeUsd: number }): Trade[];   // sells first, every trade through cash
-function checkCreatorLimits(prev: Target[] | null, next: Target[], ctx: LimitContext): LimitResult;
+function view(v: VaultState, prices: Price[], assets: AssetUnits[]): VaultView;
+function rebalancePlan(v: VaultState, targets: Target[], prices: Price[], policy: RebalancePolicy,
+  assets: AssetUnits[]): RebalancePlan;       // sells first, every trade through cash
+function planRebalance(/* the same five */): Trade[];   // rebalancePlan(...).trades
+function batchTrades(trades: Trade[], maxTradesPerTx: number): Trade[][];
+function checkCreatorLimits(prev: Target[] | null, next: Target[], ctx: LimitContext,
+  header?: { flags: number; maxFeeBps: number }): LimitResult;
 function rollUp(lines: { asset: AssetId; amountUsd: number }[], ctx: RollUpContext): RiskRollUp;
-function metaHash(family: FamilyMeta): string;
+function metaHash(family: Pick<FamilyMeta, 'familyId' | 'slug' | 'name' | 'copy' | 'kind'>): string;
 ```
+
+`view` and the planner take the chain's asset list as their last argument, because neither a `VaultState` nor a `Price` says how many decimals a token has. Cash counts as one dollar in both. `rebalancePlan` leaves out an asset with no price and names it in `unpriced`; when such an asset is both held and a target the vault cannot be weighed, `weighed` is false and nothing is planned. A refusal by `checkCreatorLimits` carries the lowest-numbered rule broken. `allowedAt` comes only with `VersionTooSoon`, and only when the version breaks no later rule: published at that time with nothing else changed, it is accepted.
 
 ### 3.7 Solana program (`programs/basket`, `idl/basket.json`)
 

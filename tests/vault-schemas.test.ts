@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import * as schemas from '@colosseum/schemas';
 import {
   Address,
   AssetId,
+  AssetUnits,
   BasketAsset,
   BasketId,
   BasketProposal,
@@ -15,21 +18,28 @@ import {
   ChainError,
   ChainErrorCode,
   ConsentRequest,
+  CreatorLimitReason,
   chainFamily,
+  creatorLimitReasonId,
+  creatorLimitReasonOf,
   EvmAddress,
   IntentRequest,
   Leg,
   LegBase,
+  LimitContext,
   LimitResult,
   normalizeAddress,
   Order,
   Owner,
   RawAmount,
   RawDelta,
+  RebalancePlan,
+  RebalancePolicy,
   Recipe,
   RecipeBase,
   RecipeDraft,
   ReportLegRequest,
+  type RollUpContext,
   SolanaAddress,
   stampTx,
   Targets,
@@ -81,7 +91,7 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
       ...['BasketSheet', 'BasketSheetDraft', 'Shelf', 'PersonalParams', 'Reason', 'BasketLine'],
       'BasketCard',
       ...['Verdict', 'ObservationRef', 'BasketProposal', 'Share', 'LimitContext', 'LimitResult'],
-      'RiskRollUp',
+      ...['RiskRollUp', 'CreatorLimitReason', 'AssetUnits', 'RebalancePolicy', 'RebalancePlan'],
     ];
     const exported = schemas as unknown as Record<string, { safeParse?: unknown } | undefined>;
     const missing = names.filter((n) => typeof exported[n]?.safeParse !== 'function');
@@ -362,9 +372,67 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
 
   it('reads a limit result as passed with its turnover, or refused with a code', () => {
     expect(LimitResult.safeParse({ ok: true, turnoverBps: 1500 }).success).toBe(true);
-    expect(LimitResult.safeParse({ ok: false, code: 'TURNOVER', detail: '' }).success).toBe(true);
+    // The code is one of the fourteen reasons, by its name in the shared vectors.
+    const refused = { ok: false, code: 'TurnoverTooHigh', detail: '' };
+    expect(LimitResult.safeParse(refused).success).toBe(true);
+    expect(LimitResult.safeParse({ ...refused, code: 'TURNOVER' }).success).toBe(false);
     expect(LimitResult.safeParse({ ok: true }).success).toBe(false);
+    // A refusal that waiting cures says from when, in unix seconds.
+    const soon = { ok: false, code: 'VersionTooSoon', detail: '', allowedAt: 1_791_385_200 };
+    expect(LimitResult.parse(soon)).toEqual(soon);
+    expect(LimitResult.safeParse({ ...soon, allowedAt: 1.5 }).success).toBe(false);
+    expect(LimitResult.safeParse({ ...soon, allowedAt: '1791385200' }).success).toBe(false);
     expect(new WalletError('no_gas')).toMatchObject({ code: 'no_gas', name: 'WalletError' });
+  });
+
+  it('names the fourteen author-limit reasons as the shared vectors number them', () => {
+    const vectors: { reasons: { id: number; name: string }[] } = JSON.parse(
+      readFileSync(join(__dirname, '..', 'fixtures', 'creator-limits', 'vectors.json'), 'utf8'),
+    );
+    expect(vectors.reasons).toHaveLength(14);
+    expect(CreatorLimitReason.options).toEqual(vectors.reasons.map((r) => r.name));
+    for (const { id, name } of vectors.reasons) {
+      const reason = CreatorLimitReason.parse(name);
+      expect(creatorLimitReasonId(reason)).toBe(id);
+      expect(creatorLimitReasonOf(id)).toBe(reason);
+    }
+    for (const none of [0, 15, -1, 1.5, Number.NaN]) expect(creatorLimitReasonOf(none)).toBeNull();
+  });
+
+  it('gives the author-limit check its delay, and the planner its policy and its units', () => {
+    const listed = { id: 'solana:spyx', maxWeightBps: 5000, cls: 'etf' };
+    const ctx = { assets: [listed], now: 1000, lastPublishAt: null, hasPending: false };
+    // Without the delay "one version per publish delay" cannot be checked.
+    expect(LimitContext.safeParse(ctx).success).toBe(false);
+    expect(LimitContext.safeParse({ ...ctx, publishDelay: 172_800 }).success).toBe(true);
+    expect(LimitContext.safeParse({ ...ctx, publishDelay: -1 }).success).toBe(false);
+    expect(LimitContext.safeParse({ ...ctx, publishDelay: 0.5 }).success).toBe(false);
+    // The check reads an asset's id, its ceiling and whether it is the cash token: all three are asked for.
+    const { cls: _, ...unmarked } = listed;
+    expect(LimitContext.safeParse({ ...ctx, publishDelay: 60, assets: [unmarked] }).success).toBe(
+      false,
+    );
+
+    expect(RebalancePolicy.safeParse({ bandBps: 50, minTradeUsd: 1 }).success).toBe(true);
+    expect(RebalancePolicy.safeParse({ bandBps: 0, minTradeUsd: 0, costBps: 100 }).success).toBe(
+      true,
+    );
+    expect(RebalancePolicy.safeParse({ bandBps: 50 }).success).toBe(false);
+    expect(RebalancePolicy.safeParse({ bandBps: 50, minTradeUsd: -1 }).success).toBe(false);
+    expect(
+      RebalancePolicy.safeParse({ bandBps: 50, minTradeUsd: 1, costBps: 10_001 }).success,
+    ).toBe(false);
+    expect(AssetUnits.safeParse({ id: 'solana:spyx', decimals: 8 }).success).toBe(true);
+    expect(AssetUnits.safeParse({ id: 'solana:spyx' }).success).toBe(false);
+    const plan = { trades: [], unpriced: ['solana:odd'], weighed: false };
+    expect(RebalancePlan.parse(plan)).toEqual(plan);
+    // The roll-up is told the time: a stored quote cannot be called fresh or stale without one.
+    const rollUpTakesNow: RollUpContext = {
+      shelf: { version: 's', assets: [], families: [] },
+      quotes: [],
+      now: NOW,
+    };
+    expect(rollUpTakesNow.now).toBe(NOW);
   });
   it('lists each asset once: a repeated asset is not a way to reach 10,000', () => {
     const spy = { asset: 'solana:spyx', weightBps: 5000 };
