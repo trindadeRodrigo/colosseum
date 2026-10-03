@@ -7,6 +7,7 @@ import {IBasketVault} from "../../src/interfaces/IBasketVault.sol";
 import {IPermit2} from "../../src/interfaces/IPermit2.sol";
 import {IVaultConfig} from "../../src/interfaces/IVaultConfig.sol";
 import {AssetConfig, Swap, Weight} from "../../src/interfaces/Types.sol";
+import {VaultFactory} from "../../src/VaultFactory.sol";
 import {VaultFixture} from "../helpers/VaultFixture.sol";
 import {UniV4Calldata} from "./UniV4Calldata.sol";
 
@@ -303,24 +304,23 @@ contract RobinhoodForkSwapTest is VaultFixture {
         assertEq(factory.routerPull(UNIVERSAL_ROUTER), 2);
     }
 
-    /// A stock token that was never listed is still seen as a token by the probe alone.
+    /// A real token that was never listed, on a factory that lists nothing: `setRouter` itself refuses it,
+    /// because it answers `allowance` as a token does. The real router and the real Permit2 do not answer
+    /// that way: the router is accepted, and Permit2 is refused by name.
     function test_fork_anUnlistedRealToken_isRefusedAsARouter() public onFork {
+        VaultFactory bare = _newFactory();
+        assertEq(bare.assets().length, 0);
         vm.startPrank(admin);
-        VaultFixtureProbe probe = new VaultFixtureProbe();
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.RouterIsToken.selector, NVDA));
+        bare.setRouter(NVDA, 1);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.RouterIsToken.selector, USDG));
+        bare.setRouter(USDG, 2);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.RouterReserved.selector, PERMIT2_ADDRESS));
+        bare.setRouter(PERMIT2_ADDRESS, 2);
+        bare.setRouter(UNIVERSAL_ROUTER, 2);
         vm.stopPrank();
-        assertTrue(probe.answersAllowance(NVDA));
-        assertTrue(probe.answersAllowance(USDG));
-        assertFalse(probe.answersAllowance(UNIVERSAL_ROUTER));
-        assertFalse(probe.answersAllowance(PERMIT2_ADDRESS));
-    }
-}
-
-/// The same question the config asks of a router: does this address answer `allowance(address,address)` with
-/// a full word.
-contract VaultFixtureProbe {
-    function answersAllowance(address target) external view returns (bool) {
-        (bool ok, bytes memory ret) =
-            target.staticcall{gas: 100_000}(abi.encodeWithSignature("allowance(address,address)", target, target));
-        return ok && ret.length >= 32;
+        assertEq(bare.routerPull(NVDA), 0);
+        assertEq(bare.routerPull(USDG), 0);
+        assertEq(bare.routerPull(UNIVERSAL_ROUTER), 2);
     }
 }
