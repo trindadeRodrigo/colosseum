@@ -368,3 +368,12 @@ describe('GET /risk/pools/:address/liquidity', () => {
     await noRpc.close();
   });
 });
+
+describe('pool liquidity: DA3 gate', () => {
+  it('refuses the getProgramAccounts scan before Mon Oct 5 00:00 ET and allows it from then', async () => {
+    const { assertScanAllowed, DA3_SCANS_FROM } = await import('./risk-pool-liquidity');
+    expect(() => assertScanAllowed(Date.parse('2026-10-03T03:00:00Z'))).toThrow(/^gate DA3/);
+    expect(() => assertScanAllowed(DA3_SCANS_FROM - 1)).toThrow(/^gate DA3/);
+    expect(() => assertScanAllowed(DA3_SCANS_FROM)).not.toThrow();
+  });
+});

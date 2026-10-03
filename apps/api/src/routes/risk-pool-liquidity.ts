@@ -24,6 +24,19 @@ const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const USDT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
 const SOL = 'So11111111111111111111111111111111111111112';
 export const ANSWER_TTL_MS = 60_000;
+
+/**
+ * DA3 (PLAN-ANALYTICS §6): no `getProgramAccounts` scans during this weekend's collection; larger reads start Mon Oct 5
+ * (00:00 ET). The child-account listing below is such a scan, so before then it refuses and the route answers 503
+ * with the gate in words. Moving the date is a decision (`/decide`), not an edit here.
+ */
+export const DA3_SCANS_FROM = Date.parse('2026-10-05T04:00:00Z');
+export function assertScanAllowed(now: number = Date.now()): void {
+  if (now < DA3_SCANS_FROM)
+    throw new Error(
+      'gate DA3: getProgramAccounts scans start Mon Oct 5 (00:00 ET); this pool’s tick arrays cannot be listed before then',
+    );
+}
 const CHILDREN_TTL_MS = 10 * 60_000;
 const SOURCE =
   'Solana RPC getMultipleAccounts (pool + tick/bin arrays), decoded by packages/risk/src/pools';
@@ -86,6 +99,7 @@ export function rpcChainReader(): ChainReader {
       return { slot, data };
     },
     async children(program, offset, pool) {
+      assertScanAllowed();
       const c = client();
       const r = await ask('getProgramAccounts', () =>
         c
@@ -280,7 +294,7 @@ export async function registerPoolLiquidityRoute(
         const msg = String((e as Error)?.message ?? '');
         const error = /SOLANA_RPC_URL is not set/.test(msg)
           ? 'no Solana RPC configured on this server (SOLANA_RPC_URL is not set)'
-          : /did not answer|not found on chain/.test(msg)
+          : /did not answer|not found on chain|^gate DA3/.test(msg)
             ? msg
             : 'the Solana RPC read failed';
         return reply.code(503).send({ error: [error, rpcDetail(e)].filter(Boolean).join(': ') });
