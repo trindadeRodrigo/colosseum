@@ -54,7 +54,15 @@ import {
   MAX_REPINS_PER_TOKEN,
   quoteRequest,
 } from '../scripts/risk-evm/run';
-import { type Attempt, attemptOf, missedLine, runSlot, slotLine } from '../scripts/risk-evm/slot';
+import {
+  type Attempt,
+  attemptOf,
+  missedLine,
+  RETRY_AFTER_MIN,
+  RETRY_MARGIN_MS,
+  runSlot,
+  slotLine,
+} from '../scripts/risk-evm/slot';
 
 // REVM-1. Nothing here may reach the network: the chain's answers come from a recorded fixture.
 beforeAll(() => {
@@ -1369,6 +1377,69 @@ describe('second chances within the hour', () => {
     const r = await slot([new Error(down.error)], { asleepMs: 2 * HOUR });
     expect(r.tried).toHaveLength(1);
     expect(r.outcome).toMatchObject({ attempts: 1, ended: 'next run is due' });
+  });
+  describe('with the waits the loop uses', () => {
+    /** The network is down for `minutes`; every attempt that starts before it is back fails. */
+    const outage = (minutes: number, attemptMs = 0) => {
+      let now = 0;
+      const tried: number[] = [];
+      return runSlot({
+        attempt: async () => {
+          tried.push(now);
+          const failed = now < minutes * MIN;
+          now += attemptMs;
+          if (failed) throw new Error(down.error);
+          return all('NVDA', 'SPY');
+        },
+        retryAfterMs: RETRY_AFTER_MIN.map((m) => m * MIN),
+        until: HOUR,
+        marginMs: RETRY_MARGIN_MS,
+        now: () => now,
+        sleep: async (ms) => {
+          now += ms;
+        },
+        stopped: () => false,
+      }).then((outcome) => ({ outcome, tried: tried.map((t) => t / MIN), endedAt: now / MIN }));
+    };
+
+    it('tries at about 2, 6, 14, 30 and 50 minutes, and the last wait ends before the margin', () => {
+      const starts = RETRY_AFTER_MIN.map((_, i) =>
+        RETRY_AFTER_MIN.slice(0, i + 1).reduce((a, b) => a + b, 0),
+      );
+      expect(starts).toEqual([2, 6, 14, 30, 50]);
+      expect((starts.at(-1) as number) * MIN).toBeLessThan(HOUR - RETRY_MARGIN_MS);
+      expect(RETRY_MARGIN_MS).toBe(2 * MIN);
+    });
+    it('keeps the hour through a 35-minute outage, which a last try at minute 30 would lose', async () => {
+      const r = await outage(35);
+      expect(r.tried).toEqual([0, 2, 6, 14, 30, 50]);
+      expect(r.outcome).toMatchObject({ attempts: 6, rows: ['NVDA', 'SPY'], ended: 'complete' });
+      const shorter = await outage(10);
+      expect(shorter.tried).toEqual([0, 2, 6, 14]);
+      expect(shorter.outcome).toMatchObject({ attempts: 4, ended: 'complete' });
+    });
+    it('gives the hour up after the sixth attempt and does not wait any longer', async () => {
+      const r = await outage(60);
+      expect(r.tried).toEqual([0, 2, 6, 14, 30, 50]);
+      expect(r.outcome).toMatchObject({
+        attempts: 6,
+        rows: [],
+        error: down.error,
+        ended: 'out of attempts',
+      });
+      expect(r.endedAt).toBe(50);
+    });
+    it('starts no retry inside the margin even when every failed attempt waits out its timeouts', async () => {
+      // three 30 s timeouts and the client's own waits: about 95 s per failed attempt
+      const slow = await outage(60, 95_000);
+      expect(slow.tried).toHaveLength(6);
+      for (const t of slow.tried) expect(t * MIN).toBeLessThanOrEqual(HOUR - RETRY_MARGIN_MS);
+      expect(slow.endedAt).toBeLessThan(60);
+      // slower still, three minutes each: the last retry is dropped, not run into the next hour
+      const slower = await outage(60, 3 * MIN);
+      expect(slower.tried).toHaveLength(5);
+      expect(slower.outcome).toMatchObject({ attempts: 5, ended: 'next run is due' });
+    });
   });
   it('makes one attempt only when no waits are given (a one-off run)', async () => {
     const r = await slot([new Error(down.error)], { retryAfterMin: [], until: Infinity });

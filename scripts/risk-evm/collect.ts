@@ -4,7 +4,15 @@ import { join } from 'node:path';
 import { CHAINS, type ChainConfig } from './config';
 import { acquireLock, type MissedWhy, runLoop, type Slot } from './loop';
 import { collectOnce } from './run';
-import { type Attempt, attemptOf, missedLine, runSlot, slotLine } from './slot';
+import {
+  type Attempt,
+  attemptOf,
+  missedLine,
+  RETRY_AFTER_MIN,
+  RETRY_MARGIN_MS,
+  runSlot,
+  slotLine,
+} from './slot';
 
 // EVM depth collector (REVM-1, method evmq-0.1): what it costs to sell and buy stock tokens at Rodrigo's
 // size grid, read from the real pools with eth_call. See README.md.
@@ -27,15 +35,6 @@ const num = (name: string, fallback: number) => {
 const MIN_POOL_USD = 10_000;
 /** The pool list is looked up again once it is a day old: the deepest pool of a token changes slowly. */
 const POOLS_MAX_AGE_HOURS = 24;
-/**
- * In the loop, a run that left tokens without a row for a reason that may pass (network down, endpoint
- * refusing) is tried again after these waits, for those tokens only: about 2, 6, 14 and 30 minutes
- * after the first attempt. A ten-minute outage then costs minutes, not the hour's sample.
- */
-const RETRY_AFTER_MIN = [2, 4, 8, 16];
-/** No retry starts this close to the next scheduled run. */
-const RETRY_MARGIN_MS = 2 * 60_000;
-
 const dir = process.env.RISK_EVM_DIR ?? 'data/risk-evm';
 const runsFile = join(dir, 'runs.jsonl');
 const only = option('--chain');

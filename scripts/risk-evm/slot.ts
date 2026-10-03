@@ -2,6 +2,17 @@
 // may pass (the network was down, the endpoint refused) is tried again a few times within the hour,
 // for those tokens only, and never into the next scheduled run.
 
+/**
+ * In the loop, a run that left tokens without a row for a reason that may pass (network down, endpoint
+ * refusing) is tried again after these waits, for those tokens only: about 2, 6, 14, 30 and 50 minutes
+ * after the first attempt. A ten-minute outage costs minutes, and one of 45 minutes still leaves the
+ * hour its sample. The waits add up to 50 minutes so that the last retry starts before the margin
+ * below even when every failed attempt first waits out its timeouts (about a minute and a half each).
+ */
+export const RETRY_AFTER_MIN = [2, 4, 8, 16, 20];
+/** No retry starts this close to the next scheduled run. */
+export const RETRY_MARGIN_MS = 2 * 60_000;
+
 export type Missing = { asset: string; error: string; retry: boolean };
 export type Attempt = { rows: string[]; missing: Missing[] };
 
