@@ -83,6 +83,12 @@ contract IndexRegistry is Initializable, UUPSUpgradeable, IIndexRegistry {
     uint8 private constant TURNOVER_TOO_HIGH = 13;
     uint8 private constant CASH_NOT_ALLOWED = 14;
 
+    /// The factory's admin: there is one admin for a chain, and it is not kept twice.
+    modifier onlyAdmin() {
+        require(msg.sender == _registry().factory.admin(), NotAdmin(msg.sender));
+        _;
+    }
+
     /// The logic contract itself can never be initialised; only its proxy can, once.
     constructor() {
         _disableInitializers();
@@ -126,8 +132,7 @@ contract IndexRegistry is Initializable, UUPSUpgradeable, IIndexRegistry {
         returns (uint32 version, uint64 effectiveAt)
     {
         RegistryStorage storage $ = _registry();
-        Index storage index = $.indexes[id];
-        require(index.creator != address(0), IndexNotFound(id));
+        Index storage index = _existing($, id);
         require(msg.sender == index.creator, NotCreator(msg.sender));
         uint32 delay = _delay($);
         (bytes4 err, uint8 reason, uint16 turnoverBps) = _check($, index, next, delay);
@@ -143,8 +148,7 @@ contract IndexRegistry is Initializable, UUPSUpgradeable, IIndexRegistry {
     /// @dev The factory's admin may make every guardian call, and so this one.
     function cancel(bytes32 id) external {
         RegistryStorage storage $ = _registry();
-        Index storage index = $.indexes[id];
-        require(index.creator != address(0), IndexNotFound(id));
+        Index storage index = _existing($, id);
         require(
             msg.sender == index.creator || msg.sender == $.factory.guardian() || msg.sender == $.factory.admin(),
             NotCreator(msg.sender)
@@ -159,8 +163,7 @@ contract IndexRegistry is Initializable, UUPSUpgradeable, IIndexRegistry {
     // ---- the factory's admin
 
     /// @inheritdoc IIndexRegistry
-    function setPublishDelay(uint32 delay) external {
-        _checkAdmin();
+    function setPublishDelay(uint32 delay) external onlyAdmin {
         _setPublishDelay(delay);
     }
 
@@ -395,14 +398,13 @@ contract IndexRegistry is Initializable, UUPSUpgradeable, IIndexRegistry {
         emit PublishDelaySet(delay);
     }
 
-    function _checkAdmin() private view {
-        require(msg.sender == _registry().factory.admin(), NotAdmin(msg.sender));
+    function _existing(RegistryStorage storage $, bytes32 id) private view returns (Index storage index) {
+        index = $.indexes[id];
+        require(index.creator != address(0), IndexNotFound(id));
     }
 
     /// Replacing this logic is the factory's admin's.
-    function _authorizeUpgrade(address) internal view override {
-        _checkAdmin();
-    }
+    function _authorizeUpgrade(address) internal view override onlyAdmin {}
 
     function _registry() private pure returns (RegistryStorage storage $) {
         assembly {

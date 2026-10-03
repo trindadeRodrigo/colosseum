@@ -85,11 +85,11 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
         _;
     }
 
-    function _initVaultConfig(address admin_, Params memory p) internal onlyInitializing {
+    function _initVaultConfig(address admin_, Params memory params_) internal onlyInitializing {
         require(admin_ != address(0), ZeroAddress());
         _config().admin = admin_;
         emit AdminChanged(address(0), admin_);
-        _setParams(p);
+        _setParams(params_);
     }
 
     // ---- admin: assets
@@ -128,9 +128,9 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
     /// `tokens` are untouched, and `withdraw` never asks.
     function removeAsset(address token) external onlyAdmin {
         ConfigStorage storage $ = _config();
-        require($.assetList.contains(token), AssetNotListed(token));
         require(token != $.cashToken, CashTokenNotRemovable(token));
-        $.assetList.remove(token);
+        bool wasListed = $.assetList.remove(token);
+        require(wasListed, AssetNotListed(token));
         $.removed.add(token);
         emit AssetRemoved(token);
     }

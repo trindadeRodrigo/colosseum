@@ -70,7 +70,7 @@ contract IndexRegistryTest is SwapFixture {
         assertEq(registry.publishDelay(), PUBLISH_DELAY);
     }
 
-    function test_A15_initialize_revertsOnTheLogicContractAndOnTheLiveProxy() public {
+    function test_A15_initialize_revertsOnTheRegistrysLogicAndOnItsLiveProxy() public {
         IndexRegistry bareLogic = new IndexRegistry();
         vm.expectRevert(Initializable.InvalidInitialization.selector);
         bareLogic.initialize(address(factory), PUBLISH_DELAY);
@@ -480,7 +480,7 @@ contract IndexRegistryTest is SwapFixture {
         registry.initialize(stranger, PUBLISH_DELAY);
     }
 
-    function test_upgrade_revertsOnTheLogicContractItself() public {
+    function test_upgrade_revertsOnTheRegistrysLogicItself() public {
         IndexRegistry bareLogic = new IndexRegistry();
         IndexRegistryV2Dummy v2 = new IndexRegistryV2Dummy();
         vm.prank(admin);

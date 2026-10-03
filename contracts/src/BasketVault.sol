@@ -345,12 +345,13 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
             uint256 was = held[j];
             uint256 left = _held(token);
             held[j] = left;
+            bool traded = token == s.tokenIn || token == s.tokenOut;
+            // Both sides of the swap must be readable before and after: the checks below are on them.
+            require(!traded || (was != UNREADABLE && left != UNREADABLE), IBasketVault.BalanceUnreadable(token));
             if (token == s.tokenIn) {
-                require(was != UNREADABLE && left != UNREADABLE, IBasketVault.BalanceUnreadable(token));
                 spent = was > left ? was - left : 0;
                 require(spent <= s.amountIn, IBasketVault.SpentTooMuch(token, spent, s.amountIn));
             } else if (token == s.tokenOut) {
-                require(was != UNREADABLE && left != UNREADABLE, IBasketVault.BalanceUnreadable(token));
                 received = left > was ? left - was : 0;
                 require(received >= s.minOut, IBasketVault.ReceivedTooLittle(token, received, s.minOut));
             } else if (was != UNREADABLE) {

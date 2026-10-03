@@ -14,7 +14,7 @@ contract VaultBeacon is UpgradeableBeacon, Ownable2Step {
     constructor(address implementation_, address owner_) UpgradeableBeacon(implementation_, owner_) {}
 
     /// Step one. Nothing changes until `newOwner` calls `acceptOwnership`.
-    function transferOwnership(address newOwner) public override(Ownable, Ownable2Step) onlyOwner {
+    function transferOwnership(address newOwner) public override(Ownable, Ownable2Step) {
         Ownable2Step.transferOwnership(newOwner);
     }
 
