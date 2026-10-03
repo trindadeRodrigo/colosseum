@@ -1,6 +1,6 @@
 # The portfolio method, and what our solver should change
 
-Oct 3, 2026. Research for the SOLVER gate and for ENG-2. Written from `docs/vault/research/PROMPT-RESEARCH-METHOD.md`. Six research threads ran in parallel, one agent each; the code was read on `staging` at `1b8be80`. This note changes no code and proposes changes to other documents without making them; the same pull request adds a line to this folder's README and a row to the ledger.
+Oct 3, 2026. Research for the SOLVER gate and for ENG-2. Written from `docs/vault/research/PROMPT-RESEARCH-METHOD.md`. Six research threads ran in parallel, one agent each; the code was read on `staging` at `1b8be80`. Later the same day eleven papers were read in full from PDFs Rodrigo supplied (kept out of the repository); section 8 says what that changed. This note changes no code and proposes changes to other documents without making them; the same pull request adds a line to this folder's README and a row to the ledger.
 
 Tags: `[n]` checked today against source n. `[na]` only the abstract of source n was read. `[ns]` only a search-result snippet of source n was seen; the page was blocked or not opened. `[repo]` read in the code. `[run]` computed today (section 2.3). `[audit]` from `docs/vault/AUDIT-VAULT.md`. `[own]` our derivation, not from a source. `[memory]` not checked. Competitor names appear here because this note is internal.
 
@@ -8,10 +8,10 @@ Tags: `[n]` checked today against source n. `[na]` only the abstract of source n
 
 - **The shape of the solver is right, and the literature says so.** Rules and caps first, a near-term sleeve matched to dated obligations in the goal's currency, haircut yields, a stress table in place of odds, and a model that only fills a form. Each of these has support (section 4.1). The changes below are to what the rules bind on, not to the form.
 - **The linear program should go.** With one budget row, one credit row and per-asset caps, the LP is a continuous knapsack that a sort solves exactly `[24]`. On 20,000 random instances it never beat a greedy fill and returned the same weights; on tied yields its answer changed with the order of the inputs in 2,969 of 5,465 cases `[run]`. An LP earns a place only if we adopt caps that overlap (issuer × chain) or one row per withdrawal date `[own]`.
-- **Yield ranking is the weak part, and the caps are doing the work.** A point ranking of noisy yields is the "error maximiser" of the literature `[27a][28a]`; with caps it is defensible, and only because of the caps `[29a]`. Rank in bands, fill equally inside a band, and fix the yield feed first: the "realised 30d" figure is still two points of a DEX price `[repo][audit]`.
+- **Yield ranking is the weak part, and the caps are doing the work.** A point ranking of noisy yields is the "error maximiser" of the literature `[27][28a]`; with caps it is defensible, and only because of the caps. Rank in bands, fill equally inside a band, and fix the yield feed first: the "realised 30d" figure is still two points of a DEX price `[repo][audit]`.
 - **Exit cost should bind on every leg, and once more on the whole plan.** Today it caps stocks only; yield legs and the BRL leg are uncapped and the schedule sells yield legs at par `[repo]`. A Brazilian retail holder cannot redeem USDY with the issuer `[62]`, so the pool is the only exit for the leg the solver fills to 40%.
 - **Three candidates should be three objectives, not three risk levels:** most covered, most spread, most carry, all inside the person's stated limits. None may be dominated on the scorecard, none is pre-selected, and the engine returns fewer than three when the limits leave fewer (section 2.4).
-- **"Will the goal be met" has an answer with no forecast:** months covered, the funded ratio at a rate the person can hold today, the carry the goal needs beside the carry observed, and the shortfall under named stresses. A probability of reaching the goal is a return forecast whatever the disclaimer `[2a][3]`. That argues against the odds estimate in ENG-1; it is question 1 in section 7.
+- **"Will the goal be met" has an answer with no forecast:** months covered, the funded ratio at a rate the person can hold today, the carry the goal needs beside the carry observed, and the shortfall under named stresses. A probability of reaching the goal is a return forecast whatever the disclaimer `[2][3]`. That argues against the odds estimate in ENG-1; it is question 1 in section 7.
 
 ## 2. What to use
 
@@ -58,7 +58,7 @@ Where notes and code disagree `[repo]`:
 
 **Reject:**
 
-- Probability of success and the goals-based dynamic programme: they need means and covariances, they are forecasts, and the optimal policy takes more risk when underfunded `[2a][3]`.
+- Probability of success and the goals-based dynamic programme: they need means and covariances, they are forecasts, and strategies that maximise the chance of a target take more risk when behind near the horizon `[2][3]`. The dynamic programme assumes wealth follows geometric Brownian motion along an efficient frontier `[3]`: every input is one we do not have.
 - Sizing the safe sleeve by discounting at an assumed return, as Brunel's worked case does (4% and 6%) `[6]`: a promise in disguise.
 - Duration immunisation: our tokens have no reliable duration `[own]`.
 - Cash buckets of three to five years: failure rates rise with the size of the reserve `[7]`, and with yearly rebalancing a bucket rule is the same as a static mix `[9]`. A one-year reserve wins only once transaction costs are counted `[8]`, which is our case.
@@ -81,7 +81,7 @@ Where notes and code disagree `[repo]`:
 
 **Robustness. Take:**
 
-- *Caps as the model.* Constraining weights is equivalent to shrinking the estimates, and with the constraint in place a plain estimate does as well as a refined one `[29a]`. The result is for minimum-variance portfolios and reaches us by analogy.
+- *Caps for concentration, not for estimation error.* Jagannathan and Ma show that a long-only constraint acts like shrinking the estimates, and that with it in place a plain estimate does as well as a refined one. An upper bound has the same algebra, but in their tests it added no significant improvement once the portfolio was already long-only `[29]`. Ours always is. So the caps are justified by what a single failure can cost (2.2, tokenised assets), not by this paper.
 - *Capped equal weight as the baseline every other fill must beat.* Across 14 models and seven datasets none consistently beat 1/N; the sample needed for an optimiser to win was about 3,000 months at 25 assets `[25a][26]`. The rebuttal blames short-sample estimates `[30a]`, which are all we have.
 - *Ranking in bands.* A small change in one mean drives half the assets out of the optimum while the portfolio's return and risk barely move `[28a]`. No source prescribes a width; it has to be measured.
 - *Haircuts as they are.* With long-only weights, the worst case over a box of possible yields is each yield at its low end, so the haircut already is the robust version of the problem `[own]`.
@@ -117,9 +117,10 @@ The evidence against is real and narrow: post-cutoff news scores predicting retu
 - *Leg types in place of one flag.* A rate leg passes through sovereign bills (USDY; holders have no claim on the Treasuries `[63]`). A credit leg writes losses down across the pool (syrupUSDC `[64]`). A basis leg can pay a negative rate and exits through a cooldown (sUSDe `[65]`). A market deposit can be blocked at full utilisation. syrupUSDC is both credit and basis: its disclosures allow basis trades `[64]`.
 - *A haircut in four lines,* each with its own source: strip the reward part, as DefiLlama separates base from reward `[68]`; a trailing low percentile of the base rate; an expected-loss line by tier; exit cost over the holding period.
 - *The cap carries the tail.* The loss record is a handful of events, with pool losses from 3% to 80% `[69]`, and one 2025 failure that took three tokens far below par `[70]`. No default probability can be estimated from that, and a 50 bp expected-loss line does nothing against an 80% loss `[own]`.
+- *Third-party grades as a cross-check, never an input.* Exponential grades pools A to F on four dimensions (chain, protocol, asset, pool) and reports its own backtest from 2022: no defaults in A, 79% in F `[76]`. The vendor is grading its own ratings in a sponsored report, so this is a claim, not evidence. Its table does show how little yield separates the grades: a median of 3.19% for A against 5.32% for F `[76]`.
 - *Yield as a one-sided flag.* Venues without buffers pay about 125 bp more at the median, far short of the tail `[71a]`. Low yield is not safety: USDC traded at $0.87 with 8% of its reserves at one bank `[72]`.
 
-**Reject:** third-party letter grades as inputs (Exponential's methodology could not be reached today), one PD × LGD figure per asset, and any redemption term written as a constant.
+**Reject:** third-party letter grades as inputs, one PD × LGD figure per asset, and any redemption term written as a constant.
 
 ### 2.3 The LP, measured
 
@@ -142,10 +143,10 @@ The names are placeholders; product words are a brand decision.
 How they are kept different, each rule with its study:
 
 1. No candidate is dominated on the scorecard: the decoy effect is a dominated option raising its neighbour's share `[41s]`.
-2. Each wins at least one attribute, so there is no single ordering and no fixed middle; people pick the middle when they must justify the choice `[42s]`.
-3. The scorecard is not numbers only. The decoy effect survives in all-numeric displays and largely fails to replicate elsewhere `[43s][44s]`, and a scorecard of numbers is exactly that display. Each attribute carries a sentence from a template.
+2. Each wins at least one attribute, so there is no single ordering and no fixed middle; people pick the middle when they must justify the choice `[42]`.
+3. Wording does not replace rule 1. The decoy effect is weak outside displays where every attribute is a number: 11 reliable effects in 91 attempts, at chance with verbal or pictorial descriptions `[44]`, and none in 38 studies with perceptual stimuli `[43]`. But with numbers kept and words added it did replicate `[43]`, and our scorecard keeps its numbers. So the defence is that no candidate is dominated, not how the card is worded.
 4. None is pre-selected and none is badged. A default is read as advice `[46s]`, and the FCA names defaulting and prominence as poor practice `[40]`.
-5. The candidates are solved from the goal, never taken from a fixed menu. A majority of investors preferred the median portfolio of their peers to the one they had chosen themselves `[45a]`: the menu sets the answer.
+5. The candidates are solved from the goal, never taken from a fixed menu. A majority of investors preferred the median portfolio of their peers to the one they had chosen themselves `[45]`: the menu sets the answer.
 6. If the limits leave fewer than three plans that differ, the engine returns fewer and says why. It never invents a foil.
 
 **The scorecard** (deterministic, every figure with `source`, `fetched_at`, `method`):
@@ -199,13 +200,15 @@ Portuguese is measured on its own. No study of numeric faithfulness in Portugues
 - Overlapping issuer × chain caps solved exactly. One nested chain of caps (asset, issuer, class) keeps the fill a sort. A chain cap comes later, and with it the question of an LP.
 - A stressed-market regime for the curves. It needs data the collectors do not hold, and they are not edited before Oct 12.
 - Exit curves for USDY and syrupUSDC, for the same reason. Until then a dollar ceiling by tier stands in, as ENG-2 already plans.
+- Multi-stage stochastic goal programming `[77]`. It is a peer-reviewed linear program over a scenario tree, and the scenarios are return forecasts. It is the same trap as the LP, larger.
+- A goals-based asset pricing model `[78]`: an unreviewed draft about how assets should be priced, not about how to build a plan.
 - A model-produced news score as an engine input. The only positive evidence is on US equities `[60a]`.
 
 ## 4. Compared with our solver
 
 ### 4.1 What the solver gets right
 
-- **Rules and caps before any optimisation.** This is where the evidence points when inputs are few and noisy `[25a][26][29a]`.
+- **Rules and caps before any optimisation.** This is where the evidence points when inputs are few and noisy `[25a][26]`; a constraint that is wrong in the population can still help out of sample `[29]`.
 - **Cash for the window and a BRL leg for the next six months.** That is dedication in the liability's currency `[4]`. For bond-like assets the risk-minimising hedge of the liability currency is close to full `[12]`.
 - **Haircut yields with a rule id on every observation.** The haircut is the robust form of the problem `[own]`, and the rule id is what makes it auditable.
 - **Realised before aggregator.** DefiLlama itself aims for the minimum attainable yield and separates rewards `[68]`.
@@ -231,7 +234,7 @@ Portuguese is measured on its own. No study of numeric faithfulness in Portugues
 | C7 | The schedule sells yield legs at their measured exit cost, not at par | change | `schedule/index.ts:203-214` `[repo]` | Schedule test: with a provider that covers a yield leg, months funded falls or holds, never rises, against the par draw | `HANDOFF-IDEA1.md`; `docs/structurer/schedule-check.csv` and `ACCEPTANCE.md` row 7 (the hand cross-check is redone) | S |
 | C8 | Issuer and class caps, with issuer, curator and custodian counted as one group | add | The legacy solver has none; ENG-2 has `capPerIssuerBps` `[repo]`; UCITS and 2a-7 issuer limits `[73][74]`. A 5% issuer limit cannot be met with 8 assets `[own]`, so the proposal is a 25% ceiling with buckets | Inject an 80% loss on any credit or basis leg: the withdrawal schedule still pays for a stated number of months | `DESIGN-VAULT.md` §7 | S |
 | C9 | The `creditLeg` flag becomes a leg type (rate, credit, basis, market deposit; more than one allowed) and each asset gets a risk tier and a liquidity tier | change | syrupUSDC is credit and basis `[64]`; `[66][63][65]` | Registry test: every asset has a type, both tiers, and a dated source for its redemption terms; CI warns when a date is older than 30 days | `DESIGN-VAULT.md` §8; `HANDOFF-IDEA1.md`; `PersonalParams` in §3.6 | M |
-| C10 | Three candidates as Cover, Spread and Carry, inside the person's limits, with fewer returned when fewer differ | add | Section 2.4; `[41s][42s][43s][45a][37]` | Over a grid of goals: no candidate weakly dominated; each wins one attribute; pairwise distance of at least 10 points (L1 ÷ 2), a starting value; when fewer than three pass, fewer are returned with a reason | `DESIGN-VAULT.md` §3.6, §7, §11; `HANDOFF-VAULT.md`; `GATES.md` (a new row) | L |
+| C10 | Three candidates as Cover, Spread and Carry, inside the person's limits, with fewer returned when fewer differ | add | Section 2.4; `[41s][42][43][45][37]` | Over a grid of goals: no candidate weakly dominated; each wins one attribute; pairwise distance of at least 10 points (L1 ÷ 2), a starting value; when fewer than three pass, fewer are returned with a reason | `DESIGN-VAULT.md` §3.6, §7, §11; `HANDOFF-VAULT.md`; `GATES.md` (a new row) | L |
 | C11 | A deterministic scorecard per candidate | add | Section 2.4; `rollUp` already gives concentration and exit cost `[repo]` | Snapshot test of the three scorecards; every figure carries source, time and method | `DESIGN-VAULT.md` §3.6, §8 | M |
 | C12 | Feasibility for every goal kind: covered now, covered under stress, carry needed beside carry observed, each way to close the gap | change | `targetMet` computed and dropped `[repo][audit]`; `[4][1][38]` | A lint fails the build on a percentile, a probability or a projected balance in UI copy or API output. The verdict for a balance goal is correct past the target month | `DESIGN-VAULT.md` §7, §11, §17; `HANDOFF-VAULT.md` (the odds paragraph); `STATE-VAULT.md` ENG-1 | M |
 | C13 | De-risking driven by obligations entering the dedication window and by the cushion, not by the calendar alone | change | `solve()` ignores `horizonMonths` `[repo]`; ENG-2's `glideFloor` is by months left only; `[10][11][5]` | On recorded paths: the calendar rule against the window rule on the worst count of uncovered months | `DESIGN-VAULT.md` §3.6, §7 | M |
@@ -294,7 +297,7 @@ So the changes fit inside `compose` as parameters and one added check, on one co
 
 ## 7. Questions only a person can answer
 
-1. **The odds.** `HANDOFF-VAULT.md` says the plan is managed on the odds of reaching the goal, and ENG-1 is to deliver an estimate. Every method that produces a probability needs expected returns and a covariance `[2a][3]`, and every robo-adviser that shows one labels it hypothetical `[34][37]`. The evidence says to deliver the status in section 2.5 and no percentage. Rodrigo: does ENG-1 change to that?
+1. **The odds.** `HANDOFF-VAULT.md` says the plan is managed on the odds of reaching the goal, and ENG-1 is to deliver an estimate. Every method that produces a probability needs expected returns and a covariance `[2][3]`, and every robo-adviser that shows one labels it hypothetical `[34][37]`. The evidence says to deliver the status in section 2.5 and no percentage. Rodrigo: does ENG-1 change to that?
 2. **"On track".** As Betterment defines it, the phrase means the median projection reaches the target `[34]`. Ours can be defined as covered in the base case and in every named stress. Is that definition, with its method and date shown, acceptable under the brand guardrails, or does the wording change?
 3. **Three plans and CVM Resolution 19.** Article 1 defines advice as individualised "orientação, recomendação e aconselhamento", and article 17 applies the full duties to automated systems `[39]`. Three plans solved from one person's goal look like that, whatever the wording. The decision to offer three is recorded so far only in the brief for this note, and this does not reopen it; it is the regulatory question already open in `GATES.md`, with a sharper edge. Both founders, and a lawyer.
 4. **The numbers.** The cap matrix by risk and liquidity tier, the band width, the dedication months and the drift band are judgment. The tokenised-assets thread proposes, by analogy with UCITS, Basel and 2a-7 and from no source: per asset 25 / 20 / 10% for a rate leg at the three liquidity tiers, 20 / 15 / 7.5% for a market deposit, 10 / 7.5 / 5% for a credit or basis leg, 5 / 2.5 / 0% for an asset under a year old or opaque; credit plus basis plus new at most 40%; one issuer group at most 25%. These are far below today's registry caps (0.6, 0.4, 0.4), and with three yield legs they cannot absorb an income plan. Rodrigo: which wins, the matrix or a shelf wide enough to satisfy it?
@@ -306,10 +309,11 @@ So the changes fit inside `compose` as parameters and one added check, on one co
 
 ## 8. What could not be verified
 
-- Most papers behind 2.2 were read as abstracts, and the choice-architecture studies mostly as search snippets; the tags say which. The findings are well known, and the specific figures (3,000 months for an optimiser to beat 1/N, 32.5% of evaluations beating equal weight) rest on those abstracts.
+- Eight of the papers behind 2.2 and 2.4 have now been read in full: `[2][3][27][29][42][43][44][45]`. Two claims changed. The note had said caps work by shrinking the estimates; the paper finds upper bounds add nothing significant once a portfolio is long-only, so the caps now rest on concentration alone. The note had said words beside the numbers defeat the decoy effect; the paper finds they do not, so that rule is gone and non-dominance carries it. No recommendation changed.
+- The rest were read as abstracts or snippets; the tags say which. The specific figures (3,000 months for an optimiser to beat 1/N, 32.5% of evaluations beating equal weight) rest on abstracts.
 - The general statement that a greedy fill is exact on nested caps is `[memory]`; our own run supports it for our case.
 - Schwab's and Wealthfront's methodology papers were blocked. Betterment's use of cash flows before sales was not on the page read today.
-- Exponential's methodology, the full S&P criteria, Gauntlet and Chaos Labs parameters, and any secondary-market discount on USDY or syrupUSDC: not found or not reachable.
+- The full S&P criteria, Gauntlet and Chaos Labs parameters, and any secondary-market discount on USDY or syrupUSDC: not found or not reachable.
 - USDY's minimum, fee and settlement time are not in the issuer documents reached; third-party figures conflict. The 40 to 50 day transfer restriction appears only in a 2023 report and is probably stale.
 - Whether the product falls under CVM Resolution 19 is a legal question this note does not answer. The article number of its no-guarantee paragraph was not captured.
 - The ENG-2 prototype was read, not run.
@@ -320,8 +324,8 @@ So the changes fit inside `compose` as parameters and one added check, on one co
 Checked on Oct 3, 2026 by the thread agents; four were fetched again by the session that wrote this note and are marked †.
 
 1. Chhabra, "Beyond Markowitz: A Comprehensive Wealth Allocation Framework for Individual Investors", Journal of Wealth Management 7(4), 2005 (pp. 1-16 read): https://www.contemplata.it/wp-content/uploads/2017/01/BEYOND-MARKOWITZ-A-COMPREHENSIVE-WEALTH-ALLOCATION-FRAMEWORK-FOR-INDIVIDUAL-INVESTORS.pdf
-2. Das, Markowitz, Scheid, Statman, "Portfolio Optimization with Mental Accounts", JFQA 45(2), Apr 2010 (abstract): https://econpapers.repec.org/article/cupjfinqa/v_3a45_3ay_3a2010_3ai_3a02_3ap_3a311-334_5f00.htm
-3. MathWorks, "Dynamic Portfolio Allocation in Goal-Based Wealth Management for Multiple Time Periods", undated; a secondary implementation of Das, Ostrov, Radhakrishnan, Srivastav (2020), whose paper was not reachable: https://www.mathworks.com/help/finance/dynamic-portfolio-allocation-in-gbwm-for-multiple-periods.html
+2. Das, Markowitz, Scheid, Statman, "Portfolio Optimization with Mental Accounts", JFQA 45(2), Apr 2010 (full text): https://econpapers.repec.org/article/cupjfinqa/v_3a45_3ay_3a2010_3ai_3a02_3ap_3a311-334_5f00.htm
+3. Das, Ostrov, Radhakrishnan, Srivastav, "Dynamic portfolio allocation in goals-based wealth management", Computational Management Science, 2019/2020 (full text): https://doi.org/10.1007/s10287-019-00351-7
 4. Ryan, "The Evolution of Asset/Liability Management", CFA Institute Research Foundation, Sep 2013 (pp. 1-9; the source for Leibowitz and Redington, not read directly): https://rpc.cfainstitute.org/sites/default/files/-/media/documents/book/rf-lit-review/2013/rflr-v8-n2-1-pdf.pdf
 5. Martellini, Milhau, Mulvey, "Goal-Based Investing and Application to the Retirement Problem", EDHEC-Risk, about 2018 (page summary): https://climateinstitute.edhec.edu/goal-based-investing-and-application-retirement-problem
 6. Brunel, "Goals-Based Wealth Management in Practice", CFA Institute Conference Proceedings Quarterly, Mar 2012: https://static1.squarespace.com/static/59e8d89d914e6b37450c946a/t/5c643e15104c7b43f7b84187/1550073366884/CFA+Goals+Based+WM_PDOC.pdf
@@ -345,9 +349,9 @@ Checked on Oct 3, 2026 by the thread agents; four were fetched again by the sess
 24. "Continuous knapsack problem", Wikipedia, citing Goodrich and Tamassia 2002 and Korte and Vygen 2012; Dantzig 1957 seen as a snippet only: https://en.wikipedia.org/wiki/Continuous_knapsack_problem
 25. DeMiguel, Garlappi, Uppal, "Optimal Versus Naive Diversification", Review of Financial Studies 22(5), May 2009 (abstract): https://ideas.repec.org/a/oup/rfinst/v22y2009i5p1915-1953.html
 26. Haldane, Madouros, "The dog and the frisbee", Jackson Hole, Aug 2012: https://www.bis.org/review/r120905a.pdf
-27. Michaud, "The Markowitz Optimization Enigma", Financial Analysts Journal 45(1), 1989 (abstract): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2387669
+27. Michaud, "The Markowitz Optimization Enigma", Financial Analysts Journal 45(1), 1989 (full text): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2387669
 28. Best, Grauer, "On the Sensitivity of Mean-Variance-Efficient Portfolios to Changes in Asset Means", Review of Financial Studies 4(2), 1991 (abstract): https://www.jstor.org/stable/2962107
-29. Jagannathan, Ma, "Risk Reduction in Large Portfolios: Why Imposing the Wrong Constraints Helps", NBER WP 8922, May 2002; Journal of Finance 58(4), 2003 (abstract): https://www.nber.org/papers/w8922
+29. Jagannathan, Ma, "Risk Reduction in Large Portfolios: Why Imposing the Wrong Constraints Helps", NBER WP 8922, May 2002; Journal of Finance 58(4), 2003 (full text of the journal version): https://www.nber.org/papers/w8922
 30. Kritzman, Page, Turkington, "In Defense of Optimization: The Fallacy of 1/N", Financial Analysts Journal 66(2), 2010 (abstract): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1591171
 31. El Karoui, Lim, Vahn, "Performance-Based Regularization in Mean-CVaR Portfolio Optimization", arXiv 1111.2091, Nov 2011 (the source for the fragility result of Lim, Shanthikumar, Vahn 2011): https://arxiv.org/abs/1111.2091
 32. López de Prado, "Building Diversified Portfolios that Outperform Out of Sample", Journal of Portfolio Management 42(4), 2016 (abstract): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2708678
@@ -360,10 +364,10 @@ Checked on Oct 3, 2026 by the thread agents; four were fetched again by the sess
 39. CVM, Resolução nº 19, Feb 25, 2021, consolidated with Resolução 179/23 (articles 1, 17, 18): https://conteudo.cvm.gov.br/export/sites/cvm/legislacao/resolucoes/anexos/001/resol019consolid.pdf
 40. FCA, FG22/5, "Final non-Handbook Guidance for firms on the Consumer Duty", Jul 2022: https://www.fca.org.uk/publication/finalised-guidance/fg22-5.pdf
 41. Huber, Payne, Puto, "Adding Asymmetrically Dominated Alternatives", Journal of Consumer Research 9(1), 1982 (snippet): https://ideas.repec.org/a/oup/jconrs/v9y1982i1p90-98.html
-42. Simonson, "Choice Based on Reasons: The Case of Attraction and Compromise Effects", Journal of Consumer Research 16(2), 1989 (bibliographic page; findings from a snippet): https://ideas.repec.org/a/oup/jconrs/v16y1989i2p158-74.html
-43. Frederick, Lee, Baskin, "The Limits of Attraction", Journal of Marketing Research 51(4), 2014 (snippet): https://journals.sagepub.com/doi/abs/10.1509/jmr.12.0061
-44. Yang, Lynn, "More Evidence Challenging the Robustness and Usefulness of the Attraction Effect", Journal of Marketing Research 51(4), 2014 (snippet): https://journals.sagepub.com/doi/10.1509/jmr.14.0020
-45. Benartzi, Thaler, "How Much Is Investor Autonomy Worth?", Journal of Finance 57(4), 2002 (abstract): https://ideas.repec.org/a/bla/jfinan/v57y2002i4p1593-1616.html
+42. Simonson, "Choice Based on Reasons: The Case of Attraction and Compromise Effects", Journal of Consumer Research 16(2), 1989 (full text): https://ideas.repec.org/a/oup/jconrs/v16y1989i2p158-74.html
+43. Frederick, Lee, Baskin, "The Limits of Attraction", Journal of Marketing Research 51(4), 2014 (full text): https://journals.sagepub.com/doi/abs/10.1509/jmr.12.0061
+44. Yang, Lynn, "More Evidence Challenging the Robustness and Usefulness of the Attraction Effect", Journal of Marketing Research 51(4), 2014 (full text): https://journals.sagepub.com/doi/10.1509/jmr.14.0020
+45. Benartzi, Thaler, "How Much Is Investor Autonomy Worth?", Journal of Finance 57(4), 2002 (full text): https://ideas.repec.org/a/bla/jfinan/v57y2002i4p1593-1616.html
 46. Johnson, Goldstein, "Do Defaults Save Lives?", Science 302, 2003 (secondary snippet): https://www.researchgate.net/publication/8996952_Medicine_Do_defaults_save_lives
 47. Lopez-Lira, Tang, Zhu, "The Memorization Problem: Can We Trust LLMs' Economic Forecasts?", arXiv, Apr 2025 (abstract): https://arxiv.org/abs/2504.14765
 48. Li, Kim, Cucuringu, Ma, "Can LLM-based Financial Investing Strategies Outperform the Market in Long Run?", arXiv, May 2025 (abstract): https://arxiv.org/abs/2505.07078
@@ -393,4 +397,7 @@ Checked on Oct 3, 2026 by the thread agents; four were fetched again by the sess
 72. CCData, "Market Analysis: Silicon Valley Bank, Circle & USDC", Mar 13, 2023: https://data.coindesk.com/blogs/market-analysis-silicon-valley-bank-circle-usdc
 73. Directive 2009/65/EC (UCITS), Article 52: https://www.esma.europa.eu/publications-and-data/interactive-single-rulebook/ucits/article-52
 74. SEC, 17 CFR § 270.2a-7: https://www.law.cornell.edu/cfr/text/17/270.2a-7
+76. DL News Research with Exponential, "Evaluating Risk in DeFi", undated (full text; an industry report in which the vendor backtests its own ratings): www.dlnews.com/research
+77. Kim, Kwon, Lee, Kim, Lin, "Personalized goal-based investing via multi-stage stochastic goal programming", Quantitative Finance, Oct 2019 (full text): https://doi.org/10.1080/14697688.2019.1662079
+78. Muralidhar, "A Very Simple Goals- and Risk-Based Asset Pricing Model", SSRN 3051726, draft of Mar 2019 (full text; a working paper, not peer reviewed): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3051726
 75. Local, on `staging` at `1b8be80`: `packages/engine/src/{solver,assets,risk,policy,schedule,feeds}`, `packages/schemas/src/{constraint-sheet,plan,liquidity,asset,basket-sheet,basket,policy}.ts`, `packages/risk/src/{assess,curves,provider,breach,time}.ts`, `apps/api/src/routes/{plans,monitor}.ts`, `tests/`; `docs/structurer/HANDOFF-IDEA1.md`, `docs/risk/HANDOFF-RISK.md`, `docs/vault/{DESIGN-VAULT,AUDIT-VAULT,HANDOFF-VAULT,STATE-VAULT}.md`, `docs/GATES.md`, `docs/vault/research/design-v2/personalization-ai.md` and `personalization-proto/compose.mjs`.
