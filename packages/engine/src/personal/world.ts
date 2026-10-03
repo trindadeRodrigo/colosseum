@@ -50,7 +50,10 @@ export type World = {
   /** What the person holds that counts (at or over the threshold), in cents, by ticker; and its sum. */
   held: Map<string, number>;
   heldTotal: number;
+  /** The yield the plan counts for each token: the best observation given for it. */
   yields: Map<string, YieldObservation>;
+  /** Everything that was given, validated and in one order, for the hash of the inputs. */
+  given: { yields: YieldObservation[]; holdings: HeldPosition[]; liquiditySource: string | null };
   liquidity: LiquidityProvider | undefined;
   /** The month of the goal's date, YYYY-MM. */
   goalMonth: string;
@@ -238,6 +241,11 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
     held,
     heldTotal,
     yields: pickPrimaryYield(inOrder(parsedYields.data)),
+    given: {
+      yields: inOrder(parsedYields.data),
+      holdings: byName(parsedHoldings.data, (h) => JSON.stringify(Object.entries(h).sort())),
+      liquiditySource: context.liquiditySource?.trim() || null,
+    },
     liquidity,
     goalMonth: monthAfter(context.now, sheet.horizonMonths),
     // A vault's target is at least one basis point, so a line is too, whatever the table says.

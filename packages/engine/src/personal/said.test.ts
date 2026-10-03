@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compose } from './index';
+import { PERSONAL_PARAMS } from './params';
 import {
   allReasons,
   fixtureContext,
@@ -390,5 +391,61 @@ describe('an income goal: what the verdict says is so', () => {
     const plan = compose({ ...carla, incomeTargetUsdMonthly: 200 }, shelf, ctx);
     expect(plan.verdict).toEqual({ met: true, gapUsdMonthly: 0, ways: [] });
     expect(plan.card.cashFlow).toBe('monthly');
+  });
+});
+
+describe('the hash of the inputs pins everything that shaped the plan', () => {
+  const person = sheet({ themes: ['the-seven'] });
+  const hashOf = (over: Partial<Parameters<typeof fixtureContext>[0]> = {}, onShelf = shelf) =>
+    compose(person, onShelf, fixtureContext(over)).inputsHash;
+  const base = hashOf();
+
+  it('changes with the holdings, the yields, the liquidity figures, the shelf and the table', () => {
+    expect(hashOf()).toBe(base);
+    expect(hashOf({ holdings: [{ underlying: 'SOL', valueUsd: 20_000 }] })).not.toBe(base);
+    expect(hashOf({ yields: fixtureYields().slice(1) })).not.toBe(base);
+    expect(hashOf({ liquidity: fixtureLiquidity({ 'solana:nvdax': 2_000 }) })).not.toBe(
+      hashOf({ liquidity: fixtureLiquidity({ 'solana:nvdax': 2_000_000 }) }),
+    );
+    expect(hashOf({ liquiditySource: 'somewhere else' })).not.toBe(base);
+    // The same shelf version with one token's tier changed.
+    const edited = {
+      ...shelf,
+      assets: shelf.assets.map((a) => (a.id === 'solana:nvdax' ? { ...a, tier: 'C' as const } : a)),
+    };
+    expect(hashOf({}, edited)).not.toBe(base);
+    expect(hashOf({ params: { ...PERSONAL_PARAMS, fallBps: 2500 } })).not.toBe(base);
+  });
+
+  it('does not change with the order things are listed in', () => {
+    const reordered = {
+      ...shelf,
+      assets: [...shelf.assets].reverse(),
+      families: [...shelf.families]
+        .reverse()
+        .map((f) => ({ ...f, recipes: [...f.recipes].reverse() })),
+    };
+    const held = [
+      { underlying: 'SOL', valueUsd: 20_000 },
+      { underlying: 'NVDA', valueUsd: 700 },
+    ];
+    expect(hashOf({ yields: fixtureYields().reverse(), holdings: held }, reordered)).toBe(
+      hashOf({ holdings: [...held].reverse() }),
+    );
+  });
+
+  it('two liquidity tables that give different plans never share a hash', () => {
+    const thin = compose(
+      person,
+      shelf,
+      fixtureContext({ liquidity: fixtureLiquidity({ 'solana:nvdax': 2_000 }) }),
+    );
+    const deep = compose(
+      person,
+      shelf,
+      fixtureContext({ liquidity: fixtureLiquidity({ 'solana:nvdax': 2_000_000 }) }),
+    );
+    expect(thin.lines).not.toEqual(deep.lines);
+    expect(thin.inputsHash).not.toBe(deep.inputsHash);
   });
 });

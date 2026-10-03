@@ -1,4 +1,4 @@
-import { sha256Hex } from '@colosseum/basket';
+import { EXIT_WINDOW_DAYS, sha256Hex } from '@colosseum/basket';
 import {
   type BasketAsset,
   BasketSheet,
@@ -403,24 +403,52 @@ function build(
   for (const o of observations)
     if (o.provenance !== 'live') w.flags.add(`${o.kind}_provenance:${o.provenance}`);
 
+  // The hash of the inputs pins everything that shaped the plan: the sheet, the time, what the shelf
+  // holds, what the person holds, every yield given, every figure the liquidity provider has for
+  // this chain's tokens and for these lines, and the parameter table.
   const paramsHash = hashOf(P);
+  const liquidity = w.liquidity;
+  const inputs = {
+    engine: PERSONAL_ENGINE_VERSION,
+    params: paramsHash,
+    now: w.now,
+    sheet,
+    shelf: {
+      version: shelf.version,
+      assets: byName(shelf.assets, (a) => a.id),
+      families: byName(shelf.families, (f) => f.meta.slug).map((f) => ({
+        meta: f.meta,
+        recipes: byName(f.recipes, (r) => r.chain),
+      })),
+    },
+    holdings: w.given.holdings,
+    yields: w.given.yields,
+    liquidity: liquidity
+      ? {
+          method: liquidity.methodVersion,
+          provenance: liquidity.provenance,
+          source: w.given.liquiditySource,
+          capacity: w.tokens.map((a) => [
+            a.id,
+            liquidity.covers(a.id) ? liquidity.exitCapacity(a.id, P.tau, EXIT_WINDOW_DAYS) : null,
+          ]),
+          cost: lines.map((l) => [
+            l.assetId,
+            l.amountUsd,
+            liquidity.covers(l.assetId)
+              ? liquidity.exitCost(l.assetId, l.amountUsd, EXIT_WINDOW_DAYS)
+              : null,
+          ]),
+        }
+      : null,
+  };
   return {
     sheet,
     engineVersion: PERSONAL_ENGINE_VERSION,
     paramsHash,
     shelfVersion: shelf.version,
-    inputsHash: hashOf({
-      engine: PERSONAL_ENGINE_VERSION,
-      params: paramsHash,
-      shelf: shelf.version,
-      sheet,
-      now: w.now,
-      holdings: byName(context.holdings ?? [], (h) => canonical(h)),
-      yields: byName([...w.yields.values()], (y) => y.assetId),
-      liquidity: w.liquidity
-        ? { method: w.liquidity.methodVersion, provenance: w.liquidity.provenance }
-        : null,
-    }),
+    // The plans tried on the way to a verdict are thrown away, and so not hashed.
+    inputsHash: withWays ? hashOf(inputs) : paramsHash,
     lines,
     recipes,
     removed,
