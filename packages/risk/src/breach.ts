@@ -123,11 +123,10 @@ export function assessLiquidity(inp: BreachInput) {
   // least liquid first: lowest score at the plan's window
   // least liquid first, judged over every regime (no clock: the result must not depend on when it runs)
   const regimesAll = REGIMES;
-  const order = [...inp.illiquid].sort(
-    (a, b) =>
-      liquidityScore(a.curves, regimesAll, inp.tau, a.valueUsd).score -
-      liquidityScore(b.curves, regimesAll, inp.tau, b.valueUsd).score,
-  );
+  // a leg with no measured regime is the least known, so it goes first (an order, not a reported number)
+  const score = (l: BreachInput['illiquid'][number]) =>
+    liquidityScore(l.curves, regimesAll, inp.tau, l.valueUsd).score ?? -1;
+  const order = [...inp.illiquid].sort((a, b) => score(a) - score(b));
   for (let iter = 0; iter < 20 && after.some((c) => c.likelyBreach); iter++) {
     const first = after.find((c) => c.likelyBreach) as WithdrawalCheck;
     let gap = first.need - first.capacityDry;

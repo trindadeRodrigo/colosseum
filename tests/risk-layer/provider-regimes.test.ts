@@ -5,6 +5,7 @@ import {
   createLiquidityProvider,
   type DepthCurve,
   defaultRegimeParams,
+  liquidityScore,
   measuredRegimes,
   REGIMES,
   weekendRatio,
@@ -157,5 +158,57 @@ describe('per-regime answers (item 6)', () => {
   it('exitCapacityIn answers per regime', () => {
     expect(p.exitCapacityIn('spyx', 0.01, 'us_market_hours')?.capacityUsd).toBeGreaterThan(10_000);
     expect(p.exitCapacityIn('spyx', 0.01, 'weekend')).toBeNull();
+  });
+});
+
+describe('the liquidity score and the planner order skip a regime that is not measured (DA2)', () => {
+  const thin = asset({ us_market_hours: rth, us_offhours_weekday: offhours, weekend: thinWeekend });
+
+  it('a window with a thin weekend scores on the measured regimes and names the weekend', () => {
+    const s = liquidityScore(
+      thin,
+      ['us_market_hours', 'us_offhours_weekday', 'weekend'],
+      0.01,
+      100_000,
+    );
+    expect(s.worstRegime).toBe('us_offhours_weekday');
+    expect(s.score).toBeGreaterThan(0);
+    expect(s.regimesMissing).toEqual([{ regime: 'weekend', reason: 'insufficient_samples' }]);
+  });
+
+  it('a window with no measured regime has no score, never zero', () => {
+    const s = liquidityScore(thin, ['weekend'], 0.01, 100_000);
+    expect(s.score).toBeNull();
+    expect(s.capacityUsd).toBeNull();
+    expect(s.regimesMissing).toEqual([{ regime: 'weekend', reason: 'insufficient_samples' }]);
+  });
+
+  it('sells the least liquid leg first even when both have a thin weekend', () => {
+    // `deep` has the market-hours curve, `shallow` costs more at every size; the deep one is listed first
+    const shallowCurve = curve([0.004, 0.008, 0.03, 0.2], 40, null);
+    const r = assessLiquidity({
+      cashUsd: 0,
+      brlUsd: 0,
+      liquid: [],
+      illiquid: [
+        { assetId: 'deep', valueUsd: 50_000, curves: { ...thin, assetId: 'deep' } },
+        {
+          assetId: 'shallow',
+          valueUsd: 50_000,
+          curves: asset({
+            us_market_hours: shallowCurve,
+            us_offhours_weekday: shallowCurve,
+            weekend: thinWeekend,
+          }),
+        },
+      ],
+      withdrawals: [{ at: '2026-10-12T15:00:00.000Z', usd: 20_000 }],
+      windowDays: 7,
+      tau: 0.01,
+      shareOfDepth: 0.25,
+      dryFactorFloor: 0.25,
+      regimeParams: P,
+    });
+    expect(r.orders[0]?.fromAssetId).toBe('shallow');
   });
 });

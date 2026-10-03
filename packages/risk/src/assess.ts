@@ -190,15 +190,21 @@ export function recoverableValue(
 
 // ---------------------------------------------------------------- liquidity score
 
-/** Fraction of nRef exitable within the horizon at ≤ tau, in the worst regime the horizon can contain. */
+/**
+ * Fraction of nRef exitable within the horizon at ≤ tau, in the worst measured regime the horizon can contain. A
+ * regime the curves do not measure is skipped and named in `regimesMissing` (DA2); when none is measured the score,
+ * regime and capacity are null, never zero.
+ */
 export function liquidityScore(a: AssetCurves, regimes: Regime[], tau: number, nRef: number) {
-  const w = worstCapacity(a, regimes, tau);
+  const { measured, missing } = measuredRegimes(a, regimes);
+  const w = measured.length ? worstCapacity(a, measured, tau) : null;
   return {
     assetId: a.assetId,
-    score: nRef > 0 ? Math.min(1, w.capacityUsd / nRef) : 0,
-    worstRegime: w.regime,
-    capacityUsd: w.capacityUsd,
-    lowerBound: w.lowerBound,
+    score: w ? (nRef > 0 ? Math.min(1, w.capacityUsd / nRef) : 0) : null,
+    worstRegime: w?.regime ?? null,
+    capacityUsd: w?.capacityUsd ?? null,
+    lowerBound: w?.lowerBound ?? false,
+    regimesMissing: missing,
     tau,
     nRef,
   };
