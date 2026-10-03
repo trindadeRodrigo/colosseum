@@ -14,7 +14,7 @@ import {
   splitKey,
 } from '@colosseum/risk';
 import { and, eq } from 'drizzle-orm';
-import { LENDING_DATA } from '../lib-lending';
+import { SPLIT_DIR } from '../lib-lending';
 
 // PLAN-ANALYTICS item 4 — `pnpm risk:cost-breakdown [asset]`: fits the cost split (pool fee, transfer fee, basis;
 // median per asset, side, regime and size) from the split snapshots in data/risk/split/ (`split-0.1`) and stores
@@ -22,7 +22,7 @@ import { LENDING_DATA } from '../lib-lending';
 // is the point's cost less the three. Prints one asset's table by regime and size, with the network fee per swap.
 // Run after `pnpm risk:split-snapshot`; an hourly schedule is a launchd job a person installs.
 const CURVE_METHOD_VERSION = 'risk-0.3';
-const dir = join(LENDING_DATA, 'split');
+const dir = SPLIT_DIR;
 const show = (process.argv[2] ?? 'SPYx').toLowerCase();
 const P = defaultRegimeParams(
   JSON.parse(

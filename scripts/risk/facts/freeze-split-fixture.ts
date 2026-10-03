@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { createDb, riskDepthCurves, riskNetworkFees } from '@colosseum/db';
 import { attachSplit, type DepthCurve } from '@colosseum/risk';
 import { and, eq, inArray } from 'drizzle-orm';
-import { LENDING_DATA } from '../lib-lending';
+import { SPLIT_DIR } from '../lib-lending';
 
 // PLAN-ANALYTICS item 4 — freezes the rows behind tests/risk-layer/facts-breakdown.test.ts: SPYx's and TSLAx's
 // `risk-0.3` curves (split keys removed, as before the fit), their split snapshot rows, and the network fee rows
@@ -43,7 +43,7 @@ const fees = (await db.select().from(riskNetworkFees)).map((r, i) => ({
   solUsd: r.solUsd,
 }));
 await client.end();
-const dir = join(LENDING_DATA, 'split');
+const dir = SPLIT_DIR;
 const splitRows = readdirSync(dir)
   .filter((f) => f.endsWith('.jsonl'))
   .sort()

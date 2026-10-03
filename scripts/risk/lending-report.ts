@@ -736,7 +736,9 @@ const twoHopRows = await rows<{ asset_mint: string; pools: string; tvl: number |
 const twoHopOf = new Map(
   twoHopRows.map((r) => [r.asset_mint, { pools: Number(r.pools), tvlUsd: Number(r.tvl ?? 0) }]),
 );
-const issuerFile = JSON.parse(readFileSync('fixtures/risk/issuer-models.json', 'utf8')) as {
+const issuerFile = JSON.parse(
+  readFileSync(process.env.RISK_ISSUER_MODELS ?? 'fixtures/risk/issuer-models.json', 'utf8'),
+) as {
   fetchedAt: string;
   models: Record<string, IssuerModel>;
 };

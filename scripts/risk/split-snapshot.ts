@@ -9,13 +9,14 @@ import {
   routeTrade,
   usdCurves,
 } from '@colosseum/risk';
-import { multipleAccounts, RISK_HOME } from './lib-lending';
+import { multipleAccounts, RISK_HOME, SPLIT_DIR } from './lib-lending';
 
 // PLAN-ANALYTICS item 4, DA7 (a) — `pnpm risk:split-snapshot`: our own read-only snapshot of every asset's dollar and
 // SOL exit pools, routed with routeTrade so each row stores what the collector's rows lack: the amount sent to each
 // pool and the cost split (pool fee, transfer fee, basis, impact). Reads the collector's registry and cached child
 // accounts (no getProgramAccounts, DA3); one getMultipleAccounts batch of 100 at a time; the SOL price from Jupiter's
-// public price API, as the collector does. Writes only data/risk/split/<day>.jsonl. Sends no transaction.
+// public price API, as the collector does. Writes only SPLIT_DIR/<day>.jsonl (data/risk/split
+// unless RISK_DATA_DIR is set). Sends no transaction.
 // Each asset is compared with the collector's routed row nearest in time (`vsCollector`), which measures the drift
 // between the two snapshots, not an error of either.
 const METHOD_VERSION = 'split-0.1';
@@ -142,7 +143,7 @@ if (existsSync(collectorFile))
       collector.set(r.assetMint, r);
   }
 
-const outDir = 'data/risk/split';
+const outDir = SPLIT_DIR;
 mkdirSync(outDir, { recursive: true });
 const file = join(outDir, `${day}.jsonl`);
 const drift: number[] = [];
