@@ -10,7 +10,7 @@
 //                  position), against the routed DEX sale capacity at a cost equal to the liquidation bonus in the
 //                  worst regime: the liquidation coverage ratio.
 
-import { type AssetCurves, worstCapacity } from '../assess';
+import { type AssetCurves, measuredRegimes, worstCapacity } from '../assess';
 import { quantileOf } from '../curves';
 import type { Regime } from '../time';
 
@@ -272,15 +272,18 @@ export function lendingGapSim(positions: readonly GapPosition[], gapPct: number,
 }
 
 /** Routed DEX sale capacity at cost ≤ tau in the worst of `regimes` (assess.ts `worstCapacity`). A derived weekend
- *  capacity (measured capacity × the measured weekend depth ratio) is used instead when it is lower. */
+ *  capacity (measured capacity × the measured weekend depth ratio) is used instead when it is lower. A regime whose
+ *  curve has too few samples is skipped, never read as zero capacity (DA2); with none measured the answer is null. */
 export function saleCapacity(
   curves: AssetCurves,
   regimes: readonly Regime[],
   tau: number,
   weekend?: { ratio: number; from: Regime } | null,
 ) {
-  const measured = worstCapacity(curves, [...regimes], tau);
-  if (weekend && regimes.includes(weekend.from)) {
+  const usable = measuredRegimes(curves, [...regimes]).measured;
+  if (!usable.length) return null;
+  const measured = worstCapacity(curves, usable, tau);
+  if (weekend && usable.includes(weekend.from)) {
     const base = worstCapacity(curves, [weekend.from], tau);
     const derived = base.capacityUsd * weekend.ratio;
     if (derived < measured.capacityUsd)

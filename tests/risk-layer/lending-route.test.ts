@@ -132,6 +132,7 @@ const earlier = () =>
         a.minBonus,
         weekendOf(a.asset),
       );
+      if (!cap) return [];
       return [{ g, a, curves, cap, ratio: coverageRatio(cap.capacityUsd, a.seizedUsd) }];
     }),
   );
@@ -218,7 +219,12 @@ describe('coverage on the frozen report fixture', () => {
         { bonus: b, oracleGap: ZERO, minMargin: 0 },
         weekendOf(r.a.asset),
       );
-      const same = saleCapacity(r.curves, regimes, b / (1 + b), weekendOf(r.a.asset));
+      const same = saleCapacity(
+        r.curves,
+        regimes,
+        b / (1 + b),
+        weekendOf(r.a.asset),
+      ) as NonNullable<ReturnType<typeof saleCapacity>>;
       expect(n.missing).toEqual([]);
       close(n.worst?.capacityUsd as number, same.capacityUsd, 1e-9);
       expect(n.worst?.regime).toBe(same.regime);
