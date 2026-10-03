@@ -210,11 +210,12 @@ What the code has `[repo]`: `ConstraintSheet.currency` is the literal `'BRL'`, t
 
 **Stocks.** The rule covers every stock token listed on the person's chain, by one rule, with no subset picked in the engine. Where things stand `[repo]`:
 
-- The legacy registry holds two (SPYx, QQQx). The launch-shelf seed holds 33 distinct stocks and stock indexes across three chains: 15 on Solana, 10 on Base, 32 on Robinhood Chain, ten of those marked excluded. Bearing's collector measured 47 Solana tokens today, gold among them. Rodrigo's figure is 34; which list that is, is question 10.
+- The legacy registry holds two (SPYx, QQQx).
+- On Solana the shelf is the set Bearing already measures. Its registry of Oct 1 found that 34 pools hold 80% of the on-chain liquidity of stock tokens, and those 34 pools belong to 18 assets (`docs/risk/PLAN-RISK.md`, `docs/risk/STATE-RISK.md` Step 1). The 18 are the stock products: they have curves, and the analytics pages already show them. The 34 is a count of pools, not of stocks. The collector follows 47 tokens in all; the other 29 are thin and stay off the shelf until their depth says otherwise.
 - A plan lives on one chain (`ONE-CHAIN`), so a plan can hold only that chain's stock tokens.
 - Stocks are for growth plans only (`PROTECT-NO-STOCKS`, and the income rule).
 - What a stock may weigh comes from its measured exit numbers (`EXIT-SOURCE`), which is change C5 already decided for stocks; a tier stands in where nothing is measured, labelled as a fallback.
-- A plan holds at most 8 lines in the MVP and the vault allows 16 (`DESIGN-VAULT.md` §7), with a minimum line of 0.5%. So every stock is a product on the shelf, and one plan holds a few of them: the person's themes, or a shared portfolio, choose which.
+- A plan holds at most 8 lines in the MVP and the vault allows 16 (`DESIGN-VAULT.md` §7), with a minimum line of 0.5%. Every stock on the shelf is a product, and one plan holds a few of them: the person's themes, or a shared portfolio, choose which (Rodrigo, Oct 3).
 - On Solana, Kamino Scope prices ten stock tokens, so automatic rebalancing covers plans built from those ten only.
 
 What changes in the solver for a wide shelf:
@@ -343,7 +344,7 @@ So the changes fit inside `compose` as parameters and one added check, on one co
 7. **Narration.** The decision to let the model narrate is stated as pending in the brief for this note and is in no other document yet. Templates cannot invent a number, and the evidence for model narration is fluency only. If it passes, does Portuguese ship on templates until C18 has run?
 8. **One engine.** `DESIGN-VAULT.md` §7 says `solve()` is not edited. Do these changes go only into `engine/src/personal/`, with the legacy solver frozen behind its baseline test, or into both?
 9. **Names** for the three candidates, and whether any attribute leads the scorecard.
-10. **The 34 stocks.** Which list is it? The seed has 33 distinct stocks across three chains and Bearing measures 47 Solana tokens. And with at most 8 lines in a plan, is "all of them as products" every stock eligible and chosen through themes and shared portfolios, or should a plan be able to hold more lines?
+10. **The Solana stock shelf.** The 80% set is 18 assets in 34 pools. Is the shelf those 18, and does it follow the set when the registry is re-run?
 11. **Which currencies beyond dollars and reais** at launch, and for each, is there a listed asset that can serve as its matching leg?
 
 ## 8. What could not be verified
