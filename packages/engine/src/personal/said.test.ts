@@ -365,6 +365,37 @@ describe('what the person already holds', () => {
     expect(rulesOn(plan, 'solana:nvdax')).toContain('ALREADY_HELD');
   });
 
+  it('holding more than the plan would buy: nothing of it is bought, and its money is held in dollar yield, with why', () => {
+    // A table with half in stocks and half in gold, and a person who cannot hold gold and already
+    // has $20,000 of the S&P 500. The target for stocks is half of $30,000, less than they hold.
+    const table = {
+      ...PERSONAL_PARAMS,
+      sleeves: {
+        ...PERSONAL_PARAMS.sleeves,
+        'grow:high': { growthBps: 5000, dollarYieldBps: 0, goldBps: 5000 },
+      },
+    };
+    const context = fixtureContext({
+      params: table,
+      holdings: [{ underlying: 'SPY', valueUsd: 20_000 }],
+    });
+    const person = sheet({ risk: 'high', limits: { cannotHold: { classes: ['gold'] } } });
+    const plan = compose(person, shelf, context);
+    expect(violations(plan, shelf, context)).toEqual([]);
+    expect(plan.lines.map((l) => [l.assetId, l.amountUsd])).toEqual([['solana:syrupusdc', 10_000]]);
+    expect(plan.removed.map((r) => [r.ref, r.reasons.map((x) => x.rule)])).toEqual([
+      ['GLD', ['EXCLUDED']],
+      ['SPY', ['ALREADY_HELD_NONE']],
+    ]);
+    const said = line(plan, 'solana:syrupusdc')?.reasons.map((r) => r.text) ?? [];
+    expect(said).toContain(
+      '$5,000 this plan does not put in SPY is held in dollar yield or cash instead: you already hold $20,000 of it.',
+    );
+    expect(said).toContain(
+      '$5,000 meant for GLD is held in dollar yield or cash instead: you said you cannot hold it.',
+    );
+  });
+
   it('a shared portfolio with a held part is not followed whole: the held part is cut on its own line', () => {
     const ana = sheet({
       amountUsd: 2_000,

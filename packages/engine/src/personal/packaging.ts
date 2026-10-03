@@ -181,13 +181,12 @@ export function packageUp(w: World, book: Book): Packaged {
       (r) => r.bps,
       (r) => r.asset.id,
     )) {
+      // A line is "through" a shared portfolio only when all of it is: a token held partly through
+      // one and partly on its own, or through two, is a line of its own.
       const followed = [...row.via.entries()].filter(([slug]) => !opened.has(slug));
       const [only] = followed;
       const viaIndex =
-        followed.length === 1 &&
-        only &&
-        sum([...row.via.values()]) === only[1] &&
-        row.via.size === 1
+        followed.length === 1 && only && row.via.size === 1 && only[1] >= row.cents
           ? only[0]
           : undefined;
       const reasons = row.reasons.flatMap((r) => {

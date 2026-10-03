@@ -1,7 +1,15 @@
 import type { Shelf } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
 import { compose } from './index';
-import { distanceBps, fixtureContext, launchShelf, sheet, violations } from './testing';
+import { PERSONAL_PARAMS } from './params';
+import {
+  distanceBps,
+  fixtureContext,
+  fixtureLiquidity,
+  launchShelf,
+  sheet,
+  violations,
+} from './testing';
 import type { ComposeContext, PersonalProposal, PersonalSheet } from './types';
 
 // When a cap cuts the stocks of a shared portfolio, the cut falls on all of them in proportion to
@@ -141,5 +149,85 @@ describe('a cap cuts the stocks of a portfolio in proportion, so it keeps its sh
     expect(stocks.reduce((n, id) => n + bpsOf(low, id), 0)).toBe(4000);
     const sizes = stocks.map((id) => bpsOf(low, id));
     expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThanOrEqual(4);
+  });
+});
+
+describe('where the least a line can be is more than an equal share', () => {
+  it('the last names in the order are left out, one at a time, until the rest have a line each', () => {
+    // 20% with one issuer at most, 10% of it in gold: 10% for seven stocks, and a line is 4% at
+    // least. Five are left out, the last in the order first, and the first two share the room.
+    const tight = fixtureContext({
+      params: {
+        ...PERSONAL_PARAMS,
+        capPerIssuerBps: { ...PERSONAL_PARAMS.capPerIssuerBps, low: 2000 },
+        minLineBps: 400,
+      },
+    });
+    const made = plan({ themes: ['the-seven'], risk: 'low' }, tight);
+    expect(SEVEN.filter((id) => bpsOf(made, id) > 0)).toEqual(['solana:aaplx', 'solana:nvdax']);
+    expect(bpsOf(made, 'solana:aaplx') + bpsOf(made, 'solana:nvdax')).toBe(1000);
+    expect(made.removed.map((r) => [r.ref, r.reasons.map((x) => x.rule)])).toEqual(
+      ['AMZN', 'GOOGL', 'META', 'MSFT', 'TSLA'].map((name) => [name, ['ISSUER_CAP']]),
+    );
+  });
+});
+
+describe('one stock in two portfolios', () => {
+  it('a token takes its ceiling in all, counting what a portfolio held whole has of it', () => {
+    // NVDA on Robinhood Chain measured at $8,000: a line of it holds $2,000 at most. The Seven is
+    // held whole with $680 of it, so Sand to Server, opened, adds $1,320 and no more.
+    const context = fixtureContext({
+      params: { ...PERSONAL_PARAMS, maxLinesPerChain: 16 },
+      liquidity: fixtureLiquidity({ 'robinhood:nvda': 8_000 }),
+    });
+    const made = plan(
+      { chains: ['robinhood'], themes: ['the-seven', 'sand-to-server'], risk: 'high' },
+      context,
+    );
+    const nvda = made.lines.find((l) => l.assetId === 'robinhood:nvda');
+    expect(nvda?.amountUsd).toBe(2000);
+    expect(nvda?.reasons.map((r) => r.text)).toContain(
+      'NVDA is limited to $2,000: beyond that, selling it would cost too much.',
+    );
+    expect(made.recipes[0]?.components.find((c) => c.kind === 'index')).toMatchObject({
+      family: 'the-seven',
+    });
+    expect(
+      made.lines
+        .find((l) => l.assetId === 'robinhood:sgov')
+        ?.reasons.find((r) => r.rule === 'OVERFLOW_CEILING')?.text,
+    ).toBe(
+      '$105 meant for NVDA is held in dollar yield or cash instead: NVDA takes at most $2,000.',
+    );
+  });
+
+  it('what a portfolio held whole has of it counts toward the cap on one stock', () => {
+    // NVDA is in The Seven and in Sand to Server. With 15% at most in one stock, The Seven fits
+    // whole (6.8% NVDA) and Sand to Server is opened: its NVDA takes what is left under the cap.
+    const table = {
+      ...PERSONAL_PARAMS,
+      capPerStockBps: { ...PERSONAL_PARAMS.capPerStockBps, high: 1500 },
+      maxLinesPerChain: 16,
+    };
+    const context = fixtureContext({ params: table });
+    const made = plan(
+      { chains: ['robinhood'], themes: ['the-seven', 'sand-to-server'], risk: 'high' },
+      context,
+    );
+    const nvda = made.lines.find((l) => l.assetId === 'robinhood:nvda');
+    expect(nvda?.weightBps).toBe(1500);
+    expect(nvda?.reasons.map((r) => r.rule)).toEqual(
+      expect.arrayContaining(['FOLLOWS', 'OPENED', 'SINGLE_STOCK_CAP']),
+    );
+    // 680 of it through The Seven, which stays one component, and 820 on its own.
+    const components = made.recipes[0]?.components ?? [];
+    expect(components.find((c) => c.kind === 'index')).toMatchObject({ family: 'the-seven' });
+    expect(components).toContainEqual({ kind: 'asset', asset: 'robinhood:nvda', weightBps: 820 });
+    // The line is held partly through the portfolio and partly on its own, so it is not marked as
+    // through it; the lines that are wholly The Seven's are.
+    expect(nvda?.viaIndex).toBeUndefined();
+    expect(made.lines.filter((l) => l.viaIndex === 'the-seven').map((l) => l.assetId)).toEqual(
+      ['aapl', 'amzn', 'googl', 'meta', 'msft', 'tsla'].map((s) => `robinhood:${s}`),
+    );
   });
 });

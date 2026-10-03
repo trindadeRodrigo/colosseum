@@ -353,6 +353,36 @@ describe('what compose refuses, and what it says instead of pretending', () => {
     ).toContain('SLEEVE_FILLED');
   });
 
+  it('holds nothing on another chain, even when a recipe names a token of one', () => {
+    // A recipe for Solana that lists Robinhood Chain's NVDA in place of its own: a mistake on the
+    // shelf. The portfolio is not held whole, and no line leaves the person's chain.
+    const mixed: Shelf = {
+      ...shelf,
+      families: shelf.families.map((f) => ({
+        ...f,
+        recipes: f.recipes.map((r) =>
+          f.meta.slug === 'the-seven' && r.chain === 'solana'
+            ? {
+                ...r,
+                components: r.components.map((c) =>
+                  c.kind === 'asset' && c.asset === 'solana:nvdax'
+                    ? { ...c, asset: 'robinhood:nvda' }
+                    : c,
+                ),
+              }
+            : r,
+        ),
+      })),
+    };
+    const ctx = fixtureContext();
+    const made = compose(sheet({ themes: ['the-seven'], risk: 'high' }), mixed, ctx);
+    expect(violations(made, mixed, ctx)).toEqual([]);
+    expect(made.lines.every((l) => l.chain === 'solana')).toBe(true);
+    expect(made.recipes[0]?.components.every((c) => c.kind === 'asset')).toBe(true);
+    // The Solana token of the same stock is held in its place.
+    expect(made.lines.some((l) => l.assetId === 'solana:nvdax')).toBe(true);
+  });
+
   it('holds cash, with a reason, where a chain has no dollar yield: protect on Base alone', () => {
     const made = plan({ goal: 'protect', chains: ['base'] }, P);
     const cash = made.lines.find((l) => l.assetId === 'base:usdc');
