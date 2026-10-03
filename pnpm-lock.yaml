@@ -328,6 +328,9 @@ importers:
 
   packages/engine:
     dependencies:
+      '@colosseum/basket':
+        specifier: workspace:*
+        version: link:../basket
       '@colosseum/schemas':
         specifier: workspace:*
         version: link:../schemas

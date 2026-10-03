@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@colosseum/basket": "workspace:*",
     "@colosseum/schemas": "workspace:*",
     "javascript-lp-solver": "^1.0.3",
     "zod": "^4.6.5"
