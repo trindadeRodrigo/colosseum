@@ -3,6 +3,7 @@
 //
 //   pnpm --dir programs/tests rules-bite            every rule (a rebuild each, a few minutes)
 //   pnpm --dir programs/tests rules-bite owner      only rules whose name contains "owner"
+//   pnpm --dir programs/tests rules-bite "a: b" "c: d"   several names: the rules that contain any
 //   pnpm --dir programs/tests rules-bite --check    builds nothing: only that the table is sound
 //   pnpm --dir programs/tests rules-bite --from=upsert_asset   from the first rule with that in its
 //                                                   name to the end: for a run that was cut short
@@ -185,7 +186,7 @@ const RULES = [
   {
     rule: 'init_config: the cash mint is a mint of a token program',
     file: 'src/instructions/config.rs',
-    within: 'pub struct InitConfig',
+    within: 'pub struct InitConfig<',
     find: "pub cash_mint: InterfaceAccount<'info, Mint>,",
     replace: UNSIGNED('cash_mint'),
     fails: 'refuses a cash mint that is not a mint of a token program',
@@ -1204,11 +1205,15 @@ function occurrences(text, find) {
 const args = process.argv.slice(2);
 const checkOnly = args.includes('--check');
 const from = args.find((arg) => arg.startsWith('--from='))?.slice('--from='.length);
-const filter = args.find((arg) => !arg.startsWith('--'));
+const filters = args.filter((arg) => !arg.startsWith('--'));
 const start = from ? RULES.findIndex((r) => r.rule.includes(from)) : 0;
 if (start < 0) throw new Error(`no rule matches "${from}"`);
-const selected = RULES.slice(start).filter((r) => !filter || r.rule.includes(filter));
-if (!selected.length) throw new Error(`no rule matches "${filter}"`);
+const selected = RULES.slice(start).filter(
+  (r) => !filters.length || filters.some((filter) => r.rule.includes(filter)),
+);
+for (const filter of filters)
+  if (!selected.some((r) => r.rule.includes(filter)))
+    throw new Error(`no rule matches "${filter}"`);
 
 // A run that was killed outright leaves its one edit behind: nothing here runs on a SIGKILL.
 // Building on top of that would test a program with a rule already missing.
