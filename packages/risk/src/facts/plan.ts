@@ -10,6 +10,16 @@ import {
   type PlanFacts,
 } from '@colosseum/schemas';
 import { REGIMES, type Regime } from '../time';
+import { defaultFactsParams } from './asset';
+import {
+  correlation,
+  type DailyClose,
+  dailyCloses,
+  maxDrawdown,
+  type PricePoint,
+  planCloses,
+  volatilityAnnual,
+} from './market';
 import { breakEvenReturn, roundTripCost } from './returns';
 
 /**
@@ -37,6 +47,14 @@ export type PlanLeg = {
   exitPools: string[];
   /** The route converts through SOL. */
   usesSol: boolean;
+  /** The leg's hourly reference prices (item 12); null when it has none. Absent on every leg: no marketRisk block. */
+  prices?: {
+    series: PricePoint[];
+    source: string;
+    method: string;
+    methodVersion: string;
+    provenance: MeasuredFact['provenance'];
+  } | null;
   /** A deposit in a lending pool: what can be withdrawn now, or null when not read. */
   lendingSupply?: { availableUsd: number | null };
 };
@@ -338,6 +356,7 @@ export function buildPlanFacts(inp: PlanFactsInput): PlanFacts {
     },
     exit: { regime, legs, planExit, lossUsd: planLoss },
     netReturn,
+    ...(inp.legs.some((l) => l.prices !== undefined) ? { marketRisk: planMarketRisk(inp) } : {}),
     ...(b
       ? {
           breach: {
@@ -364,5 +383,110 @@ export function buildPlanFacts(inp: PlanFactsInput): PlanFacts {
     stress: [weekendGap, lpExit, lendingFull],
     methodVersion: FACTS_METHOD_VERSION,
     provenance: inp.provenance,
+  };
+}
+
+/** The plan's volatility, drawdown and correlations from its legs' reference prices (item 12). */
+function planMarketRisk(inp: PlanFactsInput): NonNullable<PlanFacts['marketRisk']> {
+  const p = defaultFactsParams();
+  const held = inp.legs.filter((l) => l.valueUsd > 0);
+  const total = held.reduce((s, l) => s + l.valueUsd, 0);
+  const closes = new Map<string, DailyClose[]>();
+  for (const l of held)
+    if (l.prices?.series.length) closes.set(l.assetId, dailyCloses(l.prices.series));
+  const without = held.filter((l) => !closes.get(l.assetId)?.length).map((l) => l.assetId);
+  const atPar = held
+    .filter((l) => l.prices?.series.length && l.prices.series.every((x) => x.quality === 'par'))
+    .map((l) => l.assetId);
+  const withPrices = held.filter((l) => closes.get(l.assetId)?.length);
+  const meta = withPrices.find((l) => !atPar.includes(l.assetId))?.prices ?? withPrices[0]?.prices;
+  const quality = atPar.length ? 'assumption' : 'measured';
+  const meas = (
+    value: number,
+    samples: number,
+    c: DailyClose[],
+    method: string,
+    q: MeasuredFact['quality'] = quality,
+  ): Fact =>
+    meta
+      ? fact({
+          value,
+          unit: 'fraction',
+          quality: q,
+          source: meta.source,
+          method: `${meta.method}; ${method}`,
+          methodVersion: meta.methodVersion,
+          provenance: meta.provenance,
+          fetchedAt: (c.at(-1) as DailyClose).at,
+          dataFrom: (c[0] as DailyClose).at,
+          samples,
+        })
+      : missing('no_reference_price', 'fraction');
+  const index = without.length
+    ? []
+    : planCloses(
+        held.map((l) => ({
+          weight: l.valueUsd / total,
+          closes: closes.get(l.assetId) as DailyClose[],
+        })),
+      );
+  const vol = volatilityAnnual(index, {
+    tradingDays: p.tradingDaysPerYear,
+    minReturns: p.marketRiskMinReturns,
+  });
+  const dd = maxDrawdown(index, p.marketRiskMinReturns + 1);
+  const noPrices = missing('no_reference_price', 'fraction', {
+    detail: `no reference price for ${without.join(', ')}`,
+  });
+  const short = (n: string) =>
+    missing('insufficient_samples', 'fraction', {
+      detail: `${n} on the dates every leg has a price, ${p.marketRiskMinReturns} needed`,
+    });
+  const moving = withPrices.filter((l) => !atPar.includes(l.assetId));
+  const correlations: NonNullable<PlanFacts['marketRisk']>['correlations'] = [];
+  for (let i = 0; i < moving.length; i++)
+    for (let j = i + 1; j < moving.length; j++) {
+      const a = moving[i] as PlanLeg;
+      const b = moving[j] as PlanLeg;
+      const ca = closes.get(a.assetId) as DailyClose[];
+      const c = correlation(ca, closes.get(b.assetId) as DailyClose[], p.marketRiskMinReturns);
+      correlations.push({
+        a: a.assetId,
+        b: b.assetId,
+        value: c
+          ? meas(
+              c.value,
+              c.samples,
+              ca,
+              'Pearson correlation of daily close log returns on common dates',
+              'measured',
+            )
+          : short('daily returns'),
+      });
+    }
+  return {
+    volatilityAnnual: without.length
+      ? noPrices
+      : vol
+        ? meas(
+            vol.value,
+            vol.samples,
+            index,
+            `plan at fixed weights; sample sd of daily log returns × √${p.tradingDaysPerYear}`,
+          )
+        : short(`${Math.max(0, index.length - 1)} daily returns`),
+    maxDrawdown: without.length
+      ? noPrices
+      : dd
+        ? meas(
+            dd.value,
+            dd.samples,
+            index,
+            `plan at fixed weights; largest fall from a running peak (${dd.peak} → ${dd.trough})`,
+          )
+        : short(`${index.length} daily closes`),
+    correlations,
+    legsWithoutPrices: without,
+    legsAtPar: atPar,
   };
 }

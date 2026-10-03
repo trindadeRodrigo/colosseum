@@ -14,6 +14,14 @@ import { type AssetCurves, curveFor, type IssuerModel, measuredRegimes } from '.
 import { costAt, type DepthCurve, maxNotionalAt, usableCount } from '../curves';
 import { REGIMES, type Regime } from '../time';
 import { splitAt } from './breakdown';
+import {
+  dailyCloses,
+  gapFrequency,
+  maxDrawdown,
+  type PricePoint,
+  volatilityAnnual,
+  weekendGaps,
+} from './market';
 import { breakEvenReturn, lossUsd, roundTripCost } from './returns';
 
 /**
@@ -81,6 +89,9 @@ export type AssetFactsInput = {
   splitMeta?: RowMeta;
   /** Split snapshots needed at a size before its split is used. */
   splitMinSamples?: number;
+  /** The asset's hourly reference prices over `marketRiskWindowDays`, oldest first (item 12); absent or empty:
+   *  every market-risk fact is `no_reference_price`. */
+  marketRisk?: (RowMeta & { series: PricePoint[] }) | null;
   /** Median network fee per swap, or why it is not measured (item 4). */
   networkFee?:
     | (RowMeta & { usd: number; fetchedAt: string; dataFrom: string; samples: number })
@@ -101,6 +112,14 @@ export const defaultFactsParams = () => ({
   capacityMinSamples: 8,
   /** Split snapshots (and swap transactions, for the network fee) needed before a split part is used. */
   splitMinSamples: 8,
+  /** History behind volatility, drawdown, correlation and weekend gaps (item 12). */
+  marketRiskWindowDays: 365,
+  /** Trading days a year, to annualise daily volatility. */
+  tradingDaysPerYear: 252,
+  /** Daily returns needed for a volatility or a correlation. */
+  marketRiskMinReturns: 20,
+  /** Weekends needed before a gap frequency is given. */
+  minWeekends: 8,
 });
 
 const NOT_SPLIT =
@@ -424,14 +443,7 @@ export function buildAssetFacts(inp: AssetFactsInput): AssetFacts {
       fee: issuerFact(inp.issuer?.feePct ?? 0, 'fraction'),
       settlementHours: issuerFact(inp.issuer?.settlementHours ?? 0, 'hours'),
     },
-    marketRisk: {
-      volatilityAnnual: missing('no_reference_price', 'fraction'),
-      maxDrawdown: missing('no_reference_price', 'fraction'),
-      weekendGapFrequency: inp.gapGridPct.map((gapPct) => ({
-        gapPct,
-        value: missing('no_reference_price', 'fraction'),
-      })),
-    },
+    marketRisk: marketRiskFacts(inp),
     coverage: {
       regimesMeasured: regimes.measured,
       regimesMissing: regimes.missing.map((m) => m.regime),
@@ -441,5 +453,79 @@ export function buildAssetFacts(inp: AssetFactsInput): AssetFacts {
     },
     methodVersion: FACTS_METHOD_VERSION,
     provenance: inp.curveMeta.provenance,
+  };
+}
+
+/** The marketRisk block of an asset sheet from its reference prices (item 12). */
+function marketRiskFacts(inp: AssetFactsInput): AssetFacts['marketRisk'] {
+  const m = inp.marketRisk;
+  const series = m?.series ?? [];
+  if (!m || series.length === 0)
+    return {
+      volatilityAnnual: missing('no_reference_price', 'fraction'),
+      maxDrawdown: missing('no_reference_price', 'fraction'),
+      weekendGapFrequency: inp.gapGridPct.map((gapPct) => ({
+        gapPct,
+        value: missing('no_reference_price', 'fraction'),
+      })),
+    };
+  const p = defaultFactsParams();
+  const closes = dailyCloses(series);
+  // a price that is only ever par is a stated peg, not a measured market
+  const quality = series.every((x) => x.quality === 'par') ? 'assumption' : 'measured';
+  const meas = (value: number, samples: number, from: string, to: string): MeasuredFact =>
+    fact({
+      value,
+      unit: 'fraction',
+      quality,
+      source: m.source,
+      method: m.method,
+      methodVersion: m.methodVersion,
+      provenance: m.provenance,
+      fetchedAt: to,
+      dataFrom: from,
+      samples,
+    });
+  const first = closes[0]?.at ?? (series[0] as PricePoint).at;
+  const last = closes.at(-1)?.at ?? (series.at(-1) as PricePoint).at;
+  const vol = volatilityAnnual(closes, {
+    tradingDays: p.tradingDaysPerYear,
+    minReturns: p.marketRiskMinReturns,
+  });
+  const dd = maxDrawdown(closes, p.marketRiskMinReturns + 1);
+  const gaps = weekendGaps(series);
+  const gapDetail = `${gaps.length} weekends with a market-hours price on both sides, ${p.minWeekends} needed`;
+  return {
+    volatilityAnnual: vol
+      ? {
+          ...meas(vol.value, vol.samples, first, last),
+          method: `${m.method}; daily close log returns, sample sd × √${p.tradingDaysPerYear}`,
+        }
+      : missing('insufficient_samples', 'fraction', {
+          detail: `${Math.max(0, closes.length - 1)} daily returns, ${p.marketRiskMinReturns} needed`,
+        }),
+    maxDrawdown: dd
+      ? {
+          ...meas(dd.value, dd.samples, first, last),
+          method: `${m.method}; daily closes, largest fall from a running peak (${dd.peak} → ${dd.trough})`,
+        }
+      : missing('insufficient_samples', 'fraction', {
+          detail: `${closes.length} daily closes, ${p.marketRiskMinReturns + 1} needed`,
+        }),
+    weekendGapFrequency: gapFrequency(gaps, inp.gapGridPct, p.minWeekends).map((g) => ({
+      gapPct: g.gapPct,
+      value:
+        'share' in g
+          ? {
+              ...meas(
+                g.share,
+                g.weekends,
+                (gaps[0] as { closeAt: string }).closeAt,
+                (gaps.at(-1) as { openAt: string }).openAt,
+              ),
+              method: `${m.method}; last market-hours price before a weekend against the first after it, |move| > ${g.gapPct}%: seen ${g.seen} times in ${g.weekends} weekends`,
+            }
+          : missing('insufficient_samples', 'fraction', { detail: gapDetail }),
+    })),
   };
 }

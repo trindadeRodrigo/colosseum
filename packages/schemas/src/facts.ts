@@ -329,6 +329,18 @@ export const PlanFacts = z.object({
       regimesMissing: z.array(z.object({ assetId: z.string(), regime: FactRegime })),
     })
     .optional(),
+  /** Market risk of the plan held at its weights (item 12); absent when the caller read no prices. */
+  marketRisk: z
+    .object({
+      volatilityAnnual: Fact,
+      maxDrawdown: Fact,
+      /** Correlation of daily returns between each pair of legs that are not held at par. */
+      correlations: z.array(z.object({ a: z.string(), b: z.string(), value: Fact })),
+      legsWithoutPrices: z.array(z.string()),
+      /** Legs whose only price is par: they enter the plan's figures as a stated peg. */
+      legsAtPar: z.array(z.string()),
+    })
+    .optional(),
   stress: z.array(
     z.object({
       /** weekend_gap | lp_exit | lending_pool_fully_lent */

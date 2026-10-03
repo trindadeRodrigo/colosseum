@@ -33,7 +33,7 @@ import {
   regimeAt,
 } from '@colosseum/risk';
 import type { AssetFacts, PlanFacts } from '@colosseum/schemas';
-import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 
 const ROOT = process.env.REPO_ROOT ?? join(import.meta.dirname, '..', '..', '..');
 const CURVE_METHOD_VERSION = 'risk-0.3';
@@ -48,6 +48,59 @@ const SPLIT_META = {
   methodVersion: 'split-0.1',
   provenance: 'live' as const,
 };
+
+/**
+ * The asset's hourly reference prices over the market-risk window, oldest first (PLAN-ANALYTICS item 12), from
+ * the newest method version in risk_reference_prices; hours without a price are left out. Null when there are none.
+ */
+export async function loadMarketSeries(
+  db: Db,
+  mint: string | null,
+  now: Date,
+  windowDays: number,
+): Promise<AssetFactsInput['marketRisk']> {
+  if (!mint) return null;
+  const rows = await db
+    .select({
+      observedAt: riskReferencePrices.observedAt,
+      priceUsd: riskReferencePrices.priceUsd,
+      regime: riskReferencePrices.regime,
+      quality: riskReferencePrices.quality,
+      methodVersion: riskReferencePrices.methodVersion,
+      source: riskReferencePrices.source,
+      method: riskReferencePrices.method,
+      provenance: riskReferencePrices.provenance,
+    })
+    .from(riskReferencePrices)
+    .where(
+      and(
+        eq(riskReferencePrices.mint, mint),
+        gte(riskReferencePrices.observedAt, new Date(now.getTime() - windowDays * 86_400_000)),
+        lte(riskReferencePrices.observedAt, now),
+        isNotNull(riskReferencePrices.priceUsd),
+      ),
+    )
+    .orderBy(riskReferencePrices.observedAt);
+  if (!rows.length) return null;
+  const version = rows
+    .map((r) => r.methodVersion)
+    .sort()
+    .at(-1) as string;
+  const used = rows.filter((r) => r.methodVersion === version);
+  const head = used[0] as (typeof used)[number];
+  return {
+    source: `risk_reference_prices (${head.source})`,
+    method: `${head.method}; hourly reference price`,
+    methodVersion: version,
+    provenance: head.provenance,
+    series: used.map((r) => ({
+      at: r.observedAt.toISOString(),
+      priceUsd: r.priceUsd as number,
+      regime: r.regime as Regime,
+      quality: r.quality,
+    })),
+  };
+}
 
 /** Median network fee per swap from risk_network_fees, or why it is not measured. */
 export async function loadNetworkFee(
@@ -156,6 +209,7 @@ export async function loadAssetFacts(
       lendingCollateral: null,
       tracking: [],
       issuer: null,
+      marketRisk: await loadMarketSeries(db, mint, now, params.marketRiskWindowDays),
     });
 
   const side = (s: 'sell' | 'buy'): AssetCurves | null => {
@@ -360,6 +414,7 @@ export async function loadAssetFacts(
     buy: side('buy'),
     curveMeta,
     splitMeta: SPLIT_META,
+    marketRisk: await loadMarketSeries(db, mint, now, params.marketRiskWindowDays),
     splitMinSamples: params.splitMinSamples,
     networkFee: await loadNetworkFee(db, params.splitMinSamples),
     lp,
@@ -479,6 +534,7 @@ export async function loadPlanFacts(
       sheet,
       exitPools: exits.map((e) => e.address),
       usesSol: exits.some((e) => e.exitPath === 'via_sol'),
+      prices: await loadMarketSeries(db, mint, now, params.marketRiskWindowDays),
     });
     if (cls === 'cash') cashUsd += p.valueUsd;
     else if (mint && p.valueUsd > 0) {
