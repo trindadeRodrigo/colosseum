@@ -412,7 +412,7 @@ Leg rules:
 - The 24 hours start when the chain has seen an order's first transaction (confirmed or reverted), not when one is claimed. Nothing reopens an order that has expired: a transaction that lands afterwards is recorded and the order stays expired.
 - One order buys at most $1,000,000 and trades with at most 300 bps of slippage (`ORDER_LIMITS` in `packages/schemas`, held by the request's own schema, so a request over either answers 400). A stored plan whose weights on a chain do not add up to exactly 10,000 is refused when the order is made: a buy spends the whole deposit on the plan's assets.
 - A chain's refusal that fits none of the ten order codes answers with no `code`; the chain's own code and `retryable` are in `details` in every case.
-- `GET /v1/portfolio` reads the signed-in person's vaults on every chain that is not off, with prices, weights and drift, and refreshes the `vaults` cache. Until `view()` exists in `packages/basket` it uses a small one of its own (`apps/api/src/orders/view.ts`).
+- `GET /v1/portfolio` reads the signed-in person's vaults on every chain that is not off, with prices, weights and drift, and refreshes the `vaults` cache. The figures are `view()` of `packages/basket`: dollars cut to six places with no trailing zeros, and weights that add up to exactly 10,000 with the cash.
 - Two routes exist only while a chain runs on the mock, and act only on such a chain: `POST /v1/mock/fund` (mock cash and gas for the signed-in wallets) and `POST /v1/mock/orders/{id}/legs/{legId}/land` (the mock chain lands the leg's latest attempt, as a wallet would). With no chain on the mock they are not registered.
 
 ### 3.4 How `LiquidityProvider` is used

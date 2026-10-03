@@ -1,3 +1,4 @@
+import { view } from '@colosseum/basket';
 import { DISCLAIMER, OrderError, PortfolioResponse, type WalletAccount } from '@colosseum/schemas';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
@@ -5,7 +6,6 @@ import type { ChainEntry } from '../../orders/chains';
 import { refusing } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { cacheVault } from '../../orders/store';
-import { view } from '../../orders/view';
 import { signedIn } from './orders';
 
 async function chainPortfolio(deps: OrderDeps, entry: ChainEntry, wallets: WalletAccount[]) {
@@ -15,7 +15,13 @@ async function chainPortfolio(deps: OrderDeps, entry: ChainEntry, wallets: Walle
     ...new Set(states.flatMap((v) => [v.cash.asset, ...v.positions.map((p) => p.asset)])),
   ];
   const prices = assets.length ? await entry.adapter.getPrices(assets) : [];
-  const vaults = states.map((v) => ({ ...view(v, prices), provenance: entry.provenance }));
+  // Value, weight and drift come from the one place that computes them (packages/basket). It takes the
+  // chain's asset list for each token's decimals.
+  const listed = states.length ? await entry.adapter.listAssets() : [];
+  const vaults = states.map((v) => ({
+    ...view(v, prices, listed),
+    provenance: entry.provenance,
+  }));
   // The cache follows what was just read from the chain.
   for (const v of vaults) await cacheVault(deps.db, v, entry.provenance);
   return {

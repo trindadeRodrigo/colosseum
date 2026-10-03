@@ -8,7 +8,6 @@ The order layer behind `/v1/orders` (DESIGN-VAULT 3.3). It plans the legs of an 
 | `legs.ts` | Build, report, cancel, and the read that tracks sent legs again |
 | `store.ts` | The tables, through Drizzle. Every writer locks the leg row first, then its attempts |
 | `chains.ts` | The adapter registry by chain mode |
-| `view.ts` | Value, weight and drift, until `view()` exists in `packages/basket` |
 | `errors.ts` | A refusal (its body is the shared `OrderError`); a chain's refusal mapped onto the order codes |
 
 ## The rules a leg follows

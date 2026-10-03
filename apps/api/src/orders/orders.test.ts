@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
+import { view } from '@colosseum/basket';
 import { mockAddress } from '@colosseum/chain-mock';
 import {
   BasketId,
@@ -28,7 +29,6 @@ import { createChainRegistry } from './chains';
 import { Refusal, refusalFromChainError } from './errors';
 import { orderStatus } from './legs';
 import { basketIdOf } from './prepare';
-import { view } from './view';
 
 // The parts of API-1 that need no database. The routes themselves are in routes/v1/orders.test.ts.
 
@@ -153,7 +153,13 @@ describe('a chain refusal as the API answers it', () => {
   });
 });
 
-describe('view: value, weight and drift, until packages/basket has it', () => {
+describe('view: value, weight and drift, as the portfolio route gets them from packages/basket', () => {
+  // The shared view takes the chain's asset list for each token's decimals.
+  const ASSETS = [
+    { id: 'solana:usdc', decimals: 6 },
+    { id: 'solana:spy', decimals: 8 },
+    { id: 'solana:gold', decimals: 8 },
+  ];
   const holding = (asset: string, raw: string, multiplier: string, display: string) => ({
     asset,
     raw,
@@ -190,9 +196,14 @@ describe('view: value, weight and drift, until packages/basket has it', () => {
   it('values a holding with no multiplier: the design’s vector', () => {
     // 8 decimals, raw 250,000,000, multiplier 1.02, price 100: display 2.55 and value 250.00.
     const spy = { ...holding('solana:spy', '250000000', '1.02', '2.55'), targetBps: 10_000 };
-    const seen = view(vault([{ ...spy, lastKeeperAt: null }]), [price('solana:spy', '100')]);
-    expect(seen.valueUsd).toBe('250.00');
-    expect(seen.positions[0]).toMatchObject({ valueUsd: '250.00', weightBps: 10_000, driftBps: 0 });
+    const seen = view(
+      vault([{ ...spy, lastKeeperAt: null }]),
+      [price('solana:spy', '100')],
+      ASSETS,
+    );
+    // Dollars are cut to six places with no trailing zeros: 250, not 250.00.
+    expect(seen.valueUsd).toBe('250');
+    expect(seen.positions[0]).toMatchObject({ valueUsd: '250', weightBps: 10_000, driftBps: 0 });
   });
 
   it('counts cash in the total, and drift as weight minus target', () => {
@@ -205,11 +216,11 @@ describe('view: value, weight and drift, until packages/basket has it', () => {
       price('solana:gold', '200'),
       price('solana:usdc', '1'),
     ];
-    const seen = view(vault(positions, '100000000'), prices);
-    expect(seen.valueUsd).toBe('500.00');
+    const seen = view(vault(positions, '100000000'), prices, ASSETS);
+    expect(seen.valueUsd).toBe('500');
     expect(seen.positions.map((p) => [p.valueUsd, p.weightBps, p.driftBps])).toEqual([
-      ['300.00', 6000, 1000],
-      ['100.00', 2000, -3000],
+      ['300', 6000, 1000],
+      ['100', 2000, -3000],
     ]);
   });
 
@@ -218,9 +229,9 @@ describe('view: value, weight and drift, until packages/basket has it', () => {
       { ...holding('solana:spy', '300000000', '1', '3'), targetBps: 5000, lastKeeperAt: null },
       { ...holding('solana:odd', '5', '1', '0.00000005'), targetBps: 5000, lastKeeperAt: null },
     ];
-    const seen = view(vault(positions), [price('solana:spy', '100')]);
+    const seen = view(vault(positions), [price('solana:spy', '100')], ASSETS);
     expect(seen.positions.map((p) => [p.valueUsd, p.weightBps])).toEqual([
-      ['300.00', 10_000],
+      ['300', 10_000],
       [null, 0],
     ]);
   });
@@ -463,7 +474,6 @@ describe('no /v1 route can make the server sign', () => {
       'orders/legs.ts',
       'orders/prepare.ts',
       'orders/store.ts',
-      'orders/view.ts',
       'plugins/auth.ts',
       'routes/v1/config.ts',
       'routes/v1/index.ts',
@@ -472,7 +482,9 @@ describe('no /v1 route can make the server sign', () => {
       'routes/v1/portfolio.ts',
     ]);
     // The chain packages hold the signers (chain-solana re-exports sign.ts and wallet.ts): not here.
+    // packages/basket is arithmetic over what it is handed: it imports the schemas and nothing else.
     expect([...packages.keys()].sort()).toEqual([
+      '@colosseum/basket',
       '@colosseum/chain-mock',
       '@colosseum/db',
       '@colosseum/schemas',

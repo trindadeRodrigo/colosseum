@@ -262,8 +262,9 @@ describe('the walking skeleton: a buy across two chains on the mock', () => {
       ['robinhood', 'mock', 'mock', 1],
     ]);
     const [solana, robinhood] = portfolio.chains.map((c) => c.vaults[0]);
-    expect(solana).toMatchObject({ owner: a.solana, valueUsd: '599.40', provenance: 'mock' });
-    expect(robinhood).toMatchObject({ owner: a.evm, valueUsd: '399.60', provenance: 'mock' });
+    // Dollars as the shared view writes them: cut to six places, no trailing zeros.
+    expect(solana).toMatchObject({ owner: a.solana, valueUsd: '599.4', provenance: 'mock' });
+    expect(robinhood).toMatchObject({ owner: a.evm, valueUsd: '399.6', provenance: 'mock' });
     for (const vault of [solana, robinhood]) {
       expect(vault?.cash.raw).toBe('0');
       expect(vault?.positions.map((p) => [p.targetBps, p.weightBps, p.driftBps])).toEqual([
@@ -272,7 +273,7 @@ describe('the walking skeleton: a buy across two chains on the mock', () => {
         [2000, 2000, 0],
       ]);
     }
-    expect(solana?.positions.map((p) => p.valueUsd)).toEqual(['299.70', '179.82', '119.88']);
+    expect(solana?.positions.map((p) => p.valueUsd)).toEqual(['299.7', '179.82', '119.88']);
     const prices = portfolio.chains.flatMap((c) => c.prices);
     expect(prices).toHaveLength(8);
     expect(prices.every((p) => p.provenance === 'mock' && p.source && p.method)).toBe(true);
@@ -309,7 +310,7 @@ describe('the walking skeleton: a buy across two chains on the mock', () => {
     expect(again.legs.map((l) => l.kind)).toEqual(['deposit', 'swap', 'swap', 'swap']);
     expect((await settleAll(a, again)).status).toBe('done');
     const portfolio = PortfolioResponse.parse((await get(a, '/v1/portfolio')).json());
-    expect(portfolio.chains.map((c) => c.vaults.map((v) => v.valueUsd))).toEqual([['699.30'], []]);
+    expect(portfolio.chains.map((c) => c.vaults.map((v) => v.valueUsd))).toEqual([['699.3'], []]);
   });
 
   it('a transaction that reverts fails the leg with the chain’s reason, and a new build is a new attempt', async () => {

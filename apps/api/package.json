@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@colosseum/basket": "workspace:*",
     "@colosseum/chain-evm": "workspace:*",
     "@colosseum/chain-mock": "workspace:*",
     "@colosseum/chain-solana": "workspace:*",
