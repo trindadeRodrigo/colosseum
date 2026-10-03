@@ -1,5 +1,7 @@
-import { readFileSync } from 'node:fs';
-import { gunzipSync } from 'node:zlib';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { createDb, riskPools } from '@colosseum/db';
 import {
   clmmState,
@@ -25,6 +27,7 @@ import {
   dlmmDistribution,
   type PoolRow,
 } from '../pool-liquidity';
+import { readRecorded, recordedIndex, recordedStore } from '../pool-recorded';
 import {
   type ChainReader,
   poolLiquidityService,
@@ -289,13 +292,49 @@ afterAll(async () => {
   await client.end();
 });
 
-async function appWith(reader: ChainReader) {
+// The collector's recordings, written in its own format into a temporary folder; the default is an empty folder, so
+// no test reads this machine's recordings.
+const RAW = mkdtempSync(join(tmpdir(), 'pool-recorded-'));
+const EMPTY = mkdtempSync(join(tmpdir(), 'pool-recorded-empty-'));
+function record(fx: Fx, venue: string, at: string, slot: number) {
+  const dir = join(RAW, at.slice(0, 10), at.slice(11, 13));
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, `${fx.pool}.json.gz`),
+    gzipSync(
+      JSON.stringify({
+        pool: fx.pool,
+        venue,
+        slot,
+        fetchedAt: at,
+        head: fx.accounts[fx.pool],
+        children: fx.children,
+      }),
+    ),
+  );
+}
+afterAll(() => {
+  rmSync(RAW, { recursive: true, force: true });
+  rmSync(EMPTY, { recursive: true, force: true });
+});
+
+// the history window is counted back from this clock: Sep 5, before the collectors' first reference price (Oct 1)
+const NOW = Date.parse('2026-09-05T00:00:00.000Z');
+async function appWith(reader: ChainReader, raw: string = EMPTY) {
   const app = Fastify();
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
-  await registerPoolLiquidityRoute(app, db, reader);
+  await registerPoolLiquidityRoute(app, db, reader, recordedStore(raw), () => NOW);
   return app;
 }
+const gated = (fx: Fx) => ({
+  ...fakeReader(fx).reader,
+  children: async (): Promise<string[]> => {
+    throw new Error(
+      'gate DA3: getProgramAccounts scans start Mon Oct 5 (00:00 ET); this pool’s tick arrays cannot be listed before then',
+    );
+  },
+});
 
 describe('GET /risk/pools/:address/liquidity', () => {
   it('a whirlpool: 60 bands, totals equal the bands, USDC at par', async () => {
@@ -366,6 +405,114 @@ describe('GET /risk/pools/:address/liquidity', () => {
     expect(r.json().error).toMatch(/no Solana RPC configured/);
     expect(r.json().error).not.toMatch(/:\/\//);
     await noRpc.close();
+  });
+});
+
+describe('pool liquidity: the collector’s recordings', () => {
+  it('a recording reads back to the same bytes; the index lists each pool’s files oldest first', () => {
+    record(ORCA, 'orca_whirlpool', '2026-09-02T10:02:00.000Z', 10);
+    record(ORCA, 'orca_whirlpool', '2026-09-02T11:02:00.000Z', 11);
+    const files = recordedIndex(RAW).get(ORCA.pool) ?? [];
+    expect(files).toHaveLength(2);
+    expect(files[0]).toMatch(/2026-09-02[/\\]10[/\\]/);
+    const r = readRecorded(files[1] as string);
+    expect(r).toMatchObject({ pool: ORCA.pool, slot: 11, fetchedAt: '2026-09-02T11:02:00.000Z' });
+    expect(r?.kids).toHaveLength(Object.keys(ORCA.children).length);
+    expect(Buffer.from(r?.head ?? []).toString('base64')).toBe(ORCA.accounts[ORCA.pool]);
+  });
+
+  it('gated live read: auto falls back to the newest recording with the live answer’s bands; live is 503; recorded alone needs a recording', async () => {
+    record(ORCA, 'orca_whirlpool', '2026-09-02T10:02:00.000Z', 10);
+    record(ORCA, 'orca_whirlpool', '2026-09-02T11:02:00.000Z', 11);
+    const live = await appWith(fakeReader(ORCA).reader);
+    const l = (await live.inject({ url: `/risk/pools/${ORCA.pool}/liquidity` })).json();
+    await live.close();
+    const app = await appWith(gated(ORCA), RAW);
+    const a = (await app.inject({ url: `/risk/pools/${ORCA.pool}/liquidity` })).json();
+    expect(a).toMatchObject({
+      basis: 'recorded',
+      fetchedAt: '2026-09-02T11:02:00.000Z',
+      slot: 11,
+      quoteUsd: 1,
+      quoteUsdSource: 'stable_par',
+      distribution: 'bands',
+    });
+    expect(l.basis).toBe('live');
+    near(a.totalAssetUsd, l.totalAssetUsd);
+    near(a.totalQuoteUsd, l.totalQuoteUsd);
+    expect(a.bands).toHaveLength(l.bands.length);
+    expect(a.source).toMatch(/hourly raw recording/);
+    const strict = await app.inject({ url: `/risk/pools/${ORCA.pool}/liquidity?basis=live` });
+    expect(strict.statusCode).toBe(503);
+    expect(strict.json().error).toMatch(/^gate DA3/);
+    await app.close();
+    const none = await appWith(gated(ORCA));
+    expect((await none.inject({ url: `/risk/pools/${ORCA.pool}/liquidity` })).statusCode).toBe(503);
+    expect(
+      (await none.inject({ url: `/risk/pools/${ORCA.pool}/liquidity?basis=recorded` })).statusCode,
+    ).toBe(404);
+    await none.close();
+  });
+
+  it('history: one point per recording, value = asset side + quote side; no SOL reference is no_quote_price, never 0; no recording is not_collected', async () => {
+    record(ORCA, 'orca_whirlpool', '2026-09-02T10:02:00.000Z', 10);
+    record(ORCA, 'orca_whirlpool', '2026-09-02T11:02:00.000Z', 11);
+    // before the collectors' first reference price (2026-10-01): a SOL quote has no USD price at that hour
+    record(DLMM, 'meteora_dlmm', '2026-09-03T11:05:00.000Z', 12);
+    const app = await appWith(gated(ORCA), RAW);
+    const h = (
+      await app.inject({ url: `/risk/pools/${ORCA.pool}/liquidity/history?hours=744` })
+    ).json();
+    expect(h).toMatchObject({
+      resolution: 'hour',
+      from: '2026-09-02T10:02:00.000Z',
+      to: '2026-09-02T11:02:00.000Z',
+      reason: null,
+    });
+    expect(h.points).toHaveLength(2);
+    for (const p of h.points) {
+      expect(p.valueUsd).toBeGreaterThan(0);
+      near(p.valueUsd, p.assetUsd + p.quoteSideUsd);
+      expect(p.quoteUsd).toBe(1);
+    }
+    const d = (
+      await app.inject({ url: `/risk/pools/${DLMM.pool}/liquidity/history?hours=744` })
+    ).json();
+    expect(d.points).toHaveLength(1);
+    expect(d.points[0]).toMatchObject({
+      valueUsd: null,
+      assetUsd: null,
+      usdNullReason: 'no_quote_price',
+    });
+    expect(d.points[0].midPrice).toBeGreaterThan(0);
+    const c = (await app.inject({ url: `/risk/pools/${CPMM.pool}/liquidity/history` })).json();
+    expect(c).toMatchObject({ points: [], reason: 'not_applicable' });
+    await app.close();
+    const empty = await appWith(gated(ORCA));
+    expect(
+      (await empty.inject({ url: `/risk/pools/${ORCA.pool}/liquidity/history` })).json(),
+    ).toMatchObject({ points: [], reason: 'not_collected' });
+    expect(
+      (await empty.inject({ url: '/risk/pools/FIXTUREnope/liquidity/history' })).statusCode,
+    ).toBe(404);
+    await empty.close();
+  });
+
+  it('the recorded list: registry pools only, with hours and the first and last hour', async () => {
+    record(ORCA, 'orca_whirlpool', '2026-09-02T10:02:00.000Z', 10);
+    record(ORCA, 'orca_whirlpool', '2026-09-02T11:02:00.000Z', 11);
+    writeFileSync(join(RAW, '2026-09-02', '11', 'NOTAREGISTRYPOOL.json.gz'), gzipSync('{}'));
+    const app = await appWith(gated(ORCA), RAW);
+    const r = (await app.inject({ url: '/risk/pools/recorded' })).json();
+    const o = r.pools.find((x: { address: string }) => x.address === ORCA.pool);
+    expect(o).toMatchObject({
+      venue: 'orca_whirlpool',
+      hours: 2,
+      from: '2026-09-02T10:00:00.000Z',
+      to: '2026-09-02T11:00:00.000Z',
+    });
+    expect(r.pools.some((x: { address: string }) => x.address === 'NOTAREGISTRYPOOL')).toBe(false);
+    await app.close();
   });
 });
 

@@ -1,8 +1,8 @@
 import { createRpc, type SolanaRpc } from '@colosseum/chain-solana';
 import { ask } from '@colosseum/chain-solana/vault';
-import { type Db, riskPools } from '@colosseum/db';
+import { type Db, riskAssetSnapshots, riskPools } from '@colosseum/db';
 import { DISCLAIMER } from '@colosseum/schemas';
-import { eq } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -13,6 +13,12 @@ import {
   POOL_LIQUIDITY_METHOD_VERSION,
   type PoolRow,
 } from '../pool-liquidity';
+import {
+  RECORDED_SOURCE,
+  type Recorded,
+  type RecordedStore,
+  recordedStore,
+} from '../pool-recorded';
 
 /**
  * `GET /risk/pools/:address/liquidity`: one registry pool's liquidity by price band, read live over RPC (pool head
@@ -234,6 +240,8 @@ export const PoolLiquidityResponse = z.object({
   quote: z.string().nullable(),
   midPrice: z.number().nullable(),
   priceUnit: z.literal('quote per asset'),
+  /** live: read now over RPC; recorded: the collector's newest hourly recording (fetchedAt says when). */
+  basis: z.enum(['live', 'recorded']),
   fetchedAt: z.string().nullable(),
   slot: z.number().nullable(),
   distribution: z.literal('bands').nullable(),
@@ -253,24 +261,116 @@ export const PoolLiquidityResponse = z.object({
   disclaimer: z.string(),
 });
 
+const HistoryPoint = z.object({
+  t: z.string(),
+  slot: z.number().nullable(),
+  midPrice: z.number().nullable(),
+  assetUsd: z.number().nullable(),
+  quoteSideUsd: z.number().nullable(),
+  valueUsd: z.number().nullable(),
+  quoteUsd: z.number().nullable(),
+  usdNullReason: z.string().nullable(),
+});
+export const PoolLiquidityHistoryResponse = z.object({
+  pool: z.string(),
+  venue: z.string(),
+  asset: z.string(),
+  quote: z.string().nullable(),
+  resolution: z.literal('hour'),
+  rangePct: z.number(),
+  from: z.string().nullable(),
+  to: z.string().nullable(),
+  points: z.array(HistoryPoint),
+  reason: z.enum(['not_applicable', 'not_collected']).nullable(),
+  source: z.string(),
+  method: z.string(),
+  methodVersion: z.string(),
+  provenance: z.literal('live'),
+  disclaimer: z.string(),
+});
+
+/** Range of the value series: wide enough to hold every position but a full-range one's far tails. */
+const VALUE_RANGE_PCT = 0.99;
+const STABLE_QUOTES = new Set([USDC, USDT]);
+const bandMethod = (bands: number, rangePct: number) =>
+  `${bands} equal-width bands across mid × (1 ± ${rangePct}), the band holding the price split at it; concentrated liquidity: L between initialized ticks from cumulative liquidityNet, token0 = L·(1/√a − 1/√b) above the price, token1 = L·(√b − √a) below, over the tick arrays read; bins: each bin's X and Y amounts at its price (the active bin's asset above the price, its quote below)`;
+const USD_LIVE =
+  'USD: asset × mid × quote USD, quote × quote USD (USDC/USDT at par, SOL from Jupiter Price v3, as the collector’s curves)';
+const USD_RECORDED =
+  'USD: USDC/USDT at par; any other quote implied from the asset’s routed reference price at that hour (risk_asset_snapshots.ref_mid_usd ÷ the pool mid, the newest within 2 h before the recording)';
+
 export async function registerPoolLiquidityRoute(
   app: FastifyInstance,
   db: Db,
   reader: ChainReader = rpcChainReader(),
+  store: RecordedStore = recordedStore(),
+  now: () => number = Date.now,
 ) {
   const f = app.withTypeProvider<ZodTypeProvider>();
   const service = poolLiquidityService(reader);
+
+  /** Reference prices of one asset in a window, oldest first, for implying a non-stable quote's USD price. */
+  async function refMids(assetMint: string, from: number, to: number) {
+    return db
+      .select({ t: riskAssetSnapshots.fetchedAt, usd: riskAssetSnapshots.refMidUsd })
+      .from(riskAssetSnapshots)
+      .where(
+        and(
+          eq(riskAssetSnapshots.assetMint, assetMint),
+          gte(riskAssetSnapshots.fetchedAt, new Date(from - 2 * 3_600_000)),
+          lte(riskAssetSnapshots.fetchedAt, new Date(to)),
+        ),
+      )
+      .orderBy(asc(riskAssetSnapshots.fetchedAt));
+  }
+  const refAt = (mids: Array<{ t: Date; usd: number }>, at: number) => {
+    let best: number | null = null;
+    for (const m of mids) {
+      const t = m.t.getTime();
+      if (t > at) break;
+      if (at - t <= 2 * 3_600_000) best = m.usd;
+    }
+    return best;
+  };
+  /** A recording decoded, with the quote priced at par or from the asset's reference price at that hour. */
+  function decodeRecorded(
+    p: PoolRow & { quoteMint: string },
+    rec: Recorded,
+    bands: number,
+    rangePct: number,
+    refUsd: number | null,
+  ) {
+    const bare = distributionFromBytes(p, rec.head, rec.kids, { quoteUsd: null, bands, rangePct });
+    if (!bare) return { d: null, quoteUsd: null, quoteUsdSource: null };
+    if (STABLE_QUOTES.has(p.quoteMint))
+      return {
+        d: distributionFromBytes(p, rec.head, rec.kids, { quoteUsd: 1, bands, rangePct }),
+        quoteUsd: 1,
+        quoteUsdSource: 'stable_par',
+      };
+    const q = refUsd != null && bare.midPrice > 0 ? refUsd / bare.midPrice : null;
+    return {
+      d:
+        q == null
+          ? bare
+          : distributionFromBytes(p, rec.head, rec.kids, { quoteUsd: q, bands, rangePct }),
+      quoteUsd: q,
+      quoteUsdSource: q == null ? null : 'implied_from_reference_mid',
+    };
+  }
+
   f.get(
     '/risk/pools/:address/liquidity',
     {
       schema: {
         summary:
-          'Liquidity distribution of one registry pool around its current price: asset above the price, quote below, by price band (read live, kept 60 s)',
-        description: `Concentrated-liquidity pools: active liquidity per band from cumulative liquidityNet, as token amounts. Bin pools: the bins' amounts. Constant-product pools: distribution null, reason not_applicable.\n\n${DISCLAIMER.en}`,
+          'Liquidity distribution of one registry pool around its current price: asset above the price, quote below, by price band (read live and kept 60 s, or the collector’s newest hourly recording when a live read is not possible)',
+        description: `Concentrated-liquidity pools: active liquidity per band from cumulative liquidityNet, as token amounts. Bin pools: the bins' amounts. Constant-product pools: distribution null, reason not_applicable. basis=auto (default) reads live and falls back to the newest recording when the live read is gated (DA3), has no RPC or fails; basis=live never falls back; basis=recorded reads only the recording. The answer's basis and fetchedAt say which.\n\n${DISCLAIMER.en}`,
         params: z.object({ address: z.string() }),
         querystring: z.object({
           bands: z.coerce.number().int().min(2).max(200).default(60),
           rangePct: z.coerce.number().positive().max(0.9).default(0.3),
+          basis: z.enum(['auto', 'live', 'recorded']).default('auto'),
         }),
         response: {
           200: PoolLiquidityResponse,
@@ -286,10 +386,60 @@ export async function registerPoolLiquidityRoute(
         .where(eq(riskPools.address, req.params.address))
         .limit(1);
       if (!p) return reply.code(404).send({ error: `unknown pool ${req.params.address}` });
+      const { bands, rangePct, basis } = req.query;
+      const common = {
+        pool: p.address,
+        venue: p.venue,
+        asset: p.assetSymbol,
+        quote: p.quoteSymbol,
+        priceUnit: 'quote per asset' as const,
+        methodVersion: POOL_LIQUIDITY_METHOD_VERSION,
+        provenance: 'live' as const,
+        disclaimer: DISCLAIMER.en,
+      };
+      const recorded = async () => {
+        const rec = store.latest(p.address);
+        if (!rec) return null;
+        const at = Date.parse(rec.fetchedAt);
+        const ref = STABLE_QUOTES.has(p.quoteMint)
+          ? null
+          : refAt(await refMids(p.assetMint, at, at), at);
+        const r = decodeRecorded(p, rec, bands, rangePct, ref);
+        const d = r.d;
+        return {
+          ...common,
+          midPrice: d?.midPrice ?? null,
+          basis: 'recorded' as const,
+          fetchedAt: rec.fetchedAt,
+          slot: rec.slot,
+          distribution: d ? ('bands' as const) : null,
+          reason: d ? null : ('not_applicable' as const),
+          bands: d?.bands ?? null,
+          totalAssetUsd: d?.totalAssetUsd ?? null,
+          totalQuoteUsd: d?.totalQuoteUsd ?? null,
+          totalAsset: d?.totalAsset ?? null,
+          totalQuote: d?.totalQuote ?? null,
+          quoteUsd: r.quoteUsd,
+          quoteUsdSource: r.quoteUsdSource,
+          usdNullReason: d && r.quoteUsd === null ? 'no_quote_price' : null,
+          source: RECORDED_SOURCE,
+          method: d
+            ? `${bandMethod(bands, rangePct)}, over every array in the recording; ${USD_RECORDED}; liquidity is L at the band's middle (null for bins)`
+            : 'no price bands in this pool’s recording (not_applicable)',
+        };
+      };
+      if (basis === 'recorded') {
+        const r = await recorded();
+        return r ?? reply.code(404).send({ error: `no recording of pool ${p.address}` });
+      }
       let a: Answer;
       try {
-        a = await service.get(p, req.query.bands, req.query.rangePct);
+        a = await service.get(p, bands, rangePct);
       } catch (e) {
+        if (basis === 'auto') {
+          const r = await recorded();
+          if (r) return r;
+        }
         // the transport's text is never passed on (it can carry the RPC's address)
         const msg = String((e as Error)?.message ?? '');
         const error = /SOLANA_RPC_URL is not set/.test(msg)
@@ -301,12 +451,9 @@ export async function registerPoolLiquidityRoute(
       }
       const d = a.distribution;
       return {
-        pool: p.address,
-        venue: p.venue,
-        asset: p.assetSymbol,
-        quote: p.quoteSymbol,
+        ...common,
         midPrice: a.midPrice,
-        priceUnit: 'quote per asset' as const,
+        basis: 'live' as const,
         fetchedAt: a.fetchedAt,
         slot: a.slot,
         distribution: d ? ('bands' as const) : null,
@@ -321,10 +468,155 @@ export async function registerPoolLiquidityRoute(
         usdNullReason: d && a.quoteUsd === null ? 'no_quote_price' : null,
         source: SOURCE,
         method: d
-          ? `${req.query.bands} equal-width bands across mid × (1 ± ${req.query.rangePct}), the band holding the price split at it; concentrated liquidity: L between initialized ticks from cumulative liquidityNet, token0 = L·(1/√a − 1/√b) above the price, token1 = L·(√b − √a) below, over the fetched tick arrays; bins: each bin's X and Y amounts at its price (the active bin's asset above the price, its quote below); USD: asset × mid × quote USD, quote × quote USD (USDC/USDT at par, SOL from Jupiter Price v3, as the collector's curves); liquidity is L at the band's middle (null for bins)`
+          ? `${bandMethod(bands, rangePct)}, over the fetched tick arrays; ${USD_LIVE}; liquidity is L at the band's middle (null for bins)`
           : 'constant-product pool: no price bands to read (not_applicable); no RPC read',
+      };
+    },
+  );
+
+  f.get(
+    '/risk/pools/:address/liquidity/history',
+    {
+      schema: {
+        summary:
+          'One pool’s liquidity value hour by hour, from the collector’s hourly recordings (no RPC): asset side, quote side and their sum in USD',
+        description: `For the concentrated-liquidity pools the collector records (the top 80% of registry TVL). Value = the token amounts held by the pool's liquidity within mid × (1 ± ${VALUE_RANGE_PCT}), over every tick or bin array in the recording, in USD; uncollected fees and a full-range position's far tails are not counted. Pools without recordings: reason not_collected; constant-product pools: not_applicable.\n\n${DISCLAIMER.en}`,
+        params: z.object({ address: z.string() }),
+        querystring: z.object({
+          hours: z.coerce
+            .number()
+            .int()
+            .positive()
+            .max(24 * 31)
+            .default(24 * 30),
+        }),
+        response: { 200: PoolLiquidityHistoryResponse, 404: z.object({ error: z.string() }) },
+      },
+    },
+    async (req, reply) => {
+      const [p] = await db
+        .select()
+        .from(riskPools)
+        .where(eq(riskPools.address, req.params.address))
+        .limit(1);
+      if (!p) return reply.code(404).send({ error: `unknown pool ${req.params.address}` });
+      const since = now() - req.query.hours * 3_600_000;
+      const recs = CHILD_OFFSETS[p.venue] ? store.since(p.address, since) : [];
+      const mids =
+        recs.length && !STABLE_QUOTES.has(p.quoteMint)
+          ? await refMids(
+              p.assetMint,
+              Date.parse((recs[0] as Recorded).fetchedAt),
+              Date.parse((recs[recs.length - 1] as Recorded).fetchedAt),
+            )
+          : [];
+      const points = recs.map((rec) => {
+        const at = Date.parse(rec.fetchedAt);
+        const r = decodeRecorded(
+          p,
+          rec,
+          2,
+          VALUE_RANGE_PCT,
+          STABLE_QUOTES.has(p.quoteMint) ? null : refAt(mids, at),
+        );
+        const d = r.d;
+        const priced = d && d.totalAssetUsd != null && d.totalQuoteUsd != null;
+        return {
+          t: rec.fetchedAt,
+          slot: rec.slot,
+          midPrice: d?.midPrice ?? null,
+          assetUsd: priced ? d.totalAssetUsd : null,
+          quoteSideUsd: priced ? d.totalQuoteUsd : null,
+          valueUsd: priced ? (d.totalAssetUsd as number) + (d.totalQuoteUsd as number) : null,
+          quoteUsd: r.quoteUsd,
+          usdNullReason: !d ? 'not_applicable' : priced ? null : 'no_quote_price',
+        };
+      });
+      return {
+        pool: p.address,
+        venue: p.venue,
+        asset: p.assetSymbol,
+        quote: p.quoteSymbol,
+        resolution: 'hour' as const,
+        rangePct: VALUE_RANGE_PCT,
+        from: points[0]?.t ?? null,
+        to: points[points.length - 1]?.t ?? null,
+        points,
+        reason: !CHILD_OFFSETS[p.venue]
+          ? ('not_applicable' as const)
+          : points.length
+            ? null
+            : ('not_collected' as const),
+        source: RECORDED_SOURCE,
+        method: `per hourly recording: the token amounts held by the pool's liquidity within mid × (1 ± ${VALUE_RANGE_PCT}), ${bandMethod(2, VALUE_RANGE_PCT)}; ${USD_RECORDED}; valueUsd = asset side + quote side; uncollected fees are not counted`,
         methodVersion: POOL_LIQUIDITY_METHOD_VERSION,
         provenance: 'live' as const,
+        disclaimer: DISCLAIMER.en,
+      };
+    },
+  );
+
+  f.get(
+    '/risk/pools/recorded',
+    {
+      schema: {
+        summary:
+          'The pools the collector records hourly (pool head and every tick or bin array), with the first and last recording',
+        description: DISCLAIMER.en,
+        response: {
+          200: z.object({
+            pools: z.array(
+              z.object({
+                address: z.string(),
+                venue: z.string(),
+                asset: z.string(),
+                quote: z.string().nullable(),
+                hours: z.number(),
+                from: z.string().nullable(),
+                to: z.string().nullable(),
+              }),
+            ),
+            source: z.string(),
+            disclaimer: z.string(),
+          }),
+        },
+      },
+    },
+    async () => {
+      const list = store.pools();
+      const rows = list.length
+        ? await db
+            .select()
+            .from(riskPools)
+            .where(
+              inArray(
+                riskPools.address,
+                list.map((x) => x.pool),
+              ),
+            )
+        : [];
+      const by = new Map(rows.map((r) => [r.address, r]));
+      const hourOf = (f: string) => {
+        const m = /(\d{4}-\d{2}-\d{2})[/\\](\d{2})[/\\]/.exec(f);
+        return m ? `${m[1]}T${m[2]}:00:00.000Z` : null;
+      };
+      return {
+        pools: list
+          .filter((x) => by.has(x.pool))
+          .map((x) => {
+            const r = by.get(x.pool) as (typeof rows)[number];
+            return {
+              address: x.pool,
+              venue: r.venue,
+              asset: r.assetSymbol,
+              quote: r.quoteSymbol,
+              hours: x.files.length,
+              from: hourOf(x.files[0] ?? ''),
+              to: hourOf(x.files[x.files.length - 1] ?? ''),
+            };
+          })
+          .sort((a, b) => a.asset.localeCompare(b.asset)),
+        source: RECORDED_SOURCE,
         disclaimer: DISCLAIMER.en,
       };
     },
