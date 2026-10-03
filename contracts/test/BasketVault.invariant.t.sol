@@ -310,6 +310,13 @@ contract VaultHandler is Test {
         address caller = _notTheOwner(callerSeed, anyone);
         bytes32 planId = vault.planId();
         if (factory.vaultOf(caller, planId).code.length != 0) return;
+        if (caller == address(0)) {
+            // Nobody can be the zero address, but a call can be simulated from it: no vault is made for it.
+            vm.prank(caller);
+            vm.expectRevert(IBasketVault.ZeroAddress.selector);
+            factory.createVault(planId, new Weight[](0), bytes32(0), 0, false);
+            return;
+        }
         vm.prank(caller);
         address made = factory.createVault(planId, new Weight[](0), bytes32(0), 0, false);
         assertTrue(made != address(vault));
@@ -490,6 +497,7 @@ contract BasketVaultInvariantTest is VaultFixture {
     }
 
     /// forge-config: default.invariant.fail-on-revert = true
+    /// forge-config: default.invariant.depth = 200
     function invariant_I1_tokensLeaveOnlyByTheOwnersCall() public view {
         assertFalse(handler.leaked(), "a token left the vault by another way");
         assertEq(vault.owner(), owner);
@@ -515,6 +523,7 @@ contract BasketVaultInvariantTest is VaultFixture {
     }
 
     /// forge-config: default.invariant.fail-on-revert = true
+    /// forge-config: default.invariant.depth = 200
     function invariant_I3_noAllowanceSurvives() public view {
         for (uint256 i; i < tokens.length; ++i) {
             for (uint256 j; j < spenders.length; ++j) {
@@ -525,22 +534,25 @@ contract BasketVaultInvariantTest is VaultFixture {
         }
     }
 
-    /// A run where nothing happened would prove nothing. With `fail-on-revert` on, every call counted here
-    /// went through as the handler meant it to: the owner's succeeded and the others' were refused. Which of
-    /// the twelve actions a run of 100 calls draws is chance, so a run is held to having drawn some of each
-    /// kind; `test_handler_everyActionDoesWhatItSays` shows each action on its own.
+    /// A run where nothing happened would prove nothing. With `fail-on-revert` on, every counted call went
+    /// through as the handler meant it to: the owner's succeeded and the others' were refused. Every action
+    /// has its own floor: a run of 200 calls over twelve actions misses one about three times in a hundred
+    /// million, where a run of 100 missed one too often to hold each to a floor.
     function afterInvariant() public view {
-        assertGt(
-            handler.deposits() + handler.withdrawals() + handler.sweeps() + handler.swaps() + handler.batches()
-                + handler.targetSets(),
-            0,
-            "the owner did nothing"
-        );
-        assertGt(
-            handler.namedCalls() + handler.rawCalls() + handler.strangerVaults() + handler.hostileSwaps(),
-            0,
-            "nobody tried to get in"
-        );
+        assertGt(handler.deposits(), 0);
+        assertGt(handler.withdrawals(), 0);
+        assertGt(handler.sweeps(), 0);
+        assertGt(handler.namedCalls(), 0);
+        assertGt(handler.rawCalls(), 0);
+        assertGt(handler.donations(), 0);
+        // The actions this slot added.
+        assertGt(handler.swaps(), 0);
+        assertGt(handler.swapsThatLeftSomeUnused(), 0);
+        assertGt(handler.hostileSwaps(), 0);
+        assertGt(handler.batches(), 0);
+        assertGt(handler.targetSets(), 0);
+        assertGt(handler.tightenings(), 0);
+        assertGt(handler.strangerVaults(), 0);
     }
 
     /// Every action of the handler once, in an order that gives each something to do, with both invariants
