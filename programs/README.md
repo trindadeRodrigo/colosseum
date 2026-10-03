@@ -25,7 +25,7 @@ anchor build --no-idl -- --tools-version v1.54
 - `default = ["no-idl"]` in `basket` and `mock-router`: the built program refuses Anchor's instruction that creates an on-chain IDL account. Without it, whoever sends that instruction first becomes the account's authority.
 - One warning is expected per Anchor program: Anchor's own macro uses a deprecated `realloc`.
 
-Sizes on Oct 3: `basket.so` 455,704 bytes (3.17 SOL of rent at deploy, and as much again while an upgrade is in flight), `mock_router.so` 212,376 bytes, `puppet_router.so` 29,992 bytes, `test_hook.so` 68,640 bytes.
+Sizes on Oct 3: `basket.so` 460,600 bytes (3.21 SOL of rent at deploy, and as much again while an upgrade is in flight), `mock_router.so` 275,224 bytes, `puppet_router.so` 29,992 bytes, `test_hook.so` 68,640 bytes.
 
 ## Test
 
@@ -68,13 +68,13 @@ On Oct 3, with the route frozen at slot 452,983,734 (`route_v2`, 29 accounts):
 
 | What | Result |
 |---|---|
-| A vault buys SPYx with 10 USDC through `owner_swap` | Lands. The vault spent 10,000,000 and received 1,290,137 raw units, the amount Jupiter quoted. 659 bytes with the token account opened in the same transaction, 26 accounts, 116,717 compute units, deepest call 4 |
+| A vault buys SPYx with 10 USDC through `owner_swap` | Lands. The vault spent 10,000,000 and received 1,290,137 raw units, the amount Jupiter quoted. 659 bytes with the token account opened in the same transaction, 26 accounts, 116,717 to 127,248 compute units over three runs, deepest call 4 |
 | After it (hostile case A11) | Neither token account of the vault has a delegate or a close authority, and the vault owns both |
 | The same route with the output paid to another wallet's account (hostile case A1) | Fails on chain with `ReceivedTooLittle` (6006), raised by the vault program after Jupiter itself succeeded (read from the logs: the route's own programs number their errors from 6000 too). The other wallet got nothing and the vault's cash did not move |
-| Create with 7 targets, deposit and the first buy, one transaction | Lands: 1,000 bytes, 186,532 compute units, with Jupiter's lookup table and one of the platform's own |
-| The same with 12 targets | Lands: 1,170 bytes of the 1,232 allowed, 186,131 compute units |
+| Create with 7 targets, deposit and the first buy, one transaction | Lands: 1,000 bytes, 183,532 to 188,032 compute units, with Jupiter's lookup table and one of the platform's own |
+| The same with 12 targets | Lands: 1,170 bytes of the 1,232 allowed, 186,131 to 190,631 compute units |
 
-The call chain is the vault program, Jupiter, the pool's program, the token program: level 4 of the 5 mainnet allows. A route through a private market maker cannot be replayed from a snapshot (it needs its live price), so the frozen route is restricted to one pool with plain maths.
+The compute units differ from run to run because each run makes new keys, and finding an address's bump costs more for some keys than for others. The call chain is the vault program, Jupiter, the pool's program, the token program: level 4 of the 5 mainnet allows. A route through a private market maker cannot be replayed from a snapshot (it needs its live price), so the frozen route is restricted to one pool with plain maths.
 
 ## What the program holds to today
 
@@ -132,3 +132,26 @@ anchor keys sync
 ```
 
 The tests need no keypair.
+
+## Deploying to a test network
+
+A person's step. Deploy two programs, each by name:
+
+```sh
+anchor build --no-idl -- --tools-version v1.54
+anchor deploy -p basket --program-keypair keys/basket-keypair.json --provider.cluster devnet
+anchor deploy -p mock_router --program-keypair keys/mock_router-keypair.json --provider.cluster devnet
+```
+
+Never a bare `anchor deploy`: it deploys every program of the workspace, and two of them are test tools. `puppet_router` is a router made to misbehave and `test_hook` a transfer hook; neither belongs on a network people use.
+
+The wallet that deploys a program is its upgrade authority, and only that key can run `init_router` and `init_config`. Then, in this order:
+
+1. The test mints: the dollar token and the stock tokens (TNET-4). `init_config` takes the dollar mint as an account, so it has to exist first.
+2. `mock_router`: `init_router()`, then `init_pair(price_num, price_den)` once per direction, and tokens into the router's reserve accounts (the associated token accounts of the router's address).
+3. `basket`: `init_config(args)` with the dollar mint as `cash_mint`, `router_program` the test exchange, and a guardian, a default keeper and a price owner that are not the zero address. No instruction changes the guardian or the default keeper afterwards.
+4. `init_assets()`, then `upsert_asset(args)` for each stock mint.
+5. `publish_recipe(..)` for each shared portfolio, by its creator.
+6. `launch()` last, and only once the router, the price owner and the cash mint are final: until then `set_router`, `set_price_owner`, `set_cash_mint` and `set_params` change them, and after it only an upgrade does. It also raises the publish delay to two days.
+
+The layout of Config has not changed since SOL-1, so a program already deployed at these ids upgrades in place and keeps its Config.
