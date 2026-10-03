@@ -27,7 +27,7 @@ A **liquidity and risk layer** that answers, for any tokenized asset a user hold
 2. **Time-of-week profile.** Every observation is bucketed by hour-of-week and by regime: `us_market_hours`, `us_offhours_weekday`, `weekend`, `us_holiday`. Curves are aggregated per regime (and per hour-of-week when data allows). The weekend/weekday ratio per asset is a measured output, not an assumption.
 3. **Primary-redemption overlay.** Per issuer: window (xStocks 24/5, Ondo 24/7 for six assets), minimum size, KYC requirement, settlement time, and a **capacity assumption that is a labelled scenario input** because issuers do not publish it. `primaryCapacity(issuer, at, horizonHours, notional)`.
 4. **Recoverable value.** `recoverable(asset, notional, at, horizonHours)` = best of DEX path (from the curve for the buckets inside the horizon) and primary path (if the window opens inside the horizon and settlement fits), with the path and provenance returned. Saturday and Tuesday-11am give different numbers; the API shows both.
-5. **Liquidity score.** Per asset and horizon: the fraction of a reference notional exitable within the horizon at ≤ τ impact, in the worst regime the horizon can contain. A number in [0,1] with the inputs beside it. No letter grades.
+5. **Liquidity score.** Per asset and horizon: the fraction of a reference notional exitable within the horizon at ≤ τ impact, in the worst measured regime the horizon can contain. A number in [0,1] with the inputs beside it, and the regimes the curves do not measure named beside it; with no measured regime in the horizon it is `null`, never 0 (DA2, PLAN-ANALYTICS). No letter grades.
 6. **Position assessment (liquidity breach).** For a set of positions plus a withdrawal schedule and a liquidity window: for each upcoming withdrawal, the amount that must come from illiquid legs after cash, BRL and liquid USD legs are used, versus exit capacity at τ in the worst bucket inside that withdrawal's window. `breach` if capacity < need in the base case; `likelyBreach` if it fails under the `liquidity_dry` stress (depth scaled by the measured weekend ratio, floored by a parameter). Output includes the months at risk, the shortfall, and recommended orders (illiquid → cash) sized to remove the breach.
 7. **Lending-market view (Phase 4).** Per market and reserve that accepts tokenized stocks (Kamino xStocks reserves, Jupiter Lend vaults; Aave V4 Base Equities Hub as the EVM analog): parameters read on-chain (LTV, liquidation threshold, liquidation bonus, caps, oracle and price-band config), collateral supplied vs debt, recoverable collateral (from the curves) vs debt at the current hour and at the next reopen, and a gap simulator (`gapPct` input, close factor per docs). The dispersion table (Kamino 35–50% vs Jupiter Lend 75% vs Aave 65–79% on the same collateral) is a first-class output.
 
@@ -75,6 +75,8 @@ Out of scope for this handoff (later work the founder listed): the agent layer, 
 | `packages/db` | `depth_observations` | keep; add `risk_depth_curves`, `risk_liquidity_scores`, `risk_redemption_models`, `risk_market_params`, `risk_market_snapshots`, `risk_assessments` |
 | `scripts/` | `depth-snapshot.mjs`, `depth-import.ts` | add `risk-collect.mjs`, `risk-import.ts`, `risk-report.ts`; leave the originals alone until Oct 12, then fold the old collector into the new one |
 
+The running jobs are not listed in this section; nine are loaded, all `com.colosseum.*`: `depth-snapshot`, `risk-pools`, `risk-quotes`, `risk-refresh`, `risk-lending`, `risk-lending-import`, `risk-prices`, and since 2026-10-03 02:39Z the two of PLAN-ANALYTICS item 18, installed by `scripts/risk/jobs/install.sh` from `~/.colosseum/risk` with their files in `~/.colosseum/risk/data` (`RISK_DATA_DIR`): `risk-facts-split` at minute 15 (split snapshot, then cost breakdown) and `risk-facts-lending` at minute 20 (lending report, then facts import).
+
 ## 6. Acceptance checks per phase
 
 **Phase 0**
@@ -119,7 +121,7 @@ Out of scope for this handoff (later work the founder listed): the agent layer, 
 | Obligation enumeration (`getProgramAccounts`) | U, paid RPC | Optional in Phase 4; market aggregates come from reserve metrics first. |
 | Primary redemption: xStocks T+5, $5k minimum; Ondo 24/7 size limits | U | Scenario inputs, labelled. |
 | Whether Jupiter quote impact matches realised swap slippage | U | Compare against the `executions` rows from Sep 30 (SPYx, QQQx buys) and every later execution. |
-| Direct pool reads (Raydium, Orca, Meteora) as a second depth source | not started | Stretch; would remove the dependency on Jupiter's router. |
+| Direct pool reads (Raydium, Orca, Meteora) as a second depth source | done (`packages/risk/src/pools`) | Not a replacement for Jupiter's router: a trade done at once is quoted and run on Jupiter's route, a trade split over time is planned with ours (ROUTING in `docs/GATES.md`, 2026-10-03). |
 
 ## 8. Constraints for the plan
 

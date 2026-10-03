@@ -67,3 +67,11 @@ The risk layer's reference price, the oracle standard (`docs/risk/PLAN-RISK.md` 
 | **LTV-BASIS** (D21) | DECIDED | The hourly loan-to-value tables use the venue's own oracle for the whole history. USD totals stay on the valuation price. The old hourly lending rows in Postgres are deleted and imported again | A venue liquidates on its own oracle. The tables used the pool mid for the last 28 days and the oracle before that, so the basis changed inside one series |
 | **PRICE-JOB** (D22) | DECIDED | The hourly price job is installed now, not after Oct 12. It is a new job with its own installer: no existing collector file is edited and no running job is reloaded | The rule in `CLAUDE.md` protects the weekend collection; a new job beside the others leaves it untouched, and the log times of the six running jobs are checked before and after |
 
+
+## Decided on 2026-10-03 (Rodrigo)
+
+Which route prices and runs a trade. Either founder can reopen it.
+
+| Gate | Status | Decision | Facts |
+|---|---|---|---|
+| **ROUTING** — Jupiter's route or ours | DECIDED | A trade done at once (one transaction) is quoted and run on Jupiter's route. A trade split over time is planned with our router (`routeTrade`): the analytics simulation's flow chart shows its slices, pools and cost. The client is offered the cheaper of the two. Every swap the vault sends, slices included, still goes through `Config.router_program` (Jupiter on mainnet), so the vault program does not change | Our router against the collector's Jupiter quotes, 10 xStocks, Oct 2 23:37Z to Oct 3 17:15Z (off-hours and weekend only), 2,306 pairs: median gap at most 0.5 bp at $1k and $10k, Jupiter better by 27 bp (sell) and 19 bp (buy) at $100k. With the same pools on both sides the $100k gap is 2.9 bp; the rest is pools we do not model: Byreal (excluded, D4 in `docs/risk/PLAN-RISK.md`), prop AMMs and an order book, and the two-hop pools |
