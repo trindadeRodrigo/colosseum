@@ -575,18 +575,21 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
       `${r.chain}: cash is a target`,
     );
 
-    // The lines are those targets: same assets, and each line's dollars are its target's share.
+    // The lines are those targets: the same assets, each at the same whole basis points. A line's
+    // dollars are what placement gave it, and its basis points are rounded so that each sleeve adds
+    // up: the two agree to within two basis points, and two more for each shared portfolio held
+    // whole that feeds the line, since opening one rounds again.
     const held = here.filter((l) => l.assetId !== cash?.id);
     say(
       JSON.stringify(held.map((l) => l.assetId).sort()) ===
         JSON.stringify(targets.map((t) => t.asset).sort()),
       `${r.chain}: the lines are not what the recipe flattens to`,
     );
+    const oneBp = cents(r.amountUsd) / 10_000;
     for (const t of targets) {
       const line = held.find((l) => l.assetId === t.asset);
-      // A target is whole basis points of its chain, and so is each component that feeds it: it is
-      // its line to within one basis point for each of them, and one more where a shared portfolio
-      // is opened into whole basis points again.
+      const token = byId.get(t.asset);
+      if (!line || !token) continue;
       const through = r.components.filter(
         (c) =>
           c.kind === 'index' &&
@@ -595,15 +598,19 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
             ?.recipes.find((x) => x.chain === r.chain)
             ?.components.some((x) => x.kind === 'asset' && x.asset === t.asset),
       ).length;
-      const direct = r.components.some((c) => c.kind === 'asset' && c.asset === t.asset) ? 1 : 0;
-      const exact = (cents(r.amountUsd) * t.weightBps) / 10_000;
-      const oneBp = cents(r.amountUsd) / 10_000;
-      if (line)
-        say(
-          Math.abs(cents(line.amountUsd) - exact) <=
-            (direct + through + (through > 0 ? 1 : 0)) * oneBp + 1,
-          `${t.asset}: its target is not its line`,
-        );
+      say(
+        line.weightBps === t.weightBps,
+        `${t.asset}: its target is ${t.weightBps} and its line ${line.weightBps}`,
+      );
+      say(
+        Math.abs(cents(line.amountUsd) - t.weightBps * oneBp) <= (2 + 2 * through) * oneBp + 1,
+        `${t.asset}: its dollars are not its target's`,
+      );
+      // A target never asks for more of a token than its ceiling.
+      say(
+        t.weightBps * cents(r.amountUsd) <= Math.floor(ceilingUsd(token, ctx) * 100) * 10_000,
+        `${t.asset}: its target comes to more than its ceiling of ${ceilingUsd(token, ctx)}`,
+      );
     }
   }
 

@@ -449,3 +449,48 @@ describe('the hash of the inputs pins everything that shaped the plan', () => {
     expect(thin.inputsHash).not.toBe(deep.inputsHash);
   });
 });
+
+describe('a recipe never asks a vault for more of a token than its limit', () => {
+  // Grow $333,333 at high risk in The Seven: AAPLx can take $10,000, which is 300.0003 basis points
+  // of the amount. Rounded to the nearest whole basis point the target would be over the limit.
+  const big = sheet({ amountUsd: 333_333, risk: 'high', themes: ['the-seven'] });
+
+  it('rounds a target at its ceiling down, and says where the rest went', () => {
+    const plan = compose(big, shelf, ctx);
+    expect(violations(plan, shelf, ctx)).toEqual([]);
+    const [recipe] = plan.recipes;
+    const token = shelf.assets.find((a) => a.id === 'solana:aaplx');
+    if (!recipe || !token) throw new Error('no recipe');
+    const target = recipe.components.find((c) => c.kind === 'asset' && c.asset === token.id);
+    const targetUsd = (recipe.amountUsd * (target?.weightBps ?? 0)) / 10_000;
+    expect(targetUsd).toBeLessThanOrEqual(10_000);
+    expect(targetUsd).toBeGreaterThan(10_000 - recipe.amountUsd / 10_000);
+    // The line is its target: the same basis points, and dollars within one of them.
+    const held = plan.lines.find((l) => l.assetId === token.id);
+    expect(held?.weightBps).toBe(target?.weightBps);
+    expect(held?.amountUsd).toBeLessThanOrEqual(10_000);
+  });
+
+  it('every line is its target, to the basis point, on every chain', () => {
+    for (const chain of ['solana', 'robinhood', 'base'] as const)
+      for (const amountUsd of [333_333, 858_895, 77_777.77]) {
+        const plan = compose({ ...big, amountUsd, chains: [chain] }, shelf, ctx);
+        expect(violations(plan, shelf, ctx), `${chain} ${amountUsd}`).toEqual([]);
+        expect(plan.lines.reduce((n, l) => n + l.weightBps, 0)).toBe(10_000);
+      }
+  });
+
+  it('says so on the cash line when a basis point was held back for a limit', () => {
+    const plans = [333_333, 858_895, 77_777.77].map((amountUsd) =>
+      compose({ ...big, amountUsd }, shelf, ctx),
+    );
+    const said = plans
+      .flatMap((p) => p.lines.flatMap((l) => l.reasons))
+      .filter((r) => r.rule === 'ROUNDING');
+    expect(said.length).toBeGreaterThan(0);
+    for (const r of said)
+      expect(r.text).toMatch(
+        /stays in cash: targets are whole basis points, and \w+ may not pass its limit\.$/,
+      );
+  });
+});

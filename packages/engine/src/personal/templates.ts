@@ -212,8 +212,8 @@ export const REASON_TEMPLATES = {
   ),
   ROUNDING: rule(
     ['amount'],
-    '{usd|usd} stays in cash: targets are whole basis points, and no line may pass its limit.',
-    '{usd|usd} fica em caixa: os alvos são pontos-base inteiros, e nenhuma linha pode passar do limite.',
+    '{bps|pct} stays in cash: targets are whole basis points, and {asset} may not pass its limit.',
+    '{bps|pct} fica em caixa: os alvos são pontos-base inteiros, e {asset} não pode passar do limite.',
   ),
 
   // The card, line by line.
