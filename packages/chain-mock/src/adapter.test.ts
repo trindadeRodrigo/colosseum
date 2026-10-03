@@ -632,6 +632,52 @@ describe('chain-mock', () => {
     expect(await first()).toBe(await first());
   });
 
+  it('lets a keeper leg end anywhere inside the band, on either side of the target, and no further', async () => {
+    const f = await mockFixture('solana');
+    const { adapter } = f;
+    const { mock } = adapter;
+    expect(mock.bandBps).toBe(50);
+    // The vault is worth about $999.70: $700 of cash, the rest SPY. NVDA is at 0% against 30%.
+    const nvda = (dollars: number) => ({
+      sell: mock.cash,
+      buy: 'solana:nvda',
+      amountInRaw: String(Math.round(dollars * 1e6)),
+    });
+    // Short of the target, on it, and a little past it: 30.2% is inside the band of 0.5%.
+    for (const dollars of [100, 299.9, 302]) {
+      const built = await adapter.buildKeeperLeg(f.vault, nvda(dollars));
+      expect(built.legKind, `$${dollars}`).toBe('keeper_leg');
+    }
+    // 30.6% is outside the band on the far side.
+    expect(await code(adapter.buildKeeperLeg(f.vault, nvda(306)))).toBe('PastTarget');
+    expect(await code(adapter.buildKeeperLeg(f.vault, nvda(700)))).toBe('PastTarget');
+
+    // A sale: gold is bought to 25% against 20%, then sold back toward its target.
+    const buyGold = { sell: mock.cash, buy: 'solana:gold', amountInRaw: '250000000' };
+    await mock.send(
+      await adapter.buildOwnerSwap({ vault: f.vault, trades: [buyGold], slippageBps: 100 }),
+    );
+    // One gold token is $200, so 1% of the vault is about 0.05 of a token (8 decimals).
+    const gold = (tokens: number) => ({
+      sell: 'solana:gold',
+      buy: mock.cash,
+      amountInRaw: String(Math.round(tokens * 1e8)),
+    });
+    // Down to about 20.2%, and down to about 19.7%: both inside the band.
+    for (const tokens of [0.24, 0.265])
+      expect((await adapter.buildKeeperLeg(f.vault, gold(tokens))).legKind).toBe('keeper_leg');
+    // Down to about 19.2%: under the target by more than the band.
+    expect(await code(adapter.buildKeeperLeg(f.vault, gold(0.29)))).toBe('PastTarget');
+    // Moving away is refused whatever the size: SPY is under its target, so it is not sold.
+    expect(await code(adapter.buildKeeperLeg(f.vault, f.awayTrade))).toBe('NotTowardTarget');
+
+    // A mock with no band is the old rule: at the target or short of it.
+    const strict = createMockAdapter({ chain: 'solana', bandBps: 0 });
+    expect(strict.mock.bandBps).toBe(0);
+    const wide = createMockAdapter({ chain: 'solana', bandBps: 300 });
+    expect(wide.mock.bandBps).toBe(300);
+  });
+
   it('stops the keeper at the target, and outside the stock session', async () => {
     const f = await mockFixture('solana');
     const { adapter } = f;

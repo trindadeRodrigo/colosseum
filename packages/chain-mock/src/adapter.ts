@@ -137,6 +137,11 @@ export type MockOptions = {
   /** USD per whole token by asset id. Required for every asset when `assets` is given. */
   prices?: Record<string, string>;
   /**
+   * The band around a target inside which a keeper leg may end, in bps of the vault (DESIGN-VAULT
+   * section 5, check 5). Default 50, the vaults' starting value.
+   */
+  bandBps?: number;
+  /**
    * What every price carries as `maxAgeSeconds`. Default 120, the Solana program's starting value. The
    * mock's prices are never older than zero seconds, so nothing here is ever stale.
    */
@@ -156,6 +161,8 @@ export type MockControl = {
   cash: AssetId;
   /** The slippage `quote()` allows for. */
   quoteSlippageBps: number;
+  /** The band a keeper leg may end inside, on either side of a target. */
+  bandBps: number;
   /** Unix seconds of the mock clock. */
   now(): number;
   advance(seconds: number): void;
@@ -232,6 +239,9 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
     scheduled: new Map(),
   };
   const maxPriceAge = options.maxPriceAgeSeconds ?? 120;
+  const bandBps = options.bandBps ?? 50;
+  if (!Number.isInteger(bandBps) || bandBps < 0 || bandBps > 10_000)
+    throw new Error('chain-mock: the band is a whole number of bps, 0 to 10,000');
   const built = new Map<string, Built>();
   const sent = new Map<string, Sent>();
   let buildSeq = 0;
@@ -382,13 +392,18 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
     if (trades.length > capabilities.maxTradesPerTx)
       refuse('TooManyTrades', `${chain} takes ${capabilities.maxTradesPerTx} per transaction`);
   }
-  /** Value weights of a vault at the mock prices, in bps of its total. */
-  function weightBps(s: State, v: MockVault, id: AssetId): number {
+  /**
+   * What an asset is worth and what the whole vault is, at the mock prices: a weight is the first over
+   * the second, cash included.
+   */
+  function weigh(s: State, v: MockVault, id: AssetId): { value: bigint; total: bigint } {
     const value = (a: AssetId) => valueScaled(balance(v, a), price(s, a), asset(a).decimals);
     let total = value(cash);
     for (const a of v.positions.keys()) total += value(a);
-    return total === 0n ? 0 : Number((value(id) * 10_000n) / total);
+    return { value: value(id), total };
   }
+  const bpsOf = (w: { value: bigint; total: bigint }) =>
+    w.total === 0n ? 0 : Number((w.value * 10_000n) / w.total);
 
   /** The one place state changes. Throws a ChainError and leaves `s` half-changed, so callers pass a copy. */
   function apply(s: State, op: Op, run: Run): void {
@@ -548,22 +563,29 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
           throw new ChainError('MintNotAccepted', `${other} is not one of this vault's assets`);
         if (marketOpen(s, asset(other).session) !== 'open')
           refuse('MarketClosed', `${other} trades in the US session only`);
-        // Sell only what is over its target, buy only what is under, and stop at the target. The band,
-        // the cooldown, the price-age check and the weekly loss cap are the real vault's and are not
+        // Check 5 of DESIGN-VAULT section 5. A sale needs the asset over its target before the trade
+        // and a purchase needs it under: anything else moves away. After the trade the asset may sit
+        // anywhere inside the band, on either side of its target; outside the band on the far side
+        // is past it. Compared without dividing, so a fraction of a basis point is not lost. The
+        // cooldown, the price-age check and the weekly loss cap are the real vault's and are not
         // modelled here.
         const buying = sell === cash;
-        const before = weightBps(s, v, other);
-        if (buying ? before >= p.targetBps : before <= p.targetBps)
+        const target = BigInt(p.targetBps);
+        const before = weigh(s, v, other);
+        const over = (w: typeof before, bps: bigint) => w.value * 10_000n > bps * w.total;
+        const under = (w: typeof before, bps: bigint) => w.value * 10_000n < bps * w.total;
+        if (buying ? !under(before, target) : !over(before, target))
           refuse(
             'NotTowardTarget',
-            `${other} is at ${before} bps against a target of ${p.targetBps}`,
+            `${other} is at ${bpsOf(before)} bps against a target of ${p.targetBps}`,
           );
         swap(s, v, op.a.trade, run);
-        const after = weightBps(s, v, other);
-        if (buying ? after > p.targetBps : after < p.targetBps)
+        const after = weigh(s, v, other);
+        const band = BigInt(bandBps);
+        if (buying ? over(after, target + band) : under(after, target - band))
           refuse(
             'PastTarget',
-            `${other} would be at ${after} bps against a target of ${p.targetBps}`,
+            `${other} would be at ${bpsOf(after)} bps against a target of ${p.targetBps}, outside the band of ${bandBps}`,
           );
         p.lastKeeperAt = s.seconds;
         return;
@@ -954,6 +976,7 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
       addresses: { factory, keeper },
       cash,
       quoteSlippageBps: QUOTE_SLIPPAGE_BPS,
+      bandBps,
       now: () => state.seconds,
       advance(seconds) {
         state.seconds += seconds;

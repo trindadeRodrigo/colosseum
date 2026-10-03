@@ -325,6 +325,47 @@ const FAULTS: { fault: string; wrap: Wrap; caught: string[]; chains?: MockChain[
     caught: ['the keeper, away from a target: NotTowardTarget'],
   },
   {
+    fault: 'lets the keeper go any distance past a target',
+    wrap: (real, f) => ({
+      buildKeeperLeg: (vault, trade) =>
+        real.buildKeeperLeg(vault, trade).catch((e) => {
+          if (!(e instanceof ChainError) || e.code !== 'PastTarget') throw e;
+          return real.buildKeeperLeg(f.vault, f.keeperTrade);
+        }),
+    }),
+    caught: ['the keeper, past a target by more than the band: PastTarget'],
+  },
+  {
+    fault: 'stops the keeper at the target exactly, with no band',
+    wrap: (real) => ({
+      buildKeeperLeg: async (vault, trade) => {
+        const tx = await real.buildKeeperLeg(vault, trade);
+        // What the asset is at once the trade is in, against its target: over it is refused.
+        const state = await real.getVault(vault);
+        const assets = await real.listAssets();
+        const prices = await real.getPrices(assets.map((a) => a.id));
+        const priceOf = (id: string) => Number(prices.find((p) => p.asset === id)?.usdPerToken);
+        const unit = (id: string) => 10 ** (assets.find((a) => a.id === id)?.decimals ?? 0);
+        const change = (id: string) =>
+          tx.preview.changes
+            .filter((x) => x.holder === 'vault' && x.asset === id)
+            .reduce((n, x) => n + Number(x.deltaRaw), 0);
+        const value = (id: string, raw: string) =>
+          ((Number(raw) + change(id)) / unit(id)) * priceOf(id);
+        if (!state) return tx;
+        const total = [state.cash, ...state.positions].reduce(
+          (n, h) => n + value(h.asset, h.raw),
+          0,
+        );
+        const bought = state.positions.find((p) => p.asset === trade.buy);
+        if (bought && (value(bought.asset, bought.raw) / total) * 10_000 > bought.targetBps)
+          throw new ChainError('PastTarget', 'past the target');
+        return tx;
+      },
+    }),
+    caught: ['lets the keeper end inside the band, short of the target or a little past it'],
+  },
+  {
     fault: 'lets the keeper adopt a version that adds an asset',
     wrap: (real, f) => ({
       buildAdoptVersion: (vault) =>

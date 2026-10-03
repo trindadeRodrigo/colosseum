@@ -1,3 +1,4 @@
+import { view } from '@colosseum/basket';
 import {
   type Address,
   AttemptFate,
@@ -133,8 +134,14 @@ export type ContractFixture = ReadsFixture & {
   freshBasketId: string;
   /** A trade the owner can make inside `vault` now. */
   ownerTrade: Trade;
-  /** A trade the keeper can make inside `vault` now: toward a target, and not past it. */
+  /**
+   * A trade the keeper can make inside `vault` now: toward a target, ending short of it or inside the
+   * band. The vault can afford to take the same asset 2% of its value past the target: the cases size
+   * trades that end inside the band and outside it from this one.
+   */
   keeperTrade: Trade;
+  /** The band the chain's vault allows around a target, in bps (DESIGN-VAULT section 5, check 5). */
+  bandBps: number;
   /** A trade in one of `vault`'s assets that moves it away from its target. */
   awayTrade: Trade;
   /**
@@ -241,6 +248,34 @@ const outcomeOf = (work: Promise<unknown>) =>
     () => 'answered' as const,
     (e: unknown) => e,
   );
+
+/**
+ * The fixture's keeper trade, sized so the asset ends `pastBps` beyond its target on the far side: over
+ * it for a purchase, under it for a sale. Weights are as the vault counts them: a share of everything
+ * it holds, cash at one dollar. Sized at the reference prices, so a trade's cost leaves it a little
+ * short of the figure; the cases keep clear of the band's edge by more than that.
+ */
+async function keeperTradePast(c: Ctx, pastBps: number): Promise<Trade> {
+  const { sell, buy } = c.f.keeperTrade;
+  const buying = sell === c.cash.id;
+  const other = buying ? buy : sell;
+  const state = await vaultAt(c, c.f.vault);
+  const seen = view(state, await c.a.getPrices(c.assets.map((x) => x.id)), c.assets);
+  const position = seen.positions.find((p) => p.asset === other);
+  const asset = c.assets.find((x) => x.id === other);
+  const price = (await c.a.getPrices([other]))[0];
+  if (!position || !asset || !price)
+    throw new Error(`${other} is not a priced position of the vault`);
+  const total = Number(seen.valueUsd);
+  const held = Number(position.valueUsd ?? 0);
+  const far = position.targetBps + (buying ? pastBps : -pastBps);
+  const usd = buying ? (total * far) / 10_000 - held : held - (total * far) / 10_000;
+  if (!(usd > 0)) throw new Error('the fixture vault is not on the near side of that target');
+  const raw = buying
+    ? usd * 10 ** c.cash.decimals
+    : (usd / Number(price.usdPerToken)) * 10 ** asset.decimals;
+  return { sell, buy, amountInRaw: BigInt(Math.floor(raw)).toString() };
+}
 
 const CASES: Case[] = [];
 const group = (name: ContractGroup, cases: Record<string, (c: Ctx) => Promise<void>>) => {
@@ -621,6 +656,15 @@ group('builds', {
     expect(new Set(txs.map((tx) => tx.payload)).size).toBe(txs.length);
   },
 
+  'lets the keeper end inside the band, short of the target or a little past it': async (c) => {
+    expect(c.f.bandBps).toBeGreaterThan(0);
+    // Half a band short, on the target, and half a band past it: all three are where a leg may end.
+    for (const past of [-c.f.bandBps / 2, 0, c.f.bandBps / 2]) {
+      const tx = await c.a.buildKeeperLeg(c.f.vault, await keeperTradePast(c, past));
+      checkTx(c, tx, 'keeper_leg', c.keeper);
+    }
+  },
+
   'has no builder that sets a keeper or an operator': async ({ a }) => {
     const names = new Set<string>();
     for (let o: object | null = a; o && o !== Object.prototype; o = Object.getPrototypeOf(o))
@@ -738,6 +782,12 @@ group('refusals', {
 
   'the keeper, away from a target: NotTowardTarget': async (c) => {
     await refuses(c.a.buildKeeperLeg(c.f.vault, c.f.awayTrade), 'NotTowardTarget');
+  },
+
+  'the keeper, past a target by more than the band: PastTarget': async (c) => {
+    // Three bands past the target, and 2% of the vault past it: both end outside the band.
+    for (const past of [3 * c.f.bandBps, Math.max(200, 3 * c.f.bandBps)])
+      await refuses(c.a.buildKeeperLeg(c.f.vault, await keeperTradePast(c, past)), 'PastTarget');
   },
 
   'a shared portfolio outside the author limits: CreatorLimit': async (c) => {

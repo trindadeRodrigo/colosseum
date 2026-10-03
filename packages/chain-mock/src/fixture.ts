@@ -121,6 +121,7 @@ export async function mockFixture(
     depositRaw: usd(1000),
     ownerTrade: { sell: mock.cash, buy: `${chain}:spy`, amountInRaw: usd(50) },
     keeperTrade: { sell: mock.cash, buy: `${chain}:nvda`, amountInRaw: usd(100) },
+    bandBps: mock.bandBps,
     awayTrade: { sell: `${chain}:spy`, buy: mock.cash, amountInRaw: aLittleSpy },
     publishRecipe: recipe(FAMILY, { spy: 3000, nvda: 5000, gold: 2000 }),
     unknownTxId: mockAddress(chain, 'never sent'),
