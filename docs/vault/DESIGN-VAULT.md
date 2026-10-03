@@ -305,17 +305,30 @@ type ChainAdapter = ChainReader & OwnerBuilder & KeeperBuilder & TxProbe;
   |---|---|---|---|
   | Each of the 34, numbered 6000 + its place | The same name where a contract has the same rule | The same name | `KeeperPaused`, `ReceivedTooLittle`, `PriceStale`, `PriceDeviation`, `MarketClosed`, `MultiplierWindow`, `Cooldown`, `LossCapReached` and `VersionNotEffective` yes; the rest no |
   | `ZeroAddress` | `ZeroAddress` (vault and config) | `ZeroAddress` | no |
-  | `ParamOutOfBounds` | `ParamOutOfBounds`, `InvalidPull` | `ParamOutOfBounds` | no |
-  | `MintNotAccepted` | `AssetNotListed` | `MintNotAccepted`: not on the chain's asset list, as the adapters already refuse it | no |
+  | `ParamOutOfBounds` | `ParamOutOfBounds`, `InvalidPull`, `OnlyTighten` (a guardian's call takes only a later time) | `ParamOutOfBounds` | no |
+  | `MintNotAccepted` | `AssetNotListed`, `TokenNotAccepted` (a swap's input never listed, its output not listed now; also a swap from a token to itself, the program's `SameMint`) | `MintNotAccepted`: not on the chain's asset list, as the adapters already refuse it | no |
+  | `OtherAccountDebited` | `OtherTokenDebited` | `OtherAccountDebited` | no |
+  | `AccountTampered` | `AllowanceLeft` (an allowance outlived the swap) | `AccountTampered` | no |
+  | `RouterNotAllowed` | `RouterNotAllowed`, `RouterReserved` (Permit2, the factory, the registry, the beacon, a vault) | `RouterNotAllowed` | no |
+  | `NoPendingVersion` | `NothingPending` | `NoPendingVersion` | no |
+  | `NotCreatorOrGuardian` | `NotCreator` | `NotCreatorOrGuardian` | no |
   | `AssetNotPriced` | `FeedRequired` | `AssetNotPriced` | no |
   | none: an Anchor account constraint | `NotOwner` | `NotOwner` | no |
-  | none: an Anchor account constraint | `NotAdmin`, `NotPendingAdmin` | `NotAdmin` | no |
+  | none: an Anchor account constraint | `NotAdmin`, `NotPendingAdmin`, `NotGuardian` | `NotAdmin` | no |
   | none | `CashTokenNotSet` | `CashTokenNotSet` | no |
   | none | `DepositShortfall` | `DepositShortfall` | no |
   | none | `GasTooLow` | `GasTooLow` | yes: a new build states a higher `evm.gas` |
   | none | `NoCode` | `NoCode` | no |
   | none | `AssetIsRouter` | `AssetIsRouter` | no |
-  | none | `RouterIsAsset` | `RouterIsAsset` | no |
+  | none | `RouterIsAsset`, `RouterIsToken` (answers as a token does) | `RouterIsAsset` | no |
+  | none | `NotCreating` | `NotCreating`: `start` from anyone but the factory, or after the creating transaction | no |
+  | none | `RouterFailed` | `RouterFailed`: the router's own call reverted | yes: a new build quotes again |
+  | none | `BalanceUnreadable` | `BalanceUnreadable` | no |
+  | none | `CashTokenNotRemovable` | `CashTokenNotRemovable` | no |
+  | none | `AdminHandoverPending`, `BeaconNotTheAdmins` | `HandoverNotDone`: `launch` while a key is still being handed over | no |
+  | none | `AlreadyLaunched`, `RegistryAlreadySet` | `AlreadySet` | no |
+  | none | `IndexExists` | `RecipeExists` | no |
+  | none (the adapter's own codes) | `IndexNotFound`; `VaultExists`; `NotSorted`; `RegistryNotSet`, `AutoFollowUnavailable`, `RenounceDisabled` | `RecipeNotFound`; `VaultExists`; `BadInput`; `NotSupported` | no |
 
   `CONTRACT_ERROR_CODE` holds the contract column as data, and a root test fails on a custom error under `contracts/src` that has no row in it. The same test holds `PROGRAM_ERRORS` to `idl/basket.json`. An error a later slot adds to the program or to a contract gets its code in the same pull request.
 - **Signed bytes and landings (`TxProbe`).** An adapter keeps no record of what it built: the order layer stores each attempt's `messageHash` and asks. `messageHashOf` reads the hash back from signed bytes, so signing must not change it (3.3 defines it per family). `relay` is called only after that hash matched an attempt this server built. `carries` has three answers, because a node that has not seen a transaction is not saying it is the wrong one: `this` for the transaction built for that message, `another` for a transaction the node has that is another call or another signer's, `unseen` for one it does not have. `fate` says what became of an attempt nobody reported: `open` while its bytes can still land, `gone` once they no longer can, `landed` with the id once the chain has it, confirmed or reverted. On Solana an attempt is its message, and it is `gone` once the chain is past `validUntil`. On EVM an attempt is the pair (messageHash, nonce), because two builds of one call share a hash: it is `landed` when the transaction at the signer's nonce is this call, `gone` when the signer's nonce has passed the attempt's and another call used it, and `open` otherwise; nothing expires by time.

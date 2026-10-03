@@ -978,6 +978,22 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
       AssetNotListed: 'MintNotAccepted',
       FeedRequired: 'AssetNotPriced',
       NotPendingAdmin: 'NotAdmin',
+      // The owner swap and the registry: the program's name for the same rule.
+      RouterNotAllowed: 'RouterNotAllowed',
+      SpentTooMuch: 'SpentTooMuch',
+      ReceivedTooLittle: 'ReceivedTooLittle',
+      TokenNotAccepted: 'MintNotAccepted',
+      OtherTokenDebited: 'OtherAccountDebited',
+      AllowanceLeft: 'AccountTampered',
+      InvalidTargets: 'InvalidTargets',
+      VersionMismatch: 'VersionMismatch',
+      CreatorLimit: 'CreatorLimit',
+      NothingPending: 'NoPendingVersion',
+      NotCreator: 'NotCreatorOrGuardian',
+      // And the adapter's, where a contract refuses what an adapter already refuses under that code.
+      IndexNotFound: 'RecipeNotFound',
+      VaultExists: 'VaultExists',
+      NotSorted: 'BadInput',
     });
     // A new code only where no program error means the same.
     const added = [...new Set(Object.values(CONTRACT_ERROR_CODE))].filter(
@@ -993,6 +1009,19 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
         'NotAdmin',
         'NotOwner',
         'RouterIsAsset',
+        // Added with the factory, the registry and the owner swap.
+        'AlreadySet',
+        'BalanceUnreadable',
+        'CashTokenNotRemovable',
+        'HandoverNotDone',
+        'NotCreating',
+        'RecipeExists',
+        'RouterFailed',
+        // Adapter codes a contract error means the same as.
+        'BadInput',
+        'NotSupported',
+        'RecipeNotFound',
+        'VaultExists',
       ].sort(),
     );
   });
@@ -1013,6 +1042,8 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
         'LossCapReached',
         'VersionNotEffective',
         'GasTooLow',
+        // The router refused its own trade: a new build takes a fresh quote and a fresh deadline.
+        'RouterFailed',
         'Expired',
         'Unavailable',
       ].sort(),
