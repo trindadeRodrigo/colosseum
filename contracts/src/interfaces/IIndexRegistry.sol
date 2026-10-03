@@ -79,12 +79,15 @@ interface IIndexRegistry {
     /// @return reason With `CreatorLimit`, the number of the rule broken.
     /// @return turnoverBps How much of the portfolio the version moves; 0 when refused.
     /// @return effectiveAt When it would take effect; 0 when refused.
-    /// @return nextAllowedAt The earliest time a version may be published: when the wait since the last one
-    /// is over and nothing is waiting. 0 for an id that does not exist.
+    /// @return allowedAt Set only when waiting is all it takes: the version is refused for being too soon
+    /// (reason 12) and breaks no later rule, so published at or after this time with nothing else changed
+    /// it is accepted. 0 otherwise, a version that is waiting included: the version in effect will change
+    /// under this one, and nothing can be promised against it. The same meaning as `allowedAt` in the
+    /// shared TypeScript check.
     function previewPublish(bytes32 id, Weight[] calldata next)
         external
         view
-        returns (bytes4 err, uint8 reason, uint16 turnoverBps, uint64 effectiveAt, uint64 nextAllowedAt);
+        returns (bytes4 err, uint8 reason, uint16 turnoverBps, uint64 effectiveAt, uint64 allowedAt);
 
     /// The numbers of the four limits, with the publish delay in force now.
     function limits() external view returns (Limits memory);

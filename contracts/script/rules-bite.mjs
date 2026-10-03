@@ -1508,6 +1508,27 @@ const RULES = [
     expect: VECTORS,
   },
   {
+    id: 'registry-preview-names-the-end-of-the-wait',
+    file: REGISTRY,
+    find: 'if (later == bytes4(0)) allowedAt = index.lastPublishAt + delay;',
+    replace: '',
+    expect: VECTORS,
+  },
+  {
+    id: 'registry-preview-names-a-time-only-when-waiting-is-all',
+    file: REGISTRY,
+    find: 'if (later == bytes4(0)) allowedAt = index.lastPublishAt + delay;',
+    replace: 'allowedAt = index.lastPublishAt + delay;',
+    expect: VECTORS,
+  },
+  {
+    id: 'registry-preview-names-no-time-past-a-later-rule',
+    file: REGISTRY,
+    find: 'if (later == bytes4(0)) allowedAt = index.lastPublishAt + delay;',
+    replace: 'allowedAt = index.lastPublishAt + delay;',
+    expect: 'test_previewPublish_namesNoTimeWhenWaitingWouldNotBeEnough',
+  },
+  {
     id: 'registry-cancel-does-not-give-the-slot-back',
     file: REGISTRY,
     find: DELETE_WAITING,

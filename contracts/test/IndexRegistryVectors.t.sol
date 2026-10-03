@@ -269,11 +269,15 @@ abstract contract IndexRegistryVectorsTest is VaultFixture {
     }
 
     function _assertPreview(Weight[] memory next, Case memory c, string memory label) internal view {
-        (bytes4 err, uint8 why, uint16 moved, uint64 effective,) = reg.previewPublish(id, next);
+        (bytes4 err, uint8 why, uint16 moved, uint64 effective, uint64 allowedAt) = reg.previewPublish(id, next);
         assertEq(err, c.expect.ok == 1 ? bytes4(0) : IIndexRegistry.CreatorLimit.selector, label);
         assertEq(why, c.expect.reasonId, label);
         assertEq(moved, c.expect.turnoverBps, label);
         assertEq(effective, c.expect.effectiveAt, label);
+        // A time is named only when being too soon is the one rule the case breaks: then it is the end of
+        // the wait, as the shared TypeScript check names it.
+        bool onlyTooSoon = c.expect.breaks.length == 1 && c.expect.reasonId == 12;
+        assertEq(allowedAt, onlyTooSoon ? c.ctx.lastPublishAt + c.ctx.publishDelay : 0, label);
     }
 
     function _create(Weight[] memory list, string memory label) internal {

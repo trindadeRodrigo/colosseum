@@ -313,45 +313,85 @@ contract IndexRegistryTest is SwapFixture {
 
     // ---- previewPublish
 
-    function test_previewPublish_saysWhenTheNextVersionMayCome() public {
+    function test_previewPublish_answersForAFirstVersionToo() public view {
         // An id that does not exist yet: judged as a first version, in effect at once.
         bytes32 fresh = keccak256(abi.encode(stranger, FAMILY));
-        (bytes4 err, uint8 reason, uint16 turnover, uint64 effectiveAt, uint64 nextAllowedAt) =
+        (bytes4 err, uint8 reason, uint16 turnover, uint64 effectiveAt, uint64 allowedAt) =
             registry.previewPublish(fresh, _threeStocks());
         assertEq(err, bytes4(0));
         assertEq(reason, 0);
         assertEq(turnover, 0);
         assertEq(effectiveAt, block.timestamp);
-        assertEq(nextAllowedAt, 0);
+        assertEq(allowedAt, 0);
+    }
 
-        // Too soon after version 1.
-        (err, reason,,, nextAllowedAt) = registry.previewPublish(id, _moved());
+    /// `allowedAt` is the shared one (`checkCreatorLimits` in TypeScript): named only when waiting is all it
+    /// takes, and then the version does pass at that time.
+    function test_previewPublish_saysWhenAVersionThatIsOnlyTooSoonWillPass() public {
+        (bytes4 err, uint8 reason,, uint64 effectiveAt, uint64 allowedAt) = registry.previewPublish(id, _moved());
         assertEq(err, IIndexRegistry.CreatorLimit.selector);
         assertEq(reason, 12);
-        assertEq(nextAllowedAt, createdAt + PUBLISH_DELAY);
+        assertEq(effectiveAt, 0);
+        assertEq(allowedAt, createdAt + PUBLISH_DELAY);
 
-        // On time.
-        vm.warp(createdAt + PUBLISH_DELAY);
-        (err, reason, turnover, effectiveAt,) = registry.previewPublish(id, _moved());
+        // One second before it, still refused with the same time; at the time, it passes.
+        vm.warp(allowedAt - 1);
+        (, reason,,, allowedAt) = registry.previewPublish(id, _moved());
+        assertEq(reason, 12);
+        assertEq(allowedAt, createdAt + PUBLISH_DELAY);
+        vm.warp(allowedAt);
+        uint16 turnover;
+        (err, reason, turnover, effectiveAt, allowedAt) = registry.previewPublish(id, _moved());
         assertEq(err, bytes4(0));
         assertEq(turnover, 500);
         assertEq(effectiveAt, block.timestamp + PUBLISH_DELAY);
-
-        // A version published under a longer delay than today's still waits its own time: the next one may
-        // come when it takes effect, not one of today's delays after it was published.
-        vm.prank(admin);
-        registry.setPublishDelay(3600);
-        vm.warp(createdAt + 3600);
+        assertEq(allowedAt, 0);
         vm.prank(author);
-        (, uint64 waitsUntil) = registry.publish(id, _moved(), META_2);
-        vm.prank(admin);
-        registry.setPublishDelay(PUBLISH_DELAY);
-        vm.warp(block.timestamp + PUBLISH_DELAY + 100);
-        (err, reason,,, nextAllowedAt) = registry.previewPublish(id, _threeStocks());
-        assertEq(err, IIndexRegistry.CreatorLimit.selector);
+        registry.publish(id, _moved(), META_2);
+    }
+
+    function test_previewPublish_namesNoTimeWhenWaitingWouldNotBeEnough() public {
+        // Too soon, and it moves 30% of the portfolio: at the time, it would be refused for the turnover.
+        Weight[] memory far = _threeStocks();
+        for (uint256 i; i < far.length; ++i) {
+            if (far[i].bps == 5000) far[i].bps = 2000;
+            else if (far[i].bps == 2000) far[i].bps = 5000;
+        }
+        (, uint8 reason,,, uint64 allowedAt) = registry.previewPublish(id, far);
+        assertEq(reason, 12);
+        assertEq(allowedAt, 0);
+        vm.warp(createdAt + PUBLISH_DELAY);
+        (, reason,,, allowedAt) = registry.previewPublish(id, far);
+        assertEq(reason, 13);
+        assertEq(allowedAt, 0);
+
+        // Too soon, and it holds the cash token.
+        vm.warp(createdAt + 1);
+        Weight[] memory withCash = new Weight[](3);
+        withCash[0] = Weight(address(stockA), 5000);
+        withCash[1] = Weight(address(stockB), 3000);
+        withCash[2] = Weight(address(cash), 2000);
+        (, reason,,, allowedAt) = registry.previewPublish(id, _sort(withCash));
+        assertEq(reason, 12);
+        assertEq(allowedAt, 0);
+    }
+
+    function test_previewPublish_namesNoTimeForARefusalThatTimeDoesNotCure() public {
+        // While a version waits, the one in effect will change under this one: nothing can be promised.
+        _publishNext();
+        (, uint8 reason,,, uint64 allowedAt) = registry.previewPublish(id, _threeStocks());
         assertEq(reason, 11);
-        assertEq(nextAllowedAt, waitsUntil);
-        assertEq(waitsUntil, createdAt + 7200);
+        assertEq(allowedAt, 0);
+
+        // A list out of order, and a shape the limits refuse.
+        Weight[] memory unsorted = _threeStocks();
+        (unsorted[0], unsorted[2]) = (unsorted[2], unsorted[0]);
+        (,,,, allowedAt) = registry.previewPublish(id, unsorted);
+        assertEq(allowedAt, 0);
+        Weight[] memory two = new Weight[](2);
+        (, reason,,, allowedAt) = registry.previewPublish(id, two);
+        assertEq(reason, 3);
+        assertEq(allowedAt, 0);
     }
 
     // ---- the delay, and the launch latch

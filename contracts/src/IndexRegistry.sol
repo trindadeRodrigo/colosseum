@@ -214,21 +214,20 @@ contract IndexRegistry is Initializable, UUPSUpgradeable, IIndexRegistry {
     function previewPublish(bytes32 id, Weight[] calldata next)
         external
         view
-        returns (bytes4 err, uint8 reason, uint16 turnoverBps, uint64 effectiveAt, uint64 nextAllowedAt)
+        returns (bytes4 err, uint8 reason, uint16 turnoverBps, uint64 effectiveAt, uint64 allowedAt)
     {
         RegistryStorage storage $ = _registry();
         Index storage index = $.indexes[id];
-        bool first = index.creator == address(0);
-        uint32 delay = first ? 0 : _delay($);
-        if (!first) {
-            nextAllowedAt = index.lastPublishAt + delay;
-            if (_hasWaiting(index)) {
-                uint64 waitsUntil = index.slots[1 - _inEffect(index)].effectiveAt;
-                if (waitsUntil > nextAllowedAt) nextAllowedAt = waitsUntil;
-            }
-        }
+        uint32 delay = index.creator == address(0) ? 0 : _delay($);
         (err, reason, turnoverBps) = _check($, index, next, delay);
-        if (err == 0) effectiveAt = uint64(block.timestamp) + delay;
+        if (err == bytes4(0)) {
+            effectiveAt = uint64(block.timestamp) + delay;
+        } else if (reason == VERSION_TOO_SOON) {
+            // Too soon is the lowest rule broken, so nothing before it is. Asked again as if the wait were
+            // over, the rules that do not depend on the time say whether waiting is all it takes.
+            (bytes4 later,,) = _check($, index, next, 0);
+            if (later == bytes4(0)) allowedAt = index.lastPublishAt + delay;
+        }
     }
 
     /// @inheritdoc IIndexRegistry

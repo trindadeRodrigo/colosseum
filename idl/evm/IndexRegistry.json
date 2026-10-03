@@ -448,7 +448,7 @@
         "internalType": "uint64"
       },
       {
-        "name": "nextAllowedAt",
+        "name": "allowedAt",
         "type": "uint64",
         "internalType": "uint64"
       }

@@ -718,7 +718,7 @@ interface IIndexRegistry {
   function indexCount() external view returns (uint256);
   function indexAt(uint256 i) external view returns (bytes32);
   function previewPublish(bytes32 id, Weight[] calldata next) external view
-      returns (bytes4 err, uint8 reason, uint16 turnoverBps, uint64 effectiveAt, uint64 nextAllowedAt);
+      returns (bytes4 err, uint8 reason, uint16 turnoverBps, uint64 effectiveAt, uint64 allowedAt);
   function limits() external view returns (Limits memory);
   function publishDelay() external view returns (uint32);       // the delay in force
   function factory() external view returns (address);
@@ -852,7 +852,7 @@ Limits, checked by the registry. Constants, not per-portfolio settings. Shape li
 
 **As built on EVM (EVM-2).** `IndexRegistry` checks the limits in `create` and `publish` and reverts with `CreatorLimit(reason)`, where `reason` is the number of the lowest rule broken, 1 to 14, as `fixtures/creator-limits/README.md` numbers them. A list must come sorted by token address: one that is not is `NotSorted`, which is not one of the fourteen; an asset listed twice is then two equal neighbours, rule 6. Rule 9 is `min(5000, the asset's maxWeightBps)`, read from the factory when the version is published; the factory itself refuses a ceiling above 5,000. Rule 14 is the factory's `cashToken()`, which on EVM is always a listed asset, so the refusal is `CashNotAllowed` and never `AssetNotListed`. An asset the admin took off the list is rule 5.
 
-`previewPublish(id, next)` answers `(err, reason, turnoverBps, effectiveAt, nextAllowedAt)` with no transaction: `err` is zero, or the selector the call would revert with; for an id that does not exist yet it answers for `create`. It takes no fee and no flags, so rules 1 and 2 are only seen by `create` itself. `nextAllowedAt` is when the wait since the last version is over and nothing is waiting.
+`previewPublish(id, next)` answers `(err, reason, turnoverBps, effectiveAt, allowedAt)` with no transaction: `err` is zero, or the selector the call would revert with; for an id that does not exist yet it answers for `create`. It takes no fee and no flags, so rules 1 and 2 are only seen by `create` itself. `allowedAt` is the shared one of 3.6: set only when waiting is all it takes, that is when the version is refused for being too soon and breaks no later rule, and then it is the end of the wait; zero otherwise, a version that is waiting included.
 
 The cancel is the creator's, the guardian's or the admin's, since the admin may make every guardian call. A version whose time has come is in effect and cannot be cancelled. A version that is waiting when the delay changes keeps the time it was given, `launch()` included: before launch the team lets waiting versions take effect or cancels them.
 
