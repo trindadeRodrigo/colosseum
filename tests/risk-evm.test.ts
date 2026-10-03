@@ -1007,6 +1007,68 @@ describe('one run, replayed from the recording', () => {
       ]);
       expect(r.seen).toHaveLength(2 + 1 + 4);
     });
+    describe("with a token's quotes on the wire, which then find their block gone", () => {
+      const asleepFor = (minutes: number) => {
+        let slept = false;
+        return run({
+          tokens: ['NVDA', 'NVDB', 'NVDC'],
+          untilMin: 60,
+          override: (q, world) => {
+            // the second token's quotes, at the first block
+            if (isQuote(q) && q.tag === tag && world.seen.filter(isQuote).length > 4) {
+              if (!slept) {
+                slept = true;
+                world.clock += minutes * 60_000;
+              }
+              return { error: { code: -32000, message: HISTORICAL_STATE } };
+            }
+            return undefined;
+          },
+        });
+      };
+
+      it('does not finish that token on a fresh block once the next run is due', async () => {
+        const r = await asleepFor(94);
+        // one row, from before the pause; nothing is written 34 minutes into the next hour
+        expect(r.rows.map((row) => [row.asset, row.slot, row.fetchedAt])).toEqual([
+          ['NVDA', BLOCK_A, fx.fetchedAt],
+        ]);
+        expect(r.summary).toMatchObject({
+          rows: 1,
+          repins: 0,
+          aborted: 'the next scheduled run is due',
+        });
+        expect(r.summary.tokens.map((t) => [t.asset, t.error ?? null, t.retry ?? false])).toEqual([
+          ['NVDA', null, false],
+          ['NVDB', 'not measured: the next scheduled run is due', false],
+          ['NVDC', 'not tried: the next scheduled run is due', false],
+        ]);
+        expect(r.summary.tokens[1]).toMatchObject({ sell10k: null, sell50k: null });
+        // no fresh block was asked for, and nothing was read at any other block
+        expect(r.seen.filter((q) => q.method === 'eth_getBlockByNumber')).toHaveLength(1);
+        expect(calls(r.seen).every((q) => q.tag === tag)).toBe(true);
+        expect(r.events).toEqual([]);
+      });
+      it('finishes it on a fresh block when the machine wakes inside the hour', async () => {
+        const r = await asleepFor(30);
+        expect(r.rows.map((row) => [row.asset, row.slot])).toEqual([
+          ['NVDA', BLOCK_A],
+          ['NVDB', BLOCK_B],
+          ['NVDC', BLOCK_B],
+        ]);
+        expect(r.summary).toMatchObject({ rows: 3, repins: 1 });
+        expect(r.summary.aborted).toBeUndefined();
+        expect(r.events).toEqual([
+          {
+            event: 'repinned',
+            reason: 'block_gone',
+            asset: 'NVDB',
+            fromBlock: BLOCK_A,
+            error: HISTORICAL_STATE,
+          },
+        ]);
+      });
+    });
     it('uses a limit of a few minutes', () => {
       expect(MAX_PIN_AGE_MS).toBeGreaterThanOrEqual(60_000);
       expect(MAX_PIN_AGE_MS).toBeLessThanOrEqual(5 * 60_000);

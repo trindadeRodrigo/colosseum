@@ -406,16 +406,19 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
   mkdirSync(join(opts.dir, 'assets'), { recursive: true });
   const results: TokenResult[] = [];
   let mids: Mids | null = null;
-  let needPin = false;
+  /** Set when the block in use must be replaced before the next read: why, for the log. */
+  let repin: Record<string, unknown> | null = null;
   let rows = 0;
   let repins = 0;
   let aborted: string | undefined;
   /** Why the tokens the run did not reach were left, and whether this hour should try them again. */
   let left: { error: string; retry: boolean } | undefined;
+  /** Paused past the hour: what is not measured yet belongs to the next run, which is due now. */
+  const nextRunDue = () => opts.until !== undefined && now() >= opts.until;
+  const NEXT_RUN_DUE = 'the next scheduled run is due';
   for (const [i, { token, pools }] of todo.entries()) {
-    if (opts.until !== undefined && now() >= opts.until) {
-      // paused past the hour: what is left belongs to the next run, which is due now
-      aborted = 'the next scheduled run is due';
+    if (nextRunDue()) {
+      aborted = NEXT_RUN_DUE;
       left = { error: `not tried: ${aborted}`, retry: false };
       break;
     }
@@ -434,21 +437,23 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
     for (let again = 0; ; ) {
       try {
         const age = now() - pin.takenAt;
-        if (!needPin && age > MAX_PIN_AGE_MS) {
-          // the run was paused: what is left starts again on a fresh block
-          opts.log({
-            event: 'repinned',
-            reason: 'pin_too_old',
-            asset: token.symbol,
-            fromBlock: pin.number,
-            ageMs: age,
-          });
-          needPin = true;
-        }
-        if (needPin) {
+        // the run was paused: what is left starts again on a fresh block
+        if (!repin && age > MAX_PIN_AGE_MS)
+          repin = { reason: 'pin_too_old', asset: token.symbol, fromBlock: pin.number, ageMs: age };
+        if (repin) {
+          if (nextRunDue()) {
+            // a fresh block now would be a sample of the next hour, which that run takes itself:
+            // this token (its own block could not be read) and the rest are left to it
+            aborted = NEXT_RUN_DUE;
+            left = { error: `not tried: ${aborted}`, retry: false };
+            result.error = `not measured: ${aborted}`;
+            break;
+          }
+          const why = repin;
           pin = await pinLatest(rpc, now);
+          opts.log({ event: 'repinned', ...why });
           repins++;
-          needPin = false;
+          repin = null;
           mids = null;
         }
         // prices for every token still to do, at the block in use; after a fresh block, read again
@@ -487,14 +492,12 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
         if (e instanceof BlockGone && again < MAX_REPINS_PER_TOKEN) {
           // nothing of this token is kept: its prices and its quotes are read again on a fresh block
           again++;
-          opts.log({
-            event: 'repinned',
+          repin = {
             reason: 'block_gone',
             asset: token.symbol,
             fromBlock: pin.number,
             error: message,
-          });
-          needPin = true;
+          };
           continue;
         }
         result.error = e instanceof BlockGone ? `the block's state was gone: ${message}` : message;
