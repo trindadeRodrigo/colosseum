@@ -13,6 +13,7 @@ import {
 import { type AssetCurves, curveFor, type IssuerModel, measuredRegimes } from '../assess';
 import { costAt, type DepthCurve, maxNotionalAt, usableCount } from '../curves';
 import { REGIMES, type Regime } from '../time';
+import { splitAt } from './breakdown';
 import { breakEvenReturn, lossUsd, roundTripCost } from './returns';
 
 /**
@@ -76,6 +77,15 @@ export type AssetFactsInput = {
   }>;
   issuer: (IssuerModel & { fetchedAt: string }) | null;
   gapGridPct: readonly number[];
+  /** Where the split keys on the curve points come from (item 4); absent: the split is `not_collected`. */
+  splitMeta?: RowMeta;
+  /** Split snapshots needed at a size before its split is used. */
+  splitMinSamples?: number;
+  /** Median network fee per swap, or why it is not measured (item 4). */
+  networkFee?:
+    | (RowMeta & { usd: number; fetchedAt: string; dataFrom: string; samples: number })
+    | { reason: FactNullReason; detail?: string }
+    | null;
 };
 
 /** Policy inputs of the fact sheets (facts-0.1); each is shown on the sheet it shapes. */
@@ -89,9 +99,12 @@ export const defaultFactsParams = () => ({
   /** Window for capacity variation and LP-withdrawal counts. */
   capacityWindowDays: 7,
   capacityMinSamples: 8,
+  /** Split snapshots (and swap transactions, for the network fee) needed before a split part is used. */
+  splitMinSamples: 8,
 });
 
-const NOT_SPLIT = 'the amount sent to each pool is not stored yet (item 4)';
+const NOT_SPLIT =
+  'no split snapshot fitted at this size yet (pnpm risk:split-snapshot, risk:cost-breakdown)';
 
 export function buildAssetFacts(inp: AssetFactsInput): AssetFacts {
   const curveFact = (
@@ -135,33 +148,86 @@ export function buildAssetFacts(inp: AssetFactsInput): AssetFacts {
     const k = costAt(curve, inp.sizeUsd);
     return k === null ? { reason: 'beyond_measured_size' } : { cost: k, curve };
   };
+  const nf = inp.networkFee;
+  const networkFeeUsd = (regime: Regime): Fact =>
+    nf && 'usd' in nf
+      ? fact({
+          value: nf.usd,
+          unit: 'usd',
+          quality: 'measured',
+          regime,
+          sizeUsd: inp.sizeUsd,
+          source: nf.source,
+          method: nf.method,
+          methodVersion: nf.methodVersion,
+          provenance: nf.provenance,
+          fetchedAt: nf.fetchedAt,
+          dataFrom: nf.dataFrom,
+          samples: nf.samples,
+        })
+      : missing(nf?.reason ?? 'not_collected', 'usd', {
+          regime,
+          sizeUsd: inp.sizeUsd,
+          detail: nf?.detail ?? 'the fee of real swap transactions (pnpm risk:network-fees)',
+        });
   const breakdown = (curves: AssetCurves | null, regime: Regime): CostBreakdown => {
     const s = sideCost(curves, regime);
     const ctx = { regime, sizeUsd: inp.sizeUsd };
+    const sp =
+      'cost' in s && inp.splitMeta ? splitAt(s.curve, inp.sizeUsd, inp.splitMinSamples ?? 8) : null;
     const split = (unit: FactUnit) =>
       'cost' in s
-        ? missing('not_collected', unit, { ...ctx, detail: NOT_SPLIT })
+        ? missing(sp && 'reason' in sp ? sp.reason : 'not_collected', unit, {
+            ...ctx,
+            detail: NOT_SPLIT,
+          })
         : missing(s.reason, unit, ctx);
+    const part = (value: number, meta: RowMeta): MeasuredFact | null =>
+      sp && 'poolFee' in sp
+        ? fact({
+            value,
+            unit: 'fraction',
+            quality: 'measured',
+            ...ctx,
+            ...meta,
+            fetchedAt: sp.to,
+            dataFrom: sp.from,
+            samples: sp.samples,
+          })
+        : null;
+    const sm = inp.splitMeta as RowMeta;
+    const network = networkFeeUsd(regime);
+    const fee = network.value === null ? undefined : network.value;
     return {
       total: 'cost' in s ? curveFact(s.cost, 'fraction', s.curve, regime) : split('fraction'),
-      poolFee: split('fraction'),
-      transferFee: split('fraction'),
-      impact: split('fraction'),
-      basis: split('fraction'),
-      networkFeeUsd: missing('not_collected', 'usd', {
-        ...ctx,
-        detail: 'measured from swap transactions in item 4',
-      }),
+      poolFee: (sp && 'poolFee' in sp && part(sp.poolFee, sm)) || split('fraction'),
+      transferFee: (sp && 'poolFee' in sp && part(sp.transferFee, sm)) || split('fraction'),
+      // the rest of the curve's cost, so the four parts sum to the total exactly
+      impact:
+        ('cost' in s &&
+          sp &&
+          'poolFee' in sp &&
+          part(s.cost - sp.poolFee - sp.transferFee - sp.basis, {
+            ...sm,
+            source: `${inp.curveMeta.source}; ${sm.source}`,
+            method: `curve cost less poolFee, transferFee and basis (${sm.method})`,
+          })) ||
+        split('fraction'),
+      basis: (sp && 'poolFee' in sp && part(sp.basis, sm)) || split('fraction'),
+      networkFeeUsd: network,
       platformFee,
-      // without the network fee, so the true loss is at least this
+      // without a measured network fee the true loss is at least this
       lossUsd:
         'cost' in s
           ? curveFact(
-              lossUsd(inp.sizeUsd, s.cost, { platformFeeBps: inp.platformFeeBps }),
+              lossUsd(inp.sizeUsd, s.cost, {
+                platformFeeBps: inp.platformFeeBps,
+                ...(fee === undefined ? {} : { networkFeeUsd: fee }),
+              }),
               'usd',
               s.curve,
               regime,
-              'lower_bound',
+              fee === undefined ? 'lower_bound' : 'measured',
             )
           : split('usd'),
     };

@@ -3,13 +3,15 @@ import { readFileSync } from 'node:fs';
 import { createDb, riskAssetSnapshots, riskDepthCurves, riskPools } from '@colosseum/db';
 import {
   type CostSample,
+  carrySplit,
+  type DepthCurve,
   defaultRegimeParams,
   fitCurve,
   REGIMES,
   type Regime,
   regimeAt,
 } from '@colosseum/risk';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 // Computes asset-level depth curves from routed asset snapshots (risk-0.3): per asset and collector run, the
 // best split of a sale across the asset's USDC/USDT and SOL pools. Samples are bucketed by
@@ -49,6 +51,20 @@ for (const r of assetRows) {
   best.set(r.assetMint, a);
 }
 const snaps = assetRows;
+// the cost split (`pnpm risk:cost-breakdown`) lives as optional keys on the points; a refit keeps them
+const previous = new Map(
+  (
+    await db
+      .select({
+        assetMint: riskDepthCurves.assetMint,
+        side: riskDepthCurves.side,
+        regime: riskDepthCurves.regime,
+        points: riskDepthCurves.points,
+      })
+      .from(riskDepthCurves)
+      .where(eq(riskDepthCurves.methodVersion, CURVE_METHOD_VERSION))
+  ).map((r) => [`${r.assetMint}|${r.side}|${r.regime}`, r.points as DepthCurve['points']]),
+);
 const symbol = new Map(pools.map((p) => [p.assetMint, p.assetSymbol]));
 let written = 0;
 const now = new Date();
@@ -70,7 +86,7 @@ for (const [mint, times] of best) {
         assetSymbol: symbol.get(mint) ?? mint.slice(0, 6),
         side,
         regime: r,
-        points: c.points,
+        points: carrySplit(previous.get(`${mint}|${side}|${r}`), c.points),
         insufficientFrom: c.insufficientFrom,
         quantile: c.quantile,
         minSamples: c.minSamples,

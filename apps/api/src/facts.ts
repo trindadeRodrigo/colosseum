@@ -8,6 +8,7 @@ import {
   riskEvents,
   riskLendingPositions,
   riskLpConcentration,
+  riskNetworkFees,
   riskPools,
   riskReferencePrices,
 } from '@colosseum/db';
@@ -25,6 +26,7 @@ import {
   type IssuerModel,
   maxNotionalAt,
   measuredRegimes,
+  networkFeePerSwap,
   type PlanLeg,
   quantileOf,
   type Regime,
@@ -37,6 +39,48 @@ const ROOT = process.env.REPO_ROOT ?? join(import.meta.dirname, '..', '..', '..'
 const CURVE_METHOD_VERSION = 'risk-0.3';
 const fixture = (name: string) =>
   JSON.parse(readFileSync(join(ROOT, 'fixtures/risk', name), 'utf8'));
+
+/** Where the split keys on the curve points come from (`pnpm risk:cost-breakdown`, PLAN-ANALYTICS item 4). */
+const SPLIT_META = {
+  source:
+    'split snapshots (pnpm risk:split-snapshot: exit pools read by RPC, routed with routeTrade), fitted onto risk_depth_curves points',
+  method: 'median_per_asset_side_regime_size',
+  methodVersion: 'split-0.1',
+  provenance: 'live' as const,
+};
+
+/** Median network fee per swap from risk_network_fees, or why it is not measured. */
+export async function loadNetworkFee(
+  db: Db,
+  minSamples: number,
+): Promise<AssetFactsInput['networkFee']> {
+  const rows = await db.select().from(riskNetworkFees).where(eq(riskNetworkFees.chain, 'solana'));
+  const m = networkFeePerSwap(
+    rows.map((r) => ({
+      signature: r.signature,
+      blockTime: r.blockTime.toISOString(),
+      feeLamports: r.feeLamports,
+      solUsd: r.solUsd,
+    })),
+    minSamples,
+  );
+  if ('reason' in m)
+    return {
+      reason: m.reason,
+      detail: `${m.samples} swap transactions read, ${minSamples} needed`,
+    };
+  const last = rows.reduce((a, r) => (r.fetchedAt > a.fetchedAt ? r : a));
+  return {
+    usd: m.usd,
+    fetchedAt: m.to,
+    dataFrom: m.from,
+    samples: m.samples,
+    source: last.source,
+    method: `median of ${last.method} × SOL price when read`,
+    methodVersion: last.methodVersion,
+    provenance: last.provenance,
+  };
+}
 
 /**
  * Reads the rows behind one asset's fact sheet and hands them to `buildAssetFacts` (PLAN-ANALYTICS item 7).
@@ -315,6 +359,9 @@ export async function loadAssetFacts(
     sell,
     buy: side('buy'),
     curveMeta,
+    splitMeta: SPLIT_META,
+    splitMinSamples: params.splitMinSamples,
+    networkFee: await loadNetworkFee(db, params.splitMinSamples),
     lp,
     lpWithdrawals: {
       count: withdrawals?.n ?? 0,

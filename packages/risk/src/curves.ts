@@ -9,8 +9,24 @@
  */
 export type CostSample = { notionalUsd: number; cost: number };
 
+/**
+ * Optional keys on a curve point (PLAN-ANALYTICS item 4, `pnpm risk:cost-breakdown`): the median pool fee,
+ * transfer fee and basis at this size, as fractions, fitted from the split snapshots (`split-0.1`); `impact` is the
+ * point's cost less the three. Absent until the fit runs; the curve's own answers never read them.
+ */
+export type SplitKeys = {
+  poolFee?: number;
+  transferFee?: number;
+  basis?: number;
+  /** Split snapshots behind the three keys at this size and regime. */
+  splitSamples?: number;
+  /** First and last split snapshot behind them (ISO 8601). */
+  splitFrom?: string;
+  splitTo?: string;
+};
+
 export type DepthCurve = {
-  points: Array<{ notionalUsd: number; cost: number; samples: number }>;
+  points: Array<{ notionalUsd: number; cost: number; samples: number } & SplitKeys>;
   /** Index of the first grid point with too few samples (points from here up are not used). */
   insufficientFrom: number | null;
   quantile: number;

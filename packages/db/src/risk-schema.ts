@@ -514,3 +514,23 @@ export const riskLendingCoverage = pgTable(
     }),
   ],
 );
+
+/**
+ * The network fee of real swap transactions (PLAN-ANALYTICS item 4): `meta.fee` (base plus priority fee, in
+ * lamports) read from each confirmed swap the product sent (`executions`), with the SOL price when it was read.
+ * The fact sheets give the median per swap. No wallet is stored.
+ */
+export const riskNetworkFees = pgTable('risk_network_fees', {
+  signature: text('signature').primaryKey(),
+  chain: text('chain').notNull(),
+  /** Where the signature came from: `executions` (our own swaps). */
+  origin: text('origin').notNull(),
+  slot: doublePrecision('slot').notNull(),
+  blockTime: ts('block_time').notNull(),
+  feeLamports: doublePrecision('fee_lamports').notNull(),
+  computeUnits: doublePrecision('compute_units'),
+  solUsd: doublePrecision('sol_usd').notNull(),
+  feeUsd: doublePrecision('fee_usd').notNull(),
+  methodVersion: text('method_version').notNull(),
+  ...provenanceCols,
+});

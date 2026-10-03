@@ -8,6 +8,7 @@ export * from './events/raydium-clmm';
 export * from './events/raydium-cpmm';
 export * from './events/tx';
 export * from './facts/asset';
+export * from './facts/breakdown';
 export * from './facts/lending';
 export * from './facts/plan';
 export * from './facts/returns';
