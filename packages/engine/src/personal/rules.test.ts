@@ -208,17 +208,15 @@ describe.each(Object.entries(TABLES))('whatever the numbers: %s', (_name, table)
         0,
       );
       expect(made.card.expectedReturn.lowPct).toBeCloseTo((100 * low) / 40_000, 2);
-      expect(
-        made.observations
-          .filter((o) => o.kind === 'yield')
-          .map((o) => o.id)
-          .sort(),
-      ).toEqual(
-        made.lines
-          .map((l) => l.assetId)
-          .filter((id) => yields.has(id))
-          .sort(),
-      );
+      // Every dollar-yield line has its observation on the plan (so do the tokens it was ranked
+      // against), and no stock, crypto or gold line has one.
+      const observed = made.observations.filter((o) => o.kind === 'yield').map((o) => o.id);
+      for (const l of made.lines) {
+        const sleeve = sleeveOfClass(assets.get(l.assetId)?.cls ?? 'cash');
+        if (sleeve === 'dollarYield' && yields.has(l.assetId))
+          expect(observed).toContain(l.assetId);
+        if (sleeve === 'growth' || sleeve === 'gold') expect(observed).not.toContain(l.assetId);
+      }
     }
   });
 });

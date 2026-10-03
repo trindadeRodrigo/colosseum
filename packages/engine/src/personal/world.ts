@@ -1,12 +1,11 @@
 import { EXIT_WINDOW_DAYS } from '@colosseum/basket';
-import type {
-  BasketAsset,
-  ChainId,
-  Language,
-  LiquidityProvider,
-  ObservationRef,
-  Reason,
-  Shelf,
+import {
+  type BasketAsset,
+  type ChainId,
+  type Language,
+  type LiquidityProvider,
+  type Reason,
+  type Shelf,
   YieldObservation,
 } from '@colosseum/schemas';
 import { z } from 'zod';
@@ -19,6 +18,7 @@ import {
   type ComposeContext,
   HeldPosition,
   PersonalInputError,
+  type PersonalObservation,
   PersonalParameters,
   PersonalSheet,
   type Sleeve,
@@ -59,7 +59,8 @@ export type World = {
   issuerCap: number;
   stockCap: number;
   flags: Set<string>;
-  observations: Map<string, ObservationRef>;
+  /** Every figure the plan was shaped by, whether or not its token ends up in the plan. */
+  observations: Map<string, PersonalObservation>;
   sleeveOf(asset: BasketAsset): Sleeve;
   /** Why the person cannot hold this token, or null when they can. */
   blockOf(asset: BasketAsset): Reason | null;
@@ -71,6 +72,27 @@ const issues = (error: z.ZodError) =>
   error.issues.map((i) => ({ path: i.path.join('.'), message: i.message }));
 
 const IsoTime = z.string().datetime();
+/** A yield observation as `compose` takes it: complete, and its yields finite numbers. */
+const YieldRead = YieldObservation.extend({
+  quotedYield: z.number().finite(),
+  haircutYield: z.number().finite(),
+});
+
+/**
+ * The yields in an order that does not depend on how they were listed, each once. When two
+ * observations of one token are as good as each other, the lower yield after haircut comes first, so
+ * that is the one the plan counts.
+ */
+function inOrder(yields: YieldObservation[]): YieldObservation[] {
+  const keyed = yields.map((y) => ({ y, key: JSON.stringify(Object.entries(y).sort()) }));
+  const sorted = keyed.sort(
+    (a, b) =>
+      (a.y.assetId < b.y.assetId ? -1 : a.y.assetId > b.y.assetId ? 1 : 0) ||
+      a.y.haircutYield - b.y.haircutYield ||
+      (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+  );
+  return sorted.filter((x, i) => x.key !== sorted[i - 1]?.key).map((x) => x.y);
+}
 const MONTHS_IN_A_YEAR = 12;
 
 /** The month `months` after the month of an ISO time, as YYYY-MM. Read from the text: no clock. */
@@ -110,6 +132,10 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
   const parsedHoldings = z.array(HeldPosition).safeParse(context.holdings ?? []);
   if (!parsedHoldings.success)
     throw new PersonalInputError('InvalidContext', issues(parsedHoldings.error));
+  // A yield with no source, method or time, or one that is not a number, is refused: never shown.
+  const parsedYields = z.array(YieldRead).safeParse(context.yields ?? []);
+  if (!parsedYields.success)
+    throw new PersonalInputError('InvalidContext', issues(parsedYields.error));
 
   const listed = byName(shelf.assets, (a) => a.id);
   const byId = new Map(listed.map((a) => [a.id, a]));
@@ -162,7 +188,7 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
   };
 
   const flags = new Set<string>();
-  const observations = new Map<string, ObservationRef>();
+  const observations = new Map<string, PersonalObservation>();
   const liquidity = context.liquidity;
   const ceilings = new Map<string, number>();
   const ceilingOf = (a: BasketAsset): number => {
@@ -174,13 +200,18 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
       : null;
     if (liquidity && measured && measured.samples >= P.minExitSamples) {
       usd = Math.min(usd, P.shareOfDepth * measured.capacityUsd);
+      // The figure is on the plan whether it left the token room or none. Its time is the end of the
+      // provider's data and its source is what the caller said: neither is made up when missing.
       const at = IsoTime.safeParse(measured.dataTo);
+      const source = context.liquiditySource?.trim() || null;
+      if (!at.success) flags.add(`liquidity_undated:${a.id}`);
+      if (source === null) flags.add('liquidity_unsourced');
       observations.set(`liquidity ${a.id}`, {
         id: a.id,
         kind: 'liquidity',
-        source: 'liquidity-provider',
+        source,
         method: liquidity.methodVersion,
-        fetchedAt: at.success ? at.data : context.now,
+        fetchedAt: at.success ? at.data : null,
         provenance: liquidity.provenance,
       });
     } else if (measured) flags.add(`exit_capacity_thin:${a.id}`);
@@ -203,7 +234,7 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
     families,
     held,
     heldTotal,
-    yields: pickPrimaryYield(context.yields ?? []),
+    yields: pickPrimaryYield(inOrder(parsedYields.data)),
     liquidity,
     goalMonth: monthAfter(context.now, sheet.horizonMonths),
     // A vault's target is at least one basis point, so a line is too, whatever the table says.

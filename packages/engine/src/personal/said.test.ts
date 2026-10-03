@@ -4,11 +4,14 @@ import {
   allReasons,
   fixtureContext,
   fixtureLiquidity,
+  fixtureYields,
+  LIQUIDITY_SOURCE,
   launchShelf,
+  NOW,
   sheet,
   violations,
 } from './testing';
-import type { PersonalProposal } from './types';
+import { PersonalInputError, type PersonalProposal } from './types';
 
 // What a plan says has to be true where it says it. Each case here is one a review found: a reason
 // with no subject, a reason that contradicted what the person chose, a reason that said "left out"
@@ -143,5 +146,104 @@ describe('a reason on a line is true of that line', () => {
         .filter((l) => l.reasons.some((r) => r.rule === 'ISSUER_CAP'))
         .map((l) => l.assetId),
     ).toEqual(['solana:msftx']);
+  });
+});
+
+describe('a figure that shaped the plan is on the plan', () => {
+  it('a fixture capacity that removes a token is listed and labelled', () => {
+    const none = fixtureContext({ liquidity: fixtureLiquidity({ 'solana:spyx': 0 }) });
+    const plan = compose(sheet(), shelf, none);
+    expect(plan.lines.some((l) => l.assetId === 'solana:spyx')).toBe(false);
+    expect(plan.flags).toContain('liquidity_provenance:fixture');
+    expect(plan.observations.map((o) => `${o.kind}:${o.id}`)).toContain('liquidity:solana:spyx');
+    expect(violations(plan, shelf, none)).toEqual([]);
+  });
+
+  it('lists the yield of every dollar-yield token that was ranked, held or not', () => {
+    const plan = compose(sheet(), shelf, ctx);
+    expect(plan.lines.some((l) => l.assetId === 'solana:jlusdc')).toBe(false);
+    expect(plan.observations.filter((o) => o.kind === 'yield').map((o) => o.id)).toEqual([
+      'solana:jlusdc',
+      'solana:syrupusdc',
+    ]);
+  });
+
+  it('carries the time and the source the provider and the caller give, and never makes one up', () => {
+    const dated = compose(sheet(), shelf, ctx);
+    const read = dated.observations.find((o) => o.kind === 'liquidity');
+    expect(read).toMatchObject({
+      source: LIQUIDITY_SOURCE,
+      method: 'fixture-0.1',
+      fetchedAt: '2026-10-02T00:00:00.000Z',
+      provenance: 'fixture',
+    });
+    expect(dated.flags.filter((f) => /undated|unsourced/.test(f))).toEqual([]);
+
+    // A provider that gives no time, wired by a caller that names no source.
+    const bare = {
+      now: NOW,
+      yields: fixtureYields(),
+      liquidity: fixtureLiquidity(undefined, 40, null),
+    };
+    const plan = compose(sheet(), shelf, bare);
+    for (const o of plan.observations.filter((x) => x.kind === 'liquidity')) {
+      expect(o.fetchedAt, o.id).toBeNull();
+      expect(o.source, o.id).toBeNull();
+      expect(plan.flags).toContain(`liquidity_undated:${o.id}`);
+    }
+    expect(plan.flags).toContain('liquidity_unsourced');
+    expect(JSON.stringify(plan.observations)).not.toContain(NOW);
+    expect(violations(plan, shelf, bare)).toEqual([]);
+  });
+});
+
+describe('what compose is handed is checked before it is used', () => {
+  const code = (work: () => unknown) => {
+    try {
+      work();
+    } catch (error) {
+      return error instanceof PersonalInputError
+        ? error.code
+        : `not a PersonalInputError: ${error}`;
+    }
+    return 'did not throw';
+  };
+  const [first] = fixtureYields();
+  if (!first) throw new Error('no fixture yield');
+
+  it('refuses a yield with no source, no method, no time, or a number that is not one', () => {
+    const bad = [
+      { assetId: 'solana:syrupusdc', quotedYield: 0.5, haircutYield: 0.5 },
+      { ...first, source: '' },
+      { ...first, method: '' },
+      { ...first, fetchedAt: 'last week' },
+      { ...first, haircutYield: Number.NaN },
+      { ...first, quotedYield: Number.POSITIVE_INFINITY },
+      { ...first, provenance: 'trust me' },
+    ];
+    for (const y of bad) {
+      const income = sheet({ goal: 'income', incomeTargetUsdMonthly: 30 });
+      const context = fixtureContext({ yields: [y as never] });
+      expect(
+        code(() => compose(income, shelf, context)),
+        JSON.stringify(y),
+      ).toBe('InvalidContext');
+    }
+  });
+
+  it('gives the same plan in whatever order the yields are listed, and counts the lower of two equally good', () => {
+    const ys = fixtureYields();
+    const [jl] = ys.filter((y) => y.assetId === 'solana:jlusdc');
+    if (!jl) throw new Error('no fixture yield for jlUSDC');
+    // A second observation of the same token, as good as the first (same method and time), higher.
+    const higher = { ...jl, quotedYield: 0.09, haircutYield: 0.08 };
+    const plans = [[...ys, higher], [higher, ...ys], [...ys].reverse().concat(higher, higher)].map(
+      (yields) => compose(sheet(), shelf, fixtureContext({ yields })),
+    );
+    expect(plans[1]).toEqual(plans[0]);
+    expect(plans[2]).toEqual(plans[0]);
+    // The lower one counts: jlUSDC stays behind syrupUSDC.
+    expect(plans[0]?.lines.some((l) => l.assetId === 'solana:syrupusdc')).toBe(true);
+    expect(plans[0]?.lines.some((l) => l.assetId === 'solana:jlusdc')).toBe(false);
   });
 });

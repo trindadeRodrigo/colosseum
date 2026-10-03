@@ -11,10 +11,10 @@ import {
   type Recipe,
   type Shelf,
   type Target,
-  type YieldObservation,
+  YieldObservation,
 } from '@colosseum/schemas';
+import { z } from 'zod';
 import seedFile from '../../../../docs/vault/research/open-questions/launch-shelf.seed.json';
-import { applyHaircut } from '../assets/haircuts';
 import yieldRows from './fixtures/yields.json';
 import { PERSONAL_PARAMS } from './params';
 import { eligibleForGoal, sleeveOfClass } from './registry';
@@ -192,33 +192,17 @@ export function editShelf(shelf: Shelf, edit: (asset: BasketAsset) => BasketAsse
 }
 
 export const NOW = '2026-10-03T15:00:00.000Z';
+const MEASURED_TO = '2026-10-02T00:00:00.000Z';
+/** Where the fixture capacities come from, as a caller that wires a provider would say it. */
+export const LIQUIDITY_SOURCE =
+  'packages/engine/src/personal/testing.ts: capacities made up for the tests';
 
-type YieldRow = {
-  assetId: string;
-  quotedYield: number;
-  method: string;
-  mintPath: 'dex_swap' | 'lending_deposit';
-};
-
-/** Yield observations from fixtures/yields.json, with the structurer's own haircut rules applied. */
+/**
+ * The yield observations of fixtures/yields.json. Each row carries its own source, method and time,
+ * and says what it is: a value written by hand into the prototype, not a reading of any feed.
+ */
 export function fixtureYields(): YieldObservation[] {
-  return (yieldRows as YieldRow[]).map((row) => {
-    const cut = applyHaircut(
-      { kind: 'usd_yield', mintPath: row.mintPath },
-      row.method,
-      row.quotedYield,
-    );
-    return {
-      assetId: row.assetId,
-      quotedYield: row.quotedYield,
-      haircutYield: cut.haircutYield,
-      haircutRule: cut.rule.id,
-      source: 'fixtures/yields.json',
-      method: row.method,
-      fetchedAt: '2026-10-01T14:00:00.000Z',
-      provenance: 'fixture',
-    };
-  });
+  return z.array(YieldObservation).parse(yieldRows);
 }
 
 /**
@@ -232,6 +216,8 @@ export function fixtureLiquidity(
     'solana:nvdax': 1_500_000,
   },
   samples = 40,
+  /** The end of the data a capacity was measured on, as the provider gives it. Null: it gives none. */
+  measuredTo: string | null = MEASURED_TO,
 ): LiquidityProvider {
   const capacity = (id: string) => {
     const usd = capacityUsd[id];
@@ -243,7 +229,7 @@ export function fixtureLiquidity(
           regime: 'weekend',
           samples,
           dataFrom: null,
-          dataTo: null,
+          dataTo: measuredTo,
         };
   };
   return {
@@ -265,7 +251,13 @@ export function fixtureLiquidity(
 
 /** A context with the fixture yields and the fixture liquidity, at a fixed time. */
 export function fixtureContext(over: Partial<ComposeContext> = {}): ComposeContext {
-  return { now: NOW, yields: fixtureYields(), liquidity: fixtureLiquidity(), ...over };
+  return {
+    now: NOW,
+    yields: fixtureYields(),
+    liquidity: fixtureLiquidity(),
+    liquiditySource: LIQUIDITY_SOURCE,
+    ...over,
+  };
 }
 
 /** A sheet for a person on Solana: a plan lives on one chain, the one the person signed in with. */
@@ -367,7 +359,23 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
   const s = plan.sheet;
   const amount = cents(s.amountUsd);
 
-  const parsed = BasketProposal.safeParse(plan);
+  // A figure with no time or no source is listed as it is, and flagged: it is not the shared type.
+  const complete = plan.observations.filter((o) => o.source !== null && o.fetchedAt !== null);
+  for (const o of plan.observations) {
+    say(
+      o.source !== null || plan.flags.includes(`${o.kind}_unsourced`),
+      `${o.id}: no source, no flag`,
+    );
+    say(
+      o.fetchedAt !== null || plan.flags.includes(`${o.kind}_undated:${o.id}`),
+      `${o.id}: no time, no flag`,
+    );
+    say(
+      o.provenance === 'live' || plan.flags.includes(`${o.kind}_provenance:${o.provenance}`),
+      `${o.id}: ${o.provenance} and not labelled`,
+    );
+  }
+  const parsed = BasketProposal.safeParse({ ...plan, observations: complete });
   say(
     parsed.success,
     `not a BasketProposal: ${parsed.success ? '' : parsed.error.issues[0]?.message}`,

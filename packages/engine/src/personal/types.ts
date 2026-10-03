@@ -4,6 +4,7 @@ import {
   BasketSheet,
   Bps,
   type LiquidityProvider,
+  type ObservationRef,
   PersonalParams,
   type YieldObservation,
 } from '@colosseum/schemas';
@@ -121,17 +122,34 @@ export type ComposeContext = {
   yields?: YieldObservation[];
   /** Measured exit capacity and cost, keyed by the shelf's asset id. */
   liquidity?: LiquidityProvider;
+  /**
+   * Where the provider's figures come from. A `LiquidityProvider` carries a method and a provenance
+   * and no source, so whoever wires it says. Left out, each liquidity figure is flagged as unsourced.
+   */
+  liquiditySource?: string;
   /** The parameter table. Left out: `PERSONAL_PARAMS`, the starting table. */
   params?: PersonalParameters;
 };
 
 /**
- * LOCAL TYPE. A `BasketProposal` whose sheet carries the person's limits, plus the four sleeves as
- * the plan holds them (the plan bar of the design system shows sleeves, with the tokens under it).
+ * LOCAL TYPE. A figure the plan was shaped by: `ObservationRef` of packages/schemas, where the source
+ * and the time may be missing. They are never made up: a provider that gives no time or no source
+ * leaves null here, and the plan carries a flag that says so.
  */
-export type PersonalProposal = Omit<BasketProposal, 'sheet'> & {
+export type PersonalObservation = Omit<ObservationRef, 'source' | 'fetchedAt'> & {
+  source: string | null;
+  fetchedAt: string | null;
+};
+
+/**
+ * LOCAL TYPE. A `BasketProposal` whose sheet carries the person's limits, plus the four sleeves as
+ * the plan holds them (the plan bar of the design system shows sleeves, with the tokens under it),
+ * and whose observations may lack a source or a time.
+ */
+export type PersonalProposal = Omit<BasketProposal, 'sheet' | 'observations'> & {
   sheet: PersonalSheet;
   sleeves: { sleeve: Sleeve; weightBps: number; amountUsd: number }[];
+  observations: PersonalObservation[];
 };
 
 export type PersonalErrorCode =
