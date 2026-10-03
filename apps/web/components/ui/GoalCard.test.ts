@@ -1,3 +1,4 @@
+import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 import { goalCard } from './test/cases';
 import { all, classes, name, one, render, role, tag, text, ui } from './test/html';
@@ -32,6 +33,10 @@ describe('GoalCard (goal-card.md)', () => {
     const mark = one(status, ui('status-mark'));
     expect(mark.attrs['data-status']).toBe('on-track');
     expect(mark.attrs['aria-hidden']).toBe('true');
+  });
+
+  it('refuses a status with no word: the card throws instead of drawing the mark alone', () => {
+    expect(() => render(createElement(goalCard.wordless))).toThrow(/A status needs its word/);
   });
 
   it('pins the priced figure and names it', () => {

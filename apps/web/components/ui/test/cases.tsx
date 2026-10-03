@@ -255,10 +255,27 @@ export const status = {
   watch: <StatusBadge status="watch">Watch</StatusBadge>,
   off: <StatusMark status="off-track" />,
   // @ts-expect-error a status is never shown without its word
-  wordless: <Status status="watch" />,
+  wordless: () => <Status status="watch" />,
+  blank: () => <Status status="watch"> </Status>,
+  blankBadge: () => <StatusBadge status="off-track">{''}</StatusBadge>,
+  /** The word is an element: the status cannot read it, and draws it. */
+  element: (
+    <Status status="watch">
+      <b>Watch</b>
+    </Status>
+  ),
 };
 
 export const table = {
+  wordless: () => (
+    <DataTable
+      caption="Drift against the plan"
+      rows={DRIFT_ROWS}
+      rowKey={(row) => row.asset}
+      rowStatus={(row) => (row.outOfBand ? { status: 'watch', word: '' } : null)}
+      columns={[{ key: 'asset', header: 'Leg', rowHeader: true, cell: (row) => row.asset }]}
+    />
+  ),
   drift: (
     <DataTable
       caption="Drift against the plan"
@@ -315,6 +332,13 @@ export const executions = {
 };
 
 export const goalCard = {
+  wordless: () => (
+    <GoalCard
+      sentence="Your apartment fund is on track."
+      status={{ kind: 'on-track', word: ' ', date: 'June 2028' }}
+      action={{ label: 'See your plan', href: '/plans/sample' }}
+    />
+  ),
   onTrack: (
     <GoalCard
       sentence="Your apartment fund is on track."

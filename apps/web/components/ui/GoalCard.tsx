@@ -5,7 +5,7 @@ import { HatchBand, MockWord } from './internal/mock-parts';
 import { LatticeStatus } from './Lattice';
 import { ProvenancePin } from './ProvenancePin';
 import type { PinSource } from './provenance';
-import { Status, type StatusKind } from './StatusMark';
+import { Status, type StatusKind, statusWord } from './StatusMark';
 
 // goal-card.md. One goal, one sentence, where it stands, and where to look next. The card answers a
 // person; it does not sell yield. No photograph, no pattern, no leaderboard, no big rate, no progress
@@ -44,7 +44,10 @@ export type GoalCardProps = Common &
   (
     | {
         state?: 'ready';
-        /** From the engine, never worked out here. The word is always shown beside the mark. */
+        /**
+         * From the engine, never worked out here. The word is always shown beside the mark: a card
+         * handed an empty word throws.
+         */
         status: { kind: StatusKind; word: string; date: string };
         /** One sentence of reason, when the goal is on watch or off track. The card is not tinted. */
         reason?: string;
@@ -106,7 +109,7 @@ export function GoalCard(props: GoalCardProps) {
           <>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <Status status={props.status.kind}>
-                {props.status.word} · {props.status.date}
+                {statusWord(props.status.word)} · {props.status.date}
               </Status>
               {mock && <MockWord announce />}
             </div>

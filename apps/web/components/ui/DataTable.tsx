@@ -1,7 +1,7 @@
 import { type ReactNode, useId } from 'react';
 import { cn } from './cn';
 import { MockWord } from './internal/mock-parts';
-import { Status, type StatusKind, statusTint } from './StatusMark';
+import { Status, type StatusKind, statusTint, statusWord } from './StatusMark';
 
 // data-table.md. A financial table: a caption, scoped headers, figures in the mono face on the right,
 // a status as a word and a shape (a tinted row alone is not allowed), a scroll region the keyboard
@@ -11,7 +11,7 @@ import { Status, type StatusKind, statusTint } from './StatusMark';
 
 export type RowStatus = {
   status: StatusKind;
-  /** The word: "Out of band", "Breaks in month 14". */
+  /** The word: "Out of band", "Breaks in month 14". A row is never tinted without it: empty throws. */
   word: string;
 };
 
@@ -137,6 +137,7 @@ export function DataTable<Row>({
           <tbody>
             {rows.map((row) => {
               const state = rowStatus?.(row) ?? null;
+              if (state) statusWord(state.word);
               const mock = rowMock?.(row) ?? false;
               return (
                 <tr
@@ -190,6 +191,7 @@ export function DataTable<Row>({
           <div className="divide-y divide-border border-y border-border">
             {rows.map((row) => {
               const state = rowStatus?.(row) ?? null;
+              if (state) statusWord(state.word);
               const mock = rowMock?.(row) ?? false;
               return (
                 <div

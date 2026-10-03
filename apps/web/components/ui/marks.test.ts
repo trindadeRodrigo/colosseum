@@ -1,5 +1,7 @@
+import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 import { formatAge, isoUtc, shorten } from './format';
+import { statusWord } from './StatusMark';
 import { button, status } from './test/cases';
 import { all, classes, one, render, tag, text, ui } from './test/html';
 
@@ -26,7 +28,16 @@ describe('StatusMark (STYLE.md, rule 6: a word, a shape and a colour)', () => {
   it('always carries the word', () => {
     expect(text(render(status.on))).toBe('On track · June 2028');
     expect(text(render(status.watch))).toBe('Watch');
-    // `wordless` in test/cases.tsx is a type error.
+    expect(text(render(status.element))).toBe('Watch');
+  });
+
+  it('refuses to draw the mark with no word, or with a word of spaces', () => {
+    // `wordless` in test/cases.tsx is a type error as well.
+    for (const none of [status.wordless, status.blank, status.blankBadge])
+      expect(() => render(createElement(none))).toThrow(/A status needs its word/);
+    expect(statusWord('Watch')).toBe('Watch');
+    for (const none of ['', '  ', null, undefined])
+      expect(() => statusWord(none)).toThrow(/A status needs its word/);
   });
 });
 

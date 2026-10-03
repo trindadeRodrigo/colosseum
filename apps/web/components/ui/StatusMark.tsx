@@ -64,15 +64,39 @@ export function StatusMark({ status, size = 10, className }: StatusMarkProps) {
   );
 }
 
+const NO_WORD =
+  'A status needs its word: the mark and the colour alone say nothing to someone who cannot tell them apart (STYLE.md, rule 6).';
+
+/**
+ * The word of a status, or an error when there is none. A primitive that is handed the word as a
+ * string (the goal card, a table row) passes it through here before it draws the mark.
+ */
+export function statusWord(word: string | null | undefined): string {
+  if (typeof word !== 'string' || word.trim() === '') throw new Error(NO_WORD);
+  return word;
+}
+
+/** Whether there is anything to read in what a status is handed. An element counts: it draws its own. */
+function says(node: ReactNode): boolean {
+  if (node === null || node === undefined || typeof node === 'boolean') return false;
+  if (typeof node === 'string') return node.trim() !== '';
+  if (Array.isArray(node)) return node.some(says);
+  return true;
+}
+
 export type StatusProps = {
   status: StatusKind;
-  /** The word, and anything that goes with it ("On track · June 2028"). There is no status without it. */
+  /**
+   * The word, and anything that goes with it ("On track · June 2028"). There is no status without
+   * it: with nothing to read, the status throws instead of drawing the mark alone.
+   */
   children: ReactNode;
   className?: string;
 };
 
 /** The mark and its word on one line, in the status colour. */
 export function Status({ status, children, className }: StatusProps) {
+  if (!says(children)) throw new Error(NO_WORD);
   return (
     <span
       data-ui="status"
@@ -91,6 +115,7 @@ export function Status({ status, children, className }: StatusProps) {
 
 /** A status badge: square, 20px tall, the tint behind the mark and the word. */
 export function StatusBadge({ status, children, className }: StatusProps) {
+  if (!says(children)) throw new Error(NO_WORD);
   return (
     <span
       data-ui="status-badge"

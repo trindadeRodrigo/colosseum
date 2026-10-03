@@ -1,3 +1,4 @@
+import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 import { utcMinute } from './ExecutionList';
 import { shorten } from './format';
@@ -98,6 +99,10 @@ describe('DataTable (data-table.md)', () => {
     const narrow = render(table.narrow);
     expect(all(narrow, ui('data-table-stacked'))).toHaveLength(0);
     expect(classes(one(narrow, (e) => e.tag === 'section'))).not.toContain('max-sm:hidden');
+  });
+
+  it('refuses a row status with no word: it throws instead of tinting the row', () => {
+    expect(() => render(createElement(table.wordless))).toThrow(/A status needs its word/);
   });
 });
 
