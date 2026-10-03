@@ -534,3 +534,34 @@ export const riskNetworkFees = pgTable('risk_network_fees', {
   methodVersion: text('method_version').notNull(),
   ...provenanceCols,
 });
+
+/**
+ * Depth recovery after large trades (PLAN-ANALYTICS item 15), from the Step 5b history replay: per asset and regime,
+ * the trades of at least `large_share` of a pool's ±2% depth, the median minutes until the depth is back to half
+ * and to 90%, and the share not back to 90% within 24 hours. One row per asset, regime and history report.
+ */
+export const riskDepthRecovery = pgTable(
+  'risk_depth_recovery',
+  {
+    asset: text('asset').notNull(),
+    regime: text('regime').notNull(),
+    reportAt: ts('report_at').notNull(),
+    largeShare: doublePrecision('large_share').notNull(),
+    trades: integer('trades').notNull(),
+    /** Trades whose depth came back to 90% within 24 hours (the medians are over these). */
+    recovered: integer('recovered').notNull(),
+    minutesTo50: doublePrecision('minutes_to_50'),
+    minutesTo90: doublePrecision('minutes_to_90'),
+    notRecovered24h: doublePrecision('not_recovered_24h').notNull(),
+    dataFrom: ts('data_from').notNull(),
+    dataTo: ts('data_to').notNull(),
+    methodVersion: text('method_version').notNull(),
+    ...provenanceCols,
+  },
+  (t) => [
+    primaryKey({
+      name: 'risk_depth_recovery_pk',
+      columns: [t.asset, t.regime, t.reportAt, t.methodVersion],
+    }),
+  ],
+);

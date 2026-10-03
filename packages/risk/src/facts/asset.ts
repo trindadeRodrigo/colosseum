@@ -23,6 +23,7 @@ import {
   weekendGaps,
 } from './market';
 import { breakEvenReturn, lossUsd, roundTripCost } from './returns';
+import { type DepthRecoveryRow, seriesVariation } from './stability';
 
 /**
  * AssetFacts for one asset and one trade size (PLAN-ANALYTICS item 7). A pure function over rows the caller
@@ -92,6 +93,10 @@ export type AssetFactsInput = {
   /** The asset's hourly reference prices over `marketRiskWindowDays`, oldest first (item 12); absent or empty:
    *  every market-risk fact is `no_reference_price`. */
   marketRisk?: (RowMeta & { series: PricePoint[] }) | null;
+  /** Depth recovery after large trades by regime, from the Step 5b history (item 15); absent: not collected. */
+  depthRecovery?:
+    | (RowMeta & { rows: DepthRecoveryRow[]; largeShare: number; fetchedAt: string })
+    | null;
   /** Median network fee per swap, or why it is not measured (item 4). */
   networkFee?:
     | (RowMeta & { usd: number; fetchedAt: string; dataFrom: string; samples: number })
@@ -418,6 +423,24 @@ export function buildAssetFacts(inp: AssetFactsInput): AssetFacts {
           })
         : missing('not_collected', 'count'),
       capacityVariation,
+      capacityVariationByRegime: REGIMES.map((regime) => {
+        const s = inp.capacitySeries;
+        const xs = s?.byRegime[regime] ?? [];
+        const v = s ? seriesVariation(xs, s.minSamples) : null;
+        return {
+          regime,
+          value:
+            s && v !== null
+              ? rowFact(v, 'ratio', { ...s, fetchedAt: s.to }, { regime, samples: xs.length })
+              : missing(xs.length ? 'insufficient_samples' : 'no_samples_in_regime', 'ratio', {
+                  regime,
+                }),
+        };
+      }),
+      depthRecovery: REGIMES.map((regime) => depthRecoveryFacts(inp, regime)),
+      lpOwnerTop1Share: missing('not_collected', 'fraction', {
+        detail: 'owners of the LP position NFTs: one read per position, from Mon Oct 5 (DA3)',
+      }),
     },
     tracking: inp.tracking.map((t) => ({
       against: t.against,
@@ -527,5 +550,61 @@ function marketRiskFacts(inp: AssetFactsInput): AssetFacts['marketRisk'] {
             }
           : missing('insufficient_samples', 'fraction', { detail: gapDetail }),
     })),
+  };
+}
+
+/** Depth recovery facts of one regime (item 15): hours to half and to 90% of the depth, and the share not back. */
+function depthRecoveryFacts(
+  inp: AssetFactsInput,
+  regime: Regime,
+): NonNullable<AssetFacts['liquidityStability']['depthRecovery']>[number] {
+  const d = inp.depthRecovery;
+  const row = d?.rows.find((r) => r.regime === regime);
+  const none = (reason: FactNullReason, unit: FactUnit, detail?: string) =>
+    missing(reason, unit, { regime, ...(detail ? { detail } : {}) });
+  if (!d || !row) {
+    const reason: FactNullReason = d ? 'no_samples_in_regime' : 'not_collected';
+    return {
+      regime,
+      largeTrades: none(reason, 'count'),
+      hoursTo50: none(reason, 'hours'),
+      hoursTo90: none(reason, 'hours'),
+      notRecovered24h: none(reason, 'fraction'),
+    };
+  }
+  const min = defaultFactsParams().capacityMinSamples;
+  const f = (value: number, unit: FactUnit, samples: number): MeasuredFact =>
+    fact({
+      value,
+      unit,
+      quality: 'measured',
+      regime,
+      source: d.source,
+      method: `${d.method}; trades of at least ${d.largeShare * 100}% of the pool's ±2% depth`,
+      methodVersion: d.methodVersion,
+      provenance: d.provenance,
+      fetchedAt: row.dataTo,
+      dataFrom: row.dataFrom,
+      samples,
+    });
+  const thin = row.trades < min;
+  const hours = (m: number | null) =>
+    thin
+      ? none('insufficient_samples', 'hours', `${row.trades} large trades, ${min} needed`)
+      : m === null || row.recovered < min
+        ? none(
+            'insufficient_samples',
+            'hours',
+            `${row.recovered} came back within 24 h, ${min} needed`,
+          )
+        : f(m / 60, 'hours', row.recovered);
+  return {
+    regime,
+    largeTrades: f(row.trades, 'count', row.trades),
+    hoursTo50: hours(row.minutesTo50),
+    hoursTo90: hours(row.minutesTo90),
+    notRecovered24h: thin
+      ? none('insufficient_samples', 'fraction', `${row.trades} large trades, ${min} needed`)
+      : f(row.notRecovered24h, 'fraction', row.trades),
   };
 }

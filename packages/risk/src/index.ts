@@ -13,6 +13,7 @@ export * from './facts/lending';
 export * from './facts/market';
 export * from './facts/plan';
 export * from './facts/returns';
+export * from './facts/stability';
 export * from './lending/aggregate';
 export * from './lending/follow';
 export * from './lending/ix-names';

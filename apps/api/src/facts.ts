@@ -5,6 +5,7 @@ import {
   type Db,
   riskAssetSnapshots,
   riskDepthCurves,
+  riskDepthRecovery,
   riskEvents,
   riskLendingPositions,
   riskLpConcentration,
@@ -98,6 +99,46 @@ export async function loadMarketSeries(
       priceUsd: r.priceUsd as number,
       regime: r.regime as Regime,
       quality: r.quality,
+    })),
+  };
+}
+
+/** Depth recovery rows of the asset from the newest history report (item 15), or null when none is imported. */
+export async function loadDepthRecovery(
+  db: Db,
+  symbol: string,
+): Promise<AssetFactsInput['depthRecovery']> {
+  const [latest] = await db
+    .select({ reportAt: riskDepthRecovery.reportAt })
+    .from(riskDepthRecovery)
+    .orderBy(desc(riskDepthRecovery.reportAt))
+    .limit(1);
+  if (!latest) return null;
+  const rows = await db
+    .select()
+    .from(riskDepthRecovery)
+    .where(
+      and(eq(riskDepthRecovery.asset, symbol), eq(riskDepthRecovery.reportAt, latest.reportAt)),
+    );
+  const head = rows[0];
+  if (!head) return null;
+  return {
+    source: head.source,
+    method: head.method,
+    methodVersion: head.methodVersion,
+    provenance: head.provenance,
+    fetchedAt: head.fetchedAt.toISOString(),
+    largeShare: head.largeShare,
+    rows: rows.map((r) => ({
+      asset: r.asset,
+      regime: r.regime as Regime,
+      trades: r.trades,
+      recovered: r.recovered,
+      minutesTo50: r.minutesTo50,
+      minutesTo90: r.minutesTo90,
+      notRecovered24h: r.notRecovered24h,
+      dataFrom: r.dataFrom.toISOString(),
+      dataTo: r.dataTo.toISOString(),
     })),
   };
 }
@@ -414,6 +455,7 @@ export async function loadAssetFacts(
     buy: side('buy'),
     curveMeta,
     splitMeta: SPLIT_META,
+    depthRecovery: await loadDepthRecovery(db, symbol),
     marketRisk: await loadMarketSeries(db, mint, now, params.marketRiskWindowDays),
     splitMinSamples: params.splitMinSamples,
     networkFee: await loadNetworkFee(db, params.splitMinSamples),

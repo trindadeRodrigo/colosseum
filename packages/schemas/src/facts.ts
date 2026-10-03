@@ -193,6 +193,23 @@ export const AssetFacts = z.object({
     lpWithdrawalEvents7d: Fact,
     /** Variation of exit capacity across snapshots in the worst regime (standard deviation ÷ mean). */
     capacityVariation: Fact,
+    /** The same variation in each regime (item 15). */
+    capacityVariationByRegime: z.array(z.object({ regime: FactRegime, value: Fact })).optional(),
+    /** After a trade of at least `largeShare` of the pool's ±2% depth: hours until the depth is back to half and
+     *  to 90% of what it was, and the share of trades not back to 90% within 24 hours (item 15, Step 5b history). */
+    depthRecovery: z
+      .array(
+        z.object({
+          regime: FactRegime,
+          largeTrades: Fact,
+          hoursTo50: Fact,
+          hoursTo90: Fact,
+          notRecovered24h: Fact,
+        }),
+      )
+      .optional(),
+    /** LP owners behind the position NFTs: the largest owner's share across the asset's pools (item 15). */
+    lpOwnerTop1Share: Fact.optional(),
   }),
   /** Pool mid against another price source: (mid − other) ÷ other, by regime. */
   tracking: z.array(z.object({ against: z.string().min(1), regime: FactRegime, gap: Fact })),
