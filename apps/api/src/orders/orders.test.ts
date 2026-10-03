@@ -164,6 +164,7 @@ describe('view: value, weight and drift, until packages/basket has it', () => {
     asset,
     usdPerToken,
     ageSeconds: 0,
+    maxAgeSeconds: 120,
     market: 'open' as const,
     source: 'test',
     method: 'test',

@@ -115,6 +115,33 @@ const FAULTS: { fault: string; wrap: Wrap; caught: string[]; chains?: MockChain[
     caught: ['publishes a recipe, signed by its creator'],
   },
   {
+    fault: 'calls itself live',
+    wrap: () => ({ provenance: 'live' as const }),
+    caught: ['names its chain, its capabilities and the label on its figures'],
+  },
+  {
+    fault: 'says a price never goes stale',
+    wrap: (real) => ({
+      getPrices: async (ids) =>
+        (await real.getPrices(ids)).map((p) => ({ ...p, maxAgeSeconds: 0 })),
+    }),
+    caught: [
+      'prices what it is asked for, once each, freshly, and every asset that has a price source',
+    ],
+  },
+  {
+    fault: 'asks for more gas when told that no account is opened',
+    wrap: (real) => ({
+      funding: async (owner, need) => {
+        const r = await real.funding(owner, need);
+        return need.newAccounts === 0
+          ? { ...r, gasNeedRaw: (BigInt(r.gasNeedRaw) * 2n).toString(), ok: false }
+          : r;
+      },
+    }),
+    caught: ['says whether a wallet can pay: cash and gas, and ok only when both are there'],
+  },
+  {
     fault: 'labels its prices live, and stamps them in 1970',
     wrap: (real) => ({
       getPrices: async (ids) =>

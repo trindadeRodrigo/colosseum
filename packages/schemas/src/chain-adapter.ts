@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { BasketAsset } from './basket-asset';
 import type { BuiltTx } from './basket-tx';
 import { Address, AssetId, BasketId, Bps, type ChainId, RawAmount } from './chain';
+import type { Provenance } from './enums';
 import { Recipe, Target, Targets } from './recipe';
 import {
   type Funding,
@@ -32,8 +33,15 @@ export type Capabilities = z.infer<typeof Capabilities>;
 
 export const FundingNeed = z.object({
   cashRaw: RawAmount,
+  /** How many transactions the person signs. */
   legs: z.number().int().nonnegative(),
   newVault: z.boolean(),
+  /**
+   * How many token accounts those transactions open, where the caller knows: on Solana the vault's cash
+   * account when the vault is new, and one for each asset bought for the first time. Each locks rent.
+   * Left out, the adapter assumes the most, one per transaction. A chain with no rent ignores it.
+   */
+  newAccounts: z.number().int().nonnegative().optional(),
 });
 export type FundingNeed = z.infer<typeof FundingNeed>;
 
@@ -100,6 +108,11 @@ export type PublishRecipeArgs = z.infer<typeof PublishRecipeArgs>;
 export interface ChainReader {
   chain: ChainId;
   capabilities: Capabilities;
+  /**
+   * The label on everything this adapter returns: `mock` on packages/chain-mock, `sandbox` on a test
+   * network or a local copy of mainnet, `live` on mainnet only (`chainProvenance`).
+   */
+  provenance: Provenance;
   listAssets(): Promise<BasketAsset[]>;
   getPrices(assets: AssetId[]): Promise<Price[]>;
   getVaults(owner: Address): Promise<VaultState[]>;

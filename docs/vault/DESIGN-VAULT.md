@@ -177,7 +177,10 @@ type BasketAsset = { id: AssetId; chain: ChainId; address: Address; symbol: stri
   cls: 'stock' | 'etf' | 'gold' | 'commodity' | 'dollar_yield' | 'crypto' | 'cash';
   underlying: string;                                 // 'NVDA' for NVDAx, NVDAc and NVDA
   issuer: string; tier: 'A' | 'B' | 'C';
-  priceKind: 'scope' | 'chainlink' | 'none'; priceRef: string;
+  priceKind: 'scope' | 'chainlink' | 'none';
+  priceRef: string;                                   // scope: the entry index as a decimal string, 0 to 511,
+                                                      // in the chain's price account; chainlink: the feed's
+                                                      // address; none: empty
   session: 'always' | 'us_equity'; autoFollowEligible: boolean;
   maxWeightBps: number;                               // creator cap, section 6
   blockedCountries: string[]; sheet: string; provenance: Provenance };
@@ -198,8 +201,11 @@ type FamilyMeta = { familyId: string; slug: string; name: string; copy: string;
 
 // vault.ts
 type Price = Sourced & { asset: AssetId; usdPerToken: string;   // USD for 10^decimals raw units
-  ageSeconds: number; market: 'open' | 'closed' | 'unknown' };
-type Holding = { asset: AssetId; raw: RawAmount; multiplier: string; display: string };
+  ageSeconds: number;
+  maxAgeSeconds: number;                              // the chain's own limit; isStalePrice(price)
+  market: 'open' | 'closed' | 'unknown' };
+type Holding = { asset: AssetId; raw: RawAmount; multiplier: string; display: string;
+  scheduled?: { multiplier: string; effectiveAt: number } };   // an issuer's multiplier not yet in force; unix seconds
 type VaultState = { chain: ChainId; address: Address; owner: Address; basketId: string;
   recipeOnchainId: string | null; acceptedVersion: number; autoFollow: boolean; keeper: Address; cash: Holding;
   positions: (Holding & { targetBps: number; lastKeeperAt: number | null })[];
@@ -226,6 +232,8 @@ type TxStatus = { status: 'pending' | 'confirmed' | 'reverted' | 'expired'; expl
 
 **Addresses.** Lower-case `0x` is the one form of an EVM address here, so an address compares as a string. `normalizeAddress(family, value)` turns what a wallet provider or a config value gives (checksum case) into it and refuses an address of the other family. `Owner.solana`, `Owner.evm`, `WalletAccount` and `BasketAsset` are checked against their family.
 
+**Prices and what a reader says about them.** A price carries its own age and the oldest it may be for the chain's vault to trade on it (`maxAgeSeconds`: `Config.max_price_age_s` on Solana, the asset's `maxAge` on EVM), so a caller that holds only the price can tell stale from fresh. A stale price is still returned. For `priceKind: 'scope'`, `priceRef` is the entry index as a decimal string, 0 to 511, in the chain's price account (`ChainConfig.priceSource.address`). The mainnet account is in `chain-presets.ts` with the program that owns it (`SCOPE_MAINNET`); a test network's is ours and set at deploy. A holding of a stock token whose issuer has scheduled a multiplier shows it as `scheduled`, with the unix second it applies from, until that time.
+
 **Value and display.** `display = raw × multiplier / 10^decimals` is shares of the underlying, for display only. `valueUsd = raw × usdPerToken / 10^decimals`, with no multiplier, because the reference price on all three chains is the price of one whole token and already includes it. Contract-test vector: 8 decimals, raw 250,000,000, multiplier 1.02, price 100 gives display 2.55 and value 250.00. `view(vault, prices)` in `packages/basket` is the only place that computes value, weight and drift. His `computeDrift` stays for his own screens.
 
 ### 3.2 Chain adapter (`chain-adapter.ts`)
@@ -237,6 +245,7 @@ type Capabilities = { trade: 'live' | 'readonly' | 'mock'; autoFollow: boolean;
   needsApprove: boolean };       // false on Solana, true on EVM
 interface ChainReader {
   chain: ChainId; capabilities: Capabilities;
+  provenance: Provenance;        // the label on everything it returns: mock, sandbox or live
   listAssets(): Promise<BasketAsset[]>;
   getPrices(assets: AssetId[]): Promise<Price[]>;
   getVaults(owner: Address): Promise<VaultState[]>;
@@ -244,7 +253,8 @@ interface ChainReader {
   listAutoFollowVaults(recipeOnchainId?: string): Promise<Address[]>;
   getRecipe(recipeOnchainId: string): Promise<{ active: Recipe; pending: Recipe | null }>;
   getWalletHoldings(owner: Address): Promise<Holding[]>;
-  funding(owner: Address, need: { cashRaw: RawAmount; legs: number; newVault: boolean }): Promise<Funding>;
+  funding(owner: Address, need: { cashRaw: RawAmount; legs: number; newVault: boolean;
+    newAccounts?: number }): Promise<Funding>;   // token accounts the steps open; left out, one per step
   quote(trade: Trade, taker: Address): Promise<Quote>;
   track(txId: string, validUntil?: string): Promise<TxStatus>;
 }

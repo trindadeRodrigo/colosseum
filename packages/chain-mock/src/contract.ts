@@ -13,7 +13,7 @@ import {
   Holding,
   type LegKind,
   Price,
-  type Provenance,
+  Provenance,
   Quote,
   type RawAmount,
   Recipe,
@@ -213,9 +213,11 @@ const group = (name: string, cases: Record<string, (c: Ctx) => Promise<void>>) =
 };
 
 group('reads', {
-  'names its chain and its capabilities': async ({ a }) => {
+  'names its chain, its capabilities and the label on its figures': async ({ a, f }) => {
     ChainId.parse(a.chain);
     exact(Capabilities, a.capabilities);
+    // The adapter says itself what everything it returns is labelled.
+    expect(Provenance.parse(a.provenance)).toBe(f.provenance);
   },
 
   'lists its assets: unique ids on its own chain, exactly one cash token': async (c) => {
@@ -240,6 +242,8 @@ group('reads', {
         expect(Number(p.usdPerToken)).toBeGreaterThan(0);
         expect(p.provenance).toBe(c.f.provenance);
         expect(p.fetchedAt >= c.f.notBefore).toBe(true);
+        // Its age, and the age past which the chain's vault no longer trades on it.
+        expect(Number.isInteger(p.maxAgeSeconds) && p.maxAgeSeconds > 0).toBe(true);
         // The dollar token is worth about a dollar wherever it has a price at all.
         if (p.asset === c.cash.id) expect(Math.abs(Number(p.usdPerToken) - 1)).toBeLessThan(0.1);
       }
@@ -378,6 +382,12 @@ group('reads', {
     expect((await c.a.funding(c.f.stranger, need)).ok).toBe(false);
     const more = await c.a.funding(c.f.owner, { ...need, legs: 6 });
     expect(BigInt(more.gasNeedRaw)).toBeGreaterThan(BigInt(owner.gasNeedRaw));
+    // Told how many accounts the steps open, it never asks for more than when it has to assume.
+    const none = exact(Funding, await c.a.funding(c.f.owner, { ...need, newAccounts: 0 }));
+    const some = await c.a.funding(c.f.owner, { ...need, newAccounts: 2 });
+    expect(BigInt(none.gasNeedRaw)).toBeLessThanOrEqual(BigInt(owner.gasNeedRaw));
+    expect(BigInt(some.gasNeedRaw)).toBeGreaterThanOrEqual(BigInt(none.gasNeedRaw));
+    expect(BigInt(none.gasNeedRaw)).toBeGreaterThan(0n);
   },
 
   'quotes a trade: the same trade back, a floor under the output, a cost in range': async (c) => {

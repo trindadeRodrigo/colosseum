@@ -578,6 +578,47 @@ describe('chain-mock', () => {
     ).toEqual({ state: 'open' });
   });
 
+  it('shows a scheduled multiplier until its time, then applies it', async () => {
+    const { adapter, mock, owner } = await funded('solana');
+    mock.fund(owner, { assets: { 'solana:spy': '250000000' } });
+    mock.setMultiplier('solana:spy', '1.02');
+    const spy = async () =>
+      (await adapter.getWalletHoldings(owner)).find((h) => h.asset === 'solana:spy');
+    expect(await spy()).not.toHaveProperty('scheduled');
+    const effectiveAt = mock.now() + 3600;
+    mock.scheduleMultiplier('solana:spy', '2.04', effectiveAt);
+    expect(await spy()).toMatchObject({
+      multiplier: '1.02',
+      display: '2.55',
+      scheduled: { multiplier: '2.04', effectiveAt },
+    });
+    // No other asset carries it.
+    const cash = (await adapter.getWalletHoldings(owner)).find((h) => h.asset === mock.cash);
+    expect(cash).not.toHaveProperty('scheduled');
+    mock.advance(3600);
+    const after = await spy();
+    expect(after).toMatchObject({ multiplier: '2.04', display: '5.1' });
+    expect(after).not.toHaveProperty('scheduled');
+    expect(await code((async () => mock.scheduleMultiplier('solana:spy', '0', 1))())).toBe(
+      'BadInput',
+    );
+  });
+
+  it('says what it is labelled, gives every price its maximum age, and takes a count of new accounts', async () => {
+    const { adapter, owner } = await funded('solana');
+    expect(adapter.provenance).toBe('mock');
+    const prices = await adapter.getPrices((await adapter.listAssets()).map((a) => a.id));
+    expect(prices.every((p) => p.ageSeconds === 0 && p.maxAgeSeconds === 120)).toBe(true);
+    const old = createMockAdapter({ chain: 'solana', maxPriceAgeSeconds: 93_600 });
+    expect((await old.getPrices(['solana:spy']))[0]?.maxAgeSeconds).toBe(93_600);
+    const need = { cashRaw: '1', legs: 2, newVault: false };
+    // The mock charges no rent, so the count changes nothing; it is still read.
+    expect(await adapter.funding(owner, { ...need, newAccounts: 2 })).toEqual(
+      await adapter.funding(owner, need),
+    );
+    expect(await code(adapter.funding(owner, { ...need, newAccounts: -1 }))).toBe('BadInput');
+  });
+
   it('never repeats a transaction id across restarts when given a seed', async () => {
     const first = async (seed?: string) => {
       const adapter = createMockAdapter({ chain: 'robinhood', seed });

@@ -8,6 +8,7 @@ import {
   AssetUnits,
   AttemptFate,
   AttemptRef,
+  assertChainsReady,
   BasketAsset,
   BasketId,
   BasketProposal,
@@ -30,7 +31,10 @@ import {
   creatorLimitReasonOf,
   EvmAddress,
   evmCallPreimage,
+  FundingNeed,
+  Holding,
   IntentRequest,
+  isStalePrice,
   Leg,
   LegBase,
   LegRouteParams,
@@ -45,6 +49,9 @@ import {
   Owner,
   PortfolioResponse,
   PROGRAM_ERRORS,
+  Price,
+  parseChainConfigs,
+  parseFlags,
   RawAmount,
   RawDelta,
   RebalancePlan,
@@ -54,11 +61,13 @@ import {
   RecipeDraft,
   ReportLegRequest,
   type RollUpContext,
+  SCOPE_MAINNET,
   SolanaAddress,
   stampTx,
   Targets,
   Trade,
   UnsignedTx,
+  VaultState,
   WalletAccount,
   WalletError,
   WalletErrorCode,
@@ -589,6 +598,82 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
     expect(AttemptRef.safeParse({ ...attempt, validUntil: null, nonce: 3 }).success).toBe(true);
     const { signer: _, ...unsigned } = attempt;
     expect(AttemptRef.safeParse(unsigned).success).toBe(false);
+  });
+
+  it('lets a price say when it is too old, by itself', () => {
+    const price = {
+      source: 'price account, entry 344',
+      method: 'value / 10^exponent',
+      fetchedAt: NOW,
+      provenance: 'sandbox',
+      asset: 'solana:spyx',
+      usdPerToken: '665.12',
+      ageSeconds: 30,
+      maxAgeSeconds: 120,
+      market: 'open',
+    };
+    expect(Price.parse(price)).toEqual(price);
+    // The chain's own limit travels with the price: without it a caller cannot tell stale from fresh.
+    const { maxAgeSeconds: _, ...bare } = price;
+    expect(Price.safeParse(bare).success).toBe(false);
+    expect(Price.safeParse({ ...price, maxAgeSeconds: -1 }).success).toBe(false);
+    expect(isStalePrice(Price.parse(price))).toBe(false);
+    expect(isStalePrice({ ageSeconds: 120, maxAgeSeconds: 120 })).toBe(false);
+    expect(isStalePrice({ ageSeconds: 121, maxAgeSeconds: 120 })).toBe(true);
+  });
+
+  it('shows a multiplier that is scheduled beside the one in force, and only when there is one', () => {
+    const holding = {
+      asset: 'solana:nvdax',
+      raw: '250000000',
+      multiplier: '1.02',
+      display: '2.55',
+    };
+    expect(Holding.parse(holding)).toEqual(holding);
+    const scheduled = { ...holding, scheduled: { multiplier: '2.5', effectiveAt: 4_102_444_800 } };
+    expect(Holding.parse(scheduled)).toEqual(scheduled);
+    for (const bad of [
+      { multiplier: '2.5' },
+      { multiplier: 2.5, effectiveAt: 4_102_444_800 },
+      { multiplier: '2.5', effectiveAt: '4102444800' },
+      { multiplier: '2.5', effectiveAt: 1.5 },
+    ])
+      expect(Holding.safeParse({ ...holding, scheduled: bad }).success, JSON.stringify(bad)).toBe(
+        false,
+      );
+    // A vault's position is a holding: it carries the same.
+    const position = { ...scheduled, targetBps: 5000, lastKeeperAt: null };
+    expect(VaultState.shape.positions.element.parse(position)).toEqual(position);
+  });
+
+  it('lets a funding need say how many of its steps open an account', () => {
+    const need = { cashRaw: '1000000', legs: 4, newVault: true };
+    expect(FundingNeed.parse(need)).toEqual(need);
+    expect(FundingNeed.parse({ ...need, newAccounts: 3 })).toEqual({ ...need, newAccounts: 3 });
+    expect(FundingNeed.parse({ ...need, newAccounts: 0 })).toEqual({ ...need, newAccounts: 0 });
+    for (const bad of [-1, 1.5, '3'])
+      expect(FundingNeed.safeParse({ ...need, newAccounts: bad }).success).toBe(false);
+  });
+
+  it('knows the price account of Solana mainnet, and the program that owns it', () => {
+    expect(SCOPE_MAINNET).toEqual({
+      prices: '3t4JZcueEzTbVP6kLxXrL3VpWx45jDer4eqysweBchNH',
+      program: 'HFn8GnPADiny6XqUoWE8uRPPxb29ikn4yTuPa9MF2fWJ',
+    });
+    for (const address of Object.values(SCOPE_MAINNET))
+      expect(SolanaAddress.safeParse(address).success).toBe(true);
+    for (const network of ['mainnet', 'local'])
+      expect(parseChainConfigs({ CHAIN_NETWORK_SOLANA: network }).solana.priceSource).toEqual({
+        kind: 'scope',
+        address: SCOPE_MAINNET.prices,
+      });
+    // A test network has no Scope: its price account is ours, set at deploy.
+    expect(parseChainConfigs({}).solana.priceSource).toEqual({ kind: 'scope', address: null });
+    // With the account known, mainnet lacks only what a deploy brings.
+    const env = { CHAIN_MODE_SOLANA: 'readonly', CHAIN_NETWORK_SOLANA: 'mainnet' };
+    expect(() => assertChainsReady(parseFlags(env), parseChainConfigs(env))).toThrow(
+      'CHAIN_MODE_SOLANA is readonly on mainnet-beta, but these are not set: contracts.solana.program',
+    );
   });
 
   it('names the fourteen author-limit reasons as the shared vectors number them', () => {

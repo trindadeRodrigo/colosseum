@@ -100,6 +100,8 @@ type State = {
   recipes: Map<string, MockRecipe>;
   prices: Map<AssetId, string>;
   multipliers: Map<AssetId, string>;
+  /** A multiplier that takes over at a unix second of the mock clock. */
+  scheduled: Map<AssetId, { multiplier: string; effectiveAt: number }>;
 };
 
 type Op =
@@ -135,6 +137,11 @@ export type MockOptions = {
   /** USD per whole token by asset id. Required for every asset when `assets` is given. */
   prices?: Record<string, string>;
   /**
+   * What every price carries as `maxAgeSeconds`. Default 120, the Solana program's starting value. The
+   * mock's prices are never older than zero seconds, so nothing here is ever stale.
+   */
+  maxPriceAgeSeconds?: number;
+  /**
    * Mixed into every transaction this instance builds. An app that keeps transaction ids across restarts
    * passes something new each start (a start time), so a fresh mock never repeats an id it handed out
    * before. Tests leave it out and get the same ids every run.
@@ -155,6 +162,11 @@ export type MockControl = {
   fund(owner: Address, amounts: { gasRaw?: string; assets?: Record<string, string> }): void;
   setPrice(asset: AssetId, usdPerToken: string): void;
   setMultiplier(asset: AssetId, multiplier: string): void;
+  /**
+   * Schedules a multiplier as an issuer does: holdings of the asset carry it as `scheduled` until the
+   * mock clock reaches `effectiveAt` (unix seconds), and from then on it is the multiplier in force.
+   */
+  scheduleMultiplier(asset: AssetId, multiplier: string, effectiveAt: number): void;
   /**
    * Stands in for sign-and-broadcast. Only a transaction this adapter built is accepted, found by its
    * `messageHash`. Sending the same one twice returns the same id and changes nothing.
@@ -217,7 +229,9 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
     recipes: new Map(),
     prices: new Map(Object.entries(options.prices ?? mockPrices(chain))),
     multipliers: new Map(),
+    scheduled: new Map(),
   };
+  const maxPriceAge = options.maxPriceAgeSeconds ?? 120;
   const built = new Map<string, Built>();
   const sent = new Map<string, Sent>();
   let buildSeq = 0;
@@ -237,11 +251,13 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
   }
   function holding(s: State, id: AssetId, raw: bigint): Holding {
     const multiplier = s.multipliers.get(id) ?? '1';
+    const scheduled = s.scheduled.get(id);
     return {
       asset: id,
       raw: raw.toString(),
       multiplier,
       display: displayAmount(raw.toString(), multiplier, asset(id).decimals),
+      ...(scheduled ? { scheduled } : {}),
     };
   }
   function vaultOf(s: State, address: Address): MockVault {
@@ -250,13 +266,18 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
   function recipeOf(s: State, id: string): MockRecipe {
     return s.recipes.get(id) ?? refuse('RecipeNotFound', `no shared portfolio at ${id}`);
   }
-  /** A pending version becomes the active one at its time, with no transaction. */
+  /** A pending version becomes the active one at its time, with no transaction. So does a multiplier. */
   function settle(s: State): State {
     for (const r of s.recipes.values()) {
       if (r.pending && r.pending.effectiveAt <= s.seconds) {
         r.active = r.pending;
         r.pending = null;
       }
+    }
+    for (const [id, next] of s.scheduled) {
+      if (next.effectiveAt > s.seconds) continue;
+      s.multipliers.set(id, next.multiplier);
+      s.scheduled.delete(id);
     }
     return s;
   }
@@ -750,6 +771,7 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
   const adapter: MockAdapter = {
     chain,
     capabilities,
+    provenance: 'mock',
 
     listAssets: () => guarded(() => structuredClone(assets)),
     getPrices: (ids) =>
@@ -760,6 +782,7 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
           asset: id,
           usdPerToken: price(s, id),
           ageSeconds: 0,
+          maxAgeSeconds: maxPriceAge,
           market: marketOpen(s, asset(id).session),
         }));
       }),
@@ -950,6 +973,12 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
       },
       setMultiplier(id, multiplier) {
         state.multipliers.set(asset(id).id, input(DecimalString, multiplier, 'multiplier'));
+      },
+      scheduleMultiplier(id, multiplier, effectiveAt) {
+        const value = input(DecimalString, multiplier, 'multiplier');
+        if (toScaled(value) === 0n) refuse('BadInput', 'a multiplier is more than zero');
+        const at = input(z.number().int().nonnegative(), effectiveAt, 'effectiveAt');
+        state.scheduled.set(asset(id).id, { multiplier: value, effectiveAt: at });
       },
       send: (tx) =>
         guarded(() => {
