@@ -29,7 +29,7 @@ describe('WalletPort: accounts and capabilities', () => {
     expect(port.accounts).toEqual([]);
     expect(port.active('solana')).toBeNull();
     const e = await failure(port.sign('solana', [solanaTx(OTHER_SOLANA)]));
-    expect([e.code, e.reason]).toEqual(['unknown', 'not_connected']);
+    expect([e.code, e.reason]).toEqual(['not_connected', 'not_connected']);
   });
 
   it("returns each family's address in its canonical form", async () => {
@@ -116,7 +116,7 @@ describe('WalletPort: signing the bytes it is given', () => {
     expect(approve).toHaveBeenCalledTimes(1);
 
     const e = await failure(port.sign('solana', [...txs, solanaTx(solana)]));
-    expect([e.code, e.reason]).toEqual(['unknown', 'unsupported']);
+    expect([e.code, e.reason]).toEqual(['unsupported', 'unsupported']);
   });
 
   it('EVM: the signed transaction calls what was asked, on the chain asked, from this account', async () => {
@@ -142,7 +142,7 @@ describe('WalletPort: signing the bytes it is given', () => {
         driver.signEvm(address, { ...request, to: evm as `0x${string}` }),
     };
     const e = await failure(createWalletPort(swapped, chains).sign('robinhood', [evmTx(evm)]));
-    expect([e.code, e.reason]).toEqual(['unknown', 'changed']);
+    expect([e.code, e.reason]).toEqual(['changed', 'changed']);
   });
 
   it('signs a line of text on each family', async () => {
@@ -221,7 +221,7 @@ describe('WalletPort: what it refuses before any key is touched', () => {
     ];
     for (const run of cases) {
       const e = await failure(run);
-      expect([e.code, e.reason]).toEqual(['unknown', 'wrong_account']);
+      expect([e.code, e.reason]).toEqual(['wrong_account', 'wrong_account']);
     }
     expect(evm).not.toBe(OTHER_EVM);
     expect(approve).not.toHaveBeenCalled();
@@ -258,7 +258,7 @@ describe('WalletPort: what it refuses before any key is touched', () => {
 
     const real = createWalletPort({ ...driver, test: false }, chains);
     const e = await failure(real.sign('solana', [mock]));
-    expect([e.code, e.reason]).toEqual(['unknown', 'unsupported']);
+    expect([e.code, e.reason]).toEqual(['unsupported', 'unsupported']);
 
     // The mock's EVM transactions name chain id 0. They come back the same way, and are never sent.
     const evm = port.active('evm')?.address ?? '';
@@ -269,7 +269,7 @@ describe('WalletPort: what it refuses before any key is touched', () => {
     expect(await port.sign('robinhood', [mockEvm])).toEqual([mockEvm.payload]);
     const outside = await signedIn({ kind: 'external', broadcastEvm: async () => '0x00' });
     const sent = await failure(outside.port.send('robinhood', { ...mockEvm, signer: outside.evm }));
-    expect([sent.code, sent.reason]).toEqual(['unknown', 'unsupported']);
+    expect([sent.code, sent.reason]).toEqual(['unsupported', 'unsupported']);
     // A transaction that is not mock and names chain id 0 is for no chain this app is on.
     const zero = { ...mockEvm, provenance: 'sandbox' as const };
     expect((await failure(port.sign('robinhood', [zero]))).code).toBe('wrong_chain');
@@ -309,7 +309,7 @@ describe('WalletPort: failures are WalletErrors', () => {
     const signEvm = vi.fn<WalletDriver['signEvm']>();
     const asked = createWalletPort({ ...driver, signEvm }, chains);
     const unsupported = await failure(asked.sign('robinhood', [tx]));
-    expect([unsupported.code, unsupported.reason]).toEqual(['unknown', 'unsupported']);
+    expect([unsupported.code, unsupported.reason]).toEqual(['unsupported', 'unsupported']);
     expect(signEvm).not.toHaveBeenCalled();
 
     expect(await port.send('robinhood', tx)).toEqual({ txId: `0x${'cd'.repeat(32)}` });

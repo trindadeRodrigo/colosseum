@@ -53,12 +53,6 @@ export const ROLL_UP_FLAGS = {
   measuredProvenance: 'measured_provenance:',
 } as const;
 
-/**
- * LOCAL TYPE. `RollUpContext` in packages/schemas has no time, and a stored quote cannot be called
- * fresh or stale without one. `now` is an ISO time, passed in like every other time in this package.
- */
-export type RollUpInput = RollUpContext & { now: string };
-
 type Line = { asset: AssetId; micro: bigint; usd: number };
 type Sized = { quote: Quote; size: number; at: number };
 
@@ -107,7 +101,7 @@ function time(iso: string, what: string): number {
  */
 export function rollUp(
   lines: { asset: AssetId; amountUsd: number }[],
-  ctx: RollUpInput,
+  ctx: RollUpContext,
 ): RiskRollUp {
   const now = time(ctx.now, 'now');
   const byAsset = new Map(ctx.shelf.assets.map((a) => [a.id, a]));

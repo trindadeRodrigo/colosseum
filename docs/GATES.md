@@ -72,3 +72,11 @@ The risk layer's reference price, the oracle standard (`docs/risk/PLAN-RISK.md` 
 | Gate | Status | Decision | Facts |
 |---|---|---|---|
 | **COMPOSE-SIGNATURE** | DECIDED | The personalization engine's entry is `compose(sheet, shelf, context)`: the sheet and the shelf as arguments of their own, and one context for the time and the data (holdings, yields, the liquidity provider and its source, the parameter table). It replaces the one-object form that design section 3.6 froze on Oct 2 | The sheet and the shelf are what every caller has; the rest is optional data that comes with a time, and keeping it in one argument is what lets a test hold "no clock, no network, no environment". The sheet is the local `PersonalSheet`, which adds the person's limits. Nothing in `packages/schemas` changed. Design 3.6 and 7 show the form as built |
+
+## Decided on 2026-10-03 (Rodrigo)
+
+Which route prices and runs a trade. Either founder can reopen it.
+
+| Gate | Status | Decision | Facts |
+|---|---|---|---|
+| **ROUTING** — Jupiter's route or ours | DECIDED | A trade done at once (one transaction) is quoted and run on Jupiter's route. A trade split over time is planned with our router (`routeTrade`): the analytics simulation's flow chart shows its slices, pools and cost. The client is offered the cheaper of the two. Every swap the vault sends, slices included, still goes through `Config.router_program` (Jupiter on mainnet), so the vault program does not change | Our router against the collector's Jupiter quotes, 10 xStocks, Oct 2 23:37Z to Oct 3 17:15Z (off-hours and weekend only), 2,306 pairs: median gap at most 0.5 bp at $1k and $10k, Jupiter better by 27 bp (sell) and 19 bp (buy) at $100k. With the same pools on both sides the $100k gap is 2.9 bp; the rest is pools we do not model: Byreal (excluded, D4 in `docs/risk/PLAN-RISK.md`), prop AMMs and an order book, and the two-hop pools |

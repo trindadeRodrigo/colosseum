@@ -1,4 +1,9 @@
-import type { BasketAsset, LimitContext, LimitResult, Target } from '@colosseum/schemas';
+import {
+  CreatorLimitReason,
+  type LimitContext,
+  type LimitResult,
+  type Target,
+} from '@colosseum/schemas';
 
 // The four limits on what an author may publish as a shared portfolio (DESIGN-VAULT section 6, decided
 // on Oct 2): 3 to 12 listed assets, never the cash token, each from 2% up to its ceiling in 50 bps
@@ -21,48 +26,24 @@ export const CREATOR_LIMITS = {
   maxTurnoverBps: 2000,
 } as const;
 
-/** The rules, in the order a refusal names them: the lowest one a version breaks is its reason. */
-export const LIMIT_REASONS = [
-  'FeeNotZero',
-  'FlagsNotZero',
-  'TooFewAssets',
-  'TooManyAssets',
-  'AssetNotListed',
-  'DuplicateAsset',
-  'WeightBelowMin',
-  'WeightOffStep',
-  'WeightAboveCeiling',
-  'WeightSum',
-  'VersionPending',
-  'VersionTooSoon',
-  'TurnoverTooHigh',
-  'CashNotAllowed',
-] as const;
-export type LimitReason = (typeof LIMIT_REASONS)[number];
+/**
+ * The rules, in the order a refusal names them: the lowest one a version breaks is its reason. The
+ * list is `CreatorLimitReason` of packages/schemas, which holds the names and their numbering.
+ */
+export const LIMIT_REASONS = CreatorLimitReason.options;
 
 /** What a chain answers for any of them (`ChainErrorCode`); the reason goes in the message. */
 export const CREATOR_LIMIT_ERROR = 'CreatorLimit' as const;
 
-/**
- * LOCAL TYPE, not in packages/schemas yet. `LimitContext` there has no publish delay, and the rule
- * "one version per publish delay" cannot be checked without it. Only an asset's id and ceiling are
- * read, so a full `LimitContext` plus the delay fits.
- */
-export type CreatorLimitContext = Omit<LimitContext, 'assets'> & {
-  /**
-   * The platform list of the recipe's chain. An asset with `cls: 'cash'` is the chain's cash token,
-   * which a shared portfolio may not hold.
-   */
-  assets: readonly (Pick<BasketAsset, 'id' | 'maxWeightBps'> & Partial<Pick<BasketAsset, 'cls'>>)[];
-  /** Seconds between two versions, and between a later version and its taking effect. */
-  publishDelay: number;
-};
-
 /** The two values a first publish carries beside the weights. Both must be zero in the MVP. */
 export type RecipeHeader = { flags: number; maxFeeBps: number };
 
-type Refusal = Extract<LimitResult, { ok: false }> & { code: LimitReason };
-const refuse = (code: LimitReason, detail: string): Refusal => ({ ok: false, code, detail });
+type Refusal = Extract<LimitResult, { ok: false }>;
+const refuse = (code: CreatorLimitReason, detail: string): Refusal => ({
+  ok: false,
+  code,
+  detail,
+});
 
 const pct = (bps: number) => `${bps / 100}%`;
 
@@ -98,7 +79,7 @@ export function turnoverBps(prev: readonly Target[], next: readonly Target[]): n
 /** When a version published now takes effect: at once for the first, one delay later after it. */
 export function versionEffectiveAt(
   prev: readonly Target[] | null,
-  ctx: Pick<CreatorLimitContext, 'now' | 'publishDelay'>,
+  ctx: Pick<LimitContext, 'now' | 'publishDelay'>,
 ): number {
   return prev === null ? ctx.now : ctx.now + ctx.publishDelay;
 }
@@ -108,13 +89,21 @@ export function versionEffectiveAt(
  * list and the registry's state come in through `ctx`. A refusal carries the lowest-numbered rule
  * broken, in `LIMIT_REASONS` order, and a sentence with the numbers.
  *
+ * The platform list in `ctx.assets` marks the chain's cash token with `cls: 'cash'`; a shared
+ * portfolio may not hold it. `ctx.publishDelay` is the seconds between two versions, and between a
+ * later version and its taking effect.
+ *
+ * A version refused only for being too soon carries `allowedAt`: published at or after that time,
+ * with nothing else changed, it is accepted. A version that is too soon and breaks a later rule as
+ * well carries none, and neither does any other refusal.
+ *
  * Nothing here trusts the input to have passed a schema: a weight of zero, a repeated asset and a sum
  * that is off are refused by name.
  */
 export function checkCreatorLimits(
   prev: Target[] | null,
   next: Target[],
-  ctx: CreatorLimitContext,
+  ctx: LimitContext,
   header: RecipeHeader = { flags: 0, maxFeeBps: 0 },
 ): LimitResult {
   const L = CREATOR_LIMITS;
@@ -178,34 +167,41 @@ export function checkCreatorLimits(
 
   // Rules 11 to 13 are about a version that follows another. The first takes effect at once and has
   // nothing to wait for and nothing to be measured against, whatever the context says.
-  let turnover = 0;
-  if (prev !== null) {
-    if (ctx.hasPending)
-      return refuse('VersionPending', 'a version is already published and not yet in effect');
-    if (ctx.lastPublishAt !== null) {
-      const allowedAt = ctx.lastPublishAt + ctx.publishDelay;
-      if (ctx.now < allowedAt)
+  if (prev !== null && ctx.hasPending)
+    return refuse('VersionPending', 'a version is already published and not yet in effect');
+  const allowedAt =
+    prev !== null && ctx.lastPublishAt !== null ? ctx.lastPublishAt + ctx.publishDelay : null;
+  const tooSoon = allowedAt !== null && ctx.now < allowedAt;
+
+  // Rules 13 and 14 do not depend on the time, so they say whether waiting is all a version needs.
+  const later = ((): LimitResult => {
+    let turnover = 0;
+    if (prev !== null) {
+      const moved = movedBps(prev, next);
+      if (moved > 2 * L.maxTurnoverBps)
         return refuse(
-          'VersionTooSoon',
-          `the next version can be published in ${allowedAt - ctx.now} seconds, at ${allowedAt}`,
+          'TurnoverTooHigh',
+          `this version moves ${pct(moved / 2)} of the portfolio; the most is ${pct(L.maxTurnoverBps)}`,
         );
+      turnover = Math.ceil(moved / 2);
     }
-    const moved = movedBps(prev, next);
-    if (moved > 2 * L.maxTurnoverBps)
+    const cash = new Set(ctx.assets.filter((a) => a.cls === 'cash').map((a) => a.id));
+    const held = next.find((t) => cash.has(t.asset));
+    if (held)
       return refuse(
-        'TurnoverTooHigh',
-        `this version moves ${pct(moved / 2)} of the portfolio; the most is ${pct(L.maxTurnoverBps)}`,
+        'CashNotAllowed',
+        `${held.asset} is the cash token; a shared portfolio holds assets`,
       );
-    turnover = Math.ceil(moved / 2);
-  }
+    return { ok: true, turnoverBps: turnover };
+  })();
 
-  const cash = new Set(ctx.assets.filter((a) => a.cls === 'cash').map((a) => a.id));
-  const held = next.find((t) => cash.has(t.asset));
-  if (held)
-    return refuse(
-      'CashNotAllowed',
-      `${held.asset} is the cash token; a shared portfolio holds assets`,
-    );
-
-  return { ok: true, turnoverBps: turnover };
+  if (tooSoon)
+    return {
+      ...refuse(
+        'VersionTooSoon',
+        `the next version can be published in ${allowedAt - ctx.now} seconds, at ${allowedAt}`,
+      ),
+      ...(later.ok ? { allowedAt } : {}),
+    };
+  return later;
 }

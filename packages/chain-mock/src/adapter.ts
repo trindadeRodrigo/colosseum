@@ -4,9 +4,12 @@ import {
   Address,
   ApproveArgs,
   AssetId,
+  type AttemptFate,
+  AttemptRef,
   type BasketAsset,
   type BuiltTx,
   type Capabilities,
+  type Carried,
   type ChainAdapter,
   ChainError,
   type ChainErrorCode,
@@ -15,6 +18,7 @@ import {
   chainFamily,
   DecimalString,
   DepositArgs,
+  evmCallPreimage,
   type Funding,
   FundingNeed,
   type Holding,
@@ -51,6 +55,12 @@ const TRADE_COST_BPS = 10;
 const VALID_BLOCKS = 60;
 /** The slippage `quote()` allows for in `minOutRaw`. */
 const QUOTE_SLIPPAGE_BPS = 50;
+/** A Solana signature. A mock transaction has one slot for it, ahead of the message. */
+const SIGNATURE_BYTES = 64;
+/** Chain id 0 is no network: nothing the mock builds can be sent to a real one. */
+const MOCK_EVM_CHAIN_ID = 0;
+/** The gas limit a mock EVM transaction states: a base, and more for each trade it makes. */
+const MOCK_GAS = { base: 300_000, perTrade: 150_000 };
 const refuse = (code: ChainErrorCode, message: string): never => {
   throw new ChainError(code, message);
 };
@@ -93,10 +103,15 @@ type State = {
   recipes: Map<string, MockRecipe>;
   prices: Map<AssetId, string>;
   multipliers: Map<AssetId, string>;
+  /** How old each price says it is, in seconds. An asset with no entry is zero seconds old. */
+  priceAges: Map<AssetId, number>;
+  /** A multiplier that takes over at a unix second of the mock clock. */
+  scheduled: Map<AssetId, { multiplier: string; effectiveAt: number }>;
 };
 
 type Op =
-  | { kind: 'approve'; a: ApproveArgs }
+  // `spender` is worked out when the approval is built: the caller never names one.
+  | { kind: 'approve'; a: ApproveArgs & { spender: Address } }
   | { kind: 'create_vault'; a: CreateVaultArgs }
   | { kind: 'deposit'; a: DepositArgs }
   | { kind: 'swap'; a: OwnerSwapArgs }
@@ -110,8 +125,16 @@ type Op =
 
 /** What a run of an op hands back: what each trade paid out, and the least each may pay. */
 type Run = { outs: bigint[]; mins?: bigint[] };
-type Built = { op: Op; signer: Address; validUntil: number | null; txId: string; mins: bigint[] };
-type Sent = { status: TxStatus['status']; validUntil: number | null; error?: TxStatus['error'] };
+type Built = { op: Op; signer: Address; validUntil: number | null; mins: bigint[] };
+/** A transaction the chain was sent: what it carried, who signed it and, on EVM, on which nonce. */
+type Sent = {
+  status: TxStatus['status'];
+  validUntil: number | null;
+  error?: TxStatus['error'];
+  messageHash: string;
+  signer: Address;
+  nonce: number | null;
+};
 
 export type MockOptions = {
   chain: ChainId;
@@ -127,6 +150,16 @@ export type MockOptions = {
   /** USD per whole token by asset id. Required for every asset when `assets` is given. */
   prices?: Record<string, string>;
   /**
+   * The band around a target inside which a keeper leg may end, in bps of the vault (DESIGN-VAULT
+   * section 5, check 5). Default 50, the vaults' starting value.
+   */
+  bandBps?: number;
+  /**
+   * What every price carries as `maxAgeSeconds`. Default 120, the Solana program's starting value. A
+   * mock price is zero seconds old unless `mock.setPriceAge` says otherwise.
+   */
+  maxPriceAgeSeconds?: number;
+  /**
    * Mixed into every transaction this instance builds. An app that keeps transaction ids across restarts
    * passes something new each start (a start time), so a fresh mock never repeats an id it handed out
    * before. Tests leave it out and get the same ids every run.
@@ -141,17 +174,40 @@ export type MockControl = {
   cash: AssetId;
   /** The slippage `quote()` allows for. */
   quoteSlippageBps: number;
+  /** The band a keeper leg may end inside, on either side of a target. */
+  bandBps: number;
   /** Unix seconds of the mock clock. */
   now(): number;
   advance(seconds: number): void;
   fund(owner: Address, amounts: { gasRaw?: string; assets?: Record<string, string> }): void;
   setPrice(asset: AssetId, usdPerToken: string): void;
+  /**
+   * How old the price of `asset` says it is. The mock's prices are zero seconds old unless told; an age
+   * past `maxPriceAgeSeconds` makes the price read as stale. Nothing else in the mock looks at it.
+   */
+  setPriceAge(asset: AssetId, seconds: number): void;
   setMultiplier(asset: AssetId, multiplier: string): void;
   /**
-   * Stands in for sign-and-broadcast. Only a transaction this adapter built is accepted, found by its
-   * `messageHash`. Sending the same one twice returns the same id and changes nothing.
+   * Schedules a multiplier as an issuer does: holdings of the asset carry it as `scheduled` until the
+   * mock clock reaches `effectiveAt` (unix seconds), and from then on it is the multiplier in force.
    */
-  send(tx: Pick<BuiltTx, 'messageHash'>): Promise<{ txId: string; validUntil?: string }>;
+  scheduleMultiplier(asset: AssetId, multiplier: string, effectiveAt: number): void;
+  /**
+   * Stands in for sign-and-broadcast. Only a transaction this adapter built is accepted, found by its
+   * `messageHash`. On an EVM chain it lands on the nonce it states, or on the signer's next one where
+   * it states none: a nonce another transaction has used is refused as `Expired`, and one ahead of the
+   * signer's is not queued. Sending the same one twice returns the same id and changes nothing.
+   */
+  send(tx: {
+    messageHash: string;
+    evm?: { nonce?: number };
+  }): Promise<{ txId: string; validUntil?: string }>;
+  /**
+   * Stands in for a wallet's signature, and sends nothing. On Solana the transaction's one signature
+   * slot is filled, and the message after it is untouched. On EVM the call data is wrapped with the
+   * nonce and the gas limit the transaction states, as a signed transaction carries them.
+   */
+  sign(tx: Pick<BuiltTx, 'payload' | 'signer' | 'evm'>): string;
   /** The next send lands and reverts with this error. */
   revertNext(error: { code: ChainErrorCode; message: string }): void;
   /** The next send never lands: it stays pending, then expires when its validity runs out. */
@@ -203,9 +259,22 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
     recipes: new Map(),
     prices: new Map(Object.entries(options.prices ?? mockPrices(chain))),
     multipliers: new Map(),
+    priceAges: new Map(),
+    scheduled: new Map(),
   };
+  const maxPriceAge = options.maxPriceAgeSeconds ?? 120;
+  const bandBps = options.bandBps ?? 50;
+  if (!Number.isInteger(bandBps) || bandBps < 0 || bandBps > 10_000)
+    throw new Error('chain-mock: the band is a whole number of bps, 0 to 10,000');
   const built = new Map<string, Built>();
   const sent = new Map<string, Sent>();
+  /** EVM chains: each signer's next nonce, and the transaction that landed on each nonce used. */
+  const nonces = new Map<Address, number>();
+  const landedOn = new Map<string, string>();
+  const nextNonce = (signer: Address) => nonces.get(signer) ?? 0;
+  /** A transaction's id. On EVM two transactions of one call differ by their nonce. */
+  const txIdOf = (messageHash: string, nonce: number | null) =>
+    mockTxId(chain, nonce === null ? messageHash : `${messageHash}:${nonce}`);
   let buildSeq = 0;
   let nextRevert: { code: ChainErrorCode; message: string } | null = null;
   let nextDrop = false;
@@ -223,11 +292,13 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
   }
   function holding(s: State, id: AssetId, raw: bigint): Holding {
     const multiplier = s.multipliers.get(id) ?? '1';
+    const scheduled = s.scheduled.get(id);
     return {
       asset: id,
       raw: raw.toString(),
       multiplier,
       display: displayAmount(raw.toString(), multiplier, asset(id).decimals),
+      ...(scheduled ? { scheduled } : {}),
     };
   }
   function vaultOf(s: State, address: Address): MockVault {
@@ -236,13 +307,18 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
   function recipeOf(s: State, id: string): MockRecipe {
     return s.recipes.get(id) ?? refuse('RecipeNotFound', `no shared portfolio at ${id}`);
   }
-  /** A pending version becomes the active one at its time, with no transaction. */
+  /** A pending version becomes the active one at its time, with no transaction. So does a multiplier. */
   function settle(s: State): State {
     for (const r of s.recipes.values()) {
       if (r.pending && r.pending.effectiveAt <= s.seconds) {
         r.active = r.pending;
         r.pending = null;
       }
+    }
+    for (const [id, next] of s.scheduled) {
+      if (next.effectiveAt > s.seconds) continue;
+      s.multipliers.set(id, next.multiplier);
+      s.scheduled.delete(id);
     }
     return s;
   }
@@ -326,16 +402,19 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
     }
     return w;
   }
-  /** A deposit is always the chain's cash token, from the vault's owner. */
-  function pullCash(s: State, v: MockVault, amount: bigint) {
+  /**
+   * A deposit is always the chain's cash token, from the vault's owner. Where the chain needs an
+   * approval, the cash is taken by `spender` and by nobody else: the factory when it opens the vault,
+   * the vault itself afterwards. An allowance given to one is not the other's to spend.
+   */
+  function pullCash(s: State, v: MockVault, amount: bigint, spender: Address) {
     const w = walletOf(s, v.owner);
     if ((w.get(cash) ?? 0n) < amount) refuse('NotFunded', 'the wallet holds less cash than this');
     if (capabilities.needsApprove) {
-      const key = [factory, v.address]
-        .map((spender) => `${v.owner}>${spender}`)
-        .find((k) => (s.allowances.get(k) ?? 0n) >= amount);
-      if (!key) throw new ChainError('AllowanceTooLow', 'approve the cash first');
-      s.allowances.set(key, (s.allowances.get(key) ?? 0n) - amount);
+      const key = `${v.owner}>${spender}`;
+      const allowed = s.allowances.get(key) ?? 0n;
+      if (allowed < amount) throw new ChainError('AllowanceTooLow', 'approve the cash first');
+      s.allowances.set(key, allowed - amount);
     }
     w.set(cash, (w.get(cash) ?? 0n) - amount);
     v.cash += amount;
@@ -347,13 +426,18 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
     if (trades.length > capabilities.maxTradesPerTx)
       refuse('TooManyTrades', `${chain} takes ${capabilities.maxTradesPerTx} per transaction`);
   }
-  /** Value weights of a vault at the mock prices, in bps of its total. */
-  function weightBps(s: State, v: MockVault, id: AssetId): number {
+  /**
+   * What an asset is worth and what the whole vault is, at the mock prices: a weight is the first over
+   * the second, cash included.
+   */
+  function weigh(s: State, v: MockVault, id: AssetId): { value: bigint; total: bigint } {
     const value = (a: AssetId) => valueScaled(balance(v, a), price(s, a), asset(a).decimals);
     let total = value(cash);
     for (const a of v.positions.keys()) total += value(a);
-    return total === 0n ? 0 : Number((value(id) * 10_000n) / total);
+    return { value: value(id), total };
   }
+  const bpsOf = (w: { value: bigint; total: bigint }) =>
+    w.total === 0n ? 0 : Number((w.value * 10_000n) / w.total);
 
   /** The one place state changes. Throws a ChainError and leaves `s` half-changed, so callers pass a copy. */
   function apply(s: State, op: Op, run: Run): void {
@@ -387,14 +471,14 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
           setTargets(v, input(SetTargetsArgs.shape.targets, a.targets, 'targets'));
         }
         s.vaults.set(address, v);
-        if (a.depositRaw) pullCash(s, v, BigInt(a.depositRaw));
+        if (a.depositRaw) pullCash(s, v, BigInt(a.depositRaw), factory);
         checkTrades(a.trades, true);
         for (const t of a.trades ?? []) swap(s, v, t, run);
         return;
       }
       case 'deposit': {
         const v = vaultOf(s, op.a.vault);
-        pullCash(s, v, BigInt(op.a.amountRaw));
+        pullCash(s, v, BigInt(op.a.amountRaw), v.address);
         checkTrades(op.a.trades, false);
         for (const t of op.a.trades ?? []) swap(s, v, t, run);
         return;
@@ -513,22 +597,29 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
           throw new ChainError('MintNotAccepted', `${other} is not one of this vault's assets`);
         if (marketOpen(s, asset(other).session) !== 'open')
           refuse('MarketClosed', `${other} trades in the US session only`);
-        // Sell only what is over its target, buy only what is under, and stop at the target. The band,
-        // the cooldown, the price-age check and the weekly loss cap are the real vault's and are not
+        // Check 5 of DESIGN-VAULT section 5. A sale needs the asset over its target before the trade
+        // and a purchase needs it under: anything else moves away. After the trade the asset may sit
+        // anywhere inside the band, on either side of its target; outside the band on the far side
+        // is past it. Compared without dividing, so a fraction of a basis point is not lost. The
+        // cooldown, the price-age check and the weekly loss cap are the real vault's and are not
         // modelled here.
         const buying = sell === cash;
-        const before = weightBps(s, v, other);
-        if (buying ? before >= p.targetBps : before <= p.targetBps)
+        const target = BigInt(p.targetBps);
+        const before = weigh(s, v, other);
+        const over = (w: typeof before, bps: bigint) => w.value * 10_000n > bps * w.total;
+        const under = (w: typeof before, bps: bigint) => w.value * 10_000n < bps * w.total;
+        if (buying ? !under(before, target) : !over(before, target))
           refuse(
             'NotTowardTarget',
-            `${other} is at ${before} bps against a target of ${p.targetBps}`,
+            `${other} is at ${bpsOf(before)} bps against a target of ${p.targetBps}`,
           );
         swap(s, v, op.a.trade, run);
-        const after = weightBps(s, v, other);
-        if (buying ? after > p.targetBps : after < p.targetBps)
+        const after = weigh(s, v, other);
+        const band = BigInt(bandBps);
+        if (buying ? over(after, target + band) : under(after, target - band))
           refuse(
             'PastTarget',
-            `${other} would be at ${after} bps against a target of ${p.targetBps}`,
+            `${other} would be at ${bpsOf(after)} bps against a target of ${p.targetBps}, outside the band of ${bandBps}`,
           );
         p.lastKeeperAt = s.seconds;
         return;
@@ -588,13 +679,33 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
   const evmTarget = (op: Op, vault: Address | undefined) =>
     op.kind === 'approve' ? asset(cash).address : (vault ?? factory);
   /**
-   * The slippage a transaction's trades were built with. A keeper trade has none of its own: the vault
-   * holds it to the reference price, which the mock always trades at.
+   * Whether a transaction's bytes carry a minimum for each of its trades. An owner's always do. A
+   * keeper leg's do on an EVM chain, where `keeperSwap` takes `minOut`; on Solana `keeper_leg` takes
+   * none, and the vault holds the trade to the reference price, which the mock always trades at.
    */
-  const slippageOf = (op: Op) => ('slippageBps' in op.a ? op.a.slippageBps : 10_000);
+  const carriesMinimums = (op: Op) => op.kind !== 'keeper_leg' || family === 'evm';
+  /**
+   * The slippage a transaction's trades are built with: the caller's for an owner's trade, the
+   * adapter's own for a keeper leg that carries a minimum, and none where the bytes carry no minimum.
+   */
+  const slippageOf = (op: Op) =>
+    'slippageBps' in op.a ? op.a.slippageBps : carriesMinimums(op) ? QUOTE_SLIPPAGE_BPS : 10_000;
+  /** The trades a transaction makes, in the order it makes them. */
+  const tradesOf = (op: Op): Trade[] =>
+    op.kind === 'keeper_leg' ? [op.a.trade] : 'trades' in op.a ? (op.a.trades ?? []) : [];
 
-  /** Runs the op on a copy, so a transaction that would fail is refused here and never built. */
-  function build(op: Op, signer: Address, watch: { wallet: Address; vault?: Address }): BuiltTx {
+  /**
+   * Runs the op on a copy, so a transaction that would fail is refused here and never built. `nonce`
+   * is the one a rebuild shares with an attempt that is still open; left out, the signer's next.
+   */
+  function build(
+    op: Op,
+    signer: Address,
+    watch: { wallet: Address; vault?: Address },
+    nonce?: number,
+  ): BuiltTx {
+    if (nonce !== undefined && family !== 'evm')
+      refuse('NotSupported', `a transaction on ${chain} has no nonce`);
     const before = live();
     const after = structuredClone(before);
     const run: Run = { outs: [] };
@@ -621,29 +732,64 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
         return v ? balance(v, id) : undefined;
       });
 
-    // A counter stands in for the blockhash or nonce, so two builds of one step are two transactions.
+    const slippage = slippageOf(op);
+    const mins = run.outs.map((out) => lessBps(out, slippage));
+    // On Solana a counter stands in for the blockhash, so two builds of one step are two messages. On
+    // EVM the same call is the same bytes whenever it is built: what tells two transactions of it
+    // apart is the nonce, which is no part of the call. The minimums are in the bytes on both.
     buildSeq += 1;
-    const body = JSON.stringify({ mock: true, chain, seed, seq: buildSeq, op });
+    const to = evmTarget(op, vaultAddress);
+    const message = Buffer.from(
+      JSON.stringify({
+        mock: true,
+        chain,
+        seed,
+        ...(family === 'evm' ? { signer, to } : { seq: buildSeq, signer }),
+        op,
+        mins: carriesMinimums(op) ? mins.map(String) : [],
+      }),
+    );
+    // The message hash as basket-tx.ts defines it for each family.
+    // Solana: the bytes are laid out as a transaction, one empty signature slot and then the message,
+    // and the hash is of the message alone. EVM: the payload is the call data, and the hash is of the
+    // call: chain id, signer, target, value and data.
     const payload =
       family === 'solana'
-        ? Buffer.from(body).toString('base64')
-        : `0x${Buffer.from(body).toString('hex')}`;
-    const messageHash = sha256Hex(payload);
+        ? Buffer.concat([Buffer.from([1]), Buffer.alloc(SIGNATURE_BYTES), message]).toString(
+            'base64',
+          )
+        : `0x${message.toString('hex')}`;
+    const messageHash =
+      family === 'solana'
+        ? sha256Hex(message)
+        : sha256Hex(
+            evmCallPreimage({ chainId: MOCK_EVM_CHAIN_ID, signer, to, value: '0', data: payload }),
+          );
     const validUntil = family === 'solana' ? before.seconds + VALID_BLOCKS : null;
-    const slippage = slippageOf(op);
-    built.set(messageHash, {
-      op,
-      signer,
-      validUntil,
-      txId: mockTxId(chain, messageHash),
-      mins: run.outs.map((out) => lessBps(out, slippage)),
-    });
+    built.set(messageHash, { op, signer, validUntil, mins });
+    // The trades as the transaction makes them, each with the floor the send holds it to. Nothing is
+    // stated where the bytes carry no minimum.
+    const minimums = carriesMinimums(op)
+      ? tradesOf(op).map((t, i) => ({
+          sell: t.sell,
+          buy: t.buy,
+          inRaw: t.amountInRaw,
+          minOutRaw: (mins[i] ?? 0n).toString(),
+        }))
+      : [];
     return {
       chain: family,
       payload,
       ...(family === 'evm'
-        ? // chainId 0 is no network: nothing the mock builds can be sent to a real one.
-          { evm: { to: evmTarget(op, vaultAddress), value: '0', chainId: 0 } }
+        ? {
+            evm: {
+              to,
+              value: '0',
+              chainId: MOCK_EVM_CHAIN_ID,
+              nonce: nonce ?? nextNonce(signer),
+              gas: MOCK_GAS.base + MOCK_GAS.perTrade * tradesOf(op).length,
+            },
+          }
         : { lastValidBlockHeight: before.seconds + VALID_BLOCKS, feePayer: signer }),
       description: DESCRIPTION[op.kind],
       provenance: 'mock',
@@ -657,13 +803,112 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
         simulated: true,
         feeNativeRaw: (fee + (op.kind === 'create_vault' ? newVaultGas : 0n)).toString(),
         changes,
+        minimums,
       },
     };
   }
-  const ownerTx = (op: Op & { a: { vault: Address } }) => {
+  const ownerTx = (op: Op & { a: { vault: Address } }, nonce?: number) => {
     const owner = vaultOf(live(), op.a.vault).owner;
-    return build(op, owner, { wallet: owner, vault: op.a.vault });
+    return build(op, owner, { wallet: owner, vault: op.a.vault }, nonce);
   };
+
+  /**
+   * The message hash of signed bytes, as `build` works it out, and the nonce they were signed with. The
+   * mock reads anything: bytes that are not laid out as one of its own transactions hash to a value it
+   * never built, so they are refused as `NotBuiltHere` when relayed and never taken for a transaction
+   * of this server.
+   */
+  function readSigned(signedTx: string): { hash: string; nonce: number | null } {
+    if (family === 'solana') {
+      const bytes = Buffer.from(signedTx, 'base64');
+      const start = 1 + SIGNATURE_BYTES;
+      // One signature slot, whatever is in it, then the message.
+      const hash =
+        bytes[0] === 1 && bytes.length > start
+          ? sha256Hex(bytes.subarray(start))
+          : sha256Hex(bytes);
+      return { hash, nonce: null };
+    }
+    const data = signedTx.toLowerCase();
+    const json = (hex: string) => JSON.parse(Buffer.from(hex.slice(2), 'hex').toString());
+    try {
+      // Either what `mock.sign` wraps (the call data with a nonce and a gas limit), or the bare call
+      // data, which names no nonce: a wallet that was handed it signs on its own next one.
+      const outer = json(data);
+      const call: string = outer.mockSigned === true ? String(outer.call) : data;
+      const said = outer.mockSigned === true ? json(call) : outer;
+      const hash = sha256Hex(
+        evmCallPreimage({
+          chainId: MOCK_EVM_CHAIN_ID,
+          signer: said.signer,
+          to: said.to,
+          value: '0',
+          data: call,
+        }),
+      );
+      const nonce = outer.mockSigned === true && Number.isInteger(outer.nonce) ? outer.nonce : null;
+      return { hash, nonce };
+    } catch {
+      return { hash: sha256Hex(data), nonce: null };
+    }
+  }
+
+  /** Lands a built transaction, or refuses to. The one place a transaction reaches the chain. */
+  function land(messageHash: string, stated?: number): { txId: string; validUntil?: string } {
+    const b = built.get(messageHash);
+    if (!b) throw new ChainError('NotBuiltHere', 'the mock only sends what it built');
+    const validUntil = b.validUntil === null ? undefined : String(b.validUntil);
+    const next = nextNonce(b.signer);
+    const nonce = family === 'evm' ? (stated ?? next) : null;
+    const txId = txIdOf(messageHash, nonce);
+    if (sent.has(txId)) return { txId, validUntil };
+    const record = { validUntil: b.validUntil, messageHash, signer: b.signer, nonce };
+    // A nonce is used once. Behind the signer's, another transaction took it; ahead of it, a real node
+    // would hold the transaction until the gap closes, which the mock does not model.
+    if (nonce !== null && nonce < next)
+      throw new ChainError('Expired', `nonce ${nonce} was used by another transaction`);
+    if (nonce !== null && nonce > next)
+      throw new ChainError(
+        'NotSupported',
+        'the mock does not queue a transaction ahead of its nonce',
+      );
+    const s = live();
+    if (nextDrop) {
+      nextDrop = false;
+      sent.set(txId, { status: 'pending', ...record });
+      return { txId, validUntil };
+    }
+    if (b.validUntil !== null && s.seconds > b.validUntil)
+      throw new ChainError('Expired', 'built too long ago; build it again');
+    const cost = fee + (b.op.kind === 'create_vault' ? newVaultGas : 0n);
+    if (b.signer !== keeper) {
+      const have = s.gas.get(b.signer) ?? 0n;
+      if (have < cost) throw new ChainError('NoGas', 'the wallet cannot pay the network fee');
+      s.gas.set(b.signer, have - cost);
+    }
+    let error = nextRevert;
+    nextRevert = null;
+    if (!error) {
+      const after = structuredClone(s);
+      try {
+        apply(after, b.op, { outs: [], mins: b.mins });
+        state = after;
+      } catch (e) {
+        if (!(e instanceof ChainError)) throw e;
+        error = { code: e.code, message: e.message };
+      }
+    }
+    sent.set(
+      txId,
+      error ? { status: 'reverted', error, ...record } : { status: 'confirmed', ...record },
+    );
+    // A transaction that landed used its nonce, whether it went through or reverted.
+    if (nonce !== null) {
+      nonces.set(b.signer, nonce + 1);
+      landedOn.set(`${b.signer}:${nonce}`, txId);
+    }
+    return { txId, validUntil };
+  }
 
   /** Nothing but a ChainError leaves the adapter: an error of any other kind is a bug, reported as Unknown. */
   async function guarded<T>(work: () => T | Promise<T>): Promise<T> {
@@ -678,6 +923,7 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
   const adapter: MockAdapter = {
     chain,
     capabilities,
+    provenance: 'mock',
 
     listAssets: () => guarded(() => structuredClone(assets)),
     getPrices: (ids) =>
@@ -687,7 +933,8 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
           ...stamp(s, id === cash ? 'cash counted as one dollar' : 'fixed mock price'),
           asset: id,
           usdPerToken: price(s, id),
-          ageSeconds: 0,
+          ageSeconds: s.priceAges.get(id) ?? 0,
+          maxAgeSeconds: maxPriceAge,
           market: marketOpen(s, asset(id).session),
         }));
       }),
@@ -774,29 +1021,49 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
     buildApprove: (a) =>
       guarded(() => {
         if (!capabilities.needsApprove) refuse('NotSupported', `${chain} needs no approval`);
-        const args = input(ApproveArgs, a, 'approve');
-        return build({ kind: 'approve', a: args }, args.owner, { wallet: args.owner });
+        const { nonce, ...args } = input(ApproveArgs, a, 'approve');
+        // The factory takes the cash that opens a vault; once the plan's vault exists, it takes its own.
+        const vault = mockAddress(chain, `vault:${args.owner}:${args.basketId}`);
+        const spender = live().vaults.has(vault) ? vault : factory;
+        const op: Op = { kind: 'approve', a: { ...args, spender } };
+        return build(op, args.owner, { wallet: args.owner }, nonce);
       }),
+    // The nonce a rebuild is given is no part of the call: it is taken out before the call is made.
     buildCreateVault: (a) =>
       guarded(() => {
-        const args = input(CreateVaultArgs, a, 'create');
-        return build({ kind: 'create_vault', a: args }, args.owner, { wallet: args.owner });
+        const { nonce, ...args } = input(CreateVaultArgs, a, 'create');
+        return build({ kind: 'create_vault', a: args }, args.owner, { wallet: args.owner }, nonce);
       }),
     buildDeposit: (a) =>
-      guarded(() => ownerTx({ kind: 'deposit', a: input(DepositArgs, a, 'deposit') })),
+      guarded(() => {
+        const { nonce, ...args } = input(DepositArgs, a, 'deposit');
+        return ownerTx({ kind: 'deposit', a: args }, nonce);
+      }),
     buildOwnerSwap: (a) =>
-      guarded(() => ownerTx({ kind: 'swap', a: input(OwnerSwapArgs, a, 'swap') })),
+      guarded(() => {
+        const { nonce, ...args } = input(OwnerSwapArgs, a, 'swap');
+        return ownerTx({ kind: 'swap', a: args }, nonce);
+      }),
     buildSetTargets: (a) =>
-      guarded(() => ownerTx({ kind: 'set_targets', a: input(SetTargetsArgs, a, 'targets') })),
+      guarded(() => {
+        const { nonce, ...args } = input(SetTargetsArgs, a, 'targets');
+        return ownerTx({ kind: 'set_targets', a: args }, nonce);
+      }),
     buildAcceptVersion: (a) =>
-      guarded(() => ownerTx({ kind: 'accept_version', a: input(AcceptVersionArgs, a, 'accept') })),
+      guarded(() => {
+        const { nonce, ...args } = input(AcceptVersionArgs, a, 'accept');
+        return ownerTx({ kind: 'accept_version', a: args }, nonce);
+      }),
     buildSetAutoFollow: (a) =>
-      guarded(() =>
-        ownerTx({ kind: 'set_auto_follow', a: input(SetAutoFollowArgs, a, 'auto-follow') }),
-      ),
+      guarded(() => {
+        const { nonce, ...args } = input(SetAutoFollowArgs, a, 'auto-follow');
+        return ownerTx({ kind: 'set_auto_follow', a: args }, nonce);
+      }),
     buildWithdrawInKind: (a) =>
       guarded(() => {
         const args = input(WithdrawInKindArgs, a, 'withdraw');
+        if (args.nonce !== undefined && family !== 'evm')
+          refuse('NotSupported', `a transaction on ${chain} has no nonce`);
         const v = vaultOf(live(), args.vault);
         for (const id of args.assets ?? []) asset(id);
         const held = [cash, ...v.positions.keys()].filter((id) => balance(v, id) > 0n);
@@ -804,14 +1071,15 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
         // Solana withdraws one mint per call; EVM takes everything in one.
         const groups =
           family === 'solana' ? wanted.map((id) => [id]) : wanted.length ? [wanted] : [];
+        // On EVM the one transaction takes the nonce; Solana, which makes several, has none.
         return groups.map((ids) =>
-          ownerTx({ kind: 'withdraw', a: { vault: args.vault, assets: ids } }),
+          ownerTx({ kind: 'withdraw', a: { vault: args.vault, assets: ids } }, args.nonce),
         );
       }),
     buildPublishRecipe: (a) =>
       guarded(() => {
-        const args = input(PublishRecipeArgs, a, 'publish');
-        return build({ kind: 'publish', a: args }, args.creator, { wallet: args.creator });
+        const { nonce, ...args } = input(PublishRecipeArgs, a, 'publish');
+        return build({ kind: 'publish', a: args }, args.creator, { wallet: args.creator }, nonce);
       }),
     buildAdoptVersion: (vault) =>
       guarded(() => {
@@ -831,10 +1099,53 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
         return build(op, keeper, { wallet: keeper, vault: address });
       }),
 
+    messageHashOf: (signedTx) =>
+      guarded(() => readSigned(input(z.string(), signedTx, 'signedTx')).hash),
+    // Bytes that state a nonce land on it; bare call data lands on the signer's next, as a wallet that
+    // picks its own nonce would send it.
+    relay: (signedTx) =>
+      guarded(() => {
+        const { hash, nonce } = readSigned(input(z.string(), signedTx, 'signedTx'));
+        return land(hash, nonce ?? undefined);
+      }),
+    // A transaction the mock was never sent is not seen, as on a node: the caller asks again.
+    carries: (txId, messageHash) =>
+      guarded((): Carried => {
+        const tx = sent.get(txId);
+        if (!tx) return 'unseen';
+        return tx.messageHash === messageHash ? 'this' : 'another';
+      }),
+    fate: (attempt) =>
+      guarded(async (): Promise<AttemptFate> => {
+        const { messageHash, signer, validUntil, nonce } = input(AttemptRef, attempt, 'attempt');
+        if (family === 'evm') {
+          // An attempt is the pair (message, nonce). With no nonce there is nothing to look for.
+          if (nonce === null) return { state: 'open' };
+          const txId = landedOn.get(`${signer}:${nonce}`);
+          if (!txId) return { state: 'open' };
+          // The nonce is used: by this call, which landed, or by another, and this one never can.
+          return sent.get(txId)?.messageHash === messageHash
+            ? { state: 'landed', txId }
+            : { state: 'gone' };
+        }
+        // On Solana the message names the attempt, and its validity is the only thing that closes it.
+        const txId = txIdOf(messageHash, null);
+        const { status } = await adapter.track(txId, validUntil ?? undefined);
+        if (status === 'confirmed' || status === 'reverted') return { state: 'landed', txId };
+        return { state: status === 'expired' ? 'gone' : 'open' };
+      }),
+    nonceOf: (seen) =>
+      guarded(() =>
+        'txId' in seen
+          ? (sent.get(input(z.string(), seen.txId, 'txId'))?.nonce ?? null)
+          : readSigned(input(z.string(), seen.signedTx, 'signedTx')).nonce,
+      ),
+
     mock: {
       addresses: { factory, keeper },
       cash,
       quoteSlippageBps: QUOTE_SLIPPAGE_BPS,
+      bandBps,
       now: () => state.seconds,
       advance(seconds) {
         state.seconds += seconds;
@@ -852,49 +1163,41 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
         if (toScaled(value) === 0n) refuse('BadInput', 'a price is more than zero');
         state.prices.set(asset(id).id, value);
       },
+      setPriceAge(id, seconds) {
+        const age = input(z.number().int().nonnegative(), seconds, 'seconds');
+        state.priceAges.set(asset(id).id, age);
+      },
       setMultiplier(id, multiplier) {
         state.multipliers.set(asset(id).id, input(DecimalString, multiplier, 'multiplier'));
       },
-      send: (tx) =>
-        guarded(() => {
-          const b = built.get(tx.messageHash);
-          if (!b) throw new ChainError('NotBuiltHere', 'the mock only sends what it built');
-          const validUntil = b.validUntil === null ? undefined : String(b.validUntil);
-          if (sent.has(b.txId)) return { txId: b.txId, validUntil };
-          const s = live();
-          if (nextDrop) {
-            nextDrop = false;
-            sent.set(b.txId, { status: 'pending', validUntil: b.validUntil });
-            return { txId: b.txId, validUntil };
-          }
-          if (b.validUntil !== null && s.seconds > b.validUntil)
-            throw new ChainError('Expired', 'built too long ago; build it again');
-          const cost = fee + (b.op.kind === 'create_vault' ? newVaultGas : 0n);
-          if (b.signer !== keeper) {
-            const have = s.gas.get(b.signer) ?? 0n;
-            if (have < cost) throw new ChainError('NoGas', 'the wallet cannot pay the network fee');
-            s.gas.set(b.signer, have - cost);
-          }
-          let error = nextRevert;
-          nextRevert = null;
-          if (!error) {
-            const next = structuredClone(s);
-            try {
-              apply(next, b.op, { outs: [], mins: b.mins });
-              state = next;
-            } catch (e) {
-              if (!(e instanceof ChainError)) throw e;
-              error = { code: e.code, message: e.message };
-            }
-          }
-          sent.set(
-            b.txId,
-            error
-              ? { status: 'reverted', validUntil: b.validUntil, error }
-              : { status: 'confirmed', validUntil: b.validUntil },
+      scheduleMultiplier(id, multiplier, effectiveAt) {
+        const value = input(DecimalString, multiplier, 'multiplier');
+        if (toScaled(value) === 0n) refuse('BadInput', 'a multiplier is more than zero');
+        const at = input(z.number().int().nonnegative(), effectiveAt, 'effectiveAt');
+        state.scheduled.set(asset(id).id, { multiplier: value, effectiveAt: at });
+      },
+      send: (tx) => guarded(() => land(tx.messageHash, tx.evm?.nonce)),
+      sign(tx) {
+        if (family !== 'solana') {
+          const signed = {
+            mockSigned: true,
+            nonce: tx.evm?.nonce,
+            gas: tx.evm?.gas,
+            call: tx.payload,
+          };
+          return `0x${Buffer.from(JSON.stringify(signed)).toString('hex')}`;
+        }
+        const bytes = Buffer.from(tx.payload, 'base64');
+        // 64 bytes that depend on the signer and the message, as a signature does.
+        const message = bytes.subarray(1 + SIGNATURE_BYTES);
+        const half = (salt: string) =>
+          Buffer.from(
+            sha256Hex(Buffer.concat([Buffer.from(`${salt}:${tx.signer}:`), message])),
+            'hex',
           );
-          return { txId: b.txId, validUntil };
-        }),
+        Buffer.concat([half('r'), half('s')]).copy(bytes, 1);
+        return bytes.toString('base64');
+      },
       revertNext(error) {
         nextRevert = error;
       },

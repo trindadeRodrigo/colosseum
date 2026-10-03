@@ -1,11 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { Target } from '@colosseum/schemas';
+import type { LimitContext, Target } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
 import {
   CREATOR_LIMIT_ERROR,
   CREATOR_LIMITS,
-  type CreatorLimitContext,
   checkCreatorLimits,
   LIMIT_REASONS,
   versionEffectiveAt,
@@ -73,12 +72,12 @@ const platform = vectors.platform.assets.map((name, i) => ({
   id: assetId(name),
   maxWeightBps: vectors.platform.ceilingsBps[i] ?? Number.NaN,
   // `platform.cash` names the chain's cash token.
-  ...(name === vectors.platform.cash ? { cls: 'cash' as const } : {}),
+  cls: name === vectors.platform.cash ? ('cash' as const) : ('stock' as const),
 }));
 
 function inputs(c: Case) {
   const prev = c.prev.exists === 1 ? targets(c.prev) : null;
-  const ctx: CreatorLimitContext = {
+  const ctx: LimitContext = {
     assets: platform,
     now: c.ctx.now,
     lastPublishAt: c.prev.exists === 1 ? c.ctx.lastPublishAt : null,

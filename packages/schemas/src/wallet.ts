@@ -28,7 +28,27 @@ export const WalletCaps = z.object({
 });
 export type WalletCaps = z.infer<typeof WalletCaps>;
 
-export const WalletErrorCode = z.enum(['rejected', 'expired', 'no_gas', 'wrong_chain', 'unknown']);
+export const WalletErrorCode = z.enum([
+  /** The person said no. Not a failure to show. */
+  'rejected',
+  /** The blockhash, the nonce or the sign-in went stale before the wallet signed. */
+  'expired',
+  'no_gas',
+  /** The transaction is for another chain or another network than the wallet is on. */
+  'wrong_chain',
+  /** Nobody is signed in, or no wallet of that family is connected. */
+  'not_connected',
+  /** The transaction is for another account than the active one, or the signature is not this account's. */
+  'wrong_account',
+  /** The wallet cannot do what was asked: sign without sending, sign that many at once, export a key. */
+  'unsupported',
+  /**
+   * The wallet handed back something other than the transaction it was given, signed: another
+   * message, another call, another count or order. Nothing is returned as signed.
+   */
+  'changed',
+  'unknown',
+]);
 export type WalletErrorCode = z.infer<typeof WalletErrorCode>;
 
 export class WalletError extends Error {
@@ -49,9 +69,22 @@ export interface WalletPort {
   caps(chain: ChainId): WalletCaps;
   signIn(method: 'passkey' | 'wallet'): Promise<void>;
   signOut(): Promise<void>;
-  /** Solana with any wallet; EVM with the embedded wallet. */
+  /**
+   * Signs and hands the signed transactions back; nothing is sent. Solana with any wallet; EVM with
+   * the embedded wallet (`caps(chain).signOnly`). The answer has the same length and the same order
+   * as `txs`, and each entry is what `ReportLegRequest.signedTx` carries:
+   * - Solana: base64 of the whole serialized transaction, signatures and message, as `payload` is,
+   *   with this account's signature in its slot.
+   * - EVM: the 0x-prefixed serialized signed transaction, as `eth_sendRawTransaction` takes it. The
+   *   wallet set its nonce, gas and fee.
+   * Throws `changed` when the wallet hands back anything but what it was given, signed.
+   */
   sign(chain: ChainId, txs: BasketTx[]): Promise<string[]>;
-  /** EVM with an external wallet. */
+  /**
+   * For an outside EVM wallet, which cannot sign without sending (`caps(chain).signOnly` is false):
+   * the wallet signs and broadcasts, and the answer is the transaction's hash, reported as
+   * `ReportLegRequest.txId`. Not for Solana and not for the embedded wallet: both throw `unsupported`.
+   */
   send(chain: ChainId, tx: BasketTx): Promise<{ txId: string }>;
   exportKey(family: Chain): Promise<void>;
   authHeaders(): Promise<Record<string, string>>;

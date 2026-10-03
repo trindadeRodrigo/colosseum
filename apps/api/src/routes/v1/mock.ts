@@ -1,8 +1,8 @@
-import { ChainId, Holding } from '@colosseum/schemas';
+import { ChainId, Holding, LegRouteParams, OrderError } from '@colosseum/schemas';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { Refusal, RefusalBody, refusing } from '../../orders/errors';
+import { Refusal, refusing } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { ownOrder, signedIn } from './orders';
 
@@ -38,7 +38,7 @@ export function registerMockRoutes(scope: FastifyInstance, deps: OrderDeps) {
         tags,
         summary: 'MOCK: give the signed-in wallets mock cash and mock gas on one chain',
         body: z.object({ chain: ChainId, cashUsd: z.number().positive().max(1_000_000) }),
-        response: { 200: MockFunded, default: RefusalBody },
+        response: { 200: MockFunded, default: OrderError },
       },
     },
     async (req) => {
@@ -70,8 +70,8 @@ export function registerMockRoutes(scope: FastifyInstance, deps: OrderDeps) {
         summary: "MOCK: land the transaction of a leg's latest attempt on the mock chain",
         description:
           'Stands in for the wallet signing and sending. It does not settle the leg: report the returned id with the report route, as a wallet that sent the transaction itself would.',
-        params: z.object({ id: z.uuid(), legId: z.uuid() }),
-        response: { 200: MockLanded, default: RefusalBody },
+        params: LegRouteParams,
+        response: { 200: MockLanded, default: OrderError },
       },
     },
     async (req) => {
@@ -81,7 +81,13 @@ export function registerMockRoutes(scope: FastifyInstance, deps: OrderDeps) {
       const attempt = stored.attempts.find((a) => a.legId === leg.id && a.n === leg.attempt);
       if (!attempt) throw new Refusal(409, 'this step has not been built yet');
       const { mock } = mockOf(leg.chain);
-      const sent = await refusing(() => mock.send({ messageHash: attempt.messageHash }));
+      // As a wallet that signs what it was handed: on the nonce the build stated, where there is one.
+      const sent = await refusing(() =>
+        mock.send({
+          messageHash: attempt.messageHash,
+          ...(attempt.nonce === null ? {} : { evm: { nonce: attempt.nonce } }),
+        }),
+      );
       return { txId: sent.txId, provenance: 'mock' as const };
     },
   );
