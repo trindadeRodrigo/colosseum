@@ -178,7 +178,10 @@ export function scanCss(root: Root, vars: Map<string, string>): Finding[] {
       const composer = classes.map((c) => COMPOSER_RADIUS[c]).find(Boolean);
       const resolved = resolve(value, vars);
       const corners = resolved.split(/[\s/]+/).filter(Boolean);
-      const ok = corners.every((c) => SQUARE.has(c) || KEYWORDS.has(c) || c === composer);
+      // inside the embed a corner is the partner's (`--embed-radius`): our 2px recedes there
+      const ok =
+        /^var\(--embed-radius\b/.test(value) ||
+        corners.every((c) => SQUARE.has(c) || KEYWORDS.has(c) || c === composer);
       if (!ok)
         add(decl, 'radius', `${prop}: ${value}${resolved === value ? '' : ` (${resolved})`}`);
     }
@@ -249,11 +252,18 @@ export function scanSource(file: string, text: string): SourceFinding[] {
       const value = node.initializer?.getText(source) ?? '';
       if (/^(boxShadow|dropShadow|textShadow)$/.test(name))
         found.push({ kind: 'shadow', what: `${name}: ${value}` });
-      if (/^border\w*Radius$/.test(name) && !/^["'{]*(0|0px|2|2px)["'}]*$/.test(value))
+      if (
+        /^border\w*Radius$/.test(name) &&
+        !/^["'{]*(0|0px|2|2px)["'}]*$/.test(value) &&
+        !/var\(--embed-radius\b/.test(value)
+      )
         found.push({ kind: 'radius', what: `${name}: ${value}` });
       if (/^(rx|ry)$/.test(name) && !/^["'{]*0["'}]*$/.test(value))
         found.push({ kind: 'radius', what: `${name}=${value}` });
-      if (/^(fontFamily|font-family)$/.test(name) && !/var\(--(tf-)?font-|inherit/.test(value))
+      if (
+        /^(fontFamily|font-family)$/.test(name) &&
+        !/var\(--(tf-|embed-)?font|inherit/.test(value)
+      )
         found.push({ kind: 'font', what: `${name}: ${value}` });
     }
     ts.forEachChild(node, walk);

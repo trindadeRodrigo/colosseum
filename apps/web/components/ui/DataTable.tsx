@@ -194,6 +194,7 @@ export function DataTable<Row>({
               return (
                 <div
                   key={rowKey(row)}
+                  data-mock={mock || undefined}
                   className={cn(
                     'relative py-3',
                     mock && 'pl-4.5',

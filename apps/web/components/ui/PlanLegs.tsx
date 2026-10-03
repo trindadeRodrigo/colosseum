@@ -148,6 +148,7 @@ export function PlanLegs({
             <li
               key={leg.id}
               data-leg={index}
+              data-mock={mock || undefined}
               style={
                 lock
                   ? ({
