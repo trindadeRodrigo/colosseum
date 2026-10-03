@@ -1,4 +1,4 @@
-import { DISCLAIMER } from '@colosseum/schemas';
+import { DISCLAIMER, type EnvLike, parseFlags } from '@colosseum/schemas';
 import cors from '@fastify/cors';
 import swagger from '@fastify/swagger';
 import scalar from '@scalar/fastify-api-reference';
@@ -10,7 +10,6 @@ import {
   type ZodTypeProvider,
 } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { registerMonitorRoutes } from './routes/monitor';
 import { registerPlanRoutes } from './routes/plans';
 import { registerReadRoutes } from './routes/read';
 import { registerRiskRoutes } from './routes/risk';
@@ -22,8 +21,14 @@ import { registerV1Routes, type V1Deps } from './routes/v1';
   return this.toString();
 };
 
-/** `deps.v1` replaces what the /v1 routes run on. A test passes it; the server passes nothing. */
-export async function buildApp(deps: { v1?: V1Deps } = {}) {
+/**
+ * `deps.v1` replaces what the /v1 routes run on, and `deps.env` the environment the flags are read
+ * from. A test passes them; the server passes nothing.
+ */
+export async function buildApp(deps: { v1?: V1Deps; env?: EnvLike } = {}) {
+  const env = deps.env ?? process.env;
+  // Stops here on a flag it cannot read.
+  const flags = parseFlags(env);
   const app = Fastify({
     logger: process.env.NODE_ENV !== 'test',
   }).withTypeProvider<ZodTypeProvider>();
@@ -56,9 +61,16 @@ export async function buildApp(deps: { v1?: V1Deps } = {}) {
   await registerPlanRoutes(app);
   await registerTransactionRoutes(app);
   await registerReadRoutes(app);
-  await registerMonitorRoutes(app);
+  // The structurer's monitor routes load a key file and sign with it on the server. They are switched
+  // off, not deleted: with LEGACY_STRUCTURER off (the default) the file is never loaded, so no route
+  // that reaches a signer is registered and no code that reads a key is in the process.
+  // tests/boundaries.test.ts holds this import to this `if`.
+  if (flags.legacyStructurer) {
+    const { registerMonitorRoutes } = await import('./routes/monitor');
+    await registerMonitorRoutes(app);
+  }
   await registerRiskRoutes(app);
-  await registerV1Routes(app, process.env, deps.v1);
+  await registerV1Routes(app, env, deps.v1);
 
   return app;
 }

@@ -4,11 +4,10 @@ import {
   buildRevokeUnsigned,
   createRpc,
   explorerTxUrl,
-  loadKeypair,
   readPositions,
-  sendAndConfirm,
   simulateBase64,
 } from '@colosseum/chain-solana';
+import { loadKeypair, sendAndConfirm } from '@colosseum/chain-solana/server';
 import {
   assets as assetsTable,
   constraintSheets,

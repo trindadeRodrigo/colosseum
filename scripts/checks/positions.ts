@@ -1,5 +1,6 @@
 import 'dotenv/config';
-import { createRpc, KAMINO_MAIN_MARKET, loadKeypair } from '@colosseum/chain-solana';
+import { createRpc, KAMINO_MAIN_MARKET } from '@colosseum/chain-solana';
+import { loadKeypair } from '@colosseum/chain-solana/server';
 import { REGISTRY } from '@colosseum/engine';
 import { address } from '@solana/kit';
 

@@ -88,17 +88,27 @@ const MAY_SIGN = ['apps/keeper'];
 type Exemption = { since: string; why: string; covers: readonly (readonly [string, Kind])[] };
 
 // What breaks a rule today and is allowed to, for now. Each entry must still match a violation:
-// when the code is fixed the test fails until the entry is deleted.
-const EXEMPT: readonly Exemption[] = [
-  {
-    since: '2026-10-02',
-    why: 'In Rodrigo\'s code: the chain-solana root entry re-exports sign.ts and wallet.ts, and the monitor route loads the keypair through it. With LEGACY_STRUCTURER=off the route is not registered. API-2 moves both files behind "./server" and deletes this entry.',
-    covers: [
-      ['packages/chain-solana/src/index.ts', 'root-reaches-signing'],
-      ['apps/api/src/routes/monitor.ts', 'signing'],
-    ],
+// when the code is fixed the test fails until the entry is deleted. Empty since API-2 (2026-10-03),
+// which moved sign.ts and wallet.ts of chain-solana behind "./server".
+const EXEMPT: readonly Exemption[] = [];
+
+// Rule 5 has one standing allowance, and it is not an exemption: it is held to a condition. The
+// structurer's server-signing routes stay in apps/api, switched off, not deleted (section 2, the
+// add-only rule). The file below may import a signing entry because nothing loads it but one dynamic
+// import in `loader`, inside an `if` on the flag: with LEGACY_STRUCTURER off the file is never loaded,
+// so no registered route reaches a signer and no key-reading code is in the process. A static import of
+// the file, a second loader, or the import moved out of the `if` fails the test. When the vault path
+// replaces these routes the file goes, and this entry with it.
+type BehindAFlag = { loader: string; flag: string; why: string };
+const BEHIND_A_FLAG: Record<string, BehindAFlag> = {
+  'apps/api/src/routes/monitor.ts': {
+    loader: 'apps/api/src/app.ts',
+    flag: 'flags.legacyStructurer',
+    why: "Rodrigo's monitor routes: POST /policies/:id/rebalance loads the agent key and signs on the server.",
   },
-];
+};
+/** Where an app starts. What these load statically is what is in the process whatever the flags say. */
+const ENTRY_POINTS = ['apps/api/src/server.ts', 'apps/risk-api/src/server.ts'];
 
 // Rule 6 says "new". These read process.env before the rule existed (2026-10-02): the entry points and the
 // config of db, the RPC, Jupiter and wallet settings of chain-solana, the LLM settings of the parser.
@@ -128,7 +138,18 @@ type Kind =
   | 'no-row'; // a folder with no row in the table
 type Violation = { file: string; line: number; kind: Kind; target: string; rule: Rule };
 
-type Import = { spec: string | null; line: number; typeOnly: boolean; names: string[] | '*' };
+type Import = {
+  spec: string | null;
+  line: number;
+  typeOnly: boolean;
+  names: string[] | '*';
+  /** `import(x)` or `require(x)`: loaded when the line runs, not when the file is. */
+  dynamic?: boolean;
+  /** For a dynamic import: the condition of every `if` whose then-branch it sits in, outermost first. */
+  under?: string[];
+};
+/** One import that lands on a file of the workspace. */
+type Load = { from: string; to: string; line: number; dynamic: boolean; under: string[] };
 type Parsed = { imports: Import[]; envLines: number[]; exported: string[] };
 type Unit = { dir: string; name: string; manifest: Record<string, unknown>; files: string[] };
 
@@ -149,6 +170,8 @@ function* walk(dir: string): Generator<string> {
 function parse(file: string, text: string): Parsed {
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, false);
   const out: Parsed = { imports: [], envLines: [], exported: [] };
+  /** The conditions of the `if` statements whose then-branch is being read. */
+  const guards: string[] = [];
   const lineOf = (n: ts.Node) => sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1;
   const exportedFlag = (n: ts.Node) =>
     ts.canHaveModifiers(n) &&
@@ -202,7 +225,14 @@ function parse(file: string, text: string): Parsed {
       const required = ts.isIdentifier(n.expression) && n.expression.text === 'require';
       const arg = n.arguments[0];
       if ((dynamic || required) && arg && ts.isStringLiteralLike(arg))
-        out.imports.push({ spec: arg.text, line: lineOf(n), typeOnly: false, names: '*' });
+        out.imports.push({
+          spec: arg.text,
+          line: lineOf(n),
+          typeOnly: false,
+          names: '*',
+          dynamic: true,
+          under: [...guards],
+        });
       else if (dynamic)
         out.imports.push({ spec: null, line: lineOf(n), typeOnly: false, names: '*' });
     } else if (
@@ -256,6 +286,15 @@ function parse(file: string, text: string): Parsed {
       if (ts.isNamedExports(n.exportClause))
         for (const e of n.exportClause.elements) out.exported.push(e.name.text);
     }
+    // An `if`: its then-branch is read with the condition on the stack, its else-branch without.
+    if (ts.isIfStatement(n)) {
+      visit(n.expression);
+      guards.push(n.expression.getText(sf));
+      visit(n.thenStatement);
+      guards.pop();
+      if (n.elseStatement) visit(n.elseStatement);
+      return;
+    }
     ts.forEachChild(n, visit);
   };
   visit(sf);
@@ -291,8 +330,10 @@ function ruleFor(from: string, to: string): Rule {
   return 'table';
 }
 
-function check(root: string, plant?: string): Violation[] {
+/** The violations, and every import that lands on a file of the workspace. */
+function scan(root: string, plant?: string): { violations: Violation[]; loads: Load[] } {
   const violations: Violation[] = [];
+  const loads: Load[] = [];
   const rel = (path: string) => posix(relative(root, path));
 
   const units: Unit[] = [];
@@ -317,6 +358,20 @@ function check(root: string, plant?: string): Violation[] {
       parsed.set(file, parse(file, readFileSync(join(root, file), 'utf8')));
   const unitOfPath = (path: string) =>
     units.find((u) => path === u.dir || path.startsWith(`${u.dir}/`));
+  const SUFFIXES = [
+    '',
+    '.ts',
+    '.tsx',
+    '.mts',
+    '.js',
+    '.mjs',
+    '/index.ts',
+    '/index.tsx',
+    '/index.js',
+  ];
+  /** The file an import path inside a unit names, or undefined when it names none. */
+  const fileIn = (unit: Unit, path: string) =>
+    SUFFIXES.map((ext) => path + ext).find((candidate) => unit.files.includes(candidate));
 
   /** Where an import lands: a workspace folder and the path inside it, an outside package, or nowhere. */
   const land = (file: string, spec: string) => {
@@ -342,11 +397,7 @@ function check(root: string, plant?: string): Violation[] {
   // While it does, the names those files export count as a signing entry wherever the root is imported.
   const signingNames = new Map<string, Set<string>>();
   for (const unit of units.filter((u) => CHAINS.includes(u.dir))) {
-    const files = new Set(unit.files);
-    const fileAt = (path: string) =>
-      ['', '.ts', '.tsx', '.mts', '.js', '.mjs', '/index.ts', '/index.tsx', '/index.js']
-        .map((ext) => path + ext)
-        .find((candidate) => files.has(candidate));
+    const fileAt = (path: string) => fileIn(unit, path);
     const dot = (unit.manifest.exports as Record<string, unknown> | undefined)?.['.'];
     const main = typeof dot === 'string' ? dot : (unit.manifest.main ?? './src/index.ts');
     const entry = fileAt(posix(join(unit.dir, String(main))));
@@ -455,6 +506,17 @@ function check(root: string, plant?: string): Violation[] {
             add(imp.line, 'signing', imp.spec, 5);
           continue;
         }
+        if (to.unit && !imp.typeOnly) {
+          const target = fileIn(to.unit, `${to.unit.dir}/${to.sub}`.replace(/\/$/, ''));
+          if (target)
+            loads.push({
+              from: file,
+              to: target,
+              line: imp.line,
+              dynamic: imp.dynamic ?? false,
+              under: imp.under ?? [],
+            });
+        }
         if (!to.unit || to.unit === unit) continue;
         if (!allowed(to.unit.dir, inTest, imp.typeOnly))
           add(imp.line, 'import', to.unit.dir, ruleFor(unit.dir, to.unit.dir));
@@ -468,7 +530,47 @@ function check(root: string, plant?: string): Violation[] {
       }
     }
   }
-  return violations.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
+  violations.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
+  return { violations, loads };
+}
+
+const check = (root: string, plant?: string): Violation[] => scan(root, plant).violations;
+
+/** A signing import in a file that is allowed one behind a flag (`BEHIND_A_FLAG`). */
+const isBehindAFlag = (v: Violation) => v.kind === 'signing' && v.file in BEHIND_A_FLAG;
+
+/** What is wrong with the files allowed to sign behind a flag. Empty when each is held to its condition. */
+function flagProblems(
+  found: { violations: Violation[]; loads: Load[] },
+  allowed: Record<string, BehindAFlag>,
+): string[] {
+  const problems: string[] = [];
+  for (const [file, { loader, flag }] of Object.entries(allowed)) {
+    if (!found.violations.some((v) => v.file === file && v.kind === 'signing'))
+      problems.push(`${file}: imports no signing entry any more, delete the allowance`);
+    const into = found.loads.filter((l) => l.to === file && !TEST_FILE.test(l.from));
+    if (into.length === 0) problems.push(`${file}: nothing loads it`);
+    for (const l of into) {
+      const where = `${l.from}:${l.line}`;
+      if (l.from !== loader) problems.push(`${where}: loads ${file}, and only ${loader} may`);
+      else if (!l.dynamic) problems.push(`${where}: loads ${file} with a static import`);
+      else if (!l.under.includes(flag))
+        problems.push(`${where}: loads ${file} outside \`if (${flag})\``);
+    }
+  }
+  return problems;
+}
+
+/** Every file an entry point loads when it starts: static imports only, followed across apps/. */
+function loadedAtStart(loads: Load[], entry: string): Set<string> {
+  const seen = new Set<string>();
+  const queue = [entry];
+  for (let file = queue.shift(); file; file = queue.shift()) {
+    if (seen.has(file)) continue;
+    seen.add(file);
+    for (const l of loads) if (l.from === file && !l.dynamic) queue.push(l.to);
+  }
+  return seen;
 }
 
 const show = (v: Violation) => `${v.file}:${v.line} ${v.kind} ${v.target} (${RULES[v.rule]})`;
@@ -550,10 +652,49 @@ function withPlant(source: string): { file: string; caught: Violation[] } {
 
 describe('import boundaries (DESIGN-VAULT.md section 2)', () => {
   sweep();
-  const found = check(ROOT);
+  const scanned = scan(ROOT);
+  const found = scanned.violations;
 
   it('finds no import that breaks a rule', () => {
-    expect(found.filter((v) => !isExempt(v)).map(show)).toEqual([]);
+    expect(found.filter((v) => !isExempt(v) && !isBehindAFlag(v)).map(show)).toEqual([]);
+  });
+
+  it('rule 5: only the keeper and scripts import a signing entry, and no chain package exposes one at its root', () => {
+    // Nothing is exempt any more: every signing import outside the keeper is the flagged legacy file's.
+    const signing = found.filter((v) => v.kind === 'signing' || v.kind === 'root-reaches-signing');
+    expect(signing.filter((v) => !isBehindAFlag(v)).map(show)).toEqual([]);
+    expect([...new Set(signing.map((v) => v.file))]).toEqual(Object.keys(BEHIND_A_FLAG));
+    expect(MAY_SIGN).toEqual(['apps/keeper']);
+    // The entry exists, and it is the files that hold a key.
+    const solana = JSON.parse(readFileSync(join(ROOT, SOLANA, 'package.json'), 'utf8')) as {
+      exports: Record<string, string>;
+    };
+    expect(solana.exports['./server']).toBe('./src/server.ts');
+    expect(readFileSync(join(ROOT, SOLANA, 'src/server.ts'), 'utf8')).toMatch(
+      /export \* from '\.\/sign';\nexport \* from '\.\/wallet';/,
+    );
+  });
+
+  it('rule 5: the legacy file that signs is loaded only behind its flag', () => {
+    expect(flagProblems(scanned, BEHIND_A_FLAG)).toEqual([]);
+    for (const { why } of Object.values(BEHIND_A_FLAG)) expect(why).not.toBe('');
+  });
+
+  it('rule 5: nothing an app loads at start reaches a signing entry', () => {
+    for (const entry of ENTRY_POINTS) {
+      const loaded = loadedAtStart(scanned.loads, entry);
+      // The walk found the app: its entry, the app file, and the route files behind it.
+      expect(loaded.size, entry).toBeGreaterThan(5);
+      expect(
+        found.filter((v) => v.kind === 'signing' && loaded.has(v.file)).map(show),
+        entry,
+      ).toEqual([]);
+      for (const file of Object.keys(BEHIND_A_FLAG)) expect(loaded.has(file), file).toBe(false);
+    }
+    // The API's own app file is in the walk, so the walk is of the routes it registers.
+    expect(loadedAtStart(scanned.loads, 'apps/api/src/server.ts').has('apps/api/src/app.ts')).toBe(
+      true,
+    );
   });
 
   it('has no exemption that is no longer needed', () => {
@@ -597,6 +738,74 @@ describe('import boundaries (DESIGN-VAULT.md section 2)', () => {
     );
     expect(caught).toEqual([{ file, line: 3, kind: 'import', target: ENGINE, rule: 3 }]);
     expect(existsSync(inside(file))).toBe(false);
+  });
+
+  it('self-check: catches a signing entry planted outside the keeper', () => {
+    const { file, caught } = withPlant(
+      `import { loadKeypair } from '${nameOf(SOLANA)}/server';\nexport const k = loadKeypair;\n`,
+    );
+    expect(caught).toEqual([
+      { file, line: 2, kind: 'import', target: SOLANA, rule: 3 },
+      { file, line: 2, kind: 'signing', target: SOLANA, rule: 5 },
+    ]);
+    expect(existsSync(inside(file))).toBe(false);
+  });
+
+  it('self-check: a flagged file loaded any other way is a problem', () => {
+    const file = 'apps/api/src/routes/monitor.ts';
+    const allowed = BEHIND_A_FLAG[file];
+    if (!allowed) throw new Error('no allowance to check');
+    const signing: Violation = { file, line: 1, kind: 'signing', target: SOLANA, rule: 5 };
+    const load = (over: Partial<Load>): Load => ({
+      from: allowed.loader,
+      to: file,
+      line: 9,
+      dynamic: true,
+      under: ['flags.legacyStructurer'],
+      ...over,
+    });
+    const problems = (loads: Load[], violations = [signing]) =>
+      flagProblems({ violations, loads }, { [file]: allowed });
+    expect(problems([load({})])).toEqual([]);
+    expect(problems([load({ dynamic: false, under: [] })])).toEqual([
+      `${allowed.loader}:9: loads ${file} with a static import`,
+    ]);
+    expect(problems([load({ under: [] })])[0]).toMatch(/outside `if \(/);
+    // Another condition is not the flag, and neither is the flag negated.
+    expect(problems([load({ under: ['process.env.X'] })])[0]).toMatch(/outside `if \(/);
+    expect(problems([load({ under: ['!flags.legacyStructurer'] })])[0]).toMatch(/outside `if \(/);
+    expect(problems([load({}), load({ from: 'apps/api/src/server.ts' })])).toEqual([
+      `apps/api/src/server.ts:9: loads ${file}, and only ${allowed.loader} may`,
+    ]);
+    expect(problems([])).toEqual([`${file}: nothing loads it`]);
+    expect(problems([load({})], [])).toEqual([
+      `${file}: imports no signing entry any more, delete the allowance`,
+    ]);
+  });
+
+  it('self-check: reads the `if` a dynamic import sits in, and not the else-branch', () => {
+    const text = [
+      "import './a';",
+      'if (flags.one) {',
+      "  const a = await import('./b');",
+      "  if (two) require('./c');",
+      '} else {',
+      "  await import('./d');",
+      '}',
+      "const e = () => import('./e');",
+    ].join('\n');
+    const seen = parse('x.ts', text).imports.map((i) => [
+      i.spec,
+      i.dynamic ?? false,
+      i.under ?? [],
+    ]);
+    expect(seen).toEqual([
+      ['./a', false, []],
+      ['./b', true, ['flags.one']],
+      ['./c', true, ['flags.one', 'two']],
+      ['./d', true, []],
+      ['./e', true, []],
+    ]);
   });
 
   it('self-check: writes nowhere but this checkout', () => {

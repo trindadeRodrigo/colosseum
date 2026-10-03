@@ -9,7 +9,6 @@ export * from './positions';
 export * from './prices';
 export * from './rebalance-executor';
 export * from './rpc';
-export * from './sign';
 export * from './simulate';
 export * from './types';
-export * from './wallet';
+// sign.ts and wallet.ts hold a key. They are not exported here: '@colosseum/chain-solana/server'.

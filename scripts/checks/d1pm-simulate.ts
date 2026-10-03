@@ -1,12 +1,7 @@
 import 'dotenv/config';
 import { existsSync } from 'node:fs';
-import {
-  buildSwapTx,
-  createRpc,
-  getQuote,
-  loadKeypair,
-  simulateBase64,
-} from '@colosseum/chain-solana';
+import { buildSwapTx, createRpc, getQuote, simulateBase64 } from '@colosseum/chain-solana';
+import { loadKeypair } from '@colosseum/chain-solana/server';
 import { REGISTRY_BY_ID } from '@colosseum/engine';
 import { address, createSolanaRpc } from '@solana/kit';
 
