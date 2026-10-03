@@ -1258,13 +1258,9 @@ const RULES = [
     replace: '',
     expect: 'test_A15_initialize_revertsOnTheLogicContractAndOnTheLiveProxy',
   },
-  {
-    id: 'factory-init-once',
-    file: FACTORY,
-    find: 'Params calldata params_) external initializer {',
-    replace: 'Params calldata params_) external {',
-    expect: 'test_A15_initialize_revertsOnTheLogicContractAndOnTheLiveProxy',
-  },
+  // No row for `initializer` on the factory's `initialize`. With it removed, the config's `onlyInitializing`
+  // refuses every initialisation, so nothing can be set up at all: that shows a broken build, not a test
+  // that holds the rule. The rule is held twice; the vault's and the registry's have rows that bite.
   {
     id: 'factory-init-beacon-zero',
     file: FACTORY,
@@ -1742,8 +1738,19 @@ if (stale.length > 0) {
   console.log(`\n${stale.length} rules are stale.`);
   process.exit(1);
 }
+// How many rules there are is not how many removals: several rules can take out the same text and name
+// different tests that must each catch it.
+const removalOf = (rule) => [rule.file, rule.find, rule.replace].join('\u0000');
+const removals = new Set(rules.map(removalOf)).size;
+const perFile = [...new Set(rules.map((rule) => rule.file))]
+  .map(
+    (file) =>
+      `${file.replace(/^src\/|\.sol$/g, '')} ${rules.filter((r) => r.file === file).length}`,
+  )
+  .join(', ');
+const census = `${rules.length} rules, ${removals} distinct removals (${perFile})`;
 if (flag('--check')) {
-  console.log(`${rules.length} rules: each text is in its file once, and each test exists.`);
+  console.log(`${census}: each text is in its file once, and each test exists.`);
   process.exit(0);
 }
 
@@ -1822,44 +1829,68 @@ if (!baseline.ok) {
 const projects = [first];
 for (let n = 1; n < Math.min(jobs, rules.length); n++) projects.push(makeCopy(n, first));
 
-async function judge(rule, project) {
-  if (!baseline.passed.has(rule.expect)) {
-    return `STALE   ${rule.id}: no test named ${rule.expect} passes today`;
-  }
-  const path = join(project, rule.file);
+// Rules that take out the same text are judged from one build: the removal is made once and each rule's
+// test is looked up in the one run.
+const groups = new Map();
+for (const [i, rule] of rules.entries()) {
+  const key = removalOf(rule);
+  if (!groups.has(key)) groups.set(key, []);
+  groups.get(key).push(i);
+}
+
+async function judge(indexes, project) {
+  const live = indexes.filter((i) => baseline.passed.has(rules[i].expect));
+  const out = new Map(
+    indexes
+      .filter((i) => !live.includes(i))
+      .map((i) => [i, `STALE   ${rules[i].id}: no test named ${rules[i].expect} passes today`]),
+  );
+  if (live.length === 0) return out;
+  const { file, find, replace } = rules[live[0]];
+  const names = [...new Set(live.map((i) => rules[i].expect))];
+  const files = [...new Set(names.map(fileOf))];
+  const path = join(project, file);
   const original = readFileSync(path, 'utf8');
   let result;
   try {
-    writeFileSync(path, original.replace(rule.find, rule.replace));
-    // Only the test that should catch it: the rest would cost time and say nothing about this rule.
+    writeFileSync(path, original.replace(find, replace));
+    // Only the tests that should catch it, and only their files: the rest would cost time and say nothing
+    // about this rule.
     result = await forgeTest(project, [
       '--match-path',
-      fileOf(rule.expect),
+      files.length === 1 ? files[0] : `{${files.join(',')}}`,
       '--match-test',
-      `^${rule.expect}\\(`,
+      `^(${names.join('|')})\\(`,
     ]);
   } finally {
     writeFileSync(path, original);
   }
-  if (!result.compiled) {
-    return `BROKEN  ${rule.id}: does not compile with the rule removed, so nothing is shown`;
+  for (const i of live) {
+    const { id, expect } = rules[i];
+    // The named test itself must fail. A `setUp` that fails with the rule removed shows that something
+    // broke, not that this test holds the rule, so it does not count.
+    if (!result.compiled) {
+      out.set(i, `BROKEN  ${id}: does not compile with the rule removed, so nothing is shown`);
+    } else if (result.failed.has(expect)) {
+      out.set(i, `bites   ${id}: ${expect} fails`);
+    } else if (result.passed.has(expect)) {
+      out.set(i, `SILENT  ${id}: ${expect} still passes`);
+    } else {
+      out.set(i, `SILENT  ${id}: ${expect} did not run (its setUp fails with the rule removed)`);
+    }
   }
-  const bites =
-    result.failed.has(rule.expect) ||
-    (result.failed.has('setUp') && !result.passed.has(rule.expect));
-  return bites
-    ? `bites   ${rule.id}: ${rule.expect} fails`
-    : `SILENT  ${rule.id}: ${rule.expect} still passes`;
+  return out;
 }
 
 const verdicts = new Array(rules.length);
-let next = 0;
+const queue = [...groups.values()];
 await Promise.all(
   projects.map(async (project) => {
-    while (next < rules.length) {
-      const i = next++;
-      verdicts[i] = await judge(rules[i], project);
-      console.log(verdicts[i]);
+    while (queue.length > 0) {
+      for (const [i, verdict] of await judge(queue.shift(), project)) {
+        verdicts[i] = verdict;
+        console.log(verdict);
+      }
     }
   }),
 );
@@ -1871,7 +1902,7 @@ const span =
   rules.length === RULES.length
     ? ''
     : ` (rules ${from} to ${from + rules.length - 1} of ${matching.length})`;
-console.log(`\n${bit} of ${rules.length} rules bite${span}.`);
+console.log(`\n${bit} of ${rules.length} rules bite${span}. ${census}.`);
 if (wrong.length > 0) {
   console.log('Not shown:');
   for (const line of wrong) console.log(`  ${line}`);

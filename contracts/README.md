@@ -26,7 +26,7 @@ The fork tests read a pinned block and send nothing. Without `RH_FORK_URL` they 
 
 Run forge from this folder, not with `--root`: with `--root` a failing run writes a `cache/` folder where it was called from.
 
-`rules-bite.mjs` works on copies of the project in a temporary folder and never edits the checkout. A full run takes about 40 minutes with three jobs; `--check` only verifies that each rule's text and test still exist, in a second.
+`rules-bite.mjs` works on copies of the project in a temporary folder and never edits the checkout. It runs one compiler at a time unless told otherwise (`--jobs 3` needs a machine with memory for three), and a full run takes about an hour and a half that way; `--from` and `--count` run it in pieces, and `RULES_BITE_DIR` keeps the copy between them. A rule bites only when its named test fails: a set-up that fails with the rule removed does not count. `--check` verifies in a second that each rule's text and test still exist, and prints how many rules and distinct removals there are, by file.
 
 ## Deploy, as a dry run
 

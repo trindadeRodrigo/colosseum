@@ -5,8 +5,10 @@ import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.s
 import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
+import {Test} from "forge-std/Test.sol";
 import {BasketVault} from "../src/BasketVault.sol";
 import {IBasketVault} from "../src/interfaces/IBasketVault.sol";
+import {VaultBeacon} from "../src/VaultBeacon.sol";
 import {VaultFactory} from "../src/VaultFactory.sol";
 import {VaultFixture} from "./helpers/VaultFixture.sol";
 import {
@@ -118,15 +120,6 @@ abstract contract BasketVaultTest is VaultFixture {
         bytes memory init = abi.encodeCall(BasketVault.initialize, (address(0), PLAN_ID));
         vm.expectRevert(IBasketVault.ZeroAddress.selector);
         new BeaconProxy(address(beacon), init);
-    }
-
-    /// The config is whoever created the proxy, never an argument: a vault cannot be pointed at a config
-    /// that did not create it.
-    function test_initialize_takesItsCreatorAsTheConfig() public {
-        bytes memory init = abi.encodeCall(BasketVault.initialize, (owner, PLAN_ID));
-        BasketVault bare = BasketVault(payable(address(new BeaconProxy(address(beacon), init))));
-        assertEq(bare.config(), address(this));
-        assertFalse(factory.isVault(address(bare)));
     }
 
     function test_A15_initialize_revertsOnLiveProxy() public {
@@ -647,5 +640,18 @@ contract BasketVault8Test is BasketVaultTest {
 contract BasketVault18Test is BasketVaultTest {
     function _decimals() internal pure override returns (uint8) {
         return 18;
+    }
+}
+
+/// What `initialize` does on a proxy made with no factory: the creator is the config. It has no fixture, so
+/// that a change to this rule fails here and not in a set-up.
+contract BasketVaultCreatorTest is Test {
+    function test_initialize_takesItsCreatorAsTheConfig() public {
+        address owner = makeAddr("owner");
+        VaultBeacon beacon = new VaultBeacon(address(new BasketVault()), makeAddr("admin"));
+        bytes memory init = abi.encodeCall(BasketVault.initialize, (owner, keccak256("plan-1")));
+        BasketVault bare = BasketVault(payable(address(new BeaconProxy(address(beacon), init))));
+        assertEq(bare.config(), address(this), "the config is whoever made the proxy, never an argument");
+        assertEq(bare.owner(), owner);
     }
 }
