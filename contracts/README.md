@@ -76,6 +76,18 @@ The deployer is the admin while the script runs and proposes the file's admin at
 
 ERC-7201 namespaces: `basket.storage.BasketVault`, `basket.storage.VaultConfig`, `basket.storage.VaultFactory`, `basket.storage.IndexRegistry`. Append to the structs, never reorder. `test/StorageLayout.t.sol` pins where each field is.
 
+## Known limits
+
+From the review of this slot. None lets anyone but the owner move a vault's tokens.
+
+- **A token sent to a vault's address before the vault exists** waits for its owner as long as the factory's logic carries the same proxy creation code: the address is derived from it. A factory upgrade built with another compiler, other settings or another OpenZeppelin would move `vaultOf` for every vault not yet created. `test_vaultOf_theProxysCreationCodeIsPinned` fails when a build changes that code. Vaults that exist are unaffected.
+- **Ether at a vault's address cannot be taken out.** Nothing in the vault is payable, so none can be sent to a live vault; ether sent to the address before the vault exists, or forced in, stays.
+- **`launch()` does not lengthen a wait that has begun.** The 48-hour floor holds for every version published after it. A version already waiting keeps the time it was given, so before `launch()` the team lets waiting versions take effect or cancels them.
+- **A shared portfolio can be left unable to publish.** An asset taken off the list cannot be in a new version at all, and dropping more than 20% in one version is over the turnover limit; the same if the asset becomes the cash token or its ceiling falls more than 20 points under its weight. The four rules say this on every chain. Until it is decided otherwise, do not remove an asset that a live portfolio holds above 20%.
+- **A vault can follow a version that names a removed asset or today's cash token**: it copies the active version as it is. It cannot buy the removed asset. The keeper path has to live with such targets.
+- **A token that fixes Permit2's allowance at infinity** (some token libraries do by default) can be bought, withdrawn and sold through a router that pulls directly, and not sold through one that pulls through Permit2: the vault cannot set or clear that allowance. Do not list one on a chain whose only router is pull 2, and do not build test tokens that way.
+- **The check that a router is not a token** is made once, when the router is listed, with 100,000 gas for the probe. A contract that starts answering as a token later is not seen. What that could reach is a token sent to a vault from outside and never listed: listed tokens are refused by address.
+
 ## For the keeper path (EVM-3)
 
 1. **The vault's storage is ready**: `indexId`, `acceptedVersion`, `autoFollow`, `operator` and `targets` are in `VaultStorage`. Nothing sets `autoFollow` or `operator` yet, and the factory refuses `autoFollow = true` at creation (`AutoFollowUnavailable`). Turning that on is a decision about what a create with auto-follow must check; lift the refusal in the same change that builds `setAutoFollow`. Append `lastKeeperAt` and the loss counter after `targets`.

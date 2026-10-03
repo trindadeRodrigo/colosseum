@@ -2,14 +2,18 @@
 // Shows that each rule in the contracts bites: takes one check out at a time, runs the test that should
 // catch it, and expects that test to fail.
 //
-//   node contracts/script/rules-bite.mjs                every rule
+//   node contracts/script/rules-bite.mjs                every rule, one at a time
 //   node contracts/script/rules-bite.mjs swap           only the rules whose id contains "swap"
-//   node contracts/script/rules-bite.mjs --jobs 4       four at a time (the default is 3)
+//   node contracts/script/rules-bite.mjs --from 40 --count 20   rules 40 to 59 of those, to run it in pieces
+//   node contracts/script/rules-bite.mjs --jobs 3       three at a time: three compilers side by side, each
+//                                                       taking a few gigabytes; only on a machine with room
 //   node contracts/script/rules-bite.mjs --check        only that each rule's text and test still exist
 //
 // It never edits the checkout. It works on copies of the project in a temporary folder (under TMPDIR), one
 // per job, each with its own build cache, and removes them at the end. So it can run while the sources are
-// being edited, and the copies are of the files as they are on disk when it starts.
+// being edited, and the copies are of the files as they are on disk when it starts. With RULES_BITE_DIR set
+// to a folder, the copies are made there, refreshed from the checkout at each start and kept, so a run in
+// pieces compiles from a warm cache.
 //
 // Foundry 1.8 has `forge test --mutate` for this; the pinned toolchain is older.
 // A rule added to the contracts gets a line here in the same pull request.
@@ -26,7 +30,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -52,8 +56,7 @@ const SHORTFALL =
   'require(received >= amount, IBasketVault.DepositShortfall(cash, amount, received));';
 const OUTPUT_OK =
   'require(s.tokenOut != s.tokenIn && cfg.isAsset(s.tokenOut), IBasketVault.TokenNotAccepted(s.tokenOut));';
-const ROUTER_OK =
-  's.router != address(this) && s.router != PERMIT2 && !$.tokens.contains(s.router),';
+const ROUTER_OK = 'router != address(this) && router != PERMIT2 && !$.tokens.contains(router),';
 const RECEIVED =
   'require(received >= s.minOut, IBasketVault.ReceivedTooLittle(token, received, s.minOut));';
 const TOKEN_RESET = 'IERC20(token).forceApprove(spender, 0);';
@@ -418,22 +421,29 @@ const RULES = [
     id: 'vault-swap-router-is-not-the-vault',
     file: VAULT,
     find: ROUTER_OK,
-    replace: ROUTER_OK.replace('s.router != address(this) && ', ''),
+    replace: ROUTER_OK.replace('router != address(this) && ', ''),
     expect: 'test_hostile_permit2OrTheVaultAsRouter_isRefusedTwice',
   },
   {
     id: 'vault-swap-router-is-not-permit2',
     file: VAULT,
     find: ROUTER_OK,
-    replace: ROUTER_OK.replace('s.router != PERMIT2 && ', ''),
+    replace: ROUTER_OK.replace('router != PERMIT2 && ', ''),
     expect: 'test_hostile_permit2OrTheVaultAsRouter_isRefusedTwice',
   },
   {
     id: 'vault-swap-router-is-not-a-held-token',
     file: VAULT,
     find: ROUTER_OK,
-    replace: ROUTER_OK.replace(' && !$.tokens.contains(s.router)', ''),
+    replace: ROUTER_OK.replace(' && !$.tokens.contains(router)', ''),
     expect: 'test_hostile_approveAsItsSwap_isRefusedTwice',
+  },
+  {
+    id: 'vault-swap-router-is-not-a-token-bought-later',
+    file: VAULT,
+    find: ROUTER_OK,
+    replace: ROUTER_OK.replace(' && !$.tokens.contains(router)', ''),
+    expect: 'test_hostile_approveAsItsSwap_onATokenBoughtLaterInTheBatch_isRefused',
   },
   {
     id: 'vault-swap-router-failure-fails',
@@ -1625,11 +1635,18 @@ const env = {
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
-const jobsAt = args.indexOf('--jobs');
-const jobs = Math.max(1, jobsAt === -1 ? 3 : Number(args[jobsAt + 1]) || 3);
+const valued = ['--jobs', '--from', '--count'];
+const option = (name, fallback) => {
+  const at = args.indexOf(name);
+  const value = at === -1 ? Number.NaN : Number(args[at + 1]);
+  return Number.isInteger(value) && value >= 0 ? value : fallback;
+};
+const jobs = Math.max(1, option('--jobs', 1));
 const filter =
-  args.find((a, i) => !a.startsWith('--') && (jobsAt === -1 || i !== jobsAt + 1)) ?? '';
-const rules = RULES.filter((rule) => rule.id.includes(filter));
+  args.find((a, i) => !a.startsWith('--') && !valued.includes(args[i - 1] ?? '')) ?? '';
+const matching = RULES.filter((rule) => rule.id.includes(filter));
+const from = option('--from', 0);
+const rules = matching.slice(from, from + option('--count', matching.length));
 
 // ---- the check that needs no compiler: each rule's text is in its file once, and its test exists
 const sources = new Map();
@@ -1643,8 +1660,9 @@ const walk = (dir) =>
   );
 const tests = walk(join(root, 'test'))
   .filter((path) => path.endsWith('.t.sol'))
-  .map((path) => readFileSync(path, 'utf8'))
-  .join('\n');
+  .map((path) => ({ path: relative(root, path), text: readFileSync(path, 'utf8') }));
+// The file a test is in. Forge is told to build that file alone, which is most of the time a rule takes.
+const fileOf = (name) => tests.find((t) => t.text.includes(`function ${name}(`))?.path;
 const stale = [];
 const ids = new Set();
 for (const rule of rules) {
@@ -1652,8 +1670,7 @@ for (const rule of rules) {
   ids.add(rule.id);
   if (source(rule.file).split(rule.find).length !== 2)
     stale.push(`${rule.id}: the text to remove is not in ${rule.file} exactly once`);
-  if (!tests.includes(`function ${rule.expect}(`))
-    stale.push(`${rule.id}: no test named ${rule.expect}`);
+  if (!fileOf(rule.expect)) stale.push(`${rule.id}: no test named ${rule.expect}`);
 }
 if (stale.length > 0) {
   for (const line of stale) console.log(`STALE   ${line}`);
@@ -1666,11 +1683,13 @@ if (flag('--check')) {
 }
 
 // ---- the copies
-const work = mkdtempSync(join(tmpdir(), 'rules-bite-'));
+const kept = process.env.RULES_BITE_DIR;
+if (kept) mkdirSync(kept, { recursive: true });
+const work = kept ?? mkdtempSync(join(tmpdir(), 'rules-bite-'));
 let children = [];
 function cleanUp() {
   for (const child of children) child.kill();
-  rmSync(work, { recursive: true, force: true });
+  if (!kept) rmSync(work, { recursive: true, force: true });
 }
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.on(signal, () => {
@@ -1681,20 +1700,25 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
 
 // A copy has the layout of the repo as far as the project reads it: contracts/ with its sources, and beside
 // it the two folders its config points at through `..`. Dependencies and fixtures are links, not copies.
-function makeCopy(n, from) {
+function makeCopy(n, warm) {
   const dir = join(work, `job-${n}`);
   const project = join(dir, 'contracts');
   mkdirSync(project, { recursive: true });
+  // In a kept copy the sources are replaced, so a rule left out by a run that was killed is put back.
   for (const name of ['src', 'test', 'script', 'foundry.toml']) {
+    rmSync(join(project, name), { recursive: true, force: true });
     cpSync(join(root, name), join(project, name), { recursive: true });
   }
-  symlinkSync(join(root, 'node_modules'), join(project, 'node_modules'));
-  symlinkSync(join(repo, 'node_modules'), join(dir, 'node_modules'));
-  symlinkSync(join(repo, 'fixtures'), join(dir, 'fixtures'));
-  if (from) {
+  const links = [
+    [join(root, 'node_modules'), join(project, 'node_modules')],
+    [join(repo, 'node_modules'), join(dir, 'node_modules')],
+    [join(repo, 'fixtures'), join(dir, 'fixtures')],
+  ];
+  for (const [target, link] of links) if (!existsSync(link)) symlinkSync(target, link);
+  if (warm && !existsSync(join(project, 'cache'))) {
     for (const name of ['out', 'cache']) {
-      if (existsSync(join(from, name)))
-        cpSync(join(from, name), join(project, name), { recursive: true });
+      if (existsSync(join(warm, name)))
+        cpSync(join(warm, name), join(project, name), { recursive: true });
     }
   }
   return project;
@@ -1743,7 +1767,12 @@ async function judge(rule, project) {
   try {
     writeFileSync(path, original.replace(rule.find, rule.replace));
     // Only the test that should catch it: the rest would cost time and say nothing about this rule.
-    result = await forgeTest(project, ['--match-test', `^${rule.expect}\\(`]);
+    result = await forgeTest(project, [
+      '--match-path',
+      fileOf(rule.expect),
+      '--match-test',
+      `^${rule.expect}\\(`,
+    ]);
   } finally {
     writeFileSync(path, original);
   }
@@ -1773,7 +1802,11 @@ cleanUp();
 
 const bit = verdicts.filter((v) => v.startsWith('bites')).length;
 const wrong = verdicts.filter((v) => /^(SILENT|BROKEN|STALE)/.test(v));
-console.log(`\n${bit} of ${rules.length} rules bite.`);
+const span =
+  rules.length === RULES.length
+    ? ''
+    : ` (rules ${from} to ${from + rules.length - 1} of ${matching.length})`;
+console.log(`\n${bit} of ${rules.length} rules bite${span}.`);
 if (wrong.length > 0) {
   console.log('Not shown:');
   for (const line of wrong) console.log(`  ${line}`);

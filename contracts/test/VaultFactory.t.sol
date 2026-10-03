@@ -163,6 +163,20 @@ contract VaultFactoryTest is SwapFixture {
         assertTrue(factory.vaultOf(owner, PLAN_2) != _newFactory().vaultOf(owner, PLAN_2), "another factory");
     }
 
+    /// The address of a vault that does not exist yet comes from the proxy's creation code, which is part of
+    /// the factory's logic. A factory upgrade built with another compiler, other settings or another
+    /// OpenZeppelin would carry other creation code, and `vaultOf` would move for every vault not yet made:
+    /// a token sent to the old address in advance would be stranded there. This pins the code, so that such
+    /// a change is seen before an upgrade is built. Vaults that exist are unaffected: their addresses are
+    /// stored.
+    function test_vaultOf_theProxysCreationCodeIsPinned() public pure {
+        assertEq(
+            keccak256(type(BeaconProxy).creationCode),
+            0xa5e3e96d2fd0d717ac0a5b778f892aeeed2fdd14dca7496bcd6eeed68d4af40b,
+            "the proxy's creation code changed: vaultOf moves for every vault not yet created"
+        );
+    }
+
     function test_createVault_revertsOnAPlanTheOwnerAlreadyUsed() public {
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(IVaultFactory.VaultExists.selector, address(vault)));

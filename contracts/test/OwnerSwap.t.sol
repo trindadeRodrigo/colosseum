@@ -471,6 +471,30 @@ abstract contract OwnerSwapTest is SwapFixture {
         assertEq(stockB.allowance(address(vault), attacker), 0);
     }
 
+    /// The same in one batch, in the order that hides it: the token is the "router" of the first swap and
+    /// only joins the vault's tokens with the second, which buys it. The vault looks at every router after
+    /// the whole batch's tokens are in, so the order does not matter. The config is made to say yes here; the
+    /// real one never does.
+    function test_hostile_approveAsItsSwap_onATokenBoughtLaterInTheBatch_isRefused() public {
+        vm.mockCall(address(factory), abi.encodeCall(IVaultConfig.routerPull, (address(stockC))), abi.encode(uint8(1)));
+        Swap[] memory swaps = new Swap[](2);
+        swaps[0] = Swap(
+            address(stockC),
+            address(cash),
+            address(stockA),
+            1,
+            0,
+            abi.encodeCall(IERC20.approve, (attacker, type(uint256).max))
+        );
+        swaps[1] = _swap(direct, address(cash), address(stockC), 100 * USD, 2 * unit);
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(IBasketVault.RouterNotAllowed.selector, address(stockC)));
+        vault.ownerSwap(swaps);
+        assertEq(stockC.allowance(address(vault), attacker), 0);
+        _assertUntouched();
+    }
+
     function test_hostile_permit2OrTheVaultAsRouter_isRefusedTwice() public {
         address[2] memory reserved = [PERMIT2_ADDRESS, address(vault)];
         for (uint256 i; i < reserved.length; ++i) {

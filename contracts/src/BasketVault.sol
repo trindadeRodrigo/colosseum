@@ -312,11 +312,15 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
 
             pulls[i] = cfg.routerPull(s.router);
             require(pulls[i] != 0, IBasketVault.RouterNotAllowed(s.router));
-            // The config keeps these out of its router list. The vault does not take its word for it: with
-            // a token it holds, Permit2 or itself as the router, `data` could be an approval.
+        }
+        // The config keeps these out of its router list. The vault does not take its word for it: with a
+        // token it holds, Permit2 or itself as the router, `data` could be an approval. Checked once every
+        // token of the batch is in `tokens`, so that a token a later swap brings in is seen too.
+        for (uint256 i; i < swaps.length; ++i) {
+            address router = swaps[i].router;
             require(
-                s.router != address(this) && s.router != PERMIT2 && !$.tokens.contains(s.router),
-                IBasketVault.RouterNotAllowed(s.router)
+                router != address(this) && router != PERMIT2 && !$.tokens.contains(router),
+                IBasketVault.RouterNotAllowed(router)
             );
         }
 
