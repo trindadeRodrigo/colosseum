@@ -156,7 +156,8 @@ Frozen in two steps. **v0 on Oct 2**, with the first types and the mock: streams
 | An order | Every leg carries the order's id and is on a chain the owner has an address for |
 | Inline arguments | Named so a route can validate one: `CreateVaultArgs`, `DepositArgs`, `OwnerSwapArgs`, `SetTargetsArgs`, `AcceptVersionArgs`, `SetAutoFollowArgs`, `WithdrawInKindArgs`, `PublishRecipeArgs`, `ApproveArgs`, `FundingNeed` |
 | The parser's draft | `BasketSheetDraft`: every field of `BasketSheet`, each nullable (section 7) |
-| Interfaces | `ChainReader`, `OwnerBuilder`, `KeeperBuilder`, `Submitter`, `Signer`, `WalletPort` and `RollUpContext` are TypeScript types only: they hold functions |
+| Interfaces | `ChainReader`, `OwnerBuilder`, `KeeperBuilder`, `TxProbe`, `Submitter`, `Signer`, `WalletPort` and `RollUpContext` are TypeScript types only: they hold functions |
+| Amended on Oct 3 (FRAME-1b) | What the first nine slots and their reviews asked for, before the freeze: a person's targets may leave a cash share; the author-limit reasons, the delay and `allowedAt`; the program's appended errors and the contracts' errors as codes; four more wallet codes and the message hash per family; `TxProbe`; an approval by plan; one expected figure per trade and the minimums in the preview; `OrderError`, `OrderDetail`, `PortfolioResponse`; a price's maximum age, a scheduled multiplier, a reader's label. The listings below show the types as they are now |
 | Statuses and kinds in the database | `text`, typed from the zod types, not Postgres enums, so a change before the freeze is not a migration |
 | `leg_attempts` | Points at a row of `legs` or of `keeper_legs`, with a check that exactly one is set |
 | `orders` | The owner as two columns, `owner_solana` and `owner_evm`, and the request as it came |
