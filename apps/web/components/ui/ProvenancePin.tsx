@@ -347,7 +347,10 @@ export function ProvenancePin({
         <PinGlyph state={state} drop={drop} />
       </button>
       {age && (
-        <span data-ui="stale-tag" className="ml-1.5 text-caption text-muted-foreground">
+        <span
+          data-ui="stale-tag"
+          className="ml-1.5 font-sans text-caption font-medium text-muted-foreground"
+        >
           {text.stale} · {age.short}
         </span>
       )}

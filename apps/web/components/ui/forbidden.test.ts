@@ -224,7 +224,12 @@ describe('the forbidden things', () => {
     };
     // A build older than the source says nothing about the source: it is not read.
     const built = existsSync(join(out, 'BUILD_ID')) ? statSync(join(out, 'BUILD_ID')).mtimeMs : 0;
-    const newest = Math.max(...files.map((file) => statSync(join(WEB, file)).mtimeMs));
+    // next-env.d.ts is written by Next itself, after the build
+    const newest = Math.max(
+      ...files
+        .filter((file) => file !== 'next-env.d.ts')
+        .map((file) => statSync(join(WEB, file)).mtimeMs),
+    );
     const fresh = built > newest && existsSync(chunks);
     if (fresh) walk(chunks);
 

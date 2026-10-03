@@ -208,7 +208,9 @@ function WhyThisPlan() {
   const [parted, setParted] = useState(false);
   return (
     <div className="flex flex-col items-start gap-4">
-      <PlanLegs legs={LEGS} parted={parted} />
+      <div className="w-full">
+        <PlanLegs legs={LEGS} parted={parted} />
+      </div>
       <Button pressed={parted} onClick={() => setParted((was) => !was)}>
         Why this plan?
       </Button>
@@ -221,7 +223,7 @@ function PlanLock() {
   return (
     <div className="flex flex-col items-start gap-4">
       <div className="w-full">
-        <PlanLegs key={run} legs={LEGS.slice(0, 3)} size="hero" lock />
+        <PlanLegs key={run} legs={LEGS} size="hero" lock />
       </div>
       <Button variant="link" onClick={() => setRun((n) => n + 1)}>
         Replay
@@ -564,7 +566,7 @@ export function Showcase() {
             <ProvenancePin value={FIGURE.rate} obs={LIVE_SPECIMEN} />.
           </p>
         </Specimen>
-        <Specimen state="open: source · fetched_at · method">
+        <Specimen state="open: source · fetched_at · method" wide>
           <p className="min-h-28 text-h4 font-medium">
             <ProvenancePin
               value={FIGURE.rate}
@@ -574,7 +576,7 @@ export function Showcase() {
             />
           </p>
         </Specimen>
-        <Specimen state="open, stale, with a link: a dialog">
+        <Specimen state="open, stale, with a link: a dialog" wide>
           <p className="min-h-32 text-h4 font-medium">
             <ProvenancePin
               value={FIGURE.rate}
@@ -584,7 +586,7 @@ export function Showcase() {
             />
           </p>
         </Specimen>
-        <Specimen state="open, a test network">
+        <Specimen state="open, a test network" wide>
           <p className="min-h-28 text-h4 font-medium">
             <ProvenancePin value="$1.0412" obs={SANDBOX_OBS} defaultOpen />
           </p>

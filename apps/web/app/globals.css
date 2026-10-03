@@ -511,10 +511,11 @@
  * semantic variable above is pointed at the partner's own (--embed-*), with system colours when the
  * partner sets none, so nothing in the shell can read a wood colour, a brand typeface or our radius.
  * What survives is structure: the pin, the hatch with its word, hairlines, the disclaimer.
+ * The system colours follow the colour scheme around the shell; the embed route sets
+ * `color-scheme: light dark` on its own root so that they follow the host.
  */
 @utility tf-embed {
   container-type: inline-size;
-  color-scheme: light dark;
 
   --tf-embed-fg: var(--embed-fg, CanvasText);
   --tf-embed-muted: var(--embed-muted, GrayText);

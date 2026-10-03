@@ -189,7 +189,7 @@ export function StatRow({ children, className }: { children: ReactNode; classNam
       data-ui="stat-row"
       className={cn(
         'grid grid-cols-2 divide-x divide-border border border-border min-[620px]:grid-flow-col min-[620px]:auto-cols-fr min-[620px]:grid-cols-none',
-        'max-[619px]:[&>*:nth-child(2n+1)]:border-l-0 max-[619px]:[&>*:nth-child(n+3)]:border-t max-[619px]:[&>*:nth-child(n+3)]:border-border',
+        'max-[620px]:[&>*:nth-child(2n+1)]:border-l-0 max-[620px]:[&>*:nth-child(n+3)]:border-t max-[620px]:[&>*:nth-child(n+3)]:border-border',
         className,
       )}
     >

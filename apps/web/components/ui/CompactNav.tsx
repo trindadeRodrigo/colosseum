@@ -129,7 +129,7 @@ export function CompactNav({
           'fixed top-[calc(env(safe-area-inset-top,0px)+12px)] left-1/2 z-30 flex -translate-x-1/2 items-center justify-between gap-6 rounded-md border py-2',
           'transition-[max-width,padding,background-color,border-color] duration-[480ms] ease-seat motion-reduce:transition-none',
           compact
-            ? 'w-auto max-w-[min(860px,calc(100%-32px))] border-border bg-card pr-2 pl-[18px]'
+            ? 'w-max max-w-[min(860px,calc(100%-32px))] border-border bg-card pr-2 pl-[18px]'
             : 'w-[calc(100%-2*clamp(16px,4vw,56px))] max-w-page border-transparent bg-transparent px-0',
         )}
       >
@@ -179,7 +179,7 @@ export function CompactNav({
           >
             <Icon name={open ? 'X' : 'Menu'} />
           </button>
-          <Button variant="primary" href={cta.href} className="ml-2">
+          <Button variant="primary" href={cta.href} className="ml-2 whitespace-nowrap">
             {cta.label}
           </Button>
         </nav>

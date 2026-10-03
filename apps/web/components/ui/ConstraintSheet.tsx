@@ -27,6 +27,7 @@ export type SheetField = {
   label: string;
   /** The schema path, as a tooltip for developers only. */
   schemaKey?: string;
+  /** `month` is typed as YYYY-MM in a plain field: the same in every browser. */
   kind: 'text' | 'amount' | 'number' | 'month' | 'select' | 'textarea';
   /** The draft value, as text. */
   value: string;
@@ -254,13 +255,8 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
           ) : (
             <Input
               {...wired}
-              type={field.kind === 'month' ? 'month' : 'text'}
               inputMode={
-                field.kind === 'amount'
-                  ? 'decimal'
-                  : field.kind === 'number'
-                    ? 'numeric'
-                    : undefined
+                field.kind === 'amount' ? 'decimal' : field.kind === 'text' ? undefined : 'numeric'
               }
               align={field.kind === 'amount' || field.kind === 'number' ? 'end' : 'start'}
               value={field.value}
