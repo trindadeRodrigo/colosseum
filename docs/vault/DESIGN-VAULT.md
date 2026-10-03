@@ -273,7 +273,7 @@ type ChainAdapter = ChainReader & OwnerBuilder & KeeperBuilder;
 - **The contract.** `adapterContract(name, setup)` from `@colosseum/chain-mock/contract`. `setup` returns a `ContractFixture`: the adapter, a `send(tx)` that signs and broadcasts (on the mock, `mock.send`), an owner with three vaults (one following with auto-follow on, one with its own targets and auto-follow off, one a version behind a recipe that adds an asset), and the trades to try. The cases read, build, check each refusal's code, then send and read the state back. `contract.selfcheck.test.ts` runs the same cases against adapters broken on purpose and expects them to fail.
 - **Readings fixed in v0.** A create that follows a recipe takes empty `targets` and the `expectedVersion`. `getPrices` returns one price per asset asked for and must price every asset whose `priceKind` is not `none`. `quote` applies the adapter's own slippage to `minOutRaw`. `validUntil` is opaque outside the adapter: a block height on Solana, absent on EVM. A deposit is the chain's cash token and nothing else.
 
-On Solana, `create_vault` opens only the cash account. Each position's token account is created, idempotently, in the swap leg that first buys it. That should keep a 12-asset create inside the 1,232-byte transaction limit; the SOL stream measures create and first-buy sizes for 7 and 12 assets on Oct 3.
+On Solana, `create_vault` opens only the cash account. Each position's token account is created, idempotently, in the swap leg that first buys it. Measured on Oct 3 (`programs/tests/sizes.test.ts`, the buy through the test exchange, whose route takes 11 accounts): create, the cash account and the deposit in one transaction are 765 bytes at 7 targets and 935 at 12, and 48,000 to 65,000 compute units; a create that follows a shared portfolio is 558 bytes at any size, since the targets are not in the transaction. Create, deposit and the first buy in one transaction are 1,108 bytes at 7 targets and 1,278 at 12, which is over the 1,232-byte limit. So a 12-target create with its first buy needs either a lookup table of the platform's own (the programs, Config, the asset list, the cash mint: 1,064 bytes with it, 894 at 7 targets) or two transactions, the create and then the buy (767 bytes, about 72,000 units). The builder takes the lookup table; the mints of the targets are instruction data, so the table does not grow with them.
 
 ### 3.3 Transaction, order, legs, prepare-intent
 
@@ -459,24 +459,26 @@ One Anchor program (0.31.1, the version the spike builds on) holds the vaults, t
 ```rust
 // seeds: ["config"] | ["assets"] | ["recipe", creator, family_id] | ["vault", owner, basket_id u64 LE]
 pub struct Config { admin, pending_admin, guardian, default_keeper: Pubkey,
-  router_program: Pubkey, price_owner: Pubkey, cash_mint: Pubkey,  // set per network, never fixed in code
+  router_program: Pubkey, price_owner: Pubkey, cash_mint: Pubkey,  // set per network, never fixed in code; locked at launch
   keeper_paused: bool,
-  launched: bool,                                  // one-way; raises the floor on publish_delay_s
+  launched: bool,                                  // one-way; locks the three addresses, raises the floor on publish_delay_s
   tolerance_bps: u16, loss_cap_bps: u16, band_bps: u16, twap_dev_bps: u16, max_price_age_s: u16,
   asset_cooldown_s: u32, publish_delay_s: u32, session_open_utc_s: u32, session_close_utc_s: u32,
   closed_until: i64, closed_days: [u16; 32] /* days since 1970, UTC */,
   bump: u8 /* of its own address */, reserved: [u8; 63] }  // 396 bytes; this order is not frozen, Vault's is
-pub struct AssetRegistry { price_accounts: [Pubkey; 4], count: u8, assets: [AssetEntry; 64] }  // zero-copy
-pub struct AssetEntry {                            // padded to 96 bytes
-  mint: Pubkey, price_slot: u8, price_index: u16, twap_index: u16, decimals: u8,
-  price_kind: u8 /*0 none, 1 scope*/, session: u8 /*0 always, 1 US hours*/, max_weight_bps: u16, flags: u8,
-  source_check: [u8; 32] /* zero = off; section 5 */, reserved: [u8; 21] }
-pub struct Recipe { creator: Pubkey, family_id: [u8; 32], current: RecipeVersion, pending: RecipeVersion,
-  last_publish_ts: i64, max_fee_bps: u16, flags: u8,
-  vetoed: bool, reserved: [u8; 32] }
+pub struct AssetRegistry { price_accounts: [Pubkey; 4] /*8*/, count: u8 /*136*/,
+  assets: [AssetEntry; 64] /*entry i at 137 + 96·i*/ }       // zero-copy and packed: no padding; 6,281 bytes
+pub struct AssetEntry {                            // packed, 96 bytes; offsets inside the entry
+  mint: Pubkey /*0*/, price_slot: u8 /*32*/, price_index: u16 /*33*/, twap_index: u16 /*35*/,
+  decimals: u8 /*37; read from the mint*/, price_kind: u8 /*38; 0 none, 1 scope*/,
+  session: u8 /*39; 0 always, 1 US hours*/, max_weight_bps: u16 /*40*/, flags: u8 /*42; must be zero*/,
+  source_check: [u8; 32] /*43; zero = off; section 5*/, reserved: [u8; 21] /*75*/ }
+pub struct Recipe { creator: Pubkey /*8*/, family_id: [u8; 32] /*40*/, current: RecipeVersion /*72*/,
+  pending: RecipeVersion /*525; version 0 = none*/, last_publish_ts: i64 /*978*/, max_fee_bps: u16, flags: u8,
+  vetoed: bool /*not written*/, reserved: [u8; 32] }           // Borsh, 1,022 bytes
 pub struct RecipeVersion { version: u32, effective_at: i64, meta_hash: [u8; 32], count: u8,
-  components: [Component; 12] }                    // Component { mint: Pubkey, weight_bps: u16 }
-pub struct Vault {                                 // Borsh; this field order is frozen for memcmp filters
+  components: [Component; 12] }                    // 453 bytes; Component { mint: Pubkey, weight_bps: u16 }
+pub struct Vault {                                 // Borsh, 1,063 bytes; this field order is frozen for memcmp filters
   owner: Pubkey /*offset 8*/, recipe: Pubkey /*40; default = none*/, accepted_version: u32 /*72*/,
   auto_follow: bool /*76*/, basket_id: u64, bump: u8, keeper: Pubkey /*default = Config's*/, count: u8,
   positions: [Position; 16], loss_accum: u64, loss_ts: i64,
@@ -484,25 +486,30 @@ pub struct Vault {                                 // Borsh; this field order is
 pub struct Position { mint: Pubkey, target_bps: u16, tracked: u64, last_keeper_ts: i64 }
 ```
 
+Built so far (SOL-1 and SOL-2). What is named and not built is the keeper slot's (SOL-3).
+
 | Who | Instructions |
 |---|---|
-| Owner | `create_vault(basket_id: u64, targets: Vec<Target>, auto_follow: bool, expected_version: u32)` (with a recipe account passed, it copies the active version if its number matches); `deposit(amount: u64)` (the cash mint only, `Config.cash_mint`; any other mint is `NotCashMint`); `owner_swap(max_in: u64, min_out: u64, data: Vec<u8>)`; `withdraw(amount: u64)` (any token the vault holds, one mint per call; the destination token account must belong to the owner); `close_vault()` |
-| Owner | `set_targets(targets)` (clears `recipe`, auto-follow off); `accept_version(expected_version: u32)` (follows the passed recipe at exactly that active version; new assets allowed); `set_auto_follow(on: bool)`; `set_keeper(keeper: Pubkey)` (reserved; no builder, and the guard refuses it) |
-| Keeper | `keeper_leg(amount_in: u64, data: Vec<u8>)`. The program computes the minimum output. It needs auto-follow on and stored targets, not a recipe or a new version |
-| Anyone | `adopt_version()` (weights-only change, after the delay, auto-follow on); `sync_balances()` |
-| Creator | `publish_recipe(family_id: [u8; 32], components, meta_hash, max_fee_bps: u16, flags: u8)` (both must be zero); `update_recipe(components, meta_hash)`; `cancel_pending()` |
-| Guardian | `pause_keeper()`; `veto_pending()`; `extend_closed_until(ts: i64)`; `add_closed_day(day: u16)`. Each can only tighten |
-| Admin | `init_config(..)` and `init_assets()` (signer must be the upgrade authority, which becomes the admin); `set_router(program)`, `set_price_owner(program)`, `set_cash_mint(mint)` (each refuses the zero address and emits the old and the new value); `set_params(..)`; `launch()`; `unpause_keeper()`; `set_closed(..)`; `set_guardian(..)`; `upsert_asset(entry)`; `propose_admin`, `accept_admin` |
+| Owner | `create_vault(basket_id: u64, targets: Vec<Target>, auto_follow: bool, expected_version: u32)` (with a recipe account passed it takes no targets and copies the version in effect if its number is `expected_version`; without one, the program's own id goes in the recipe's place and `expected_version` is zero); `deposit(amount: u64)` (the cash mint only, `Config.cash_mint`; any other mint is `NotCashMint`); `owner_swap(max_in: u64, min_out: u64, data: Vec<u8>)`; `set_targets(targets)` (clears `recipe` and the accepted version, auto-follow off); `withdraw(amount: u64)` (any token the vault holds, one mint per call; the destination token account must belong to the owner). Not built: `close_vault()`, `accept_version(expected_version: u32)`, `set_auto_follow(on: bool)`, `set_keeper(keeper: Pubkey)` |
+| Keeper | Not built: `keeper_leg(amount_in: u64, data: Vec<u8>)`. The program computes the minimum output. It needs auto-follow on and stored targets, not a recipe or a new version |
+| Anyone | Not built: `adopt_version()` (weights-only change, after the delay, auto-follow on); `sync_balances()` |
+| Creator | `publish_recipe(family_id: [u8; 32], components, meta_hash, max_fee_bps: u16, flags: u8)` (both must be zero; version 1, in effect at once); `update_recipe(components, meta_hash)` (waits one publish delay); `cancel_pending()` |
+| Guardian | `pause_keeper()`; `cancel_pending()`, which is the guardian's veto of a version that waits. Each can only tighten. Not built: `extend_closed_until(ts: i64)`, `add_closed_day(day: u16)` |
+| Admin | `init_config(..)` (signer must be the upgrade authority, which becomes the admin); `init_assets()`; `set_router(program)`, `set_price_owner(program)`, `set_cash_mint(mint)` (each refuses the zero address, emits the old and the new value, and is refused once `launched` is set); `set_params(params)`; `launch()`; `unpause_keeper()`; `upsert_asset(args)` with the mint account; `propose_admin(key)`, then `accept_admin()` signed by that key. Not built: `set_closed(..)`, `set_guardian(..)` |
 
-- `withdraw` takes no Config, registry or price account. `owner_swap` reads `Config` for the router and nothing else, and `deposit` reads it for the cash mint. A pause or a dead feed cannot block the owner. Every instruction that reads `Config` checks its address from the seed and the stored bump.
-- The swap target must be `Config.router_program` (Jupiter on mainnet, the test exchange on devnet), with selector `route_v2` or `shared_accounts_route_v2`, or the two legacy selectors the spike used. Bytes and accounts are forwarded as in the spike. Whether the three setters lock at `launch()` or take a delay is decided with the swap.
-- Cash is not a position. What a vault holds in cash is the balance of its associated token account for `Config.cash_mint`. `tracked` is a hint, rewritten when the program moves that mint; anything that values a vault reads the token accounts themselves.
-- A vault's own targets: at most 16, each mint once, never the zero address (it marks an empty slot), weights adding up to at most 10,000 bps (the rest is cash). A zero weight is allowed. Anything else is `InvalidTargets`.
-- Every instruction derives the associated token account for (vault, mint, the mint's own token program) and rejects any other account. The account list may hold exactly two token accounts owned by the vault, the input and the output; after the call their owner, delegate, close authority and data length must be unchanged. Anything else is `AccountTampered`.
-- `init_config` and `set_params` enforce hard-coded bounds: tolerance at most 300 bps, loss cap at most 500 bps, cooldown at least 600 s, publish delay at least 60 s before `launch()` and at least 172,800 s after. The numbers the app shows cannot move past these without an upgrade.
-- Errors, order frozen, append only: `NotKeeper, AutoFollowOff, KeeperPaused, MintNotAccepted, RouterNotAllowed, SpentTooMuch, ReceivedTooLittle, OtherAccountDebited, AccountTampered, PriceStale, PriceDeviation, MarketClosed, MultiplierWindow, NotTowardTarget, PastTarget, Cooldown, LossCapReached, AssetNotPriced, NewAssetNeedsOwner, VersionNotEffective, CreatorLimit, VersionMismatch, WrongDestination, ParamOutOfBounds`. Appended since: `NotUpgradeAuthority, InvalidTargets, NotCashMint, ZeroAddress`.
-- Events, same names on EVM: `VaultCreated`, `Followed`, `Unfollowed`, `VersionAdopted`, `TargetsSet`, `KeeperTrade`, `RecipePublished`, `VersionCancelled`. Solana only: `RouterSet`, `PriceOwnerSet`, `CashMintSet`.
+- `withdraw` takes no Config, registry or price account. `owner_swap` reads `Config` for the router and the cash mint, and the asset list for what may be bought; `deposit` reads Config for the cash mint; `create_vault` and `set_targets` read both for the targets. None reads a price or the keeper's pause: a pause or a dead feed cannot block the owner. Every instruction that reads `Config` checks its address from the seed and the stored bump, and every one that reads the asset list checks its address from the seed.
+- **The swap.** `owner_swap` calls `Config.router_program` (Jupiter on mainnet, the test exchange on devnet) and nothing else, with one of four selectors: `route`, `shared_accounts_route`, `route_v2`, `shared_accounts_route_v2`. The router is never the token program, the Token-2022 program, the system program or this program: `init_config` and `set_router` refuse them and the swap checks again. The instruction bytes and the router's accounts come from the client and are forwarded in order, with one signature, the vault's: the owner's own signature is never passed on, and the vault account is handed over read-only. Anything else is `RouterNotAllowed`.
+- **What the vault checks around the call, never trusting the router's numbers.** The input and the output are the vault's associated token accounts for two different mints (`SameMint`), each under its mint's own token program. The output mint is on the asset list or is the cash mint (`MintNotAccepted`): the owner can always go back to cash. The router's account list holds no other token account the vault owns, before the call or after it. After the call both accounts are still token accounts the vault owns, with no delegate, no close authority and the same data length. Anything else is `AccountTampered`. At most `max_in` left the input (`SpentTooMuch`); the output did not fall and rose by at least `min_out` (`ReceivedTooLittle`). `OtherAccountDebited` stays in the list and is not raised: a third account is refused outright. A router that calls back into the vault program is stopped by the chain itself.
+- Cash is not a position. What a vault holds in cash is the balance of its associated token account for `Config.cash_mint`. `tracked` is a hint, rewritten when the program moves that mint (on a withdrawal and on both sides of a swap); anything that values a vault reads the token accounts themselves.
+- A vault's own targets: at most 16, each mint once, never the zero address (it marks an empty slot), weights adding up to at most 10,000 bps (the rest is cash); anything else is `InvalidTargets`. Each mint is on the asset list and none is the cash mint: `MintNotAccepted`. A zero weight is allowed. `set_targets` keeps `tracked` and `last_keeper_ts` for a mint that stays.
+- **The asset list.** One account, written by the admin. `upsert_asset` lists a mint of either token program or rewrites its entry in place: it reads the decimals from the mint, refuses a Token-2022 mint whose transfer hook names a program (`HookNotAllowed`; an authority with no program is not a hook), refuses fields past their range (`ParamOutOfBounds`: price slot 0 to 3, price kind and session 0 or 1, indexes under 512, ceiling at most 10,000 bps, flags zero) and a 65th entry (`AssetListFull`). The cash mint may be listed; it is still never a target and never a component. No instruction writes `price_accounts` yet.
+- **What is fixed at launch.** `launch()` is the admin's one-way switch: it sets `launched`, raises `publish_delay_s` to 172,800 s if it was under, and from then on `set_router`, `set_price_owner` and `set_cash_mint` fail with `LockedAtLaunch`. A change to any of the three then needs a program upgrade. The parameters, the asset list, the admin hand-over and the pause still work after it.
+- `init_config` and `set_params` enforce hard-coded bounds: tolerance at most 300 bps, loss cap at most 500 bps, band at most 500 bps, price deviation allowance (`twap_dev_bps`) at most 1,000 bps, price age at most 600 s, cooldown at least 600 s, publish delay at least 60 s before `launch()` and at least 172,800 s after, and a session that opens no earlier than 13:30 UTC, closes no later than 21:00 UTC, and closes after it opens. `init_config` also refuses the zero address for the guardian, the keeper, the router, the price owner and the cash mint. The numbers the app shows cannot move past these without an upgrade.
+- The admin is handed over in two steps: `propose_admin` names a key (the zero address withdraws the proposal) and `accept_admin` is signed by that key. The guardian pauses the keeper paths and only the admin starts them again.
+- Errors, order frozen, append only: `NotKeeper, AutoFollowOff, KeeperPaused, MintNotAccepted, RouterNotAllowed, SpentTooMuch, ReceivedTooLittle, OtherAccountDebited, AccountTampered, PriceStale, PriceDeviation, MarketClosed, MultiplierWindow, NotTowardTarget, PastTarget, Cooldown, LossCapReached, AssetNotPriced, NewAssetNeedsOwner, VersionNotEffective, CreatorLimit, VersionMismatch, WrongDestination, ParamOutOfBounds` (6000 to 6023). Appended by SOL-1: `NotUpgradeAuthority, InvalidTargets, NotCashMint, ZeroAddress` (6024 to 6027). Appended by SOL-2: `LockedAtLaunch, HookNotAllowed, AssetListFull, SameMint, NoPendingVersion, NotCreatorOrGuardian` (6028 to 6033). A wrong signer where one key is expected (owner, admin, guardian, creator, proposed admin) is Anchor's own `ConstraintHasOne` (2001).
+- Events, same names on EVM: `VaultCreated`, `Followed`, `Unfollowed`, `TargetsSet`, `RecipePublished`, `VersionCancelled`, `AssetSet`, `AdminProposed`, `AdminChanged`; `VersionAdopted` and `KeeperTrade` come with the keeper slot. Solana only: `RouterSet`, `PriceOwnerSet`, `CashMintSet`, `ParamsSet`, `Launched`, `KeeperPauseSet`.
 - Both programs are built with `no-idl`: the program has no on-chain IDL account for anyone to claim. The interface files are committed in `idl/`.
+- **A real route** (Oct 3, `programs/tests/jupiter-replay.ts`; the table is in `programs/README.md`). One `route_v2` instruction from Jupiter's `/swap/v2/build`, frozen with the pool's accounts at mainnet slot 452,983,734, runs through `owner_swap` on a local validator that carries mainnet's Jupiter and the pool's program: 10 USDC bought 1,290,137 raw SPYx, the quoted amount, in 659 bytes and 116,717 compute units at call depth 4. The same route paid to another wallet fails with `ReceivedTooLittle`. Create with 12 targets, deposit and that first buy fit one transaction, 1,170 bytes, with Jupiter's lookup table and the platform's.
 
 ### 3.8 EVM contracts (`contracts/src/interfaces/`)
 
@@ -674,7 +681,7 @@ The session window sits inside the New York session in summer and winter time, s
 
 - `anchor_spl::token_interface` and `transfer_checked` everywhere, which covers classic SPL and Token-2022 (the newer token program with optional extensions).
 - SPYx carries pausable, a freeze authority, a permanent delegate, a scaled UI amount, and a transfer-hook extension with no program set. So `tracked` is a hint that `sync_balances` repairs from the one derived token account; `upsert_asset` rejects a mint with a hook program; `withdraw` forwards extra accounts in case the issuer adds one.
-- One swap leg per transaction. Mainnet's instruction stack limit is 5 levels, counting the transaction's own instruction as level 1 **[C 15]**; the spike's route reached level 4. The spare level is kept for a deeper route or a transfer hook, so a keeper leg is never wrapped in another program.
+- One swap leg per transaction. Mainnet's instruction stack limit is 5 levels, counting the transaction's own instruction as level 1 **[C 15]**; the spike's route reached level 4, and so did `route_v2` through `owner_swap` on Oct 3. The spare level is kept for a deeper route or a transfer hook, so a keeper leg is never wrapped in another program.
 - Scope is parsed by hand (its crate is BUSL-licensed). Kamino can remap an index, so the keeper re-derives each asset's `(account, index)` before a run. That check is off-chain. If the Oct 2 Scope read confirms the layout of Scope's mappings account (memory), `keeper_leg` also compares the mapping entry at the pinned index with `source_check`. If not, the field stays zero and the gap is listed in `docs/vault/SECURITY.md`.
 
 **EVM specifics.** `deposit` takes an amount and no token: the vault reads the cash token from its config each time, so there is no way to name another. `withdrawAll` walks the tokens that came in by a vault function; a token sent in from outside leaves through `withdraw(token, amount)`. Raw units everywhere; the feeds already include the multiplier. Decimals (18 on Robinhood Chain, 8 on Base) are passed in config, never read from the token. Robinhood Chain swaps go through Universal Router 2.1.2 (`0x204FAca1764B154221e35c0d20aBb3c525710498`) on hookless pools. Base uses our hardened `SlipstreamAdapter`: it checks `pool.factory()`, sends output only to `msg.sender` and holds nothing. Robinhood Chain has no sequencer feed; that risk is accepted.
@@ -707,6 +714,17 @@ with `shareOfDepth` 0.25 and `τ` 1% (his values), and `indexCapacityUsd` $250k 
 The ceilings are written at deploy and do not move during the MVP, so no rule is built for a ceiling that falls below a live weight. The plain rule covers it: every weight of a new version is checked against the ceiling of the day, whether the weight changed or not.
 
 `previewPublish` and `limits()` let an agent check before paying for a transaction. The TypeScript check, the Solana program and the EVM registry share one file of test vectors, `fixtures/creator-limits/vectors.json`, including a version published too soon, a weight above its ceiling and a non-zero `flags`. The README beside it defines each rule and names the reason a refusal carries.
+
+**The registry on Solana, as built** (SOL-2; `programs/basket`, accounts in 3.7).
+
+- A shared portfolio is one `Recipe` account at seeds `["recipe", creator, family_id]`; that address is its `onchainId`. It holds the version in effect (`current`) and at most one that waits (`pending`). History is in the `RecipePublished` events, which carry the components, the effective time, the turnover and the meta hash.
+- `publish_recipe` writes version 1, in effect at once. `update_recipe` writes the next version, in effect `publish_delay_s` later. `cancel_pending` takes back a version that waits; the creator or the guardian signs.
+- A version that waited and whose time has come is the one in effect with no transaction: `create_vault` reads it that way, and `update_recipe` moves it into `current` before it measures the new version against it. So the `current` field alone does not say which version is in effect; a reader compares `pending.effective_at` with the chain's clock.
+- A version's number is the number of the version in effect plus one. A cancelled version never took effect, and its number is used again by the next one published.
+- The four limits are checked in the order of the vectors' reason numbers, and a refusal is always `CreatorLimit` (6020). Which rule it was goes in the transaction's log as `creator limit: reason=<number> <name>`, with the numbers of `fixtures/creator-limits/README.md`. All 87 cases pass against the program, each driven through real publishes in LiteSVM (`programs/tests/creator-limits.vectors.test.ts`).
+- The ceilings are `max_weight_bps` in the asset list, written by `upsert_asset`. The cash mint may be on the list and is refused as a component by its own rule (`CashNotAllowed`, reason 14).
+- There is no view call: to check before paying, simulate the publish and read the log. `last_publish_ts` is the time of the last publish, cancelled or not, so the next version is allowed at `last_publish_ts + publish_delay_s`.
+- The delay a version waits is the one in force when it is published. A version published before `launch()` under a short delay keeps its short wait.
 
 ## 7. Personalization engine
 
@@ -933,7 +951,7 @@ No mainnet key that can move funds or loosen a limit sits where a coding agent h
 |---|---|
 | EVM invariants I2, I3, I5 with handlers (owner, hostile keeper, creator, donor, issuer, clock, a re-entering router) | Foundry |
 | Solana logic and sequences | `proptest` on `checks.rs`; 10,000 fast-check sequences on LiteSVM |
-| A1 and A11 against a real `route_v2` account list; a saved route replays | surfpool |
+| A1 and A11 against a real `route_v2` account list; a saved route replays | A local validator with mainnet's Jupiter and pool (`programs/tests/jupiter-replay.ts`): done for the owner's swap on Oct 3. surfpool is not installed |
 | Static analysis | Slither, Aderyn, `forge lint`, `forge build --sizes`, `cargo clippy`, cargo-deny |
 | Robinhood fork at a pinned block, including a Saturday block | dRPC |
 | A second rehearsal, with A15 run with the admin key | Scripted |
@@ -1098,7 +1116,7 @@ Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-L
 - No deposit cap sits on unaudited, upgradeable code, and one disclosed key per chain holds the upgrade power. The app says so and `G-LINK` checks the key against `deployments/*.json`.
 - The 48-hour delay holds for every public user, but test cycles before `launch()` run at 300 s on team money. The latch is one-way and `authority-check` reads it.
 - Free tiers can sleep the API or throttle Jupiter. Each has a mitigation in section 10 and a test in `G-LINK` or the Oct 5 cold-start test.
-- Jupiter's `route_v2` from a vault is unproven: settled on surfpool by Oct 3, then by the $10 run.
+- Jupiter's `route_v2` from a vault ran on Oct 3 on a local validator with mainnet's programs and one frozen pool (section 3.7). Not yet run: a route through a private market maker, which cannot be replayed from a snapshot, and anything on mainnet itself.
 
 ## Sources checked for choices in this document
 
