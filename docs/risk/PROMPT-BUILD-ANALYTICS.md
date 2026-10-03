@@ -8,9 +8,11 @@
 
 Done: items 1–13, and A-C for Step 11's reference prices (§7 of the plan has the evidence for each). Item 4 is built end to end, and its split facts read `insufficient_samples` until the split snapshot has run 8 times in a regime; they then fill with no code change. Item 4 added migration `0009_risk_network_fees.sql` and item 15 `0010_risk_depth_recovery.sql` (item 11's is 0008). In progress: item 15 (2 of 3 parts; the LP owners behind the position NFTs wait for Mon Oct 5). To do: items 14, 16 and 17, which wait for Mon Oct 5 under DA3. The branch has `risk` and `staging` merged in (`origin/staging` has one merge commit more, PR #18, with no new migration), and `pnpm verify` passes (1,321 tests). Nothing is pushed.
 
-Waiting on a person (not on the next session): the refresh job's new bundle (item 2, steps in §7); hourly launchd jobs for `pnpm risk:lending-report && pnpm risk:facts-import` and for `pnpm risk:split-snapshot && pnpm risk:cost-breakdown` (after minute 10: until the refresh bundle is replaced, its `compute` drops the split keys each hour); `pnpm risk:network-fees` after new swaps; `pnpm risk:recovery-import` after a new Step 5b history report; and reading one asset sheet and one lending sheet on `/docs`.
+**Item 18 (planned 2026-10-03, §3 Phase 3 of the plan)** makes the two hourly jobs installable: `pnpm risk:split-snapshot && pnpm risk:cost-breakdown` and `pnpm risk:lending-report && pnpm risk:facts-import`. It is the next item to run (A-B with `{N}` = 18); it does not wait for Monday. Its own notes under "While you work" below.
 
-## A-B — Item execution (run once per item; replace `{N}` with 1–17)
+Waiting on a person (not on the next session): the refresh job's bundle rebuilt from the current code (the one in place, built 2026-10-02 19:53 local, predates the `compute.ts` change that keeps the split keys, so it still drops them hourly; steps in §7 item 2); the real run of item 18's installer once it exists; `pnpm risk:network-fees` after new swaps; `pnpm risk:recovery-import` after a new Step 5b history report; and reading one asset sheet and one lending sheet on `/docs`.
+
+## A-B — Item execution (run once per item; replace `{N}` with 1–18)
 
 Execute item **{N}** of Step A in `docs/risk/PLAN-ANALYTICS.md`.
 
@@ -19,7 +21,7 @@ The risk layer of this repository already measures what tokenized stocks cost to
 Before you write code:
 1. Confirm `git branch --show-current` prints `risk-analytics` and that you are in the worktree. Step 11 (the oracle standard) is built on `risk` through item 6 and merged into this branch on 2026-10-02; `risk` is in a pull request into `staging`. Do not `cd` to the main checkout, and do not edit `docs/risk/PLAN-RISK.md` or `docs/risk/STATE-RISK.md` here: changes to them go through `risk`.
 2. Read `docs/risk/PLAN-ANALYTICS.md` in full, then `docs/risk/PLAN-RISK.md` §4 and Appendix A (the methods you build on), and `CLAUDE.md`.
-3. Read the code the item extends, as files, not summaries. For items 1–7: `packages/schemas/src/liquidity.ts`, `packages/risk/src/provider.ts`, `assess.ts`, `curves.ts`, `time.ts`, `pools/simulate.ts`, `scripts/risk/collector/pools.ts` (read only: `build` and `writeRoutedCurves`), `scripts/risk/compute.ts`, `apps/api/src/liquidity.ts`. For items 8–10: `packages/risk/src/lending/report.ts`, `scripts/risk/lending-report.ts`, `packages/db/src/risk-schema.ts`. For item 11: `apps/api/src/routes/risk.ts`, `apps/risk-api/`.
+3. Read the code the item extends, as files, not summaries. For items 1–7: `packages/schemas/src/liquidity.ts`, `packages/risk/src/provider.ts`, `assess.ts`, `curves.ts`, `time.ts`, `pools/simulate.ts`, `scripts/risk/collector/pools.ts` (read only: `build` and `writeRoutedCurves`), `scripts/risk/compute.ts`, `apps/api/src/liquidity.ts`. For items 8–10: `packages/risk/src/lending/report.ts`, `scripts/risk/lending-report.ts`, `packages/db/src/risk-schema.ts`. For item 11: `apps/api/src/routes/risk.ts`, `apps/risk-api/`. For item 18: `scripts/risk/collector/install.sh`, `risk-job.plist` and `refresh.ts` (read only, the recipe to copy), `scripts/risk/lib-lending.ts`, `split-snapshot.ts`, `facts/cost-breakdown.ts`, `facts/freeze-split-fixture.ts`, `facts/import-lending.ts`, the first 80 and last 20 lines of `lending-report.ts`, and the installed plists in `~/Library/LaunchAgents/com.colosseum.risk-*.plist` (read only).
 4. If an earlier item the item depends on is not `done` in §7, or a decision it needs (§6) has no default, stop and tell me what blocks it.
 5. Say in two lines what you will build and how the item's check will be proven.
 
@@ -40,6 +42,7 @@ While you work:
 - For item 2, reproduce each bug with a failing test before fixing it. If it does not reproduce, record that and move on.
 - For item 3, the test that matters: the router reproduces the collector's stored routed row of the same run to 1e-9, and the four cost parts sum to the total.
 - For items 8–9, the earlier coverage ratio must stay in the report unchanged, beside the new one.
+- For item 18: the installer is run by the session only with `COLOSSEUM_HOME` set to a temporary folder (and `--no-load`); never against `~/.colosseum/risk`, and never `launchctl load`. The bundles are proven from a temporary working directory outside the repo (18.5), timed with `/usr/bin/time -l`. If the Kamino SDK does not bundle, stop and report before building the fallback. The two repo folders that become symlinks (`data/risk/split`, `data/risk/lending-history/report`) are changed by the founder's real run, not by the session; the session's temporary run shows the moves it would make.
 - If the item cannot close, stop at a clean commit, mark it `in-progress` with what remains, and say so.
 
 When done:
