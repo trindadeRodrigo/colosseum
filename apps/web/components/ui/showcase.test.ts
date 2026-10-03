@@ -31,9 +31,10 @@ const BUILT = [
   'composer',
   'compact-nav',
   'embed-shell',
+  'subscribe-block',
   'token-mapping',
 ];
-const NOT_BUILT = ['subscribe-block', 'bearing-heatmap-tile', 'goal-showcase-case', 'joint-stage'];
+const NOT_BUILT = ['bearing-heatmap-tile', 'goal-showcase-case', 'joint-stage'];
 
 describe('the showcase (/dev/ui)', () => {
   it('accounts for every component spec: built and shown, or listed as not built', () => {
@@ -42,6 +43,10 @@ describe('the showcase (/dev/ui)', () => {
       .map((name) => name.replace(/\.md$/, ''));
     expect(specs).toHaveLength(19);
     expect([...BUILT, ...NOT_BUILT].sort()).toEqual(specs.sort());
+  });
+
+  it('says which specs are not built', () => {
+    for (const name of NOT_BUILT) expect(text(page)).toContain(`${name}.md`);
   });
 
   it('has one section per built spec, under the name of the spec', () => {
@@ -100,11 +105,11 @@ describe('the showcase (/dev/ui)', () => {
     }
   });
 
-  it('spends the serif only where a spec does: the goal sentence, the wordmark, the type specimen', () => {
+  it('spends the serif only where a spec does: the goal sentence, the wordmark, a marketing heading, the type specimen', () => {
     const serif = all(page, (el) => classes(el).includes('font-display'));
     for (const el of serif) {
       const home = closest(el, (e) =>
-        ['goal-card', 'compact-nav'].includes(e.attrs['data-ui'] ?? ''),
+        ['goal-card', 'compact-nav', 'subscribe-block'].includes(e.attrs['data-ui'] ?? ''),
       );
       const specimen = closest(el, (e) => e.tag === 'figure' && text(e).startsWith('type'));
       expect(home !== null || specimen !== null, text(el)).toBe(true);

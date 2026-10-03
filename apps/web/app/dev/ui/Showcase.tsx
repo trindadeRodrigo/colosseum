@@ -44,6 +44,7 @@ import { MockFrame, MockPlate, StalePlate } from '../../../components/ui/MockPla
 import { PlanLegs } from '../../../components/ui/PlanLegs';
 import { ProvenancePin } from '../../../components/ui/ProvenancePin';
 import { Status, StatusBadge } from '../../../components/ui/StatusMark';
+import { SubscribeBlock, type SubscribeStatus } from '../../../components/ui/SubscribeBlock';
 
 // The showcase of the design system: every primitive in every state, light beside dark, with the name
 // of its spec. Development only (see page.dev.tsx). Everything on it is made up, and every panel says
@@ -229,6 +230,25 @@ function PlanLock() {
         Replay
       </Button>
     </div>
+  );
+}
+
+const SUBSCRIBE_OPTIONS = [
+  { id: 'updates', label: 'Product updates', defaultChecked: true },
+  { id: 'newsletter', label: 'Newsletter' },
+];
+
+function Subscribe({ status }: { status: SubscribeStatus }) {
+  return (
+    <SubscribeBlock
+      eyebrow="Follow along"
+      heading="Built piece by piece. Watch it come together."
+      lede="Product updates as new pieces are cut, and a short letter now and then. No hype, no price calls."
+      options={SUBSCRIBE_OPTIONS}
+      status={status}
+      placeholder="you@example.com"
+      onSubmit={noop}
+    />
   );
 }
 
@@ -1026,6 +1046,54 @@ export function Showcase() {
           <EmbedShell label="Plan by tenonfi" state="unavailable" />
         </Specimen>
       </Section>
+      <Section
+        spec="subscribe-block.md"
+        title="Subscribe block (marketing)"
+        note="The one centred composition. The field is the composer, on one line; the page works out the status and this block says it. The photograph is the page’s to supply and is not shown here."
+      >
+        <Specimen state="rest" wide>
+          <Subscribe status="rest" />
+        </Specimen>
+        <Specimen state="invalid email">
+          <Subscribe status="invalid-email" />
+        </Specimen>
+        <Specimen state="no option ticked">
+          <Subscribe status="no-option" />
+        </Specimen>
+        <Specimen state="submitting">
+          <Subscribe status="submitting" />
+        </Specimen>
+        <Specimen state="success">
+          <Subscribe status="success" />
+        </Specimen>
+        <Specimen state="already on the list">
+          <Subscribe status="already" />
+        </Specimen>
+        <Specimen state="server error">
+          <Subscribe status="error" />
+        </Specimen>
+      </Section>
+
+      <div className="tf-app light border-t border-border px-6 py-10">
+        <h2 className="text-h3 font-semibold">Not built</h2>
+        <ul className="mt-3 flex max-w-(--tf-measure-body) list-disc flex-col gap-2 pl-5 text-body-sm">
+          <li>
+            bearing-heatmap-tile.md: it needs the condensed face, which is loaded with the first
+            Bearing screen, and a decision on how a cell with no sample is drawn.
+          </li>
+          <li>
+            goal-showcase-case.md: a marketing composite that needs photographs and a chart that has
+            no spec of its own yet.
+          </li>
+          <li>
+            joint-stage.md: the 3D hero. It needs the joint’s model and the final logo artwork.
+          </li>
+          <li>
+            mock-plate.md, the code placement: the API serves its own docs, so nothing in this app
+            shows a code example.
+          </li>
+        </ul>
+      </div>
     </div>
   );
 }

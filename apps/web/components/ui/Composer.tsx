@@ -56,6 +56,8 @@ export type ComposerProps = {
   busy?: boolean;
   /** The request failed. A sentence that says what to do. The typed text is kept. */
   error?: string;
+  /** Marks the box as in error when the sentence is shown elsewhere (the subscribe block's status line). */
+  invalid?: boolean;
   disabled?: boolean;
   /**
    * `multiline` grows from one line to five. `single` is one line of input: the subscribe field.
@@ -70,6 +72,8 @@ export type ComposerProps = {
    * it is the arrow again, with the word as its name.
    */
   sendText?: string;
+  /** For `single` with `sendText`: the word on the button while busy ("Subscribing…"). */
+  busySendText?: string;
   /** The language of what is typed. */
   lang?: string;
   labels?: Partial<ComposerLabels>;
@@ -93,6 +97,8 @@ export function Composer({
   autoComplete,
   name,
   sendText,
+  busySendText,
+  invalid = false,
   lang,
   labels,
   className,
@@ -159,7 +165,7 @@ export function Composer({
         className={cn(
           'flex min-h-13 cursor-text gap-2 rounded-composer border bg-card py-2 pr-2 pl-4 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring',
           variant === 'single' ? 'items-center' : 'items-end',
-          error ? 'border-destructive' : disabled ? 'border-border' : 'border-input',
+          error || invalid ? 'border-destructive' : disabled ? 'border-border' : 'border-input',
         )}
       >
         {variant === 'single' ? (
@@ -175,7 +181,7 @@ export function Composer({
             readOnly={busy}
             disabled={disabled}
             aria-describedby={describedBy || undefined}
-            aria-invalid={error ? true : undefined}
+            aria-invalid={error || invalid ? true : undefined}
             className={cn(control, 'h-9')}
           />
         ) : (
@@ -204,6 +210,7 @@ export function Composer({
           data-ui="composer-send"
           aria-label={text.send}
           aria-disabled={inert || undefined}
+          aria-busy={busy || undefined}
           tabIndex={disabled ? -1 : undefined}
           className={cn(
             'grid h-9 shrink-0 place-items-center rounded-round transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
@@ -214,7 +221,14 @@ export function Composer({
             !inert && 'cursor-pointer hover:bg-primary-hover active:bg-primary-pressed',
           )}
         >
-          {busy ? (
+          {busy && wordy && busySendText ? (
+            <span
+              aria-hidden="true"
+              className="px-3 text-[0.9375rem]/5 font-medium min-[520px]:px-0"
+            >
+              {busySendText}
+            </span>
+          ) : busy ? (
             <LatticeGlyph size={20} tone="current" />
           ) : wordy ? (
             <>
@@ -236,9 +250,11 @@ export function Composer({
           {hint}
         </p>
       )}
-      <p role="status" className={busy ? 'text-caption text-muted-foreground' : 'sr-only'}>
-        {busy ? text.busy : ''}
-      </p>
+      {text.busy !== '' && (
+        <p role="status" className={busy ? 'text-caption text-muted-foreground' : 'sr-only'}>
+          {busy ? text.busy : ''}
+        </p>
+      )}
       {error && (
         <p
           id={errorId}

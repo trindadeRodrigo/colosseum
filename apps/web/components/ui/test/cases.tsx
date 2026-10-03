@@ -42,6 +42,7 @@ import { MockFrame, MockPlate, StalePlate } from '../MockPlate';
 import { PlanLegs } from '../PlanLegs';
 import { type PinSource, ProvenancePin } from '../ProvenancePin';
 import { Status, StatusBadge, StatusMark } from '../StatusMark';
+import { SubscribeBlock } from '../SubscribeBlock';
 
 // What the tests render. The test files are plain .ts (the root vitest config picks up *.test.ts
 // only), so the JSX lives here.
@@ -549,4 +550,44 @@ export const embed = {
   ),
   loading: <EmbedShell label="Plan by tenonfi" state="loading" />,
   unavailable: <EmbedShell label="Plan by tenonfi" state="unavailable" />,
+};
+
+const OPTIONS = [
+  { id: 'updates', label: 'Product updates', defaultChecked: true },
+  { id: 'newsletter', label: 'Newsletter' },
+];
+const subscribeBlock = (status: Parameters<typeof SubscribeBlock>[0]['status']) => (
+  <SubscribeBlock
+    eyebrow="Follow along"
+    heading="Built piece by piece. Watch it come together."
+    lede="Product updates as new pieces are cut, and a short letter now and then. No hype, no price calls."
+    options={OPTIONS}
+    status={status}
+    placeholder="you@example.com"
+    onSubmit={noop}
+  />
+);
+
+export const subscribe = {
+  rest: subscribeBlock('rest'),
+  invalid: subscribeBlock('invalid-email'),
+  noOption: subscribeBlock('no-option'),
+  submitting: subscribeBlock('submitting'),
+  success: subscribeBlock('success'),
+  already: subscribeBlock('already'),
+  error: subscribeBlock('error'),
+  withPhoto: (
+    <SubscribeBlock
+      eyebrow="Follow along"
+      heading="Built piece by piece."
+      lede="A short letter now and then."
+      photo={{
+        src: '/sample.jpg',
+        alt: 'Stacked offset beams against a forest',
+        caption: 'stacked offset beams · reference photo',
+      }}
+      options={OPTIONS}
+      onSubmit={noop}
+    />
+  ),
 };
