@@ -634,6 +634,23 @@ describe('Solana reader: vaults', () => {
     expect((await reader.getVault(vault.address))?.keeper).toBe(names.guardian);
   });
 
+  it('reads the balance of an unlisted mint it cannot decode under the token program that owns it', async () => {
+    // SPYx is a Token-2022 mint. Off the app's list, and with bytes that are no mint, it still says by
+    // its owner where the vault's account of it is.
+    const withoutSpyx = assetsOf(fixture).filter((a) => a.id !== assetId('spyx'));
+    const mint = accountOf(fixture, 'mint:spyx');
+    const broken = { ...mint, data: new Uint8Array(7) };
+    const { reader } = world({
+      assets: withoutSpyx,
+      edit: (node) => node.accounts.set(mint.address, broken),
+    });
+    const following = await reader.getVault(names.vaults.following);
+    expect(
+      following?.positions.find((p) => p.asset === unlistedAssetId(names.mints.spyx as Address))
+        ?.raw,
+    ).toBe(fixture.expected.vaults.following.held.spyx);
+  });
+
   it('reads a target on a mint that is not listed under its mint, and refuses one on the cash token', async () => {
     const withoutGold = assetsOf(fixture).filter((a) => a.id !== assetId('gold'));
     const { reader } = world({ assets: withoutGold });

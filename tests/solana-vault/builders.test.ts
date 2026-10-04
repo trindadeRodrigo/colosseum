@@ -6,6 +6,8 @@ import {
   type Composed,
   createTokenAccountInstruction,
   MAX_TRANSACTION_BYTES,
+  TOKEN_PROGRAM,
+  unlistedAssetId,
 } from '@colosseum/chain-solana/vault';
 import { type BuiltTx, ChainError } from '@colosseum/schemas';
 import {
@@ -15,7 +17,7 @@ import {
   lamports,
 } from '@solana/kit';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { freezeAccount, priceAccountBytes } from './admin';
+import { createAccount, freezeAccount, initMint, MINT_BYTES, priceAccountBytes } from './admin';
 import { buildContractWorld, type ContractWorld, id, newKey, priceEntries } from './contract-world';
 import { BASKET_PROGRAM, createSvmNode, MOCK_ROUTER_PROGRAM, PROGRAMS_BUILT } from './svm-node';
 
@@ -264,6 +266,44 @@ describe.skipIf(!PROGRAMS_BUILT)('the Solana builders, in LiteSVM with the real 
     expect(c.unitsConsumed).toBeGreaterThan(three.unitsConsumed + 10_000);
     const sync = await w.adapter.buildSyncBalances(vault);
     measure('sync of 16 balances, by the keeper', sync);
+  });
+
+  it('never buys a token the app does not list into a vault, nor quotes it', async () => {
+    const f = w.fixture;
+    // A real mint the app does not list.
+    const mint = await newKey();
+    const { deployer } = w.keys;
+    await w.run(
+      deployer,
+      [
+        createAccount({
+          payer: deployer.address,
+          account: mint.address,
+          lamports: 10_000_000n,
+          space: MINT_BYTES,
+          owner: TOKEN_PROGRAM,
+        }),
+        initMint({
+          mint: mint.address,
+          tokenProgram: TOKEN_PROGRAM,
+          decimals: 6,
+          authority: deployer.address,
+        }),
+      ],
+      [mint],
+    );
+    const unlisted = unlistedAssetId(mint.address);
+    const buy = { sell: id('cash'), buy: unlisted, amountInRaw: '1000000' };
+    for (const work of [
+      w.adapter.buildOwnerSwap({ vault: f.vault, trades: [buy], slippageBps: 100 }),
+      w.adapter.quote(buy, f.owner),
+    ]) {
+      const outcome = await work.then(
+        () => 'built',
+        (e: unknown) => e,
+      );
+      expect((outcome as ChainError).code).toBe('MintNotAccepted');
+    }
   });
 
   it('withdraws every token it can when one cannot move, and says why for that one', async () => {

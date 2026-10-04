@@ -479,9 +479,9 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
   }
 
   /**
-   * Reads the mints of the vaults' targets that the app does not list into the snapshot. A mint that is
-   * gone (a Token-2022 mint can be closed once nothing of it is left) is read as the program's list has
-   * it, holding nothing.
+   * Reads the mints of the vaults' targets that the app does not list into the snapshot. A mint that
+   * cannot be decoded keeps the token program that owns it; one that is gone (a Token-2022 mint can be
+   * closed once nothing of it is left) is read as the program's list has it, holding nothing.
    */
   async function addUnlistedMints(vaults: VaultAccount[], snap: Snapshot): Promise<void> {
     const unlisted = [...new Set(vaults.flatMap((v) => v.positions.map((p) => p.mint)))].filter(
@@ -492,18 +492,20 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
     unlisted.forEach((mint, i) => {
       const account = accounts[i];
       const entry = snap.registry?.assets.find((e) => e.mint === mint);
+      const owner = account && isTokenProgram(account.owner) ? account.owner : null;
       let info: MintInfo | null = null;
-      if (account && isTokenProgram(account.owner)) {
+      if (account && owner) {
         try {
-          info = decodeMint(account.owner, account.data);
+          info = decodeMint(owner, account.data);
         } catch {
           info = null;
         }
       }
+      // A mint it cannot decode still says, by its owner, which program its token accounts are under.
       snap.mints.set(
         mint,
         info ?? {
-          tokenProgram: TOKEN_PROGRAM,
+          tokenProgram: owner ?? TOKEN_PROGRAM,
           decimals: entry?.decimals ?? 0,
           scaledUiAmount: null,
           hookProgram: null,

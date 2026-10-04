@@ -427,6 +427,14 @@ export function createSolanaVaultAdapter(options: SolanaVaultAdapterOptions): So
     return { routed, tables };
   }
 
+  /**
+   * What a trade may buy: the chain's cash or a listed asset. A token the app does not list may be sold
+   * out of a vault, never bought into one (the program refuses it too).
+   */
+  const buyable = (id: AssetId) => {
+    if (!byId.has(id)) refuse('MintNotAccepted', `${id} is not a listed asset: it is not bought`);
+  };
+
   /** Both sides of a trade inside a vault, as the vault holds them. */
   async function sidesOf(vault: Address, t: Trade): Promise<SwapSides> {
     const [sell, buy] = [mintOf(t.sell), mintOf(t.buy)];
@@ -623,6 +631,7 @@ export function createSolanaVaultAdapter(options: SolanaVaultAdapterOptions): So
         if (a.trades.length > reader.capabilities.maxTradesPerTx)
           refuse('TooManyTrades', 'a Solana transaction carries one trade');
         const t = a.trades[0] as Trade;
+        buyable(t.buy);
         const vault = solanaAddress(a.vault, 'vault');
         const amount = amountOf(t.amountInRaw, 'amountInRaw');
         const chain = await chainNow([vault]);
@@ -963,6 +972,7 @@ export function createSolanaVaultAdapter(options: SolanaVaultAdapterOptions): So
         const t = input(Trade, tradeArg, 'trade');
         const taker = solanaAddress(takerArg, 'taker');
         const amount = amountOf(t.amountInRaw, 'amountInRaw');
+        buyable(t.buy);
         if (!routes)
           return refuse('RouterNotAllowed', `no router is set for Solana on ${config.networkName}`);
         const [sell, buy] = [mintOf(t.sell), mintOf(t.buy)];
