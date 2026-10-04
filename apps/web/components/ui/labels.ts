@@ -5,12 +5,15 @@
 // not a component.
 
 export type ComposerLabels = {
-  /** The name of the send button: "Fit it". A button that shows a word is named by that word instead. */
-  send: string;
+  /**
+   * The name of the button that sends what was typed: "Fit it". A button that shows a word is named
+   * by that word instead.
+   */
+  submit: string;
   /** Said while the text is being read: "Reading your goal…". */
   busy: string;
 };
-export const COMPOSER_LABELS: ComposerLabels = { send: 'Fit it', busy: 'Reading your goal…' };
+export const COMPOSER_LABELS: ComposerLabels = { submit: 'Fit it', busy: 'Reading your goal…' };
 
 export type ConstraintSheetLabels = {
   title: string;
@@ -18,29 +21,45 @@ export type ConstraintSheetLabels = {
   /** The error summary. `{n}` is the number of things to fix. */
   summaryOne: string;
   summaryOther: string;
+  /** The same, for fields with nothing in them yet: they are missing, they do not "not fit". */
+  missingOne: string;
+  missingOther: string;
   goToField: string;
   build: string;
   building: string;
   /** Under a blocked button. `{n}` is the number of fields. */
   fixOne: string;
   fixOther: string;
+  /** The same, when every field in question is only empty. */
+  fillOne: string;
+  fillOther: string;
   reading: string;
   noPlan: string;
   editSheet: string;
+  /** In the hint of a field the person changed after the goal was read. */
+  edited: string;
+  /** Read once by a screen reader after the word MOCK, when the reading is not a live one. */
+  mockAnnounce: string;
 };
 export const CONSTRAINT_SHEET_LABELS: ConstraintSheetLabels = {
   title: 'How we read your goal',
   parser: 'parser',
   summaryOne: '1 thing doesn’t fit yet. Fix it to build the plan.',
   summaryOther: '{n} things don’t fit yet. Fix them to build the plan.',
+  missingOne: '1 thing is still missing. Fill it in to build the plan.',
+  missingOther: '{n} things are still missing. Fill them in to build the plan.',
   goToField: 'Go to field',
   build: 'Build my plan',
   building: 'Building your plan…',
   fixOne: 'Fix the field above to continue.',
   fixOther: 'Fix the {n} fields above to continue.',
+  fillOne: 'Fill in the field above to continue.',
+  fillOther: 'Fill in the {n} fields above to continue.',
   reading: 'Reading your goal…',
   noPlan: 'No plan fits these limits.',
   editSheet: 'Edit sheet',
+  edited: 'edited',
+  mockAnnounce: ': sample data, not live',
 };
 
 export type CompactNavLabels = { skip: string; main: string; menu: string };

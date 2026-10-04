@@ -1,6 +1,6 @@
 'use client';
 import type { Provenance } from '@colosseum/schemas';
-import { useId, useRef } from 'react';
+import { type ReactNode, useId, useRef } from 'react';
 import { Button } from './Button';
 import { cn } from './cn';
 import { Field, Input, Select, Textarea } from './Field';
@@ -49,6 +49,18 @@ export type SheetField = {
 
 export type SheetGroup = { legend: string; fields: readonly SheetField[] };
 
+/**
+ * Something the sheet states and the person does not set on it: the chain their plan lives on, which
+ * is their wallet's. It is shown with the limits and is not a field.
+ */
+export type SheetFact = {
+  label: string;
+  /** The value, in words, with whatever goes beside it: a MOCK plate, a link to where it is set. */
+  value: ReactNode;
+  /** One sentence under it. */
+  note?: string;
+};
+
 export type SheetSource = {
   /** How the goal was read: "llm-v3", "rules-v1". */
   method: string;
@@ -65,6 +77,12 @@ type Common = {
   goalText?: string;
   source?: SheetSource;
   groups: readonly SheetGroup[];
+  /** What the sheet states beside its fields: under the title, in edit mode and in read mode. */
+  facts?: readonly SheetFact[];
+  /** The id of the sheet in the page, for a link that leads to it ("Edit limits"). */
+  id?: string;
+  /** The level of its title in the page outline: 2 right under the page's heading, 3 inside a section. */
+  level?: 2 | 3;
   labels?: Partial<ConstraintSheetLabels>;
   className?: string;
 };
@@ -112,16 +130,18 @@ function shown(field: SheetField): string {
 }
 
 export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
-  const { goalText, source, groups, labels, className } = props;
+  const { goalText, source, groups, facts, id, level = 3, labels, className } = props;
+  const Title = `h${level}` as 'h2' | 'h3';
   const text = { ...CONSTRAINT_SHEET_LABELS, ...labels };
   const summary = useRef<HTMLDivElement>(null);
   const fixId = useId();
+  const summaryId = useId();
   const when = source ? isoUtc(source.fetchedAt) : null;
 
   const head = (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 className="text-h4 font-semibold">{text.title}</h3>
+        <Title className="text-h4 font-semibold">{text.title}</Title>
         {source && (
           <p className="flex flex-wrap items-center gap-2 font-mono text-source text-muted-foreground">
             <span>
@@ -129,11 +149,22 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
               {source.model ? ` (${source.model})` : ''}
               {when ? ` · ${when}` : ''}
             </span>
-            {source.provenance !== 'live' && <MockPlate />}
+            {source.provenance !== 'live' && <MockPlate labels={{ announce: text.mockAnnounce }} />}
           </p>
         )}
       </div>
       {goalText && <p className="text-body-sm text-muted-foreground">“{goalText}”</p>}
+      {facts && facts.length > 0 && (
+        <dl data-ui="sheet-facts" className="mt-2 flex flex-col gap-3">
+          {facts.map((fact) => (
+            <div key={fact.label} className="flex flex-col gap-0.5">
+              <dt className="text-caption font-medium text-foreground">{fact.label}</dt>
+              <dd className="text-body">{fact.value}</dd>
+              {fact.note && <dd className="text-caption text-muted-foreground">{fact.note}</dd>}
+            </div>
+          ))}
+        </dl>
+      )}
     </div>
   );
   const frame = cn(
@@ -143,7 +174,7 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
 
   if (props.mode === 'read')
     return (
-      <section data-ui="constraint-sheet" data-mode="read" className={frame}>
+      <section id={id} data-ui="constraint-sheet" data-mode="read" className={frame}>
         {head}
         {groups.map((group) => (
           <div key={group.legend}>
@@ -174,7 +205,7 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
 
   if (state === 'parsing')
     return (
-      <section data-ui="constraint-sheet" data-state="parsing" className={frame}>
+      <section id={id} data-ui="constraint-sheet" data-state="parsing" className={frame}>
         {head}
         <LatticeStatus label={text.reading} />
       </section>
@@ -183,6 +214,10 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
   const every = [...groups.flatMap((g) => g.fields), ...(capital ? [capital] : [])];
   const wrong = every.filter((field) => field.error);
   const count = wrong.length + otherIssues.length;
+  // A field with nothing in it yet is missing: it has not been found not to fit. Right after a goal
+  // is read, what the reader left empty is said that way.
+  const missing = wrong.filter((field) => field.value.trim() === '').length;
+  const unfit = count - missing;
   const solving = state === 'solving';
   const blocked = count > 0 || valid === null;
   const plural = (one: string, other: string, n: number) =>
@@ -199,6 +234,7 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
         hint={[field.hint, field.caption].filter(Boolean).join(' ') || undefined}
         error={field.error}
         edited={field.edited}
+        labels={{ edited: text.edited }}
       >
         {(wired) =>
           field.kind === 'select' && solving ? (
@@ -248,6 +284,7 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
   return (
     <div className="flex flex-col gap-4">
       <section
+        id={id}
         data-ui="constraint-sheet"
         data-state={state}
         aria-busy={solving || undefined}
@@ -258,6 +295,7 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
         {count > 0 && (
           <div
             ref={summary}
+            id={summaryId}
             tabIndex={-1}
             role="alert"
             data-ui="sheet-errors"
@@ -265,7 +303,14 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
           >
             <p className="flex items-start gap-2 text-body-sm font-medium">
               <StatusMark status="off-track" size={12} className="mt-1.5" />
-              <span>{plural(text.summaryOne, text.summaryOther, count)}</span>
+              <span>
+                {[
+                  missing > 0 ? plural(text.missingOne, text.missingOther, missing) : null,
+                  unfit > 0 ? plural(text.summaryOne, text.summaryOther, unfit) : null,
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              </span>
             </p>
             <ul className="mt-2 flex list-disc flex-col gap-1 pl-9 text-body-sm">
               {wrong.map((field) => (
@@ -303,7 +348,11 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
               busy={solving}
               busyLabel={text.building}
               disabled={blocked && !solving}
-              aria-describedby={blocked && count > 0 ? fixId : undefined}
+              // What blocks the build is said where the button can point to it: the line under
+              // it while fields are wrong, the list above when what blocks is not a field.
+              aria-describedby={
+                blocked && count > 0 ? (wrong.length > 0 ? fixId : summaryId) : undefined
+              }
               onDisabledClick={() => summary.current?.focus()}
               onClick={() => {
                 // The button refuses a click while it is disabled or busy. This is the sheet's own
@@ -314,9 +363,11 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
             >
               {text.build}
             </Button>
-            {blocked && count > 0 && (
+            {blocked && wrong.length > 0 && (
               <p id={fixId} className="text-caption text-muted-foreground">
-                {plural(text.fixOne, text.fixOther, wrong.length || count)}
+                {missing === wrong.length
+                  ? plural(text.fillOne, text.fillOther, wrong.length)
+                  : plural(text.fixOne, text.fixOther, wrong.length)}
               </p>
             )}
             <p role="status" className="sr-only">

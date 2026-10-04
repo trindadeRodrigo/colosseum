@@ -1,6 +1,6 @@
 import { createElement, isValidElement } from 'react';
 import { describe, expect, it } from 'vitest';
-import { Showcase } from '../../app/dev/ui/Showcase';
+import { Showcase } from '../../app/(app)/dev/ui/Showcase';
 import * as cases from './test/cases';
 import { read, sourceFiles } from './test/css';
 import { classTokens } from './test/forbidden';
@@ -100,7 +100,7 @@ describe('a screen cannot reach half of the MOCK mark', () => {
   );
 
   it('reads every file of the app that is not a primitive, the showcase among them', () => {
-    expect(outside).toContain('app/dev/ui/Showcase.tsx');
+    expect(outside).toContain('app/(app)/dev/ui/Showcase.tsx');
     expect(outside.length).toBeGreaterThan(10);
   });
 

@@ -17,9 +17,18 @@ export async function StatsCard() {
   try {
     s = await apiGet<Stats>('/stats');
   } catch {
-    return null;
+    s = null;
   }
-  if (!s) return null;
+  // When the server does not answer for /stats, the card says so in place of the numbers.
+  if (!s)
+    return (
+      <section>
+        <h2 className="font-semibold">Live on mainnet</h2>
+        <p className="mt-1 text-sm text-gray-600">
+          These numbers are not available on this server right now.
+        </p>
+      </section>
+    );
   const cell = (label: string, value: string | number) => (
     <div key={label} className="rounded border border-gray-200 p-3">
       <div className="text-xs text-gray-500">{label}</div>

@@ -69,6 +69,22 @@ describe('Card (card.md)', () => {
     expect(body.parent?.children[0]).toBe(body);
   });
 
+  it('says the plate’s hidden words as it is told to, and a note under it for everyone to read', () => {
+    const told = root(card.mockNoted);
+    expect(text(one(told.tree, ui('mock-plate')))).toBe('MOCK: dados de exemplo');
+    expect(text(one(told.tree, ui('mock-note')))).toBe('rede de teste');
+    // still the one band and the one plate, and the note is not on the hatch
+    expect(all(told.card, ui('hatch-band'))).toHaveLength(1);
+    expect(all(told.tree, ui('mock-plate'))).toHaveLength(1);
+    expect(all(told.tree, (e) => classes(e).includes('tf-hatch') && text(e) !== '')).toHaveLength(
+      0,
+    );
+    // with no note, no note
+    const plain = root(card.mockTold);
+    expect(all(plain.tree, ui('mock-note'))).toHaveLength(0);
+    expect(text(one(plain.tree, ui('mock-plate')))).toBe('MOCK: dados de exemplo');
+  });
+
   it('has square corners as a table panel', () => {
     expect(classes(root(card.table).card)).toContain('rounded-none');
   });
