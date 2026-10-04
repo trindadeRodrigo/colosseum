@@ -397,7 +397,13 @@ describe('the test-network set-up, on a network that differs from its config', (
   });
   const run = (
     file: ReturnType<typeof config>,
-    options: { omit?: string[]; previous?: Deployment; log?: (line: string) => void } = {},
+    options: {
+      omit?: string[];
+      previous?: Deployment;
+      guardIds?: Record<string, string>;
+      requireIds?: boolean;
+      log?: (line: string) => void;
+    } = {},
   ) =>
     setUp(liteChain(svm), admin, planOf(file), {
       dryRun: false,
@@ -405,6 +411,8 @@ describe('the test-network set-up, on a network that differs from its config', (
       withLookupTable: false,
       omitExtensions: options.omit ?? omitted,
       previous: options.previous ?? null,
+      guardIds: options.guardIds ?? {},
+      requireIds: options.requireIds ?? false,
     });
 
   beforeAll(async () => {
@@ -492,6 +500,52 @@ describe('the test-network set-up, on a network that differs from its config', (
     expect((await readAssets(svm)).assets.find((e) => e.mint === tsla.mint)?.flags).toBe(
       ASSET_KEEPER,
     );
+  });
+
+  it("names a dropped token from the guard's file when there is no earlier record", async () => {
+    const full = await run(config(null));
+    const tsla = full.deployment.assets.find((a) => a.id === 'solana:tslax') as DeployedAsset;
+    const guardIds = Object.fromEntries(
+      Object.entries(guardSolanaEntry(full.deployment).assets).map(([id, a]) => [a.mint, id]),
+    );
+    const fewer = config(null);
+    fewer.tokens = fewer.tokens.filter((t: { id: string }) => t.id !== 'solana:tslax');
+    const dropped = await run(fewer, { guardIds, requireIds: true });
+    expect(dropped.transactions).toBe(1);
+    expect(dropped.deployment.retired).toEqual([
+      {
+        id: 'solana:tslax',
+        symbol: null,
+        mint: tsla.mint,
+        tokenProgram: 'token-2022',
+        keeperOn: false,
+      },
+    ]);
+    expect(guardSolanaEntry(dropped.deployment).assets['solana:tslax']).toEqual({
+      mint: tsla.mint,
+      tokenProgram: 'token-2022',
+    });
+    expect((await run(config(null))).transactions).toBe(1);
+  });
+
+  it('refuses on devnet, before sending anything, a dropped token nothing names; a local run goes on', async () => {
+    const full = await run(config(null));
+    const tsla = full.deployment.assets.find((a) => a.id === 'solana:tslax') as DeployedAsset;
+    const fewer = config(null);
+    fewer.tokens = fewer.tokens.filter((t: { id: string }) => t.id !== 'solana:tslax');
+    const printed: string[] = [];
+    await expect(
+      run(fewer, { requireIds: true, log: (line) => printed.push(line) }),
+    ).rejects.toThrow(`the asset list holds ${tsla.mint}, which the config does not list`);
+    expect(printed.some((line) => line.startsWith('#'))).toBe(false);
+    expect((await readAssets(svm)).assets.find((e) => e.mint === tsla.mint)?.flags).toBe(
+      ASSET_KEEPER,
+    );
+    // A local run switches it off and records it with no id.
+    const local = await run(fewer);
+    expect(local.transactions).toBe(1);
+    expect(local.deployment.retired).toMatchObject([{ id: null, mint: tsla.mint }]);
+    expect((await run(config(null))).transactions).toBe(1);
   });
 });
 

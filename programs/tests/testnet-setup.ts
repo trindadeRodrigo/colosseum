@@ -74,11 +74,23 @@ async function main(): Promise<void> {
     ? JSON.parse(readFileSync(outPath, 'utf8'))
     : null;
   const previous = earlier && earlier.genesisHash === genesis ? earlier : null;
+  // The guard's file is one per network and holds an entry per chain: this writes Solana's and
+  // leaves any other chain's as it is. Read first, since it names every token it lets owners hold.
+  const network = devnet ? 'testnet' : 'local';
+  const held = existsSync(guardPath) ? JSON.parse(readFileSync(guardPath, 'utf8')) : null;
+  if (held && (held.format !== 'guard-deployment/1' || held.network !== network))
+    throw new Error(
+      `${guardFile} is not the guard's file for the ${network} network: left as it is`,
+    );
+  const guardAssets: Record<string, { mint: string }> = held?.chains?.solana?.assets ?? {};
   const { transactions, deployment } = await setUp(chain, admin, plan, {
     dryRun,
     log,
     lookupTable: previous?.accounts.lookupTable ?? null,
     previous,
+    guardIds: Object.fromEntries(Object.entries(guardAssets).map(([id, a]) => [a.mint, id])),
+    // On devnet a token the guard's file loses is one its owners cannot withdraw through the app.
+    requireIds: devnet,
     withLookupTable: !flag('--no-lookup-table'),
     omitExtensions: values('--omit-extension'),
   });
@@ -97,14 +109,6 @@ async function main(): Promise<void> {
       ? `wrote the record of the deployment: ${out}`
       : `the record of the deployment is unchanged: ${out}`,
   );
-  // The guard's file is one per network and holds an entry per chain: this writes Solana's and
-  // leaves any other chain's as it is.
-  const network = devnet ? 'testnet' : 'local';
-  const held = existsSync(guardPath) ? JSON.parse(readFileSync(guardPath, 'utf8')) : null;
-  if (held && (held.format !== 'guard-deployment/1' || held.network !== network))
-    throw new Error(
-      `${guardFile} is not the guard's file for the ${network} network: left as it is`,
-    );
   const guard = {
     format: 'guard-deployment/1',
     network,

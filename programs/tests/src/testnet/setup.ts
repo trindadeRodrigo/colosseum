@@ -100,6 +100,10 @@ export type SetupOptions = {
   omitExtensions?: string[];
   /** The record an earlier run wrote, to name a token the config no longer lists. */
   previous?: Deployment | null;
+  /** The asset id of each mint in the guard's file, by mint: the other place such a token is named. */
+  guardIds?: Record<string, string>;
+  /** Refuse, before sending anything, a listed mint the config drops that neither names. */
+  requireIds?: boolean;
 };
 
 export type DeployedToken = {
@@ -419,6 +423,24 @@ export async function setUp(
   const mints = new Map<string, Address>();
   for (const token of all) mints.set(token.id, await mintAddress(admin.address, token));
   const mintOf = (token: TokenPlan) => mints.get(token.id) as Address;
+
+  // A token the asset list holds and the config no longer names keeps its asset id from the earlier
+  // record or the guard's file, so the guard still lets owners withdraw it. Where neither names it,
+  // a network people use is refused here, before anything is sent.
+  const known = new Map<string, { id: string | null; symbol: string | null }>(
+    Object.entries(options.guardIds ?? {}).map(([mint, id]) => [mint, { id, symbol: null }]),
+  );
+  for (const token of [...(options.previous?.assets ?? []), ...(options.previous?.retired ?? [])])
+    if (token.id) known.set(token.mint, { id: token.id, symbol: token.symbol });
+  const listedAtStart = await chain.account(await assetsAddress());
+  const planned = new Set<string>(mints.values());
+  const unnamed = (listedAtStart ? decodeAssets(listedAtStart.data).assets : [])
+    .filter((entry) => !planned.has(entry.mint) && !known.get(entry.mint)?.id)
+    .map((entry) => entry.mint);
+  if (unnamed.length && options.requireIds)
+    throw new Error(
+      `the asset list holds ${unnamed.join(', ')}, which the config does not list and neither the record nor the guard's file names: add it back to the config, or give its asset id in the guard's file`,
+    );
   for (const token of all) {
     const mint = mintOf(token);
     const program = programOf(token);
@@ -842,12 +864,6 @@ export async function setUp(
   // keeper switch goes off, and it stays in the record, so the keeper never trades a token the
   // guard does not know.
   const named = new Set(all.map(mintOf));
-  const known = new Map(
-    [...(options.previous?.assets ?? []), ...(options.previous?.retired ?? [])].map((token) => [
-      token.mint,
-      token,
-    ]),
-  );
   const strays = (registry?.assets ?? []).filter((entry) => !named.has(entry.mint));
   const retired: RetiredAsset[] = [];
   const offs: Named[] = [];
