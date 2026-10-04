@@ -345,6 +345,31 @@ describe('the guard on Solana: bytes that cannot be read are refused as malforme
     ).toBe('malformed');
   });
 
+  it('a transaction that carries a field the guard does not read, or an EVM call', async () => {
+    const good = input(depositStep, wire(await honest.deposit(BASKET_PROGRAM)));
+    for (const change of [
+      { evm: { to: `0x${'11'.repeat(20)}`, value: '0', chainId: 1 } },
+      { instructions: [] },
+      { signatures: ['x'] },
+      {
+        preview: {
+          ...good.tx.preview,
+          changes: [{ holder: 'vault', asset: 'solana:usdc', deltaRaw: '5', to: STRANGER }],
+        },
+      },
+    ])
+      expect(
+        refusalOf(() => guardTransaction({ ...good, tx: { ...good.tx, ...change } as BasketTx }))
+          ?.code,
+        Object.keys(change)[0],
+      ).toBe('malformed');
+    // What the preview says the balances will do is passed on as it came: the guard does not hold it
+    // to the bytes, only to its shape.
+    const changes = [{ holder: 'vault' as const, asset: 'solana:usdc', deltaRaw: '-5' }];
+    const told = { ...good, tx: { ...good.tx, preview: { ...good.tx.preview, changes } } };
+    expect(guardTransaction(told).tx.preview.changes).toEqual(changes);
+  });
+
   it('a transaction or a step with a field missing or of another type', async () => {
     const good = input(depositStep, wire(await honest.deposit(BASKET_PROGRAM)));
     const broken = (change: object) => ({ ...good, tx: { ...good.tx, ...change } as BasketTx });

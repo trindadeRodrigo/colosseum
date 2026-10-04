@@ -646,6 +646,107 @@ describe('the guard on EVM: each negative is refused, and by the check that name
   });
 });
 
+describe('the guard on EVM: it passes a call, and only the fields it read', () => {
+  // On EVM the guard passes a call: a target, a value, a chain id and call data. A field beside those
+  // is one it never read, so it refuses the transaction rather than hand the field on to a signer.
+  const stowaways: [string, object, object][] = [
+    [
+      'an authorization list',
+      {},
+      { authorizationList: [{ chainId: 0, address: STRANGER, nonce: 0 }] },
+    ],
+    ['an access list', {}, { accessList: [{ address: STRANGER, storageKeys: [] }] }],
+    ['a fee per gas', {}, { maxFeePerGas: '1000000000000000000' }],
+    ['a priority fee', {}, { maxPriorityFeePerGas: '1000000000000000000' }],
+    ['a gas price', {}, { gasPrice: '1000000000000000000' }],
+    ['a transaction type', {}, { type: 'eip7702' }],
+    ['a sender', {}, { from: STRANGER }],
+    ['a second data', {}, { data: '0xdeadbeef' }],
+    ['an input', {}, { input: '0xdeadbeef' }],
+    ['an access list beside the call', { accessList: [] }, {}],
+    ['raw bytes beside the call', { rawTransaction: '0x02ff' }, {}],
+    [
+      'a field of the preview nobody reads',
+      { preview: { ...evmTx(approveStep, honest.approve()).preview, note: 'x' } },
+      {},
+    ],
+    [
+      'a field of a minimum nobody reads',
+      {
+        preview: {
+          ...evmTx(swapStep, honest.swap()).preview,
+          minimums: [{ ...SPY, router: STRANGER }, GOLD],
+        },
+      },
+      {},
+    ],
+  ];
+  for (const [name, top, inEvm] of stowaways)
+    it(`refuses ${name}`, () => {
+      const step = name.includes('minimum') ? swapStep : approveStep;
+      const tx = evmTx(step, step === swapStep ? honest.swap() : honest.approve());
+      const given = { ...tx, ...top, evm: { ...tx.evm, ...inEvm } } as BasketTx;
+      const refusal = refusalOf(() => guardTransaction({ step, tx: given, deployment: EVM }));
+      expect(refusal?.code).toBe('malformed');
+      expect(refusal?.message).toMatch(/does not read/);
+    });
+
+  it('the pass carries exactly the fields of the transaction that were read, and a copy of them', () => {
+    const tx = evmTx(approveStep, honest.approve());
+    const pass = guardTransaction({ step: approveStep, tx, deployment: EVM });
+    expect(pass.tx).toEqual(tx);
+    expect(pass.tx).not.toBe(tx);
+    expect(Object.keys(pass.tx.evm ?? {}).sort()).toEqual([
+      'chainId',
+      'gas',
+      'nonce',
+      'to',
+      'value',
+    ]);
+    expect(Object.isFrozen(pass.tx.evm) && Object.isFrozen(pass.tx.preview.minimums)).toBe(true);
+    // A field that is there and undefined is as good as absent.
+    const sparse = { ...tx, feePayer: undefined, lastValidBlockHeight: undefined } as BasketTx;
+    expect(
+      Object.keys(guardTransaction({ step: approveStep, tx: sparse, deployment: EVM }).tx),
+    ).not.toContain('feePayer');
+  });
+
+  it('refuses fields of the wrong type: a gas limit, a nonce and a change that cannot be read', () => {
+    const tx = evmTx(approveStep, honest.approve());
+    for (const change of [
+      { evm: { ...tx.evm, gas: '400000' } },
+      { evm: { ...tx.evm, nonce: -1 } },
+      { evm: { ...tx.evm, chainId: 1.5 } },
+      { attemptId: '' },
+      { description: 7 },
+      { lastValidBlockHeight: '1000' },
+      { preview: { ...tx.preview, simulated: 'yes' } },
+      {
+        preview: {
+          ...tx.preview,
+          changes: [{ holder: 'stranger', asset: 'robinhood:usdc', deltaRaw: '1' }],
+        },
+      },
+      {
+        preview: {
+          ...tx.preview,
+          changes: [{ holder: 'wallet', asset: 'robinhood:usdc', deltaRaw: '1.5' }],
+        },
+      },
+    ])
+      expect(
+        refusalOf(() =>
+          guardTransaction({
+            step: approveStep,
+            tx: { ...tx, ...change } as never,
+            deployment: EVM,
+          }),
+        )?.code,
+        JSON.stringify(change).slice(0, 60),
+      ).toBe('malformed');
+  });
+});
+
 describe('the guard on EVM: a call replaced outright is refused too', () => {
   // These differ from the step in two ways at once (the step's own call is gone and another is in its
   // place), so two checks would each refuse them. The first to speak is the one named.

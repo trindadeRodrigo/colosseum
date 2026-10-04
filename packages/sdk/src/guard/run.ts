@@ -43,44 +43,155 @@ function deepFreeze<T>(value: T): T {
 const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
 const NO_SUCH_STEP = 'this guard signs no such step';
 
-/** The fields of a transaction the guard reads, each of the type it is read as. */
-function readable(tx: BasketTx): string | null {
-  if (typeof tx !== 'object' || tx === null) return 'it is not an object';
-  for (const field of ['payload', 'chain', 'chainId', 'legKind', 'legId', 'signer', 'provenance'])
-    if (typeof (tx as Record<string, unknown>)[field] !== 'string') return `it has no ${field}`;
-  if (!/^[0-9a-f]{64}$/.test(tx.messageHash)) return 'its message hash is not 32 bytes of hex';
-  if (tx.feePayer !== undefined && typeof tx.feePayer !== 'string')
-    return 'its fee payer is not text';
-  const preview = tx.preview;
-  if (typeof preview !== 'object' || preview === null) return 'it has no preview';
-  if (!isRawAmount(preview.feeNativeRaw)) return 'its stated fee is not raw units';
-  if (
-    !Array.isArray(preview.minimums) ||
-    !preview.minimums.every(
-      (m) =>
-        typeof m === 'object' &&
-        m !== null &&
-        text(m.sell) &&
-        text(m.buy) &&
-        isRawAmount(m.inRaw) &&
-        isRawAmount(m.minOutRaw),
-    )
-  )
-    return 'its preview states no minimums';
-  const evm = tx.evm;
-  if (evm !== undefined) {
-    if (typeof evm !== 'object' || evm === null) return 'its EVM call is not an object';
-    if (typeof evm.to !== 'string' || typeof evm.value !== 'string')
-      return 'its EVM call has no target';
-    if (!Number.isSafeInteger(evm.chainId) || evm.chainId < 0)
-      return 'its chain id is not a number';
-    if (evm.gas !== undefined && !(Number.isSafeInteger(evm.gas) && evm.gas > 0))
-      return 'its gas limit is not a number';
-    if (evm.nonce !== undefined && !(Number.isSafeInteger(evm.nonce) && evm.nonce >= 0))
-      return 'its nonce is not a number';
-  }
-  return null;
+type Loose = Record<string, unknown>;
+const isObject = (v: unknown): v is Loose =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+const count = (v: unknown, least: number): v is number =>
+  Number.isSafeInteger(v) && (v as number) >= least;
+const signedRaw = (v: unknown) => typeof v === 'string' && /^(?:0|-?[1-9]\d{0,77})$/.test(v);
+
+/**
+ * An object with exactly these fields and no other. A field the guard does not know is one it has not
+ * checked, and what it has not checked is not handed on to a signer.
+ */
+function only(what: string, value: unknown, fields: readonly string[]): Loose {
+  if (!isObject(value)) throw new Error(`${what} is not an object`);
+  const extra = Object.keys(value).filter((key) => !fields.includes(key));
+  if (extra.length)
+    throw new Error(`${what} carries ${extra.join(', ')}, which the guard does not read`);
+  return value;
 }
+const must = (ok: boolean, what: string) => {
+  if (!ok) throw new Error(what);
+};
+
+/**
+ * The transaction again, field by field: only what `BasketTx` has, each of the type it is read as. The
+ * pass is made of this copy, so nothing reaches a signer that the guard did not look at.
+ */
+function rebuilt(given: unknown, family: 'solana' | 'evm'): BasketTx {
+  const tx = only('the transaction', given, TX_FIELDS);
+  for (const field of ['payload', 'chain', 'chainId', 'legKind', 'legId', 'attemptId', 'signer'])
+    must(text(tx[field]), `it has no ${field}`);
+  must(typeof tx.description === 'string', 'its description is not text');
+  must(text(tx.provenance), 'it has no label');
+  must(
+    typeof tx.messageHash === 'string' && /^[0-9a-f]{64}$/.test(tx.messageHash),
+    'its message hash is not 32 bytes of hex',
+  );
+  must(tx.feePayer === undefined || text(tx.feePayer), 'its fee payer is not text');
+  must(
+    tx.lastValidBlockHeight === undefined || count(tx.lastValidBlockHeight, 0),
+    'its last valid block height is not a number',
+  );
+
+  const preview = only('its preview', tx.preview, PREVIEW_FIELDS);
+  for (const field of ['source', 'method', 'fetchedAt', 'provenance', 'summary'])
+    must(typeof preview[field] === 'string', `its preview has no ${field}`);
+  must(typeof preview.simulated === 'boolean', 'its preview does not say whether it was simulated');
+  must(isRawAmount(preview.feeNativeRaw), 'its stated fee is not raw units');
+  must(
+    Array.isArray(preview.changes) && Array.isArray(preview.minimums),
+    'its preview states no changes or no minimums',
+  );
+  const changes = (preview.changes as unknown[]).map((entry) => {
+    const c = only('a change in its preview', entry, ['holder', 'asset', 'deltaRaw']);
+    must(
+      (c.holder === 'wallet' || c.holder === 'vault') && text(c.asset) && signedRaw(c.deltaRaw),
+      'a change in its preview cannot be read',
+    );
+    return { holder: c.holder, asset: c.asset, deltaRaw: c.deltaRaw };
+  });
+  const minimums = (preview.minimums as unknown[]).map((entry) => {
+    const m = only('a minimum in its preview', entry, ['sell', 'buy', 'inRaw', 'minOutRaw']);
+    must(
+      text(m.sell) && text(m.buy) && isRawAmount(m.inRaw) && isRawAmount(m.minOutRaw),
+      'a minimum in its preview cannot be read',
+    );
+    return { sell: m.sell, buy: m.buy, inRaw: m.inRaw, minOutRaw: m.minOutRaw };
+  });
+
+  // An EVM call belongs to an EVM chain and to no other.
+  must(
+    (tx.evm !== undefined) === (family === 'evm'),
+    family === 'evm'
+      ? 'an EVM transaction names its target'
+      : 'it carries an EVM call on a chain that has none',
+  );
+  let evm: Loose | undefined;
+  if (tx.evm !== undefined) {
+    const call = only('its EVM call', tx.evm, ['to', 'value', 'chainId', 'nonce', 'gas']);
+    must(
+      typeof call.to === 'string' && typeof call.value === 'string',
+      'its EVM call has no target',
+    );
+    must(count(call.chainId, 0), 'its chain id is not a number');
+    must(call.gas === undefined || count(call.gas, 1), 'its gas limit is not a number');
+    must(call.nonce === undefined || count(call.nonce, 0), 'its nonce is not a number');
+    evm = {
+      to: call.to,
+      value: call.value,
+      chainId: call.chainId,
+      ...(call.nonce === undefined ? {} : { nonce: call.nonce }),
+      ...(call.gas === undefined ? {} : { gas: call.gas }),
+    };
+  }
+  return {
+    chain: tx.chain,
+    payload: tx.payload,
+    ...(evm ? { evm } : {}),
+    description: tx.description,
+    provenance: tx.provenance,
+    ...(tx.lastValidBlockHeight === undefined
+      ? {}
+      : { lastValidBlockHeight: tx.lastValidBlockHeight }),
+    legKind: tx.legKind,
+    chainId: tx.chainId,
+    signer: tx.signer,
+    ...(tx.feePayer === undefined ? {} : { feePayer: tx.feePayer }),
+    messageHash: tx.messageHash,
+    preview: {
+      source: preview.source,
+      method: preview.method,
+      fetchedAt: preview.fetchedAt,
+      provenance: preview.provenance,
+      summary: preview.summary,
+      simulated: preview.simulated,
+      feeNativeRaw: preview.feeNativeRaw,
+      changes,
+      minimums,
+    },
+    legId: tx.legId,
+    attemptId: tx.attemptId,
+  } as BasketTx;
+}
+const TX_FIELDS = [
+  'chain',
+  'payload',
+  'evm',
+  'description',
+  'provenance',
+  'lastValidBlockHeight',
+  'legKind',
+  'chainId',
+  'signer',
+  'feePayer',
+  'messageHash',
+  'preview',
+  'legId',
+  'attemptId',
+];
+const PREVIEW_FIELDS = [
+  'source',
+  'method',
+  'fetchedAt',
+  'provenance',
+  'summary',
+  'simulated',
+  'feeNativeRaw',
+  'changes',
+  'minimums',
+];
 
 /** What is wrong with a step before any transaction is looked at, or null. */
 function stepProblem(step: ApprovedStep): string | null {
@@ -151,7 +262,6 @@ export function runGuard(input: GuardInput, overrides: GuardOverrides = {}): Gua
   if (typeof input.step !== 'object' || input.step === null)
     throw new GuardRefusal('order', 'no step was given');
   const step = deepFreeze(structuredClone(input.step));
-  const tx = deepFreeze(structuredClone(input.tx));
   const { deployment } = input;
   const consents = input.consents ?? [];
   const legId = typeof step.legId === 'string' ? step.legId : null;
@@ -174,8 +284,15 @@ export function runGuard(input: GuardInput, overrides: GuardOverrides = {}): Gua
     );
   if (!deployment || deployment.chain !== step.chain)
     throw new GuardRefusal('unsupported', `no deployment was given for ${step.chain}`, legId);
-  const unreadable = readable(tx);
-  if (unreadable) throw new GuardRefusal('malformed', `the transaction: ${unreadable}`, legId);
+  // The transaction is taken apart and put together again from the fields that are read. That copy is
+  // what every check looks at and what the pass carries.
+  let tx: BasketTx;
+  try {
+    tx = deepFreeze(rebuilt(structuredClone(input.tx), familyOf(step.chain)));
+  } catch (e) {
+    const why = e instanceof Error ? e.message : 'it cannot be read';
+    throw new GuardRefusal('malformed', `the transaction: ${why}`, legId);
+  }
 
   // ---- what the transaction says of itself
   need(
