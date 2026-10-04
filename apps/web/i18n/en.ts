@@ -150,10 +150,10 @@ export const en = {
 
   goal: {
     title: 'What does your money need to do?',
-    lead: 'Say it in a sentence: how much, by when, and how soon you might need the cash. I read it into limits you can check and change. Nothing is built until you say so.',
+    lead: 'Say it in a sentence: how much you’re starting with, for how long, and how much risk you’ll take. I read it into limits you can check and change. Nothing is built until you say so.',
     composer: {
       label: 'Your goal',
-      placeholder: '$40,000 by June 2028, cash within 7 days',
+      placeholder: '$10,000 for five years, medium risk',
       hint: 'Enter to read it · Shift+Enter for a new line',
       submit: 'Read my goal',
       busy: 'Reading your goal…',
@@ -161,15 +161,15 @@ export const en = {
     examples: {
       label: 'Examples',
       list: [
-        'Grow $40,000 for an apartment by June 2028',
-        '$1,500 a month of income from 2029, cash within 7 days',
-        'Protect $25,000 for two years, low risk',
+        'Grow $2,000 for ten years, high risk',
+        'Protect $50,000 for 18 months, low risk',
+        '$80,000 for $300 a month of income',
       ],
     },
     readFailure: {
       unreachable:
         'I couldn’t reach our server to read that. Your text is still here. Try again in a moment.',
-      tooShort: 'That’s too short for me to read. Try an amount and a date.',
+      tooShort: 'That’s too short for me to read. Try an amount and a time frame.',
       tooLong: 'That’s too long for me to read. Keep it under 2,000 characters.',
       unreadable: 'I got an answer I couldn’t read. Your text is still here. Try again.',
     },
@@ -181,11 +181,16 @@ export const en = {
       parser: 'parser',
       summaryOne: '1 thing doesn’t fit yet. Fix it to build the plan.',
       summaryOther: '{n} things don’t fit yet. Fix them to build the plan.',
+      /** For fields with nothing in them yet, as right after a goal is read. */
+      missingOne: '1 thing is still missing. Fill it in to build the plan.',
+      missingOther: '{n} things are still missing. Fill them in to build the plan.',
       goToField: 'Go to field',
       build: 'Build my plan',
       building: 'Building your plan…',
       fixOne: 'Fix the field above to continue.',
       fixOther: 'Fix the {n} fields above to continue.',
+      fillOne: 'Fill in the field above to continue.',
+      fillOther: 'Fill in the {n} fields above to continue.',
       reading: 'Reading your goal…',
       noPlan: 'No plan fits these limits.',
       editSheet: 'Edit limits',
@@ -277,8 +282,9 @@ export const en = {
         'Our server answered with a plan I couldn’t read, so I’m not showing it. Your limits are unchanged. Try again.',
       done: {
         title: 'Your plan is built.',
-        body: (lines: number, chain: string) =>
-          `It has ${lines === 1 ? '1 line' : `${lines} lines`} on ${chain}. The screen that shows it comes next. Nothing was bought.`,
+        /** "Part" is the brand's word for a leg of a plan, as a person reads it. */
+        body: (parts: number, chain: string) =>
+          `It has ${parts === 1 ? '1 part' : `${parts} parts`} on ${chain}. I can’t show it on this page yet. Nothing was bought.`,
       },
     },
   },

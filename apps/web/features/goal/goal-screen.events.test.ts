@@ -252,7 +252,12 @@ describe('“Build my plan”', () => {
       `${en.goal.fields.country}: ${en.goal.errors.country} ${en.goal.sheet.goToField}`,
       `${en.goal.fields.amount}: ${en.goal.errors.amountEmpty} ${en.goal.sheet.goToField}`,
     ]);
-    expect(summary(host)?.textContent).toContain('3 things don’t fit yet.');
+    // right after a reading, what the reader left empty is missing: it has not failed to fit
+    expect(summary(host)?.textContent).toContain(
+      '3 things are still missing. Fill them in to build the plan.',
+    );
+    expect(summary(host)?.textContent).not.toContain('fit yet');
+    expect(host.textContent).toContain('Fill in the 3 fields above to continue.');
     expect(input(host, 'amount').getAttribute('aria-invalid')).toBe('true');
     // one field fixed is not all of them
     await type(input(host, 'amount'), '40,000');
@@ -265,6 +270,12 @@ describe('“Build my plan”', () => {
     await click(buildButton(host));
     expect(server.to(PERSONALIZE_PATH)).toEqual([]);
     expect(summary(host)?.textContent).toContain(en.goal.errors.amountLow);
+    // a value that is there and wrong is what does not fit
+    expect(summary(host)?.textContent).toContain(
+      '1 thing doesn’t fit yet. Fix it to build the plan.',
+    );
+    expect(summary(host)?.textContent).not.toContain('missing');
+    expect(host.textContent).toContain('Fix the field above to continue.');
   });
 
   it('sends the parsed sheet, once, on the chain of the wallet, when everything fits', async () => {

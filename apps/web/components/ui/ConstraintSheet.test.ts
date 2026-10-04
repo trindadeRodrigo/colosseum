@@ -64,7 +64,10 @@ describe('ConstraintSheet (constraint-sheet.md)', () => {
     it('lists what does not fit at the top, as an alert that can take focus', () => {
       expect(summary.attrs.role).toBe('alert');
       expect(summary.attrs.tabindex ?? summary.attrs.tabIndex).toBe('-1');
-      expect(text(summary)).toContain('3 things don’t fit yet. Fix them to build the plan.');
+      // an empty field is missing; a wrong value and what belongs to no field do not fit
+      expect(text(summary)).toContain(
+        '1 thing is still missing. Fill it in to build the plan. 2 things don’t fit yet. Fix them to build the plan.',
+      );
       expect(classes(summary)).toEqual(
         expect.arrayContaining(['border-destructive', 'bg-status-off-bg']),
       );

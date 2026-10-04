@@ -21,12 +21,18 @@ export type ConstraintSheetLabels = {
   /** The error summary. `{n}` is the number of things to fix. */
   summaryOne: string;
   summaryOther: string;
+  /** The same, for fields with nothing in them yet: they are missing, they do not "not fit". */
+  missingOne: string;
+  missingOther: string;
   goToField: string;
   build: string;
   building: string;
   /** Under a blocked button. `{n}` is the number of fields. */
   fixOne: string;
   fixOther: string;
+  /** The same, when every field in question is only empty. */
+  fillOne: string;
+  fillOther: string;
   reading: string;
   noPlan: string;
   editSheet: string;
@@ -40,11 +46,15 @@ export const CONSTRAINT_SHEET_LABELS: ConstraintSheetLabels = {
   parser: 'parser',
   summaryOne: '1 thing doesn’t fit yet. Fix it to build the plan.',
   summaryOther: '{n} things don’t fit yet. Fix them to build the plan.',
+  missingOne: '1 thing is still missing. Fill it in to build the plan.',
+  missingOther: '{n} things are still missing. Fill them in to build the plan.',
   goToField: 'Go to field',
   build: 'Build my plan',
   building: 'Building your plan…',
   fixOne: 'Fix the field above to continue.',
   fixOther: 'Fix the {n} fields above to continue.',
+  fillOne: 'Fill in the field above to continue.',
+  fillOther: 'Fill in the {n} fields above to continue.',
   reading: 'Reading your goal…',
   noPlan: 'No plan fits these limits.',
   editSheet: 'Edit sheet',

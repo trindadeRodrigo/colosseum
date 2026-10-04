@@ -40,7 +40,9 @@ const paths = (node: unknown) => [...new Set(sentences(node).map((leaf) => leaf.
 /** voice-and-tone.md, "Banned words and phrases", and the two words the design bans from templates. */
 const BANNED: Record<string, RegExp> = {
   en: /earn up to|guarantee|risk-free|safe yield|beat the bank|passive income|set and forget|autopilot|walk away|self-driving|\bsmart\b|ai-powered|intelligent|\bmagic|unlock|supercharge|seamless|effortless|revolutionary|best-in-class|bespoke|to the moon|degen|don’t miss out|limited time|recommend|suitable|best for you|oops|sorry/i,
-  pt: /garantid|sem risco|renda passiva|piloto automático|inteligente|mágic|desbloque|revolucion|recomend|adequad|ideal para você|ops\b|desculp/i,
+  // "Unlock" is banned as a word of promise. A wallet that is locked is unlocked, and that one use
+  // is the plain one: "desbloqueie a carteira".
+  pt: /garantid|sem risco|renda passiva|piloto automático|inteligente|mágic|desbloque(?!ie a carteira)|revolucion|recomend|adequad|ideal para você|ops\b|desculp/i,
 };
 
 describe.each(LANGS)('the dictionary in %s', (lang) => {
@@ -122,6 +124,74 @@ describe('the words of the product, in each language', () => {
     expect(text).not.toMatch(word('tu|teu|tua|vós|connosco|ecrã|utilizador|telemóvel|registo'));
     // the wallet is "carteira", so the portfolio is never called that
     expect(text).not.toMatch(/carteira de investimentos/i);
+  });
+
+  it('uses the words that were decided, in Portuguese', () => {
+    const all = sentences(pt);
+    const text = all.map((leaf) => leaf.text).join(' ');
+    const word = (list: string) => new RegExp(`(?<!\\p{L})(${list})(?!\\p{L})`, 'iu');
+    // the noun for signing in is "login", and a session expires
+    expect(text).not.toMatch(word('entrada|entradas'));
+    expect(pt.signIn.off.api).toMatch(/^O login está indisponível/);
+    expect(pt.chain.failure.signedOut).toMatch(/^Sua sessão expirou/);
+    // switched on is "ativada", not there for now is "indisponível", linked is "vinculada"
+    expect(text).not.toMatch(word('ligad[oa]s?|desligad[oa]s?'));
+    expect(pt.signIn.failure.passkeyOff).toContain('ativadas');
+    expect(pt.chain.noWallet).toContain('vinculada');
+    expect(pt.chain.pick.off('Solana')).toContain('indisponível');
+    // one word for dollar yield, which is not income
+    expect(text).not.toMatch(/renda em dólar/i);
+    expect(pt.goal.fields.glide).toContain('rendimento em dólar');
+    expect(pt.goal.captions.protect).toContain('rendimento em dólar');
+    // and the rest of the list
+    expect(pt.signIn.failure.passkeyUnknown).toMatch(/^Não reconheço essa chave de acesso/);
+    expect(pt.signIn.failure.walletSilent).toContain('desbloqueie a carteira');
+    expect(pt.goal.sheet.summaryOne).toContain('não se encaixa');
+    expect(pt.goal.sheet.summaryOther).toContain('não se encaixam');
+    expect(pt.shell.disclaimer).toBe('Aviso legal');
+  });
+
+  it('still bans "unlock" as a word of promise, in Portuguese too', () => {
+    expect('Desbloqueie rendimentos maiores').toMatch(BANNED.pt as RegExp);
+    expect('desbloquear seu potencial').toMatch(BANNED.pt as RegExp);
+    expect(pt.signIn.failure.walletSilent).not.toMatch(BANNED.pt as RegExp);
+    expect(en.signIn.failure.walletSilent).not.toMatch(BANNED.en as RegExp);
+  });
+
+  it('asks for what the limits hold: an amount to start with, a time frame, a risk', () => {
+    for (const d of [en, pt]) {
+      // the sheet has no field for how soon the cash is needed, so nothing asks for it
+      const asked = [d.goal.lead, d.goal.composer.placeholder, ...d.goal.examples.list].join(' ');
+      expect(asked).not.toMatch(/cash within|how soon|resgate|7 d/i);
+      expect(d.goal.examples.list).toHaveLength(3);
+    }
+    expect(en.goal.examples.list).toEqual([
+      'Grow $2,000 for ten years, high risk',
+      'Protect $50,000 for 18 months, low risk',
+      '$80,000 for $300 a month of income',
+    ]);
+  });
+
+  it('calls a part of a plan a part, and promises no screen that is not there', () => {
+    expect(en.goal.built.done.body(3, 'Solana')).toBe(
+      'It has 3 parts on Solana. I can’t show it on this page yet. Nothing was bought.',
+    );
+    expect(en.goal.built.done.body(1, 'Solana')).toContain('1 part on');
+    expect(pt.goal.built.done.body(3, 'Solana')).toContain('3 partes');
+    for (const d of [en, pt])
+      expect(d.goal.built.done.body(2, 'Solana')).not.toMatch(
+        /\blines?\b|linhas?|comes next|vem a seguir/,
+      );
+  });
+
+  it('says an empty field is missing, and a wrong one does not fit', () => {
+    expect(en.goal.sheet.missingOther).toBe(
+      '{n} things are still missing. Fill them in to build the plan.',
+    );
+    expect(en.goal.sheet.summaryOther).toBe(
+      '{n} things don’t fit yet. Fix them to build the plan.',
+    );
+    expect(pt.goal.sheet.missingOne).toMatch(/^Ainda falta 1 coisa/);
   });
 
   it('keeps MOCK and the names of the chains as they are in both', () => {

@@ -3,7 +3,8 @@ import type { Dictionary } from './en';
 // The same sentences as en.ts, as a Brazilian reads them: "você", answer first, no exclamation marks.
 // The product's nouns in Portuguese: objetivo (goal), limites (limits), plano (plan), portfólio
 // (portfolio), plano de saída (exit plan), rebalancear (rebalance), carteira (wallet), cofre (vault),
-// rede (chain), chave de acesso (passkey). MOCK and the names of the chains are not translated.
+// rede (chain), chave de acesso (passkey), login (sign-in, the noun), rendimento em dólar (dollar
+// yield), parte (a leg of a plan). MOCK and the names of the chains are not translated.
 
 export const pt: Dictionary = {
   shell: {
@@ -18,7 +19,7 @@ export const pt: Dictionary = {
     signOutFailed:
       'Não consegui encerrar sua sessão: o serviço de login não respondeu. Tente de novo.',
     account: 'Sua carteira',
-    disclaimer: 'Aviso',
+    disclaimer: 'Aviso legal',
     appearance: 'Aparência',
     themes: { auto: 'Sistema', light: 'Claro', dark: 'Escuro' },
     language: 'Idioma',
@@ -30,10 +31,10 @@ export const pt: Dictionary = {
   signIn: {
     title: 'Entre com uma carteira que é sua.',
     lead: 'Seu plano fica em um cofre de onde só você pode sacar, então ele precisa de uma carteira que seja sua. Crie uma com uma chave de acesso ou conecte uma que você já usa.',
-    loading: 'Carregando a entrada…',
+    loading: 'Carregando o login…',
     passkey: {
       title: 'Chave de acesso',
-      body: 'Sem frase-semente para anotar. Seu aparelho guarda a chave de acesso, e uma carteira é criada para você que só essa chave abre.',
+      body: 'Você não precisa anotar frase de recuperação. A chave de acesso fica no seu aparelho, e só ela abre a carteira que criamos para você.',
       create: 'Criar uma chave de acesso',
       use: 'Usar uma chave de acesso que já tenho',
       waiting: 'Aguardando sua chave de acesso…',
@@ -48,31 +49,31 @@ export const pt: Dictionary = {
       none: 'Nenhuma carteira foi encontrada neste navegador. Instale uma, abra esta página no navegador da própria carteira ou use uma chave de acesso.',
     },
     off: {
-      api: 'A entrada está desligada por enquanto: nosso servidor não está respondendo. Eu pergunto de novo a cada poucos segundos, e esta página se atualiza sozinha.',
+      api: 'O login está indisponível no momento: nosso servidor não está respondendo. Eu tento de novo a cada poucos segundos, e esta página se atualiza sozinha.',
       setup:
-        'A entrada está desligada aqui: esta cópia do app não foi configurada direito. Não há nada para você corrigir. Por favor, avise a gente.',
+        'O login está indisponível aqui: esta cópia do app não foi configurada corretamente. Não há nada para você corrigir. Por favor, avise a gente.',
       detail: 'Para a equipe',
     },
     failure: {
       passkeyOff:
-        'As chaves de acesso ainda não estão ligadas neste app, então não dá para criar nem usar uma aqui. Conecte uma carteira ou volte mais tarde.',
+        'As chaves de acesso ainda não estão ativadas neste app, então não dá para criar nem usar uma aqui. Conecte uma carteira ou volte mais tarde.',
       passkeyNotCreated:
         'A chave de acesso não foi criada: a janela foi fechada ou o tempo acabou. Nada foi salvo. Tente de novo quando quiser.',
       passkeyNotUsed:
         'Nenhuma chave de acesso foi usada: a janela foi fechada ou o tempo acabou. Se você ainda não tem uma chave de acesso para este site, crie uma.',
-      passkeyUnknown: 'Não conheço essa chave de acesso. Crie uma nova ou conecte uma carteira.',
+      passkeyUnknown: 'Não reconheço essa chave de acesso. Crie uma nova ou conecte uma carteira.',
       passkeyUnsupported:
         'Este navegador não consegue usar chaves de acesso. Abra a página em um navegador atualizado ou conecte uma carteira.',
       walletOff:
-        'A entrada com carteira ainda não está ligada neste app. Use uma chave de acesso ou volte mais tarde.',
+        'O login com carteira ainda não está ativado neste app. Use uma chave de acesso ou volte mais tarde.',
       walletRefused:
         'Sua carteira recusou o pedido, então nada foi assinado e você não entrou. Tente de novo e aprove na carteira.',
-      walletSilent: 'Essa carteira não respondeu. Abra a carteira, entre nela e tente de novo.',
+      walletSilent:
+        'Essa carteira não respondeu. Abra e desbloqueie a carteira, depois tente de novo.',
       walletGone:
         'Essa carteira não está mais neste navegador. Escolha uma da lista ou use uma chave de acesso.',
       tooMany: 'Muitas tentativas em pouco tempo. Espere um minuto e tente de novo.',
-      offline:
-        'Não consegui falar com o serviço de entrada. Verifique sua conexão e tente de novo.',
+      offline: 'Não consegui falar com o serviço de login. Verifique sua conexão e tente de novo.',
       expired: 'Isso demorou demais e o tempo acabou. Tente de novo.',
       walletNotMade:
         'Você entrou, mas sua carteira não pôde ser criada. Nada foi perdido. Tente de novo.',
@@ -105,7 +106,7 @@ export const pt: Dictionary = {
       saving: 'Salvando sua escolha…',
       why: 'Escolha uma rede para continuar.',
       off: (chain: string) =>
-        `${chain} está desativada no nosso servidor por enquanto, então não pode ser escolhida.`,
+        `${chain} está indisponível no nosso servidor por enquanto, então não pode ser escolhida.`,
       noneOn: 'Nenhuma rede pode ser escolhida agora. Nada foi perdido: volte mais tarde.',
       mock: 'A carteira descartável não tem conta no nosso servidor, então esta escolha fica só nesta aba.',
     },
@@ -122,7 +123,7 @@ export const pt: Dictionary = {
       notOffered: 'Essa rede não pode ser escolhida com esta carteira. Escolha a outra.',
       unreachable:
         'Não consegui salvar: nosso servidor não respondeu. Sua escolha ainda não está guardada. Tente de novo.',
-      signedOut: 'Sua entrada expirou antes de a escolha ser salva. Entre de novo e escolha.',
+      signedOut: 'Sua sessão expirou antes de a escolha ser salva. Entre de novo e escolha.',
     },
     unknown: {
       body: 'Ainda não sei dizer em qual rede seu plano fica: nosso servidor não respondeu. Não há nada de errado com a sua carteira.',
@@ -132,16 +133,16 @@ export const pt: Dictionary = {
         'Nosso servidor não reconhece mais o seu login, então não sei dizer em qual rede seu plano fica. Saia e entre de novo.',
     },
     noWallet:
-      'Você entrou, mas ainda não há carteira ligada a esta entrada, então não há rede para o seu plano.',
-    reading: 'Lendo onde seu plano fica…',
+      'Você entrou, mas ainda não há carteira vinculada ao seu login, então não há rede para o seu plano.',
+    reading: 'Verificando em qual rede seu plano fica…',
   },
 
   goal: {
     title: 'O que o seu dinheiro precisa fazer?',
-    lead: 'Diga em uma frase: quanto, até quando e em quanto tempo você pode precisar do dinheiro. Eu leio isso em limites que você confere e muda. Nada é montado antes de você pedir.',
+    lead: 'Diga em uma frase: com quanto você começa, por quanto tempo e quanto risco aceita. Eu transformo isso em limites que você pode conferir e mudar. Nada é montado antes de você pedir.',
     composer: {
       label: 'Seu objetivo',
-      placeholder: 'US$ 40.000 até junho de 2028, resgate em até 7 dias',
+      placeholder: 'US$ 10.000 por cinco anos, risco médio',
       hint: 'Enter para ler · Shift+Enter para nova linha',
       submit: 'Ler meu objetivo',
       busy: 'Lendo seu objetivo…',
@@ -149,15 +150,15 @@ export const pt: Dictionary = {
     examples: {
       label: 'Exemplos',
       list: [
-        'Juntar US$ 40.000 para um apartamento até junho de 2028',
-        'US$ 1.500 por mês de renda a partir de 2029, resgate em até 7 dias',
-        'Proteger US$ 25.000 por dois anos, risco baixo',
+        'Fazer US$ 2.000 crescerem por dez anos, risco alto',
+        'Proteger US$ 50.000 por 18 meses, risco baixo',
+        'US$ 80.000 para ter US$ 300 por mês de renda',
       ],
     },
     readFailure: {
       unreachable:
         'Não consegui falar com nosso servidor para ler isso. Seu texto continua aqui. Tente de novo daqui a pouco.',
-      tooShort: 'Isso é curto demais para eu ler. Tente um valor e uma data.',
+      tooShort: 'Isso é curto demais para eu ler. Tente um valor e um prazo.',
       tooLong: 'Isso é longo demais para eu ler. Use até 2.000 caracteres.',
       unreadable:
         'Recebi uma resposta que não consegui ler. Seu texto continua aqui. Tente de novo.',
@@ -167,13 +168,17 @@ export const pt: Dictionary = {
     sheet: {
       title: 'Como li seu objetivo',
       parser: 'leitor',
-      summaryOne: '1 coisa ainda não encaixa. Corrija para montar o plano.',
-      summaryOther: '{n} coisas ainda não encaixam. Corrija para montar o plano.',
+      summaryOne: '1 coisa ainda não se encaixa. Corrija para montar o plano.',
+      summaryOther: '{n} coisas ainda não se encaixam. Corrija para montar o plano.',
+      missingOne: 'Ainda falta 1 coisa. Preencha para montar o plano.',
+      missingOther: 'Ainda faltam {n} coisas. Preencha para montar o plano.',
       goToField: 'Ir para o campo',
       build: 'Montar meu plano',
       building: 'Montando seu plano…',
       fixOne: 'Corrija o campo acima para continuar.',
       fixOther: 'Corrija os {n} campos acima para continuar.',
+      fillOne: 'Preencha o campo acima para continuar.',
+      fillOther: 'Preencha os {n} campos acima para continuar.',
       reading: 'Lendo seu objetivo…',
       noPlan: 'Nenhum plano cabe nesses limites.',
       editSheet: 'Editar limites',
@@ -192,7 +197,7 @@ export const pt: Dictionary = {
       risk: 'Tolerância a risco',
       country: 'País onde você mora',
       holdings: 'Contar o que você já tem',
-      glide: 'Migrar para renda em dólar perto da data',
+      glide: 'Migrar para rendimento em dólar perto da data',
       language: 'Idioma das explicações',
       amount: 'Valor (dólares)',
     },
@@ -205,7 +210,8 @@ export const pt: Dictionary = {
     },
     captions: {
       income: 'Um plano de renda não tem ações tokenizadas.',
-      protect: 'Um plano para proteger não tem ações tokenizadas: só renda em dólar, ouro e caixa.',
+      protect:
+        'Um plano para proteger não tem ações tokenizadas: só rendimento em dólar, ouro e caixa.',
     },
     options: {
       choose: 'Escolha',
@@ -244,7 +250,7 @@ export const pt: Dictionary = {
       signInAgain:
         'Nosso servidor não reconhece mais o seu login, então o plano não foi montado. Saia e entre de novo.',
       chainOff: (chain: string) =>
-        `${chain} está desativada no nosso servidor por enquanto, então não consigo montar um plano nela. Seus limites continuam guardados.`,
+        `${chain} está indisponível no nosso servidor por enquanto, então não consigo montar um plano nela. Seus limites continuam guardados.`,
     },
     card: {
       sentence: {
@@ -269,8 +275,8 @@ export const pt: Dictionary = {
         'Nosso servidor respondeu com um plano que não consegui ler, então não vou mostrar. Seus limites continuam como estão. Tente de novo.',
       done: {
         title: 'Seu plano está montado.',
-        body: (lines: number, chain: string) =>
-          `Ele tem ${lines === 1 ? '1 linha' : `${lines} linhas`} na ${chain}. A tela que mostra o plano vem a seguir. Nada foi comprado.`,
+        body: (parts: number, chain: string) =>
+          `Ele tem ${parts === 1 ? '1 parte' : `${parts} partes`} na ${chain}. Ainda não consigo mostrar o plano nesta página. Nada foi comprado.`,
       },
     },
   },

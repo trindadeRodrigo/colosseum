@@ -214,6 +214,10 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
   const every = [...groups.flatMap((g) => g.fields), ...(capital ? [capital] : [])];
   const wrong = every.filter((field) => field.error);
   const count = wrong.length + otherIssues.length;
+  // A field with nothing in it yet is missing: it has not been found not to fit. Right after a goal
+  // is read, what the reader left empty is said that way.
+  const missing = wrong.filter((field) => field.value.trim() === '').length;
+  const unfit = count - missing;
   const solving = state === 'solving';
   const blocked = count > 0 || valid === null;
   const plural = (one: string, other: string, n: number) =>
@@ -299,7 +303,14 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
           >
             <p className="flex items-start gap-2 text-body-sm font-medium">
               <StatusMark status="off-track" size={12} className="mt-1.5" />
-              <span>{plural(text.summaryOne, text.summaryOther, count)}</span>
+              <span>
+                {[
+                  missing > 0 ? plural(text.missingOne, text.missingOther, missing) : null,
+                  unfit > 0 ? plural(text.summaryOne, text.summaryOther, unfit) : null,
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              </span>
             </p>
             <ul className="mt-2 flex list-disc flex-col gap-1 pl-9 text-body-sm">
               {wrong.map((field) => (
@@ -354,7 +365,9 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
             </Button>
             {blocked && wrong.length > 0 && (
               <p id={fixId} className="text-caption text-muted-foreground">
-                {plural(text.fixOne, text.fixOther, wrong.length)}
+                {missing === wrong.length
+                  ? plural(text.fillOne, text.fillOther, wrong.length)
+                  : plural(text.fixOne, text.fixOther, wrong.length)}
               </p>
             )}
             <p role="status" className="sr-only">
