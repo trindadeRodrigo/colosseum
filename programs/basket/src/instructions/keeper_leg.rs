@@ -218,6 +218,9 @@ impl<'info> KeeperLeg<'info> {
         let received = output_after
             .checked_sub(output_before.amount)
             .ok_or(BasketError::ReceivedTooLittle)?;
+        // A leg that spends nothing is not a trade, and must not use up the asset's one
+        // trade of the hour. A zero amount ends here too: no route may spend more than it.
+        require!(spent > 0, BasketError::NothingTraded);
 
         // What the vault holds and is worth after the trade. What was spent and what came
         // in are parts of what it held before and holds now, so their values are bounded

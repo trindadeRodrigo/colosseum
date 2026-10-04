@@ -826,6 +826,15 @@ describe('keeper_leg', () => {
       expectOk(await buy(20, w.other));
       expect(position(w.other).lastKeeperTs).toBe(SESSION);
     });
+
+    it('is not used up by a leg of nothing: a zero amount is refused', async () => {
+      // The reviewer's case: a stolen key sends a leg that moves nothing each hour, and the real
+      // leg is refused for the hour after it.
+      expectError(await keeperLeg(w, { amountIn: 0n }), ERR.NothingTraded);
+      expect(position(w.stock).lastKeeperTs).toBe(0n);
+      at(SESSION + 1n);
+      expectOk(await buy(40));
+    });
   });
 
   // Check 5, hostile case A7.

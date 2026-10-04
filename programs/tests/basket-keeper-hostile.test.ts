@@ -246,6 +246,15 @@ describe('keeper_leg through a hostile router', () => {
       expectVaultUntouched();
     });
 
+    it('cannot pass off a route that spends nothing as a trade', async () => {
+      // No call at all, and a route that only pays in: the vault spent nothing either time.
+      expectError(await leg([]), ERR.NothingTraded);
+      expectError(await leg([pay()]), ERR.NothingTraded);
+      expectVaultUntouched();
+      // Neither used the asset's one trade of the hour.
+      expectOk(await leg([take(), pay()]));
+    });
+
     it('cannot take from the account it should pay into', async () => {
       await mintTo(w.svm, w.admin, w.stock, w.vault, 500n);
       const steal = move(w.stock, w.vaultStock, attackerStock, w.vault, 500n);
