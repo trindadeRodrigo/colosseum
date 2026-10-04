@@ -1,0 +1,46 @@
+import { concatBytes, hexDecode, hexEncode, utf8Encode } from '../../bytes';
+import { keccak256 } from '../../hash';
+import { encodeArgs, parseType } from './abi';
+
+// The address of a person's vault for a plan on an EVM chain, worked out here from the person's own
+// address. It is the same before the vault exists and after, so it is what an approval names and what
+// every later call targets.
+//
+// The rule is the factory's own (`VaultFactory.vaultOf` on the contracts branch, commit 89453f4):
+// CREATE2 from the factory, with the salt keccak256(abi.encode(owner, planId)) and, as the code, the
+// vault proxy's creation code followed by abi.encode(beacon, initialize(owner, planId)). The plan's
+// number is the same number as 32 bytes. evm.test.ts holds this to viem on recorded cases; when the
+// factory is on this branch a recorded `vaultOf` answer joins them.
+
+const INITIALIZE = 'initialize(address,bytes32)';
+const ADDRESS = parseType('address');
+const BYTES32 = parseType('bytes32');
+const BYTES = parseType('bytes');
+
+/** A plan's number as the 32 bytes a contract takes it as: 0x hex. */
+export function planIdOf(basketId: string): string {
+  return `0x${BigInt(basketId).toString(16).padStart(64, '0')}`;
+}
+
+export function evmVaultAddress(
+  deployment: { factory: string; beacon: string; proxyCreationCode: string },
+  owner: string,
+  basketId: string,
+): string {
+  const planId = planIdOf(basketId);
+  const named = encodeArgs([ADDRESS, BYTES32], [owner, planId]);
+  const init = concatBytes(keccak256(utf8Encode(INITIALIZE)).slice(0, 4), named);
+  const code = concatBytes(
+    hexDecode(deployment.proxyCreationCode),
+    encodeArgs([ADDRESS, BYTES], [deployment.beacon, init]),
+  );
+  const hash = keccak256(
+    concatBytes(
+      Uint8Array.of(0xff),
+      hexDecode(deployment.factory),
+      keccak256(named),
+      keccak256(code),
+    ),
+  );
+  return `0x${hexEncode(hash.slice(12))}`;
+}

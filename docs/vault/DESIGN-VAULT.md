@@ -99,7 +99,7 @@ Base: `staging`. Each stream works in a short-lived branch and opens a pull requ
 | `packages/chain-solana` | exists; gains vault builders, `send.ts` and a `./server` entry for `sign.ts` and `wallet.ts` | Thom | schemas; its tests also chain-mock, for the contract cases |
 | `packages/chain-evm` | stub replaced; ABIs committed | Thom | schemas; its tests also chain-mock, for the contract cases |
 | `packages/chain-mock` | new; stamps `provenance: 'mock'`; its registry checks the author limits with `checkCreatorLimits` | Thom | schemas, basket |
-| `packages/sdk` | new, built; types from OpenAPI; the guard and the leg executor | Thom | schemas (types only; its tests may use the parsers) |
+| `packages/sdk` | new, built; types from OpenAPI; the guard and the leg executor | Thom | schemas (types only; its tests may use the parsers, and chain-mock) |
 | `apps/api` | exists; new routes under `routes/v1/` | shared | all packages |
 | `apps/risk-api` | exists | Rodrigo; not touched | as today: schemas, db, risk, and the `/risk` routes file of `apps/api` by a relative path |
 | `apps/keeper`, `apps/mcp` | new | Thom | keeper: schemas, basket, db, chain-*; mcp: sdk |
