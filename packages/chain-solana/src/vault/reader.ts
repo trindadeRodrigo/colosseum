@@ -788,10 +788,9 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
           clock,
           {
             maxAheadSeconds: onchain.maxPriceAgeS,
-            // Mainnet's account is Kamino's and starts with Scope's discriminator.
-            // TNET-4: the test network's price account is not defined yet, so its first bytes are not
-            // checked there. Once it is, check them on every network.
-            discriminator: config.network === 'mainnet' ? SCOPE_PRICES_DISCRIMINATOR : undefined,
+            // Scope's discriminator on every network: mainnet's account is Kamino's, and the test
+            // exchange's (TNET-4) starts with the same eight bytes.
+            discriminator: SCOPE_PRICES_DISCRIMINATOR,
           },
         );
         const fetchedAt = now().toISOString();

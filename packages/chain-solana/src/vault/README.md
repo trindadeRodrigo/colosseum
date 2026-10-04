@@ -58,11 +58,11 @@ A withdrawal of everything takes, one transaction each, every token the vault ho
 
 One route source per router, chosen by the config: Jupiter's build endpoint when the router is Jupiter's program (`JUP6...`), the test exchange of `programs/mock-router` for any other. `routes` replaces it.
 
-- **The test exchange** pays `amount_in × price_num / price_den`, rounded down, read from its `Pair` account; no fee. The route is its `route_v2` with the vault as the trader, and its own minimum left at zero so that a price that moved is refused by the vault's rule (`ReceivedTooLittle`), not the exchange's.
+- **The test exchange** reads its `Pair` account, as `staging` writes it (89 bytes, a fixed pair) and as TNET-4 writes it (95 bytes: `kind`, `asset_is_input`, `price_index`, `spread_bps` after the bump). A fixed pair (`kind` 0) pays `amount_in × price_num / price_den`, rounded down, with no fee. A priced pair (`kind` 1, every pair on devnet) pays at the asset's entry in the price account the exchange's own account names (`Router.prices`, after `admin` and `bump`), the dollar token at one dollar, rounded down as the program's `priced_out` does, less the spread; the route then carries that price account as its twelfth account. The exchange reads neither the entry's age nor a mint's multiplier, and neither does the quote. A pair it does not list, a priced pair with no price account or an empty entry, a reserve that cannot pay, and a trade too large for it are `BadTrade`; a layout or a kind it does not know is `Unavailable`. The route is `route_v2` with the vault as the trader, and the exchange's own minimum is left at zero so that a price that moved is refused by the vault's rule (`ReceivedTooLittle`), not the exchange's.
 - **Jupiter** (`GET /swap/v2/build`, the endpoint the Oct 3 replay ran through the vault): asked with the vault as the taker and a slippage 50 bps looser than the vault's own minimum, so the vault's check binds first. Only its swap instruction is used, and only a direct or shared-accounts route (`route`, `shared_accounts_route`, `route_v2`, `shared_accounts_route_v2`) that spends the trade's amount, names the vault and its two token accounts, and asks for no signature but the vault's. Its lookup tables are read from the chain. A key, when the caller has one, goes in `x-api-key`; neither it nor the address is ever in a message. Tested on the recorded answer of Oct 3 only: nothing here calls it.
 - `quote(trade, taker)` carries the route's source, its time and its method, the quote's output, a minimum `quoteSlippageBps` under it (100 by default), and the cost against the reference prices where both sides have one (cash is a dollar), `against: 'pool_mid'` and zero otherwise.
 
-What changes when `tnet/solana-devnet` lands (`programs/mock-router` with a price account in Scope's layout and priced pairs): its `Pair` account grows (`kind`, `asset_is_input`, `price_index`, `spread_bps`), and a priced pair pays at the entry less its spread and needs the price account as the first account after the route's own. `decodePair` refuses any pair that is not the 89 bytes of `staging` as a layout it does not know (`Unavailable`), so a priced pair is refused rather than misquoted until the quoter reads `kind` and the entry, and `testExchange` passes the price account. The same branch changes the keeper's `PastTarget` rule (a leg that crosses its target ends at most half as far on the other side); the contract's band cases still pass under it by their sizes, not checked here.
+When `tnet/solana-devnet` lands nothing in the quoter changes: it reads both layouts and both kinds, held to the program's arithmetic by `routes.test.ts` on account bytes written by hand (the priced kind has not run against the program here, which is on that branch only). The same branch changes the keeper's `PastTarget` rule (a leg that crosses its target ends at most half as far on the other side); the contract's band cases have not been run against it.
 
 ## Signed bytes, sending, and what became of an attempt
 
@@ -103,6 +103,7 @@ What changes when `tnet/solana-devnet` lands (`programs/mock-router` with a pric
 
 **Prices**
 
+- The price account starts with Scope's discriminator on every network, mainnet's and the test exchange's (TNET-4); `getPrices` refuses one that does not (`AssetNotPriced`).
 - A stale price is returned, with its age and with `market: 'open'` if the session is open. Every price carries `maxAgeSeconds`, which is `Config.max_price_age_s` from the same read: `isStalePrice(price)` says whether the keeper would refuse it.
 - A price stamped ahead of the cluster's clock by more than `Config.max_price_age_s` is refused with `AssetNotPriced`. Inside that bound it is clock skew and reads as zero seconds old.
 - Cash has no price unless the list gives it a Scope index. An asset with `priceKind: 'none'` gets no entry in the answer.
@@ -133,7 +134,7 @@ A stock token is open when all of these hold, on the cluster's clock:
 - Owned by the program in `Config.price_owner`. Exactly 28,712 bytes.
 - Entry `i` at byte `40 + 56·i`: value u64, exponent u64, slot u64, unix time u64, then 24 bytes the reader ignores. Price is value / 10^exponent, USD for one whole token. Exponent at most 30, value and time above zero.
 - The time is the source's, in unix seconds, so a copied price ages as the real one does.
-- The first 40 bytes are not checked on a test network yet (`// TNET-4:` in `reader.ts`). On mainnet the first eight must be Scope's discriminator. Start the test account with the same eight bytes (`SCOPE_PRICES_DISCRIMINATOR`) and the check can be turned on everywhere.
+- The first eight bytes are Scope's discriminator (`SCOPE_PRICES_DISCRIMINATOR`) on every network, checked since ADS-2; the next 32 are not read.
 - Mainnet's indexes, read on Oct 2: SPYx 344, QQQx 347, NVDAx 332, TSLAx 338, USDC 13. Keeping them lets one asset list serve both networks.
 - Test stock mints carry the scaled-UI-amount extension; decimals equal the asset list's.
 

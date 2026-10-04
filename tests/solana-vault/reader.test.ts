@@ -294,19 +294,17 @@ describe('Solana reader: prices', () => {
     expect(e.message).toContain(assetId('spyx'));
   });
 
-  it("checks the first bytes of the price account on mainnet, where it is Kamino's", async () => {
+  it("checks the first bytes of the price account on every network: Scope's, and the test exchange's", async () => {
     const price = accountOf(fixture, 'price');
     const other = patched(price, [{ at: 0, bytes: new Uint8Array(8).fill(7) }]);
     const edit = (node: FakeNode) => node.accounts.set(price.address, other);
-    const e = await refusal(
-      world({ network: 'mainnet', edit }).reader.getPrices([assetId('spyx')]),
-      'AssetNotPriced',
-    );
-    expect(e.message).toMatch(/discriminator/);
-    // Elsewhere the account is ours and not yet defined (TNET-4): owner and size are what is checked.
-    expect(
-      await world({ network: 'testnet', edit }).reader.getPrices([assetId('spyx')]),
-    ).toHaveLength(1);
+    for (const network of ['mainnet', 'testnet', 'local'] as const) {
+      const e = await refusal(
+        world({ network, edit }).reader.getPrices([assetId('spyx')]),
+        'AssetNotPriced',
+      );
+      expect(e.message).toMatch(/discriminator/);
+    }
     expect(await world({ network: 'mainnet' }).reader.getPrices([assetId('spyx')])).toHaveLength(1);
   });
 

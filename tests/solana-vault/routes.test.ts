@@ -1,9 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  associatedTokenAddress,
   computeUnitLimitInstruction,
   createTokenAccountInstruction,
   decodePair,
+  exchangeAddress,
   JUPITER_PROGRAM,
   JUPITER_SLIPPAGE_MARGIN_BPS,
   jupiter,
@@ -11,6 +13,8 @@ import {
   MAX_TRANSACTION_BYTES,
   ownerSwapInstruction,
   pairAddress,
+  pricedOut,
+  type RawAccount,
   type RouteRequest,
   routeFromJupiter,
   TOKEN_2022_PROGRAM,
@@ -19,11 +23,13 @@ import {
 } from '@colosseum/chain-solana/vault';
 import { ChainError, type ChainErrorCode } from '@colosseum/schemas';
 import {
+  AccountRole,
   type Address,
   appendTransactionMessageInstructions,
   compileTransaction,
   createTransactionMessage,
   getAddressDecoder,
+  getAddressEncoder,
   getTransactionEncoder,
   type IInstruction,
   isSignerRole,
@@ -248,31 +254,87 @@ describe("Jupiter's build endpoint, on a recorded answer", () => {
 
 describe('the test exchange, from its pair account', () => {
   const router = 'Route11111111111111111111111111111111111111' as Address;
-  const mintIn = getAddressDecoder().decode(new Uint8Array(32).fill(5));
-  const mintOut = getAddressDecoder().decode(new Uint8Array(32).fill(6));
-  const pairBytes = (num: bigint, den: bigint, extra = 0) => {
-    const data = new Uint8Array(89 + extra);
+  const key = (n: number) => getAddressDecoder().decode(new Uint8Array(32).fill(n));
+  const [mintIn, mintOut, prices] = [key(5), key(6), key(12)];
+  const pairBytes = (num: bigint, den: bigint) => {
+    const data = new Uint8Array(89);
     data.set([85, 72, 49, 176, 182, 228, 141, 82], 0);
     const view = new DataView(data.buffer);
     view.setBigUint64(72, num, true);
     view.setBigUint64(80, den, true);
     return data;
   };
-  const r = (amountIn: bigint): RouteRequest => ({
-    input: { mint: mintIn, tokenProgram: TOKEN_PROGRAM },
-    output: { mint: mintOut, tokenProgram: TOKEN_PROGRAM },
+  /** TNET-4's pair: the same 89 bytes, then kind, asset is input, price index, spread. */
+  const pricedBytes = (kind: number, assetIsInput: boolean, index: number, spread: number) => {
+    const data = new Uint8Array(95);
+    data.set(pairBytes(0n, 1n));
+    const view = new DataView(data.buffer);
+    data[89] = kind;
+    data[90] = assetIsInput ? 1 : 0;
+    view.setUint16(91, index, true);
+    view.setUint16(93, spread, true);
+    return data;
+  };
+  const routerBytes = (withPrices: boolean) => {
+    const data = new Uint8Array(withPrices ? 105 : 41);
+    data.set([94, 226, 217, 169, 186, 4, 198, 7], 0);
+    if (withPrices) data.set(getAddressEncoder().encode(prices), 41);
+    return data;
+  };
+  const mintBytes = (decimals: number) => {
+    const data = new Uint8Array(82);
+    data[44] = decimals;
+    data[45] = 1;
+    return data;
+  };
+  const tokenBytes = (mint: Address, owner: Address, amount: bigint) => {
+    const data = new Uint8Array(165);
+    data.set(getAddressEncoder().encode(mint), 0);
+    data.set(getAddressEncoder().encode(owner), 32);
+    new DataView(data.buffer).setBigUint64(64, amount, true);
+    data[108] = 1;
+    return data;
+  };
+  const r = (amountIn: bigint, input = mintIn, output = mintOut): RouteRequest => ({
+    input: { mint: input, tokenProgram: TOKEN_PROGRAM },
+    output: { mint: output, tokenProgram: TOKEN_PROGRAM },
     amountIn,
-    taker: getAddressDecoder().decode(new Uint8Array(32).fill(7)),
-    takerInput: getAddressDecoder().decode(new Uint8Array(32).fill(8)),
-    takerOutput: getAddressDecoder().decode(new Uint8Array(32).fill(9)),
+    taker: key(7),
+    takerInput: key(8),
+    takerOutput: key(9),
     slippageBps: 100,
   });
-
-  it('pays amount in × num / den, rounded down, and routes through route_v2 with no minimum of its own', async () => {
-    const pair = await pairAddress(router, mintIn, mintOut);
-    const node = fakeNode([
-      { address: pair, owner: router, lamports: 1n, data: pairBytes(2n, 3n) },
+  /** A node with the exchange's accounts: a pair one way, its reserve of what it pays, and what else is given. */
+  async function exchangeNode(a: {
+    pair: Uint8Array;
+    input?: Address;
+    output?: Address;
+    reserve?: bigint;
+    router?: Uint8Array;
+    more?: RawAccount[];
+  }) {
+    const [input, output] = [a.input ?? mintIn, a.output ?? mintOut];
+    const exchange = await exchangeAddress(router);
+    return fakeNode([
+      {
+        address: await pairAddress(router, input, output),
+        owner: router,
+        lamports: 1n,
+        data: a.pair,
+      },
+      { address: exchange, owner: router, lamports: 1n, data: a.router ?? routerBytes(false) },
+      {
+        address: await associatedTokenAddress(exchange, output, TOKEN_PROGRAM),
+        owner: TOKEN_PROGRAM,
+        lamports: 1n,
+        data: tokenBytes(output, exchange, a.reserve ?? 10n ** 18n),
+      },
+      ...(a.more ?? []),
     ]);
+  }
+
+  it('pays amount in × num / den on a fixed pair, rounded down, and routes through route_v2 with no minimum of its own', async () => {
+    const node = await exchangeNode({ pair: pairBytes(2n, 3n) });
     const source = testExchange({
       rpc: node.rpc as never,
       router,
@@ -286,19 +348,96 @@ describe('the test exchange, from its pair account', () => {
     expect([view.getBigUint64(8, true), view.getBigUint64(16, true)]).toEqual([1_000n, 0n]);
     expect(routed.method).toContain('2 / 3');
     expect(routed.fetchedAt).toBe(stamp.fetchedAt);
-  });
-
-  it('refuses a pair it does not list, and one in a layout it does not read', async () => {
-    const pair = await pairAddress(router, mintIn, mintOut);
-    const none = testExchange({ rpc: fakeNode([]).rpc as never, router });
-    await refused(() => none.route(r(1n)), 'BadTrade');
-    // The priced pairs of tnet/solana-devnet are longer: read as another layout until this reader knows it.
-    expect(() => decodePair(pair, pairBytes(1n, 1n, 6))).toThrow(ChainError);
-    const foreign = testExchange({
-      rpc: fakeNode([{ address: pair, owner: mintIn, lamports: 1n, data: pairBytes(1n, 1n) }])
-        .rpc as never,
+    // TNET-4's longer pair, of the fixed kind, pays the same.
+    const longer = pricedBytes(0, false, 0, 0);
+    new DataView(longer.buffer).setBigUint64(72, 2n, true);
+    new DataView(longer.buffer).setBigUint64(80, 3n, true);
+    const again = testExchange({
+      rpc: (await exchangeNode({ pair: longer })).rpc as never,
       router,
     });
-    await refused(() => foreign.route(r(1n)), 'BadTrade');
+    expect((await again.route(r(1_000n))).outRaw).toBe(666n);
+  });
+
+  it('pays a priced pair (TNET-4) at the entry less its spread, as the exchange rounds, and passes the price account last', async () => {
+    // $250 a token, at exponent 8, for an asset of 8 decimals; the dollar token has 6; 30 bps spread.
+    const priceData = new Uint8Array(40 + 56 * 512);
+    const view = new DataView(priceData.buffer);
+    view.setBigUint64(40 + 56 * 7, 25_000_000_000n, true);
+    view.setBigUint64(40 + 56 * 7 + 8, 8n, true);
+    const asset = mintIn;
+    const cash = mintOut;
+    const more: RawAccount[] = [
+      { address: prices, owner: router, lamports: 1n, data: priceData },
+      { address: asset, owner: TOKEN_PROGRAM, lamports: 1n, data: mintBytes(8) },
+      { address: cash, owner: TOKEN_PROGRAM, lamports: 1n, data: mintBytes(6) },
+    ];
+    const sell = await exchangeNode({
+      pair: pricedBytes(1, true, 7, 30),
+      router: routerBytes(true),
+      more,
+    });
+    const selling = await testExchange({ rpc: sell.rpc as never, router }).route(r(200_000_000n));
+    // 2 tokens: $500 gross, 498.5 after the spread.
+    expect(selling.outRaw).toBe(498_500_000n);
+    expect(selling.route.accounts).toHaveLength(12);
+    expect(selling.route.accounts[11]).toEqual({ address: prices, role: AccountRole.READONLY });
+    expect(selling.method).toContain('entry 7');
+    const buy = await exchangeNode({
+      pair: pricedBytes(1, false, 7, 30),
+      input: cash,
+      output: asset,
+      router: routerBytes(true),
+      more,
+    });
+    // $500 buys 2 tokens gross, 1.994 after the spread.
+    const buying = await testExchange({ rpc: buy.rpc as never, router }).route(
+      r(500_000_000n, cash, asset),
+    );
+    expect(buying.outRaw).toBe(199_400_000n);
+    expect(
+      pricedOut({
+        amountIn: 1n,
+        value: 25_000_000_000n,
+        exponent: 8n,
+        assetDecimals: 8,
+        cashDecimals: 6,
+        assetIsInput: true,
+        spreadBps: 0,
+      }),
+    ).toBe(2n);
+  });
+
+  it('refuses what the exchange would refuse: no pair, no price, a reserve that cannot pay, a layout it does not know', async () => {
+    const none = testExchange({ rpc: fakeNode([]).rpc as never, router });
+    await refused(() => none.route(r(1n)), 'BadTrade');
+    const short = await exchangeNode({ pair: pairBytes(1n, 1n), reserve: 5n });
+    await refused(() => testExchange({ rpc: short.rpc as never, router }).route(r(6n)), 'BadTrade');
+    // A priced pair on an exchange that names no price account, or an entry with no price.
+    const noAccount = await exchangeNode({ pair: pricedBytes(1, true, 7, 30) });
+    await refused(
+      () => testExchange({ rpc: noAccount.rpc as never, router }).route(r(1n)),
+      'BadTrade',
+    );
+    const empty = await exchangeNode({
+      pair: pricedBytes(1, true, 7, 30),
+      router: routerBytes(true),
+      more: [
+        { address: prices, owner: router, lamports: 1n, data: new Uint8Array(40 + 56 * 512) },
+        { address: mintIn, owner: TOKEN_PROGRAM, lamports: 1n, data: mintBytes(8) },
+        { address: mintOut, owner: TOKEN_PROGRAM, lamports: 1n, data: mintBytes(6) },
+      ],
+    });
+    await refused(() => testExchange({ rpc: empty.rpc as never, router }).route(r(1n)), 'BadTrade');
+    const pair = await pairAddress(router, mintIn, mintOut);
+    expect(() => decodePair(pair, new Uint8Array(90))).toThrow(ChainError);
+    expect(() => decodePair(pair, pricedBytes(2, true, 0, 0))).toThrow(ChainError);
+    const foreign = fakeNode([
+      { address: pair, owner: mintIn, lamports: 1n, data: pairBytes(1n, 1n) },
+    ]);
+    await refused(
+      () => testExchange({ rpc: foreign.rpc as never, router }).route(r(1n)),
+      'BadTrade',
+    );
   });
 });
