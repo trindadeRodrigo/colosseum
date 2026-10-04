@@ -25,7 +25,7 @@ anchor build --no-idl -- --tools-version v1.54
 - `default = ["no-idl"]` in `basket` and `mock-router`: the built program refuses Anchor's instruction that creates an on-chain IDL account. Without it, whoever sends that instruction first becomes the account's authority.
 - One warning is expected per Anchor program: Anchor's own macro uses a deprecated `realloc`.
 
-Sizes on Oct 3: `basket.so` 460,600 bytes (3.21 SOL of rent at deploy, and as much again while an upgrade is in flight), `mock_router.so` 275,224 bytes, `puppet_router.so` 29,992 bytes, `test_hook.so` 68,640 bytes.
+Sizes on Oct 4: `basket.so` 572,816 bytes (3.99 SOL of rent at deploy, and as much again while an upgrade is in flight; it was 460,600 before the keeper leg), `mock_router.so` 275,224 bytes, `puppet_router.so` 29,992 bytes, `test_hook.so` 68,640 bytes.
 
 ## Test
 
@@ -113,6 +113,8 @@ The compute units differ from run to run because each run makes new keys, and fi
 
 A weight is the asset's value over everything the vault holds: its cash account at one dollar, the traded asset's own account, and the other positions by `tracked`, each at its price. The loss counter is in raw units of the cash mint; it falls in a straight line to nothing over seven days from the last loss, and a leg that loses nothing neither reads the cap nor touches the counter. Because the counter drains while it fills, the most that can be lost in any seven days is under twice the cap, not the cap (design section 5).
 
+What it costs, through the test exchange (`keeper-sizes.test.ts`, Oct 4): 718 bytes, or 504 with the platform's lookup table, and 65,778 compute units in a vault with 2 positions, 68,338 with 7, 78,573 with 12 and 81,790 with 16, since every position the vault holds is valued. That is one account more than the owner's swap and a few thousand units per position on top of it; through Jupiter's route the owner's swap alone measured 117,000 to 127,000 units, so a builder asks for a budget above the default 200,000 for a leg in a full vault. An accept is 250 bytes and 10,875 units, an adopt 278 bytes and 14,449, a sync of 12 balances 608 bytes and 49,185. A keeper leg through Jupiter's own route has not been replayed.
+
 ### The price reference, and what the admin checks before switching an asset on
 
 A leg is valued at the entries of one price account in Kamino Scope's layout: the asset's price entry and the entry of its one-hour average. On every leg the program holds the price to `max_price_age_s`, the average to one hour, and the two to `twap_dev_bps` of each other. That catches a feed that stopped, or a price that jumped away from its own recent past. It does not catch a feed that is wrong and steady: on mainnet two stock tokens read exactly 1.0000 on every refresh for six months, and an average of that is 1.0000 too (`docs/risk/STATE-RISK.md`, 2026-10-02). A leg valued at such an entry is not bounded by the tolerance or by the loss cap.
@@ -187,9 +189,12 @@ The wallet that deploys a program is its upgrade authority, and only that key ca
 
 1. The test mints: the dollar token and the stock tokens (TNET-4). `init_config` takes the dollar mint as an account, so it has to exist first.
 2. `mock_router`: `init_router()`, then `init_pair(price_num, price_den)` once per direction, and tokens into the router's reserve accounts (the associated token accounts of the router's address).
-3. `basket`: `init_config(args)` with the dollar mint as `cash_mint`, `router_program` the test exchange, and a guardian, a default keeper and a price owner that are not the zero address. No instruction changes the guardian or the default keeper afterwards.
-4. `init_assets()`, then `upsert_asset(args)` for each stock mint.
-5. `publish_recipe(..)` for each shared portfolio, by its creator.
-6. `launch()` last, and only once the router, the price owner and the cash mint are final: until then `set_router`, `set_price_owner`, `set_cash_mint` and `set_params` change them, and after it only an upgrade does. It also raises the publish delay to two days.
+3. `basket`: `init_config(args)` with the dollar mint as `cash_mint`, `router_program` the test exchange, and a guardian, a default keeper and a price owner that are not the zero address. The admin can replace the guardian and the default keeper later (`set_guardian`, `set_default_keeper`).
+4. `init_assets()`, then `set_price_account(0)` with the price account as an account: it has to exist, be owned by the price owner in Config, and be 28,712 bytes, the size of Scope's. On a test network that is the test price program's account, which has to hold, for every asset, a price entry and a second entry for its one-hour average, both kept fresh: the keeper leg reads both.
+5. `upsert_asset(args)` for each mint, with `price_kind` 1, the price and average indexes, `session` 1 for a stock token, and `flags` 0. For the ten stock tokens the indexes are in `fixtures/solana-vault/scope-indexes.json` (the real ones, so one asset list serves both networks). Every asset goes in slot 0: a leg takes one price account.
+6. The closed days: `set_closed_day(day, true)` for each market holiday ahead, as days since 1970 (`fixtures/risk/us-market-holidays.json`). The list holds 32.
+7. `publish_recipe(..)` for each shared portfolio, by its creator.
+8. For each asset the keeper should trade, the checks of "The price reference" above, then `upsert_asset` again with `flags` 1. Until then the keeper trades nothing, and owners are not affected.
+9. `launch()` last, and only once the router, the price owner, the cash mint and the price account are final: until then `set_router`, `set_price_owner`, `set_cash_mint`, `set_price_account` and `set_params` change them, and after it only an upgrade does. It also raises the publish delay to two days.
 
-The layout of Config has not changed since SOL-1, so a program already deployed at these ids upgrades in place and keeps its Config.
+The layouts of Config, Vault, Recipe and the asset list have not changed since SOL-2: the keeper's switch is a bit of a byte that was already there, and the loss counter two fields that were. A program already deployed at these ids upgrades in place and keeps its accounts. The program is 112,216 bytes larger than before the keeper leg, so an upgrade first extends the program's data account (`solana program deploy` does it, for the rent of the added bytes).
