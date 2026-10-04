@@ -2,7 +2,7 @@
 import { chainFamily } from '@colosseum/schemas';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAccount } from '../../features/account/AccountProvider';
 import { useWalletPort } from '../../features/wallet/WalletProvider';
 import { useT } from '../../i18n/I18nProvider';
@@ -77,43 +77,73 @@ function AccountControl() {
   const port = useWalletPort();
   const { account } = useAccount();
   const [busy, setBusy] = useState(false);
+  const [stillIn, setStillIn] = useState(false);
+  const [said, setSaid] = useState('');
+  const signIn = useRef<HTMLAnchorElement>(null);
+  // The person pressed "Sign out" here. When they are out, that button is gone: focus goes to what
+  // took its place, and a screen reader is told.
+  const leaving = useRef(false);
+  const signedOut = port.status === 'signed-out';
+  useEffect(() => {
+    if (!signedOut || !leaving.current) return;
+    leaving.current = false;
+    signIn.current?.focus();
+    setSaid(t.shell.signedOut);
+  }, [signedOut, t]);
 
-  // Before the wallet has loaded there is nothing to say: an empty box of the same height. A person
-  // who is signed in while it still loads (their wallets are being made, or could not be) is known by
-  // then, and always has the way out: a wallet that never arrives must not hold them here.
-  if (port.status === 'loading' && port.userId === null)
-    return <span aria-hidden="true" className="h-8 min-w-20" />;
-  if (port.status === 'signed-out')
-    return (
-      <Link href="/sign-in" className={buttonClass({ size: 'dense' })}>
-        {t.shell.signIn}
-      </Link>
-    );
-
-  // Only the wallet of the chain the plan lives on is shown: the other family's is never used.
-  const wallet = account.status === 'ready' ? port.active(chainFamily(account.chain)) : null;
   async function signOut() {
     setBusy(true);
+    setStillIn(false);
+    setSaid('');
+    leaving.current = true;
     try {
       await port.signOut();
     } catch {
-      // Signing out fails only when the provider cannot be reached; the button comes back to rest.
+      // Signing out fails only when the provider cannot be reached: the person is still signed in,
+      // and is told so.
+      leaving.current = false;
+      setStillIn(true);
     } finally {
       setBusy(false);
     }
   }
+
+  // Only the wallet of the chain the plan lives on is shown: the other family's is never used.
+  const wallet = account.status === 'ready' ? port.active(chainFamily(account.chain)) : null;
   return (
-    <div data-ui="account" className="flex flex-wrap items-center gap-3">
-      {port.test && <MockPlate labels={{ announce: t.shell.mockAnnounce }} />}
-      {wallet && (
-        <span className="font-mono text-source text-muted-foreground" title={wallet.address}>
-          <span className="sr-only">{t.shell.account}: </span>
-          {shorten(wallet.address)}
-        </span>
+    <>
+      <span role="status" data-ui="account-said" className="sr-only">
+        {said}
+      </span>
+      {/* Before the wallet has loaded there is nothing to say: an empty box of the same height. A
+          person who is signed in while it still loads (their wallets are being made, or could not
+          be) is known by then, and always has the way out: a wallet that never arrives must not
+          hold them here. */}
+      {port.status === 'loading' && port.userId === null ? (
+        <span aria-hidden="true" className="h-8 min-w-20" />
+      ) : signedOut ? (
+        <Link ref={signIn} href="/sign-in" className={buttonClass({ size: 'dense' })}>
+          {t.shell.signIn}
+        </Link>
+      ) : (
+        <div data-ui="account" className="flex flex-wrap items-center justify-end gap-3">
+          {port.test && <MockPlate labels={{ announce: t.shell.mockAnnounce }} />}
+          {wallet && (
+            <span className="font-mono text-source text-muted-foreground" title={wallet.address}>
+              <span className="sr-only">{t.shell.account}: </span>
+              {shorten(wallet.address)}
+            </span>
+          )}
+          <Button size="dense" busy={busy} busyLabel={t.shell.signingOut} onClick={signOut}>
+            {t.shell.signOut}
+          </Button>
+          {stillIn && (
+            <p role="alert" className="basis-full text-right text-caption text-destructive">
+              {t.shell.signOutFailed}
+            </p>
+          )}
+        </div>
       )}
-      <Button size="dense" busy={busy} busyLabel={t.shell.signingOut} onClick={signOut}>
-        {t.shell.signOut}
-      </Button>
-    </div>
+    </>
   );
 }

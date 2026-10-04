@@ -14,6 +14,9 @@ export const pt: Dictionary = {
     signIn: 'Entrar',
     signOut: 'Sair',
     signingOut: 'Saindo…',
+    signedOut: 'Você saiu.',
+    signOutFailed:
+      'Não consegui encerrar sua sessão: o serviço de login não respondeu. Tente de novo.',
     account: 'Sua carteira',
     disclaimer: 'Aviso',
     appearance: 'Aparência',

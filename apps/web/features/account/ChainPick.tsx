@@ -16,7 +16,15 @@ import { PersonError } from './person';
 // once. The screen says what the choice means and that it stands. A person who connected an outside
 // wallet never sees this: their chain is that wallet's, and the API says so (AccountProvider).
 
-export function ChainPick({ options }: { options: readonly ChainId[] }) {
+export type ChainPickProps = {
+  options: readonly ChainId[];
+  /** The person pressed the button that stores their choice: the screen may be about to change. */
+  onConfirm?: () => void;
+  /** It was not stored, and the card says why. */
+  onFailed?: () => void;
+};
+
+export function ChainPick({ options, onConfirm, onFailed }: ChainPickProps) {
   const t = useT();
   const port = useWalletPort();
   const { pick, mock } = useAccount();
@@ -36,12 +44,15 @@ export function ChainPick({ options }: { options: readonly ChainId[] }) {
 
   async function confirm() {
     if (!chosen || busy || !open.includes(chosen)) return;
+    onConfirm?.();
     setBusy(true);
     setProblem(null);
     try {
       await pick(chosen);
     } catch (e) {
       const kind = e instanceof PersonError ? e.kind : 'unreachable';
+      // Chosen before, elsewhere: the screen still changes, to where the plan does live.
+      if (kind !== 'taken') onFailed?.();
       setProblem(
         // The account reads where the plan does live, and the screen names that chain (SignInScreen).
         // This is said only if it could not be read, while the question is still on the page.

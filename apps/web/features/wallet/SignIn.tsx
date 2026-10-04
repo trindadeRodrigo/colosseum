@@ -16,7 +16,15 @@ import { useWalletPort } from './WalletProvider';
 /** Which button is running: the two passkey buttons, or a wallet by its id. */
 type Busy = 'create' | 'use' | `wallet:${string}` | null;
 
-export function SignIn({ onSignedIn }: { onSignedIn?: () => void }) {
+export type SignInProps = {
+  /** A way in was pressed: the screen may be about to change under the person. */
+  onAttempt?: () => void;
+  /** It did not work, and the panel says why. */
+  onFailed?: () => void;
+  onSignedIn?: () => void;
+};
+
+export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
   const t = useT();
   const port = useWalletPort();
   const [busy, setBusy] = useState<Busy>(null);
@@ -32,11 +40,13 @@ export function SignIn({ onSignedIn }: { onSignedIn?: () => void }) {
     if (busy) return;
     setBusy(what);
     setFailure(null);
+    onAttempt?.();
     try {
       await action();
       onSignedIn?.();
     } catch (e) {
       setFailure(signInFailure(e, attempt));
+      onFailed?.();
     } finally {
       setBusy(null);
     }

@@ -175,6 +175,44 @@ describe('who is signed in, in the bar', () => {
     },
   );
 
+  it('puts focus on "Sign in" after a sign-out, and tells a screen reader the person is out', async () => {
+    const signOut = vi.fn(async () => {
+      portStore.set(fakePort());
+    });
+    portStore.set(signedInPort(EMBEDDED, { signOut }));
+    const host = await shell();
+    await settle();
+    const out = find(find(host, '[data-ui="account"]'), 'button');
+    out.focus();
+    await click(out);
+    await settle();
+    const link = find<HTMLAnchorElement>(host, 'header a[href="/sign-in"]');
+    expect(document.activeElement).toBe(link);
+    expect(find(host, '[data-ui="account-said"]').textContent).toBe(en.signedOut);
+  });
+
+  it('says so when signing out did not work, and the person is still signed in', async () => {
+    const signOut = vi.fn(async () => {
+      throw new Error('Failed to fetch');
+    });
+    portStore.set(signedInPort(EMBEDDED, { signOut }));
+    const host = await shell();
+    await settle();
+    await click(find(find(host, '[data-ui="account"]'), 'button'));
+    await settle();
+    expect(find(host, 'header [role="alert"]').textContent).toBe(en.signOutFailed);
+    expect(find(host, '[data-ui="account-said"]').textContent).toBe('');
+    // still the way out, to try again
+    expect(find(find(host, '[data-ui="account"]'), 'button').textContent).toContain(en.signOut);
+  });
+
+  it('says nothing and moves no focus when the page loads signed out', async () => {
+    const host = await shell();
+    await settle();
+    expect(document.activeElement).toBe(document.body);
+    expect(find(host, '[data-ui="account-said"]').textContent).toBe('');
+  });
+
   it('marks the throwaway wallet of development with the hatch and the word MOCK', async () => {
     portStore.set(signedInPort(PHANTOM, { test: true }, 'mock'));
     const host = await shell();

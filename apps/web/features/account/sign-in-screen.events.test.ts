@@ -636,7 +636,7 @@ describe('the screen itself', () => {
     const host = await screen();
     await click(button(host, en.signIn.passkey.create));
     await settle();
-    expect(find(host, '[role="status"]').textContent).toBe(en.signIn.passkey.making);
+    expect(find(host, '[data-ui="lattice-status"]').textContent).toBe(en.signIn.passkey.making);
     portStore.set(signedInPort(EMBEDDED));
     await settle();
     expect(asks(host)).toBe(true);
@@ -650,6 +650,119 @@ describe('the screen itself', () => {
     await click(button(host, 'Phantom'));
     await settle();
     expect(router.replace.mock.calls).toEqual([['/goal']]);
+  });
+});
+
+describe('where focus goes, and what a screen reader is told, when the screen changes', () => {
+  const said = (host: HTMLElement) => find(host, '[data-ui="sign-in-said"]').textContent;
+  const stage = (host: HTMLElement) => find(host, '[data-ui="sign-in-stage"]');
+  const heading = (host: HTMLElement) => find(host, 'h1');
+  /** Presses it as a person does: it has focus first. */
+  const pressing = async (el: HTMLElement) => {
+    el.focus();
+    await click(el);
+    await settle();
+  };
+
+  it('goes to the question after a sign-in, and says the person is signed in and is asked', async () => {
+    api(made());
+    portStore.set(fakePort({ found: FOUND, signIn: signsInAs(EMBEDDED) }));
+    const host = await screen('en', '/goal');
+    await pressing(button(host, en.signIn.passkey.create));
+    expect(asks(host)).toBe(true);
+    // the button that was pressed is gone: focus is on what took its place, not on the page
+    expect(document.activeElement).toBe(stage(host));
+    expect(document.activeElement).not.toBe(document.body);
+    expect(stage(host).textContent).toContain(en.chain.pick.title);
+    expect(said(host)).toBe(`${en.signIn.done.title} ${en.chain.pick.title}`);
+  });
+
+  it('rests on the heading while the wallet is made, then goes to the question', async () => {
+    api(made());
+    const signIn = vi.fn(async () => {
+      portStore.set(
+        fakePort({ status: 'loading', userId: 'did:privy:test', walletsOwed: 'making' }),
+      );
+    });
+    portStore.set(fakePort({ found: FOUND, signIn }));
+    const host = await screen();
+    await pressing(button(host, en.signIn.passkey.create));
+    expect(document.activeElement).toBe(heading(host));
+    expect(heading(host).textContent).toBe(en.signIn.done.title);
+    expect(said(host)).toBe(`${en.signIn.done.title} ${en.signIn.passkey.making}`);
+    await act(async () => portStore.set(signedInPort(EMBEDDED)));
+    await settle();
+    expect(asks(host)).toBe(true);
+    expect(document.activeElement).toBe(stage(host));
+    expect(said(host)).toBe(`${en.signIn.done.title} ${en.chain.pick.title}`);
+  });
+
+  it('goes to where the plan lives after the choice, and says it', async () => {
+    api(made());
+    portStore.set(signedInPort(EMBEDDED));
+    const host = await screen();
+    await settle();
+    await pressing(button(host, 'Solana'));
+    await pressing(button(host, en.chain.pick.confirm('Solana')));
+    expect(state(host)).toBe('ready');
+    expect(document.activeElement).toBe(stage(host));
+    expect(stage(host).textContent).toContain(en.chain.is.picked('Solana'));
+    expect(said(host)).toBe(en.chain.is.picked('Solana'));
+  });
+
+  it('goes to what the answer brought after "Ask again"', async () => {
+    const server = api(made());
+    server.force((path) => (path === '/v1/me' ? json({}, 503) : null));
+    portStore.set(signedInPort(EMBEDDED));
+    const host = await screen();
+    await settle();
+    server.force(null);
+    await pressing(button(host, en.chain.unknown.retry));
+    expect(asks(host)).toBe(true);
+    expect(document.activeElement).toBe(stage(host));
+    expect(said(host)).toBe(`${en.signIn.done.title} ${en.chain.pick.title}`);
+  });
+
+  it('goes to the heading after signing out from the screen, and says the person is out', async () => {
+    api(made());
+    const signOut = vi.fn(async () => {
+      portStore.set(fakePort({ found: FOUND }));
+    });
+    portStore.set(
+      fakePort({ status: 'loading', userId: 'did:privy:test', walletsOwed: 'failed', signOut }),
+    );
+    const host = await screen();
+    await settle();
+    await pressing(button(host, en.shell.signOut));
+    expect(heading(host).textContent).toBe(en.signIn.title);
+    expect(document.activeElement).toBe(heading(host));
+    expect(said(host)).toBe(en.shell.signedOut);
+  });
+
+  it('says so when signing out from the screen did not work, and leaves the person where they were', async () => {
+    api(made());
+    const signOut = vi.fn(async () => {
+      throw toWalletError(new Error('Failed to fetch'));
+    });
+    portStore.set(
+      fakePort({ status: 'loading', userId: 'did:privy:test', walletsOwed: 'failed', signOut }),
+    );
+    const host = await screen();
+    await settle();
+    await pressing(button(host, en.shell.signOut));
+    expect(alert(host)).toBe(en.shell.signOutFailed);
+    expect(state(host)).toBe('no-wallet');
+  });
+
+  it('moves no focus when the page only loads: nobody pressed anything', async () => {
+    api(made());
+    portStore.set(fakePort({ status: 'loading' }));
+    const host = await screen();
+    await act(async () => portStore.set(signedInPort(EMBEDDED)));
+    await settle();
+    expect(asks(host)).toBe(true);
+    expect(document.activeElement).toBe(document.body);
+    expect(said(host)).toBe('');
   });
 });
 

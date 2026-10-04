@@ -16,6 +16,9 @@ export const en = {
     signIn: 'Sign in',
     signOut: 'Sign out',
     signingOut: 'Signing out…',
+    /** Said to a screen reader once the person is signed out. */
+    signedOut: 'You’re signed out.',
+    signOutFailed: 'I couldn’t sign you out: the sign-in service didn’t answer. Try again.',
     account: 'Your wallet',
     disclaimer: 'Disclaimer',
     appearance: 'Appearance',
