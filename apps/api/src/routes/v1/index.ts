@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { createVaultRpc } from '@colosseum/chain-solana/vault';
+import {
+  createVaultRpc,
+  deploymentMints,
+  type SolanaDeploymentRecord,
+} from '@colosseum/chain-solana/vault';
 import { basketAssets, createDb, type Db } from '@colosseum/db';
 import {
   BasketAsset,
@@ -37,6 +41,8 @@ export type V1Deps = {
   contracts?: Parameters<typeof parseChainConfigs>[1];
   /** What Solana runs on in `live` or `readonly`. Default: `SOLANA_RPC_URL` and the `basket_assets` rows. */
   solana?: SolanaInputs;
+  /** The deploy's record the addresses came from: `basket_assets` is held to its mints at start. */
+  solanaRecord?: SolanaDeploymentRecord | null;
   db?: Db;
   now?: () => Date;
   /** The rate limits. Default: `LIMITS`, the ones a server runs with. */
@@ -69,7 +75,9 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
     createChainRegistry(flags, parseChainConfigs(env, deps.contracts), {
       seed: `${Date.now()}:${randomUUID()}`,
       now: deps.now,
-      solana: deps.solana ?? (await solanaFromEnv(env, flags.chainMode.solana, db)),
+      solana:
+        deps.solana ??
+        (await solanaFromEnv(env, flags.chainMode.solana, db, deps.solanaRecord ?? null)),
     });
   const orderDeps: OrderDeps = { db, chains, now: deps.now ?? (() => new Date()) };
 
@@ -125,6 +133,7 @@ export async function solanaFromEnv(
   env: EnvLike,
   mode: string,
   db: Db,
+  record: SolanaDeploymentRecord | null = null,
 ): Promise<SolanaInputs | undefined> {
   if (mode !== 'live' && mode !== 'readonly') return undefined;
   // As written: a URL can carry a key, and keys are case-sensitive (readEnv lower-cases).
@@ -134,5 +143,32 @@ export async function solanaFromEnv(
   const assets = rows.map(({ updatedAt: _, chainId, ...row }) =>
     BasketAsset.parse({ ...row, chain: chainId }),
   );
+  if (record) holdToRecord(assets, record);
   return { rpc: createVaultRpc(url), assets };
+}
+
+/**
+ * `basket_assets` against the deploy's record, at start: every Solana row is a mint the record names,
+ * with its decimals, and the cash row is the record's cash. One database serves one network, so a
+ * row of another network's deploy, or a hand-edited one, stops the API rather than build on it. The
+ * table has no token program: the adapter reads it from each mint.
+ */
+export function holdToRecord(assets: BasketAsset[], record: SolanaDeploymentRecord): void {
+  const known = deploymentMints(record);
+  const wrong = assets.flatMap((a) => {
+    const named = known.get(a.address);
+    if (!named) return [`${a.id} (${a.address}) is not a mint of ${record.network}`];
+    if (named.decimals !== null && named.decimals !== a.decimals)
+      return [`${a.id} has ${a.decimals} decimals, and ${record.network} says ${named.decimals}`];
+    return [];
+  });
+  const cash = assets.filter((a) => a.cls === 'cash');
+  if (cash.length !== 1 || cash[0]?.address !== record.cash.mint)
+    wrong.push(
+      `the cash row is not ${record.network}'s cash, ${record.cash.id} (${record.cash.mint})`,
+    );
+  if (wrong.length)
+    throw new Error(
+      `basket_assets does not match the record of ${record.network}: ${wrong.slice(0, 3).join('; ')}`,
+    );
 }

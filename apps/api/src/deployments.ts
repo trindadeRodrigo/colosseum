@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deploymentAddresses, SolanaDeploymentRecord } from '@colosseum/chain-solana/vault';
 import { type EnvLike, envKey, Network, readEnv } from '@colosseum/schemas';
@@ -47,6 +47,13 @@ export function solanaDeployment(
   } catch {
     throw new Error(`${file} is not a Solana deployment record this API reads`);
   }
+  // The record names its network; it has to be the one the file is for, which is the one the
+  // environment asked for. A devnet file that says mainnet is not run as devnet.
+  const expected = basename(file, '.json');
+  if (record.network !== expected)
+    throw new Error(
+      `${file} is the record of ${record.network}, and CHAIN_NETWORK_SOLANA asks for ${expected}`,
+    );
   const { program, router, priceAccount } = deploymentAddresses(record);
   const agree = (key: string, value: string) => {
     // As written: an address is case-sensitive, and readEnv lower-cases.

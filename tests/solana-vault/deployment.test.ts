@@ -6,7 +6,7 @@ import { getAddressDecoder } from '@solana/kit';
 import { inArray } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
 import { solanaDeployment } from '../../apps/api/src/deployments';
-import { solanaFromEnv } from '../../apps/api/src/routes/v1/index';
+import { holdToRecord, solanaFromEnv } from '../../apps/api/src/routes/v1/index';
 import { fillBasketAssets } from '../../scripts/solana/basket-assets';
 
 // Where the API's real Solana chain gets its addresses and its tokens: the record the deploy commits
@@ -19,42 +19,69 @@ function record(): SolanaDeploymentRecord {
   const token = (slug: string, n: number) => ({
     id: `solana:${slug}-${run}`,
     symbol: `t${slug.toUpperCase()}`,
+    name: `test ${slug}`,
     modelOf: `${slug.toUpperCase()}x`,
     mint: key(n),
     tokenProgram: 'token-2022' as const,
     decimals: 8,
+    reserve: key(n + 20),
+  });
+  const listed = (slug: string, n: number, kind: 'stock' | 'gold', index: number) => ({
+    ...token(slug, n),
+    kind,
+    session: kind === 'stock' ? (1 as const) : (0 as const),
+    priceIndex: index,
+    twapIndex: index + 1,
+    indexSource: 'test-network' as const,
+    maxWeightBps: 5_000,
+    keeperOn: kind === 'stock',
+    range: kind === 'stock' ? { minPrice: '400000000', maxPrice: '600000000' } : null,
+    spreadBps: 30,
+    pairs: { buy: key(n + 40), sell: key(n + 60) },
   });
   return {
-    network: 'devnet',
+    network: 'solana-devnet',
     chain: 'solana',
     provenance: 'sandbox',
+    genesisHash: null,
     programs: { basket: key(1), mockRouter: key(2) },
-    accounts: { priceAccount: key(3) },
+    accounts: {
+      config: key(4),
+      assets: key(5),
+      priceAccount: key(3),
+      router: key(6),
+      lookupTable: null,
+    },
+    roles: {
+      admin: key(7),
+      guardian: key(8),
+      defaultKeeper: key(9),
+      priceOwner: key(2),
+      exchangeAdmin: key(7),
+      priceWriter: null,
+      tokenAuthority: key(7),
+    },
+    params: {
+      toleranceBps: 75,
+      lossCapBps: 100,
+      bandBps: 50,
+      twapDevBps: 200,
+      maxPriceAgeS: 120,
+      assetCooldownS: 3_600,
+      publishDelayS: 60,
+      sessionOpenUtcS: 52_200,
+      sessionCloseUtcS: 72_000,
+    },
+    closedDays: ['2026-11-26'],
     cash: {
-      ...token('usdc', 40),
+      ...token('usdc', 10),
       kind: 'cash',
       modelOf: 'USDC',
       tokenProgram: 'token',
       decimals: 6,
     },
-    assets: [
-      {
-        ...token('spyx', 41),
-        kind: 'stock',
-        session: 1,
-        priceIndex: 344,
-        maxWeightBps: 5_000,
-        keeperOn: true,
-      },
-      {
-        ...token('gldx', 42),
-        kind: 'gold',
-        session: 0,
-        priceIndex: 100,
-        maxWeightBps: 3_000,
-        keeperOn: false,
-      },
-    ],
+    assets: [listed('spyx', 11, 'stock', 344), listed('gldx', 12, 'gold', 100)],
+    retired: [{ id: null, symbol: null, mint: key(13), tokenProgram: 'token', keeperOn: false }],
   };
 }
 const file = (r: unknown) => () => JSON.stringify(r);
@@ -96,6 +123,17 @@ describe("the deploy's record gives a real Solana chain its addresses", () => {
     expect(() => solanaDeployment({}, () => '{"chain":"solana"}', '/records')).toThrow(
       'not a Solana deployment record',
     );
+    // A field the record does not have is another shape: refused, not ignored.
+    expect(() =>
+      solanaDeployment({}, file({ ...record(), keeperKey: key(30) }), '/records'),
+    ).toThrow('not a Solana deployment record');
+    // The devnet file has to be the devnet record: one that says it is mainnet's is not run.
+    expect(() =>
+      solanaDeployment({}, file({ ...record(), network: 'mainnet-beta' }), '/records'),
+    ).toThrow('is the record of mainnet-beta, and CHAIN_NETWORK_SOLANA asks for solana-devnet');
+    expect(() =>
+      solanaDeployment({ CHAIN_NETWORK_SOLANA: 'local' }, file(record()), '/records'),
+    ).toThrow('asks for solana-local');
   });
 
   it('turns the record into the asset list, cash first, every figure labelled a test network', () => {
@@ -106,6 +144,27 @@ describe("the deploy's record gives a real Solana chain its addresses", () => {
       [`solana:gldx-${run}`, 'gold', 'scope', '100', 'always'],
     ]);
     expect(assets.every((a) => a.provenance === 'sandbox')).toBe(true);
+  });
+});
+
+describe("basket_assets is held to the record's mints at start", () => {
+  it('passes the rows the record makes, and stops on a mint, a decimals or a cash it does not name', () => {
+    const rows = deploymentAssets(record());
+    expect(() => holdToRecord(rows, record())).not.toThrow();
+    const [cash, spyx, gldx] = rows;
+    if (!cash || !spyx || !gldx) throw new Error('rows');
+    expect(() => holdToRecord([cash, { ...spyx, address: key(31) }], record())).toThrow(
+      'is not a mint of solana-devnet',
+    );
+    expect(() => holdToRecord([cash, { ...spyx, decimals: 6 }], record())).toThrow(
+      'has 6 decimals, and solana-devnet says 8',
+    );
+    expect(() => holdToRecord([spyx, gldx], record())).toThrow(
+      "the cash row is not solana-devnet's cash",
+    );
+    expect(() => holdToRecord([{ ...gldx, cls: 'cash' }, spyx], record())).toThrow(
+      "the cash row is not solana-devnet's cash",
+    );
   });
 });
 

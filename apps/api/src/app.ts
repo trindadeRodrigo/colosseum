@@ -38,7 +38,7 @@ export async function buildApp(
     deps.deployments === undefined ? (deps.env ? null : DEPLOYMENTS_DIR) : deps.deployments;
   const solana = deployments
     ? solanaDeployment(deps.env ?? process.env, undefined, deployments)
-    : { env: deps.env ?? process.env, contracts: {} };
+    : { env: deps.env ?? process.env, contracts: {}, record: null };
   const env = solana.env;
   // Stops here on a flag it cannot read.
   const flags = parseFlags(env);
@@ -95,6 +95,7 @@ export async function buildApp(
   await registerV1Routes(app, env, {
     ...deps.v1,
     contracts: deps.v1?.contracts ?? solana.contracts,
+    solanaRecord: deps.v1?.solanaRecord ?? solana.record,
     inScope,
   });
 
