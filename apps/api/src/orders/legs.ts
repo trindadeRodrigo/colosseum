@@ -488,7 +488,8 @@ export function attemptFor(
  * The caller says a leg was sent: by its transaction id, or by handing over the signed bytes to relay.
  * The id or the bytes are matched against every attempt of the leg, and the leg settles on the attempt
  * that landed, whichever it is and whatever it was labelled. What matches no attempt is refused and
- * changes nothing. Bytes are relayed only for an attempt that is built and was never sent.
+ * changes nothing. Bytes are relayed only for an attempt that is built and was never sent, and only
+ * while the order has not expired.
  *
  * On an EVM chain the match is by the pair (message, nonce), with the nonce read from the transaction
  * itself (`nonceOf`), and the attempt is left carrying the nonce the wallet really used.
@@ -544,6 +545,13 @@ export async function reportLeg(
     if (attempt.txId) sent = { txId: attempt.txId, validUntil: attempt.validUntil };
     else if (attempt.status === 'built') {
       assertBuilds(entry);
+      // An order past its time is not acted on: its steps are no longer built, and its bytes are no
+      // longer sent. A transaction the wallet sent itself is still recorded, by id or by its bytes.
+      if (seconds(deps.now()) > stored.order.expiresAt)
+        throw new Refusal(410, 'this order has expired: nothing was sent', {
+          code: 'ORDER_EXPIRED',
+          fix: 'Make the order again.',
+        });
       const relayed = await refusing(() => adapter.relay(body.signedTx));
       sent = { txId: relayed.txId, validUntil: relayed.validUntil ?? attempt.validUntil };
       // Bytes that state no nonce landed on one all the same: the transaction says which.

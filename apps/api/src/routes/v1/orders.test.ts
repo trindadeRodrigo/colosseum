@@ -1691,6 +1691,51 @@ describe('refusals', () => {
     await on.close();
   });
 
+  it('does not relay signed bytes for an order that has expired', async () => {
+    let clock = Date.now();
+    const timed = await testApp({ issuer: issuer.issuer, db: data.db, now: () => new Date(clock) });
+    const on = timed.app;
+    const expired = {
+      error: 'this order has expired: nothing was sent',
+      code: 'ORDER_EXPIRED',
+      fix: 'Make the order again.',
+    };
+
+    // The last step of an order that was signed once: a day and an hour on, its bytes arrive.
+    const a = await someone('robinhood');
+    const cash = await openVault(a, on, timed.registry);
+    const { placed, deposit } = await toDeposit(a, on);
+    const built = await build(a, placed, deposit.id, on);
+    const before = await cash();
+    clock += 25 * 60 * 60 * 1000;
+    expect((await read(a, placed, on)).status).toBe('expired');
+    const signedTx = mockOf('robinhood', timed.registry).sign(built.tx);
+    const late = await post(a, legUrl(placed, deposit.id, 'report'), { signedTx }, on);
+    expect([late.statusCode, late.json()]).toEqual([410, expired]);
+    // Nothing was sent: the cash is in the wallet, the step is as it was, the order is still expired.
+    expect(before - (await cash())).toBe(0n);
+    const after = await read(a, placed, on);
+    expect([after.status, legOf(after, deposit.id).status]).toEqual(['expired', 'built']);
+    expect(attemptsOf(after, deposit.id)).toEqual([[1, 'built']]);
+
+    // A step that is not the last, of an order nobody signed: relayed, its cash would sit in a vault
+    // whose trades are then refused.
+    const s = await someone('solana');
+    await fund(s, on);
+    const unsigned = await order(s, { amountUsd: 600 }, on);
+    const create = await build(s, unsigned, first(unsigned).id, on);
+    clock += 16 * 60 * 1000;
+    const bytes = await post(
+      s,
+      legUrl(unsigned, first(unsigned).id, 'report'),
+      { signedTx: create.tx.payload },
+      on,
+    );
+    expect([bytes.statusCode, bytes.json()]).toEqual([410, expired]);
+    expect(await timed.registry.get('solana').adapter.getVaults(s.solana)).toEqual([]);
+    await on.close();
+  });
+
   it('an order nobody signed expires after 15 minutes', async () => {
     const a = await someone();
     let clock = Date.now();
