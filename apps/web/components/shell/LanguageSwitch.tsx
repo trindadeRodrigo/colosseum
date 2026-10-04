@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation';
 import { LANG_COOKIE, LANGS, type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { Button } from '../ui/Button';
+import { ChoiceChip } from './ChoiceChip';
 import { remember } from './remember';
 
 // English or Portuguese. The choice is a cookie the server reads, so the page is rendered in that
@@ -34,15 +34,14 @@ export function LanguageSwitch() {
         {t.shell.language}
       </span>
       {LANGS.map((option) => (
-        <Button
+        <ChoiceChip
           key={option}
-          variant="chip"
           lang={LOCALE[option]}
-          pressed={lang === option}
-          onClick={() => choose(option)}
+          chosen={lang === option}
+          onChoose={() => choose(option)}
         >
           {NAME[option]}
-        </Button>
+        </ChoiceChip>
       ))}
     </div>
   );

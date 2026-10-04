@@ -281,6 +281,10 @@ describe('“Build my plan”', () => {
     await click(buildButton(host));
     await settle();
     expect(server.to(PERSONALIZE_PATH)).toEqual([]);
+    // the limits themselves fit: the card says so, and nobody is told to fix a field
+    expect(find(host, '[data-ui="goal-card"]').textContent).toContain(en.goal.card.draftSet);
+    expect(host.textContent).not.toContain(en.goal.sheet.fixOne);
+    expect(buildButton(host).getAttribute('aria-describedby')).toBe(summary(host)?.id);
     // and the way to sign in comes back to this screen
     const facts = find(host, '[data-ui="sheet-facts"]');
     expect(facts.textContent).toContain(en.goal.chain.unset);
@@ -312,6 +316,27 @@ describe('“Build my plan”', () => {
     ]);
     // the choice is not offered here: it is asked in one place
     expect(host.querySelector('[role="group"]')).toBeNull();
+  });
+
+  it('does not build while the chain is still being read: there is no sheet without a chain', async () => {
+    const calls: string[] = [];
+    // the API's reader answers; its word on the person never comes
+    portStore.setApi(async (path) => {
+      calls.push(path);
+      if (path === '/goals') return json(READ_IN_DOLLARS);
+      return new Promise<Response>(() => {});
+    });
+    portStore.set(signedInPort(PHANTOM));
+    const host = await screen();
+    await read(host);
+    await fill(host);
+    // every field fits, and nothing is listed as wrong: the button is still not a way through
+    expect(summary(host)).toBeNull();
+    expect(buildButton(host).getAttribute('aria-disabled')).toBe('true');
+    await click(buildButton(host));
+    await settle();
+    expect(calls).not.toContain(PERSONALIZE_PATH);
+    expect(find(host, '[data-ui="sheet-facts"]').textContent).toContain(en.chain.reading);
   });
 
   it('does not build while the API has not said which chain, and asks it again when told to', async () => {

@@ -191,26 +191,67 @@ describe('building a plan: the one call, against a double of the route that is n
 });
 
 describe('a number as a person types one', () => {
-  it('reads English and Portuguese forms, each in its language', () => {
-    expect(parseNumber('40000', 'en')).toBe(40000);
-    expect(parseNumber('$40,000', 'en')).toBe(40000);
-    expect(parseNumber('1,500.50', 'en')).toBe(1500.5);
-    expect(parseNumber('40.000', 'pt')).toBe(40000);
-    expect(parseNumber('US$ 1.500,50', 'pt')).toBe(1500.5);
-    expect(parseNumber('US$ 40.000', 'pt')).toBe(40000);
+  it('reads the English and the Portuguese way of writing it, whatever the language of the page', () => {
+    for (const [typed, means] of [
+      ['40000', 40000],
+      ['$40,000', 40000],
+      ['40.000', 40000],
+      ['US$ 40.000', 40000],
+      ['US$\u00a040.000', 40000],
+      ['1,500.50', 1500.5],
+      ['1.500,50', 1500.5],
+      ['1,000,000', 1_000_000],
+      ['1.000.000', 1_000_000],
+      ['9.99', 9.99],
+      ['9,99', 9.99],
+      ['1500,5', 1500.5],
+      ['10', 10],
+    ] as const)
+      expect(parseNumber(typed), typed).toBe(means);
   });
 
-  it('is null for nothing typed and NaN for what is not a number', () => {
-    expect(parseNumber('', 'en')).toBeNull();
-    expect(parseNumber('  $ ', 'en')).toBeNull();
-    for (const text of ['forty', '40k', '-5', '1e9', '4 0 0 x'])
-      expect(parseNumber(text, 'en'), text).toBeNaN();
+  it('is null for nothing typed', () => {
+    expect(parseNumber('')).toBeNull();
+    expect(parseNumber('  $ ')).toBeNull();
+  });
+
+  it('is not a number when it is not one, or can be read two ways', () => {
+    for (const text of [
+      'forty',
+      '40k',
+      '-5',
+      '1e9',
+      '4 0 0 x',
+      // three digits after the mark and a zero before it: half a dollar, or five hundred
+      '0.500',
+      '1.5000',
+      '1,50,000',
+      '1.500.50',
+      '1,500,50',
+      '40,',
+      ',5',
+      '1..5',
+    ])
+      expect(parseNumber(text), text).toBeNaN();
+  });
+
+  it('means the same amount before and after the page changes language', () => {
+    // typed in English, read on a Portuguese page, and the other way round
+    for (const typed of ['40,000', '40.000', '1,500.50', '1.500,50'])
+      expect(
+        checkSheet({ ...FIELDS, amount: typed, language: 'pt' }, 'solana').sheet?.amountUsd,
+        typed,
+      ).toBe(checkSheet({ ...FIELDS, amount: typed, language: 'en' }, 'solana').sheet?.amountUsd);
+    expect(checkSheet({ ...FIELDS, amount: '40,000' }, 'solana').sheet?.amountUsd).toBe(40000);
+    expect(goalSentence({ ...FIELDS, amount: '40,000' }, dictionary('pt'), 'pt')).toMatch(
+      /US\$\s40\.000/,
+    );
   });
 });
 
 describe('the limits, checked against the shared schema', () => {
   it('hands on the parsed sheet, on the chain of the wallet, when everything fits', () => {
-    const { errors, sheet } = checkSheet(FIELDS, 'robinhood', 'en');
+    const { errors, sheet } = checkSheet(FIELDS, 'robinhood');
     expect(errors).toEqual({});
     expect(sheet).toEqual({
       basketType: 'standard',
@@ -228,12 +269,11 @@ describe('the limits, checked against the shared schema', () => {
   });
 
   it('parses nothing without a chain: the chain is the wallet’s, and there is none yet', () => {
-    expect(checkSheet(FIELDS, null, 'en')).toEqual({ errors: {}, sheet: null });
+    expect(checkSheet(FIELDS, null)).toEqual({ errors: {}, sheet: null });
   });
 
   it('says what does not fit, field by field, and parses nothing', () => {
-    const wrong = (over: Partial<SheetFields>) =>
-      checkSheet({ ...FIELDS, ...over }, 'solana', 'en');
+    const wrong = (over: Partial<SheetFields>) => checkSheet({ ...FIELDS, ...over }, 'solana');
     expect(wrong({ amount: '' })).toEqual({ errors: { amount: 'amountEmpty' }, sheet: null });
     expect(wrong({ amount: 'forty' }).errors).toEqual({ amount: 'amountNumber' });
     expect(wrong({ amount: '9.99' }).errors).toEqual({ amount: 'amountLow' });
@@ -254,7 +294,7 @@ describe('the limits, checked against the shared schema', () => {
 
   it('holds the limits to the bounds of the schema itself', () => {
     const fits = (over: Partial<SheetFields>) =>
-      checkSheet({ ...FIELDS, ...over }, 'solana', 'en').sheet !== null;
+      checkSheet({ ...FIELDS, ...over }, 'solana').sheet !== null;
     expect([fits({ amount: '10' }), fits({ amount: '1,000,000' })]).toEqual([true, true]);
     expect([fits({ horizon: '1' }), fits({ horizon: '480' })]).toEqual([true, true]);
     expect(BasketSheet.shape.amountUsd.safeParse(9.99).success).toBe(false);
@@ -264,28 +304,28 @@ describe('the limits, checked against the shared schema', () => {
 
   it('reads a monthly income only for an income goal, and takes it or leaves it', () => {
     const income = { ...FIELDS, goal: 'income' as const };
-    expect(checkSheet({ ...income, income: '1,500' }, 'solana', 'en').sheet).toMatchObject({
+    expect(checkSheet({ ...income, income: '1,500' }, 'solana').sheet).toMatchObject({
       goal: 'income',
       incomeTargetUsdMonthly: 1500,
     });
     // left empty, the sheet fits and carries no figure
-    const noFigure = checkSheet(income, 'solana', 'en').sheet;
+    const noFigure = checkSheet(income, 'solana').sheet;
     expect(noFigure).toMatchObject({ goal: 'income' });
     expect(noFigure && 'incomeTargetUsdMonthly' in noFigure).toBe(false);
-    expect(checkSheet({ ...income, income: 'a lot' }, 'solana', 'en').errors).toEqual({
+    expect(checkSheet({ ...income, income: 'a lot' }, 'solana').errors).toEqual({
       income: 'income',
     });
-    expect(checkSheet({ ...income, income: '0' }, 'solana', 'en').errors).toEqual({
+    expect(checkSheet({ ...income, income: '0' }, 'solana').errors).toEqual({
       income: 'income',
     });
     // typed for another goal, it is not on the sheet
-    const grown = checkSheet({ ...FIELDS, income: '1,500' }, 'solana', 'en').sheet;
+    const grown = checkSheet({ ...FIELDS, income: '1,500' }, 'solana').sheet;
     expect(grown && 'incomeTargetUsdMonthly' in grown).toBe(false);
   });
 
   it('carries the two rules and the language of the explanations', () => {
     expect(
-      checkSheet({ ...FIELDS, holdings: 'no', glide: 'no', language: 'pt' }, 'solana', 'en').sheet,
+      checkSheet({ ...FIELDS, holdings: 'no', glide: 'no', language: 'pt' }, 'solana').sheet,
     ).toMatchObject({ rules: { useHoldings: false, glide: false }, language: 'pt' });
   });
 });
@@ -294,7 +334,7 @@ describe('the limits as the sheet draws them', () => {
   const en = dictionary('en');
   const pt = dictionary('pt');
   const drawn = (fields: SheetFields, said = en) =>
-    sheetGroups(fields, FIELDS, checkSheet(fields, 'solana', 'en').errors, en, said, 'en');
+    sheetGroups(fields, FIELDS, checkSheet(fields, 'solana').errors, en, said, 'en');
   const every = (fields: SheetFields, said = en) => {
     const { groups, amount } = drawn(fields, said);
     return [...groups.flatMap((g) => g.fields), amount];

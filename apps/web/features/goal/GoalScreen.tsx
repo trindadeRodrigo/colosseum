@@ -80,7 +80,8 @@ export function GoalScreen() {
   }, [restored, text, sheet]);
 
   const chain = account.status === 'ready' ? account.chain : null;
-  const check = sheet ? checkSheet(sheet.fields, chain, lang) : null;
+  const check = sheet ? checkSheet(sheet.fields, chain) : null;
+  const fits = check !== null && Object.keys(check.errors).length === 0;
 
   async function read(typed: string) {
     setReading(true);
@@ -211,7 +212,7 @@ export function GoalScreen() {
           variant="header"
           state="draft"
           sentence={goalSentence(sheet.fields, t, lang) ?? t.goal.card.unfinished}
-          note={check?.sheet ? t.goal.card.draftSet : t.goal.card.draftOpen}
+          note={fits ? t.goal.card.draftSet : t.goal.card.draftOpen}
           action={{ label: t.goal.card.edit, href: `#${LIMITS}` }}
         />
       ) : (

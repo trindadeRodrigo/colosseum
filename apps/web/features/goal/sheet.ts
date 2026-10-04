@@ -58,15 +58,36 @@ export function fieldsOfDraft(draft: BasketSheetDraft, lang: Lang): SheetFields 
   };
 }
 
+const grouped = (text: string, mark: string) =>
+  new RegExp(`^[1-9]\\d{0,2}(\\${mark}\\d{3})+$`).test(text);
+
 /**
- * A number as a person types one in their language: "40,000" and "$40,000.50" in English, "40.000"
- * and "US$ 40.000,50" in Portuguese. Null when nothing was typed, NaN when it is not a number.
+ * A number as a person types one, read the same way whatever the language of the page: "40,000" and
+ * "40.000" are both forty thousand, "1,500.50" and "1.500,50" both fifteen hundred and a half. So a
+ * change of language never changes an amount that is already typed. With both marks, the later one
+ * sets off the cents. With one mark, three digits after it are thousands and one or two are cents.
+ * Null when nothing was typed, NaN when it is not a number that can be read one way only.
  */
-export function parseNumber(text: string, lang: Lang): number | null {
-  const bare = text.replace(/US\$|\$|[\s  ]/g, '');
+export function parseNumber(text: string): number | null {
+  const bare = text.replace(/US\$|\$|[\s\u00a0\u202f]/g, '');
   if (bare === '') return null;
-  const plain = lang === 'pt' ? bare.replace(/\./g, '').replace(',', '.') : bare.replace(/,/g, '');
-  return /^\d+(\.\d+)?$/.test(plain) ? Number(plain) : Number.NaN;
+  if (!/^\d[\d.,]*$/.test(bare)) return Number.NaN;
+  const marks = [...new Set(bare.replace(/\d/g, ''))];
+  if (marks.length === 0) return Number(bare);
+  const number = (whole: string, cents = '') =>
+    Number(`${whole.replace(/[.,]/g, '')}${cents ? `.${cents}` : ''}`);
+  if (marks.length === 2) {
+    const at = Math.max(bare.lastIndexOf('.'), bare.lastIndexOf(','));
+    const [whole, cents] = [bare.slice(0, at), bare.slice(at + 1)];
+    const thousands = bare[at] === '.' ? ',' : '.';
+    return /^\d{1,2}$/.test(cents) && grouped(whole, thousands) ? number(whole, cents) : Number.NaN;
+  }
+  const mark = marks[0] as string;
+  if (grouped(bare, mark)) return number(bare);
+  const [whole = '', cents = '', ...more] = bare.split(mark);
+  return more.length === 0 && /^\d+$/.test(whole) && /^\d{1,2}$/.test(cents)
+    ? number(whole, cents)
+    : Number.NaN;
 }
 
 export type ErrorKey = keyof Dictionary['goal']['errors'];
@@ -93,9 +114,9 @@ const FIELD_OF_PATH: Record<string, Checked> = {
  * Checks the fields against `BasketSheet`. The chain is not one of them: it is the wallet's, and it
  * is put on the sheet here. Without a chain every field is still checked, and nothing is parsed.
  */
-export function checkSheet(fields: SheetFields, chain: ChainId | null, lang: Lang): SheetCheck {
-  const amount = parseNumber(fields.amount, lang);
-  const income = fields.goal === 'income' ? parseNumber(fields.income, lang) : null;
+export function checkSheet(fields: SheetFields, chain: ChainId | null): SheetCheck {
+  const amount = parseNumber(fields.amount);
+  const income = fields.goal === 'income' ? parseNumber(fields.income) : null;
   const horizon = /^\d+$/.test(fields.horizon.trim()) ? Number(fields.horizon.trim()) : Number.NaN;
   const candidate = {
     basketType: 'standard',
@@ -150,7 +171,7 @@ export function dollars(amount: number, lang: Lang): string {
  * the three things it is made of cannot all be read.
  */
 export function goalSentence(fields: SheetFields, t: Dictionary, lang: Lang): string | null {
-  const amount = parseNumber(fields.amount, lang);
+  const amount = parseNumber(fields.amount);
   const months = /^\d+$/.test(fields.horizon.trim()) ? Number(fields.horizon.trim()) : null;
   if (fields.goal === '' || amount === null || Number.isNaN(amount) || months === null) return null;
   return t.goal.card.sentence[fields.goal](dollars(amount, lang), t.goal.card.months(months));

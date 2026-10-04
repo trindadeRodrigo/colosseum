@@ -40,6 +40,7 @@ import {
 import { createWalletPort, idleDriver, type ProblemKind } from './port';
 import {
   canSignIn,
+  inBrowser,
   isEmbedded,
   missingWallets,
   type StandardSolanaWallet,
@@ -71,6 +72,9 @@ function privyConfig(chains: WalletChains): PrivyClientConfig {
       // STYLE.md: the primary is hardwood, and no blue or violet anywhere. Privy's default accent is violet.
       accentColor: '#7A5A3A',
       walletChainType: 'ethereum-and-solana',
+      // The only other login method is the passkey, and Privy insists on this when there is no email
+      // or social login.
+      showWalletLoginFirst: true,
       // Which outside wallets Privy keeps a connector for: those found in the browser, of both families.
       walletList: ['detected_solana_wallets', 'detected_ethereum_wallets', 'phantom', 'metamask'],
     },
@@ -171,7 +175,7 @@ function PrivyDriver({
   useEffect(() => watchEvmWallets(window, setAnnounced), []);
   const outside = (
     standard.wallets as readonly (StandardSolanaWallet & { isPrivyWallet?: boolean })[]
-  ).filter((wallet) => !wallet.isPrivyWallet && canSignIn(wallet));
+  ).filter((wallet) => !wallet.isPrivyWallet && inBrowser(wallet) && canSignIn(wallet));
   const found = foundWallets(outside, announced);
 
   // The accounts are the person's linked wallets that are connected in this browser, in Privy's order

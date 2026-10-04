@@ -85,6 +85,14 @@ export type SiwsCalls = {
   }): Promise<unknown>;
 };
 
+/**
+ * A wallet that is in this browser, as an extension or as the wallet's own browser. WalletConnect
+ * registers itself as a wallet too; it is a window of its own that pairs with a phone, drawn by its
+ * maker, so it is not listed.
+ */
+export const inBrowser = (wallet: { name: string }): boolean =>
+  !/^wallet\s*connect$/i.test(wallet.name.trim());
+
 /** Can this wallet sign in at all: it connects, and it signs a message. */
 export const canSignIn = (wallet: StandardSolanaWallet): boolean =>
   wallet.features['standard:connect'] !== undefined &&

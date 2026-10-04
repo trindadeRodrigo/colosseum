@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { THEME_CLASS, THEME_COOKIE, type ThemeChoice } from '../../i18n';
 import { useT } from '../../i18n/I18nProvider';
-import { Button } from '../ui/Button';
+import { ChoiceChip } from './ChoiceChip';
 import { remember } from './remember';
 
 // Light, dark, or whatever the system is. The server writes the class on <html> from the cookie, so a
@@ -36,14 +36,9 @@ export function ThemeSwitch({ initial }: { initial: ThemeChoice }) {
         {t.shell.appearance}
       </span>
       {CHOICES.map((option) => (
-        <Button
-          key={option}
-          variant="chip"
-          pressed={choice === option}
-          onClick={() => choose(option)}
-        >
+        <ChoiceChip key={option} chosen={choice === option} onChoose={() => choose(option)}>
           {t.shell.themes[option]}
-        </Button>
+        </ChoiceChip>
       ))}
     </div>
   );

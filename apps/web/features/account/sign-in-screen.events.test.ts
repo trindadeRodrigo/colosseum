@@ -356,6 +356,36 @@ describe('when the API does not say where the plan lives', () => {
   });
 });
 
+describe('one person after another in the same browser', () => {
+  it('does not show the first person’s chain to the second while theirs is being read', async () => {
+    const first = made({ chain: 'solana', chainSource: 'picked', chainOptions: [] });
+    const server = api(first);
+    portStore.set(signedInPort(EMBEDDED, { userId: 'did:privy:first' }));
+    const host = await screen();
+    await settle();
+    expect(host.textContent).toContain(en.chain.is.picked('Solana'));
+
+    // the first signs out and a second person signs in: the API is slow to say who they are
+    let answer: (res: Response) => void = () => {};
+    server.force((path) =>
+      path === '/v1/me' ? (new Promise<Response>((resolve) => (answer = resolve)) as never) : null,
+    );
+    portStore.set(fakePort({ found: FOUND }));
+    await settle();
+    portStore.set(signedInPort(METAMASK, { userId: 'did:privy:second' }));
+    await settle();
+    expect(state(host)).toBe('loading');
+    expect(host.textContent).not.toContain('Solana');
+    expect(host.textContent).toContain(en.chain.reading);
+
+    answer(json(connected(METAMASK, 'robinhood')));
+    await settle();
+    expect(state(host)).toBe('ready');
+    expect(host.textContent).toContain(en.chain.is.wallet('Robinhood Chain'));
+    expect(host.textContent).not.toContain(SOLANA);
+  });
+});
+
 describe('the screen itself', () => {
   it('shows the two ways in to someone signed out, under one heading', async () => {
     api(made());

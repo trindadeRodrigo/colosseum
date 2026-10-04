@@ -132,6 +132,7 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
   const text = { ...CONSTRAINT_SHEET_LABELS, ...labels };
   const summary = useRef<HTMLDivElement>(null);
   const fixId = useId();
+  const summaryId = useId();
   const when = source ? isoUtc(source.fetchedAt) : null;
 
   const head = (
@@ -287,6 +288,7 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
         {count > 0 && (
           <div
             ref={summary}
+            id={summaryId}
             tabIndex={-1}
             role="alert"
             data-ui="sheet-errors"
@@ -332,7 +334,11 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
               busy={solving}
               busyLabel={text.building}
               disabled={blocked && !solving}
-              aria-describedby={blocked && count > 0 ? fixId : undefined}
+              // What blocks the build is said where the button can point to it: the line under
+              // it while fields are wrong, the list above when what blocks is not a field.
+              aria-describedby={
+                blocked && count > 0 ? (wrong.length > 0 ? fixId : summaryId) : undefined
+              }
               onDisabledClick={() => summary.current?.focus()}
               onClick={() => {
                 // The button refuses a click while it is disabled or busy. This is the sheet's own
@@ -343,9 +349,9 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
             >
               {text.build}
             </Button>
-            {blocked && count > 0 && (
+            {blocked && wrong.length > 0 && (
               <p id={fixId} className="text-caption text-muted-foreground">
-                {plural(text.fixOne, text.fixOther, wrong.length || count)}
+                {plural(text.fixOne, text.fixOther, wrong.length)}
               </p>
             )}
             <p role="status" className="sr-only">

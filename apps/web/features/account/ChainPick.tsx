@@ -1,6 +1,7 @@
 'use client';
 import { type ChainId, chainFamily } from '@colosseum/schemas';
 import { useId, useState } from 'react';
+import { ChoiceChip } from '../../components/shell/ChoiceChip';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardFooter, CardHeader } from '../../components/ui/Card';
 import { shorten } from '../../components/ui/format';
@@ -64,14 +65,13 @@ export function ChainPick({ options }: { options: readonly ChainId[] }) {
             const account = port.active(chainFamily(chain));
             return (
               <div key={chain} className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <Button
-                  variant="chip"
-                  pressed={chosen === chain}
+                <ChoiceChip
+                  chosen={chosen === chain}
                   disabled={busy}
-                  onClick={() => setChosen(chain)}
+                  onChoose={() => setChosen(chain)}
                 >
                   {name(chain)}
-                </Button>
+                </ChoiceChip>
                 {/* The throwaway wallet marks the whole card, so its chains carry no mark of their own. */}
                 {network && !mock && (
                   <ChainMark

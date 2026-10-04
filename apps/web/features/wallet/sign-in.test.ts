@@ -6,6 +6,7 @@ import { foundWallets, readAnnouncement, watchEvmWallets } from './found-wallets
 import { createWalletPort, idleDriver } from './port';
 import {
   clientType,
+  inBrowser,
   missingWallets,
   signInWithEvmWallet,
   signInWithSolanaWallet,
@@ -257,6 +258,13 @@ describe('signing in with a Solana wallet of the wallet standard', () => {
       'wallet_silent',
     ]);
     expect(calls.login).not.toHaveBeenCalled();
+  });
+
+  it('does not list WalletConnect, which is a window of its own and not a wallet in the browser', () => {
+    expect(inBrowser({ name: 'Phantom' })).toBe(true);
+    expect(inBrowser({ name: 'Solflare' })).toBe(true);
+    for (const name of ['WalletConnect', 'walletconnect', ' Wallet Connect '])
+      expect(inBrowser({ name }), name).toBe(false);
   });
 
   it('files a wallet under its name in lower case', () => {
