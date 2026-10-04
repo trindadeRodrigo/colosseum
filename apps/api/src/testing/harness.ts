@@ -126,6 +126,27 @@ export async function person(issuer: TestIssuer, kind: PersonKind = 'solana'): P
   };
 }
 
+/**
+ * The headers of a sign-in whose identity token lists exactly these wallets: for a mix `person` has no
+ * kind for, or the same person signing in again with other wallets. `client` is what made the wallet:
+ * `privy` is one made in the app, anything else an outside wallet.
+ */
+export async function signIn(
+  issuer: TestIssuer,
+  sub: string,
+  wallets: { family: 'solana' | 'evm'; address: string; client: string }[],
+): Promise<Record<string, string>> {
+  const linked = wallets.map((w) => ({
+    type: 'wallet',
+    address: w.address,
+    chain_type: w.family === 'solana' ? 'solana' : 'ethereum',
+    wallet_client_type: w.client,
+  }));
+  const access = await issuer.sign(sub, { sid: randomUUID() });
+  const identity = await issuer.sign(sub, { linked_accounts: JSON.stringify(linked) });
+  return { authorization: `Bearer ${access}`, [IDENTITY_TOKEN_HEADER]: identity };
+}
+
 /** The weights of the default test plan: three assets, nothing kept in cash. */
 export const WHOLE = { spy: 5000, nvda: 3000, gold: 2000 };
 
