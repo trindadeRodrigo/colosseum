@@ -30,7 +30,7 @@ On Oct 1 Rodrigo merged the risk layer and the design system into `main`, so the
 | chain-solana `positions`, `prices` | superseded | New readers: holdings over both token programs with the multiplier applied once; reference prices from Kamino Scope with age and market state |
 | chain-solana `executor`, `rebalance-executor`, `delegate`, `kamino`, `brl-leg` | switched off, deleted after the freeze | Vault transaction builders replace them, one leg at a time. `buildRevokeUnsigned` stays as the migration tool |
 | `packages/chain-evm` | replace | The stub becomes the Base and Robinhood Chain adapter |
-| `apps/api` | adapt | New routes under `routes/v1/`, auth, a CORS allowlist, rate limits, one error handler. With `LEGACY_STRUCTURER=off` the `/policies/*` routes are not registered. `/risk` routes stay. His edit: delete the routes that sign on the server |
+| `apps/api` | adapt | New routes under `routes/v1/`, auth, a CORS allowlist, rate limits, one error handler. With `LEGACY_STRUCTURER=off` the one route that signs on the server, `POST /policies/:id/rebalance`, is not registered. `/risk` routes stay. His edit: delete the routes that sign on the server |
 | `apps/risk-api` | keep | Not touched |
 | `apps/web` | adapt | New screens in `features/` folders. His `/risk/*` pages stay. His three screens (home, plan, monitor) are rebuilt on his design system and extended, and `/embed` stays (section 11 of the design). Privy replaces the wallet-adapter provider |
 | `scripts/`, `fixtures/`, `tests/`, `docs/` | keep | Collectors and launchd jobs untouched before Oct 12. Old docs get a "superseded by" line once he agrees |

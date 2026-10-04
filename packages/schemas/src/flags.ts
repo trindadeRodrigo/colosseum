@@ -23,14 +23,14 @@ export const Flags = z.object({
   keeperEnabled: z.boolean(),
   /** AGENT_SURFACE */
   agentSurface: z.boolean(),
-  /** LEGACY_STRUCTURER: the structurer's server-signing routes. */
+  /** LEGACY_STRUCTURER: the structurer's one route that signs on the server (the rebalance). */
   legacyStructurer: z.boolean(),
 });
 export type Flags = z.infer<typeof Flags>;
 
 /**
  * With nothing set, no chain is touched, nothing signs on its own, and Base is out.
- * `legacyStructurer` is off: the API registers the structurer's server-signing routes only when it is
+ * `legacyStructurer` is off: the API registers the structurer's server-signing route only when it is
  * on (API-2), so with nothing set no route reaches a signer.
  */
 export const DEFAULT_FLAGS: Flags = {
