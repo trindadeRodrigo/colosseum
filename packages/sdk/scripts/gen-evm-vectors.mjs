@@ -156,10 +156,147 @@ const checksums = [deployed.factory, deployed.beacon, ...Array.from({ length: 14
   (lower) => ({ lower, checksummed: viem.getAddress(lower) }),
 );
 
+// Signed transactions as viem serializes them, with a signature made of fixed bytes: no key is
+// involved, and none of these can land anywhere. Drawn after everything above.
+const signedOf = (tx, signature) => {
+  const raw = viem.serializeTransaction(tx, signature);
+  return {
+    type: tx.type,
+    raw,
+    hash: keccak256(raw),
+    chainId: tx.chainId === undefined ? null : String(tx.chainId),
+    nonce: tx.nonce,
+    to: tx.to ?? null,
+    value: String(tx.value ?? 0n),
+    data: tx.data ?? '0x',
+    accessList: tx.accessList?.length ?? 0,
+  };
+};
+const typed = { r: bytes(32), s: bytes(32), yParity: 1 };
+const fees = { maxFeePerGas: 2_000_000_000n, maxPriorityFeePerGas: 1_000_000n, gas: 310_000n };
+const signed = [
+  ...[0, 1, 127, 128, 255, 256, 65_536, 2 ** 40].map((nonce) =>
+    signedOf(
+      {
+        type: 'eip1559',
+        chainId: 46630,
+        nonce,
+        to: address(),
+        value: 0n,
+        data: bytes(68),
+        ...fees,
+      },
+      typed,
+    ),
+  ),
+  ...['0x', '0x05', '0x80', bytes(55), bytes(56), bytes(300), bytes(70_000)].map((data) =>
+    signedOf(
+      { type: 'eip1559', chainId: 4663, nonce: 9, to: address(), value: 0n, data, ...fees },
+      typed,
+    ),
+  ),
+  signedOf(
+    {
+      type: 'eip1559',
+      chainId: 8453,
+      nonce: 3,
+      to: address(),
+      value: 10n ** 18n,
+      data: '0x',
+      ...fees,
+    },
+    typed,
+  ),
+  signedOf(
+    { type: 'eip1559', chainId: 8453, nonce: 4, value: 0n, data: bytes(40), ...fees },
+    typed,
+  ),
+  signedOf(
+    {
+      type: 'eip1559',
+      chainId: 8453,
+      nonce: 5,
+      to: address(),
+      value: 0n,
+      data: bytes(36),
+      accessList: [{ address: address(), storageKeys: [bytes(32), bytes(32)] }],
+      ...fees,
+    },
+    typed,
+  ),
+  signedOf(
+    {
+      type: 'eip2930',
+      chainId: 46630,
+      nonce: 6,
+      to: address(),
+      value: 0n,
+      data: bytes(36),
+      gasPrice: 7n,
+      gas: 90_000n,
+    },
+    { ...typed, yParity: 0 },
+  ),
+  signedOf(
+    {
+      type: 'eip2930',
+      chainId: 46630,
+      nonce: 7,
+      to: address(),
+      value: 0n,
+      data: bytes(36),
+      gasPrice: 7n,
+      gas: 90_000n,
+      accessList: [{ address: address(), storageKeys: [] }],
+    },
+    typed,
+  ),
+  signedOf(
+    {
+      type: 'legacy',
+      chainId: 46630,
+      nonce: 8,
+      to: address(),
+      value: 0n,
+      data: bytes(36),
+      gasPrice: 7n,
+      gas: 90_000n,
+    },
+    { r: typed.r, s: typed.s, v: 28n },
+  ),
+  // Signed for no chain in particular: valid on every chain that takes such a transaction.
+  signedOf(
+    {
+      type: 'legacy',
+      nonce: 2,
+      to: address(),
+      value: 0n,
+      data: bytes(36),
+      gasPrice: 7n,
+      gas: 90_000n,
+    },
+    { r: typed.r, s: typed.s, v: 27n },
+  ),
+];
+// One that carries an authorization list (EIP-7702): the executor reads no such transaction.
+const delegating = viem.serializeTransaction(
+  {
+    type: 'eip7702',
+    chainId: 46630,
+    nonce: 1,
+    to: address(),
+    value: 0n,
+    data: bytes(36),
+    authorizationList: [{ address: address(), chainId: 46630, nonce: 0, ...typed }],
+    ...fees,
+  },
+  typed,
+);
+
 const version = createRequire(join(root, 'apps', 'web', 'package.json'))(
   'viem/package.json',
 ).version;
 writeFileSync(
   join(root, 'packages', 'sdk', 'test', 'fixtures', 'evm-vectors.json'),
-  `${JSON.stringify({ madeWith: `viem ${version}`, keccak, selectors, calls, vaults, deployed, checksums }, null, 2)}\n`,
+  `${JSON.stringify({ madeWith: `viem ${version}`, keccak, selectors, calls, vaults, deployed, checksums, signed, delegating }, null, 2)}\n`,
 );

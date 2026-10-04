@@ -20,6 +20,12 @@ export type WireTransaction = {
   version: 'legacy' | 0;
   /** How many of the first `keys` must sign. The first of them pays the fee. */
   signers: number;
+  /** How many of the signers, counted from the last, may not be written to. */
+  readonlySigners: number;
+  /** How many of the accounts that do not sign, counted from the last, may not be written to. */
+  readonlyOthers: number;
+  /** The recent blockhash the message is bound to, as base58: what its lifetime hangs on. */
+  blockhash: string;
   /** The accounts the message names itself, in order, as base58. */
   keys: string[];
   instructions: WireInstruction[];
@@ -82,10 +88,10 @@ export function parseSolanaTransaction(bytes: Uint8Array): WireTransaction {
     first = r.byte();
   }
   const signers = first;
-  r.byte(); // how many signers are read-only
-  r.byte(); // how many of the rest are read-only
+  const readonlySigners = r.byte();
+  const readonlyOthers = r.byte();
   const keys = Array.from({ length: r.compact() }, () => base58Encode(r.take(32)));
-  r.take(32); // the recent blockhash
+  const blockhash = base58Encode(r.take(32));
   const instructions = Array.from({ length: r.compact() }, () => ({
     program: r.byte(),
     accounts: r.indexes(),
@@ -102,6 +108,11 @@ export function parseSolanaTransaction(bytes: Uint8Array): WireTransaction {
   if (signers !== signatures.length)
     throw new Error('the signature slots are not the signers the message asks for');
   if (signers > keys.length) throw new Error('more signers than accounts');
+  // The header as a validator reads it: whoever pays the fee is written to, and the read-only accounts
+  // are among the accounts there are.
+  if (readonlySigners >= signers) throw new Error('the account that pays the fee is read-only');
+  if (readonlyOthers > keys.length - signers)
+    throw new Error('more read-only accounts than accounts');
   if (new Set(keys).size !== keys.length) throw new Error('an account is listed twice');
   for (const ix of instructions) {
     // A program is always one of the message's own accounts, never one a table loads.
@@ -110,5 +121,16 @@ export function parseSolanaTransaction(bytes: Uint8Array): WireTransaction {
     if (ix.accounts.some((i) => i >= keys.length + loaded))
       throw new Error('an instruction names an account that is not there');
   }
-  return { signatures, message, version, signers, keys, instructions, loaded };
+  return {
+    signatures,
+    message,
+    version,
+    signers,
+    readonlySigners,
+    readonlyOthers,
+    blockhash,
+    keys,
+    instructions,
+    loaded,
+  };
 }
