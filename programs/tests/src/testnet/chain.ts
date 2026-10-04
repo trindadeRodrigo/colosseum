@@ -1,8 +1,10 @@
+import { readFileSync } from 'node:fs';
 import {
   type Address,
   address,
   appendTransactionMessageInstructions,
   compressTransactionMessageUsingAddressLookupTables,
+  createKeyPairSignerFromBytes,
   createSolanaRpc,
   createTransactionMessage,
   getBase64EncodedWireTransaction,
@@ -10,6 +12,7 @@ import {
   getSignatureFromTransaction,
   getTransactionEncoder,
   type Instruction,
+  type KeyPairSigner,
   pipe,
   setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash,
@@ -61,6 +64,30 @@ export function clusterOf(url: string, genesis: string): 'devnet' | 'local' {
   throw new Error(
     `the cluster at ${host} is neither devnet nor on this machine (genesis ${genesis}): nothing is sent`,
   );
+}
+
+/** A signer from a key file in the Solana CLI's form: a JSON list of 64 bytes. Whatever goes wrong,
+ * the error names the path and nothing of what the file holds: a parser's message quotes its input. */
+export async function keypairFromFile(path: string): Promise<KeyPairSigner> {
+  let bytes: unknown;
+  try {
+    bytes = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    throw new Error(
+      code ? `the key file ${path} cannot be read (${code})` : `the key file ${path} is not JSON`,
+    );
+  }
+  const valid =
+    Array.isArray(bytes) &&
+    bytes.length === 64 &&
+    bytes.every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255);
+  if (!valid) throw new Error(`the key file ${path} is not a list of 64 bytes`);
+  try {
+    return await createKeyPairSignerFromBytes(new Uint8Array(bytes as number[]));
+  } catch {
+    throw new Error(`the key file ${path} does not hold a key pair whose halves match`);
+  }
 }
 
 export type RpcChain = Chain & { genesisHash(): Promise<string> };

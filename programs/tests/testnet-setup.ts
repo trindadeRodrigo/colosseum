@@ -1,8 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
-import { createKeyPairSignerFromBytes } from '@solana/kit';
 import { REPO_ROOT } from './src/env';
-import { clusterOf, rpcChain } from './src/testnet/chain';
+import { clusterOf, keypairFromFile, rpcChain } from './src/testnet/chain';
 import { loadPlan } from './src/testnet/config';
 import { type Deployment, guardSolanaEntry, setUp } from './src/testnet/setup';
 
@@ -67,9 +66,7 @@ async function main(): Promise<void> {
   const guardPath = fromRoot(guardFile);
 
   const plan = loadPlan(fromRoot(value('--config') ?? 'scripts/testnet/solana/devnet.config.json'));
-  const admin = await createKeyPairSignerFromBytes(
-    new Uint8Array(JSON.parse(readFileSync(need('SOLANA_KEYPAIR'), 'utf8'))),
-  );
+  const admin = await keypairFromFile(need('SOLANA_KEYPAIR'));
   log(`admin: ${admin.address}${dryRun ? '; dry run: nothing is sent' : ''}`);
   const before = (await chain.account(admin.address))?.lamports ?? 0n;
 

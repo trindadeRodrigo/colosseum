@@ -1,6 +1,13 @@
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type Address, isSome, type KeyPairSigner } from '@solana/kit';
+import {
+  type Address,
+  createKeyPairSignerFromPrivateKeyBytes,
+  getAddressEncoder,
+  isSome,
+  type KeyPairSigner,
+} from '@solana/kit';
 import { decodeMint } from '@solana-program/token-2022';
 import type { LiteSVM } from 'litesvm';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -21,7 +28,13 @@ import {
   routerAddress,
   writePriceInstruction,
 } from './src/mock-router';
-import { clusterOf, DEVNET_GENESIS, liteChain, MAINNET_GENESIS } from './src/testnet/chain';
+import {
+  clusterOf,
+  DEVNET_GENESIS,
+  keypairFromFile,
+  liteChain,
+  MAINNET_GENESIS,
+} from './src/testnet/chain';
 import { planOf, type SetupPlan } from './src/testnet/config';
 import { lifecycle } from './src/testnet/lifecycle';
 import { type DeployedAsset, type Deployment, guardSolanaEntry, setUp } from './src/testnet/setup';
@@ -478,5 +491,40 @@ describe('the test-network set-up, on a network that differs from its config', (
     expect((await readAssets(svm)).assets.find((e) => e.mint === tsla.mint)?.flags).toBe(
       ASSET_KEEPER,
     );
+  });
+});
+
+describe('the key file the set-up signs with', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tnet-key-'));
+  const file = (name: string, content: string) => {
+    const path = join(dir, name);
+    writeFileSync(path, content, { mode: 0o600 });
+    return path;
+  };
+
+  it('is named in an error, and nothing of what it holds is', async () => {
+    const secret = 'S3CRET-not-a-key-file-0123456789';
+    const cases = [
+      [file('text.json', secret), /^the key file \S+text\.json is not JSON$/],
+      [file('short.json', `[${'7,'.repeat(31)}7]`), /is not a list of 64 bytes$/],
+      [file('halves.json', JSON.stringify(Array.from({ length: 64 }, (_, i) => i))), /halves/],
+      [join(dir, 'missing.json'), /cannot be read \(ENOENT\)$/],
+    ] as const;
+    for (const [path, message] of cases) {
+      const error = await keypairFromFile(path).catch((e: Error) => e);
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toMatch(message);
+      expect((error as Error).message).not.toMatch(/S3CRET|\b7,7\b|\b0,1,2\b/);
+    }
+  });
+
+  it('gives the signer of a key file in the Solana CLI form', async () => {
+    const secret = crypto.getRandomValues(new Uint8Array(32));
+    const key = await createKeyPairSignerFromPrivateKeyBytes(secret);
+    const path = file(
+      'good.json',
+      JSON.stringify([...secret, ...getAddressEncoder().encode(key.address)]),
+    );
+    expect((await keypairFromFile(path)).address).toBe(key.address);
   });
 });
