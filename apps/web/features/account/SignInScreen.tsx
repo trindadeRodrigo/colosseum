@@ -165,7 +165,7 @@ export function SignInScreen({ next = '/goal' }: { next?: string }) {
       )}
 
       {signedIn && account.status === 'ready' && (
-        <Card as="section" mock={port.test}>
+        <Card as="section" mock={port.test} mockLabels={{ announce: t.shell.mockAnnounce }}>
           <CardBody className="flex flex-col items-start gap-3">
             {/* Chosen first on another device or tab: where the plan lives, and what was not kept. */}
             {overruled && overruled !== account.chain ? (

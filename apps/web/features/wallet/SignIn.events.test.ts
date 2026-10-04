@@ -259,4 +259,14 @@ describe('the sign-in panel: the throwaway wallet of development', () => {
     expect(hatchProblems(real)).toEqual([]);
     expect(all(real, (el) => ui('hatch-band')(el) || ui('mock-plate')(el))).toEqual([]);
   });
+
+  it('says the words a screen reader hears after MOCK in the language of the page', async () => {
+    portStore.set(fakePort({ found: FOUND, test: true }));
+    for (const lang of ['en', 'pt'] as const) {
+      const host = await screen(lang);
+      const plates = [...host.querySelectorAll('.tf-mock-plate')].map((p) => p.textContent);
+      expect(plates).toEqual(Array(2).fill(`MOCK${dictionary(lang).shell.mockAnnounce}`));
+      await unmountAll();
+    }
+  });
 });

@@ -61,7 +61,12 @@ export function ChainPick({ options }: { options: readonly ChainId[] }) {
   }
 
   return (
-    <Card as="section" aria-labelledby={titleId} mock={mock}>
+    <Card
+      as="section"
+      aria-labelledby={titleId}
+      mock={mock}
+      mockLabels={{ announce: t.shell.mockAnnounce }}
+    >
       <CardHeader title={t.chain.pick.title} level={2} id={titleId} />
       <CardBody className="flex flex-col gap-4">
         <p className="max-w-(--tf-measure-body) text-body">

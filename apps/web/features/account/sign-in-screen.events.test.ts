@@ -672,6 +672,23 @@ describe('the throwaway wallet of development', () => {
     expect(host.querySelectorAll('.tf-mock-plate').length).toBeGreaterThan(0);
   });
 
+  it('says the words a screen reader hears after MOCK in Portuguese on a Portuguese page', async () => {
+    api(made());
+    portStore.set(signedInPort(EMBEDDED, { test: true }, 'mock'));
+    const pt = dictionary('pt');
+    const host = await screen('pt');
+    await settle();
+    // the pick
+    expect(find(host, '.tf-mock-plate').textContent).toBe(`MOCK${pt.shell.mockAnnounce}`);
+    await click(button(host, 'Solana'));
+    await click(button(host, pt.chain.pick.confirm('Solana')));
+    await settle();
+    // and the card that says where the plan lives
+    for (const plate of host.querySelectorAll('.tf-mock-plate'))
+      expect(plate.textContent).toBe(`MOCK${pt.shell.mockAnnounce}`);
+    expect(host.textContent).not.toContain('sample data');
+  });
+
   it('marks a chain on a test network, and one the API runs on the mock, beside its name', async () => {
     for (const [provenance, words] of [
       ['sandbox', true],

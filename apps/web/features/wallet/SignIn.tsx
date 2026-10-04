@@ -66,10 +66,12 @@ export function SignIn({ onSignedIn }: { onSignedIn?: () => void }) {
     );
 
   const resting = (what: Exclude<Busy, null>) => busy !== null && busy !== what;
+  // What a screen reader hears after MOCK, in the language of the view.
+  const mockLabels = { announce: t.shell.mockAnnounce };
   return (
     <div data-ui="sign-in" data-state="ready" className="flex flex-col gap-4">
       <div className="grid gap-6 min-[820px]:grid-cols-2">
-        <Card as="section" aria-labelledby={passkeyId} mock={port.test}>
+        <Card as="section" aria-labelledby={passkeyId} mock={port.test} mockLabels={mockLabels}>
           <CardHeader title={t.signIn.passkey.title} level={2} id={passkeyId} />
           <CardBody className="flex flex-col items-start gap-4">
             <p className="text-body">{t.signIn.passkey.body}</p>
@@ -97,7 +99,7 @@ export function SignIn({ onSignedIn }: { onSignedIn?: () => void }) {
           </CardBody>
         </Card>
 
-        <Card as="section" aria-labelledby={walletId} mock={port.test}>
+        <Card as="section" aria-labelledby={walletId} mock={port.test} mockLabels={mockLabels}>
           <CardHeader title={t.signIn.wallet.title} level={2} id={walletId} />
           <CardBody className="flex flex-col items-start gap-4">
             <p className="text-body">{t.signIn.wallet.body}</p>
