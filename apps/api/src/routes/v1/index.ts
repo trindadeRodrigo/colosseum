@@ -5,8 +5,11 @@ import type { FastifyInstance } from 'fastify';
 import { type ChainRegistry, createChainRegistry } from '../../orders/chains';
 import { Refusal, refusalFromChainError } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
-import { authFromEnv, registerAuth, type TokenIssuer } from '../../plugins/auth';
-import { registerConfigRoute } from './config';
+import { authFromEnv, enforceSignIn, identify, type TokenIssuer } from '../../plugins/auth';
+import { type Limits, registerLimits, requireDeclared } from '../../plugins/limits';
+import { buildConfig, registerConfigRoute } from './config';
+import { registerFundingRoute } from './funding';
+import { registerMeRoutes } from './me';
 import { registerMockRoutes } from './mock';
 import { registerOrderRoutes } from './orders';
 import { registerPortfolioRoute } from './portfolio';
@@ -21,12 +24,21 @@ export type V1Deps = {
   chains?: ChainRegistry;
   db?: Db;
   now?: () => Date;
+  /** The rate limits. Default: `LIMITS`, the ones a server runs with. */
+  limits?: Limits;
+  /**
+   * What `requireDeclared(root)` answered, when the app called it before its own routes, so that a
+   * /v1 path registered ahead of these is held to the rule too. Left out, it is called here.
+   */
+  inScope?: (scope: FastifyInstance) => void;
 };
 
 /** Every /v1 route. The app hands in its environment once; nothing under here reads process.env. */
 export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps: V1Deps = {}) {
   // First, so a flag or a chain config that cannot be read stops the app with its own message.
-  await registerConfigRoute(app, env);
+  const config = buildConfig(env);
+  // Default deny for every path under /v1, wherever it is registered from here on.
+  const inScope = deps.inScope ?? requireDeclared(app);
 
   const flags = parseFlags(env);
   const issuer = deps.auth === undefined ? authFromEnv(env) : deps.auth;
@@ -45,9 +57,15 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
   }
   const orderDeps: OrderDeps = { db, chains, now: deps.now ?? (() => new Date()) };
 
-  // Its own scope: the sign-in hook and the error shape apply to these routes and to no others.
+  // Its own scope: sign-in, the rate limits and the error shape apply to these routes and to no
+  // others. Default deny: a route under /v1 that does not say who may call it and which budget it
+  // counts against, or that is registered outside this scope, stops the app at start. A request is
+  // counted before it is turned away.
   await app.register(async (scope) => {
-    registerAuth(scope, issuer);
+    inScope(scope);
+    identify(scope, issuer);
+    registerLimits(scope, { limits: deps.limits, now: deps.now });
+    enforceSignIn(scope);
     scope.setErrorHandler((err, req, reply) => {
       const refusal =
         err instanceof Refusal
@@ -73,6 +91,9 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
       // The request id and nothing else: no SQL, no stack.
       return reply.code(500).send({ error: `the server failed on this request (${req.id})` });
     });
+    registerConfigRoute(scope, config);
+    registerMeRoutes(scope, orderDeps);
+    registerFundingRoute(scope, orderDeps);
     registerOrderRoutes(scope, orderDeps);
     registerPortfolioRoute(scope, orderDeps);
     // Out of the route table altogether unless a chain runs on the mock.

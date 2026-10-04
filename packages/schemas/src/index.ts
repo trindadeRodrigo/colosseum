@@ -1,3 +1,4 @@
+export * from './account-api';
 export * from './api';
 export * from './asset';
 export * from './basket';

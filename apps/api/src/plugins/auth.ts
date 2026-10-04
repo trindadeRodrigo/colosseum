@@ -188,35 +188,61 @@ export function holds(principal: Principal, owner: Owner): boolean {
 
 declare module 'fastify' {
   interface FastifyContextConfig {
-    /** `user` needs a signed-in person. A route that says nothing is public if it is a GET and refused if not. */
+    /**
+     * Who may call the route: `user` needs a signed-in person, `public` needs nobody. A route that says
+     * nothing is closed, whatever its method.
+     */
     auth?: 'public' | 'user';
   }
   interface FastifyRequest {
     /** Set on routes whose `config.auth` is `user`. */
     principal: Principal | null;
+    /** Why this request is turned away, once the hook that counts it has run. */
+    refused: { status: number; error: string } | null;
   }
 }
 
 /**
- * Adds sign-in to a scope. Every route in it declares `config.auth`; a route that does not is served
- * only if it is a GET.
+ * First half of sign-in: works out who is calling, and replies nothing. A request that may not pass is
+ * marked `refused`, so the hooks between this one and `enforceSignIn` (the rate limits) see every
+ * request, a failed sign-in included.
  */
-export function registerAuth(scope: FastifyInstance, given: TokenIssuer | null): void {
+export function identify(scope: FastifyInstance, given: TokenIssuer | null): void {
   const issuer = given && { ...given, keys: rememberFailure(given.keys) };
   scope.decorateRequest('principal', null);
-  scope.addHook('onRequest', async (req, reply) => {
+  scope.decorateRequest('refused', null);
+  scope.addHook('onRequest', async (req) => {
     const rule = req.routeOptions.config.auth;
     if (rule === 'public') return;
     if (rule !== 'user') {
-      if (req.method === 'GET' || req.method === 'HEAD') return;
-      return reply.code(403).send({ error: 'this route is closed: it declares no sign-in rule' });
+      req.refused = { status: 403, error: 'this route is closed: it declares no sign-in rule' };
+      return;
     }
-    if (!issuer) return reply.code(503).send({ error: 'sign-in is not set up on this server' });
+    if (!issuer) {
+      req.refused = { status: 503, error: 'sign-in is not set up on this server' };
+      return;
+    }
     try {
       req.principal = await authenticate(issuer, req.headers, req.ip);
     } catch (e) {
-      if (e instanceof AuthError) return reply.code(e.status).send({ error: e.message });
-      throw e;
+      if (!(e instanceof AuthError)) throw e;
+      req.refused = { status: e.status, error: e.message };
     }
   });
+}
+
+/** Second half: turns away what `identify` refused. Nothing runs after it for such a request. */
+export function enforceSignIn(scope: FastifyInstance): void {
+  scope.addHook('onRequest', async (req, reply) => {
+    if (req.refused) return reply.code(req.refused.status).send({ error: req.refused.error });
+  });
+}
+
+/**
+ * Adds sign-in to a scope. Every route in it declares `config.auth`; a route that does not is closed,
+ * whatever its method.
+ */
+export function registerAuth(scope: FastifyInstance, given: TokenIssuer | null): void {
+  identify(scope, given);
+  enforceSignIn(scope);
 }

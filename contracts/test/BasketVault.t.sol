@@ -2,11 +2,14 @@
 pragma solidity 0.8.37;
 
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
+import {Test} from "forge-std/Test.sol";
 import {BasketVault} from "../src/BasketVault.sol";
 import {IBasketVault} from "../src/interfaces/IBasketVault.sol";
-import {ConfigHarness} from "./helpers/ConfigHarness.sol";
+import {VaultBeacon} from "../src/VaultBeacon.sol";
+import {VaultFactory} from "../src/VaultFactory.sol";
 import {VaultFixture} from "./helpers/VaultFixture.sol";
 import {
     FalseReturnToken,
@@ -29,8 +32,8 @@ interface ITestToken {
 /// The owner path of the vault: deposit the cash token, and withdraw any token in kind to the owner only.
 /// Every test runs at 6, 8 and 18 decimals through the three contracts at the end of this file.
 ///
-/// Before the swaps exist, the only way a token joins a vault's `tokens` list is as the cash token, so a
-/// test that needs several tokens in the list deposits each one while it is the cash token (`_put`).
+/// The swaps have their own file. Here a test that needs several tokens in a vault's `tokens` list deposits
+/// each one while it is the cash token (`_put`).
 ///
 /// TNET-1 runs this suite against the test-network tokens by overriding `_newToken` and `_mint`.
 abstract contract BasketVaultTest is VaultFixture {
@@ -109,34 +112,34 @@ abstract contract BasketVaultTest is VaultFixture {
     function test_initialize_setsOwnerPlanAndConfig() public view {
         assertEq(vault.owner(), owner);
         assertEq(vault.planId(), PLAN_ID);
-        assertEq(vault.config(), address(config));
+        assertEq(vault.config(), address(factory));
         assertEq(vault.tokens().length, 0);
     }
 
     function test_initialize_revertsOnZeroOwner() public {
+        bytes memory init = abi.encodeCall(BasketVault.initialize, (address(0), PLAN_ID));
         vm.expectRevert(IBasketVault.ZeroAddress.selector);
-        _createVault(address(0), PLAN_ID);
-    }
-
-    function test_initialize_revertsOnZeroConfig() public {
-        vm.expectRevert(IBasketVault.ZeroAddress.selector);
-        _createVault(owner, PLAN_ID, address(0));
+        new BeaconProxy(address(beacon), init);
     }
 
     function test_A15_initialize_revertsOnLiveProxy() public {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        vault.initialize(stranger, PLAN_ID, address(config));
+        vault.initialize(stranger, PLAN_ID);
 
         vm.prank(owner);
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        vault.initialize(stranger, PLAN_ID, address(config));
+        vault.initialize(stranger, PLAN_ID);
+
+        vm.prank(address(factory));
+        vm.expectRevert(Initializable.InvalidInitialization.selector);
+        vault.initialize(stranger, PLAN_ID);
 
         assertEq(vault.owner(), owner);
     }
 
     function test_A15_initialize_revertsOnLogicContract() public {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        logic.initialize(stranger, PLAN_ID, address(config));
+        logic.initialize(stranger, PLAN_ID);
         assertEq(logic.owner(), address(0));
     }
 
@@ -179,8 +182,8 @@ abstract contract BasketVaultTest is VaultFixture {
     }
 
     function test_deposit_revertsWhenNoCashTokenIsSet() public {
-        ConfigHarness bare = new ConfigHarness(admin);
-        BasketVault bareVault = _createVault(owner, keccak256("plan-bare"), address(bare));
+        VaultFactory bare = _newFactory();
+        BasketVault bareVault = _createVault(bare, owner, keccak256("plan-bare"));
         vm.prank(owner);
         vm.expectRevert(IBasketVault.CashTokenNotSet.selector);
         bareVault.deposit(1);
@@ -244,7 +247,7 @@ abstract contract BasketVaultTest is VaultFixture {
 
     function test_I1_withdraw_revertsForAnyoneButTheOwner() public {
         _deposit(100 * unit);
-        address[6] memory callers = [stranger, admin, address(config), address(beacon), address(logic), address(vault)];
+        address[6] memory callers = [stranger, admin, address(factory), address(beacon), address(logic), address(vault)];
         for (uint256 i; i < callers.length; ++i) {
             vm.prank(callers[i]);
             vm.expectRevert(abi.encodeWithSelector(IBasketVault.NotOwner.selector, callers[i]));
@@ -491,7 +494,7 @@ abstract contract BasketVaultTest is VaultFixture {
         _put(cash, 100 * unit);
         _put(stock, 2 * unit);
 
-        vm.expectCall(address(config), bytes(""), 0);
+        vm.expectCall(address(factory), bytes(""), 0);
         vm.startPrank(owner);
         vault.withdraw(cash, 40 * unit);
         vault.withdrawAll();
@@ -508,7 +511,7 @@ abstract contract BasketVaultTest is VaultFixture {
 
         vm.startPrank(owner);
         for (uint256 i; i < broken.length; ++i) {
-            vm.etch(address(config), broken[i]);
+            vm.etch(address(factory), broken[i]);
             vm.expectRevert(bytes(""));
             vault.deposit(1);
             vault.withdraw(cash, 10 * unit);
@@ -607,7 +610,7 @@ abstract contract BasketVaultTest is VaultFixture {
             abi.encodeCall(BasketVault.withdraw, (token, amount)),
             abi.encodeCall(BasketVault.withdrawAll, ()),
             abi.encodeCall(BasketVault.deposit, (amount)),
-            abi.encodeCall(BasketVault.initialize, (caller, PLAN_ID, address(config))),
+            abi.encodeCall(BasketVault.initialize, (caller, PLAN_ID)),
             abi.encodeWithSignature("deposit(address,uint256)", cash, amount),
             abi.encodeWithSignature("withdraw(address,uint256,address)", cash, amount, caller),
             abi.encodeWithSignature("withdrawAll(address)", caller)
@@ -637,5 +640,18 @@ contract BasketVault8Test is BasketVaultTest {
 contract BasketVault18Test is BasketVaultTest {
     function _decimals() internal pure override returns (uint8) {
         return 18;
+    }
+}
+
+/// What `initialize` does on a proxy made with no factory: the creator is the config. It has no fixture, so
+/// that a change to this rule fails here and not in a set-up.
+contract BasketVaultCreatorTest is Test {
+    function test_initialize_takesItsCreatorAsTheConfig() public {
+        address owner = makeAddr("owner");
+        VaultBeacon beacon = new VaultBeacon(address(new BasketVault()), makeAddr("admin"));
+        bytes memory init = abi.encodeCall(BasketVault.initialize, (owner, keccak256("plan-1")));
+        BasketVault bare = BasketVault(payable(address(new BeaconProxy(address(beacon), init))));
+        assertEq(bare.config(), address(this), "the config is whoever made the proxy, never an argument");
+        assertEq(bare.owner(), owner);
     }
 }

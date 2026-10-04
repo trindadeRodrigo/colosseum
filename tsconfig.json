@@ -8,5 +8,6 @@
     "tests/**/*.ts",
     "vitest.config.ts",
     "packages/engine/src/types/*.d.ts"
-  ]
+  ],
+  "exclude": ["scripts/archive/**"]
 }

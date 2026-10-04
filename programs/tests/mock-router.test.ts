@@ -1,4 +1,9 @@
-import type { Address, KeyPairSigner } from '@solana/kit';
+import {
+  type Address,
+  generateKeyPairSigner,
+  getAddressDecoder,
+  type KeyPairSigner,
+} from '@solana/kit';
 import type { LiteSVM } from 'litesvm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -9,7 +14,9 @@ import {
   expectOk,
   fundedSigner,
   idlCreateInstruction,
+  loadProgram,
   MOCK_ROUTER_PROGRAM,
+  programDataAddress,
   send,
 } from './src/env';
 import {
@@ -35,7 +42,7 @@ import {
 // token from its own reserve, at the price in its own config.
 describe('mock-router', () => {
   let svm: LiteSVM;
-  let admin: KeyPairSigner;
+  let admin: KeyPairSigner; // the program's upgrade authority, which init_router makes the admin
   let trader: KeyPairSigner;
   let cash: TestMint; // Token program, 6 decimals
   let stock: TestMint; // Token-2022 with the stock token's extensions, 8 decimals
@@ -49,8 +56,7 @@ describe('mock-router', () => {
   const PRICE_DEN = 5n;
 
   beforeEach(async () => {
-    ({ svm } = await createWorld());
-    admin = await fundedSigner(svm);
+    ({ svm, deployer: admin } = await createWorld());
     trader = await fundedSigner(svm);
     cash = await createMint(svm, admin, { program: TOKEN_PROGRAM, decimals: 6 });
     stock = await createMint(svm, admin, { program: TOKEN_2022_PROGRAM, decimals: 8, stock: true });
@@ -78,6 +84,62 @@ describe('mock-router', () => {
       amountIn,
       minOut,
     });
+
+  // On a network where people try the product, whoever initialised the exchange would set its
+  // prices. Only the key that deployed it can.
+  describe('who may initialise it', () => {
+    let fresh: LiteSVM;
+    let deployer: KeyPairSigner;
+    let stranger: KeyPairSigner;
+
+    beforeEach(async () => {
+      ({ svm: fresh, deployer } = await createWorld());
+      stranger = await fundedSigner(fresh);
+    });
+
+    it('refuses a signer who is not the upgrade authority, and takes the one who is', async () => {
+      expectError(
+        await send(fresh, stranger, [await initRouterInstruction(stranger)]),
+        MOCK_ROUTER_ERR.NotUpgradeAuthority,
+      );
+      expect(fresh.getAccount(await routerAddress()).exists).toBe(false);
+      expectOk(await send(fresh, deployer, [await initRouterInstruction(deployer)]));
+      const router = fresh.getAccount(await routerAddress());
+      if (!router.exists) throw new Error('no router');
+      // Router { admin, bump } behind the eight bytes that say what the account is.
+      expect(getAddressDecoder().decode(router.data.slice(8, 40))).toBe(deployer.address);
+    });
+
+    it("refuses another program's data account as proof of the upgrade authority", async () => {
+      // The stranger really is the upgrade authority of some program, just not of this one.
+      const other = (await generateKeyPairSigner()).address;
+      await loadProgram(fresh, other, 'mock_router.so', stranger.address);
+      expectError(
+        await send(fresh, stranger, [
+          await initRouterInstruction(stranger, { programData: await programDataAddress(other) }),
+        ]),
+        MOCK_ROUTER_ERR.NotUpgradeAuthority,
+      );
+      expectError(
+        await send(fresh, stranger, [
+          await initRouterInstruction(stranger, {
+            program: other,
+            programData: await programDataAddress(other),
+          }),
+        ]),
+        ANCHOR.InvalidProgramId,
+      );
+      expect(fresh.getAccount(await routerAddress()).exists).toBe(false);
+    });
+
+    it('cannot be initialised at all once the program has no upgrade authority', async () => {
+      await loadProgram(fresh, MOCK_ROUTER_PROGRAM, 'mock_router.so', null);
+      expectError(
+        await send(fresh, deployer, [await initRouterInstruction(deployer)]),
+        MOCK_ROUTER_ERR.NotUpgradeAuthority,
+      );
+    });
+  });
 
   it('takes the input from the signer and pays the output from its reserve at the set price', async () => {
     expectOk(await send(svm, trader, [await route(10_000000n, 2_000000n)]));

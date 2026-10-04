@@ -1,5 +1,5 @@
 [workspace]
-members = ["programs/basket", "programs/mock-router", "programs/test-hook"]
+members = ["programs/basket", "programs/mock-router", "programs/puppet-router", "programs/test-hook"]
 resolver = "2"
 
 [profile.release]
