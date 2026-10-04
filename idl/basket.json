@@ -1987,8 +1987,8 @@
     {
       "name": "sync_balances",
       "docs": [
-        "Anyone. Records what the vault's own token accounts hold. The accounts after the",
-        "vault are those token accounts."
+        "The vault's owner or its keeper. Records what the vault's own token accounts hold.",
+        "The accounts after Config are those token accounts."
       ],
       "discriminator": [
         148,
@@ -2002,8 +2002,30 @@
       ],
       "accounts": [
         {
+          "name": "signer",
+          "signer": true
+        },
+        {
           "name": "vault",
           "writable": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
         }
       ],
       "args": []

@@ -1114,14 +1114,22 @@ export async function adoptVersionInstruction(input: {
   };
 }
 
-/** Nobody signs. Accounts: vault, then the vault's own token accounts to read. */
-export function syncBalancesInstruction(input: {
+/** Accounts: the vault's owner or its keeper (signer), vault, config, then the vault's own token
+ * accounts to read. */
+export async function syncBalancesInstruction(input: {
+  signer: TransactionSigner;
   vault: Address;
   tokenAccounts: Address[];
-}): Instruction {
+  config?: Address;
+}): Promise<Instruction> {
   return {
     programAddress: BASKET_PROGRAM,
-    accounts: [writable(input.vault), ...input.tokenAccounts.map(readonly)],
+    accounts: [
+      signer(input.signer),
+      writable(input.vault),
+      readonly(input.config ?? (await configAddress())),
+      ...input.tokenAccounts.map(readonly),
+    ],
     data: discriminator('sync_balances'),
   };
 }

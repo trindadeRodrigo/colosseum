@@ -425,7 +425,11 @@ describe('keeper_leg through a hostile router', () => {
       const again = puppetInstruction(puppet, []);
       const calls = [
         await adoptVersionInstruction({ vault: w.vault, recipe: w.vault }),
-        syncBalancesInstruction({ vault: w.vault, tokenAccounts: [] }),
+        await syncBalancesInstruction({
+          signer: programSigner(w.vault),
+          vault: w.vault,
+          tokenAccounts: [],
+        }),
         await keeperLegInstruction({
           keeper: programSigner(w.vault),
           vault: w.vault,

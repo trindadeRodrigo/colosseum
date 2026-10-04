@@ -209,8 +209,8 @@ describe('sizes of the keeper transactions', () => {
       expectOk(await send(svm, owner, [await createAtaInstruction(owner, vault, mint)]));
       tokenAccounts.push(await ata(vault, mint));
     }
-    const sync = [syncBalancesInstruction({ vault, tokenAccounts })];
-    const synced = await sendMeasured(svm, w.stranger, sync);
+    const sync = [await syncBalancesInstruction({ signer: owner, vault, tokenAccounts })];
+    const synced = await sendMeasured(svm, owner, sync);
     record('sync, 12 balances', sync, synced.bytes, expectOk(synced.result).computeUnitsConsumed());
     for (const row of [accepted, adopted, synced])
       expect(row.bytes).toBeLessThanOrEqual(MAX_TRANSACTION_BYTES);

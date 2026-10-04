@@ -166,7 +166,7 @@ describe('the committed IDL', () => {
       }),
       set_auto_follow: await setAutoFollowInstruction({ owner: signer, vault, on: true }),
       adopt_version: await adoptVersionInstruction({ vault, recipe: other }),
-      sync_balances: syncBalancesInstruction({ vault, tokenAccounts: [] }),
+      sync_balances: await syncBalancesInstruction({ signer, vault, tokenAccounts: [] }),
       keeper_leg: await keeperLegInstruction({
         keeper: signer,
         vault,

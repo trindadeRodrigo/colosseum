@@ -1,4 +1,9 @@
-import { type Address, generateKeyPairSigner, getAddressEncoder } from '@solana/kit';
+import {
+  type Address,
+  generateKeyPairSigner,
+  getAddressEncoder,
+  type KeyPairSigner,
+} from '@solana/kit';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   assetsAddress,
@@ -1096,16 +1101,80 @@ describe('keeper_leg', () => {
   });
 
   describe('sync_balances', () => {
-    const sync = (tokenAccounts: Address[], vault = w.vault) =>
-      send(w.svm, w.stranger, [syncBalancesInstruction({ vault, tokenAccounts })]);
+    const sync = async (
+      tokenAccounts: Address[],
+      options: { vault?: Address; signer?: KeyPairSigner; config?: Address } = {},
+    ) => {
+      const signer = options.signer ?? w.keeper;
+      const vault = options.vault ?? w.vault;
+      return send(w.svm, signer, [
+        await syncBalancesInstruction({ signer, vault, tokenAccounts, config: options.config }),
+      ]);
+    };
 
-    it("records what the vault's own token accounts hold, for anyone who asks", async () => {
+    it("records what the vault's own token accounts hold, for its owner or its keeper", async () => {
       await mintTo(w.svm, w.admin, w.stock, w.vault, 777n);
       await mintTo(w.svm, w.admin, w.other, w.vault, 5n);
       expect(trackedFor(w.svm, w.vault, w.stock.address)).toBe(0n);
-      expectOk(await sync([w.vaultStock, w.vaultOther]));
+      expectOk(await sync([w.vaultStock], { signer: w.owner }));
       expect(trackedFor(w.svm, w.vault, w.stock.address)).toBe(777n);
+      expectOk(await sync([w.vaultStock, w.vaultOther]));
       expect(trackedFor(w.svm, w.vault, w.other.address)).toBe(5n);
+    });
+
+    it('is not for anyone else: not the guardian, the admin or a stranger', async () => {
+      await mintTo(w.svm, w.admin, w.other, w.vault, 5n);
+      for (const signer of [w.guardian, w.admin, w.stranger])
+        expectError(await sync([w.vaultOther], { signer }), ERR.NotKeeper);
+      expect(trackedFor(w.svm, w.vault, w.other.address)).toBe(0n);
+    });
+
+    it('needs that key to sign', async () => {
+      const instruction = await syncBalancesInstruction({
+        signer: w.keeper,
+        vault: w.vault,
+        tokenAccounts: [],
+      });
+      expectError(await send(w.svm, w.stranger, [unsigned(instruction)]), ANCHOR.AccountNotSigner);
+    });
+
+    it('is for the keeper the vault names, when it names one', async () => {
+      patchVault(w.svm, w.vault, { keeper: w.stranger.address });
+      expectError(await sync([]), ERR.NotKeeper);
+      expectOk(await sync([], { signer: w.stranger }));
+      expectOk(await sync([], { signer: w.owner }));
+    });
+
+    it('refuses a forged Config that names the signer as keeper', async () => {
+      const forged = await forgeConfig(w.svm, { defaultKeeper: w.stranger.address });
+      expectError(await sync([], { signer: w.stranger, config: forged }), ANCHOR.ConstraintSeeds);
+    });
+
+    // The reviewer's case: one raw unit of an asset the keeper may not trade, sent to the vault's
+    // own account and recorded, stopped every leg of the vault. A stranger can still send it; it
+    // can no longer have it recorded.
+    it('does not let a stranger stop the keeper with one raw unit of an asset that is off', async () => {
+      await listed(w.other, { flags: 0 }, OTHER_PRICE, 0);
+      await mintToAccount(w.svm, w.stranger, w.other, w.vaultOther, 1n);
+      expectError(await sync([w.vaultOther], { signer: w.stranger }), ERR.NotKeeper);
+      expectOk(await buy(10));
+      // Recorded by the keeper itself, the unit does stop it: every position the vault holds
+      // something of needs its reference.
+      expectOk(await sync([w.vaultOther]));
+      at(SESSION + HOUR);
+      expectError(await buy(10), ERR.KeeperAssetOff);
+    });
+
+    it('does not let a gift move the weights until the owner or the keeper records it', async () => {
+      await ownerBuys(50);
+      expectError(await buy(1), ERR.NotTowardTarget);
+      // 20 dollars' worth of the other asset arrives. Not recorded, nothing changes.
+      await mintToAccount(w.svm, w.stranger, w.other, w.vaultOther, stockFor(20n * USD));
+      expectError(await sync([w.vaultOther], { signer: w.stranger }), ERR.NotKeeper);
+      expectError(await buy(1), ERR.NotTowardTarget);
+      // Recorded, the vault is worth 120 and the stock is 41.7% of it.
+      expectOk(await sync([w.vaultOther], { signer: w.owner }));
+      expectOk(await buy(10));
     });
 
     // Hostile case A10: a balance moved from outside.
@@ -1151,7 +1220,7 @@ describe('keeper_leg', () => {
       const real = w.svm.getAccount(w.vault);
       if (!real.exists) throw new Error('no vault');
       w.svm.setAccount({ ...real, address: forged, programAddress: w.stranger.address });
-      expectError(await sync([], forged), ANCHOR.AccountOwnedByWrongProgram);
+      expectError(await sync([], { vault: forged }), ANCHOR.AccountOwnedByWrongProgram);
     });
   });
 });

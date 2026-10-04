@@ -185,8 +185,8 @@ pub mod basket {
         AdoptVersion::handle(ctx)
     }
 
-    /// Anyone. Records what the vault's own token accounts hold. The accounts after the
-    /// vault are those token accounts.
+    /// The vault's owner or its keeper. Records what the vault's own token accounts hold.
+    /// The accounts after Config are those token accounts.
     pub fn sync_balances<'info>(
         ctx: Context<'_, '_, '_, 'info, SyncBalances<'info>>,
     ) -> Result<()> {
