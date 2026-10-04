@@ -11,6 +11,18 @@ import type { ApprovedStep, ApprovedTrade, GuardDeployment, PlanTerms, Withdrawa
 // does: it has no plan number, no targets and no version. Those come in as `PlanTerms`, from what the
 // screen showed beside the order.
 
+/** The kinds of step the owner signs through this guard. */
+const SIGNED_HERE: readonly string[] = [
+  'approve',
+  'create_vault',
+  'deposit',
+  'swap',
+  'set_targets',
+  'accept_version',
+  'set_auto_follow',
+  'withdraw',
+];
+
 const refuse = (message: string, legId?: string) =>
   new GuardRefusal('order', message, legId ?? null);
 
@@ -51,25 +63,50 @@ export function approvedSteps(
     if (leg.orderId !== order.id) throw refuse('a step belongs to another order', leg.id);
     if (leg.signer !== 'owner')
       throw new GuardRefusal('unsupported', 'a step the keeper signs is never signed here', leg.id);
+    if (!SIGNED_HERE.includes(leg.kind))
+      throw new GuardRefusal('unsupported', `this guard signs no ${leg.kind} step`, leg.id);
   }
 
-  // The cash a step is about is the step's own figure, and where the order states a deposit it is that
-  // one: the approval and the step that deposits both repeat it, and neither may say more.
+  // The cash an order moves is said once, by the order (`depositRaw`), and one step moves it: the create
+  // or the deposit. An approval exists only to serve that step, for that exact amount. An order that
+  // states no deposit moves no cash, so none of its steps may be about any.
   const { depositRaw } = order;
-  if (depositRaw !== undefined && !isRawAmount(depositRaw))
-    throw refuse('the deposit the order states is not raw units');
-  const cashOf = (leg: Leg): string | null => {
-    const cash = leg.cashRaw;
-    if (cash === undefined) return null;
-    if (!isRawAmount(cash)) throw refuse('the cash a step states is not raw units', leg.id);
-    if (depositRaw !== undefined && cash !== depositRaw)
-      throw refuse(`a step is about ${cash} of cash, and the order deposits ${depositRaw}`, leg.id);
-    return cash;
-  };
+  if (depositRaw !== undefined && (!isRawAmount(depositRaw) || depositRaw === '0'))
+    throw refuse('the deposit the order states is not an amount');
+  const moving = legs.filter(
+    (l) => l.kind === 'deposit' || (l.kind === 'create_vault' && (l.cashRaw ?? '0') !== '0'),
+  );
+  const approvals = legs.filter((l) => l.kind === 'approve');
+  const [mover] = moving;
+  if (depositRaw === undefined) {
+    const about = legs.find((l) => l.cashRaw !== undefined && l.cashRaw !== '0');
+    if (about ?? mover ?? approvals[0])
+      throw refuse(
+        'the order states no deposit, and one of its steps is about cash',
+        (about ?? mover ?? approvals[0])?.id,
+      );
+  } else {
+    if (!mover || moving.length !== 1)
+      throw refuse(`the order deposits ${depositRaw}, and ${moving.length} of its steps move cash`);
+    if (approvals.length > 1) throw refuse('the order has more than one approval');
+    const [approval] = approvals;
+    if (approval && approval.seq > mover.seq)
+      throw refuse('the approval comes after the step it is for', approval.id);
+    for (const leg of legs) {
+      const about = leg === mover || leg === approval;
+      if (about ? leg.cashRaw !== depositRaw : leg.cashRaw !== undefined && leg.cashRaw !== '0')
+        throw refuse(
+          `a step is about ${leg.cashRaw ?? 'no'} cash, and the order deposits ${depositRaw} once`,
+          leg.id,
+        );
+    }
+  }
+  /** The cash of the one step that moves it, or of its approval. Null on every other step. */
+  const cashOf = (leg: Leg): string | null =>
+    depositRaw !== undefined && (leg === mover || leg === approvals[0]) ? depositRaw : null;
   const funded = (leg: Leg): string => {
     const cash = cashOf(leg);
-    if (cash === null || cash === '0')
-      throw refuse('the step does not say how much cash it is about', leg.id);
+    if (cash === null) throw refuse('the step does not say how much cash it is about', leg.id);
     return cash;
   };
   for (const leg of legs)

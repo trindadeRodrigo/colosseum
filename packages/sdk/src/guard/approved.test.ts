@@ -130,6 +130,88 @@ describe('the approved steps of an order', () => {
       ).toBe(code);
   });
 
+  it('an order moves the cash it states, once, and an approval only serves that step', async () => {
+    const { w, double, order } = await bought('robinhood');
+    const [approve, create] = order.legs;
+    if (!approve || !create) throw new Error('two steps');
+    const deposit = { ...create, kind: 'deposit' as const };
+    const refused = (change: object) =>
+      refusalOf(() => approvedSteps({ ...order, ...change } as never, double.plan, w.deployment));
+    const cases: [string, object][] = [
+      // An order that states no deposit moves no cash, whatever its steps say of themselves.
+      [
+        'no deposit stated, an approval and a deposit at their own figures',
+        {
+          depositRaw: undefined,
+          legs: [
+            { ...approve, cashRaw: '999000000' },
+            { ...deposit, cashRaw: '5' },
+          ],
+        },
+      ],
+      ['no deposit stated, a create that carries cash', { depositRaw: undefined, legs: [create] }],
+      [
+        'no deposit stated, a deposit',
+        { depositRaw: undefined, legs: [{ ...deposit, cashRaw: undefined, seq: 0 }] },
+      ],
+      [
+        'no deposit stated, an approval with no figure',
+        { depositRaw: undefined, legs: [{ ...approve, cashRaw: undefined }] },
+      ],
+      [
+        'no deposit stated, cash on a step that moves none',
+        { depositRaw: undefined, legs: [{ ...create, kind: 'swap', cashRaw: '7' }] },
+      ],
+      // An approval is for the step that deposits, and for nothing else.
+      ['an approval and no step that deposits', { legs: [approve] }],
+      [
+        'an approval of nearly everything and no step that deposits',
+        {
+          depositRaw: ((1n << 255n) - 1n).toString(),
+          legs: [{ ...approve, cashRaw: ((1n << 255n) - 1n).toString() }],
+        },
+      ],
+      [
+        'an approval after the step it is for',
+        {
+          legs: [
+            { ...create, seq: 0 },
+            { ...approve, seq: 1 },
+          ],
+        },
+      ],
+      [
+        'two approvals',
+        { legs: [approve, { ...approve, id: 'another', seq: 5 }, { ...create, seq: 6 }] },
+      ],
+      [
+        'two steps that move the cash',
+        { legs: [approve, create, { ...deposit, id: 'another', seq: 2 }] },
+      ],
+      [
+        'a deposit stated and no step that moves it',
+        { legs: [{ ...create, kind: 'swap', cashRaw: undefined }] },
+      ],
+      [
+        'a create that carries no cash where the order deposits',
+        { legs: [approve, { ...create, cashRaw: undefined }] },
+      ],
+      [
+        'cash on a trade step beside the deposit',
+        { legs: [approve, create, { ...create, id: 'another', kind: 'swap', seq: 2 }] },
+      ],
+    ];
+    for (const [name, change] of cases) expect(refused(change)?.code, name).toBe('order');
+    // What stands: the order as the API made it, and a create that deposits nothing where none is stated.
+    expect(refused({})).toBeNull();
+    expect(
+      refused({ depositRaw: undefined, legs: [{ ...create, cashRaw: undefined, seq: 0 }] }),
+    ).toBeNull();
+    expect(
+      refused({ depositRaw: undefined, legs: [{ ...create, cashRaw: '0', seq: 0 }] }),
+    ).toBeNull();
+  });
+
   it('the other steps take their terms from the plan, and refuse to guess them', async () => {
     const { w, order } = await bought('solana');
     const leg = order.legs[1];
