@@ -53,6 +53,143 @@
       "args": []
     },
     {
+      "name": "accept_version",
+      "docs": [
+        "Owner. Takes the version in effect of a shared portfolio, if its number is",
+        "`expected_version`: the vault follows that portfolio from then on."
+      ],
+      "discriminator": [
+        215,
+        87,
+        246,
+        194,
+        63,
+        68,
+        225,
+        179
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "recipe"
+        }
+      ],
+      "args": [
+        {
+          "name": "expected_version",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "add_closed_day",
+      "docs": [
+        "Guardian. Closes a day (days since 1970, UTC)."
+      ],
+      "discriminator": [
+        15,
+        14,
+        204,
+        43,
+        95,
+        53,
+        145,
+        157
+      ],
+      "accounts": [
+        {
+          "name": "guardian",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "day",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "adopt_version",
+      "docs": [
+        "Anyone. Moves an auto-follow vault to the version in effect of the portfolio it",
+        "follows, when the version brings in no asset the owner has not accepted."
+      ],
+      "discriminator": [
+        213,
+        117,
+        253,
+        10,
+        21,
+        238,
+        139,
+        217
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "recipe",
+          "docs": [
+            "The shared portfolio the vault follows, and no other."
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "cancel_pending",
       "docs": [
         "Creator or guardian. Takes back the version that is waiting."
@@ -353,6 +490,56 @@
       ]
     },
     {
+      "name": "extend_closed_until",
+      "docs": [
+        "Guardian. Pushes `closed_until` later, never earlier."
+      ],
+      "discriminator": [
+        85,
+        142,
+        21,
+        59,
+        158,
+        186,
+        170,
+        37
+      ],
+      "accounts": [
+        {
+          "name": "guardian",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "closed_until",
+          "type": "i64"
+        }
+      ]
+    },
+    {
       "name": "init_assets",
       "docs": [
         "Admin, once. Creates the empty asset list."
@@ -494,6 +681,222 @@
               "name": "InitConfigArgs"
             }
           }
+        }
+      ]
+    },
+    {
+      "name": "keeper_leg",
+      "docs": [
+        "Keeper. One trade of an auto-follow vault through Config's router, signed by the",
+        "vault: cash for one of its positions or the other way, toward the target, at most",
+        "`amount_in` spent, and at least the reference price less the tolerance received.",
+        "`data` and the remaining accounts are the router's instruction."
+      ],
+      "discriminator": [
+        46,
+        178,
+        18,
+        83,
+        188,
+        146,
+        82,
+        217
+      ],
+      "accounts": [
+        {
+          "name": "keeper",
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "assets",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  115,
+                  115,
+                  101,
+                  116,
+                  115
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "input_mint"
+        },
+        {
+          "name": "output_mint"
+        },
+        {
+          "name": "vault_input",
+          "docs": [
+            "What the vault spends from: its associated token account for the input mint."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "account",
+                "path": "input_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "input_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "vault_output",
+          "docs": [
+            "What the vault is paid into: its associated token account for the output mint."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "account",
+                "path": "output_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "output_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "input_token_program"
+        },
+        {
+          "name": "output_token_program"
+        },
+        {
+          "name": "router_program"
+        },
+        {
+          "name": "price_account",
+          "docs": [
+            "and to be the account the asset list names for each asset that is valued."
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "amount_in",
+          "type": "u64"
+        },
+        {
+          "name": "data",
+          "type": "bytes"
         }
       ]
     },
@@ -986,6 +1389,41 @@
       ]
     },
     {
+      "name": "set_auto_follow",
+      "docs": [
+        "Owner. Lets the keeper trade the vault toward its targets, or stops it."
+      ],
+      "discriminator": [
+        255,
+        29,
+        5,
+        116,
+        253,
+        61,
+        227,
+        189
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "on",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "name": "set_cash_mint",
       "docs": [
         "Admin, until `launch()`. The one mint a vault takes as a deposit: the chain's dollar",
@@ -1033,6 +1471,210 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "set_closed_day",
+      "docs": [
+        "Admin. Closes a day (days since 1970, UTC) or opens it again."
+      ],
+      "discriminator": [
+        127,
+        61,
+        104,
+        98,
+        48,
+        199,
+        35,
+        113
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "day",
+          "type": "u16"
+        },
+        {
+          "name": "closed",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "set_closed_until",
+      "docs": [
+        "Admin. The time before which the stock market counts as closed, later or earlier."
+      ],
+      "discriminator": [
+        89,
+        251,
+        200,
+        129,
+        26,
+        156,
+        0,
+        99
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "closed_until",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "set_default_keeper",
+      "docs": [
+        "Admin. A new default keeper."
+      ],
+      "discriminator": [
+        224,
+        25,
+        175,
+        84,
+        17,
+        219,
+        182,
+        224
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "keeper",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "set_guardian",
+      "docs": [
+        "Admin. A new guardian."
+      ],
+      "discriminator": [
+        147,
+        243,
+        50,
+        121,
+        154,
+        164,
+        50,
+        30
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "guardian",
+          "type": "pubkey"
+        }
+      ]
     },
     {
       "name": "set_params",
@@ -1085,6 +1727,78 @@
               "name": "Params"
             }
           }
+        }
+      ]
+    },
+    {
+      "name": "set_price_account",
+      "docs": [
+        "Admin, until `launch()`. Names the price account of one of the asset list's four",
+        "slots: an account the price program owns, passed as an account."
+      ],
+      "discriminator": [
+        6,
+        127,
+        170,
+        42,
+        66,
+        99,
+        161,
+        151
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "assets",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  115,
+                  115,
+                  101,
+                  116,
+                  115
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "price_account"
+        }
+      ],
+      "args": [
+        {
+          "name": "slot",
+          "type": "u8"
         }
       ]
     },
@@ -1269,6 +1983,30 @@
           }
         }
       ]
+    },
+    {
+      "name": "sync_balances",
+      "docs": [
+        "Anyone. Records what the vault's own token accounts hold. The accounts after the",
+        "vault are those token accounts."
+      ],
+      "discriminator": [
+        148,
+        188,
+        122,
+        63,
+        81,
+        90,
+        11,
+        85
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true
+        }
+      ],
+      "args": []
     },
     {
       "name": "unpause_keeper",
@@ -1684,6 +2422,19 @@
       ]
     },
     {
+      "name": "AutoFollowSet",
+      "discriminator": [
+        48,
+        43,
+        24,
+        143,
+        225,
+        43,
+        41,
+        39
+      ]
+    },
+    {
       "name": "CashMintSet",
       "discriminator": [
         181,
@@ -1694,6 +2445,32 @@
         194,
         13,
         245
+      ]
+    },
+    {
+      "name": "ClosedDaySet",
+      "discriminator": [
+        109,
+        194,
+        38,
+        254,
+        231,
+        56,
+        94,
+        96
+      ]
+    },
+    {
+      "name": "ClosedUntilSet",
+      "discriminator": [
+        209,
+        86,
+        73,
+        202,
+        63,
+        14,
+        3,
+        55
       ]
     },
     {
@@ -1710,6 +2487,19 @@
       ]
     },
     {
+      "name": "GuardianSet",
+      "discriminator": [
+        159,
+        49,
+        155,
+        156,
+        176,
+        88,
+        29,
+        190
+      ]
+    },
+    {
       "name": "KeeperPauseSet",
       "discriminator": [
         139,
@@ -1720,6 +2510,32 @@
         138,
         157,
         125
+      ]
+    },
+    {
+      "name": "KeeperSet",
+      "discriminator": [
+        116,
+        85,
+        200,
+        22,
+        76,
+        163,
+        56,
+        243
+      ]
+    },
+    {
+      "name": "KeeperTrade",
+      "discriminator": [
+        205,
+        156,
+        35,
+        197,
+        48,
+        227,
+        179,
+        150
       ]
     },
     {
@@ -1746,6 +2562,19 @@
         76,
         98,
         245
+      ]
+    },
+    {
+      "name": "PriceAccountSet",
+      "discriminator": [
+        184,
+        147,
+        189,
+        171,
+        55,
+        139,
+        251,
+        117
       ]
     },
     {
@@ -1824,6 +2653,19 @@
         236,
         78,
         115
+      ]
+    },
+    {
+      "name": "VersionAdopted",
+      "discriminator": [
+        15,
+        93,
+        4,
+        88,
+        197,
+        38,
+        211,
+        12
       ]
     },
     {
@@ -2010,6 +2852,16 @@
       "code": 6033,
       "name": "NotCreatorOrGuardian",
       "msg": "signer is neither the creator nor the guardian"
+    },
+    {
+      "code": 6034,
+      "name": "NotCashLeg",
+      "msg": "a keeper leg has cash on exactly one side"
+    },
+    {
+      "code": 6035,
+      "name": "KeeperAssetOff",
+      "msg": "the keeper is not switched on for this asset"
     }
   ],
   "types": [
@@ -2160,7 +3012,7 @@
           {
             "name": "flags",
             "docs": [
-              "No bit has a meaning yet; must be zero."
+              "Bit 0 is `ASSET_KEEPER`; the other bits must be zero."
             ],
             "type": "u8"
           },
@@ -2264,6 +3116,25 @@
       }
     },
     {
+      "name": "AutoFollowSet",
+      "docs": [
+        "The owner switched auto-follow."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "on",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
       "name": "CashMintSet",
       "docs": [
         "The admin changed the mint a vault takes as a deposit."
@@ -2278,6 +3149,42 @@
           {
             "name": "new",
             "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ClosedDaySet",
+      "docs": [
+        "A day (days since 1970, UTC) was closed, by the admin or the guardian, or opened again",
+        "by the admin. Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "day",
+            "type": "u16"
+          },
+          {
+            "name": "closed",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ClosedUntilSet",
+      "docs": [
+        "The time before which the market counts as closed was set, by the admin or (later only)",
+        "by the guardian. Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "closed_until",
+            "type": "i64"
           }
         ]
       }
@@ -2461,6 +3368,25 @@
       }
     },
     {
+      "name": "GuardianSet",
+      "docs": [
+        "The admin changed the guardian. Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "old",
+            "type": "pubkey"
+          },
+          {
+            "name": "new",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
       "name": "InitConfigArgs",
       "type": {
         "kind": "struct",
@@ -2503,6 +3429,67 @@
           {
             "name": "paused",
             "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "KeeperSet",
+      "docs": [
+        "The admin changed the default keeper. Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "old",
+            "type": "pubkey"
+          },
+          {
+            "name": "new",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "KeeperTrade",
+      "docs": [
+        "One trade by the keeper, as the vault measured it on its own token accounts. `loss` is",
+        "what the leg lost at the reference price and `loss_used_bps` what the weekly counter",
+        "then holds, as a share of the vault's value; `loss` is in raw units of the cash mint.",
+        "Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint_in",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint_out",
+            "type": "pubkey"
+          },
+          {
+            "name": "spent",
+            "type": "u64"
+          },
+          {
+            "name": "received",
+            "type": "u64"
+          },
+          {
+            "name": "loss",
+            "type": "u64"
+          },
+          {
+            "name": "loss_used_bps",
+            "type": "u16"
           }
         ]
       }
@@ -2614,6 +3601,29 @@
           {
             "name": "last_keeper_ts",
             "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PriceAccountSet",
+      "docs": [
+        "The admin named the price account of a slot of the asset list."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "slot",
+            "type": "u8"
+          },
+          {
+            "name": "old",
+            "type": "pubkey"
+          },
+          {
+            "name": "new",
+            "type": "pubkey"
           }
         ]
       }
@@ -3017,6 +4027,30 @@
           {
             "name": "basket_id",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VersionAdopted",
+      "docs": [
+        "An auto-follow vault took a version that only changes weights, with no signature from",
+        "its owner. Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "recipe",
+            "type": "pubkey"
+          },
+          {
+            "name": "version",
+            "type": "u32"
           }
         ]
       }

@@ -112,3 +112,71 @@ pub struct AssetSet {
     pub index: u8,
     pub max_weight_bps: u16,
 }
+
+/// The admin changed the guardian. Same name as the EVM event.
+#[event]
+pub struct GuardianSet {
+    pub old: Pubkey,
+    pub new: Pubkey,
+}
+
+/// The admin changed the default keeper. Same name as the EVM event.
+#[event]
+pub struct KeeperSet {
+    pub old: Pubkey,
+    pub new: Pubkey,
+}
+
+/// The time before which the market counts as closed was set, by the admin or (later only)
+/// by the guardian. Same name as the EVM event.
+#[event]
+pub struct ClosedUntilSet {
+    pub closed_until: i64,
+}
+
+/// A day (days since 1970, UTC) was closed, by the admin or the guardian, or opened again
+/// by the admin. Same name as the EVM event.
+#[event]
+pub struct ClosedDaySet {
+    pub day: u16,
+    pub closed: bool,
+}
+
+/// The admin named the price account of a slot of the asset list.
+#[event]
+pub struct PriceAccountSet {
+    pub slot: u8,
+    pub old: Pubkey,
+    pub new: Pubkey,
+}
+
+/// The owner switched auto-follow.
+#[event]
+pub struct AutoFollowSet {
+    pub vault: Pubkey,
+    pub on: bool,
+}
+
+/// An auto-follow vault took a version that only changes weights, with no signature from
+/// its owner. Same name as the EVM event.
+#[event]
+pub struct VersionAdopted {
+    pub vault: Pubkey,
+    pub recipe: Pubkey,
+    pub version: u32,
+}
+
+/// One trade by the keeper, as the vault measured it on its own token accounts. `loss` is
+/// what the leg lost at the reference price and `loss_used_bps` what the weekly counter
+/// then holds, as a share of the vault's value; `loss` is in raw units of the cash mint.
+/// Same name as the EVM event.
+#[event]
+pub struct KeeperTrade {
+    pub vault: Pubkey,
+    pub mint_in: Pubkey,
+    pub mint_out: Pubkey,
+    pub spent: u64,
+    pub received: u64,
+    pub loss: u64,
+    pub loss_used_bps: u16,
+}

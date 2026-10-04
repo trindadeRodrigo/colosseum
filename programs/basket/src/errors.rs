@@ -74,4 +74,9 @@ pub enum BasketError {
     NoPendingVersion,
     #[msg("signer is neither the creator nor the guardian")]
     NotCreatorOrGuardian,
+    // Appended with the keeper leg.
+    #[msg("a keeper leg has cash on exactly one side")]
+    NotCashLeg,
+    #[msg("the keeper is not switched on for this asset")]
+    KeeperAssetOff,
 }

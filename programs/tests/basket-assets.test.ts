@@ -395,7 +395,7 @@ describe('the asset list', () => {
       ['an average index past the 512 entries', { twapIndex: 512 }],
       ['a session that is not always or US hours', { session: 2 }],
       ['a ceiling above the whole', { maxWeightBps: 10_001 }],
-      ['a flag, while no flag has a meaning', { flags: 1 }],
+      ['a flag that has no meaning', { flags: 2 }],
     ])('refuses %s', async (_, change) => {
       expectError(
         await send(svm, admin, [await upsertAssetInstruction(admin, stock.address, change)]),

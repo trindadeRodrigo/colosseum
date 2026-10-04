@@ -57,6 +57,11 @@ export const PROGRAM_ERRORS = [
   'NoPendingVersion',
   /** Only the portfolio's creator or the guardian cancels a waiting version. */
   'NotCreatorOrGuardian',
+  // Appended with the keeper leg.
+  /** A keeper leg trades cash for one asset or one asset for cash, never two assets. */
+  'NotCashLeg',
+  /** The admin has not switched the keeper on for the asset: its price entry is not confirmed live. */
+  'KeeperAssetOff',
 ] as const;
 
 /** The errors of the EVM contracts (contracts/src/interfaces) that mean something no program error does. */
@@ -246,6 +251,8 @@ export const CHAIN_ERROR_RETRYABLE: Record<ChainErrorCode, boolean> = {
   SameMint: false,
   NoPendingVersion: false,
   NotCreatorOrGuardian: false,
+  NotCashLeg: false,
+  KeeperAssetOff: false,
   NotOwner: false,
   CashTokenNotSet: false,
   DepositShortfall: false,

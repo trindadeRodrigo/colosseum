@@ -6,7 +6,9 @@ use anchor_spl::token_2022::spl_token_2022::{
 };
 
 use crate::errors::BasketError;
-use crate::state::{AssetRegistry, Component, Params, Target, BPS, MAX_COMPONENTS, MAX_POSITIONS};
+use crate::state::{
+    AssetRegistry, Component, Config, Params, Target, Vault, BPS, MAX_COMPONENTS, MAX_POSITIONS,
+};
 
 // Hard bounds (DESIGN-VAULT.md section 3.7). The numbers the app shows cannot move past
 // these without an upgrade.
@@ -160,7 +162,7 @@ pub fn check_targets(
     Ok(())
 }
 
-// ---- a mint's transfer hook ----
+// ---- a mint's extensions ----
 
 /// Where a Token-2022 mint's extensions start: after the base mint, its padding to the
 /// length of a token account, and the byte that says "mint".
@@ -169,38 +171,98 @@ const MINT_EXTENSIONS_AT: usize = 166;
 /// the hook program.
 const TRANSFER_HOOK_TYPE: u16 = 14;
 const TRANSFER_HOOK_LEN: usize = 64;
+/// The extension type of a scaled UI amount, and the bytes of its value: an authority, the
+/// multiplier (f64), the time a new one applies from (i64), the new multiplier (f64).
+const SCALED_UI_AMOUNT_TYPE: u16 = 25;
+const SCALED_UI_AMOUNT_LEN: usize = 56;
+/// A keeper leg stays away from a multiplier change by a day, before and after.
+pub const MULTIPLIER_WINDOW_S: i64 = 86_400;
 
-/// True when the mint names a transfer hook program. `data` is a Token-2022 mint the caller
-/// has already read as a mint.
+/// The value of the extension of type `kind` on a Token-2022 mint, or None when the mint
+/// does not carry it. `data` is a mint the caller has already read as a mint.
 ///
 /// The extensions are a list of entries: a type (u16), a length (u16), then that many
 /// bytes. The list is walked here by hand and every type is stepped over by its length,
 /// known or not: the token crate this program is built with stops with an error at the
 /// first type newer than itself, and the stock tokens carry two of those ahead of their
-/// hook. A list that cannot be read to its end is refused, not taken as "no hook".
-pub fn mint_has_hook_program(data: &[u8]) -> Result<bool> {
-    let mut found = false;
+/// hook. A list that cannot be read to its end is refused with `malformed`, whether or not
+/// the extension was already found: it is never taken as "not there".
+fn mint_extension(data: &[u8], kind: u16, malformed: BasketError) -> Result<Option<&[u8]>> {
+    let mut found = None;
     let mut at = MINT_EXTENSIONS_AT;
     // Fewer than two bytes left cannot name a type: the list is over.
     while at + 2 <= data.len() {
-        let kind = u16::from_le_bytes([data[at], data[at + 1]]);
+        let entry_kind = u16::from_le_bytes([data[at], data[at + 1]]);
         // Type zero is space no extension has taken; nothing is written after it.
-        if kind == 0 {
+        if entry_kind == 0 {
             break;
         }
-        require!(at + 4 <= data.len(), BasketError::HookNotAllowed);
+        if at + 4 > data.len() {
+            return Err(malformed.into());
+        }
         let length = u16::from_le_bytes([data[at + 2], data[at + 3]]) as usize;
         let value = at + 4;
-        require!(value + length <= data.len(), BasketError::HookNotAllowed);
-        if kind == TRANSFER_HOOK_TYPE {
-            require!(length >= TRANSFER_HOOK_LEN, BasketError::HookNotAllowed);
-            if data[value + 32..value + TRANSFER_HOOK_LEN] != [0u8; 32] {
-                found = true;
-            }
+        if value + length > data.len() {
+            return Err(malformed.into());
+        }
+        if entry_kind == kind && found.is_none() {
+            found = Some(&data[value..value + length]);
         }
         at = value + length;
     }
     Ok(found)
+}
+
+/// True when the mint names a transfer hook program. An authority with no program is not a
+/// hook: the stock tokens carry that.
+pub fn mint_has_hook_program(data: &[u8]) -> Result<bool> {
+    let Some(hook) = mint_extension(data, TRANSFER_HOOK_TYPE, BasketError::HookNotAllowed)? else {
+        return Ok(false);
+    };
+    require!(
+        hook.len() >= TRANSFER_HOOK_LEN,
+        BasketError::HookNotAllowed
+    );
+    Ok(hook[32..TRANSFER_HOOK_LEN] != [0u8; 32])
+}
+
+/// True when the issuer changes the mint's multiplier within a day of `now`, before or
+/// after. Around that time the price reference and the token can disagree about which
+/// multiplier is in force. The two multipliers are compared as bytes: equal means no change.
+pub fn mint_in_multiplier_window(data: &[u8], now: i64) -> Result<bool> {
+    let Some(scaled) =
+        mint_extension(data, SCALED_UI_AMOUNT_TYPE, BasketError::MultiplierWindow)?
+    else {
+        return Ok(false);
+    };
+    require!(
+        scaled.len() >= SCALED_UI_AMOUNT_LEN,
+        BasketError::MultiplierWindow
+    );
+    let mut at = [0u8; 8];
+    at.copy_from_slice(&scaled[40..48]);
+    let changes_at = i64::from_le_bytes(at);
+    let changes = scaled[32..40] != scaled[48..56];
+    Ok(changes && now.saturating_sub(changes_at).saturating_abs() < MULTIPLIER_WINDOW_S)
+}
+
+/// The two checks a keeper leg makes on the mint of the asset it trades. Only a Token-2022
+/// mint has extensions.
+pub fn check_keeper_mint(mint: &AccountInfo, now: i64) -> Result<()> {
+    if *mint.owner != anchor_spl::token_2022::ID {
+        return Ok(());
+    }
+    let data = mint.try_borrow_data()?;
+    // A hook the issuer set after the token was listed runs inside every transfer.
+    require!(
+        !mint_has_hook_program(&data)?,
+        BasketError::HookNotAllowed
+    );
+    require!(
+        !mint_in_multiplier_window(&data, now)?,
+        BasketError::MultiplierWindow
+    );
+    Ok(())
 }
 
 // ---- the author limits (DESIGN-VAULT.md section 6, fixtures/creator-limits) ----
@@ -355,6 +417,7 @@ pub fn refuse_limit<T>(result: core::result::Result<T, LimitReason>) -> Result<T
 
 /// What the program reads of a token account, of either token program.
 pub struct TokenView {
+    pub mint: Pubkey,
     pub owner: Pubkey,
     pub amount: u64,
     pub has_delegate: bool,
@@ -371,6 +434,7 @@ pub fn token_view(account: &AccountInfo) -> Option<TokenView> {
     let data = account.try_borrow_data().ok()?;
     let state = StateWithExtensions::<TokenAccountState>::unpack(&data).ok()?;
     Some(TokenView {
+        mint: state.base.mint,
         owner: state.base.owner,
         amount: state.base.amount,
         has_delegate: state.base.delegate.is_some(),
@@ -416,4 +480,144 @@ pub fn check_untampered(account: &AccountInfo, before: &TokenView, vault: &Pubke
         BasketError::AccountTampered
     );
     Ok(after.amount)
+}
+
+// ---- the keeper's rules (DESIGN-VAULT.md section 5) ----
+
+/// The window of the loss cap: what a leg loses is forgotten, a little each second, over
+/// seven days.
+pub const LOSS_WINDOW_S: i64 = 604_800;
+const DAY_S: i64 = 86_400;
+
+/// Check 1. The keeper of a vault is its own, if it names one, or else Config's.
+pub fn check_keeper(signer: &Pubkey, vault: &Vault, config: &Config) -> Result<()> {
+    let keeper = if vault.keeper == Pubkey::default() {
+        config.default_keeper
+    } else {
+        vault.keeper
+    };
+    require!(*signer == keeper, BasketError::NotKeeper);
+    Ok(())
+}
+
+/// Check 9, for a stock token: Monday to Friday, UTC, from the session's open up to but
+/// not at its close, not on a closed day, and not before `closed_until`. The reader's
+/// `marketAt` holds the same rule.
+pub fn market_open(config: &Config, now: i64) -> bool {
+    if now < 0 {
+        return false;
+    }
+    let day = now / DAY_S;
+    let second = now % DAY_S;
+    // Day 0 was a Thursday; 0 is Sunday.
+    let weekday = (day + 4) % 7;
+    let in_session = (1..=5).contains(&weekday)
+        && second >= config.session_open_utc_s as i64
+        && second < config.session_close_utc_s as i64;
+    // A zero in `closed_days` is an empty slot, not Jan 1, 1970.
+    let closed_day = day > 0 && config.closed_days.iter().any(|d| *d as i64 == day);
+    in_session && !closed_day && now >= config.closed_until
+}
+
+/// Check 9. An asset that trades at all hours (`session` 0) is always open.
+pub fn check_market(session: u8, config: &Config, now: i64) -> Result<()> {
+    require!(
+        session == 0 || market_open(config, now),
+        BasketError::MarketClosed
+    );
+    Ok(())
+}
+
+/// Check 6. One keeper trade per asset per cooldown.
+pub fn check_cooldown(last_keeper_ts: i64, cooldown_s: u32, now: i64) -> Result<()> {
+    require!(
+        now >= last_keeper_ts.saturating_add(cooldown_s as i64),
+        BasketError::Cooldown
+    );
+    Ok(())
+}
+
+/// `share × whole` against `part × 10,000`, without dividing. None when a product does not fit.
+fn against(part: u128, whole: u128, share_bps: u32) -> Option<(u128, u128)> {
+    part.checked_mul(BPS as u128)
+        .zip(whole.checked_mul(share_bps as u128))
+}
+
+/// Check 5, before the trade. A weight is the asset's value over everything the vault
+/// holds, cash included. A purchase needs the asset under its target and a sale needs it
+/// over: anything else moves away from the target.
+pub fn check_toward_target(
+    buying: bool,
+    asset_value: u128,
+    vault_value: u128,
+    target_bps: u16,
+) -> Result<()> {
+    let Some((weight, target)) = against(asset_value, vault_value, target_bps as u32) else {
+        return err!(BasketError::AssetNotPriced);
+    };
+    require!(
+        if buying {
+            weight < target
+        } else {
+            weight > target
+        },
+        BasketError::NotTowardTarget
+    );
+    Ok(())
+}
+
+/// Check 5, after the trade. The asset may sit anywhere inside the band, on either side of
+/// its target; outside the band on the far side is past it.
+pub fn check_inside_band(
+    buying: bool,
+    asset_value: u128,
+    vault_value: u128,
+    target_bps: u16,
+    band_bps: u16,
+) -> Result<()> {
+    let edge = if buying {
+        target_bps as u32 + band_bps as u32
+    } else {
+        (target_bps as u32).saturating_sub(band_bps as u32)
+    };
+    let Some((weight, limit)) = against(asset_value, vault_value, edge) else {
+        return err!(BasketError::AssetNotPriced);
+    };
+    require!(
+        if buying {
+            weight <= limit
+        } else {
+            weight >= limit
+        },
+        BasketError::PastTarget
+    );
+    Ok(())
+}
+
+/// Check 4. What came in is worth at least what went out, less the tolerance, both at the
+/// reference price. This is the minimum output the program works out for itself.
+pub fn check_value(spent_value: u128, received_value: u128, tolerance_bps: u16) -> Result<()> {
+    let enough = received_value
+        .checked_mul(BPS as u128)
+        .zip(spent_value.checked_mul((BPS as u128).saturating_sub(tolerance_bps as u128)))
+        .is_some_and(|(received, floor)| received >= floor);
+    require!(enough, BasketError::ReceivedTooLittle);
+    Ok(())
+}
+
+/// Check 7. What is left of the loss counter `now`: it falls in a straight line to nothing
+/// over seven days from when it was last written.
+pub fn decayed_loss(loss_accum: u64, loss_ts: i64, now: i64) -> u64 {
+    let elapsed = now.saturating_sub(loss_ts).clamp(0, LOSS_WINDOW_S);
+    let left = (loss_accum as u128) * ((LOSS_WINDOW_S - elapsed) as u128) / (LOSS_WINDOW_S as u128);
+    left as u64
+}
+
+/// Check 7. The counter, with this leg's loss added, stays within `loss_cap_bps` of what
+/// the vault was worth before the leg.
+pub fn check_loss_cap(loss_used: u128, vault_value: u128, loss_cap_bps: u16) -> Result<()> {
+    let within = against(loss_used, vault_value, loss_cap_bps as u32)
+        .is_some_and(|(used, cap)| used <= cap);
+    require!(within, BasketError::LossCapReached);
+    Ok(())
 }

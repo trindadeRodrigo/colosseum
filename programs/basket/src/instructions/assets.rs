@@ -3,14 +3,12 @@ use anchor_spl::token_interface::Mint;
 
 use crate::checks::mint_has_hook_program;
 use crate::errors::BasketError;
-use crate::events::AssetSet;
+use crate::events::{AssetSet, PriceAccountSet};
+use crate::price::{PRICES_LEN, PRICE_ENTRIES};
 use crate::state::{
-    AssetEntry, AssetRegistry, Config, ASSETS_SEED, BPS, CONFIG_SEED, MAX_ASSETS,
+    AssetEntry, AssetRegistry, Config, ASSETS_SEED, ASSET_KEEPER, BPS, CONFIG_SEED, MAX_ASSETS,
     MAX_PRICE_ACCOUNTS,
 };
-
-/// A price account in Scope's layout holds 512 entries.
-pub const PRICE_ENTRIES: u16 = 512;
 
 /// Admin, once: creates the empty asset list.
 #[derive(Accounts)]
@@ -95,7 +93,17 @@ impl UpsertAsset<'_> {
             args.max_weight_bps as u32 <= BPS,
             BasketError::ParamOutOfBounds
         );
-        require!(args.flags == 0, BasketError::ParamOutOfBounds);
+        require!(
+            args.flags & !ASSET_KEEPER == 0,
+            BasketError::ParamOutOfBounds
+        );
+        // The keeper's switch is for an asset with a price entry and an average of its own:
+        // an average at the price's own index would compare the price with itself.
+        require!(
+            args.flags & ASSET_KEEPER == 0
+                || (args.price_kind == 1 && args.twap_index != args.price_index),
+            BasketError::AssetNotPriced
+        );
 
         let mint = &ctx.accounts.mint;
         require!(
@@ -145,4 +153,51 @@ fn has_hook_program(mint: &AccountInfo) -> Result<bool> {
         return Ok(false);
     }
     mint_has_hook_program(&mint.try_borrow_data()?)
+}
+
+/// Admin, until `launch()`: names the price account of one slot of the asset list. An
+/// entry's `price_slot` points at one of the four. The account comes in as an account and
+/// has to be one the price program owns, in the layout the keeper leg reads: an address
+/// that is not, locked in by `launch()`, would mean no keeper trade until an upgrade.
+#[derive(Accounts)]
+pub struct SetPriceAccount<'info> {
+    pub admin: Signer<'info>,
+    #[account(
+        seeds = [CONFIG_SEED],
+        bump = config.bump,
+        has_one = admin
+    )]
+    pub config: Box<Account<'info, Config>>,
+    #[account(
+        mut,
+        seeds = [ASSETS_SEED],
+        bump
+    )]
+    pub assets: AccountLoader<'info, AssetRegistry>,
+    /// CHECK: any account the price program owns, of the size of a price account.
+    #[account(
+        owner = config.price_owner @ BasketError::AssetNotPriced,
+        constraint = price_account.data_len() == PRICES_LEN @ BasketError::AssetNotPriced
+    )]
+    pub price_account: UncheckedAccount<'info>,
+}
+
+impl SetPriceAccount<'_> {
+    pub fn handle(ctx: Context<SetPriceAccount>, slot: u8) -> Result<()> {
+        // The price account is one of the things a vault trusts, like the price program.
+        require!(!ctx.accounts.config.launched, BasketError::LockedAtLaunch);
+        require!(
+            (slot as usize) < MAX_PRICE_ACCOUNTS,
+            BasketError::ParamOutOfBounds
+        );
+        let new = ctx.accounts.price_account.key();
+        let mut registry = ctx.accounts.assets.load_mut()?;
+        emit!(PriceAccountSet {
+            slot,
+            old: registry.price_accounts[slot as usize],
+            new,
+        });
+        registry.price_accounts[slot as usize] = new;
+        Ok(())
+    }
 }

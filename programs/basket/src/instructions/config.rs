@@ -4,8 +4,8 @@ use anchor_spl::token_interface::Mint;
 use crate::checks::{check_address, check_params, check_router, LAUNCHED_PUBLISH_DELAY_S};
 use crate::errors::BasketError;
 use crate::events::{
-    AdminChanged, AdminProposed, CashMintSet, KeeperPauseSet, Launched, ParamsSet, PriceOwnerSet,
-    RouterSet,
+    AdminChanged, AdminProposed, CashMintSet, ClosedDaySet, ClosedUntilSet, GuardianSet,
+    KeeperPauseSet, KeeperSet, Launched, ParamsSet, PriceOwnerSet, RouterSet,
 };
 use crate::program::Basket;
 use crate::state::{Config, Params, CONFIG_SEED};
@@ -154,6 +154,52 @@ impl SetConfig<'_> {
         emit!(KeeperPauseSet { paused: false });
         Ok(())
     }
+
+    /// A new guardian, at any time: a key that pauses and vetoes has to be replaceable
+    /// without an upgrade.
+    pub fn set_guardian(ctx: Context<SetConfig>, guardian: Pubkey) -> Result<()> {
+        check_address(&guardian)?;
+        let config = &mut ctx.accounts.config;
+        emit!(GuardianSet {
+            old: config.guardian,
+            new: guardian,
+        });
+        config.guardian = guardian;
+        Ok(())
+    }
+
+    /// A new default keeper, at any time. A vault that names no keeper of its own is traded
+    /// by this one from the next transaction on.
+    pub fn set_default_keeper(ctx: Context<SetConfig>, keeper: Pubkey) -> Result<()> {
+        check_address(&keeper)?;
+        let config = &mut ctx.accounts.config;
+        emit!(KeeperSet {
+            old: config.default_keeper,
+            new: keeper,
+        });
+        config.default_keeper = keeper;
+        Ok(())
+    }
+
+    /// The time before which the stock market counts as closed. The admin may set any
+    /// time, an earlier one included: it is how a halt the guardian called is lifted.
+    pub fn set_closed_until(ctx: Context<SetConfig>, closed_until: i64) -> Result<()> {
+        ctx.accounts.config.closed_until = closed_until;
+        emit!(ClosedUntilSet { closed_until });
+        Ok(())
+    }
+
+    /// Closes a day (days since 1970, UTC) or opens it again.
+    pub fn set_closed_day(ctx: Context<SetConfig>, day: u16, closed: bool) -> Result<()> {
+        let config = &mut ctx.accounts.config;
+        if closed {
+            config.close_day(day)?;
+        } else {
+            config.open_day(day)?;
+        }
+        emit!(ClosedDaySet { day, closed });
+        Ok(())
+    }
 }
 
 /// The admin changes the cash mint, until `launch()`. The new one comes in as an account
@@ -212,9 +258,10 @@ impl AcceptAdmin<'_> {
     }
 }
 
-/// The guardian can only tighten: it stops the keeper paths and cannot start them again.
-/// No owner instruction reads the switch, so a pause never stands between a person and
-/// their tokens.
+/// Any call by the guardian. The guardian can only tighten: it stops the keeper paths and
+/// cannot start them again, pushes `closed_until` later and never earlier, closes a day
+/// and never opens one. No owner instruction reads any of it, so nothing here stands
+/// between a person and their tokens.
 #[derive(Accounts)]
 pub struct PauseKeeper<'info> {
     pub guardian: Signer<'info>,
@@ -231,6 +278,24 @@ impl PauseKeeper<'_> {
     pub fn handle(ctx: Context<PauseKeeper>) -> Result<()> {
         ctx.accounts.config.keeper_paused = true;
         emit!(KeeperPauseSet { paused: true });
+        Ok(())
+    }
+
+    /// Only a later time than the one stored.
+    pub fn extend_closed_until(ctx: Context<PauseKeeper>, closed_until: i64) -> Result<()> {
+        let config = &mut ctx.accounts.config;
+        require!(
+            closed_until > config.closed_until,
+            BasketError::ParamOutOfBounds
+        );
+        config.closed_until = closed_until;
+        emit!(ClosedUntilSet { closed_until });
+        Ok(())
+    }
+
+    pub fn add_closed_day(ctx: Context<PauseKeeper>, day: u16) -> Result<()> {
+        ctx.accounts.config.close_day(day)?;
+        emit!(ClosedDaySet { day, closed: true });
         Ok(())
     }
 }
