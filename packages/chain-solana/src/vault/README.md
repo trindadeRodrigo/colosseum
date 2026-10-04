@@ -44,9 +44,10 @@ The shape every owner step has, because the guard of `packages/sdk` (DESIGN-VAUL
 | Adopt | `adopt_version`, sent by the keeper as fee payer | not measured here (278 bytes and 14,449 units in `programs/tests/keeper-sizes.test.ts`) |
 | Sync | `sync_balances` with the vault's token accounts, signed by its keeper or owner | 385 with 3 positions, 814 with 16; 16,000 and 73,000 |
 
+A create and its first buys are separate steps. That is Solana's `tradesInCreate` (false), not the guard: the guard's create step takes trades. With them, a create is over the 1,232 bytes a transaction may be from 12 targets up (1,278 at 12, design 3.2), and the platform's own lookup table that would make it fit cannot be used, since the guard refuses a named account read through a table. So the create and its deposit are one step and each buy is its own.
+
 What the steps do not do, because the guard refuses it:
 
-- **A create with its first buys.** Solana carries no trade in a create or a deposit (`tradesInCreate` false): the create and its deposit are one step and each buy is its own. The platform's own lookup table measured on Oct 3 (design 3.2) is not used: the guard refuses a named account read through a table.
 - **An accept that would pass 16 lines and clears a leftover in the same transaction.** The guard takes an accept on its own. The builder refuses with `InvalidTargets` and says to sell or withdraw a leftover first, as its own step.
 - **The owner's sync before auto-follow goes on, in the same transaction.** The guard takes `set_auto_follow` on its own and has no step for a sync. `buildSyncBalances(vault, owner)` builds the owner's as a transaction of its own, which the guard does not pass; the keeper's sync (`buildSyncBalances(vault)`) is the one that runs, before a leg, where `getKeeperContext` says `needsSync`.
 
