@@ -37,6 +37,8 @@ export function SignInScreen({ next = '/goal' }: { next?: string }) {
     setNotMade(false);
     try {
       await port.ensureWallets();
+      // The API is asked again either way: the wallet may have been there and only its answer late.
+      retry();
     } catch {
       setNotMade(true);
     } finally {

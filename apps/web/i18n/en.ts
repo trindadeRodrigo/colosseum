@@ -93,7 +93,13 @@ export const en = {
     names: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
     pick: {
       title: 'Choose the chain your plan lives on',
-      body: 'You made your wallet here, so you choose its chain, once. Your deposit, your vault and every trade of your plan stay on that chain. Each chain has its own shelf of assets, and a plan is built only from the shelf of its chain: it is never split across two.',
+      /** Why this person is asked: they made their wallet here, or connected wallets of both kinds. */
+      asked: {
+        made: 'You made your wallet here, so you choose its chain, once.',
+        connected:
+          'You connected wallets on two chains, so you choose which one your plan lives on, once.',
+      },
+      body: 'Your deposit, your vault and every trade of your plan stay on that chain. Each chain has its own shelf of assets, and a plan is built only from the shelf of its chain: it is never split across two.',
       warning: 'This can’t be changed later.',
       group: 'The chain of your plan',
       /** Under a choice: the address the plan will use there. */
@@ -101,13 +107,12 @@ export const en = {
       confirm: (chain: string) => `My plan lives on ${chain}`,
       confirmNone: 'Choose a chain',
       saving: 'Saving your choice…',
-      why: 'Choose one of the two to continue.',
+      why: 'Choose a chain to continue.',
       /** The throwaway wallet of development: nothing is stored on the server. */
       mock: 'The throwaway wallet has no account on our server, so this choice is kept in this tab only.',
     },
     is: {
-      picked: (chain: string) =>
-        `Your plan lives on ${chain}. You chose it when you made your wallet.`,
+      picked: (chain: string) => `Your plan lives on ${chain}. You chose that, and it stands.`,
       wallet: (chain: string) =>
         `Your plan lives on ${chain}, the chain of the wallet you connected.`,
     },

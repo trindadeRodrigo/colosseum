@@ -129,7 +129,7 @@ describe('a person who creates a wallet in the app', () => {
     expect(signIn).toHaveBeenCalledWith('passkey', { create: true });
     expect(asks(host)).toBe(true);
     // what the choice means, and that it stands
-    expect(host.textContent).toContain(en.chain.pick.body);
+    expect(host.textContent).toContain(`${en.chain.pick.asked.made} ${en.chain.pick.body}`);
     expect(host.textContent).toContain(en.chain.pick.warning);
     // the two chains, as toggle buttons in a named group, each with the wallet the plan would use
     const group = find(host, '[role="group"]');
@@ -227,7 +227,7 @@ describe('a person who creates a wallet in the app', () => {
     const host = await screen('pt');
     await settle();
     const pt = dictionary('pt').chain.pick;
-    for (const sentence of [pt.title, pt.body, pt.warning, pt.confirmNone])
+    for (const sentence of [pt.title, pt.asked.made, pt.body, pt.warning, pt.confirmNone])
       expect(host.textContent).toContain(sentence);
   });
 });
@@ -260,6 +260,23 @@ describe('a person who connects an outside wallet', () => {
     expect(host.textContent).toContain(en.chain.is.wallet(chainName));
     expect(server.count('PUT', '/v1/me/chain')).toBe(0);
     expect(router.replace).toHaveBeenCalledWith('/goal');
+  });
+
+  it('is asked with wallets of both families linked, and is not told they made a wallet here', async () => {
+    const both = [...PHANTOM, ...METAMASK];
+    const server = api({ ...made({ wallets: both }), chainOptions: ['solana', 'robinhood'] });
+    portStore.set(signedInPort(both));
+    const host = await screen();
+    await settle();
+    expect(asks(host)).toBe(true);
+    expect(host.textContent).toContain(`${en.chain.pick.asked.connected} ${en.chain.pick.body}`);
+    expect(host.textContent).not.toContain(en.chain.pick.asked.made);
+    await click(button(host, 'Robinhood Chain'));
+    await click(button(host, en.chain.pick.confirm('Robinhood Chain')));
+    await settle();
+    expect(server.stored().chain).toBe('robinhood');
+    expect(host.textContent).toContain(en.chain.is.picked('Robinhood Chain'));
+    expect(host.textContent).not.toContain(SOLANA);
   });
 });
 
@@ -336,7 +353,7 @@ describe('when the API does not say where the plan lives', () => {
   });
 
   it('says a signed-in person with no wallet has no chain, and makes the wallet when asked', async () => {
-    api(made({ wallets: [], chainOptions: [] }));
+    const server = api(made({ wallets: [], chainOptions: [] }));
     const ensureWallets = vi
       .fn<() => Promise<void>>()
       .mockRejectedValueOnce(toWalletError(new Error('the wallet could not be made')))
@@ -349,10 +366,16 @@ describe('when the API does not say where the plan lives', () => {
     await click(button(host, en.signIn.done.retryWallet));
     await settle();
     expect(alert(host)).toBe(en.signIn.failure.walletNotMade);
+    // A wallet that was not made is not a reason to ask the API again.
+    expect(server.count('GET', '/v1/me')).toBe(1);
+    // Made this time, and the API is asked again, whether or not the browser's list of wallets moved.
+    server.store(made());
     await click(button(host, en.signIn.done.retryWallet));
     await settle();
     expect(ensureWallets).toHaveBeenCalledTimes(2);
     expect(alert(host)).toBeNull();
+    expect(server.count('GET', '/v1/me')).toBe(2);
+    expect(asks(host)).toBe(true);
   });
 });
 

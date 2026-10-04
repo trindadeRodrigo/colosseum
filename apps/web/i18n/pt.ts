@@ -88,19 +88,23 @@ export const pt: Dictionary = {
     names: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
     pick: {
       title: 'Escolha a rede onde seu plano vai ficar',
-      body: 'Você criou sua carteira aqui, então é você quem escolhe a rede dela, uma única vez. Seu depósito, seu cofre e todas as operações do plano ficam nessa rede. Cada rede tem sua própria prateleira de ativos, e um plano é montado só com a prateleira da rede dele: nunca é dividido entre duas.',
+      asked: {
+        made: 'Você criou sua carteira aqui, então é você quem escolhe a rede dela, uma única vez.',
+        connected:
+          'Você conectou carteiras em duas redes, então é você quem escolhe em qual delas seu plano fica, uma única vez.',
+      },
+      body: 'Seu depósito, seu cofre e todas as operações do plano ficam nessa rede. Cada rede tem sua própria prateleira de ativos, e um plano é montado só com a prateleira da rede dele: nunca é dividido entre duas.',
       warning: 'Isso não pode ser mudado depois.',
       group: 'A rede do seu plano',
       address: (address: string) => `Sua carteira lá: ${address}`,
       confirm: (chain: string) => `Meu plano fica na ${chain}`,
       confirmNone: 'Escolha uma rede',
       saving: 'Salvando sua escolha…',
-      why: 'Escolha uma das duas para continuar.',
+      why: 'Escolha uma rede para continuar.',
       mock: 'A carteira descartável não tem conta no nosso servidor, então esta escolha fica só nesta aba.',
     },
     is: {
-      picked: (chain: string) =>
-        `Seu plano fica na ${chain}. Você escolheu quando criou sua carteira.`,
+      picked: (chain: string) => `Seu plano fica na ${chain}. Você escolheu, e isso não muda.`,
       wallet: (chain: string) =>
         `Seu plano fica na ${chain}, a rede da carteira que você conectou.`,
     },

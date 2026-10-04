@@ -132,8 +132,11 @@ describe('the words of the product, in each language', () => {
 
   it('says what the chain choice means and that it stands, in both', () => {
     for (const d of [en, pt]) {
-      expect(d.chain.pick.body.split('.').length).toBeGreaterThan(3);
+      expect(d.chain.pick.body.split('.').length).toBeGreaterThan(2);
       expect(d.chain.pick.warning).toMatch(/can’t be changed later|não pode ser mudado depois/);
+      // why this person is asked, and that it is asked once, whichever way they came
+      for (const reason of [d.chain.pick.asked.made, d.chain.pick.asked.connected])
+        expect(reason).toMatch(/, once\.$|, uma única vez\.$/);
     }
     expect(en.chain.pick.body).toMatch(/never split across two/);
     expect(pt.chain.pick.body).toMatch(/nunca é dividido entre duas/);

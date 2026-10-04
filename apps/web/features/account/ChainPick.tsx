@@ -27,6 +27,8 @@ export function ChainPick({ options }: { options: readonly ChainId[] }) {
   const titleId = useId();
   const whyId = useId();
   const name = (chain: ChainId) => port.network(chain)?.name ?? t.chain.names[chain];
+  // Asked for one of two reasons: the wallet was made here, or outside wallets of both kinds are linked.
+  const made = port.accounts.some((account) => account.kind === 'embedded');
 
   async function confirm() {
     if (!chosen || busy) return;
@@ -56,7 +58,9 @@ export function ChainPick({ options }: { options: readonly ChainId[] }) {
     <Card as="section" aria-labelledby={titleId} mock={mock}>
       <CardHeader title={t.chain.pick.title} level={2} id={titleId} />
       <CardBody className="flex flex-col gap-4">
-        <p className="max-w-(--tf-measure-body) text-body">{t.chain.pick.body}</p>
+        <p className="max-w-(--tf-measure-body) text-body">
+          {made ? t.chain.pick.asked.made : t.chain.pick.asked.connected} {t.chain.pick.body}
+        </p>
         <p className="text-body font-medium">{t.chain.pick.warning}</p>
         {/* biome-ignore lint/a11y/useSemanticElements: two toggle buttons are the group; a fieldset is for form controls */}
         <div role="group" aria-label={t.chain.pick.group} className="flex flex-col gap-3">
