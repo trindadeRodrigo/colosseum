@@ -1,8 +1,8 @@
-import { BasketSheet, BasketSheetDraft } from '@colosseum/schemas';
+import { BasketSheet, BasketSheetDraft, type Provenance } from '@colosseum/schemas';
 import { describe, expect, it, vi } from 'vitest';
 import { dictionary } from '../../i18n';
 import { json } from '../wallet/test/fake-port';
-import { buildPlan, PERSONALIZE_PATH } from './build-plan';
+import { buildPlan, PERSONALIZE_PATH, planProvenance } from './build-plan';
 import { COUNTRY_CODES, countryOptions } from './countries';
 import { draftFromFirstReader, ReadGoalError, readGoal } from './read-goal';
 import {
@@ -166,6 +166,43 @@ describe('building a plan: the one call, against a double of the route that is n
       'ok',
     ])
       expect(await buildPlan(async () => json(body), SHEET)).toEqual({ kind: 'unreadable' });
+  });
+
+  it('shows no plan that is for another goal, amount or chain than the one asked for', async () => {
+    for (const other of [
+      { ...SHEET, chains: ['robinhood' as const] },
+      { ...SHEET, amountUsd: 25000 },
+      { ...SHEET, goal: 'protect' as const },
+    ])
+      expect(
+        await buildPlan(async () => json({ id: 'plan-1', proposal: proposalFor(other) }), SHEET),
+      ).toEqual({ kind: 'unreadable' });
+    expect(
+      (await buildPlan(async () => json({ id: 'plan-1', proposal: proposalFor(SHEET) }), SHEET))
+        .kind,
+    ).toBe('built');
+  });
+
+  it('labels a plan live only when every figure it stands on is live, and never when it names none', () => {
+    const labelled = (...labels: Provenance[]) => {
+      const proposal = proposalFor(SHEET);
+      const [first] = proposal.observations;
+      if (!first) throw new Error('the fixture has one observation');
+      return planProvenance({
+        ...proposal,
+        observations: labels.map((provenance, i) => ({ ...first, id: `obs-${i}`, provenance })),
+      });
+    };
+    expect(labelled()).toBe('mock');
+    expect(labelled('live')).toBe('live');
+    expect(labelled('live', 'live')).toBe('live');
+    // a test network: the plate, with the words
+    expect(labelled('sandbox')).toBe('sandbox');
+    expect(labelled('live', 'sandbox')).toBe('sandbox');
+    // anything else is the plate alone
+    expect(labelled('sandbox', 'mock')).toBe('mock');
+    expect(labelled('live', 'fixture')).toBe('mock');
+    expect(labelled('prior_dataset')).toBe('mock');
   });
 
   it('tells a sheet the server refused from limits no plan fits, and both from no answer', async () => {

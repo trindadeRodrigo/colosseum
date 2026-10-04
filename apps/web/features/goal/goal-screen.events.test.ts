@@ -551,6 +551,38 @@ describe('what comes back from “Build my plan”', () => {
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
 
+  it('draws a plan that names no figure as not live: the plate, never a bare card', async () => {
+    const { host } = await built((body) => {
+      const proposal = proposalFor((body as { sheet: never }).sheet, 'live');
+      return json({ id: 'plan-1', proposal: { ...proposal, observations: [] } });
+    }, 'live');
+    expect(host.textContent).toContain(en.goal.built.done.title);
+    expect(host.querySelectorAll('.tf-mock-plate')).toHaveLength(1);
+    expect(host.querySelector('[data-ui="mock-note"]')).toBeNull();
+    expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
+  });
+
+  it('marks a plan from a test network with the plate and the words "test network"', async () => {
+    const { host } = await built(
+      (body) =>
+        json({ id: 'plan-1', proposal: proposalFor((body as { sheet: never }).sheet, 'sandbox') }),
+      'live',
+    );
+    expect(host.querySelectorAll('.tf-mock-plate')).toHaveLength(1);
+    expect(find(host, '[data-ui="mock-note"]').textContent).toBe(en.shell.testNetwork);
+    expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
+  });
+
+  it('shows no plan that is for another chain than the one asked for', async () => {
+    const { host } = await built((body) => {
+      const sheet = (body as { sheet: BasketSheet }).sheet;
+      return json({ id: 'plan-1', proposal: proposalFor({ ...sheet, chains: ['robinhood'] }) });
+    });
+    expect(find(host, '[role="alert"]').textContent).toBe(en.goal.built.unreadable);
+    expect(host.textContent).not.toContain(en.goal.built.done.title);
+    expect(host.textContent).not.toContain('Robinhood Chain');
+  });
+
   it('does not show an answer that is not a plan in the frozen shape', async () => {
     const { host } = await built(() => json({ id: 'plan-1', proposal: { lines: [] } }));
     expect(find(host, '[role="alert"]').textContent).toBe(en.goal.built.unreadable);

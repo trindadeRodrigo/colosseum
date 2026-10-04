@@ -39,6 +39,25 @@ export type BuildOutcome =
 
 const text = (value: unknown) => (typeof value === 'string' && value.trim() ? value : undefined);
 
+/**
+ * How a built plan is labelled. Live only when every figure it stands on is live. A plan that names
+ * no figure says nothing about being live, so it is not drawn as live. `sandbox` when what is not
+ * live comes from a test network and nothing from a mock: the plate, and the words "test network".
+ */
+export function planProvenance(proposal: BasketProposal): 'live' | 'sandbox' | 'mock' {
+  const labels = proposal.observations.map((o) => o.provenance);
+  if (labels.length === 0) return 'mock';
+  if (labels.every((label) => label === 'live')) return 'live';
+  return labels.every((label) => label === 'live' || label === 'sandbox') ? 'sandbox' : 'mock';
+}
+
+/** The plan is the plan of the sheet that was sent: the same goal, amount and chain. */
+const answers = (asked: BasketSheet, got: BasketSheet) =>
+  got.goal === asked.goal &&
+  got.amountUsd === asked.amountUsd &&
+  got.chains.length === asked.chains.length &&
+  got.chains.every((chain, i) => chain === asked.chains[i]);
+
 export async function buildPlan(apiFetch: ApiFetch, sheet: BasketSheet): Promise<BuildOutcome> {
   let res: Response;
   try {
@@ -67,5 +86,7 @@ export async function buildPlan(apiFetch: ApiFetch, sheet: BasketSheet): Promise
   const proposal = BasketProposal.safeParse(answer.proposal);
   const id = text(answer.id);
   if (!proposal.success || !id) return { kind: 'unreadable' };
+  // A plan for another goal, amount or chain is not the answer to what was asked: it is not shown.
+  if (!answers(sheet, proposal.data.sheet)) return { kind: 'unreadable' };
   return { kind: 'built', id, proposal: proposal.data };
 }

@@ -14,7 +14,7 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { ChainName } from '../account/ChainName';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
-import { type BuildOutcome, buildPlan } from './build-plan';
+import { type BuildOutcome, buildPlan, planProvenance } from './build-plan';
 import { type ReadFailure, ReadGoalError, readGoal } from './read-goal';
 import {
   checkSheet,
@@ -242,6 +242,14 @@ export function GoalScreen() {
         ? t.goal.built[build.kind]
         : null;
 
+  // A built plan is named by its own chain and labelled by its own figures, not by this page's.
+  const plan = build.kind === 'built' ? build.proposal : null;
+  const planLabel = plan ? planProvenance(plan) : 'live';
+  const planChain = plan?.sheet.chains[0];
+  const planChainName = planChain
+    ? (port.network(planChain)?.name ?? t.chain.names[planChain])
+    : chainName;
+
   // The sentences of what does not fit are said in the language of the sheet itself.
   const drawn =
     sheet && check
@@ -352,17 +360,22 @@ export function GoalScreen() {
             </CardBody>
           </Card>
         )}
-        {build.kind === 'built' && (
+        {plan && (
           <Card
             as="section"
             aria-labelledby={outcomeId}
-            // A plan built on anything that is not live says so, whatever else it says.
-            mock={build.proposal.observations.some((o) => o.provenance !== 'live')}
+            // A plan built on anything that is not live says so, whatever else it says: the plate,
+            // and for a test network the words too.
+            mock={planLabel !== 'live'}
+            mockLabels={{
+              announce: t.shell.mockAnnounce,
+              note: planLabel === 'sandbox' ? t.shell.testNetwork : undefined,
+            }}
           >
             <CardHeader title={t.goal.built.done.title} level={2} id={outcomeId} />
             <CardBody>
               <p className="max-w-(--tf-measure-body) text-body">
-                {t.goal.built.done.body(build.proposal.lines.length, chainName)}
+                {t.goal.built.done.body(plan.lines.length, planChainName)}
               </p>
             </CardBody>
           </Card>

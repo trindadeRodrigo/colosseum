@@ -30,6 +30,12 @@ export type CardProps = {
    * and the MOCK plate at its top right, level with the header's title. Nothing else is needed.
    */
   mock?: boolean;
+  /**
+   * Words for the plate of a mocked card. `announce` is what a screen reader hears after MOCK, in the
+   * language of the view. `note` is read by everyone, under the plate: "test network", for a card
+   * whose figures come from one.
+   */
+  mockLabels?: { announce?: string; note?: string };
   as?: 'div' | 'section' | 'article' | 'li';
   'aria-labelledby'?: string;
   'aria-label'?: string;
@@ -44,6 +50,7 @@ export function Card({
   selected = false,
   current,
   mock = false,
+  mockLabels,
   as: Tag = 'div',
   children,
   className,
@@ -70,10 +77,28 @@ export function Card({
           <HatchBand />
           <div className="min-w-0 flex-1">
             {/* Floated, so the header sits beside it and a body with no header wraps around it. */}
-            <MockWord
-              announce
-              className={cn('float-right ml-4', density === 'dense' ? 'mt-4.5 mr-4' : 'mt-7 mr-6')}
-            />
+            {mockLabels?.note ? (
+              <span
+                className={cn(
+                  'float-right ml-4 flex flex-col items-end gap-1',
+                  density === 'dense' ? 'mt-4.5 mr-4' : 'mt-7 mr-6',
+                )}
+              >
+                <MockWord announce sentence={mockLabels.announce} />
+                <span data-ui="mock-note" className="text-caption text-muted-foreground">
+                  {mockLabels.note}
+                </span>
+              </span>
+            ) : (
+              <MockWord
+                announce
+                sentence={mockLabels?.announce}
+                className={cn(
+                  'float-right ml-4',
+                  density === 'dense' ? 'mt-4.5 mr-4' : 'mt-7 mr-6',
+                )}
+              />
+            )}
             <div className="contents">{children}</div>
           </div>
         </>

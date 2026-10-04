@@ -163,6 +163,17 @@ export const card = {
     </Card>
   ),
   mockEmpty: <Card mock>{null}</Card>,
+  /** The plate's hidden words in the language of the view, and a note under it for a test network. */
+  mockNoted: (
+    <Card mock mockLabels={{ announce: ': dados de exemplo', note: 'rede de teste' }}>
+      <CardBody>x</CardBody>
+    </Card>
+  ),
+  mockTold: (
+    <Card mock mockLabels={{ announce: ': dados de exemplo' }}>
+      <CardBody>x</CardBody>
+    </Card>
+  ),
   table: (
     <Card table>
       <CardBody>table</CardBody>
