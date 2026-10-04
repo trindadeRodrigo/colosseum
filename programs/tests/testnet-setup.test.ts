@@ -7,6 +7,9 @@ import {
   getAddressEncoder,
   isSome,
   type KeyPairSigner,
+  type RpcTransport,
+  SOLANA_ERROR__RPC__TRANSPORT_HTTP_ERROR,
+  SolanaError,
 } from '@solana/kit';
 import { decodeMint } from '@solana-program/token-2022';
 import type { LiteSVM } from 'litesvm';
@@ -34,6 +37,7 @@ import {
   keypairFromFile,
   liteChain,
   MAINNET_GENESIS,
+  retryOn429,
 } from './src/testnet/chain';
 import { planOf, type SetupPlan } from './src/testnet/config';
 import { insideRepo } from './src/testnet/folder';
@@ -605,5 +609,45 @@ describe('the rehearsal folder', () => {
     } finally {
       process.chdir(cwd);
     }
+  });
+});
+
+describe('the RPC transport the set-up runs on', () => {
+  const httpError = (statusCode: number) =>
+    new SolanaError(SOLANA_ERROR__RPC__TRANSPORT_HTTP_ERROR, {
+      headers: new Headers(),
+      message: 'HTTP error',
+      statusCode,
+    });
+  const failing = (errors: SolanaError[], answer: unknown) => {
+    let calls = 0;
+    const transport = (async () => {
+      calls++;
+      const error = errors.shift();
+      if (error) throw error;
+      return answer;
+    }) as unknown as RpcTransport;
+    return { transport, calls: () => calls };
+  };
+  const config = { payload: {}, signal: undefined } as unknown as Parameters<RpcTransport>[0];
+
+  it('waits and asks again when the node answers 429, doubling the wait', async () => {
+    const waits: number[] = [];
+    const { transport, calls } = failing([httpError(429), httpError(429)], { result: 7 });
+    const answer = await retryOn429(transport, { wait: async (ms) => void waits.push(ms) })(config);
+    expect(answer).toEqual({ result: 7 });
+    expect(calls()).toBe(3);
+    expect(waits).toEqual([500, 1000]);
+  });
+
+  it('throws any other error at once, and a 429 after the last try', async () => {
+    const other = failing([httpError(500)], null);
+    await expect(retryOn429(other.transport, { wait: async () => {} })(config)).rejects.toThrow();
+    expect(other.calls()).toBe(1);
+    const limited = failing(Array.from({ length: 5 }, () => httpError(429)), null);
+    await expect(
+      retryOn429(limited.transport, { tries: 3, wait: async () => {} })(config),
+    ).rejects.toThrow();
+    expect(limited.calls()).toBe(3);
   });
 });
