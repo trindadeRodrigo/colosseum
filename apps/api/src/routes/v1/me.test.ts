@@ -1,9 +1,11 @@
-import { users } from '@colosseum/db';
+import { type Db, users } from '@colosseum/db';
 import { FundingResponse, OrderError, PersonResponse, PortfolioResponse } from '@colosseum/schemas';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ChainRegistry } from '../../orders/chains';
+import { Refusal } from '../../orders/errors';
+import { pickChain } from '../../orders/person';
 import { orderFlow } from '../../testing/flow';
 import {
   type HomeChain,
@@ -162,6 +164,42 @@ describe('the chain a person’s plans live on (gates ONE-CHAIN, CHAIN-PICK)', (
       expect((await me(who)).chain).toBe(won);
       expect((await storedPick(who))?.chainId).toBe(won);
     }
+  });
+
+  it('a pick that read the user a moment too early changes nothing: the first one stands', async () => {
+    const who = await someone('passkey');
+    expect((await pick(who, 'solana')).statusCode).toBe(200);
+    const row = await storedPick(who);
+    // A second pick whose look at the user was taken before the first one was stored: it sees no
+    // chain, goes on to write, and the write is refused by the row itself.
+    let stale = true;
+    const lagging = new Proxy(data.db, {
+      get(target, prop, receiver) {
+        if (prop !== 'select' || !stale) return Reflect.get(target, prop, receiver);
+        stale = false;
+        return () => ({ from: () => ({ where: async () => [] }) });
+      },
+    }) as Db;
+    const principal = {
+      kind: 'user' as const,
+      userId: who.sub,
+      wallets: [
+        { family: 'solana' as const, address: who.solana, kind: 'embedded' as const },
+        { family: 'evm' as const, address: who.evm, kind: 'embedded' as const },
+      ],
+      ip: '',
+    };
+    const late = await pickChain(lagging, registry, principal, 'robinhood', new Date()).catch(
+      (e: unknown) => e,
+    );
+    expect(stale).toBe(false);
+    expect(late).toBeInstanceOf(Refusal);
+    expect([(late as Refusal).status, (late as Refusal).message]).toEqual([
+      409,
+      'the chain is picked once, and it is Solana',
+    ]);
+    expect(await storedPick(who)).toEqual(row);
+    expect((await me(who)).chain).toBe('solana');
   });
 
   it('takes only a chain the person holds a wallet for and this server runs', async () => {
@@ -405,6 +443,27 @@ describe('GET /v1/funding: what the wallet is missing on its chain', () => {
     // A person who picked: the wallet made in the app, of the picked chain's family.
     const who = await picked('solana');
     expect((await funding(who)).body).toMatchObject({ chain: 'solana', wallet: who.solana });
+    // Two wallets of one family: the outside one when it is what names the chain, the one made in
+    // the app when the chain was picked.
+    const other = (await someone('robinhood')).evm;
+    const outside = {
+      headers: await signIn(issuer, `did:privy:test-outside-first-${rh.sub}`, [
+        { family: 'evm', address: other, client: 'metamask' },
+        { family: 'evm', address: rh.evm, client: 'privy' },
+      ]),
+    };
+    expect((await funding(outside as Person)).body.wallet).toBe(other);
+    const robin = await picked('robinhood');
+    const both = {
+      headers: await signIn(issuer, robin.sub, [
+        { family: 'evm', address: robin.evm, client: 'privy' },
+        { family: 'evm', address: other, client: 'metamask' },
+      ]),
+    };
+    expect((await funding(both as Person)).body).toMatchObject({
+      chain: 'robinhood',
+      wallet: robin.evm,
+    });
     // A plan made for another chain is refused, as a buy of it would be.
     const elsewhere = await get(who, `/v1/funding${buyOf('robinhood')}`);
     expect(elsewhere.statusCode).toBe(422);
