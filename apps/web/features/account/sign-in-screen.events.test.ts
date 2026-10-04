@@ -311,11 +311,49 @@ describe('when the choice cannot be stored', () => {
     server.store(made({ chain: 'robinhood', chainSource: 'picked', chainOptions: [] }));
     await click(button(host, en.chain.pick.confirm('Solana')));
     await settle();
-    // the API refused (409); the person is read again, and the page says where the plan lives
+    // the API refused (409); the person is read again, and the page says where the plan does live:
+    // the stored chain, not the one just tried
     expect(server.count('GET', '/v1/me')).toBe(2);
     expect(asks(host)).toBe(false);
-    expect(host.textContent).toContain(en.chain.is.picked('Robinhood Chain'));
+    expect(alert(host)).toBe(en.chain.failure.taken('Robinhood Chain', 'Solana'));
+    expect(alert(host)).not.toContain('lives on Solana');
     expect(server.stored().chain).toBe('robinhood');
+    // only the wallet of the chain the plan lives on, and the way on is the person's to take
+    expect(host.textContent).toContain(EVM);
+    expect(host.textContent).not.toContain(SOLANA);
+    expect(button(host, en.signIn.done.next).getAttribute('href')).toBe('/goal');
+  });
+
+  it('does not move that person on by itself: they read why their choice was not kept', async () => {
+    const server = api(made());
+    const signIn = signsInAs(EMBEDDED);
+    portStore.set(fakePort({ found: FOUND, signIn }));
+    const host = await screen('en', '/goal');
+    await click(button(host, en.signIn.passkey.create));
+    await settle();
+    await click(button(host, 'Solana'));
+    server.store(made({ chain: 'robinhood', chainSource: 'picked', chainOptions: [] }));
+    await click(button(host, en.chain.pick.confirm('Solana')));
+    await settle();
+    expect(state(host)).toBe('ready');
+    expect(alert(host)).toBe(en.chain.failure.taken('Robinhood Chain', 'Solana'));
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it('says the choice was not kept even when the server cannot say which chain was', async () => {
+    const { host, server } = await choosing(api(made()));
+    server.force((path, init) =>
+      path === '/v1/me/chain'
+        ? json({ error: 'picked once' }, 409)
+        : path === '/v1/me' && (init?.method ?? 'GET') === 'GET'
+          ? json({}, 503)
+          : null,
+    );
+    await click(button(host, en.chain.pick.confirm('Solana')));
+    await settle();
+    expect(state(host)).toBe('unknown');
+    expect(alert(host)).toBe(en.chain.failure.takenUnknown('Solana'));
+    expect(host.textContent).toContain(en.chain.unknown.body);
   });
 
   it('has a sentence for a chain that is not offered, a sign-in that ran out and a server that is busy', async () => {
@@ -477,6 +515,35 @@ describe('one person after another in the same browser', () => {
     expect(state(host)).toBe('ready');
     expect(host.textContent).toContain(en.chain.is.wallet('Robinhood Chain'));
     expect(host.textContent).not.toContain(SOLANA);
+  });
+
+  it('does not let a late answer about the first person’s choice stand in for the second', async () => {
+    const server = api(made());
+    portStore.set(signedInPort(EMBEDDED, { userId: 'did:privy:first' }));
+    const host = await screen();
+    await settle();
+    // the first person's choice is on its way to the API
+    let stored: (res: Response) => void = () => {};
+    server.force((path) =>
+      path === '/v1/me/chain'
+        ? (new Promise<Response>((resolve) => (stored = resolve)) as never)
+        : null,
+    );
+    await click(button(host, 'Solana'));
+    await click(button(host, en.chain.pick.confirm('Solana')));
+    // a second person signs in before it answers
+    server.store(connected(METAMASK, 'robinhood'));
+    await act(async () => portStore.set(signedInPort(METAMASK, { userId: 'did:privy:second' })));
+    await settle();
+    expect(host.textContent).toContain(en.chain.is.wallet('Robinhood Chain'));
+    // the first person's answer arrives now: it is not the second person's
+    await act(async () =>
+      stored(json(made({ chain: 'solana', chainSource: 'picked', chainOptions: [] }))),
+    );
+    await settle();
+    expect(state(host)).toBe('ready');
+    expect(host.textContent).toContain(en.chain.is.wallet('Robinhood Chain'));
+    expect(host.textContent).not.toContain(en.chain.is.picked('Solana'));
   });
 });
 

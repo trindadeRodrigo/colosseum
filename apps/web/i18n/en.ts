@@ -117,8 +117,12 @@ export const en = {
         `Your plan lives on ${chain}, the chain of the wallet you connected.`,
     },
     failure: {
-      taken: (chain: string) =>
-        `Your plan already lives on ${chain}. That was chosen before and can’t be changed.`,
+      /** Another device or tab chose first. `stored` is where the plan lives, `tried` what was just chosen. */
+      taken: (stored: string, tried: string) =>
+        `Your plan already lives on ${stored}: that was chosen before, on another device or in another tab, and it can’t be changed. ${tried} was not saved.`,
+      /** The same, when the server has not said yet which chain it was. */
+      takenUnknown: (tried: string) =>
+        `${tried} was not saved: a chain was chosen for your plan before, on another device or in another tab, and it can’t be changed.`,
       notOffered: 'That chain can’t be chosen with this wallet. Choose the other one.',
       unreachable:
         'I couldn’t save that: our server didn’t answer. Your choice isn’t stored yet. Try again.',

@@ -39,8 +39,10 @@ export function ChainPick({ options }: { options: readonly ChainId[] }) {
     } catch (e) {
       const kind = e instanceof PersonError ? e.kind : 'unreachable';
       setProblem(
+        // The account reads where the plan does live, and the screen names that chain (SignInScreen).
+        // This is said only if it could not be read, while the question is still on the page.
         kind === 'taken'
-          ? t.chain.failure.taken(name(chosen))
+          ? t.chain.failure.takenUnknown(name(chosen))
           : kind === 'not_offered'
             ? t.chain.failure.notOffered
             : kind === 'signed_out'

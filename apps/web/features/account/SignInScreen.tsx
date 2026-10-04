@@ -1,5 +1,5 @@
 'use client';
-import { chainFamily } from '@colosseum/schemas';
+import { type ChainId, chainFamily } from '@colosseum/schemas';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/ui/Button';
@@ -20,7 +20,7 @@ import { ChainPick } from './ChainPick';
 export function SignInScreen({ next = '/goal' }: { next?: string }) {
   const t = useT();
   const port = useWalletPort();
-  const { account, retry } = useAccount();
+  const { account, retry, overruled } = useAccount();
   const router = useRouter();
   // Signed in on this page, in this visit: only then does the screen move the person on by itself.
   const [arrived, setArrived] = useState(false);
@@ -28,7 +28,8 @@ export function SignInScreen({ next = '/goal' }: { next?: string }) {
   const [notMade, setNotMade] = useState(false);
   const [leaving, setLeaving] = useState(false);
 
-  const settled = account.status === 'ready';
+  // A person whose choice was not kept is not moved on by the page: they read why first.
+  const settled = account.status === 'ready' && overruled === null;
   useEffect(() => {
     if (arrived && settled) router.replace(next);
   }, [arrived, settled, next, router]);
@@ -64,6 +65,7 @@ export function SignInScreen({ next = '/goal' }: { next?: string }) {
   const signedIn = port.status === 'ready' || owed !== null;
   const noWallet = owed === 'failed' || (port.status === 'ready' && account.status === 'no-wallet');
   const labels = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.mockAnnounce };
+  const chainName = (chain: ChainId) => port.network(chain)?.name ?? t.chain.names[chain];
   return (
     <div data-ui="sign-in-screen" data-account={account.status} className="flex flex-col gap-8">
       <header className="flex flex-col gap-3">
@@ -91,6 +93,11 @@ export function SignInScreen({ next = '/goal' }: { next?: string }) {
       {signedIn && account.status === 'unknown' && (
         <Card as="section">
           <CardBody className="flex flex-col items-start gap-4">
+            {overruled && (
+              <p role="alert" className="max-w-(--tf-measure-body) text-body">
+                {t.chain.failure.takenUnknown(chainName(overruled))}
+              </p>
+            )}
             <p className="max-w-(--tf-measure-body) text-body">{t.chain.unknown.body}</p>
             <Button variant="primary" onClick={retry}>
               {t.chain.unknown.retry}
@@ -142,11 +149,16 @@ export function SignInScreen({ next = '/goal' }: { next?: string }) {
       {signedIn && account.status === 'ready' && (
         <Card as="section" mock={port.test}>
           <CardBody className="flex flex-col items-start gap-3">
-            <p className="max-w-(--tf-measure-body) text-body">
-              {t.chain.is[account.source](
-                port.network(account.chain)?.name ?? t.chain.names[account.chain],
-              )}
-            </p>
+            {/* Chosen first on another device or tab: where the plan lives, and what was not kept. */}
+            {overruled && overruled !== account.chain ? (
+              <p role="alert" className="max-w-(--tf-measure-body) text-body">
+                {t.chain.failure.taken(chainName(account.chain), chainName(overruled))}
+              </p>
+            ) : (
+              <p className="max-w-(--tf-measure-body) text-body">
+                {t.chain.is[account.source](chainName(account.chain))}
+              </p>
+            )}
             {/* The wallet of that chain alone: the other family's is never shown or used. */}
             <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body-sm">
               {port.test ? (

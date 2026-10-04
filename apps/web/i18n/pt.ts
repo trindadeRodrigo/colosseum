@@ -109,8 +109,10 @@ export const pt: Dictionary = {
         `Seu plano fica na ${chain}, a rede da carteira que você conectou.`,
     },
     failure: {
-      taken: (chain: string) =>
-        `Seu plano já fica na ${chain}. Isso foi escolhido antes e não pode ser mudado.`,
+      taken: (stored: string, tried: string) =>
+        `Seu plano já fica na ${stored}: isso foi escolhido antes, em outro aparelho ou em outra aba, e não pode ser mudado. ${tried} não foi salva.`,
+      takenUnknown: (tried: string) =>
+        `${tried} não foi salva: uma rede já tinha sido escolhida para o seu plano, em outro aparelho ou em outra aba, e isso não pode ser mudado.`,
       notOffered: 'Essa rede não pode ser escolhida com esta carteira. Escolha a outra.',
       unreachable:
         'Não consegui salvar: nosso servidor não respondeu. Sua escolha ainda não está guardada. Tente de novo.',

@@ -42,6 +42,12 @@ export type AccountValue = {
   mock: boolean;
   /** Stores the choice. Throws a `PersonError` whose kind says why it was not stored. */
   pick(chain: ChainId): Promise<void>;
+  /**
+   * The chain this person tried to choose when another had been stored before, on another device or
+   * in another tab. The account then says where the plan does live, and the screen says why the
+   * choice was not kept. Null otherwise.
+   */
+  overruled: ChainId | null;
   /** Asks the API again, after it did not answer. */
   retry(): void;
 };
@@ -55,8 +61,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const apiFetch = useApiFetch();
   const [read, setRead] = useState<Read | null>(null);
   const [round, setRound] = useState(0);
-  const latest = useRef({ port, apiFetch });
-  latest.current = { port, apiFetch };
+  const [refused, setRefused] = useState<{ key: string; tried: ChainId } | null>(null);
 
   // Who is signed in, with which wallets. A new person or a new wallet is read again; the same ones
   // are not, however often the port is rebuilt.
@@ -64,6 +69,8 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     port.status === 'ready'
       ? [port.userId, ...port.accounts.map((a) => `${a.family}:${a.address}:${a.kind}`)].join('|')
       : null;
+  const latest = useRef({ port, apiFetch, key });
+  latest.current = { port, apiFetch, key };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `round` asks again; the port and the fetch are read as they are when the effect runs
   useEffect(() => {
@@ -88,11 +95,21 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         setRead({ key, person: localPerson(now.userId ?? 'test', now.accounts, chain) });
         return;
       }
+      // An answer is this person's only while they are still the one signed in.
+      const mine = () => latest.current.key === key;
       try {
-        setRead({ key, person: await storeChain(call, chain) });
+        const person = await storeChain(call, chain);
+        if (mine()) setRead({ key, person });
       } catch (e) {
-        // Chosen before, on another device or in another tab: read where the plan does live.
-        if (e instanceof PersonError && e.kind === 'taken') setRound((n) => n + 1);
+        // Chosen before, on another device or in another tab: read where the plan does live, so the
+        // screen can name that chain and not the one just tried.
+        if (e instanceof PersonError && e.kind === 'taken') {
+          const person = await fetchPerson(call).catch(() => null);
+          if (mine()) {
+            setRefused({ key, tried: chain });
+            setRead({ key, person });
+          }
+        }
         throw e;
       }
     },
@@ -118,9 +135,10 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     return { status: 'needs-chain', options: person.chainOptions };
   }, [port.status, port.walletsOwed, key, read]);
 
+  const overruled = refused !== null && refused.key === key ? refused.tried : null;
   const value = useMemo(
-    () => ({ account, mock: port.test, pick, retry }),
-    [account, port.test, pick, retry],
+    () => ({ account, mock: port.test, pick, retry, overruled }),
+    [account, port.test, pick, retry, overruled],
   );
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;
 }
