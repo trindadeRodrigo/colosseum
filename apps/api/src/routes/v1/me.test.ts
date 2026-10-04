@@ -93,8 +93,59 @@ describe('the chain a person’s plans live on (gates ONE-CHAIN, CHAIN-PICK)', (
       chainSource: 'wallet',
       chainOptions: [],
     });
-    // Nothing is stored for them: the chain follows from the wallet.
-    expect(await storedPick(sol)).toBeNull();
+    // It is stored the first time the wallet names it, with no pick time: it came from the wallet.
+    expect(await storedPick(sol)).toMatchObject({ chainId: 'solana', chainPickedAt: null });
+    expect(await storedPick(rh)).toMatchObject({ chainId: 'robinhood', chainPickedAt: null });
+  });
+
+  it('stands once a wallet has named it, whatever wallets are linked later', async () => {
+    // A person signs in with an outside Solana wallet and buys.
+    const sol = await someone('solana');
+    await fund(sol);
+    expect((await settleAll(sol, await order(sol, { amountUsd: 100 }))).status).toBe('done');
+    const vaultsOf = async (who: Pick<Person, 'headers'>) => {
+      const res = await get(who as Person, '/v1/portfolio');
+      expect(res.statusCode, res.body).toBe(200);
+      return PortfolioResponse.parse(res.json()).chains.map((c) => [c.chain, c.vaults.length]);
+    };
+    expect(await vaultsOf(sol)).toEqual([['solana', 1]]);
+
+    // Later their identity token lists an outside EVM wallet as well. The wallets alone would name no
+    // single chain now; the chain they have stands, and there is nothing to pick.
+    const later = {
+      headers: await signIn(issuer, sol.sub, [
+        { family: 'solana', address: sol.solana, client: 'phantom' },
+        { family: 'evm', address: sol.evm, client: 'metamask' },
+      ]),
+    };
+    expect(await me(later)).toMatchObject({
+      chain: 'solana',
+      chainSource: 'wallet',
+      chainOptions: [],
+    });
+    const other = await pick(later, 'robinhood');
+    expect([other.statusCode, other.json().error]).toEqual([
+      409,
+      'your plans live on Solana, the chain of the wallet you connected',
+    ]);
+    // Their vault is still theirs to see, and the plan still theirs to add to.
+    expect(await vaultsOf(later)).toEqual([['solana', 1]]);
+    const again = await post(later as Person, '/v1/orders', {
+      type: 'buy',
+      owner: { solana: sol.solana },
+      amountUsd: 50,
+      proposalId: plans.solana,
+    });
+    expect(again.statusCode, again.body).toBe(200);
+    // Signing in with the EVM wallet alone does not move them either.
+    const evmOnly = {
+      headers: await signIn(issuer, sol.sub, [
+        { family: 'evm', address: sol.evm, client: 'metamask' },
+      ]),
+    };
+    expect(await me(evmOnly)).toMatchObject({ chain: 'solana', chainSource: 'wallet' });
+    expect(await me(sol)).toMatchObject({ chain: 'solana', chainSource: 'wallet' });
+    expect(await storedPick(sol)).toMatchObject({ chainId: 'solana', chainPickedAt: null });
   });
 
   it('is nothing yet for a person who made their wallets in the app, until they pick', async () => {
@@ -256,7 +307,8 @@ describe('the chain a person’s plans live on (gates ONE-CHAIN, CHAIN-PICK)', (
       409,
       'your plans live on Solana, the chain of the wallet you connected',
     ]);
-    expect(await storedPick(sol)).toBeNull();
+    // What is stored is the wallet's chain, with no pick time: the refused pick wrote nothing.
+    expect(await storedPick(sol)).toMatchObject({ chainId: 'solana', chainPickedAt: null });
   });
 
   it('asks for a pick when the wallets connected name no single chain', async () => {
@@ -274,7 +326,9 @@ describe('the chain a person’s plans live on (gates ONE-CHAIN, CHAIN-PICK)', (
     expect((await pick({ headers }, 'solana')).statusCode).toBe(200);
     expect((await storedPick(two))?.chainId).toBe('solana');
     // An outside wallet beside wallets made in the app: the outside one names the chain.
-    const mixed = await signIn(issuer, `did:privy:test-mixed-${who.sub}`, [
+    const mixedSub = `did:privy:test-mixed-${who.sub}`;
+    data.track({ ...who, sub: mixedSub });
+    const mixed = await signIn(issuer, mixedSub, [
       { family: 'solana', address: who.solana, client: 'privy' },
       { family: 'evm', address: who.evm, client: 'privy' },
       { family: 'evm', address: who.evm.replace(/.$/, '0'), client: 'metamask' },
@@ -446,8 +500,10 @@ describe('GET /v1/funding: what the wallet is missing on its chain', () => {
     // Two wallets of one family: the outside one when it is what names the chain, the one made in
     // the app when the chain was picked.
     const other = (await someone('robinhood')).evm;
+    const outsideSub = `did:privy:test-outside-first-${rh.sub}`;
+    data.track({ ...rh, sub: outsideSub });
     const outside = {
-      headers: await signIn(issuer, `did:privy:test-outside-first-${rh.sub}`, [
+      headers: await signIn(issuer, outsideSub, [
         { family: 'evm', address: other, client: 'metamask' },
         { family: 'evm', address: rh.evm, client: 'privy' },
       ]),

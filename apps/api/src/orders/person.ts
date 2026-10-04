@@ -33,26 +33,65 @@ function pickable(principal: Principal): ChainId[] {
   return ChainId.options.filter((chain) => held.has(chain));
 }
 
-async function pickedChain(db: Db, principal: Principal): Promise<ChainId | null> {
+type Stored = { chain: ChainId; source: 'picked' | 'wallet' };
+
+/** The chain on the user's row, and whether it was picked or came from a wallet (no pick time). */
+async function storedChain(db: Db, principal: Principal): Promise<Stored | null> {
   if (!principal.userId) return null;
   const [row] = await db
-    .select({ chain: users.chainId })
+    .select({ chain: users.chainId, pickedAt: users.chainPickedAt })
     .from(users)
     .where(eq(users.privyId, principal.userId));
-  return row?.chain ?? null;
+  return row?.chain ? { chain: row.chain, source: row.pickedAt ? 'picked' : 'wallet' } : null;
+}
+
+/**
+ * Writes the chain on the user, once. A row whose chain is set is never written again: of two writes
+ * at the same moment the first stands, and the answer is what the row holds afterwards. `pickedAt` is
+ * the time of a pick, and null for a chain that an outside wallet named.
+ */
+async function storeChain(
+  db: Db,
+  privyId: string,
+  chain: ChainId,
+  pickedAt: Date | null,
+): Promise<void> {
+  await db
+    .insert(users)
+    .values({ privyId, chainId: chain, chainPickedAt: pickedAt })
+    .onConflictDoUpdate({
+      target: users.privyId,
+      set: { chainId: sql`excluded.chain_id`, chainPickedAt: sql`excluded.chain_picked_at` },
+      setWhere: isNull(users.chainId),
+    });
 }
 
 /**
  * Where this person's plans live.
- * - A stored pick stands, whatever wallets came later: the plan lives there.
- * - Otherwise an outside wallet names the chain of its family.
- * - Otherwise there is none yet: the person made their wallet in the app and has not picked.
+ * - A stored chain stands, whatever wallets came later: the plan lives there. It is stored at a pick,
+ *   and the first time an outside wallet names it.
+ * - With nothing stored, an outside wallet names the chain of its family, and that is stored now. So a
+ *   person who later links a wallet of the other family keeps their chain, as a person who picked does.
+ * - Otherwise there is none yet: the person made their wallet in the app and has not picked, or
+ *   connected outside wallets of both families at once.
  */
 export async function personChain(db: Db, principal: Principal): Promise<PersonChain> {
-  const picked = await pickedChain(db, principal);
-  if (picked) return { chain: picked, chainSource: 'picked', chainOptions: [] };
+  const answer = (s: Stored): PersonChain => ({
+    chain: s.chain,
+    chainSource: s.source,
+    chainOptions: [],
+  });
+  const stored = await storedChain(db, principal);
+  if (stored) return answer(stored);
   const fromWallet = walletChain(principal);
-  if (fromWallet) return { chain: fromWallet, chainSource: 'wallet', chainOptions: [] };
+  if (fromWallet) {
+    if (principal.userId) {
+      await storeChain(db, principal.userId, fromWallet, null);
+      const now = await storedChain(db, principal);
+      if (now) return answer(now);
+    }
+    return answer({ chain: fromWallet, source: 'wallet' });
+  }
   return { chain: null, chainSource: null, chainOptions: pickable(principal) };
 }
 
@@ -98,19 +137,14 @@ export async function pickChain(
     });
   // Refuses a chain that is switched off here, before anything is stored.
   chains.get(chain);
-  await db
-    .insert(users)
-    .values({ privyId: principal.userId, chainId: chain, chainPickedAt: now })
-    .onConflictDoUpdate({
-      target: users.privyId,
-      set: { chainId: sql`excluded.chain_id`, chainPickedAt: sql`excluded.chain_picked_at` },
-      // A row whose chain is set is never written again: of two picks at once, the first stands.
-      setWhere: isNull(users.chainId),
-    });
-  const stored = await pickedChain(db, principal);
-  if (stored !== chain)
-    throw new Refusal(409, `the chain is picked once, and it is ${chains.name(stored ?? chain)}`, {
-      details: { retryable: false },
-    });
-  return { chain, chainSource: 'picked', chainOptions: [] };
+  // Of two picks at once, the first stands.
+  await storeChain(db, principal.userId, chain, now);
+  const stored = await storedChain(db, principal);
+  if (stored?.chain !== chain)
+    throw new Refusal(
+      409,
+      `the chain is picked once, and it is ${chains.name(stored?.chain ?? chain)}`,
+      { details: { retryable: false } },
+    );
+  return { chain, chainSource: stored.source, chainOptions: [] };
 }
