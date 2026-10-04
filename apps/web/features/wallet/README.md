@@ -93,7 +93,7 @@ An agent cannot do these: a real passkey, a real wallet's approval, and a real s
 
 - Privy dashboard: login methods passkey and wallet are on; identity tokens are on; `http://localhost:3000` is an allowed origin. "Create on login" for embedded wallets no longer matters: the app makes them.
 - In `.env` at the repo root: the `NEXT_PUBLIC_PRIVY_APP_ID` line from `.env.example`, and `PRIVY_APP_ID` with the same value for the API.
-- The API has to have `GET /v1/me` and `PUT /v1/me/chain`: branch `api/orders-real`, or `staging` once it is merged. On an API without them, sign-in works and the screen then says "I can't tell yet which chain your plan lives on".
+- The API answers `GET /v1/me` only to a verified sign-in. If the screen says "I can't tell yet which chain your plan lives on" after a sign-in that worked, the API refused that call: `PRIVY_APP_ID` is not set for it (503), identity tokens are off in the dashboard (401), or the web's origin is not in `CORS_ORIGINS` (it is `http://localhost:3000` when unset).
 - `pnpm dev`, which starts the API and the web. Use `localhost`, not `127.0.0.1`.
 
 ### The product screen: `http://localhost:3000/sign-in`

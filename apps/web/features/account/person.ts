@@ -1,43 +1,20 @@
-import { type Chain, ChainId, WalletAccount } from '@colosseum/schemas';
+import { type Chain, ChainId, PersonResponse, type WalletAccount } from '@colosseum/schemas';
 
 // Who is signed in, and the one chain their plan lives on (gates ONE-CHAIN and CHAIN-PICK). The API
-// decides and stores it: GET /v1/me and PUT /v1/me/chain. Those two routes are on the branch
-// `api/orders-real` and not on `staging` yet, so their shapes are written here as that branch has
-// them (packages/schemas/src/account-api.ts there). When it merges, `Person` becomes the shared
-// `PersonResponse` and this file keeps the two calls.
+// decides and stores it: GET /v1/me and PUT /v1/me/chain (API-2). Their shape is the shared
+// `PersonResponse` (packages/schemas/src/account-api.ts):
+//   wallets       the wallets of the verified sign-in, as the API read them
+//   chain         null until there is one: the person made their wallet here and has not chosen yet
+//   chainSource   `wallet`: the chain of the outside wallet they connected. `picked`: they chose, once
+//   chainOptions  what may be chosen. Empty once there is a chain
 
 /** The answer of GET /v1/me and of PUT /v1/me/chain. */
-export type Person = {
-  userId: string;
-  /** The wallets of the verified sign-in, as the API read them. */
-  wallets: WalletAccount[];
-  /** Null until there is one: the person made their wallet here and has not chosen yet. */
-  chain: ChainId | null;
-  /** `wallet`: the chain of the outside wallet they connected. `picked`: they chose it, once. */
-  chainSource: 'picked' | 'wallet' | null;
-  /** What may be chosen. Empty once there is a chain. */
-  chainOptions: ChainId[];
-};
+export type Person = PersonResponse;
 
 /** Reads an answer in that shape, or null when it is not one. */
 export function readPerson(body: unknown): Person | null {
-  if (typeof body !== 'object' || body === null) return null;
-  const { userId, wallets, chain, chainSource, chainOptions } = body as Record<string, unknown>;
-  if (typeof userId !== 'string' || userId === '') return null;
-  if (!Array.isArray(wallets) || !Array.isArray(chainOptions)) return null;
-  const read = wallets.map((w) => WalletAccount.safeParse(w));
-  const options = chainOptions.map((c) => ChainId.safeParse(c));
-  if (read.some((w) => !w.success) || options.some((c) => !c.success)) return null;
-  const home = chain === null ? null : ChainId.safeParse(chain);
-  if (home !== null && !home.success) return null;
-  if (chainSource !== null && chainSource !== 'picked' && chainSource !== 'wallet') return null;
-  return {
-    userId,
-    wallets: read.flatMap((w) => (w.success ? [w.data] : [])),
-    chain: home === null ? null : home.data,
-    chainSource,
-    chainOptions: options.flatMap((c) => (c.success ? [c.data] : [])),
-  };
+  const read = PersonResponse.safeParse(body);
+  return read.success ? read.data : null;
 }
 
 /** `useApiFetch()`: a call to the API with the sign-in headers. */
