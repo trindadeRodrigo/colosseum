@@ -1070,8 +1070,9 @@ describe('keeper_leg', () => {
       expectOk(await sell(30.5));
     });
 
-    // Invariant I5: no leg leaves an asset further from its target than it found it.
-    describe('and no further from the target than it began', () => {
+    // Invariant I5: no leg leaves an asset further from its target than it found it, and one that
+    // crosses the target ends at most half as far on the other side.
+    describe('and closer to the target than it began', () => {
       it('takes an asset from outside the band to inside it, on either side', async () => {
         await ownerBuys(40);
         // 40% of the vault, ten points under: to 50.3%, inside the band above the target.
@@ -1079,10 +1080,10 @@ describe('keeper_leg', () => {
         expect(balance(w.svm, w.vaultStock)).toBe(stockFor(50_300_000n));
       });
 
-      it('takes an asset from just over its target to just under it, when that is closer', async () => {
+      it('lets a sale that crosses the target end at most half as far under it', async () => {
         await ownerBuys(50);
         await ownerBuys(1, w.other);
-        // 50.4% of a vault of 100: 0.4 over. A sale of 0.7 leaves it 0.3 under.
+        // 50.4% of a vault of 100: 0.4 over.
         expectOk(
           await swapThroughExchange(w, {
             amountIn: 400_000n,
@@ -1090,22 +1091,35 @@ describe('keeper_leg', () => {
             outputMint: w.stock,
           }),
         );
-        expectOk(await sell(0.7));
+        // To 0.4 under is as far as it was, and to 0.3 under is closer: both are past half.
+        expectError(await sell(0.8), ERR.PastTarget);
+        expectError(await sell(0.7), ERR.PastTarget);
+        // To 0.2 under is exactly half as far.
+        expectOk(await sell(0.6));
       });
 
-      it('refuses a leg that crosses the target and ends further from it, inside the band', async () => {
-        await ownerBuys(50);
+      it('lets a purchase that crosses the target end at most half as far over it', async () => {
+        // 49.6% of a vault of 100: 0.4 under.
         expectOk(
           await swapThroughExchange(w, {
-            amountIn: 200_000n,
+            amountIn: 49_600_000n,
             inputMint: w.cash,
             outputMint: w.stock,
           }),
         );
-        // 50.2%: 0.2 over. A sale of 0.5 would leave it 0.3 under, inside the band and further.
-        expectError(await sell(0.5), ERR.PastTarget);
-        // To exactly as far on the other side is not further.
-        expectOk(await sell(0.4));
+        expectError(await buy(0.8), ERR.PastTarget);
+        expectError(await buy(0.7), ERR.PastTarget);
+        expectOk(await buy(0.6));
+      });
+
+      it('does not hold a leg that stays on its side of the target to the half', async () => {
+        await ownerBuys(40);
+        // Ten points under, and four closer: more than half of the way is still to go.
+        expectOk(await buy(4));
+        await ownerBuys(21);
+        // 65 of 100: fifteen points over, and three closer.
+        await at(SESSION + HOUR);
+        expectOk(await sell(3));
       });
 
       it('stops a stolen key bouncing an asset between the edges of its band (A3)', async () => {
@@ -1123,10 +1137,13 @@ describe('keeper_leg', () => {
         // hair further from it. That was the leg that let the bounce go on; it is refused.
         await at(SESSION + HOUR);
         expectError(await sellOther(970_000n), ERR.PastTarget);
-        // What is left to a keeper is a leg that ends no further out: here, at most to 29.52%.
-        // (Amounts the exchange's rate divides exactly, so the tolerance is not what refuses.)
-        expectError(await sellOther(966_800n), ERR.PastTarget);
-        expectOk(await sellOther(966_400n));
+        // So is one that ends just closer on the other side: the next leg would bring it back.
+        expectError(await sellOther(966_400n), ERR.PastTarget);
+        // What is left to a keeper is a leg that ends at most half as far under: 0.24 of a point,
+        // which is 29.76%. (Amounts the exchange's rate divides exactly, so the tolerance is not
+        // what refuses.)
+        expectError(await sellOther(725_200n), ERR.PastTarget);
+        expectOk(await sellOther(724_800n));
       });
     });
   });
