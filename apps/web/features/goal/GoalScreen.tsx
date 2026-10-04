@@ -297,7 +297,7 @@ export function GoalScreen() {
           disabled={solving}
           error={readSentence}
           lang={LOCALE[lang]}
-          labels={{ send: t.goal.composer.send, busy: t.goal.composer.busy }}
+          labels={{ submit: t.goal.composer.submit, busy: t.goal.composer.busy }}
         />
         <ul aria-label={t.goal.examples.label} className="flex flex-wrap gap-2">
           {t.goal.examples.list.map((example) => (

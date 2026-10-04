@@ -5,12 +5,15 @@
 // not a component.
 
 export type ComposerLabels = {
-  /** The name of the send button: "Fit it". A button that shows a word is named by that word instead. */
-  send: string;
+  /**
+   * The name of the button that sends what was typed: "Fit it". A button that shows a word is named
+   * by that word instead.
+   */
+  submit: string;
   /** Said while the text is being read: "Reading your goal…". */
   busy: string;
 };
-export const COMPOSER_LABELS: ComposerLabels = { send: 'Fit it', busy: 'Reading your goal…' };
+export const COMPOSER_LABELS: ComposerLabels = { submit: 'Fit it', busy: 'Reading your goal…' };
 
 export type ConstraintSheetLabels = {
   title: string;

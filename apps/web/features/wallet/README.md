@@ -13,7 +13,8 @@ The app talks to a wallet through `WalletPort` (`packages/schemas/src/wallet.ts`
 | `test/test-driver.ts` | A driver made of throwaway keys, for tests and for work on the mock |
 | `chains.ts` | Which network each chain is on in the browser, from the shared chain configs, with the public RPC URLs |
 | `bytes.ts` | base58, base64, and reading a Solana transaction's signers and fee payer |
-| `WalletProvider.tsx` | `<WalletProvider>`, `useWalletPort()`, `useApiFetch()` |
+| `WalletProvider.tsx` | `<WalletProvider>`, `useWalletPort()`, `useApiFetch()`. A screen's port has no signing member |
+| `signing.ts` | `useSigningPort()`: the whole port, with `sign()`, `send()`, `signMessage()` and `exportKey()`. No product route may import it yet |
 | `api-url.ts` | The address of an API call: one path under the API, never another host |
 | `config-check.ts`, `use-api-check.ts` | At start, the browser's networks against the API's `GET /v1/config` |
 | `SignIn.tsx` | The two ways in, on the primitives: create a passkey or use one, or a wallet from the list of those found. The screen around it, and the chain pick, are in `features/account/` |
@@ -24,14 +25,14 @@ The app talks to a wallet through `WalletPort` (`packages/schemas/src/wallet.ts`
 ```tsx
 import { SignIn, useApiFetch, useWalletPort } from '@/features/wallet';
 
-const port = useWalletPort(); // WalletPort: status, accounts, active(), caps(), sign(), send(),
-//   and for the screens: found, problemKind, network(chain), ensureWallets()
+const port = useWalletPort(); // status, userId, accounts, active(), caps(), signIn(), signOut(),
+//   found, problemKind, network(chain), walletsOwed, ensureWallets(). No sign(), no send().
 const apiFetch = useApiFetch(); // fetch to the API with the sign-in headers
 const res = await apiFetch('/v1/orders', { method: 'POST', body });
 ```
 
 - **The token.** `port.authHeaders()` returns `authorization: Bearer <Privy access token>` and, once identity tokens are switched on in the Privy dashboard, `privy-id-token`. Signed out it returns `{}`. `useApiFetch()` adds them to a call; it is the one hook the fetch layer needs. Its `path` starts with one `/` and stays under the API: anything that would name another host is refused before the token is asked for, and a redirect is an error.
-- **A signature.** Take the `BasketTx` the API built and look at `port.caps(chain).signOnly`. True: `port.sign(chain, [tx])` returns the signed transaction (Solana: base64 of the whole serialized transaction; EVM: the 0x serialized signed transaction), one per transaction given and in the same order, and the caller reports it to the API as `signedTx`. False (an outside EVM wallet): `port.send(chain, tx)` returns `{ txId }`.
+- **A signature** is not a screen's to ask for. What `useWalletPort()` returns is the wallet with its signing members taken off: the object does not have them. The whole port is `useSigningPort()` in `signing.ts`, for the one leg executor once the guard exists, and today for the page under `/dev`. With the whole port: take the `BasketTx` the API built and look at `port.caps(chain).signOnly`. True: `port.sign(chain, [tx])` returns the signed transaction (Solana: base64 of the whole serialized transaction; EVM: the 0x serialized signed transaction), one per transaction given and in the same order, and the caller reports it to the API as `signedTx`. False (an outside EVM wallet): `port.send(chain, tx)` returns `{ txId }`.
 - **Failures.** Every failure is a `WalletError` with one of its nine codes: `rejected`, `expired`, `no_gas`, `wrong_chain`, `not_connected`, `wrong_account`, `unsupported`, `changed`, `unknown`. The port throws a `WalletPortError`, which also carries a `reason`. For the last four named codes the reason is the code. Two reasons are this app's alone and travel under `unknown`: `not_configured` and `bad_transaction`.
 - **A failed sign-in** carries one of nine more reasons, and `sign-in-view.ts` gives each a sentence of the dictionary (`i18n/en.ts`, `signIn.failure`): `method_off` (Privy's 403 "Login with passkey not allowed": the method is off in its dashboard), `passkey_cancelled` (the prompt was closed or ran out), `passkey_unknown`, `passkey_unsupported`, `wallet_gone`, `wallet_silent`, `too_many`, `offline`, `wallet_not_made`. A person never reads what Privy or a wallet threw.
 - **Which chain.** `port.network(chain)` gives the name, the network and the provenance of a chain as the API runs it, for the words on screen. Which chain a person's plan lives on is not the port's to say: `useAccount()` in `features/account/` asks the API.
@@ -67,7 +68,13 @@ The browser reads `NEXT_PUBLIC_CHAIN_NETWORK_<CHAIN>` and the API reads `CHAIN_N
 
 ## Before any product screen signs
 
-1. Nothing in product code calls `port.sign()` or `port.send()` until the guard (AGT-1) has checked the bytes against the order. The port checks that a transaction is for this account and network and that the wallet signed what it was given. It does not know what the order was, so it cannot tell a deposit from a transfer to someone else. `components/shell/product-routes.test.ts` fails on any call to `sign`, `send`, `signMessage` or `exportKey` in a file a product route reaches, the files of the seam apart.
+1. Nothing in product code calls `port.sign()` or `port.send()` until the guard (AGT-1) has checked the bytes against the order. The port checks that a transaction is for this account and network and that the wallet signed what it was given. It does not know what the order was, so it cannot tell a deposit from a transfer to someone else. `components/shell/product-routes.test.ts` (rule 3) holds this by what a screen can reach, not by how a call is spelled:
+   - the port a screen is handed has no signing member (`screen-port.events.test.ts` sees it with the provider mounted);
+   - nothing the app ships imports `signing.ts`, and a file outside the seam takes from a seam file only `useWalletPort`, `useApiFetch`, `WalletProvider` and types;
+   - a screen imports only the packages on the test's list, which has no wallet or chain library, and `@privy-io` is imported by `privy-bridge.tsx` alone;
+   - outside the seam no signing member is named at all: not called, read, taken apart, handed on as a prop or written as a string, and neither is a wallet's own method (`eth_sendTransaction`, `solana:signTransaction`) or `window.ethereum`.
+
+   The seam is the nine files the test lists: `port.ts`, `driver.ts`, `privy-bridge.tsx`, `WalletProvider.tsx`, `signing.ts`, `sign-in-flows.ts`, `found-wallets.ts`, `chains.ts`, `bytes.ts`. What the test cannot read in a file, a key built at run time or the port handed to a helper, comes to nothing because the object has no such member, and the typecheck refuses it.
 2. Privy still owns one window: the export of a key. It has rounded corners and a blurred backdrop, which `STYLE.md` forbids. Nothing in the product opens it yet.
 
 ## The throwaway wallet

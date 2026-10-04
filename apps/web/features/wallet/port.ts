@@ -88,6 +88,29 @@ export interface WebWalletPort extends WalletPort {
   signMessage(family: Chain, text: string): Promise<string>;
 }
 
+/**
+ * The members of the port that reach a key: they sign, send, or show one. A screen is never handed
+ * them (`ScreenPort`). The whole port is behind `useSigningPort()` in signing.ts, and
+ * components/shell/product-routes.test.ts holds who may import that.
+ */
+export const SIGNING_MEMBERS = ['sign', 'send', 'signMessage', 'exportKey'] as const;
+export type SigningMember = (typeof SIGNING_MEMBERS)[number];
+
+/** The wallet as a screen has it: who is signed in and with what, and no way to a signature. */
+export type ScreenPort = Omit<WebWalletPort, SigningMember>;
+
+/** The port without its signing members: a new object that does not have them at all. */
+export function screenPort(port: WebWalletPort): ScreenPort {
+  const {
+    sign: _sign,
+    send: _send,
+    signMessage: _signMessage,
+    exportKey: _exportKey,
+    ...rest
+  } = port;
+  return rest;
+}
+
 /** One prompt signs up to three Solana transactions (DESIGN-VAULT section 9). */
 const SOLANA_BATCH = 3;
 

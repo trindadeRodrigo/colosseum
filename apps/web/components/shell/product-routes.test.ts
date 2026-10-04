@@ -2,6 +2,8 @@ import { existsSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { SIGNING_MEMBERS, screenPort } from '../../features/wallet/port';
+import { fakePort } from '../../features/wallet/test/fake-port';
 import { DEV_ONLY as BUILD_DEV_ONLY } from '../../scripts/check-build.mjs';
 import { read, sourceFiles, WEB } from '../ui/test/css';
 
@@ -9,8 +11,10 @@ import { read, sourceFiles, WEB } from '../ui/test/css';
 //   1. nothing the product ships imports from a `dev`, `test` or `fixtures` folder;
 //   2. the product's routes do not reach the wallet adapter, whose button renders one thing on the
 //      server and another in the browser, nor the bar and the providers of the pages not yet rebuilt;
-//   3. nothing in product code asks the wallet to sign or to send: the guard that checks the bytes
-//      first is not built yet (packages/sdk), so no screen may reach a key.
+//   3. no screen can reach a key: the guard that checks the bytes first is not built yet
+//      (packages/sdk). The port a screen is handed has no signing member, the whole port and the
+//      wallet libraries are importable only inside the wallet's seam, and outside it no signing
+//      member is so much as named.
 
 // next-env.d.ts is Next's own file, written by its build and its dev server.
 const files = [...sourceFiles()].filter(
@@ -208,27 +212,112 @@ describe('rule 2: the product’s routes do not reach the wallet adapter', () =>
   });
 });
 
-describe('rule 3: no screen asks the wallet to sign or to send', () => {
-  /** The calls a screen must not make: `anything.sign(…)`, `.send(…)`, `.signMessage(…)`, `.exportKey(…)`. */
-  const KEYS = new Set(['sign', 'send', 'signMessage', 'exportKey']);
-  function reaches(file: string, text: string): string[] {
+describe('rule 3: no screen can reach a key', () => {
+  /**
+   * The seam: the files of the wallet that hold the whole port, name a signing member, or import a
+   * wallet library. Each is here for a reason, and nothing else the product's routes are built from
+   * is: everything else is a screen, or serves one.
+   */
+  const SEAM = new Set([
+    // the port: checks a transaction, hands the driver the bytes, checks what comes back
+    'features/wallet/port.ts',
+    // what a wallet provider has to do, as types
+    'features/wallet/driver.ts',
+    // the provider itself, and the only file that names it
+    'features/wallet/privy-bridge.tsx',
+    // holds the whole port, and hands every screen the one with no signing member
+    'features/wallet/WalletProvider.tsx',
+    // the whole port, for the files listed in SIGNERS below
+    'features/wallet/signing.ts',
+    // signing in with an outside wallet: it signs the provider's sign-in message, a line of text
+    'features/wallet/sign-in-flows.ts',
+    // the wallets a browser announces, each with its provider
+    'features/wallet/found-wallets.ts',
+    // the chains as a wallet library defines them
+    'features/wallet/chains.ts',
+    // reads the signers of a Solana transaction and checks a signature
+    'features/wallet/bytes.ts',
+  ]);
+  const built = reach(product);
+  const screens = [...built.files].filter((file) => !SEAM.has(file));
+
+  /**
+   * Who may import the whole port (features/wallet/signing.ts), among everything the app ships. Nobody
+   * yet: the guard that checks the bytes against the order is not built (packages/sdk, AGT-1). The
+   * one leg executor is added here, on purpose, when it exists.
+   */
+  const SIGNERS: readonly string[] = [];
+  const SIGNING = 'features/wallet/signing.ts';
+
+  /** What a file outside the seam may take from a file of the seam, by name. Types are free. */
+  const OPEN: Record<string, readonly string[]> = {
+    'features/wallet/WalletProvider.tsx': ['useWalletPort', 'useApiFetch', 'WalletProvider'],
+  };
+
+  /**
+   * The packages a screen imports, all of them. A wallet or chain library is not one, and a new
+   * package is added here by someone who looked at what it can do.
+   */
+  const PACKAGES = [
+    '@colosseum/schemas',
+    'next/font/google',
+    'next/headers',
+    'next/link',
+    'next/navigation',
+    'react',
+  ];
+
+  /**
+   * What a file takes from the seam that it may not: a value by a name that is not open to it, the
+   * whole module, or the module loaded at run time.
+   */
+  function takes(file: string, text: string): string[] {
     const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     const found: string[] = [];
+    const seam = (spec: ts.Expression | undefined) => {
+      if (!spec || !ts.isStringLiteralLike(spec)) return null;
+      const to = target(file, spec.text);
+      return to !== null && SEAM.has(to) ? to : null;
+    };
     const walk = (node: ts.Node) => {
+      if (ts.isImportDeclaration(node)) {
+        const to = seam(node.moduleSpecifier);
+        const clause = node.importClause;
+        if (to && clause && !clause.isTypeOnly) {
+          const open = OPEN[to] ?? [];
+          if (clause.name) found.push(`${file} takes the default of ${to}`);
+          const names = clause.namedBindings;
+          if (names && ts.isNamespaceImport(names)) found.push(`${file} takes all of ${to}`);
+          if (names && ts.isNamedImports(names))
+            for (const el of names.elements) {
+              const name = (el.propertyName ?? el.name).text;
+              if (!el.isTypeOnly && !open.includes(name))
+                found.push(`${file} takes ${name} from ${to}`);
+            }
+        }
+      }
+      if (ts.isExportDeclaration(node) && !node.isTypeOnly) {
+        const to = seam(node.moduleSpecifier);
+        if (to) {
+          const open = OPEN[to] ?? [];
+          const names = node.exportClause;
+          if (!names || !ts.isNamedExports(names)) found.push(`${file} hands on all of ${to}`);
+          else
+            for (const el of names.elements) {
+              const name = (el.propertyName ?? el.name).text;
+              if (!el.isTypeOnly && !open.includes(name))
+                found.push(`${file} hands on ${name} from ${to}`);
+            }
+        }
+      }
+      // import('…') and require('…') give the whole module
       if (
         ts.isCallExpression(node) &&
-        (ts.isPropertyAccessExpression(node.expression) ||
-          ts.isElementAccessExpression(node.expression))
+        (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+          (ts.isIdentifier(node.expression) && node.expression.text === 'require'))
       ) {
-        const name = ts.isPropertyAccessExpression(node.expression)
-          ? node.expression.name.text
-          : node.expression.argumentExpression.getText(source).replace(/['"`]/g, '');
-        if (KEYS.has(name)) found.push(`${file} calls .${name}()`);
-      }
-      // taking the function off the port to call it later is the same thing
-      if (ts.isBindingElement(node) && ts.isIdentifier(node.name)) {
-        const from = node.propertyName ?? node.name;
-        if (ts.isIdentifier(from) && KEYS.has(from.text)) found.push(`${file} takes ${from.text}`);
+        const to = seam(node.arguments[0]);
+        if (to) found.push(`${file} loads all of ${to}`);
       }
       ts.forEachChild(node, walk);
     };
@@ -237,45 +326,208 @@ describe('rule 3: no screen asks the wallet to sign or to send', () => {
   }
 
   /**
-   * The wallet seam itself is where those calls are made real: the port, the bridge and the driver.
-   * One more file is of the seam: signing in with an outside wallet has that wallet sign the
-   * provider's sign-in message, which is a line of text and not a transaction. Everything else the
-   * product's routes are built from is a screen, or serves one.
+   * The names of what signs, sends or shows a key: the port's own members, a driver's, a wallet's,
+   * and the provider object a browser wallet sets with its one call. Outside the seam none is named
+   * at all: not called, not read, not taken apart, not handed on, not written as a string.
    */
-  const SEAM = new Set([
-    'features/wallet/port.ts',
-    'features/wallet/privy-bridge.tsx',
-    'features/wallet/driver.ts',
-    'features/wallet/WalletProvider.tsx',
-    'features/wallet/sign-in-flows.ts',
+  const MEMBERS = new Set([
+    'sign',
+    'send',
+    'signMessage',
+    'exportKey',
+    'signSolana',
+    'signSolanaMessage',
+    'signEvm',
+    'signEvmMessage',
+    'sendEvm',
+    'signTransaction',
+    'signAllTransactions',
+    'signAndSendTransaction',
+    'sendTransaction',
+    'sendRawTransaction',
+    'signTypedData',
+    'exportWallet',
+    'ethereum',
+    'request',
   ]);
-  const screens = [...reach(product).files].filter((file) => !SEAM.has(file));
+  /** A wallet's methods and features that sign or send, as the strings they are asked for by. */
+  const ASKS = /^(eth_send|eth_sign|personal_sign|wallet_send|solana:sign)/;
+
+  function names(file: string, text: string): string[] {
+    const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const found: string[] = [];
+    const named = (name: ts.Node | undefined) =>
+      name && (ts.isIdentifier(name) || ts.isStringLiteralLike(name)) && MEMBERS.has(name.text)
+        ? name.text
+        : null;
+    const walk = (node: ts.Node) => {
+      // port.sign, port?.sign, port.sign.call(…), onConfirm={port.send}
+      if (ts.isPropertyAccessExpression(node) && MEMBERS.has(node.name.text))
+        found.push(`${file} names .${node.name.text}`);
+      // a name written out as a string: port['sign'], const k = 'sign', { 'sign': go }, a wallet's
+      // method asked for by name
+      if (ts.isStringLiteralLike(node) && (MEMBERS.has(node.text) || ASKS.test(node.text)))
+        found.push(`${file} writes '${node.text}'`);
+      // const { sign } = port, const { send: later } = port
+      if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)) {
+        const key = named(node.propertyName ?? node.name);
+        if (key && !ts.isStringLiteralLike(node.propertyName ?? node.name))
+          found.push(`${file} takes ${key}`);
+      }
+      // ({ sign: go } = port), { send }, { sign() {} }
+      if (
+        (ts.isPropertyAssignment(node) ||
+          ts.isShorthandPropertyAssignment(node) ||
+          ts.isMethodDeclaration(node)) &&
+        ts.isObjectLiteralExpression(node.parent)
+      ) {
+        const key = named(node.name);
+        if (key && !ts.isStringLiteralLike(node.name)) found.push(`${file} writes ${key}:`);
+      }
+      // <Buy send={…} />
+      if (ts.isJsxAttribute(node) && ts.isIdentifier(node.name) && MEMBERS.has(node.name.text))
+        found.push(`${file} passes ${node.name.text}=`);
+      ts.forEachChild(node, walk);
+    };
+    walk(source);
+    return found;
+  }
 
   it('reads every file a product route is built from, the screens among them', () => {
     for (const file of [
       'features/goal/GoalScreen.tsx',
       'features/account/SignInScreen.tsx',
       'features/account/ChainPick.tsx',
+      'features/account/AccountProvider.tsx',
       'features/wallet/SignIn.tsx',
       'components/shell/AppNav.tsx',
+      'components/ui/Composer.tsx',
+      'i18n/en.ts',
     ])
       expect(screens).toContain(file);
+    for (const file of SEAM) expect(files, file).toContain(file);
   });
 
-  it('finds no such call', () => {
-    expect(screens.flatMap((file) => reaches(file, read(file)))).toEqual([]);
+  it('hands a screen a port that has no signing member: the object does not carry one', () => {
+    const whole = fakePort({ status: 'ready', userId: 'did:privy:test' });
+    const screen = screenPort(whole) as Record<string, unknown>;
+    for (const member of SIGNING_MEMBERS) {
+      expect(typeof whole[member]).toBe('function');
+      expect(member in screen, member).toBe(false);
+      expect(screen[member], member).toBeUndefined();
+    }
+    // and it is still the wallet a screen needs
+    for (const member of ['status', 'userId', 'accounts', 'active', 'network', 'signIn', 'signOut'])
+      expect(member in screen, member).toBe(true);
+    // that this is what the provider hands out is seen with the provider mounted:
+    // features/wallet/screen-port.events.test.ts
   });
 
-  it('bites: a call, a call by name, and the function taken off the port', () => {
+  it('lets no file the app ships import the whole port, but those listed', () => {
+    const importers = shipped.filter((file) =>
+      importsOf(file, read(file)).some((edge) => edge.file === SIGNING),
+    );
+    expect(importers).toEqual([...SIGNERS]);
+    // the wallet check under /dev does, and is in no production build
+    expect(
+      importsOf(
+        'features/wallet/dev/DevWallet.tsx',
+        read('features/wallet/dev/DevWallet.tsx'),
+      ).some((edge) => edge.file === SIGNING),
+    ).toBe(true);
+    // and nothing a product route is built from reaches it by any path
+    expect(built.files.has(SIGNING)).toBe(false);
+  });
+
+  it('lets a screen take from the seam only what is open to it, by name', () => {
+    expect(screens.flatMap((file) => takes(file, read(file)))).toEqual([]);
+  });
+
+  it('keeps wallet and chain libraries inside the seam', () => {
+    const used = new Set<string>();
+    for (const file of screens)
+      for (const edge of importsOf(file, read(file))) if (edge.file === null) used.add(edge.spec);
+    expect([...used].sort()).toEqual(PACKAGES);
+    // the wallet provider is named in one file of everything the app ships
+    const naming = shipped.filter((file) =>
+      importsOf(file, read(file)).some((edge) => edge.spec.startsWith('@privy-io/')),
+    );
+    expect(naming).toEqual(['features/wallet/privy-bridge.tsx']);
+  });
+
+  it('finds no signing member named outside the seam', () => {
+    expect(screens.flatMap((file) => names(file, read(file)))).toEqual([]);
+  });
+
+  it('bites: every way of getting at a signature that is written in the file', () => {
     const file = 'features/goal/GoalScreen.tsx';
-    expect(reaches(file, "const signed = await port.sign('solana', [tx]);")).toEqual([
-      `${file} calls .sign()`,
+    const caught: Record<string, string> = {
+      'a call': "await port.sign('solana', [tx]);",
+      'a call on the hook': 'await useWalletPort().send(chain, tx);',
+      'an optional call': "await port.sign?.('solana', [tx]);",
+      'an alias, called later': "const go = port.sign; await go('solana', [tx]);",
+      '.call': "await port.sign.call(port, 'solana', [tx]);",
+      '.bind': 'const go = port.send.bind(port); await go(chain, tx);',
+      'Reflect.apply': "await Reflect.apply(port.exportKey, port, ['evm']);",
+      'a key in brackets': "await port['sign'](chain, txs);",
+      'a key in a variable': "const k = 'sign'; await port[k]('solana', [tx]);",
+      'taken apart': 'const { sign, accounts } = port;',
+      'taken apart under another name': 'const { send: later } = useWalletPort();',
+      'taken apart by a string key': "const { 'sign': go } = port; await go('solana', [tx]);",
+      'taken apart by assignment': "let go; ({ sign: go } = port); await go('solana', [tx]);",
+      'handed on as a prop': 'const a = <Buy onConfirm={port.send} />;',
+      'handed on under its own name': 'const a = <Buy send={go} />;',
+      'put in an object': 'const tools = { signMessage: go };',
+      'the provider’s own hook':
+        'const { sendTransaction } = useSendTransaction(); await sendTransaction({ to, value });',
+      'a wallet’s provider, asked directly':
+        "await wallet.provider.request({ method: 'eth_sendTransaction', params: [tx] });",
+      'the wallet a browser sets': 'await window.ethereum.enable();',
+      'a Solana wallet’s feature': "wallet.features['solana:signTransaction'];",
+    };
+    for (const [how, code] of Object.entries(caught))
+      expect(names(file, code).length, how).toBeGreaterThan(0);
+    // signing in and out are not signing, and neither is the word in a sentence or a label
+    for (const fine of [
+      "await port.signIn('passkey'); await port.signOut();",
+      "const label = t.shell.signIn; const said = 'Sign and send'; const { signedIn } = state;",
+      'function send() { onSubmit(text); } send();',
+    ])
+      expect(names(file, fine), fine).toEqual([]);
+  });
+
+  it('bites: what is not written in the file is held by what a screen can reach', () => {
+    const file = 'features/goal/GoalScreen.tsx';
+    // A key built at run time, and the port handed to a helper: nothing in the text names a member.
+    // The port a screen holds has none, so both come to nothing (the test above), and the typecheck
+    // refuses both: the screen's port has no such member and takes no string as a key.
+    for (const unseen of ["await port['si' + 'gn'](chain, txs);", 'await execute(port, order);'])
+      expect(names(file, unseen), unseen).toEqual([]);
+    expect(
+      Object.keys(screenPort(fakePort())).filter((key) => /sign(?!In|Out)|send|export/i.test(key)),
+    ).toEqual([]);
+    // The helper itself has to come from somewhere, and each way in is closed:
+    // the whole port,
+    expect(takes(file, "import { useSigningPort } from '../wallet/signing';")).toEqual([
+      `${file} takes useSigningPort from ${SIGNING}`,
     ]);
-    expect(reaches(file, 'await useWalletPort().send(chain, tx);')).toHaveLength(1);
-    expect(reaches(file, "await port['sign'](chain, txs);")).toHaveLength(1);
-    expect(reaches(file, 'const { sign, accounts } = port;')).toEqual([`${file} takes sign`]);
-    expect(reaches(file, 'const { send: later } = useWalletPort();')).toHaveLength(1);
-    // signing in and out are not signing
-    expect(reaches(file, "await port.signIn('passkey'); await port.signOut();")).toEqual([]);
+    // the provider's context, the port's maker, a wallet's own flows,
+    expect(takes(file, "import { WalletContext } from '../wallet/WalletProvider';")).toHaveLength(
+      1,
+    );
+    expect(takes(file, "import { createWalletPort } from '../wallet/port';")).toHaveLength(1);
+    expect(takes(file, "import * as flows from '../wallet/sign-in-flows';")).toHaveLength(1);
+    expect(takes(file, "export * from '../wallet/port';")).toHaveLength(1);
+    expect(takes(file, "const seam = await import('../wallet/privy-bridge');")).toHaveLength(1);
+    // while what is open stays open, and types are free
+    expect(
+      takes(
+        file,
+        "import { useApiFetch, useWalletPort } from '../wallet/WalletProvider'; import type { WebWalletPort } from '../wallet/port'; import { type ScreenPort } from '../wallet/port';",
+      ),
+    ).toEqual([]);
+    // or a library, which a screen may not import
+    for (const spec of ['@privy-io/react-auth', 'viem', '@solana/kit', '@colosseum/sdk'])
+      expect(PACKAGES, spec).not.toContain(spec);
   });
 });

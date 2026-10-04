@@ -152,7 +152,7 @@ export const en = {
       label: 'Your goal',
       placeholder: '$40,000 by June 2028, cash within 7 days',
       hint: 'Enter to read it · Shift+Enter for a new line',
-      send: 'Read my goal',
+      submit: 'Read my goal',
       busy: 'Reading your goal…',
     },
     examples: {

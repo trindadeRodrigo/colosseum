@@ -6,8 +6,9 @@ import { base58Decode, base64Decode, parseSolanaTx } from '../bytes';
 import { publicWalletEnv, type WalletChain, type WalletChains, walletChains } from '../chains';
 import type { WebWalletPort } from '../port';
 import { SignIn } from '../SignIn';
+import { useSigningPort } from '../signing';
 import { failureSentence, shortAddress } from '../view';
-import { useApiFetch, useWalletPort } from '../WalletProvider';
+import { useApiFetch } from '../WalletProvider';
 import { DEV_PAGE_MARKER } from './marker';
 import { evmRpc, type Reading, solanaRpc } from './rpc';
 import { evmSelfTransfer, solanaSelfTransfer } from './self-transfer';
@@ -344,7 +345,8 @@ function Tokens({ port }: { port: WebWalletPort }) {
 }
 
 export function DevWallet() {
-  const port = useWalletPort();
+  // The whole port: this page signs, and it is in no production build.
+  const port = useSigningPort();
   // A value this cannot read stops sign-in, and the sign-in control says which variable it is.
   const chains = useMemo(() => {
     try {

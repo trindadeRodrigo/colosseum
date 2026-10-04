@@ -937,7 +937,7 @@ export function Showcase() {
               name="email"
               placeholder="you@example.com"
               sendText="Subscribe"
-              labels={{ send: 'Subscribe' }}
+              labels={{ submit: 'Subscribe' }}
               onSubmit={noop}
             />
           </div>

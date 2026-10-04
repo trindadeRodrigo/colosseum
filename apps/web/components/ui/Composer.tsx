@@ -131,7 +131,7 @@ export function Composer({
   );
   const wordy = variant === 'single' && sendText !== undefined;
   // The button is named for what it shows: the word on it, unless the caller names it otherwise.
-  const sendName = labels?.send ?? (wordy ? sendText : text.send);
+  const sendName = labels?.submit ?? (wordy ? sendText : text.submit);
 
   return (
     <form

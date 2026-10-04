@@ -507,7 +507,7 @@ export const composer = {
       name="email"
       defaultValue="you@example.com"
       sendText="Subscribe"
-      labels={{ send: 'Subscribe' }}
+      labels={{ submit: 'Subscribe' }}
       onSubmit={noop}
     />
   ),

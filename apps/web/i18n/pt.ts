@@ -140,7 +140,7 @@ export const pt: Dictionary = {
       label: 'Seu objetivo',
       placeholder: 'US$ 40.000 até junho de 2028, resgate em até 7 dias',
       hint: 'Enter para ler · Shift+Enter para nova linha',
-      send: 'Ler meu objetivo',
+      submit: 'Ler meu objetivo',
       busy: 'Lendo seu objetivo…',
     },
     examples: {

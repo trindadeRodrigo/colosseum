@@ -12,7 +12,7 @@ import {
 import { API } from '../../lib/api';
 import { apiUrl } from './api-url';
 import { WALLET_MARKER } from './marker';
-import type { WebWalletPort } from './port';
+import { type ScreenPort, screenPort, type WebWalletPort } from './port';
 
 // This file is in the bundle of every page, so it imports nothing heavy: the port, the chain table and
 // the wallet provider all arrive with the bridge, when something first asks for the wallet.
@@ -33,8 +33,12 @@ const TestBridge =
 const testWalletOn =
   process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_WALLET_DRIVER === 'test';
 
-type Value = { port: WebWalletPort; activate: () => void };
-const WalletContext = createContext<Value | null>(null);
+/**
+ * `port` is the whole wallet, signing included: only signing.ts reads it. `screen` is the same wallet
+ * with no signing member, which is what every screen gets.
+ */
+type Value = { port: WebWalletPort; screen: ScreenPort; activate: () => void };
+export const WalletContext = createContext<Value | null>(null);
 WalletContext.displayName = WALLET_MARKER;
 
 const notYet = async (): Promise<never> => {
@@ -73,7 +77,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [port, setPort] = useState<WebWalletPort>(LOADING);
   const [active, setActive] = useState(false);
   const activate = useCallback(() => setActive(true), []);
-  const value = useMemo(() => ({ port, activate }), [port, activate]);
+  const value = useMemo(() => ({ port, screen: screenPort(port), activate }), [port, activate]);
   const Bridge = testWalletOn && TestBridge ? TestBridge : PrivyBridge;
   return (
     <WalletContext.Provider value={value}>
@@ -83,13 +87,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** The wallet, behind WalletPort. The first component to call this loads the wallet provider. */
-export function useWalletPort(): WebWalletPort {
+/**
+ * The wallet as a screen has it: who is signed in, with which wallets, on which chains, and the ways
+ * to sign in and out. It has no member that signs, sends or shows a key, so no screen can reach one:
+ * the object does not carry them. The first component to call this loads the wallet provider.
+ */
+export function useWalletPort(): ScreenPort {
   const value = useContext(WalletContext);
   if (!value) throw new Error('useWalletPort() needs <WalletProvider> above it');
   const { activate } = value;
   useEffect(activate, [activate]);
-  return value.port;
+  return value.screen;
 }
 
 /**
