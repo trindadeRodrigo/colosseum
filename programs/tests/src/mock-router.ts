@@ -10,6 +10,7 @@ import {
   concat,
   discriminator,
   MOCK_ROUTER_PROGRAM,
+  programDataAddress,
   readonly,
   SYSTEM_PROGRAM,
   signer,
@@ -26,6 +27,7 @@ export const MOCK_ROUTER_ERR = {
   ZeroDenominator: 6000,
   Overflow: 6001,
   BelowMinOut: 6002,
+  NotUpgradeAuthority: 6003,
 } as const;
 
 /** The router account. It also owns the reserve token accounts. */
@@ -45,10 +47,21 @@ export async function pairAddress(mintIn: Address, mintOut: Address): Promise<Ad
   return pda;
 }
 
-export async function initRouterInstruction(admin: TransactionSigner): Promise<Instruction> {
+/** Accounts: admin (signer, pays; the program's upgrade authority), router, the program, its
+ * program data, system program. */
+export async function initRouterInstruction(
+  admin: TransactionSigner,
+  overrides: { program?: Address; programData?: Address } = {},
+): Promise<Instruction> {
   return {
     programAddress: MOCK_ROUTER_PROGRAM,
-    accounts: [writableSigner(admin), writable(await routerAddress()), readonly(SYSTEM_PROGRAM)],
+    accounts: [
+      writableSigner(admin),
+      writable(await routerAddress()),
+      readonly(overrides.program ?? MOCK_ROUTER_PROGRAM),
+      readonly(overrides.programData ?? (await programDataAddress(MOCK_ROUTER_PROGRAM))),
+      readonly(SYSTEM_PROGRAM),
+    ],
     data: discriminator('init_router'),
   };
 }

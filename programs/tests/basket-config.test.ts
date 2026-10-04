@@ -21,6 +21,7 @@ import {
   FROZEN_ERRORS,
   forgeConfig,
   type InitConfigArgs,
+  initAssetsInstruction,
   initConfigInstruction,
   type Params,
   readConfig,
@@ -35,6 +36,7 @@ import {
   createWorld,
   events,
   expectError,
+  expectFailure,
   expectOk,
   fundedSigner,
   idlCreateInstruction,
@@ -46,6 +48,7 @@ import {
   SYSTEM_PROGRAM,
   send,
 } from './src/env';
+import { createAta, createMint, TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from './src/tokens';
 
 type Setter = (admin: TransactionSigner, value: Address, config?: Address) => Promise<Instruction>;
 
@@ -54,10 +57,23 @@ const SETTERS: {
   field: 'routerProgram' | 'priceOwner' | 'cashMint';
   event: string;
   set: Setter;
+  /** What the zero address, which is also the system program, is refused with. */
+  zero: number;
 }[] = [
-  { field: 'routerProgram', event: 'RouterSet', set: setRouterInstruction },
-  { field: 'priceOwner', event: 'PriceOwnerSet', set: setPriceOwnerInstruction },
-  { field: 'cashMint', event: 'CashMintSet', set: setCashMintInstruction },
+  { field: 'routerProgram', event: 'RouterSet', set: setRouterInstruction, zero: ERR.ZeroAddress },
+  {
+    field: 'priceOwner',
+    event: 'PriceOwnerSet',
+    set: setPriceOwnerInstruction,
+    zero: ERR.ZeroAddress,
+  },
+  // The cash mint comes in as an account and has to be a mint: the system program is not one.
+  {
+    field: 'cashMint',
+    event: 'CashMintSet',
+    set: setCashMintInstruction,
+    zero: ANCHOR.AccountOwnedByWrongProgram,
+  },
 ];
 
 describe('basket config', () => {
@@ -74,7 +90,7 @@ describe('basket config', () => {
       // dollar token; on mainnet Jupiter, Kamino Scope and USDC. Either way, values in Config.
       routerProgram: MOCK_ROUTER_PROGRAM,
       priceOwner: (await generateKeyPairSigner()).address,
-      cashMint: (await generateKeyPairSigner()).address,
+      cashMint: (await createMint(svm, deployer, { program: TOKEN_PROGRAM, decimals: 6 })).address,
       params: DEFAULT_PARAMS,
     };
   });
@@ -153,6 +169,52 @@ describe('basket config', () => {
       expectError(await init(deployer), ERR.NotUpgradeAuthority);
     });
 
+    // All zeros is the empty value and the system program: none of the five is ever that.
+    it.each(['guardian', 'defaultKeeper', 'routerProgram', 'priceOwner'] as const)(
+      'refuses the zero address as %s',
+      async (field) => {
+        expectError(await init(deployer, { [field]: SYSTEM_PROGRAM }), ERR.ZeroAddress);
+        expect(svm.getAccount(await configAddress()).exists).toBe(false);
+      },
+    );
+
+    it.each([
+      ['the token program', TOKEN_PROGRAM],
+      ['the Token-2022 program', TOKEN_2022_PROGRAM],
+      ['the vault program itself', BASKET_PROGRAM],
+    ])('refuses %s as the router', async (_, program) => {
+      expectError(await init(deployer, { routerProgram: program }), ERR.RouterNotAllowed);
+    });
+
+    // A typo here, locked in by launch(), would mean no deposits until an upgrade.
+    it('refuses a cash mint that is not a mint of a token program', async () => {
+      const tokenAccount = await createAta(svm, deployer, deployer.address, {
+        address: args.cashMint,
+        program: TOKEN_PROGRAM,
+        decimals: 6,
+        issuer: deployer,
+      });
+      const notMints: [Address, number | string][] = [
+        [SYSTEM_PROGRAM, ANCHOR.AccountOwnedByWrongProgram],
+        [(await generateKeyPairSigner()).address, ANCHOR.AccountNotInitialized],
+        [deployer.address, ANCHOR.AccountOwnedByWrongProgram],
+        [tokenAccount, 'InvalidAccountData'],
+      ];
+      for (const [cashMint, refusal] of notMints) {
+        const result = await init(deployer, { cashMint });
+        if (typeof refusal === 'number') expectError(result, refusal);
+        else expectFailure(result, refusal);
+      }
+      expect(svm.getAccount(await configAddress()).exists).toBe(false);
+      // Either token program's mint is one.
+      const mint2022 = await createMint(svm, deployer, {
+        program: TOKEN_2022_PROGRAM,
+        decimals: 6,
+      });
+      expectOk(await init(deployer, { cashMint: mint2022.address }));
+      expect((await readConfig(svm)).cashMint).toBe(mint2022.address);
+    });
+
     it('cannot be initialised twice', async () => {
       expectOk(await init(deployer));
       const other = (await generateKeyPairSigner()).address;
@@ -166,8 +228,23 @@ describe('basket config', () => {
     const outOfBounds: [string, Partial<Params>][] = [
       ['a tolerance above 300 bps', { toleranceBps: 301 }],
       ['a weekly loss cap above 500 bps', { lossCapBps: 501 }],
+      ['a band above 500 bps', { bandBps: 501 }],
+      ['a price deviation allowance above 1,000 bps', { twapDevBps: 1_001 }],
+      ['a price older than 600 s', { maxPriceAgeS: 601 }],
       ['a cooldown under 600 s', { assetCooldownS: 599 }],
+      ['a cooldown over 7 days', { assetCooldownS: 604_801 }],
       ['a publish delay under 60 s', { publishDelayS: 59 }],
+      ['a publish delay over 30 days', { publishDelayS: 2_592_001 }],
+      ['a session that opens before 13:30 UTC', { sessionOpenUtcS: 48_599 }],
+      ['a session that closes after 21:00 UTC', { sessionCloseUtcS: 75_601 }],
+      [
+        'a session that closes when it opens',
+        { sessionOpenUtcS: 60_000, sessionCloseUtcS: 60_000 },
+      ],
+      [
+        'a session that closes before it opens',
+        { sessionOpenUtcS: 70_000, sessionCloseUtcS: 60_000 },
+      ],
     ];
 
     it.each(outOfBounds)('refuses %s', async (_, change) => {
@@ -179,14 +256,24 @@ describe('basket config', () => {
 
     it('accepts each bound itself', async () => {
       const atTheBounds = {
-        ...DEFAULT_PARAMS,
         toleranceBps: 300,
         lossCapBps: 500,
+        bandBps: 500,
+        twapDevBps: 1_000,
+        maxPriceAgeS: 600,
         assetCooldownS: 600,
         publishDelayS: 60,
+        sessionOpenUtcS: 48_600,
+        sessionCloseUtcS: 75_600,
       };
       expectOk(await init(deployer, { params: atTheBounds }));
       expect(await readConfig(svm)).toMatchObject(atTheBounds);
+    });
+
+    it('accepts the longest cooldown and the longest publish delay', async () => {
+      const longest = { ...DEFAULT_PARAMS, assetCooldownS: 604_800, publishDelayS: 2_592_000 };
+      expectOk(await init(deployer, { params: longest }));
+      expect(await readConfig(svm)).toMatchObject(longest);
     });
   });
 
@@ -199,10 +286,12 @@ describe('basket config', () => {
       guardian = await fundedSigner(svm);
       keeper = await fundedSigner(svm);
       expectOk(await init(deployer, { guardian: guardian.address, defaultKeeper: keeper.address }));
-      replacement = (await generateKeyPairSigner()).address;
+      // A mint, so the same address will do for all three: the cash mint has to be one.
+      replacement = (await createMint(svm, deployer, { program: TOKEN_2022_PROGRAM, decimals: 6 }))
+        .address;
     });
 
-    describe.each(SETTERS)('$field', ({ field, event, set }) => {
+    describe.each(SETTERS)('$field', ({ field, event, set, zero }) => {
       it('is changed by the admin, with an event that carries the old and the new value', async () => {
         const before = await readConfig(svm);
         const meta = expectOk(await send(svm, deployer, [await set(deployer, replacement)]));
@@ -222,12 +311,46 @@ describe('basket config', () => {
       });
 
       it('cannot be set to the zero address, which is also the system program', async () => {
-        expectError(
-          await send(svm, deployer, [await set(deployer, SYSTEM_PROGRAM)]),
-          ERR.ZeroAddress,
-        );
+        expectError(await send(svm, deployer, [await set(deployer, SYSTEM_PROGRAM)]), zero);
         expect((await readConfig(svm))[field]).toBe(args[field]);
       });
+    });
+
+    it('the cash mint cannot be set to what is not a mint of a token program', async () => {
+      const tokenAccount = await createAta(svm, deployer, deployer.address, {
+        address: args.cashMint,
+        program: TOKEN_PROGRAM,
+        decimals: 6,
+        issuer: deployer,
+      });
+      expectError(
+        await send(svm, deployer, [
+          await setCashMintInstruction(deployer, (await generateKeyPairSigner()).address),
+        ]),
+        ANCHOR.AccountNotInitialized,
+      );
+      expectError(
+        await send(svm, deployer, [await setCashMintInstruction(deployer, await configAddress())]),
+        ANCHOR.AccountOwnedByWrongProgram,
+      );
+      expectFailure(
+        await send(svm, deployer, [await setCashMintInstruction(deployer, tokenAccount)]),
+        'InvalidAccountData',
+      );
+      expect((await readConfig(svm)).cashMint).toBe(args.cashMint);
+    });
+
+    // A token program would read the vault's signature as leave to move its tokens.
+    it.each([
+      ['the token program', TOKEN_PROGRAM],
+      ['the Token-2022 program', TOKEN_2022_PROGRAM],
+      ['the vault program itself', BASKET_PROGRAM],
+    ])('the router cannot be set to %s', async (_, program) => {
+      expectError(
+        await send(svm, deployer, [await setRouterInstruction(deployer, program)]),
+        ERR.RouterNotAllowed,
+      );
+      expect((await readConfig(svm)).routerProgram).toBe(MOCK_ROUTER_PROGRAM);
     });
 
     // Config is one account at one address. Anything else passed in its place is refused,
@@ -251,6 +374,7 @@ describe('basket config', () => {
 
       it("refuses the attacker's own Vault, whose owner sits where the admin does", async () => {
         const theirVault = await vaultAddress(attacker.address, 1n);
+        expectOk(await send(svm, deployer, [await initAssetsInstruction(deployer)]));
         expectOk(
           await send(svm, attacker, [
             await createVaultInstruction({ owner: attacker, basketId: 1n }),

@@ -1,0 +1,21 @@
+{
+  "about": "A local anvil chain, for the dry run. The three roles are anvil's second, third and fourth test accounts: their keys are public, so this file is for chain 31337 only, and the script refuses it anywhere else. No asset is listed: a fresh anvil has no token to list.",
+  "chainId": 31337,
+  "admin": "0x70997970C51812dc3A010C7D01b50e0d17dc79C8",
+  "guardian": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+  "keeper": "0x90F79bf6EB2c4f870365E785982E1f101E93b906",
+  "sequencerFeed": "0x0000000000000000000000000000000000000000",
+  "publishDelay": 300,
+  "params": {
+    "toleranceBps": 125,
+    "lossCapBps": 200,
+    "bandBps": 50,
+    "assetCooldown": 3600,
+    "sessionOpen": 52200,
+    "sessionClose": 72000
+  },
+  "cashToken": "0x0000000000000000000000000000000000000000",
+  "assets": [],
+  "routers": [],
+  "closedDays": [20813, 20843]
+}

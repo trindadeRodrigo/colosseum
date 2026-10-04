@@ -16,11 +16,18 @@ import {
   getUpdateMultiplierScaledUiMintInstruction,
 } from '@solana-program/token-2022';
 import {
+  assetsAddress,
   configAddress,
   createVaultInstruction,
   DEFAULT_PARAMS,
   depositInstruction,
+  familyId,
+  initAssetsInstruction,
   initConfigInstruction,
+  publishRecipeInstruction,
+  recipeAddress,
+  updateRecipeInstruction,
+  upsertAssetInstruction,
   vaultAddress,
   withdrawInstruction,
 } from './basket';
@@ -43,10 +50,19 @@ import {
 export type Ledger = {
   send(payer: TransactionSigner, instructions: Instruction[]): Promise<void>;
   rent(bytes: bigint): Promise<bigint>;
+  /**
+   * Moves the chain's clock forward by this many seconds, where the chain can: LiteSVM can and a
+   * validator cannot. A second version of a shared portfolio needs one publish delay to pass, so it
+   * is published only where this exists.
+   */
+  advanceClock?: (seconds: bigint) => bigint;
 };
 
 export type MintName = 'usdc' | 'spyx' | 'nvdax' | 'gold' | 'tslax';
 export type VaultName = 'following' | 'manual' | 'partial' | 'others';
+export type RecipeName = 'core';
+
+type Weights = { mint: MintName; weightBps: number }[];
 
 /** Raw units by mint name. A mint that is left out has no token account at all. */
 type Amounts = Partial<Record<MintName, string>>;
@@ -69,6 +85,9 @@ export type WorldExpected = {
       owner: 'owner' | 'other';
       basketId: string;
       autoFollow: boolean;
+      /** The shared portfolio the vault follows, and the version whose weights it took. */
+      recipe: RecipeName | null;
+      acceptedVersion: number;
       targets: { mint: MintName; targetBps: number }[];
       /** What the vault's associated token accounts hold. */
       held: Amounts;
@@ -78,6 +97,18 @@ export type WorldExpected = {
   >;
   /** What each wallet's own associated token accounts hold. */
   wallets: Record<'owner' | 'other', Amounts>;
+  recipes: Record<
+    RecipeName,
+    {
+      /** 64 hex characters. */
+      familyId: string;
+      /** The version in effect. */
+      active: { version: number; components: Weights };
+      /** A version that is published and waits; its time is in unix seconds. Null on a chain whose
+       * clock the script cannot move. */
+      pending: { version: number; effectiveAt: string; components: Weights } | null;
+    }
+  >;
 };
 
 export type WorldNames = {
@@ -88,12 +119,17 @@ export type WorldNames = {
   keeper: Address;
   router: Address;
   priceOwner: Address;
+  /** The platform's asset list. */
+  assets: Address;
+  /** The wallet that published the shared portfolios. */
+  creator: Address;
   owner: Address;
   other: Address;
   /** A wallet that holds nothing and owns no vault. It has no account at all. */
   stranger: Address;
   mints: Record<MintName, Address>;
   vaults: Record<VaultName, Address>;
+  recipes: Record<RecipeName, Address>;
 };
 
 export type World = {
@@ -171,13 +207,14 @@ export async function buildWorld(
   deployer: TransactionSigner,
   priceOwner: Address = MOCK_ROUTER_PROGRAM,
 ): Promise<World> {
-  const [owner, other, stranger, guardian, keeper] = await Promise.all(
-    Array.from({ length: 5 }, () => generateKeyPairSigner()),
+  const [owner, other, stranger, guardian, keeper, creator] = await Promise.all(
+    Array.from({ length: 6 }, () => generateKeyPairSigner()),
   );
-  if (!owner || !other || !stranger || !guardian || !keeper) throw new Error('no keys');
+  if (!owner || !other || !stranger || !guardian || !keeper || !creator) throw new Error('no keys');
   await ledger.send(deployer, [
     getTransferSolInstruction({ source: deployer, destination: owner.address, amount: 5n * SOL }),
     getTransferSolInstruction({ source: deployer, destination: other.address, amount: SOL }),
+    getTransferSolInstruction({ source: deployer, destination: creator.address, amount: SOL }),
   ]);
 
   // The dollar token and gold on the classic token program; the stock tokens on Token-2022 with the
@@ -212,9 +249,46 @@ export async function buildWorld(
     }),
   ]);
 
+  // The platform's list: the four assets. Cash is never a position, so it is not listed.
+  await ledger.send(deployer, [
+    await initAssetsInstruction(deployer),
+    ...(await Promise.all(
+      (['spyx', 'nvdax', 'gold', 'tslax'] as const).map((name) =>
+        upsertAssetInstruction(deployer, mints[name].address),
+      ),
+    )),
+  ]);
+
   await mintTo(ledger, deployer, mints.usdc, owner.address, usdc(5_000n));
   await mintTo(ledger, deployer, mints.spyx, owner.address, 75_000_000n);
   await mintTo(ledger, deployer, mints.usdc, other.address, usdc(50n));
+
+  // One shared portfolio, published by its creator. Its first version is in effect at once.
+  const core = {
+    family: familyId('core'),
+    first: [
+      { mint: 'spyx', weightBps: 5000 },
+      { mint: 'nvdax', weightBps: 3000 },
+      { mint: 'gold', weightBps: 2000 },
+    ],
+    // Moves 10% of the portfolio into an asset the first version did not hold.
+    second: [
+      { mint: 'spyx', weightBps: 4000 },
+      { mint: 'nvdax', weightBps: 3000 },
+      { mint: 'gold', weightBps: 2000 },
+      { mint: 'tslax', weightBps: 1000 },
+    ],
+  } satisfies { family: Uint8Array; first: Weights; second: Weights };
+  const components = (weights: Weights) =>
+    weights.map((w) => ({ mint: mints[w.mint].address, weightBps: w.weightBps }));
+  const coreAddress = await recipeAddress(creator.address, core.family);
+  await ledger.send(creator, [
+    await publishRecipeInstruction({
+      creator,
+      familyId: core.family,
+      components: components(core.first),
+    }),
+  ]);
 
   const open = async (
     who: KeyPairSigner,
@@ -222,13 +296,19 @@ export async function buildWorld(
     targets: { mint: MintName; targetBps: number }[],
     autoFollow: boolean,
     deposit: bigint,
+    follows?: { recipe: Address; version: number },
   ): Promise<Address> => {
     const vault = await vaultAddress(who.address, basketId);
     await ledger.send(who, [
       await createVaultInstruction({
         owner: who,
         basketId,
-        targets: targets.map((t) => ({ mint: mints[t.mint].address, targetBps: t.targetBps })),
+        // A vault that follows takes the weights of the version in effect, not targets of its own.
+        targets: follows
+          ? []
+          : targets.map((t) => ({ mint: mints[t.mint].address, targetBps: t.targetBps })),
+        recipe: follows?.recipe,
+        expectedVersion: follows?.version ?? 0,
         autoFollow,
       }),
       await createAtaInstruction(who, vault, mints.usdc),
@@ -238,11 +318,8 @@ export async function buildWorld(
   };
 
   const targets = {
-    following: [
-      { mint: 'spyx', targetBps: 5000 },
-      { mint: 'nvdax', targetBps: 3000 },
-      { mint: 'gold', targetBps: 2000 },
-    ],
+    // What the vault copies from the shared portfolio it follows.
+    following: core.first.map((w) => ({ mint: w.mint, targetBps: w.weightBps })),
     manual: [
       { mint: 'spyx', targetBps: 6000 },
       { mint: 'gold', targetBps: 4000 },
@@ -256,7 +333,10 @@ export async function buildWorld(
   } satisfies Record<VaultName, { mint: MintName; targetBps: number }[]>;
 
   const vaults: Record<VaultName, Address> = {
-    following: await open(owner, 1n, targets.following, true, usdc(1_000n)),
+    following: await open(owner, 1n, targets.following, true, usdc(1_000n), {
+      recipe: coreAddress,
+      version: 1,
+    }),
     manual: await open(owner, 2n, targets.manual, false, usdc(500n)),
     partial: await open(owner, 3n, targets.partial, true, usdc(100n)),
     others: await open(other, 1n, targets.others, false, usdc(50n)),
@@ -279,6 +359,26 @@ export async function buildWorld(
   // A listed token sent to a vault that has no target on it: still the owner's to see and withdraw.
   await mintTo(ledger, deployer, mints.tslax, vaults.manual, 40_000_000n);
 
+  // The creator publishes a second version once one publish delay has passed. It waits another
+  // delay before it is in effect, so the first vault sees it as pending, with an asset it has not
+  // accepted. Only where the script can move the clock.
+  let pending: WorldExpected['recipes'][RecipeName]['pending'] = null;
+  if (ledger.advanceClock) {
+    const publishedAt = ledger.advanceClock(BigInt(DEFAULT_PARAMS.publishDelayS));
+    await ledger.send(creator, [
+      await updateRecipeInstruction({
+        creator,
+        recipe: coreAddress,
+        components: components(core.second),
+      }),
+    ]);
+    pending = {
+      version: 2,
+      effectiveAt: (publishedAt + BigInt(DEFAULT_PARAMS.publishDelayS)).toString(),
+      components: core.second,
+    };
+  }
+
   const stockMint = { tokenProgram: 'token-2022', decimals: 8, scheduled: null } as const;
   const classic = { multiplier: null, scheduled: null } as const;
   return {
@@ -290,6 +390,8 @@ export async function buildWorld(
       keeper: keeper.address,
       router: MOCK_ROUTER_PROGRAM,
       priceOwner,
+      assets: await assetsAddress(),
+      creator: creator.address,
       owner: owner.address,
       other: other.address,
       stranger: stranger.address,
@@ -301,6 +403,7 @@ export async function buildWorld(
         tslax: mints.tslax.address,
       },
       vaults,
+      recipes: { core: coreAddress },
     },
     expected: {
       mints: {
@@ -319,6 +422,8 @@ export async function buildWorld(
           owner: 'owner',
           basketId: '1',
           autoFollow: true,
+          recipe: 'core',
+          acceptedVersion: 1,
           targets: targets.following,
           held: { usdc: usdc(1_000n).toString(), spyx: '230000000', gold: '125000000' },
           tracked: { spyx: '200000000', nvdax: '0', gold: '0' },
@@ -327,6 +432,8 @@ export async function buildWorld(
           owner: 'owner',
           basketId: '2',
           autoFollow: false,
+          recipe: null,
+          acceptedVersion: 0,
           targets: targets.manual,
           held: { usdc: usdc(500n).toString(), tslax: '40000000' },
           tracked: { spyx: '0', gold: '0' },
@@ -335,6 +442,8 @@ export async function buildWorld(
           owner: 'owner',
           basketId: '3',
           autoFollow: true,
+          recipe: null,
+          acceptedVersion: 0,
           targets: targets.partial,
           held: { usdc: usdc(100n).toString() },
           tracked: { spyx: '0', tslax: '0' },
@@ -343,6 +452,8 @@ export async function buildWorld(
           owner: 'other',
           basketId: '1',
           autoFollow: false,
+          recipe: null,
+          acceptedVersion: 0,
           targets: targets.others,
           held: { usdc: usdc(50n).toString() },
           tracked: { gold: '0' },
@@ -351,6 +462,13 @@ export async function buildWorld(
       wallets: {
         owner: { usdc: usdc(3_400n).toString(), spyx: '125000000' },
         other: { usdc: '0' },
+      },
+      recipes: {
+        core: {
+          familyId: Buffer.from(core.family).toString('hex'),
+          active: { version: 1, components: core.first },
+          pending,
+        },
       },
     },
     signers: { owner, other },

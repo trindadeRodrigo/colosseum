@@ -9,12 +9,15 @@ import {
   type Address,
   address,
   appendTransactionMessageInstructions,
+  compressTransactionMessageUsingAddressLookupTables,
   createTransactionMessage,
   generateKeyPairSigner,
   getAddressDecoder,
   getAddressEncoder,
   getProgramDerivedAddress,
+  getTransactionEncoder,
   type Instruction,
+  isWritableRole,
   type KeyPairSigner,
   lamports,
   pipe,
@@ -99,6 +102,17 @@ export async function fundedSigner(svm: LiteSVM, sol = 10n): Promise<KeyPairSign
   return signer;
 }
 
+/** Sets the chain's clock, in unix seconds. Only a test can; it may also go back. */
+export function setClock(svm: LiteSVM, unixSeconds: bigint | number): void {
+  const clock = svm.getClock();
+  clock.unixTimestamp = BigInt(unixSeconds);
+  svm.setClock(clock);
+}
+
+export function now(svm: LiteSVM): bigint {
+  return svm.getClock().unixTimestamp;
+}
+
 export type SendResult = TransactionMetadata | FailedTransactionMetadata;
 
 /** Signs with the fee payer and every signer named in the instructions, then runs it. */
@@ -118,6 +132,55 @@ export async function send(
   // A new blockhash, so a later identical transaction is not refused as a duplicate.
   svm.expireBlockhash();
   return result;
+}
+
+export const ADDRESS_LOOKUP_TABLE_PROGRAM = address('AddressLookupTab1e1111111111111111111111111');
+/** The most bytes a transaction may be on the wire. */
+export const MAX_TRANSACTION_BYTES = 1232;
+
+/** Writes an address lookup table holding these addresses, as no single transaction can: a
+ * real one is created and then extended. Its layout is the lookup table program's: a 56-byte
+ * header, then the addresses. */
+export async function putLookupTable(svm: LiteSVM, addresses: Address[]): Promise<Address> {
+  const data = new Uint8Array(56 + 32 * addresses.length);
+  const view = new DataView(data.buffer);
+  view.setUint32(0, 1, true); // an initialised table
+  view.setBigUint64(4, 0xffff_ffff_ffff_ffffn, true); // never deactivated
+  // Last extended at slot 0, with no authority. An address is usable from the slot after.
+  for (const [i, entry] of addresses.entries()) data.set(addressEncoder.encode(entry), 56 + 32 * i);
+  const table = (await generateKeyPairSigner()).address;
+  svm.setAccount({
+    address: table,
+    data,
+    executable: false,
+    lamports: lamports(svm.minimumBalanceForRentExemption(BigInt(data.length))),
+    programAddress: ADDRESS_LOOKUP_TABLE_PROGRAM,
+    space: BigInt(data.length),
+  });
+  if (svm.getClock().slot < 2n) svm.warpToSlot(2n);
+  return table;
+}
+
+/** As `send`, and also how many bytes the transaction is on the wire. With `tables`, the
+ * addresses they hold are named by index, which is what a lookup table is for. */
+export async function sendMeasured(
+  svm: LiteSVM,
+  payer: TransactionSigner,
+  instructions: Instruction[],
+  tables: Record<Address, Address[]> = {},
+): Promise<{ result: SendResult; bytes: number }> {
+  const message = pipe(
+    createTransactionMessage({ version: 0 }),
+    (m) => setTransactionMessageFeePayerSigner(payer, m),
+    (m) => svm.setTransactionMessageLifetimeUsingLatestBlockhash(m),
+    (m) => appendTransactionMessageInstructions(instructions, m),
+    (m) => compressTransactionMessageUsingAddressLookupTables(m, tables),
+  );
+  const transaction = await signTransactionMessageWithSigners(message);
+  const bytes = getTransactionEncoder().encode(transaction).length;
+  const result = svm.sendTransaction(transaction);
+  svm.expireBlockhash();
+  return { result, bytes };
 }
 
 export function failed(result: SendResult): result is FailedTransactionMetadata {
@@ -194,6 +257,33 @@ export const writableSigner = (s: TransactionSigner): AccountSignerMeta => ({
   role: AccountRole.WRITABLE_SIGNER,
   signer: s,
 });
+
+/** An address in a signer's place when an instruction is built for a program to sign by
+ * itself (a vault, the puppet's own address). It never signs a transaction. */
+export function programSigner(addr: Address): TransactionSigner {
+  return {
+    address: addr,
+    signTransactions: async () => {
+      throw new Error(`${addr} is signed for by a program, never by a key`);
+    },
+  };
+}
+
+/** The instruction with its first account, the one that should sign, named but not signing. */
+export function unsigned(instruction: Instruction): Instruction {
+  const [first, ...rest] = instruction.accounts ?? [];
+  if (!first) throw new Error('the instruction has no accounts');
+  return {
+    ...instruction,
+    accounts: [
+      {
+        address: first.address,
+        role: isWritableRole(first.role) ? AccountRole.WRITABLE : AccountRole.READONLY,
+      },
+      ...rest,
+    ],
+  };
+}
 
 /** Anchor's own error codes that the tests name. */
 export const ANCHOR = {

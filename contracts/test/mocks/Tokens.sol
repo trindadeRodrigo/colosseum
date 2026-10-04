@@ -56,7 +56,7 @@ abstract contract TokenBase {
 contract MockToken is TokenBase {
     constructor(uint8 decimals_) TokenBase(decimals_) {}
 
-    function approve(address spender, uint256 amount) external returns (bool) {
+    function approve(address spender, uint256 amount) external virtual returns (bool) {
         _approve(msg.sender, spender, amount);
         return true;
     }
@@ -365,6 +365,62 @@ contract ShortAnswerToken is MockToken {
                 return(0, n)
             }
         }
+        return _balances[account];
+    }
+}
+
+/// A token with a back door: anyone can move anyone's balance, as an issuer's seizure or a hook would. A
+/// router uses it to take what the vault never approved.
+contract BackdoorToken is MockToken {
+    constructor(uint8 decimals_) MockToken(decimals_) {}
+
+    function seize(address from, address to, uint256 amount) external {
+        require(_move(from, to, amount), InsufficientBalance());
+    }
+}
+
+/// A token that does not take an allowance back: `approve` with a zero amount changes nothing.
+contract StickyToken is MockToken {
+    constructor(uint8 decimals_) MockToken(decimals_) {}
+
+    function approve(address spender, uint256 amount) external override returns (bool) {
+        if (amount != 0) _approve(msg.sender, spender, amount);
+        return true;
+    }
+}
+
+/// A token that lets Permit2 move anyone's balance with no allowance, as some tokens do for it by default.
+/// Against it the only limit left is the amount the vault approved inside Permit2.
+contract PermissiveToken is MockToken {
+    address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+
+    constructor(uint8 decimals_) MockToken(decimals_) {}
+
+    function transferFrom(address from, address to, uint256 amount) external override returns (bool) {
+        if (msg.sender != PERMIT2) require(_spend(from, msg.sender, amount), InsufficientAllowance());
+        require(_move(from, to, amount), InsufficientBalance());
+        return true;
+    }
+}
+
+/// A token with a back door whose balance read can also be switched off and on, by anyone and in the middle
+/// of a swap: an issuer that seizes and freezes in one move.
+contract BrickableBackdoorToken is BackdoorToken {
+    bool public bricked;
+
+    constructor(uint8 decimals_) BackdoorToken(decimals_) {}
+
+    function setBricked(bool on) external {
+        bricked = on;
+    }
+
+    function seizeAndBrick(address from, address to, uint256 amount) external {
+        require(_move(from, to, amount), InsufficientBalance());
+        bricked = true;
+    }
+
+    function balanceOf(address account) public view override returns (uint256) {
+        require(!bricked, InsufficientBalance());
         return _balances[account];
     }
 }

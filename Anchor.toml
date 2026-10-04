@@ -7,7 +7,7 @@ skip-lint = false
 
 # Named one by one: programs/tests is the test package, not a program.
 [workspace]
-members = ["programs/basket", "programs/mock-router", "programs/test-hook"]
+members = ["programs/basket", "programs/mock-router", "programs/puppet-router", "programs/test-hook"]
 
 # The ids are the public keys of keypairs that are never committed (see programs/README.md).
 # Nothing here names a real cluster: deploys are a person's step, with their own flags.
