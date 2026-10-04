@@ -104,7 +104,7 @@ export function checkSolana(ctx: Context, deployment: SolanaDeployment, table: P
     'the message hash stated is not the hash of the bytes',
   );
 
-  const program = deployment.program ?? table.address;
+  const program = table.address;
   const vault = reading('the owner', legId, () => vaultAddress(program, owner, step.basketId));
   const config = configAddress(program);
   const assets = assetsAddress(program);

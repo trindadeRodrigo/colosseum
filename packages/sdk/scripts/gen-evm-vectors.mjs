@@ -150,10 +150,16 @@ const proxy = /'(0x[0-9a-f]+)'/.exec(
 )[1];
 const { proxyCreationCode: _, ...deployed } = vaultOf(7_234_567_890_123_456_789n, proxy);
 
+// Addresses in mixed case with their checksum (EIP-55), as viem writes them. Drawn last, so every
+// vector above is the same as before these were added.
+const checksums = [deployed.factory, deployed.beacon, ...Array.from({ length: 14 }, address)].map(
+  (lower) => ({ lower, checksummed: viem.getAddress(lower) }),
+);
+
 const version = createRequire(join(root, 'apps', 'web', 'package.json'))(
   'viem/package.json',
 ).version;
 writeFileSync(
   join(root, 'packages', 'sdk', 'test', 'fixtures', 'evm-vectors.json'),
-  `${JSON.stringify({ madeWith: `viem ${version}`, keccak, selectors, calls, vaults, deployed }, null, 2)}\n`,
+  `${JSON.stringify({ madeWith: `viem ${version}`, keccak, selectors, calls, vaults, deployed, checksums }, null, 2)}\n`,
 );

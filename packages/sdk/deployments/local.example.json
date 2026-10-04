@@ -1,0 +1,32 @@
+{
+  "format": "guard-deployment/1",
+  "network": "local",
+  "chains": {
+    "solana": {
+      "family": "solana",
+      "program": "529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW",
+      "router": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+      "cash": "solana:usdc",
+      "assets": {
+        "solana:usdc": {
+          "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "tokenProgram": "token"
+        }
+      },
+      "fee": { "maxFeeNativeRaw": "5000000" }
+    },
+    "robinhood": {
+      "family": "evm",
+      "evmChainId": 31337,
+      "factory": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+      "beacon": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+      "routers": ["0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9"],
+      "cash": "robinhood:usdc",
+      "assets": {
+        "robinhood:usdc": { "token": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0" },
+        "robinhood:spy": { "token": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9" }
+      },
+      "fee": { "maxFeeNativeRaw": "1000000000000000", "maxGas": 5000000 }
+    }
+  }
+}

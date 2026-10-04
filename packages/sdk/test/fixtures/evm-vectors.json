@@ -962,5 +962,71 @@
     "owner": "0xfd79e95cedd5d9aa6e7ead283cd023be8f76134d",
     "basketId": "7234567890123456789",
     "vault": "0x6e606c4f8927b113689cd14860d9c61811ea6218"
-  }
+  },
+  "checksums": [
+    {
+      "lower": "0xdd022279abe39742969f74fbcdd3c90e792c2140",
+      "checksummed": "0xDd022279aBe39742969f74FbCDD3c90e792c2140"
+    },
+    {
+      "lower": "0x0d4561fd635ee9621bfdde847a487277b99a5e8c",
+      "checksummed": "0x0D4561fD635ee9621bFDDe847a487277B99A5E8C"
+    },
+    {
+      "lower": "0xd044315cff5386c9d14cb40cc3257dbd5f555f37",
+      "checksummed": "0xD044315CFf5386c9D14cB40Cc3257DBD5F555f37"
+    },
+    {
+      "lower": "0xf50d77172c5fe88ab5968378553f71b249b0e1e7",
+      "checksummed": "0xf50d77172C5fE88Ab5968378553f71B249b0e1e7"
+    },
+    {
+      "lower": "0xd5399b25cadfe0fe0bc69776aee388ba73fd5289",
+      "checksummed": "0xD5399b25caDfE0FE0bC69776aEE388ba73FD5289"
+    },
+    {
+      "lower": "0x02a6ba51aacd9821fda3d79fea463bbb11b5c44f",
+      "checksummed": "0x02A6bA51AAcD9821fdA3D79Fea463bBB11B5C44f"
+    },
+    {
+      "lower": "0x78a79f7a5f3f42b84acaa1a1827278dcd697473a",
+      "checksummed": "0x78A79f7A5f3f42b84AcAa1a1827278DcD697473A"
+    },
+    {
+      "lower": "0x298c86f9d40f51763bfcbdb9fb296be1bd95b840",
+      "checksummed": "0x298C86F9D40F51763BfcBDB9Fb296be1bD95b840"
+    },
+    {
+      "lower": "0xc22b24e49346806a8ae98db0bbfd4e32630f5a58",
+      "checksummed": "0xC22b24e49346806a8ae98Db0bBfD4E32630f5A58"
+    },
+    {
+      "lower": "0xf1d753f8eed12acbf0101917a47c773be9ed047a",
+      "checksummed": "0xF1d753f8EeD12AcbF0101917A47C773be9ed047a"
+    },
+    {
+      "lower": "0x1982d915d7daff99621e54f1896b10dbc996afac",
+      "checksummed": "0x1982D915d7dafF99621E54F1896b10DbC996afac"
+    },
+    {
+      "lower": "0x5d16178da2cfc188c321fb73347058dc17938bf4",
+      "checksummed": "0x5D16178DA2cFC188C321FB73347058DC17938bF4"
+    },
+    {
+      "lower": "0x2722c1e7e1ab9b01871d3a1f806cc52189227d39",
+      "checksummed": "0x2722C1e7e1ab9b01871d3a1F806Cc52189227d39"
+    },
+    {
+      "lower": "0x6834050c30d5a7f95484a263300086021b607c37",
+      "checksummed": "0x6834050C30D5A7f95484A263300086021b607c37"
+    },
+    {
+      "lower": "0x4c2d05b16d689c6a7aa3076a3c3b85f4e31d8f66",
+      "checksummed": "0x4c2d05B16D689c6a7aA3076a3c3b85F4E31d8f66"
+    },
+    {
+      "lower": "0x178e3499b0434adf00bdef40d5b3b736a303bcae",
+      "checksummed": "0x178E3499B0434AdF00bDef40D5b3B736a303bcae"
+    }
+  ]
 }

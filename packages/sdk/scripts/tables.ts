@@ -187,3 +187,8 @@ export function renderProgramTable(table: ProgramTable): string {
 export function renderInterfaceTable(table: InterfaceTable): string {
   return `${HEADER('idl/evm/*.json')}import type { InterfaceTable } from '../evm/table';\n\nexport const EVM_INTERFACE: InterfaceTable = ${JSON.stringify(table, null, 2)};\n`;
 }
+
+/** The committed deployment files, by network, as the package carries them (deployment.ts reads them). */
+export function renderDeploymentFiles(files: Record<string, unknown>): string {
+  return `${HEADER('packages/sdk/deployments/*.json')}\n/** One file per network, as committed. \`deploymentsOf\` reads and checks them. */\nexport const DEPLOYMENT_FILES: Readonly<Record<string, unknown>> = ${JSON.stringify(files, null, 2)};\n`;
+}

@@ -19,9 +19,10 @@ import {
 } from '@solana/kit';
 import { base58Encode } from '../src/bytes';
 import { tradesOf } from '../src/guard/context';
+import { type DeploymentFile, loadDeployments, type SolanaEntry } from '../src/guard/deployment';
 import { BASKET_PROGRAM } from '../src/guard/generated/basket-program';
 import type { IdlAccount, ProgramTable } from '../src/guard/solana/table';
-import type { ApprovedStep, SolanaDeployment } from '../src/guard/types';
+import type { ApprovedStep, Loaded, SolanaDeployment } from '../src/guard/types';
 
 // Solana transactions for the guard's tests, built with @solana/kit: its message compiler and its
 // derived addresses, not this package's. So a transaction that passes the guard here was put together
@@ -43,18 +44,28 @@ export const STRANGER = someone('stranger');
 export const ROUTER = someone('router');
 export const BASKET_ID = '7234567890123456789';
 
-export const SOLANA: SolanaDeployment = {
-  family: 'solana',
-  chain: 'solana',
-  provenance: 'sandbox',
-  router: ROUTER,
-  cash: 'solana:usdc',
-  assets: {
-    'solana:usdc': { mint: someone('mint usdc'), tokenProgram: 'token' },
-    'solana:spy': { mint: someone('mint spy'), tokenProgram: 'token-2022' },
-    'solana:gold': { mint: someone('mint gold'), tokenProgram: 'token' },
-  },
-};
+/** A deployment file for a local network, as a deploy would write it, with `change` on top. */
+export function solanaDeployment(change: Partial<SolanaEntry> = {}): Loaded<SolanaDeployment> {
+  const file: DeploymentFile = {
+    format: 'guard-deployment/1',
+    network: 'local',
+    chains: {
+      solana: {
+        family: 'solana',
+        router: ROUTER,
+        cash: 'solana:usdc',
+        assets: {
+          'solana:usdc': { mint: someone('mint usdc'), tokenProgram: 'token' },
+          'solana:spy': { mint: someone('mint spy'), tokenProgram: 'token-2022' },
+          'solana:gold': { mint: someone('mint gold'), tokenProgram: 'token' },
+        },
+        ...change,
+      },
+    },
+  };
+  return loadDeployments(file).solana as Loaded<SolanaDeployment>;
+}
+export const SOLANA = solanaDeployment();
 export const mintOf = (asset: string) => SOLANA.assets[asset]?.mint ?? someone(`mint ${asset}`);
 const programOf = (asset: string) =>
   SOLANA.assets[asset]?.tokenProgram === 'token-2022' ? TOKEN_2022 : TOKEN;

@@ -21,3 +21,21 @@ export function readSources(): { idl: unknown; abis: Record<string, unknown> } {
 export function readProxyArtifact(path = PROXY_ARTIFACT): unknown {
   return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null;
 }
+
+/** Where the deployment files are: one per network, plus examples that are never read as one. */
+export const DEPLOYMENTS = join(ROOT, 'packages', 'sdk', 'deployments');
+
+/**
+ * The committed deployment files by network: every `<network>.json` in the folder. A file whose name
+ * ends in `.example.json` shows the shape and is not a network's file.
+ */
+export function readDeploymentFiles(): Record<string, unknown> {
+  const files: Record<string, unknown> = {};
+  for (const file of readdirSync(DEPLOYMENTS)
+    .filter((f) => f.endsWith('.json') && !f.endsWith('.example.json'))
+    .sort())
+    files[file.slice(0, -'.json'.length)] = JSON.parse(
+      readFileSync(join(DEPLOYMENTS, file), 'utf8'),
+    );
+  return files;
+}

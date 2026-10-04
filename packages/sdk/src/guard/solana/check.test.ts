@@ -23,6 +23,7 @@ import {
   SOLANA,
   STRANGER,
   SYSTEM,
+  solanaDeployment,
   solanaTx,
   someone,
   TOKEN,
@@ -1043,7 +1044,7 @@ describe("the guard on Solana: the fee ceiling is the deployment's", () => {
       await depositIx(BASKET_PROGRAM, CASH),
     ]);
     expect(refusalOf(() => guardTransaction(input(depositStep, bytes)))?.code).toBe('fee');
-    const roomy = { ...SOLANA, fee: { maxFeeNativeRaw: '10000000' } };
+    const roomy = solanaDeployment({ fee: { maxFeeNativeRaw: '10000000' } });
     expect(
       refusalOf(() => guardTransaction({ ...input(depositStep, bytes), deployment: roomy })),
     ).toBeNull();

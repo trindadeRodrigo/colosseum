@@ -1,17 +1,19 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readProxyArtifact, readSources } from './sources';
+import { readDeploymentFiles, readProxyArtifact, readSources } from './sources';
 import {
   interfaceTable,
   programTable,
   proxyCreationCode,
+  renderDeploymentFiles,
   renderInterfaceTable,
   renderProgramTable,
   renderProxyCode,
 } from './tables';
 
-// Writes the guard's tables from the committed interface files. Run it whenever idl/basket.json or a
-// file under idl/evm/ changes:
+// Writes the guard's tables from the committed interface files, and the deployment files as the package
+// carries them. Run it whenever idl/basket.json, a file under idl/evm/ or a file under
+// packages/sdk/deployments/ changes:
 //
 //   pnpm --filter @colosseum/sdk tables
 //
@@ -29,3 +31,4 @@ writeFileSync(join(OUT, 'evm-interface.ts'), renderInterfaceTable(interfaceTable
 const artifact = readProxyArtifact(process.argv[2]);
 if (artifact)
   writeFileSync(join(OUT, 'vault-proxy.ts'), renderProxyCode(proxyCreationCode(artifact)));
+writeFileSync(join(OUT, 'deployment-files.ts'), renderDeploymentFiles(readDeploymentFiles()));

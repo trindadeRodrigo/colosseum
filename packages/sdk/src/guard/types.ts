@@ -10,7 +10,7 @@ import type {
 
 // What the guard is given. None of it comes from the transaction it checks, and none of it should come
 // from the server that built that transaction: the step is what the person saw on the review screen,
-// and the deployment is the app's own configuration.
+// and the deployment is read from a file committed in this package (deployment.ts).
 
 /** One trade as the person approved it: what goes in, and the least that must come out. */
 export type ApprovedTrade = {
@@ -98,8 +98,6 @@ export type SolanaDeployment = {
   chain: 'solana';
   /** The label a transaction for this network carries: `live` on mainnet, `sandbox` anywhere else. */
   provenance: 'live' | 'sandbox';
-  /** The vault program. Left out, the id in the committed interface file. */
-  program?: Address;
   /** `Config.router_program`: the only program a vault swaps through. */
   router: Address;
   cash: AssetId;
@@ -132,8 +130,19 @@ export type EvmDeployment = {
 /** A chain that runs on packages/chain-mock. Its transactions are the mock's own, and move nothing. */
 export type MockDeployment = { family: 'mock'; chain: ChainId; cash: AssetId };
 
-export type GuardDeployment = SolanaDeployment | EvmDeployment | MockDeployment;
-export type GuardDeployments = Partial<Record<ChainId, GuardDeployment>>;
+/**
+ * The mark of a deployment that `loadDeployments` read from a deployment file. The class is never
+ * constructed and has no value: it is here so that no object written by hand has the type, and neither
+ * has a copy of a loaded deployment with a field changed. The guard checks the same thing when it runs.
+ */
+declare class FromDeploymentFile {
+  protected readonly fromDeploymentFile: true;
+}
+export type Loaded<T> = T & FromDeploymentFile;
+
+/** A deployment as the guard takes it: one of the three, and only as `loadDeployments` returned it. */
+export type GuardDeployment = Loaded<SolanaDeployment | EvmDeployment | MockDeployment>;
+export type GuardDeployments = Readonly<Partial<Record<ChainId, GuardDeployment>>>;
 
 export type GuardInput = {
   step: ApprovedStep;

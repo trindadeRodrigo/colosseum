@@ -72,8 +72,10 @@ export type GuardCheck = (typeof GUARD_CHECKS)[number];
  * - `malformed`: its bytes or its fields cannot be read as a transaction of this chain.
  * - `unsupported`: this guard has no rule for the step, the chain or the interface as committed.
  * - `order`: the order itself does not say enough, or says something no step can mean.
+ * - `deployment`: the deployment is not one this package loaded from a deployment file, or the file
+ *   cannot be read as one.
  */
-export type GuardCode = GuardCheck | 'malformed' | 'unsupported' | 'order';
+export type GuardCode = GuardCheck | 'malformed' | 'unsupported' | 'order' | 'deployment';
 
 /** The guard's refusal. Nothing is signed when one is thrown. */
 export class GuardRefusal extends Error {

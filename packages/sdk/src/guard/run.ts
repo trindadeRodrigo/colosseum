@@ -1,5 +1,6 @@
 import type { BasketTx, ConsentKind } from '@colosseum/schemas';
 import { type Context, familyOf, isRawAmount, tradesOf } from './context';
+import { isLoadedDeployment } from './deployment';
 import { checkEvm } from './evm/check';
 import type { InterfaceTable } from './evm/table';
 import { BASKET_PROGRAM } from './generated/basket-program';
@@ -8,6 +9,7 @@ import { checkMock } from './mock/check';
 import { type GuardCheck, GuardRefusal } from './refusal';
 import { checkSolana } from './solana/check';
 import type { ProgramTable } from './solana/table';
+import { count, deepFreeze, type Loose, must, only, text } from './strict';
 import type { ApprovedStep, GuardInput } from './types';
 
 // The guard itself: the step and the transaction go in, and either a pass comes out or a refusal is
@@ -32,38 +34,9 @@ export type GuardOverrides = {
   evmInterface?: InterfaceTable;
 };
 
-function deepFreeze<T>(value: T): T {
-  if (typeof value === 'object' && value !== null && !Object.isFrozen(value)) {
-    for (const inner of Object.values(value)) deepFreeze(inner);
-    Object.freeze(value);
-  }
-  return value;
-}
-
-const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
 const NO_SUCH_STEP = 'this guard signs no such step';
 
-type Loose = Record<string, unknown>;
-const isObject = (v: unknown): v is Loose =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
-const count = (v: unknown, least: number): v is number =>
-  Number.isSafeInteger(v) && (v as number) >= least;
 const signedRaw = (v: unknown) => typeof v === 'string' && /^(?:0|-?[1-9]\d{0,77})$/.test(v);
-
-/**
- * An object with exactly these fields and no other. A field the guard does not know is one it has not
- * checked, and what it has not checked is not handed on to a signer.
- */
-function only(what: string, value: unknown, fields: readonly string[]): Loose {
-  if (!isObject(value)) throw new Error(`${what} is not an object`);
-  const extra = Object.keys(value).filter((key) => !fields.includes(key));
-  if (extra.length)
-    throw new Error(`${what} carries ${extra.join(', ')}, which the guard does not read`);
-  return value;
-}
-const must = (ok: boolean, what: string) => {
-  if (!ok) throw new Error(what);
-};
 
 /**
  * The transaction again, field by field: only what `BasketTx` has, each of the type it is read as. The
@@ -287,7 +260,17 @@ export function runGuard(input: GuardInput, overrides: GuardOverrides = {}): Gua
       `the step: ${wrong}`,
       legId,
     );
-  if (!deployment || deployment.chain !== step.chain)
+  if (!deployment)
+    throw new GuardRefusal('unsupported', `no deployment was given for ${step.chain}`, legId);
+  // Every address a transaction is held to is derived from the deployment, so it is taken only as this
+  // package read it from a deployment file: never an object put together by a caller, or by a server.
+  if (!isLoadedDeployment(deployment))
+    throw new GuardRefusal(
+      'deployment',
+      'the deployment was not loaded from a deployment file by this package',
+      legId,
+    );
+  if (deployment.chain !== step.chain)
     throw new GuardRefusal('unsupported', `no deployment was given for ${step.chain}`, legId);
   // The transaction is taken apart and put together again from the fields that are read. That copy is
   // what every check looks at and what the pass carries.

@@ -3,10 +3,11 @@ import { type BasketTx, evmCallPreimage } from '@colosseum/schemas';
 import { selectorOf } from '../scripts/tables';
 import { hexEncode } from '../src/bytes';
 import { tradesOf } from '../src/guard/context';
+import { type DeploymentFile, type EvmEntry, loadDeployments } from '../src/guard/deployment';
 import { type AbiValue, encodeArgs, parseSignature } from '../src/guard/evm/abi';
 import type { InterfaceTable } from '../src/guard/evm/table';
 import { EVM_INTERFACE } from '../src/guard/generated/evm-interface';
-import type { ApprovedStep, ApprovedTrade, EvmDeployment } from '../src/guard/types';
+import type { ApprovedStep, ApprovedTrade, EvmDeployment, Loaded } from '../src/guard/types';
 import vectors from './fixtures/evm-vectors.json';
 
 // EVM transactions for the guard's tests. The addresses of the factory, the beacon, the owner and the
@@ -33,21 +34,31 @@ export const ZERO32 = `0x${'0'.repeat(64)}`;
 export const PLAN_ID = `0x${BigInt(BASKET_ID).toString(16).padStart(64, '0')}`;
 export const MAX = (1n << 256n) - 1n;
 
-export const EVM: EvmDeployment = {
-  family: 'evm',
-  chain: 'robinhood',
-  provenance: 'sandbox',
-  evmChainId: CHAIN_ID,
-  factory: FACTORY,
-  beacon: BEACON,
-  routers: [ROUTER],
-  cash: 'robinhood:usdc',
-  assets: {
-    'robinhood:usdc': { token: anyone('token usdc') },
-    'robinhood:spy': { token: anyone('token spy') },
-    'robinhood:gold': { token: anyone('token gold') },
-  },
-};
+/** A deployment file for the test network, as a deploy would write it, with `change` on top. */
+export function evmDeployment(change: Partial<EvmEntry> = {}): Loaded<EvmDeployment> {
+  const file: DeploymentFile = {
+    format: 'guard-deployment/1',
+    network: 'testnet',
+    chains: {
+      robinhood: {
+        family: 'evm',
+        evmChainId: CHAIN_ID,
+        factory: FACTORY,
+        beacon: BEACON,
+        routers: [ROUTER],
+        cash: 'robinhood:usdc',
+        assets: {
+          'robinhood:usdc': { token: anyone('token usdc') },
+          'robinhood:spy': { token: anyone('token spy') },
+          'robinhood:gold': { token: anyone('token gold') },
+        },
+        ...change,
+      },
+    },
+  };
+  return loadDeployments(file).robinhood as Loaded<EvmDeployment>;
+}
+export const EVM = evmDeployment();
 export const tokenOf = (asset: string) => EVM.assets[asset]?.token ?? anyone(`token ${asset}`);
 
 /**

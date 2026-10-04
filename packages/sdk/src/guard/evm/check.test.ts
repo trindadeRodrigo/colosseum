@@ -9,6 +9,7 @@ import {
   calls,
   EVM,
   type EvmCallOf,
+  evmDeployment,
   evmTx,
   FACTORY,
   MAX,
@@ -24,6 +25,7 @@ import {
   weights,
   ZERO32,
 } from '../../../test/evm';
+import vectors from '../../../test/fixtures/evm-vectors.json';
 import { guardTransaction, isGuarded } from '../index';
 import type { GuardCheck } from '../refusal';
 import { runGuard } from '../run';
@@ -173,10 +175,16 @@ describe('the guard on EVM: an honest call passes', () => {
     }
   });
 
-  it('a target in checksum case, and a deployment written in it', () => {
+  it('a target in upper case, and a deployment file written with checksums', () => {
     const upper = (address: string) => `0x${address.slice(2).toUpperCase()}`;
     const given = input(approveStep, { ...honest.approve(), to: upper(USDC) });
-    const deployment = { ...EVM, factory: upper(FACTORY), beacon: upper(EVM.beacon) };
+    // The factory and the beacon as viem writes them, in mixed case (EIP-55).
+    const [factory, beacon] = [FACTORY, EVM.beacon].map(
+      (lower) => vectors.checksums.find((c) => c.lower === lower)?.checksummed as string,
+    );
+    expect(factory).not.toBe(FACTORY);
+    const deployment = evmDeployment({ factory, beacon });
+    expect(deployment.factory).toBe(FACTORY);
     expect(refusalOf(() => guardTransaction({ ...given, deployment }))).toBeNull();
   });
 
@@ -821,7 +829,9 @@ describe("the guard on EVM: the ceilings are the deployment's", () => {
   it('passes a gas limit and a stated fee under higher ceilings', () => {
     const given = input(depositStep, { ...honest.deposit(), gas: 6_000_000 });
     expect(refusalOf(() => guardTransaction(given))?.code).toBe('fee');
-    const roomy = { ...EVM, fee: { maxFeeNativeRaw: '1000000000000000', maxGas: 8_000_000 } };
+    const roomy = evmDeployment({
+      fee: { maxFeeNativeRaw: '1000000000000000', maxGas: 8_000_000 },
+    });
     expect(refusalOf(() => guardTransaction({ ...given, deployment: roomy }))).toBeNull();
     expect(CHAIN_ID).toBe(EVM.evmChainId);
   });

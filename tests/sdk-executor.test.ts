@@ -3,6 +3,7 @@ import {
   type ApiFetch,
   basketIdOfPlan,
   createOrderApi,
+  deploymentsOf,
   type ExecutorDeps,
   execute,
   type OrderApi,
@@ -127,7 +128,7 @@ async function scene(chain: HomeChain): Promise<Scene> {
           throw new Error('this wallet signs and hands the bytes back');
         },
       },
-      deployments: { [chain]: { family: 'mock', chain, cash: `${chain}:usdc` } },
+      deployments: deploymentsOf('mock'),
       plan,
       sleep: async (ms) => {
         clock += ms;

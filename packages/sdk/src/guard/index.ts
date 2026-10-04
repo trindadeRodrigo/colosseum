@@ -17,6 +17,16 @@ export function guardTransaction(input: GuardInput): Guarded {
 }
 
 export { approvedSteps } from './approved';
+export {
+  DEPLOYMENT_FORMAT,
+  type DeploymentFile,
+  type DeploymentNetwork,
+  deploymentsOf,
+  type EvmEntry,
+  isLoadedDeployment,
+  type MockEntry,
+  type SolanaEntry,
+} from './deployment';
 export { evmVaultAddress } from './evm/addresses';
 export {
   GUARD_CHECKS,
@@ -37,6 +47,8 @@ export type {
   GuardDeployment,
   GuardDeployments,
   GuardInput,
+  HeldToken,
+  Loaded,
   MockDeployment,
   PlanTerms,
   SolanaDeployment,

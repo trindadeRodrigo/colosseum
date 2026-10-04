@@ -14,7 +14,8 @@ import {
   type Recipe,
   stampTx,
 } from '@colosseum/schemas';
-import type { ApprovedTrade, MockDeployment } from '../src/guard/types';
+import { deploymentsOf } from '../src/guard/deployment';
+import type { ApprovedTrade, Loaded, MockDeployment } from '../src/guard/types';
 
 // The mock chain for the guard's and the executor's tests: transactions built by packages/chain-mock
 // itself, and a way to change one field of one, as a server that lies would.
@@ -25,7 +26,7 @@ const sha = (data: string | Uint8Array) => createHash('sha256').update(data).dig
 export type MockWorld = {
   chain: ChainId;
   adapter: MockAdapter;
-  deployment: MockDeployment;
+  deployment: Loaded<MockDeployment>;
   owner: string;
   stranger: string;
   /** Lands a built transaction, as a wallet that signed and sent it. */
@@ -44,7 +45,8 @@ export function mockWorld(chain: ChainId): MockWorld {
   return {
     chain,
     adapter,
-    deployment: { family: 'mock', chain, cash: adapter.mock.cash },
+    // The mock's own committed file (packages/sdk/deployments/mock.json), as the web reads it.
+    deployment: deploymentsOf('mock')[chain] as Loaded<MockDeployment>,
     owner,
     stranger,
     send: async (tx) => {
