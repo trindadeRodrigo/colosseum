@@ -19,7 +19,13 @@ import {
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createAccount, freezeAccount, initMint, MINT_BYTES, priceAccountBytes } from './admin';
 import { buildContractWorld, type ContractWorld, id, newKey, priceEntries } from './contract-world';
-import { BASKET_PROGRAM, createSvmNode, MOCK_ROUTER_PROGRAM, PROGRAMS_BUILT } from './svm-node';
+import {
+  BASKET_PROGRAM,
+  createSvmNode,
+  MOCK_ROUTER_PROGRAM,
+  PROGRAMS_BUILT,
+  type SvmNode,
+} from './svm-node';
 
 // The transactions the builders write, in LiteSVM with the real program: how large each one is and
 // what it uses, at the most lines a vault takes, and the shape the guard (packages/sdk, DESIGN-VAULT
@@ -77,6 +83,7 @@ const composedOf = (tx: BuiltTx) => (tx as BuiltTx & { composed: Composed }).com
 
 describe.skipIf(!PROGRAMS_BUILT)('the Solana builders, in LiteSVM with the real program', () => {
   let w: ContractWorld;
+  let node: SvmNode;
   const sizes: string[] = [];
   const measure = (label: string, tx: BuiltTx) => {
     const c = composedOf(tx);
@@ -98,7 +105,7 @@ describe.skipIf(!PROGRAMS_BUILT)('the Solana builders, in LiteSVM with the real 
   beforeAll(async () => {
     const deployer = await newKey();
     const start = BigInt(Math.floor(Date.now() / 1000));
-    const node = await createSvmNode(deployer.address, start);
+    node = await createSvmNode(deployer.address, start);
     node.svm.airdrop(deployer.address, lamports(1_000_000_000_000n));
     const priceAccount = (await newKey()).address;
     const writePrices = (at: bigint) => {
@@ -306,6 +313,68 @@ describe.skipIf(!PROGRAMS_BUILT)('the Solana builders, in LiteSVM with the real 
       );
       expect((outcome as ChainError).code).toBe('MintNotAccepted');
     }
+  });
+
+  it("refuses a keeper leg while the program's records of the vault are not what it holds", async () => {
+    const owner = w.fixture.owner;
+    // 45% alpha, 50% gamma, 5% cash against targets of 50/50; auto-follow on once it is bought.
+    await w.must(
+      await w.adapter.buildCreateVault({
+        owner,
+        basketId: '320',
+        targets: [
+          { asset: id('alpha'), weightBps: 5_000 },
+          { asset: id('gamma'), weightBps: 5_000 },
+        ],
+        autoFollow: false,
+        depositRaw: '1000000000',
+        slippageBps: 100,
+      }),
+    );
+    const vault = (await w.adapter.getVaults(owner)).find((v) => v.basketId === '320')?.address;
+    if (!vault) throw new Error('no vault');
+    for (const [name, dollars] of [
+      ['alpha', 450],
+      ['gamma', 500],
+    ] as const)
+      await w.must(
+        await w.adapter.buildOwnerSwap({
+          vault,
+          trades: [{ sell: id('cash'), buy: id(name), amountInRaw: String(dollars * 1_000_000) }],
+          slippageBps: 100,
+        }),
+      );
+    await w.must(await w.adapter.buildSetAutoFollow({ vault, on: true }));
+    // Half the gamma leaves unseen by the program, as an issuer's clawback through a permanent
+    // delegate does. Alpha is then truly 60% of the vault, over its target; the records say 47%.
+    const gamma = w.mints.gamma;
+    if (!gamma) throw new Error('no gamma');
+    const at = await associatedTokenAddress(vault as Address, gamma.address, gamma.tokenProgram);
+    const account = node.svm.getAccount(at);
+    if (!account.exists) throw new Error('no gamma account');
+    const data = new Uint8Array(account.data);
+    const view = new DataView(data.buffer);
+    view.setBigUint64(64, view.getBigUint64(64, true) / 2n, true);
+    node.svm.setAccount({ ...account, data });
+
+    const buy = { sell: id('cash'), buy: id('alpha'), amountInRaw: '45000000' };
+    expect((await w.adapter.getKeeperContext(vault))?.positions.map((p) => p.needsSync)).toEqual([
+      false,
+      true,
+    ]);
+    const stale = await w.adapter.buildKeeperLeg(vault, buy).then(
+      () => 'built',
+      (e: unknown) => e,
+    );
+    expect((stale as ChainError).code).toBe('AccountTampered');
+    expect((stale as ChainError).message).toMatch(/Sync its balances first/);
+    // Once the keeper syncs, the leg is held to the truth: a buy of an asset over its target.
+    await w.must(await w.adapter.buildSyncBalances(vault));
+    const synced = await w.adapter.buildKeeperLeg(vault, buy).then(
+      () => 'built',
+      (e: unknown) => e,
+    );
+    expect((synced as ChainError).code).toBe('NotTowardTarget');
   });
 
   it('withdraws every token it can when one cannot move, and says why for that one', async () => {

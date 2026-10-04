@@ -889,6 +889,24 @@ export function createSolanaVaultAdapter(options: SolanaVaultAdapterOptions): So
         const asset = buying ? sides.output.mint : sides.input.mint;
         if (!state.positions.some((x) => x.mint === asset))
           refuse('MintNotAccepted', `${idOf(asset)} is not a position of vault ${vault}`);
+        // A leg values the positions it does not trade by what the program has recorded. Where a record
+        // and the account differ (a clawback, a gift, a token sent in), the leg would trade on figures
+        // that are not the vault's: refused until the keeper decides to sync (KEEP-1). Syncing here
+        // would also record a stranger's gift, which is the keeper's call and not the builder's.
+        const records = await tokens(state.positions.map((x) => x.mint));
+        const actual = await holdings(
+          state.positions.map((x) => ({ holder: vault, token: records.get(x.mint) as TokenRef })),
+        );
+        const stale = state.positions.filter((x, i) => (actual[i]?.amount ?? 0n) !== x.tracked);
+        if (stale.length)
+          refuse(
+            'AccountTampered',
+            `vault ${vault} holds other amounts than the program records for ${stale
+              .map((x) => idOf(x.mint))
+              .join(
+                ', ',
+              )}: a leg would value it wrongly. Sync its balances first (buildSyncBalances), if the keeper's policy takes what is there`,
+          );
         const entry = chain.registry?.assets.find((e) => e.mint === asset);
         const priceAccount = entry && chain.registry ? priceAccountOf(entry, chain.registry) : null;
         if (!priceAccount)
