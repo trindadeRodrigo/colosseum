@@ -8,7 +8,7 @@ import { ASSET_KEEPER, readAssets, readConfig } from './src/basket';
 import { createWorld, fundedSigner, MOCK_ROUTER_PROGRAM, REPO_ROOT, setClock } from './src/env';
 import { SESSION } from './src/keeper';
 import { decodeRouter, routerAddress } from './src/mock-router';
-import { liteChain } from './src/testnet/chain';
+import { clusterOf, DEVNET_GENESIS, liteChain, MAINNET_GENESIS } from './src/testnet/chain';
 import { planOf, type SetupPlan } from './src/testnet/config';
 import { lifecycle } from './src/testnet/lifecycle';
 import { type Deployment, guardSolanaEntry, setUp } from './src/testnet/setup';
@@ -309,6 +309,18 @@ describe('the test-network set-up', () => {
     const unknown = withRoles(file());
     unknown.tokens[0].modelOf = 'MSFTx';
     expect(() => planOf(unknown)).toThrow(/MSFTx has no entry/);
+  });
+
+  it('runs on devnet and on this machine, and refuses mainnet wherever it is served from', () => {
+    expect(clusterOf('https://api.devnet.solana.com', DEVNET_GENESIS)).toBe('devnet');
+    expect(clusterOf('http://127.0.0.1:8899', 'LocalGenesis1111111111111111111111111111111')).toBe(
+      'local',
+    );
+    for (const url of ['https://api.mainnet-beta.solana.com', 'http://127.0.0.1:8899'])
+      expect(() => clusterOf(url, MAINNET_GENESIS)).toThrow(/mainnet/);
+    expect(() =>
+      clusterOf('https://api.testnet.solana.com', '4uhcVJyU9pJkvQyS88uRDiswHXSCkY3zQawwpjk2NsNY'),
+    ).toThrow(/neither devnet nor on this machine/);
   });
 
   it('keeps "admin" for a role as the key that runs the set-up', () => {

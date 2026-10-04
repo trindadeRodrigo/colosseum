@@ -49,6 +49,19 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export const MAINNET_GENESIS = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d';
 export const DEVNET_GENESIS = 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG';
 
+/** Which cluster a URL and its genesis hash are: devnet, or a validator on this machine. Anything
+ * else throws before a transaction is built, mainnet first of all. */
+export function clusterOf(url: string, genesis: string): 'devnet' | 'local' {
+  if (genesis === MAINNET_GENESIS)
+    throw new Error('this cluster is mainnet: the test-network set-up never runs there');
+  if (genesis === DEVNET_GENESIS) return 'devnet';
+  const host = new URL(url).hostname;
+  if (host === '127.0.0.1' || host === 'localhost' || host === '[::1]') return 'local';
+  throw new Error(
+    `the cluster at ${host} is neither devnet nor on this machine (genesis ${genesis}): nothing is sent`,
+  );
+}
+
 export type RpcChain = Chain & { genesisHash(): Promise<string> };
 
 /** A cluster over its JSON RPC. Every read and every confirmation is at `confirmed`. */
