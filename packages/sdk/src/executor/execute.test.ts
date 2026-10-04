@@ -914,6 +914,7 @@ describe('the executor: one approved step gets one signature', () => {
   const saying = (...fates: (Fate | Error)[]) => {
     const read = {
       asked: 0,
+      heightBefore: async () => 0,
       fateOf: async () => {
         const fate = fates[Math.min(read.asked, fates.length - 1)] as Fate | Error;
         read.asked += 1;
@@ -1056,6 +1057,8 @@ describe('the executor: one approved step gets one signature', () => {
       times: 1,
       chain: 'solana',
       messageHash: h.signedFor()[0]?.messageHash,
+      // No read of the chain was given, so no height was kept.
+      height: null,
       proof: { signedTx: h.held[0] },
     });
     expect([...signed.keys()].sort()).toEqual(

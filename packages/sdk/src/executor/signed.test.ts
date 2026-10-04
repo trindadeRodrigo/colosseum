@@ -6,7 +6,13 @@ import { base58Encode, base64Decode, base64Encode, hexDecode, hexEncode } from '
 import { BASKET_PROGRAM } from '../guard/generated/basket-program';
 import type { Guarded } from '../guard/run';
 import type { ApprovedStep } from '../guard/types';
-import { type ChainRead, chainReadOf } from './chain-read';
+import {
+  chainReadOf,
+  type RpcCall,
+  rpcAt,
+  SOLANA_MARGIN_BLOCKS,
+  SOLANA_VALID_BLOCKS,
+} from './chain-read';
 import { heldToPass, signedEvm, signedSolana } from './signed';
 
 // What the executor reads from the bytes a wallet handed back, and the rule that says whether they can
@@ -173,91 +179,205 @@ describe('a signed EVM transaction, read from its bytes', () => {
 });
 
 describe('whether a signed transaction can still land, by the chain itself', () => {
-  type Answers = { valid?: boolean; has?: boolean; next?: number };
-  const asked: string[] = [];
-  const readOf = (a: Answers): ChainRead =>
-    chainReadOf({
-      solana: {
-        blockhashValid: async (blockhash) => {
-          asked.push(`valid ${blockhash}`);
-          return a.valid as boolean;
-        },
-        hasTransaction: async (signature) => {
-          asked.push(`has ${signature}`);
-          return a.has as boolean;
-        },
-      },
-      evm: {
-        nonceOf: async (chain, address) => {
-          asked.push(`nonce ${chain} ${address}`);
-          return a.next as number;
-        },
-        hasTransaction: async (chain, hash) => {
-          asked.push(`has ${chain} ${hash}`);
-          return a.has as boolean;
-        },
-      },
-    });
+  /** One node, answering each method as it is told to, and writing down what it was asked. */
+  const nodeOf = (answers: Record<string, unknown>) => {
+    const asked: string[] = [];
+    const rpc: RpcCall = async (method, params) => {
+      asked.push(`${method} ${JSON.stringify(params)}`);
+      const answer = answers[method];
+      if (answer instanceof Error) throw answer;
+      return answer;
+    };
+    return { asked, rpc };
+  };
+  const H = 1_000;
+  const statuses = (found: boolean) => ({ context: { slot: 1 }, value: [found ? {} : null] });
+  const valid = (yes: boolean) => ({ context: { slot: 1 }, value: yes });
 
-  it('Solana: gone only when the blockhash is dead and the chain has no such transaction', async () => {
-    const signedTx = signedBy((await built()).payload);
-    const fate = (a: Answers) =>
-      readOf(a).fateOf({ chain: 'solana', owner: s.OWNER, proof: { signedTx } });
-    asked.length = 0;
-    expect(await fate({ valid: false, has: false })).toBe('gone');
-    // The blockhash is asked about first: once it is dead, what is not there cannot arrive.
-    expect(asked).toEqual([`valid ${s.someone('blockhash')}`, `has ${base58Encode(SIGNATURE)}`]);
-    expect(await fate({ valid: true, has: false })).toBe('open');
-    expect(await fate({ valid: true, has: true })).toBe('landed');
-    expect(await fate({ valid: false, has: true })).toBe('landed');
-    // An answer that is not a yes or a no proves nothing.
-    expect(await fate({ valid: undefined, has: false })).toBe('unknown');
-    expect(await fate({ valid: false, has: undefined })).toBe('unknown');
+  it('Solana, before signing: the height of a node that has the blockhash, and nothing from one that does not', async () => {
+    const { payload } = await built();
+    const knowing = nodeOf({ isBlockhashValid: valid(true), getBlockHeight: H });
+    const read = chainReadOf({ solana: knowing.rpc });
+    expect(await read.heightBefore({ chain: 'solana', payload })).toBe(H);
+    // In this order, at `processed`: the node has the blockhash, so its height is at least the blockhash's.
+    expect(knowing.asked).toEqual([
+      `isBlockhashValid ${JSON.stringify([s.someone('blockhash'), { commitment: 'processed' }])}`,
+      `getBlockHeight ${JSON.stringify([{ commitment: 'processed' }])}`,
+    ]);
+    const behind = nodeOf({ isBlockhashValid: valid(false), getBlockHeight: H });
+    expect(
+      await chainReadOf({ solana: behind.rpc }).heightBefore({ chain: 'solana', payload }),
+    ).toBe(null);
+    expect(behind.asked).toHaveLength(1);
+    expect(await chainReadOf({}).heightBefore({ chain: 'solana', payload })).toBe(null);
+    // An answer that is not a yes, or a height that is not one, is no height.
+    for (const answers of [
+      { isBlockhashValid: { value: 'yes' }, getBlockHeight: H },
+      { isBlockhashValid: valid(true), getBlockHeight: '1000' },
+      { isBlockhashValid: valid(true), getBlockHeight: -1 },
+    ])
+      await expect(
+        chainReadOf({ solana: nodeOf(answers).rpc }).heightBefore({ chain: 'solana', payload }),
+      ).rejects.toThrow();
+    // An EVM call has no lifetime to bound, and nothing is asked.
+    const evm = nodeOf({});
+    expect(
+      await chainReadOf({ evm: evm.rpc }).heightBefore({ chain: 'robinhood', payload: '0x' }),
+    ).toBe(0);
+    expect(evm.asked).toEqual([]);
   });
 
-  it('EVM: gone only when the nonce has moved past it and the chain has no such transaction', async () => {
+  it('Solana: gone only when the finalized height is past the height kept, plus 150 and the margin, and the chain has no such transaction', async () => {
+    const signedTx = signedBy((await built()).payload);
+    const fate = async (finalized: number, found: boolean, height: number | null = H) => {
+      const node = nodeOf({ getBlockHeight: finalized, getSignatureStatuses: statuses(found) });
+      const answer = await chainReadOf({ solana: node.rpc }).fateOf({
+        chain: 'solana',
+        owner: s.OWNER,
+        proof: { signedTx },
+        height,
+      });
+      return { answer, asked: node.asked };
+    };
+    const last = H + SOLANA_VALID_BLOCKS + SOLANA_MARGIN_BLOCKS;
+    const gone = await fate(last + 1, false);
+    expect(gone.answer).toBe('gone');
+    // The finalized height first: past it, what is not there now cannot arrive. Validity is never asked.
+    expect(gone.asked).toEqual([
+      `getBlockHeight ${JSON.stringify([{ commitment: 'finalized' }])}`,
+      `getSignatureStatuses ${JSON.stringify([[base58Encode(SIGNATURE)], { searchTransactionHistory: true }])}`,
+    ]);
+    expect((await fate(last, false)).answer).toBe('open');
+    // The finalized block a few dozen blocks behind the tip, as it always is: not gone.
+    expect((await fate(H - 32, false)).answer).toBe('open');
+    expect((await fate(last + 1, true)).answer).toBe('landed');
+    expect((await fate(H, true)).answer).toBe('landed');
+    // Signed with no height kept: nothing says when it stops being good.
+    expect((await fate(10 ** 9, false, null)).answer).toBe('unknown');
+    await expect(fate(Number.NaN, false)).rejects.toThrow();
+  });
+
+  it('EVM: gone only when the finalized nonce has moved past it and the chain has no such transaction', async () => {
     const v = vectors.signed.find((x) => x.nonce === 128);
     if (!v) throw new Error('no vector');
-    const fate = (a: Answers) =>
-      readOf(a).fateOf({ chain: 'robinhood', owner: e.OWNER, proof: { signedTx: v.raw } });
-    asked.length = 0;
-    expect(await fate({ next: 129, has: false })).toBe('gone');
-    expect(asked).toEqual([`nonce robinhood ${e.OWNER}`, `has robinhood ${v.hash}`]);
+    const fate = async (next: unknown, receipt: unknown) => {
+      const node = nodeOf({ eth_getTransactionCount: next, eth_getTransactionReceipt: receipt });
+      const answer = await chainReadOf({ evm: node.rpc }).fateOf({
+        chain: 'robinhood',
+        owner: e.OWNER,
+        proof: { signedTx: v.raw },
+        height: 0,
+      });
+      return { answer, asked: node.asked };
+    };
+    const gone = await fate('0x81', null);
+    expect(gone.answer).toBe('gone');
+    expect(gone.asked).toEqual([
+      `eth_getTransactionCount ${JSON.stringify([e.OWNER, 'finalized'])}`,
+      `eth_getTransactionReceipt ${JSON.stringify([v.hash])}`,
+    ]);
     // Its own nonce is still the account's next: it never expires, so it can still land.
-    expect(await fate({ next: 128, has: false })).toBe('open');
-    expect(await fate({ next: 5, has: false })).toBe('open');
-    expect(await fate({ next: 129, has: true })).toBe('landed');
-    expect(await fate({ next: 128, has: true })).toBe('landed');
-    expect(await fate({ next: Number.NaN, has: false })).toBe('unknown');
-    expect(await fate({ next: 129, has: undefined })).toBe('unknown');
+    expect((await fate('0x80', null)).answer).toBe('open');
+    expect((await fate('0x5', null)).answer).toBe('open');
+    expect((await fate('0x81', { status: '0x1' })).answer).toBe('landed');
+    expect((await fate('0x80', { status: '0x0' })).answer).toBe('landed');
+    for (const bad of ['129', '0x081', 81, null]) await expect(fate(bad, null)).rejects.toThrow();
+    await expect(fate('0x81', 'no')).rejects.toThrow();
   });
 
   it('a transaction the wallet sent by itself is known by its id: landed, or nothing can be said', async () => {
-    for (const chain of ['solana', 'robinhood'] as const) {
-      const fate = (a: Answers) =>
-        readOf(a).fateOf({ chain, owner: e.OWNER, proof: { txId: 'an id' } });
-      expect(await fate({ has: true }), chain).toBe('landed');
-      expect(await fate({ has: false, valid: false, next: 10 ** 6 }), chain).toBe('unknown');
+    for (const [chain, rpcs, method] of [
+      ['solana', 'solana', 'getSignatureStatuses'],
+      ['robinhood', 'evm', 'eth_getTransactionReceipt'],
+    ] as const) {
+      const fate = (found: boolean) =>
+        chainReadOf({
+          [rpcs]: nodeOf({
+            [method]: method === 'getSignatureStatuses' ? statuses(found) : found ? {} : null,
+            getBlockHeight: 10 ** 9,
+            eth_getTransactionCount: '0xffff',
+          }).rpc,
+        }).fateOf({ chain, owner: e.OWNER, proof: { txId: 'an id' }, height: 0 });
+      expect(await fate(true), chain).toBe('landed');
+      expect(await fate(false), chain).toBe('unknown');
     }
   });
 
-  it('says nothing for a chain it was given no read of', async () => {
+  it('says nothing for a chain it was given no node of', async () => {
     const signedTx = signedBy((await built()).payload);
     expect(
-      await chainReadOf({}).fateOf({ chain: 'solana', owner: s.OWNER, proof: { signedTx } }),
+      await chainReadOf({}).fateOf({
+        chain: 'solana',
+        owner: s.OWNER,
+        proof: { signedTx },
+        height: H,
+      }),
     ).toBe('unknown');
     expect(
-      await chainReadOf({}).fateOf({ chain: 'base', owner: e.OWNER, proof: { txId: 'x' } }),
+      await chainReadOf({}).fateOf({
+        chain: 'base',
+        owner: e.OWNER,
+        proof: { txId: 'x' },
+        height: 0,
+      }),
     ).toBe('unknown');
   });
 
   it('throws on signed bytes it cannot read, which the executor takes as not knowing', async () => {
-    const read = readOf({ valid: false, has: false, next: 9 });
+    const node = nodeOf({
+      getBlockHeight: 10 ** 9,
+      getSignatureStatuses: statuses(false),
+      eth_getTransactionCount: '0x9',
+      eth_getTransactionReceipt: null,
+    });
+    const read = chainReadOf({ solana: node.rpc, evm: node.rpc });
     await expect(
-      read.fateOf({ chain: 'solana', owner: s.OWNER, proof: { signedTx: 'not a transaction' } }),
+      read.fateOf({
+        chain: 'solana',
+        owner: s.OWNER,
+        proof: { signedTx: 'not a transaction' },
+        height: H,
+      }),
     ).rejects.toThrow();
     await expect(
-      read.fateOf({ chain: 'robinhood', owner: e.OWNER, proof: { signedTx: vectors.delegating } }),
+      read.fateOf({
+        chain: 'robinhood',
+        owner: e.OWNER,
+        proof: { signedTx: vectors.delegating },
+        height: 0,
+      }),
     ).rejects.toThrow();
+  });
+
+  it('rpcAt: one URL, the result of the call, and a throw for anything else', async () => {
+    const sent: { url: string; body: unknown }[] = [];
+    const answering =
+      (answer: (id: number) => unknown, ok = true): typeof fetch =>
+      async (url, init) => {
+        const body = JSON.parse(String(init?.body));
+        sent.push({ url: String(url), body });
+        return { ok, status: ok ? 200 : 502, json: async () => answer(body.id) } as Response;
+      };
+    const call = rpcAt(
+      'http://node.test',
+      answering((id) => ({ jsonrpc: '2.0', id, result: 7 })),
+    );
+    expect(await call('getBlockHeight', [{ commitment: 'finalized' }])).toBe(7);
+    expect(sent[0]).toEqual({
+      url: 'http://node.test',
+      body: {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'getBlockHeight',
+        params: [{ commitment: 'finalized' }],
+      },
+    });
+    for (const f of [
+      answering((id) => ({ jsonrpc: '2.0', id, error: { code: -1, message: 'no' } })),
+      answering((id) => ({ jsonrpc: '2.0', id: id + 1, result: 7 })),
+      answering((id) => ({ jsonrpc: '2.0', id })),
+      answering((id) => ({ jsonrpc: '2.0', id, result: 7 }), false),
+    ])
+      await expect(rpcAt('http://node.test', f)('getBlockHeight', [])).rejects.toThrow();
   });
 });

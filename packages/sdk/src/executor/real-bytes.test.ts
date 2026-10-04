@@ -7,6 +7,7 @@ import { base64Decode, base64Encode, concatBytes, hexDecode, hexEncode } from '.
 import { BASKET_PROGRAM } from '../guard/generated/basket-program';
 import type { ApprovedStep, GuardDeployment } from '../guard/types';
 import type { OrderApi } from './api';
+import { chainReadOf, type RpcCall, SOLANA_MARGIN_BLOCKS, SOLANA_VALID_BLOCKS } from './chain-read';
 import type { ExecutorDeps, SignedRecord } from './execute';
 import { execute } from './index';
 import { signedEvm } from './signed';
@@ -273,5 +274,159 @@ describe('the executor on an EVM call', () => {
       expect(reported, name).toEqual([]);
       expect(calls, name).toEqual(['build', 'cancel']);
     }
+  });
+});
+
+describe('the executor on Solana bytes, against an API that keeps what was signed', () => {
+  /**
+   * The review's case. The API builds each attempt on the newest blockhash, keeps the signed bytes and
+   * says the step did not go out. The caller's own node has every one of those blockhashes at
+   * `processed`; its finalized block trails the tip by 32 blocks, as it always does, so not one of them
+   * is valid there yet. Each signed transaction could still land.
+   */
+  const hoarded = async (o: { knows?: boolean; finalizedStep?: number } = {}) => {
+    const leg = {
+      id: 'leg-1',
+      orderId: 'order-1',
+      chain: 'solana',
+      seq: 0,
+      signer: 'owner',
+      kind: 'deposit',
+      description: 'a test step',
+      cashRaw: '1000',
+      trades: [],
+      expected: [],
+      status: 'planned',
+      attempt: 0,
+      txId: null,
+      explorerUrl: null,
+      validUntil: null,
+      error: null,
+    };
+    const order = {
+      id: 'order-1',
+      type: 'buy',
+      owner: { solana: s.OWNER },
+      summary: 'a test order',
+      status: 'open',
+      depositRaw: '1000',
+      legs: [leg],
+      attempts: [],
+    } as unknown as OrderDetail;
+    let now = order;
+    let n = 0;
+    const set = (status: Leg['status']) => {
+      now = structuredClone(now);
+      Object.assign(now.legs[0] as Leg, { status, attempt: n });
+      return now;
+    };
+    const node = { processed: 5_000, finalized: 5_000 - 32, known: new Set<string>() };
+    const instruction = await s.depositIx(BASKET_PROGRAM, '1000');
+    const held: string[] = [];
+    const api: OrderApi = {
+      createOrder: async () => now,
+      getOrder: async () => now,
+      async buildLeg() {
+        n += 1;
+        const blockhash = s.someone(`blockhash ${n}`);
+        if (o.knows !== false) node.known.add(blockhash);
+        node.processed += 1;
+        node.finalized += 1;
+        const tx = s.solanaTx(depositStep, s.wire([instruction], { blockhash }), {
+          attemptId: `attempt-${n}`,
+        });
+        set('built');
+        return {
+          tx,
+          attempt: {
+            id: tx.attemptId,
+            legId: 'leg-1',
+            n,
+            messageHash: tx.messageHash,
+            nonce: null,
+            status: 'built',
+            txId: null,
+            explorerUrl: null,
+            validUntil: null,
+            builtAt: new Date(0).toISOString(),
+          },
+        };
+      },
+      // Kept, not sent: the step is said not to have gone out.
+      async reportLeg(_order, _leg, body) {
+        held.push((body as { signedTx: string }).signedTx);
+        return set('planned');
+      },
+      async cancelLeg() {
+        return set('planned');
+      },
+    };
+    const rpc: RpcCall = async (method, params) => {
+      if (method === 'isBlockhashValid')
+        return { context: { slot: 1 }, value: node.known.has(params[0] as string) };
+      if (method === 'getBlockHeight')
+        return (params[0] as { commitment: string }).commitment === 'finalized'
+          ? node.finalized
+          : node.processed;
+      if (method === 'getSignatureStatuses') return { context: { slot: 1 }, value: [null] };
+      throw new Error(`no ${method}`);
+    };
+    /** For each signature: the node's finalized height then, and the height kept with the one before. */
+    const signedAt: { finalized: number; before: number | null }[] = [];
+    const signed = new Map<string, SignedRecord>();
+    const result = await execute(order, {
+      api,
+      signer: {
+        active: () => ({ address: s.OWNER }),
+        caps: () => ({ signOnly: true }),
+        sign: async (_chain, txs) => {
+          signedAt.push({
+            finalized: node.finalized,
+            before: signed.get('order-1:leg-1')?.height ?? null,
+          });
+          return [signedBy((txs[0] as BasketTx).payload)];
+        },
+        send: async () => {
+          throw new Error('signs only');
+        },
+      },
+      deployments: { solana: s.SOLANA },
+      plan: { basketId: s.BASKET_ID },
+      signed,
+      chainRead: chainReadOf({ solana: rpc }),
+      patience: { waitTries: 5, knownTries: 3 },
+      // Time passes only while the executor waits.
+      sleep: async () => {
+        node.processed += o.finalizedStep ?? 0;
+        node.finalized += o.finalizedStep ?? 0;
+      },
+    });
+    return { result, held, signedAt, signed };
+  };
+
+  it('signs the step once while every signature it made could still land', async () => {
+    const { result, held, signedAt } = await hoarded();
+    expect(signedAt).toHaveLength(1);
+    expect(held).toHaveLength(1);
+    expect(result).toMatchObject({ status: 'waiting', why: 'in_flight' });
+  });
+
+  it('signs again only once the finalized block is past the height kept, plus 150 and the margin', async () => {
+    const { signedAt } = await hoarded({ finalizedStep: 50 });
+    expect(signedAt.length).toBeGreaterThan(1);
+    for (const [i, at] of signedAt.entries()) {
+      if (i === 0) continue;
+      expect(at.before).not.toBeNull();
+      expect(at.finalized, `signature ${i + 1}`).toBeGreaterThan(
+        (at.before as number) + SOLANA_VALID_BLOCKS + SOLANA_MARGIN_BLOCKS,
+      );
+    }
+  });
+
+  it("signs nothing when the caller's node does not have the blockhash: behind, or another network", async () => {
+    const { result, signedAt, signed } = await hoarded({ knows: false });
+    expect(signedAt).toEqual([]);
+    expect(signed.size).toBe(0);
+    expect(result).toMatchObject({ status: 'waiting', why: 'unknown_blockhash' });
   });
 });

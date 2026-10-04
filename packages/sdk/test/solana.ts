@@ -295,9 +295,18 @@ export type Wire = { payload: string; messageHash: string };
 /** The instructions as one transaction on the wire, with one empty signature slot per signer. */
 export function wire(
   instructions: Ix[],
-  o: { version?: 0 | 'legacy'; payer?: string; tables?: Record<string, string[]> } = {},
+  o: {
+    version?: 0 | 'legacy';
+    payer?: string;
+    tables?: Record<string, string[]>;
+    /** The recent blockhash the message is bound to. */
+    blockhash?: string;
+  } = {},
 ): Wire {
-  const lifetime = { blockhash: blockhash(someone('blockhash')), lastValidBlockHeight: 1000n };
+  const lifetime = {
+    blockhash: blockhash(o.blockhash ?? someone('blockhash')),
+    lastValidBlockHeight: 1000n,
+  };
   const payer = address(o.payer ?? OWNER);
   const tables = Object.fromEntries(
     Object.entries(o.tables ?? {}).map(([table, held]) => [table, held.map((h) => address(h))]),

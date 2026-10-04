@@ -61,6 +61,12 @@ export type SignedRecord = {
   /** The message last signed for the step. */
   messageHash: string;
   /**
+   * What the caller's read of the chain answered before it was signed (`ChainRead.heightBefore`): on
+   * Solana the block height of a node that had its blockhash. Null when no read was given. A record
+   * without it is asked about as one with null.
+   */
+  height?: number | null;
+  /**
    * What the wallet handed back for it: what is reported, and what the chain is asked about. Null when
    * a wallet that sends by itself was asked and its answer never came: it may have sent.
    */
@@ -85,6 +91,7 @@ const readable = (v: unknown): v is SignedRecord =>
   count(v.times, 0) &&
   text(v.chain) &&
   typeof v.messageHash === 'string' &&
+  (v.height === undefined || v.height === null || count(v.height, 0)) &&
   (v.proof === null ||
     (isObject(v.proof) &&
       Object.keys(v.proof).length === 1 &&
@@ -115,6 +122,9 @@ export type Patience = {
   waitDelayMs: number;
   /** A step is built again this many times after its transaction expired without landing. */
   rebuilds: number;
+  /** The caller's node is asked this many times, this far apart, whether it has a step's blockhash yet. */
+  knownTries: number;
+  knownDelayMs: number;
   /** A call that failed without an answer (the network) is made again this many times, this far apart. */
   apiTries: number;
   apiDelayMs: number;
@@ -127,6 +137,8 @@ export const DEFAULT_PATIENCE: Patience = {
   waitTries: 80,
   waitDelayMs: 1500,
   rebuilds: 2,
+  knownTries: 10,
+  knownDelayMs: 1000,
   apiTries: 3,
   apiDelayMs: 1000,
 };
@@ -211,8 +223,13 @@ export type ExecutionResult =
       status: 'waiting';
       order: OrderDetail;
       legId: string;
-      /** `landing`: sent and not landed yet. `in_flight`: an earlier attempt can still land. `unseen`: reported, and the chain has not seen it. `stopped`: the caller asked to stop. */
-      why: 'landing' | 'in_flight' | 'unseen' | 'stopped';
+      /**
+       * `landing`: sent and not landed yet. `in_flight`: an earlier attempt can still land. `unseen`:
+       * reported, and the chain has not seen it. `stopped`: the caller asked to stop. `unknown_blockhash`:
+       * the caller's own node does not have the blockhash the step was built on (it is behind, or the
+       * transaction is for another network), so nothing was signed.
+       */
+      why: 'landing' | 'in_flight' | 'unseen' | 'stopped' | 'unknown_blockhash';
     }
   /** The API refused or could not be reached, in a way no step here can get around. */
   | {
@@ -324,6 +341,7 @@ export function makeExecute(guard: Guard) {
           chain: record.chain,
           owner,
           proof: record.proof,
+          height: record.height ?? null,
         });
         return FATES.includes(fate) ? fate : 'unknown';
       } catch {
@@ -391,7 +409,26 @@ export function makeExecute(guard: Guard) {
 
     type Made =
       | { record: SignedRecord & { proof: ReportLegRequest } }
-      | { wallet: { code: WalletErrorCode; message: string }; unknown: boolean };
+      | { wallet: { code: WalletErrorCode; message: string }; unknown: boolean }
+      | { unknownBlockhash: true };
+    /**
+     * What the caller's read says before a signature: the height kept with it. Null: its node does not
+     * have the blockhash after the tries it was given. With no read given there is nothing to keep.
+     */
+    const heightBefore = async (tx: BasketTx): Promise<number | null | 'none'> => {
+      const read = deps.chainRead;
+      if (!read) return 'none';
+      for (let tries = 1; ; tries += 1) {
+        try {
+          const h = await read.heightBefore({ chain: tx.chainId, payload: tx.payload });
+          if (Number.isSafeInteger(h) && (h as number) >= 0) return h as number;
+        } catch {
+          // Not knowing is asked again, like a no.
+        }
+        if (tries >= patience.knownTries) return null;
+        await sleep(patience.knownDelayMs);
+      }
+    };
     const changed = (message: string) => Object.assign(new Error(message), { code: 'changed' });
     /**
      * The one place the wallet is asked for anything: a pass of the guard goes in, and what was signed
@@ -405,10 +442,13 @@ export function makeExecute(guard: Guard) {
     ): Promise<Made> => {
       if (!isGuarded(pass)) throw new Error('only what the guard passed is signed');
       const { tx } = pass;
+      const height = await heightBefore(tx);
+      if (height === null) return { unknownBlockhash: true };
       const now = {
         times: (before?.times ?? 0) + 1,
         chain: tx.chainId,
         messageHash: tx.messageHash,
+        height: height === 'none' ? null : height,
       };
       if (!signer.caps(tx.chainId).signOnly) {
         // It is written down that the wallet was asked before it is asked: a page that dies between
@@ -699,6 +739,10 @@ export function makeExecute(guard: Guard) {
           }
           tell(legId, 'signing');
           const made = await sign(pass, key, before);
+          if ('unknownBlockhash' in made) {
+            await cancel(legId);
+            return { status: 'waiting', order: seen, legId, why: 'unknown_blockhash' };
+          }
           if ('wallet' in made) {
             // It may have been sent: the attempt stays open, and the person looks before anything else.
             if (made.unknown) return review('asked', (before?.times ?? 0) + 1);

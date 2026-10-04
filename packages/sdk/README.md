@@ -15,6 +15,10 @@ What the guard passes, so a builder knows before it builds (ADS-2 on Solana, ADE
 - **EVM:** a call, not a transaction: `to`, `value` `"0"`, `chainId`, the call data, and a nonce and gas limit if stated. Any other field is refused.
 - **Minimums are held to equality** with what the review screen showed, so a rebuild at a new quote is refused until the person reviews again.
 
+## Reading the chain
+
+The executor signs an approved step once. A second signature needs the chain's word that the first can no longer land, through `chainReadOf({ solana, evm })`: one `RpcCall` per family, each to one node (`rpcAt(url)`), never the API and never a load-balanced URL, since a node that is behind and one that is ahead can each answer one of the reads. On Solana the node must have a transaction's blockhash before it is signed, and its block height then is kept with the signature; the first is gone once the finalized height is past that plus 150 blocks and a margin of 30, with no transaction of that signature on the chain. Whether a blockhash is valid at `finalized` proves nothing: the finalized block trails the tip. On EVM it is gone once the finalized nonce has moved past it and the chain does not have it.
+
 ## Tests
 
 `test/bites.ts` runs each negative twice: the whole guard refuses it with the code of one check, and with that check taken out it passes. The switch that takes a check out, or reads against another interface, is `test/rules.ts`, which a test file puts in place of `src/guard/rules.ts` with `vi.mock`. It is not in the guard, and nothing the package builds imports from `test/` (`src/guard/rules.test.ts`).

@@ -63,6 +63,8 @@ export function mockWorld(chain: ChainId): MockWorld {
  */
 export function mockChainRead(w: MockWorld, asked: () => BasketTx[]): ChainRead {
   return {
+    // The mock's transactions carry their lifetime in the mock's own clock, which `fate` reads.
+    heightBefore: async () => 0,
     async fateOf({ owner, proof }) {
       if ('txId' in proof) {
         const { status } = await w.adapter.track(proof.txId);

@@ -12,9 +12,11 @@ export { type ApiFetch, ApiRefusal, createOrderApi, isApiRefusal, type OrderApi 
 export {
   type ChainRead,
   chainReadOf,
-  type EvmReads,
   type Fate,
-  type SolanaReads,
+  type RpcCall,
+  rpcAt,
+  SOLANA_MARGIN_BLOCKS,
+  SOLANA_VALID_BLOCKS,
 } from './chain-read';
 export {
   DEFAULT_PATIENCE,
