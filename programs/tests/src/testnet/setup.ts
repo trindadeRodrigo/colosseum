@@ -63,7 +63,13 @@ import {
   setPriceWriterInstruction,
   writePriceInstruction,
 } from '../mock-router';
-import { stockExtensions, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, tokenMetadata } from '../tokens';
+import {
+  mintExtensionEntries,
+  stockExtensions,
+  TOKEN_2022_PROGRAM,
+  TOKEN_PROGRAM,
+  tokenMetadata,
+} from '../tokens';
 import type { Chain } from './chain';
 import { type SetupPlan, scaled, slugOf, type TokenPlan } from './config';
 
@@ -92,6 +98,8 @@ export type SetupOptions = {
   withLookupTable?: boolean;
   /** Extensions of the stock set to leave out, by name, should a cluster's token program refuse one. */
   omitExtensions?: string[];
+  /** The record an earlier run wrote, to name a token the config no longer lists. */
+  previous?: Deployment | null;
 };
 
 export type DeployedToken = {
@@ -119,6 +127,15 @@ export type DeployedAsset = DeployedToken & {
   spreadBps: number;
   /** The exchange's two pairs against the dollar token. */
   pairs: { buy: Address; sell: Address };
+};
+
+/** A token the asset list holds and the config no longer names: listed for good, keeper off. */
+export type RetiredAsset = {
+  id: string | null;
+  symbol: string | null;
+  mint: Address;
+  tokenProgram: 'token' | 'token-2022';
+  keeperOn: false;
 };
 
 export type Deployment = {
@@ -152,6 +169,8 @@ export type Deployment = {
   closedDays: string[];
   cash: DeployedToken;
   assets: DeployedAsset[];
+  /** Listed on chain, dropped from the config: the keeper is off for them. */
+  retired: RetiredAsset[];
 };
 
 /** A chain's entry in the SDK guard's deployment file (`SolanaEntry` in packages/sdk): the vault
@@ -166,16 +185,21 @@ export type GuardSolanaEntry = {
 };
 
 export function guardSolanaEntry(deployment: Deployment): GuardSolanaEntry {
+  const current = new Set([deployment.cash, ...deployment.assets].map((token) => token.id));
   return {
     family: 'solana',
     program: deployment.programs.basket,
     router: deployment.programs.mockRouter,
     cash: deployment.cash.id,
+    // A retired token stays: vaults may still hold it, and its owners withdraw it.
     assets: Object.fromEntries(
-      [deployment.cash, ...deployment.assets].map((token) => [
-        token.id,
-        { mint: token.mint, tokenProgram: token.tokenProgram },
-      ]),
+      [
+        deployment.cash,
+        ...deployment.assets,
+        ...deployment.retired.flatMap((token) =>
+          token.id && !current.has(token.id) ? [{ ...token, id: token.id }] : [],
+        ),
+      ].map((token) => [token.id, { mint: token.mint, tokenProgram: token.tokenProgram }]),
     ),
   };
 }
@@ -184,6 +208,18 @@ export type SetupResult = {
   /** Transactions sent, or in a dry run the transactions that would be. */
   transactions: number;
   deployment: Deployment;
+};
+
+/** Token-2022's numbers for the extensions a test token can carry, by the name the client gives them. */
+const EXTENSION_NAMES: Record<number, string> = {
+  4: 'ConfidentialTransferMint',
+  6: 'DefaultAccountState',
+  12: 'PermanentDelegate',
+  14: 'TransferHook',
+  18: 'MetadataPointer',
+  19: 'TokenMetadata',
+  25: 'ScaledUiAmountConfig',
+  26: 'PausableConfig',
 };
 
 const programOf = (token: TokenPlan) =>
@@ -386,17 +422,6 @@ export async function setUp(
   for (const token of all) {
     const mint = mintOf(token);
     const program = programOf(token);
-    const found = await chain.account(mint);
-    if (found) {
-      if (found.owner !== program)
-        throw new Error(
-          `${token.symbol}: ${mint} exists and is not a mint of ${token.tokenProgram}`,
-        );
-      if (found.data[44] !== token.decimals)
-        throw new Error(`${token.symbol}: the mint at ${mint} has ${found.data[44]} decimals`);
-      have(`${token.symbol} (${token.modelOf}) is mint ${mint}`);
-      continue;
-    }
     const omitted = new Set(options.omitExtensions ?? []);
     const base: ExtensionArgs[] = token.stockExtensions
       ? stockExtensions(admin.address, mint, token.multiplier).filter((e) => !omitted.has(e.__kind))
@@ -406,6 +431,28 @@ export async function setUp(
     const named: ExtensionArgs[] = token.stockExtensions
       ? [...base, tokenMetadata(admin.address, mint, token.name, token.symbol)]
       : [];
+    const found = await chain.account(mint);
+    if (found) {
+      if (found.owner !== program)
+        throw new Error(
+          `${token.symbol}: ${mint} exists and is not a mint of ${token.tokenProgram}`,
+        );
+      if (found.data[44] !== token.decimals)
+        throw new Error(`${token.symbol}: the mint at ${mint} has ${found.data[44]} decimals`);
+      // A mint's extensions are fixed when it is made: one that differs is refused, never patched.
+      if (program === TOKEN_2022_PROGRAM) {
+        const wanted = named.map((e) => e.__kind).join(', ');
+        const held = mintExtensionEntries(found.data)
+          .map((e) => EXTENSION_NAMES[e.type] ?? `type ${e.type}`)
+          .join(', ');
+        if (held !== wanted)
+          throw new Error(
+            `${token.symbol}: the mint at ${mint} has the extensions [${held}], and this run asks for [${wanted}]. A mint's extensions cannot be changed: run with the same --omit-extension as the run that made it, or make the token again under another seed`,
+          );
+      }
+      have(`${token.symbol} (${token.modelOf}) is mint ${mint}`);
+      continue;
+    }
     const space = BigInt(base.length ? getMintSize(base) : 82);
     const paidFor = BigInt(named.length ? getMintSize(named) : 82);
     await run(`the test token ${token.symbol}, standing in for ${token.modelOf}: mint ${mint}`, [
@@ -487,17 +534,25 @@ export async function setUp(
     ]);
   }
 
-  // 4. The key that copies prices onto the network, if the config names one.
+  // 4. The key that copies prices onto the network: the one the config names, or none. A writer the
+  // config no longer names is revoked, since a key taken out of the file may be one that leaked.
   const priceWriter = plan.roles.priceWriter;
-  if (priceWriter && routerState?.priceWriter !== priceWriter) {
-    await run(`the price writer: ${priceWriter}`, [
-      {
-        name: 'set_price_writer',
-        instruction: await setPriceWriterInstruction(admin, priceWriter),
-      },
-    ]);
-  } else if (priceWriter) {
-    have(`the price writer is ${priceWriter}`);
+  const writerHeld =
+    routerState && routerState.priceWriter !== ZERO ? routerState.priceWriter : null;
+  if (writerHeld !== priceWriter) {
+    await run(
+      priceWriter
+        ? `the price writer: ${priceWriter}`
+        : `the price writer ${writerHeld} is revoked: the config names none`,
+      [
+        {
+          name: `set_price_writer ${priceWriter ?? ZERO}`,
+          instruction: await setPriceWriterInstruction(admin, priceWriter ?? ZERO),
+        },
+      ],
+    );
+  } else {
+    have(priceWriter ? `the price writer is ${priceWriter}` : 'there is no price writer');
   }
 
   // 5. A first price for every token that has none. A price that is there is never overwritten:
@@ -783,6 +838,54 @@ export async function setUp(
   if (!unlisted.length && !switches.length)
     have(`${plan.tokens.length} tokens are listed as the config says`);
 
+  // A mint the asset list holds and the config no longer names cannot be taken off the list: its
+  // keeper switch goes off, and it stays in the record, so the keeper never trades a token the
+  // guard does not know.
+  const named = new Set(all.map(mintOf));
+  const known = new Map(
+    [...(options.previous?.assets ?? []), ...(options.previous?.retired ?? [])].map((token) => [
+      token.mint,
+      token,
+    ]),
+  );
+  const strays = (registry?.assets ?? []).filter((entry) => !named.has(entry.mint));
+  const retired: RetiredAsset[] = [];
+  const offs: Named[] = [];
+  for (const entry of strays) {
+    const before = known.get(entry.mint);
+    const owner = (await chain.account(entry.mint))?.owner;
+    retired.push({
+      id: before?.id ?? null,
+      symbol: before?.symbol ?? null,
+      mint: entry.mint,
+      tokenProgram: owner === TOKEN_2022_PROGRAM ? 'token-2022' : 'token',
+      keeperOn: false,
+    });
+    const what = `${before?.symbol ?? 'a mint no record names'} (${entry.mint})`;
+    if (entry.flags === 0 && entry.minPrice === 0n && entry.maxPrice === 0n) {
+      have(`${what} is listed, not in the config, and its keeper switch is off`);
+      continue;
+    }
+    log(`!!  ${what} is listed and the config no longer names it: its keeper switch goes off`);
+    offs.push({
+      name: `upsert_asset ${before?.symbol ?? entry.mint}: flags 0, no range (not in the config)`,
+      instruction: await upsertAssetInstruction(admin, entry.mint, {
+        priceSlot: entry.priceSlot,
+        priceIndex: entry.priceIndex,
+        twapIndex: entry.twapIndex,
+        priceKind: entry.priceKind,
+        session: entry.session,
+        maxWeightBps: entry.maxWeightBps,
+        sourceCheck: new Uint8Array(entry.sourceCheck),
+        flags: 0,
+        minPrice: 0n,
+        maxPrice: 0n,
+      }),
+    });
+  }
+  for (const batch of chunks(offs, 6))
+    await run('the keeper off for what the config dropped', batch);
+
   // 12. The platform's lookup table: what every vault transaction on this network names.
   const wanted: Address[] = [
     SYSTEM_PROGRAM,
@@ -880,6 +983,7 @@ export async function setUp(
       spreadBps: token.spreadBps,
       pairs: pairs.get(token.id) as { buy: Address; sell: Address },
     })),
+    retired,
   };
   log(
     transactions === 0

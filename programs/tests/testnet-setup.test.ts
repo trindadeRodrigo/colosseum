@@ -5,13 +5,26 @@ import { decodeMint } from '@solana-program/token-2022';
 import type { LiteSVM } from 'litesvm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { ASSET_KEEPER, readAssets, readConfig } from './src/basket';
-import { createWorld, fundedSigner, MOCK_ROUTER_PROGRAM, REPO_ROOT, setClock } from './src/env';
+import {
+  createWorld,
+  expectError,
+  fundedSigner,
+  MOCK_ROUTER_PROGRAM,
+  REPO_ROOT,
+  send,
+  setClock,
+} from './src/env';
 import { SESSION } from './src/keeper';
-import { decodeRouter, routerAddress } from './src/mock-router';
+import {
+  decodeRouter,
+  MOCK_ROUTER_ERR,
+  routerAddress,
+  writePriceInstruction,
+} from './src/mock-router';
 import { clusterOf, DEVNET_GENESIS, liteChain, MAINNET_GENESIS } from './src/testnet/chain';
 import { planOf, type SetupPlan } from './src/testnet/config';
 import { lifecycle } from './src/testnet/lifecycle';
-import { type Deployment, guardSolanaEntry, setUp } from './src/testnet/setup';
+import { type DeployedAsset, type Deployment, guardSolanaEntry, setUp } from './src/testnet/setup';
 import { mintExtensionEntries, TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from './src/tokens';
 
 const CONFIG_FILE = join(REPO_ROOT, 'scripts', 'testnet', 'solana', 'devnet.config.json');
@@ -350,5 +363,120 @@ describe('the test-network set-up', () => {
       defaultKeeper: 'admin',
       priceWriter: null,
     });
+  });
+});
+
+// A network that has drifted from its config: a role taken away, a token dropped, a mint made with
+// another extension set. The set-up brings the chain to the config, or refuses, and its record
+// says what the chain holds.
+describe('the test-network set-up, on a network that differs from its config', () => {
+  let svm: LiteSVM;
+  let admin: KeyPairSigner;
+  let guardian: KeyPairSigner;
+  let keeper: KeyPairSigner;
+  let writer: KeyPairSigner;
+  // The stock tokens of this network are made without the pausable extension.
+  const omitted = ['PausableConfig'];
+  const config = (priceWriter: string | null) => ({
+    ...JSON.parse(readFileSync(CONFIG_FILE, 'utf8')),
+    roles: { guardian: guardian.address, defaultKeeper: keeper.address, priceWriter },
+  });
+  const run = (
+    file: ReturnType<typeof config>,
+    options: { omit?: string[]; previous?: Deployment; log?: (line: string) => void } = {},
+  ) =>
+    setUp(liteChain(svm), admin, planOf(file), {
+      dryRun: false,
+      log: options.log ?? (() => {}),
+      withLookupTable: false,
+      omitExtensions: options.omit ?? omitted,
+      previous: options.previous ?? null,
+    });
+
+  beforeAll(async () => {
+    ({ svm, deployer: admin } = await createWorld());
+    guardian = await fundedSigner(svm);
+    keeper = await fundedSigner(svm);
+    writer = await fundedSigner(svm);
+    setClock(svm, SESSION);
+    await run(config(writer.address));
+  });
+
+  it('revokes a price writer the config no longer names, and records none', async () => {
+    const printed: string[] = [];
+    const again = await run(config(null), { log: (line) => printed.push(line) });
+    expect(again.transactions).toBe(1);
+    expect(
+      printed.some((line) => line.includes(`the price writer ${writer.address} is revoked`)),
+    ).toBe(true);
+    const held = await liteChain(svm).account(await routerAddress());
+    expect(held && decodeRouter(held.data).priceWriter).toBe('11111111111111111111111111111111');
+    expect(again.deployment.roles.priceWriter).toBeNull();
+    // The old writer can no longer write the price a vault is valued at.
+    const spyx = again.deployment.assets[0] as DeployedAsset;
+    const entry = { value: 1n, exponent: 8n, unixTimestamp: SESSION };
+    const sent = await send(svm, writer, [
+      await writePriceInstruction(writer, again.deployment.accounts.priceAccount, {
+        priceIndex: spyx.priceIndex,
+        twapIndex: spyx.twapIndex,
+        price: entry,
+        twap: entry,
+      }),
+    ]);
+    expectError(sent, MOCK_ROUTER_ERR.NotPriceWriter);
+    expect((await run(config(null))).transactions).toBe(0);
+  });
+
+  it('refuses a mint whose extensions are not the ones this run asks for', async () => {
+    await expect(run(config(null), { omit: [] })).rejects.toThrow(
+      /tSPYx: the mint at \S+ has the extensions \[MetadataPointer, PermanentDelegate, DefaultAccountState, ScaledUiAmountConfig, ConfidentialTransferMint, TransferHook, TokenMetadata\], and this run asks for \[MetadataPointer, PermanentDelegate, DefaultAccountState, ScaledUiAmountConfig, PausableConfig, ConfidentialTransferMint, TransferHook, TokenMetadata\]/,
+    );
+    // The same set as the run that made them passes.
+    expect((await run(config(null))).transactions).toBe(0);
+  });
+
+  it('switches the keeper off for a token the config drops, and keeps it in the record and the guard file', async () => {
+    const full = await run(config(null));
+    const tsla = full.deployment.assets.find((a) => a.id === 'solana:tslax') as DeployedAsset;
+    const fewer = config(null);
+    fewer.tokens = fewer.tokens.filter((t: { id: string }) => t.id !== 'solana:tslax');
+    const printed: string[] = [];
+    const dropped = await run(fewer, { previous: full.deployment, log: (l) => printed.push(l) });
+    expect(dropped.transactions).toBe(1);
+    expect(
+      printed.some((line) =>
+        line.includes(`tTSLAx (${tsla.mint}) is listed and the config no longer names it`),
+      ),
+    ).toBe(true);
+    const entry = (await readAssets(svm)).assets.find((e) => e.mint === tsla.mint);
+    expect(entry).toMatchObject({
+      flags: 0,
+      minPrice: 0n,
+      maxPrice: 0n,
+      priceIndex: tsla.priceIndex,
+    });
+    expect(dropped.deployment.assets.some((a) => a.id === 'solana:tslax')).toBe(false);
+    expect(dropped.deployment.retired).toEqual([
+      {
+        id: 'solana:tslax',
+        symbol: 'tTSLAx',
+        mint: tsla.mint,
+        tokenProgram: 'token-2022',
+        keeperOn: false,
+      },
+    ]);
+    expect(guardSolanaEntry(dropped.deployment).assets['solana:tslax']).toEqual({
+      mint: tsla.mint,
+      tokenProgram: 'token-2022',
+    });
+    // A second run sends nothing and still records it, from the record it wrote.
+    const again = await run(fewer, { previous: dropped.deployment });
+    expect(again.transactions).toBe(0);
+    expect(again.deployment.retired).toEqual(dropped.deployment.retired);
+    // Back in the config, it is listed and switched on as before.
+    expect((await run(config(null))).transactions).toBe(1);
+    expect((await readAssets(svm)).assets.find((e) => e.mint === tsla.mint)?.flags).toBe(
+      ASSET_KEEPER,
+    );
   });
 });

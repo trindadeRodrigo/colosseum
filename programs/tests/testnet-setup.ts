@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
-import { type Address, createKeyPairSignerFromBytes } from '@solana/kit';
+import { createKeyPairSignerFromBytes } from '@solana/kit';
 import { REPO_ROOT } from './src/env';
 import { clusterOf, rpcChain } from './src/testnet/chain';
 import { loadPlan } from './src/testnet/config';
@@ -76,12 +76,12 @@ async function main(): Promise<void> {
   const earlier: Deployment | null = existsSync(outPath)
     ? JSON.parse(readFileSync(outPath, 'utf8'))
     : null;
-  const known: Address | null =
-    earlier && earlier.genesisHash === genesis ? earlier.accounts.lookupTable : null;
+  const previous = earlier && earlier.genesisHash === genesis ? earlier : null;
   const { transactions, deployment } = await setUp(chain, admin, plan, {
     dryRun,
     log,
-    lookupTable: known,
+    lookupTable: previous?.accounts.lookupTable ?? null,
+    previous,
     withLookupTable: !flag('--no-lookup-table'),
     omitExtensions: values('--omit-extension'),
   });
