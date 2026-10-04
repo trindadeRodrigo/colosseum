@@ -1,0 +1,245 @@
+{
+  "network": "solana-devnet",
+  "roles": {
+    "guardian": null,
+    "defaultKeeper": null,
+    "priceWriter": null
+  },
+  "params": {
+    "toleranceBps": 75,
+    "lossCapBps": 100,
+    "bandBps": 50,
+    "twapDevBps": 200,
+    "maxPriceAgeS": 120,
+    "assetCooldownS": 3600,
+    "publishDelayS": 60,
+    "sessionOpenUtcS": 52200,
+    "sessionCloseUtcS": 72000
+  },
+  "cash": {
+    "id": "solana:usdc",
+    "modelOf": "USDC",
+    "decimals": 6,
+    "reserve": "10000000"
+  },
+  "defaults": {
+    "spreadBps": 15,
+    "maxWeightBps": 5000,
+    "reserveUsd": "1000000"
+  },
+  "tokens": [
+    {
+      "id": "solana:spyx",
+      "modelOf": "SPYx",
+      "kind": "stock",
+      "multiplier": 1.0057146,
+      "initialPrice": {
+        "usd": "773.62",
+        "source": "Kamino Scope entry 344 on mainnet, read by hand through the vault reader (docs/vault/STATE-VAULT.md, row ADS-1)",
+        "fetchedAt": "2026-10-02T18:48:00Z",
+        "method": "scope_entry"
+      },
+      "keeper": {
+        "minUsd": "620",
+        "maxUsd": "930"
+      }
+    },
+    {
+      "id": "solana:qqqx",
+      "modelOf": "QQQx",
+      "kind": "stock",
+      "initialPrice": {
+        "usd": "600",
+        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
+        "fetchedAt": "2026-10-04T00:00:00Z",
+        "method": "placeholder"
+      },
+      "keeper": {
+        "minUsd": "450",
+        "maxUsd": "780"
+      }
+    },
+    {
+      "id": "solana:nvdax",
+      "modelOf": "NVDAx",
+      "kind": "stock",
+      "initialPrice": {
+        "usd": "234.87",
+        "source": "Kamino Scope entry 332 on mainnet, read by hand through the vault reader (docs/vault/STATE-VAULT.md, row ADS-1)",
+        "fetchedAt": "2026-10-02T18:48:00Z",
+        "method": "scope_entry"
+      },
+      "keeper": {
+        "minUsd": "190",
+        "maxUsd": "280"
+      }
+    },
+    {
+      "id": "solana:tslax",
+      "modelOf": "TSLAx",
+      "kind": "stock",
+      "initialPrice": {
+        "usd": "400",
+        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
+        "fetchedAt": "2026-10-04T00:00:00Z",
+        "method": "placeholder"
+      },
+      "keeper": {
+        "minUsd": "300",
+        "maxUsd": "520"
+      }
+    },
+    {
+      "id": "solana:aaplx",
+      "modelOf": "AAPLx",
+      "kind": "stock",
+      "initialPrice": {
+        "usd": "250",
+        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
+        "fetchedAt": "2026-10-04T00:00:00Z",
+        "method": "placeholder"
+      },
+      "keeper": {
+        "minUsd": "187.5",
+        "maxUsd": "325"
+      }
+    },
+    {
+      "id": "solana:googlx",
+      "modelOf": "GOOGLx",
+      "kind": "stock",
+      "initialPrice": {
+        "usd": "250",
+        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
+        "fetchedAt": "2026-10-04T00:00:00Z",
+        "method": "placeholder"
+      },
+      "keeper": {
+        "minUsd": "187.5",
+        "maxUsd": "325"
+      }
+    },
+    {
+      "id": "solana:metax",
+      "modelOf": "METAx",
+      "kind": "stock",
+      "initialPrice": {
+        "usd": "700",
+        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
+        "fetchedAt": "2026-10-04T00:00:00Z",
+        "method": "placeholder"
+      },
+      "keeper": {
+        "minUsd": "525",
+        "maxUsd": "910"
+      }
+    },
+    {
+      "id": "solana:mstrx",
+      "modelOf": "MSTRx",
+      "kind": "stock",
+      "initialPrice": {
+        "usd": "300",
+        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
+        "fetchedAt": "2026-10-04T00:00:00Z",
+        "method": "placeholder"
+      },
+      "keeper": {
+        "minUsd": "225",
+        "maxUsd": "390"
+      }
+    },
+    {
+      "id": "solana:crclx",
+      "modelOf": "CRCLx",
+      "kind": "stock",
+      "initialPrice": {
+        "usd": "100",
+        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
+        "fetchedAt": "2026-10-04T00:00:00Z",
+        "method": "placeholder"
+      },
+      "keeper": {
+        "minUsd": "75",
+        "maxUsd": "130"
+      }
+    },
+    {
+      "id": "solana:hoodx",
+      "modelOf": "HOODx",
+      "kind": "stock",
+      "initialPrice": {
+        "usd": "100",
+        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
+        "fetchedAt": "2026-10-04T00:00:00Z",
+        "method": "placeholder"
+      },
+      "keeper": {
+        "minUsd": "75",
+        "maxUsd": "130"
+      }
+    },
+    {
+      "id": "solana:gldx",
+      "modelOf": "GLDx",
+      "kind": "gold",
+      "tokenProgram": "token-2022",
+      "decimals": 8,
+      "priceIndex": 480,
+      "twapIndex": 481,
+      "session": 1,
+      "initialPrice": {
+        "usd": "350",
+        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
+        "fetchedAt": "2026-10-04T00:00:00Z",
+        "method": "placeholder"
+      },
+      "keeper": {
+        "minUsd": "262.5",
+        "maxUsd": "455"
+      }
+    },
+    {
+      "id": "solana:jlusdc",
+      "modelOf": "jlUSDC",
+      "kind": "dollar_yield",
+      "tokenProgram": "token",
+      "decimals": 6,
+      "priceIndex": 482,
+      "twapIndex": 483,
+      "session": 0,
+      "spreadBps": 5,
+      "initialPrice": {
+        "usd": "1",
+        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
+        "fetchedAt": "2026-10-04T00:00:00Z",
+        "method": "placeholder"
+      },
+      "keeper": {
+        "minUsd": "0.9",
+        "maxUsd": "1.5"
+      }
+    },
+    {
+      "id": "solana:syrupusdc",
+      "modelOf": "syrupUSDC",
+      "kind": "dollar_yield",
+      "tokenProgram": "token",
+      "decimals": 6,
+      "priceIndex": 484,
+      "twapIndex": 485,
+      "session": 0,
+      "spreadBps": 5,
+      "initialPrice": {
+        "usd": "1",
+        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
+        "fetchedAt": "2026-10-04T00:00:00Z",
+        "method": "placeholder"
+      },
+      "keeper": {
+        "minUsd": "0.9",
+        "maxUsd": "1.5"
+      }
+    }
+  ]
+}

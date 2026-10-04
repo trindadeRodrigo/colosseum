@@ -49,9 +49,14 @@ import {
 import { BASKET_PROGRAM, MOCK_ROUTER_PROGRAM, REPO_ROOT, SYSTEM_PROGRAM } from './src/env';
 import {
   initPairInstruction,
+  initPricedPairInstruction,
+  initPricesInstruction,
   initRouterInstruction,
   routeInstruction,
+  setPricedPairInstruction,
   setPriceInstruction,
+  setPriceWriterInstruction,
+  writePriceInstruction,
 } from './src/mock-router';
 import { type TestMint, TOKEN_PROGRAM } from './src/tokens';
 
@@ -196,8 +201,26 @@ describe('the committed IDL', () => {
     const mintOut: TestMint = { ...mintIn, address: signer.address };
     const built: Record<string, Instruction> = {
       init_router: await initRouterInstruction(signer),
+      init_prices: await initPricesInstruction(signer, signer.address),
+      set_price_writer: await setPriceWriterInstruction(signer, signer.address),
+      write_price: await writePriceInstruction(signer, signer.address, {
+        priceIndex: 1,
+        twapIndex: 2,
+        price: { value: 1n, unixTimestamp: 1n },
+        twap: { value: 1n, unixTimestamp: 1n },
+      }),
       init_pair: await initPairInstruction(signer, mintIn.address, mintOut.address, 1n, 1n),
       set_price: await setPriceInstruction(signer, mintIn.address, mintOut.address, 1n, 1n),
+      init_priced_pair: await initPricedPairInstruction(signer, mintIn.address, mintOut.address, {
+        assetIsInput: false,
+        priceIndex: 1,
+        spreadBps: 0,
+      }),
+      set_priced_pair: await setPricedPairInstruction(signer, mintIn.address, mintOut.address, {
+        assetIsInput: false,
+        priceIndex: 1,
+        spreadBps: 0,
+      }),
       route_v2: await routeInstruction({
         trader: signer,
         mintIn,
