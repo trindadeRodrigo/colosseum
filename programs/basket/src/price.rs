@@ -27,6 +27,12 @@ pub const MAX_PRICE_EXPONENT: u64 = 18;
 pub const MAX_TWAP_AGE_S: i64 = 3_600;
 /// An asset's price range is in millionths of a dollar.
 pub const RANGE_UNIT: u128 = 1_000_000;
+/// The most a vault may be worth for the keeper to trade it, in raw units of the cash mint:
+/// 10^17, which is a hundred billion dollars of a six-decimal dollar. Every value the
+/// keeper's checks multiply is a part of a vault's value, so under this bound every product
+/// they form fits 128 bits; the largest is a distance from a target times a vault's value,
+/// 10^4 · 10^17 · 10^17. Past it nothing is computed and the leg is refused.
+pub const MAX_VAULT_VALUE: u128 = 100_000_000_000_000_000;
 
 /// One entry of a price account.
 pub struct PriceEntry {
@@ -99,17 +105,13 @@ pub fn check_range(price: &PriceEntry, min_price: u64, max_price: u64) -> Result
 }
 
 /// The price is within `dev_bps` of its average, above or below. Both are brought to the
-/// same exponent first, so nothing is divided.
+/// same exponent first, so nothing is divided. That step cannot overflow: a value is under
+/// 2^64 and the exponents differ by at most 18. The comparison after it can, for two entries
+/// that are a factor of 10^15 apart or more: that is refused as too far, which it is.
 pub fn check_deviation(price: &PriceEntry, twap: &PriceEntry, dev_bps: u16) -> Result<()> {
     let exponent = price.exponent.max(twap.exponent);
-    let scaled = |entry: &PriceEntry| {
-        10u128
-            .checked_pow(exponent - entry.exponent)
-            .and_then(|factor| (entry.value as u128).checked_mul(factor))
-    };
-    let (Some(spot), Some(average)) = (scaled(price), scaled(twap)) else {
-        return err!(BasketError::AssetNotPriced);
-    };
+    let scaled = |entry: &PriceEntry| (entry.value as u128) * 10u128.pow(exponent - entry.exponent);
+    let (spot, average) = (scaled(price), scaled(twap));
     let within = spot
         .abs_diff(average)
         .checked_mul(BPS as u128)
@@ -160,28 +162,31 @@ pub fn reference(
 }
 
 /// What `amount` raw units of an asset are worth at `price`, in raw units of the cash
-/// mint, with cash counted as one dollar. Rounded down.
+/// mint, with cash counted as one dollar. Rounded down. A value too large for 128 bits
+/// comes out as the largest there is, which is past what any vault may be worth
+/// (`vault_value`); the product of the amount and the price's value always fits.
 pub fn value_in_cash(
     amount: u64,
     price: &Reference,
     asset_decimals: u8,
     cash_decimals: u8,
-) -> Result<u128> {
-    let product = (amount as u128).checked_mul(price.value as u128);
+) -> u128 {
+    let product = (amount as u128) * (price.value as u128);
     let down = price.exponent + asset_decimals as u32;
     let up = cash_decimals as u32;
-    let value = if up >= down {
-        10u128
-            .checked_pow(up - down)
-            .zip(product)
-            .and_then(|(factor, product)| product.checked_mul(factor))
+    if up >= down {
+        product.saturating_mul(10u128.saturating_pow(up - down))
     } else {
-        10u128
-            .checked_pow(down - up)
-            .zip(product)
-            .map(|(divisor, product)| product / divisor)
-    };
-    value.ok_or_else(|| error!(BasketError::AssetNotPriced))
+        product / 10u128.saturating_pow(down - up)
+    }
+}
+
+/// What a vault is worth: its cash at one dollar, the asset the leg trades, and its other
+/// positions. A vault past `MAX_VAULT_VALUE` is refused before anything is multiplied.
+pub fn vault_value(others: u128, asset: u128, cash: u64) -> Result<u128> {
+    let total = others.saturating_add(asset).saturating_add(cash as u128);
+    require!(total <= MAX_VAULT_VALUE, BasketError::AssetNotPriced);
+    Ok(total)
 }
 
 /// The value of every position but `except`, by what the program last recorded for each
@@ -209,10 +214,8 @@ pub fn value_of_others(
             .find(&position.mint)
             .ok_or(BasketError::AssetNotPriced)?;
         let price = reference(prices, prices_key, registry, entry, config, now)?;
-        let value = value_in_cash(position.tracked, &price, entry.decimals, cash_decimals)?;
-        total = total
-            .checked_add(value)
-            .ok_or(BasketError::AssetNotPriced)?;
+        let value = value_in_cash(position.tracked, &price, entry.decimals, cash_decimals);
+        total = total.saturating_add(value);
     }
     Ok(total)
 }

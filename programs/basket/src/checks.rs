@@ -527,10 +527,11 @@ pub fn check_cooldown(last_keeper_ts: i64, cooldown_s: u32, now: i64) -> Result<
     Ok(())
 }
 
-/// `share × whole` against `part × 10,000`, without dividing. None when a product does not fit.
-fn against(part: u128, whole: u128, share_bps: u32) -> Option<(u128, u128)> {
-    part.checked_mul(BPS as u128)
-        .zip(whole.checked_mul(share_bps as u128))
+/// `part × 10,000` and `share × whole`, to compare a part of a vault with a share of it
+/// without dividing. Both are values of one vault, which `vault_value` holds to 10^17, so
+/// neither product can overflow.
+fn against(part: u128, whole: u128, share_bps: u32) -> (u128, u128) {
+    (part * BPS as u128, whole * share_bps as u128)
 }
 
 /// Check 5, before the trade. A weight is the asset's value over everything the vault
@@ -542,9 +543,7 @@ pub fn check_toward_target(
     vault_value: u128,
     target_bps: u16,
 ) -> Result<()> {
-    let Some((weight, target)) = against(asset_value, vault_value, target_bps as u32) else {
-        return err!(BasketError::AssetNotPriced);
-    };
+    let (weight, target) = against(asset_value, vault_value, target_bps as u32);
     require!(
         if buying {
             weight < target
@@ -570,9 +569,7 @@ pub fn check_inside_band(
     } else {
         (target_bps as u32).saturating_sub(band_bps as u32)
     };
-    let Some((weight, limit)) = against(asset_value, vault_value, edge) else {
-        return err!(BasketError::AssetNotPriced);
-    };
+    let (weight, limit) = against(asset_value, vault_value, edge);
     require!(
         if buying {
             weight <= limit
@@ -587,11 +584,11 @@ pub fn check_inside_band(
 /// Check 4. What came in is worth at least what went out, less the tolerance, both at the
 /// reference price. This is the minimum output the program works out for itself.
 pub fn check_value(spent_value: u128, received_value: u128, tolerance_bps: u16) -> Result<()> {
-    let enough = received_value
-        .checked_mul(BPS as u128)
-        .zip(spent_value.checked_mul((BPS as u128).saturating_sub(tolerance_bps as u128)))
-        .is_some_and(|(received, floor)| received >= floor);
-    require!(enough, BasketError::ReceivedTooLittle);
+    let floor = spent_value * (BPS as u128).saturating_sub(tolerance_bps as u128);
+    require!(
+        received_value * BPS as u128 >= floor,
+        BasketError::ReceivedTooLittle
+    );
     Ok(())
 }
 
@@ -606,8 +603,8 @@ pub fn decayed_loss(loss_accum: u64, loss_ts: i64, now: i64) -> u64 {
 /// Check 7. The counter, with this leg's loss added, stays within `loss_cap_bps` of what
 /// the vault was worth before the leg.
 pub fn check_loss_cap(loss_used: u128, vault_value: u128, loss_cap_bps: u16) -> Result<()> {
-    let within =
-        against(loss_used, vault_value, loss_cap_bps as u32).is_some_and(|(used, cap)| used <= cap);
-    require!(within, BasketError::LossCapReached);
+    // `loss_used` is a counter under 2^64 and one leg's loss: it fits ten thousand times over.
+    let (used, cap) = against(loss_used, vault_value, loss_cap_bps as u32);
+    require!(used <= cap, BasketError::LossCapReached);
     Ok(())
 }

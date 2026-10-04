@@ -12,7 +12,7 @@ use crate::checks::{
 };
 use crate::errors::BasketError;
 use crate::events::KeeperTrade;
-use crate::price::{reference, value_in_cash, value_of_others, Reference};
+use crate::price::{reference, value_in_cash, value_of_others, vault_value, Reference};
 use crate::state::{AssetRegistry, Config, Vault, ASSETS_SEED, BPS, CONFIG_SEED, VAULT_SEED};
 
 /// Keeper: one trade in a vault whose owner switched auto-follow on, through the router in
@@ -179,13 +179,9 @@ impl<'info> KeeperLeg<'info> {
         } else {
             (input_before.amount, output_before.amount)
         };
-        let asset_value = in_cash(asset_held)?;
-        let vault_value = before
-            .others
-            .checked_add(asset_value)
-            .and_then(|value| value.checked_add(cash_held as u128))
-            .ok_or(BasketError::AssetNotPriced)?;
-        check_toward_target(before.buying, asset_value, vault_value, before.target_bps)?;
+        let asset_value = in_cash(asset_held);
+        let vault_before = vault_value(before.others, asset_value, cash_held)?;
+        check_toward_target(before.buying, asset_value, vault_before, before.target_bps)?;
 
         // The router gets the accounts as the keeper listed them, with one signature: the
         // vault's. The keeper's own signature is never passed on, and the vault account is
@@ -223,25 +219,30 @@ impl<'info> KeeperLeg<'info> {
             .checked_sub(output_before.amount)
             .ok_or(BasketError::ReceivedTooLittle)?;
 
-        // Check 4: what came in against what went out, at the reference price.
-        let (spent_value, received_value, asset_after, cash_after) = if before.buying {
-            (spent as u128, in_cash(received)?, output_after, input_after)
+        // What the vault holds and is worth after the trade. What was spent and what came
+        // in are parts of what it held before and holds now, so their values are bounded
+        // with the vault's.
+        let (asset_after, cash_after) = if before.buying {
+            (output_after, input_after)
         } else {
-            (in_cash(spent)?, received as u128, input_after, output_after)
+            (input_after, output_after)
+        };
+        let asset_value_after = in_cash(asset_after);
+        let vault_after = vault_value(before.others, asset_value_after, cash_after)?;
+
+        // Check 4: what came in against what went out, at the reference price.
+        let (spent_value, received_value) = if before.buying {
+            (spent as u128, in_cash(received))
+        } else {
+            (in_cash(spent), received as u128)
         };
         check_value(spent_value, received_value, accounts.config.tolerance_bps)?;
 
         // Check 5: where the asset sits after the trade.
-        let asset_value_after = in_cash(asset_after)?;
-        let vault_value_after = before
-            .others
-            .checked_add(asset_value_after)
-            .and_then(|value| value.checked_add(cash_after as u128))
-            .ok_or(BasketError::AssetNotPriced)?;
         check_inside_band(
             before.buying,
             asset_value_after,
-            vault_value_after,
+            vault_after,
             before.target_bps,
             accounts.config.band_bps,
         )?;
@@ -250,21 +251,22 @@ impl<'info> KeeperLeg<'info> {
         // that lost nothing is not held to the cap and does not touch the counter.
         let loss = spent_value.saturating_sub(received_value);
         let vault = &mut accounts.vault;
-        let loss_used = (decayed_loss(vault.loss_accum, vault.loss_ts, now) as u128)
-            .checked_add(loss)
-            .ok_or(BasketError::LossCapReached)?;
+        let loss_used = decayed_loss(vault.loss_accum, vault.loss_ts, now) as u128 + loss;
         if loss > 0 {
-            check_loss_cap(loss_used, vault_value, accounts.config.loss_cap_bps)?;
-            vault.loss_accum = u64::try_from(loss_used).map_err(|_| BasketError::LossCapReached)?;
+            check_loss_cap(loss_used, vault_before, accounts.config.loss_cap_bps)?;
+            // Within the cap, it is a small share of a vault worth at most 10^17.
+            vault.loss_accum = u64::try_from(loss_used).unwrap_or(u64::MAX);
             vault.loss_ts = now;
         }
 
         vault.record_balance(&before.asset_mint, asset_after);
         vault.stamp_keeper(&before.asset_mint, now);
 
-        // An empty vault has lost nothing; a share that does not fit is shown as the most.
+        // An empty vault has lost nothing; a share past 655.35% is shown as that.
         let loss_used_bps = match loss_used.checked_mul(BPS as u128) {
-            Some(scaled) if vault_value > 0 => (scaled / vault_value).min(u16::MAX as u128) as u16,
+            Some(scaled) if vault_before > 0 => {
+                (scaled / vault_before).min(u16::MAX as u128) as u16
+            }
             Some(_) => 0,
             None => u16::MAX,
         };

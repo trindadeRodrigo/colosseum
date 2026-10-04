@@ -47,6 +47,7 @@ import {
   keeperLeg,
   OTHER_PRICE,
   PRICE,
+  range,
   refreshPrices,
   SESSION,
   STOCK_PRICE,
@@ -185,6 +186,34 @@ describe('keeper_leg', () => {
       await ownerBuys(30, w.other);
       expectError(await buy(50.6), ERR.PastTarget);
       expectOk(await buy(50.5));
+    });
+
+    // 10^17 raw units of cash, a hundred billion dollars: under it no product the checks form can
+    // overflow, and past it the leg is refused before anything is multiplied.
+    describe('a vault past the largest value the arithmetic holds', () => {
+      const LARGEST = 10n ** 17n;
+      /** The program has this much of the other asset recorded: 5 raw units of cash each. */
+      const recorded = (amount: bigint) =>
+        patchVault(w.svm, w.vault, { tracked: { mint: w.other.address, amount } });
+
+      it('is refused before the trade, and one at exactly that value is traded', async () => {
+        // The vault's 100 dollars of cash and the rest in the other asset, at 500 dollars a token.
+        const atTheBound = (LARGEST - CASH) / 5n;
+        recorded(atTheBound + 1n);
+        expectError(await buy(40), ERR.AssetNotPriced);
+        recorded(10n ** 19n);
+        expectError(await buy(40), ERR.AssetNotPriced);
+        recorded(atTheBound);
+        expectOk(await buy(40));
+      });
+
+      it('is refused after the trade, when what came in takes it past', async () => {
+        recorded((LARGEST - CASH) / 5n);
+        // The exchange pays a little more than the reference price says: the vault ends worth more.
+        await exchangePays(w.cash, w.stock, 201n, 1_000n);
+        expectError(await buy(40), ERR.AssetNotPriced);
+        expect(held()).toEqual(untouched);
+      });
     });
 
     it('reads a price with another number of decimal places the same way', async () => {
@@ -617,6 +646,23 @@ describe('keeper_leg', () => {
       expectError(await buy(40), ERR.PriceDeviation);
       average(490.2);
       expectOk(await buy(40));
+    });
+
+    it('refuses an average so far from the price that the two cannot be compared', async () => {
+      // Ten dollars with 18 decimal places, against an average of 18 billion billion dollars with
+      // none: brought to one exponent, their distance times 10,000 does not fit 128 bits.
+      await listed(w.stock, range(8, 12));
+      writePrice(w.svm, w.prices, STOCK_PRICE.priceIndex, {
+        value: 10n ** 19n,
+        exponent: 18n,
+        unixTimestamp: SESSION,
+      });
+      writePrice(w.svm, w.prices, STOCK_PRICE.twapIndex, {
+        value: 18n * 10n ** 18n,
+        exponent: 0n,
+        unixTimestamp: SESSION,
+      });
+      expectError(await buy(10), ERR.PriceDeviation);
     });
 
     it('refuses a leg when an asset it only holds is too far from its average', async () => {
