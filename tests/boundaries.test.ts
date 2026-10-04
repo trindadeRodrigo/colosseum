@@ -77,12 +77,32 @@ const RULES = {
 } as const;
 type Rule = keyof typeof RULES;
 
-// Rule 5. A chain package keeps its key-holding code in these files, behind a `./server` entry,
-// and nothing its root entry loads may reach them.
-const SIGNING_FILE = /^src\/(sign|signer|wallet|server)(\.[cm]?[jt]sx?$|\/)/;
-const SIGNING_SUBPATH = /^(src\/)?(sign|signer|wallet|server)(\.[cm]?[jt]sx?)?(\/|$)/;
-// Where a raw EVM private key becomes a signer.
-const SIGNER_MODULES = ['viem/accounts'];
+// Rule 5. A chain package keeps its key-holding code in files or folders of these names, at any depth
+// under src/, behind a `./server` entry, and nothing any other entry of the package loads may reach them.
+const SIGNING_FILE = /^src\/(?:.+\/)?(sign|signer|wallet|server)(\.[cm]?[jt]sx?$|\/)/;
+const SIGNING_SUBPATH = /(^|\/)(sign|signer|wallet|server)(\.[cm]?[jt]sx?)?(\/|$)/;
+// The modules and the functions that turn a raw key into a signer. `'*'` is the whole module, by any
+// subpath. They may be imported where signing is allowed and nowhere else: in a signing file of a chain
+// package, in the keeper, in a test.
+const SIGNER_MAKERS: readonly { module: RegExp; names: readonly string[] | '*' }[] = [
+  { module: /^viem\/accounts(\/|$)/, names: '*' },
+  { module: /^(ethers|@ethersproject\/(wallet|signing-key|hdnode))(\/|$)/, names: '*' },
+  {
+    module: /^@solana\/(kit|signers|keys)(\/|$)/,
+    names: [
+      'createKeyPairSignerFromBytes',
+      'createKeyPairSignerFromPrivateKeyBytes',
+      'createKeyPairFromBytes',
+      'createKeyPairFromPrivateKeyBytes',
+      'createSignerFromKeyPair',
+      'generateKeyPairSigner',
+      'generateKeyPair',
+    ],
+  },
+  { module: /^@solana\/web3\.js(\/|$)/, names: ['Keypair'] },
+];
+// A key is a file. A chain package reads files in its signing files and nowhere else.
+const FILE_MODULES = /^(node:)?fs(\/promises)?$/;
 const MAY_SIGN = ['apps/keeper'];
 
 type Exemption = { since: string; why: string; covers: readonly (readonly [string, Kind])[] };
@@ -131,7 +151,8 @@ type Kind =
   | 'outside' // an outside package, where the row lists them (schemas)
   | 'leaves-workspace' // a relative path out of the folder that lands in no package
   | 'signing' // a signing entry, from somewhere that may not sign
-  | 'root-reaches-signing' // a chain package's root entry loads a signing file
+  | 'root-reaches-signing' // an entry of a chain package, the root or another, loads a signing file
+  | 'reads-file' // a chain package reads a file outside its signing files
   | 'env' // process.env in a library
   | 'unreadable' // import(x) where x is not a string: the test cannot tell what it loads
   | 'manifest' // package.json lists a workspace folder the row does not allow
@@ -172,6 +193,26 @@ function parse(file: string, text: string): Parsed {
   const out: Parsed = { imports: [], envLines: [], exported: [] };
   /** The conditions of the `if` statements whose then-branch is being read. */
   const guards: string[] = [];
+  // `require`, and every name bound to what `createRequire(...)` returns: calling one loads a module.
+  const requires = new Set(['require']);
+  const bind = (n: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(n) &&
+      ts.isIdentifier(n.name) &&
+      n.initializer !== undefined &&
+      ts.isCallExpression(n.initializer)
+    ) {
+      const callee = n.initializer.expression;
+      const name = ts.isIdentifier(callee)
+        ? callee.text
+        : ts.isPropertyAccessExpression(callee)
+          ? callee.name.text
+          : '';
+      if (name === 'createRequire') requires.add(n.name.text);
+    }
+    ts.forEachChild(n, bind);
+  };
+  bind(sf);
   const lineOf = (n: ts.Node) => sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1;
   const exportedFlag = (n: ts.Node) =>
     ts.canHaveModifiers(n) &&
@@ -222,7 +263,9 @@ function parse(file: string, text: string): Parsed {
       });
     } else if (ts.isCallExpression(n)) {
       const dynamic = n.expression.kind === ts.SyntaxKind.ImportKeyword;
-      const required = ts.isIdentifier(n.expression) && n.expression.text === 'require';
+      const required = ts.isIdentifier(n.expression) && requires.has(n.expression.text);
+      // A require made by createRequire, called with something that is not a string: unreadable.
+      const made = required && ts.isIdentifier(n.expression) && n.expression.text !== 'require';
       const arg = n.arguments[0];
       if ((dynamic || required) && arg && ts.isStringLiteralLike(arg))
         out.imports.push({
@@ -233,7 +276,7 @@ function parse(file: string, text: string): Parsed {
           dynamic: true,
           under: [...guards],
         });
-      else if (dynamic)
+      else if (dynamic || made)
         out.imports.push({ spec: null, line: lineOf(n), typeOnly: false, names: '*' });
     } else if (
       ts.isImportTypeNode(n) &&
@@ -393,16 +436,41 @@ function scan(root: string, plant?: string): { violations: Violation[]; loads: L
     };
   };
 
-  // Rule 5, first half: what a chain package's root entry loads must not include a signing file.
-  // While it does, the names those files export count as a signing entry wherever the root is imported.
+  /** The files a package's manifest names as entries: every string under `exports`, or `main`. */
+  const entriesOf = (unit: Unit): { sub: string; file: string }[] => {
+    const out: { sub: string; file: string }[] = [];
+    const add = (sub: string, value: unknown): void => {
+      if (typeof value === 'string') {
+        const file = fileIn(unit, posix(join(unit.dir, value)));
+        if (file) out.push({ sub, file });
+      } else if (value && typeof value === 'object')
+        for (const inner of Object.values(value)) add(sub, inner);
+    };
+    const exported = unit.manifest.exports;
+    if (exported && typeof exported === 'object') {
+      const byPath = Object.entries(exported).filter(([key]) => key.startsWith('.'));
+      // With no path among its keys, the object is the root entry's own conditions.
+      if (byPath.length === 0) add('', exported);
+      for (const [key, value] of byPath) add(key.replace(/^\.\/?/, ''), value);
+    } else add('', exported ?? unit.manifest.main ?? './src/index.ts');
+    return out;
+  };
+  const inUnit = (unit: Unit, file: string) => file.slice(unit.dir.length + 1);
+  /** The file an import of `sub` from outside the unit lands on: an entry, or a path into the folder. */
+  const landsOn = (unit: Unit, sub: string) =>
+    entriesOf(unit).find((e) => e.sub === sub)?.file ??
+    fileIn(unit, `${unit.dir}/${sub}`.replace(/\/$/, ''));
+
+  // Rule 5, first half: what an entry of a chain package loads must not include a signing file, unless
+  // the entry is one itself (`./server`). Every entry in `exports` is walked, following the imports
+  // inside the package. While an entry reaches a signing file, the names those files export count as a
+  // signing entry wherever the package is imported.
   const signingNames = new Map<string, Set<string>>();
   for (const unit of units.filter((u) => CHAINS.includes(u.dir))) {
-    const fileAt = (path: string) => fileIn(unit, path);
-    const dot = (unit.manifest.exports as Record<string, unknown> | undefined)?.['.'];
-    const main = typeof dot === 'string' ? dot : (unit.manifest.main ?? './src/index.ts');
-    const entry = fileAt(posix(join(unit.dir, String(main))));
     const seen = new Set<string>();
-    const queue = entry ? [entry] : [];
+    const queue = entriesOf(unit)
+      .map((e) => e.file)
+      .filter((file) => !SIGNING_FILE.test(inUnit(unit, file)));
     for (let file = queue.shift(); file; file = queue.shift()) {
       if (seen.has(file)) continue;
       seen.add(file);
@@ -410,10 +478,9 @@ function scan(root: string, plant?: string): { violations: Violation[]; loads: L
         if (imp.spec === null || imp.typeOnly) continue;
         const to = land(file, imp.spec);
         if (to.unit !== unit) continue;
-        const next = fileAt(`${unit.dir}/${to.sub}`.replace(/\/$/, ''));
+        const next = fileIn(unit, `${unit.dir}/${to.sub}`.replace(/\/$/, ''));
         if (!next) continue;
-        const sub = next.slice(unit.dir.length + 1);
-        if (!SIGNING_FILE.test(sub)) {
+        if (!SIGNING_FILE.test(inUnit(unit, next))) {
           queue.push(next);
           continue;
         }
@@ -502,8 +569,23 @@ function scan(root: string, plant?: string): { violations: Violation[]; loads: L
           const builtinOrVitest = to.pkg.startsWith('node:') || to.pkg === 'vitest';
           if (row.outside && !row.outside.includes(to.pkg) && !(inTest && builtinOrVitest))
             add(imp.line, 'outside', to.pkg, ruleFor(unit.dir, to.pkg));
-          if (SIGNER_MODULES.includes(imp.spec) && !maySign && !signingFile)
-            add(imp.line, 'signing', imp.spec, 5);
+          const spec = imp.spec;
+          const maker = SIGNER_MAKERS.find((m) => m.module.test(spec));
+          const makes =
+            maker !== undefined &&
+            !imp.typeOnly &&
+            (maker.names === '*' ||
+              imp.names === '*' ||
+              imp.names.some((name) => maker.names.includes(name)));
+          if (makes && !maySign && !signingFile) add(imp.line, 'signing', spec, 5);
+          if (
+            CHAINS.includes(unit.dir) &&
+            FILE_MODULES.test(spec) &&
+            !imp.typeOnly &&
+            !inTest &&
+            !signingFile
+          )
+            add(imp.line, 'reads-file', spec, 5);
           continue;
         }
         if (to.unit && !imp.typeOnly) {
@@ -521,12 +603,17 @@ function scan(root: string, plant?: string): { violations: Violation[]; loads: L
         if (!allowed(to.unit.dir, inTest, imp.typeOnly))
           add(imp.line, 'import', to.unit.dir, ruleFor(unit.dir, to.unit.dir));
         if (!CHAINS.includes(to.unit.dir) || maySign) continue;
+        // A signing entry: by the path the import names, or by the file it lands on.
+        const target = landsOn(to.unit, to.sub);
+        const entry =
+          SIGNING_SUBPATH.test(to.sub) ||
+          (target !== undefined && SIGNING_FILE.test(inUnit(to.unit, target)));
+        // Or a name a signing file exports, through an entry that leaks it.
         const exposed = signingNames.get(to.unit.dir);
-        const viaRoot =
-          to.sub === '' &&
+        const leaked =
           exposed !== undefined &&
           (imp.names === '*' || imp.names.some((name) => exposed.has(name)));
-        if (SIGNING_SUBPATH.test(to.sub) || viaRoot) add(imp.line, 'signing', to.unit.dir, 5);
+        if (entry || leaked) add(imp.line, 'signing', to.unit.dir, 5);
       }
     }
   }
@@ -929,5 +1016,194 @@ describe('import boundaries: each rule bites', () => {
         `packages/sdk/src/index.ts:4 import ${BASKET} (${RULES.table})`,
       ].sort(),
     );
+  });
+});
+
+// Paths to a signer that a review found the checker blind to (2026-10-04), each in a made-up repo of
+// its own: another entry of a chain package than the root, a key loader under another file name, a
+// signing file in a subfolder, a signer made from a raw key by a library, and a module loaded through
+// createRequire. One more case shows a re-export through another chain package, which was caught before.
+describe('import boundaries: every path to a signer', () => {
+  mkdirSync(inside(CACHE_DIR), { recursive: true });
+  const SERVER = "export * from './wallet';";
+  const WALLET =
+    "import { readFileSync } from 'node:fs';\nexport const loadKeypair = () => readFileSync('k.json');";
+
+  /** What the checker finds in a repo of these files. `exports` is a package's `exports` field. */
+  function caught(
+    files: Record<string, string>,
+    exports: Record<string, Record<string, unknown>> = {},
+  ): string[] {
+    const repo = mkdtempSync(join(inside(CACHE_DIR), 'signer-'));
+    removeLater(repo);
+    try {
+      const dirs = new Set<string>();
+      for (const [file, text] of Object.entries(files)) {
+        mkdirSync(dirname(join(repo, file)), { recursive: true });
+        writeFileSync(join(repo, file), text);
+        dirs.add(file.split('/').slice(0, 2).join('/'));
+      }
+      for (const dir of dirs)
+        writeFileSync(
+          join(repo, dir, 'package.json'),
+          JSON.stringify({
+            name: `@x/${dir.split('/')[1]}`,
+            main: './src/index.ts',
+            ...(exports[dir] ? { exports: exports[dir] } : {}),
+          }),
+        );
+      return check(repo).map(show);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  }
+  const signing = (at: string, target: string) => `${at} signing ${target} (${RULES[5]})`;
+  const reaches = (at: string, target: string) =>
+    `${at} root-reaches-signing ${target} (${RULES[5]})`;
+
+  it('another entry of a chain package that re-exports a signing file, and the app that imports it', () => {
+    const files = {
+      'packages/chain-solana/src/index.ts': 'export const build = 1;',
+      'packages/chain-solana/src/wallet.ts': WALLET,
+      'packages/chain-solana/src/server.ts': SERVER,
+      'packages/chain-solana/src/vault/index.ts':
+        "export * from '../wallet';\nexport const read = 1;",
+      'apps/api/src/server.ts':
+        "import { loadKeypair } from '@x/chain-solana/vault';\nimport { read } from '@x/chain-solana/vault';",
+    };
+    const entries = {
+      '.': './src/index.ts',
+      './vault': './src/vault/index.ts',
+      './server': './src/server.ts',
+    };
+    expect(caught(files, { 'packages/chain-solana': entries })).toEqual([
+      // The name a signing file exports is refused; the entry's own name is not.
+      signing('apps/api/src/server.ts:1', SOLANA),
+      reaches('packages/chain-solana/src/vault/index.ts:1', 'packages/chain-solana/src/wallet.ts'),
+    ]);
+    // Conditions under an entry are followed too.
+    const conditional = {
+      ...entries,
+      './vault': { types: './src/vault/index.ts', default: './src/vault/index.ts' },
+    };
+    expect(caught(files, { 'packages/chain-solana': conditional })).toHaveLength(2);
+    // With the entry clean, nothing is found.
+    const clean = {
+      ...files,
+      'packages/chain-solana/src/vault/index.ts': 'export const read = 1;',
+    };
+    expect(caught(clean, { 'packages/chain-solana': entries })).toEqual([]);
+  });
+
+  it('a key loader in a file of another name: a chain package reads files only in its signing files', () => {
+    expect(
+      caught({
+        'packages/chain-solana/src/index.ts': "export * from './keys';",
+        'packages/chain-solana/src/keys.ts':
+          "import { readFileSync } from 'node:fs';\nexport const loadKey = () => readFileSync('k.json');",
+        'packages/chain-evm/src/index.ts':
+          "import { readFile } from 'fs/promises';\nexport const k = readFile;",
+        'packages/chain-evm/src/abi.test.ts': "import { readFileSync } from 'node:fs';",
+        'apps/api/src/server.ts': "import { loadKey } from '@x/chain-solana';\nimport 'node:fs';",
+      }),
+    ).toEqual([
+      `packages/chain-evm/src/index.ts:1 reads-file fs/promises (${RULES[5]})`,
+      `packages/chain-solana/src/keys.ts:1 reads-file node:fs (${RULES[5]})`,
+    ]);
+  });
+
+  it('a signing file one folder down, exported at the root or imported by its path', () => {
+    expect(
+      caught({
+        'packages/chain-solana/src/index.ts': "export * from './vault/sign';",
+        'packages/chain-solana/src/vault/sign.ts': 'export const sign = 1;',
+        'packages/chain-evm/src/index.ts': 'export const read = 1;',
+        'packages/chain-evm/src/keys/signer/local.ts': 'export const local = 1;',
+        'apps/api/src/server.ts':
+          "import { sign } from '@x/chain-solana';\nimport { local } from '@x/chain-evm/src/keys/signer/local';\nimport { read } from '@x/chain-evm';",
+      }),
+    ).toEqual([
+      signing('apps/api/src/server.ts:1', SOLANA),
+      signing('apps/api/src/server.ts:2', EVM),
+      reaches('packages/chain-solana/src/index.ts:1', 'packages/chain-solana/src/vault/sign.ts'),
+    ]);
+  });
+
+  it('another chain package that re-exports the signing entry', () => {
+    expect(
+      caught({
+        'packages/chain-solana/src/index.ts': 'export const build = 1;',
+        'packages/chain-solana/src/wallet.ts': WALLET,
+        'packages/chain-solana/src/server.ts': SERVER,
+        'packages/chain-evm/src/index.ts': "export * from '@x/chain-solana/server';",
+        'apps/api/src/server.ts': "import { loadKeypair } from '@x/chain-evm';",
+      }),
+    ).toEqual([
+      `packages/chain-evm/src/index.ts:1 import ${SOLANA} (${RULES.table})`,
+      signing('packages/chain-evm/src/index.ts:1', SOLANA),
+    ]);
+  });
+
+  it('a signer made from a raw key by a library, by any path, and a module loaded through createRequire', () => {
+    const app = [
+      "import { privateKeyToAccount } from 'viem/accounts';",
+      "import { privateKeyToAccount as p2 } from 'viem/accounts/index.js';",
+      "import { Wallet } from 'ethers';",
+      "import { createKeyPairSignerFromBytes } from '@solana/kit';",
+      "import { Keypair } from '@solana/web3.js';",
+      "import { createRequire } from 'node:module';",
+      'const need = createRequire(import.meta.url);',
+      "const s = need('@x/chain-solana/server');",
+      "const t = await import('@x/chain-solana/server');",
+      'const u = need(process.argv[2]);',
+      "const where = need.resolve('@x/chain-solana/server');",
+      // What does not make a signer: a type, a function that takes one, another module of the library.
+      "import type { KeyPairSigner } from '@solana/kit';",
+      "import { address, signTransaction } from '@solana/kit';",
+      "import { createPublicClient } from 'viem';",
+    ].join('\n');
+    const files = {
+      'packages/chain-solana/src/index.ts': 'export const build = 1;',
+      'packages/chain-solana/src/wallet.ts': `${WALLET}\nimport { createKeyPairSignerFromBytes } from '@solana/kit';`,
+      'packages/chain-solana/src/server.ts': SERVER,
+      'apps/api/src/server.ts': app,
+      // The keeper may, and so may a test.
+      'apps/keeper/src/main.ts':
+        "import { privateKeyToAccount } from 'viem/accounts';\nimport { Wallet } from 'ethers';",
+      'apps/api/src/x.test.ts': "import { generateKeyPairSigner } from '@solana/kit';",
+    };
+    expect(caught(files)).toEqual([
+      signing('apps/api/src/server.ts:1', 'viem/accounts'),
+      signing('apps/api/src/server.ts:2', 'viem/accounts/index.js'),
+      signing('apps/api/src/server.ts:3', 'ethers'),
+      signing('apps/api/src/server.ts:4', '@solana/kit'),
+      signing('apps/api/src/server.ts:5', '@solana/web3.js'),
+      signing('apps/api/src/server.ts:8', SOLANA),
+      signing('apps/api/src/server.ts:9', SOLANA),
+      `apps/api/src/server.ts:10 unreadable import(...) (${RULES.table})`,
+    ]);
+  });
+
+  it('the names of this repo: the signing files and the entry are where the checker looks', () => {
+    for (const file of [
+      'src/sign.ts',
+      'src/wallet.ts',
+      'src/server.ts',
+      'src/vault/sign.ts',
+      'src/a/b/signer/x.ts',
+    ])
+      expect([file, SIGNING_FILE.test(file)]).toEqual([file, true]);
+    for (const file of [
+      'src/index.ts',
+      'src/design.ts',
+      'src/signature.ts',
+      'src/vault/index.ts',
+      'src/servers.ts',
+    ])
+      expect([file, SIGNING_FILE.test(file)]).toEqual([file, false]);
+    for (const sub of ['server', 'src/wallet', 'src/vault/sign.ts', 'keys/signer/local'])
+      expect([sub, SIGNING_SUBPATH.test(sub)]).toEqual([sub, true]);
+    for (const sub of ['', 'vault', 'contract', 'src/vault/reader', 'design'])
+      expect([sub, SIGNING_SUBPATH.test(sub)]).toEqual([sub, false]);
   });
 });
