@@ -2,8 +2,8 @@
 //!
 //! The owner path (create, deposit cash, swap through the one allowed router, set targets,
 //! withdraw the tokens themselves), the platform's asset list, the shared-portfolio registry
-//! with the author limits, and the admin's and the guardian's switches. The keeper leg,
-//! accept, adopt and auto-follow are later instructions on the same accounts.
+//! with the author limits, the keeper's one trade with its checks, the owner's consent to a
+//! new version, and the admin's and the guardian's switches.
 //! The design is docs/vault/DESIGN-VAULT.md, sections 3.7, 5, 6 and 13.
 
 use anchor_lang::prelude::*;
@@ -12,6 +12,7 @@ pub mod checks;
 pub mod errors;
 pub mod events;
 pub mod instructions;
+pub mod price;
 pub mod state;
 pub mod transfer;
 
@@ -52,8 +53,8 @@ pub mod basket {
         SetConfig::set_params(ctx, params)
     }
 
-    /// Admin, one way. Locks the router, the price owner and the cash mint, and raises the
-    /// floor on the publish delay to two days.
+    /// Admin, one way. Locks the router, the price owner, the cash mint and the price
+    /// accounts of the asset list, and raises the floor on the publish delay to two days.
     pub fn launch(ctx: Context<SetConfig>) -> Result<()> {
         SetConfig::launch(ctx)
     }
@@ -78,6 +79,36 @@ pub mod basket {
         SetConfig::unpause_keeper(ctx)
     }
 
+    /// Admin. A new guardian.
+    pub fn set_guardian(ctx: Context<SetConfig>, guardian: Pubkey) -> Result<()> {
+        SetConfig::set_guardian(ctx, guardian)
+    }
+
+    /// Admin. A new default keeper.
+    pub fn set_default_keeper(ctx: Context<SetConfig>, keeper: Pubkey) -> Result<()> {
+        SetConfig::set_default_keeper(ctx, keeper)
+    }
+
+    /// Admin. The time before which the stock market counts as closed, later or earlier.
+    pub fn set_closed_until(ctx: Context<SetConfig>, closed_until: i64) -> Result<()> {
+        SetConfig::set_closed_until(ctx, closed_until)
+    }
+
+    /// Admin. Closes a day (days since 1970, UTC) or opens it again.
+    pub fn set_closed_day(ctx: Context<SetConfig>, day: u16, closed: bool) -> Result<()> {
+        SetConfig::set_closed_day(ctx, day, closed)
+    }
+
+    /// Guardian. Pushes `closed_until` later, never earlier.
+    pub fn extend_closed_until(ctx: Context<PauseKeeper>, closed_until: i64) -> Result<()> {
+        PauseKeeper::extend_closed_until(ctx, closed_until)
+    }
+
+    /// Guardian. Closes a day (days since 1970, UTC).
+    pub fn add_closed_day(ctx: Context<PauseKeeper>, day: u16) -> Result<()> {
+        PauseKeeper::add_closed_day(ctx, day)
+    }
+
     /// Admin, once. Creates the empty asset list.
     pub fn init_assets(ctx: Context<InitAssets>) -> Result<()> {
         InitAssets::handle(ctx)
@@ -86,6 +117,12 @@ pub mod basket {
     /// Admin. Lists a token, or rewrites the entry of one that is listed.
     pub fn upsert_asset(ctx: Context<UpsertAsset>, args: AssetArgs) -> Result<()> {
         UpsertAsset::handle(ctx, args)
+    }
+
+    /// Admin, until `launch()`. Names the price account of one of the asset list's four
+    /// slots: an account the price program owns, passed as an account.
+    pub fn set_price_account(ctx: Context<SetPriceAccount>, slot: u8) -> Result<()> {
+        SetPriceAccount::handle(ctx, slot)
     }
 
     /// Creator. The first version of a shared portfolio; it takes effect at once.
@@ -129,6 +166,43 @@ pub mod basket {
     /// Owner. The vault's own targets; it stops following a shared portfolio.
     pub fn set_targets(ctx: Context<SetTargets>, targets: Vec<Target>) -> Result<()> {
         SetTargets::handle(ctx, targets)
+    }
+
+    /// Owner. Takes the version in effect of a shared portfolio, if its number is
+    /// `expected_version`: the vault follows that portfolio from then on.
+    pub fn accept_version(ctx: Context<AcceptVersion>, expected_version: u32) -> Result<()> {
+        AcceptVersion::handle(ctx, expected_version)
+    }
+
+    /// Owner. Lets the keeper trade the vault toward its targets, or stops it.
+    pub fn set_auto_follow(ctx: Context<SetAutoFollow>, on: bool) -> Result<()> {
+        SetAutoFollow::handle(ctx, on)
+    }
+
+    /// Anyone. Moves an auto-follow vault to the version in effect of the portfolio it
+    /// follows, when the version brings in no asset the owner has not accepted.
+    pub fn adopt_version(ctx: Context<AdoptVersion>) -> Result<()> {
+        AdoptVersion::handle(ctx)
+    }
+
+    /// The vault's owner or its keeper. Records what the vault's own token accounts hold.
+    /// The accounts after Config are those token accounts.
+    pub fn sync_balances<'info>(
+        ctx: Context<'_, '_, '_, 'info, SyncBalances<'info>>,
+    ) -> Result<()> {
+        SyncBalances::handle(ctx)
+    }
+
+    /// Keeper. One trade of an auto-follow vault through Config's router, signed by the
+    /// vault: cash for one of its positions or the other way, toward the target, at most
+    /// `amount_in` spent, and at least the reference price less the tolerance received.
+    /// `data` and the remaining accounts are the router's instruction.
+    pub fn keeper_leg<'info>(
+        ctx: Context<'_, '_, '_, 'info, KeeperLeg<'info>>,
+        amount_in: u64,
+        data: Vec<u8>,
+    ) -> Result<()> {
+        KeeperLeg::handle(ctx, amount_in, data)
     }
 
     /// Owner. Cash only: the mint must be Config's cash mint. Into the vault's associated

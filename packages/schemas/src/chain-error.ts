@@ -57,6 +57,15 @@ export const PROGRAM_ERRORS = [
   'NoPendingVersion',
   /** Only the portfolio's creator or the guardian cancels a waiting version. */
   'NotCreatorOrGuardian',
+  // Appended with the keeper leg.
+  /** A keeper leg trades cash for one asset or one asset for cash, never two assets. */
+  'NotCashLeg',
+  /** The admin has not switched the keeper on for the asset: its price entry is not confirmed live. */
+  'KeeperAssetOff',
+  /** The asset's price entry is outside the range the admin set for it: the keeper values nothing at it. */
+  'PriceOutOfRange',
+  /** A keeper leg that names no amount, or whose route spends nothing. */
+  'NothingTraded',
 ] as const;
 
 /** The errors of the EVM contracts (contracts/src/interfaces) that mean something no program error does. */
@@ -246,6 +255,11 @@ export const CHAIN_ERROR_RETRYABLE: Record<ChainErrorCode, boolean> = {
   SameMint: false,
   NoPendingVersion: false,
   NotCreatorOrGuardian: false,
+  NotCashLeg: false,
+  KeeperAssetOff: false,
+  /** A feed that is off, or a range the admin has to move: neither passes by waiting. */
+  PriceOutOfRange: false,
+  NothingTraded: false,
   NotOwner: false,
   CashTokenNotSet: false,
   DepositShortfall: false,

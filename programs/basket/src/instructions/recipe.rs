@@ -164,6 +164,8 @@ impl CancelPending<'_> {
             version: recipe.pending.version,
             by,
         });
+        // The cancelled number is spent, also on an account written before the counter.
+        recipe.last_version = recipe.last_version.max(recipe.pending.version);
         recipe.pending = RecipeVersion::default();
         Ok(())
     }

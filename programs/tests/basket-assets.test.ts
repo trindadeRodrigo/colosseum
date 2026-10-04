@@ -114,6 +114,8 @@ describe('the asset list', () => {
       maxWeightBps: 2_500,
       flags: 0,
       sourceCheck: new Uint8Array(32).fill(7),
+      minPrice: 400_000000n,
+      maxPrice: 600_000000n,
     };
 
     it('lists a token with what the admin chose, and its decimals read from the mint', async () => {
@@ -129,7 +131,7 @@ describe('the asset list', () => {
         mint: stock.address,
         ...entry,
         decimals: 8,
-        reserved: new Uint8Array(21),
+        reserved: new Uint8Array(5),
       });
       expect(registry.assets[1]).toMatchObject({
         mint: cash.address,
@@ -153,7 +155,7 @@ describe('the asset list', () => {
     it('keeps each field where the design puts it: no padding between them', async () => {
       // Section 3.7: `count` at byte 136, entry i at 137 + 96·i, and inside an entry the mint at 0,
       // price_slot 32, price_index 33, twap_index 35, decimals 37, price_kind 38, session 39,
-      // max_weight_bps 40, flags 42, source_check 43.
+      // max_weight_bps 40, flags 42, source_check 43, min_price 75, max_price 83.
       await listAssets(svm, admin, [cash.address]);
       expectOk(await send(svm, admin, [await upsertAssetInstruction(admin, stock.address, entry)]));
       const account = svm.getAccount(await assetsAddress());
@@ -174,7 +176,11 @@ describe('the asset list', () => {
         data[at + 42],
       ]).toEqual([2, 344, 345, 8, 1, 1, 2_500, 0]);
       expect(data.slice(at + 43, at + 75).every((byte) => byte === 7)).toBe(true);
-      expect(data.slice(at + 75, at + 96).every((byte) => byte === 0)).toBe(true);
+      expect([view.getBigUint64(at + 75, true), view.getBigUint64(at + 83, true)]).toEqual([
+        400_000000n,
+        600_000000n,
+      ]);
+      expect(data.slice(at + 91, at + 96).every((byte) => byte === 0)).toBe(true);
     });
 
     it('rewrites the entry of a token that is listed, in its place', async () => {
@@ -395,7 +401,7 @@ describe('the asset list', () => {
       ['an average index past the 512 entries', { twapIndex: 512 }],
       ['a session that is not always or US hours', { session: 2 }],
       ['a ceiling above the whole', { maxWeightBps: 10_001 }],
-      ['a flag, while no flag has a meaning', { flags: 1 }],
+      ['a flag that has no meaning', { flags: 2 }],
     ])('refuses %s', async (_, change) => {
       expectError(
         await send(svm, admin, [await upsertAssetInstruction(admin, stock.address, change)]),

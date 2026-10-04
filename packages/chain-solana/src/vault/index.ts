@@ -2,6 +2,7 @@
 // Its own entry: '@colosseum/chain-solana/vault'. The root entry does not re-export it.
 export * from './accounts';
 export { displayAmount, multiplierString } from './amounts';
+export * from './keeper';
 export * from './prices';
 export * from './reader';
 export * from './rpc';

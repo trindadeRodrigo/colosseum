@@ -65,7 +65,9 @@ export type SwapWorld = {
   exchange: Address;
 };
 
-export async function createSwapWorld(): Promise<SwapWorld> {
+export async function createSwapWorld(
+  options: { priceOwner?: Address; defaultKeeper?: Address } = {},
+): Promise<SwapWorld> {
   const { svm, deployer: admin } = await createWorld();
   const guardian = await fundedSigner(svm);
   const owner = await fundedSigner(svm);
@@ -81,7 +83,13 @@ export async function createSwapWorld(): Promise<SwapWorld> {
   await initPlatform(
     svm,
     admin,
-    { cashMint: cash.address, routerProgram: MOCK_ROUTER_PROGRAM, guardian: guardian.address },
+    {
+      cashMint: cash.address,
+      routerProgram: MOCK_ROUTER_PROGRAM,
+      guardian: guardian.address,
+      ...(options.priceOwner ? { priceOwner: options.priceOwner } : {}),
+      ...(options.defaultKeeper ? { defaultKeeper: options.defaultKeeper } : {}),
+    },
     [stock.address, other.address],
   );
 

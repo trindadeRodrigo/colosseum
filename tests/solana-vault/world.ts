@@ -72,7 +72,20 @@ export type World = {
   prices: {
     account: string;
     owner: string;
-    entries: Record<MintName, { index: number; usdPerToken: string; ageSeconds: number }>;
+    entries: Record<
+      MintName,
+      {
+        index: number;
+        usdPerToken: string;
+        ageSeconds: number;
+        /** Where the asset's one-hour average sits; null for cash, which the program never prices. */
+        twapIndex: number | null;
+        /** The admin's switch on the asset in the program's own list. */
+        keeperOn: boolean;
+        /** The plausible price range in dollars; null for an asset that has none. */
+        range: { min: number; max: number } | null;
+      }
+    >;
     emptyIndex: number;
   };
 };
