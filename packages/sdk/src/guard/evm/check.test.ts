@@ -1,5 +1,5 @@
 import { BasketTx, type ConsentKind } from '@colosseum/schemas';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { eachBites, type Negative, refusalOf } from '../../../test/bites';
 import {
   anyone,
@@ -26,11 +26,14 @@ import {
   ZERO32,
 } from '../../../test/evm';
 import vectors from '../../../test/fixtures/evm-vectors.json';
+import { withRules } from '../../../test/rules';
 import { guardTransaction, isGuarded } from '../index';
 import type { GuardCheck } from '../refusal';
 import { runGuard } from '../run';
 import type { ApprovedStep, GuardInput } from '../types';
 import { evmVaultAddress } from './addresses';
+
+vi.mock('../rules', () => import('../../../test/rules'));
 
 // The guard on EVM call data. The honest calls pass; each negative differs from its step in one way and
 // is refused by the one check that names it (see test/bites.ts).
@@ -196,8 +199,9 @@ describe('the guard on EVM: an honest call passes', () => {
     ];
     for (const [step, data, consents] of cases)
       expect(
-        refusalOf(() => runGuard(input(step, { to: VAULT, data }, {}, consents), NEXT))?.message ??
-          null,
+        refusalOf(() =>
+          withRules(NEXT, () => runGuard(input(step, { to: VAULT, data }, {}, consents))),
+        )?.message ?? null,
         step.kind,
       ).toBeNull();
   });
@@ -294,7 +298,7 @@ const next = (
 ): Negative => ({
   name,
   check,
-  overrides: NEXT,
+  rules: NEXT,
   input: () => input(step, { to: VAULT, data: data() }, {}, consents),
 });
 const strangersVault = () => evmVaultAddress(EVM, STRANGER, BASKET_ID);

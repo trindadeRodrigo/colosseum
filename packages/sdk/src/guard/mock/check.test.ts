@@ -7,7 +7,7 @@ import {
   type ConsentKind,
   evmCallPreimage,
 } from '@colosseum/schemas';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { eachBites, type Negative, refusalOf } from '../../../test/bites';
 import {
   type MockWorld,
@@ -25,6 +25,8 @@ import { guardTransaction } from '../index';
 import type { GuardCheck } from '../refusal';
 import type { ApprovedStep, GuardInput } from '../types';
 import { mockVaultAddress } from './check';
+
+vi.mock('../rules', () => import('../../../test/rules'));
 
 // The guard on what packages/chain-mock builds. The honest transactions are the mock's own, for every
 // step it has, on both families; each negative is one of them with one field of its operation changed.

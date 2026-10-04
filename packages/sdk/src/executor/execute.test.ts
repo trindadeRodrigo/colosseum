@@ -2,6 +2,7 @@ import type { BasketTx, BuildLegResponse, ChainId, OrderDetail } from '@colosseu
 import { describe, expect, it, vi } from 'vitest';
 import { type ApiDouble, apiDouble } from '../../test/api-double';
 import { type MockWorld, mockChainRead, mockWorld, tampered } from '../../test/mock';
+import { withRules } from '../../test/rules';
 import { GUARD_CHECKS, type GuardCode } from '../guard/refusal';
 import { runGuard } from '../guard/run';
 import { ApiRefusal, type OrderApi } from './api';
@@ -15,6 +16,8 @@ import {
   signedKey,
 } from './execute';
 import { execute } from './index';
+
+vi.mock('../guard/rules', () => import('../../test/rules'));
 
 // The executor end to end on packages/chain-mock, through an API double that follows the order routes
 // (test/api-double.ts). tests/sdk-executor.test.ts runs it against the real route handlers.
@@ -283,7 +286,9 @@ function lying(s: Scene, legId: string, lie: Lie): OrderApi {
   };
 }
 
-const withoutChecks = makeExecute((input) => runGuard(input, { without: [...GUARD_CHECKS] }));
+const withoutChecks = makeExecute((input) =>
+  withRules({ without: [...GUARD_CHECKS] }, () => runGuard(input)),
+);
 
 describe('the executor: a hostile API, at each step, is refused and nothing is signed', () => {
   // A second buy on the EVM chain reaches the deposit; the first reaches the create and the swaps.

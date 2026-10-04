@@ -2,13 +2,10 @@ import type { BasketTx, ConsentKind } from '@colosseum/schemas';
 import { type Context, familyOf, isRawAmount, tradesOf } from './context';
 import { isLoadedDeployment } from './deployment';
 import { checkEvm } from './evm/check';
-import type { InterfaceTable } from './evm/table';
-import { BASKET_PROGRAM } from './generated/basket-program';
-import { EVM_INTERFACE } from './generated/evm-interface';
 import { checkMock } from './mock/check';
-import { type GuardCheck, GuardRefusal } from './refusal';
+import { GuardRefusal } from './refusal';
+import { rules } from './rules';
 import { checkSolana } from './solana/check';
-import type { ProgramTable } from './solana/table';
 import { count, deepFreeze, type Loose, must, only, text } from './strict';
 import type { ApprovedStep, GuardInput } from './types';
 
@@ -26,13 +23,6 @@ const PASSED = new WeakSet<object>();
 /** True only for what `guardTransaction` returned: a pass cannot be made any other way. */
 export const isGuarded = (value: unknown): value is Guarded =>
   typeof value === 'object' && value !== null && PASSED.has(value);
-
-/** For tests only: the checks to leave out, and the tables in place of the generated ones. */
-export type GuardOverrides = {
-  without?: readonly GuardCheck[];
-  program?: ProgramTable;
-  evmInterface?: InterfaceTable;
-};
 
 const NO_SUCH_STEP = 'this guard signs no such step';
 
@@ -236,17 +226,14 @@ function consentFor(step: ApprovedStep): ConsentKind | null {
   return null;
 }
 
-export function runGuard(input: GuardInput, overrides: GuardOverrides = {}): Guarded {
+export function runGuard(input: GuardInput): Guarded {
   if (typeof input.step !== 'object' || input.step === null)
     throw new GuardRefusal('order', 'no step was given');
   const step = deepFreeze(structuredClone(input.step));
   const { deployment } = input;
   const consents = input.consents ?? [];
   const legId = typeof step.legId === 'string' ? step.legId : null;
-  const off = new Set(overrides.without ?? []);
-  const need: Context['need'] = (check, ok, message) => {
-    if (!ok && !off.has(check)) throw new GuardRefusal(check, message, legId);
-  };
+  const need = rules.need(legId);
 
   let wrong: string | null;
   try {
@@ -330,9 +317,8 @@ export function runGuard(input: GuardInput, overrides: GuardOverrides = {}): Gua
   // ---- what its bytes say
   const ctx: Context = { step, tx, consents, need };
   if (deployment.family === 'mock') checkMock(ctx, deployment);
-  else if (deployment.family === 'solana')
-    checkSolana(ctx, deployment, overrides.program ?? BASKET_PROGRAM);
-  else checkEvm(ctx, deployment, overrides.evmInterface ?? EVM_INTERFACE);
+  else if (deployment.family === 'solana') checkSolana(ctx, deployment, rules.program);
+  else checkEvm(ctx, deployment, rules.evmInterface);
 
   const passed: Guarded = Object.freeze({ tx, step });
   PASSED.add(passed);

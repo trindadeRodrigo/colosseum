@@ -1,7 +1,8 @@
 import { BasketTx, type ConsentKind } from '@colosseum/schemas';
 import { AccountRole, address, getProgramDerivedAddress } from '@solana/kit';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { eachBites, type Negative, refusalOf } from '../../../test/bites';
+import { withRules } from '../../../test/rules';
 import {
   ASSETS,
   ASSOCIATED,
@@ -49,6 +50,8 @@ import type { GuardCheck } from '../refusal';
 import { runGuard } from '../run';
 import type { ApprovedStep, GuardInput } from '../types';
 import type { ProgramTable } from './table';
+
+vi.mock('../rules', () => import('../../../test/rules'));
 
 // The guard on Solana bytes. Every transaction here is compiled by @solana/kit, with addresses kit
 // derived. The honest ones pass; each negative differs from its step in one way and is refused by the
@@ -273,7 +276,7 @@ describe('the guard on Solana: what the interface it is given does not have', ()
         refusalOf(() => guardTransaction(given)),
         step.kind,
       ).toBeNull();
-      const refusal = refusalOf(() => runGuard(given, { program: older }));
+      const refusal = refusalOf(() => withRules({ program: older }, () => runGuard(given)));
       expect(refusal?.code, step.kind).toBe('unsupported');
       expect(refusal?.message).toMatch(/regenerated/);
     }
@@ -322,7 +325,9 @@ describe('the guard on Solana: what the interface it is given does not have', ()
           u64(CASH),
         ),
       ]);
-      const refusal = refusalOf(() => runGuard(input(depositStep, built), { program: table }));
+      const refusal = refusalOf(() =>
+        withRules({ program: table }, () => runGuard(input(depositStep, built))),
+      );
       expect(refusal?.code).toBe('unsupported');
       expect(refusal?.message).toMatch(says);
     }
@@ -336,16 +341,17 @@ describe('the guard on Solana: what the interface it is given does not have', ()
       },
     };
     const follows = refusalOf(() =>
-      runGuard(input({ ...followStep, depositRaw: '0' }, wire([vaultIxOf(noRecipe)])), {
-        program: noRecipe,
-      }),
+      withRules({ program: noRecipe }, () =>
+        runGuard(input({ ...followStep, depositRaw: '0' }, wire([vaultIxOf(noRecipe)]))),
+      ),
     );
     expect(follows?.code).toBe('unsupported');
     expect(follows?.message).toMatch(/no account recipe/);
     // The bytes of today's deposit end before the new argument: they cannot be read at all.
-    expect(refusalOf(() => runGuard(input(depositStep, bytes), { program: withArg }))?.code).toBe(
-      'malformed',
-    );
+    expect(
+      refusalOf(() => withRules({ program: withArg }, () => runGuard(input(depositStep, bytes))))
+        ?.code,
+    ).toBe('malformed');
   });
 });
 
