@@ -29,6 +29,7 @@
     "depth:snapshot": "node scripts/depth-snapshot.mjs",
     "depth:install-cron": "zsh scripts/launchd/install.sh",
     "db:seed": "tsx scripts/seed-assets.ts",
+    "openapi:emit": "pnpm --filter @colosseum/api openapi && biome format --write packages/sdk/openapi.json",
     "depth:import": "tsx scripts/depth-import.ts",
     "wallet:create": "tsx scripts/wallet-create.ts",
     "check:d1pm": "tsx scripts/checks/d1pm-simulate.ts",

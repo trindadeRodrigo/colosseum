@@ -75,10 +75,18 @@ export const chains = pgTable('chains', {
   updatedAt: ts('updated_at').notNull().defaultNow(),
 });
 
-/** A person, by their Privy id. Written only from a verified identity token. */
+/**
+ * A person, by their Privy id. Written only from a verified identity token.
+ * `chain_id` is the chain a person who made a wallet in the app picked (gate CHAIN-PICK): set once,
+ * never changed, and null for someone whose chain is that of the outside wallet they connected.
+ */
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   privyId: text('privy_id').notNull().unique(),
+  chainId: text('chain_id')
+    .$type<ChainId>()
+    .references(() => chains.id),
+  chainPickedAt: ts('chain_picked_at'),
   createdAt: ts('created_at').notNull().defaultNow(),
 });
 
@@ -319,6 +327,11 @@ export const legs = pgTable(
     kind: text('kind').$type<LegKind>().notNull(),
     signer: text('signer').$type<Leg['signer']>().notNull(),
     description: text('description').notNull(),
+    /**
+     * The cash the step is about, in raw units: a deposit, or what an approval allows. The approval
+     * and the deposit of one order both hold it, so it is not summed over an order's rows.
+     */
+    cashRaw: raw('cash_raw'),
     trades: jsonb('trades').$type<Trade[]>().notNull(),
     expected: jsonb('expected').$type<Leg['expected']>(),
     status: text('status').$type<LegStatus>().notNull(),

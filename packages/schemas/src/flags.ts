@@ -23,23 +23,22 @@ export const Flags = z.object({
   keeperEnabled: z.boolean(),
   /** AGENT_SURFACE */
   agentSurface: z.boolean(),
-  /** LEGACY_STRUCTURER: the structurer's server-signing routes. */
+  /** LEGACY_STRUCTURER: the structurer's one route that signs on the server (the rebalance). */
   legacyStructurer: z.boolean(),
 });
 export type Flags = z.infer<typeof Flags>;
 
 /**
  * With nothing set, no chain is touched, nothing signs on its own, and Base is out.
- * `legacyStructurer` is on because the structurer's routes are still registered whatever this says: a
- * config that reports them off while they answer would mislead. The default flips to off in the change
- * that makes the API skip registering them when the flag is off (API-2).
+ * `legacyStructurer` is off: the API registers the structurer's server-signing route only when it is
+ * on (API-2), so with nothing set no route reaches a signer.
  */
 export const DEFAULT_FLAGS: Flags = {
   chainMode: { solana: 'mock', robinhood: 'mock', base: 'off' },
   autoFollow: { solana: false, robinhood: false, base: false },
   keeperEnabled: false,
   agentSurface: false,
-  legacyStructurer: true,
+  legacyStructurer: false,
 };
 
 /** The env key of a per-chain setting: envKey('CHAIN_MODE', 'robinhood') is CHAIN_MODE_ROBINHOOD. */

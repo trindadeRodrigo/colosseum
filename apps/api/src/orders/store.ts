@@ -1,5 +1,16 @@
-import { type Db, legAttempts, legs, orders, proposals, vaults } from '@colosseum/db';
 import {
+  type Db,
+  indexFamilies,
+  legAttempts,
+  legs,
+  orders,
+  proposals,
+  recipes,
+  recipeVersions,
+  vaults,
+} from '@colosseum/db';
+import {
+  type Address,
   type Attempt,
   BasketProposal,
   ChainId,
@@ -7,9 +18,10 @@ import {
   type Leg,
   type Order,
   type Provenance,
+  type Shelf,
   type VaultView,
 } from '@colosseum/schemas';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, ne, notInArray, sql } from 'drizzle-orm';
 import { Refusal } from './errors';
 
 // The order tables (DESIGN-VAULT section 4), read and written through Drizzle. A leg row mirrors its
@@ -39,6 +51,7 @@ const toLeg = (r: LegRow): Leg => ({
   kind: r.kind,
   signer: r.signer,
   description: r.description,
+  ...(r.cashRaw === null ? {} : { cashRaw: r.cashRaw }),
   trades: r.trades,
   expected: expectedOfRow(r.expected),
   status: r.status,
@@ -67,6 +80,10 @@ const toAttempt = (r: AttemptRow & { legId: string }): Attempt => ({
 const chainOrder = (chain: ChainId) => ChainId.options.indexOf(chain);
 
 function toOrder(r: OrderRow, legRows: LegRow[]): Order {
+  // What the order deposits is on the step that deposits. The approval repeats it and is not counted.
+  const deposit = legRows.find(
+    (l) => (l.kind === 'create_vault' || l.kind === 'deposit') && l.cashRaw !== null,
+  )?.cashRaw;
   return {
     id: r.id,
     type: r.type,
@@ -75,6 +92,7 @@ function toOrder(r: OrderRow, legRows: LegRow[]): Order {
       ...(r.ownerEvm ? { evm: r.ownerEvm } : {}),
     },
     summary: r.summary,
+    ...(deposit ? { depositRaw: deposit } : {}),
     legs: legRows
       .map(toLeg)
       .sort((a, b) => chainOrder(a.chain) - chainOrder(b.chain) || a.seq - b.seq),
@@ -119,6 +137,7 @@ export async function insertOrder(db: Db, order: Order, request: IntentRequest):
         kind: l.kind,
         signer: l.signer,
         description: l.description,
+        cashRaw: l.cashRaw ?? null,
         trades: l.trades,
         expected: l.expected,
         status: l.status,
@@ -165,10 +184,143 @@ export async function loadProposal(db: Db, id: string): Promise<BasketProposal |
   return parsed.data;
 }
 
+/**
+ * The shared portfolios that have a recipe on `chain`, each with the version of it in effect: what a
+ * plan that holds one as a single line is opened with. Read from the cache tables; the chain stays the
+ * truth, and a plan whose lines no longer match what this gives is refused when it is bought.
+ */
+export async function loadFamilies(db: Db, chain: ChainId): Promise<Shelf['families']> {
+  const rows = await db
+    .select({ family: indexFamilies, recipe: recipes, version: recipeVersions })
+    .from(recipeVersions)
+    .innerJoin(recipes, eq(recipeVersions.recipeId, recipes.id))
+    .innerJoin(indexFamilies, eq(recipes.familyId, indexFamilies.familyId))
+    .where(and(eq(recipes.chainId, chain), eq(recipeVersions.status, 'active')));
+  const families = new Map<string, Shelf['families'][number]>();
+  for (const { family, recipe, version } of rows) {
+    const entry = families.get(family.familyId) ?? {
+      meta: {
+        familyId: family.familyId,
+        slug: family.slug,
+        name: family.name,
+        copy: family.copy,
+        kind: family.kind,
+        chains: [chain],
+      },
+      recipes: [],
+    };
+    entry.recipes.push({
+      schemaVersion: 1,
+      familyId: family.familyId,
+      chain,
+      onchainId: recipe.onchainId,
+      creator: recipe.creator,
+      kind: recipe.kind,
+      version: version.version,
+      effectiveAt: Math.floor(version.effectiveAt.getTime() / 1000),
+      components: version.components,
+      metaHash: version.metaHash,
+      maxFeeBps: 0,
+      flags: 0,
+    });
+    families.set(family.familyId, entry);
+  }
+  return [...families.values()];
+}
+
 /** The label and source of a figure, as the attempt row stores them. */
 export type Stamp = { source: string; method: string; fetchedAt: string; provenance: Provenance };
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+
+/** An attempt of another order, with the step it is at. */
+export type Elsewhere = { attempt: Attempt; orderId: string; legId: string };
+
+/**
+ * EVM. The attempts of this wallet's other orders on one chain that can still land: built or sent, in
+ * an order that is still running. An order that expired is not built again, so its attempts do not
+ * count: a later build shares their nonce, and at most one of the two can land. Newest first.
+ */
+export async function liveElsewhere(
+  db: Db | Tx,
+  a: { chain: ChainId; owner: Address; orderId: string; now: Date },
+): Promise<Elsewhere[]> {
+  const rows = await db
+    .select({ attempt: legAttempts, orderId: legs.orderId })
+    .from(legAttempts)
+    .innerJoin(legs, eq(legAttempts.legId, legs.id))
+    .innerJoin(orders, eq(legs.orderId, orders.id))
+    .where(
+      and(
+        eq(legAttempts.chainId, a.chain),
+        inArray(legAttempts.status, ['built', 'sent']),
+        isNotNull(legAttempts.nonce),
+        eq(orders.ownerEvm, a.owner),
+        ne(orders.id, a.orderId),
+        gte(orders.expiresAt, a.now),
+        notInArray(orders.status, ['done', 'expired']),
+      ),
+    )
+    .orderBy(desc(legAttempts.builtAt));
+  return rows.flatMap(({ attempt, orderId }) =>
+    attempt.legId
+      ? [
+          {
+            attempt: toAttempt({ ...attempt, legId: attempt.legId }),
+            orderId,
+            legId: attempt.legId,
+          },
+        ]
+      : [],
+  );
+}
+
+/**
+ * EVM. The step of another leg that stated this very pair (message, nonce), if there is one. A
+ * transaction that landed on that nonce with that call is that step's, whatever leg it is reported to.
+ */
+export async function pairElsewhere(
+  db: Db,
+  a: { chain: ChainId; messageHash: string; nonce: number; legId: string },
+): Promise<{ legId: string } | null> {
+  const [row] = await db
+    .select({ legId: legAttempts.legId })
+    .from(legAttempts)
+    .where(
+      and(
+        eq(legAttempts.chainId, a.chain),
+        eq(legAttempts.messageHash, a.messageHash),
+        eq(legAttempts.nonce, a.nonce),
+        isNotNull(legAttempts.legId),
+        ne(legAttempts.legId, a.legId),
+      ),
+    )
+    .limit(1);
+  return row?.legId ? { legId: row.legId } : null;
+}
+
+/** Thrown when a step is built while another order of the same wallet has one that can still land. */
+export function blockedBy(chainName: string, other: Elsewhere): Refusal {
+  return new Refusal(
+    409,
+    `another order of this wallet has a transaction on ${chainName} that can still land`,
+    {
+      fix: 'Report that step or cancel it, then build this one again.',
+      details: { retryable: true, blocking: { orderId: other.orderId, legId: other.legId } },
+    },
+  );
+}
+
+/**
+ * A transaction that is already recorded against another step. One transaction settles one step: the
+ * attempt it was reported for here can no longer land, since its nonce is used.
+ */
+export class TakenElsewhere extends Refusal {
+  constructor() {
+    super(409, 'that transaction is already recorded for another step');
+    this.name = 'TakenElsewhere';
+  }
+}
 
 /**
  * The leg row, then its attempts, both locked. Every writer takes them in this order, so two of them
@@ -209,9 +361,30 @@ export async function recordBuild(
     expected: Leg['expected'];
     stamp: Stamp;
     builtAt: Date;
+    /**
+     * EVM. One wallet has one next nonce on a chain, so only one of its orders may hold a transaction
+     * that can still land there. With this set, the build is recorded under a lock on (chain, wallet)
+     * and refused if another order got there first. `clear` are attempts the caller has already seen
+     * can no longer land.
+     */
+    exclusive?: { owner: Address; orderId: string; chainName: string; clear: string[] };
   },
 ): Promise<Attempt> {
   return db.transaction(async (tx) => {
+    const { exclusive } = a;
+    if (exclusive) {
+      // Held until this transaction ends. Every build of this wallet on this chain takes it first.
+      const key = `nonce:${leg.chain}:${exclusive.owner}`;
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${key}, 0))`);
+      const others = await liveElsewhere(tx, {
+        chain: leg.chain,
+        owner: exclusive.owner,
+        orderId: exclusive.orderId,
+        now: a.builtAt,
+      });
+      const other = others.find((o) => !exclusive.clear.includes(o.attempt.id));
+      if (other) throw blockedBy(exclusive.chainName, other);
+    }
     const now = await lockLeg(tx, leg.id);
     if (now.leg.attempt !== leg.attempt || now.leg.status !== leg.status)
       throw new Refusal(409, 'this step changed while it was being built: read the order again');
@@ -267,6 +440,12 @@ export type Outcome = {
   explorerUrl: string | null;
   validUntil: string | null;
   error: Leg['error'];
+  /**
+   * EVM: the nonce of record, read from the transaction itself. An outside wallet may sign with
+   * another nonce than the build stated; the attempt then carries the one that was used. Left out or
+   * null, the attempt keeps the nonce it has.
+   */
+  nonce?: number | null;
 };
 
 /**
@@ -295,6 +474,7 @@ export async function recordOutcome(
           txId: a.txId,
           explorerUrl: a.explorerUrl,
           validUntil: a.validUntil,
+          ...(a.nonce === undefined || a.nonce === null ? {} : { nonce: a.nonce }),
         })
         .where(eq(legAttempts.id, row.id));
       const settles = a.status === 'confirmed' && leg.status !== 'confirmed';
@@ -319,8 +499,7 @@ export async function recordOutcome(
       return 'recorded';
     });
   } catch (e) {
-    if (isUnique(e))
-      throw new Refusal(409, 'that transaction is already recorded for another step');
+    if (isUnique(e)) throw new TakenElsewhere();
     throw e;
   }
 }
