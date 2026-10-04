@@ -36,15 +36,47 @@ export function corsAllowlist(env: EnvLike): string[] {
   });
 }
 
-/** True for a path the /v1 allowlist governs. */
-export const underV1 = (url: string) => /^\/v1(?:[/?]|$)/.test(url);
+/**
+ * A request's path as plainly as it can be read, so that no spelling of a path gets past a rule about
+ * it: the query cut off, every percent-escape decoded (the router decodes them before it matches a
+ * route, so `/%761/config` is `/v1/config`), dot segments resolved, doubled slashes and a `;suffix`
+ * dropped, in lower case. It reads more loosely than the router does, on purpose: a spelling the
+ * router would answer 404 is still held to the rule.
+ */
+export function plainPath(url: string): string {
+  const cut = (text: string) => text.split(/[?#]/, 1)[0] ?? '';
+  let path = cut(url);
+  // Twice-escaped is escaped once more than the router reads, and is decoded here all the same.
+  for (let pass = 0; pass < 3 && path.includes('%'); pass++)
+    path = cut(
+      path.replace(/%([0-9a-fA-F]{2})/g, (_, hex: string) =>
+        String.fromCharCode(Number.parseInt(hex, 16)),
+      ),
+    );
+  const segments: string[] = [];
+  for (const raw of path.split('/')) {
+    const segment = raw.split(';', 1)[0] ?? '';
+    if (segment === '' || segment === '.') continue;
+    if (segment === '..') segments.pop();
+    else segments.push(segment);
+  }
+  return `/${segments.join('/')}`.toLowerCase();
+}
+
+/** True for a path the /v1 allowlist governs, however it is spelled. */
+export const underV1 = (url: string) => /^\/v1(?:\/|$)/.test(plainPath(url));
 
 /** The methods /v1 uses. A preflight for any other is not answered with it. */
 const V1_METHODS = ['GET', 'HEAD', 'POST', 'PUT'];
 
-/** The CORS options of each request: the allowlist under /v1, any origin elsewhere, as before. */
+/**
+ * The CORS options of each request: the allowlist under /v1, any origin elsewhere, as before. A request
+ * is under /v1 when the route the router matched is, or when its path reads as one: a preflight matches
+ * no route of its own, so its path is all there is to go by.
+ */
 export function corsByPath(allow: readonly string[]): FastifyCorsOptionsDelegateCallback {
   const v1: FastifyCorsOptions = { origin: [...allow], methods: V1_METHODS };
   const elsewhere: FastifyCorsOptions = { origin: true };
-  return (req, callback) => callback(null, underV1(req.url) ? v1 : elsewhere);
+  return (req, callback) =>
+    callback(null, underV1(req.routeOptions?.url ?? '') || underV1(req.url) ? v1 : elsewhere);
 }

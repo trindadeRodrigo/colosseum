@@ -1,13 +1,28 @@
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app';
-import { corsAllowlist, DEFAULT_CORS_ORIGINS, underV1 } from './cors';
+import { corsAllowlist, DEFAULT_CORS_ORIGINS, plainPath, underV1 } from './cors';
 
 // API-2: /v1 answers a browser only from an origin on the allowlist. What the rest of the API does
 // is held by tests/risk-routes-untouched.test.ts.
 
 const WEB = 'http://localhost:3000';
 const OTHER = 'https://somewhere-else.example';
+/** `/v1/config` spelled other ways. The first three reach the route: the router decodes them. */
+const SPELLINGS = [
+  '/%761/config',
+  '/v%31/config',
+  '/%76%31/config',
+  '/v1%2Fconfig',
+  '//v1/config',
+  '/V1/config',
+  '/v1/../v1/config',
+  '/./v1/config',
+  '/v1;x/config',
+  '/v1/config/',
+  '/v1/config?x=1',
+  '/x/../v1/config',
+];
 
 describe('the CORS allowlist', () => {
   it('is the development origin when nothing is set, and what CORS_ORIGINS lists when it is', () => {
@@ -51,6 +66,18 @@ describe('the CORS allowlist', () => {
     for (const url of ['/v1', '/v1/', '/v1/orders', '/v1?x=1', '/v1/me/chain'])
       expect([url, underV1(url)]).toEqual([url, true]);
     for (const url of ['/', '/v10', '/v1x/orders', '/risk/assets', '/plans', '/docs', '/x/v1/'])
+      expect([url, underV1(url)]).toEqual([url, false]);
+  });
+
+  it('reads a path however it is spelled: the router decodes a path before it matches a route', () => {
+    for (const url of SPELLINGS) expect([url, underV1(url)]).toEqual([url, true]);
+    expect(plainPath('/%761/config?x=%2Fv1')).toBe('/v1/config');
+    expect(plainPath('/%2576%2531/config')).toBe('/v1/config');
+    expect(plainPath('/a/./b/../c//d;e/')).toBe('/a/c/d');
+    // A bad escape is left as it is, and reading it never throws.
+    expect(plainPath('/risk/%zz/%E0%A4%A')).toBe('/risk/%zz/à¤%a');
+    // The other routes stay the other routes, whatever is in them.
+    for (const url of ['/risk/%76%31', '/risk/assets/v1', '/plans/../risk/v1', '/docs?next=/v1/'])
       expect([url, underV1(url)]).toEqual([url, false]);
   });
 });
@@ -104,6 +131,31 @@ describe('CORS on /v1', () => {
       const no = await preflight(url, OTHER);
       expect([url, no.headers['access-control-allow-origin']]).toEqual([url, undefined]);
     }
+  });
+
+  it('holds a path to the allowlist however it is spelled, on a read and on a preflight', async () => {
+    const served: string[] = [];
+    for (const url of SPELLINGS) {
+      const res = await app.inject({ method: 'GET', url, headers: { origin: OTHER } });
+      if (res.statusCode === 200) served.push(url);
+      expect([url, res.headers['access-control-allow-origin']]).toEqual([url, undefined]);
+      const pre = await preflight(url, OTHER);
+      expect([url, pre.headers['access-control-allow-origin']]).toEqual([url, undefined]);
+      // The origin on the list is answered on the same spelling.
+      const mine = await preflight(url, WEB);
+      expect([url, mine.headers['access-control-allow-origin']]).toEqual([url, WEB]);
+    }
+    // These spellings reach the route itself: the router decodes an escape, and a client resolves
+    // the dots. Without the rule, any origin could read the answer of the first three.
+    expect(served).toEqual([
+      '/%761/config',
+      '/v%31/config',
+      '/%76%31/config',
+      '/v1/../v1/config',
+      '/./v1/config',
+      '/v1/config?x=1',
+      '/x/../v1/config',
+    ]);
   });
 
   it('with the list set to none, gives no origin leave at all', async () => {
