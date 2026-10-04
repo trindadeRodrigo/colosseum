@@ -1,17 +1,17 @@
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import {
-  type Address,
-  createSolanaRpc,
-  generateKeyPairSigner,
-  getAddressEncoder,
-} from '@solana/kit';
+import { type Address, createSolanaRpc, generateKeyPairSigner } from '@solana/kit';
 import { depositInstruction } from './src/basket';
 import { BASKET_PROGRAM, MOCK_ROUTER_PROGRAM, REPO_ROOT } from './src/env';
 import { sendAndWait, waitUntilUp } from './src/validator';
-import { buildWorld, type Ledger, type MintName } from './src/world';
+import {
+  buildWorld,
+  type Ledger,
+  WORLD_EMPTY_INDEX,
+  worldPriceAccount,
+  worldPricesExpected,
+} from './src/world';
 
 // Starts a local validator with the two built programs loaded, builds the same world of vaults the
 // fixtures hold (src/world.ts) by sending real transactions, writes what it made to <dir>/world.json,
@@ -27,36 +27,9 @@ const port = Number(portArg);
 const url = `http://127.0.0.1:${port}`;
 const rpc = createSolanaRpc(url);
 
-const SCOPE_BYTES = 28_712;
-/** Round numbers at free indexes, as in the fixtures: not market data. `age` is seconds before the start. */
-const PRICES: Record<MintName, { index: number; value: bigint; exponent: bigint; age: number }> = {
-  usdc: { index: 13, value: 100_000_000n, exponent: 8n, age: 20 },
-  spyx: { index: 344, value: 10_000_000_000n, exponent: 8n, age: 30 },
-  nvdax: { index: 332, value: 500_000n, exponent: 4n, age: 45 },
-  gold: { index: 100, value: 2_005n, exponent: 1n, age: 400 },
-  tslax: { index: 338, value: 20n, exponent: 0n, age: 0 },
-};
-const EMPTY_INDEX = 7;
-
-const decimal = (value: bigint, exponent: bigint) => {
-  const digits = value.toString().padStart(Number(exponent) + 1, '0');
-  const whole = digits.slice(0, digits.length - Number(exponent));
-  const frac = digits.slice(digits.length - Number(exponent)).replace(/0+$/, '');
-  return frac ? `${whole}.${frac}` : whole;
-};
-
 /** A price account in Scope's layout, as a file the validator loads at start. No program writes it. */
 function priceAccountFile(address: Address, startedAt: number): string {
-  const data = new Uint8Array(SCOPE_BYTES);
-  data.set(createHash('sha256').update('account:OraclePrices').digest().subarray(0, 8), 0);
-  data.set(getAddressEncoder().encode(MOCK_ROUTER_PROGRAM), 8);
-  const view = new DataView(data.buffer);
-  for (const { index, value, exponent, age } of Object.values(PRICES)) {
-    const at = 40 + 56 * index;
-    view.setBigUint64(at, value, true);
-    view.setBigUint64(at + 8, exponent, true);
-    view.setBigUint64(at + 24, BigInt(startedAt - age), true);
-  }
+  const data = worldPriceAccount(0n, BigInt(startedAt), MOCK_ROUTER_PROGRAM);
   const file = join(dir as string, 'price-account.json');
   writeFileSync(
     file,
@@ -69,7 +42,7 @@ function priceAccountFile(address: Address, startedAt: number): string {
         owner: MOCK_ROUTER_PROGRAM,
         executable: false,
         rentEpoch: 0,
-        space: SCOPE_BYTES,
+        space: data.length,
       },
     }),
   );
@@ -123,7 +96,7 @@ async function main(): Promise<void> {
       },
       rent: (bytes) => rpc.getMinimumBalanceForRentExemption(bytes).send(),
     };
-    const world = await buildWorld(ledger, deployer);
+    const world = await buildWorld(ledger, deployer, priceAccount);
 
     // One transaction that lands and fails with the vault's own error: a deposit of a token that is
     // not the cash mint. Sent without the node's dry run, which would refuse it before it lands.
@@ -152,13 +125,8 @@ async function main(): Promise<void> {
           prices: {
             account: priceAccount,
             owner: MOCK_ROUTER_PROGRAM,
-            entries: Object.fromEntries(
-              Object.entries(PRICES).map(([name, p]) => [
-                name,
-                { index: p.index, usdPerToken: decimal(p.value, p.exponent), ageSeconds: p.age },
-              ]),
-            ),
-            emptyIndex: EMPTY_INDEX,
+            entries: worldPricesExpected(),
+            emptyIndex: WORLD_EMPTY_INDEX,
           },
           landedTxId: signatures.at(-1),
           revertedTx: { txId: refused.signature, code: 'NotCashMint' },
