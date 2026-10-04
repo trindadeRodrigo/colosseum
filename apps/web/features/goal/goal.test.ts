@@ -174,8 +174,14 @@ describe('building a plan: the one call, against a double of the route that is n
     expect(await answers(400, { error: 'body/sheet/amountUsd too small' })).toEqual({
       kind: 'refused',
     });
+    // each thing a person can do something about is told apart from a refusal of the limits
     expect(await answers(409, { error: 'pick the chain your plans live on first' })).toEqual({
-      kind: 'refused',
+      kind: 'no-chain',
+    });
+    for (const status of [401, 403])
+      expect(await answers(status, { error: 'sign in first' })).toEqual({ kind: 'signed-out' });
+    expect(await answers(409, { error: 'no plan', code: 'GOAL_NOT_ACHIEVABLE' })).toEqual({
+      kind: 'no-plan',
     });
     expect(await answers(422, { error: 'no plan', code: 'GOAL_NOT_ACHIEVABLE' })).toEqual({
       kind: 'no-plan',

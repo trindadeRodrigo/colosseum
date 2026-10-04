@@ -95,15 +95,18 @@ export function GoalScreen() {
   }
 
   // A plan is one person's, on their chain: an answer for someone else, or for another chain, is not
-  // shown to whoever is here now.
-  const whose = `${port.userId ?? ''}:${chain ?? ''}`;
-  const lastWhose = useRef(whose);
+  // shown to whoever is here now. While the chain is being read again it is not known to have
+  // changed, so nothing is forgotten until it is read.
+  const who = port.userId ?? '';
+  const where = account.status === 'loading' ? null : (chain ?? '');
+  const whose = useRef({ who, where: where ?? '' });
   useEffect(() => {
-    if (lastWhose.current === whose) return;
-    lastWhose.current = whose;
+    const last = whose.current;
+    if (last.who === who && (where === null || last.where === where)) return;
+    whose.current = { who, where: where ?? last.where };
     wanted.current += 1;
     setBuild({ kind: 'idle' });
-  }, [whose]);
+  }, [who, where]);
 
   async function read(typed: string) {
     setReading(true);
@@ -141,7 +144,10 @@ export function GoalScreen() {
     const mine = wanted.current;
     setBuild({ kind: 'solving' });
     const outcome = await buildPlan(apiFetch, valid);
-    if (wanted.current === mine) setBuild(outcome);
+    if (wanted.current !== mine) return;
+    setBuild(outcome);
+    // The server has no chain for this person, whatever this page had read: it is asked again.
+    if (outcome.kind === 'no-chain') retry();
   }
 
   function fillWith(example: string) {
@@ -213,6 +219,11 @@ export function GoalScreen() {
       ? [account.why === 'unreachable' ? t.goal.blocked.chainUnknown : unknownWhy]
       : []),
     ...(chainOff ? [t.goal.blocked.chainOff(chainName)] : []),
+    ...(build.kind === 'signed-out' ? [t.goal.blocked.signInAgain] : []),
+    // Said once: the account says the same when it has read that no chain is chosen.
+    ...(build.kind === 'no-chain' && account.status !== 'needs-chain'
+      ? [t.goal.blocked.chainNotChosen]
+      : []),
     ...(build.kind === 'refused' ? [t.goal.blocked.refused] : []),
   ];
 

@@ -569,6 +569,25 @@ describe('what comes back from “Build my plan”', () => {
     expect(refused.host.textContent).not.toContain('body/sheet');
   });
 
+  it.each([401, 403])(
+    'says to sign in again, not that the limits were refused, when the server answers %s',
+    async (status) => {
+      const { host } = await built(() => json({ error: 'sign in first' }, status));
+      expect(summary(host)?.textContent).toContain(en.goal.blocked.signInAgain);
+      expect(summary(host)?.textContent).not.toContain(en.goal.blocked.refused);
+      expect(host.textContent).not.toContain('sign in first');
+    },
+  );
+
+  it('says to choose the chain first when the server has none for this person, and asks who they are again', async () => {
+    const { host, server } = await built(() =>
+      json({ error: 'pick the chain your plans live on first' }, 409),
+    );
+    expect(summary(host)?.textContent).toContain(en.goal.blocked.chainNotChosen);
+    expect(summary(host)?.textContent).not.toContain(en.goal.blocked.refused);
+    expect(server.to('/v1/me')).toHaveLength(2);
+  });
+
   it('says the server could not be reached, and leaves the limits as they are', async () => {
     const server = api({ person: onSolana });
     portStore.set(signedInPort(PHANTOM));

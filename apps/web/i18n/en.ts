@@ -244,6 +244,9 @@ export const en = {
       chainUnknown:
         'I can’t tell yet which chain your plan lives on, so I can’t build for it. Ask again, above.',
       refused: 'Our server didn’t accept these limits. Check each field, then try again.',
+      /** The server answered 401 or 403 to "Build my plan". */
+      signInAgain:
+        'Our server doesn’t recognise your sign-in any more, so the plan wasn’t built. Sign out, then sign in again.',
       chainOff: (chain: string) =>
         `${chain} is switched off on our server for now, so I can’t build a plan there. Your limits are kept.`,
     },

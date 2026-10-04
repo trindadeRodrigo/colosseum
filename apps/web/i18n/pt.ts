@@ -237,6 +237,8 @@ export const pt: Dictionary = {
       chainUnknown:
         'Ainda não sei em qual rede seu plano fica, então não consigo montar para ela. Pergunte de novo, acima.',
       refused: 'Nosso servidor não aceitou esses limites. Confira cada campo e tente de novo.',
+      signInAgain:
+        'Nosso servidor não reconhece mais o seu login, então o plano não foi montado. Saia e entre de novo.',
       chainOff: (chain: string) =>
         `${chain} está desativada no nosso servidor por enquanto, então não consigo montar um plano nela. Seus limites continuam guardados.`,
     },
