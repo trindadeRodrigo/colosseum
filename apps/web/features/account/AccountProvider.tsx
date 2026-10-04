@@ -24,7 +24,10 @@ export type Account =
   | { status: 'signed-out' }
   /** The API did not say. Nothing is assumed in its place. */
   | { status: 'unknown' }
-  /** Signed in, with no wallet linked to the sign-in: there is no chain to have. */
+  /**
+   * Signed in, with no wallet to have a chain: one a passkey sign-in owes the person could not be
+   * made, or none is linked to the sign-in.
+   */
   | { status: 'no-wallet' }
   /** A wallet made here, and no chain chosen yet: the one time it is asked. */
   | { status: 'needs-chain'; options: ChainId[] }
@@ -101,6 +104,9 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const account = useMemo((): Account => {
+    // A wallet that could not be made: signed in, and nothing to ask the API about yet. It is never
+    // asked while a wallet is owed: with one wallet it would offer one chain.
+    if (port.walletsOwed === 'failed') return { status: 'no-wallet' };
     if (port.status === 'loading') return { status: 'loading' };
     if (port.status === 'signed-out' || key === null) return { status: 'signed-out' };
     if (!read || read.key !== key) return { status: 'loading' };
@@ -110,7 +116,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       return { status: 'ready', chain: person.chain, source: person.chainSource ?? 'picked' };
     if (person.chainOptions.length === 0) return { status: 'no-wallet' };
     return { status: 'needs-chain', options: person.chainOptions };
-  }, [port.status, key, read]);
+  }, [port.status, port.walletsOwed, key, read]);
 
   const value = useMemo(
     () => ({ account, mock: port.test, pick, retry }),

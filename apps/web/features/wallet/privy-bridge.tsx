@@ -28,7 +28,7 @@ import { createSolanaRpc, createSolanaRpcSubscriptions } from '@solana/kit';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { stringToHex } from 'viem';
 import { evmChainsForProvider, publicWalletEnv, type WalletChains, walletChains } from './chains';
-import type { DriverAccount, WalletDriver } from './driver';
+import type { DriverAccount, WalletDriver, WalletsOwed } from './driver';
 import { fail, toWalletError } from './errors';
 import {
   type AnnouncedWallet,
@@ -46,6 +46,7 @@ import {
   type StandardSolanaWallet,
   signInWithEvmWallet,
   signInWithSolanaWallet,
+  walletAlreadyThere,
 } from './sign-in-flows';
 import { useApiCheck } from './use-api-check';
 import type { BridgeProps } from './WalletProvider';
@@ -140,11 +141,15 @@ const sameAddress = (family: Chain, a: string, b: string) =>
   family === 'evm' ? a.toLowerCase() === b.toLowerCase() : a === b;
 const one = <T,>(out: T | T[]): T[] => (Array.isArray(out) ? out : [out]);
 
-/** Privy says a wallet of that family is there already: nothing is left to make. */
-const alreadyThere = (e: unknown) =>
-  (e as { privyErrorCode?: unknown } | null)?.privyErrorCode === 'embedded_wallet_already_exists';
-
 type Waiter = { resolve: () => void; reject: (e: unknown) => void };
+
+/**
+ * Privy lists a new wallet a moment after the call that made it returns. Before a wallet is called
+ * missing, the page is given that moment: this many looks, this far apart.
+ */
+const LISTED_TRIES = 40;
+const LISTED_EVERY_MS = 50;
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 function PrivyDriver({
   onPort,
@@ -204,20 +209,28 @@ function PrivyDriver({
   }
 
   const userId = privy.user?.id ?? null;
-  // The wallets a passkey sign-in owes the person and Privy has not made. While they are being made
-  // the port is still loading; if making them fails it is ready without them, and says so when asked.
-  const owed = privy.ready && privy.authenticated ? missingWallets(linked).join(',') : '';
+  const session = privy.ready && privy.authenticated && userId !== null;
+  // The wallets a passkey sign-in owes the person and Privy has not made: one of each family.
+  const owed = session ? missingWallets(linked) : [];
+  // Making them is one job per person and attempt: one loop, one wallet at a time. The job is not
+  // keyed on what is owed, which changes as each wallet is made: keyed on that, a second loop started
+  // beside the first when the first wallet arrived, and both asked for the second.
   const [attempt, setAttempt] = useState(0);
-  const [failedAt, setFailedAt] = useState<string | null>(null);
-  const makingKey = owed && userId ? `${userId}:${owed}:${attempt}` : null;
+  const job = session ? `${userId}:${attempt}` : null;
+  const [ended, setEnded] = useState<{ job: string; problem: string | null } | null>(null);
   const started = useRef<string | null>(null);
+  const queue = useRef<Promise<void>>(Promise.resolve());
   const waiting = useRef<Waiter[]>([]);
+  // While a wallet is owed the person is not `ready`: with one wallet the API would offer one chain,
+  // and the choice of chain cannot be undone.
+  const walletsOwed: WalletsOwed | null =
+    owed.length === 0 ? null : ended !== null && ended.job === job ? 'failed' : 'making';
 
   const status: WalletDriver['status'] = !privy.ready
     ? 'loading'
     : !privy.authenticated
       ? 'signed-out'
-      : evm.ready && solana.ready && (makingKey === null || failedAt === makingKey)
+      : evm.ready && solana.ready && walletsOwed === null
         ? 'ready'
         : 'loading';
 
@@ -230,7 +243,8 @@ function PrivyDriver({
     announced,
     outside,
     owed,
-    failed: makingKey !== null && failedAt === makingKey,
+    job,
+    walletsOwed,
     loginWithPasskey,
     signupWithPasskey,
     generateSiweMessage,
@@ -249,35 +263,57 @@ function PrivyDriver({
   const ref = useRef(live);
   ref.current = live;
 
-  // Makes the owed wallets once per person and attempt. An effect, so it runs with Privy's functions
-  // as they are after the sign-in (the ones a sign-in call holds are from before it). Strict mode runs
-  // an effect twice: `started` keeps the second run from making a second wallet.
+  // Runs the job of this person and attempt, once. An effect, so it runs with Privy's functions as
+  // they are after the sign-in (the ones a sign-in call holds are from before it). Strict mode runs an
+  // effect twice: `started` keeps the second run from starting the job again.
+  const work = job !== null && owed.length > 0;
   useEffect(() => {
-    if (makingKey === null) {
-      for (const waiter of waiting.current.splice(0)) waiter.resolve();
-      return;
-    }
-    if (started.current === makingKey) return;
-    started.current = makingKey;
-    (async () => {
+    if (!work || job === null || started.current === job) return;
+    started.current = job;
+    const run = async () => {
+      const made = new Set<string>();
+      let problem: string | null = null;
       try {
-        for (const family of ref.current.owed.split(',')) {
+        for (;;) {
+          // Another person signed in, or a new attempt began: this job makes nothing more.
+          if (ref.current.job !== job) return;
+          // What is owed is read again before each wallet, as Privy lists it by then.
+          const family = ref.current.owed.find((f) => !made.has(f));
+          if (!family) break;
           const make = family === 'evm' ? ref.current.createWallet : ref.current.createSolanaWallet;
           await make().catch((e: unknown) => {
-            if (!alreadyThere(e)) throw e;
+            if (!walletAlreadyThere(e)) throw e;
           });
+          made.add(family);
         }
-        // Privy now lists the new wallets, `owed` empties, and this effect runs again to say so.
+        for (let look = 0; look < LISTED_TRIES && ref.current.owed.length > 0; look += 1)
+          await pause(LISTED_EVERY_MS);
+        if (ref.current.owed.length > 0) problem = 'the wallet was made and is not listed yet';
       } catch (e) {
-        const text = e instanceof Error ? e.message : 'no reason given';
-        setFailedAt(makingKey);
-        for (const waiter of waiting.current.splice(0))
-          waiter.reject(fail('wallet_not_made', `the wallet could not be made: ${text}`));
+        problem = e instanceof Error ? e.message : 'no reason given';
       }
-    })();
-  }, [makingKey]);
+      if (ref.current.job === job) setEnded({ job, problem });
+    };
+    // One job at a time, whatever starts the next: a wallet is never asked for twice at once.
+    queue.current = queue.current.then(run);
+  }, [job, work]);
 
-  const shape = JSON.stringify({ status, userId, accounts, found });
+  // Whoever waits in ensureWallets() hears how it ended.
+  useEffect(() => {
+    if (walletsOwed === 'making') return;
+    for (const waiter of waiting.current.splice(0)) {
+      if (walletsOwed === null) waiter.resolve();
+      else
+        waiter.reject(
+          fail(
+            'wallet_not_made',
+            `the wallet could not be made: ${ended?.problem ?? 'no reason given'}`,
+          ),
+        );
+    }
+  }, [walletsOwed, ended]);
+
+  const shape = JSON.stringify({ status, userId, accounts, found, walletsOwed });
   // biome-ignore lint/correctness/useExhaustiveDependencies: `shape` stands for status, userId and accounts
   const port = useMemo(() => {
     const evmWallet = (address: string) => {
@@ -298,6 +334,7 @@ function PrivyDriver({
       userId,
       accounts,
       found,
+      walletsOwed,
 
       async signIn(method, choice) {
         const now = ref.current;
@@ -324,15 +361,13 @@ function PrivyDriver({
       },
       signOut: () => ref.current.privy.logout(),
       ensureWallets() {
-        if (!ref.current.owed) return Promise.resolve();
+        const now = ref.current.walletsOwed;
+        if (now === null) return Promise.resolve();
         return new Promise<void>((resolve, reject) => {
           waiting.current.push({ resolve, reject });
-          // After a failure, a new attempt: the effect above runs again for it. While the first one
-          // is still running, this call waits for it.
-          if (ref.current.failed) {
-            setFailedAt(null);
-            setAttempt((n) => n + 1);
-          }
+          // After a failure, a new attempt: the effect above runs a new job for it. While a job is
+          // running, this call waits for it and starts none.
+          if (now === 'failed') setAttempt((n) => n + 1);
         });
       },
 

@@ -38,6 +38,7 @@ export function fakePort(
     problemKind: null,
     test: false,
     found: [],
+    walletsOwed: null,
     active: (family) => accounts.find((a) => a.family === family) ?? null,
     caps: () => ({ silent: false, batchSign: 1, signOnly: true }),
     network: (chain): ChainNetwork => ({

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { createElement } from 'react';
+import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
@@ -376,6 +376,77 @@ describe('when the API does not say where the plan lives', () => {
     expect(alert(host)).toBeNull();
     expect(server.count('GET', '/v1/me')).toBe(2);
     expect(asks(host)).toBe(true);
+  });
+});
+
+describe('a passkey sign-in whose wallets are not both there yet', () => {
+  const owed = (walletsOwed: 'making' | 'failed', over = {}) =>
+    fakePort({
+      status: 'loading',
+      userId: 'did:privy:test',
+      // one of the two is made: the half a person must never be asked a chain with
+      accounts: EMBEDDED.filter((w) => w.family === 'solana'),
+      walletsOwed,
+      ...over,
+    });
+
+  it('says the wallet is being made, and asks nothing, while one is on its way', async () => {
+    const server = api(made({ chainOptions: ['solana'] }));
+    portStore.set(owed('making'));
+    const host = await screen();
+    await settle();
+    expect(find(host, 'h1').textContent).toBe(en.signIn.done.title);
+    expect(host.textContent).toContain(en.signIn.passkey.making);
+    expect(asks(host)).toBe(false);
+    expect(host.querySelector('[data-ui="sign-in"]')).toBeNull();
+    // the API is not asked which chains may be picked while it would see one wallet
+    expect(server.count('GET', '/v1/me')).toBe(0);
+  });
+
+  it('gives a way forward when one could not be made: make it again, or sign out', async () => {
+    const server = api(made({ chainOptions: ['solana'] }));
+    const ensureWallets = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+    const signOut = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+    portStore.set(owed('failed', { ensureWallets, signOut }));
+    const host = await screen();
+    await settle();
+    expect(state(host)).toBe('no-wallet');
+    expect(host.textContent).toContain(en.signIn.failure.walletNotMade);
+    // never the pick, and the API is still not asked: one option would be an irreversible question
+    expect(asks(host)).toBe(false);
+    expect(host.querySelector('[role="group"]')).toBeNull();
+    expect(server.count('GET', '/v1/me')).toBe(0);
+
+    await click(button(host, en.signIn.done.retryWallet));
+    expect(ensureWallets).toHaveBeenCalledTimes(1);
+    await click(button(host, en.shell.signOut));
+    expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it('says it again, as an alert, when making it fails once more', async () => {
+    api(made());
+    const ensureWallets = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValue(toWalletError(new Error('the wallet could not be made')));
+    portStore.set(owed('failed', { ensureWallets }));
+    const host = await screen();
+    await settle();
+    expect(alert(host)).toBeNull();
+    await click(button(host, en.signIn.done.retryWallet));
+    await settle();
+    expect(alert(host)).toBe(en.signIn.failure.walletNotMade);
+  });
+
+  it('asks for the chain once both are there', async () => {
+    api(made());
+    portStore.set(owed('making'));
+    const host = await screen();
+    await settle();
+    expect(asks(host)).toBe(false);
+    await act(async () => portStore.set(signedInPort(EMBEDDED)));
+    await settle();
+    expect(asks(host)).toBe(true);
+    expect([...find(host, '[role="group"]').querySelectorAll('button')]).toHaveLength(2);
   });
 });
 

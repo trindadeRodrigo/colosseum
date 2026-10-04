@@ -137,6 +137,20 @@ export const isEmbedded = (clientType: string | null | undefined) =>
 const CHAIN_TYPE: Record<Chain, string> = { solana: 'solana', evm: 'ethereum' };
 
 /**
+ * The provider's answer when a wallet of that family is there already: nothing is left to make. Privy
+ * (3.46) throws a plain Error with these words and gives its code to its own event only, so the words
+ * are what is read; the code is read too, for a version that carries it on the error.
+ */
+export function walletAlreadyThere(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const { privyErrorCode, message } = error as { privyErrorCode?: unknown; message?: unknown };
+  return (
+    privyErrorCode === 'embedded_wallet_already_exists' ||
+    (typeof message === 'string' && /already has an embedded wallet/i.test(message))
+  );
+}
+
+/**
  * The families a person is owed a wallet of and has none yet. Someone who signed in with a passkey gets
  * one of each family, made here: the provider makes none by itself after a sign-in without its own
  * window. Someone who connected an outside wallet has their wallet, and none is made.

@@ -51,6 +51,7 @@ const LOADING: WebWalletPort = {
   problemKind: null,
   test: false,
   found: [],
+  walletsOwed: null,
   active: () => null,
   caps: () => ({ silent: false, batchSign: 1, signOnly: false }),
   network: () => null,

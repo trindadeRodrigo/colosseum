@@ -24,7 +24,7 @@ import {
   sameBytes,
 } from './bytes';
 import { solanaCluster, type WalletChains } from './chains';
-import type { EvmRequest, FoundWallet, SignInChoice, WalletDriver } from './driver';
+import type { EvmRequest, FoundWallet, SignInChoice, WalletDriver, WalletsOwed } from './driver';
 import { fail, toWalletError, WalletPortError } from './errors';
 
 /**
@@ -71,6 +71,12 @@ export interface WebWalletPort extends WalletPort {
    * passkey or use one, and which wallet. With no choice a passkey is used, not created.
    */
   signIn(method: 'passkey' | 'wallet', choice?: SignInChoice): Promise<void>;
+  /**
+   * A passkey sign-in owes the person a wallet of each family, and they are not all there: `making`
+   * while they are being made, `failed` when one could not be. The person is signed in (`userId` is
+   * theirs) and the status is `loading`, never `ready`: the chain is not asked for with one wallet.
+   */
+  readonly walletsOwed: WalletsOwed | null;
   /** Makes the wallets a passkey sign-in owes the person, when making them failed the first time. */
   ensureWallets(): Promise<void>;
   /** The chain as it is run here, or null before the wallet has loaded. */
@@ -310,6 +316,7 @@ export function createWalletPort(
     problemKind: problem ? (context.problemKind ?? 'setup') : null,
     test: driver.test,
     found: driver.found ?? [],
+    walletsOwed: problem ? null : (driver.walletsOwed ?? null),
     active,
     caps,
     network,

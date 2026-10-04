@@ -10,6 +10,7 @@ import {
   missingWallets,
   signInWithEvmWallet,
   signInWithSolanaWallet,
+  walletAlreadyThere,
 } from './sign-in-flows';
 import { type SignInAttempt, signInFailure } from './sign-in-view';
 import { buildConfigForTest } from './test/api-config';
@@ -303,6 +304,14 @@ describe('the wallets a passkey sign-in owes a person', () => {
       missingWallets([{ type: 'wallet', chainType: 'ethereum', walletClientType: null }]),
     ).toEqual([]);
   });
+
+  it('knows Privy’s answer that the wallet is there already, by the words it throws', () => {
+    // Privy 3.46: a plain Error; the code goes to its own event, not onto the error.
+    expect(walletAlreadyThere(new Error('User already has an embedded wallet.'))).toBe(true);
+    expect(walletAlreadyThere({ privyErrorCode: 'embedded_wallet_already_exists' })).toBe(true);
+    for (const other of [new Error('Failed to connect to wallet proxy'), null, 'already', {}])
+      expect(walletAlreadyThere(other)).toBe(false);
+  });
 });
 
 describe('the wallets found in the browser', () => {
@@ -411,6 +420,13 @@ describe('the port, for the sign-in screen', () => {
     expect(told.network('solana')?.provenance).toBe('mock');
     expect(told.network('robinhood')?.provenance).toBe('sandbox');
     expect(told.network('base')).toMatchObject({ on: false, provenance: 'sandbox' });
+  });
+
+  it('says when a wallet is still owed, and nothing when sign-in is off', () => {
+    expect(createWalletPort(idleDriver(), chains).walletsOwed).toBeNull();
+    const owed = { ...idleDriver(), status: 'loading' as const, walletsOwed: 'failed' as const };
+    expect(createWalletPort(owed, chains).walletsOwed).toBe('failed');
+    expect(createWalletPort(owed, chains, 'not set').walletsOwed).toBeNull();
   });
 
   it('makes no wallet when the driver has none to make, and none for nobody', async () => {

@@ -30,6 +30,8 @@ export type FoundWallet = {
  */
 export type SignInChoice = { create?: boolean; wallet?: string };
 
+export type WalletsOwed = 'making' | 'failed';
+
 export interface WalletDriver {
   /** True only for the throwaway wallet: it alone may be handed a mock transaction. */
   readonly test: boolean;
@@ -39,6 +41,12 @@ export interface WalletDriver {
   accounts: DriverAccount[];
   /** The outside wallets a person can sign in with here. Left out, there are none. */
   found?: FoundWallet[];
+  /**
+   * A passkey sign-in owes the person a wallet of each family. `making`: they are being made.
+   * `failed`: one could not be made, and `ensureWallets()` tries again. While it is either, the status
+   * is `loading`: nobody is `ready` with half their wallets. Null or left out: nothing is owed.
+   */
+  walletsOwed?: WalletsOwed | null;
   signIn(method: 'passkey' | 'wallet', choice?: SignInChoice): Promise<void>;
   signOut(): Promise<void>;
   /**

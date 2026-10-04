@@ -26,6 +26,7 @@ export function SignInScreen({ next = '/goal' }: { next?: string }) {
   const [arrived, setArrived] = useState(false);
   const [making, setMaking] = useState(false);
   const [notMade, setNotMade] = useState(false);
+  const [leaving, setLeaving] = useState(false);
 
   const settled = account.status === 'ready';
   useEffect(() => {
@@ -46,7 +47,22 @@ export function SignInScreen({ next = '/goal' }: { next?: string }) {
     }
   }
 
-  const signedIn = port.status === 'ready';
+  async function signOut() {
+    setLeaving(true);
+    try {
+      await port.signOut();
+    } catch {
+      // The bar says when signing out failed (AppNav); here the button comes back to rest.
+    } finally {
+      setLeaving(false);
+    }
+  }
+
+  // A passkey sign-in owes the person a wallet of each family. Until both are there the person is
+  // signed in and not ready: the chain is never asked for with one wallet.
+  const owed = port.walletsOwed;
+  const signedIn = port.status === 'ready' || owed !== null;
+  const noWallet = owed === 'failed' || (port.status === 'ready' && account.status === 'no-wallet');
   const labels = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.mockAnnounce };
   return (
     <div data-ui="sign-in-screen" data-account={account.status} className="flex flex-col gap-8">
@@ -59,14 +75,16 @@ export function SignInScreen({ next = '/goal' }: { next?: string }) {
         )}
       </header>
 
-      {/* After a sign-in the port loads once more while the wallet of a passkey is made. */}
-      {!signedIn && arrived && port.status === 'loading' ? (
+      {/* After a sign-in the port loads once more while the wallets of a passkey are made. */}
+      {owed === 'making' || (!signedIn && arrived && port.status === 'loading') ? (
         <LatticeStatus label={t.signIn.passkey.making} />
       ) : !signedIn ? (
         <SignIn onSignedIn={() => setArrived(true)} />
       ) : null}
 
-      {signedIn && account.status === 'loading' && <LatticeStatus label={t.chain.reading} />}
+      {port.status === 'ready' && account.status === 'loading' && (
+        <LatticeStatus label={t.chain.reading} />
+      )}
 
       {signedIn && account.status === 'needs-chain' && <ChainPick options={account.options} />}
 
@@ -81,19 +99,37 @@ export function SignInScreen({ next = '/goal' }: { next?: string }) {
         </Card>
       )}
 
-      {signedIn && account.status === 'no-wallet' && (
+      {/* The way forward when a wallet could not be made: make it again, or sign out. */}
+      {noWallet && (
         <Card as="section">
           <CardBody className="flex flex-col items-start gap-4">
-            <p className="max-w-(--tf-measure-body) text-body">{t.chain.noWallet}</p>
-            <Button
-              variant="primary"
-              busy={making}
-              busyLabel={t.signIn.passkey.making}
-              onClick={makeWallet}
+            {/* Said again, as an alert, when making it failed once more. */}
+            <p
+              role={owed === 'failed' && notMade ? 'alert' : undefined}
+              className="max-w-(--tf-measure-body) text-body"
             >
-              {t.signIn.done.retryWallet}
-            </Button>
-            {notMade && (
+              {owed === 'failed' ? t.signIn.failure.walletNotMade : t.chain.noWallet}
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Button
+                variant="primary"
+                busy={making}
+                busyLabel={t.signIn.passkey.making}
+                disabled={leaving}
+                onClick={makeWallet}
+              >
+                {t.signIn.done.retryWallet}
+              </Button>
+              <Button
+                busy={leaving}
+                busyLabel={t.shell.signingOut}
+                disabled={making}
+                onClick={signOut}
+              >
+                {t.shell.signOut}
+              </Button>
+            </div>
+            {notMade && owed !== 'failed' && (
               <p role="alert" className="flex items-start gap-1.5 text-body-sm text-destructive">
                 <StatusMark status="off-track" size={12} className="mt-1.5" />
                 <span>{t.signIn.failure.walletNotMade}</span>
