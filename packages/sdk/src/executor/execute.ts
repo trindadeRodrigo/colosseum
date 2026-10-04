@@ -10,6 +10,7 @@ import type {
   WalletErrorCode,
 } from '@colosseum/schemas';
 import { approvedSteps } from '../guard/approved';
+import { familyOf } from '../guard/context';
 import { GuardRefusal, isGuardRefusal } from '../guard/refusal';
 import { type Guarded, isGuarded } from '../guard/run';
 import type { ApprovedStep, GuardDeployments, GuardInput, PlanTerms } from '../guard/types';
@@ -29,6 +30,8 @@ import { walletFailure } from './wallet';
 
 /** What the executor needs of a wallet: the web's `WalletPort` fits as it is. */
 export type OrderSigner = {
+  /** The account that signs for a wallet family, or null when none is connected. */
+  active(family: 'solana' | 'evm'): { address: string } | null;
   caps(chain: ChainId): { signOnly: boolean };
   /** Signs and hands the signed transactions back, one per transaction given. Throws a `WalletError`. */
   sign(chain: ChainId, txs: BasketTx[]): Promise<string[]>;
@@ -199,6 +202,14 @@ export function makeExecute(guard: Guard) {
           `no deployment was given for ${chain ?? 'this order'}`,
         );
       steps = approvedSteps(order, deps.plan, deployment);
+      // The order is the wallet's own. An order that names another owner would have every address
+      // derived from that owner, so it is refused here, before the API is asked for anything.
+      const family = familyOf(chain);
+      if (signer.active(family)?.address !== order.owner[family])
+        throw new GuardRefusal(
+          'signer',
+          "the order's owner is not the account this wallet signs with",
+        );
     } catch (e) {
       if (!isGuardRefusal(e)) throw e;
       return { status: 'refused', order: seen, legId: e.legId, refusal: e };
@@ -333,7 +344,10 @@ export function makeExecute(guard: Guard) {
           // Not signed here, or signed and the bytes are gone: it is closed so the step can be built
           // again. On an EVM chain the rebuild shares its nonce, so only one of the two can land.
           const closed = await cancel(legId);
-          if (closed === 'closed') continue;
+          const after = seen.legs.find((l) => l.id === legId);
+          // Closed, and the order shows it: the step is built again at the top of the loop.
+          if (closed === 'closed' && !(after?.status === 'built' && after.attempt === leg.attempt))
+            continue;
           // It can still land (Solana: only time closes it), or the API would not say. Either way the
           // order is read again after a pause, and not for ever.
           const stop = await wait('in_flight');

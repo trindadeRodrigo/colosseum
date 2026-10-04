@@ -55,7 +55,11 @@ The browser reads `NEXT_PUBLIC_CHAIN_NETWORK_<CHAIN>` and the API reads `CHAIN_N
 
 Not done in this slot, and each has to be true first:
 
-1. Nothing in product code calls `port.sign()` or `port.send()` until the guard (AGT-1) has checked the bytes against the order. The port checks that a transaction is for this account and network and that the wallet signed what it was given. It does not know what the order was, so it cannot tell a deposit from a transfer to someone else.
+1. Nothing in product code calls `port.sign()` or `port.send()`. A screen signs through `execute(order, deps)` of `@colosseum/sdk` (AGT-1) and through nothing else: it runs the guard on the bytes of each step and asks the port only for what the guard passed. The port checks that a transaction is for this account and network and that the wallet signed what it was given. It does not know what the order was, so it cannot tell a deposit from a transfer to someone else: the guard does. The port is the executor's signer as it is (`active`, `caps`, `sign`, `send`), and an order whose owner is not the port's active account is refused before anything is built. What the screen hands the executor beside it:
+   - `order`: the order exactly as the review screen showed it, kept from that moment. It is never read again from the API to decide what a step may do.
+   - `deployments`: for each chain, what the guard derives addresses from (the router, the cash token, each asset's address and, on Solana, its token program; on EVM the factory and the beacon), or that the chain runs on the mock. From this app's own configuration, never from the API.
+   - `plan`: the plan's number (`basketIdOfPlan(proposalId)`) and its targets, as the plan screen showed them; `consents`: what the person ticked on the review screen.
+   - `signed`: somewhere that outlives a reload (session storage), so a signature made and not yet reported is reported again and not asked for twice.
 2. The throwaway wallet's `MOCK` label is a word in a border. It needs the hatch plate from BRAND-1 (`mock-plate.md`).
 3. Privy's own window has rounded corners and a blurred backdrop, which `STYLE.md` forbids. The way out is Privy's headless hooks (`useLoginWithPasskey`, `useSignupWithPasskey`, `useLoginWithSiwe`, `useLoginWithSiws`) behind the same `signIn()`.
 4. `<SignIn>` is mounted on `/dev/wallet` only. No production page shows it yet.

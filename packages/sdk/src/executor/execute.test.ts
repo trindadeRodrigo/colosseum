@@ -25,6 +25,7 @@ function walletOf(w: MockWorld, signOnly = true) {
   const asked: BasketTx[] = [];
   return {
     asked,
+    active: vi.fn((): { address: string } | null => ({ address: w.owner })),
     caps: () => ({ signOnly }),
     sign: vi.fn(async (_chain: ChainId, txs: BasketTx[]) => {
       asked.push(...txs);
@@ -375,6 +376,12 @@ describe('the executor: what was approved is fixed before the API is asked anyth
     }
     const none = await execute(order, { ...s.deps, deployments: {} });
     expect(none.status === 'refused' && none.refusal.code).toBe('unsupported');
+    // An order for another account than the wallet's, and a wallet with no account at all.
+    for (const account of [{ address: s.w.stranger }, null]) {
+      s.wallet.active.mockReturnValueOnce(account);
+      const other = await execute(order, s.deps);
+      expect(other.status === 'refused' && other.refusal.code).toBe('signer');
+    }
     expect(s.double.calls).toEqual([]);
     expect(s.wallet.sign).not.toHaveBeenCalled();
   });
@@ -696,5 +703,24 @@ describe('the executor: what the API can answer', () => {
     expect(result).toMatchObject({ status: 'waiting', why: 'stopped', legId: order.legs[1]?.id });
     expect(result.order.legs[0]?.status).toBe('confirmed');
     expect(s.wallet.sign).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the executor: an API that never lets go', () => {
+  it('stops waiting on an attempt the API says it closed and still shows as built', async () => {
+    const s = scene('robinhood');
+    const order = await s.double.buy(100);
+    const first = order.legs[0]?.id as string;
+    await s.double.api.buildLeg(order.id, first);
+    const stuck = await s.double.api.getOrder(order.id);
+    const api: OrderApi = {
+      ...s.double.api,
+      getOrder: async () => stuck,
+      cancelLeg: async () => stuck,
+    };
+    const result = await execute(order, { ...s.deps, api, patience: { waitTries: 4 } });
+    expect(result).toMatchObject({ status: 'waiting', why: 'in_flight', legId: first });
+    expect(s.slept).toHaveLength(4);
+    expect(s.wallet.sign).not.toHaveBeenCalled();
   });
 });

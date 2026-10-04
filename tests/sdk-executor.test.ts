@@ -117,6 +117,7 @@ async function scene(chain: HomeChain): Promise<Scene> {
       api,
       // A wallet made in the app: it signs what it is handed and gives the bytes back.
       signer: {
+        active: () => ({ address: chain === 'solana' ? who.solana : who.evm }),
         caps: () => ({ signOnly: true }),
         sign: async (_chain, txs) => {
           asked.push(...txs);

@@ -30,6 +30,8 @@ export function approvedSteps(
   const legs = [...order.legs].sort((a, b) => a.seq - b.seq);
   if (new Set(legs.map((l) => l.seq)).size !== legs.length)
     throw refuse('two steps of the order have the same place');
+  if (new Set(legs.map((l) => l.id)).size !== legs.length)
+    throw refuse('two steps of the order have the same id');
 
   const tradesOf = (leg: Leg): ApprovedTrade[] => {
     if (leg.expected.length !== leg.trades.length)

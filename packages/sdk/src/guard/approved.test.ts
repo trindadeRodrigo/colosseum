@@ -92,6 +92,7 @@ describe('the approved steps of an order', () => {
       ['a step on another chain', { legs: [approve, { ...create, chain: 'base' }] }, 'order'],
       ['a step of another order', { legs: [approve, { ...create, orderId: 'x' }] }, 'order'],
       ['two steps in one place', { legs: [approve, { ...create, seq: 0 }] }, 'order'],
+      ['two steps with one id', { legs: [approve, { ...create, id: approve.id }] }, 'order'],
       [
         'an approval that states no cash',
         { legs: [{ ...approve, cashRaw: undefined }, create] },
