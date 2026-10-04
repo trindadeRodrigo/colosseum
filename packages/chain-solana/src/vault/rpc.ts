@@ -5,14 +5,19 @@ import {
   type Commitment,
   type GetBalanceApi,
   type GetBlockHeightApi,
+  type GetLatestBlockhashApi,
   type GetMinimumBalanceForRentExemptionApi,
   type GetMultipleAccountsApi,
   type GetProgramAccountsApi,
+  type GetRecentPrioritizationFeesApi,
   type GetSignatureStatusesApi,
+  type GetSignaturesForAddressApi,
   type GetTransactionApi,
   getBase58Decoder,
   getBase64Encoder,
   type Rpc,
+  type SendTransactionApi,
+  type SimulateTransactionApi,
 } from '@solana/kit';
 
 // The RPC seam. The caller makes the client (`createSolanaRpc(url)`) and hands it in; nothing here knows
@@ -27,6 +32,25 @@ export type VaultRpc = Rpc<
     GetProgramAccountsApi &
     GetSignatureStatusesApi &
     GetTransactionApi
+>;
+
+/**
+ * What the builders and the probe call on top of the reads: a blockhash, a simulation, the recent
+ * priority fees, a send, and a signer's recent signatures. Still no URL here and no key.
+ */
+export type VaultWriteRpc = Rpc<
+  GetBalanceApi &
+    GetBlockHeightApi &
+    GetMinimumBalanceForRentExemptionApi &
+    GetMultipleAccountsApi &
+    GetProgramAccountsApi &
+    GetSignatureStatusesApi &
+    GetTransactionApi &
+    GetLatestBlockhashApi &
+    SimulateTransactionApi &
+    GetRecentPrioritizationFeesApi &
+    SendTransactionApi &
+    GetSignaturesForAddressApi
 >;
 
 export type RawAccount = { address: Address; owner: Address; lamports: bigint; data: Uint8Array };

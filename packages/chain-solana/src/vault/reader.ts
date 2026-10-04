@@ -12,7 +12,6 @@ import {
   FundingNeed,
   type Holding,
   type Price,
-  type Provenance,
   Recipe,
   SolanaAddress,
   type TxStatus,
@@ -84,7 +83,9 @@ import {
   type MintInfo,
   multiplierAt,
   scheduledMultiplier,
+  TOKEN_PROGRAM,
 } from './tokens';
+import { unlistedAssetId } from './unlisted';
 
 // The read side of the Solana adapter (DESIGN-VAULT 3.2, ADS-1). Everything is read from the chain at
 // the moment it is asked for: there is no indexer and no cache of balances.
@@ -215,13 +216,19 @@ async function guarded<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * A token as a balance is read and shown: a listed asset, or one the app does not list, which a vault
+ * can still hold a line of (a shared portfolio's author put it there) and is shown under its mint.
+ */
+type Held = { id: AssetId; address: string; decimals: number };
+
 /** What every read of vaults and wallets starts from, taken in one call so it is one moment. */
 type Snapshot = {
   onchain: ConfigAccount;
   clock: ClusterClock;
   /** The program's asset list, or null where it is not initialised. */
   registry: AssetRegistryAccount | null;
-  /** By mint address, for every listed asset. */
+  /** By mint address, for every listed asset, and for each unlisted one a read has needed. */
   mints: Map<string, MintInfo>;
   /** The other accounts asked for in the same call, in order. */
   extra: (RawAccount | null)[];
@@ -331,7 +338,7 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
    * A frozen account's balance is still the holder's and is reported; `frozen` says it cannot move.
    */
   async function balances(
-    pairs: { holder: Address; asset: BasketAsset }[],
+    pairs: { holder: Address; asset: Held }[],
     snap: Snapshot,
   ): Promise<{ amount: bigint; frozen: boolean }[]> {
     return (await balancesAnd(pairs, [], snap)).amounts;
@@ -339,7 +346,7 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
 
   /** As `balances`, with `others` read in the same call and handed back as they are. */
   async function balancesAnd(
-    pairs: { holder: Address; asset: BasketAsset }[],
+    pairs: { holder: Address; asset: Held }[],
     others: Address[],
     snap: Snapshot,
   ): Promise<{ amounts: { amount: bigint; frozen: boolean }[]; others: (RawAccount | null)[] }> {
@@ -374,16 +381,14 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
     return decodeRecipe(account.data);
   }
 
-  /** The listed asset a shared portfolio's line names. The program lists mints; the ids are the caller's. */
-  function assetOfComponent(recipe: Address, mint: string): BasketAsset {
-    return (
-      byMint.get(mint) ??
-      refuse(
-        'MintNotAccepted',
-        `the shared portfolio ${recipe} holds ${mint}, which is not a listed asset`,
-      )
-    );
-  }
+  /**
+   * The id of the asset a line names: the caller's id for a listed mint, and for any other the id made
+   * from the mint. An author can put a token in a shared portfolio that this app does not list; it is
+   * shown as a token the app does not know, never refused, or one portfolio would stop every read of
+   * every vault that follows it.
+   */
+  const idOfMint = (mint: string): AssetId =>
+    byMint.get(mint)?.id ?? unlistedAssetId(mint as Address);
 
   /** One version of a shared portfolio in the shape every chain answers with. */
   function recipeOf(address: Address, account: RecipeAccount, version: RecipeVersion): Recipe {
@@ -403,7 +408,7 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
       effectiveAt: Number(version.effectiveAt),
       components: version.components.map((c) => ({
         kind: 'asset',
-        asset: assetOfComponent(address, c.mint).id,
+        asset: idOfMint(c.mint),
         weightBps: c.weightBps,
       })),
       metaHash: hex(version.metaHash),
@@ -425,13 +430,11 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
     return {
       version: next.version,
       effectiveAt: Number(next.effectiveAt),
-      newAssets: next.components
-        .filter((c) => !accepted.has(c.mint))
-        .map((c) => assetOfComponent(vault.recipe, c.mint).id),
+      newAssets: next.components.filter((c) => !accepted.has(c.mint)).map((c) => idOfMint(c.mint)),
     };
   }
 
-  function holding(asset: BasketAsset, raw: bigint, snap: Snapshot): Holding {
+  function holding(asset: Held, raw: bigint, snap: Snapshot): Holding {
     const mint = snap.mints.get(asset.address);
     if (!mint) return refuse('Unknown', `${asset.id} has no mint`);
     const multiplier = multiplierString(multiplierAt(mint, snap.clock.unixTimestamp));
@@ -456,21 +459,57 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
   /**
    * The assets whose token accounts a vault is read for: cash, then its targets in the program's
    * order, then every other listed asset. A token the vault holds without a target on it (sent in from
-   * outside, or left over when the targets changed) is still the owner's to see and to withdraw.
+   * outside, or left over when the targets changed) is still the owner's to see and to withdraw. A
+   * target on a mint the app does not list is read under the id made from its mint, with the decimals
+   * of its mint: `snap.mints` has it (`addUnlistedMints`).
    */
-  function vaultAssets(address: Address, vault: VaultAccount): BasketAsset[] {
+  function vaultAssets(address: Address, vault: VaultAccount, snap: Snapshot): Held[] {
     if (!cash) return refuse('Unknown', 'no cash token');
-    const targets = vault.positions.map((p) => {
+    const targets = vault.positions.map((p): Held => {
       const asset = byMint.get(p.mint);
-      if (!asset || asset.id === cash.id)
-        return refuse(
-          'MintNotAccepted',
-          `vault ${address} has a target on ${p.mint}, which is ${asset ? 'the cash token' : 'not a listed asset'}`,
-        );
-      return asset;
+      // The program refuses the cash mint as a target: a vault that has one is not one it wrote.
+      if (asset?.id === cash.id)
+        return refuse('Unknown', `vault ${address} has a target on the cash token`);
+      if (asset) return asset;
+      const mint = snap.mints.get(p.mint);
+      return { id: unlistedAssetId(p.mint), address: p.mint, decimals: mint?.decimals ?? 0 };
     });
     const others = assets.filter((a) => a.id !== cash.id && !targets.includes(a));
     return [cash, ...targets, ...others];
+  }
+
+  /**
+   * Reads the mints of the vaults' targets that the app does not list into the snapshot. A mint that is
+   * gone (a Token-2022 mint can be closed once nothing of it is left) is read as the program's list has
+   * it, holding nothing.
+   */
+  async function addUnlistedMints(vaults: VaultAccount[], snap: Snapshot): Promise<void> {
+    const unlisted = [...new Set(vaults.flatMap((v) => v.positions.map((p) => p.mint)))].filter(
+      (mint) => !snap.mints.has(mint),
+    );
+    if (unlisted.length === 0) return;
+    const accounts = await getAccounts(rpc, unlisted, commitment);
+    unlisted.forEach((mint, i) => {
+      const account = accounts[i];
+      const entry = snap.registry?.assets.find((e) => e.mint === mint);
+      let info: MintInfo | null = null;
+      if (account && isTokenProgram(account.owner)) {
+        try {
+          info = decodeMint(account.owner, account.data);
+        } catch {
+          info = null;
+        }
+      }
+      snap.mints.set(
+        mint,
+        info ?? {
+          tokenProgram: TOKEN_PROGRAM,
+          decimals: entry?.decimals ?? 0,
+          scaledUiAmount: null,
+          hookProgram: null,
+        },
+      );
+    });
   }
 
   /** The price accounts the asset list names, each once. */
@@ -580,7 +619,11 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
     withPrices = false,
   ): Promise<{ states: VaultState[]; prices: Map<string, RawAccount | null> }> {
     const observedAt = now().toISOString();
-    const lists = found.map(({ address, vault }) => vaultAssets(address, vault));
+    await addUnlistedMints(
+      found.map(({ vault }) => vault),
+      snap,
+    );
+    const lists = found.map(({ address, vault }) => vaultAssets(address, vault, snap));
     // The shared portfolios these vaults follow, each once, read in the same call as the balances.
     const followed = [
       ...new Set(found.map(({ vault }) => vault.recipe).filter((r) => r !== ZERO_ADDRESS)),
@@ -637,8 +680,10 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
     snap: Snapshot,
     prices: Map<string, RawAccount | null>,
   ): KeeperPosition {
-    const asset = byMint.get(position.mint);
-    if (!asset) return refuse('MintNotAccepted', `${position.mint} is not a listed asset`);
+    const asset = byMint.get(position.mint) ?? {
+      id: unlistedAssetId(position.mint),
+      address: position.mint,
+    };
     const { entry, account } = listed(position.mint, snap, prices);
     const now = snap.clock.unixTimestamp;
     const reference = entry
