@@ -78,8 +78,11 @@ function AccountControl() {
   const { account } = useAccount();
   const [busy, setBusy] = useState(false);
 
-  // Before the wallet has loaded there is nothing to say: an empty box of the same height.
-  if (port.status === 'loading') return <span aria-hidden="true" className="h-8 min-w-20" />;
+  // Before the wallet has loaded there is nothing to say: an empty box of the same height. A person
+  // who is signed in while it still loads (their wallets are being made, or could not be) is known by
+  // then, and always has the way out: a wallet that never arrives must not hold them here.
+  if (port.status === 'loading' && port.userId === null)
+    return <span aria-hidden="true" className="h-8 min-w-20" />;
   if (port.status === 'signed-out')
     return (
       <Link href="/sign-in" className={buttonClass({ size: 'dense' })}>

@@ -147,6 +147,34 @@ describe('who is signed in, in the bar', () => {
     expect(account.textContent).toBe(`${en.signOut}${en.signingOut}`);
   });
 
+  it('says nothing about anyone before the wallet has loaded', async () => {
+    portStore.set(fakePort({ status: 'loading' }));
+    const host = await shell();
+    expect(host.querySelector('[data-ui="account"]')).toBeNull();
+    expect(host.querySelector('header a[href="/sign-in"]')).toBeNull();
+  });
+
+  it.each(['making', 'failed'] as const)(
+    'always offers the way out to someone signed in whose wallets are %s',
+    async (walletsOwed) => {
+      const signOut = vi.fn(async () => {
+        portStore.set(fakePort());
+      });
+      portStore.set(
+        fakePort({ status: 'loading', userId: 'did:privy:test', walletsOwed, signOut }),
+      );
+      const host = await shell();
+      await settle();
+      const account = find(host, '[data-ui="account"]');
+      // no address: there is no chain, and no wallet to show for one
+      expect(account.textContent).toBe(`${en.signOut}${en.signingOut}`);
+      await click(find(account, 'button'));
+      await settle();
+      expect(signOut).toHaveBeenCalledTimes(1);
+      expect(find(host, 'header a[href="/sign-in"]').textContent).toBe(en.signIn);
+    },
+  );
+
   it('marks the throwaway wallet of development with the hatch and the word MOCK', async () => {
     portStore.set(signedInPort(PHANTOM, { test: true }, 'mock'));
     const host = await shell();
