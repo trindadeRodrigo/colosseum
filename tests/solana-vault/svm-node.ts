@@ -35,6 +35,12 @@ export const binary = (name: string) => join(REPO_ROOT, 'target', 'deploy', name
 /** True when both programs are built (`anchor build --no-idl -- --tools-version v1.54`). */
 export const PROGRAMS_BUILT =
   existsSync(binary('basket.so')) && existsSync(binary('mock_router.so'));
+// Where the programs are built for the purpose (the `program` workflow), a missing build is a failure,
+// not a reason to skip.
+if (process.env.SOLANA_PROGRAMS_REQUIRED === '1' && !PROGRAMS_BUILT)
+  throw new Error(
+    'SOLANA_PROGRAMS_REQUIRED is set and target/deploy holds no basket.so or mock_router.so',
+  );
 
 export async function programDataAddress(program: Address): Promise<Address> {
   const [pda] = await getProgramDerivedAddress({

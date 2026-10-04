@@ -1,11 +1,16 @@
 name: program
 
-# The Solana programs: build, the LiteSVM suite, the committed interface files, clippy.
+# The Solana programs: build, the LiteSVM suite, the committed interface files, clippy. Then the
+# Solana adapter held to the adapter contract on the programs just built (tests/solana-vault), which
+# the `ci` job skips: it has no built programs.
 # The tools and why each version is what it is: programs/README.md. A bump there is a bump of `env` here.
 on:
   pull_request:
     paths:
       - 'programs/**'
+      - 'packages/chain-solana/**'
+      - 'packages/chain-mock/src/contract.ts'
+      - 'tests/solana-vault/**'
       - 'idl/**'
       - 'Anchor.toml'
       - 'Cargo.toml'
@@ -14,6 +19,9 @@ on:
   push:
     paths:
       - 'programs/**'
+      - 'packages/chain-solana/**'
+      - 'packages/chain-mock/src/contract.ts'
+      - 'tests/solana-vault/**'
       - 'idl/**'
       - 'Anchor.toml'
       - 'Cargo.toml'
@@ -54,7 +62,9 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: programs/tests/pnpm-lock.yaml
+          cache-dependency-path: |
+            programs/tests/pnpm-lock.yaml
+            pnpm-lock.yaml
 
       - name: Rust toolchains
         run: |
@@ -121,6 +131,15 @@ jobs:
 
       - name: LiteSVM tests
         run: pnpm test:program
+
+      # The adapter contract and the builders' sizes and shape, in LiteSVM on the programs built above.
+      # SOLANA_PROGRAMS_REQUIRED makes a missing build fail them instead of skipping them.
+      - name: The Solana adapter on the built programs
+        env:
+          SOLANA_PROGRAMS_REQUIRED: '1'
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec vitest run tests/solana-vault/contract.test.ts tests/solana-vault/builders.test.ts
 
       - name: The committed interface files match the programs
         run: |
