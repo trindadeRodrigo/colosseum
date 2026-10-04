@@ -401,6 +401,33 @@ describe('keeper_leg', () => {
       );
     });
 
+    // No instruction takes a token off the asset list, so only a test can show a vault holding
+    // one that is not on it: the entry's mint is overwritten in the account.
+    const offTheList = async (mint: TestMint) => {
+      const address = await assetsAddress();
+      const account = w.svm.getAccount(address);
+      if (!account.exists) throw new Error('no asset list');
+      const data = new Uint8Array(account.data);
+      const key = getAddressEncoder().encode(mint.address);
+      for (let at = 137; at + 96 <= data.length; at += 96)
+        if (key.every((byte, i) => data[at + i] === byte))
+          data.set(getAddressEncoder().encode(w.stranger.address), at);
+      w.svm.setAccount({ ...account, data });
+    };
+
+    it('refuses an asset that is not on the asset list, position or not', async () => {
+      await offTheList(w.stock);
+      expectError(await buy(40), ERR.MintNotAccepted);
+      expect(held()).toEqual(untouched);
+    });
+
+    it('refuses a leg in a vault that holds an asset that is not on the asset list', async () => {
+      await ownerBuys(10, w.other);
+      await offTheList(w.other);
+      expectError(await buy(40), ERR.AssetNotPriced);
+      expect(balance(w.svm, w.vaultStock)).toBe(0n);
+    });
+
     it('reads the asset list at its own address only', async () => {
       // A copy of the list at another address, as only a test can make.
       const real = w.svm.getAccount(await assetsAddress());

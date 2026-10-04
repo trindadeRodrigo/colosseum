@@ -598,6 +598,45 @@ const RULES = [
     fails: 'holds sixty-four tokens and no more',
   },
 
+  {
+    rule: 'upsert_asset: a price range has its ceiling above its floor',
+    file: 'src/instructions/assets.rs',
+    find: requireLine('            ', 'args\\.min_price < args\\.max_price'),
+    replace: '',
+    fails: 'needs a ceiling above its floor',
+  },
+  {
+    rule: 'upsert_asset: the ceiling of a range is at most twice its floor',
+    file: 'src/instructions/assets.rs',
+    find: requireLine(
+      '            ',
+      'args\\.max_price <= args\\.min_price\\.saturating_mul\\(MAX_PRICE_RANGE_RATIO\\)',
+    ),
+    replace: '',
+    fails: 'is no wider than a ceiling of twice the floor',
+  },
+  {
+    rule: 'upsert_asset: twice the largest floor is still a ceiling',
+    file: 'src/instructions/assets.rs',
+    find: 'args.min_price.saturating_mul(MAX_PRICE_RANGE_RATIO)',
+    replace: 'args.min_price.wrapping_mul(MAX_PRICE_RANGE_RATIO)',
+    fails: 'is no wider than a ceiling of twice the floor',
+  },
+  {
+    rule: 'upsert_asset: an asset the keeper does not trade needs no range',
+    file: 'src/instructions/assets.rs',
+    find: 'if args.min_price != 0 || args.max_price != 0 {',
+    replace: 'if true {',
+    fails: 'may be left out on an asset the keeper does not trade',
+  },
+  {
+    rule: "upsert_asset: the keeper's switch needs a price range",
+    file: 'src/instructions/assets.rs',
+    find: requireLine('        ', 'args\\.flags & ASSET_KEEPER == 0 \\|\\| args\\.max_price != 0'),
+    replace: '',
+    fails: 'stays off for an asset with no price range',
+  },
+
   // ---- the shared-portfolio registry ----
   {
     rule: 'publish_recipe: the address is derived from the creator',
@@ -1423,6 +1462,41 @@ const RULES = [
 
   // ---- sync_balances ----
   {
+    rule: 'sync_balances: the owner or the keeper signs',
+    file: 'src/instructions/sync_balances.rs',
+    find: SIGNER('signer'),
+    replace: UNSIGNED('signer'),
+    fails: 'sync_balances needs that key to sign',
+  },
+  {
+    rule: 'sync_balances: nobody but the owner and the keeper',
+    file: 'src/instructions/sync_balances.rs',
+    find: '            check_keeper(&signer, &ctx.accounts.vault, &ctx.accounts.config)?;\n',
+    replace: '',
+    fails: 'is not for anyone else: not the guardian, the admin or a stranger',
+  },
+  {
+    rule: 'sync_balances: the owner may, keeper or not',
+    file: 'src/instructions/sync_balances.rs',
+    find: 'if signer != ctx.accounts.vault.owner {',
+    replace: 'if true {',
+    fails: "records what the vault's own token accounts hold, for its owner or its keeper",
+  },
+  {
+    rule: 'sync_balances: the keeper is read from the real Config',
+    file: 'src/instructions/sync_balances.rs',
+    find: CONFIG_PINNED,
+    replace: '',
+    fails: 'sync_balances refuses a forged Config that names the signer as keeper',
+  },
+  {
+    rule: 'sync_balances: an account that is not a token account is refused, not passed over',
+    file: 'src/instructions/sync_balances.rs',
+    find: 'let token = token_view(account).ok_or(BasketError::AccountTampered)?;',
+    replace: 'let Some(token) = token_view(account) else { continue };',
+    fails: 'reads only the one token account the vault uses for a mint',
+  },
+  {
     rule: 'sync_balances: the token account belongs to the vault',
     file: 'src/instructions/sync_balances.rs',
     find: requireLine('            ', 'token\\.owner == vault_key'),
@@ -1559,6 +1633,14 @@ const RULES = [
     find: /\.position\(&asset_mint\)\s+\.ok_or/,
     replace: '.position(&asset_mint).or(self.vault.positions.first()).ok_or',
     fails: 'refuses a token that is not one of the positions, listed or not',
+  },
+
+  {
+    rule: 'keeper_leg: the asset is on the asset list',
+    file: 'src/instructions/keeper_leg.rs',
+    find: /\.find\(&asset_mint\)\s+\.ok_or\(BasketError::MintNotAccepted\)\?;/,
+    replace: '.find(&asset_mint).or(registry.assets.first()).ok_or(BasketError::MintNotAccepted)?;',
+    fails: 'refuses an asset that is not on the asset list, position or not',
   },
 
   // ---- keeper_leg: the asset's mint, the market, the cooldown ----
@@ -1817,8 +1899,73 @@ const RULES = [
     fails: 'refuses a price too far over its average',
   },
   {
+    rule: 'price: the average is read from the entry the asset names for it',
+    file: 'src/price.rs',
+    find: 'read_entry(prices, entry.twap_index)?',
+    replace: 'read_entry(prices, entry.price_index)?',
+    fails: 'refuses a price too far under its average',
+  },
+  {
+    rule: 'price: an average too far from the price to compare is refused',
+    file: 'src/price.rs',
+    find: '.is_some_and(|(distance, allowed)| distance <= allowed)',
+    replace: '.map_or(true, |(distance, allowed)| distance <= allowed)',
+    fails: 'refuses an average so far from the price that the two cannot be compared',
+  },
+  {
+    rule: "price: the price is held to the asset's range",
+    file: 'src/price.rs',
+    find: '    check_range(&price, entry.min_price, entry.max_price)?;\n',
+    replace: '',
+    fails: 'refuses a price and its average that are both twice the pool price',
+  },
+  {
+    rule: 'range: no price under the floor',
+    file: 'src/price.rs',
+    find: requireLine('    ', 'scaled >= \\(min_price as u128\\) \\* unit'),
+    replace: '',
+    fails: 'takes a price at the floor and at the ceiling, and none past either',
+  },
+  {
+    rule: 'range: no price over the ceiling',
+    file: 'src/price.rs',
+    find: requireLine('    ', 'scaled <= \\(max_price as u128\\) \\* unit'),
+    replace: '',
+    fails: 'takes a price at the floor and at the ceiling, and none past either',
+  },
+  {
+    rule: "range: read against the price's own number of decimal places",
+    file: 'src/price.rs',
+    find: 'let unit = 10u128.pow(price.exponent);',
+    replace: 'let unit = 10u128.pow(8);',
+    fails: 'reads the range against a price with another number of decimal places',
+  },
+  {
+    rule: 'valuation: a position that is not on the asset list stops the leg',
+    file: 'src/price.rs',
+    find: /let entry = registry\s+\.find\(&position\.mint\)\s+\.ok_or\(BasketError::AssetNotPriced\)\?;/,
+    replace: 'let Some(entry) = registry.find(&position.mint) else { continue };',
+    fails: 'refuses a leg in a vault that holds an asset that is not on the asset list',
+  },
+  {
+    rule: 'valuation: every position the vault holds something of is held to its reference',
+    file: 'src/price.rs',
+    find: 'let price = reference(prices, prices_key, registry, entry, config, now)?;',
+    replace:
+      'let price = read_entry(prices, entry.price_index).map(|p| Reference { value: p.value, exponent: p.exponent })?;',
+    fails: 'holds every asset the vault has something of to it, not only the one traded',
+  },
+  {
+    rule: 'valuation: a vault past the largest value is refused',
+    file: 'src/price.rs',
+    find: requireLine('    ', 'total <= MAX_VAULT_VALUE'),
+    replace: '',
+    fails: 'is refused before the trade, and one at exactly that value is traded',
+  },
+  {
     rule: 'valuation: what the vault holds of its other positions counts',
     file: 'src/price.rs',
+    within: 'pub fn value_of_others(',
     find: '    Ok(total)\n',
     replace: '    Ok(0)\n',
     fails: 'counts what the vault holds of its other positions in the weight',
@@ -1930,8 +2077,8 @@ const RULES = [
   {
     rule: 'value: what came in is worth what went out, less the tolerance',
     file: 'src/checks.rs',
-    find: '.is_some_and(|(received, floor)| received >= floor)',
-    replace: '.is_some()',
+    find: 'received_value * BPS as u128 >= floor',
+    replace: 'true',
     fails: 'refuses a purchase at a price worse than the tolerance',
   },
   {
@@ -1944,7 +2091,7 @@ const RULES = [
   {
     rule: 'keeper_leg: the trade moves toward the target',
     file: 'src/instructions/keeper_leg.rs',
-    find: '        check_toward_target(before.buying, asset_value, vault_value, before.target_bps)?;\n',
+    find: '        check_toward_target(before.buying, asset_value, vault_before, before.target_bps)?;\n',
     replace: '',
     fails: 'does not buy an asset that is at its target or over it',
   },
@@ -1998,17 +2145,87 @@ const RULES = [
     fails: 'may end a sale anywhere inside the band under the target, and not past it',
   },
   {
+    rule: 'keeper_leg: a leg ends no further from its target than it began',
+    file: 'src/instructions/keeper_leg.rs',
+    find: / {8}check_no_further\([^;]+;\n/,
+    replace: '',
+    fails: 'refuses a leg that crosses the target and ends further from it, inside the band',
+  },
+  {
+    rule: 'distance: as far on the other side of the target is not further',
+    file: 'src/checks.rs',
+    find: /\* vault_before\s+<= off\(/,
+    replace: '* vault_before < off(',
+    fails: 'refuses a leg that crosses the target and ends further from it, inside the band',
+  },
+  {
+    rule: 'distance: measured under the target too',
+    file: 'src/checks.rs',
+    find: 'weight.abs_diff(target)',
+    replace: 'weight.saturating_sub(target)',
+    fails: 'refuses a leg that crosses the target and ends further from it, inside the band',
+  },
+  {
+    rule: 'distance: measured over the target too',
+    file: 'src/checks.rs',
+    find: 'weight.abs_diff(target)',
+    replace: 'target.saturating_sub(weight)',
+    fails: 'stops a stolen key bouncing an asset between the edges of its band',
+  },
+  {
+    rule: 'keeper_leg: a leg that spends nothing is refused',
+    file: 'src/instructions/keeper_leg.rs',
+    find: requireLine('        ', 'spent > 0'),
+    replace: '',
+    fails: 'is not used up by a leg of nothing: a zero amount is refused',
+  },
+  {
+    rule: 'keeper_leg: the vault is held to the largest value before the trade',
+    file: 'src/instructions/keeper_leg.rs',
+    find: 'let vault_before = vault_value(before.others, asset_value, cash_held)?;',
+    replace: 'let vault_before = before.others + asset_value + cash_held as u128;',
+    fails: 'is refused before the trade, and one at exactly that value is traded',
+  },
+  {
+    rule: 'keeper_leg: the vault is held to the largest value after the trade',
+    file: 'src/instructions/keeper_leg.rs',
+    find: 'let vault_after = vault_value(before.others, asset_value_after, cash_after)?;',
+    replace: 'let vault_after = before.others + asset_value_after + cash_after as u128;',
+    fails: 'is refused after the trade, when what came in takes it past',
+  },
+  {
+    rule: "keeper_leg: what is left of the week's losses is added to the leg's",
+    file: 'src/instructions/keeper_leg.rs',
+    find: 'let loss_used = decayed_loss(vault.loss_accum, vault.loss_ts, now) as u128 + loss;',
+    replace: 'let loss_used = loss;',
+    fails: 'adds the losses of the week up, across assets',
+  },
+  {
+    rule: 'loss cap: a counter older than seven days reads nothing',
+    file: 'src/checks.rs',
+    find: '.clamp(0, LOSS_WINDOW_S)',
+    replace: '.max(0)',
+    fails: 'reads nothing of a counter last written a month ago',
+  },
+  {
+    rule: 'loss cap: a counter stamped ahead of the clock reads no more than it holds',
+    file: 'src/checks.rs',
+    find: '.clamp(0, LOSS_WINDOW_S)',
+    replace: '.min(LOSS_WINDOW_S)',
+    fails: 'reads a counter stamped ahead of the clock in full, and no more',
+  },
+  {
     rule: 'keeper_leg: a leg that loses is held to the weekly cap',
     file: 'src/instructions/keeper_leg.rs',
-    find: '            check_loss_cap(loss_used, vault_value, accounts.config.loss_cap_bps)?;\n',
+    find: '            check_loss_cap(loss_used, vault_before, accounts.config.loss_cap_bps)?;\n',
     replace: '',
     fails: 'refuses a leg whose loss takes the week past the cap',
   },
   {
     rule: 'loss cap: the losses of the week stay within the cap',
     file: 'src/checks.rs',
-    find: '.is_some_and(|(used, cap)| used <= cap)',
-    replace: '.is_some()',
+    find: 'used <= cap',
+    replace: 'true',
     fails: 'refuses a leg whose loss takes the week past the cap',
   },
   {
@@ -2122,15 +2339,17 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
 const baseline = runSuite();
 if (baseline.failed.length) throw new Error('the suite must pass before any rule is removed');
 // Every rule names a test that exists, and every edit finds its text, before anything is built.
+// All the rows that do not are listed at once.
+const unsound = [];
 for (const { rule, file, within, find, fails, cannotBite } of selected) {
   if (!cannotBite && !baseline.all.some((name) => name.includes(fails)))
-    throw new Error(`${rule}: no test is named "${fails}"`);
+    unsound.push(`${rule}: no test is named "${fails}"`);
   const source = readFileSync(join(PROGRAM, file), 'utf8');
   const [from, to] = scope(source, within);
   const matches = occurrences(source.slice(from, to), find);
-  if (matches !== 1)
-    throw new Error(`${rule}: the text to remove occurs ${matches} times in ${file}`);
+  if (matches !== 1) unsound.push(`${rule}: the text to remove occurs ${matches} times in ${file}`);
 }
+if (unsound.length) throw new Error(`rows to repair:\n${unsound.join('\n')}`);
 
 if (checkOnly) {
   console.log(`${selected.length} rules: each names a test that exists and an edit that applies.`);
