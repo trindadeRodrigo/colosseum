@@ -87,6 +87,8 @@ describe('the routes of the app', () => {
       'app/(app)/sign-in/page.tsx',
     ]);
     expect(older.sort()).toEqual([
+      // an address no route answers: 404 inside this group's layout, as before there were two
+      'app/(structurer)/[...missing]/page.tsx',
       'app/(structurer)/embed/[id]/layout.tsx',
       'app/(structurer)/embed/[id]/page.tsx',
       'app/(structurer)/layout.tsx',
