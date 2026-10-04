@@ -54,8 +54,9 @@ const RebuildNonce = z.number().int().nonnegative().optional();
 
 /**
  * An approval of the chain's cash token, for one plan. The caller names the plan and the amount, never
- * who may take the cash: the adapter derives that (on EVM the factory until the plan's vault exists,
- * and the vault after). Strict, so a `spender` sent by a caller is refused and not ignored.
+ * who may take the cash: the adapter derives that (on EVM always the plan's vault, by its address,
+ * which is known before the vault exists; never the factory). Strict, so a `spender` sent by a caller
+ * is refused and not ignored.
  */
 export const ApproveArgs = z.strictObject({
   owner: Address,

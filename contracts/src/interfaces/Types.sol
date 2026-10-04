@@ -4,6 +4,8 @@ pragma solidity ^0.8.24;
 // The shared structs of DESIGN-VAULT.md section 3.8. Field order is part of the ABI: append, never reorder.
 
 /// One asset of a portfolio and its weight. Lists are sorted by token, with no duplicates.
+/// Stored as the element of arrays, one slot each: a field added here would move every element after the
+/// first. It cannot grow.
 struct Weight {
     address token;
     uint16 bps;
@@ -34,7 +36,8 @@ struct AssetConfig {
     uint64 haltUntil;
 }
 
-/// The author limits the registry checks on every version of a shared portfolio.
+/// The author limits the registry checks on every version of a shared portfolio. One delay, not two:
+/// `publishDelay` is both the notice a follower gets and the least time between two versions.
 struct Limits {
     uint8 minAssets;
     uint8 maxAssets;
@@ -42,8 +45,19 @@ struct Limits {
     uint16 maxWeightBps;
     uint16 stepBps;
     uint16 maxTurnoverBps;
-    uint32 minInterval;
     uint32 publishDelay;
+}
+
+/// The keeper's limits (section 5). The config bounds them: see `IVaultConfig.setParams`.
+/// Stored inline in the config's storage, with fields after it: it cannot grow. A new limit is a new field
+/// at the end of the config's storage, not a field here.
+struct Params {
+    uint16 toleranceBps;
+    uint16 lossCapBps;
+    uint16 bandBps;
+    uint32 assetCooldown;
+    uint32 sessionOpen; // seconds after midnight UTC
+    uint32 sessionClose;
 }
 
 /// One read of a vault for the app and for agents.
