@@ -6,10 +6,13 @@ import {
 } from '@solana/kit';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  addClosedDayInstruction,
   assetsAddress,
   DEFAULT_PARAMS,
   decodeKeeperTrade,
+  depositInstruction,
   ERR,
+  extendClosedUntilInstruction,
   forgeConfig,
   keeperLegInstruction,
   type Params,
@@ -728,6 +731,43 @@ describe('keeper_leg', () => {
       expectOk(await buy(40));
     });
 
+    it('can still be closed today when the guardian has used up the 32 closed days', async () => {
+      const { svm, admin, guardian } = w;
+      for (let day = 1; day <= 32; day += 8)
+        expectOk(
+          await send(
+            svm,
+            guardian,
+            await Promise.all(
+              Array.from({ length: 8 }, (_, i) => addClosedDayInstruction(guardian, day + i)),
+            ),
+          ),
+        );
+      const today = Number(SESSION / DAY);
+      // No slot is left for today, for either key, and the stock still trades.
+      expectError(
+        await send(svm, admin, [await setClosedDayInstruction(admin, today, true)]),
+        ERR.ParamOutOfBounds,
+      );
+      expectError(
+        await send(svm, guardian, [await addClosedDayInstruction(guardian, today)]),
+        ERR.ParamOutOfBounds,
+      );
+      expectOk(await buy(10));
+      // What still closes the day: the time the market is closed until, which the guardian can
+      // push later, or the admin opens a slot and closes today in it.
+      const tomorrow = (BigInt(today) + 1n) * DAY;
+      expectOk(await send(svm, guardian, [await extendClosedUntilInstruction(guardian, tomorrow)]));
+      at(SESSION + HOUR);
+      expectError(await buy(10), ERR.MarketClosed);
+      expectOk(
+        await send(svm, admin, [
+          await setClosedDayInstruction(admin, 1, false),
+          await setClosedDayInstruction(admin, today, true),
+        ]),
+      );
+    });
+
     it('does not take an empty slot of the closed days for a day', async () => {
       // Day zero, a Thursday, at 15:00. Every empty slot of the list holds a zero.
       at(15n * HOUR);
@@ -796,6 +836,61 @@ describe('keeper_leg', () => {
       changesAt(SESSION + HOUR);
       await ownerBuys(40);
     });
+  });
+
+  it("puts nothing in the owner's way, with every one of the keeper's rules against a trade", async () => {
+    const { svm, admin, guardian, owner, vault } = w;
+    // Paused, the stock switched off, every closed day taken, closed for good, the loss counter
+    // full, and then a Saturday with every price ten days old.
+    expectOk(await send(svm, guardian, [await pauseKeeperInstruction(guardian)]));
+    await listed(w.stock, { flags: 0 });
+    for (let day = 1; day <= 32; day += 8)
+      expectOk(
+        await send(
+          svm,
+          guardian,
+          await Promise.all(
+            Array.from({ length: 8 }, (_, i) => addClosedDayInstruction(guardian, day + i)),
+          ),
+        ),
+      );
+    const forever = 9_223_372_036_854_775_807n;
+    expectOk(await send(svm, guardian, [await extendClosedUntilInstruction(guardian, forever)]));
+    patchVault(svm, vault, { lossAccum: 18_446_744_073_709_551_615n, lossTs: SESSION });
+    setClock(svm, SESSION + 10n * DAY);
+    expectError(await buy(10), ERR.KeeperPaused);
+
+    // The owner deposits, buys, sells, sets targets, switches auto-follow and takes it all out.
+    await mintTo(svm, admin, w.cash, owner.address, 5n * USD);
+    expectOk(
+      await send(svm, owner, [
+        await depositInstruction({ owner, vault, mint: w.cash, amount: 5n * USD }),
+      ]),
+    );
+    await ownerBuys(20);
+    expectOk(
+      await swapThroughExchange(w, { amountIn: 1_000000n, inputMint: w.stock, outputMint: w.cash }),
+    );
+    expectOk(
+      await send(svm, owner, [
+        await setTargetsInstruction({
+          owner,
+          vault,
+          targets: [{ mint: w.stock.address, targetBps: 2_000 }],
+        }),
+      ]),
+    );
+    expectOk(await send(svm, owner, [await setAutoFollowInstruction({ owner, vault, on: true })]));
+    await createAta(svm, owner, owner.address, w.stock);
+    const stock = balance(svm, w.vaultStock);
+    const cash = balance(svm, w.vaultCash);
+    expectOk(
+      await send(svm, owner, [
+        await withdrawInstruction({ owner, vault, mint: w.stock, amount: stock }),
+        await withdrawInstruction({ owner, vault, mint: w.cash, amount: cash }),
+      ]),
+    );
+    expect(held()).toEqual({ cash: 0n, stock: 0n, other: 0n });
   });
 
   // Hostile case A9b, for the keeper: the issuer points the mint at a hook program after listing.
