@@ -1,11 +1,19 @@
 import type { BasketTx, BuildLegResponse, ChainId, OrderDetail } from '@colosseum/schemas';
 import { describe, expect, it, vi } from 'vitest';
 import { type ApiDouble, apiDouble } from '../../test/api-double';
-import { type MockWorld, mockWorld, tampered } from '../../test/mock';
+import { type MockWorld, mockChainRead, mockWorld, tampered } from '../../test/mock';
 import { GUARD_CHECKS, type GuardCode } from '../guard/refusal';
 import { runGuard } from '../guard/run';
 import { ApiRefusal, type OrderApi } from './api';
-import { type ExecutionEvent, type ExecutorDeps, makeExecute, type SignedStore } from './execute';
+import type { ChainRead, Fate } from './chain-read';
+import {
+  type ExecutionEvent,
+  type ExecutorDeps,
+  makeExecute,
+  type SignedRecord,
+  type SignedStore,
+  signedKey,
+} from './execute';
 import { execute } from './index';
 
 // The executor end to end on packages/chain-mock, through an API double that follows the order routes
@@ -52,6 +60,8 @@ function scene(
     signer: wallet,
     deployments: { [chain]: w.deployment },
     plan: double.plan,
+    // Kept for the life of the scene, as a store that outlives the page is.
+    signed: new Map<string, SignedRecord>(),
     // Time passes on the mock chain only when the executor waits.
     sleep: async (ms) => {
       slept.push(ms);
@@ -562,11 +572,12 @@ describe('the executor: picking an order up again', () => {
     expect(s.wallet.sign).toHaveBeenCalledTimes(1);
   });
 
-  it('builds a step again when its transaction expired without landing', async () => {
+  it('builds a step again when its transaction expired without landing, once the chain itself says it is gone', async () => {
     const s = scene('solana');
     const order = await s.double.buy(100);
     s.w.adapter.mock.dropNext();
-    const result = await execute(order, s.deps);
+    const chainRead = mockChainRead(s.w, () => s.wallet.asked);
+    const result = await execute(order, { ...s.deps, chainRead });
     expect(result.status).toBe('done');
     const attempts = result.order.attempts.filter((a) => a.legId === order.legs[0]?.id);
     expect(attempts.map((a) => a.status)).toEqual(['expired', 'confirmed']);
@@ -583,7 +594,8 @@ describe('the executor: picking an order up again', () => {
       s.w.adapter.mock.dropNext();
       return (sign as NonNullable<typeof sign>)(chain, txs);
     });
-    const result = await execute(order, { ...s.deps, patience: { rebuilds: 1 } });
+    const chainRead = mockChainRead(s.w, () => s.wallet.asked);
+    const result = await execute(order, { ...s.deps, chainRead, patience: { rebuilds: 1 } });
     expect(result).toMatchObject({ status: 'error', legId: order.legs[0]?.id });
     expect(s.wallet.sign).toHaveBeenCalledTimes(2);
   });
@@ -721,6 +733,482 @@ describe('the executor: an API that never lets go', () => {
     const result = await execute(order, { ...s.deps, api, patience: { waitTries: 4 } });
     expect(result).toMatchObject({ status: 'waiting', why: 'in_flight', legId: first });
     expect(s.slept).toHaveLength(4);
+    expect(s.wallet.sign).not.toHaveBeenCalled();
+  });
+});
+
+// ---- one approved step, one signature (the review of AGT-1, item 1)
+
+/**
+ * The API of the review's proof: it takes each signed transaction of one step, keeps it, and answers
+ * that the step expired, so the step is built again. Every build is fresh, as on a real chain.
+ */
+function hoarding(s: Scene, order: OrderDetail, kind: string) {
+  const leg = order.legs.find((l) => l.kind === kind);
+  if (!leg) throw new Error(`the order has no ${kind} step`);
+  const held: string[] = [];
+  const lied: BuildLegResponse['attempt'][] = [];
+  const overlay = (o: OrderDetail): OrderDetail => {
+    if (!lied.length) return o;
+    const out = structuredClone(o);
+    const mine = out.legs.find((l) => l.id === leg.id);
+    if (mine) Object.assign(mine, { status: 'expired', attempt: lied.length });
+    out.attempts.push(...lied.map((a) => ({ ...a, status: 'expired' as const })));
+    return out;
+  };
+  const honest = s.double.api;
+  const api: OrderApi = {
+    ...honest,
+    getOrder: async (id) => overlay(await honest.getOrder(id)),
+    cancelLeg: async (id, legId) =>
+      legId === leg.id ? overlay(await honest.getOrder(id)) : honest.cancelLeg(id, legId),
+    async buildLeg(id, legId) {
+      if (legId !== leg.id) return honest.buildLeg(id, legId);
+      const vault = await s.double.vault();
+      if (!vault) throw new Error('the vault is not open yet');
+      const built = await s.w.adapter.buildOwnerSwap({
+        vault,
+        trades: leg.trades,
+        slippageBps: 100,
+      });
+      const attempt = {
+        id: `kept-${lied.length + 1}`,
+        legId,
+        n: lied.length + 1,
+        messageHash: built.messageHash,
+        nonce: null,
+        status: 'built' as const,
+        txId: null,
+        explorerUrl: null,
+        validUntil: String(built.lastValidBlockHeight),
+        builtAt: new Date(0).toISOString(),
+      };
+      lied.push(attempt);
+      return { tx: { ...built, legId, attemptId: attempt.id } as BasketTx, attempt };
+    },
+    async reportLeg(id, legId, body) {
+      if (legId !== leg.id) return honest.reportLeg(id, legId, body);
+      if ('signedTx' in body) held.push(body.signedTx);
+      return overlay(await honest.getOrder(id));
+    },
+  };
+  /** The API sends everything it was handed. What lands, and what the vault has left in cash. */
+  const release = async () => {
+    const landed: string[] = [];
+    for (const signedTx of held) {
+      try {
+        const { txId } = await s.w.adapter.relay(signedTx);
+        landed.push((await s.w.adapter.track(txId)).status);
+      } catch {
+        landed.push('refused');
+      }
+    }
+    return landed;
+  };
+  const signedFor = () => s.wallet.asked.filter((tx) => tx.legId === leg.id);
+  return { api, leg, held, release, signedFor };
+}
+const cashOf = async (s: Scene) => BigInt((await vaultOf(s))?.cash.raw ?? '0');
+
+describe('the executor: one approved step gets one signature', () => {
+  it('an API that says each signed step did not land gets one signature, and then the person is asked', async () => {
+    const s = scene('solana');
+    const order = await s.double.buy(100);
+    const h = hoarding(s, order, 'swap');
+    const result = await execute(order, { ...s.deps, api: h.api });
+    expect(result).toMatchObject({
+      status: 'needs_review',
+      legId: h.leg.id,
+      signedTimes: 1,
+      why: 'unproven',
+    });
+    expect(h.signedFor()).toHaveLength(1);
+    // The attempt that would have been the second signature was closed before the answer.
+    expect(s.events.filter((e) => e.legId === h.leg.id).map((e) => e.phase)).toEqual([
+      'building',
+      'checking',
+      'signing',
+      'reporting',
+      'building',
+      'checking',
+    ]);
+
+    // Run again, and again: the store remembers the step, whatever the API says.
+    for (let i = 0; i < 3; i += 1)
+      expect((await execute(order, { ...s.deps, api: h.api })).status).toBe('needs_review');
+    expect(h.signedFor()).toHaveLength(1);
+
+    // What the API was handed lands once, and the vault sold what the step said and no more.
+    const before = await cashOf(s);
+    expect(await h.release()).toEqual(['confirmed']);
+    expect(before - (await cashOf(s))).toBe(BigInt(h.leg.trades[0]?.amountInRaw ?? 0));
+  });
+
+  it("with the chain's own word: no second signature while the first can still land, and one once it cannot", async () => {
+    const s = scene('solana');
+    const order = await s.double.buy(100);
+    const h = hoarding(s, order, 'swap');
+    const chainRead = mockChainRead(s.w, () => s.wallet.asked);
+    const deps = { ...s.deps, api: h.api, chainRead };
+
+    // No time passes while the executor waits: the first signature stays alive.
+    const still = await execute(order, {
+      ...deps,
+      sleep: async () => {},
+      patience: { waitTries: 5 },
+    });
+    expect(still).toMatchObject({ status: 'waiting', legId: h.leg.id, why: 'in_flight' });
+    expect(h.signedFor()).toHaveLength(1);
+
+    // Time passes. Each signature is made only after the one before it is past its last valid height
+    // and not on the chain, so of everything the API holds, at most the last can land.
+    const result = await execute(order, { ...deps, patience: { rebuilds: 1 } });
+    expect(result.status).toBe('error');
+    const asked = h.signedFor();
+    expect(asked.length).toBeGreaterThan(1);
+    expect(new Set(asked.map((tx) => tx.messageHash)).size).toBe(asked.length);
+    const before = await cashOf(s);
+    const landed = await h.release();
+    expect(landed.filter((status) => status === 'confirmed').length).toBeLessThanOrEqual(1);
+    expect(before - (await cashOf(s))).toBeLessThanOrEqual(
+      BigInt(h.leg.trades[0]?.amountInRaw ?? 0),
+    );
+  });
+
+  /** A chain read that answers what it is told to, and counts how often it was asked. */
+  const saying = (...fates: (Fate | Error)[]) => {
+    const read = {
+      asked: 0,
+      fateOf: async () => {
+        const fate = fates[Math.min(read.asked, fates.length - 1)] as Fate | Error;
+        read.asked += 1;
+        if (fate instanceof Error) throw fate;
+        return fate;
+      },
+    };
+    return read satisfies ChainRead;
+  };
+
+  it('signs again when the chain says the first is gone, and only then', async () => {
+    const outcomes: [string, ChainRead | undefined, string, number][] = [
+      ['gone', saying('gone'), 'error', 3],
+      // One of the builds it is allowed went on the attempt it gave up while the first was alive.
+      ['open, then gone', saying('open', 'open', 'gone'), 'error', 2],
+      ['open', saying('open'), 'waiting', 1],
+      ['unknown', saying('unknown'), 'needs_review', 1],
+      ['a read that throws', saying(new Error('rpc down')), 'needs_review', 1],
+      ['an answer that is no fate', saying('expired' as Fate), 'needs_review', 1],
+      ['no read at all', undefined, 'needs_review', 1],
+    ];
+    for (const [name, chainRead, status, signatures] of outcomes) {
+      const s = scene('solana');
+      const order = await s.double.buy(100);
+      const h = hoarding(s, order, 'swap');
+      const result = await execute(order, {
+        ...s.deps,
+        api: h.api,
+        chainRead,
+        patience: { waitTries: 3 },
+      });
+      expect(result.status, name).toBe(status);
+      expect(h.signedFor().length, name).toBe(signatures);
+    }
+  });
+
+  it('signs nothing more for a step whose transaction is on the chain, whoever approves', async () => {
+    const s = scene('solana');
+    const order = await s.double.buy(100);
+    const h = hoarding(s, order, 'swap');
+    const first = await execute(order, { ...s.deps, api: h.api });
+    expect(first.status).toBe('needs_review');
+    // The API sent what it held after all, and still says the step expired.
+    expect(await h.release()).toEqual(['confirmed']);
+    const result = await execute(order, {
+      ...s.deps,
+      api: h.api,
+      chainRead: mockChainRead(s.w, () => s.wallet.asked),
+      approvedAgain: { legId: h.leg.id, signedTimes: 1 },
+    });
+    expect(result).toMatchObject({ status: 'error', legId: h.leg.id });
+    expect(result.status === 'error' && result.error.message).toMatch(/on the chain/);
+    expect(h.signedFor()).toHaveLength(1);
+  });
+
+  it('follows a step the chain has and the API then admits to', async () => {
+    const s = scene('solana');
+    const order = await s.double.buy(100);
+    const swap = order.legs.find((l) => l.kind === 'swap');
+    if (!swap) throw new Error('no swap');
+    // The first report of the swap is taken and its answer lost, and the API builds the step again.
+    let lost = 0;
+    const api: OrderApi = {
+      ...s.double.api,
+      async reportLeg(id, legId, body) {
+        const answer = await s.double.api.reportLeg(id, legId, body);
+        if (legId !== swap.id || lost) return answer;
+        lost += 1;
+        const before = structuredClone(answer);
+        const mine = before.legs.find((l) => l.id === legId);
+        if (mine) mine.status = 'expired';
+        return before;
+      },
+      async buildLeg(id, legId) {
+        if (legId !== swap.id || lost !== 1) return s.double.api.buildLeg(id, legId);
+        lost += 1;
+        const vault = await s.double.vault();
+        const built = await s.w.adapter.buildOwnerSwap({
+          vault: vault as string,
+          trades: swap.trades,
+          slippageBps: 100,
+        });
+        const attempt = {
+          id: 'again',
+          legId,
+          n: 2,
+          messageHash: built.messageHash,
+          nonce: null,
+          status: 'built' as const,
+          txId: null,
+          explorerUrl: null,
+          validUntil: String(built.lastValidBlockHeight),
+          builtAt: new Date(0).toISOString(),
+        };
+        return { tx: { ...built, legId, attemptId: attempt.id } as BasketTx, attempt };
+      },
+      cancelLeg: async (id) => s.double.api.getOrder(id),
+    };
+    const chainRead = mockChainRead(s.w, () => s.wallet.asked);
+    const result = await execute(order, { ...s.deps, api, chainRead });
+    expect(result.status).toBe('done');
+    expect(s.wallet.asked.filter((tx) => tx.legId === swap.id)).toHaveLength(1);
+  });
+
+  it('the person approving the step again is good for one more signature, and for one only', async () => {
+    const s = scene('solana');
+    const order = await s.double.buy(100);
+    const h = hoarding(s, order, 'swap');
+    const deps = { ...s.deps, api: h.api };
+    const asked = await execute(order, deps);
+    expect(asked).toMatchObject({ status: 'needs_review', signedTimes: 1 });
+
+    // An approval of another step, or of another count, approves nothing.
+    for (const approvedAgain of [
+      { legId: order.legs[0]?.id as string, signedTimes: 1 },
+      { legId: h.leg.id, signedTimes: 0 },
+      { legId: h.leg.id, signedTimes: 2 },
+    ]) {
+      expect((await execute(order, { ...deps, approvedAgain })).status).toBe('needs_review');
+      expect(h.signedFor()).toHaveLength(1);
+    }
+
+    const approvedAgain = { legId: h.leg.id, signedTimes: 1 };
+    const again = await execute(order, { ...deps, approvedAgain });
+    // One more signature, and the same approval does not buy a third.
+    expect(again).toMatchObject({ status: 'needs_review', signedTimes: 2 });
+    expect(h.signedFor()).toHaveLength(2);
+    expect((await execute(order, { ...deps, approvedAgain })).status).toBe('needs_review');
+    expect(h.signedFor()).toHaveLength(2);
+  });
+
+  it('keeps what was signed under the order and the step, and reads nothing it cannot trust', async () => {
+    const s = scene('solana');
+    const order = await s.double.buy(100);
+    const h = hoarding(s, order, 'swap');
+    const signed = s.deps.signed as Map<string, SignedRecord>;
+    await execute(order, { ...s.deps, api: h.api });
+    const key = signedKey(order.id, h.leg.id);
+    expect(signed.get(key)).toEqual({
+      times: 1,
+      chain: 'solana',
+      messageHash: h.signedFor()[0]?.messageHash,
+      proof: { signedTx: h.held[0] },
+    });
+    expect([...signed.keys()].sort()).toEqual(
+      order.legs
+        .slice(0, order.legs.indexOf(h.leg) + 1)
+        .map((l) => signedKey(order.id, l.id))
+        .sort(),
+    );
+
+    // A record that cannot be read is a step that may have been signed: the person is asked.
+    for (const broken of [
+      'signed',
+      { times: -1, chain: 'solana', messageHash: 'x', proof: null },
+      { times: 1, chain: 'solana', messageHash: 'x', proof: {} },
+      { times: 1, chain: 'solana', messageHash: 'x', proof: { signedTx: 'a', txId: 'b' } },
+      { times: 1, chain: 'solana', proof: null },
+      { times: 1, chain: '', messageHash: 'x', proof: null },
+    ]) {
+      signed.set(key, broken as never);
+      const result = await execute(order, { ...s.deps, api: h.api });
+      expect(result, JSON.stringify(broken)).toMatchObject({
+        status: 'needs_review',
+        why: 'unreadable',
+        signedTimes: 0,
+      });
+    }
+    expect(h.signedFor()).toHaveLength(1);
+    // Approved again, it is signed once and the record is whole again.
+    const approvedAgain = { legId: h.leg.id, signedTimes: 0 };
+    await execute(order, { ...s.deps, api: h.api, approvedAgain });
+    expect(h.signedFor()).toHaveLength(2);
+    expect(signed.get(key)).toMatchObject({ times: 1 });
+  });
+
+  it('signs nothing without a store, or with one that cannot be written to', async () => {
+    const s = scene('robinhood', { signOnly: false });
+    const order = await s.double.buy(100);
+    for (const signed of [undefined, {}, { get: () => undefined }]) {
+      const result = await execute(order, { ...s.deps, signed: signed as never });
+      expect(result).toMatchObject({ status: 'error', legId: null });
+    }
+    // A wallet that sends by itself is not asked when it cannot first be written down that it was.
+    const full: SignedStore = {
+      get: () => undefined,
+      set: () => {
+        throw new Error('storage is full');
+      },
+    };
+    const result = await execute(order, { ...s.deps, signed: full });
+    expect(result).toMatchObject({ status: 'error', error: { message: 'storage is full' } });
+    expect(s.wallet.send).not.toHaveBeenCalled();
+    expect(s.wallet.sign).not.toHaveBeenCalled();
+  });
+
+  it('a wallet that sends by itself and fails without saying whether it sent is not asked again', async () => {
+    const s = scene('robinhood', { signOnly: false });
+    const order = await s.double.buy(100);
+    const first = order.legs[0]?.id as string;
+    const signed = s.deps.signed as Map<string, SignedRecord>;
+    s.wallet.send.mockRejectedValueOnce(new Error('the connection dropped'));
+    const result = await execute(order, s.deps);
+    expect(result).toMatchObject({
+      status: 'needs_review',
+      legId: first,
+      why: 'asked',
+      signedTimes: 1,
+    });
+    expect(signed.get(signedKey(order.id, first))).toMatchObject({ times: 1, proof: null });
+    // The attempt was not closed: the transaction may be on its way.
+    expect(s.double.calls).not.toContain(`cancel ${first}`);
+
+    // Run again, with or without a read of the chain: the wallet is not asked.
+    for (const chainRead of [undefined, saying('gone')])
+      expect(await execute(order, { ...s.deps, chainRead })).toMatchObject({
+        status: 'needs_review',
+        why: 'asked',
+        signedTimes: 1,
+      });
+    expect(s.wallet.send).toHaveBeenCalledTimes(1);
+
+    // The person looked, and approves the step again.
+    const again = await execute(order, {
+      ...s.deps,
+      approvedAgain: { legId: first, signedTimes: 1 },
+    });
+    expect(again.status).toBe('done');
+    expect(signed.get(signedKey(order.id, first))).toMatchObject({ times: 2 });
+  });
+
+  it('a wallet that sends by itself and says it sent nothing leaves no trace', async () => {
+    for (const code of ['rejected', 'no_gas', 'wrong_chain', 'expired'] as const) {
+      const s = scene('robinhood', { signOnly: false });
+      const order = await s.double.buy(100);
+      const first = order.legs[0]?.id as string;
+      s.wallet.send.mockRejectedValueOnce(Object.assign(new Error(code), { code }));
+      const result = await execute(order, { ...s.deps, patience: { rebuilds: 0 } });
+      expect(result.status, code).toBe('cancelled');
+      const signed = s.deps.signed as Map<string, SignedRecord>;
+      expect(signed.get(signedKey(order.id, first)), code).toMatchObject({ times: 0 });
+      expect((await execute(order, s.deps)).status, code).toBe('done');
+    }
+  });
+
+  it('does not sign for one step the bytes it signed for another', async () => {
+    const s = scene('solana');
+    const order = await s.double.buy(100);
+    const [create, swap] = order.legs;
+    const last = order.legs.at(-1);
+    if (!create || !swap || !last || last === swap) throw new Error('the order has too few steps');
+    const signed = s.deps.signed as Map<string, SignedRecord>;
+    let built: BuildLegResponse | undefined;
+    const api: OrderApi = {
+      ...s.double.api,
+      async buildLeg(id, legId) {
+        built = await s.double.api.buildLeg(id, legId);
+        // The store says these very bytes were signed for another step of the order.
+        if (legId === swap.id)
+          signed.set(signedKey(order.id, last.id), {
+            times: 1,
+            chain: 'solana',
+            messageHash: built.tx.messageHash,
+            proof: { signedTx: 'kept' },
+          });
+        return built;
+      },
+    };
+    const result = await execute(order, { ...s.deps, api });
+    expect(result.status === 'refused' && result.refusal.code).toBe('step');
+    expect(s.wallet.asked.map((tx) => tx.legId)).toEqual([create.id]);
+    expect(s.double.calls.at(-1)).toBe(`cancel ${swap.id}`);
+  });
+});
+
+describe('the executor: an API that keeps it turning', () => {
+  it('stops on an API that answers each close with a new attempt', async () => {
+    const s = scene('robinhood');
+    const order = await s.double.buy(100);
+    const first = order.legs[0]?.id as string;
+    let n = 0;
+    // Every answer shows the step built, on an attempt nobody signed, one later than the last.
+    const fresh = async (id: string): Promise<OrderDetail> => {
+      const o = structuredClone(await s.double.api.getOrder(id));
+      n += 1;
+      const leg = o.legs.find((l) => l.id === first);
+      if (leg) Object.assign(leg, { status: 'built', attempt: n });
+      o.attempts.push({
+        id: `fresh-${n}`,
+        legId: first,
+        n,
+        messageHash: `${n}`.padStart(64, '0'),
+        nonce: 0,
+        status: 'built',
+        txId: null,
+        explorerUrl: null,
+        validUntil: null,
+        builtAt: new Date(0).toISOString(),
+      });
+      return o;
+    };
+    const api: OrderApi = { ...s.double.api, getOrder: fresh, cancelLeg: fresh };
+    const result = await execute(order, { ...s.deps, api });
+    expect(result).toMatchObject({ status: 'error', legId: first });
+    expect(result.status === 'error' && result.error.message).toMatch(/each time one is closed/);
+    // It turned a few times, not for ever, and never slept between: there was nothing to wait for.
+    expect(n).toBeLessThan(8);
+    expect(s.wallet.sign).not.toHaveBeenCalled();
+  });
+
+  it('stops on an API whose answers change with every build it refuses', async () => {
+    const s = scene('robinhood');
+    const order = await s.double.buy(100);
+    const first = order.legs[0]?.id as string;
+    let n = 0;
+    const api: OrderApi = {
+      ...s.double.api,
+      // The step is never built, and each read shows it one attempt further on.
+      async getOrder(id) {
+        const o = structuredClone(await s.double.api.getOrder(id));
+        n += 1;
+        const leg = o.legs.find((l) => l.id === first);
+        if (leg) Object.assign(leg, { status: 'expired', attempt: n });
+        return o;
+      },
+      buildLeg: () => Promise.reject(new ApiRefusal(409, { error: 'not now' })),
+    };
+    const result = await execute(order, { ...s.deps, api });
+    expect(result).toMatchObject({ status: 'error', legId: first });
+    expect(result.status === 'error' && result.error.message).toMatch(/did not settle/);
     expect(s.wallet.sign).not.toHaveBeenCalled();
   });
 });

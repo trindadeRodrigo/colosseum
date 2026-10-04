@@ -13,8 +13,17 @@ import { approvedSteps } from '../guard/approved';
 import { familyOf } from '../guard/context';
 import { GuardRefusal, isGuardRefusal } from '../guard/refusal';
 import { type Guarded, isGuarded } from '../guard/run';
-import type { ApprovedStep, GuardDeployments, GuardInput, PlanTerms } from '../guard/types';
+import { count, isObject, text } from '../guard/strict';
+import type {
+  ApprovedStep,
+  GuardDeployment,
+  GuardDeployments,
+  GuardInput,
+  PlanTerms,
+} from '../guard/types';
 import { isApiRefusal, type OrderApi } from './api';
+import type { ChainRead, Fate } from './chain-read';
+import { heldToPass } from './signed';
 import { walletFailure } from './wallet';
 
 // The order executor: one state machine that walks an order step by step. For each step it asks the
@@ -23,7 +32,12 @@ import { walletFailure } from './wallet';
 //
 // What it keeps to:
 //   The signer is never called without a pass of the guard on those exact bytes.
-//   The same bytes are never signed twice: what was signed is remembered, and reported again instead.
+//   One approved step gets one signature. What was signed is remembered by order and step, and is
+//   reported again instead of made again. A second signature needs proof that the first can never
+//   land, read from the chain by the caller's own connection, or the person approving the step again.
+//   The API's word that a transaction did not land is never enough: it is the one party that gains
+//   from a second signature.
+//   What a wallet hands back is read before it is reported: it is the transaction the guard passed.
 //   Every transition is written to the API before the next step: a build, a report, a cancel.
 //   What was approved is worked out once, from the order it was handed. The API's later answers are
 //   read for what has happened, never for what a step may do.
@@ -39,15 +53,54 @@ export type OrderSigner = {
   send(chain: ChainId, tx: BasketTx): Promise<{ txId: string }>;
 };
 
+/** What is remembered of the signatures an approved step has had. */
+export type SignedRecord = {
+  /** How many times the wallet has signed the step, counting one it was asked for and never answered. */
+  times: number;
+  chain: ChainId;
+  /** The message last signed for the step. */
+  messageHash: string;
+  /**
+   * What the wallet handed back for it: what is reported, and what the chain is asked about. Null when
+   * a wallet that sends by itself was asked and its answer never came: it may have sent.
+   */
+  proof: ReportLegRequest | null;
+};
+
 /**
- * What was signed, by the bytes it was signed for. A `Map` fits. One that outlives the page (session
- * storage) lets a reload report a signature the page made and never got to report, without asking the
- * wallet again.
+ * What was signed, by order and step (`signedKey`). It has to outlive whatever runs the order: in a
+ * browser the page and the tab (local storage), for an agent the process. A store that is lost forgets
+ * that a step was signed, and a `Map` made anew for each run remembers nothing.
  */
 export type SignedStore = {
-  get(key: string): ReportLegRequest | undefined | Promise<ReportLegRequest | undefined>;
-  set(key: string, signed: ReportLegRequest): unknown;
+  get(key: string): SignedRecord | undefined | Promise<SignedRecord | undefined>;
+  set(key: string, record: SignedRecord): unknown;
 };
+
+/** The key a step's record is kept under. */
+export const signedKey = (orderId: string, legId: string) => `${orderId}:${legId}`;
+
+const readable = (v: unknown): v is SignedRecord =>
+  isObject(v) &&
+  count(v.times, 0) &&
+  text(v.chain) &&
+  typeof v.messageHash === 'string' &&
+  (v.proof === null ||
+    (isObject(v.proof) &&
+      Object.keys(v.proof).length === 1 &&
+      (text(v.proof.signedTx) || text(v.proof.txId))));
+
+/** What a wallet that sends by itself says when it sent nothing. Any other failure may have sent. */
+const NOT_SENT = new Set<WalletErrorCode>([
+  'rejected',
+  'expired',
+  'no_gas',
+  'wrong_chain',
+  'not_connected',
+  'wrong_account',
+  'unsupported',
+]);
+const FATES: readonly Fate[] = ['landed', 'open', 'gone', 'unknown'];
 
 /** How long the executor keeps trying before it hands back `waiting`. */
 export type Patience = {
@@ -89,13 +142,25 @@ export type ExecutionEvent = {
 export type ExecutorDeps = {
   api: Pick<OrderApi, 'getOrder' | 'buildLeg' | 'reportLeg' | 'cancelLeg'>;
   signer: OrderSigner;
-  /** The app's own configuration of each chain. Never taken from the API that builds the transactions. */
+  /** `deploymentsOf(network)` for each chain. Never made from what the API answers. */
   deployments: GuardDeployments;
   /** What the review screen showed beside the order: the plan's number, its targets, what it follows. */
   plan: PlanTerms;
   /** The consents the person gave on the review screen, for this order. */
   consents?: readonly ConsentKind[];
-  signed?: SignedStore;
+  /** What has been signed, by order and step. Without it nothing is signed. */
+  signed: SignedStore;
+  /**
+   * The caller's own read of the chain (`chainReadOf`), never the API. Left out, a step that was signed
+   * once is not signed again by the executor: it answers `needs_review`.
+   */
+  chainRead?: ChainRead;
+  /**
+   * The person approved a step again after a `needs_review`: that answer's `legId` and `signedTimes`,
+   * handed back. Good for one more signature of that step, and for nothing once the chain says the
+   * earlier one landed or can still land.
+   */
+  approvedAgain?: { legId: string; signedTimes: number };
   patience?: Partial<Patience>;
   sleep?: (ms: number) => Promise<void>;
   onEvent?: (event: ExecutionEvent) => void;
@@ -126,6 +191,21 @@ export type ExecutionResult =
       legId: string;
       blocking: { orderId: string; legId: string };
     }
+  /**
+   * The step was signed before, the API does not have it as sent, and nothing proves the earlier
+   * signature can never land. Signing again could make the step happen twice, so it is the person's to
+   * approve again: show them, and run the order with `approvedAgain` set to this `legId` and
+   * `signedTimes`. `unproven`: no read of the chain was given, or it could not tell. `asked`: a wallet
+   * that sends by itself was asked and never answered. `unreadable`: what the store holds for the step
+   * cannot be read.
+   */
+  | {
+      status: 'needs_review';
+      order: OrderDetail;
+      legId: string;
+      signedTimes: number;
+      why: 'unproven' | 'asked' | 'unreadable';
+    }
   /** Nothing is wrong and nothing more can be done now. Run the order again later. */
   | {
       status: 'waiting';
@@ -146,18 +226,19 @@ type Guard = (input: GuardInput) => Guarded;
 
 const SETTLED = new Set<Leg['status']>(['confirmed', 'skipped']);
 
-/** What names the bytes of one attempt: the message, and on EVM the nonce it is signed on. */
-const keyOf = (chain: ChainId, messageHash: string, nonce: number | null | undefined) =>
-  `${chain}:${messageHash}:${nonce ?? ''}`;
-
 /** The executor around a guard. `execute` is this with the real one; nothing else is exported from the package. */
 export function makeExecute(guard: Guard) {
   return async function execute(order: OrderDetail, deps: ExecutorDeps): Promise<ExecutionResult> {
     const { api, signer } = deps;
     const patience = { ...DEFAULT_PATIENCE, ...deps.patience };
     const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((done) => setTimeout(done, ms)));
-    const signed: SignedStore = deps.signed ?? new Map<string, ReportLegRequest>();
     const consents = deps.consents ?? [];
+    /** However the API answers, a step's loop turns this many times at most. */
+    const maxTurns =
+      patience.landingTries +
+      patience.waitTries +
+      patience.reportTries +
+      8 * (patience.rebuilds + 2);
     /** The order as the API last answered it. Only what has happened is read from it. */
     let seen = order;
 
@@ -193,19 +274,23 @@ export function makeExecute(guard: Guard) {
 
     // ---- what was approved: once, from the order as it was handed over
     const chain = order.legs[0]?.chain;
-    const deployment = chain ? deps.deployments[chain] : undefined;
+    let deployment: GuardDeployment;
     let steps: ApprovedStep[];
+    let owner: string;
     try {
-      if (!chain || !deployment)
+      const given = chain ? deps.deployments[chain] : undefined;
+      if (!chain || !given)
         throw new GuardRefusal(
           'unsupported',
           `no deployment was given for ${chain ?? 'this order'}`,
         );
+      deployment = given;
       steps = approvedSteps(order, deps.plan, deployment);
       // The order is the wallet's own. An order that names another owner would have every address
       // derived from that owner, so it is refused here, before the API is asked for anything.
       const family = familyOf(chain);
-      if (signer.active(family)?.address !== order.owner[family])
+      owner = order.owner[family] ?? '';
+      if (!owner || signer.active(family)?.address !== owner)
         throw new GuardRefusal(
           'signer',
           "the order's owner is not the account this wallet signs with",
@@ -214,6 +299,37 @@ export function makeExecute(guard: Guard) {
       if (!isGuardRefusal(e)) throw e;
       return { status: 'refused', order: seen, legId: e.legId, refusal: e };
     }
+    if (typeof deps.signed?.get !== 'function' || typeof deps.signed.set !== 'function')
+      return failure(
+        new Error('nothing was given to remember what is signed in, so nothing is signed'),
+        null,
+      );
+
+    /** What this run signed, whatever the store does with it afterwards. */
+    const mine = new Map<string, SignedRecord>();
+    const recall = async (key: string): Promise<SignedRecord | 'unreadable' | undefined> => {
+      const held: unknown = mine.get(key) ?? (await deps.signed.get(key));
+      if (held === undefined || held === null) return undefined;
+      return readable(held) ? held : 'unreadable';
+    };
+    const remember = async (key: string, record: SignedRecord) => {
+      mine.set(key, record);
+      await deps.signed.set(key, record);
+    };
+    /** What became of the last signature of a step, by the chain itself. Anything else is not knowing. */
+    const fateOf = async (record: SignedRecord): Promise<Fate> => {
+      if (!record.proof || !deps.chainRead) return 'unknown';
+      try {
+        const fate = await deps.chainRead.fateOf({
+          chain: record.chain,
+          owner,
+          proof: record.proof,
+        });
+        return FATES.includes(fate) ? fate : 'unknown';
+      } catch {
+        return 'unknown';
+      }
+    };
 
     try {
       await read();
@@ -273,25 +389,75 @@ export function makeExecute(guard: Guard) {
       }
     };
 
-    /** The one place the wallet is asked for anything: a pass of the guard goes in, a signature comes out. */
-    const sign = async (pass: Guarded): Promise<ReportLegRequest> => {
+    type Made =
+      | { record: SignedRecord & { proof: ReportLegRequest } }
+      | { wallet: { code: WalletErrorCode; message: string }; unknown: boolean };
+    const changed = (message: string) => Object.assign(new Error(message), { code: 'changed' });
+    /**
+     * The one place the wallet is asked for anything: a pass of the guard goes in, and what was signed
+     * comes out, already written down under the order and the step. `unknown` is a wallet that sends by
+     * itself and failed without saying whether it sent.
+     */
+    const sign = async (
+      pass: Guarded,
+      key: string,
+      before: SignedRecord | undefined,
+    ): Promise<Made> => {
       if (!isGuarded(pass)) throw new Error('only what the guard passed is signed');
       const { tx } = pass;
+      const now = {
+        times: (before?.times ?? 0) + 1,
+        chain: tx.chainId,
+        messageHash: tx.messageHash,
+      };
       if (!signer.caps(tx.chainId).signOnly) {
-        const { txId } = await signer.send(tx.chainId, tx);
-        return { txId };
+        // It is written down that the wallet was asked before it is asked: a page that dies between
+        // the two does not ask a second time.
+        await remember(key, { ...now, proof: null });
+        try {
+          const { txId } = await signer.send(tx.chainId, tx);
+          if (typeof txId !== 'string' || !txId)
+            throw new Error('the wallet did not hand back the id of what it sent');
+          const record = { ...now, proof: { txId } };
+          await remember(key, record);
+          return { record };
+        } catch (e) {
+          const wallet = walletFailure(e);
+          const unknown = !NOT_SENT.has(wallet.code);
+          if (!unknown)
+            await remember(
+              key,
+              before ?? { times: 0, chain: tx.chainId, messageHash: '', proof: null },
+            );
+          return { wallet, unknown };
+        }
       }
-      const [signedTx, ...more] = await signer.sign(tx.chainId, [tx]);
-      if (typeof signedTx !== 'string' || !signedTx || more.length)
-        throw Object.assign(new Error('the wallet did not hand back one signed transaction'), {
-          code: 'changed',
-        });
-      return { signedTx };
+      let signedTx: string;
+      try {
+        const [first, ...more] = await signer.sign(tx.chainId, [tx]);
+        if (typeof first !== 'string' || !first || more.length)
+          throw changed('the wallet did not hand back one signed transaction');
+        try {
+          heldToPass(pass, deployment, first);
+        } catch (e) {
+          throw changed(e instanceof Error ? e.message : 'the wallet signed something else');
+        }
+        signedTx = first;
+      } catch (e) {
+        // Nothing left the wallet's hands but what came back here, and that is dropped.
+        return { wallet: walletFailure(e), unknown: false };
+      }
+      const record = { ...now, proof: { signedTx } };
+      await remember(key, record);
+      return { record };
     };
 
     const runStep = async (step: ApprovedStep): Promise<ExecutionResult | null> => {
       const { legId } = step;
+      const key = signedKey(order.id, legId);
       let builds = 0;
+      let closes = 0;
+      let turns = 0;
       const waited = { landing: 0, in_flight: 0 };
       const reported = new Set<string>();
       const wait = async (why: 'landing' | 'in_flight'): Promise<ExecutionResult | null> => {
@@ -308,7 +474,77 @@ export function makeExecute(guard: Guard) {
         return null;
       };
 
+      const review = (
+        why: 'unproven' | 'asked' | 'unreadable',
+        signedTimes: number,
+      ): ExecutionResult => ({ status: 'needs_review', order: seen, legId, signedTimes, why });
+      const approvedFor = (times: number) =>
+        deps.approvedAgain?.legId === legId && deps.approvedAgain.signedTimes === times;
+
+      /**
+       * The step was signed before and a new attempt has been built for it. Null: it may be signed
+       * once more. `rebuild`: go round again. Anything else is where the run stops.
+       */
+      const again = async (
+        record: SignedRecord | 'unreadable',
+      ): Promise<ExecutionResult | 'rebuild' | null> => {
+        if (record === 'unreadable') {
+          if (approvedFor(0)) return null;
+          await cancel(legId);
+          return review('unreadable', 0);
+        }
+        let fate = await fateOf(record);
+        if (fate === 'gone') return null;
+        if (fate === 'open') {
+          // It can still land. The attempt just built is given up, and the chain is asked again until
+          // the first has landed or no longer can. The API is not asked: it has said what it says.
+          await cancel(legId);
+          for (let tries = 0; fate === 'open' && tries < patience.waitTries; tries += 1) {
+            tell(legId, 'waiting');
+            await sleep(patience.waitDelayMs);
+            fate = await fateOf(record);
+          }
+          if (fate === 'open') return { status: 'waiting', order: seen, legId, why: 'in_flight' };
+          try {
+            await read();
+          } catch (e) {
+            return failure(e, legId);
+          }
+          return 'rebuild';
+        }
+        if (fate === 'landed') {
+          // The chain has the step's transaction. The API is told once more; if it still does not
+          // have the step as sent, nothing more is signed for it, whoever approves.
+          await cancel(legId);
+          const { proof } = record;
+          try {
+            if (proof) seen = await call(() => api.reportLeg(order.id, legId, proof));
+          } catch {
+            try {
+              await read();
+            } catch (e) {
+              return failure(e, legId);
+            }
+          }
+          const now = seen.legs.find((l) => l.id === legId)?.status;
+          if (now === 'sent' || now === 'confirmed' || now === 'failed') return 'rebuild';
+          return failure(
+            new Error(
+              "this step's transaction is on the chain and the API does not have it: nothing more is signed for it",
+            ),
+            legId,
+          );
+        }
+        // Nothing proves the earlier signature dead. Only the person can say sign again.
+        if (approvedFor(record.times)) return null;
+        await cancel(legId);
+        return review(record.proof ? 'unproven' : 'asked', record.times);
+      };
+
       for (;;) {
+        turns += 1;
+        if (turns > maxTurns)
+          return failure(new Error('the step did not settle: run the order again'), legId);
         const leg = seen.legs.find((l) => l.id === legId);
         if (!leg) return failure(new Error('the order the API has is not the one approved'), legId);
         if (SETTLED.has(leg.status)) {
@@ -332,22 +568,38 @@ export function makeExecute(guard: Guard) {
         const latest: Attempt | undefined = seen.attempts.find(
           (a) => a.legId === legId && a.n === leg.attempt,
         );
+        const record = await recall(key);
+        const before = record === 'unreadable' ? undefined : record;
         if (leg.status === 'built' && latest) {
-          const key = keyOf(leg.chain, latest.messageHash, latest.nonce);
-          const held = await signed.get(key);
-          if (held && !reported.has(key)) {
-            reported.add(key);
-            const stop = await report(legId, held);
+          const held = before?.messageHash === latest.messageHash ? before : undefined;
+          if (held?.proof && !reported.has(latest.id)) {
+            reported.add(latest.id);
+            const stop = await report(legId, held.proof);
             if (stop) return stop;
             continue;
           }
-          // Not signed here, or signed and the bytes are gone: it is closed so the step can be built
-          // again. On an EVM chain the rebuild shares its nonce, so only one of the two can land.
+          // A wallet that sends by itself was asked for exactly this attempt and never answered. It
+          // may be on its way, so the attempt is not closed: the person looks first.
+          if (held && held.proof === null && held.times > 0 && !approvedFor(held.times))
+            return review('asked', held.times);
+          // Not signed here: it is closed so the step can be built again. Whether a step that was
+          // signed before may be signed again is settled where the wallet is asked, not here.
           const closed = await cancel(legId);
           const after = seen.legs.find((l) => l.id === legId);
-          // Closed, and the order shows it: the step is built again at the top of the loop.
-          if (closed === 'closed' && !(after?.status === 'built' && after.attempt === leg.attempt))
+          // Closed, and the order shows it: the step is built again at the top of the loop. An API
+          // that answers each close with a new attempt is not followed round for ever.
+          if (
+            closed === 'closed' &&
+            !(after?.status === 'built' && after.attempt === leg.attempt)
+          ) {
+            closes += 1;
+            if (closes > patience.rebuilds + 1)
+              return failure(
+                new Error('the API opens an attempt each time one is closed: run the order again'),
+                legId,
+              );
             continue;
+          }
           // It can still land (Solana: only time closes it), or the API would not say. Either way the
           // order is read again after a pause, and not for ever.
           const stop = await wait('in_flight');
@@ -411,23 +663,53 @@ export function makeExecute(guard: Guard) {
           return { status: 'refused', order: seen, legId, refusal: e };
         }
 
-        // ---- sign, unless these very bytes were signed before: then what was signed is reported again
-        const key = keyOf(pass.tx.chainId, pass.tx.messageHash, pass.tx.evm?.nonce);
-        let proof = await signed.get(key);
-        if (!proof) {
+        // ---- sign: one signature for an approved step
+        let proof: ReportLegRequest;
+        if (before?.proof && before.messageHash === pass.tx.messageHash) {
+          // These very bytes were signed for this step: what was signed is reported again.
+          proof = before.proof;
+        } else {
+          // Bytes that were signed for another step of the order are not signed for this one.
+          for (const other of steps) {
+            if (other.legId === legId) continue;
+            const theirs = await recall(signedKey(order.id, other.legId));
+            if (
+              theirs !== undefined &&
+              theirs !== 'unreadable' &&
+              theirs.times > 0 &&
+              theirs.messageHash === pass.tx.messageHash
+            ) {
+              await cancel(legId);
+              return {
+                status: 'refused',
+                order: seen,
+                legId,
+                refusal: new GuardRefusal(
+                  'step',
+                  'these bytes were signed for another step of the order',
+                  legId,
+                ),
+              };
+            }
+          }
+          if (record === 'unreadable' || (record && record.times > 0)) {
+            const stop = await again(record);
+            if (stop === 'rebuild') continue;
+            if (stop) return stop;
+          }
           tell(legId, 'signing');
-          try {
-            proof = await sign(pass);
-          } catch (e) {
-            const wallet = walletFailure(e);
+          const made = await sign(pass, key, before);
+          if ('wallet' in made) {
+            // It may have been sent: the attempt stays open, and the person looks before anything else.
+            if (made.unknown) return review('asked', (before?.times ?? 0) + 1);
             await cancel(legId);
             // A blockhash that went stale before the wallet signed: the step is built again.
-            if (wallet.code === 'expired' && builds <= patience.rebuilds) continue;
-            return { status: 'cancelled', order: seen, legId, wallet };
+            if (made.wallet.code === 'expired' && builds <= patience.rebuilds) continue;
+            return { status: 'cancelled', order: seen, legId, wallet: made.wallet };
           }
-          await signed.set(key, proof);
+          proof = made.record.proof;
         }
-        reported.add(key);
+        reported.add(attempt.id);
         const stop = await report(legId, proof);
         if (stop) return stop;
       }

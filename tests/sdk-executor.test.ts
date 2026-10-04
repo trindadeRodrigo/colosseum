@@ -130,6 +130,7 @@ async function scene(chain: HomeChain): Promise<Scene> {
       },
       deployments: deploymentsOf('mock'),
       plan,
+      signed: new Map(),
       sleep: async (ms) => {
         clock += ms;
       },

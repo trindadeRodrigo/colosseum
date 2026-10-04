@@ -14,6 +14,7 @@ import {
   type Recipe,
   stampTx,
 } from '@colosseum/schemas';
+import type { ChainRead } from '../src/executor/chain-read';
 import { deploymentsOf } from '../src/guard/deployment';
 import type { ApprovedTrade, Loaded, MockDeployment } from '../src/guard/types';
 
@@ -51,6 +52,31 @@ export function mockWorld(chain: ChainId): MockWorld {
     stranger,
     send: async (tx) => {
       await adapter.mock.send(tx);
+    },
+  };
+}
+
+/**
+ * The wallet's own read of the mock chain: what became of a transaction it signed. It asks the chain
+ * and never the API. `asked` is what the wallet was handed to sign, which is where it knows a
+ * transaction's last valid height from.
+ */
+export function mockChainRead(w: MockWorld, asked: () => BasketTx[]): ChainRead {
+  return {
+    async fateOf({ owner, proof }) {
+      if ('txId' in proof) {
+        const { status } = await w.adapter.track(proof.txId);
+        return status === 'confirmed' || status === 'reverted' ? 'landed' : 'unknown';
+      }
+      const messageHash = await w.adapter.messageHashOf(proof.signedTx);
+      const tx = asked().find((t) => t.messageHash === messageHash);
+      const fate = await w.adapter.fate({
+        messageHash,
+        signer: owner,
+        validUntil: tx?.lastValidBlockHeight === undefined ? null : String(tx.lastValidBlockHeight),
+        nonce: await w.adapter.nonceOf({ signedTx: proof.signedTx }),
+      });
+      return fate.state;
     },
   };
 }

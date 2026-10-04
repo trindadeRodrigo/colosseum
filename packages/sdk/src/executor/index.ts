@@ -10,11 +10,20 @@ export const execute = makeExecute(guardTransaction);
 
 export { type ApiFetch, ApiRefusal, createOrderApi, isApiRefusal, type OrderApi } from './api';
 export {
+  type ChainRead,
+  chainReadOf,
+  type EvmReads,
+  type Fate,
+  type SolanaReads,
+} from './chain-read';
+export {
   DEFAULT_PATIENCE,
   type ExecutionEvent,
   type ExecutionResult,
   type ExecutorDeps,
   type OrderSigner,
   type Patience,
+  type SignedRecord,
   type SignedStore,
+  signedKey,
 } from './execute';
