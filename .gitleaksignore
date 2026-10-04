@@ -2,3 +2,6 @@
 
 # A public token account address passed to Jupiter as destinationTokenAccount (Sep 30).
 77b591276678da5bc33b039a2c1572b4ef128ac2:scripts/verify/v5-delegation.ts:generic-api-key:46
+
+# The genesis hash of Solana's public testnet cluster, in a test that the set-up refuses it (Oct 4).
+33165e9cf7b3c00a7142358ac4186bd96e5676b0:programs/tests/testnet-setup.test.ts:generic-api-key:322

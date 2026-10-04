@@ -318,9 +318,10 @@ describe('the test-network set-up', () => {
     );
     for (const url of ['https://api.mainnet-beta.solana.com', 'http://127.0.0.1:8899'])
       expect(() => clusterOf(url, MAINNET_GENESIS)).toThrow(/mainnet/);
-    expect(() =>
-      clusterOf('https://api.testnet.solana.com', '4uhcVJyU9pJkvQyS88uRDiswHXSCkY3zQawwpjk2NsNY'),
-    ).toThrow(/neither devnet nor on this machine/);
+    const elsewhere = 'OtherCluster1111111111111111111111111111111';
+    expect(() => clusterOf('https://rpc.example.com', elsewhere)).toThrow(
+      /neither devnet nor on this machine/,
+    );
   });
 
   it('keeps "admin" for a role as the key that runs the set-up', () => {
