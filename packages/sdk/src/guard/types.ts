@@ -131,7 +131,7 @@ export type EvmDeployment = {
 export type MockDeployment = { family: 'mock'; chain: ChainId; cash: AssetId };
 
 /**
- * The mark of a deployment that `loadDeployments` read from a deployment file. The class is never
+ * The mark of a deployment that `deploymentsOf` read from a file committed in this package. The class is never
  * constructed and has no value: it is here so that no object written by hand has the type, and neither
  * has a copy of a loaded deployment with a field changed. The guard checks the same thing when it runs.
  */
@@ -140,7 +140,7 @@ declare class FromDeploymentFile {
 }
 export type Loaded<T> = T & FromDeploymentFile;
 
-/** A deployment as the guard takes it: one of the three, and only as `loadDeployments` returned it. */
+/** A deployment as the guard takes it: one of the three, and only as `deploymentsOf` returned it. */
 export type GuardDeployment = Loaded<SolanaDeployment | EvmDeployment | MockDeployment>;
 export type GuardDeployments = Readonly<Partial<Record<ChainId, GuardDeployment>>>;
 

@@ -4,7 +4,7 @@ The guard, which reads a transaction's bytes and refuses anything that is not th
 
 ## Deployment files
 
-The guard derives every address from a deployment, and takes one only as this package loaded it from the file committed for its network: `deployments/<network>.json`, with `"format": "guard-deployment/1"`. `local.example.json` shows a Solana and an EVM entry; `mock.json` is the mock's. A file is written in the pull request of the deploy to that network, and `pnpm --filter @colosseum/sdk tables` puts it into the package (`src/guard/generated/deployment-files.ts`); `scripts/tables.test.ts` fails while the two disagree. The test network's file and the transaction builders depend on this shape: a change to it is said in the pull request that makes it.
+The guard derives every address from a deployment, and takes one only as this package loaded it from the file committed for its network: `deployments/<network>.json`, with `"format": "guard-deployment/1"`. `local.example.json` shows a Solana and an EVM entry; `mock.json` is the mock's. A file is written in the pull request of the deploy to that network, and `pnpm --filter @colosseum/sdk tables` puts it into the package, frozen (`src/guard/generated/deployment-files.ts`); `scripts/tables.test.ts` fails while the two disagree. `deploymentsOf(network)` reads only those; `readDeploymentFile(content)` checks a file before it is committed and makes nothing the guard takes. The package's tests load deployments of their own through `test/deployments.ts`, swapped in with `vi.mock`. The test network's file and the transaction builders depend on this shape: a change to it is said in the pull request that makes it.
 
 ## For whoever builds the transactions
 

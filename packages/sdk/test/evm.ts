@@ -3,11 +3,12 @@ import { type BasketTx, evmCallPreimage } from '@colosseum/schemas';
 import { selectorOf } from '../scripts/tables';
 import { hexEncode } from '../src/bytes';
 import { tradesOf } from '../src/guard/context';
-import { type DeploymentFile, type EvmEntry, loadDeployments } from '../src/guard/deployment';
+import { type DeploymentFile, deploymentsOf, type EvmEntry } from '../src/guard/deployment';
 import { type AbiValue, encodeArgs, parseSignature } from '../src/guard/evm/abi';
 import type { InterfaceTable } from '../src/guard/evm/table';
 import { EVM_INTERFACE } from '../src/guard/generated/evm-interface';
 import type { ApprovedStep, ApprovedTrade, EvmDeployment, Loaded } from '../src/guard/types';
+import { withFile } from './deployments';
 import vectors from './fixtures/evm-vectors.json';
 
 // EVM transactions for the guard's tests. The addresses of the factory, the beacon, the owner and the
@@ -56,7 +57,7 @@ export function evmDeployment(change: Partial<EvmEntry> = {}): Loaded<EvmDeploym
       },
     },
   };
-  return loadDeployments(file).robinhood as Loaded<EvmDeployment>;
+  return withFile(file, () => deploymentsOf('testnet')).robinhood as Loaded<EvmDeployment>;
 }
 export const EVM = evmDeployment();
 export const tokenOf = (asset: string) => EVM.assets[asset]?.token ?? anyone(`token ${asset}`);

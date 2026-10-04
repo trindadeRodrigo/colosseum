@@ -52,6 +52,7 @@ import type { ApprovedStep, GuardInput } from '../types';
 import type { ProgramTable } from './table';
 
 vi.mock('../rules', () => import('../../../test/rules'));
+vi.mock('../generated/deployment-files', () => import('../../../test/deployments'));
 
 // The guard on Solana bytes. Every transaction here is compiled by @solana/kit, with addresses kit
 // derived. The honest ones pass; each negative differs from its step in one way and is refused by the

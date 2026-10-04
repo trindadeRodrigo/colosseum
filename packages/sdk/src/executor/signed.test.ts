@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as e from '../../test/evm';
 import vectors from '../../test/fixtures/evm-vectors.json';
 import * as s from '../../test/solana';
@@ -14,6 +14,8 @@ import {
   SOLANA_VALID_BLOCKS,
 } from './chain-read';
 import { heldToPass, signedEvm, signedSolana } from './signed';
+
+vi.mock('../guard/generated/deployment-files', () => import('../../test/deployments'));
 
 // What the executor reads from the bytes a wallet handed back, and the rule that says whether they can
 // still land. The EVM transactions are viem's own serialization (test/fixtures/evm-vectors.json), with

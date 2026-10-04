@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { refusalOf } from '../../test/bites';
 import { BASKET_ID, depositIx, OWNER, SOLANA, solanaTx, wire } from '../../test/solana';
 import { BASKET_PROGRAM } from './generated/basket-program';
@@ -10,7 +10,9 @@ import { rules } from './rules';
 import { runGuard } from './run';
 import type { ApprovedStep } from './types';
 
-// The rules the guard is built with, read here as they are built: this file puts no other module in
+vi.mock('./generated/deployment-files', () => import('../../test/deployments'));
+
+// The rules the guard is built with, read here as they are built: this file puts no other rules in
 // their place. The switch the tests use to take a check out lives in test/rules.ts, which nothing the
 // package builds can reach.
 

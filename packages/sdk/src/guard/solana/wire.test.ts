@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { refusalOf } from '../../../test/bites';
 import {
   BASKET_ID,
@@ -18,6 +18,8 @@ import { BASKET_PROGRAM } from '../generated/basket-program';
 import { guardTransaction } from '../index';
 import type { ApprovedStep } from '../types';
 import { parseSolanaTransaction } from './wire';
+
+vi.mock('../generated/deployment-files', () => import('../../../test/deployments'));
 
 // The reader of Solana's wire format, on messages written by hand: what @solana/kit would never
 // compile. One case per rule of the reader, each refused for that rule's own reason, and by the guard

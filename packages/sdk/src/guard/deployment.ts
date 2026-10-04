@@ -19,8 +19,9 @@ import type {
 // deployment, so whoever writes the deployment decides what passes. It is therefore never read from the
 // server that builds the transactions: it is a file committed in this package, one per network
 // (packages/sdk/deployments/<network>.json), written when that network is deployed to and reviewed like
-// code. `deploymentsOf(network)` reads the committed file; `loadDeployments(content)` is the same reader
-// for a file's content. Nothing else makes a `GuardDeployment`, and the guard refuses any other object.
+// code. `deploymentsOf(network)` reads the committed file, from the frozen copy the package carries,
+// and is the only thing that makes a `GuardDeployment`: the guard refuses any other object.
+// `readDeploymentFile(content)` checks a file's content the same way and makes no deployment.
 
 export const DEPLOYMENT_FORMAT = 'guard-deployment/1';
 export const DEPLOYMENT_NETWORKS = ['mainnet', 'testnet', 'local', 'mock'] as const;
@@ -75,7 +76,7 @@ export const CHAIN_NUMBERS: Record<ChainId, { mainnet: number; testnet: number }
 
 const LOADED = new WeakSet<object>();
 
-/** True only for a deployment `loadDeployments` returned. A copy of one is not one. */
+/** True only for a deployment `deploymentsOf` returned. A copy of one is not one. */
 export const isLoadedDeployment = (value: unknown): value is GuardDeployment =>
   typeof value === 'object' && value !== null && LOADED.has(value);
 
@@ -248,7 +249,7 @@ function mockOf(chain: ChainId, entry: Loose): MockDeployment {
   return { family: 'mock', chain, cash: entry.cash as AssetId };
 }
 
-function read(content: unknown): GuardDeployments {
+function read(content: unknown, mark: boolean): DeploymentsRead {
   const file = only('it', content, ['format', 'network', 'chains']);
   must(file.format === DEPLOYMENT_FORMAT, `its format is not ${DEPLOYMENT_FORMAT}`);
   const network = DEPLOYMENT_NETWORKS.find((n) => n === file.network);
@@ -256,7 +257,7 @@ function read(content: unknown): GuardDeployments {
   const chains = only('its list of chains', file.chains, Object.keys(CHAIN_NUMBERS));
   must(Object.keys(chains).length > 0, 'it names no chain');
 
-  const out: Partial<Record<ChainId, GuardDeployment>> = {};
+  const out: Partial<Record<ChainId, SolanaDeployment | EvmDeployment | MockDeployment>> = {};
   for (const [name, value] of Object.entries(chains)) {
     const chain = name as ChainId;
     try {
@@ -276,8 +277,8 @@ function read(content: unknown): GuardDeployments {
           : chain === 'solana'
             ? solanaOf(entry, network as DeploymentNetwork)
             : evmOf(chain, entry, network as DeploymentNetwork);
-      const loaded = deepFreeze(deployment) as GuardDeployment;
-      LOADED.add(loaded);
+      const loaded = deepFreeze(deployment);
+      if (mark) LOADED.add(loaded);
       out[chain] = loaded;
     } catch (e) {
       throw new Error(`${chain}: ${e instanceof Error ? e.message : 'it cannot be read'}`);
@@ -286,25 +287,41 @@ function read(content: unknown): GuardDeployments {
   return Object.freeze(out);
 }
 
+/** What a deployment file states, checked, and not a deployment the guard takes. */
+export type DeploymentsRead = Readonly<
+  Partial<Record<ChainId, SolanaDeployment | EvmDeployment | MockDeployment>>
+>;
+
+const refused = (e: unknown) =>
+  new GuardRefusal(
+    'deployment',
+    `the deployment file: ${e instanceof Error ? e.message : 'it cannot be read'}`,
+  );
+
 /**
- * The deployments a file states, one per chain. `content` is the parsed content of a deployment file:
- * of the committed one for a network, or of the one a local deploy wrote. It is never something a
- * server answered. Throws a `GuardRefusal` with code `deployment` on anything that is not exactly such
- * a file.
+ * Checks the content of a deployment file, as a deploy does before it commits one, and says what it
+ * states. What comes back is not a deployment: the guard refuses it. Throws a `GuardRefusal` with code
+ * `deployment` on anything that is not exactly such a file.
  */
-export function loadDeployments(content: unknown): GuardDeployments {
+export function readDeploymentFile(content: unknown): DeploymentsRead {
   try {
-    return read(content);
+    return read(content, false);
   } catch (e) {
-    const why = e instanceof Error ? e.message : 'it cannot be read';
-    throw new GuardRefusal('deployment', `the deployment file: ${why}`);
+    throw refused(e);
   }
 }
 
-/** The deployments of the file committed for `network`. Throws `deployment` when none is committed. */
+/**
+ * The deployments of the file committed for `network`, the one way to a deployment the guard takes:
+ * only the files this package carries are read here, and nothing a caller hands over.
+ */
 export function deploymentsOf(network: DeploymentNetwork): GuardDeployments {
   const file = Object.hasOwn(DEPLOYMENT_FILES, network) ? DEPLOYMENT_FILES[network] : undefined;
   if (file === undefined)
     throw new GuardRefusal('deployment', `no deployment file is committed for ${network}`);
-  return loadDeployments(file);
+  try {
+    return read(file, true) as GuardDeployments;
+  } catch (e) {
+    throw refused(e);
+  }
 }

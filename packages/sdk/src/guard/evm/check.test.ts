@@ -34,6 +34,7 @@ import type { ApprovedStep, GuardInput } from '../types';
 import { evmVaultAddress } from './addresses';
 
 vi.mock('../rules', () => import('../../../test/rules'));
+vi.mock('../generated/deployment-files', () => import('../../../test/deployments'));
 
 // The guard on EVM call data. The honest calls pass; each negative differs from its step in one way and
 // is refused by the one check that names it (see test/bites.ts).

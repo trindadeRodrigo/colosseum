@@ -9,7 +9,7 @@ import {
   parseChainConfigs,
   parseFlags,
 } from '@colosseum/schemas';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DEPLOYMENTS, readDeploymentFiles } from '../../scripts/sources';
 import { refusalOf } from '../../test/bites';
 import * as e from '../../test/evm';
@@ -21,14 +21,20 @@ import {
   type DeploymentFile,
   deploymentsOf,
   isLoadedDeployment,
-  loadDeployments,
+  readDeploymentFile,
 } from './deployment';
 import { evmVaultAddress } from './evm/addresses';
 import { BASKET_PROGRAM } from './generated/basket-program';
-import { DEPLOYMENT_FILES } from './generated/deployment-files';
 import { guardTransaction } from './index';
 import { configAddress, tokenAccountAddress, vaultAddress } from './solana/addresses';
 import type { ApprovedStep, GuardDeployments } from './types';
+
+vi.mock('./generated/deployment-files', () => import('../../test/deployments'));
+
+// The files as the package carries them, past the module the tests put in their place.
+const { DEPLOYMENT_FILES } = await vi.importActual<typeof import('./generated/deployment-files')>(
+  './generated/deployment-files',
+);
 
 // Where a deployment comes from (the review of AGT-1, item 2). The guard derives every address from
 // the deployment, so a deployment a server can write is a guard the server can switch off. These hold
@@ -61,7 +67,7 @@ describe('the committed deployment files', () => {
     for (const [name, file] of Object.entries(files)) {
       // A file is its network's: mock.json says `mock`, and so on.
       expect((file as DeploymentFile).network, name).toBe(name);
-      expect(Object.keys(loadDeployments(file)).length, name).toBeGreaterThan(0);
+      expect(Object.keys(readDeploymentFile(file)).length, name).toBeGreaterThan(0);
     }
     expect(Object.keys(files)).toContain('mock');
   });
@@ -91,7 +97,7 @@ describe('the committed deployment files', () => {
 
   it('the example of a local deployment reads as one', () => {
     const example = JSON.parse(readFileSync(join(DEPLOYMENTS, 'local.example.json'), 'utf8'));
-    const local = loadDeployments(example);
+    const local = readDeploymentFile(example);
     expect(local.solana).toMatchObject({ family: 'solana', provenance: 'sandbox' });
     expect(local.robinhood).toMatchObject({
       family: 'evm',
@@ -233,7 +239,42 @@ describe('a deployment is only what the loader read from a file', () => {
 
     // The loader reads a deployment file, and the answer is not one.
     for (const fetched of [config, chain, { robinhood: byHand }, byHand])
-      expect(refusalOf(() => loadDeployments(fetched))?.code).toBe('deployment');
+      expect(refusalOf(() => readDeploymentFile(fetched))?.code).toBe('deployment');
+  });
+
+  it('a file of the right shape from anywhere but the package is read, and is still no deployment', () => {
+    // What a server could answer, written as a deployment file for mainnet, with a factory of its own.
+    const fromApi = {
+      format: 'guard-deployment/1',
+      network: 'mainnet',
+      chains: {
+        robinhood: {
+          family: 'evm',
+          evmChainId: 4663,
+          factory: e.anyone('evil factory'),
+          beacon: e.anyone('evil beacon'),
+          routers: [],
+          cash: 'robinhood:usdc',
+          assets: { 'robinhood:usdc': { address: e.anyone('evil usdc') } },
+        },
+      },
+    };
+    const read = readDeploymentFile(fromApi).robinhood;
+    expect(read).toMatchObject({ provenance: 'live', factory: e.anyone('evil factory') });
+    expect(isLoadedDeployment(read)).toBe(false);
+    const tx = approval(e.tokenOf('robinhood:usdc'), e.VAULT);
+    expect(
+      // @ts-expect-error what the file reader answers is not a deployment
+      refusalOf(() => guardTransaction({ step: approveStep, tx, deployment: read }))?.code,
+    ).toBe('deployment');
+    // The one way to a deployment reads only the files the package carries, which cannot be added to.
+    for (const network of ['mainnet', '__proto__', 'constructor', 'toString'])
+      expect(refusalOf(() => deploymentsOf(network as never))?.code, network).toBe('deployment');
+    expect(Object.isFrozen(DEPLOYMENT_FILES) && Object.isFrozen(DEPLOYMENT_FILES.mock)).toBe(true);
+    expect(() => {
+      (DEPLOYMENT_FILES as Record<string, unknown>).mainnet = fromApi;
+    }).toThrow(TypeError);
+    expect(Object.hasOwn(DEPLOYMENT_FILES, 'mainnet')).toBe(false);
   });
 });
 
@@ -274,7 +315,7 @@ const evm = (f: File) => f.chains.robinhood as Record<string, unknown>;
 
 describe('the loader reads a deployment file and nothing that is nearly one', () => {
   it('reads the file: the label from the network, EVM addresses in lower case', () => {
-    const local = loadDeployments(fileOf());
+    const local = readDeploymentFile(fileOf());
     expect(local.solana).toEqual({
       family: 'solana',
       chain: 'solana',
@@ -288,14 +329,16 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
     // A local copy of mainnet runs under mainnet's number, and is never labelled live.
     const copy = fileOf();
     evm(copy).evmChainId = 4663;
-    expect(loadDeployments(copy).robinhood).toMatchObject({ provenance: 'sandbox' });
+    expect(readDeploymentFile(copy).robinhood).toMatchObject({ provenance: 'sandbox' });
 
     const mainnet = fileOf('mainnet');
     evm(mainnet).evmChainId = 4663;
-    const live = loadDeployments(mainnet);
+    const live = readDeploymentFile(mainnet);
     expect(live.solana?.family === 'solana' && live.solana.provenance).toBe('live');
     expect(live.robinhood?.family === 'evm' && live.robinhood.provenance).toBe('live');
-    expect(loadDeployments(fileOf('testnet')).robinhood).toMatchObject({ provenance: 'sandbox' });
+    expect(readDeploymentFile(fileOf('testnet')).robinhood).toMatchObject({
+      provenance: 'sandbox',
+    });
   });
 
   it('takes an address with its checksum as viem writes it, and refuses one whose checksum is off', () => {
@@ -304,7 +347,7 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
       const file = fileOf();
       evm(file).factory = checksummed;
       if (lower !== e.FACTORY) evm(file).beacon = e.FACTORY;
-      const loaded = loadDeployments(file).robinhood;
+      const loaded = readDeploymentFile(file).robinhood;
       expect(loaded?.family === 'evm' && loaded.factory, checksummed).toBe(lower);
 
       // One letter in the other case: no longer the address's own checksum.
@@ -313,7 +356,7 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
       const flipped = `${checksummed.slice(0, at)}${ch === ch.toLowerCase() ? ch.toUpperCase() : ch.toLowerCase()}${checksummed.slice(at + 1)}`;
       if (flipped === lower) continue;
       evm(file).factory = flipped;
-      expect(refusalOf(() => loadDeployments(file))?.message, flipped).toMatch(/checksum/);
+      expect(refusalOf(() => readDeploymentFile(file))?.message, flipped).toMatch(/checksum/);
     }
   });
 
@@ -549,8 +592,8 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
   ];
 
   it.each(wrong)('refuses %s', (_name, change, message) => {
-    expect(refusalOf(() => loadDeployments(fileOf()))).toBeNull();
-    const refusal = refusalOf(() => loadDeployments(change(fileOf())));
+    expect(refusalOf(() => readDeploymentFile(fileOf()))).toBeNull();
+    const refusal = refusalOf(() => readDeploymentFile(change(fileOf())));
     expect(refusal?.code).toBe('deployment');
     expect(refusal?.message).toMatch(message);
   });
@@ -564,7 +607,7 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
       beacon: v.beacon,
       proxyCreationCode: `0x${v.proxyCreationCode.slice(2).toUpperCase()}`,
     });
-    const loaded = loadDeployments(file).robinhood;
+    const loaded = readDeploymentFile(file).robinhood;
     if (loaded?.family !== 'evm') throw new Error('not an EVM deployment');
     expect(loaded.proxyCreationCode).toBe(v.proxyCreationCode);
     expect(evmVaultAddress(loaded, v.owner, v.basketId)).toBe(v.vault);

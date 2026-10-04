@@ -190,5 +190,5 @@ export function renderInterfaceTable(table: InterfaceTable): string {
 
 /** The committed deployment files, by network, as the package carries them (deployment.ts reads them). */
 export function renderDeploymentFiles(files: Record<string, unknown>): string {
-  return `${HEADER('packages/sdk/deployments/*.json')}\n/** One file per network, as committed. \`deploymentsOf\` reads and checks them. */\nexport const DEPLOYMENT_FILES: Readonly<Record<string, unknown>> = ${JSON.stringify(files, null, 2)};\n`;
+  return `${HEADER('packages/sdk/deployments/*.json')}import { deepFreeze } from '../strict';\n\n/** One file per network, as committed, and frozen. \`deploymentsOf\` reads and checks them, and nothing else. */\nexport const DEPLOYMENT_FILES: Readonly<Record<string, unknown>> = deepFreeze(${JSON.stringify(files, null, 2)});\n`;
 }

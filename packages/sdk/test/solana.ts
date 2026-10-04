@@ -19,10 +19,11 @@ import {
 } from '@solana/kit';
 import { base58Encode } from '../src/bytes';
 import { tradesOf } from '../src/guard/context';
-import { type DeploymentFile, loadDeployments, type SolanaEntry } from '../src/guard/deployment';
+import { type DeploymentFile, deploymentsOf, type SolanaEntry } from '../src/guard/deployment';
 import { BASKET_PROGRAM } from '../src/guard/generated/basket-program';
 import type { ProgramTable } from '../src/guard/solana/table';
 import type { ApprovedStep, Loaded, SolanaDeployment } from '../src/guard/types';
+import { withFile } from './deployments';
 
 // Solana transactions for the guard's tests, built with @solana/kit: its message compiler and its
 // derived addresses, not this package's. So a transaction that passes the guard here was put together
@@ -63,7 +64,7 @@ export function solanaDeployment(change: Partial<SolanaEntry> = {}): Loaded<Sola
       },
     },
   };
-  return loadDeployments(file).solana as Loaded<SolanaDeployment>;
+  return withFile(file, () => deploymentsOf('local')).solana as Loaded<SolanaDeployment>;
 }
 export const SOLANA = solanaDeployment();
 export const mintOf = (asset: string) => SOLANA.assets[asset]?.mint ?? someone(`mint ${asset}`);

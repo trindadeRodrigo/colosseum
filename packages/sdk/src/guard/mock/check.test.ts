@@ -27,6 +27,7 @@ import type { ApprovedStep, GuardInput } from '../types';
 import { mockVaultAddress } from './check';
 
 vi.mock('../rules', () => import('../../../test/rules'));
+vi.mock('../generated/deployment-files', () => import('../../../test/deployments'));
 
 // The guard on what packages/chain-mock builds. The honest transactions are the mock's own, for every
 // step it has, on both families; each negative is one of them with one field of its operation changed.

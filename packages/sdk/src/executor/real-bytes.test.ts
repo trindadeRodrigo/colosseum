@@ -1,5 +1,5 @@
 import type { BasketTx, ChainId, Leg, OrderDetail } from '@colosseum/schemas';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as e from '../../test/evm';
 import vectors from '../../test/fixtures/evm-vectors.json';
 import * as s from '../../test/solana';
@@ -11,6 +11,8 @@ import { chainReadOf, type RpcCall, SOLANA_MARGIN_BLOCKS, SOLANA_VALID_BLOCKS } 
 import type { ExecutorDeps, SignedRecord } from './execute';
 import { execute } from './index';
 import { signedEvm } from './signed';
+
+vi.mock('../guard/generated/deployment-files', () => import('../../test/deployments'));
 
 // The executor on the bytes of a real chain: a one-step order whose transaction is a Solana message or
 // an EVM call, as the guard's own tests build them. The other executor tests run on the mock chain,
