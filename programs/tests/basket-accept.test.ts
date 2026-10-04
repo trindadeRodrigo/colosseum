@@ -282,10 +282,11 @@ describe('accepting and adopting a version', () => {
       });
     });
 
-    it('refuses when the version and what is left over do not fit 16 lines', async () => {
-      // Twelve assets, of which the next version swaps five for five others.
-      const even = (list: Address[]) =>
-        list.map((mint, i) => ({ mint, weightBps: [5_000, 3_000][i] ?? 200 }));
+    const even = (list: Address[]) =>
+      list.map((mint, i) => ({ mint, weightBps: [5_000, 3_000][i] ?? 200 }));
+    /** A vault that holds all twelve assets of a portfolio whose next version swaps five of them
+     * for five others. Answers the portfolio and the assets of that version. */
+    const wideVault = async () => {
       const rival = await fundedSigner(svm);
       const wide = await recipeAddress(rival.address, familyId('wide'));
       const twelve = mints.slice(0, 12);
@@ -298,7 +299,11 @@ describe('accepting and adopting a version', () => {
       );
       for (const mint of twelve) patchVault(svm, vault, { tracked: { mint, amount: 1n } });
       setClock(svm, await update(even(swapped), wide, rival));
+      return { wide, swapped };
+    };
 
+    it('refuses when the version and what is left over do not fit 16 lines', async () => {
+      const { wide, swapped } = await wideVault();
       // 12 in the version and 5 left over: one too many.
       expectError(await accept(2, owner, wide), ERR.InvalidTargets);
       expect(version()).toBe(1);
@@ -309,6 +314,24 @@ describe('accepting and adopting a version', () => {
         ...even(swapped),
         ...mints.slice(7, 11).map((mint) => ({ mint, weightBps: 0 })),
       ]);
+    });
+
+    it('lets the owner clear every line and take such a version in one transaction', async () => {
+      const { wide, swapped } = await wideVault();
+      expectError(await accept(2, owner, wide), ERR.InvalidTargets);
+      expectOk(
+        await send(svm, owner, [
+          await setTargetsInstruction({ owner, vault, targets: [] }),
+          await acceptVersionInstruction({ owner, vault, recipe: wide, expectedVersion: 2 }),
+          await setAutoFollowInstruction({ owner, vault, on: true }),
+        ]),
+      );
+      const state = readVault(svm, vault);
+      expect([state.acceptedVersion, state.autoFollow]).toEqual([2, true]);
+      // The leftovers have no line now, and nothing is recorded for the lines that stayed until
+      // the balances are read again.
+      expect(targets()).toEqual(even(swapped));
+      expect(state.positions.slice(0, state.count).every((p) => p.tracked === 0n)).toBe(true);
     });
   });
 

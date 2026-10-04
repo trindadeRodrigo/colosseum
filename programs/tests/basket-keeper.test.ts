@@ -207,6 +207,9 @@ describe('keeper_leg', () => {
       it('is refused before the trade, and one at exactly that value is traded', async () => {
         // The vault's 100 dollars of cash and the rest in the other asset, at 500 dollars a token.
         const atTheBound = (LARGEST - CASH) / 5n;
+        // The exchange pays half a percent under the reference, so the trade itself would bring
+        // the vault back under the bound: it is the value before the trade that is refused.
+        await exchangePays(w.cash, w.stock, 199n, 1_000n);
         recorded(atTheBound + 1n);
         expectError(await buy(40), ERR.AssetNotPriced);
         recorded(10n ** 19n);
