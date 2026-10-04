@@ -3,6 +3,7 @@ import {
   type Address,
   type Base58EncodedBytes,
   type Commitment,
+  createSolanaRpc,
   type GetBalanceApi,
   type GetBlockHeightApi,
   type GetLatestBlockhashApi,
@@ -54,6 +55,14 @@ export type VaultWriteRpc = Rpc<
 >;
 
 export type RawAccount = { address: Address; owner: Address; lamports: bigint; data: Uint8Array };
+
+/**
+ * A client for the builders and the probe, from a URL the caller holds. The URL is never logged and
+ * never put in a message: an RPC address can carry a key.
+ */
+export function createVaultRpc(url: string): VaultWriteRpc {
+  return createSolanaRpc(url);
+}
 
 /** The most addresses one getMultipleAccounts call takes. */
 const BATCH = 100;

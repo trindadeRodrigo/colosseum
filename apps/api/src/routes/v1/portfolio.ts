@@ -12,13 +12,17 @@ import { signedIn } from './orders';
 async function chainPortfolio(deps: OrderDeps, entry: ChainEntry, wallets: WalletAccount[]) {
   const owners = wallets.filter((w) => w.family === entry.config.family).map((w) => w.address);
   const states = (await Promise.all(owners.map((o) => entry.adapter.getVaults(o)))).flat();
-  const assets = [
-    ...new Set(states.flatMap((v) => [v.cash.asset, ...v.positions.map((p) => p.asset)])),
-  ];
-  const prices = assets.length ? await entry.adapter.getPrices(assets) : [];
   // Value, weight and drift come from the one place that computes them (packages/basket). It takes the
   // chain's asset list for each token's decimals.
   const listed = states.length ? await entry.adapter.listAssets() : [];
+  // Prices for the listed assets a vault holds. A token the chain shows that the list does not have (a
+  // shared portfolio's author can name one) has no price here: it is shown with no value, and does
+  // not stop the read.
+  const known = new Set(listed.map((a) => a.id));
+  const assets = [
+    ...new Set(states.flatMap((v) => [v.cash.asset, ...v.positions.map((p) => p.asset)])),
+  ].filter((id) => known.has(id));
+  const prices = assets.length ? await entry.adapter.getPrices(assets) : [];
   const vaults = states.map((v) => ({
     ...view(v, prices, listed),
     provenance: entry.provenance,

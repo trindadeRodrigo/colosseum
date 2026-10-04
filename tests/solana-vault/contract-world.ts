@@ -109,23 +109,39 @@ export const SHELF: Record<MintName, Shelf> = {
   gamma: { decimals: 6, token2022: false, usd: 2, index: 30 },
   delta: { decimals: 8, token2022: false, usd: 10, index: 40 },
 };
-const ASSETS: Exclude<MintName, 'cash'>[] = ['alpha', 'beta', 'gamma', 'delta'];
-export const id = (name: MintName): AssetId => `solana:${name}`;
+/**
+ * The shelf with `extra` more assets, `x1` to `xN`: five dollars each, on the classic token program,
+ * listed, priced and switched on like the others. For the tests that need a full vault.
+ */
+export function shelfOf(extra = 0): Record<string, Shelf> {
+  const more = Array.from({ length: extra }, (_, i) => [
+    `x${i + 1}`,
+    { decimals: 6, token2022: false, usd: 5, index: 100 + 2 * i },
+  ]);
+  return { ...SHELF, ...Object.fromEntries(more) };
+}
+const assetNames = (shelf: Record<string, Shelf>) => Object.keys(shelf).filter((n) => n !== 'cash');
+export const id = (name: string): AssetId => `solana:${name}`;
 const usdc = (dollars: number) => BigInt(Math.round(dollars * 1_000_000));
 
 /** The price account's entries: each asset's price and its average, at exponent 8. */
-export const PRICE_ENTRIES: PriceEntry[] = ASSETS.map((name) => ({
-  index: SHELF[name].index,
-  twapIndex: SHELF[name].index + 1,
-  value: BigInt(SHELF[name].usd) * 100_000_000n,
-  exponent: 8n,
-}));
+export function priceEntries(extra = 0): PriceEntry[] {
+  const shelf = shelfOf(extra);
+  return assetNames(shelf).map((name) => {
+    const s = shelf[name] as Shelf;
+    return {
+      index: s.index,
+      twapIndex: s.index + 1,
+      value: BigInt(s.usd) * 100_000_000n,
+      exponent: 8n,
+    };
+  });
+}
+export const PRICE_ENTRIES = priceEntries();
 
 /** Raw units out for raw units in, at the shelf prices: `in × num / den`. */
-function pairPrice(from: MintName, to: MintName): { num: bigint; den: bigint } {
+function pairPrice(a: Shelf, b: Shelf): { num: bigint; den: bigint } {
   // out = in × 10^(dOut − dIn) × usdIn / usdOut
-  const a = SHELF[from];
-  const b = SHELF[to];
   let num = BigInt(a.usd);
   let den = BigInt(b.usd);
   const shift = b.decimals - a.decimals;
@@ -140,7 +156,7 @@ export type ContractWorld = {
   config: ChainConfig;
   assets: BasketAsset[];
   keys: { deployer: Key; owner: Key; keeper: Key; guardian: Key };
-  mints: Record<MintName, { address: Address; tokenProgram: Address }>;
+  mints: Record<string, { address: Address; tokenProgram: Address }>;
   priceAccount: Address;
   /** Signs a built transaction with the key it names and hands back the bytes, as a wallet does. */
   sign(tx: BuiltTx): Promise<string>;
@@ -162,8 +178,14 @@ export async function buildContractWorld(
     pendingVersion: boolean;
     network: 'testnet' | 'local';
     notBefore: string;
+    /** More listed assets than the four, for a full vault. */
+    extraAssets?: number;
   },
 ): Promise<ContractWorld> {
+  const shelf = shelfOf(options.extraAssets ?? 0);
+  const names = Object.keys(shelf);
+  const listed = assetNames(shelf);
+  const at = (name: string) => shelf[name] as Shelf;
   const { rpc } = ledger;
   const { deployer, priceAccount } = options;
   const [owner, keeper, guardian, strangerKey] = await Promise.all([
@@ -210,9 +232,9 @@ export async function buildContractWorld(
 
   // The mints, the deployer their issuer.
   const mints = {} as ContractWorld['mints'];
-  for (const name of Object.keys(SHELF) as MintName[]) {
+  for (const name of names) {
     const mint = await newKey();
-    const tokenProgram = SHELF[name].token2022 ? TOKEN_2022_PROGRAM : TOKEN_PROGRAM;
+    const tokenProgram = at(name).token2022 ? TOKEN_2022_PROGRAM : TOKEN_PROGRAM;
     const lamports = await rpc.getMinimumBalanceForRentExemption(MINT_BYTES).send();
     await run(
       deployer,
@@ -227,7 +249,7 @@ export async function buildContractWorld(
         initMint({
           mint: mint.address,
           tokenProgram,
-          decimals: SHELF[name].decimals,
+          decimals: at(name).decimals,
           authority: deployer.address,
         }),
       ],
@@ -235,6 +257,11 @@ export async function buildContractWorld(
     );
     mints[name] = { address: mint.address, tokenProgram };
   }
+  const mint = (name: string) => {
+    const found = mints[name];
+    if (!found) throw new Error(`the world has no mint ${name}`);
+    return found;
+  };
 
   // The platform: Config, the asset list, every asset priced, switched on for the keeper, with a range a
   // fifth either side of its price, and always open (none of them is a stock).
@@ -245,56 +272,62 @@ export async function buildContractWorld(
       keeper: keeper.address,
       router: MOCK_ROUTER_PROGRAM,
       priceOwner: MOCK_ROUTER_PROGRAM,
-      cashMint: mints.cash.address,
+      cashMint: mint('cash').address,
       params: PARAMS,
     }),
     await initAssets(deployer.address),
     await setPriceAccount(deployer.address, 0, priceAccount),
   ]);
-  for (const name of ASSETS)
+  for (const name of listed)
     await run(deployer, [
-      await upsertAsset(deployer.address, mints[name].address, {
-        priceIndex: SHELF[name].index,
-        twapIndex: SHELF[name].index + 1,
+      await upsertAsset(deployer.address, mint(name).address, {
+        priceIndex: at(name).index,
+        twapIndex: at(name).index + 1,
         keeperOn: true,
-        minPrice: BigInt(SHELF[name].usd * 800_000),
-        maxPrice: BigInt(SHELF[name].usd * 1_200_000),
+        minPrice: BigInt(at(name).usd * 800_000),
+        maxPrice: BigInt(at(name).usd * 1_200_000),
       }),
     ]);
 
   // The test exchange: both directions of cash and each asset, at the shelf prices, and full reserves.
   await run(deployer, [await initRouter(deployer.address)]);
-  for (const name of ASSETS) {
-    const there = pairPrice('cash', name);
-    const back = pairPrice(name, 'cash');
+  for (const name of listed) {
+    const there = pairPrice(at('cash'), at(name));
+    const back = pairPrice(at(name), at('cash'));
     await run(deployer, [
       await initPair(
         deployer.address,
-        mints.cash.address,
-        mints[name].address,
+        mint('cash').address,
+        mint(name).address,
         there.num,
         there.den,
       ),
-      await initPair(deployer.address, mints[name].address, mints.cash.address, back.num, back.den),
+      await initPair(
+        deployer.address,
+        mint(name).address,
+        mint('cash').address,
+        back.num,
+        back.den,
+      ),
     ]);
   }
   const reserve = await exchangeAddress(MOCK_ROUTER_PROGRAM);
-  for (const name of Object.keys(SHELF) as MintName[])
+  for (const name of names)
     await run(
       deployer,
       await mintTo({
-        mint: mints[name].address,
-        tokenProgram: mints[name].tokenProgram,
+        mint: mint(name).address,
+        tokenProgram: mint(name).tokenProgram,
         holder: reserve,
         authority: deployer.address,
-        amount: 10n ** BigInt(SHELF[name].decimals + 9),
+        amount: 10n ** BigInt(at(name).decimals + 9),
       }),
     );
   await run(
     deployer,
     await mintTo({
-      mint: mints.cash.address,
-      tokenProgram: mints.cash.tokenProgram,
+      mint: mint('cash').address,
+      tokenProgram: mint('cash').tokenProgram,
       holder: owner.address,
       authority: deployer.address,
       amount: usdc(10_000),
@@ -309,19 +342,19 @@ export async function buildContractWorld(
     },
     { solana: { program: BASKET_PROGRAM } },
   ).solana;
-  const assets: BasketAsset[] = (Object.keys(SHELF) as MintName[]).map((name) => ({
+  const assets: BasketAsset[] = names.map((name) => ({
     id: id(name),
     chain: 'solana',
-    address: mints[name].address,
+    address: mint(name).address,
     symbol: `t${name.toUpperCase()}`,
-    decimals: SHELF[name].decimals,
+    decimals: at(name).decimals,
     cls: name === 'cash' ? 'cash' : 'etf',
     underlying: name.toUpperCase(),
     issuer: 'test',
     tier: 'A',
     // Cash is a dollar and is never priced, as the vault counts it.
     priceKind: name === 'cash' ? 'none' : 'scope',
-    priceRef: name === 'cash' ? '' : String(SHELF[name].index),
+    priceRef: name === 'cash' ? '' : String(at(name).index),
     session: 'always',
     autoFollowEligible: true,
     maxWeightBps: name === 'cash' ? 0 : 5_000,
@@ -331,7 +364,7 @@ export async function buildContractWorld(
   }));
   const adapter = createSolanaVaultAdapter({ config, rpc, assets, autoFollow: true });
 
-  const recipe = (familyHex: string, version: number, weights: [MintName, number][]): Recipe => ({
+  const recipe = (familyHex: string, version: number, weights: [string, number][]): Recipe => ({
     schemaVersion: 1,
     familyId: familyHex,
     chain: 'solana',
@@ -376,7 +409,7 @@ export async function buildContractWorld(
   // Three vaults of the owner, each opened and funded through the adapter.
   const open = async (
     basketId: string,
-    a: { recipe?: Address; targets?: [MintName, number][]; autoFollow: boolean; deposit: number },
+    a: { recipe?: Address; targets?: [string, number][]; autoFollow: boolean; deposit: number },
   ) => {
     await must(
       await adapter.buildCreateVault({
@@ -444,24 +477,24 @@ export async function buildContractWorld(
     );
 
   const withPriceMoved = async (asset: AssetId, bps: number, work: () => Promise<void>) => {
-    const name = asset.slice('solana:'.length) as MintName;
+    const name = asset.slice('solana:'.length);
     const set = async (
       scale: (p: { num: bigint; den: bigint }, buying: boolean) => { num: bigint; den: bigint },
     ) => {
-      const there = scale(pairPrice('cash', name), true);
-      const back = scale(pairPrice(name, 'cash'), false);
+      const there = scale(pairPrice(at('cash'), at(name)), true);
+      const back = scale(pairPrice(at(name), at('cash')), false);
       await run(deployer, [
         await setPairPrice(
           deployer.address,
-          mints.cash.address,
-          mints[name].address,
+          mint('cash').address,
+          mint(name).address,
           there.num,
           there.den,
         ),
         await setPairPrice(
           deployer.address,
-          mints[name].address,
-          mints.cash.address,
+          mint(name).address,
+          mint('cash').address,
           back.num,
           back.den,
         ),

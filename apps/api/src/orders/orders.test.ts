@@ -76,6 +76,58 @@ describe('the chain registry', () => {
       );
   });
 
+  it('runs Solana on its real adapter in live or readonly, on a test network or a local copy, labelled sandbox', () => {
+    const program = 'BPFLoaderUpgradeab1e11111111111111111111111';
+    const router = 'ComputeBudget111111111111111111111111111111';
+    const prices = 'SysvarC1ock11111111111111111111111111111111';
+    const cash = {
+      id: 'solana:usdc',
+      chain: 'solana' as const,
+      address: 'So11111111111111111111111111111111111111112',
+      symbol: 'USDC',
+      decimals: 6,
+      cls: 'cash' as const,
+      underlying: 'USD',
+      issuer: 'test',
+      tier: 'A' as const,
+      priceKind: 'none' as const,
+      priceRef: '',
+      session: 'always' as const,
+      autoFollowEligible: true,
+      maxWeightBps: 0,
+      blockedCountries: [],
+      sheet: 'test',
+      provenance: 'sandbox' as const,
+    };
+    // Nothing here is asked of the node: the adapter reads only when a route asks it to.
+    const solana = { rpc: {} as never, assets: [cash] };
+    const env = (mode: string, network: string) => ({
+      CHAIN_MODE_SOLANA: mode,
+      CHAIN_NETWORK_SOLANA: network,
+      CHAIN_ROUTER_SOLANA: router,
+      CHAIN_PRICE_SOURCE_SOLANA: prices,
+    });
+    const real = (e: Record<string, string>, inputs: typeof solana | null = solana) =>
+      createChainRegistry(parseFlags(e), parseChainConfigs(e, { solana: { program } }), {
+        seed: 'a',
+        ...(inputs ? { solana: inputs } : {}),
+      });
+    for (const mode of ['live', 'readonly'] as const)
+      for (const network of ['testnet', 'local']) {
+        const entry = real(env(mode, network)).get('solana');
+        expect([entry.mode, entry.provenance, entry.mock]).toEqual([mode, 'sandbox', undefined]);
+        expect(entry.adapter.capabilities).toMatchObject({ trade: mode, maxTradesPerTx: 1 });
+        expect(entry.source).not.toMatch(/https?:/);
+      }
+    // Mainnet waits for its own slot, and nothing runs without the node and the asset list.
+    expect(() => real(env('live', 'mainnet'))).toThrow(
+      'CHAIN_MODE_SOLANA is live on mainnet, which this API does not run yet',
+    );
+    expect(() => real(env('readonly', 'testnet'), null)).toThrow(
+      'the API was given no Solana RPC or no asset list',
+    );
+  });
+
   it('never repeats a mock transaction id across restarts: the seed is in every build', async () => {
     const owner = '0x00000000000000000000000000000000000000aa';
     const built = async (seed: string) => {
@@ -771,11 +823,13 @@ describe('no /v1 route can make the server sign', () => {
       'routes/v1/portfolio.ts',
     ]);
     // The chain packages that can sign keep that behind their `./server` entry, and neither the
-    // package nor the entry is here. packages/basket is arithmetic over what it is handed: it imports
-    // the schemas and nothing else.
+    // package's root nor that entry is here: the Solana adapter comes in by its key-free `./vault`
+    // entry, which tests/boundaries.test.ts holds to reaching no signing file. packages/basket is
+    // arithmetic over what it is handed: it imports the schemas and nothing else.
     expect([...packages.keys()].sort()).toEqual([
       '@colosseum/basket',
       '@colosseum/chain-mock',
+      '@colosseum/chain-solana/vault',
       '@colosseum/db',
       '@colosseum/schemas',
       'drizzle-orm',
