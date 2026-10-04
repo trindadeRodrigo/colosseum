@@ -25,9 +25,13 @@ export default function TestBridge({ onPort }: BridgeProps) {
   const problem = typeof setup === 'string' ? setup : check && !check.ok ? check.problem : null;
   const ready = chains !== null && check?.ok === true;
 
+  const kind = check && !check.ok && check.again ? 'api' : 'setup';
+  const api = check?.ok ? check.chains : undefined;
+
   useEffect(() => {
-    if (problem) onPort(createWalletPort(idleDriver(), walletChains(), problem));
-  }, [onPort, problem]);
+    if (problem)
+      onPort(createWalletPort(idleDriver(), walletChains(), problem, { problemKind: kind }));
+  }, [onPort, problem, kind]);
 
   useEffect(() => {
     if (!ready || !chains) return;
@@ -36,13 +40,13 @@ export default function TestBridge({ onPort }: BridgeProps) {
       const driver = await createTestDriver({
         prepareEvm: (from, request) =>
           evmRpc(chainOfEvmId(chains, request.chainId)).fees(from, request),
-        onChange: () => live && onPort(createWalletPort(driver, chains)),
+        onChange: () => live && onPort(createWalletPort(driver, chains, null, { api })),
       });
-      if (live) onPort(createWalletPort(driver, chains));
+      if (live) onPort(createWalletPort(driver, chains, null, { api }));
     })();
     return () => {
       live = false;
     };
-  }, [onPort, ready, chains]);
+  }, [onPort, ready, chains, api]);
   return null;
 }

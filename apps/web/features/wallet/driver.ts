@@ -15,6 +15,21 @@ export type EvmRequest = {
   chainId: number;
 };
 
+/** A wallet found in this browser that a person can sign in with: an extension, or the wallet's own browser. */
+export type FoundWallet = {
+  /** Names it to `signIn('wallet', { wallet })`. Stable while the page is open. */
+  id: string;
+  /** Its own name, as the wallet announces it: "Phantom". */
+  name: string;
+  family: Chain;
+};
+
+/**
+ * How to sign in, beyond the method. A passkey is used, or created: they are two calls, and a person
+ * with none yet must be able to make one. A wallet is one of those found in the browser.
+ */
+export type SignInChoice = { create?: boolean; wallet?: string };
+
 export interface WalletDriver {
   /** True only for the throwaway wallet: it alone may be handed a mock transaction. */
   readonly test: boolean;
@@ -22,8 +37,15 @@ export interface WalletDriver {
   userId: string | null;
   /** The first account of a family is the active one. */
   accounts: DriverAccount[];
-  signIn(method: 'passkey' | 'wallet'): Promise<void>;
+  /** The outside wallets a person can sign in with here. Left out, there are none. */
+  found?: FoundWallet[];
+  signIn(method: 'passkey' | 'wallet', choice?: SignInChoice): Promise<void>;
   signOut(): Promise<void>;
+  /**
+   * Makes the wallet of each family that a passkey sign-in owes the person and that is not there yet.
+   * A driver whose wallets come with the sign-in leaves it out.
+   */
+  ensureWallets?(): Promise<void>;
   /** Signs each serialized transaction as it is and returns it with the signature in place. */
   signSolana(
     address: string,

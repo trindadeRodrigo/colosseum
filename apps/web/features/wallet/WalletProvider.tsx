@@ -9,7 +9,7 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { API } from '@/lib/api';
+import { API } from '../../lib/api';
 import { apiUrl } from './api-url';
 import { WALLET_MARKER } from './marker';
 import type { WebWalletPort } from './port';
@@ -48,11 +48,15 @@ const LOADING: WebWalletPort = {
   userId: null,
   accounts: [],
   problem: null,
+  problemKind: null,
   test: false,
+  found: [],
   active: () => null,
   caps: () => ({ silent: false, batchSign: 1, signOnly: false }),
+  network: () => null,
   signIn: notYet,
   signOut: () => Promise.resolve(),
+  ensureWallets: notYet,
   sign: notYet,
   send: notYet,
   exportKey: notYet,
