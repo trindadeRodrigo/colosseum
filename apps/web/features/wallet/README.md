@@ -11,6 +11,7 @@ The app talks to a wallet through `WalletPort` (`packages/schemas/src/wallet.ts`
 | `sign-in-flows.ts` | Sign-in with an outside wallet, EVM and Solana: ask for the account, have it sign Privy's message, hand both to Privy. And `missingWallets`: which embedded wallets a passkey sign-in still owes |
 | `sign-in-view.ts` | Which sentence a failed sign-in gets |
 | `test/test-driver.ts` | A driver made of throwaway keys, for tests and for work on the mock |
+| `test/privy-double.ts` | A stand-in for Privy's hooks, for the test that mounts the bridge |
 | `chains.ts` | Which network each chain is on in the browser, from the shared chain configs, with the public RPC URLs |
 | `bytes.ts` | base58, base64, and reading a Solana transaction's signers and fee payer |
 | `WalletProvider.tsx` | `<WalletProvider>`, `useWalletPort()`, `useApiFetch()`. A screen's port has no signing member |
@@ -62,8 +63,8 @@ The browser reads `NEXT_PUBLIC_CHAIN_NETWORK_<CHAIN>` and the API reads `CHAIN_N
 
 - **A passkey** is two buttons, because they are two calls: "Create a passkey" (`signupWithPasskey`) and "Use a passkey I already have" (`loginWithPasskey`). A person with no passkey for this site can make one.
 - **A wallet** is one of those found in the browser, listed by its own name with its family. An EVM wallet signs in with SIWE, a Solana wallet with SIWS; WalletConnect is not listed. With none found, the screen says so and points to the passkey.
-- **Embedded wallets are made by the driver.** Privy makes none by itself after a sign-in through its hooks, so `createOnLogin` is off and the driver makes one wallet of each family for a person whose sign-in has no outside wallet. The port stays `loading` until both are there. If making one fails, the port is ready without it, the screen says so, and `port.ensureWallets()` tries again.
-- **The chain.** After sign-in the screen asks `GET /v1/me`. A person who made their wallet here is asked once which chain their plan lives on and the answer goes to `PUT /v1/me/chain`; a person who connected a wallet is never asked. From then on the product shows and uses only the wallet of that chain: `port.active(chainFamily(chain))`. The other family's embedded wallet exists and is never shown.
+- **Embedded wallets are made by the driver.** Privy makes none by itself after a sign-in through its hooks, so `createOnLogin` is off and the driver makes one wallet of each family for a person whose sign-in has no outside wallet. It is one job per person and attempt and one call at a time: a second call for the same wallet while the first is on its way could make two. Privy's "User already has an embedded wallet." is a wallet that is there, not a failure. While a wallet is owed, `port.walletsOwed` is `making` or `failed` and the status is `loading`, never `ready`: nobody is asked for a chain with one wallet. If making one fails, the screen says so and offers "Make my wallet" (`port.ensureWallets()`) and "Sign out", and the bar offers "Sign out" throughout. `privy-bridge.events.test.ts` mounts the bridge over a stand-in for Privy's hooks (`test/privy-double.ts`).
+- **The chain.** After sign-in the screen asks `GET /v1/me`. A person who made their wallet here is asked once which chain their plan lives on and the answer goes to `PUT /v1/me/chain`; a person who connected a wallet is never asked. A chain the server has switched off is named and not offered. From then on the product shows and uses only the wallet of that chain: `port.active(chainFamily(chain))`. The other family's embedded wallet exists and is never shown.
 - **The throwaway wallet** has no account on the API: its chain is worked out in the page and kept while the page is open, under the MOCK plate with its hatch.
 
 ## Before any product screen signs
@@ -120,7 +121,9 @@ An agent cannot do these: a real passkey, a real wallet's approval, and a real s
 | 11 | Sign out. With MetaMask installed: press "MetaMask · Ethereum" and approve | You land on `/goal` with no question, the `0x` address in the bar, and `/sign-in` says Robinhood Chain |
 | 12 | On `/goal`, signed in: type a goal, press Enter, fill what is empty | The limits list "Chain" with your chain and "test network". "Build my plan" works only when every field fits. Until the API can build a plan it answers "Your limits are set. The plan can't be built yet." |
 
-If step 2 ends in "You're signed in, but no wallet is linked to this sign-in yet", press "Make my wallet" and note it: the API's identity token did not list the new wallets the first time. If it ends in "You're signed in, but your wallet couldn't be made", the same button tries again: copy the line after "For the team" if there is one.
+If step 2 ends in "You're signed in, but your wallet couldn't be made. Nothing is lost. Try again.", the chain is not asked: press "Make my wallet" and note it, or "Sign out". If "Making your wallet…" never ends, "Sign out" is in the bar. If it ends in "You're signed in, but no wallet is linked to this sign-in yet", press "Make my wallet" and note it: the API's identity token did not list the new wallets the first time.
+
+With a keyboard only, or a screen reader on: after step 2 focus is on the card with the question and you hear "You're signed in. Choose the chain your plan lives on"; after step 4 you are on `/goal`; after "Sign out" in the bar focus is on "Sign in" and you hear "You're signed out." An agent tested these in a DOM without a browser; a person hears whether a screen reader says them.
 
 ### Signing: `http://localhost:3000/dev/wallet`
 
