@@ -5,41 +5,68 @@ import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.s
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
+import {TransientSlot} from "@openzeppelin/contracts/utils/TransientSlot.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {MulticallUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/MulticallUpgradeable.sol";
 import {IBasketVault} from "./interfaces/IBasketVault.sol";
-import {IVaultConfig} from "./interfaces/IVaultConfig.sol";
+import {IIndexRegistry} from "./interfaces/IIndexRegistry.sol";
+import {IPermit2} from "./interfaces/IPermit2.sol";
+import {IVaultConfig, PERMIT2} from "./interfaces/IVaultConfig.sol";
+import {Swap, Weight} from "./interfaces/Types.sol";
 
 /// One person's vault for one plan on one chain. The logic contract behind every vault's beacon proxy.
 ///
-/// This is the owner path only (EVM-1): deposit the cash token, and withdraw in kind to the owner. The swap,
-/// the keeper path, targets, accept and adopt are later slots; their signatures are in `IBasketVault`, which
-/// this contract inherits once it implements all of it.
+/// This is the owner's path and creation (EVM-1, EVM-2): deposit the cash token, swap through an allowed
+/// router, set targets, and withdraw in kind to the owner. The keeper path, accept, adopt and auto-follow
+/// are EVM-3; their signatures are in `IBasketVault`, which this contract inherits once it implements all
+/// of it.
 ///
 /// Rules that hold here and must keep holding:
+/// - A vault is created by its factory and by nothing else: the proxy's constructor runs `initialize`, the
+///   caller becomes the config, and `start` answers only that caller and only in the same transaction.
 /// - Money comes in as the chain's cash token only (gate `DEPOSIT`). The vault reads which token that is
-///   from its config on every deposit. A token sent in from outside cannot be stopped: it is not in
-///   `tokens`, and the owner takes it out with `withdraw`.
-/// - Tokens leave only by the owner's call and only to the owner (I1). No function takes a recipient, the
-///   destination is the stored owner and never the caller, and the owner is set once and cannot be changed.
-///   There is no `fallback` and no `receive`.
+///   from its config each time. A token sent in from outside cannot be stopped: it is not in `tokens`, and
+///   the owner takes it out with `withdraw`.
+/// - Tokens leave only by the owner's call (I1): to the owner, or as the input of a swap the owner signed,
+///   never more than its `amountIn`. No function takes a recipient, the owner is set once and cannot be
+///   changed, and there is no `fallback` and no `receive`.
+/// - A swap is judged by what the vault's own balances did, never by what the router answers: spent at
+///   most `amountIn`, received at least `minOut`, no other token of the vault debited.
+/// - No allowance from the vault outlives the swap that gave it, on the token or in Permit2 (I3). The vault
+///   has no `isValidSignature`, so nobody can sign an allowance in its name.
 /// - Withdrawing reads no feed and calls neither the config, the factory nor the registry (I4). Only a
 ///   beacon upgrade can block it.
 /// - `withdrawAll` never leaves a token behind for lack of gas: short of gas it fails as a whole.
+/// - One reentrancy guard covers every function that changes state. `multicall` is the one exception: it
+///   only calls back into the vault, and each inner call takes the guard itself.
 /// - Amounts are raw token units. The vault never calls `decimals()`; the config states them.
 /// - State lives in one ERC-7201 namespace. Later slots append to `VaultStorage`, never reorder it, and
 ///   inherit only bases that are stateless or namespaced.
-contract BasketVault is Initializable, ReentrancyGuardTransient {
+contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgradeable {
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
+    using TransientSlot for *;
 
     /// @custom:storage-location erc7201:basket.storage.BasketVault
     struct VaultStorage {
         address owner;
         IVaultConfig config;
         bytes32 planId;
-        // Every token that came in by a vault function: the cash token here, a swap's output from EVM-2 on.
+        // Every token that came in by a vault function: the cash token, and both sides of every swap.
         // `withdrawAll` walks this list and nothing else.
         EnumerableSet.AddressSet tokens;
+        // ---- appended by EVM-2
+        // The shared portfolio this vault follows and the version it holds as targets. Zero for none.
+        bytes32 indexId;
+        uint32 acceptedVersion;
+        // Off until the owner switches it on (EVM-3). Nothing here sets it.
+        bool autoFollow;
+        // Reserved (section 3.8). Nothing here sets it. It shares a slot with the two fields above: bits 0 to
+        // 31 the version, 32 to 39 auto-follow, 40 to 199 the operator.
+        address operator;
+        // Sorted by token. The owner's own, or a copy of the followed portfolio's accepted version.
+        Weight[] targets;
     }
 
     // keccak256(abi.encode(uint256(keccak256("basket.storage.BasketVault")) - 1)) & ~bytes32(uint256(0xff))
@@ -57,6 +84,18 @@ contract BasketVault is Initializable, ReentrancyGuardTransient {
     /// the gas, so (100,000 + 300,000) * 64 / 63 = 406,350, plus room for the loop's own work.
     uint256 internal constant SWEEP_RESERVE = 420_000;
 
+    /// The transient slot that says the vault is being created: set by `initialize`, cleared by `start`,
+    /// and gone when the creating transaction ends.
+    // keccak256(abi.encode(uint256(keccak256("basket.transient.BasketVault.creating")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 private constant CREATING = 0x40f19175d43003be909096bdf48d7d52db8f0e5be4f0f7ba482c4b8d6be6f300;
+
+    uint8 internal constant PULL_PERMIT2 = 2;
+    uint256 internal constant BPS = 10_000;
+    /// The most targets a vault holds, as on Solana. A shared portfolio has at most 12.
+    uint256 internal constant MAX_TARGETS = 16;
+    /// Marks a token whose balance could not be read. No token has this balance.
+    uint256 private constant UNREADABLE = type(uint256).max;
+
     modifier onlyOwner() {
         require(msg.sender == _vault().owner, IBasketVault.NotOwner(msg.sender));
         _;
@@ -67,33 +106,79 @@ contract BasketVault is Initializable, ReentrancyGuardTransient {
         _disableInitializers();
     }
 
-    /// Runs inside the proxy's constructor, so a vault never exists without an owner.
+    /// Runs inside the proxy's constructor, so a vault never exists without an owner. The caller, the
+    /// factory, becomes the config the vault reads: a vault cannot be told a config that did not create it.
     /// @param owner_ The person. Fixed for the life of the vault.
     /// @param planId_ The plan this vault holds: the salt the factory derives the vault's address from.
-    /// @param config_ Where the listed assets, their price feeds and the allowed routers are read from.
-    function initialize(address owner_, bytes32 planId_, address config_) external initializer {
-        require(owner_ != address(0) && config_ != address(0), IBasketVault.ZeroAddress());
+    function initialize(address owner_, bytes32 planId_) external initializer {
+        require(owner_ != address(0), IBasketVault.ZeroAddress());
         VaultStorage storage $ = _vault();
         $.owner = owner_;
         $.planId = planId_;
-        $.config = IVaultConfig(config_);
+        $.config = IVaultConfig(msg.sender);
+        CREATING.asBoolean().tstore(true);
+    }
+
+    /// The rest of creation, in the factory's next call: what the vault follows or its own targets, the
+    /// first cash from the owner, and the owner's first swaps. The factory passes on what the owner sent it
+    /// and nothing else.
+    ///
+    /// It answers only the factory and only while the creating transaction lasts: the mark `initialize` left
+    /// is in transient storage, so it is cleared here and cannot exist in any later transaction. After that
+    /// the factory has no way into a vault at all.
+    function start(
+        bytes32 indexId,
+        uint32 expectedVersion,
+        Weight[] calldata targets_,
+        uint256 cashAmount,
+        Swap[] calldata swaps
+    ) external nonReentrant {
+        VaultStorage storage $ = _vault();
+        require(msg.sender == address($.config) && CREATING.asBoolean().tload(), IBasketVault.NotCreating());
+        CREATING.asBoolean().tstore(false);
+
+        if (indexId != bytes32(0)) {
+            require(targets_.length == 0, IBasketVault.InvalidTargets(6));
+            _follow($, indexId, expectedVersion);
+        } else {
+            _setOwnTargets($, targets_);
+        }
+        if (cashAmount != 0) _pullCash($, $.owner, cashAmount);
+        if (swaps.length != 0) _swapAll($, swaps);
     }
 
     // ---- owner only
 
-    /// Pulls `amount` of the chain's cash token from the owner, and no other token. The vault's balance must
-    /// rise by at least `amount`: a token that skims a fee on transfer is refused, because every later check
-    /// (a swap's minimum, the keeper's value check) assumes a transfer moves what it says.
+    /// Pulls `amount` of the chain's cash token from the owner, and no other token.
     function deposit(uint256 amount) external onlyOwner nonReentrant {
-        VaultStorage storage $ = _vault();
-        address cash = $.config.cashToken();
-        require(cash != address(0), IBasketVault.CashTokenNotSet());
-        $.tokens.add(cash);
+        _pullCash(_vault(), msg.sender, amount);
+    }
 
-        uint256 before = IERC20(cash).balanceOf(address(this));
-        IERC20(cash).safeTransferFrom(msg.sender, address(this), amount);
-        uint256 received = IERC20(cash).balanceOf(address(this)) - before;
-        require(received >= amount, IBasketVault.DepositShortfall(cash, amount, received));
+    /// Trades through allowed routers, one swap after another. All of them pass or none does.
+    ///
+    /// The input must be a token that is or was a listed asset, the output one that is listed now: a removed
+    /// asset can be sold and not bought. Both join `tokens`. For each swap the vault approves exactly
+    /// `amountIn` (to the router, or to Permit2 and inside it to the router, as the config says the router
+    /// pulls), calls the router with `data`, takes the approval back and checks it is gone, then reads its
+    /// own balances: at most `amountIn` of the input left, at least `minOut` of the output arrived, and no
+    /// other token in `tokens` went down.
+    function ownerSwap(Swap[] calldata swaps) external onlyOwner nonReentrant {
+        _swapAll(_vault(), swaps);
+    }
+
+    /// Replaces the vault's targets with the owner's own and stops following a shared portfolio. Targets
+    /// are listed assets in ascending order of token, never the cash token, adding up to at most 10,000 bps:
+    /// what is left is cash. An empty list means all cash.
+    function setTargets(Weight[] calldata targets_) external onlyOwner nonReentrant {
+        VaultStorage storage $ = _vault();
+        bytes32 followed = $.indexId;
+        if (followed != bytes32(0)) {
+            $.indexId = bytes32(0);
+            $.acceptedVersion = 0;
+            emit IBasketVault.Unfollowed(address(this), followed);
+        }
+        $.autoFollow = false;
+        _setOwnTargets($, targets_);
     }
 
     /// Sends `amount` of any token the vault holds to the owner, whether it was deposited or sent in from
@@ -149,7 +234,172 @@ contract BasketVault is Initializable, ReentrancyGuardTransient {
         return _vault().tokens.values();
     }
 
+    /// The targets the vault holds, sorted by token.
+    function targets() external view returns (Weight[] memory) {
+        return _vault().targets;
+    }
+
+    /// The shared portfolio the vault follows (zero for none), the version it accepted, and auto-follow.
+    function following() external view returns (bytes32 indexId, uint32 acceptedVersion, bool autoFollow) {
+        VaultStorage storage $ = _vault();
+        return ($.indexId, $.acceptedVersion, $.autoFollow);
+    }
+
     // ---- internals
+
+    /// Pulls the cash token from `from`: the owner, as the caller of `deposit` or as stored. The vault's
+    /// balance must rise by at least `amount`: a token that skims a fee on transfer is refused, because
+    /// every later check (a swap's minimum, the keeper's value check) assumes a transfer moves what it says.
+    function _pullCash(VaultStorage storage $, address from, uint256 amount) private {
+        address cash = $.config.cashToken();
+        require(cash != address(0), IBasketVault.CashTokenNotSet());
+        $.tokens.add(cash);
+
+        uint256 before = IERC20(cash).balanceOf(address(this));
+        IERC20(cash).safeTransferFrom(from, address(this), amount);
+        uint256 received = IERC20(cash).balanceOf(address(this)) - before;
+        require(received >= amount, IBasketVault.DepositShortfall(cash, amount, received));
+    }
+
+    /// Copies the active version of a shared portfolio as the vault's targets, if it is the version the
+    /// person reviewed. A create signed against version N that lands after N+1 took effect fails here (A18).
+    function _follow(VaultStorage storage $, bytes32 indexId, uint32 expectedVersion) private {
+        address registry = $.config.registry();
+        require(registry != address(0), IBasketVault.RegistryNotSet());
+        (uint32 version, Weight[] memory components) = IIndexRegistry(registry).active(indexId);
+        require(version != 0, IBasketVault.IndexNotFound(indexId));
+        require(version == expectedVersion, IBasketVault.VersionMismatch(indexId, expectedVersion, version));
+
+        delete $.targets;
+        for (uint256 i; i < components.length; ++i) {
+            $.targets.push(components[i]);
+        }
+        $.indexId = indexId;
+        $.acceptedVersion = version;
+        emit IBasketVault.Followed(address(this), indexId, version);
+    }
+
+    function _setOwnTargets(VaultStorage storage $, Weight[] calldata list) private {
+        require(list.length <= MAX_TARGETS, IBasketVault.InvalidTargets(1));
+        IVaultConfig cfg = $.config;
+        address cash = cfg.cashToken();
+        uint256 total;
+        address last;
+        delete $.targets;
+        for (uint256 i; i < list.length; ++i) {
+            address token = list[i].token;
+            require(i == 0 || token > last, IBasketVault.InvalidTargets(2));
+            require(cfg.isAsset(token), IBasketVault.InvalidTargets(3));
+            require(token != cash, IBasketVault.InvalidTargets(4));
+            total += list[i].bps;
+            last = token;
+            $.targets.push(list[i]);
+        }
+        require(total <= BPS, IBasketVault.InvalidTargets(5));
+        emit IBasketVault.TargetsSet(address(this), list);
+    }
+
+    /// Checks every swap and admits its tokens before anything is approved or called, then runs them in
+    /// order against one running record of the vault's balances.
+    function _swapAll(VaultStorage storage $, Swap[] calldata swaps) private {
+        IVaultConfig cfg = $.config;
+        uint8[] memory pulls = new uint8[](swaps.length);
+        for (uint256 i; i < swaps.length; ++i) {
+            Swap calldata s = swaps[i];
+            require(cfg.wasAsset(s.tokenIn), IBasketVault.TokenNotAccepted(s.tokenIn));
+            require(s.tokenOut != s.tokenIn && cfg.isAsset(s.tokenOut), IBasketVault.TokenNotAccepted(s.tokenOut));
+            $.tokens.add(s.tokenIn);
+            $.tokens.add(s.tokenOut);
+
+            pulls[i] = cfg.routerPull(s.router);
+            require(pulls[i] != 0, IBasketVault.RouterNotAllowed(s.router));
+        }
+        // The config keeps these out of its router list. The vault does not take its word for it: with a
+        // token it holds, Permit2 or itself as the router, `data` could be an approval. Checked once every
+        // token of the batch is in `tokens`, so that a token a later swap brings in is seen too.
+        for (uint256 i; i < swaps.length; ++i) {
+            address router = swaps[i].router;
+            require(
+                router != address(this) && router != PERMIT2 && !$.tokens.contains(router),
+                IBasketVault.RouterNotAllowed(router)
+            );
+        }
+
+        address[] memory list = $.tokens.values();
+        uint256[] memory held = new uint256[](list.length);
+        for (uint256 j; j < list.length; ++j) {
+            held[j] = _held(list[j]);
+        }
+        for (uint256 i; i < swaps.length; ++i) {
+            _swap(swaps[i], pulls[i], list, held);
+        }
+    }
+
+    /// One swap. `held` is what the vault had of each token in `list` before it, and is updated to what it
+    /// has after.
+    function _swap(Swap calldata s, uint8 pull, address[] memory list, uint256[] memory held) private {
+        _approve(s.tokenIn, s.router, pull, s.amountIn);
+        (bool ok, bytes memory reason) = s.router.call(s.data);
+        require(ok, IBasketVault.RouterFailed(s.router, reason));
+        _revoke(s.tokenIn, s.router, pull);
+
+        uint256 spent;
+        uint256 received;
+        for (uint256 j; j < list.length; ++j) {
+            address token = list[j];
+            uint256 was = held[j];
+            uint256 left = _held(token);
+            held[j] = left;
+            bool traded = token == s.tokenIn || token == s.tokenOut;
+            // Both sides of the swap must be readable before and after: the checks below are on them.
+            require(!traded || (was != UNREADABLE && left != UNREADABLE), IBasketVault.BalanceUnreadable(token));
+            if (token == s.tokenIn) {
+                spent = was > left ? was - left : 0;
+                require(spent <= s.amountIn, IBasketVault.SpentTooMuch(token, spent, s.amountIn));
+            } else if (token == s.tokenOut) {
+                received = left > was ? left - was : 0;
+                require(received >= s.minOut, IBasketVault.ReceivedTooLittle(token, received, s.minOut));
+            } else if (was != UNREADABLE) {
+                // A token that could not be read before the swap (frozen by its issuer, say) is left out,
+                // so that it cannot hold up trades in the others. One that could be read must still be
+                // readable, and not lower.
+                require(left != UNREADABLE && left >= was, IBasketVault.OtherTokenDebited(token, was, left));
+            }
+        }
+        emit IBasketVault.OwnerTrade(address(this), s.tokenIn, s.tokenOut, spent, received);
+    }
+
+    /// Lets the router take exactly `amount` of `token`, the way the config says it pulls.
+    function _approve(address token, address router, uint8 pull, uint256 amount) private {
+        if (pull == PULL_PERMIT2) {
+            IERC20(token).forceApprove(PERMIT2, amount);
+            // Good for this block only.
+            IPermit2(PERMIT2).approve(token, router, SafeCast.toUint160(amount), uint48(block.timestamp));
+        } else {
+            IERC20(token).forceApprove(router, amount);
+        }
+    }
+
+    /// Takes back whatever the router did not use, and reads that nothing is left (I3). The reads are the
+    /// check: a token or a Permit2 that ignores the reset fails the swap.
+    function _revoke(address token, address router, uint8 pull) private {
+        address spender = router;
+        if (pull == PULL_PERMIT2) {
+            IPermit2(PERMIT2).approve(token, router, 0, 0);
+            (uint160 inPermit2,,) = IPermit2(PERMIT2).allowance(address(this), token, router);
+            require(inPermit2 == 0, IBasketVault.AllowanceLeft(token, router, inPermit2));
+            spender = PERMIT2;
+        }
+        IERC20(token).forceApprove(spender, 0);
+        uint256 onToken = IERC20(token).allowance(address(this), spender);
+        require(onToken == 0, IBasketVault.AllowanceLeft(token, spender, onToken));
+    }
+
+    /// The vault's balance of `token`, or `UNREADABLE`.
+    function _held(address token) private view returns (uint256) {
+        (bool ok, uint256 amount) = _tryBalanceOf(token);
+        return ok ? amount : UNREADABLE;
+    }
 
     /// Reads this vault's balance without trusting the token: a revert, an address with no code, a short
     /// answer or one that needs more than `SWEEP_BALANCE_GAS` gives `false`. At most 32 bytes are copied.
@@ -183,7 +433,7 @@ contract BasketVault is Initializable, ReentrancyGuardTransient {
         }
     }
 
-    function _vault() private pure returns (VaultStorage storage $) {
+    function _vault() internal pure returns (VaultStorage storage $) {
         assembly {
             $.slot := VAULT_STORAGE
         }

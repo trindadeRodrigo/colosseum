@@ -2,10 +2,11 @@
 pragma solidity 0.8.37;
 
 import {Test} from "forge-std/Test.sol";
-import {IVaultConfig} from "../src/interfaces/IVaultConfig.sol";
-import {AssetConfig} from "../src/interfaces/Types.sol";
+import {IVaultConfig, PERMIT2} from "../src/interfaces/IVaultConfig.sol";
+import {AssetConfig, Params} from "../src/interfaces/Types.sol";
 import {ConfigHarness} from "./helpers/ConfigHarness.sol";
-import {MockToken} from "./mocks/Tokens.sol";
+import {MockPermit2} from "./mocks/Routers.sol";
+import {MockToken, NoReturnToken} from "./mocks/Tokens.sol";
 
 /// Any contract will do as a router here: the config only checks that there is code at the address.
 contract RouterStub {}
@@ -14,6 +15,8 @@ contract RouterStub {}
 contract VaultConfigTest is Test {
     address internal admin = makeAddr("admin");
     address internal stranger = makeAddr("stranger");
+    address internal guardian = makeAddr("guardian");
+    address internal keeper = makeAddr("keeper");
     address internal tokenA;
     address internal tokenB;
     address internal router;
@@ -21,10 +24,33 @@ contract VaultConfigTest is Test {
     ConfigHarness internal config;
 
     function setUp() public {
-        config = new ConfigHarness(admin);
+        config = new ConfigHarness(admin, _params());
         tokenA = address(new MockToken(18));
         tokenB = address(new MockToken(6));
         router = address(new RouterStub());
+        vm.startPrank(admin);
+        config.setGuardian(guardian);
+        config.setKeeper(keeper);
+        vm.stopPrank();
+    }
+
+    function _listBoth() internal {
+        vm.startPrank(admin);
+        config.setAsset(tokenA, _priced(makeAddr("feedA"), 18));
+        config.setAsset(tokenB, _priced(makeAddr("feedB"), 6));
+        config.setCashToken(tokenB);
+        vm.stopPrank();
+    }
+
+    function _params() internal pure returns (Params memory) {
+        return Params({
+            toleranceBps: 125,
+            lossCapBps: 200,
+            bandBps: 50,
+            assetCooldown: 3600,
+            sessionOpen: 52_200,
+            sessionClose: 72_000
+        });
     }
 
     function _priced(address feed, uint8 tokenDecimals) internal pure returns (AssetConfig memory) {
@@ -69,7 +95,7 @@ contract VaultConfigTest is Test {
 
     function test_init_revertsOnZeroAdmin() public {
         vm.expectRevert(IVaultConfig.ZeroAddress.selector);
-        new ConfigHarness(address(0));
+        new ConfigHarness(address(0), _params());
     }
 
     function test_adminHandover_takesTwoSteps() public {
@@ -175,7 +201,7 @@ contract VaultConfigTest is Test {
         assertEq(config.asset(tokenA).feed, address(0));
     }
 
-    /// A halt belongs to the guardian (EVM-3). A feed update by the admin must not lift it, and a listing
+    /// A halt belongs to the guardian. A feed update by the admin must not lift it, and a listing
     /// cannot start one: `setAsset` keeps whatever halt is stored and ignores the one it is given.
     function test_setAsset_keepsTheStoredHalt() public {
         AssetConfig memory a = _good();
@@ -184,7 +210,8 @@ contract VaultConfigTest is Test {
         config.setAsset(tokenA, a);
         assertEq(config.asset(tokenA).haltUntil, 0, "a listing cannot start a halt");
 
-        config.haltForTest(tokenA, 1_800_000_000);
+        vm.prank(admin);
+        config.haltAsset(tokenA, 1_800_000_000);
         AssetConfig memory a2 = _priced(makeAddr("feedA2"), 18);
         AssetConfig memory stored = _priced(makeAddr("feedA2"), 18);
         stored.haltUntil = 1_800_000_000;
@@ -405,15 +432,521 @@ contract VaultConfigTest is Test {
         assertEq(config.routerPull(tokenB), 0);
     }
 
-    // ---- storage
-
-    /// The config keeps its state in one ERC-7201 namespace, so the factory can add its own beside it.
-    function test_storage_isTheErc7201Namespace() public view {
-        bytes32 slot =
-            keccak256(abi.encode(uint256(keccak256("basket.storage.VaultConfig")) - 1)) & ~bytes32(uint256(0xff));
-        assertEq(address(uint160(uint256(vm.load(address(config), slot)))), admin);
-        for (uint256 i; i < 8; ++i) {
-            assertEq(vm.load(address(config), bytes32(i)), bytes32(0));
+    /// A token is never a router, listed or not. A contract that answers `allowance(address,address)` as an
+    /// ERC-20 does is refused whatever else it is.
+    function test_setRouter_revertsOnAnythingThatAnswersAsAToken() public {
+        address[2] memory tokens = [address(new MockToken(18)), address(new NoReturnToken(6))];
+        vm.startPrank(admin);
+        for (uint256 i; i < tokens.length; ++i) {
+            vm.expectRevert(abi.encodeWithSelector(IVaultConfig.RouterIsToken.selector, tokens[i]));
+            config.setRouter(tokens[i], 1);
+            assertEq(config.routerPull(tokens[i]), 0);
         }
+        vm.stopPrank();
+    }
+
+    /// An asset the admin took off the list is still a token vaults may hold: it stays refused as a router.
+    function test_setRouter_revertsOnARemovedAsset() public {
+        _listBoth();
+        vm.startPrank(admin);
+        config.removeAsset(tokenA);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.RouterIsAsset.selector, tokenA));
+        config.setRouter(tokenA, 1);
+        vm.stopPrank();
+    }
+
+    /// Permit2 is given an allowance during a swap, and the config is where the lists live. With either as
+    /// the "router", swap data could be a call on it in a vault's name.
+    function test_setRouter_revertsOnPermit2AndOnTheConfigItself() public {
+        vm.etch(PERMIT2, address(new MockPermit2()).code);
+        address registry = address(new RouterStub());
+        vm.startPrank(admin);
+        config.setRegistry(registry);
+        address[3] memory reserved = [PERMIT2, address(config), registry];
+        for (uint256 i; i < reserved.length; ++i) {
+            vm.expectRevert(abi.encodeWithSelector(IVaultConfig.RouterReserved.selector, reserved[i]));
+            config.setRouter(reserved[i], 2);
+            assertEq(config.routerPull(reserved[i]), 0);
+        }
+        vm.stopPrank();
+    }
+
+    // ---- taking an asset off the list
+
+    function test_removeAsset_takesItOffTheListAndKeepsItsSettings() public {
+        _listBoth();
+        AssetConfig memory before = config.asset(tokenA);
+
+        vm.prank(admin);
+        vm.expectEmit(address(config));
+        emit IVaultConfig.AssetRemoved(tokenA);
+        config.removeAsset(tokenA);
+
+        assertFalse(config.isAsset(tokenA));
+        assertTrue(config.wasAsset(tokenA), "it can still be sold and withdrawn");
+        assertEq(config.assets().length, 1);
+        assertEq(config.assets()[0], tokenB);
+        assertEq(config.removedAssets().length, 1);
+        assertEq(config.removedAssets()[0], tokenA);
+        _assertSame(config.asset(tokenA), before);
+        assertFalse(config.wasAsset(makeAddr("never-listed")));
+    }
+
+    function test_removeAsset_listingItAgainPutsItBack() public {
+        _listBoth();
+        vm.startPrank(admin);
+        config.removeAsset(tokenA);
+        config.setAsset(tokenA, _priced(makeAddr("feedA2"), 18));
+        vm.stopPrank();
+        assertTrue(config.isAsset(tokenA));
+        assertEq(config.removedAssets().length, 0);
+        assertEq(config.assets().length, 2);
+    }
+
+    function test_removeAsset_revertsForNonAdmin() public {
+        _listBoth();
+        address[2] memory callers = [stranger, guardian];
+        for (uint256 i; i < callers.length; ++i) {
+            vm.prank(callers[i]);
+            vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAdmin.selector, callers[i]));
+            config.removeAsset(tokenA);
+        }
+        assertTrue(config.isAsset(tokenA));
+    }
+
+    function test_removeAsset_revertsOnATokenThatIsNotListed() public {
+        _listBoth();
+        vm.startPrank(admin);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.AssetNotListed.selector, router));
+        config.removeAsset(router);
+        config.removeAsset(tokenA);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.AssetNotListed.selector, tokenA));
+        config.removeAsset(tokenA);
+        vm.stopPrank();
+    }
+
+    /// The cash token is what every deposit pulls. It leaves the list only after another token has taken
+    /// its place.
+    function test_removeAsset_revertsOnTheCashToken() public {
+        _listBoth();
+        vm.startPrank(admin);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.CashTokenNotRemovable.selector, tokenB));
+        config.removeAsset(tokenB);
+        assertTrue(config.isAsset(tokenB));
+
+        config.setCashToken(tokenA);
+        config.removeAsset(tokenB);
+        vm.stopPrank();
+        assertFalse(config.isAsset(tokenB));
+    }
+
+    // ---- the three roles
+
+    function test_roles_areTheAdminsToRotate() public {
+        address next = makeAddr("next");
+        vm.startPrank(admin);
+        vm.expectEmit(address(config));
+        emit IVaultConfig.GuardianSet(next);
+        config.setGuardian(next);
+        vm.expectEmit(address(config));
+        emit IVaultConfig.KeeperSet(next);
+        config.setKeeper(next);
+        vm.expectEmit(address(config));
+        emit IVaultConfig.SequencerFeedSet(next);
+        config.setSequencerFeed(next);
+        vm.stopPrank();
+        assertEq(config.guardian(), next);
+        assertEq(config.keeper(), next);
+        assertEq(config.sequencerFeed(), next);
+
+        // The guardian that was replaced is a stranger now.
+        vm.prank(guardian);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotGuardian.selector, guardian));
+        config.pauseKeeper();
+    }
+
+    function test_setGuardian_revertsForNonAdmin() public {
+        address[3] memory callers = [stranger, guardian, keeper];
+        for (uint256 i; i < callers.length; ++i) {
+            vm.prank(callers[i]);
+            vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAdmin.selector, callers[i]));
+            config.setGuardian(callers[i]);
+        }
+        assertEq(config.guardian(), guardian);
+    }
+
+    function test_setKeeper_revertsForNonAdmin() public {
+        address[3] memory callers = [stranger, guardian, keeper];
+        for (uint256 i; i < callers.length; ++i) {
+            vm.prank(callers[i]);
+            vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAdmin.selector, callers[i]));
+            config.setKeeper(callers[i]);
+        }
+        assertEq(config.keeper(), keeper);
+    }
+
+    function test_setSequencerFeed_revertsForNonAdmin() public {
+        vm.prank(guardian);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAdmin.selector, guardian));
+        config.setSequencerFeed(guardian);
+        assertEq(config.sequencerFeed(), address(0));
+    }
+
+    // ---- the guardian: pause
+
+    function test_pauseKeeper_byTheGuardianOrTheAdmin() public {
+        address[2] memory callers = [guardian, admin];
+        for (uint256 i; i < callers.length; ++i) {
+            vm.prank(callers[i]);
+            vm.expectEmit(address(config));
+            emit IVaultConfig.KeeperPaused(callers[i]);
+            config.pauseKeeper();
+            assertTrue(config.keeperPaused());
+
+            vm.prank(admin);
+            vm.expectEmit(address(config));
+            emit IVaultConfig.KeeperUnpaused();
+            config.unpauseKeeper();
+            assertFalse(config.keeperPaused());
+        }
+    }
+
+    function test_pauseKeeper_revertsForAnyoneElse() public {
+        address[2] memory callers = [stranger, keeper];
+        for (uint256 i; i < callers.length; ++i) {
+            vm.prank(callers[i]);
+            vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotGuardian.selector, callers[i]));
+            config.pauseKeeper();
+        }
+        assertFalse(config.keeperPaused());
+    }
+
+    /// The guardian can stop the keeper and cannot start it again: a leaked guardian key can only tighten.
+    function test_unpauseKeeper_isTheAdminsAlone() public {
+        vm.prank(guardian);
+        config.pauseKeeper();
+        address[3] memory callers = [guardian, keeper, stranger];
+        for (uint256 i; i < callers.length; ++i) {
+            vm.prank(callers[i]);
+            vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAdmin.selector, callers[i]));
+            config.unpauseKeeper();
+        }
+        assertTrue(config.keeperPaused());
+    }
+
+    // ---- the guardian: halting an asset
+
+    function test_haltAsset_onlyTightens() public {
+        _listBoth();
+        vm.startPrank(guardian);
+        vm.expectEmit(address(config));
+        emit IVaultConfig.AssetHalted(tokenA, 1_800_000_000);
+        config.haltAsset(tokenA, 1_800_000_000);
+        assertEq(config.asset(tokenA).haltUntil, 1_800_000_000);
+
+        uint64[2] memory notLater = [uint64(1_800_000_000), 1_799_999_999];
+        for (uint256 i; i < notLater.length; ++i) {
+            vm.expectRevert(
+                abi.encodeWithSelector(IVaultConfig.OnlyTighten.selector, uint64(1_800_000_000), notLater[i])
+            );
+            config.haltAsset(tokenA, notLater[i]);
+        }
+        config.haltAsset(tokenA, 1_800_000_001);
+        vm.stopPrank();
+        assertEq(config.asset(tokenA).haltUntil, 1_800_000_001);
+        assertEq(config.asset(tokenB).haltUntil, 0, "one asset's halt is not another's");
+    }
+
+    function test_haltAsset_revertsForAnyoneButTheGuardianOrTheAdmin() public {
+        _listBoth();
+        address[2] memory callers = [stranger, keeper];
+        for (uint256 i; i < callers.length; ++i) {
+            vm.prank(callers[i]);
+            vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotGuardian.selector, callers[i]));
+            config.haltAsset(tokenA, 1_800_000_000);
+        }
+        assertEq(config.asset(tokenA).haltUntil, 0);
+    }
+
+    function test_haltAsset_revertsOnATokenThatWasNeverListed() public {
+        vm.prank(guardian);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.AssetNotListed.selector, tokenA));
+        config.haltAsset(tokenA, 1_800_000_000);
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.AssetNotListed.selector, tokenA));
+        config.setHalt(tokenA, 1_800_000_000);
+        assertEq(config.asset(tokenA).haltUntil, 0);
+    }
+
+    /// A halt outlives the asset's removal and its return to the list.
+    function test_haltAsset_staysThroughRemovalAndRelisting() public {
+        _listBoth();
+        vm.prank(guardian);
+        config.haltAsset(tokenA, 1_800_000_000);
+        vm.startPrank(admin);
+        config.removeAsset(tokenA);
+        vm.stopPrank();
+        vm.prank(guardian);
+        config.haltAsset(tokenA, 1_900_000_000);
+        vm.prank(admin);
+        config.setAsset(tokenA, _priced(makeAddr("feedA2"), 18));
+        assertEq(config.asset(tokenA).haltUntil, 1_900_000_000);
+    }
+
+    /// Lifting or shortening a halt is the admin's.
+    function test_setHalt_isTheAdminsAlone() public {
+        _listBoth();
+        vm.prank(guardian);
+        config.haltAsset(tokenA, 1_800_000_000);
+
+        address[2] memory callers = [guardian, stranger];
+        for (uint256 i; i < callers.length; ++i) {
+            vm.prank(callers[i]);
+            vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAdmin.selector, callers[i]));
+            config.setHalt(tokenA, 0);
+        }
+
+        vm.prank(admin);
+        vm.expectEmit(address(config));
+        emit IVaultConfig.AssetHalted(tokenA, 0);
+        config.setHalt(tokenA, 0);
+        assertEq(config.asset(tokenA).haltUntil, 0);
+    }
+
+    // ---- the guardian: the market calendar
+
+    function test_extendClosedUntil_onlyTightens() public {
+        vm.startPrank(guardian);
+        vm.expectEmit(address(config));
+        emit IVaultConfig.ClosedUntilSet(1_800_000_000);
+        config.extendClosedUntil(1_800_000_000);
+        uint64[2] memory notLater = [uint64(1_800_000_000), 1];
+        for (uint256 i; i < notLater.length; ++i) {
+            vm.expectRevert(
+                abi.encodeWithSelector(IVaultConfig.OnlyTighten.selector, uint64(1_800_000_000), notLater[i])
+            );
+            config.extendClosedUntil(notLater[i]);
+        }
+        vm.stopPrank();
+        assertEq(config.closedUntil(), 1_800_000_000);
+
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotGuardian.selector, stranger));
+        config.extendClosedUntil(1_900_000_000);
+    }
+
+    function test_setClosedUntil_isTheAdminsAlone() public {
+        vm.prank(guardian);
+        config.extendClosedUntil(1_800_000_000);
+        vm.prank(guardian);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAdmin.selector, guardian));
+        config.setClosedUntil(0);
+
+        vm.prank(admin);
+        config.setClosedUntil(0);
+        assertEq(config.closedUntil(), 0);
+    }
+
+    function test_closedDays_theGuardianAddsAndOnlyTheAdminRemoves() public {
+        uint32 day = 20_800;
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotGuardian.selector, stranger));
+        config.addClosedDay(day);
+        assertFalse(config.closedDay(day));
+
+        vm.prank(guardian);
+        vm.expectEmit(address(config));
+        emit IVaultConfig.ClosedDaySet(day, true);
+        config.addClosedDay(day);
+        assertTrue(config.closedDay(day));
+        assertFalse(config.closedDay(day + 1));
+
+        vm.prank(guardian);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAdmin.selector, guardian));
+        config.setClosedDay(day, false);
+        assertTrue(config.closedDay(day));
+
+        vm.prank(admin);
+        config.setClosedDay(day, false);
+        assertFalse(config.closedDay(day));
+    }
+
+    // ---- the keeper's limits
+
+    function test_setParams_storesThemInsideTheBounds() public {
+        // The bounds themselves are allowed.
+        Params memory p = Params(300, 500, 1000, 600, 0, 86_400);
+        vm.prank(admin);
+        vm.expectEmit(address(config));
+        emit IVaultConfig.ParamsSet(p);
+        config.setParams(p);
+        (uint16 tolerance, uint16 lossCap, uint16 band, uint32 cooldown, uint32 open, uint32 close) = config.params();
+        assertEq(tolerance, 300);
+        assertEq(lossCap, 500);
+        assertEq(band, 1000);
+        assertEq(cooldown, 600);
+        assertEq(open, 0);
+        assertEq(close, 86_400);
+    }
+
+    function _expectParamsRefused(Params memory p, bytes32 param, uint256 value) internal {
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.ParamOutOfBounds.selector, param, value));
+        config.setParams(p);
+        (uint16 tolerance,,,,,) = config.params();
+        assertEq(tolerance, 125);
+    }
+
+    function test_setParams_revertsOnToleranceAbove300() public {
+        Params memory p = _params();
+        p.toleranceBps = 301;
+        _expectParamsRefused(p, "toleranceBps", 301);
+    }
+
+    function test_setParams_revertsOnLossCapAbove500() public {
+        Params memory p = _params();
+        p.lossCapBps = 501;
+        _expectParamsRefused(p, "lossCapBps", 501);
+    }
+
+    function test_setParams_revertsOnCooldownUnder600() public {
+        Params memory p = _params();
+        p.assetCooldown = 599;
+        _expectParamsRefused(p, "assetCooldown", 599);
+    }
+
+    function test_setParams_revertsOnASessionPastMidnight() public {
+        Params memory p = _params();
+        p.sessionClose = 86_401;
+        _expectParamsRefused(p, "sessionClose", 86_401);
+    }
+
+    function test_setParams_revertsOnASessionThatClosesBeforeItOpens() public {
+        Params memory p = _params();
+        p.sessionOpen = p.sessionClose;
+        _expectParamsRefused(p, "sessionOpen", p.sessionOpen);
+    }
+
+    function test_setParams_revertsForNonAdmin() public {
+        address[2] memory callers = [stranger, guardian];
+        for (uint256 i; i < callers.length; ++i) {
+            vm.prank(callers[i]);
+            vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAdmin.selector, callers[i]));
+            config.setParams(_params());
+        }
+    }
+
+    function test_init_holdsTheParamsToTheirBounds() public {
+        Params memory p = _params();
+        p.assetCooldown = 0;
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.ParamOutOfBounds.selector, bytes32("assetCooldown"), 0));
+        new ConfigHarness(admin, p);
+    }
+
+    // ---- the registry: set once
+
+    function test_setRegistry_isSetOnceByTheAdmin() public {
+        address registry = address(new RouterStub());
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAdmin.selector, stranger));
+        config.setRegistry(registry);
+
+        vm.startPrank(admin);
+        vm.expectEmit(address(config));
+        emit IVaultConfig.RegistrySet(registry);
+        config.setRegistry(registry);
+        assertEq(config.registry(), registry);
+
+        address another = address(new RouterStub());
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.RegistryAlreadySet.selector, registry));
+        config.setRegistry(another);
+        vm.stopPrank();
+        assertEq(config.registry(), registry);
+    }
+
+    function test_setRegistry_revertsOnZero() public {
+        vm.prank(admin);
+        vm.expectRevert(IVaultConfig.ZeroAddress.selector);
+        config.setRegistry(address(0));
+    }
+
+    function test_setRegistry_revertsOnAnAddressWithNoCode() public {
+        address empty = makeAddr("no-code");
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NoCode.selector, empty));
+        config.setRegistry(empty);
+        assertEq(config.registry(), address(0));
+    }
+
+    /// The registry is never a router. That holds whichever of the two is set first.
+    function test_setRegistry_revertsOnAnAllowedRouter() public {
+        vm.startPrank(admin);
+        config.setRouter(router, 1);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.RouterReserved.selector, router));
+        config.setRegistry(router);
+        vm.stopPrank();
+        assertEq(config.registry(), address(0));
+    }
+
+    // ---- launch: one-way
+
+    function test_launch_isOneWayAndTheAdmins() public {
+        address[2] memory callers = [stranger, guardian];
+        for (uint256 i; i < callers.length; ++i) {
+            vm.prank(callers[i]);
+            vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAdmin.selector, callers[i]));
+            config.launch();
+        }
+        assertFalse(config.launched());
+
+        vm.startPrank(admin);
+        vm.expectEmit(address(config));
+        emit IVaultConfig.Launched();
+        config.launch();
+        assertTrue(config.launched());
+        vm.expectRevert(IVaultConfig.AlreadyLaunched.selector);
+        config.launch();
+        vm.stopPrank();
+        assertTrue(config.launched());
+    }
+
+    function test_launch_revertsWhileAnAdminHandoverIsProposed() public {
+        vm.startPrank(admin);
+        config.proposeAdmin(stranger);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.AdminHandoverPending.selector, stranger));
+        config.launch();
+        vm.stopPrank();
+        assertFalse(config.launched());
+    }
+
+    /// After launch the routers, the cash token and the feeds are still the admin's to change, by nobody
+    /// else, and each change is announced.
+    function test_launch_leavesRoutersCashAndFeedsWithTheAdmin() public {
+        _listBoth();
+        vm.prank(admin);
+        config.launch();
+
+        AssetConfig memory newFeed = _priced(makeAddr("feedA-after"), 18);
+        vm.startPrank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAdmin.selector, stranger));
+        config.setRouter(router, 1);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAdmin.selector, stranger));
+        config.setCashToken(tokenA);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAdmin.selector, stranger));
+        config.setAsset(tokenA, newFeed);
+        vm.stopPrank();
+
+        vm.startPrank(admin);
+        vm.expectEmit(address(config));
+        emit IVaultConfig.RouterSet(router, 2);
+        config.setRouter(router, 2);
+        vm.expectEmit(address(config));
+        emit IVaultConfig.CashTokenSet(tokenA);
+        config.setCashToken(tokenA);
+        vm.expectEmit(address(config));
+        emit IVaultConfig.AssetSet(tokenA, newFeed);
+        config.setAsset(tokenA, newFeed);
+        vm.stopPrank();
+        assertEq(config.asset(tokenA).feed, newFeed.feed);
     }
 }
