@@ -238,6 +238,11 @@ function stepProblem(step: ApprovedStep): string | null {
     case 'set_auto_follow':
       return typeof step.on === 'boolean' ? null : 'auto-follow is neither on nor off';
     case 'withdraw':
+      if (
+        step.held !== undefined &&
+        !(Array.isArray(step.held) && step.held.every((h) => text(h?.address)))
+      )
+        return 'a token the vault is said to hold has no address';
       return step.withdrawals === 'all' ||
         (step.withdrawals.length > 0 &&
           step.withdrawals.every(

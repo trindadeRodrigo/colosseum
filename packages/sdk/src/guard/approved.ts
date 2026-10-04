@@ -161,7 +161,12 @@ export function approvedSteps(
           throw refuse('the step switches auto-follow, and nothing says which way', leg.id);
         return { ...base, kind: 'set_auto_follow', on: plan.autoFollow };
       case 'withdraw':
-        return { ...base, kind: 'withdraw', withdrawals: withdrawalsOf(leg) };
+        return {
+          ...base,
+          kind: 'withdraw',
+          withdrawals: withdrawalsOf(leg),
+          ...(plan.held ? { held: plan.held } : {}),
+        };
       default:
         throw new GuardRefusal('unsupported', `this guard signs no ${leg.kind} step`, leg.id);
     }

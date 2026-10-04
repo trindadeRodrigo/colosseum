@@ -156,8 +156,9 @@ describe('the guard on EVM: an honest call passes', () => {
       [targetsStep, { to: VAULT, data: calls.setTargets(weights(TARGETS)) }],
       [withdrawStep, honest.withdraw()],
       [withdrawAllStep, { to: VAULT, data: calls.withdrawAll() }],
+      // Everything, token by token: one the deployment lists, and one the caller knows the vault holds.
       [
-        withdrawAllStep,
+        { ...withdrawAllStep, held: [{ address: STRANGER }] },
         {
           to: VAULT,
           data: calls.multicall([calls.withdraw(USDC, 1n), calls.withdraw(STRANGER, 2n)]),
@@ -539,6 +540,19 @@ const negatives: Negative[] = [
   on(swapStep, 'a trade that sells another token', 'asset', () =>
     honest.swap([swapOf(SPY, { tokenIn: tokenOf('robinhood:gold') }), swapOf(GOLD)]),
   ),
+  on(
+    withdrawAllStep,
+    'a withdrawal of everything that names a token nobody listed',
+    'asset',
+    () => ({
+      to: VAULT,
+      data: calls.multicall([calls.withdraw(USDC, 1n), calls.withdraw(STRANGER, 2n)]),
+    }),
+  ),
+  on(withdrawAllStep, 'a withdrawal of everything that takes one token twice', 'asset', () => ({
+    to: VAULT,
+    data: calls.multicall([calls.withdraw(USDC, 1n), calls.withdraw(USDC, 2n)]),
+  })),
   on(withdrawStep, 'a withdrawal of another token than the step names', 'asset', () =>
     honest.withdraw(USDC, '500'),
   ),

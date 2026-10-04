@@ -30,6 +30,13 @@ export type Follow = {
 /** One token leaving the vault for the owner's wallet. `amountRaw` null means whatever the vault holds. */
 export type Withdrawal = { asset: AssetId; amountRaw: RawAmount | null };
 
+/**
+ * A token the vault is known to hold that the deployment does not list: one sent in from outside. It
+ * comes from the caller's own read of the chain, never from the server that builds the withdrawal. On
+ * Solana it names the token program that owns the mint.
+ */
+export type HeldToken = { address: Address; tokenProgram?: 'token' | 'token-2022' };
+
 type StepBase = {
   /** The leg this step is, so a transaction built for another leg is refused. */
   legId: string;
@@ -63,7 +70,15 @@ export type ApprovedStep = StepBase &
     | { kind: 'set_targets'; targets: Target[] }
     | { kind: 'accept_version'; follow: Follow }
     | { kind: 'set_auto_follow'; on: boolean }
-    | { kind: 'withdraw'; withdrawals: Withdrawal[] | 'all' }
+    | {
+        kind: 'withdraw';
+        /**
+         * `all`: everything the vault holds. The bytes may then take out any token the deployment lists
+         * and any token in `held`, each once, and nothing else.
+         */
+        withdrawals: Withdrawal[] | 'all';
+        held?: HeldToken[];
+      }
   );
 export type ApprovedKind = ApprovedStep['kind'];
 
@@ -139,4 +154,6 @@ export type PlanTerms = {
   autoFollow?: boolean;
   /** For a `withdraw` step. Left out: everything the vault holds. */
   withdrawals?: Withdrawal[];
+  /** For a `withdraw` of everything: what the vault holds beyond the deployment's list, by the caller's own read. */
+  held?: HeldToken[];
 };

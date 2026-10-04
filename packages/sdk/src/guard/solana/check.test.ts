@@ -1,9 +1,10 @@
 import { BasketTx, type ConsentKind } from '@colosseum/schemas';
-import { AccountRole, address } from '@solana/kit';
+import { AccountRole, address, getProgramDerivedAddress } from '@solana/kit';
 import { describe, expect, it } from 'vitest';
 import { eachBites, type Negative, refusalOf } from '../../../test/bites';
 import {
   ASSETS,
+  ASSOCIATED,
   BASKET_ID,
   CONFIG,
   createVaultIx,
@@ -205,11 +206,41 @@ describe('the guard on Solana: an honest transaction passes', () => {
     expect(refusalOf(() => guardTransaction(input(swapStep, bytes)))).toBeNull();
   });
 
-  it('a withdrawal of everything: any token, to the person, under either token program', async () => {
+  it('a withdrawal of everything: the tokens the deployment lists, to the person, under either token program', async () => {
     const usdc = await withdrawIx(BASKET_PROGRAM, 'solana:usdc', '1');
     const spy = await withdrawIx(BASKET_PROGRAM, 'solana:spy', '2');
     const bytes = wire([await openAccountIx(OWNER, 'solana:usdc'), usdc, spy]);
     expect(refusalOf(() => guardTransaction(input(withdrawAllStep, bytes)))).toBeNull();
+  });
+
+  it('a withdrawal of everything takes a token outside the list only when the caller says the vault holds it', async () => {
+    const extra = await strayWithdrawal('a token sent in from outside', '9');
+    const bytes = wire([extra.open, extra.withdraw]);
+    expect(refusalOf(() => guardTransaction(input(withdrawAllStep, bytes)))?.code).toBe('asset');
+    const held = [{ address: extra.mint, tokenProgram: 'token' as const }];
+    expect(
+      refusalOf(() => guardTransaction(input({ ...withdrawAllStep, held }, bytes))),
+    ).toBeNull();
+    // Said to be held, with nothing to say which token program owns it: no account can be derived.
+    const vague = { ...withdrawAllStep, held: [{ address: extra.mint }] };
+    expect(refusalOf(() => guardTransaction(input(vague, bytes)))?.code).toBe('unsupported');
+    // And held under the other token program: the accounts are not the ones derived.
+    const other = {
+      ...withdrawAllStep,
+      held: [{ address: extra.mint, tokenProgram: 'token-2022' as const }],
+    };
+    expect(refusalOf(() => guardTransaction(input(other, bytes)))?.code).toBe('accounts');
+  });
+
+  it("refuses five withdrawals of tokens nobody listed, each with accounts opened at the person's cost", async () => {
+    // What a withdrawal of everything once let through: 1,001 bytes of nothing, and ten new accounts.
+    const instructions: Ix[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      const stray = await strayWithdrawal(`junk ${i}`, '0');
+      instructions.push(stray.openVault, stray.open, stray.withdraw);
+    }
+    const refusal = refusalOf(() => guardTransaction(input(withdrawAllStep, wire(instructions))));
+    expect(refusal?.code).toBe('asset');
   });
 });
 
@@ -413,6 +444,49 @@ const vaultIxOf = (table: ProgramTable) =>
     join(u64(BASKET_ID), targetsArg([]), flag(false), u32(3)),
   );
 
+/** A withdrawal of a token the deployment does not list, with the accounts it would open. */
+async function strayWithdrawal(label: string, amount: string) {
+  const mint = someone(`mint ${label}`);
+  const accountOf = async (holder: string) =>
+    (
+      await getProgramDerivedAddress({
+        programAddress: address(ASSOCIATED),
+        seeds: [raw(holder), raw(TOKEN), raw(mint)],
+      })
+    )[0] as string;
+  const [ofVault, ofOwner] = [await accountOf(VAULT), await accountOf(OWNER)];
+  const open = (holder: string, account: string): Ix => ({
+    programAddress: address(ASSOCIATED),
+    accounts: [
+      { address: address(OWNER), role: AccountRole.WRITABLE_SIGNER },
+      { address: address(account), role: AccountRole.WRITABLE },
+      { address: address(holder), role: AccountRole.READONLY },
+      { address: address(mint), role: AccountRole.READONLY },
+      { address: address(SYSTEM), role: AccountRole.READONLY },
+      { address: address(TOKEN), role: AccountRole.READONLY },
+    ],
+    data: Uint8Array.of(1),
+  });
+  return {
+    mint,
+    open: open(OWNER, ofOwner),
+    openVault: open(VAULT, ofVault),
+    withdraw: vaultIx(
+      BASKET_PROGRAM,
+      'withdraw',
+      {
+        owner: OWNER,
+        vault: VAULT,
+        mint,
+        vault_token_account: ofVault,
+        destination: ofOwner,
+        token_program: TOKEN,
+      },
+      u64(amount),
+    ),
+  };
+}
+
 /** The same transaction with another version byte at the head of its message. */
 function versioned(bytes: Buffer, byte: number): string {
   const out = Buffer.from(bytes);
@@ -575,6 +649,71 @@ const negatives: Negative[] = [
   deposit("a deposit taken from a stranger's token account", 'recipient', () =>
     honest.deposit(BASKET_PROGRAM, CASH, { accounts: { source: someone('their cash') } }),
   ),
+
+  // ---- a withdrawal of everything takes only what is listed or known, and opens nothing for the vault
+  {
+    name: 'a withdrawal of everything that takes a token nobody listed',
+    check: 'asset',
+    input: async () =>
+      input(withdrawAllStep, wire([(await strayWithdrawal('junk', '0')).withdraw])),
+  },
+  {
+    name: 'a withdrawal of everything that takes one token twice',
+    check: 'asset',
+    input: async () =>
+      input(
+        withdrawAllStep,
+        wire([
+          await withdrawIx(BASKET_PROGRAM, 'solana:gold', '1'),
+          await withdrawIx(BASKET_PROGRAM, 'solana:gold', '2'),
+        ]),
+      ),
+  },
+  {
+    name: 'a withdrawal of everything under the wrong token program for a listed token',
+    check: 'accounts',
+    input: async () =>
+      input(
+        withdrawAllStep,
+        wire([
+          await withdrawIx(BASKET_PROGRAM, 'solana:spy', '5', {
+            accounts: { token_program: TOKEN },
+          }),
+        ]),
+      ),
+  },
+  {
+    name: "a withdrawal that opens the vault's own account",
+    check: 'token_account',
+    input: async () =>
+      input(
+        withdrawStep,
+        wire([
+          await openAccountIx(VAULT, 'solana:spy'),
+          ...(await honest.withdraw(BASKET_PROGRAM)),
+        ]),
+      ),
+  },
+  {
+    name: "a withdrawal of everything that opens the vault's own account",
+    check: 'token_account',
+    input: async () =>
+      input(
+        withdrawAllStep,
+        wire([
+          await openAccountIx(VAULT, 'solana:gold'),
+          await withdrawIx(BASKET_PROGRAM, 'solana:gold', '1'),
+        ]),
+      ),
+  },
+  deposit("a deposit that opens the person's own cash account", 'token_account', async () => [
+    ...(await good()),
+    await openAccountIx(OWNER, 'solana:usdc'),
+  ]),
+  swap("a trade that opens the person's account of the token bought", 'token_account', async () => [
+    ...(await honest.swap()),
+    await openAccountIx(OWNER, 'solana:spy'),
+  ]),
 
   // ---- G-LINK: auto-follow without consent
   {

@@ -309,6 +309,11 @@ export function checkEvm(ctx: Context, deployment: EvmDeployment, table: Interfa
     `the calls are [${made.join(', ')}], and this step is [${wanted.join(', ')}]`,
   );
 
+  const takeable = new Set([
+    ...Object.values(deployment.assets).map((a) => a.token.toLowerCase()),
+    ...(step.kind === 'withdraw' ? (step.held ?? []) : []).map((h) => h.address.toLowerCase()),
+  ]);
+  const taken = new Set<string>();
   let next = 0;
   for (const atom of atoms) {
     // A call out of place was refused above. With that check taken out it is passed over.
@@ -330,8 +335,19 @@ export function checkEvm(ctx: Context, deployment: EvmDeployment, table: Interfa
         break;
       }
       case 'withdraw': {
-        // Everything the vault holds: any token and any amount, since the vault pays only its owner.
-        const w = withdrawals === 'all' ? null : withdrawals[at];
+        if (withdrawals === 'all') {
+          // Everything the vault holds: the bytes choose among the tokens the deployment lists and
+          // those the caller says the vault holds, each once, at any amount. The vault pays only
+          // its owner.
+          need(
+            'asset',
+            takeable.has(atom.token) && !taken.has(atom.token),
+            `a withdrawal of ${atom.token}, which the deployment does not list and the vault is not known to hold, or which is taken twice`,
+          );
+          taken.add(atom.token);
+          break;
+        }
+        const w = withdrawals[at];
         if (!w) break;
         need('asset', atom.token === token(w.asset), `the bytes withdraw ${atom.token}`);
         need(

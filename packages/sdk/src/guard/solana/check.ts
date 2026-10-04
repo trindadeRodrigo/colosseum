@@ -163,16 +163,36 @@ export function checkSolana(ctx: Context, deployment: SolanaDeployment, table: P
   );
 
   // ---- each of them, account by account and argument by argument
-  /** The tokens whose accounts this transaction may open, mint to token program. */
-  const opens = new Map<string, string>();
-  const allow = (t: Token) => opens.set(t.mint, t.program);
-  if (step.kind === 'create_vault' || step.kind === 'deposit') allow(token(deployment.cash));
+  /**
+   * The token accounts this transaction may open, and for whom. What comes into the vault may need the
+   * vault's account for it: the cash of a deposit, either side of a trade. What leaves it may need the
+   * person's. A withdrawal never opens an account of the vault.
+   */
+  const opens = new Map<string, { program: string; holder: string }>();
+  const allow = (t: Token, holder: string) => opens.set(t.mint, { program: t.program, holder });
+  if (step.kind === 'create_vault' || step.kind === 'deposit') allow(token(deployment.cash), vault);
   for (const trade of tradesOf(step)) {
-    allow(token(trade.sell));
-    allow(token(trade.buy));
+    allow(token(trade.sell), vault);
+    allow(token(trade.buy), vault);
   }
-  if (step.kind === 'withdraw' && step.withdrawals !== 'all')
-    for (const w of step.withdrawals) allow(token(w.asset));
+  /** What a withdrawal of everything may take: the deployment's tokens, and those the caller says the vault holds. */
+  const takeable = new Map<string, Token>();
+  if (step.kind === 'withdraw') {
+    if (step.withdrawals === 'all') {
+      for (const listed of Object.values(deployment.assets))
+        takeable.set(listed.mint, {
+          mint: listed.mint,
+          program: TOKEN_PROGRAMS[listed.tokenProgram],
+        });
+      for (const held of step.held ?? []) {
+        const program = held.tokenProgram && TOKEN_PROGRAMS[held.tokenProgram];
+        if (!program) throw unsupported(`nothing says which token program owns ${held.address}`);
+        if (!takeable.has(held.address))
+          takeable.set(held.address, { mint: held.address, program });
+      }
+    } else for (const w of step.withdrawals) allow(token(w.asset), owner);
+  }
+  const taken = new Set<string>();
 
   const targetsIn = (value: Value | undefined) => {
     if (!Array.isArray(value)) throw unsupported('the interface writes targets another way');
@@ -283,18 +303,19 @@ export function checkSolana(ctx: Context, deployment: SolanaDeployment, table: P
         let t: Token;
         if (slot.withdrawal) t = token(slot.withdrawal.asset);
         else {
-          // Everything the vault holds: any token, as long as it goes to the person's own account for
-          // that token. The token and its program are the bytes' own; the accounts are derived here.
-          const [mint, stated] = [at('mint'), at('token_program')];
-          const known = Object.values(TOKEN_PROGRAMS).find((p) => p === stated);
+          // Everything the vault holds: the bytes choose which of the tokens it may take, and each
+          // goes once. The token's program and every account are still worked out here.
+          const mint = at('mint');
+          const known = mint === null ? undefined : takeable.get(mint);
           need(
-            'accounts',
-            mint !== null && known !== undefined,
-            'a withdrawal whose token or token program the message does not name',
+            'asset',
+            known !== undefined && !taken.has(known.mint),
+            `a withdrawal of ${mint ?? 'a token the message does not name'}, which the deployment does not list and the vault is not known to hold, or which is taken twice`,
           );
-          if (!mint || !known) continue;
-          t = { mint, program: known };
-          allow(t);
+          if (!known) continue;
+          taken.add(known.mint);
+          t = known;
+          allow(t, owner);
         }
         tokenRules(t, { mint: 'mint', program: 'token_program', held: 'vault_token_account' });
         rule('destination', account(owner, t), 'recipient');
@@ -372,8 +393,9 @@ export function checkSolana(ctx: Context, deployment: SolanaDeployment, table: P
   const opened = new Set<string>();
   for (const ix of helpers) {
     const [payer, created, holder, mint, system, tokenProgram] = addressesOf(ix);
+    const allowed = mint ? opens.get(mint) : undefined;
     const expected =
-      holder && mint && tokenProgram && opens.get(mint) === tokenProgram
+      holder && mint && tokenProgram && allowed?.program === tokenProgram
         ? tokenAccountAddress(holder, mint, tokenProgram)
         : null;
     need(
@@ -382,12 +404,12 @@ export function checkSolana(ctx: Context, deployment: SolanaDeployment, table: P
         ix.data[0] === 1 &&
         ix.accounts.length === 6 &&
         payer === owner &&
-        (holder === owner || holder === vault) &&
+        holder === allowed?.holder &&
         system === SYSTEM_PROGRAM &&
         expected !== null &&
         created === expected &&
         !opened.has(expected),
-      "a token-account instruction that does not open the person's or their vault's account of a token this step moves",
+      "a token-account instruction that does not open the one account this step may need: the vault's for what comes in, the person's for what goes out",
     );
     if (expected) opened.add(expected);
   }
