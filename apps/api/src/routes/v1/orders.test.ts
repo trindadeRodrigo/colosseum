@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { legAttempts, legs, orders, proposals, vaults } from '@colosseum/db';
 import {
   BasketTx,
@@ -1689,6 +1690,111 @@ describe('refusals', () => {
     const next = await post(a, legUrl(late, first(late, 1).id, 'build'), {}, on);
     expect(next.statusCode).toBe(410);
     await on.close();
+  });
+
+  it('refuses an order stored with steps on two chains, on every route, and writes nothing', async () => {
+    const a = await someone('passkey');
+    // As API-1 stored a buy across two chains: one row in orders, a step on each chain.
+    const id = randomUUID();
+    await data.db.insert(orders).values({
+      id,
+      type: 'buy',
+      ownerSolana: a.solana,
+      ownerEvm: a.evm,
+      summary: 'Buy $1,000.00 of your plan on Solana and Robinhood Chain',
+      request: { type: 'buy', owner: a.owner, amountUsd: 1000, proposalId: plans.solana },
+      preparedBy: 'app',
+      status: 'open',
+      expiresAt: new Date(Date.now() + 600_000),
+      disclaimer: 'x',
+    });
+    const step = (chainId: HomeChain, kind: 'create_vault' | 'approve') => ({
+      id: randomUUID(),
+      orderId: id,
+      chainId,
+      seq: 0,
+      kind,
+      signer: 'owner' as const,
+      description: 'old',
+      trades: [],
+      expected: [],
+      status: 'planned' as const,
+      attempt: 0,
+      trigger: 'manual' as const,
+      provenance: 'mock' as const,
+    });
+    const rows = [step('solana', 'create_vault'), step('robinhood', 'approve')];
+    await data.db.insert(legs).values(rows);
+    const legId = rows[0]?.id ?? '';
+
+    const refusal = {
+      error: 'this order has steps on 2 chains, and an order is on one: it can no longer be used',
+      fix: 'Make the order again.',
+      details: { retryable: false },
+    };
+    const tries: Sent[] = [
+      { method: 'GET', url: `/v1/orders/${id}` },
+      { method: 'POST', url: legUrl({ id }, legId, 'build') },
+      { method: 'POST', url: legUrl({ id }, legId, 'report'), payload: { txId: 'x' } },
+      { method: 'POST', url: legUrl({ id }, legId, 'cancel') },
+      { method: 'POST', url: `/v1/mock/orders/${id}/legs/${legId}/land` },
+    ];
+    for (const sent of tries) {
+      const res = await call(a, sent);
+      expect([sent.url, res.statusCode, OrderError.parse(res.json())]).toEqual([
+        sent.url,
+        409,
+        refusal,
+      ]);
+    }
+    // To anybody else it is still an id that does not exist.
+    expect((await get(await someone(), `/v1/orders/${id}`)).statusCode).toBe(404);
+    // Nothing was written: the order and its steps are as they were stored, and nothing was built.
+    const [row] = await data.db.select().from(orders).where(eq(orders.id, id));
+    expect(row?.status).toBe('open');
+    const stored = await data.db.select().from(legs).where(eq(legs.orderId, id));
+    expect(stored.map((l) => [l.status, l.attempt, l.error]).sort()).toEqual([
+      ['planned', 0, null],
+      ['planned', 0, null],
+    ]);
+    const attempts = await data.db
+      .select()
+      .from(legAttempts)
+      .where(
+        inArray(
+          legAttempts.legId,
+          rows.map((r) => r.id),
+        ),
+      );
+    expect(attempts).toEqual([]);
+
+    // An older order on one chain whose step carries no deposit still reads; building it is refused.
+    const old = randomUUID();
+    await data.db.insert(orders).values({
+      id: old,
+      type: 'buy',
+      ownerSolana: a.solana,
+      ownerEvm: null,
+      summary: 'old',
+      request: {
+        type: 'buy',
+        owner: { solana: a.solana },
+        amountUsd: 1000,
+        proposalId: plans.solana,
+      },
+      preparedBy: 'app',
+      status: 'open',
+      expiresAt: new Date(Date.now() + 600_000),
+      disclaimer: 'x',
+    });
+    const only = { ...step('solana', 'create_vault'), orderId: old };
+    await data.db.insert(legs).values([only]);
+    expect((await get(a, `/v1/orders/${old}`)).statusCode).toBe(200);
+    const build = await post(a, legUrl({ id: old }, only.id, 'build'));
+    expect([build.statusCode, build.json().error]).toEqual([
+      409,
+      'this order was planned before a step carried its deposit: make it again',
+    ]);
   });
 
   it('does not relay signed bytes for an order that has expired', async () => {

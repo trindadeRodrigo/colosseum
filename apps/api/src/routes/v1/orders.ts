@@ -36,6 +36,10 @@ export function signedIn(req: FastifyRequest): Principal {
 /**
  * The order, for the wallets that made it. Anybody else gets the answer an id that does not exist
  * gets, so an order's id says nothing to a stranger.
+ *
+ * An order that no longer reads as one is refused here, before any route does anything with it: one
+ * stored with steps on two chains, from before an order was held to one, is the case there is. Its
+ * owner is told to make it again, and nothing is tracked, built or written for it.
  */
 export async function ownOrder(
   deps: OrderDeps,
@@ -46,6 +50,17 @@ export async function ownOrder(
   const stored = await loadOrder(deps.db, id);
   if (!stored || !holds(principal, stored.order.owner))
     throw new Refusal(404, 'no order with that id');
+  const read = Order.safeParse(stored.order);
+  if (!read.success) {
+    const chains = new Set(stored.order.legs.map((l) => l.chain)).size;
+    throw new Refusal(
+      409,
+      chains > 1 && stored.order.type !== 'publish'
+        ? `this order has steps on ${chains} chains, and an order is on one: it can no longer be used`
+        : 'this order is stored in a form the server no longer takes: it can no longer be used',
+      { fix: 'Make the order again.', details: { retryable: false } },
+    );
+  }
   return stored;
 }
 
