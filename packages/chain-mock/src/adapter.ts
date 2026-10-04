@@ -480,9 +480,11 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
           v.recipeOnchainId = a.recipeOnchainId;
           v.acceptedVersion = active.version;
           setTargets(v, targetsOf(active));
-        } else {
+        } else if (a.targets.length) {
           setTargets(v, input(SetTargetsArgs.shape.targets, a.targets, 'targets'));
         }
+        // No recipe and no target: a plan that is all cash. Both vaults take an empty list of targets
+        // (the program's `check_targets`, the EVM vault's `_setTargets`), and the deposit stays as cash.
         s.vaults.set(address, v);
         if (a.depositRaw) pullCash(s, v, BigInt(a.depositRaw), v.address);
         checkTrades(a.trades, true);

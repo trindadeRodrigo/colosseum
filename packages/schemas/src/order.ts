@@ -63,6 +63,17 @@ export const LegBase = z.object({
   kind: LegKind,
   signer: z.enum(['owner', 'keeper']),
   description: z.string(),
+  /**
+   * The cash this step is about, in the cash token's raw units: what a `create_vault` or a `deposit`
+   * takes from the wallet into the vault, and what an `approve` allows the vault to take. An approval
+   * moves nothing. It is the whole deposit, which is more than the step's trades spend when the plan
+   * keeps a share in cash: the rest stays in the vault as cash. Absent on any other step.
+   *
+   * Do not add it up over an order's legs. On a chain that needs an approval, the approval and the
+   * step that deposits both carry the same amount, so the sum is twice the deposit. What the order
+   * moves is `Order.depositRaw`.
+   */
+  cashRaw: RawAmount.optional(),
   trades: z.array(Trade),
   /**
    * One entry per trade, in the order of `trades`: entry `i` is trade `i`. Empty for a leg with no
@@ -139,6 +150,13 @@ export const OrderBase = z.object({
   owner: Owner,
   /** Written by the server, never caller text. */
   summary: z.string(),
+  /**
+   * The cash this order moves from the wallet into the vault, once, in the raw units of the chain's
+   * cash token: the amount of a buy. This is the figure to show and to add up. The legs repeat it
+   * (`Leg.cashRaw` is on the approval and on the step that deposits), so their sum is not it. Absent
+   * for an order that deposits nothing.
+   */
+  depositRaw: RawAmount.optional(),
   legs: z.array(Leg),
   warnings: z.array(z.object({ code: z.string(), text: z.string() })),
   /** Granted only on the approval page. */
@@ -156,14 +174,23 @@ export const OrderBase = z.object({
   disclaimer: z.string(),
 });
 
-/** Every leg is the order's own, on a chain the owner has an address for. */
+/**
+ * Every leg is the order's own, on a chain the owner has an address for. A plan lives on one chain
+ * (gate ONE-CHAIN), so the legs of a buy, a rebalance, a follow, a withdrawal and a settings change are
+ * all on one chain: only a publish order, one recipe per chain, may have legs on more than one.
+ */
 export const Order = OrderBase.refine((o) => o.legs.every((l) => l.orderId === o.id), {
   message: "every leg carries the order's id",
   path: ['legs'],
-}).refine((o) => o.legs.every((l) => o.owner[chainFamily(l.chain)] !== undefined), {
-  message: 'the owner has an address for the chain of every leg',
-  path: ['legs'],
-});
+})
+  .refine((o) => o.legs.every((l) => o.owner[chainFamily(l.chain)] !== undefined), {
+    message: 'the owner has an address for the chain of every leg',
+    path: ['legs'],
+  })
+  .refine((o) => o.type === 'publish' || new Set(o.legs.map((l) => l.chain)).size <= 1, {
+    message: 'only a publish order has legs on more than one chain',
+    path: ['legs'],
+  });
 export type Order = z.infer<typeof Order>;
 
 /** The most a request may ask for. One place, so the schema, the server and a client agree. */
@@ -194,7 +221,17 @@ export const IntentRequest = z.discriminatedUnion('type', [
     maxSlippageBps: Bps.max(ORDER_LIMITS.maxSlippageBps).optional(),
     proposalId: z.string().optional(),
     family: z.string().optional(),
-    chains: z.array(ChainId).optional(),
+    /**
+     * Never sent. A buy names no chain: it is on the chain of the person's wallet, where the plan
+     * lives (gate ONE-CHAIN). The field a buy once took is refused with a sentence, not ignored, so a
+     * caller that still asks for a split across chains is told instead of getting another order.
+     */
+    chains: z
+      .never({
+        error:
+          'a buy names no chain: an order is on the chain of the wallet, where the plan lives. Leave `chains` out',
+      })
+      .optional(),
   }),
   z.object({
     type: z.literal('rebalance'),
@@ -269,6 +306,12 @@ export const OrderError = ApiError.extend({
       chainCode: ChainErrorCode.optional(),
       /** True when the same request can succeed later with nothing changed by the person. */
       retryable: z.boolean().optional(),
+      /**
+       * EVM: the step of another order of the same wallet whose transaction can still land. A step is
+       * not built while one is open, since both would be built on the wallet's next nonce and only
+       * one could land. Report that step or cancel it, then build again.
+       */
+      blocking: z.object({ orderId: z.string().min(1), legId: z.string().min(1) }).optional(),
     })
     .optional(),
 });
