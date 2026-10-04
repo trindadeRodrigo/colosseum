@@ -227,6 +227,77 @@
 }
 
 /* ---------------------------------------------------------------------------------------------------
+ * A shell that follows the system. `tf-auto` on <html> means the person has not chosen: the page is
+ * dark when the system is, with no script and so nothing to flash. A choice is a cookie the server
+ * reads, and the server then writes `light` or `dark` on <html> instead (app/(app)/layout.tsx).
+ * These are the declarations of the two `.dark` blocks above, once more; components/shell/theme.test.ts
+ * fails when one of them differs.
+ * ------------------------------------------------------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  .tf-auto {
+    color-scheme: dark;
+    --background: oklch(15.13% 0.0055 67.77); /* black #0D0B09 */
+    --foreground: oklch(92.14% 0.0206 81.78); /* washi #ECE4D6 */
+    --card: oklch(20.7% 0.0075 67.36); /* char #1A1714 */
+    --card-foreground: oklch(92.14% 0.0206 81.78); /* washi */
+    --popover: oklch(24.62% 0.011 73.4); /* char-2 #24201B */
+    --popover-foreground: oklch(92.14% 0.0206 81.78); /* washi */
+    --primary: oklch(87.52% 0.0429 77.6); /* hinoki #E6D3B7: the brand wood on warm black */
+    --primary-foreground: oklch(15.13% 0.0055 67.77); /* black */
+    --secondary: oklch(24.62% 0.011 73.4); /* char-2 */
+    --secondary-foreground: oklch(92.14% 0.0206 81.78); /* washi */
+    --accent: oklch(24.62% 0.011 73.4); /* char-2 */
+    --accent-foreground: oklch(87.52% 0.0429 77.6); /* hinoki */
+    --muted: oklch(24.62% 0.011 73.4); /* char-2 */
+    --muted-foreground: oklch(69.14% 0.0208 72.45); /* stone-d #A49A8E */
+    --destructive: oklch(73.48% 0.1134 4.6); /* madder-d #E58AA0 */
+    --border: oklch(32.31% 0.0179 67.1); /* hair-d #3A322A */
+    --input: oklch(54.28% 0.0267 69.27); /* member-d #7A6D5F */
+    --ring: oklch(87.52% 0.0429 77.6); /* hinoki */
+    --sidebar: oklch(20.7% 0.0075 67.36); /* char */
+    --sidebar-foreground: oklch(92.14% 0.0206 81.78); /* washi */
+    --sidebar-primary: oklch(87.52% 0.0429 77.6); /* hinoki */
+    --sidebar-primary-foreground: oklch(15.13% 0.0055 67.77); /* black */
+    --sidebar-accent: oklch(24.62% 0.011 73.4); /* char-2 */
+    --sidebar-accent-foreground: oklch(87.52% 0.0429 77.6); /* hinoki */
+    --sidebar-border: oklch(32.31% 0.0179 67.1); /* hair-d */
+    --sidebar-ring: oklch(87.52% 0.0429 77.6); /* hinoki */
+    --success: oklch(67.75% 0.0712 141.65); /* forest-d #7FA37A */
+    --warning: oklch(75.07% 0.1294 79.85); /* ochre-d #D9A441 */
+    --info: oklch(92.14% 0.0206 81.78); /* washi */
+    --chart-1: oklch(87.52% 0.0429 77.6); /* hinoki */
+    --chart-2: oklch(76.45% 0.0623 77.35); /* hinoki-deep #C9AE86 */
+    --chart-3: oklch(59.77% 0.0712 65.74); /* wood-400 */
+    --chart-4: oklch(69.14% 0.0208 72.45); /* stone-d */
+    --chart-5: oklch(92.14% 0.0206 81.78); /* washi */
+    --tf-primary-hover: #d7c09e;
+    --tf-primary-pressed: #c9ae86; /* hinoki-deep */
+    --tf-pin-outline: #a49a8e; /* stone-d */
+    --tf-pin: #e6d3b7; /* hinoki */
+    --tf-hatch: #a49a8e; /* stone-d */
+    --tf-mock-plate: #1a1714; /* char */
+    --tf-mock-plate-fg: #ece4d6; /* washi */
+    --tf-mock-plate-border: #a49a8e; /* stone-d */
+    --tf-status-on: #7fa37a; /* forest-d */
+    --tf-status-on-bg: #050d04;
+    --tf-status-watch: #d9a441; /* ochre-d */
+    --tf-status-watch-bg: #180c00;
+    --tf-status-off: #e58aa0; /* madder-d */
+    --tf-status-off-bg: #220409;
+    --tf-layer-sunk: #0d0b09;
+    --tf-layer-ground: #1a1714;
+    --tf-layer-raised: #24201b;
+    --tf-heat-1: #1a1714;
+    --tf-heat-2: #5a3a1e;
+    --tf-heat-3: #8a6c4b;
+    --tf-heat-4: #c9ae86;
+    --tf-heat-5: #f2e6d3;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* ---------------------------------------------------------------------------------------------------
  * C. The Tailwind theme.
  * ------------------------------------------------------------------------------------------------- */
 @theme inline {
@@ -405,20 +476,9 @@
   }
 }
 
-/*
- * Until the shell is rebuilt on the design system (WEB-1), the pages that exist keep Tailwind's own
- * base fonts: these two lines stop its base styles from reading --font-sans and --font-mono. Delete
- * them when `tf-app` goes on the shell. A `font-mono` class reads the token itself, so the few places
- * that already use one are set in IBM Plex Mono from now on.
- */
-@theme {
-  --default-font-family: initial;
-  --default-mono-font-family: initial;
-}
-
 /* ---------------------------------------------------------------------------------------------------
- * Base. The spec puts these on html and body; here they sit under one class, `tf-app`, so that a page
- * takes the design system by adding the class to its shell and the others are left as they are.
+ * Base. The spec puts these on html and body; here they sit under one class, `tf-app`, which the
+ * product shell puts on <body>. Tailwind's own base fonts are the tokens' (--font-sans, --font-mono).
  * ------------------------------------------------------------------------------------------------- */
 @layer base {
   .tf-app {
@@ -444,6 +504,19 @@
   .dark {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  /*
+   * The pages written before the design system (app/(structurer)) keep the faces they had, the
+   * system's own, until each is rebuilt on the primitives (WEB-2). Their mono face is IBM Plex Mono
+   * wherever they ask for it by class, as before. This goes when the last of them is rebuilt.
+   */
+  .tf-system-faces {
+    font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  }
+
+  .tf-system-faces :is(code, kbd, samp, pre) {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
 }
 

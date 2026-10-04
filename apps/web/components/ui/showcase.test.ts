@@ -2,7 +2,7 @@ import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
-import { Showcase } from '../../app/dev/ui/Showcase';
+import { Showcase } from '../../app/(app)/dev/ui/Showcase';
 import { all, classes, closest, render, tag, text, ui } from './test/html';
 import { SPEC_DIR } from './test/spec';
 

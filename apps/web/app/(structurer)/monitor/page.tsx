@@ -3,6 +3,7 @@ import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { VersionedTransaction } from '@solana/web3.js';
 import { useCallback, useEffect, useState } from 'react';
 import { API, apiGet, type WalletView } from '@/lib/api';
+import { isMissingRoute } from '@/lib/missing-route';
 
 type Drift = {
   policy: {
@@ -76,6 +77,12 @@ export default function MonitorPage() {
   const [view, setView] = useState<WalletView | null>(null);
   const [drift, setDrift] = useState<Drift | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  // The policy could not be read, for whatever reason: the rest of the page still shows, and a
+  // sentence says this part is not there.
+  const [policyOff, setPolicyOff] = useState(false);
+  // The rebalance signs with a key on the server, so the API registers its route only with
+  // LEGACY_STRUCTURER on. Where it is off the route is not there, and a sentence says so.
+  const [rebalanceOff, setRebalanceOff] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
 
@@ -85,7 +92,14 @@ export default function MonitorPage() {
       const v = await apiGet<WalletView>(`/wallets/${wallet}/positions`);
       setView(v);
       const pol = v.policies[0];
-      if (pol) setDrift(await apiGet<Drift>(`/policies/${pol.id}/drift`));
+      if (pol) {
+        try {
+          setDrift(await apiGet<Drift>(`/policies/${pol.id}/drift`));
+          setPolicyOff(false);
+        } catch {
+          setPolicyOff(true);
+        }
+      }
     } catch (e) {
       setErr(String(e));
     }
@@ -146,6 +160,12 @@ export default function MonitorPage() {
         outcome?: string;
         transaction?: { payload: string; executionId?: string };
       };
+      // The server has no rebalance route (LEGACY_STRUCTURER is off): a sentence says so. A route that
+      // is there and finds no policy answers 404 too, in its own words, and is shown as it always was.
+      if (isMissingRoute(res.status, d)) {
+        setRebalanceOff(true);
+        return;
+      }
       if (d.outcome === 'user_signed' && Array.isArray(d.transactions) && signTransaction) {
         // The policy proposed; the wallet signs each transaction in order and reports every outcome back.
         const outcomes: Array<{
@@ -340,7 +360,7 @@ export default function MonitorPage() {
             <button
               type="button"
               className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-50"
-              disabled={busy || !drift.proposal.triggered}
+              disabled={busy || rebalanceOff || !drift.proposal.triggered}
               onClick={runPolicy}
             >
               {busy ? 'Running…' : 'Run policy now'}
@@ -350,6 +370,12 @@ export default function MonitorPage() {
               orders open your wallet.
             </span>
           </div>
+          {rebalanceOff && (
+            <p className="text-sm text-gray-600">
+              This server did not run the policy: rebalancing from this page is switched off here.
+              Nothing was sent.
+            </p>
+          )}
           {result && (
             <pre className="overflow-auto rounded bg-gray-50 p-2 text-xs">
               {JSON.stringify(result, null, 1)}
@@ -363,6 +389,10 @@ export default function MonitorPage() {
             ).
           </p>
         </section>
+      ) : policyOff ? (
+        <p className="text-sm text-gray-600">
+          The policy view could not be read right now. Rebalances and past executions are below.
+        </p>
       ) : (
         <p className="text-sm text-gray-500">No policy for this wallet yet.</p>
       )}

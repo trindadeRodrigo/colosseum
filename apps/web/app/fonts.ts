@@ -1,13 +1,14 @@
-import { IBM_Plex_Mono, IBM_Plex_Sans, Newsreader } from 'next/font/google';
+import { IBM_Plex_Sans, Newsreader } from 'next/font/google';
+import { plexMono } from './fonts-mono';
 
 // The three typefaces of the design system (token-mapping.md, section 5). `next/font` downloads the
 // files when the app is built and serves them from this origin: the browser never asks Google for
 // anything. Each face comes with a fallback whose metrics are adjusted to match it, so text does not
 // move when the real face arrives.
 //
-// Nothing is preloaded yet: until the shell is rebuilt on the design system (WEB-1) most pages do not
-// use these faces, and a preload would fetch them on every route, the partner embed included. The
-// layout that uses a face turns its preload on.
+// The sans and the serif are preloaded on every route whose layout imports this file: the product
+// shell (app/(app)/layout.tsx), where they set the first thing a person reads. The mono face lives in
+// fonts-mono.ts and is not preloaded. The pages not yet rebuilt import that file only.
 //
 // IBM Plex Sans Condensed (Bearing tables only) is not loaded here. `--font-condensed` falls back to
 // IBM Plex Sans until a Bearing screen loads it in its own layout.
@@ -18,17 +19,10 @@ export const plexSans = IBM_Plex_Sans({
   weight: ['400', '500', '600'],
   variable: '--font-plex-sans',
   display: 'swap',
-  preload: false,
+  preload: true,
 });
 
-/** Cites: figures in tables, the source line, hashes, the word MOCK. */
-export const plexMono = IBM_Plex_Mono({
-  subsets: ['latin'],
-  weight: ['400', '500'],
-  variable: '--font-plex-mono',
-  display: 'swap',
-  preload: false,
-});
+export { plexMono };
 
 /** Answers: one sentence per screen, upright, never bold. The optical-size axis keeps the cut serifs. */
 export const newsreader = Newsreader({
@@ -37,7 +31,7 @@ export const newsreader = Newsreader({
   axes: ['opsz'],
   variable: '--font-newsreader',
   display: 'swap',
-  preload: false,
+  preload: true,
 });
 
 /** The class names that define the three `--font-*` variables. They go on `<html>`. */

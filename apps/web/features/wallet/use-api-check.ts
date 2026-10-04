@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { API } from '@/lib/api';
+import { API } from '../../lib/api';
 import type { WalletChains } from './chains';
 import { type ApiCheck, checkApi } from './config-check';
 

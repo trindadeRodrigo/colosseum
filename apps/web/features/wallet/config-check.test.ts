@@ -73,8 +73,15 @@ describe('checkApi', () => {
   };
 
   it('asks GET /v1/config on the API, follows no redirect, and passes when the networks agree', async () => {
-    const { asked, get } = answering(200, buildConfigForTest({}));
-    expect(await checkApi(chains, API, get)).toEqual({ ok: true });
+    const config = buildConfigForTest({});
+    const { asked, get } = answering(200, config);
+    // The API's own account of its chains comes back with the answer: how each is run.
+    expect(await checkApi(chains, API, get)).toEqual({ ok: true, chains: config.chains });
+    expect(config.chains.map((c) => [c.id, c.mode, c.provenance])).toEqual([
+      ['solana', 'mock', 'mock'],
+      ['robinhood', 'mock', 'mock'],
+      ['base', 'off', null],
+    ]);
     expect(asked).toEqual([
       ['http://localhost:3001/v1/config', { cache: 'no-store', redirect: 'error' }],
     ]);
