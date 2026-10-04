@@ -7,8 +7,8 @@ use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
 use crate::checks::{
     check_cooldown, check_inside_band, check_keeper, check_keeper_mint, check_loss_cap,
-    check_market, check_route_selector, check_router, check_toward_target, check_untampered,
-    check_value, decayed_loss, refuse_other_vault_accounts, token_view,
+    check_market, check_no_further, check_route_selector, check_router, check_toward_target,
+    check_untampered, check_value, decayed_loss, refuse_other_vault_accounts, token_view,
 };
 use crate::errors::BasketError;
 use crate::events::KeeperTrade;
@@ -245,6 +245,13 @@ impl<'info> KeeperLeg<'info> {
             vault_after,
             before.target_bps,
             accounts.config.band_bps,
+        )?;
+        check_no_further(
+            asset_value,
+            vault_before,
+            asset_value_after,
+            vault_after,
+            before.target_bps,
         )?;
 
         // Check 7: what the leg lost is added to what is left of the week's losses. A leg

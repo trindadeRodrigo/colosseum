@@ -555,8 +555,8 @@ pub fn check_toward_target(
     Ok(())
 }
 
-/// Check 5, after the trade. The asset may sit anywhere inside the band, on either side of
-/// its target; outside the band on the far side is past it.
+/// Check 5, after the trade, the first half. The asset may sit anywhere inside the band, on
+/// either side of its target; outside the band on the far side is past it.
 pub fn check_inside_band(
     buying: bool,
     asset_value: u128,
@@ -576,6 +576,32 @@ pub fn check_inside_band(
         } else {
             weight >= limit
         },
+        BasketError::PastTarget
+    );
+    Ok(())
+}
+
+/// Check 5, after the trade, the second half. The asset ends no further from its target
+/// than it began. Inside the band alone, a leg could carry an asset from one edge to the
+/// other, and the next one back, paying the tolerance each way: every leg "toward the
+/// target" and none of them closing the distance.
+///
+/// The distance is the weight less the target, either way round. `|a₁/V₁ − t| ≤ |a₀/V₀ − t|`
+/// is compared as `|a₁·10⁴ − t·V₁| · V₀ ≤ |a₀·10⁴ − t·V₀| · V₁`, so nothing is divided.
+pub fn check_no_further(
+    asset_before: u128,
+    vault_before: u128,
+    asset_after: u128,
+    vault_after: u128,
+    target_bps: u16,
+) -> Result<()> {
+    let off = |asset: u128, vault: u128| {
+        let (weight, target) = against(asset, vault, target_bps as u32);
+        weight.abs_diff(target)
+    };
+    require!(
+        off(asset_after, vault_after) * vault_before
+            <= off(asset_before, vault_before) * vault_after,
         BasketError::PastTarget
     );
     Ok(())

@@ -894,6 +894,66 @@ describe('keeper_leg', () => {
       expectError(await sell(30.6), ERR.PastTarget);
       expectOk(await sell(30.5));
     });
+
+    // Invariant I5: no leg leaves an asset further from its target than it found it.
+    describe('and no further from the target than it began', () => {
+      it('takes an asset from outside the band to inside it, on either side', async () => {
+        await ownerBuys(40);
+        // 40% of the vault, ten points under: to 50.3%, inside the band above the target.
+        expectOk(await buy(10.3));
+        expect(balance(w.svm, w.vaultStock)).toBe(stockFor(50_300_000n));
+      });
+
+      it('takes an asset from just over its target to just under it, when that is closer', async () => {
+        await ownerBuys(50);
+        await ownerBuys(1, w.other);
+        // 50.4% of a vault of 100: 0.4 over. A sale of 0.7 leaves it 0.3 under.
+        expectOk(
+          await swapThroughExchange(w, {
+            amountIn: 400_000n,
+            inputMint: w.cash,
+            outputMint: w.stock,
+          }),
+        );
+        expectOk(await sell(0.7));
+      });
+
+      it('refuses a leg that crosses the target and ends further from it, inside the band', async () => {
+        await ownerBuys(50);
+        expectOk(
+          await swapThroughExchange(w, {
+            amountIn: 200_000n,
+            inputMint: w.cash,
+            outputMint: w.stock,
+          }),
+        );
+        // 50.2%: 0.2 over. A sale of 0.5 would leave it 0.3 under, inside the band and further.
+        expectError(await sell(0.5), ERR.PastTarget);
+        // To exactly as far on the other side is not further.
+        expectOk(await sell(0.4));
+      });
+
+      it('stops a stolen key bouncing an asset between the edges of its band (A3)', async () => {
+        // The reviewer's sequence. The stock at its target, the other asset a point under its 30%,
+        // and an exchange that pays the tolerance less than the reference both ways.
+        await ownerBuys(50);
+        await ownerBuys(29, w.other);
+        await exchangePays(w.cash, w.other, 397n, 2_000n);
+        await exchangePays(w.other, w.cash, 49_625n, 10_000n);
+        const sellOther = (dollars: bigint) =>
+          keeperLeg(w, { amountIn: stockFor(dollars), inputMint: w.other, outputMint: w.cash });
+        // 29% to 30.48%: toward the target, inside the band, and closer than it was.
+        expectOk(await keeperLeg(w, { amountIn: 1_490_000n, outputMint: w.other }));
+        // A cooldown later, back down to 29.51%: toward the target and inside the band, and a
+        // hair further from it. That was the leg that let the bounce go on; it is refused.
+        at(SESSION + HOUR);
+        expectError(await sellOther(970_000n), ERR.PastTarget);
+        // What is left to a keeper is a leg that ends no further out: here, at most to 29.52%.
+        // (Amounts the exchange's rate divides exactly, so the tolerance is not what refuses.)
+        expectError(await sellOther(966_800n), ERR.PastTarget);
+        expectOk(await sellOther(966_400n));
+      });
+    });
   });
 
   // Check 4, hostile cases A1 and A2: the least that must come back, at the reference price.
