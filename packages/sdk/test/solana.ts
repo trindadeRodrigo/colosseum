@@ -80,8 +80,6 @@ const u16 = (n: number) => {
   return new Uint8Array(out);
 };
 const join = (...parts: Uint8Array[]) => new Uint8Array(Buffer.concat(parts));
-/** Anchor's rule for an instruction's first eight bytes. */
-const discriminator = (name: string) => [...sha(`global:${name}`).subarray(0, 8)];
 
 /** The vault of an owner for a plan, as @solana/kit derives it. */
 export const vaultOf = (owner: string, basketId = BASKET_ID, program = PROGRAM) =>
@@ -99,79 +97,28 @@ const account = (
 ): IdlAccount => ({ name, signer: false, writable: false, optional: false, ...flags });
 
 /**
- * The program's interface as it stands on the Solana branch (sol/swap-registry at 0ca3f41), for the
- * steps the committed interface file does not have yet: `owner_swap`, `set_targets`, and a create that
- * takes the config, the asset list and an optional shared portfolio. `accept_version`,
- * `set_auto_follow` and `set_keeper` come with the keeper slot and have no layout anywhere yet: theirs
- * here is the design's signature (3.7) with the accounts a vault instruction of the owner takes. When
- * idl/basket.json has them, the generated table replaces this one in the tests.
+ * The committed interface plus the two instructions of the owner that the keeper branch adds, laid out
+ * as that branch has them (sol/keeper at e9a7647): `accept_version` and `set_auto_follow`. The guard
+ * refuses both steps until idl/basket.json has them and the table is generated again; this table is how
+ * the tests reach the rules that are waiting for that day.
  */
 export const NEXT_PROGRAM: ProgramTable = {
   ...BASKET_PROGRAM,
   instructions: {
     ...BASKET_PROGRAM.instructions,
-    create_vault: {
-      ...(BASKET_PROGRAM.instructions.create_vault as ProgramTable['instructions'][string]),
-      accounts: [
-        account('owner', { signer: true, writable: true }),
-        account('vault', { writable: true }),
-        account('config'),
-        account('assets'),
-        account('recipe', { optional: true }),
-        account('system_program'),
-      ],
-    },
-    owner_swap: {
-      discriminator: [12, 59, 193, 156, 47, 162, 240, 108],
-      accounts: [
-        account('owner', { signer: true }),
-        account('vault', { writable: true }),
-        account('config'),
-        account('assets'),
-        account('input_mint'),
-        account('output_mint'),
-        account('vault_input', { writable: true }),
-        account('vault_output', { writable: true }),
-        account('input_token_program'),
-        account('output_token_program'),
-        account('router_program'),
-      ],
-      args: [
-        { name: 'max_in', type: 'u64' },
-        { name: 'min_out', type: 'u64' },
-        { name: 'data', type: 'bytes' },
-      ],
-    },
-    set_targets: {
-      discriminator: [28, 232, 16, 206, 7, 118, 12, 122],
-      accounts: [
-        account('owner', { signer: true }),
-        account('vault', { writable: true }),
-        account('config'),
-        account('assets'),
-      ],
-      args: [{ name: 'targets', type: { vec: { defined: 'Target' } } }],
-    },
     accept_version: {
-      discriminator: discriminator('accept_version'),
+      discriminator: [215, 87, 246, 194, 63, 68, 225, 179],
       accounts: [
         account('owner', { signer: true }),
         account('vault', { writable: true }),
         account('recipe'),
-        account('config'),
-        account('assets'),
       ],
       args: [{ name: 'expected_version', type: 'u32' }],
     },
     set_auto_follow: {
-      discriminator: discriminator('set_auto_follow'),
+      discriminator: [255, 29, 5, 116, 253, 61, 227, 189],
       accounts: [account('owner', { signer: true }), account('vault', { writable: true })],
       args: [{ name: 'on', type: 'bool' }],
-    },
-    set_keeper: {
-      discriminator: discriminator('set_keeper'),
-      accounts: [account('owner', { signer: true }), account('vault', { writable: true })],
-      args: [{ name: 'keeper', type: 'pubkey' }],
     },
   },
 };

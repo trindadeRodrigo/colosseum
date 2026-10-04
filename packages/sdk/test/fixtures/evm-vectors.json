@@ -72,26 +72,6 @@
   ],
   "selectors": [
     {
-      "signature": "approve(address,uint256)",
-      "selector": "0x095ea7b3"
-    },
-    {
-      "signature": "transfer(address,uint256)",
-      "selector": "0xa9059cbb"
-    },
-    {
-      "signature": "transferFrom(address,address,uint256)",
-      "selector": "0x23b872dd"
-    },
-    {
-      "signature": "acceptVersion(bytes32,uint32)",
-      "selector": "0x86d8a9d5"
-    },
-    {
-      "signature": "adoptVersion()",
-      "selector": "0x58785d12"
-    },
-    {
       "signature": "config()",
       "selector": "0x79502c55"
     },
@@ -100,8 +80,12 @@
       "selector": "0xb6b55f25"
     },
     {
-      "signature": "keeperSwap((address,address,address,uint256,uint256,bytes))",
-      "selector": "0x96185faa"
+      "signature": "following()",
+      "selector": "0x1d94dff1"
+    },
+    {
+      "signature": "initialize(address,bytes32)",
+      "selector": "0xbe13f47c"
     },
     {
       "signature": "multicall(bytes[])",
@@ -120,20 +104,16 @@
       "selector": "0xbd300089"
     },
     {
-      "signature": "setAutoFollow(bool)",
-      "selector": "0x0a2d66f6"
-    },
-    {
-      "signature": "setOperator(address)",
-      "selector": "0xb3ab15fb"
-    },
-    {
       "signature": "setTargets((address,uint16)[])",
       "selector": "0x0dd656db"
     },
     {
-      "signature": "snapshot()",
-      "selector": "0x9711715a"
+      "signature": "start(bytes32,uint32,(address,uint16)[],uint256,(address,address,address,uint256,uint256,bytes)[])",
+      "selector": "0x64659e4e"
+    },
+    {
+      "signature": "targets()",
+      "selector": "0x26d60fb4"
     },
     {
       "signature": "tokens()",
@@ -146,6 +126,18 @@
     {
       "signature": "withdrawAll()",
       "selector": "0x853828b6"
+    },
+    {
+      "signature": "approve(address,uint256)",
+      "selector": "0x095ea7b3"
+    },
+    {
+      "signature": "transfer(address,uint256)",
+      "selector": "0xa9059cbb"
+    },
+    {
+      "signature": "transferFrom(address,address,uint256)",
+      "selector": "0x23b872dd"
     },
     {
       "signature": "active(bytes32)",
@@ -164,6 +156,10 @@
       "selector": "0xff94e4f3"
     },
     {
+      "signature": "factory()",
+      "selector": "0xc45a0155"
+    },
+    {
       "signature": "indexAt(uint256)",
       "selector": "0xa42bbccd"
     },
@@ -174,6 +170,10 @@
     {
       "signature": "indexInfo(bytes32)",
       "selector": "0x272e39f9"
+    },
+    {
+      "signature": "initialize(address,uint32)",
+      "selector": "0xc5e4c9f9"
     },
     {
       "signature": "limits()",
@@ -188,8 +188,68 @@
       "selector": "0x0bb11f93"
     },
     {
+      "signature": "proxiableUUID()",
+      "selector": "0x52d1902d"
+    },
+    {
       "signature": "publish(bytes32,(address,uint16)[],bytes32)",
       "selector": "0x05f284c1"
+    },
+    {
+      "signature": "publishDelay()",
+      "selector": "0xa1211d4b"
+    },
+    {
+      "signature": "setPublishDelay(uint32)",
+      "selector": "0x62166e4c"
+    },
+    {
+      "signature": "UPGRADE_INTERFACE_VERSION()",
+      "selector": "0xad3cb1cc"
+    },
+    {
+      "signature": "upgradeToAndCall(address,bytes)",
+      "selector": "0x4f1ef286"
+    },
+    {
+      "signature": "acceptOwnership()",
+      "selector": "0x79ba5097"
+    },
+    {
+      "signature": "implementation()",
+      "selector": "0x5c60da1b"
+    },
+    {
+      "signature": "owner()",
+      "selector": "0x8da5cb5b"
+    },
+    {
+      "signature": "pendingOwner()",
+      "selector": "0xe30c3978"
+    },
+    {
+      "signature": "renounceOwnership()",
+      "selector": "0x715018a6"
+    },
+    {
+      "signature": "transferOwnership(address)",
+      "selector": "0xf2fde38b"
+    },
+    {
+      "signature": "upgradeTo(address)",
+      "selector": "0x3659cfe6"
+    },
+    {
+      "signature": "acceptAdmin()",
+      "selector": "0x0e18b681"
+    },
+    {
+      "signature": "addClosedDay(uint32)",
+      "selector": "0xb5975210"
+    },
+    {
+      "signature": "admin()",
+      "selector": "0xf851a440"
     },
     {
       "signature": "asset(address)",
@@ -204,16 +264,160 @@
       "selector": "0xa7224687"
     },
     {
+      "signature": "closedDay(uint32)",
+      "selector": "0xe86cb696"
+    },
+    {
+      "signature": "closedUntil()",
+      "selector": "0xc9896435"
+    },
+    {
+      "signature": "extendClosedUntil(uint64)",
+      "selector": "0x4385a1a5"
+    },
+    {
+      "signature": "guardian()",
+      "selector": "0x452a9320"
+    },
+    {
+      "signature": "haltAsset(address,uint64)",
+      "selector": "0x5ef54421"
+    },
+    {
       "signature": "isAsset(address)",
       "selector": "0xc87fa42a"
+    },
+    {
+      "signature": "keeper()",
+      "selector": "0xaced1661"
+    },
+    {
+      "signature": "keeperPaused()",
+      "selector": "0xc7696763"
+    },
+    {
+      "signature": "launch()",
+      "selector": "0x01339c21"
+    },
+    {
+      "signature": "launched()",
+      "selector": "0x8091f3bf"
+    },
+    {
+      "signature": "params()",
+      "selector": "0xcff0ab96"
+    },
+    {
+      "signature": "pauseKeeper()",
+      "selector": "0x9b798e5c"
+    },
+    {
+      "signature": "pendingAdmin()",
+      "selector": "0x26782247"
+    },
+    {
+      "signature": "proposeAdmin(address)",
+      "selector": "0x147bf6c4"
+    },
+    {
+      "signature": "registry()",
+      "selector": "0x7b103999"
+    },
+    {
+      "signature": "removeAsset(address)",
+      "selector": "0x4a5e42b1"
+    },
+    {
+      "signature": "removedAssets()",
+      "selector": "0x32f7e942"
     },
     {
       "signature": "routerPull(address)",
       "selector": "0x77831405"
     },
     {
+      "signature": "sequencerFeed()",
+      "selector": "0x3b521cb6"
+    },
+    {
+      "signature": "setAsset(address,(address,uint8,uint8,uint32,uint8,uint8,uint16,address,bytes4,bytes4,uint64))",
+      "selector": "0xac7daf47"
+    },
+    {
+      "signature": "setCashToken(address)",
+      "selector": "0xb85e776d"
+    },
+    {
+      "signature": "setClosedDay(uint32,bool)",
+      "selector": "0x0d20a68d"
+    },
+    {
+      "signature": "setClosedUntil(uint64)",
+      "selector": "0x8f09f320"
+    },
+    {
+      "signature": "setGuardian(address)",
+      "selector": "0x8a0dac4a"
+    },
+    {
+      "signature": "setHalt(address,uint64)",
+      "selector": "0x9d61b974"
+    },
+    {
+      "signature": "setKeeper(address)",
+      "selector": "0x748747e6"
+    },
+    {
+      "signature": "setParams((uint16,uint16,uint16,uint32,uint32,uint32))",
+      "selector": "0x2f2fa25e"
+    },
+    {
+      "signature": "setRegistry(address)",
+      "selector": "0xa91ee0dc"
+    },
+    {
+      "signature": "setRouter(address,uint8)",
+      "selector": "0x83f1d681"
+    },
+    {
+      "signature": "setSequencerFeed(address)",
+      "selector": "0x8a45d536"
+    },
+    {
+      "signature": "unpauseKeeper()",
+      "selector": "0xff2caa08"
+    },
+    {
+      "signature": "wasAsset(address)",
+      "selector": "0xd948683e"
+    },
+    {
+      "signature": "acceptAdmin()",
+      "selector": "0x0e18b681"
+    },
+    {
       "signature": "addClosedDay(uint32)",
       "selector": "0xb5975210"
+    },
+    {
+      "signature": "admin()",
+      "selector": "0xf851a440"
+    },
+    {
+      "signature": "asset(address)",
+      "selector": "0x9c4667a2"
+    },
+    {
+      "signature": "assets()",
+      "selector": "0x71a97305"
+    },
+    {
+      "signature": "beacon()",
+      "selector": "0x59659e90"
+    },
+    {
+      "signature": "cashToken()",
+      "selector": "0xa7224687"
     },
     {
       "signature": "closedDay(uint32)",
@@ -244,12 +448,28 @@
       "selector": "0x5ef54421"
     },
     {
+      "signature": "initialize(address,address,(uint16,uint16,uint16,uint32,uint32,uint32))",
+      "selector": "0x27543516"
+    },
+    {
+      "signature": "isAsset(address)",
+      "selector": "0xc87fa42a"
+    },
+    {
+      "signature": "isVault(address)",
+      "selector": "0x652b9b41"
+    },
+    {
       "signature": "keeper()",
       "selector": "0xaced1661"
     },
     {
       "signature": "keeperPaused()",
       "selector": "0xc7696763"
+    },
+    {
+      "signature": "launch()",
+      "selector": "0x01339c21"
     },
     {
       "signature": "launched()",
@@ -264,8 +484,92 @@
       "selector": "0x9b798e5c"
     },
     {
+      "signature": "pendingAdmin()",
+      "selector": "0x26782247"
+    },
+    {
+      "signature": "proposeAdmin(address)",
+      "selector": "0x147bf6c4"
+    },
+    {
+      "signature": "proxiableUUID()",
+      "selector": "0x52d1902d"
+    },
+    {
+      "signature": "registry()",
+      "selector": "0x7b103999"
+    },
+    {
+      "signature": "removeAsset(address)",
+      "selector": "0x4a5e42b1"
+    },
+    {
+      "signature": "removedAssets()",
+      "selector": "0x32f7e942"
+    },
+    {
+      "signature": "routerPull(address)",
+      "selector": "0x77831405"
+    },
+    {
       "signature": "sequencerFeed()",
       "selector": "0x3b521cb6"
+    },
+    {
+      "signature": "setAsset(address,(address,uint8,uint8,uint32,uint8,uint8,uint16,address,bytes4,bytes4,uint64))",
+      "selector": "0xac7daf47"
+    },
+    {
+      "signature": "setCashToken(address)",
+      "selector": "0xb85e776d"
+    },
+    {
+      "signature": "setClosedDay(uint32,bool)",
+      "selector": "0x0d20a68d"
+    },
+    {
+      "signature": "setClosedUntil(uint64)",
+      "selector": "0x8f09f320"
+    },
+    {
+      "signature": "setGuardian(address)",
+      "selector": "0x8a0dac4a"
+    },
+    {
+      "signature": "setHalt(address,uint64)",
+      "selector": "0x9d61b974"
+    },
+    {
+      "signature": "setKeeper(address)",
+      "selector": "0x748747e6"
+    },
+    {
+      "signature": "setParams((uint16,uint16,uint16,uint32,uint32,uint32))",
+      "selector": "0x2f2fa25e"
+    },
+    {
+      "signature": "setRegistry(address)",
+      "selector": "0xa91ee0dc"
+    },
+    {
+      "signature": "setRouter(address,uint8)",
+      "selector": "0x83f1d681"
+    },
+    {
+      "signature": "setSequencerFeed(address)",
+      "selector": "0x8a45d536"
+    },
+    {
+      "signature": "unpauseKeeper()",
+      "selector": "0xff2caa08"
+    },
+    {
+      "signature": "UPGRADE_INTERFACE_VERSION()",
+      "selector": "0xad3cb1cc"
+    },
+    {
+      "signature": "upgradeToAndCall(address,bytes)",
+      "selector": "0x4f1ef286"
     },
     {
       "signature": "vaultAt(uint256)",
@@ -276,12 +580,24 @@
       "selector": "0xa7c6a100"
     },
     {
+      "signature": "vaultCountOf(address)",
+      "selector": "0xe72d5eb0"
+    },
+    {
       "signature": "vaultOf(address,bytes32)",
       "selector": "0xfeb3ff0c"
     },
     {
+      "signature": "vaultOfAt(address,uint256)",
+      "selector": "0xf13a6828"
+    },
+    {
       "signature": "vaultsOf(address)",
       "selector": "0x6cc811f8"
+    },
+    {
+      "signature": "wasAsset(address)",
+      "selector": "0xd948683e"
     }
   ],
   "calls": [
@@ -608,36 +924,43 @@
   ],
   "vaults": [
     {
-      "factory": "0x7b2529914177cb14070c1e9c8124a2b868392dc2",
-      "beacon": "0xfce464190aa49e601892631f7bd515a9b6465deb",
-      "proxyCreationCode": "0xc45e2366c9d6cebbc739700ce8650cd7f438569b634c82790063ea69a518b7c4ade16529a4346d423c2e9367ba6611478a8b25a74c501dee0bccebf8c2c3a42a3a5f55100804607adb975aa37300c421ccc8e6e4ac94da64d7b4851a594a4915b01e148445695876b99b0ecbbb6d0839ae41fd38bbface71135f8802483b40dbce6893e1d65e2233785ce6f33766d7671d87dc51d5ccfa81e851edaab9f75567bfbb7da64f53a219131937b7e1d19545c0b0226d77d4d47f98c3e808f44d587b54122fc210c497e504fa15877ef85e7fb89c4071513e1c48328addf4c2788a5d0d7b93e429e99d0ad11574acdbe8750c41c629b8a0988c5f960f95f5cc1104c522",
-      "owner": "0xc4de91739cf18378f8d5d01177ea813861838320",
+      "factory": "0xd19545c0b0226d77d4d47f98c3e808f44d587b54",
+      "beacon": "0x122fc210c497e504fa15877ef85e7fb89c407151",
+      "proxyCreationCode": "0x2529914177cb14070c1e9c8124a2b868392dc2fce464190aa49e601892631f7bd515a9b6465debc4de91739cf18378f8d5d01177ea8138618383208bc45e2366c9d6cebbc739700ce8650cd7f438569b634c82790063ea69a518b7c4ade16529a4346d423c2e9367ba6611478a8b25a74c501dee0bccebf8c2c3a42a3a5f55100804607adb975aa37300c421ccc8e6e4ac94da64d7b4851a594a4915b01e148445695876b99b0ecbbb6d0839ae41fd38bbface71135f8802483b40dbce6893e1d65e2233785ce6f33766d7671d87dc51d5ccfa81e851edaab9f75567bfbb7da64f53a219131937b7e1",
+      "owner": "0x3e1c48328addf4c2788a5d0d7b93e429e99d0ad1",
       "basketId": "1",
-      "vault": "0x42fd0b53be53ed0e2d63e636271c3d347004d1ec"
+      "vault": "0x9ab7e7cb2ff70766aa1bc896bd9c282e9c52ec30"
     },
     {
-      "factory": "0xb95163c5ad7307fab1a7683f1428ab0601a9f3b6",
-      "beacon": "0x9b5df6302b070ba339e854f89c430f455ec7b356",
-      "proxyCreationCode": "0xa8291f55c47d928b9a1478147d1cc92021fabefa529d12585a87e3c4b19d6342b7dff0be070c28da8cf916e5c2a76562b3054bc2505b2763d780c932d52143b191ab8eb728d2cf0a54f2e3d2081015bb41b0b95969a75655e33d91416d27f13a9b9cf260c380223c305c529aafb3f5f252d9e823cbb2f602ba951c0321816fc0a3234ff079fe30576817d7cca30b94c6420b725a03d79fab8a3eaf91aace17efeacfdedc09f9df74afc587777647eee01119a9678b17b3ba12d46e066ab37ca41ab1099f31a2a692955172321b2e9009ae980c8b43f87bea07ee5cc179cf81b496878643759075e196ed915da737ba",
-      "owner": "0xb29270aec64ebbca4983a8b0e690cd6b8864342d",
+      "factory": "0xb0e690cd6b8864342d7fa8291f55c47d928b9a14",
+      "beacon": "0x78147d1cc92021fabefa529d12585a87e3c4b19d",
+      "proxyCreationCode": "0x74acdbe8750c41c629b8a0988c5f960f95f5cc1104c522b95163c5ad7307fab1a7683f1428ab0601a9f3b69b5df6302b070ba339e854f89c430f455ec7b356b29270aec64ebbca4983a8",
+      "owner": "0x6342b7dff0be070c28da8cf916e5c2a76562b305",
       "basketId": "255",
-      "vault": "0x3a4ca45e0f86ccecb557aff78bb2493e86ec4226"
+      "vault": "0x151937f47a9c7e7f60287687ada6db91f249c51e"
     },
     {
-      "factory": "0x041b602bc3f5eced84da3e59bcec44ce383e3bf0",
-      "beacon": "0xf2f7a4ed305fea1e629e0555eac36eecb3dabdac",
-      "proxyCreationCode": "0x3f8692e0dbe7cbb181b67897e8716a53921a9b63f39a9745cb63496c1bb969de69c02060d2bc30d4fd76ac1f03b43357338b38cfd3716366c199caec3830914d47e1d1246b28ef00b84bca9028dcdd022279abe39742969f74fbcdd3c90e792c21400d4561fd635ee9621bfdde847a487277b99a5e8cfd79e95cedd5d9aa6e7ead283cd023be8f76134dd044315cff5386c9d14cb40cc3257dbd5f555f37f50d77172c5fe88ab5968378553f71b249b0e1e7d5399b25cadfe0fe0bc69776aee388ba73fd528902a6ba51aacd9821fda3d79fea463bbb11b5c44f78a79f7a5f3f42b84acaa1a1827278dcd697473a298c86f9d40f51763bfcbdb9fb296be1bd95b840c22b24e49346806a8ae98db0bbfd4e32630f5a58f1d753",
-      "owner": "0x9be4e2d4d3c7e599db76327b55920cd8a24aaccc",
+      "factory": "0x980c8b43f87bea07ee5cc179cf81b49687864375",
+      "beacon": "0x9075e196ed915da737ba041b602bc3f5eced84da",
+      "proxyCreationCode": "0xc2505b2763d780c932d52143b191ab8eb728d2cf0a54f2e3d2081015bb41b0b95969a75655e33d91416d27f13a9b9cf260c380223c305c529aafb3f5f252d9e823cbb2f602ba951c0321816fc0a3234ff079fe30576817d7cca30b94c6420b725a03d79fab8a3eaf91aace17efeacfdedc09f9df74afc587777647eee01119a9678b17b3ba12d46e066ab37ca41ab1099f31a2a692955172321b2e9009ae",
+      "owner": "0x3e59bcec44ce383e3bf0f2f7a4ed305fea1e629e",
       "basketId": "18446744073709551615",
-      "vault": "0x0ce40d7b82342c4db9e8c9d297c9daabca998799"
+      "vault": "0x3413a7b5157ccb3c2e4ed0c2230d9521584c6ba1"
     },
     {
-      "factory": "0xf8eed12acbf0101917a47c773be9ed047a1982d9",
-      "beacon": "0x15d7daff99621e54f1896b10dbc996afac5d1617",
-      "proxyCreationCode": "0xe1ab9b01871d3a1f806cc52189227d396834050c30d5a7f95484a263300086021b607c374c2d05b16d689c6a7aa3076a3c3b85f4e31d8f66178e3499b0434adf00bdef40d5b3b736a303bcaeffec9cae7e48713e401cc3873a439acbf9b58e14da8e544fc736260939a1d4754a2a3a8dc2ff15634d591867a0cd05c2cb65c45823664d6b87729015b66ec1be2077ccc5b15abc4406d54175cf733c30eb047c180b0aeb64e3598472e085d041fbc8c810ee1e744a2ee364e62a816d51c2f500f9c5f9618c46f176d8695bc96e34f54cb89b504772b8de12d9d26f5cbb5693c80a411208062067b59ceb66bf60683b99f86e11a9536f3158df6e93664aa63a4275142cb9439d5834f819cd1ec72cca0310bb043bbdd2d15d7610bfce6ae8ee1e91f8aade16c884fa9c64e67a36196b1d40bb38f63ba22d1f6cfde0a79fab5e4e7986b706eea931aef7064784824177761f6610e5c60a64909f82fbffc00c6df73f11d891cf0bf1842ed5d707ef923d317cfa8bb577f242c5ca00c838581fe4b7d3d2ffb3b46ef0b2052292625a7ed0fc5bee",
-      "owner": "0x8da2cfc188c321fb73347058dc17938bf42722c1",
+      "factory": "0x9b63f39a9745cb63496c1bb969de69c02060d2bc",
+      "beacon": "0x30d4fd76ac1f03b43357338b38cfd3716366c199",
+      "proxyCreationCode": "0x55eac36eecb3dabdac9be4e2d4d3c7e599db76327b55920cd8a24aaccc9a3f8692e0dbe7cbb181b67897e8716a53921a",
+      "owner": "0xcaec3830914d47e1d1246b28ef00b84bca9028dc",
       "basketId": "9876543210123",
-      "vault": "0x19248b18e7e9bad70e95dfc7ce60e9e52058e10c"
+      "vault": "0xf160104b5f73982776e0c9a0089db0b9a2550712"
     }
-  ]
+  ],
+  "deployed": {
+    "factory": "0xdd022279abe39742969f74fbcdd3c90e792c2140",
+    "beacon": "0x0d4561fd635ee9621bfdde847a487277b99a5e8c",
+    "owner": "0xfd79e95cedd5d9aa6e7ead283cd023be8f76134d",
+    "basketId": "7234567890123456789",
+    "vault": "0x6e606c4f8927b113689cd14860d9c61811ea6218"
+  }
 }

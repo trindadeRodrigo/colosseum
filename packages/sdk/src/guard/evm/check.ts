@@ -25,19 +25,19 @@ const SWAPS = '(address,address,address,uint256,uint256,bytes)[]';
 /** The functions this guard was written against, each by interface and exact signature. */
 const FN = {
   approve: ['ERC20', 'approve(address,uint256)'],
-  createVault: ['IVaultFactory', `createVault(bytes32,${WEIGHTS},bytes32,uint32,bool)`],
+  createVault: ['VaultFactory', `createVault(bytes32,${WEIGHTS},bytes32,uint32,bool)`],
   createVaultAndBuy: [
-    'IVaultFactory',
+    'VaultFactory',
     `createVaultAndBuy(bytes32,${WEIGHTS},bytes32,uint32,bool,uint256,${SWAPS})`,
   ],
-  deposit: ['IBasketVault', 'deposit(uint256)'],
-  ownerSwap: ['IBasketVault', `ownerSwap(${SWAPS})`],
-  withdraw: ['IBasketVault', 'withdraw(address,uint256)'],
-  withdrawAll: ['IBasketVault', 'withdrawAll()'],
-  setTargets: ['IBasketVault', `setTargets(${WEIGHTS})`],
-  acceptVersion: ['IBasketVault', 'acceptVersion(bytes32,uint32)'],
-  setAutoFollow: ['IBasketVault', 'setAutoFollow(bool)'],
-  multicall: ['IBasketVault', 'multicall(bytes[])'],
+  deposit: ['BasketVault', 'deposit(uint256)'],
+  ownerSwap: ['BasketVault', `ownerSwap(${SWAPS})`],
+  withdraw: ['BasketVault', 'withdraw(address,uint256)'],
+  withdrawAll: ['BasketVault', 'withdrawAll()'],
+  setTargets: ['BasketVault', `setTargets(${WEIGHTS})`],
+  acceptVersion: ['BasketVault', 'acceptVersion(bytes32,uint32)'],
+  setAutoFollow: ['BasketVault', 'setAutoFollow(bool)'],
+  multicall: ['BasketVault', 'multicall(bytes[])'],
 } as const;
 type FnName = keyof typeof FN;
 export const GUARDED_EVM_FUNCTIONS: readonly (readonly [string, string])[] = Object.values(FN);
@@ -62,12 +62,13 @@ export function checkEvm(ctx: Context, deployment: EvmDeployment, table: Interfa
   const { legId, owner } = step;
   const unsupported = (message: string) => new GuardRefusal('unsupported', message, legId);
 
+  const selectorIf = (name: FnName): string | undefined => table[FN[name][0]]?.[FN[name][1]];
+  /** The selector of a function this step cannot do without. */
   const selectorOf = (name: FnName): string => {
-    const [face, signature] = FN[name];
-    const selector = table[face]?.[signature];
+    const selector = selectorIf(name);
     if (!selector)
       throw unsupported(
-        `the committed interface has no ${face}.${signature}: this step cannot be checked until the table is regenerated`,
+        `the committed interface has no ${FN[name].join('.')}: this step cannot be checked until the table is regenerated`,
       );
     return selector;
   };
@@ -240,12 +241,21 @@ export function checkEvm(ctx: Context, deployment: EvmDeployment, table: Interfa
   }
 
   // ---- every other step is a call to the person's own vault
+  const needs: Record<typeof step.kind, FnName[]> = {
+    deposit: ['deposit', 'ownerSwap'],
+    swap: ['ownerSwap'],
+    set_targets: ['setTargets'],
+    accept_version: ['acceptVersion'],
+    set_auto_follow: ['setAutoFollow'],
+    withdraw: ['withdraw', 'withdrawAll'],
+  };
+  needs[step.kind].forEach(selectorOf);
   need('target', call.to === vault, `the call is to ${call.to}, and the plan's vault is ${vault}`);
   const atoms: Atom[] = [];
   const open = (data: Uint8Array, depth: number): void => {
     const inner = `0x${hexEncode(data.slice(0, 4))}`;
     const rest = data.slice(4);
-    const is = (name: FnName) => data.length >= 4 && inner === selectorOf(name);
+    const is = (name: FnName) => data.length >= 4 && inner === selectorIf(name);
     if (is('multicall')) {
       if (depth >= MAX_DEPTH)
         throw new GuardRefusal('malformed', 'calls nested deeper than this guard opens', legId);

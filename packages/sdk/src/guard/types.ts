@@ -102,8 +102,11 @@ export type EvmDeployment = {
   factory: Address;
   /** What a vault's address is derived from, with the factory, the owner and the plan's number. */
   beacon: Address;
-  /** The creation code of the vault proxy, as the factory holds it: 0x hex. */
-  proxyCreationCode: string;
+  /**
+   * The creation code of the vault proxy, as the factory holds it: 0x hex. Left out, the code of the
+   * committed build (generated/vault-proxy.ts).
+   */
+  proxyCreationCode?: string;
   /** The exchanges a vault may trade through. */
   routers: Address[];
   cash: AssetId;

@@ -6,10 +6,10 @@ import type { ApprovedStep, ApprovedTrade, GuardDeployment, PlanTerms, Withdrawa
 // The order as the person approved it, turned into what each of its steps may sign. It is worked out
 // once, from the order the review screen showed, and never again from what a server says later.
 //
-// The order type does not yet say everything a step does: it has no plan number, no targets, no
-// version, and no amount on a step that trades nothing. Those come in as `PlanTerms`, from what the
-// screen showed beside the order. The cash a buy moves is read back from its trades, as the server
-// reads it: the trades of a buy add up to exactly the cash it deposits.
+// The order says what cash it moves (`Order.depositRaw`, repeated as `Leg.cashRaw` on the approval and
+// on the step that deposits) and what each step trades. It does not yet say everything else a step
+// does: it has no plan number, no targets and no version. Those come in as `PlanTerms`, from what the
+// screen showed beside the order.
 
 const refuse = (message: string, legId?: string) =>
   new GuardRefusal('order', message, legId ?? null);
@@ -19,7 +19,7 @@ const refuse = (message: string, legId?: string) =>
  * when the order cannot mean what it says, and `unsupported` for a step this guard signs none of.
  */
 export function approvedSteps(
-  order: Pick<Order, 'id' | 'owner' | 'legs'>,
+  order: Pick<Order, 'id' | 'owner' | 'legs' | 'depositRaw'>,
   plan: PlanTerms,
   deployment: GuardDeployment,
 ): ApprovedStep[] {
@@ -51,17 +51,28 @@ export function approvedSteps(
       throw new GuardRefusal('unsupported', 'a step the keeper signs is never signed here', leg.id);
   }
 
-  // What a buy deposits is the sum of what its trades sell, and every one of them sells cash.
-  const moves = legs.some((l) => ['approve', 'create_vault', 'deposit'].includes(l.kind));
-  const all = legs.flatMap((l) => l.trades);
-  if (moves && all.some((t) => t.sell !== deployment.cash))
-    throw refuse('an order that deposits cash has a trade that sells something else');
-  if (all.some((t) => !isRawAmount(t.amountInRaw))) throw refuse('a trade has no amount');
-  const cashRaw = all.reduce((sum, t) => sum + BigInt(t.amountInRaw), 0n).toString();
-  const funded = (leg: Leg) => {
-    if (cashRaw === '0') throw refuse('the order does not say how much cash it moves', leg.id);
-    return cashRaw;
+  // The cash a step is about is the step's own figure, and where the order states a deposit it is that
+  // one: the approval and the step that deposits both repeat it, and neither may say more.
+  const { depositRaw } = order;
+  if (depositRaw !== undefined && !isRawAmount(depositRaw))
+    throw refuse('the deposit the order states is not raw units');
+  const cashOf = (leg: Leg): string | null => {
+    const cash = leg.cashRaw;
+    if (cash === undefined) return null;
+    if (!isRawAmount(cash)) throw refuse('the cash a step states is not raw units', leg.id);
+    if (depositRaw !== undefined && cash !== depositRaw)
+      throw refuse(`a step is about ${cash} of cash, and the order deposits ${depositRaw}`, leg.id);
+    return cash;
   };
+  const funded = (leg: Leg): string => {
+    const cash = cashOf(leg);
+    if (cash === null || cash === '0')
+      throw refuse('the step does not say how much cash it is about', leg.id);
+    return cash;
+  };
+  for (const leg of legs)
+    for (const t of leg.trades)
+      if (!isRawAmount(t.amountInRaw)) throw refuse('a trade has no amount', leg.id);
 
   const withdrawLegs = legs.filter((l) => l.kind === 'withdraw');
   const withdrawalsOf = (leg: Leg): Withdrawal[] | 'all' => {
@@ -79,15 +90,19 @@ export function approvedSteps(
       case 'approve':
         return { ...base, kind: 'approve', amountRaw: funded(leg) };
       case 'create_vault': {
-        if (!plan.follow && !plan.targets?.length)
-          throw refuse('the plan has no targets and follows nothing', leg.id);
+        // A plan that is all cash has no target: an empty list, said out loud, and never a missing one.
+        if (!plan.follow && !plan.targets)
+          throw refuse(
+            'nothing says what the vault holds: no targets and nothing followed',
+            leg.id,
+          );
         return {
           ...base,
           kind: 'create_vault',
           targets: plan.follow ? [] : (plan.targets ?? []),
           follow: plan.follow ?? null,
           autoFollow: plan.autoFollow ?? false,
-          depositRaw: cashRaw,
+          depositRaw: cashOf(leg) ?? '0',
           trades: tradesOf(leg),
         };
       }

@@ -6,7 +6,7 @@ import { keccak256 } from '../src/hash';
 // What the guard's two tables are made from, as pure functions of the committed interface files:
 //   idl/basket.json                     the Solana program: its id, and every instruction's
 //                                       discriminator, accounts and arguments
-//   contracts/src/interfaces/*.sol      the EVM contracts: every function's signature and selector
+//   idl/evm/*.json                      the EVM contracts' ABIs: every function's signature and selector
 // gen-guard-tables.ts writes the result; tables.test.ts fails when the committed tables are not what
 // these functions make of the files as they stand.
 
@@ -108,7 +108,7 @@ export function programTable(idl: unknown): ProgramTable {
   };
 }
 
-// ---- the EVM interfaces
+// ---- the EVM contracts
 
 /** The standard functions a step calls on a token. They are in no interface file of ours. */
 export const ERC20_FUNCTIONS = [
@@ -117,31 +117,13 @@ export const ERC20_FUNCTIONS = [
   'transferFrom(address,address,uint256)',
 ] as const;
 
-const ELEMENTARY = /^(?:address|bool|string|bytes(?:[1-9]|[12]\d|3[0-2])?|u?int(?:\d{1,3})?)$/;
-const LOCATION = new Set(['calldata', 'memory', 'storage', 'payable']);
-
-const stripComments = (source: string) =>
-  source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
-
-/** `Weight[] calldata targets` as `Weight[]`: the type is the first word, whatever follows it. */
-function declaredType(declaration: string, where: string): string {
-  const words = declaration.trim().split(/\s+/).filter(Boolean);
-  const [type, ...rest] = words;
-  if (!type || rest.filter((w) => !LOCATION.has(w)).length > 1)
-    throw new Error(`${where}: cannot read "${declaration.trim()}"`);
-  return type;
-}
-
-/** A Solidity type in its canonical form, a struct written out as a tuple of its fields. */
-function canonical(type: string, structs: Map<string, string[]>, where: string): string {
-  const match = /^(\w+)((?:\[\d*\])*)$/.exec(type);
-  if (!match) throw new Error(`${where}: cannot read the type ${type}`);
-  const [, base = '', suffix = ''] = match;
-  const struct = structs.get(base);
-  if (struct) return `(${struct.map((f) => canonical(f, structs, where)).join(',')})${suffix}`;
-  if (!ELEMENTARY.test(base)) throw new Error(`${where}: ${base} is not a type the guard knows`);
-  const word = base === 'uint' ? 'uint256' : base === 'int' ? 'int256' : base;
-  return `${word}${suffix}`;
+/** A parameter's type in its canonical form, a struct written out as a tuple of its fields. */
+function canonical(input: unknown, where: string): string {
+  if (!isRecord(input)) throw new Error(`${where}: expected a parameter`);
+  const type = text(input.type, where);
+  if (!type.startsWith('tuple')) return type;
+  const fields = list(input.components, where).map((c) => canonical(c, where));
+  return `(${fields.join(',')})${type.slice('tuple'.length)}`;
 }
 
 export function selectorOf(signature: string): string {
@@ -149,53 +131,33 @@ export function selectorOf(signature: string): string {
 }
 
 /**
- * Every function of every interface in the given Solidity sources, by interface, with its selector.
- * `sources` is file name to text. Structs are read from all the files first, so a signature names
- * tuples and never a struct.
+ * Every function of every contract in the given ABIs, by contract, with its selector. `abis` is the
+ * contract's name to its ABI, as the files in idl/evm/ hold it. A signature names tuples, never a
+ * struct, so it is the text the selector is the hash of.
  */
-export function interfaceTable(sources: Record<string, string>): InterfaceTable {
-  const clean = Object.entries(sources)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([file, source]) => [file, stripComments(source)] as const);
-  const structs = new Map<string, string[]>();
-  for (const [file, source] of clean)
-    for (const [, name = '', body = ''] of source.matchAll(/\bstruct\s+(\w+)\s*\{([^}]*)\}/g))
-      structs.set(
-        name,
-        body
-          .split(';')
-          .filter((f) => f.trim())
-          .map((f) => declaredType(f, `${file}: struct ${name}`)),
-      );
-
+export function interfaceTable(abis: Record<string, unknown>): InterfaceTable {
   const table: Record<string, Record<string, string>> = {};
-  for (const [file, source] of clean)
-    for (const match of source.matchAll(/\binterface\s+(\w+)[^{]*\{/g)) {
-      const name = match[1] as string;
-      // The body runs to the brace that closes the interface.
-      let depth = 1;
-      let end = match.index + match[0].length;
-      for (; end < source.length && depth > 0; end += 1) {
-        if (source[end] === '{') depth += 1;
-        if (source[end] === '}') depth -= 1;
-      }
-      const body = source.slice(match.index + match[0].length, end);
-      const functions: Record<string, string> = {};
-      for (const [, fn = '', params = ''] of body.matchAll(/\bfunction\s+(\w+)\s*\(([^)]*)\)/g)) {
-        const where = `${file}: ${name}.${fn}`;
-        const types = params
-          .split(',')
-          .filter((p) => p.trim())
-          .map((p) => canonical(declaredType(p, where), structs, where));
-        const signature = `${fn}(${types.join(',')})`;
-        functions[signature] = selectorOf(signature);
-      }
-      table[name] = Object.fromEntries(
-        Object.entries(functions).sort(([a], [b]) => a.localeCompare(b)),
-      );
+  for (const [contract, abi] of Object.entries(abis)) {
+    const functions: Record<string, string> = {};
+    for (const entry of list(abi, contract)) {
+      if (!isRecord(entry) || entry.type !== 'function') continue;
+      const name = text(entry.name, contract);
+      const where = `${contract}.${name}`;
+      const signature = `${name}(${list(entry.inputs, where)
+        .map((i) => canonical(i, where))
+        .join(',')})`;
+      functions[signature] = selectorOf(signature);
     }
+    table[contract] = functions;
+  }
   table.ERC20 = Object.fromEntries(ERC20_FUNCTIONS.map((s) => [s, selectorOf(s)]));
-  return Object.fromEntries(Object.entries(table).sort(([a], [b]) => a.localeCompare(b)));
+  const sorted = (record: Record<string, string>) =>
+    Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)));
+  return Object.fromEntries(
+    Object.entries(table)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([contract, functions]) => [contract, sorted(functions)]),
+  );
 }
 
 // ---- the files
@@ -203,10 +165,25 @@ export function interfaceTable(sources: Record<string, string>): InterfaceTable 
 const HEADER = (from: string) =>
   `// Generated from ${from} by packages/sdk/scripts/gen-guard-tables.ts.\n// Do not edit: run \`pnpm --filter @colosseum/sdk tables\`. tables.test.ts fails when this file and its source disagree.\n`;
 
+/**
+ * The vault proxy's creation code, from a build of the contracts (`out/BeaconProxy.sol/BeaconProxy.json`).
+ * A vault's address is derived from it, so the guard carries it.
+ */
+export function proxyCreationCode(artifact: unknown): string {
+  const code = isRecord(artifact) && isRecord(artifact.bytecode) ? artifact.bytecode.object : null;
+  if (typeof code !== 'string' || !/^0x(?:[0-9a-f]{2})+$/.test(code))
+    throw new Error('the artifact holds no creation code');
+  return code;
+}
+
+export function renderProxyCode(code: string): string {
+  return `${HEADER("the contracts' build (contracts/out/BeaconProxy.sol/BeaconProxy.json)")}\n/** The creation code of the proxy every vault is, as \`VaultFactory\` holds it. */\nexport const VAULT_PROXY_CREATION_CODE =\n  '${code}';\n`;
+}
+
 export function renderProgramTable(table: ProgramTable): string {
   return `${HEADER('idl/basket.json')}import type { ProgramTable } from '../solana/table';\n\nexport const BASKET_PROGRAM: ProgramTable = ${JSON.stringify(table, null, 2)};\n`;
 }
 
 export function renderInterfaceTable(table: InterfaceTable): string {
-  return `${HEADER('contracts/src/interfaces/*.sol')}import type { InterfaceTable } from '../evm/table';\n\nexport const EVM_INTERFACE: InterfaceTable = ${JSON.stringify(table, null, 2)};\n`;
+  return `${HEADER('idl/evm/*.json')}import type { InterfaceTable } from '../evm/table';\n\nexport const EVM_INTERFACE: InterfaceTable = ${JSON.stringify(table, null, 2)};\n`;
 }

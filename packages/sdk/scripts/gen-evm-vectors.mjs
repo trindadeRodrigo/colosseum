@@ -120,9 +120,8 @@ const calls = CALLS.map(([signature, args]) => {
 // CREATE2 from the factory, with the salt keccak256(abi.encode(owner, planId)) and the proxy's creation
 // code followed by abi.encode(beacon, initialize(owner, planId)).
 const INITIALIZE = keccak256(toHex('initialize(address,bytes32)')).slice(0, 10);
-const vaults = [1n, 255n, 18_446_744_073_709_551_615n, 9_876_543_210_123n].map((basketId) => {
+const vaultOf = (basketId, proxyCreationCode) => {
   const [factory, beacon, owner] = [address(), address(), address()];
-  const proxyCreationCode = bytes(40 + Math.floor(next() * 400));
   const planId = pad(toHex(basketId), { size: 32 });
   const init = concatHex([
     INITIALIZE,
@@ -138,12 +137,23 @@ const vaults = [1n, 255n, 18_446_744_073_709_551_615n, 9_876_543_210_123n].map((
     ]),
   }).toLowerCase();
   return { factory, beacon, proxyCreationCode, owner, basketId: String(basketId), vault };
-});
+};
+const vaults = [1n, 255n, 18_446_744_073_709_551_615n, 9_876_543_210_123n].map((basketId) =>
+  vaultOf(basketId, bytes(40 + Math.floor(next() * 400))),
+);
+// And with the proxy's real creation code, as the guard carries it.
+const proxy = /'(0x[0-9a-f]+)'/.exec(
+  readFileSync(
+    join(root, 'packages', 'sdk', 'src', 'guard', 'generated', 'vault-proxy.ts'),
+    'utf8',
+  ),
+)[1];
+const { proxyCreationCode: _, ...deployed } = vaultOf(7_234_567_890_123_456_789n, proxy);
 
 const version = createRequire(join(root, 'apps', 'web', 'package.json'))(
   'viem/package.json',
 ).version;
 writeFileSync(
   join(root, 'packages', 'sdk', 'test', 'fixtures', 'evm-vectors.json'),
-  `${JSON.stringify({ madeWith: `viem ${version}`, keccak, selectors, calls, vaults }, null, 2)}\n`,
+  `${JSON.stringify({ madeWith: `viem ${version}`, keccak, selectors, calls, vaults, deployed }, null, 2)}\n`,
 );

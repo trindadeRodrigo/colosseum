@@ -123,7 +123,7 @@ const honest = {
   swap: async (trade = TRADE, wrong: Parameters<typeof ownerSwapIx>[2] = {}) => [
     ...BUDGET,
     await openAccountIx(VAULT, trade.buy),
-    await ownerSwapIx(NEXT_PROGRAM, trade, wrong),
+    await ownerSwapIx(BASKET_PROGRAM, trade, wrong),
   ],
   withdraw: async (table: ProgramTable, amount = '5000000', wrong: Wrong = {}) => [
     await openAccountIx(OWNER, 'solana:spy'),
@@ -140,18 +140,40 @@ const input = (
 const NEXT = { program: NEXT_PROGRAM };
 
 describe('the guard on Solana: an honest transaction passes', () => {
-  it('with the interface as committed: a create with its deposit, a deposit, a withdrawal', async () => {
+  it('with the interface as committed: every step the program has today, on both message versions', async () => {
+    const withTrade = { ...depositStep, trades: [TRADE] };
+    const allCash = { ...createStep, targets: [], depositRaw: '0' };
     const cases: [ApprovedStep, Ix[]][] = [
       [createStep, await honest.create(BASKET_PROGRAM)],
+      [followStep, await honest.create(BASKET_PROGRAM, followStep)],
+      // A plan that is all cash: no target, and here no deposit either.
+      [allCash, [await createVaultIx(BASKET_PROGRAM)]],
       [depositStep, await honest.deposit(BASKET_PROGRAM)],
+      [
+        withTrade,
+        [...(await honest.deposit(BASKET_PROGRAM)), await ownerSwapIx(BASKET_PROGRAM, TRADE)],
+      ],
+      [swapStep, await honest.swap()],
       [withdrawStep, await honest.withdraw(BASKET_PROGRAM)],
       [withdrawAllStep, await honest.withdraw(BASKET_PROGRAM, '123')],
+      [
+        targetsStep,
+        [
+          vaultIx(
+            BASKET_PROGRAM,
+            'set_targets',
+            { owner: OWNER, vault: VAULT, config: CONFIG, assets: ASSETS },
+            targetsArg(TARGETS),
+          ),
+        ],
+      ],
     ];
     for (const [step, instructions] of cases)
       for (const version of [0, 'legacy'] as const) {
         const given = input(step, wire(instructions, { version }));
         // The fixture is a transaction the API could hand out.
         expect(BasketTx.safeParse(given.tx).success, step.kind).toBe(true);
+        expect(refusalOf(() => guardTransaction(given))?.message ?? null, step.kind).toBeNull();
         const pass = guardTransaction(given);
         expect(isGuarded(pass), step.kind).toBe(true);
         expect(pass.tx).toEqual(given.tx);
@@ -164,31 +186,8 @@ describe('the guard on Solana: an honest transaction passes', () => {
     expect(isGuarded(null)).toBe(false);
   });
 
-  it('with the interface of the Solana branch: every step the owner signs', async () => {
-    const withTrade = { ...depositStep, trades: [TRADE] };
+  it("with the keeper branch's two owner instructions: an accept, and the switch both ways", () => {
     const cases: [ApprovedStep, Ix[], ConsentKind[]][] = [
-      [createStep, await honest.create(NEXT_PROGRAM), []],
-      [followStep, await honest.create(NEXT_PROGRAM, followStep), []],
-      [depositStep, await honest.deposit(NEXT_PROGRAM), []],
-      [
-        withTrade,
-        [...(await honest.deposit(NEXT_PROGRAM)), await ownerSwapIx(NEXT_PROGRAM, TRADE)],
-        [],
-      ],
-      [swapStep, await honest.swap(), []],
-      [withdrawStep, await honest.withdraw(NEXT_PROGRAM), []],
-      [
-        targetsStep,
-        [
-          vaultIx(
-            NEXT_PROGRAM,
-            'set_targets',
-            { owner: OWNER, vault: VAULT, config: CONFIG, assets: ASSETS },
-            targetsArg(TARGETS),
-          ),
-        ],
-        [],
-      ],
       [acceptStep, [acceptIx()], ['new_asset']],
       [autoStep(true), [autoIx(true)], ['auto_follow_on']],
       [autoStep(false), [autoIx(false)], []],
@@ -203,7 +202,7 @@ describe('the guard on Solana: an honest transaction passes', () => {
     const pools = [someone('pool'), someone('pool tokens')];
     const bytes = wire(await honest.swap(), { tables: { [someone('table')]: pools } });
     expect(bytes.payload).not.toBe(wire(await honest.swap()).payload);
-    expect(refusalOf(() => runGuard(input(swapStep, bytes), NEXT))).toBeNull();
+    expect(refusalOf(() => guardTransaction(input(swapStep, bytes)))).toBeNull();
   });
 
   it('a withdrawal of everything: any token, to the person, under either token program', async () => {
@@ -218,18 +217,17 @@ const acceptIx = (o: { recipe?: string; version?: number } = {}) =>
   vaultIx(
     NEXT_PROGRAM,
     'accept_version',
-    { owner: OWNER, vault: VAULT, recipe: o.recipe ?? RECIPE, config: CONFIG, assets: ASSETS },
+    { owner: OWNER, vault: VAULT, recipe: o.recipe ?? RECIPE },
     u32(o.version ?? 4),
   );
 const autoIx = (on: boolean) =>
   vaultIx(NEXT_PROGRAM, 'set_auto_follow', { owner: OWNER, vault: VAULT }, flag(on));
 
 describe('the guard on Solana: what the committed interface cannot check yet', () => {
-  it('refuses a swap, a change of targets, an accept and the auto-follow switch as unsupported', async () => {
+  it('refuses an accept and the auto-follow switch as unsupported, until the table has them', () => {
     const cases: [ApprovedStep, Ix[]][] = [
-      [swapStep, await honest.swap()],
-      [targetsStep, [autoIx(true)]],
       [acceptStep, [acceptIx()]],
+      [autoStep(true), [autoIx(true)]],
       [autoStep(false), [autoIx(false)]],
     ];
     for (const [step, instructions] of cases) {
@@ -239,13 +237,6 @@ describe('the guard on Solana: what the committed interface cannot check yet', (
       expect(refusal?.code, step.kind).toBe('unsupported');
       expect(refusal?.message).toMatch(/regenerated/);
     }
-  });
-
-  it('refuses a create that follows a shared portfolio: the committed create takes none', async () => {
-    const bytes = wire(await honest.create(BASKET_PROGRAM, followStep));
-    const refusal = refusalOf(() => guardTransaction(input(followStep, bytes)));
-    expect(refusal?.code).toBe('unsupported');
-    expect(refusal?.message).toMatch(/no account recipe/);
   });
 
   it('refuses an approval: Solana has none', async () => {
@@ -295,6 +286,22 @@ describe('the guard on Solana: what the committed interface cannot check yet', (
       expect(refusal?.code).toBe('unsupported');
       expect(refusal?.message).toMatch(says);
     }
+    // A create with no place for a shared portfolio cannot open a vault that follows one.
+    const create = BASKET_PROGRAM.instructions.create_vault as ProgramTable['instructions'][string];
+    const noRecipe: ProgramTable = {
+      ...BASKET_PROGRAM,
+      instructions: {
+        ...BASKET_PROGRAM.instructions,
+        create_vault: { ...create, accounts: create.accounts.filter((a) => a.name !== 'recipe') },
+      },
+    };
+    const follows = refusalOf(() =>
+      runGuard(input({ ...followStep, depositRaw: '0' }, wire([vaultIxOf(noRecipe)])), {
+        program: noRecipe,
+      }),
+    );
+    expect(follows?.code).toBe('unsupported');
+    expect(follows?.message).toMatch(/no account recipe/);
     // The bytes of today's deposit end before the new argument: they cannot be read at all.
     expect(refusalOf(() => runGuard(input(depositStep, bytes), { program: withArg }))?.code).toBe(
       'malformed',
@@ -372,6 +379,15 @@ describe('the guard on Solana: bytes that cannot be read are refused as malforme
   });
 });
 
+/** A create that follows, built against a table whose create has no account for what is followed. */
+const vaultIxOf = (table: ProgramTable) =>
+  vaultIx(
+    table,
+    'create_vault',
+    { owner: OWNER, vault: VAULT, config: CONFIG, assets: ASSETS, system_program: SYSTEM },
+    join(u64(BASKET_ID), targetsArg([]), flag(false), u32(3)),
+  );
+
 /** The same transaction with another version byte at the head of its message. */
 function versioned(bytes: Buffer, byte: number): string {
   const out = Buffer.from(bytes);
@@ -420,7 +436,6 @@ const deposit = (
 const swap = (name: string, check: GuardCheck, build: () => Promise<Ix[]>): Negative => ({
   name,
   check,
-  overrides: NEXT,
   input: async () => input(swapStep, wire(await build())),
 });
 const good = () => honest.deposit(BASKET_PROGRAM);
@@ -453,18 +468,20 @@ const negatives: Negative[] = [
     vaultIx(BASKET_PROGRAM, 'set_router', { admin: OWNER, config: CONFIG }, raw(STRANGER)),
   ]),
   {
-    name: 'set_keeper beside the swap',
+    name: 'the auto-follow switch beside the swap',
     check: 'instruction',
     overrides: NEXT,
-    input: async () =>
-      input(
-        swapStep,
-        wire([
-          ...(await honest.swap()),
-          vaultIx(NEXT_PROGRAM, 'set_keeper', { owner: OWNER, vault: VAULT }, raw(STRANGER)),
-        ]),
-      ),
+    input: async () => input(swapStep, wire([...(await honest.swap()), autoIx(true)])),
   },
+  swap('a change of targets beside the swap', 'instruction', async () => [
+    ...(await honest.swap()),
+    vaultIx(
+      BASKET_PROGRAM,
+      'set_targets',
+      { owner: OWNER, vault: VAULT, config: CONFIG, assets: ASSETS },
+      targetsArg([{ asset: 'solana:gold', weightBps: 10_000 }]),
+    ),
+  ]),
   deposit('the deposit left out: only the budget is there', 'instruction', () => BUDGET),
   deposit(
     'the token-account program asked for something other than "create if missing"',
@@ -538,10 +555,9 @@ const negatives: Negative[] = [
   {
     name: 'a create that switches auto-follow on, with no consent handed over',
     check: 'consent',
-    overrides: NEXT,
     input: async () => {
       const step = { ...createStep, autoFollow: true };
-      return input(step, wire(await honest.create(NEXT_PROGRAM, step)));
+      return input(step, wire(await honest.create(BASKET_PROGRAM, step)));
     },
   },
   {
@@ -669,7 +685,6 @@ const negatives: Negative[] = [
   {
     name: 'a preview that states another minimum than the step, over honest bytes',
     check: 'preview',
-    overrides: NEXT,
     input: async () => {
       const tx = solanaTx(swapStep, wire(await honest.swap()));
       const minimums = [{ ...TRADE, minOutRaw: '1' }];
@@ -708,7 +723,6 @@ const negatives: Negative[] = [
   {
     name: 'a named account loaded from a lookup table, where the bytes do not show its address',
     check: 'accounts',
-    overrides: NEXT,
     input: async () =>
       input(swapStep, wire(await honest.swap(), { tables: { [someone('table')]: [CONFIG] } })),
   },
@@ -775,36 +789,35 @@ const negatives: Negative[] = [
   {
     name: 'targets of its own in a create that follows',
     check: 'targets',
-    overrides: NEXT,
     input: async () =>
-      input(followStep, wire(await honest.create(NEXT_PROGRAM, followStep, { targets: TARGETS }))),
+      input(
+        followStep,
+        wire(await honest.create(BASKET_PROGRAM, followStep, { targets: TARGETS })),
+      ),
   },
   {
     name: 'another shared portfolio than the one reviewed',
     check: 'version',
-    overrides: NEXT,
     input: async () =>
       input(
         followStep,
-        wire(await honest.create(NEXT_PROGRAM, followStep, { recipe: someone('theirs') })),
+        wire(await honest.create(BASKET_PROGRAM, followStep, { recipe: someone('theirs') })),
       ),
   },
   {
     name: 'another version than the one reviewed',
     check: 'version',
-    overrides: NEXT,
     input: async () =>
       input(
         followStep,
-        wire(await honest.create(NEXT_PROGRAM, followStep, { expectedVersion: 4 })),
+        wire(await honest.create(BASKET_PROGRAM, followStep, { expectedVersion: 4 })),
       ),
   },
   {
     name: 'a shared portfolio in a create that follows none',
     check: 'version',
-    overrides: NEXT,
     input: async () =>
-      input(createStep, wire(await honest.create(NEXT_PROGRAM, createStep, { recipe: RECIPE }))),
+      input(createStep, wire(await honest.create(BASKET_PROGRAM, createStep, { recipe: RECIPE }))),
   },
   {
     name: 'an accept of another version',

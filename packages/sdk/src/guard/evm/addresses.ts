@@ -1,16 +1,17 @@
 import { concatBytes, hexDecode, hexEncode, utf8Encode } from '../../bytes';
 import { keccak256 } from '../../hash';
+import { VAULT_PROXY_CREATION_CODE } from '../generated/vault-proxy';
 import { encodeArgs, parseType } from './abi';
 
 // The address of a person's vault for a plan on an EVM chain, worked out here from the person's own
 // address. It is the same before the vault exists and after, so it is what an approval names and what
 // every later call targets.
 //
-// The rule is the factory's own (`VaultFactory.vaultOf` on the contracts branch, commit 89453f4):
-// CREATE2 from the factory, with the salt keccak256(abi.encode(owner, planId)) and, as the code, the
-// vault proxy's creation code followed by abi.encode(beacon, initialize(owner, planId)). The plan's
-// number is the same number as 32 bytes. evm.test.ts holds this to viem on recorded cases; when the
-// factory is on this branch a recorded `vaultOf` answer joins them.
+// The rule is the factory's own (`VaultFactory.vaultOf` in contracts/src/VaultFactory.sol): CREATE2
+// from the factory, with the salt keccak256(abi.encode(owner, planId)) and, as the code, the vault
+// proxy's creation code followed by abi.encode(beacon, initialize(owner, planId)). The plan's number is
+// the same number as 32 bytes. abi.test.ts holds the arithmetic to viem on recorded cases, and
+// tables.test.ts holds the creation code to the hash the contracts' own test pins.
 
 const INITIALIZE = 'initialize(address,bytes32)';
 const ADDRESS = parseType('address');
@@ -23,21 +24,21 @@ export function planIdOf(basketId: string): string {
 }
 
 export function evmVaultAddress(
-  deployment: { factory: string; beacon: string; proxyCreationCode: string },
+  deployment: { factory: string; beacon: string; proxyCreationCode?: string },
   owner: string,
   basketId: string,
 ): string {
   const planId = planIdOf(basketId);
-  const named = encodeArgs([ADDRESS, BYTES32], [owner, planId]);
+  const named = encodeArgs([ADDRESS, BYTES32], [owner.toLowerCase(), planId]);
   const init = concatBytes(keccak256(utf8Encode(INITIALIZE)).slice(0, 4), named);
   const code = concatBytes(
-    hexDecode(deployment.proxyCreationCode),
-    encodeArgs([ADDRESS, BYTES], [deployment.beacon, init]),
+    hexDecode(deployment.proxyCreationCode ?? VAULT_PROXY_CREATION_CODE),
+    encodeArgs([ADDRESS, BYTES], [deployment.beacon.toLowerCase(), init]),
   );
   const hash = keccak256(
     concatBytes(
       Uint8Array.of(0xff),
-      hexDecode(deployment.factory),
+      hexDecode(deployment.factory.toLowerCase()),
       keccak256(named),
       keccak256(code),
     ),
