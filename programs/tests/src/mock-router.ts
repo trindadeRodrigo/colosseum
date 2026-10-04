@@ -1,8 +1,16 @@
 import {
   type Address,
+  fixDecoderSize,
+  getAddressDecoder,
   getAddressEncoder,
+  getBooleanDecoder,
+  getBytesDecoder,
   getProgramDerivedAddress,
+  getStructDecoder,
+  getU8Decoder,
+  getU16Decoder,
   getU16Encoder,
+  getU64Decoder,
   getU64Encoder,
   type Instruction,
   type KeyPairSigner,
@@ -28,6 +36,31 @@ const addressEncoder = getAddressEncoder();
 
 /** A price account in Scope's layout: a 40-byte header and 512 entries of 56 bytes. */
 export const PRICES_BYTES = 28_712n;
+
+const routerDecoder = getStructDecoder([
+  ['discriminator', fixDecoderSize(getBytesDecoder(), 8)],
+  ['admin', getAddressDecoder()],
+  ['bump', getU8Decoder()],
+  ['prices', getAddressDecoder()],
+  ['priceWriter', getAddressDecoder()],
+]);
+/** The exchange's one account, from its bytes. */
+export const decodeRouter = (data: Uint8Array) => routerDecoder.decode(data);
+
+const pairDecoder = getStructDecoder([
+  ['discriminator', fixDecoderSize(getBytesDecoder(), 8)],
+  ['mintIn', getAddressDecoder()],
+  ['mintOut', getAddressDecoder()],
+  ['priceNum', getU64Decoder()],
+  ['priceDen', getU64Decoder()],
+  ['bump', getU8Decoder()],
+  ['kind', getU8Decoder()],
+  ['assetIsInput', getBooleanDecoder()],
+  ['priceIndex', getU16Decoder()],
+  ['spreadBps', getU16Decoder()],
+]);
+/** A pair of the exchange, from its bytes. `kind` 1 pays the price account's price. */
+export const decodePair = (data: Uint8Array) => pairDecoder.decode(data);
 
 /** The mock's own errors, in the order of its `MockRouterError` enum. */
 export const MOCK_ROUTER_ERR = {
