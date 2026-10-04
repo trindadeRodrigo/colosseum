@@ -926,6 +926,39 @@ describe('the executor: one approved step gets one signature', () => {
     return read satisfies ChainRead;
   };
 
+  it('three runs over one store, with a read that cannot be believed and an approval for another step: one signature', async () => {
+    const reads: [string, ChainRead | undefined, number][] = [
+      ['no read', undefined, 1],
+      ['a read that throws', saying(new Error('rpc down')), 1],
+      ['a read that says junk', saying('gone ' as Fate), 1],
+      [
+        'a read that says something like gone',
+        saying({ toString: () => 'gone' } as unknown as Fate),
+        1,
+      ],
+      // A read that cannot even say where the chain is: nothing is signed at all.
+      [
+        'a read with no height',
+        { ...saying('gone'), heightBefore: () => Promise.reject(new Error('rpc down')) },
+        0,
+      ],
+    ];
+    for (const [name, chainRead, signatures] of reads) {
+      const s = scene('solana');
+      const order = await s.double.buy(100);
+      const h = hoarding(s, order, 'swap');
+      for (let run = 0; run < 3; run += 1)
+        await execute(order, {
+          ...s.deps,
+          api: h.api,
+          chainRead,
+          approvedAgain: { legId: 'another step', signedTimes: 1 },
+          patience: { waitTries: 2, knownTries: 2 },
+        });
+      expect(h.signedFor(), name).toHaveLength(signatures);
+    }
+  });
+
   it('signs again when the chain says the first is gone, and only then', async () => {
     const outcomes: [string, ChainRead | undefined, string, number][] = [
       ['gone', saying('gone'), 'error', 3],
