@@ -3,6 +3,7 @@ import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { VersionedTransaction } from '@solana/web3.js';
 import { useCallback, useEffect, useState } from 'react';
 import { API, apiGet, type WalletView } from '@/lib/api';
+import { isMissingRoute } from '@/lib/missing-route';
 
 type Drift = {
   policy: {
@@ -76,8 +77,8 @@ export default function MonitorPage() {
   const [view, setView] = useState<WalletView | null>(null);
   const [drift, setDrift] = useState<Drift | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  // The server did not answer for the policy: the positions still show, and a sentence says the rest
-  // is not there.
+  // The policy could not be read, for whatever reason: the rest of the page still shows, and a
+  // sentence says this part is not there.
   const [policyOff, setPolicyOff] = useState(false);
   // The rebalance signs with a key on the server, so the API registers its route only with
   // LEGACY_STRUCTURER on. Where it is off the route is not there, and a sentence says so.
@@ -155,14 +156,16 @@ export default function MonitorPage() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({}),
       });
-      if (res.status === 404) {
-        setRebalanceOff(true);
-        return;
-      }
       const d = (await res.json()) as Record<string, unknown> & {
         outcome?: string;
         transaction?: { payload: string; executionId?: string };
       };
+      // The server has no rebalance route (LEGACY_STRUCTURER is off): a sentence says so. A route that
+      // is there and finds no policy answers 404 too, in its own words, and is shown as it always was.
+      if (isMissingRoute(res.status, d)) {
+        setRebalanceOff(true);
+        return;
+      }
       if (d.outcome === 'user_signed' && Array.isArray(d.transactions) && signTransaction) {
         // The policy proposed; the wallet signs each transaction in order and reports every outcome back.
         const outcomes: Array<{
@@ -388,8 +391,7 @@ export default function MonitorPage() {
         </section>
       ) : policyOff ? (
         <p className="text-sm text-gray-600">
-          The policy view is not available right now: the server did not answer for it. Rebalances
-          and past executions are below.
+          The policy view could not be read right now. Rebalances and past executions are below.
         </p>
       ) : (
         <p className="text-sm text-gray-500">No policy for this wallet yet.</p>
