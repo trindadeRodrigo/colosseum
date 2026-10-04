@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve as resolvePath } from 'node:path';
 import {
   type Address,
   createKeyPairSignerFromPrivateKeyBytes,
@@ -11,6 +11,7 @@ import {
 import { getTransferSolInstruction } from '@solana-program/system';
 import { BASKET_PROGRAM, MOCK_ROUTER_PROGRAM, programDataAddress, REPO_ROOT } from './src/env';
 import { rpcChain } from './src/testnet/chain';
+import { insideRepo } from './src/testnet/folder';
 import { lifecycle } from './src/testnet/lifecycle';
 import type { Deployment } from './src/testnet/setup';
 import { waitUntilUp } from './src/validator';
@@ -34,8 +35,8 @@ const [dirArg, portArg, ...rest] = process.argv.slice(2);
 if (!dirArg || !portArg) throw new Error('usage: rehearse.ts <dir> <rpc port> [--preload]');
 /** Load the programs when the validator starts and skip the deploy: for a quick run of the rest. */
 const preload = rest.includes('--preload');
-const dir = dirArg;
-if (dir.startsWith(REPO_ROOT)) throw new Error('keep the rehearsal folder outside the repository');
+if (insideRepo(dirArg)) throw new Error('keep the rehearsal folder outside the repository');
+const dir = resolvePath(dirArg);
 const port = Number(portArg);
 const url = `http://127.0.0.1:${port}`;
 const rpc = createSolanaRpc(url);

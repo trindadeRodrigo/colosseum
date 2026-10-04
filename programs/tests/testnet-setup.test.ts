@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -36,6 +36,7 @@ import {
   MAINNET_GENESIS,
 } from './src/testnet/chain';
 import { planOf, type SetupPlan } from './src/testnet/config';
+import { insideRepo } from './src/testnet/folder';
 import { lifecycle } from './src/testnet/lifecycle';
 import { type DeployedAsset, type Deployment, guardSolanaEntry, setUp } from './src/testnet/setup';
 import { mintExtensionEntries, TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from './src/tokens';
@@ -526,5 +527,29 @@ describe('the key file the set-up signs with', () => {
       JSON.stringify([...secret, ...getAddressEncoder().encode(key.address)]),
     );
     expect((await keypairFromFile(path)).address).toBe(key.address);
+  });
+});
+
+describe('the rehearsal folder', () => {
+  it('is refused inside the repository, however it is written', () => {
+    const link = join(mkdtempSync(join(tmpdir(), 'tnet-link-')), 'repo');
+    symlinkSync(REPO_ROOT, link);
+    const inside = [
+      REPO_ROOT,
+      join(REPO_ROOT, 'rehearsal'),
+      'rehearsal',
+      './programs/../rehearsal',
+      // Through a link to the repository.
+      join(link, 'rehearsal'),
+    ];
+    const cwd = process.cwd();
+    process.chdir(REPO_ROOT);
+    try {
+      for (const path of inside) expect([path, insideRepo(path)]).toEqual([path, true]);
+      for (const path of [tmpdir(), join(tmpdir(), 'rehearsal'), '../outside-the-repo'])
+        expect([path, insideRepo(path)]).toEqual([path, false]);
+    } finally {
+      process.chdir(cwd);
+    }
   });
 });
