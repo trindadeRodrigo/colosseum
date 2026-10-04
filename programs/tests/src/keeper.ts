@@ -112,6 +112,8 @@ export type LegOptions = {
   destination?: Address;
   signer?: KeyPairSigner;
   priceAccount?: Address;
+  vaultInput?: Address;
+  vaultOutput?: Address;
   config?: Address;
   assets?: Address;
   /** More accounts after the exchange's own, which it ignores. */
@@ -142,6 +144,8 @@ export async function keeperLeg(w: KeeperWorld, o: LegOptions): Promise<SendResu
       outputMint,
       amountIn: o.maxIn ?? o.amountIn,
       priceAccount: o.priceAccount ?? w.prices,
+      vaultInput: o.vaultInput,
+      vaultOutput: o.vaultOutput,
       config: o.config,
       assets: o.assets,
       ...route,

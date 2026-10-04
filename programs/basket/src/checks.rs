@@ -219,10 +219,7 @@ pub fn mint_has_hook_program(data: &[u8]) -> Result<bool> {
     let Some(hook) = mint_extension(data, TRANSFER_HOOK_TYPE, BasketError::HookNotAllowed)? else {
         return Ok(false);
     };
-    require!(
-        hook.len() >= TRANSFER_HOOK_LEN,
-        BasketError::HookNotAllowed
-    );
+    require!(hook.len() >= TRANSFER_HOOK_LEN, BasketError::HookNotAllowed);
     Ok(hook[32..TRANSFER_HOOK_LEN] != [0u8; 32])
 }
 
@@ -230,8 +227,7 @@ pub fn mint_has_hook_program(data: &[u8]) -> Result<bool> {
 /// after. Around that time the price reference and the token can disagree about which
 /// multiplier is in force. The two multipliers are compared as bytes: equal means no change.
 pub fn mint_in_multiplier_window(data: &[u8], now: i64) -> Result<bool> {
-    let Some(scaled) =
-        mint_extension(data, SCALED_UI_AMOUNT_TYPE, BasketError::MultiplierWindow)?
+    let Some(scaled) = mint_extension(data, SCALED_UI_AMOUNT_TYPE, BasketError::MultiplierWindow)?
     else {
         return Ok(false);
     };
@@ -254,10 +250,7 @@ pub fn check_keeper_mint(mint: &AccountInfo, now: i64) -> Result<()> {
     }
     let data = mint.try_borrow_data()?;
     // A hook the issuer set after the token was listed runs inside every transfer.
-    require!(
-        !mint_has_hook_program(&data)?,
-        BasketError::HookNotAllowed
-    );
+    require!(!mint_has_hook_program(&data)?, BasketError::HookNotAllowed);
     require!(
         !mint_in_multiplier_window(&data, now)?,
         BasketError::MultiplierWindow
@@ -504,9 +497,6 @@ pub fn check_keeper(signer: &Pubkey, vault: &Vault, config: &Config) -> Result<(
 /// not at its close, not on a closed day, and not before `closed_until`. The reader's
 /// `marketAt` holds the same rule.
 pub fn market_open(config: &Config, now: i64) -> bool {
-    if now < 0 {
-        return false;
-    }
     let day = now / DAY_S;
     let second = now % DAY_S;
     // Day 0 was a Thursday; 0 is Sunday.
@@ -616,8 +606,8 @@ pub fn decayed_loss(loss_accum: u64, loss_ts: i64, now: i64) -> u64 {
 /// Check 7. The counter, with this leg's loss added, stays within `loss_cap_bps` of what
 /// the vault was worth before the leg.
 pub fn check_loss_cap(loss_used: u128, vault_value: u128, loss_cap_bps: u16) -> Result<()> {
-    let within = against(loss_used, vault_value, loss_cap_bps as u32)
-        .is_some_and(|(used, cap)| used <= cap);
+    let within =
+        against(loss_used, vault_value, loss_cap_bps as u32).is_some_and(|(used, cap)| used <= cap);
     require!(within, BasketError::LossCapReached);
     Ok(())
 }

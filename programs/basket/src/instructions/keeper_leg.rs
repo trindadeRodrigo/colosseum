@@ -12,7 +12,7 @@ use crate::checks::{
 };
 use crate::errors::BasketError;
 use crate::events::KeeperTrade;
-use crate::price::{reference, value_in_cash, value_of_others, Reference, PRICES_LEN};
+use crate::price::{reference, value_in_cash, value_of_others, Reference};
 use crate::state::{AssetRegistry, Config, Vault, ASSETS_SEED, BPS, CONFIG_SEED, VAULT_SEED};
 
 /// Keeper: one trade in a vault whose owner switched auto-follow on, through the router in
@@ -39,10 +39,7 @@ pub struct KeeperLeg<'info> {
     pub assets: AccountLoader<'info, AssetRegistry>,
     #[account(mint::token_program = input_token_program)]
     pub input_mint: Box<InterfaceAccount<'info, Mint>>,
-    #[account(
-        mint::token_program = output_token_program,
-        constraint = output_mint.key() != input_mint.key() @ BasketError::SameMint
-    )]
+    #[account(mint::token_program = output_token_program)]
     pub output_mint: Box<InterfaceAccount<'info, Mint>>,
     /// What the vault spends from: its associated token account for the input mint.
     #[account(
@@ -67,10 +64,7 @@ pub struct KeeperLeg<'info> {
     pub router_program: UncheckedAccount<'info>,
     /// CHECK: read by hand in Scope's layout. It has to be owned by Config's price program,
     /// and to be the account the asset list names for each asset that is valued.
-    #[account(
-        owner = config.price_owner @ BasketError::AssetNotPriced,
-        constraint = price_account.data_len() == PRICES_LEN @ BasketError::AssetNotPriced
-    )]
+    #[account(owner = config.price_owner @ BasketError::AssetNotPriced)]
     pub price_account: UncheckedAccount<'info>,
 }
 
@@ -94,7 +88,8 @@ impl<'info> KeeperLeg<'info> {
         require!(self.vault.auto_follow, BasketError::AutoFollowOff);
         require!(!self.config.keeper_paused, BasketError::KeeperPaused);
 
-        // Cash on one side, and one side only: the other is the asset the leg trades.
+        // Cash on one side, and one side only: the other is the asset the leg trades. A mint
+        // traded for itself is cash on both sides or on neither.
         let input_is_cash = self.input_mint.key() == self.config.cash_mint;
         let output_is_cash = self.output_mint.key() == self.config.cash_mint;
         require!(input_is_cash != output_is_cash, BasketError::NotCashLeg);

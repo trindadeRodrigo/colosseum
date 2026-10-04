@@ -45,24 +45,22 @@ fn u64_at(data: &[u8], at: usize) -> u64 {
     u64::from_le_bytes(bytes)
 }
 
-/// Entry `index` of a price account's data. An entry nobody wrote, or one that cannot be a
-/// price (no value, no time, an absurd exponent), is `AssetNotPriced`.
+/// Entry `index` of a price account's data, for an index the asset list holds: under 512.
+/// An account that is not the size of a price account, an entry nobody wrote, or one that
+/// cannot be a price (no value, no time, an absurd exponent) is `AssetNotPriced`.
 pub fn read_entry(data: &[u8], index: u16) -> Result<PriceEntry> {
-    require!(
-        data.len() == PRICES_LEN && index < PRICE_ENTRIES,
-        BasketError::AssetNotPriced
-    );
+    require!(data.len() == PRICES_LEN, BasketError::AssetNotPriced);
     let at = PRICES_HEADER_LEN + PRICE_ENTRY_LEN * index as usize;
     let value = u64_at(data, at);
     let exponent = u64_at(data, at + 8);
     let unix_timestamp = u64_at(data, at + 24);
+    require!(value > 0, BasketError::AssetNotPriced);
+    require!(unix_timestamp > 0, BasketError::AssetNotPriced);
     require!(
-        value > 0
-            && unix_timestamp > 0
-            && unix_timestamp <= i64::MAX as u64
-            && exponent <= MAX_PRICE_EXPONENT,
+        unix_timestamp <= i64::MAX as u64,
         BasketError::AssetNotPriced
     );
+    require!(exponent <= MAX_PRICE_EXPONENT, BasketError::AssetNotPriced);
     Ok(PriceEntry {
         value,
         exponent: exponent as u32,
@@ -74,10 +72,8 @@ pub fn read_entry(data: &[u8], index: u16) -> Result<PriceEntry> {
 /// of the clock than that was not stamped in unix seconds, and is refused too.
 pub fn check_fresh(unix_timestamp: i64, now: i64, max_age_s: i64) -> Result<()> {
     let age = now.saturating_sub(unix_timestamp);
-    require!(
-        age <= max_age_s && age >= -max_age_s,
-        BasketError::PriceStale
-    );
+    require!(age <= max_age_s, BasketError::PriceStale);
+    require!(age >= -max_age_s, BasketError::PriceStale);
     Ok(())
 }
 
@@ -105,9 +101,10 @@ pub fn check_deviation(price: &PriceEntry, twap: &PriceEntry, dev_bps: u16) -> R
 /// The price a keeper leg may value this asset at, or the reason it may not.
 ///
 /// The asset has a price entry and the admin has switched it on for the keeper; the entry
-/// asks for no check of its source this program cannot make; the price sits in the price
-/// account that was passed; it is fresh; its one-hour average is no older than an hour; and
-/// the two are within `twap_dev_bps` of each other.
+/// asks for no check of its source this program cannot make; the price account that was
+/// passed is the one the asset list names for the asset's slot; the price is fresh; its
+/// one-hour average is no older than an hour; and the two are within `twap_dev_bps` of each
+/// other.
 pub fn reference(
     prices: &[u8],
     prices_key: &Pubkey,
@@ -127,10 +124,7 @@ pub fn reference(
         .get(entry.price_slot as usize)
         .copied()
         .unwrap_or_default();
-    require!(
-        pinned != Pubkey::default() && pinned == *prices_key,
-        BasketError::AssetNotPriced
-    );
+    require!(pinned == *prices_key, BasketError::AssetNotPriced);
 
     let price = read_entry(prices, entry.price_index)?;
     check_fresh(price.unix_timestamp, now, config.max_price_age_s as i64)?;

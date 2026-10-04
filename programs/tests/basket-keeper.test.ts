@@ -1,12 +1,14 @@
-import { type Address, generateKeyPairSigner } from '@solana/kit';
+import { type Address, generateKeyPairSigner, getAddressEncoder } from '@solana/kit';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  assetsAddress,
   DEFAULT_PARAMS,
   decodeKeeperTrade,
   ERR,
   forgeConfig,
   keeperLegInstruction,
   type Params,
+  PRICES_SIZE,
   patchVault,
   pauseKeeperInstruction,
   readVault,
@@ -15,6 +17,7 @@ import {
   setClosedUntilInstruction,
   setDefaultKeeperInstruction,
   setParamsInstruction,
+  setPriceOwnerInstruction,
   setTargetsInstruction,
   syncBalancesInstruction,
   trackedFor,
@@ -58,7 +61,10 @@ import {
   createLooseTokenAccount,
   mintExtensionEntries,
   mintTo,
+  mintToAccount,
   type TestMint,
+  TOKEN_2022_PROGRAM,
+  TOKEN_PROGRAM,
 } from './src/tokens';
 
 const HOUR = 3_600n;
@@ -297,6 +303,12 @@ describe('keeper_leg', () => {
         }),
         ERR.NotCashLeg,
       );
+      // A mint for itself is cash on both sides, or on neither.
+      for (const mint of [w.cash, w.stock])
+        expectError(
+          await keeperLeg(w, { amountIn: 1n, inputMint: mint, outputMint: mint }),
+          ERR.NotCashLeg,
+        );
     });
 
     it('refuses a token that is not one of the positions, listed or not', async () => {
@@ -317,21 +329,51 @@ describe('keeper_leg', () => {
       expect(held()).toEqual(untouched);
     });
 
-    it('trades the token account the vault uses for the mint and no other', async () => {
-      const loose = await createLooseTokenAccount(w.svm, w.admin, w.other, w.vault);
-      const leg = await keeperLegInstruction({
-        keeper: w.keeper,
-        vault: w.vault,
-        inputMint: w.cash,
-        outputMint: w.other,
-        amountIn: 1n,
-        router: MOCK_ROUTER_PROGRAM,
-        data: new Uint8Array(8),
-        routerAccounts: [],
-        priceAccount: w.prices,
-        vaultOutput: loose,
-      });
-      expectError(await send(w.svm, w.keeper, [leg]), ANCHOR.ConstraintAssociated);
+    it("spends only from, and pays only into, the vault's associated token accounts", async () => {
+      // Two more token accounts that the vault owns, with tokens someone sent to them.
+      const looseCash = await createLooseTokenAccount(w.svm, w.admin, w.cash, w.vault);
+      await mintToAccount(w.svm, w.admin, w.cash, looseCash, 50n * USD);
+      const looseOther = await createLooseTokenAccount(w.svm, w.admin, w.other, w.vault);
+      expectError(
+        await keeperLeg(w, { amountIn: 20n * USD, outputMint: w.other, vaultInput: looseCash }),
+        ANCHOR.ConstraintAssociated,
+      );
+      expectError(
+        await keeperLeg(w, { amountIn: 20n * USD, outputMint: w.other, vaultOutput: looseOther }),
+        ANCHOR.ConstraintAssociated,
+      );
+      expect(balance(w.svm, looseCash)).toBe(50n * USD);
+    });
+
+    it('refuses a token program that is not the one the mint belongs to', async () => {
+      expectError(
+        await keeperLeg(w, {
+          amountIn: 20n * USD,
+          inputMint: { ...w.cash, program: TOKEN_2022_PROGRAM },
+          vaultInput: w.vaultCash,
+        }),
+        ANCHOR.ConstraintMintTokenProgram,
+      );
+      expectError(
+        await keeperLeg(w, {
+          amountIn: 20n * USD,
+          outputMint: { ...w.stock, program: TOKEN_PROGRAM },
+          vaultOutput: w.vaultStock,
+        }),
+        ANCHOR.ConstraintMintTokenProgram,
+      );
+    });
+
+    it('reads the asset list at its own address only', async () => {
+      // A copy of the list at another address, as only a test can make.
+      const real = w.svm.getAccount(await assetsAddress());
+      if (!real.exists) throw new Error('no asset list');
+      const copy = (await generateKeyPairSigner()).address;
+      w.svm.setAccount({ ...real, address: copy });
+      expectError(
+        await keeperLeg(w, { amountIn: 20n * USD, assets: copy }),
+        ANCHOR.ConstraintSeeds,
+      );
     });
   });
 
@@ -384,6 +426,11 @@ describe('keeper_leg', () => {
         await keeperLeg(w, { amountIn: 40n * USD, priceAccount: forged }),
         ERR.AssetNotPriced,
       );
+      // The account the asset list names stops counting when Config names another price program.
+      expectOk(
+        await send(w.svm, w.admin, [await setPriceOwnerInstruction(w.admin, w.stranger.address)]),
+      );
+      expectError(await buy(40), ERR.AssetNotPriced);
     });
 
     it('is named for the slot the asset points at', async () => {
@@ -396,6 +443,27 @@ describe('keeper_leg', () => {
       expectError(await buy(40), ERR.AssetNotPriced);
       refreshPrices(w);
       writePrice(w.svm, w.prices, STOCK_PRICE.twapIndex, { value: PRICE, unixTimestamp: 0n });
+      expectError(await buy(40), ERR.AssetNotPriced);
+    });
+
+    it('refuses a time no clock can hold', async () => {
+      writePrice(w.svm, w.prices, STOCK_PRICE.priceIndex, {
+        value: PRICE,
+        unixTimestamp: 1n << 63n,
+      });
+      expectError(await buy(40), ERR.AssetNotPriced);
+    });
+
+    it('refuses an asset with no price entry', async () => {
+      await listed(w.stock, { priceKind: 0, flags: 0 });
+      expectError(await buy(40), ERR.AssetNotPriced);
+    });
+
+    it('refuses a price account that is no longer the size of one', async () => {
+      const account = w.svm.getAccount(w.prices);
+      if (!account.exists) throw new Error('no price account');
+      const data = new Uint8Array(account.data).slice(0, PRICES_SIZE - 56);
+      w.svm.setAccount({ ...account, data, space: BigInt(data.length) });
       expectError(await buy(40), ERR.AssetNotPriced);
     });
 
@@ -536,6 +604,12 @@ describe('keeper_leg', () => {
       at(SESSION + 59n);
       expectError(await buy(40), ERR.MarketClosed);
       at(SESSION + 60n);
+      expectOk(await buy(40));
+    });
+
+    it('does not take an empty slot of the closed days for a day', async () => {
+      // Day zero, a Thursday, at 15:00. Every empty slot of the list holds a zero.
+      at(15n * HOUR);
       expectOk(await buy(40));
     });
 
@@ -861,9 +935,23 @@ describe('keeper_leg', () => {
 
     it('reads only the one token account the vault uses for a mint', async () => {
       const loose = await createLooseTokenAccount(w.svm, w.admin, w.other, w.vault);
+      await mintToAccount(w.svm, w.admin, w.other, loose, 4n);
       const strangers = await mintTo(w.svm, w.admin, w.other, w.stranger.address, 9n);
       for (const account of [loose, strangers, w.other.address, w.prices])
         expectError(await sync([account]), ERR.AccountTampered);
+      expect(trackedFor(w.svm, w.vault, w.other.address)).toBe(0n);
+    });
+
+    it("records nothing from that account once it is no longer the vault's", async () => {
+      // The account at the vault's own address for the mint, with another owner written into it:
+      // no instruction of this program lets that happen, so only a test can show it.
+      await mintTo(w.svm, w.admin, w.other, w.vault, 5n);
+      const account = w.svm.getAccount(w.vaultOther);
+      if (!account.exists) throw new Error('no token account');
+      const data = new Uint8Array(account.data);
+      data.set(getAddressEncoder().encode(w.stranger.address), 32);
+      w.svm.setAccount({ ...account, data });
+      expectError(await sync([w.vaultOther]), ERR.AccountTampered);
       expect(trackedFor(w.svm, w.vault, w.other.address)).toBe(0n);
     });
 

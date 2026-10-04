@@ -1,16 +1,18 @@
 import {
   AccountRole,
   type Address,
+  generateKeyPairSigner,
   type Instruction,
   isSome,
   type KeyPairSigner,
   lamports,
   some,
 } from '@solana/kit';
-import { getTransferSolInstruction } from '@solana-program/system';
+import { getCreateAccountInstruction, getTransferSolInstruction } from '@solana-program/system';
 import {
   AuthorityType,
   getApproveInstruction,
+  getInitializeAccount3Instruction,
   getSetAuthorityInstruction,
   getTransferCheckedInstruction,
 } from '@solana-program/token-2022';
@@ -20,6 +22,7 @@ import {
   decodeKeeperTrade,
   ERR,
   keeperLegInstruction,
+  patchConfig,
   pauseKeeperInstruction,
   setRouterInstruction,
   syncBalancesInstruction,
@@ -27,6 +30,7 @@ import {
 } from './src/basket';
 import {
   BASKET_PROGRAM,
+  concat,
   discriminator,
   events,
   expectError,
@@ -45,6 +49,8 @@ import {
   mintTo,
   mintToAccount,
   type TestMint,
+  TOKEN_2022_PROGRAM,
+  TOKEN_PROGRAM,
   tokenAccount,
 } from './src/tokens';
 
@@ -172,6 +178,28 @@ describe('keeper_leg through a hostile router', () => {
     expectVaultUntouched();
   });
 
+  it.each([
+    ['the token program', TOKEN_PROGRAM],
+    ['the Token-2022 program', TOKEN_2022_PROGRAM],
+  ])('never calls %s, even if Config named it', async (_, program) => {
+    await patchConfig(w.svm, { routerProgram: program });
+    const result = await send(w.svm, w.keeper, [
+      await keeperLegInstruction({
+        keeper: w.keeper,
+        vault: w.vault,
+        inputMint: w.cash,
+        outputMint: w.stock,
+        amountIn: SPEND,
+        router: program,
+        data: concat(discriminator('route_v2'), new Uint8Array(16)),
+        routerAccounts: [],
+        priceAccount: w.prices,
+      }),
+    ]);
+    expectError(result, ERR.RouterNotAllowed);
+    expectVaultUntouched();
+  });
+
   it('takes only the router Config names', async () => {
     const other = await loadPuppet(w.svm);
     const route = puppetInstruction(other, [take(), pay()]);
@@ -282,6 +310,54 @@ describe('keeper_leg through a hostile router', () => {
       expectError(await leg([take(), pay(), drain]), ERR.AccountTampered);
       expectVaultUntouched();
       expect(balance(w.svm, loose)).toBe(700n);
+    });
+
+    it('cannot be given away, tokens and all', async () => {
+      // After the call the account is the attacker's, so only a look before the call sees it.
+      const giveAway = getSetAuthorityInstruction(
+        {
+          owned: loose,
+          owner: programSigner(w.vault),
+          authorityType: AuthorityType.AccountOwner,
+          newAuthority: some(attacker.address),
+        },
+        { programAddress: w.other.program },
+      );
+      expectError(await leg([take(), pay(), giveAway]), ERR.AccountTampered);
+      expectVaultUntouched();
+      expect(tokenAccount(w.svm, loose).owner).toBe(w.vault);
+    });
+
+    it('cannot be made during the call and left with a delegate on it', async () => {
+      // Space the attacker prepared, which becomes a token account of the vault only inside the
+      // router's call: before it, nothing marks it as the vault's.
+      const blank = await generateKeyPairSigner();
+      expectOk(
+        await send(w.svm, attacker, [
+          getCreateAccountInstruction({
+            payer: attacker,
+            newAccount: blank,
+            lamports: w.svm.minimumBalanceForRentExemption(165n),
+            space: 165n,
+            programAddress: w.other.program,
+          }),
+        ]),
+      );
+      const make = getInitializeAccount3Instruction(
+        { account: blank.address, mint: w.other.address, owner: w.vault },
+        { programAddress: w.other.program },
+      );
+      const approve = getApproveInstruction(
+        {
+          source: blank.address,
+          delegate: attacker.address,
+          owner: programSigner(w.vault),
+          amount: EVERYTHING,
+        },
+        { programAddress: w.other.program },
+      );
+      expectError(await leg([take(), pay(), make, approve]), ERR.AccountTampered);
+      expectVaultUntouched();
     });
 
     it('cannot be in the list at all, even untouched', async () => {
