@@ -10,6 +10,8 @@ import {
   type Base64EncodedWireTransaction,
   type Commitment,
   getBase58Decoder,
+  getCompiledTransactionMessageDecoder,
+  getCompiledTransactionMessageEncoder,
   getPublicKeyFromAddress,
   getTransactionDecoder,
   isSignature,
@@ -41,9 +43,15 @@ export function readSignedTx(signedTx: string): { wire: Uint8Array; tx: Transact
   if (!messageBytesOf(wire)) throw unreadable();
   try {
     const tx = getTransactionDecoder().decode(wire);
-    // The decoder reads what it can; bytes left over are not one transaction.
-    const parts = messageBytesOf(wire);
-    if (!parts || parts.message.length !== tx.messageBytes.length) throw unreadable();
+    // The message read and written again is the same length: no bytes are left over after it, and
+    // there is exactly one signature for each signer it names.
+    const message = getCompiledTransactionMessageDecoder().decode(tx.messageBytes);
+    const again = getCompiledTransactionMessageEncoder().encode(message);
+    if (
+      again.length !== tx.messageBytes.length ||
+      message.header.numSignerAccounts !== Object.keys(tx.signatures).length
+    )
+      throw unreadable();
     return { wire, tx };
   } catch (e) {
     if (e instanceof ChainError) throw e;
