@@ -51,6 +51,11 @@ export function GoalScreen() {
   const [build, setBuild] = useState<Build>({ kind: 'idle' });
   const composer = useRef<HTMLDivElement>(null);
   const outcomeId = useId();
+  // Which request for a plan is still wanted. An answer is shown only for the limits it was asked
+  // for: when the limits change, are read again, or the person changes, the number moves on and an
+  // answer on its way is dropped.
+  const wanted = useRef(0);
+  const solving = build.kind === 'solving';
 
   // What was typed and read is kept in the tab, so signing in and coming back loses nothing. It is
   // read back once, and only after that is anything written.
@@ -83,10 +88,27 @@ export function GoalScreen() {
   const check = sheet ? checkSheet(sheet.fields, chain) : null;
   const fits = check !== null && Object.keys(check.errors).length === 0;
 
+  /** The limits on the page are no longer the ones a plan was asked for. */
+  function forget() {
+    wanted.current += 1;
+    setBuild({ kind: 'idle' });
+  }
+
+  // A plan is one person's, on their chain: an answer for someone else, or for another chain, is not
+  // shown to whoever is here now.
+  const whose = `${port.userId ?? ''}:${chain ?? ''}`;
+  const lastWhose = useRef(whose);
+  useEffect(() => {
+    if (lastWhose.current === whose) return;
+    lastWhose.current = whose;
+    wanted.current += 1;
+    setBuild({ kind: 'idle' });
+  }, [whose]);
+
   async function read(typed: string) {
     setReading(true);
     setReadFailure(null);
-    setBuild({ kind: 'idle' });
+    forget();
     try {
       const reading = await readGoal(apiFetch, typed, lang);
       const fields = fieldsOfDraft(reading.draft, lang);
@@ -110,13 +132,16 @@ export function GoalScreen() {
     if (!key) return;
     setSheet((now) => (now ? { ...now, fields: { ...now.fields, [key]: value } } : now));
     // The answer to the limits as they were says nothing about the limits as they are.
-    setBuild({ kind: 'idle' });
+    forget();
   }
 
   /** Only a sheet the schema parsed gets here: the sheet's own check, and this function's type. */
   async function buildFrom(valid: BasketSheet) {
+    wanted.current += 1;
+    const mine = wanted.current;
     setBuild({ kind: 'solving' });
-    setBuild(await buildPlan(apiFetch, valid));
+    const outcome = await buildPlan(apiFetch, valid);
+    if (wanted.current === mine) setBuild(outcome);
   }
 
   function fillWith(example: string) {
@@ -249,6 +274,8 @@ export function GoalScreen() {
           placeholder={t.goal.composer.placeholder}
           hint={t.goal.composer.hint}
           busy={reading}
+          // While a plan is being built the limits stand as they were sent: no other goal is read.
+          disabled={solving}
           error={readSentence}
           lang={LOCALE[lang]}
           labels={{ send: t.goal.composer.send, busy: t.goal.composer.busy }}
@@ -259,7 +286,7 @@ export function GoalScreen() {
               <Button
                 variant="chip"
                 className="h-auto! min-h-8 py-1"
-                disabled={reading}
+                disabled={reading || solving}
                 onClick={() => fillWith(example)}
               >
                 {example}
@@ -287,7 +314,7 @@ export function GoalScreen() {
           state={
             build.kind === 'solving' ? 'solving' : build.kind === 'no-plan' ? 'no-plan' : 'idle'
           }
-          valid={chainOff ? null : check.sheet}
+          valid={check.sheet}
           otherIssues={blocked}
           onChange={change}
           onBuild={buildFrom}

@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
-import { createElement } from 'react';
+import type { BasketSheet } from '@colosseum/schemas';
+import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   click,
@@ -381,6 +382,67 @@ describe('“Build my plan”', () => {
       await unmountAll();
       window.sessionStorage.clear();
     }
+  });
+});
+
+describe('an answer that arrives late', () => {
+  /** A signed-in person whose plan is being built: the route has not answered yet. */
+  async function building() {
+    let answer: (res: Response) => void = () => {};
+    const sent: unknown[] = [];
+    const server = api({
+      person: onSolana,
+      plan: (body) => {
+        sent.push(body);
+        return new Promise<Response>((resolve) => (answer = resolve)) as never;
+      },
+    });
+    portStore.set(signedInPort(PHANTOM));
+    const host = await screen();
+    await read(host);
+    await fill(host);
+    await click(buildButton(host));
+    await settle();
+    expect(sent).toHaveLength(1);
+    const built = () =>
+      answer(
+        json({ id: 'plan-1', proposal: proposalFor((sent[0] as { sheet: BasketSheet }).sheet) }),
+      );
+    return { host, server, built };
+  }
+
+  it('reads no other goal while a plan is being built: the limits stand as they were sent', async () => {
+    const { host, server, built } = await building();
+    await type(box(host), 'Protect $25,000 for two years, low risk');
+    await press(box(host), 'Enter');
+    await settle();
+    expect(server.to('/goals')).toHaveLength(1);
+    for (const chip of host.querySelectorAll('ul[aria-label] button'))
+      expect(chip.getAttribute('aria-disabled')).toBe('true');
+    // and the answer, when it comes, is for the limits still on the page
+    await act(async () => built());
+    await settle();
+    expect(host.textContent).toContain(en.goal.built.done.title);
+    expect(input(host, 'amount').value).toBe('40,000');
+  });
+
+  it('is not shown to whoever is there by then: the person signed out while it was built', async () => {
+    const { host, built } = await building();
+    await act(async () => portStore.set(fakePort()));
+    await settle();
+    await act(async () => built());
+    await settle();
+    expect(host.textContent).not.toContain(en.goal.built.done.title);
+    expect(summary(host)?.textContent).toContain(en.goal.blocked.signedOut);
+  });
+
+  it('is not shown for another person who signed in meanwhile', async () => {
+    const { host, built } = await building();
+    await act(async () => portStore.set(signedInPort(PHANTOM, { userId: 'did:privy:other' })));
+    await settle();
+    await act(async () => built());
+    await settle();
+    expect(host.textContent).not.toContain(en.goal.built.done.title);
   });
 });
 
