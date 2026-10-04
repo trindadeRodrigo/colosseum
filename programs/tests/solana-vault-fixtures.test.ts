@@ -1,19 +1,18 @@
-import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import {
-  type Address,
-  address,
-  generateKeyPairSigner,
-  getAddressEncoder,
-  isSome,
-  lamports,
-} from '@solana/kit';
+import { type Address, address, generateKeyPairSigner, isSome, lamports } from '@solana/kit';
 import { getTransferSolInstruction } from '@solana-program/system';
 import { decodeMint } from '@solana-program/token-2022';
 import type { LiteSVM } from 'litesvm';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { readAssets, readConfig, readRecipe, readVault } from './src/basket';
+import {
+  ASSET_KEEPER,
+  PRICES_SIZE,
+  readAssets,
+  readConfig,
+  readRecipe,
+  readVault,
+} from './src/basket';
 import {
   createWorld,
   expectOk,
@@ -29,9 +28,14 @@ import {
   type MintName,
   type RecipeName,
   type VaultName,
+  WORLD_EMPTY_INDEX,
+  WORLD_KEEPER_ON,
+  WORLD_PRICES,
   type World,
   type WorldExpected,
   type WorldNames,
+  worldPriceAccount,
+  worldPricesExpected,
 } from './src/world';
 
 // Writes the account bytes the built program leaves behind to fixtures/solana-vault/world.json, so the
@@ -50,39 +54,6 @@ const WRITE = process.env.WRITE_FIXTURES === '1';
 const NOW = BigInt(Date.parse('2026-10-05T15:00:00.000Z') / 1000);
 const SYSVAR_CLOCK = address('SysvarC1ock11111111111111111111111111111111');
 
-const SCOPE_BYTES = 28_712;
-const SCOPE_HEADER = 40;
-const SCOPE_ENTRY = 56;
-/** Round numbers, so nobody reads one as a market price. The indexes are free choices, 0 to 511. */
-const PRICES: Record<MintName, { index: number; value: bigint; exponent: bigint; age: bigint }> = {
-  usdc: { index: 13, value: 100_000_000n, exponent: 8n, age: 20n },
-  spyx: { index: 344, value: 10_000_000_000n, exponent: 8n, age: 30n },
-  nvdax: { index: 332, value: 500_000n, exponent: 4n, age: 45n },
-  // Older than the 120 s the keeper accepts: the reader still reports it, with its age.
-  gold: { index: 100, value: 2_005n, exponent: 1n, age: 400n },
-  tslax: { index: 338, value: 20n, exponent: 0n, age: 0n },
-};
-/** An entry nobody wrote. */
-const EMPTY_INDEX = 7;
-
-/** A price account with Scope's layout, written by hand as the design says for LiteSVM. Each
- * entry is as old as `PRICES` says at the chain's time `now`. */
-function scopeAccount(slot: bigint, now: bigint): Uint8Array {
-  const data = new Uint8Array(SCOPE_BYTES);
-  // Scope's own header: Anchor's discriminator for `OraclePrices`, then the mappings account.
-  data.set(createHash('sha256').update('account:OraclePrices').digest().subarray(0, 8), 0);
-  data.set(getAddressEncoder().encode(MOCK_ROUTER_PROGRAM), 8);
-  const view = new DataView(data.buffer);
-  for (const { index, value, exponent, age } of Object.values(PRICES)) {
-    const at = SCOPE_HEADER + SCOPE_ENTRY * index;
-    view.setBigUint64(at, value, true);
-    view.setBigUint64(at + 8, exponent, true);
-    view.setBigUint64(at + 16, slot, true);
-    view.setBigUint64(at + 24, now - age, true);
-  }
-  return data;
-}
-
 type FixtureAccount = {
   role: string;
   address: Address;
@@ -99,19 +70,12 @@ type Fixture = {
   prices: {
     account: Address;
     owner: Address;
-    entries: Record<MintName, { index: number; usdPerToken: string; ageSeconds: number }>;
+    entries: ReturnType<typeof worldPricesExpected>;
     emptyIndex: number;
   };
   /** An address where a token account would be, holding lamports and nothing else. */
   strayLamports: { vault: VaultName; mint: MintName; address: Address };
   accounts: FixtureAccount[];
-};
-
-const decimal = (value: bigint, exponent: bigint) => {
-  const digits = value.toString().padStart(Number(exponent) + 1, '0');
-  const whole = digits.slice(0, digits.length - Number(exponent));
-  const frac = digits.slice(digits.length - Number(exponent)).replace(/0+$/, '');
-  return frac ? `${whole}.${frac}` : whole;
 };
 
 /** What must not change without the file being written again: each account's role, owner and size. */
@@ -143,7 +107,20 @@ describe('the vault fixtures for the adapter', () => {
         return moved.unixTimestamp;
       },
     };
-    world = await buildWorld(ledger, created.deployer);
+    // The price account is there before the world is built: the asset list has to name one that
+    // exists. Its entries are written at the end, as old as they say at the world's last second.
+    const priceAccount = (await generateKeyPairSigner()).address;
+    const priceBytes = (data: Uint8Array) =>
+      svm.setAccount({
+        address: priceAccount,
+        data,
+        executable: false,
+        lamports: lamports(svm.minimumBalanceForRentExemption(BigInt(PRICES_SIZE))),
+        programAddress: MOCK_ROUTER_PROGRAM,
+        space: BigInt(PRICES_SIZE),
+      });
+    priceBytes(new Uint8Array(PRICES_SIZE));
+    world = await buildWorld(ledger, created.deployer, priceAccount);
     const { names, mints } = world;
 
     const stray = await ata(names.vaults.manual, mints.gold);
@@ -155,17 +132,10 @@ describe('the vault fixtures for the adapter', () => {
       }),
     ]);
 
-    const priceAccount = (await generateKeyPairSigner()).address;
     // The world moved the clock on by one publish delay; the prices are as old as they say now.
-    const prices = scopeAccount(svm.getClock().slot, svm.getClock().unixTimestamp);
-    svm.setAccount({
-      address: priceAccount,
-      data: prices,
-      executable: false,
-      lamports: lamports(svm.minimumBalanceForRentExemption(BigInt(prices.length))),
-      programAddress: MOCK_ROUTER_PROGRAM,
-      space: BigInt(prices.length),
-    });
+    priceBytes(
+      worldPriceAccount(svm.getClock().slot, svm.getClock().unixTimestamp, MOCK_ROUTER_PROGRAM),
+    );
 
     const roles: [string, Address][] = [
       ['config', names.config],
@@ -199,17 +169,8 @@ describe('the vault fixtures for the adapter', () => {
       prices: {
         account: priceAccount,
         owner: MOCK_ROUTER_PROGRAM,
-        entries: Object.fromEntries(
-          Object.entries(PRICES).map(([name, p]) => [
-            name,
-            {
-              index: p.index,
-              usdPerToken: decimal(p.value, p.exponent),
-              ageSeconds: Number(p.age),
-            },
-          ]),
-        ) as Fixture['prices']['entries'],
-        emptyIndex: EMPTY_INDEX,
+        entries: worldPricesExpected(),
+        emptyIndex: WORLD_EMPTY_INDEX,
       },
       strayLamports: { vault: 'manual', mint: 'gold', address: stray },
       accounts: roles.map(([role, at]) => {
@@ -282,10 +243,22 @@ describe('the vault fixtures for the adapter', () => {
     expect(await holdings(names.owner)).toEqual(expected.wallets.owner);
     expect(await holdings(names.other)).toEqual(expected.wallets.other);
 
-    // The asset list holds the four assets, and never the cash mint.
-    const listed = (await readAssets(svm)).assets.map((a) => a.mint);
-    expect(listed).toEqual(
-      (['spyx', 'nvdax', 'gold', 'tslax'] as const).map((name) => names.mints[name]),
+    // The asset list holds the four assets, and never the cash mint. Each points at its price
+    // entry and its average in the one price account, and three are switched on for the keeper.
+    const registry = await readAssets(svm);
+    const listed = ['spyx', 'nvdax', 'gold', 'tslax'] as const;
+    expect(registry.assets.map((a) => a.mint)).toEqual(listed.map((name) => names.mints[name]));
+    expect(registry.priceAccounts[0]).toBe(fixture.prices.account);
+    expect(
+      registry.assets.map((a) => [a.priceKind, a.priceIndex, a.twapIndex, a.flags, a.session]),
+    ).toEqual(
+      listed.map((name) => [
+        1,
+        WORLD_PRICES[name].index,
+        WORLD_PRICES[name].twapIndex,
+        WORLD_KEEPER_ON.includes(name) ? ASSET_KEEPER : 0,
+        name === 'gold' ? 0 : 1,
+      ]),
     );
     for (const [name, want] of Object.entries(expected.recipes)) {
       const recipe = readRecipe(svm, names.recipes[name as RecipeName]);

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   type AccountMeta,
   type Address,
@@ -16,7 +18,7 @@ import {
   type Target,
   upsertAssetInstruction,
 } from './basket';
-import { expectOk, now, programSigner, type SendResult, send, setClock } from './env';
+import { expectOk, now, programSigner, REPO_ROOT, type SendResult, send, setClock } from './env';
 import { initPairInstruction, routeInstruction } from './mock-router';
 import { createPriceAccount, writePrice } from './prices';
 import { createSwapWorld, STOCK_PER_CASH, type SwapWorld } from './swap';
@@ -30,10 +32,18 @@ export const SESSION = BigInt(Date.UTC(2026, 9, 7, 15) / 1000);
 export const DAY = 86_400n;
 /** The price both assets trade at on the test exchange: 500 dollars a token, 8 decimal places. */
 export const PRICE = 500_00000000n;
-/** Where the two assets sit in the price account: the stock at SPYx's entries on mainnet, the
- * other at QQQx's (fixtures/solana-vault/scope-indexes.json). */
-export const STOCK_PRICE = { priceIndex: 344, twapIndex: 279 };
-export const OTHER_PRICE = { priceIndex: 347, twapIndex: 281 };
+/** Where a stock token's price and its one-hour average sit in Scope's price account on mainnet. */
+function scopeEntries(symbol: string): { priceIndex: number; twapIndex: number } {
+  const table: { assets: { symbol: string; priceIndex: number; twapIndex: number }[] } = JSON.parse(
+    readFileSync(join(REPO_ROOT, 'fixtures', 'solana-vault', 'scope-indexes.json'), 'utf8'),
+  );
+  const row = table.assets.find((a) => a.symbol === symbol);
+  if (!row) throw new Error(`fixtures/solana-vault/scope-indexes.json has no ${symbol}`);
+  return { priceIndex: row.priceIndex, twapIndex: row.twapIndex };
+}
+/** The two assets sit where real ones do: the stock at SPYx's entries, the other at QQQx's. */
+export const STOCK_PRICE = scopeEntries('SPYx');
+export const OTHER_PRICE = scopeEntries('QQQx');
 
 export type KeeperWorld = SwapWorld & {
   keeper: KeyPairSigner;

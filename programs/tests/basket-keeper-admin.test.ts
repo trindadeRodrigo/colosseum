@@ -425,7 +425,8 @@ describe('the keeper slot: admin and guardian', () => {
     });
 
     it('stays off for an asset with no price entry', async () => {
-      expectError(await list({ priceKind: 0, flags: ASSET_KEEPER }), ERR.AssetNotPriced);
+      // Everything else an entry with the switch needs is there: only the price kind is not.
+      expectError(await list({ ...priced, priceKind: 0, flags: ASSET_KEEPER }), ERR.AssetNotPriced);
       expect((await readAssets(svm)).count).toBe(0);
     });
 
