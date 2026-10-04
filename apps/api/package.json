@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
+    "openapi": "tsx src/emit-openapi.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

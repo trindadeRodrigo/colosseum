@@ -1,0 +1,4371 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Tenonfi API",
+    "version": "1.0.0",
+    "description": "The /v1 routes: who is signed in and the chain their plans live on, what the wallet is missing there, orders with their steps, and the portfolio. The API holds no key and signs nothing: it builds each step's transaction, the person's wallet signs it, and the API matches what was sent to what it built.\n\nA signed-in route takes two headers: `Authorization: Bearer <access token>` and `privy-id-token: <identity token>`. Every refusal has one shape, with a `code` where one fits and `details.retryable`. Every figure carries its source, its time and its method, and `provenance`: anything that is not `live` is a test network or MOCK.\n\n**This tool is not licensed investment advice. It structures and explains an allocation from a goal you state; the decision and custody are yours. The distributor embedding this tool holds the client relationship.**"
+  },
+  "paths": {
+    "/v1/config": {
+      "get": {
+        "summary": "Feature flags and the chains this deployment runs on",
+        "description": "A feature shows only when its flag and the chain allow it. Each chain names its network (mainnet, testnet or local) and the provenance label its figures carry: anything that is not `live` is shown as a test network or as MOCK.",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "flags": {
+                      "type": "object",
+                      "properties": {
+                        "chainMode": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string",
+                            "enum": ["solana", "base", "robinhood"]
+                          },
+                          "additionalProperties": {
+                            "type": "string",
+                            "enum": ["live", "readonly", "mock", "off"]
+                          },
+                          "required": ["solana", "base", "robinhood"]
+                        },
+                        "autoFollow": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string",
+                            "enum": ["solana", "base", "robinhood"]
+                          },
+                          "additionalProperties": {
+                            "type": "boolean"
+                          },
+                          "required": ["solana", "base", "robinhood"]
+                        },
+                        "keeperEnabled": {
+                          "type": "boolean"
+                        },
+                        "agentSurface": {
+                          "type": "boolean"
+                        },
+                        "legacyStructurer": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "chainMode",
+                        "autoFollow",
+                        "keeperEnabled",
+                        "agentSurface",
+                        "legacyStructurer"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "chains": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "enum": ["solana", "base", "robinhood"]
+                          },
+                          "family": {
+                            "type": "string",
+                            "enum": ["solana", "evm"]
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "network": {
+                            "type": "string",
+                            "enum": ["mainnet", "testnet", "local"]
+                          },
+                          "networkName": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "evmChainId": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "explorerTx": {
+                            "type": ["string", "null"]
+                          },
+                          "router": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "pattern": "^0x[0-9a-f]{40}$"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "priceSource": {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": ["scope", "chainlink", "none"]
+                              },
+                              "address": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                                      },
+                                      {
+                                        "type": "string",
+                                        "pattern": "^0x[0-9a-f]{40}$"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": ["kind", "address"],
+                            "additionalProperties": false
+                          },
+                          "contracts": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                                },
+                                {
+                                  "type": "string",
+                                  "pattern": "^0x[0-9a-f]{40}$"
+                                }
+                              ]
+                            }
+                          },
+                          "mode": {
+                            "type": "string",
+                            "enum": ["live", "readonly", "mock", "off"]
+                          },
+                          "provenance": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "family",
+                          "name",
+                          "network",
+                          "networkName",
+                          "evmChainId",
+                          "explorerTx",
+                          "router",
+                          "priceSource",
+                          "contracts",
+                          "mode",
+                          "provenance"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["flags", "chains"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/funding": {
+      "get": {
+        "summary": "What the signed-in wallet is missing on its chain: the dollar token and native gas",
+        "tags": ["funding"],
+        "description": "For the one chain the person’s plans live on. With `proposalId` and `amountUsd`, the need is that of a buy of that amount: the whole deposit in the chain’s dollar token, and the network fee of every step the order would have. With neither, the need is nothing and the answer is what the wallet holds. `missingRaw` is what to add. Every figure carries its source, its time and its method, and `provenance`: `mock` on the mock chain, `sandbox` on a test network.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000
+            },
+            "in": "query",
+            "name": "amountUsd",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "proposalId",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "chain": {
+                      "type": "string",
+                      "enum": ["solana", "base", "robinhood"]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": ["live", "readonly", "mock", "off"]
+                    },
+                    "provenance": {
+                      "type": "string",
+                      "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                    },
+                    "wallet": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                        },
+                        {
+                          "type": "string",
+                          "pattern": "^0x[0-9a-f]{40}$"
+                        }
+                      ]
+                    },
+                    "cash": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "method": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "fetchedAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                        },
+                        "provenance": {
+                          "type": "string",
+                          "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                        },
+                        "symbol": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "decimals": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "haveRaw": {
+                          "type": "string",
+                          "maxLength": 78,
+                          "pattern": "^(?:0|[1-9]\\d*)$"
+                        },
+                        "needRaw": {
+                          "type": "string",
+                          "maxLength": 78,
+                          "pattern": "^(?:0|[1-9]\\d*)$"
+                        },
+                        "missingRaw": {
+                          "type": "string",
+                          "maxLength": 78,
+                          "pattern": "^(?:0|[1-9]\\d*)$"
+                        },
+                        "asset": {
+                          "type": "string",
+                          "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "method",
+                        "fetchedAt",
+                        "provenance",
+                        "symbol",
+                        "decimals",
+                        "haveRaw",
+                        "needRaw",
+                        "missingRaw",
+                        "asset"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "gas": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "method": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "fetchedAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                        },
+                        "provenance": {
+                          "type": "string",
+                          "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                        },
+                        "symbol": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "decimals": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "haveRaw": {
+                          "type": "string",
+                          "maxLength": 78,
+                          "pattern": "^(?:0|[1-9]\\d*)$"
+                        },
+                        "needRaw": {
+                          "type": "string",
+                          "maxLength": 78,
+                          "pattern": "^(?:0|[1-9]\\d*)$"
+                        },
+                        "missingRaw": {
+                          "type": "string",
+                          "maxLength": 78,
+                          "pattern": "^(?:0|[1-9]\\d*)$"
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "method",
+                        "fetchedAt",
+                        "provenance",
+                        "symbol",
+                        "decimals",
+                        "haveRaw",
+                        "needRaw",
+                        "missingRaw"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "steps": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "newVault": {
+                      "type": "boolean"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "chain",
+                    "name",
+                    "mode",
+                    "provenance",
+                    "wallet",
+                    "cash",
+                    "gas",
+                    "steps",
+                    "newVault",
+                    "ok"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "chainCode": {
+                          "type": "string",
+                          "enum": [
+                            "NotKeeper",
+                            "AutoFollowOff",
+                            "KeeperPaused",
+                            "MintNotAccepted",
+                            "RouterNotAllowed",
+                            "SpentTooMuch",
+                            "ReceivedTooLittle",
+                            "OtherAccountDebited",
+                            "AccountTampered",
+                            "PriceStale",
+                            "PriceDeviation",
+                            "MarketClosed",
+                            "MultiplierWindow",
+                            "NotTowardTarget",
+                            "PastTarget",
+                            "Cooldown",
+                            "LossCapReached",
+                            "AssetNotPriced",
+                            "NewAssetNeedsOwner",
+                            "VersionNotEffective",
+                            "CreatorLimit",
+                            "VersionMismatch",
+                            "WrongDestination",
+                            "ParamOutOfBounds",
+                            "NotUpgradeAuthority",
+                            "InvalidTargets",
+                            "NotCashMint",
+                            "ZeroAddress",
+                            "LockedAtLaunch",
+                            "HookNotAllowed",
+                            "AssetListFull",
+                            "SameMint",
+                            "NoPendingVersion",
+                            "NotCreatorOrGuardian",
+                            "NotOwner",
+                            "CashTokenNotSet",
+                            "DepositShortfall",
+                            "GasTooLow",
+                            "NotAdmin",
+                            "NoCode",
+                            "AssetIsRouter",
+                            "RouterIsAsset",
+                            "NotCreating",
+                            "RouterFailed",
+                            "BalanceUnreadable",
+                            "CashTokenNotRemovable",
+                            "HandoverNotDone",
+                            "AlreadySet",
+                            "RecipeExists",
+                            "BadInput",
+                            "NotSupported",
+                            "TooManyTrades",
+                            "BadTrade",
+                            "VaultNotFound",
+                            "VaultExists",
+                            "RecipeNotFound",
+                            "NotFollowing",
+                            "NotFunded",
+                            "NoGas",
+                            "AllowanceTooLow",
+                            "Expired",
+                            "NotBuiltHere",
+                            "Unavailable",
+                            "Unknown"
+                          ]
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "blocking": {
+                          "type": "object",
+                          "properties": {
+                            "orderId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "legId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["orderId", "legId"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_FUNDED",
+                        "ASSET_NOT_ELIGIBLE",
+                        "GOAL_NOT_ACHIEVABLE",
+                        "NEW_ASSET_NEEDS_APPROVAL",
+                        "VERSION_CHANGED",
+                        "CREATOR_LIMIT",
+                        "ORDER_EXPIRED",
+                        "US_PERSON",
+                        "RATE_LIMITED",
+                        "CHAIN_UNAVAILABLE"
+                      ]
+                    },
+                    "fix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/me": {
+      "get": {
+        "summary": "The signed-in person: their wallets, and the chain their plans live on",
+        "tags": ["person"],
+        "description": "A plan lives on one chain, the chain of the person’s wallet. Someone who connected an outside wallet is on the chain of that wallet’s family: Solana, or Robinhood Chain for an EVM wallet (`chainSource` is `wallet`). Someone who made a wallet in the app picks the chain once: until then `chain` is null and `chainOptions` lists what may be picked. The wallets are those of the verified identity token.",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "userId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "wallets": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "family": {
+                            "type": "string",
+                            "enum": ["solana", "evm"]
+                          },
+                          "address": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                              },
+                              {
+                                "type": "string",
+                                "pattern": "^0x[0-9a-f]{40}$"
+                              }
+                            ]
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": ["embedded", "external"]
+                          }
+                        },
+                        "required": ["family", "address", "kind"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "chain": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": ["solana", "base", "robinhood"]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "chainSource": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": ["picked", "wallet"]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "chainOptions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["solana", "base", "robinhood"]
+                      }
+                    }
+                  },
+                  "required": ["userId", "wallets", "chain", "chainSource", "chainOptions"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "chainCode": {
+                          "type": "string",
+                          "enum": [
+                            "NotKeeper",
+                            "AutoFollowOff",
+                            "KeeperPaused",
+                            "MintNotAccepted",
+                            "RouterNotAllowed",
+                            "SpentTooMuch",
+                            "ReceivedTooLittle",
+                            "OtherAccountDebited",
+                            "AccountTampered",
+                            "PriceStale",
+                            "PriceDeviation",
+                            "MarketClosed",
+                            "MultiplierWindow",
+                            "NotTowardTarget",
+                            "PastTarget",
+                            "Cooldown",
+                            "LossCapReached",
+                            "AssetNotPriced",
+                            "NewAssetNeedsOwner",
+                            "VersionNotEffective",
+                            "CreatorLimit",
+                            "VersionMismatch",
+                            "WrongDestination",
+                            "ParamOutOfBounds",
+                            "NotUpgradeAuthority",
+                            "InvalidTargets",
+                            "NotCashMint",
+                            "ZeroAddress",
+                            "LockedAtLaunch",
+                            "HookNotAllowed",
+                            "AssetListFull",
+                            "SameMint",
+                            "NoPendingVersion",
+                            "NotCreatorOrGuardian",
+                            "NotOwner",
+                            "CashTokenNotSet",
+                            "DepositShortfall",
+                            "GasTooLow",
+                            "NotAdmin",
+                            "NoCode",
+                            "AssetIsRouter",
+                            "RouterIsAsset",
+                            "NotCreating",
+                            "RouterFailed",
+                            "BalanceUnreadable",
+                            "CashTokenNotRemovable",
+                            "HandoverNotDone",
+                            "AlreadySet",
+                            "RecipeExists",
+                            "BadInput",
+                            "NotSupported",
+                            "TooManyTrades",
+                            "BadTrade",
+                            "VaultNotFound",
+                            "VaultExists",
+                            "RecipeNotFound",
+                            "NotFollowing",
+                            "NotFunded",
+                            "NoGas",
+                            "AllowanceTooLow",
+                            "Expired",
+                            "NotBuiltHere",
+                            "Unavailable",
+                            "Unknown"
+                          ]
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "blocking": {
+                          "type": "object",
+                          "properties": {
+                            "orderId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "legId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["orderId", "legId"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_FUNDED",
+                        "ASSET_NOT_ELIGIBLE",
+                        "GOAL_NOT_ACHIEVABLE",
+                        "NEW_ASSET_NEEDS_APPROVAL",
+                        "VERSION_CHANGED",
+                        "CREATOR_LIMIT",
+                        "ORDER_EXPIRED",
+                        "US_PERSON",
+                        "RATE_LIMITED",
+                        "CHAIN_UNAVAILABLE"
+                      ]
+                    },
+                    "fix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/me/chain": {
+      "put": {
+        "summary": "Pick the chain your plans live on. Once",
+        "tags": ["person"],
+        "description": "For someone who made a wallet in the app. The chain has to be one they hold a wallet for and one this server runs: Solana or Robinhood Chain. The pick is stored once and never changes: the same chain again answers as before, another chain answers 409. Someone whose chain is that of the outside wallet they connected has nothing to pick, and another chain answers 409 too.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "chain": {
+                    "type": "string",
+                    "enum": ["solana", "base", "robinhood"]
+                  }
+                },
+                "required": ["chain"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "userId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "wallets": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "family": {
+                            "type": "string",
+                            "enum": ["solana", "evm"]
+                          },
+                          "address": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                              },
+                              {
+                                "type": "string",
+                                "pattern": "^0x[0-9a-f]{40}$"
+                              }
+                            ]
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": ["embedded", "external"]
+                          }
+                        },
+                        "required": ["family", "address", "kind"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "chain": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": ["solana", "base", "robinhood"]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "chainSource": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": ["picked", "wallet"]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "chainOptions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["solana", "base", "robinhood"]
+                      }
+                    }
+                  },
+                  "required": ["userId", "wallets", "chain", "chainSource", "chainOptions"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "chainCode": {
+                          "type": "string",
+                          "enum": [
+                            "NotKeeper",
+                            "AutoFollowOff",
+                            "KeeperPaused",
+                            "MintNotAccepted",
+                            "RouterNotAllowed",
+                            "SpentTooMuch",
+                            "ReceivedTooLittle",
+                            "OtherAccountDebited",
+                            "AccountTampered",
+                            "PriceStale",
+                            "PriceDeviation",
+                            "MarketClosed",
+                            "MultiplierWindow",
+                            "NotTowardTarget",
+                            "PastTarget",
+                            "Cooldown",
+                            "LossCapReached",
+                            "AssetNotPriced",
+                            "NewAssetNeedsOwner",
+                            "VersionNotEffective",
+                            "CreatorLimit",
+                            "VersionMismatch",
+                            "WrongDestination",
+                            "ParamOutOfBounds",
+                            "NotUpgradeAuthority",
+                            "InvalidTargets",
+                            "NotCashMint",
+                            "ZeroAddress",
+                            "LockedAtLaunch",
+                            "HookNotAllowed",
+                            "AssetListFull",
+                            "SameMint",
+                            "NoPendingVersion",
+                            "NotCreatorOrGuardian",
+                            "NotOwner",
+                            "CashTokenNotSet",
+                            "DepositShortfall",
+                            "GasTooLow",
+                            "NotAdmin",
+                            "NoCode",
+                            "AssetIsRouter",
+                            "RouterIsAsset",
+                            "NotCreating",
+                            "RouterFailed",
+                            "BalanceUnreadable",
+                            "CashTokenNotRemovable",
+                            "HandoverNotDone",
+                            "AlreadySet",
+                            "RecipeExists",
+                            "BadInput",
+                            "NotSupported",
+                            "TooManyTrades",
+                            "BadTrade",
+                            "VaultNotFound",
+                            "VaultExists",
+                            "RecipeNotFound",
+                            "NotFollowing",
+                            "NotFunded",
+                            "NoGas",
+                            "AllowanceTooLow",
+                            "Expired",
+                            "NotBuiltHere",
+                            "Unavailable",
+                            "Unknown"
+                          ]
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "blocking": {
+                          "type": "object",
+                          "properties": {
+                            "orderId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "legId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["orderId", "legId"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_FUNDED",
+                        "ASSET_NOT_ELIGIBLE",
+                        "GOAL_NOT_ACHIEVABLE",
+                        "NEW_ASSET_NEEDS_APPROVAL",
+                        "VERSION_CHANGED",
+                        "CREATOR_LIMIT",
+                        "ORDER_EXPIRED",
+                        "US_PERSON",
+                        "RATE_LIMITED",
+                        "CHAIN_UNAVAILABLE"
+                      ]
+                    },
+                    "fix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/orders": {
+      "post": {
+        "summary": "Plan an order from an intent. Nothing is built or signed",
+        "tags": ["orders"],
+        "description": "Today: a buy of a stored plan (`proposalId`). An order is on one chain, the chain the signed-in person's plans live on (`GET /v1/me`), and the plan has to be one made for that chain. The whole amount is deposited in the chain's dollar token (`cashRaw` on the step that moves it). The trades buy the plan's assets with the invested share, in its proportions, and what the plan keeps in cash stays in the vault as cash. The answer lists one leg per step, in the order they are signed. `owner` must be wallets of the signed-in person. A chain that is switched off answers `CHAIN_UNAVAILABLE`. Every leg carries `provenance`: `mock` on the mock chain.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": ["buy"]
+                      },
+                      "owner": {
+                        "type": "object",
+                        "properties": {
+                          "solana": {
+                            "type": "string",
+                            "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                          },
+                          "evm": {
+                            "type": "string",
+                            "pattern": "^0x[0-9a-f]{40}$"
+                          }
+                        }
+                      },
+                      "amountUsd": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "maximum": 1000000
+                      },
+                      "maxSlippageBps": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 300
+                      },
+                      "proposalId": {
+                        "type": "string"
+                      },
+                      "family": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["type", "owner", "amountUsd"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": ["rebalance"]
+                      },
+                      "vaults": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                            },
+                            {
+                              "type": "string",
+                              "pattern": "^0x[0-9a-f]{40}$"
+                            }
+                          ]
+                        }
+                      },
+                      "reason": {
+                        "type": "string",
+                        "enum": ["manual", "index_update", "drift"]
+                      }
+                    },
+                    "required": ["type", "vaults", "reason"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": ["follow"]
+                      },
+                      "vault": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                          },
+                          {
+                            "type": "string",
+                            "pattern": "^0x[0-9a-f]{40}$"
+                          }
+                        ]
+                      },
+                      "family": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "autoFollow": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["type", "vault", "family", "autoFollow"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": ["publish"]
+                      },
+                      "creator": {
+                        "type": "object",
+                        "properties": {
+                          "solana": {
+                            "type": "string",
+                            "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                          },
+                          "evm": {
+                            "type": "string",
+                            "pattern": "^0x[0-9a-f]{40}$"
+                          }
+                        }
+                      },
+                      "family": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "copy": {
+                        "type": "string"
+                      },
+                      "recipes": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "chain": {
+                              "type": "string",
+                              "enum": ["solana", "base", "robinhood"]
+                            },
+                            "components": {
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": ["asset"]
+                                      },
+                                      "asset": {
+                                        "type": "string",
+                                        "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                      },
+                                      "weightBps": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 10000
+                                      }
+                                    },
+                                    "required": ["kind", "asset", "weightBps"]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": ["index"]
+                                      },
+                                      "family": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      },
+                                      "weightBps": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 10000
+                                      }
+                                    },
+                                    "required": ["kind", "family", "weightBps"]
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "required": ["chain", "components"]
+                        }
+                      }
+                    },
+                    "required": ["type", "creator", "family", "name", "copy", "recipes"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": ["withdraw"]
+                      },
+                      "vaults": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                            },
+                            {
+                              "type": "string",
+                              "pattern": "^0x[0-9a-f]{40}$"
+                            }
+                          ]
+                        }
+                      },
+                      "sellToCash": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["type", "vaults", "sellToCash"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": ["settings"]
+                      },
+                      "vault": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                          },
+                          {
+                            "type": "string",
+                            "pattern": "^0x[0-9a-f]{40}$"
+                          }
+                        ]
+                      },
+                      "autoFollow": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["type", "vault", "autoFollow"]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": ["buy", "rebalance", "follow", "publish", "withdraw", "settings"]
+                    },
+                    "owner": {
+                      "type": "object",
+                      "properties": {
+                        "solana": {
+                          "type": "string",
+                          "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                        },
+                        "evm": {
+                          "type": "string",
+                          "pattern": "^0x[0-9a-f]{40}$"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "legs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "orderId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "chain": {
+                            "type": "string",
+                            "enum": ["solana", "base", "robinhood"]
+                          },
+                          "seq": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "approve",
+                              "create_vault",
+                              "deposit",
+                              "swap",
+                              "set_targets",
+                              "accept_version",
+                              "set_auto_follow",
+                              "withdraw",
+                              "publish",
+                              "adopt_version",
+                              "keeper_leg"
+                            ]
+                          },
+                          "signer": {
+                            "type": "string",
+                            "enum": ["owner", "keeper"]
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "cashRaw": {
+                            "type": "string",
+                            "maxLength": 78,
+                            "pattern": "^(?:0|[1-9]\\d*)$"
+                          },
+                          "trades": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "sell": {
+                                  "type": "string",
+                                  "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                },
+                                "buy": {
+                                  "type": "string",
+                                  "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                },
+                                "amountInRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                }
+                              },
+                              "required": ["sell", "buy", "amountInRaw"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "expected": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "inRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                },
+                                "outRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                },
+                                "minOutRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                },
+                                "costBps": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": ["inRaw", "outRaw", "minOutRaw", "costBps"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "planned",
+                              "built",
+                              "sent",
+                              "confirmed",
+                              "failed",
+                              "expired",
+                              "skipped"
+                            ]
+                          },
+                          "attempt": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "txId": {
+                            "type": ["string", "null"]
+                          },
+                          "explorerUrl": {
+                            "type": ["string", "null"]
+                          },
+                          "validUntil": {
+                            "type": ["string", "null"]
+                          },
+                          "error": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "code": {
+                                    "type": "string"
+                                  },
+                                  "message": {
+                                    "type": "string"
+                                  },
+                                  "retryable": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": ["code", "message", "retryable"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "trigger": {
+                            "type": "string",
+                            "enum": ["manual", "index_update", "drift", "liquidity_breach"]
+                          },
+                          "provenance": {
+                            "type": "string",
+                            "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "orderId",
+                          "chain",
+                          "seq",
+                          "kind",
+                          "signer",
+                          "description",
+                          "trades",
+                          "expected",
+                          "status",
+                          "attempt",
+                          "txId",
+                          "explorerUrl",
+                          "validUntil",
+                          "error",
+                          "trigger",
+                          "provenance"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["code", "text"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "needsConsent": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["auto_follow_on", "new_asset"]
+                      }
+                    },
+                    "fees": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "bps": {
+                            "type": "number"
+                          }
+                        },
+                        "required": ["kind", "bps"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "preparedBy": {
+                      "type": "string",
+                      "enum": ["app", "api", "mcp"]
+                    },
+                    "agentLabel": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["open", "partial", "done", "failed", "expired"]
+                    },
+                    "approvalUrl": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "expiresAt": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                    },
+                    "disclaimer": {
+                      "type": "string"
+                    },
+                    "attempts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "legId": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "n": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 9007199254740991
+                          },
+                          "messageHash": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "nonce": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": ["built", "sent", "confirmed", "failed", "expired"]
+                          },
+                          "txId": {
+                            "type": ["string", "null"]
+                          },
+                          "explorerUrl": {
+                            "type": ["string", "null"]
+                          },
+                          "validUntil": {
+                            "type": ["string", "null"]
+                          },
+                          "builtAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "legId",
+                          "n",
+                          "messageHash",
+                          "nonce",
+                          "status",
+                          "txId",
+                          "explorerUrl",
+                          "validUntil",
+                          "builtAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "owner",
+                    "summary",
+                    "legs",
+                    "warnings",
+                    "needsConsent",
+                    "fees",
+                    "preparedBy",
+                    "status",
+                    "approvalUrl",
+                    "expiresAt",
+                    "createdAt",
+                    "disclaimer",
+                    "attempts"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "chainCode": {
+                          "type": "string",
+                          "enum": [
+                            "NotKeeper",
+                            "AutoFollowOff",
+                            "KeeperPaused",
+                            "MintNotAccepted",
+                            "RouterNotAllowed",
+                            "SpentTooMuch",
+                            "ReceivedTooLittle",
+                            "OtherAccountDebited",
+                            "AccountTampered",
+                            "PriceStale",
+                            "PriceDeviation",
+                            "MarketClosed",
+                            "MultiplierWindow",
+                            "NotTowardTarget",
+                            "PastTarget",
+                            "Cooldown",
+                            "LossCapReached",
+                            "AssetNotPriced",
+                            "NewAssetNeedsOwner",
+                            "VersionNotEffective",
+                            "CreatorLimit",
+                            "VersionMismatch",
+                            "WrongDestination",
+                            "ParamOutOfBounds",
+                            "NotUpgradeAuthority",
+                            "InvalidTargets",
+                            "NotCashMint",
+                            "ZeroAddress",
+                            "LockedAtLaunch",
+                            "HookNotAllowed",
+                            "AssetListFull",
+                            "SameMint",
+                            "NoPendingVersion",
+                            "NotCreatorOrGuardian",
+                            "NotOwner",
+                            "CashTokenNotSet",
+                            "DepositShortfall",
+                            "GasTooLow",
+                            "NotAdmin",
+                            "NoCode",
+                            "AssetIsRouter",
+                            "RouterIsAsset",
+                            "NotCreating",
+                            "RouterFailed",
+                            "BalanceUnreadable",
+                            "CashTokenNotRemovable",
+                            "HandoverNotDone",
+                            "AlreadySet",
+                            "RecipeExists",
+                            "BadInput",
+                            "NotSupported",
+                            "TooManyTrades",
+                            "BadTrade",
+                            "VaultNotFound",
+                            "VaultExists",
+                            "RecipeNotFound",
+                            "NotFollowing",
+                            "NotFunded",
+                            "NoGas",
+                            "AllowanceTooLow",
+                            "Expired",
+                            "NotBuiltHere",
+                            "Unavailable",
+                            "Unknown"
+                          ]
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "blocking": {
+                          "type": "object",
+                          "properties": {
+                            "orderId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "legId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["orderId", "legId"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_FUNDED",
+                        "ASSET_NOT_ELIGIBLE",
+                        "GOAL_NOT_ACHIEVABLE",
+                        "NEW_ASSET_NEEDS_APPROVAL",
+                        "VERSION_CHANGED",
+                        "CREATOR_LIMIT",
+                        "ORDER_EXPIRED",
+                        "US_PERSON",
+                        "RATE_LIMITED",
+                        "CHAIN_UNAVAILABLE"
+                      ]
+                    },
+                    "fix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/orders/{id}": {
+      "get": {
+        "summary": "An order with its legs and every attempt at them",
+        "tags": ["orders"],
+        "description": "Only the wallets that made the order can read it. A leg that was sent and has not settled is tracked on the chain again before the answer.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": ["buy", "rebalance", "follow", "publish", "withdraw", "settings"]
+                    },
+                    "owner": {
+                      "type": "object",
+                      "properties": {
+                        "solana": {
+                          "type": "string",
+                          "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                        },
+                        "evm": {
+                          "type": "string",
+                          "pattern": "^0x[0-9a-f]{40}$"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "legs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "orderId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "chain": {
+                            "type": "string",
+                            "enum": ["solana", "base", "robinhood"]
+                          },
+                          "seq": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "approve",
+                              "create_vault",
+                              "deposit",
+                              "swap",
+                              "set_targets",
+                              "accept_version",
+                              "set_auto_follow",
+                              "withdraw",
+                              "publish",
+                              "adopt_version",
+                              "keeper_leg"
+                            ]
+                          },
+                          "signer": {
+                            "type": "string",
+                            "enum": ["owner", "keeper"]
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "cashRaw": {
+                            "type": "string",
+                            "maxLength": 78,
+                            "pattern": "^(?:0|[1-9]\\d*)$"
+                          },
+                          "trades": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "sell": {
+                                  "type": "string",
+                                  "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                },
+                                "buy": {
+                                  "type": "string",
+                                  "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                },
+                                "amountInRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                }
+                              },
+                              "required": ["sell", "buy", "amountInRaw"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "expected": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "inRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                },
+                                "outRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                },
+                                "minOutRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                },
+                                "costBps": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": ["inRaw", "outRaw", "minOutRaw", "costBps"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "planned",
+                              "built",
+                              "sent",
+                              "confirmed",
+                              "failed",
+                              "expired",
+                              "skipped"
+                            ]
+                          },
+                          "attempt": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "txId": {
+                            "type": ["string", "null"]
+                          },
+                          "explorerUrl": {
+                            "type": ["string", "null"]
+                          },
+                          "validUntil": {
+                            "type": ["string", "null"]
+                          },
+                          "error": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "code": {
+                                    "type": "string"
+                                  },
+                                  "message": {
+                                    "type": "string"
+                                  },
+                                  "retryable": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": ["code", "message", "retryable"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "trigger": {
+                            "type": "string",
+                            "enum": ["manual", "index_update", "drift", "liquidity_breach"]
+                          },
+                          "provenance": {
+                            "type": "string",
+                            "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "orderId",
+                          "chain",
+                          "seq",
+                          "kind",
+                          "signer",
+                          "description",
+                          "trades",
+                          "expected",
+                          "status",
+                          "attempt",
+                          "txId",
+                          "explorerUrl",
+                          "validUntil",
+                          "error",
+                          "trigger",
+                          "provenance"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["code", "text"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "needsConsent": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["auto_follow_on", "new_asset"]
+                      }
+                    },
+                    "fees": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "bps": {
+                            "type": "number"
+                          }
+                        },
+                        "required": ["kind", "bps"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "preparedBy": {
+                      "type": "string",
+                      "enum": ["app", "api", "mcp"]
+                    },
+                    "agentLabel": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["open", "partial", "done", "failed", "expired"]
+                    },
+                    "approvalUrl": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "expiresAt": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                    },
+                    "disclaimer": {
+                      "type": "string"
+                    },
+                    "attempts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "legId": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "n": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 9007199254740991
+                          },
+                          "messageHash": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "nonce": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": ["built", "sent", "confirmed", "failed", "expired"]
+                          },
+                          "txId": {
+                            "type": ["string", "null"]
+                          },
+                          "explorerUrl": {
+                            "type": ["string", "null"]
+                          },
+                          "validUntil": {
+                            "type": ["string", "null"]
+                          },
+                          "builtAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "legId",
+                          "n",
+                          "messageHash",
+                          "nonce",
+                          "status",
+                          "txId",
+                          "explorerUrl",
+                          "validUntil",
+                          "builtAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "owner",
+                    "summary",
+                    "legs",
+                    "warnings",
+                    "needsConsent",
+                    "fees",
+                    "preparedBy",
+                    "status",
+                    "approvalUrl",
+                    "expiresAt",
+                    "createdAt",
+                    "disclaimer",
+                    "attempts"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "chainCode": {
+                          "type": "string",
+                          "enum": [
+                            "NotKeeper",
+                            "AutoFollowOff",
+                            "KeeperPaused",
+                            "MintNotAccepted",
+                            "RouterNotAllowed",
+                            "SpentTooMuch",
+                            "ReceivedTooLittle",
+                            "OtherAccountDebited",
+                            "AccountTampered",
+                            "PriceStale",
+                            "PriceDeviation",
+                            "MarketClosed",
+                            "MultiplierWindow",
+                            "NotTowardTarget",
+                            "PastTarget",
+                            "Cooldown",
+                            "LossCapReached",
+                            "AssetNotPriced",
+                            "NewAssetNeedsOwner",
+                            "VersionNotEffective",
+                            "CreatorLimit",
+                            "VersionMismatch",
+                            "WrongDestination",
+                            "ParamOutOfBounds",
+                            "NotUpgradeAuthority",
+                            "InvalidTargets",
+                            "NotCashMint",
+                            "ZeroAddress",
+                            "LockedAtLaunch",
+                            "HookNotAllowed",
+                            "AssetListFull",
+                            "SameMint",
+                            "NoPendingVersion",
+                            "NotCreatorOrGuardian",
+                            "NotOwner",
+                            "CashTokenNotSet",
+                            "DepositShortfall",
+                            "GasTooLow",
+                            "NotAdmin",
+                            "NoCode",
+                            "AssetIsRouter",
+                            "RouterIsAsset",
+                            "NotCreating",
+                            "RouterFailed",
+                            "BalanceUnreadable",
+                            "CashTokenNotRemovable",
+                            "HandoverNotDone",
+                            "AlreadySet",
+                            "RecipeExists",
+                            "BadInput",
+                            "NotSupported",
+                            "TooManyTrades",
+                            "BadTrade",
+                            "VaultNotFound",
+                            "VaultExists",
+                            "RecipeNotFound",
+                            "NotFollowing",
+                            "NotFunded",
+                            "NoGas",
+                            "AllowanceTooLow",
+                            "Expired",
+                            "NotBuiltHere",
+                            "Unavailable",
+                            "Unknown"
+                          ]
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "blocking": {
+                          "type": "object",
+                          "properties": {
+                            "orderId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "legId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["orderId", "legId"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_FUNDED",
+                        "ASSET_NOT_ELIGIBLE",
+                        "GOAL_NOT_ACHIEVABLE",
+                        "NEW_ASSET_NEEDS_APPROVAL",
+                        "VERSION_CHANGED",
+                        "CREATOR_LIMIT",
+                        "ORDER_EXPIRED",
+                        "US_PERSON",
+                        "RATE_LIMITED",
+                        "CHAIN_UNAVAILABLE"
+                      ]
+                    },
+                    "fix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/orders/{id}/legs/{legId}/build": {
+      "post": {
+        "summary": "Build one leg: a fresh unsigned transaction and the attempt that records it",
+        "tags": ["orders"],
+        "description": "Legs are built in order, each just before it is signed. Every build is a new attempt with a fresh quote. A leg is not built again while the transaction built before can still land: on Solana until it has expired, on an EVM chain until it is reported or cancelled. On an EVM chain a wallet has one next nonce, so a step is not built either while another order of the same wallet holds a transaction that can still land: the answer is 409 and `details.blocking` names that order and step. The signer is the order's own wallet. The server signs nothing. A chain's refusal answers with the order code where one fits, the chain's own code and `retryable` in `details`.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "legId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tx": {
+                      "type": "object",
+                      "properties": {
+                        "chain": {
+                          "type": "string",
+                          "enum": ["solana", "evm"]
+                        },
+                        "payload": {
+                          "type": "string"
+                        },
+                        "evm": {
+                          "type": "object",
+                          "properties": {
+                            "to": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "type": "string"
+                            },
+                            "chainId": {
+                              "type": "number"
+                            },
+                            "nonce": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "gas": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": ["to", "value", "chainId"],
+                          "additionalProperties": false
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string",
+                          "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                        },
+                        "lastValidBlockHeight": {
+                          "type": "number"
+                        },
+                        "legKind": {
+                          "type": "string",
+                          "enum": [
+                            "approve",
+                            "create_vault",
+                            "deposit",
+                            "swap",
+                            "set_targets",
+                            "accept_version",
+                            "set_auto_follow",
+                            "withdraw",
+                            "publish",
+                            "adopt_version",
+                            "keeper_leg"
+                          ]
+                        },
+                        "chainId": {
+                          "type": "string",
+                          "enum": ["solana", "base", "robinhood"]
+                        },
+                        "signer": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                            },
+                            {
+                              "type": "string",
+                              "pattern": "^0x[0-9a-f]{40}$"
+                            }
+                          ]
+                        },
+                        "feePayer": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                            },
+                            {
+                              "type": "string",
+                              "pattern": "^0x[0-9a-f]{40}$"
+                            }
+                          ]
+                        },
+                        "messageHash": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{64}$"
+                        },
+                        "preview": {
+                          "type": "object",
+                          "properties": {
+                            "source": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "method": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "fetchedAt": {
+                              "type": "string",
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                            },
+                            "provenance": {
+                              "type": "string",
+                              "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                            },
+                            "summary": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "simulated": {
+                              "type": "boolean"
+                            },
+                            "feeNativeRaw": {
+                              "type": "string",
+                              "maxLength": 78,
+                              "pattern": "^(?:0|[1-9]\\d*)$"
+                            },
+                            "changes": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "holder": {
+                                    "type": "string",
+                                    "enum": ["wallet", "vault"]
+                                  },
+                                  "asset": {
+                                    "type": "string",
+                                    "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                  },
+                                  "deltaRaw": {
+                                    "type": "string",
+                                    "maxLength": 79,
+                                    "pattern": "^(?:0|-?[1-9]\\d*)$"
+                                  }
+                                },
+                                "required": ["holder", "asset", "deltaRaw"],
+                                "additionalProperties": false
+                              }
+                            },
+                            "minimums": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "sell": {
+                                    "type": "string",
+                                    "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                  },
+                                  "buy": {
+                                    "type": "string",
+                                    "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                  },
+                                  "inRaw": {
+                                    "type": "string",
+                                    "maxLength": 78,
+                                    "pattern": "^(?:0|[1-9]\\d*)$"
+                                  },
+                                  "minOutRaw": {
+                                    "type": "string",
+                                    "maxLength": 78,
+                                    "pattern": "^(?:0|[1-9]\\d*)$"
+                                  }
+                                },
+                                "required": ["sell", "buy", "inRaw", "minOutRaw"],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": [
+                            "source",
+                            "method",
+                            "fetchedAt",
+                            "provenance",
+                            "summary",
+                            "simulated",
+                            "feeNativeRaw",
+                            "changes",
+                            "minimums"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "legId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "attemptId": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "chain",
+                        "payload",
+                        "description",
+                        "provenance",
+                        "legKind",
+                        "chainId",
+                        "signer",
+                        "messageHash",
+                        "preview",
+                        "legId",
+                        "attemptId"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "attempt": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "legId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "n": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "messageHash": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "nonce": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": ["built", "sent", "confirmed", "failed", "expired"]
+                        },
+                        "txId": {
+                          "type": ["string", "null"]
+                        },
+                        "explorerUrl": {
+                          "type": ["string", "null"]
+                        },
+                        "validUntil": {
+                          "type": ["string", "null"]
+                        },
+                        "builtAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "legId",
+                        "n",
+                        "messageHash",
+                        "nonce",
+                        "status",
+                        "txId",
+                        "explorerUrl",
+                        "validUntil",
+                        "builtAt"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["tx", "attempt"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "chainCode": {
+                          "type": "string",
+                          "enum": [
+                            "NotKeeper",
+                            "AutoFollowOff",
+                            "KeeperPaused",
+                            "MintNotAccepted",
+                            "RouterNotAllowed",
+                            "SpentTooMuch",
+                            "ReceivedTooLittle",
+                            "OtherAccountDebited",
+                            "AccountTampered",
+                            "PriceStale",
+                            "PriceDeviation",
+                            "MarketClosed",
+                            "MultiplierWindow",
+                            "NotTowardTarget",
+                            "PastTarget",
+                            "Cooldown",
+                            "LossCapReached",
+                            "AssetNotPriced",
+                            "NewAssetNeedsOwner",
+                            "VersionNotEffective",
+                            "CreatorLimit",
+                            "VersionMismatch",
+                            "WrongDestination",
+                            "ParamOutOfBounds",
+                            "NotUpgradeAuthority",
+                            "InvalidTargets",
+                            "NotCashMint",
+                            "ZeroAddress",
+                            "LockedAtLaunch",
+                            "HookNotAllowed",
+                            "AssetListFull",
+                            "SameMint",
+                            "NoPendingVersion",
+                            "NotCreatorOrGuardian",
+                            "NotOwner",
+                            "CashTokenNotSet",
+                            "DepositShortfall",
+                            "GasTooLow",
+                            "NotAdmin",
+                            "NoCode",
+                            "AssetIsRouter",
+                            "RouterIsAsset",
+                            "NotCreating",
+                            "RouterFailed",
+                            "BalanceUnreadable",
+                            "CashTokenNotRemovable",
+                            "HandoverNotDone",
+                            "AlreadySet",
+                            "RecipeExists",
+                            "BadInput",
+                            "NotSupported",
+                            "TooManyTrades",
+                            "BadTrade",
+                            "VaultNotFound",
+                            "VaultExists",
+                            "RecipeNotFound",
+                            "NotFollowing",
+                            "NotFunded",
+                            "NoGas",
+                            "AllowanceTooLow",
+                            "Expired",
+                            "NotBuiltHere",
+                            "Unavailable",
+                            "Unknown"
+                          ]
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "blocking": {
+                          "type": "object",
+                          "properties": {
+                            "orderId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "legId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["orderId", "legId"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_FUNDED",
+                        "ASSET_NOT_ELIGIBLE",
+                        "GOAL_NOT_ACHIEVABLE",
+                        "NEW_ASSET_NEEDS_APPROVAL",
+                        "VERSION_CHANGED",
+                        "CREATOR_LIMIT",
+                        "ORDER_EXPIRED",
+                        "US_PERSON",
+                        "RATE_LIMITED",
+                        "CHAIN_UNAVAILABLE"
+                      ]
+                    },
+                    "fix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/orders/{id}/legs/{legId}/cancel": {
+      "post": {
+        "summary": "Cancel the latest attempt at a leg, so the leg can be built again",
+        "tags": ["orders"],
+        "description": "A leg is not built again while the transaction built before can still land. On an EVM chain a transaction never expires, so the person says here that it will not be sent. On Solana this is refused until the transaction has expired: only time closes it. If the transaction has landed, the leg settles on it and the answer is 409.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "legId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": ["buy", "rebalance", "follow", "publish", "withdraw", "settings"]
+                    },
+                    "owner": {
+                      "type": "object",
+                      "properties": {
+                        "solana": {
+                          "type": "string",
+                          "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                        },
+                        "evm": {
+                          "type": "string",
+                          "pattern": "^0x[0-9a-f]{40}$"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "legs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "orderId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "chain": {
+                            "type": "string",
+                            "enum": ["solana", "base", "robinhood"]
+                          },
+                          "seq": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "approve",
+                              "create_vault",
+                              "deposit",
+                              "swap",
+                              "set_targets",
+                              "accept_version",
+                              "set_auto_follow",
+                              "withdraw",
+                              "publish",
+                              "adopt_version",
+                              "keeper_leg"
+                            ]
+                          },
+                          "signer": {
+                            "type": "string",
+                            "enum": ["owner", "keeper"]
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "cashRaw": {
+                            "type": "string",
+                            "maxLength": 78,
+                            "pattern": "^(?:0|[1-9]\\d*)$"
+                          },
+                          "trades": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "sell": {
+                                  "type": "string",
+                                  "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                },
+                                "buy": {
+                                  "type": "string",
+                                  "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                },
+                                "amountInRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                }
+                              },
+                              "required": ["sell", "buy", "amountInRaw"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "expected": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "inRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                },
+                                "outRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                },
+                                "minOutRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                },
+                                "costBps": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": ["inRaw", "outRaw", "minOutRaw", "costBps"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "planned",
+                              "built",
+                              "sent",
+                              "confirmed",
+                              "failed",
+                              "expired",
+                              "skipped"
+                            ]
+                          },
+                          "attempt": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "txId": {
+                            "type": ["string", "null"]
+                          },
+                          "explorerUrl": {
+                            "type": ["string", "null"]
+                          },
+                          "validUntil": {
+                            "type": ["string", "null"]
+                          },
+                          "error": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "code": {
+                                    "type": "string"
+                                  },
+                                  "message": {
+                                    "type": "string"
+                                  },
+                                  "retryable": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": ["code", "message", "retryable"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "trigger": {
+                            "type": "string",
+                            "enum": ["manual", "index_update", "drift", "liquidity_breach"]
+                          },
+                          "provenance": {
+                            "type": "string",
+                            "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "orderId",
+                          "chain",
+                          "seq",
+                          "kind",
+                          "signer",
+                          "description",
+                          "trades",
+                          "expected",
+                          "status",
+                          "attempt",
+                          "txId",
+                          "explorerUrl",
+                          "validUntil",
+                          "error",
+                          "trigger",
+                          "provenance"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["code", "text"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "needsConsent": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["auto_follow_on", "new_asset"]
+                      }
+                    },
+                    "fees": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "bps": {
+                            "type": "number"
+                          }
+                        },
+                        "required": ["kind", "bps"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "preparedBy": {
+                      "type": "string",
+                      "enum": ["app", "api", "mcp"]
+                    },
+                    "agentLabel": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["open", "partial", "done", "failed", "expired"]
+                    },
+                    "approvalUrl": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "expiresAt": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                    },
+                    "disclaimer": {
+                      "type": "string"
+                    },
+                    "attempts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "legId": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "n": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 9007199254740991
+                          },
+                          "messageHash": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "nonce": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": ["built", "sent", "confirmed", "failed", "expired"]
+                          },
+                          "txId": {
+                            "type": ["string", "null"]
+                          },
+                          "explorerUrl": {
+                            "type": ["string", "null"]
+                          },
+                          "validUntil": {
+                            "type": ["string", "null"]
+                          },
+                          "builtAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "legId",
+                          "n",
+                          "messageHash",
+                          "nonce",
+                          "status",
+                          "txId",
+                          "explorerUrl",
+                          "validUntil",
+                          "builtAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "owner",
+                    "summary",
+                    "legs",
+                    "warnings",
+                    "needsConsent",
+                    "fees",
+                    "preparedBy",
+                    "status",
+                    "approvalUrl",
+                    "expiresAt",
+                    "createdAt",
+                    "disclaimer",
+                    "attempts"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "chainCode": {
+                          "type": "string",
+                          "enum": [
+                            "NotKeeper",
+                            "AutoFollowOff",
+                            "KeeperPaused",
+                            "MintNotAccepted",
+                            "RouterNotAllowed",
+                            "SpentTooMuch",
+                            "ReceivedTooLittle",
+                            "OtherAccountDebited",
+                            "AccountTampered",
+                            "PriceStale",
+                            "PriceDeviation",
+                            "MarketClosed",
+                            "MultiplierWindow",
+                            "NotTowardTarget",
+                            "PastTarget",
+                            "Cooldown",
+                            "LossCapReached",
+                            "AssetNotPriced",
+                            "NewAssetNeedsOwner",
+                            "VersionNotEffective",
+                            "CreatorLimit",
+                            "VersionMismatch",
+                            "WrongDestination",
+                            "ParamOutOfBounds",
+                            "NotUpgradeAuthority",
+                            "InvalidTargets",
+                            "NotCashMint",
+                            "ZeroAddress",
+                            "LockedAtLaunch",
+                            "HookNotAllowed",
+                            "AssetListFull",
+                            "SameMint",
+                            "NoPendingVersion",
+                            "NotCreatorOrGuardian",
+                            "NotOwner",
+                            "CashTokenNotSet",
+                            "DepositShortfall",
+                            "GasTooLow",
+                            "NotAdmin",
+                            "NoCode",
+                            "AssetIsRouter",
+                            "RouterIsAsset",
+                            "NotCreating",
+                            "RouterFailed",
+                            "BalanceUnreadable",
+                            "CashTokenNotRemovable",
+                            "HandoverNotDone",
+                            "AlreadySet",
+                            "RecipeExists",
+                            "BadInput",
+                            "NotSupported",
+                            "TooManyTrades",
+                            "BadTrade",
+                            "VaultNotFound",
+                            "VaultExists",
+                            "RecipeNotFound",
+                            "NotFollowing",
+                            "NotFunded",
+                            "NoGas",
+                            "AllowanceTooLow",
+                            "Expired",
+                            "NotBuiltHere",
+                            "Unavailable",
+                            "Unknown"
+                          ]
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "blocking": {
+                          "type": "object",
+                          "properties": {
+                            "orderId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "legId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["orderId", "legId"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_FUNDED",
+                        "ASSET_NOT_ELIGIBLE",
+                        "GOAL_NOT_ACHIEVABLE",
+                        "NEW_ASSET_NEEDS_APPROVAL",
+                        "VERSION_CHANGED",
+                        "CREATOR_LIMIT",
+                        "ORDER_EXPIRED",
+                        "US_PERSON",
+                        "RATE_LIMITED",
+                        "CHAIN_UNAVAILABLE"
+                      ]
+                    },
+                    "fix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/orders/{id}/legs/{legId}/report": {
+      "post": {
+        "summary": "Report a leg as sent, by its transaction id or by signed bytes to relay",
+        "tags": ["orders"],
+        "description": "Exactly one of `txId` and `signedTx`. Both are matched against every attempt at the leg, and the leg settles on the attempt that landed. On an EVM chain an attempt is the pair (message, nonce): the nonce is read from the transaction itself, the attempt is left carrying the nonce the wallet really used, and of two attempts that state the same pair the newest that can still land is the one. Signed bytes are relayed only for an attempt that was built and never sent. A transaction that carries the bytes of no attempt, successful or not, is refused and changes nothing, and so is one that was built for another step. A transaction the chain has not seen yet answers 409 with `details.retryable` true: report it again in a moment. Reporting the same transaction again answers with the order as it stands.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "txId": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["txId"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "signedTx": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["signedTx"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "legId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": ["buy", "rebalance", "follow", "publish", "withdraw", "settings"]
+                    },
+                    "owner": {
+                      "type": "object",
+                      "properties": {
+                        "solana": {
+                          "type": "string",
+                          "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                        },
+                        "evm": {
+                          "type": "string",
+                          "pattern": "^0x[0-9a-f]{40}$"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "legs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "orderId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "chain": {
+                            "type": "string",
+                            "enum": ["solana", "base", "robinhood"]
+                          },
+                          "seq": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "approve",
+                              "create_vault",
+                              "deposit",
+                              "swap",
+                              "set_targets",
+                              "accept_version",
+                              "set_auto_follow",
+                              "withdraw",
+                              "publish",
+                              "adopt_version",
+                              "keeper_leg"
+                            ]
+                          },
+                          "signer": {
+                            "type": "string",
+                            "enum": ["owner", "keeper"]
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "cashRaw": {
+                            "type": "string",
+                            "maxLength": 78,
+                            "pattern": "^(?:0|[1-9]\\d*)$"
+                          },
+                          "trades": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "sell": {
+                                  "type": "string",
+                                  "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                },
+                                "buy": {
+                                  "type": "string",
+                                  "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                },
+                                "amountInRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                }
+                              },
+                              "required": ["sell", "buy", "amountInRaw"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "expected": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "inRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                },
+                                "outRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                },
+                                "minOutRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                },
+                                "costBps": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": ["inRaw", "outRaw", "minOutRaw", "costBps"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "planned",
+                              "built",
+                              "sent",
+                              "confirmed",
+                              "failed",
+                              "expired",
+                              "skipped"
+                            ]
+                          },
+                          "attempt": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "txId": {
+                            "type": ["string", "null"]
+                          },
+                          "explorerUrl": {
+                            "type": ["string", "null"]
+                          },
+                          "validUntil": {
+                            "type": ["string", "null"]
+                          },
+                          "error": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "code": {
+                                    "type": "string"
+                                  },
+                                  "message": {
+                                    "type": "string"
+                                  },
+                                  "retryable": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": ["code", "message", "retryable"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "trigger": {
+                            "type": "string",
+                            "enum": ["manual", "index_update", "drift", "liquidity_breach"]
+                          },
+                          "provenance": {
+                            "type": "string",
+                            "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "orderId",
+                          "chain",
+                          "seq",
+                          "kind",
+                          "signer",
+                          "description",
+                          "trades",
+                          "expected",
+                          "status",
+                          "attempt",
+                          "txId",
+                          "explorerUrl",
+                          "validUntil",
+                          "error",
+                          "trigger",
+                          "provenance"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["code", "text"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "needsConsent": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["auto_follow_on", "new_asset"]
+                      }
+                    },
+                    "fees": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "bps": {
+                            "type": "number"
+                          }
+                        },
+                        "required": ["kind", "bps"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "preparedBy": {
+                      "type": "string",
+                      "enum": ["app", "api", "mcp"]
+                    },
+                    "agentLabel": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["open", "partial", "done", "failed", "expired"]
+                    },
+                    "approvalUrl": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "expiresAt": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                    },
+                    "disclaimer": {
+                      "type": "string"
+                    },
+                    "attempts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "legId": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "n": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 9007199254740991
+                          },
+                          "messageHash": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "nonce": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": ["built", "sent", "confirmed", "failed", "expired"]
+                          },
+                          "txId": {
+                            "type": ["string", "null"]
+                          },
+                          "explorerUrl": {
+                            "type": ["string", "null"]
+                          },
+                          "validUntil": {
+                            "type": ["string", "null"]
+                          },
+                          "builtAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "legId",
+                          "n",
+                          "messageHash",
+                          "nonce",
+                          "status",
+                          "txId",
+                          "explorerUrl",
+                          "validUntil",
+                          "builtAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "owner",
+                    "summary",
+                    "legs",
+                    "warnings",
+                    "needsConsent",
+                    "fees",
+                    "preparedBy",
+                    "status",
+                    "approvalUrl",
+                    "expiresAt",
+                    "createdAt",
+                    "disclaimer",
+                    "attempts"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "chainCode": {
+                          "type": "string",
+                          "enum": [
+                            "NotKeeper",
+                            "AutoFollowOff",
+                            "KeeperPaused",
+                            "MintNotAccepted",
+                            "RouterNotAllowed",
+                            "SpentTooMuch",
+                            "ReceivedTooLittle",
+                            "OtherAccountDebited",
+                            "AccountTampered",
+                            "PriceStale",
+                            "PriceDeviation",
+                            "MarketClosed",
+                            "MultiplierWindow",
+                            "NotTowardTarget",
+                            "PastTarget",
+                            "Cooldown",
+                            "LossCapReached",
+                            "AssetNotPriced",
+                            "NewAssetNeedsOwner",
+                            "VersionNotEffective",
+                            "CreatorLimit",
+                            "VersionMismatch",
+                            "WrongDestination",
+                            "ParamOutOfBounds",
+                            "NotUpgradeAuthority",
+                            "InvalidTargets",
+                            "NotCashMint",
+                            "ZeroAddress",
+                            "LockedAtLaunch",
+                            "HookNotAllowed",
+                            "AssetListFull",
+                            "SameMint",
+                            "NoPendingVersion",
+                            "NotCreatorOrGuardian",
+                            "NotOwner",
+                            "CashTokenNotSet",
+                            "DepositShortfall",
+                            "GasTooLow",
+                            "NotAdmin",
+                            "NoCode",
+                            "AssetIsRouter",
+                            "RouterIsAsset",
+                            "NotCreating",
+                            "RouterFailed",
+                            "BalanceUnreadable",
+                            "CashTokenNotRemovable",
+                            "HandoverNotDone",
+                            "AlreadySet",
+                            "RecipeExists",
+                            "BadInput",
+                            "NotSupported",
+                            "TooManyTrades",
+                            "BadTrade",
+                            "VaultNotFound",
+                            "VaultExists",
+                            "RecipeNotFound",
+                            "NotFollowing",
+                            "NotFunded",
+                            "NoGas",
+                            "AllowanceTooLow",
+                            "Expired",
+                            "NotBuiltHere",
+                            "Unavailable",
+                            "Unknown"
+                          ]
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "blocking": {
+                          "type": "object",
+                          "properties": {
+                            "orderId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "legId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["orderId", "legId"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_FUNDED",
+                        "ASSET_NOT_ELIGIBLE",
+                        "GOAL_NOT_ACHIEVABLE",
+                        "NEW_ASSET_NEEDS_APPROVAL",
+                        "VERSION_CHANGED",
+                        "CREATOR_LIMIT",
+                        "ORDER_EXPIRED",
+                        "US_PERSON",
+                        "RATE_LIMITED",
+                        "CHAIN_UNAVAILABLE"
+                      ]
+                    },
+                    "fix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/portfolio": {
+      "get": {
+        "summary": "The signed-in person's vaults on their chain, with holdings, prices and drift",
+        "tags": ["portfolio"],
+        "description": "Read from the one chain the person’s plans live on (`GET /v1/me`), for the wallets in the identity token: `chains` has that one entry. `driftBps` is the weight of a position minus its target. The entry and every price carry `provenance`; anything that is not `live` is a test network or MOCK.",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "chains": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "chain": {
+                            "type": "string",
+                            "enum": ["solana", "base", "robinhood"]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "mode": {
+                            "type": "string",
+                            "enum": ["live", "readonly", "mock", "off"]
+                          },
+                          "provenance": {
+                            "type": "string",
+                            "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                          },
+                          "vaults": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "chain": {
+                                  "type": "string",
+                                  "enum": ["solana", "base", "robinhood"]
+                                },
+                                "address": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                                    },
+                                    {
+                                      "type": "string",
+                                      "pattern": "^0x[0-9a-f]{40}$"
+                                    }
+                                  ]
+                                },
+                                "owner": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                                    },
+                                    {
+                                      "type": "string",
+                                      "pattern": "^0x[0-9a-f]{40}$"
+                                    }
+                                  ]
+                                },
+                                "basketId": {
+                                  "type": "string",
+                                  "pattern": "^(?:0|[1-9]\\d{0,19})$"
+                                },
+                                "recipeOnchainId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "acceptedVersion": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "autoFollow": {
+                                  "type": "boolean"
+                                },
+                                "keeper": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                                    },
+                                    {
+                                      "type": "string",
+                                      "pattern": "^0x[0-9a-f]{40}$"
+                                    }
+                                  ]
+                                },
+                                "cash": {
+                                  "type": "object",
+                                  "properties": {
+                                    "asset": {
+                                      "type": "string",
+                                      "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                    },
+                                    "raw": {
+                                      "type": "string",
+                                      "maxLength": 78,
+                                      "pattern": "^(?:0|[1-9]\\d*)$"
+                                    },
+                                    "multiplier": {
+                                      "type": "string",
+                                      "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                    },
+                                    "display": {
+                                      "type": "string",
+                                      "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                    },
+                                    "scheduled": {
+                                      "type": "object",
+                                      "properties": {
+                                        "multiplier": {
+                                          "type": "string",
+                                          "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                        },
+                                        "effectiveAt": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 9007199254740991
+                                        }
+                                      },
+                                      "required": ["multiplier", "effectiveAt"],
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "required": ["asset", "raw", "multiplier", "display"],
+                                  "additionalProperties": false
+                                },
+                                "positions": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "asset": {
+                                        "type": "string",
+                                        "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                      },
+                                      "raw": {
+                                        "type": "string",
+                                        "maxLength": 78,
+                                        "pattern": "^(?:0|[1-9]\\d*)$"
+                                      },
+                                      "multiplier": {
+                                        "type": "string",
+                                        "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                      },
+                                      "display": {
+                                        "type": "string",
+                                        "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                      },
+                                      "scheduled": {
+                                        "type": "object",
+                                        "properties": {
+                                          "multiplier": {
+                                            "type": "string",
+                                            "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                          },
+                                          "effectiveAt": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 9007199254740991
+                                          }
+                                        },
+                                        "required": ["multiplier", "effectiveAt"],
+                                        "additionalProperties": false
+                                      },
+                                      "targetBps": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 10000
+                                      },
+                                      "lastKeeperAt": {
+                                        "anyOf": [
+                                          {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 9007199254740991
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "valueUsd": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "weightBps": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 10000
+                                      },
+                                      "driftBps": {
+                                        "type": "integer",
+                                        "minimum": -10000,
+                                        "maximum": 10000
+                                      }
+                                    },
+                                    "required": [
+                                      "asset",
+                                      "raw",
+                                      "multiplier",
+                                      "display",
+                                      "targetBps",
+                                      "lastKeeperAt",
+                                      "valueUsd",
+                                      "weightBps",
+                                      "driftBps"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "lossUsedBps": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 10000
+                                },
+                                "observedAt": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                },
+                                "pending": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "version": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 9007199254740991
+                                        },
+                                        "effectiveAt": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 9007199254740991
+                                        },
+                                        "newAssets": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                          }
+                                        }
+                                      },
+                                      "required": ["version", "effectiveAt", "newAssets"],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "valueUsd": {
+                                  "type": "string",
+                                  "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                },
+                                "provenance": {
+                                  "type": "string",
+                                  "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                                }
+                              },
+                              "required": [
+                                "chain",
+                                "address",
+                                "owner",
+                                "basketId",
+                                "recipeOnchainId",
+                                "acceptedVersion",
+                                "autoFollow",
+                                "keeper",
+                                "cash",
+                                "positions",
+                                "lossUsedBps",
+                                "observedAt",
+                                "pending",
+                                "valueUsd",
+                                "provenance"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "prices": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "source": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "method": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "fetchedAt": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                },
+                                "provenance": {
+                                  "type": "string",
+                                  "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                                },
+                                "asset": {
+                                  "type": "string",
+                                  "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                },
+                                "usdPerToken": {
+                                  "type": "string",
+                                  "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                },
+                                "ageSeconds": {
+                                  "type": "number",
+                                  "minimum": 0
+                                },
+                                "maxAgeSeconds": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "market": {
+                                  "type": "string",
+                                  "enum": ["open", "closed", "unknown"]
+                                }
+                              },
+                              "required": [
+                                "source",
+                                "method",
+                                "fetchedAt",
+                                "provenance",
+                                "asset",
+                                "usdPerToken",
+                                "ageSeconds",
+                                "maxAgeSeconds",
+                                "market"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": ["chain", "name", "mode", "provenance", "vaults", "prices"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "disclaimer": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["chains", "disclaimer"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "chainCode": {
+                          "type": "string",
+                          "enum": [
+                            "NotKeeper",
+                            "AutoFollowOff",
+                            "KeeperPaused",
+                            "MintNotAccepted",
+                            "RouterNotAllowed",
+                            "SpentTooMuch",
+                            "ReceivedTooLittle",
+                            "OtherAccountDebited",
+                            "AccountTampered",
+                            "PriceStale",
+                            "PriceDeviation",
+                            "MarketClosed",
+                            "MultiplierWindow",
+                            "NotTowardTarget",
+                            "PastTarget",
+                            "Cooldown",
+                            "LossCapReached",
+                            "AssetNotPriced",
+                            "NewAssetNeedsOwner",
+                            "VersionNotEffective",
+                            "CreatorLimit",
+                            "VersionMismatch",
+                            "WrongDestination",
+                            "ParamOutOfBounds",
+                            "NotUpgradeAuthority",
+                            "InvalidTargets",
+                            "NotCashMint",
+                            "ZeroAddress",
+                            "LockedAtLaunch",
+                            "HookNotAllowed",
+                            "AssetListFull",
+                            "SameMint",
+                            "NoPendingVersion",
+                            "NotCreatorOrGuardian",
+                            "NotOwner",
+                            "CashTokenNotSet",
+                            "DepositShortfall",
+                            "GasTooLow",
+                            "NotAdmin",
+                            "NoCode",
+                            "AssetIsRouter",
+                            "RouterIsAsset",
+                            "NotCreating",
+                            "RouterFailed",
+                            "BalanceUnreadable",
+                            "CashTokenNotRemovable",
+                            "HandoverNotDone",
+                            "AlreadySet",
+                            "RecipeExists",
+                            "BadInput",
+                            "NotSupported",
+                            "TooManyTrades",
+                            "BadTrade",
+                            "VaultNotFound",
+                            "VaultExists",
+                            "RecipeNotFound",
+                            "NotFollowing",
+                            "NotFunded",
+                            "NoGas",
+                            "AllowanceTooLow",
+                            "Expired",
+                            "NotBuiltHere",
+                            "Unavailable",
+                            "Unknown"
+                          ]
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "blocking": {
+                          "type": "object",
+                          "properties": {
+                            "orderId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "legId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["orderId", "legId"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_FUNDED",
+                        "ASSET_NOT_ELIGIBLE",
+                        "GOAL_NOT_ACHIEVABLE",
+                        "NEW_ASSET_NEEDS_APPROVAL",
+                        "VERSION_CHANGED",
+                        "CREATOR_LIMIT",
+                        "ORDER_EXPIRED",
+                        "US_PERSON",
+                        "RATE_LIMITED",
+                        "CHAIN_UNAVAILABLE"
+                      ]
+                    },
+                    "fix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

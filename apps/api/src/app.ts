@@ -10,6 +10,7 @@ import {
   type ZodTypeProvider,
 } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import { corsAllowlist, corsByPath } from './plugins/cors';
 import { registerPlanRoutes } from './routes/plans';
 import { registerReadRoutes } from './routes/read';
 import { registerRiskRoutes } from './routes/risk';
@@ -34,7 +35,9 @@ export async function buildApp(deps: { v1?: V1Deps; env?: EnvLike } = {}) {
   }).withTypeProvider<ZodTypeProvider>();
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
-  await app.register(cors, { origin: true });
+  // /v1 answers a browser only from the allowlist (CORS_ORIGINS). Every other route, the risk layer's
+  // /risk/* included, reflects any origin as it always has.
+  await app.register(cors, { delegator: corsByPath(corsAllowlist(env)) });
   await app.register(swagger, {
     openapi: {
       openapi: '3.1.0',
