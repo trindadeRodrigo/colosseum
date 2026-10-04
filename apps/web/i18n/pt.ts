@@ -101,6 +101,9 @@ export const pt: Dictionary = {
       confirmNone: 'Escolha uma rede',
       saving: 'Salvando sua escolha…',
       why: 'Escolha uma rede para continuar.',
+      off: (chain: string) =>
+        `${chain} está desativada no nosso servidor por enquanto, então não pode ser escolhida.`,
+      noneOn: 'Nenhuma rede pode ser escolhida agora. Nada foi perdido: volte mais tarde.',
       mock: 'A carteira descartável não tem conta no nosso servidor, então esta escolha fica só nesta aba.',
     },
     is: {
@@ -234,6 +237,8 @@ export const pt: Dictionary = {
       chainUnknown:
         'Ainda não sei em qual rede seu plano fica, então não consigo montar para ela. Pergunte de novo, acima.',
       refused: 'Nosso servidor não aceitou esses limites. Confira cada campo e tente de novo.',
+      chainOff: (chain: string) =>
+        `${chain} está desativada no nosso servidor por enquanto, então não consigo montar um plano nela. Seus limites continuam guardados.`,
     },
     card: {
       sentence: {

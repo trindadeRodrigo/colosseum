@@ -108,6 +108,10 @@ export const en = {
       confirmNone: 'Choose a chain',
       saving: 'Saving your choice…',
       why: 'Choose a chain to continue.',
+      /** A chain the person holds a wallet for, and our server has switched off: it is not offered. */
+      off: (chain: string) =>
+        `${chain} is switched off on our server for now, so it can’t be chosen.`,
+      noneOn: 'No chain can be chosen right now. Nothing is lost: come back later.',
       /** The throwaway wallet of development: nothing is stored on the server. */
       mock: 'The throwaway wallet has no account on our server, so this choice is kept in this tab only.',
     },
@@ -240,6 +244,8 @@ export const en = {
       chainUnknown:
         'I can’t tell yet which chain your plan lives on, so I can’t build for it. Ask again, above.',
       refused: 'Our server didn’t accept these limits. Check each field, then try again.',
+      chainOff: (chain: string) =>
+        `${chain} is switched off on our server for now, so I can’t build a plan there. Your limits are kept.`,
     },
     card: {
       sentence: {

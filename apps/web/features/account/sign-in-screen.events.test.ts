@@ -280,6 +280,47 @@ describe('a person who connects an outside wallet', () => {
   });
 });
 
+describe('a chain our server has switched off', () => {
+  /** A signed-in passkey person, with these chains off on the server. */
+  const withOff = (...off: string[]) =>
+    signedInPort(EMBEDDED, {
+      network: (chain) => {
+        const network = fakePort().network(chain);
+        return network && { ...network, on: !off.includes(chain) };
+      },
+    });
+
+  it('is not offered, and the screen says why it is not there', async () => {
+    const server = api(made());
+    portStore.set(withOff('robinhood'));
+    const host = await screen();
+    await settle();
+    expect(asks(host)).toBe(true);
+    expect(
+      [...find(host, '[role="group"]').querySelectorAll('button')].map((b) => b.textContent),
+    ).toEqual(['Solana']);
+    expect(find(host, '[data-ui="chain-off"]').textContent).toBe(
+      en.chain.pick.off('Robinhood Chain'),
+    );
+    await click(button(host, 'Solana'));
+    await click(button(host, en.chain.pick.confirm('Solana')));
+    await settle();
+    expect(server.stored().chain).toBe('solana');
+  });
+
+  it('leaves nothing to choose when every chain is off, and says so', async () => {
+    const server = api(made());
+    portStore.set(withOff('solana', 'robinhood'));
+    const host = await screen();
+    await settle();
+    expect(host.querySelector('[role="group"]')).toBeNull();
+    expect(host.querySelectorAll('[data-ui="chain-off"]')).toHaveLength(2);
+    expect(host.textContent).toContain(en.chain.pick.noneOn);
+    expect(host.textContent).not.toContain(en.chain.pick.confirmNone);
+    expect(server.count('PUT', '/v1/me/chain')).toBe(0);
+  });
+});
+
 describe('when the choice cannot be stored', () => {
   const choosing = async (server: ReturnType<typeof api>) => {
     portStore.set(signedInPort(EMBEDDED));

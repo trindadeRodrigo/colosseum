@@ -45,7 +45,10 @@ export type ChainNetwork = {
    * mock, `sandbox` on a test network, `live` on mainnet. Anything but `live` is shown as not live.
    */
   provenance: Provenance;
-  /** False when the API has the chain switched off: nothing can be built there. */
+  /**
+   * False when the API has the chain switched off: nothing can be built there, so the chain is not
+   * offered at the pick (ChainPick) and a plan is not asked for on it (GoalScreen).
+   */
   on: boolean;
 };
 

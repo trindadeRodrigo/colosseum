@@ -384,6 +384,27 @@ describe('“Build my plan”', () => {
   });
 });
 
+describe('a chain our server has switched off', () => {
+  it('builds nothing there, and says so', async () => {
+    const server = api({ person: onSolana, plan: (body) => json(body) });
+    portStore.set(
+      signedInPort(PHANTOM, {
+        network: (chain) => {
+          const network = fakePort().network(chain);
+          return network && { ...network, on: chain !== 'solana' };
+        },
+      }),
+    );
+    const host = await screen();
+    await read(host);
+    await fill(host);
+    expect(summary(host)?.textContent).toContain(en.goal.blocked.chainOff('Solana'));
+    await click(buildButton(host));
+    await settle();
+    expect(server.to(PERSONALIZE_PATH)).toEqual([]);
+  });
+});
+
 describe('the chain on the sheet', () => {
   it('is stated, with what it is, and is not a field', async () => {
     api({ person: onSolana });

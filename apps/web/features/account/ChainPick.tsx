@@ -27,11 +27,15 @@ export function ChainPick({ options }: { options: readonly ChainId[] }) {
   const titleId = useId();
   const whyId = useId();
   const name = (chain: ChainId) => port.network(chain)?.name ?? t.chain.names[chain];
+  // A chain our server has switched off is not offered: choosing it could never be stored. It is
+  // named, so the person knows why it is not there.
+  const off = options.filter((chain) => port.network(chain)?.on === false);
+  const open = options.filter((chain) => !off.includes(chain));
   // Asked for one of two reasons: the wallet was made here, or outside wallets of both kinds are linked.
   const made = port.accounts.some((account) => account.kind === 'embedded');
 
   async function confirm() {
-    if (!chosen || busy) return;
+    if (!chosen || busy || !open.includes(chosen)) return;
     setBusy(true);
     setProblem(null);
     try {
@@ -64,54 +68,64 @@ export function ChainPick({ options }: { options: readonly ChainId[] }) {
           {made ? t.chain.pick.asked.made : t.chain.pick.asked.connected} {t.chain.pick.body}
         </p>
         <p className="text-body font-medium">{t.chain.pick.warning}</p>
-        {/* biome-ignore lint/a11y/useSemanticElements: two toggle buttons are the group; a fieldset is for form controls */}
-        <div role="group" aria-label={t.chain.pick.group} className="flex flex-col gap-3">
-          {options.map((chain, index) => {
-            const network = port.network(chain);
-            const account = port.active(chainFamily(chain));
-            return (
-              <div key={chain} className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <ChoiceChip
-                  chosen={chosen === chain}
-                  disabled={busy}
-                  onChoose={() => setChosen(chain)}
-                >
-                  {name(chain)}
-                </ChoiceChip>
-                {/* The throwaway wallet marks the whole card, so its chains carry no mark of their own. */}
-                {network && !mock && (
-                  <ChainMark
-                    provenance={network.provenance}
-                    labels={{
-                      testNetwork: t.shell.testNetwork,
-                      mockAnnounce: t.shell.mockAnnounce,
-                    }}
-                    announce={index === 0}
-                  />
-                )}
-                {account && (
-                  <span className="font-mono text-source text-muted-foreground">
-                    {t.chain.pick.address(shorten(account.address))}
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        {open.length > 0 && (
+          // biome-ignore lint/a11y/useSemanticElements: two toggle buttons are the group; a fieldset is for form controls
+          <div role="group" aria-label={t.chain.pick.group} className="flex flex-col gap-3">
+            {open.map((chain, index) => {
+              const network = port.network(chain);
+              const account = port.active(chainFamily(chain));
+              return (
+                <div key={chain} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <ChoiceChip
+                    chosen={chosen === chain}
+                    disabled={busy}
+                    onChoose={() => setChosen(chain)}
+                  >
+                    {name(chain)}
+                  </ChoiceChip>
+                  {/* The throwaway wallet marks the whole card, so its chains carry no mark of their own. */}
+                  {network && !mock && (
+                    <ChainMark
+                      provenance={network.provenance}
+                      labels={{
+                        testNetwork: t.shell.testNetwork,
+                        mockAnnounce: t.shell.mockAnnounce,
+                      }}
+                      announce={index === 0}
+                    />
+                  )}
+                  {account && (
+                    <span className="font-mono text-source text-muted-foreground">
+                      {t.chain.pick.address(shorten(account.address))}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {off.map((chain) => (
+          <p key={chain} data-ui="chain-off" className="text-body-sm text-muted-foreground">
+            {t.chain.pick.off(name(chain))}
+          </p>
+        ))}
+        {open.length === 0 && <p className="text-body">{t.chain.pick.noneOn}</p>}
         {mock && <p className="text-body-sm text-muted-foreground">{t.chain.pick.mock}</p>}
       </CardBody>
       <CardFooter className="flex flex-col items-start gap-2">
-        <Button
-          variant="primary"
-          disabled={chosen === null}
-          busy={busy}
-          busyLabel={t.chain.pick.saving}
-          aria-describedby={chosen === null ? whyId : undefined}
-          onClick={confirm}
-        >
-          {chosen === null ? t.chain.pick.confirmNone : t.chain.pick.confirm(name(chosen))}
-        </Button>
-        {chosen === null && (
+        {open.length > 0 && (
+          <Button
+            variant="primary"
+            disabled={chosen === null}
+            busy={busy}
+            busyLabel={t.chain.pick.saving}
+            aria-describedby={chosen === null ? whyId : undefined}
+            onClick={confirm}
+          >
+            {chosen === null ? t.chain.pick.confirmNone : t.chain.pick.confirm(name(chosen))}
+          </Button>
+        )}
+        {open.length > 0 && chosen === null && (
           <p id={whyId} className="text-caption text-muted-foreground">
             {t.chain.pick.why}
           </p>

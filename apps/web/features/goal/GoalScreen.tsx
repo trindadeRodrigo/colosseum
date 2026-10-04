@@ -127,6 +127,8 @@ export function GoalScreen() {
 
   const network = chain ? port.network(chain) : null;
   const chainName = chain ? (network?.name ?? t.chain.names[chain]) : '';
+  // Our server has the person's chain switched off: nothing can be built there for now.
+  const chainOff = network?.on === false;
   const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.mockAnnounce };
   const link = buttonClass({ variant: 'link' });
   // Why the API did not say which chain: it did not answer, it no longer knows this sign-in, or it
@@ -185,6 +187,7 @@ export function GoalScreen() {
     ...(account.status === 'unknown'
       ? [account.why === 'unreachable' ? t.goal.blocked.chainUnknown : unknownWhy]
       : []),
+    ...(chainOff ? [t.goal.blocked.chainOff(chainName)] : []),
     ...(build.kind === 'refused' ? [t.goal.blocked.refused] : []),
   ];
 
@@ -284,7 +287,7 @@ export function GoalScreen() {
           state={
             build.kind === 'solving' ? 'solving' : build.kind === 'no-plan' ? 'no-plan' : 'idle'
           }
-          valid={check.sheet}
+          valid={chainOff ? null : check.sheet}
           otherIssues={blocked}
           onChange={change}
           onBuild={buildFrom}
