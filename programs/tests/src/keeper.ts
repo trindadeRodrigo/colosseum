@@ -67,11 +67,19 @@ export function refreshPrices(
   write(OTHER_PRICE.twapIndex, values.otherTwap ?? values.other ?? PRICE);
 }
 
+/** A price range in dollars, as an entry holds it: millionths of a dollar for one whole token. */
+export const range = (minUsd: number, maxUsd: number) => ({
+  minPrice: BigInt(Math.round(minUsd * 1e6)),
+  maxPrice: BigInt(Math.round(maxUsd * 1e6)),
+});
+/** The range both assets are listed with: 400 to 600 dollars, around the 500 they trade at. */
+export const RANGE = range(400, 600);
+
 /** The entry of an asset the keeper may trade. */
 export const keeperAsset = (
   price: { priceIndex: number; twapIndex: number },
   session: number,
-): Partial<AssetArgs> => ({ ...price, priceKind: 1, session, flags: ASSET_KEEPER });
+): Partial<AssetArgs> => ({ ...price, priceKind: 1, session, flags: ASSET_KEEPER, ...RANGE });
 
 export async function createKeeperWorld(
   targets?: (w: SwapWorld) => Target[],

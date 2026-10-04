@@ -44,8 +44,12 @@ export function priceAccountOf(
 export type ReferenceRefusal =
   | 'AssetNotPriced'
   | 'KeeperAssetOff'
+  | 'PriceOutOfRange'
   | 'PriceStale'
   | 'PriceDeviation';
+
+/** An asset's price range is in millionths of a dollar for one whole token. */
+export const RANGE_UNIT = 1_000_000n;
 
 export type Reference = {
   /** The price entry and its one-hour average, as far as they could be read. */
@@ -89,6 +93,11 @@ export function referenceOf(
 
   const price = decodeScopeEntry(priceAccount.data, entry.priceIndex);
   if (!isSet(price)) return { price: null, twap: null, refusal: 'AssetNotPriced' };
+  // Inside the range the admin gave the asset. An asset with no range has no price that passes.
+  const inRange = price.value * RANGE_UNIT;
+  const unit = 10n ** price.exponent;
+  if (inRange < entry.minPrice * unit || inRange > entry.maxPrice * unit)
+    return { price, twap: null, refusal: 'PriceOutOfRange' };
   if (!fresh(price, now, BigInt(config.maxPriceAgeS)))
     return { price, twap: null, refusal: 'PriceStale' };
   const twap = decodeScopeEntry(priceAccount.data, entry.twapIndex);

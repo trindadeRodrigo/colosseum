@@ -20,6 +20,10 @@ pub const BPS: u32 = 10_000;
 /// The admin sets it once the asset's price entry is seen to be live. The owner's own swap
 /// and withdrawal never read it.
 pub const ASSET_KEEPER: u8 = 1;
+/// A price range is at most this wide: its ceiling over its floor. Wide enough for a stock's
+/// worst month, too narrow to pass a price that is double or half the real one from the
+/// middle of the range, and never "no check".
+pub const MAX_PRICE_RANGE_RATIO: u64 = 2;
 
 /// One per program, at seeds ["config"].
 #[account]
@@ -133,7 +137,8 @@ pub struct AssetRegistry {
 
 /// One listed token: 96 bytes. Offsets inside the entry: `mint` 0, `price_slot` 32,
 /// `price_index` 33, `twap_index` 35, `decimals` 37, `price_kind` 38, `session` 39,
-/// `max_weight_bps` 40, `flags` 42, `source_check` 43, `reserved` 75.
+/// `max_weight_bps` 40, `flags` 42, `source_check` 43, `min_price` 75, `max_price` 83,
+/// `reserved` 91.
 #[zero_copy(unsafe)]
 pub struct AssetEntry {
     pub mint: Pubkey,
@@ -153,7 +158,13 @@ pub struct AssetEntry {
     pub flags: u8,
     /// All zeros means off (DESIGN-VAULT.md section 5).
     pub source_check: [u8; 32],
-    pub reserved: [u8; 21],
+    /// The range the asset's price is plausible in, in millionths of a dollar for one whole
+    /// token: a keeper leg takes no price under `min_price` or over `max_price`. The admin
+    /// sets it and moves it by hand. Zero and zero is "no range", which only an asset the
+    /// keeper does not trade may have. The two took sixteen bytes of what was reserved.
+    pub min_price: u64,
+    pub max_price: u64,
+    pub reserved: [u8; 5],
 }
 
 impl AssetRegistry {

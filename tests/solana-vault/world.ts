@@ -82,6 +82,8 @@ export type World = {
         twapIndex: number | null;
         /** The admin's switch on the asset in the program's own list. */
         keeperOn: boolean;
+        /** The plausible price range in dollars; null for an asset that has none. */
+        range: { min: number; max: number } | null;
       }
     >;
     emptyIndex: number;

@@ -484,6 +484,76 @@ describe('keeper_leg', () => {
     });
   });
 
+  // The range the admin gave the asset: 400 to 600 dollars, around the 500 it trades at. A price
+  // and its average that are wrong together pass every other check.
+  describe('the price range of an asset', () => {
+    const priceIs = (dollars: number) => refreshPrices(w, { stock: usd(dollars) });
+
+    it('refuses a price and its average that are both twice the pool price', async () => {
+      // The feed says 1,000 dollars, price and average alike, fresh. The token trades at 500, and
+      // the keeper's own pool sells it at the feed's price: 0.001 token for a dollar.
+      priceIs(1_000);
+      await exchangePays(w.cash, w.stock, 1n, 10n);
+      expectError(await buy(50), ERR.PriceOutOfRange);
+      expect(held()).toEqual(untouched);
+    });
+
+    it('refuses a placeholder: one dollar, on every refresh, with an average to match', async () => {
+      priceIs(1);
+      await exchangePays(w.cash, w.stock, 100n, 1n);
+      expectError(await buy(1), ERR.PriceOutOfRange);
+    });
+
+    it('takes a price at the floor and at the ceiling, and none past either', async () => {
+      // The exchange trades at the feed's price each time, so nothing else is wrong.
+      const trades = async (dollars: number) => {
+        priceIs(dollars);
+        await exchangePays(w.cash, w.stock, 100_000_000n, BigInt(Math.round(dollars * 1e6)));
+      };
+      await trades(399.99);
+      expectError(await buy(10), ERR.PriceOutOfRange);
+      await trades(600.01);
+      expectError(await buy(10), ERR.PriceOutOfRange);
+      await trades(400);
+      expectOk(await buy(10));
+      at(SESSION + HOUR);
+      await trades(600);
+      expectOk(await buy(10));
+    });
+
+    it('reads the range against a price with another number of decimal places', async () => {
+      const write = (value: bigint, exponent: bigint) =>
+        writePrice(w.svm, w.prices, STOCK_PRICE.priceIndex, {
+          value,
+          exponent,
+          unixTimestamp: SESSION,
+        });
+      // 600.000001 dollars with 6 decimal places is a millionth over the ceiling.
+      write(600_000001n, 6n);
+      expectError(await buy(10), ERR.PriceOutOfRange);
+      // 399 dollars with none.
+      write(399n, 0n);
+      expectError(await buy(10), ERR.PriceOutOfRange);
+      // Ten dollars with 18, the largest exponent an entry may have.
+      write(10n ** 19n, 18n);
+      expectError(await buy(10), ERR.PriceOutOfRange);
+      // 500.000000 dollars with 6 is inside it.
+      write(500_000000n, 6n);
+      expectOk(await buy(10));
+    });
+
+    it('holds every asset the vault has something of to its range, not only the one traded', async () => {
+      await ownerBuys(10, w.other);
+      refreshPrices(w, { other: usd(1_000) });
+      expectError(await buy(40), ERR.PriceOutOfRange);
+    });
+
+    it('never stands between the owner and a trade', async () => {
+      priceIs(1_000);
+      await ownerBuys(40);
+    });
+  });
+
   // Check 8, hostile case A5.
   describe('a fresh price', () => {
     it('refuses a price older than the allowed age', async () => {

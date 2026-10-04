@@ -7,7 +7,7 @@ use crate::events::{AssetSet, PriceAccountSet};
 use crate::price::{PRICES_LEN, PRICE_ENTRIES};
 use crate::state::{
     AssetEntry, AssetRegistry, Config, ASSETS_SEED, ASSET_KEEPER, BPS, CONFIG_SEED, MAX_ASSETS,
-    MAX_PRICE_ACCOUNTS,
+    MAX_PRICE_ACCOUNTS, MAX_PRICE_RANGE_RATIO,
 };
 
 /// Admin, once: creates the empty asset list.
@@ -51,6 +51,9 @@ pub struct AssetArgs {
     pub max_weight_bps: u16,
     pub flags: u8,
     pub source_check: [u8; 32],
+    /// The plausible price range, in millionths of a dollar for one whole token.
+    pub min_price: u64,
+    pub max_price: u64,
 }
 
 /// Admin: lists a token, or rewrites the entry of one that is listed.
@@ -104,6 +107,23 @@ impl UpsertAsset<'_> {
                 || (args.price_kind == 1 && args.twap_index != args.price_index),
             BasketError::AssetNotPriced
         );
+        // A price range is a floor, a ceiling above it, and no wider than the ceiling being
+        // twice the floor. Zero and zero is no range.
+        if args.min_price != 0 || args.max_price != 0 {
+            require!(
+                args.min_price < args.max_price,
+                BasketError::ParamOutOfBounds
+            );
+            require!(
+                args.max_price <= args.min_price.saturating_mul(MAX_PRICE_RANGE_RATIO),
+                BasketError::ParamOutOfBounds
+            );
+        }
+        // And the switch is for an asset that has one: no range is never "any price".
+        require!(
+            args.flags & ASSET_KEEPER == 0 || args.max_price != 0,
+            BasketError::AssetNotPriced
+        );
 
         let mint = &ctx.accounts.mint;
         require!(
@@ -133,7 +153,9 @@ impl UpsertAsset<'_> {
             max_weight_bps: args.max_weight_bps,
             flags: args.flags,
             source_check: args.source_check,
-            reserved: [0; 21],
+            min_price: args.min_price,
+            max_price: args.max_price,
+            reserved: [0; 5],
         };
         emit!(AssetSet {
             mint: key,

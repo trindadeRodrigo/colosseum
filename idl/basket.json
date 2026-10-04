@@ -2862,6 +2862,16 @@
       "code": 6035,
       "name": "KeeperAssetOff",
       "msg": "the keeper is not switched on for this asset"
+    },
+    {
+      "code": 6036,
+      "name": "PriceOutOfRange",
+      "msg": "price is outside the range set for this asset"
+    },
+    {
+      "code": 6037,
+      "name": "NothingTraded",
+      "msg": "a keeper leg that trades nothing"
     }
   ],
   "types": [
@@ -2943,6 +2953,17 @@
                 32
               ]
             }
+          },
+          {
+            "name": "min_price",
+            "docs": [
+              "The plausible price range, in millionths of a dollar for one whole token."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "max_price",
+            "type": "u64"
           }
         ]
       }
@@ -2952,7 +2973,8 @@
       "docs": [
         "One listed token: 96 bytes. Offsets inside the entry: `mint` 0, `price_slot` 32,",
         "`price_index` 33, `twap_index` 35, `decimals` 37, `price_kind` 38, `session` 39,",
-        "`max_weight_bps` 40, `flags` 42, `source_check` 43, `reserved` 75."
+        "`max_weight_bps` 40, `flags` 42, `source_check` 43, `min_price` 75, `max_price` 83,",
+        "`reserved` 91."
       ],
       "serialization": "bytemuckunsafe",
       "repr": {
@@ -3029,11 +3051,25 @@
             }
           },
           {
+            "name": "min_price",
+            "docs": [
+              "The range the asset's price is plausible in, in millionths of a dollar for one whole",
+              "token: a keeper leg takes no price under `min_price` or over `max_price`. The admin",
+              "sets it and moves it by hand. Zero and zero is \"no range\", which only an asset the",
+              "keeper does not trade may have. The two took sixteen bytes of what was reserved."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "max_price",
+            "type": "u64"
+          },
+          {
             "name": "reserved",
             "type": {
               "array": [
                 "u8",
-                21
+                5
               ]
             }
           }

@@ -236,6 +236,8 @@ describe('the committed IDL', () => {
         'maxWeightBps',
         'flags',
         'sourceCheck',
+        'minPrice',
+        'maxPrice',
         'reserved',
       ].map(snake),
     );

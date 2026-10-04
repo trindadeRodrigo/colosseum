@@ -38,6 +38,7 @@ import {
   send,
   unsigned,
 } from './src/env';
+import { RANGE, range } from './src/keeper';
 import { createPriceAccount } from './src/prices';
 import { createMint, type TestMint, TOKEN_PROGRAM } from './src/tokens';
 
@@ -409,7 +410,7 @@ describe('the keeper slot: admin and guardian', () => {
   });
 
   describe("the keeper's switch on an asset", () => {
-    const priced = { priceKind: 1, priceIndex: 344, twapIndex: 279 };
+    const priced = { priceKind: 1, priceIndex: 344, twapIndex: 279, ...RANGE };
     const list = async (change: Partial<AssetArgs>) =>
       send(svm, admin, [await upsertAssetInstruction(admin, stock.address, change)]);
 
@@ -441,6 +442,64 @@ describe('the keeper slot: admin and guardian', () => {
     it('is the only flag: any other bit is refused, with it or without', async () => {
       for (const flags of [2, 3, 128, 255])
         expectError(await list({ ...priced, flags }), ERR.ParamOutOfBounds);
+    });
+
+    it('stays off for an asset with no price range: zero and zero is never "any price"', async () => {
+      expectError(
+        await list({ ...priced, minPrice: 0n, maxPrice: 0n, flags: ASSET_KEEPER }),
+        ERR.AssetNotPriced,
+      );
+      expect((await readAssets(svm)).count).toBe(0);
+    });
+  });
+
+  describe('the price range of an asset', () => {
+    const priced = { priceKind: 1, priceIndex: 344, twapIndex: 279 };
+    const list = async (change: Partial<AssetArgs>) =>
+      send(svm, admin, [await upsertAssetInstruction(admin, stock.address, change)]);
+
+    it('is a floor and a ceiling in millionths of a dollar, kept in the entry', async () => {
+      expectOk(await list({ ...priced, ...range(80, 120) }));
+      const [entry] = (await readAssets(svm)).assets;
+      expect([entry?.minPrice, entry?.maxPrice]).toEqual([80_000000n, 120_000000n]);
+    });
+
+    it('may be left out on an asset the keeper does not trade', async () => {
+      expectOk(await list({ ...priced, minPrice: 0n, maxPrice: 0n }));
+      const [entry] = (await readAssets(svm)).assets;
+      expect([entry?.minPrice, entry?.maxPrice]).toEqual([0n, 0n]);
+    });
+
+    it('needs a ceiling above its floor', async () => {
+      for (const [minPrice, maxPrice] of [
+        [100_000000n, 100_000000n],
+        [100_000000n, 99_999999n],
+        [100_000000n, 0n],
+      ] as const)
+        expectError(await list({ ...priced, minPrice, maxPrice }), ERR.ParamOutOfBounds);
+      expect((await readAssets(svm)).count).toBe(0);
+    });
+
+    it('is no wider than a ceiling of twice the floor: a range is never no check', async () => {
+      expectError(
+        await list({ ...priced, minPrice: 100_000000n, maxPrice: 200_000001n }),
+        ERR.ParamOutOfBounds,
+      );
+      // A floor of nothing has no ceiling that fits, so there is no range from zero.
+      expectError(await list({ ...priced, minPrice: 0n, maxPrice: 1n }), ERR.ParamOutOfBounds);
+      expectError(
+        await list({ ...priced, minPrice: 1n, maxPrice: 18_446_744_073_709_551_615n }),
+        ERR.ParamOutOfBounds,
+      );
+      expectOk(await list({ ...priced, minPrice: 100_000000n, maxPrice: 200_000000n }));
+      // The largest floor: twice it does not fit 64 bits, and the ceiling is still held to it.
+      expectOk(
+        await list({
+          ...priced,
+          minPrice: 18_446_744_073_709_551_614n,
+          maxPrice: 18_446_744_073_709_551_615n,
+        }),
+      );
     });
   });
 });

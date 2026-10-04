@@ -167,6 +167,13 @@ export const WORLD_PRICES: Record<
 export const WORLD_EMPTY_INDEX = 7;
 /** The assets the admin has switched on for the keeper. TSLAx is listed and priced, and off. */
 export const WORLD_KEEPER_ON: readonly MintName[] = ['spyx', 'nvdax', 'gold'];
+/** The price range of each asset the keeper trades, in dollars: a fifth either side of its price.
+ * TSLAx, which is off, has none. */
+export const WORLD_RANGES: Partial<Record<MintName, { min: number; max: number }>> = {
+  spyx: { min: 80, max: 120 },
+  nvdax: { min: 40, max: 60 },
+  gold: { min: 160, max: 240 },
+};
 
 /** The bytes of the world's price account in Scope's layout, each entry as old as `WORLD_PRICES`
  * says at `now`. `mappings` fills the header's second field, which nothing here reads. */
@@ -204,6 +211,7 @@ export function worldPricesExpected() {
         ageSeconds: p.age,
         twapIndex: p.twapIndex,
         keeperOn: WORLD_KEEPER_ON.includes(name as MintName),
+        range: WORLD_RANGES[name as MintName] ?? null,
       },
     ]),
   ) as Record<
@@ -214,6 +222,8 @@ export function worldPricesExpected() {
       ageSeconds: number;
       twapIndex: number | null;
       keeperOn: boolean;
+      /** The plausible price range in dollars; null for an asset that has none. */
+      range: { min: number; max: number } | null;
     }
   >;
 }
@@ -343,6 +353,8 @@ export async function buildWorld(
           twapIndex: WORLD_PRICES[name].twapIndex ?? 0,
           session: name === 'gold' ? 0 : 1,
           flags: WORLD_KEEPER_ON.includes(name) ? ASSET_KEEPER : 0,
+          minPrice: BigInt((WORLD_RANGES[name]?.min ?? 0) * 1_000_000),
+          maxPrice: BigInt((WORLD_RANGES[name]?.max ?? 0) * 1_000_000),
         }),
       ),
     )),

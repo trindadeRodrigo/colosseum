@@ -79,4 +79,8 @@ pub enum BasketError {
     NotCashLeg,
     #[msg("the keeper is not switched on for this asset")]
     KeeperAssetOff,
+    #[msg("price is outside the range set for this asset")]
+    PriceOutOfRange,
+    #[msg("a keeper leg that trades nothing")]
+    NothingTraded,
 }

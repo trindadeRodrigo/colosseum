@@ -31,6 +31,7 @@ import {
   WORLD_EMPTY_INDEX,
   WORLD_KEEPER_ON,
   WORLD_PRICES,
+  WORLD_RANGES,
   type World,
   type WorldExpected,
   type WorldNames,
@@ -258,6 +259,13 @@ describe('the vault fixtures for the adapter', () => {
         WORLD_PRICES[name].twapIndex,
         WORLD_KEEPER_ON.includes(name) ? ASSET_KEEPER : 0,
         name === 'gold' ? 0 : 1,
+      ]),
+    );
+    // Each asset the keeper trades has a price range, in millionths of a dollar; TSLAx has none.
+    expect(registry.assets.map((a) => [a.minPrice, a.maxPrice])).toEqual(
+      listed.map((name) => [
+        BigInt((WORLD_RANGES[name]?.min ?? 0) * 1_000_000),
+        BigInt((WORLD_RANGES[name]?.max ?? 0) * 1_000_000),
       ]),
     );
     for (const [name, want] of Object.entries(expected.recipes)) {

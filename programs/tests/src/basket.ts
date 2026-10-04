@@ -116,6 +116,9 @@ export const ERR = {
   // Appended by SOL-3.
   NotCashLeg: 6034,
   KeeperAssetOff: 6035,
+  // Appended by the SOL-3 fix round.
+  PriceOutOfRange: 6036,
+  NothingTraded: 6037,
 } as const;
 
 export const CONFIG_SIZE = 396;
@@ -299,7 +302,9 @@ const assetEntryDecoder = getStructDecoder([
   ['maxWeightBps', getU16Decoder()],
   ['flags', getU8Decoder()],
   ['sourceCheck', bytes32],
-  ['reserved', fixDecoderSize(getBytesDecoder(), 21)],
+  ['minPrice', getU64Decoder()],
+  ['maxPrice', getU64Decoder()],
+  ['reserved', fixDecoderSize(getBytesDecoder(), 5)],
 ]);
 
 const assetRegistryDecoder = getStructDecoder([
@@ -664,6 +669,9 @@ export type AssetArgs = {
   maxWeightBps: number;
   flags: number;
   sourceCheck: Uint8Array;
+  /** The plausible price range, in millionths of a dollar for one whole token. */
+  minPrice: bigint;
+  maxPrice: bigint;
 };
 
 /** An entry with no price reference and the widest ceiling: what a test lists unless it says otherwise. */
@@ -676,6 +684,8 @@ export const DEFAULT_ASSET: AssetArgs = {
   maxWeightBps: 5_000,
   flags: 0,
   sourceCheck: new Uint8Array(32),
+  minPrice: 0n,
+  maxPrice: 0n,
 };
 
 const assetArgsEncoder = getStructEncoder([
@@ -687,6 +697,8 @@ const assetArgsEncoder = getStructEncoder([
   ['maxWeightBps', getU16Encoder()],
   ['flags', getU8Encoder()],
   ['sourceCheck', fixEncoderSize(getBytesEncoder(), 32)],
+  ['minPrice', u64],
+  ['maxPrice', u64],
 ]);
 
 /** Accounts: admin (signer), config, assets, the mint. */

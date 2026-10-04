@@ -934,7 +934,7 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
     expect(new Set(ChainErrorCode.options).size).toBe(ChainErrorCode.options.length);
   });
 
-  it("lists the program's errors first, in the program's own order, the appended twelve included", () => {
+  it("lists the program's errors first, in the program's own order, the appended fourteen included", () => {
     const idl: { errors: { code: number; name: string }[] } = JSON.parse(
       readFileSync(join(__dirname, '..', 'idl', 'basket.json'), 'utf8'),
     );
@@ -955,6 +955,8 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
       'NotCreatorOrGuardian',
       'NotCashLeg',
       'KeeperAssetOff',
+      'PriceOutOfRange',
+      'NothingTraded',
     ]);
   });
 

@@ -57,7 +57,10 @@ const entry = (change: Partial<AssetEntry> = {}): AssetEntry => ({
   maxWeightBps: 5_000,
   flags: ASSET_KEEPER,
   sourceCheck: new Uint8Array(32),
-  reserved: new Uint8Array(21),
+  // 400 to 600 dollars, around the 500 the tests price it at.
+  minPrice: 400_000000n,
+  maxPrice: 600_000000n,
+  reserved: new Uint8Array(5),
   ...change,
 });
 
@@ -95,6 +98,27 @@ describe("the keeper's price reference, as the reader tells it in advance", () =
     expect(refusal(entry(), prices(at500, { ...at500, at: 0n }))).toBe('AssetNotPriced');
   });
 
+  it('holds the price to the range of the asset, to the millionth of a dollar', () => {
+    const at = (dollars: number) => refusal(entry(), prices({ value: usd(dollars) }, at500));
+    expect([at(399.999999), at(600.000001), at(1_000), at(1)]).toEqual([
+      'PriceOutOfRange',
+      'PriceOutOfRange',
+      'PriceOutOfRange',
+      'PriceOutOfRange',
+    ]);
+    // At the floor and at the ceiling it passes the range, and is then too far from its average.
+    expect([at(400), at(600)]).toEqual(['PriceDeviation', 'PriceDeviation']);
+    // With another number of decimal places, and with none.
+    expect(refusal(entry(), prices({ value: 600_000001n, exponent: 6n }, at500))).toBe(
+      'PriceOutOfRange',
+    );
+    expect(refusal(entry(), prices({ value: 399n, exponent: 0n }, at500))).toBe('PriceOutOfRange');
+    // No range is no price that passes, whatever the switch says.
+    expect(refusal(entry({ minPrice: 0n, maxPrice: 0n }), prices(at500, at500))).toBe(
+      'PriceOutOfRange',
+    );
+  });
+
   it('holds the price to the allowed age, behind the clock and ahead of it', () => {
     expect(refusal(entry(), prices({ ...at500, at: NOW - 121n }, at500))).toBe('PriceStale');
     expect(refusal(entry(), prices({ ...at500, at: NOW - 120n }, at500))).toBeNull();
@@ -118,6 +142,12 @@ describe("the keeper's price reference, as the reader tells it in advance", () =
     const price = { value: 500_000000n, exponent: 6n };
     expect(refusal(entry(), prices(price, { value: 500n, exponent: 0n }))).toBeNull();
     expect(refusal(entry(), prices(price, { value: 520n, exponent: 0n }))).toBe('PriceDeviation');
+  });
+
+  it('refuses an entry that holds no price before it looks at the range', () => {
+    expect(refusal(entry({ minPrice: 0n, maxPrice: 0n }), prices({ value: 0n }, at500))).toBe(
+      'AssetNotPriced',
+    );
   });
 });
 

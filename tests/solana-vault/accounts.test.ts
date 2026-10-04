@@ -437,7 +437,10 @@ describe('the decoders against bytes the program wrote', () => {
         // Bit 0: the keeper may trade it. TSLAx is listed and priced, and off.
         flags: fixture.prices.entries[name].keeperOn ? ASSET_KEEPER : 0,
         sourceCheck: new Uint8Array(32),
-        reserved: new Uint8Array(21),
+        // In millionths of a dollar; TSLAx, which the keeper does not trade, has none.
+        minPrice: BigInt((fixture.prices.entries[name].range?.min ?? 0) * 1_000_000),
+        maxPrice: BigInt((fixture.prices.entries[name].range?.max ?? 0) * 1_000_000),
+        reserved: new Uint8Array(5),
       })),
     );
     expect(list.assets.map(keeperOn)).toEqual([true, true, true, false]);

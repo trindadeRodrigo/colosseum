@@ -7,8 +7,9 @@
 //! An asset has two entries: its price, and the same source's one-hour average.
 //!
 //! A keeper trade is valued at this reference, so a wrong reference is not bounded by the
-//! tolerance or by the loss cap. Three things stand between a bad entry and a trade: the
-//! admin's switch on the asset, the age of both entries, and the distance between them.
+//! tolerance or by the loss cap. Four things stand between a bad entry and a trade: the
+//! admin's switch on the asset, the price range the admin gave it, the age of both entries,
+//! and the distance between them.
 
 use anchor_lang::prelude::*;
 
@@ -24,6 +25,8 @@ pub const PRICES_LEN: usize = PRICES_HEADER_LEN + PRICE_ENTRY_LEN * PRICE_ENTRIE
 pub const MAX_PRICE_EXPONENT: u64 = 18;
 /// The one-hour average may be an hour old: it is still an average of the last two hours.
 pub const MAX_TWAP_AGE_S: i64 = 3_600;
+/// An asset's price range is in millionths of a dollar.
+pub const RANGE_UNIT: u128 = 1_000_000;
 
 /// One entry of a price account.
 pub struct PriceEntry {
@@ -77,6 +80,24 @@ pub fn check_fresh(unix_timestamp: i64, now: i64, max_age_s: i64) -> Result<()> 
     Ok(())
 }
 
+/// The price is inside the range the admin gave the asset: no lower than `min_price` and no
+/// higher than `max_price`, both in millionths of a dollar for one whole token. An asset
+/// with no range (zero and zero) has no price that passes. Nothing here overflows: an entry's
+/// value is under 2^64 and its exponent at most 18.
+pub fn check_range(price: &PriceEntry, min_price: u64, max_price: u64) -> Result<()> {
+    let scaled = (price.value as u128) * RANGE_UNIT;
+    let unit = 10u128.pow(price.exponent);
+    require!(
+        scaled >= (min_price as u128) * unit,
+        BasketError::PriceOutOfRange
+    );
+    require!(
+        scaled <= (max_price as u128) * unit,
+        BasketError::PriceOutOfRange
+    );
+    Ok(())
+}
+
 /// The price is within `dev_bps` of its average, above or below. Both are brought to the
 /// same exponent first, so nothing is divided.
 pub fn check_deviation(price: &PriceEntry, twap: &PriceEntry, dev_bps: u16) -> Result<()> {
@@ -102,9 +123,9 @@ pub fn check_deviation(price: &PriceEntry, twap: &PriceEntry, dev_bps: u16) -> R
 ///
 /// The asset has a price entry and the admin has switched it on for the keeper; the entry
 /// asks for no check of its source this program cannot make; the price account that was
-/// passed is the one the asset list names for the asset's slot; the price is fresh; its
-/// one-hour average is no older than an hour; and the two are within `twap_dev_bps` of each
-/// other.
+/// passed is the one the asset list names for the asset's slot; the price is inside the
+/// asset's range; it is fresh; its one-hour average is no older than an hour; and the two
+/// are within `twap_dev_bps` of each other.
 pub fn reference(
     prices: &[u8],
     prices_key: &Pubkey,
@@ -127,6 +148,7 @@ pub fn reference(
     require!(pinned == *prices_key, BasketError::AssetNotPriced);
 
     let price = read_entry(prices, entry.price_index)?;
+    check_range(&price, entry.min_price, entry.max_price)?;
     check_fresh(price.unix_timestamp, now, config.max_price_age_s as i64)?;
     let twap = read_entry(prices, entry.twap_index)?;
     check_fresh(twap.unix_timestamp, now, MAX_TWAP_AGE_S)?;
