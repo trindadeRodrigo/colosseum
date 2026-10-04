@@ -1036,7 +1036,7 @@ describe('Solana reader: what a keeper needs to plan a leg', () => {
     expect(found.rules).toEqual({
       paused: false,
       toleranceBps: 75,
-      lossCapBps: 200,
+      lossCapBps: 100,
       bandBps: 50,
       twapDevBps: 200,
       maxPriceAgeSeconds: 120,

@@ -340,7 +340,7 @@ describe('the decoders against bytes the program wrote', () => {
       launched: false,
       // DEFAULT_PARAMS in programs/tests/src/basket.ts: the starting values of DESIGN-VAULT section 5.
       toleranceBps: 75,
-      lossCapBps: 200,
+      lossCapBps: 100,
       bandBps: 50,
       twapDevBps: 200,
       maxPriceAgeS: 120,

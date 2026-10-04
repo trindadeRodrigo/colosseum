@@ -205,10 +205,12 @@ export type InitConfigArgs = {
   params: Params;
 };
 
-/** The starting values of DESIGN-VAULT.md section 5. They are settings, not figures the app shows. */
+/** The starting values of DESIGN-VAULT.md section 5. They are settings, not figures the app shows.
+ * The loss cap is half of what a person is promised: the counter drains as it fills, so seven
+ * days can hold just under twice the parameter. */
 export const DEFAULT_PARAMS: Params = {
   toleranceBps: 75,
-  lossCapBps: 200,
+  lossCapBps: 100,
   bandBps: 50,
   twapDevBps: 200,
   maxPriceAgeS: 120,

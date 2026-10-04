@@ -1084,8 +1084,74 @@ describe('keeper_leg', () => {
       expect(readVault(w.svm, w.vault).lossAccum).toBe(200_000n);
     });
 
+    it('reads nothing of a counter last written a month ago', async () => {
+      patchVault(w.svm, w.vault, { lossAccum: 5_000_000n, lossTs: SESSION - 30n * DAY });
+      await halfPercentWorse();
+      expectOk(await buy(40));
+      expect(readVault(w.svm, w.vault).lossAccum).toBe(200_000n);
+    });
+
+    it('reads a counter stamped ahead of the clock in full, and no more', async () => {
+      // No instruction writes a time that has not come; only a test can show the counter is not
+      // read as more than it holds.
+      patchVault(w.svm, w.vault, { lossAccum: 150_000n, lossTs: SESSION + DAY });
+      await halfPercentWorse();
+      expectOk(await buy(40));
+      const state = readVault(w.svm, w.vault);
+      expect([state.lossAccum, state.lossTs]).toEqual([350_000n, SESSION]);
+    });
+
+    it('starts the seven days again for all that is left when a later leg loses', async () => {
+      await halfPercentWorse();
+      expectOk(await buy(40));
+      // Half a week on, 100,000 of the 200,000 are left, and a small purchase loses 15 more.
+      at(SESSION + (7n * DAY) / 2n);
+      expectOk(await keeperLeg(w, { amountIn: 3_000n, outputMint: w.other }));
+      const state = readVault(w.svm, w.vault);
+      expect([state.lossAccum, state.lossTs]).toEqual([100_015n, now(w.svm)]);
+      // At the end of the first week a counter left alone would read nothing. This one has half
+      // of its seven days to go: 50,007 are still held against the next loss of 100,000.
+      at(SESSION + 7n * DAY);
+      expectOk(await buy(20, w.other));
+      expect(readVault(w.svm, w.vault).lossAccum).toBe(150_007n);
+    });
+
+    // What a person is told: no more than 2% of the vault in any seven days. The counter drains
+    // as it fills, so seven days can hold just under twice the parameter, and it starts at 100.
+    it('keeps a week under 2% of the vault at the starting cap, used in full twice', async () => {
+      expect(DEFAULT_PARAMS.lossCapBps).toBe(100);
+      await setParams({ toleranceBps: 300, bandBps: 500 });
+      // The exchange pays 3% less than the reference when the keeper buys.
+      await exchangePays(w.cash, w.stock, 97n, 500n);
+      await exchangePays(w.cash, w.other, 97n, 500n);
+      const lossOf = (meta: ReturnType<typeof expectOk>) =>
+        events(meta, 'KeeperTrade').map(decodeKeeperTrade)[0]?.loss ?? 0n;
+      // At once: 33.333 dollars at 3% loses 0.99999 of the 1.000000 that is 1% of the vault.
+      const first = lossOf(expectOk(await keeperLeg(w, { amountIn: 33_333_000n })));
+      expect(first).toBe(999_990n);
+      const more = () => keeperLeg(w, { amountIn: 500n, outputMint: w.other });
+      expectError(await more(), ERR.LossCapReached);
+      // Seven days on, to the second, the counter reads nothing and the cap is there in full.
+      // The owner sells the stock, so the keeper has it to buy again.
+      at(SESSION + 7n * DAY);
+      expectOk(
+        await swapThroughExchange(w, {
+          amountIn: balance(w.svm, w.vaultStock),
+          inputMint: w.stock,
+          outputMint: w.cash,
+        }),
+      );
+      expect(balance(w.svm, w.vaultCash)).toBe(99_000_010n);
+      const second = lossOf(expectOk(await keeperLeg(w, { amountIn: 33_000_000n })));
+      expect(second).toBe(990_000n);
+      expectError(await more(), ERR.LossCapReached);
+      // Both inside one closed window of seven days: 1.98999 of the 100 the vault began with.
+      expect(first + second).toBe(1_989_990n);
+      expect(first + second).toBeLessThan((CASH * 2n) / 100n);
+    });
+
     it('does not hold a leg that loses nothing to a cap that is used up', async () => {
-      // Five dollars lost this second, of a vault worth 100: far past 200 bps.
+      // Five dollars lost this second, of a vault worth 100: far past the cap.
       patchVault(w.svm, w.vault, { lossAccum: 5_000_000n, lossTs: SESSION });
       expectOk(await buy(20));
       await halfPercentWorse();
