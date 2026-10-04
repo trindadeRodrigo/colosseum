@@ -62,7 +62,7 @@ describe('nothing the product ships imports the dev page or the throwaway wallet
     expect(shipped).toContain('app/(structurer)/layout.tsx');
     expect(shipped).toContain('components/Nav.tsx');
     expect(shipped).not.toContain('features/wallet/dev/rpc.ts');
-    expect(shipped).not.toContain('app/dev/wallet/page.dev.tsx');
+    expect(shipped).not.toContain('app/(app)/dev/wallet/page.dev.tsx');
   });
 
   it('finds no such import', () => {

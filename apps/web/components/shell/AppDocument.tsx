@@ -13,8 +13,9 @@ import { AppShell } from './AppShell';
 // paint is already in both; with no theme chosen the stylesheet follows the system (`tf-auto`).
 // No wallet adapter is mounted here: a person signs in through the wallet port (features/wallet).
 //
-// Two root layouts use it: the product's (app/(app)/layout.tsx) and, under the development server
-// only, the one of the pages under /dev.
+// The product's layout is this (app/(app)/layout.tsx). The development pages (app/(app)/dev) sit
+// under it too, so the showcase and the wallet check are seen on the same ground, in the same faces,
+// as the screens they are for.
 
 export async function AppDocument({ children }: { children: ReactNode }) {
   const { lang, theme } = await readPreferences();

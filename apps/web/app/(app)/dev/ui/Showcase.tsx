@@ -1,7 +1,7 @@
 'use client';
 import { type CSSProperties, type ReactNode, useState } from 'react';
-import { Mark } from '../../../components/shell/Mark';
-import { Button } from '../../../components/ui/Button';
+import { Mark } from '../../../../components/shell/Mark';
+import { Button } from '../../../../components/ui/Button';
 import {
   Card,
   CardBody,
@@ -11,16 +11,16 @@ import {
   CardLoading,
   Stat,
   StatRow,
-} from '../../../components/ui/Card';
-import { CompactNav } from '../../../components/ui/CompactNav';
-import { Composer } from '../../../components/ui/Composer';
-import { ConstraintSheet } from '../../../components/ui/ConstraintSheet';
-import { DataTable } from '../../../components/ui/DataTable';
-import { Disclaimer } from '../../../components/ui/Disclaimer';
-import { EmbedShell } from '../../../components/ui/EmbedShell';
-import { ExecutionList } from '../../../components/ui/ExecutionList';
-import { ExitPlanLine, ExitPlanPanel } from '../../../components/ui/ExitPlanLine';
-import { Field, Input, Select, Textarea } from '../../../components/ui/Field';
+} from '../../../../components/ui/Card';
+import { CompactNav } from '../../../../components/ui/CompactNav';
+import { Composer } from '../../../../components/ui/Composer';
+import { ConstraintSheet } from '../../../../components/ui/ConstraintSheet';
+import { DataTable } from '../../../../components/ui/DataTable';
+import { Disclaimer } from '../../../../components/ui/Disclaimer';
+import { EmbedShell } from '../../../../components/ui/EmbedShell';
+import { ExecutionList } from '../../../../components/ui/ExecutionList';
+import { ExitPlanLine, ExitPlanPanel } from '../../../../components/ui/ExitPlanLine';
+import { Field, Input, Select, Textarea } from '../../../../components/ui/Field';
 import {
   DRIFT_ROWS,
   EXECUTIONS,
@@ -37,15 +37,15 @@ import {
   SHEET_SOURCE,
   STALE_SPECIMEN,
   sheetGroups,
-} from '../../../components/ui/fixtures/mock';
-import { GoalCard } from '../../../components/ui/GoalCard';
-import { Icon, type IconName } from '../../../components/ui/Icon';
-import { LatticeStatus } from '../../../components/ui/Lattice';
-import { MockFrame, MockPlate, StalePlate } from '../../../components/ui/MockPlate';
-import { PlanLegs } from '../../../components/ui/PlanLegs';
-import { ProvenancePin } from '../../../components/ui/ProvenancePin';
-import { Status, StatusBadge } from '../../../components/ui/StatusMark';
-import { SubscribeBlock, type SubscribeStatus } from '../../../components/ui/SubscribeBlock';
+} from '../../../../components/ui/fixtures/mock';
+import { GoalCard } from '../../../../components/ui/GoalCard';
+import { Icon, type IconName } from '../../../../components/ui/Icon';
+import { LatticeStatus } from '../../../../components/ui/Lattice';
+import { MockFrame, MockPlate, StalePlate } from '../../../../components/ui/MockPlate';
+import { PlanLegs } from '../../../../components/ui/PlanLegs';
+import { ProvenancePin } from '../../../../components/ui/ProvenancePin';
+import { Status, StatusBadge } from '../../../../components/ui/StatusMark';
+import { SubscribeBlock, type SubscribeStatus } from '../../../../components/ui/SubscribeBlock';
 
 // The showcase of the design system: every primitive in every state, light beside dark, with the name
 // of its spec. Development only (see page.dev.tsx). Everything on it is made up, and every panel says
@@ -256,7 +256,7 @@ export function Showcase() {
           on this page shows a state, not a source.
         </p>
         <p className="font-mono text-source text-muted-foreground">
-          development only · app/dev/ui/page.dev.tsx · not in a production build
+          development only · app/(app)/dev/ui/page.dev.tsx · not in a production build
         </p>
       </header>
 

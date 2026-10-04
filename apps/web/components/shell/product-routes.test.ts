@@ -18,8 +18,7 @@ const files = [...sourceFiles()].filter(
 );
 
 /** A folder of development and test code, wherever it is. */
-const devOnly = (file: string) =>
-  /(^|\/)(dev|test|fixtures)\//.test(file) || file.startsWith('app/dev/');
+const devOnly = (file: string) => /(^|\/)(dev|test|fixtures)\//.test(file);
 const notShipped = (file: string) =>
   /\.test\.tsx?$/.test(file) || /\.dev\.tsx$/.test(file) || devOnly(file);
 const shipped = files.filter((file) => !notShipped(file));
@@ -121,7 +120,7 @@ describe('rule 1: nothing the product ships imports from a dev, test or fixtures
       'features/wallet/test/fake-port.ts',
       'features/wallet/test/mock-provider.ts',
       'components/ui/fixtures/mock.ts',
-      'app/dev/layout.dev.tsx',
+      'app/(app)/dev/ui/Showcase.tsx',
     ]) {
       expect(files, helper).toContain(helper);
       expect(shipped, helper).not.toContain(helper);
@@ -148,7 +147,7 @@ describe('rule 1: nothing the product ships imports from a dev, test or fixtures
       'features/wallet/dev/DevWallet.tsx',
       'components/shell/test/cases.tsx',
       'components/ui/fixtures/mock.ts',
-      'app/dev/layout.dev.tsx',
+      'app/(app)/dev/ui/Showcase.tsx',
     ])
       expect(BUILD_DEV_ONLY.test(`../../apps/web/${file}`), file).toBe(true);
     for (const file of [
@@ -168,7 +167,7 @@ describe('rule 1: nothing the product ships imports from a dev, test or fixtures
       bad('features/goal/GoalScreen.tsx', "import { SHEET } from './test/plan';"),
     ).toHaveLength(1);
     expect(
-      bad('app/(app)/goal/page.tsx', "const S = () => import('../../dev/ui/Showcase');"),
+      bad('app/(app)/goal/page.tsx', "const S = () => import('../dev/ui/Showcase');"),
     ).toHaveLength(1);
     expect(
       bad('components/shell/AppNav.tsx', "import { sheetGroups } from '../ui/fixtures/mock';"),

@@ -350,7 +350,7 @@ describe('the forbidden things', () => {
       );
       expect(users(SYSTEM_FACES.utility)).toEqual([SYSTEM_FACES.usedBy]);
       // and the base class of the design system goes on one <body>: the product's
-      expect(users('tf-app').filter((file) => !file.startsWith('app/dev/'))).toEqual([
+      expect(users('tf-app').filter((file) => !file.startsWith('app/(app)/dev/'))).toEqual([
         'components/shell/AppDocument.tsx',
       ]);
     });

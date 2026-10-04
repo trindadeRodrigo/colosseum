@@ -16,7 +16,7 @@ import { read, sourceFiles, WEB } from './test/css';
 // ships may import them: a made-up rate must not be able to reach a page. scripts/check-build.mjs
 // fails a build that has a /dev route; this reads the imports themselves.
 
-const DEV_ONLY = ['app/dev', 'components/ui/fixtures', 'components/ui/test'];
+const DEV_ONLY = ['app/(app)/dev', 'components/ui/fixtures', 'components/ui/test'];
 const inside = (file: string, folder: string) => file === folder || file.startsWith(`${folder}/`);
 const devOnly = (file: string) => DEV_ONLY.some((folder) => inside(file, folder));
 const notShipped = (file: string) =>
@@ -49,7 +49,7 @@ describe('nothing the product ships imports the showcase or its sample content',
     expect(shipped).toContain('app/(structurer)/layout.tsx');
     expect(shipped).toContain('components/ui/ProvenancePin.tsx');
     expect(shipped).not.toContain('components/ui/fixtures/mock.ts');
-    expect(shipped).not.toContain('app/dev/ui/Showcase.tsx');
+    expect(shipped).not.toContain('app/(app)/dev/ui/Showcase.tsx');
   });
 
   it('finds no such import', () => {
@@ -61,18 +61,22 @@ describe('nothing the product ships imports the showcase or its sample content',
     expect(found).toEqual([]);
   });
 
-  it('keeps every route under app/dev a development route: page.dev.tsx, never page.tsx', () => {
+  it('keeps every route under a dev folder a development route: page.dev.tsx, never page.tsx', () => {
     const routes = all.filter(
-      (file) => inside(file, 'app/dev') && /(^|\/)(page|route|layout)\.[jt]sx?$/.test(file),
+      (file) =>
+        /^app\/(\([^/]+\)\/)*dev\//.test(file) && /(^|\/)(page|route|layout)\.[jt]sx?$/.test(file),
     );
     expect(routes).toEqual([]);
-    expect(all).toContain('app/dev/ui/page.dev.tsx');
-    // their layout too: with no layout of that name in a production build, /dev has no root at all
-    expect(all).toContain('app/dev/layout.dev.tsx');
+    expect(all).toContain('app/(app)/dev/ui/page.dev.tsx');
+    expect(all).toContain('app/(app)/dev/wallet/page.dev.tsx');
+    // They sit under the product's layout, which a build has too. A layout of their own would be one
+    // only under `next dev`, and the route types Next writes for a build and for the dev server would
+    // then name different layouts: the typecheck fails on whichever was written first.
+    expect(all.filter((file) => /(^|\/)layout\.dev\.tsx$/.test(file))).toEqual([]);
   });
 
   it('bites: the showcase does import the sample content', () => {
-    expect(imports('app/dev/ui/Showcase.tsx').some(devOnly)).toBe(true);
+    expect(imports('app/(app)/dev/ui/Showcase.tsx').some(devOnly)).toBe(true);
   });
 });
 
@@ -108,8 +112,10 @@ describe('the build check knows the design system’s development-only folders',
     for (const file of [
       'components/ui/fixtures/mock.ts',
       'components/ui/test/cases.tsx',
+      'app/(app)/dev/ui/Showcase.tsx',
+      'app/(app)/dev/ui/page.dev.tsx',
+      // and a dev folder in no group, where these pages were
       'app/dev/ui/Showcase.tsx',
-      'app/dev/ui/page.dev.tsx',
     ])
       expect(BUILD_DEV_ONLY.test(`${OURS}${file}`), file).toBe(true);
   });
@@ -131,7 +137,7 @@ describe('the build check knows the design system’s development-only folders',
     for (const file of [
       'components/ui/fixtures/mock.ts',
       'components/ui/test/html.ts',
-      'app/dev/ui/Showcase.tsx',
+      'app/(app)/dev/ui/Showcase.tsx',
     ])
       expect(checkBuild(build('app/(app)/goal/page.tsx', file))).toEqual([
         `server/chunks/ssr/1.js.map was built from ${OURS}${file}`,
