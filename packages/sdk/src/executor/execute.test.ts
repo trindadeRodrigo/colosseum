@@ -8,6 +8,7 @@ import { runGuard } from '../guard/run';
 import { ApiRefusal, type OrderApi } from './api';
 import type { ChainRead, Fate } from './chain-read';
 import {
+  DEFAULT_PATIENCE,
   type ExecutionEvent,
   type ExecutorDeps,
   makeExecute,
@@ -933,7 +934,9 @@ describe('the executor: one approved step gets one signature', () => {
       ['open', saying('open'), 'waiting', 1],
       ['unknown', saying('unknown'), 'needs_review', 1],
       ['a read that throws', saying(new Error('rpc down')), 'needs_review', 1],
+      // Taken as `unknown` where it is read, and so the person is asked; it never reaches a branch.
       ['an answer that is no fate', saying('expired' as Fate), 'needs_review', 1],
+      ['an answer that is not even text', saying({} as Fate), 'needs_review', 1],
       ['no read at all', undefined, 'needs_review', 1],
     ];
     for (const [name, chainRead, status, signatures] of outcomes) {
@@ -1138,6 +1141,8 @@ describe('the executor: one approved step gets one signature', () => {
         signedTimes: 1,
       });
     expect(s.wallet.send).toHaveBeenCalledTimes(1);
+    // And the attempt stays open while the person has not looked: it is not closed on a reload either.
+    expect(s.double.calls).not.toContain(`cancel ${first}`);
 
     // The person looked, and approves the step again.
     const again = await execute(order, {
@@ -1244,9 +1249,12 @@ describe('the executor: an API that keeps it turning', () => {
       },
       buildLeg: () => Promise.reject(new ApiRefusal(409, { error: 'not now' })),
     };
-    const result = await execute(order, { ...s.deps, api });
+    const builds = vi.fn(api.buildLeg);
+    const result = await execute(order, { ...s.deps, api: { ...api, buildLeg: builds } });
     expect(result).toMatchObject({ status: 'error', legId: first });
-    expect(result.status === 'error' && result.error.message).toMatch(/did not settle/);
+    expect(result.status === 'error' && result.error.message).toMatch(/refuses each build/);
+    // As far as the close loop goes, and no further: the builds it is allowed, and one more.
+    expect(builds).toHaveBeenCalledTimes(DEFAULT_PATIENCE.rebuilds + 2);
     expect(s.wallet.sign).not.toHaveBeenCalled();
   });
 });

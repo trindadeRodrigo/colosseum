@@ -497,6 +497,8 @@ export function makeExecute(guard: Guard) {
       const key = signedKey(order.id, legId);
       let builds = 0;
       let closes = 0;
+      /** Builds refused while the order showed the step moved on: an API that never lets it be built. */
+      let moved = 0;
       let turns = 0;
       const waited = { landing: 0, in_flight: 0 };
       const reported = new Set<string>();
@@ -575,10 +577,15 @@ export function makeExecute(guard: Guard) {
             legId,
           );
         }
-        // Nothing proves the earlier signature dead. Only the person can say sign again.
-        if (approvedFor(record.times)) return null;
-        await cancel(legId);
-        return review(record.proof ? 'unproven' : 'asked', record.times);
+        if (fate === 'unknown') {
+          // Nothing proves the earlier signature dead. Only the person can say sign again.
+          if (approvedFor(record.times)) return null;
+          await cancel(legId);
+          return review(record.proof ? 'unproven' : 'asked', record.times);
+        }
+        // `fateOf` answers one of the four: anything else a read says has become `unknown` there.
+        const never: never = fate;
+        throw new Error(`the read of the chain answered ${String(never)}`);
       };
 
       for (;;) {
@@ -671,7 +678,17 @@ export function makeExecute(guard: Guard) {
             return failure(again, legId);
           }
           const now = seen.legs.find((l) => l.id === legId);
-          if (now && `${now.status}:${now.attempt}` !== before) continue;
+          if (now && `${now.status}:${now.attempt}` !== before) {
+            moved += 1;
+            if (moved > patience.rebuilds + 1)
+              return failure(
+                new Error(
+                  'the API refuses each build and shows the step moved on each time: run the order again',
+                ),
+                legId,
+              );
+            continue;
+          }
           if (e.body.details?.retryable) {
             const stop = await wait('in_flight');
             if (stop) return stop;
