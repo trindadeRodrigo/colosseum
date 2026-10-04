@@ -39,6 +39,7 @@ export type Chain = {
   account(address: Address): Promise<AccountView | null>;
   /** The cluster's clock, in unix seconds. */
   now(): Promise<bigint>;
+  /** A recent slot, for a lookup table's address. */
   slot(): Promise<bigint>;
 };
 
@@ -83,7 +84,10 @@ export function rpcChain(url: string): RpcChain {
     account,
     genesisHash: () => rpc.getGenesisHash().send(),
     rent: (bytes) => rpc.getMinimumBalanceForRentExemption(bytes).send(),
-    slot: () => rpc.getSlot({ commitment: 'confirmed' }).send(),
+    // A lookup table is made from a slot the transaction's bank holds in its slot hashes. The node
+    // checks a transaction at its confirmed bank, whose own slot is not among them: a finalized
+    // slot is, for some 500 slots.
+    slot: () => rpc.getSlot({ commitment: 'finalized' }).send(),
     async now() {
       const clock = await account(CLOCK);
       if (!clock) throw new Error('the cluster has no clock account');
