@@ -170,6 +170,7 @@ export const en = {
       unreachable:
         'I couldn’t reach our server to read that. Your text is still here. Try again in a moment.',
       tooShort: 'That’s too short for me to read. Try an amount and a date.',
+      tooLong: 'That’s too long for me to read. Keep it under 2,000 characters.',
       unreadable: 'I got an answer I couldn’t read. Your text is still here. Try again.',
     },
     /** Under the sheet's title, while the only reader is the one made for goals in reais. */

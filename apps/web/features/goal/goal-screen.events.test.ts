@@ -148,6 +148,25 @@ describe('the goal screen, before anything is read', () => {
     await click(find(host, '[data-ui="composer-send"]'));
     expect(server.to('/goals')).toEqual([]);
   });
+
+  it('takes no more text than the reader does, and says a goal is too long, not too short', async () => {
+    const server = api({});
+    const host = await screen();
+    expect(box(host).getAttribute('maxlength')).toBe('2000');
+    // a text that got past the box all the same, as a pasted one can in some browsers
+    await type(box(host), 'x'.repeat(2001));
+    await press(box(host), 'Enter');
+    await settle();
+    expect(server.to('/goals')).toEqual([]);
+    const said = find(host, '[data-ui="composer"]').textContent;
+    expect(said).toContain(en.goal.readFailure.tooLong);
+    expect(said).not.toContain(en.goal.readFailure.tooShort);
+    // and a goal of two letters is too short
+    await type(box(host), 'ab');
+    await press(box(host), 'Enter');
+    await settle();
+    expect(find(host, '[data-ui="composer"]').textContent).toContain(en.goal.readFailure.tooShort);
+  });
 });
 
 describe('reading a typed goal', () => {

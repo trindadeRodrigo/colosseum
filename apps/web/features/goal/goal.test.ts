@@ -4,7 +4,7 @@ import { dictionary } from '../../i18n';
 import { json } from '../wallet/test/fake-port';
 import { buildPlan, PERSONALIZE_PATH, planProvenance } from './build-plan';
 import { COUNTRY_CODES, countryOptions } from './countries';
-import { draftFromFirstReader, ReadGoalError, readGoal } from './read-goal';
+import { draftFromFirstReader, GOAL_TEXT, ReadGoalError, readGoal } from './read-goal';
 import {
   checkSheet,
   dollars,
@@ -113,12 +113,15 @@ describe('reading a goal: POST /goals', () => {
   });
 
   it('says why when it cannot be read', async () => {
-    const kind = async (answer: () => Promise<Response>) => {
-      const e = await readGoal(answer, 'x', 'en').catch((error: unknown) => error);
+    const kind = async (answer: () => Promise<Response>, text = 'Grow $40,000') => {
+      const e = await readGoal(answer, text, 'en').catch((error: unknown) => error);
       expect(e).toBeInstanceOf(ReadGoalError);
       return (e as ReadGoalError).kind;
     };
-    expect(await kind(async () => json({ error: 'too short' }, 400))).toBe('too_short');
+    // a refusal of a text the reader's bounds allow is not put down to its length
+    expect(await kind(async () => json({ error: 'body/language must be en or pt' }, 400))).toBe(
+      'unreadable',
+    );
     expect(await kind(async () => json({}, 429))).toBe('busy');
     expect(await kind(async () => json({}, 500))).toBe('unreachable');
     expect(
@@ -128,6 +131,20 @@ describe('reading a goal: POST /goals', () => {
     ).toBe('unreachable');
     expect(await kind(async () => json({ hello: 'world' }))).toBe('unreadable');
     expect(await kind(async () => new Response('<html>'))).toBe('unreadable');
+  });
+
+  it('does not send a text outside what the reader takes, and says which way it is out', async () => {
+    const api = vi.fn(async () => json(READ_IN_DOLLARS));
+    const kind = async (text: string) =>
+      ((await readGoal(api, text, 'en').catch((error: unknown) => error)) as ReadGoalError).kind;
+    expect(await kind('ab')).toBe('too_short');
+    expect(await kind('x'.repeat(GOAL_TEXT.max + 1))).toBe('too_long');
+    expect(api).not.toHaveBeenCalled();
+    // the bounds themselves are taken
+    await readGoal(api, 'abc', 'en');
+    await readGoal(api, 'x'.repeat(GOAL_TEXT.max), 'en');
+    expect(api).toHaveBeenCalledTimes(2);
+    expect(GOAL_TEXT).toEqual({ min: 3, max: 2000 });
   });
 });
 

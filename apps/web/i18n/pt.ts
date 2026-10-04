@@ -158,6 +158,7 @@ export const pt: Dictionary = {
       unreachable:
         'Não consegui falar com nosso servidor para ler isso. Seu texto continua aqui. Tente de novo daqui a pouco.',
       tooShort: 'Isso é curto demais para eu ler. Tente um valor e uma data.',
+      tooLong: 'Isso é longo demais para eu ler. Use até 2.000 caracteres.',
       unreadable:
         'Recebi uma resposta que não consegui ler. Seu texto continua aqui. Tente de novo.',
     },

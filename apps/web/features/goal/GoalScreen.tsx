@@ -16,7 +16,7 @@ import { ChainName } from '../account/ChainName';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { type BuildOutcome, buildPlan, planProvenance } from './build-plan';
 import { GOAL_DRAFT } from './draft';
-import { type ReadFailure, ReadGoalError, readGoal } from './read-goal';
+import { GOAL_TEXT, type ReadFailure, ReadGoalError, readGoal } from './read-goal';
 import {
   checkSheet,
   fieldOfId,
@@ -242,7 +242,9 @@ export function GoalScreen() {
         ? t.shell.slowDown
         : readFailure === 'too_short'
           ? t.goal.readFailure.tooShort
-          : t.goal.readFailure[readFailure];
+          : readFailure === 'too_long'
+            ? t.goal.readFailure.tooLong
+            : t.goal.readFailure[readFailure];
   const buildSentence =
     build.kind === 'busy'
       ? t.shell.slowDown
@@ -299,6 +301,7 @@ export function GoalScreen() {
           onChange={setText}
           onSubmit={read}
           placeholder={t.goal.composer.placeholder}
+          maxLength={GOAL_TEXT.max}
           hint={t.goal.composer.hint}
           busy={reading}
           // While a plan is being built the limits stand as they were sent: no other goal is read.

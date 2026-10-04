@@ -35,6 +35,8 @@ export type ComposerProps = {
   /** Called with the trimmed text. Never called while empty, busy or disabled. */
   onSubmit: (text: string) => void;
   placeholder?: string;
+  /** The most characters the box takes: what the reader behind it accepts. */
+  maxLength?: number;
   /** Under the box: "Enter to fit · Shift+Enter for a new line". */
   hint?: string;
   /** The text is being read: the box is read-only and the send button shows the still lattice. */
@@ -73,6 +75,7 @@ export function Composer({
   onChange,
   onSubmit,
   placeholder,
+  maxLength,
   hint,
   busy = false,
   error,
@@ -165,6 +168,7 @@ export function Composer({
             value={current}
             onChange={change}
             placeholder={placeholder}
+            maxLength={maxLength}
             readOnly={busy}
             disabled={disabled}
             aria-describedby={describedBy || undefined}
@@ -182,6 +186,7 @@ export function Composer({
             onChange={change}
             onKeyDown={keyDown}
             placeholder={placeholder}
+            maxLength={maxLength}
             readOnly={busy}
             disabled={disabled}
             aria-describedby={describedBy || undefined}

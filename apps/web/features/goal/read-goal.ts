@@ -22,12 +22,15 @@ export type GoalReading = {
   firstReader: boolean;
 };
 
+/** What the reader takes: the API's own bounds on the text of a goal (PostGoalsRequest). */
+export const GOAL_TEXT = { min: 3, max: 2000 } as const;
+
 /**
- * Why a reading failed. `too_short`: the API takes three characters or more. `busy`: it asked for
- * fewer requests. `unreachable`: it did not answer. `unreadable`: it answered in a form this app
- * cannot read.
+ * Why a reading failed. `too_short` and `too_long`: the text is outside what the reader takes, and
+ * it is not sent. `busy`: the API asked for fewer requests. `unreachable`: it did not answer.
+ * `unreadable`: it answered in a form this app cannot read, a refusal of the request included.
  */
-export type ReadFailure = 'too_short' | 'busy' | 'unreachable' | 'unreadable';
+export type ReadFailure = 'too_short' | 'too_long' | 'busy' | 'unreachable' | 'unreadable';
 
 export class ReadGoalError extends Error {
   readonly kind: ReadFailure;
@@ -92,6 +95,9 @@ export async function readGoal(
   language: Language,
   now: () => Date = () => new Date(),
 ): Promise<GoalReading> {
+  // The reader's own bounds, checked here: each has its own sentence, and neither needs the server.
+  if (text.length < GOAL_TEXT.min) throw new ReadGoalError('too_short');
+  if (text.length > GOAL_TEXT.max) throw new ReadGoalError('too_long');
   let res: Response;
   try {
     res = await apiFetch('/goals', {
@@ -102,7 +108,8 @@ export async function readGoal(
   } catch {
     throw new ReadGoalError('unreachable');
   }
-  if (res.status === 400) throw new ReadGoalError('too_short');
+  // A refusal of a text inside the bounds is not about its length: the reason is not guessed.
+  if (res.status === 400) throw new ReadGoalError('unreadable');
   if (res.status === 429) throw new ReadGoalError('busy');
   if (!res.ok) throw new ReadGoalError('unreachable');
   const body: unknown = await res.json().catch(() => null);
