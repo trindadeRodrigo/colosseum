@@ -325,3 +325,17 @@ export function priceAccountBytes(entries: PriceEntry[], at: bigint, slot: bigin
 }
 
 export { ASSOCIATED_TOKEN_PROGRAM };
+
+/** FreezeAccount: the issuer freezes a holder's token account. */
+export function freezeAccount(a: {
+  account: Address;
+  mint: Address;
+  tokenProgram: Address;
+  authority: Address;
+}): IInstruction {
+  return {
+    programAddress: a.tokenProgram,
+    accounts: [w(a.account), ro(a.mint), s(a.authority)],
+    data: new Uint8Array([10]),
+  };
+}

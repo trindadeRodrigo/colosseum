@@ -52,7 +52,7 @@ What the steps do not do, because the guard refuses it:
 
 Two steps are built under a kind the order layer already has, so the shared `LegKind` does not change: a cancel is a `publish` step (the registry's, like the publish it undoes) and a sync is a `keeper_leg` step.
 
-A withdrawal of everything takes, one transaction each, every token the vault holds of the app's list, of the program's asset list and of its own lines, listed or not. A frozen account is left where it is: it cannot move until its issuer thaws it. A token with a transfer hook program is not something the program lists; its extra accounts are not resolved here.
+A withdrawal of everything takes, one transaction each, every token the vault holds of the app's list, of the program's asset list and of its own lines, listed or not. One token that cannot move does not stop the others (design section 5: the owner can always withdraw every token in kind): `buildWithdrawEach` hands back the transactions it built and, for each token it did not, the code and the reason. A frozen account, the vault's or the owner's, is `BalanceUnreadable`; a token whose issuer added a transfer hook program is `NotSupported` (the program forwards a hook's extra accounts, and the guard allows them, but this builder does not resolve them yet); a token the chain refuses to move (paused by its issuer) carries the chain's refusal. `buildWithdrawInKind` returns what was built, and refuses only when nothing could be and something could not.
 
 ## Quotes and routes
 

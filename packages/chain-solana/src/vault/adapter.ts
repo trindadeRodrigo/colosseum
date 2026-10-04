@@ -83,7 +83,13 @@ import {
 } from './routes';
 import { getAccounts, type RawAccount, type VaultWriteRpc } from './rpc';
 import { createSolanaProbe } from './send';
-import { associatedTokenAddress, decodeMint, decodeTokenAccount, isTokenProgram } from './tokens';
+import {
+  associatedTokenAddress,
+  decodeMint,
+  decodeTokenAccount,
+  isTokenProgram,
+  type MintInfo,
+} from './tokens';
 import { unlistedAssetId, unlistedMint } from './unlisted';
 
 // The Solana adapter whole (DESIGN-VAULT 3.2): the reader of ADS-1, the builders, the quotes and the
@@ -133,7 +139,18 @@ export type SolanaVaultAdapter = ChainAdapter &
      * trade by the recorded amounts (`KeeperPosition.needsSync`). Built as a `keeper_leg` step.
      */
     buildSyncBalances(vault: string, signer?: string): Promise<BuiltTx>;
+    /**
+     * `buildWithdrawInKind`, with what could not be built and why: a token whose account is frozen,
+     * one with a transfer hook program, one the chain refuses to move (paused by its issuer). Every
+     * other token is still built.
+     */
+    buildWithdrawEach(a: WithdrawInKindArgs): Promise<WithdrawEach>;
   };
+
+export type WithdrawEach = {
+  txs: BuiltTx[];
+  notBuilt: { asset: AssetId; code: ChainErrorCode; message: string }[];
+};
 
 const refuse = (code: ChainErrorCode, message: string): never => {
   throw new ChainError(code, message);
@@ -261,6 +278,7 @@ export function createSolanaVaultAdapter(options: SolanaVaultAdapterOptions): So
 
   /** The token program of each mint, read once: a mint never changes program. */
   const programs = new Map<string, Address>();
+  const mintInfos = new Map<string, MintInfo>();
   async function tokens(mints: Address[]): Promise<Map<string, TokenRef>> {
     const missing = [...new Set(mints)].filter((m) => !programs.has(m));
     if (missing.length) {
@@ -269,7 +287,10 @@ export function createSolanaVaultAdapter(options: SolanaVaultAdapterOptions): So
         const account = found[i];
         if (!account || !isTokenProgram(account.owner))
           refuse('MintNotAccepted', `there is no mint at ${mint}`);
-        decodeMint((account as RawAccount).owner, (account as RawAccount).data);
+        mintInfos.set(
+          mint,
+          decodeMint((account as RawAccount).owner, (account as RawAccount).data),
+        );
         programs.set(mint, (account as RawAccount).owner);
       });
     }
@@ -743,77 +764,15 @@ export function createSolanaVaultAdapter(options: SolanaVaultAdapterOptions): So
 
     buildWithdrawInKind: (args) =>
       guarded(async () => {
-        const a = input(WithdrawInKindArgs, args, 'withdraw');
-        noNonce(a.nonce);
-        builds();
-        const vault = solanaAddress(a.vault, 'vault');
-        const chain = await chainNow([vault]);
-        const state = vaultFrom(vault, chain.extra[0]);
-        // Asked for: those assets. Otherwise every token the vault may hold: the app's list, the
-        // program's own list, and every line of the vault, listed or not.
-        const mints = a.assets
-          ? [...new Set(a.assets.map(mintOf))]
-          : [
-              ...new Set<Address>([
-                chain.onchain.cashMint,
-                ...(assets.map((x) => x.address) as Address[]),
-                ...(chain.registry?.assets.map((e) => e.mint) ?? []),
-                ...state.positions.map((x) => x.mint),
-              ]),
-            ];
-        const refs = await tokens(mints);
-        const pairs = mints.flatMap((mint) => {
-          const t = refs.get(mint) as TokenRef;
-          return [
-            { holder: vault, token: t },
-            { holder: state.owner, token: t },
-          ];
-        });
-        const found = await holdings(pairs);
-        const p = await programAccounts();
-        const out: BuiltTx[] = [];
-        for (const [i, mint] of mints.entries()) {
-          const held = found[2 * i];
-          const wallet = found[2 * i + 1];
-          // A frozen account cannot move until its issuer thaws it: it is left where it is.
-          if (!held || !wallet || held.amount === 0n || held.frozen) continue;
-          const t = refs.get(mint) as TokenRef;
-          const id = idOf(mint);
-          out.push(
-            await built({
-              kind: 'withdraw',
-              signer: state.owner,
-              instructions: [
-                ...(wallet.exists
-                  ? []
-                  : [
-                      createTokenAccountInstruction({
-                        payer: state.owner,
-                        account: wallet.address,
-                        holder: state.owner,
-                        token: t,
-                      }),
-                    ]),
-                withdrawInstruction(p, {
-                  owner: state.owner,
-                  vault,
-                  token: t,
-                  vaultAccount: held.address,
-                  destination: wallet.address,
-                  amount: held.amount,
-                }),
-              ],
-              watch: [
-                { holder: 'vault', asset: id, account: held.address },
-                { holder: 'wallet', asset: id, account: wallet.address },
-              ],
-              summary: `Withdraw ${held.amount} raw ${id} from vault ${vault} to the owner`,
-              minimums: [],
-            }),
-          );
-        }
-        return out;
+        const { txs, notBuilt } = await withdrawEach(args);
+        // Something the owner asked for that cannot be built, and nothing that can: say why.
+        const first = notBuilt[0];
+        if (txs.length === 0 && first)
+          throw new ChainError(first.code, `${first.asset}: ${first.message}`);
+        return txs;
       }),
+
+    buildWithdrawEach: (args) => guarded(() => withdrawEach(args)),
 
     buildPublishRecipe: (args) =>
       guarded(async () => {
@@ -1040,6 +999,120 @@ export function createSolanaVaultAdapter(options: SolanaVaultAdapterOptions): So
         };
       }),
   };
+
+  /**
+   * A withdrawal, token by token: one that cannot move does not stop the others (DESIGN-VAULT section 5:
+   * the owner can always withdraw every token in kind). Each token the vault holds is its own
+   * transaction; one that cannot be built is listed with the reason.
+   */
+  async function withdrawEach(args: unknown): Promise<WithdrawEach> {
+    const a = input(WithdrawInKindArgs, args, 'withdraw');
+    noNonce(a.nonce);
+    builds();
+    const vault = solanaAddress(a.vault, 'vault');
+    const chain = await chainNow([vault]);
+    const state = vaultFrom(vault, chain.extra[0]);
+    // Asked for: those assets. Otherwise every token the vault may hold: the app's list, the program's
+    // own list, and every line of the vault, listed or not.
+    const asked = a.assets !== undefined;
+    const mints = asked
+      ? [...new Set((a.assets ?? []).map(mintOf))]
+      : [
+          ...new Set<Address>([
+            chain.onchain.cashMint,
+            ...(assets.map((x) => x.address) as Address[]),
+            ...(chain.registry?.assets.map((e) => e.mint) ?? []),
+            ...state.positions.map((x) => x.mint),
+          ]),
+        ];
+    const notBuilt: WithdrawEach['notBuilt'] = [];
+    const refs = new Map<string, TokenRef>();
+    for (const mint of mints) {
+      try {
+        refs.set(mint, await token(mint));
+      } catch (e) {
+        // A mint that is gone holds nothing. One the owner named is said.
+        if (asked && e instanceof ChainError)
+          notBuilt.push({ asset: idOf(mint), code: e.code, message: e.message });
+      }
+    }
+    const readable = mints.filter((m) => refs.has(m));
+    const found = await holdings(
+      readable.flatMap((mint) => {
+        const t = refs.get(mint) as TokenRef;
+        return [
+          { holder: vault, token: t },
+          { holder: state.owner, token: t },
+        ];
+      }),
+    );
+    const p = await programAccounts();
+    const txs: BuiltTx[] = [];
+    for (const [i, mint] of readable.entries()) {
+      const held = found[2 * i];
+      const wallet = found[2 * i + 1];
+      if (!held || !wallet || held.amount === 0n) continue;
+      const id = idOf(mint);
+      const skip = (code: ChainErrorCode, message: string) =>
+        notBuilt.push({ asset: id, code, message });
+      // A frozen account cannot send or receive until its issuer thaws it.
+      if (held.frozen) {
+        skip('BalanceUnreadable', "the vault's account of it is frozen by its issuer");
+        continue;
+      }
+      if (wallet.frozen) {
+        skip('BalanceUnreadable', "the owner's account of it is frozen by its issuer");
+        continue;
+      }
+      if (mintInfos.get(mint)?.hookProgram) {
+        skip(
+          'NotSupported',
+          'its issuer added a transfer hook program, whose extra accounts this builder does not resolve: withdraw it with a wallet that does',
+        );
+        continue;
+      }
+      const t = refs.get(mint) as TokenRef;
+      try {
+        txs.push(
+          await built({
+            kind: 'withdraw',
+            signer: state.owner,
+            instructions: [
+              ...(wallet.exists
+                ? []
+                : [
+                    createTokenAccountInstruction({
+                      payer: state.owner,
+                      account: wallet.address,
+                      holder: state.owner,
+                      token: t,
+                    }),
+                  ]),
+              withdrawInstruction(p, {
+                owner: state.owner,
+                vault,
+                token: t,
+                vaultAccount: held.address,
+                destination: wallet.address,
+                amount: held.amount,
+              }),
+            ],
+            watch: [
+              { holder: 'vault', asset: id, account: held.address },
+              { holder: 'wallet', asset: id, account: wallet.address },
+            ],
+            summary: `Withdraw ${held.amount} raw ${id} from vault ${vault} to the owner`,
+            minimums: [],
+          }),
+        );
+      } catch (e) {
+        // Paused by its issuer, or anything else the chain refuses for this token alone.
+        if (!(e instanceof ChainError) || e.code === 'Unavailable') throw e;
+        skip(e.code, e.message);
+      }
+    }
+    return { txs, notBuilt };
+  }
 
   /** What the route pays against what the trade is worth at the reference prices; null where one side has none. */
   async function referenceCost(t: Trade, amountIn: bigint, outRaw: bigint) {

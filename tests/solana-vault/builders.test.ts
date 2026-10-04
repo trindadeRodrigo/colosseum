@@ -1,14 +1,21 @@
 import {
   ASSOCIATED_TOKEN_PROGRAM,
+  associatedTokenAddress,
   BASKET_DISCRIMINATORS,
   COMPUTE_BUDGET_PROGRAM,
   type Composed,
+  createTokenAccountInstruction,
   MAX_TRANSACTION_BYTES,
 } from '@colosseum/chain-solana/vault';
 import { type BuiltTx, ChainError } from '@colosseum/schemas';
-import { getCompiledTransactionMessageDecoder, getTransactionDecoder, lamports } from '@solana/kit';
+import {
+  type Address,
+  getCompiledTransactionMessageDecoder,
+  getTransactionDecoder,
+  lamports,
+} from '@solana/kit';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { priceAccountBytes } from './admin';
+import { freezeAccount, priceAccountBytes } from './admin';
 import { buildContractWorld, type ContractWorld, id, newKey, priceEntries } from './contract-world';
 import { BASKET_PROGRAM, createSvmNode, MOCK_ROUTER_PROGRAM, PROGRAMS_BUILT } from './svm-node';
 
@@ -257,6 +264,49 @@ describe.skipIf(!PROGRAMS_BUILT)('the Solana builders, in LiteSVM with the real 
     expect(c.unitsConsumed).toBeGreaterThan(three.unitsConsumed + 10_000);
     const sync = await w.adapter.buildSyncBalances(vault);
     measure('sync of 16 balances, by the keeper', sync);
+  });
+
+  it('withdraws every token it can when one cannot move, and says why for that one', async () => {
+    const f = w.fixture;
+    const gamma = w.mints.gamma;
+    if (!gamma) throw new Error('no gamma');
+    // The issuer freezes the owner's account of one token the vault holds.
+    const owner = f.owner as Address;
+    const account = await associatedTokenAddress(owner, gamma.address, gamma.tokenProgram);
+    await w.run(w.keys.deployer, [
+      createTokenAccountInstruction({
+        payer: w.keys.deployer.address,
+        account,
+        holder: owner,
+        token: { mint: gamma.address, tokenProgram: gamma.tokenProgram },
+      }),
+      freezeAccount({
+        account,
+        mint: gamma.address,
+        tokenProgram: gamma.tokenProgram,
+        authority: w.keys.deployer.address,
+      }),
+    ]);
+    const each = await w.adapter.buildWithdrawEach({ vault: f.vault });
+    const moved = each.txs.map((tx) => tx.preview.changes[0]?.asset).sort();
+    expect(moved).toEqual(
+      [id('alpha'), id('beta'), id('cash'), id('delta')].filter((a) => moved.includes(a)),
+    );
+    expect(moved).toContain(id('cash'));
+    expect(moved).not.toContain(id('gamma'));
+    expect(each.notBuilt).toEqual([
+      { asset: id('gamma'), code: 'BalanceUnreadable', message: expect.stringContaining('frozen') },
+    ]);
+    // The shared builder hands back what it could build.
+    expect((await w.adapter.buildWithdrawInKind({ vault: f.vault })).length).toBe(each.txs.length);
+    // Asked for that token alone, it says why.
+    const alone = await w.adapter
+      .buildWithdrawInKind({ vault: f.vault, assets: [id('gamma')] })
+      .then(
+        () => 'built',
+        (e: unknown) => e,
+      );
+    expect((alone as ChainError).code).toBe('BalanceUnreadable');
   });
 
   it('refuses an accept whose version and leftovers pass sixteen lines, and says to clear a leftover first', async () => {
