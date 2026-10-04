@@ -19,6 +19,11 @@ export type ChainEntry = {
   mode: Exclude<ChainMode, 'off'>;
   /** The label on every figure read from this chain as it runs now. */
   provenance: Provenance;
+  /**
+   * Where this chain's figures are read from, as a figure names its source: the mock, or the kind of
+   * node a real adapter asks. Never a URL: an RPC address can carry a key.
+   */
+  source: string;
   config: ChainConfig;
   /** Builds, reads, and ties signed bytes and landed transactions back to what was built (`TxProbe`). */
   adapter: ChainAdapter;
@@ -28,6 +33,8 @@ export type ChainEntry = {
 
 export type ChainRegistry = {
   mode(chain: ChainId): ChainMode;
+  /** The chain's name as a person reads it, whether it is on or off. */
+  name(chain: ChainId): string;
   /** The chain's adapter. Refuses with CHAIN_UNAVAILABLE when the chain is off. */
   get(chain: ChainId): ChainEntry;
   /** Every chain that is not off. */
@@ -64,6 +71,7 @@ export function createChainRegistry(
       mode,
       // Never null here: the chain is not off.
       provenance: chainProvenance(configs[chain].network, mode) ?? 'mock',
+      source: 'chain-mock',
       config: configs[chain],
       adapter,
       mock: adapter.mock,
@@ -80,12 +88,12 @@ export function createChainRegistry(
 
   return {
     mode: (chain) => flags.chainMode[chain],
+    name: (chain) => configs[chain].name,
     get(chain) {
       const entry = entries.get(chain);
       if (!entry)
         throw new Refusal(503, `${configs[chain].name} is switched off on this server`, {
           code: 'CHAIN_UNAVAILABLE',
-          fix: 'Leave this chain out of the request.',
           details: { retryable: false },
         });
       return sync(entry);

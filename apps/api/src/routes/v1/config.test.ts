@@ -35,8 +35,8 @@ describe('GET /v1/config', () => {
       autoFollow: { solana: false, robinhood: false, base: false },
       keeperEnabled: false,
       agentSurface: false,
-      // On: the legacy routes are registered whatever the flag says, so the config says so.
-      legacyStructurer: true,
+      // Off: the structurer's server-signing routes are registered only when it is on.
+      legacyStructurer: false,
     });
     expect(body.chains.map((c) => [c.id, c.mode, c.network, c.provenance])).toEqual([
       ['solana', 'mock', 'testnet', 'mock'],

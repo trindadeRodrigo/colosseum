@@ -5,6 +5,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import type { ChainEntry } from '../../orders/chains';
 import { refusing } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
+import { homeChain } from '../../orders/person';
 import { cacheVault } from '../../orders/store';
 import { signedIn } from './orders';
 
@@ -38,21 +39,21 @@ export function registerPortfolioRoute(scope: FastifyInstance, deps: OrderDeps) 
   scope.withTypeProvider<ZodTypeProvider>().get(
     '/v1/portfolio',
     {
-      config: { auth: 'user' },
+      config: { auth: 'user', limit: 'standard' },
       schema: {
         tags: ['portfolio'],
-        summary: "The signed-in person's vaults on every chain, with holdings, prices and drift",
+        summary: "The signed-in person's vaults on their chain, with holdings, prices and drift",
         description:
-          'Read from the chains, for the wallets in the identity token. `driftBps` is the weight of a position minus its target. Every chain entry and every price carries `provenance`; anything that is not `live` is a test network or MOCK.',
+          'Read from the one chain the person’s plans live on (`GET /v1/me`), for the wallets in the identity token: `chains` has that one entry. `driftBps` is the weight of a position minus its target. The entry and every price carry `provenance`; anything that is not `live` is a test network or MOCK.',
         response: { 200: PortfolioResponse, default: OrderError },
       },
     },
     async (req) => {
-      const { wallets } = signedIn(req);
-      const chains = await refusing(() =>
-        Promise.all(deps.chains.active().map((entry) => chainPortfolio(deps, entry, wallets))),
-      );
-      return { chains, disclaimer: DISCLAIMER.en };
+      const principal = signedIn(req);
+      // One chain: a plan lives where the person's wallet is, and so does every vault of theirs.
+      const entry = deps.chains.get(await homeChain(deps.db, principal));
+      const chain = await refusing(() => chainPortfolio(deps, entry, principal.wallets));
+      return { chains: [chain], disclaimer: DISCLAIMER.en };
     },
   );
 }
