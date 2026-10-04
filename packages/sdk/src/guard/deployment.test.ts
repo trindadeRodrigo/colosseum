@@ -261,8 +261,8 @@ const fileOf = (network: DeploymentFile['network'] = 'local') => ({
       routers: [e.ROUTER],
       cash: 'robinhood:usdc',
       assets: {
-        'robinhood:usdc': { token: e.anyone('token usdc') },
-        'robinhood:spy': { token: e.anyone('token spy') },
+        'robinhood:usdc': { address: e.anyone('token usdc') },
+        'robinhood:spy': { address: e.anyone('token spy') },
       },
       fee: { maxFeeNativeRaw: '1000000000000000', maxGas: 5_000_000 },
     } as Record<string, unknown>,
@@ -493,27 +493,27 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
     ['one router twice', set(evm, 'routers', [e.ROUTER, e.ROUTER]), /addresses are the same/],
     [
       'the factory as the cash token',
-      asset(evm, 'robinhood:usdc', { token: e.FACTORY }),
+      asset(evm, 'robinhood:usdc', { address: e.FACTORY }),
       /addresses are the same/,
     ],
     [
       'a router as a token',
-      asset(evm, 'robinhood:spy', { token: e.ROUTER }),
+      asset(evm, 'robinhood:spy', { address: e.ROUTER }),
       /addresses are the same/,
     ],
     [
       'a token that is not an address',
-      asset(evm, 'robinhood:spy', { token: 'spy' }),
+      asset(evm, 'robinhood:spy', { address: 'spy' }),
       /token of robinhood:spy/,
     ],
     [
       'a field nobody reads in a token',
-      asset(evm, 'robinhood:spy', { token: e.anyone('t'), decimals: 6 }),
+      asset(evm, 'robinhood:spy', { address: e.anyone('t'), decimals: 6 }),
       /decimals/,
     ],
     [
       'an asset of another chain on EVM',
-      asset(evm, 'base:usdc', { token: e.anyone('t') }),
+      asset(evm, 'base:usdc', { address: e.anyone('t') }),
       /not an asset of robinhood/,
     ],
     [

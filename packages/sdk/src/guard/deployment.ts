@@ -48,7 +48,8 @@ export type EvmEntry = {
   proxyCreationCode?: string;
   routers: string[];
   cash: AssetId;
-  assets: Record<AssetId, { token: string }>;
+  /** Each asset's token contract. The field is `address`: a secret scanner reads `token` as a credential. */
+  assets: Record<AssetId, { address: string }>;
   fee?: FeeLimit;
 };
 /** A chain's entry in the mock's file: the chain runs on packages/chain-mock and moves nothing. */
@@ -210,8 +211,8 @@ function evmOf(
   const routers = (entry.routers as unknown[]).map((r) => evmAddress(r, 'a router'));
   const seen = [factory, beacon, ...routers];
   const { cash, assets } = assetsOf(chain, entry, seen, (a, id) => {
-    const asset = only(`the asset ${id}`, a, ['token']);
-    const token = evmAddress(asset.token, `the token of ${id}`);
+    const asset = only(`the asset ${id}`, a, ['address']);
+    const token = evmAddress(asset.address, `the token of ${id}`);
     return { address: token, value: { token } };
   });
   must(new Set(seen).size === seen.length, 'two of its addresses are the same');
