@@ -148,7 +148,7 @@ describe('sizes of the keeper transactions', () => {
 
     // The same leg an hour later, with the table: what it weighs on the wire.
     setClock(w.svm, now(w.svm) + 3_600n);
-    refreshPrices(w);
+    await refreshPrices(w);
     for (let i = 2; i < positions; i++)
       for (const index of [100 + i, 200 + i])
         writePrice(w.svm, w.prices, index, { value: PRICE, unixTimestamp: now(w.svm) });

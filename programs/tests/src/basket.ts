@@ -350,18 +350,27 @@ function accountData(svm: LiteSVM, addr: Address, what: string): Uint8Array {
   return new Uint8Array(account.data);
 }
 
+/** Config, from the bytes of its account. */
+export const decodeConfig = (data: Uint8Array) => configDecoder.decode(data);
+/** A vault, from the bytes of its account. */
+export const decodeVault = (data: Uint8Array) => vaultDecoder.decode(data);
+/** The asset list from the bytes of its account, with only the entries in use. */
+export function decodeAssets(data: Uint8Array) {
+  const registry = assetRegistryDecoder.decode(data);
+  return { ...registry, assets: registry.assets.slice(0, registry.count) };
+}
+
 export async function readConfig(svm: LiteSVM) {
-  return configDecoder.decode(accountData(svm, await configAddress(), 'config'));
+  return decodeConfig(accountData(svm, await configAddress(), 'config'));
 }
 
 export function readVault(svm: LiteSVM, vault: Address) {
-  return vaultDecoder.decode(accountData(svm, vault, 'vault'));
+  return decodeVault(accountData(svm, vault, 'vault'));
 }
 
 /** The asset list, with only the entries in use. */
 export async function readAssets(svm: LiteSVM) {
-  const registry = assetRegistryDecoder.decode(accountData(svm, await assetsAddress(), 'assets'));
-  return { ...registry, assets: registry.assets.slice(0, registry.count) };
+  return decodeAssets(accountData(svm, await assetsAddress(), 'assets'));
 }
 
 export type Component = { mint: Address; weightBps: number };

@@ -581,13 +581,18 @@ pub fn check_inside_band(
     Ok(())
 }
 
-/// Check 5, after the trade, the second half. The asset ends no further from its target
-/// than it began. Inside the band alone, a leg could carry an asset from one edge to the
-/// other, and the next one back, paying the tolerance each way: every leg "toward the
-/// target" and none of them closing the distance.
+/// Check 5, after the trade, the second half. The asset ends closer to its target than it
+/// began, and a leg that crosses the target ends at most half as far on the other side.
+/// Inside the band alone, a leg could carry an asset from one edge to the other, and the
+/// next one back, paying the tolerance each way: every leg "toward the target" and none of
+/// them closing the distance. With "no further" alone it could still flip an asset that
+/// had drifted to exactly as far on the other side, every cooldown. Half as far is what
+/// makes each crossing close the distance.
 ///
 /// The distance is the weight less the target, either way round. `|a₁/V₁ − t| ≤ |a₀/V₀ − t|`
-/// is compared as `|a₁·10⁴ − t·V₁| · V₀ ≤ |a₀·10⁴ − t·V₀| · V₁`, so nothing is divided.
+/// is compared as `|a₁·10⁴ − t·V₁| · V₀ ≤ |a₀·10⁴ − t·V₀| · V₁`, so nothing is divided; a
+/// leg that crossed has its left side doubled. The largest product is a distance of at
+/// most `10⁴ · 10¹⁷`, times a vault's value of at most `10¹⁷`, times two: under 128 bits.
 pub fn check_no_further(
     asset_before: u128,
     vault_before: u128,
@@ -595,13 +600,16 @@ pub fn check_no_further(
     vault_after: u128,
     target_bps: u16,
 ) -> Result<()> {
-    let off = |asset: u128, vault: u128| {
-        let (weight, target) = against(asset, vault, target_bps as u32);
-        weight.abs_diff(target)
-    };
+    let (weight_before, target_before) = against(asset_before, vault_before, target_bps as u32);
+    let (weight_after, target_after) = against(asset_after, vault_after, target_bps as u32);
+    let off_before = weight_before.abs_diff(target_before);
+    let off_after = weight_after.abs_diff(target_after);
+    // Under its target before and over it after, or over it before and under it after.
+    let crossed = (weight_before < target_before && weight_after > target_after)
+        || (weight_before > target_before && weight_after < target_after);
+    let factor = if crossed { 2 } else { 1 };
     require!(
-        off(asset_after, vault_after) * vault_before
-            <= off(asset_before, vault_before) * vault_after,
+        off_after * vault_before * factor <= off_before * vault_after,
         BasketError::PastTarget
     );
     Ok(())

@@ -3,7 +3,7 @@
 | Path | What |
 |---|---|
 | `basket/` | The vault program. The config and its switches, the asset list, the shared-portfolio registry with the author limits, the owner path (create a vault with targets of its own or following a shared portfolio, deposit cash, swap through the one allowed router, set targets, accept a version, switch auto-follow, withdraw any token to the owner) and the keeper path (one trade per call under the checks of section 5, and adopting a version that adds no asset). Design: `docs/vault/DESIGN-VAULT.md` sections 3.7, 5, 6 and 13 |
-| `mock-router/` | A test exchange for LiteSVM and devnet. Not part of the product. It takes the input token from the signer and pays the output from its own reserve at a price its admin sets. Only its upgrade authority can initialise it, and becomes that admin |
+| `mock-router/` | A test exchange and a test price source, for LiteSVM and devnet. Not part of the product. It takes the input token from the signer and pays the output from its own reserve, either at a fixed ratio its admin sets or at the price in its own price account less a spread. The price account has Scope's layout to the byte, so the vault program reads it as it reads Scope's; the admin writes it, and so does one more key the admin names (the job that copies real prices). Only its upgrade authority can initialise it, and becomes that admin |
 | `puppet-router/` | A hostile router, for the tests only. It runs whatever calls a test scripts, with every privilege the vault handed it |
 | `test-hook/` | A hostile transfer hook, for the tests only. It logs the privileges it is handed and uses any signature it gets |
 | `tests/` | The LiteSVM suite, under Vitest. Its own install: `litesvm` needs `@solana/kit` 8 and the repo is on 2.3 |
@@ -25,7 +25,7 @@ anchor build --no-idl -- --tools-version v1.54
 - `default = ["no-idl"]` in `basket` and `mock-router`: the built program refuses Anchor's instruction that creates an on-chain IDL account. Without it, whoever sends that instruction first becomes the account's authority.
 - One warning is expected per Anchor program: Anchor's own macro uses a deprecated `realloc`.
 
-Sizes on Oct 4: `basket.so` 572,816 bytes (3.99 SOL of rent at deploy, and as much again while an upgrade is in flight; it was 460,600 before the keeper leg), `mock_router.so` 275,224 bytes, `puppet_router.so` 29,992 bytes, `test_hook.so` 68,640 bytes.
+Sizes on Oct 4: `basket.so` 582,952 bytes (4.06 SOL of rent at deploy, and as much again while an upgrade is in flight; it was 460,600 before the keeper leg), `mock_router.so` 311,600 bytes (2.17 SOL), `puppet_router.so` 29,992 bytes, `test_hook.so` 68,640 bytes.
 
 ## Test
 
@@ -109,12 +109,12 @@ The compute units differ from run to run because each run makes new keys, and fi
 | After the call: the vault's two token accounts are as they were but for the balance, and still no third one is in the list | `AccountTampered` |
 | Something was spent, and at most `amount_in` | `NothingTraded`, `SpentTooMuch` |
 | What came in is worth what went out less the tolerance, at the reference price | `ReceivedTooLittle` |
-| The asset ends inside the band on the far side of its target, or before it, and no further from its target than it began | `PastTarget` |
+| The asset ends inside the band on the far side of its target, or before it, no further from its target than it began, and, if it crossed the target, at most half as far on the other side | `PastTarget` |
 | What the leg lost, added to what is left of the week's losses, is within the cap | `LossCapReached` |
 
 A weight is the asset's value over everything the vault holds: its cash account at one dollar, the traded asset's own account, and the other positions by `tracked`, each at its price. The vault's value is bounded at 10^17 raw units of cash (a hundred billion dollars at six decimals): under it no product the checks form can overflow, so none of them needs a refusal of its own.
 
-"No further from its target" is what stops a stolen key walking an asset from one edge of the band to the other and back, paying the tolerance each way: a leg may cross the target, and may end at most as far from it on the other side as it began. A leg that spends nothing is refused, so it cannot use up the asset's one trade of the hour; a zero `amount_in` is that leg.
+"No further from its target" is what stops a stolen key walking an asset from one edge of the band to the other and back, paying the tolerance each way: a leg may cross the target, and may end at most half as far from it on the other side as it began. With "no further" alone a stolen key could still flip an asset that had drifted to exactly as far on the other side, every cooldown; half as far makes each crossing close the distance. A leg that spends nothing is refused, so it cannot use up the asset's one trade of the hour; a zero `amount_in` is that leg.
 
 The loss counter is in raw units of the cash mint; it falls in a straight line to nothing over seven days from the last loss, and a leg that loses nothing neither reads the cap nor touches the counter. Because the counter drains while it fills, the most that can be lost in any seven days is just under twice the parameter, not the parameter. What a person is told is "no more than 2% of the vault in any seven days", so `loss_cap_bps` starts at 100 (design section 5); at its hard bound of 500 the same sum is 10%. A later loss starts the seven days again for everything left on the counter. That is the careful side: the counter drains more slowly than each loss would on its own date, so the figure the reader shows (`lossUsedBps`) does not clear seven days after a loss while later legs go on losing.
 
@@ -199,26 +199,70 @@ The tests need no keypair.
 
 ## Deploying to a test network
 
-A person's step. Deploy two programs, each by name:
+A person's word starts it, every time. The commands below are the ones the rehearsal ran (`scripts/testnet/solana/rehearse.ts`, transcript in the `TNET-4` row of the ledger), with devnet's URL in place of the local one. Costs are devnet's, which charges mainnet's rent: 6,960 lamports a byte, plus 128 bytes an account.
+
+What it needs: the two programs built, the two program keypairs (`keys/basket-keypair.json`, `keys/mock_router-keypair.json`, never committed), a deploy key outside the repo holding at least 7 SOL (the rehearsal used 6.64), and `pnpm --dir programs/tests install` once. The deploy key becomes the upgrade authority of both programs and the admin of both: of the vault program's Config, of the test exchange, of its price account and of every test token's mint, freeze and extension authorities.
 
 ```sh
-anchor build --no-idl -- --tools-version v1.54
-anchor deploy -p basket --program-keypair keys/basket-keypair.json --provider.cluster devnet
-anchor deploy -p mock_router --program-keypair keys/mock_router-keypair.json --provider.cluster devnet
+export SOLANA_RPC_URL=https://api.devnet.solana.com
+export SOLANA_KEYPAIR=<path of the deploy key, outside the repo>
 ```
 
-Never a bare `anchor deploy`: it deploys every program of the workspace, and two of them are test tools. `puppet_router` is a router made to misbehave and `test_hook` a transfer hook; neither belongs on a network people use.
+**0. Build, and fill in the roles.** `anchor build --no-idl -- --tools-version v1.54`. In `scripts/testnet/solana/devnet.config.json`, set `roles.guardian` and `roles.defaultKeeper` to an address each, or to `"admin"` for the deploy key, and `roles.priceWriter` to the key of the job that copies prices (TNET-5), or `null` for none yet. The script refuses to run while a role is `null`. The rest of the file is the keeper's parameters (loss cap 100 bps), the thirteen test tokens with their first prices and the source of each, their spreads, their reserves and, for those the keeper may trade, their price ranges. Commit the file as it is run.
 
-The wallet that deploys a program is its upgrade authority, and only that key can run `init_router` and `init_config`. Then, in this order:
+**1. Dry run.** Free.
 
-1. The test mints: the dollar token and the stock tokens (TNET-4). `init_config` takes the dollar mint as an account, so it has to exist first.
-2. `mock_router`: `init_router()`, then `init_pair(price_num, price_den)` once per direction, and tokens into the router's reserve accounts (the associated token accounts of the router's address).
-3. `basket`: `init_config(args)` with `loss_cap_bps` 100 (the 2% a person is told is twice the parameter), the dollar mint as `cash_mint`, `router_program` the test exchange, and a guardian, a default keeper and a price owner that are not the zero address. The admin can replace the guardian and the default keeper later (`set_guardian`, `set_default_keeper`).
-4. `init_assets()`, then `set_price_account(0)` with the price account as an account: it has to exist, be owned by the price owner in Config, and be 28,712 bytes, the size of Scope's. On a test network that is the test price program's account, which has to hold, for every asset, a price entry and a second entry for its one-hour average, both kept fresh: the keeper leg reads both.
-5. `upsert_asset(args)` for each mint, with `price_kind` 1, the price and average indexes, `session` 1 for a stock token, `flags` 0, and `min_price` and `max_price` zero (no range yet). For the ten stock tokens the indexes are in `fixtures/solana-vault/scope-indexes.json` (the real ones, so one asset list serves both networks). Every asset goes in slot 0: a leg takes one price account.
-6. The closed days: `set_closed_day(day, true)` for each market holiday ahead, as days since 1970 (`fixtures/risk/us-market-holidays.json`). The list holds 32.
-7. `publish_recipe(..)` for each shared portfolio, by its creator.
-8. For each asset the keeper should trade, the checks of "The price reference" above, then `upsert_asset` again with `flags` 1 and the asset's price range: the range is part of listing an asset for the keeper, and the switch is refused without one. Until then the keeper trades nothing, and owners are not affected. Someone owns moving the ranges afterwards; write down who.
-9. `launch()` last, and only once the router, the price owner, the cash mint and the price account are final: until then `set_router`, `set_price_owner`, `set_cash_mint`, `set_price_account` and `set_params` change them, and after it only an upgrade does. It also raises the publish delay to two days.
+```sh
+pnpm exec tsx scripts/testnet/solana/setup.ts --dry-run
+```
 
-The sizes and offsets of Config, Vault, Recipe and the asset list have not changed since SOL-2: the keeper's switch is a bit of a byte that was already there, the loss counter two fields that were, and the price range sixteen bytes of an entry that were reserved (`min_price` at 75, `max_price` at 83; an entry is still 96 bytes). A program already deployed at these ids upgrades in place and keeps its accounts; an entry written before the range reads as no range, so its switch, if it was on, passes no price until the admin writes one. Two instructions changed shape, and a client built against the earlier interface file fails on both: `upsert_asset` takes two more numbers, and `sync_balances` takes a signer and Config ahead of the vault's token accounts. The program is 581,216 bytes, 120,616 more than before the keeper leg, so an upgrade first extends the program's data account (`solana program deploy` does it, for the rent of the added bytes).
+It reads devnet's genesis hash first: mainnet's is refused, and so is any cluster that is neither devnet nor on this machine. Before the deploy it says the programs are not there and prints the 46 transactions it would send, each with its accounts and data. Nothing is sent and no file is written.
+
+**2. Deploy the two programs, each by name.** 4.06 SOL for `basket` (582,952 bytes) and 2.17 SOL for `mock_router` (311,600 bytes), all of it rent held by the programs' data accounts. The key never dips below what it ends with: the buffer's rent moves into the program.
+
+```sh
+solana program deploy --url devnet --keypair "$SOLANA_KEYPAIR" \
+  --program-id keys/basket-keypair.json target/deploy/basket.so
+solana program deploy --url devnet --keypair "$SOLANA_KEYPAIR" \
+  --program-id keys/mock_router-keypair.json target/deploy/mock_router.so
+```
+
+Never a bare `anchor deploy`: it deploys every program of the workspace, and two of them are test tools (`puppet_router`, a router made to misbehave, and `test_hook`, a transfer hook). Check: `solana program show 529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW --url devnet` and the same for `2ticePjZZ6e34bNUgUXz7v3uHm3jS8jvV13gesdvKn4f` print the deploy key as `Authority` and the binary's length as `Data Length`. A deploy that stops half-way leaves a buffer holding its rent: `solana program show --buffers --url devnet` lists it, `solana program close <buffer> --url devnet` returns the SOL.
+
+**3. Set up.** 0.40 SOL, about half of it the price account (28,712 bytes, 0.20 SOL); the rest is fourteen mints, 26 pairs, fourteen reserves, Config, the asset list and the lookup table, and the fees of 46 transactions.
+
+```sh
+pnpm exec tsx scripts/testnet/solana/setup.ts
+```
+
+In order, each step reading the chain first and sending only what is missing:
+
+1. The test tokens, at addresses the deploy key derives by seed (`test-mint:<slug>`): the test dollar `tUSDC` (classic token program, 6 decimals) and thirteen tokens that each say "Test … (test network, no value)": ten stock tokens with the indexes, the decimals and the Token-2022 extension set of the real ones, in the real mint's order (metadata pointer, permanent delegate, default account state, scaled UI amount, pausable, confidential transfer, a transfer hook with no program, then the name), a gold token with the same set, and two dollar-yield tokens on the classic program. Not modelled, for want of an entry in `fixtures/solana-vault/scope-indexes.json`: MSFTx, AMZNx, SPCXx, COINx and PLTRx. The deploy key holds every authority, so it can change a stock token's multiplier with Token-2022's own `update_multiplier`.
+2. The exchange (`init_router`), its price account (`create_account_with_seed` "test-prices", then `init_prices`, which writes Scope's discriminator) and the price writer, if the config names one.
+3. A first price and average for every token, stamped with the cluster's clock. A price already there is never overwritten: from the first copy on, the prices are the copying job's.
+4. Two pairs per token against the test dollar, paying the price account's price less the token's spread (15 bps, 5 for the dollar-yield tokens), and each reserve filled to a million dollars at the first price (ten million test dollars). A reserve under half of that is topped up on a later run.
+5. `init_config` with the roles of the config file, the test exchange as router and as price owner, and the test dollar as cash; then the market's closed days ahead from `fixtures/risk/us-market-holidays.json` (`set_closed_day`; Config holds 32).
+6. `init_assets`, `set_price_account(0)`, then `upsert_asset` per token with its two indexes, its session and `flags` 0, and a second `upsert_asset` with `flags` 1 and its price range for each token the config gives a range to. On a test network the price is the test exchange's own, so the checks of "The price reference" above are the config file's ranges, not a session of reads.
+7. The platform's lookup table, with the programs, Config, the asset list, the price account, the exchange, every mint, pair and reserve.
+
+It never calls `launch()`. It prints what it holds and what the run cost, then writes `deployments/solana-devnet.json` (the full record: programs, accounts, roles, parameters, closed days, every token with its mint, token program, decimals, indexes, range, pairs and reserve, `provenance: "sandbox"` and the genesis hash) and the `chains.solana` entry of the SDK guard's file for the test network, `packages/sdk/deployments/testnet.json` (`--out` and `--guard-file` put them elsewhere). The guard's file is read by `loadDeployments` in `packages/sdk/src/guard/deployment.ts`; once written, `pnpm --filter @colosseum/sdk tables` regenerates the package's table of committed files and its deployment test reads it.
+
+What the config no longer asks for is undone or refused, never kept quietly. A price writer it no longer names is revoked (`set_price_writer` to zeros). A token it no longer lists cannot leave the asset list, so its keeper switch goes off and its range to zero; the record keeps it under `retired`, and the guard's file keeps it, since vaults may still hold it. Its asset id comes from the earlier record or, failing that, the guard's file; on devnet a token neither names is refused before anything is sent. A mint whose extensions differ from what the run asks for is refused: they are fixed when the mint is made, so a run with `--omit-extension` has to be repeated with the same flag. The record states what is on chain after the run.
+
+Check: run step 3 again. It reads every account it would write and says `nothing to send: the network is as the config says`; anything else it prints is what differs. A run that stops part-way is picked up by the next one, with one exception: a lookup table made by a run that stopped before writing the record is not found again, and the next run makes another (0.0013 SOL each).
+
+**4. A vault's life on it.** In the rehearsal: the deploy key hands a person 1,000 test dollars, the person creates a vault (40% tSPYx, 30% tjlUSDC), deposits, buys tSPYx through the exchange, the prices are stamped again, the default keeper sends one leg into tjlUSDC with the lookup table, a creator publishes a shared portfolio and the person accepts it: 0.002 SOL to the deploy key. On devnet this is the owner path of `OPS-6`.
+
+Total for the deploy key: 6.64 SOL, which is also the most it ever has out at once; from 10 SOL it keeps 3.36. That is not enough to upgrade `basket` (an upgrade holds the new binary's rent, 4.06 SOL, in a buffer until it lands): top the key up before one. `mock_router` upgrades within what is left.
+
+The order matters where one step needs another: `init_config` takes the dollar mint as an account, `set_price_account` checks the account is the price owner's and 28,712 bytes, and the switch is refused without a range. Shared portfolios (`publish_recipe`) are published by their creators after the set-up. `launch()` comes last, and only once the router, the price owner, the cash mint and the price account are final: until then `set_router`, `set_price_owner`, `set_cash_mint`, `set_price_account` and `set_params` change them, and after it only an upgrade does. It also raises the publish delay to two days.
+
+The rehearsal itself, on this machine and nowhere else:
+
+```sh
+pnpm exec tsx scripts/testnet/solana/rehearse.ts <folder outside the repo> <rpc port>
+```
+
+It starts `solana-test-validator` with the features devnet has not turned on switched off (`scripts/testnet/solana/devnet-features.json`, from `solana feature status -u devnet --display-all --output json`; one of them, account data mapped in place, makes Token-2022 refuse a mint's metadata), gives a fresh key 10 SOL, and runs steps 1 to 4 with it, checking that the dry run printed what the first run sent and that the second run sent nothing. Refresh the feature file before a deploy if it is more than a few weeks old.
+
+The sizes and offsets of Config, Vault, Recipe and the asset list have not changed since SOL-2: the keeper's switch is a bit of a byte that was already there, the loss counter two fields that were, and the price range sixteen bytes of an entry that were reserved (`min_price` at 75, `max_price` at 83; an entry is still 96 bytes). A program already deployed at these ids upgrades in place and keeps its accounts; an entry written before the range reads as no range, so its switch, if it was on, passes no price until the admin writes one. Two instructions changed shape, and a client built against the earlier interface file fails on both: `upsert_asset` takes two more numbers, and `sync_balances` takes a signer and Config ahead of the vault's token accounts. The program is 582,952 bytes, 122,352 more than before the keeper leg, so an upgrade first extends the program's data account (`solana program deploy` does it, for the rent of the added bytes).

@@ -53,14 +53,18 @@ export type TestMint = {
  * auto-approve, and last a transfer hook with an authority and no program. The order matters to
  * anything that walks the list: the hook sits behind two types an older token crate does not know.
  * The metadata text itself, which the real mint carries after the hook, is left out. */
-export function stockExtensions(issuer: Address, mint: Address): ExtensionArgs[] {
+export function stockExtensions(
+  issuer: Address,
+  mint: Address,
+  multiplier = 1.003909,
+): ExtensionArgs[] {
   return [
     extension('MetadataPointer', { authority: some(issuer), metadataAddress: some(mint) }),
     extension('PermanentDelegate', { delegate: issuer }),
     extension('DefaultAccountState', { state: AccountState.Initialized }),
     extension('ScaledUiAmountConfig', {
       authority: issuer,
-      multiplier: 1.003909,
+      multiplier,
       newMultiplierEffectiveTimestamp: 0n,
       newMultiplier: 1.005715,
     }),
@@ -72,6 +76,24 @@ export function stockExtensions(issuer: Address, mint: Address): ExtensionArgs[]
     }),
     extension('TransferHook', { authority: issuer, programId: SYSTEM_PROGRAM }),
   ];
+}
+
+/** The name and the symbol a Token-2022 mint carries in its own account, where the real stock
+ * tokens carry theirs: after the hook, last in the list. */
+export function tokenMetadata(
+  issuer: Address,
+  mint: Address,
+  name: string,
+  symbol: string,
+): ExtensionArgs {
+  return extension('TokenMetadata', {
+    updateAuthority: some(issuer),
+    mint,
+    name,
+    symbol,
+    uri: '',
+    additionalMetadata: new Map(),
+  });
 }
 
 /** The extension types of a Token-2022 mint in the order they sit in the account, and where the
