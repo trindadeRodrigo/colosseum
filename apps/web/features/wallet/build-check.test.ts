@@ -41,7 +41,7 @@ const CLEAN = {
   'routes-manifest.json': JSON.stringify({ staticRoutes: [{ page: '/' }, { page: '/monitor' }] }),
   'server/pages-manifest.json': JSON.stringify({ '/404': 'pages/404.html' }),
   'server/app/monitor.html': '<html></html>',
-  'server/chunks/ssr/1.js.map': map(`${OURS}app/layout.tsx`, `${OURS}${ALWAYS_BUILT}`),
+  'server/chunks/ssr/1.js.map': map(`${OURS}app/(app)/layout.tsx`, `${OURS}${ALWAYS_BUILT}`),
 };
 
 describe('the check that runs after every production build', () => {
@@ -112,7 +112,10 @@ describe('the check that runs after every production build', () => {
     for (const file of ['features/wallet/dev/rpc.ts', 'features/wallet/test/fixtures.ts']) {
       const out = build({
         ...CLEAN,
-        'server/chunks/ssr/2.js.map': map(`${OURS}app/monitor/page.tsx`, `${OURS}${file}`),
+        'server/chunks/ssr/2.js.map': map(
+          `${OURS}app/(structurer)/monitor/page.tsx`,
+          `${OURS}${file}`,
+        ),
       });
       expect(checkBuild(out)).toEqual([`server/chunks/ssr/2.js.map was built from ${OURS}${file}`]);
     }

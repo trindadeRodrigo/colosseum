@@ -1,0 +1,136 @@
+import { type Chain, ChainId, WalletAccount } from '@colosseum/schemas';
+
+// Who is signed in, and the one chain their plan lives on (gates ONE-CHAIN and CHAIN-PICK). The API
+// decides and stores it: GET /v1/me and PUT /v1/me/chain. Those two routes are on the branch
+// `api/orders-real` and not on `staging` yet, so their shapes are written here as that branch has
+// them (packages/schemas/src/account-api.ts there). When it merges, `Person` becomes the shared
+// `PersonResponse` and this file keeps the two calls.
+
+/** The answer of GET /v1/me and of PUT /v1/me/chain. */
+export type Person = {
+  userId: string;
+  /** The wallets of the verified sign-in, as the API read them. */
+  wallets: WalletAccount[];
+  /** Null until there is one: the person made their wallet here and has not chosen yet. */
+  chain: ChainId | null;
+  /** `wallet`: the chain of the outside wallet they connected. `picked`: they chose it, once. */
+  chainSource: 'picked' | 'wallet' | null;
+  /** What may be chosen. Empty once there is a chain. */
+  chainOptions: ChainId[];
+};
+
+/** Reads an answer in that shape, or null when it is not one. */
+export function readPerson(body: unknown): Person | null {
+  if (typeof body !== 'object' || body === null) return null;
+  const { userId, wallets, chain, chainSource, chainOptions } = body as Record<string, unknown>;
+  if (typeof userId !== 'string' || userId === '') return null;
+  if (!Array.isArray(wallets) || !Array.isArray(chainOptions)) return null;
+  const read = wallets.map((w) => WalletAccount.safeParse(w));
+  const options = chainOptions.map((c) => ChainId.safeParse(c));
+  if (read.some((w) => !w.success) || options.some((c) => !c.success)) return null;
+  const home = chain === null ? null : ChainId.safeParse(chain);
+  if (home !== null && !home.success) return null;
+  if (chainSource !== null && chainSource !== 'picked' && chainSource !== 'wallet') return null;
+  return {
+    userId,
+    wallets: read.flatMap((w) => (w.success ? [w.data] : [])),
+    chain: home === null ? null : home.data,
+    chainSource,
+    chainOptions: options.flatMap((c) => (c.success ? [c.data] : [])),
+  };
+}
+
+/** `useApiFetch()`: a call to the API with the sign-in headers. */
+export type ApiFetch = (path: string, init?: RequestInit) => Promise<Response>;
+
+/**
+ * Why a call about the person failed, for the sentence a screen says.
+ * - `unreachable`: the API did not answer, or not in a form this app reads. Asking again may work.
+ * - `signed_out`: the API does not know who is asking (401): the sign-in ran out.
+ * - `taken`: the chain was set before and is another one (409). It never changes.
+ * - `not_offered`: this person cannot choose that chain (422).
+ * - `busy`: the API asked for fewer requests (429).
+ */
+export type PersonFailure = 'unreachable' | 'signed_out' | 'taken' | 'not_offered' | 'busy';
+
+export class PersonError extends Error {
+  readonly kind: PersonFailure;
+  constructor(kind: PersonFailure) {
+    super(kind);
+    this.name = 'PersonError';
+    this.kind = kind;
+  }
+}
+
+const KIND_OF_STATUS: Record<number, PersonFailure> = {
+  401: 'signed_out',
+  409: 'taken',
+  422: 'not_offered',
+  429: 'busy',
+};
+
+async function ask(apiFetch: ApiFetch, path: string, init?: RequestInit): Promise<Person> {
+  let res: Response;
+  try {
+    res = await apiFetch(path, init);
+  } catch {
+    throw new PersonError('unreachable');
+  }
+  if (!res.ok) throw new PersonError(KIND_OF_STATUS[res.status] ?? 'unreachable');
+  const person = readPerson(await res.json().catch(() => null));
+  if (!person) throw new PersonError('unreachable');
+  return person;
+}
+
+/** GET /v1/me. */
+export const fetchPerson = (apiFetch: ApiFetch): Promise<Person> => ask(apiFetch, '/v1/me');
+
+/**
+ * PUT /v1/me/chain. The API stores it once: the same chain again answers as before, another one is
+ * refused (`taken`).
+ */
+export const storeChain = (apiFetch: ApiFetch, chain: ChainId): Promise<Person> =>
+  ask(apiFetch, '/v1/me/chain', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ chain }),
+  });
+
+/**
+ * The chain a wallet family means. A Solana wallet is on Solana. An EVM address serves every EVM
+ * chain; while Base is not deployed it means Robinhood Chain. The API holds the same table.
+ */
+export const HOME_CHAIN: Record<Chain, ChainId> = { solana: 'solana', evm: 'robinhood' };
+
+/**
+ * The person as the API would describe them, worked out here, for the throwaway wallet of development
+ * only: it has no account on the API. An outside wallet names the chain of its family; a wallet made
+ * in the app needs a choice, which `picked` holds for as long as the page is open.
+ */
+export function localPerson(
+  userId: string,
+  wallets: readonly WalletAccount[],
+  picked: ChainId | null,
+): Person {
+  const mine = [...wallets];
+  if (picked)
+    return { userId, wallets: mine, chain: picked, chainSource: 'picked', chainOptions: [] };
+  const outside = new Set(mine.filter((w) => w.kind === 'external').map((w) => w.family));
+  const [only] = outside;
+  if (outside.size === 1 && only)
+    return {
+      userId,
+      wallets: mine,
+      chain: HOME_CHAIN[only],
+      chainSource: 'wallet',
+      chainOptions: [],
+    };
+  const held = new Set(mine.map((w) => HOME_CHAIN[w.family]));
+  return {
+    userId,
+    wallets: mine,
+    chain: null,
+    chainSource: null,
+    chainOptions: ChainId.options.filter((chain) => held.has(chain)),
+  };
+}

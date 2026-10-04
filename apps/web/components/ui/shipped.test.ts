@@ -45,7 +45,8 @@ describe('nothing the product ships imports the showcase or its sample content',
   const shipped = all.filter((file) => !notShipped(file));
 
   it('reads the app: its pages and the primitives', () => {
-    expect(shipped).toContain('app/layout.tsx');
+    expect(shipped).toContain('app/(app)/layout.tsx');
+    expect(shipped).toContain('app/(structurer)/layout.tsx');
     expect(shipped).toContain('components/ui/ProvenancePin.tsx');
     expect(shipped).not.toContain('components/ui/fixtures/mock.ts');
     expect(shipped).not.toContain('app/dev/ui/Showcase.tsx');
@@ -66,6 +67,8 @@ describe('nothing the product ships imports the showcase or its sample content',
     );
     expect(routes).toEqual([]);
     expect(all).toContain('app/dev/ui/page.dev.tsx');
+    // their layout too: with no layout of that name in a production build, /dev has no root at all
+    expect(all).toContain('app/dev/layout.dev.tsx');
   });
 
   it('bites: the showcase does import the sample content', () => {
@@ -118,10 +121,10 @@ describe('the build check knows the design system’s development-only folders',
       'components/ui/testing.ts',
       'components/ui/fixtures.ts',
       'app/developers/page.tsx',
-      'app/layout.tsx',
+      'app/(app)/layout.tsx',
     ])
       expect(BUILD_DEV_ONLY.test(`${OURS}${file}`), file).toBe(false);
-    expect(checkBuild(build('components/ui/Card.tsx', 'app/layout.tsx'))).toEqual([]);
+    expect(checkBuild(build('components/ui/Card.tsx', 'app/(app)/layout.tsx'))).toEqual([]);
   });
 
   it('fails a build made from the sample content, a test helper or the showcase', () => {
@@ -130,7 +133,7 @@ describe('the build check knows the design system’s development-only folders',
       'components/ui/test/html.ts',
       'app/dev/ui/Showcase.tsx',
     ])
-      expect(checkBuild(build('app/page.tsx', file))).toEqual([
+      expect(checkBuild(build('app/(app)/goal/page.tsx', file))).toEqual([
         `server/chunks/ssr/1.js.map was built from ${OURS}${file}`,
       ]);
   });

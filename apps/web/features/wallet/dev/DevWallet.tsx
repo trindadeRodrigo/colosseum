@@ -362,7 +362,8 @@ export function DevWallet() {
           Nothing here is sent unless you press a button that says so.
         </p>
       </div>
-      <SignIn />
+      {/* Signed out, the product's own sign-in. Signed in, "Sign out" is in the bar above. */}
+      {port.status !== 'ready' && <SignIn />}
       {port.status === 'ready' && chains && (
         <>
           <p className="font-mono text-xs">user id: {port.userId}</p>

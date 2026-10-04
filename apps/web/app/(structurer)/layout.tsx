@@ -1,9 +1,14 @@
 import { DISCLAIMER } from '@colosseum/schemas';
 import type { ReactNode } from 'react';
 import { Nav } from '@/components/Nav';
-import { fontVariables } from './fonts';
-import './globals.css';
+import { plexMono } from '../fonts-mono';
+import '../globals.css';
 import { Providers } from './providers';
+
+// The pages written before the design system: home, the plan view, the monitor, the partner embed and
+// the /risk pages. They keep the shell they had (the top bar with the wallet-adapter button, the
+// disclaimer as footer text) until each is rebuilt on the primitives (WEB-2). `tf-system-faces` keeps
+// the system's own typefaces for them; the mono face is the one they already had.
 
 export const metadata = {
   title: 'Colosseum — goal-based structuring',
@@ -12,7 +17,7 @@ export const metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="pt-BR" className={fontVariables}>
+    <html lang="pt-BR" className={`${plexMono.variable} tf-system-faces`}>
       <body className="min-h-screen bg-white text-gray-900 antialiased">
         <Providers>
           <div className="mx-auto max-w-4xl px-4">

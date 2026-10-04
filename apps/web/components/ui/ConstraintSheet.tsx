@@ -1,6 +1,6 @@
 'use client';
 import type { Provenance } from '@colosseum/schemas';
-import { useId, useRef } from 'react';
+import { type ReactNode, useId, useRef } from 'react';
 import { Button } from './Button';
 import { cn } from './cn';
 import { Field, Input, Select, Textarea } from './Field';
@@ -49,6 +49,18 @@ export type SheetField = {
 
 export type SheetGroup = { legend: string; fields: readonly SheetField[] };
 
+/**
+ * Something the sheet states and the person does not set on it: the chain their plan lives on, which
+ * is their wallet's. It is shown with the limits and is not a field.
+ */
+export type SheetFact = {
+  label: string;
+  /** The value, in words, with whatever goes beside it: a MOCK plate, a link to where it is set. */
+  value: ReactNode;
+  /** One sentence under it. */
+  note?: string;
+};
+
 export type SheetSource = {
   /** How the goal was read: "llm-v3", "rules-v1". */
   method: string;
@@ -65,6 +77,10 @@ type Common = {
   goalText?: string;
   source?: SheetSource;
   groups: readonly SheetGroup[];
+  /** What the sheet states beside its fields: under the title, in edit mode and in read mode. */
+  facts?: readonly SheetFact[];
+  /** The id of the sheet in the page, for a link that leads to it ("Edit limits"). */
+  id?: string;
   labels?: Partial<ConstraintSheetLabels>;
   className?: string;
 };
@@ -112,7 +128,7 @@ function shown(field: SheetField): string {
 }
 
 export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
-  const { goalText, source, groups, labels, className } = props;
+  const { goalText, source, groups, facts, id, labels, className } = props;
   const text = { ...CONSTRAINT_SHEET_LABELS, ...labels };
   const summary = useRef<HTMLDivElement>(null);
   const fixId = useId();
@@ -129,11 +145,22 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
               {source.model ? ` (${source.model})` : ''}
               {when ? ` · ${when}` : ''}
             </span>
-            {source.provenance !== 'live' && <MockPlate />}
+            {source.provenance !== 'live' && <MockPlate labels={{ announce: text.mockAnnounce }} />}
           </p>
         )}
       </div>
       {goalText && <p className="text-body-sm text-muted-foreground">“{goalText}”</p>}
+      {facts && facts.length > 0 && (
+        <dl data-ui="sheet-facts" className="mt-2 flex flex-col gap-3">
+          {facts.map((fact) => (
+            <div key={fact.label} className="flex flex-col gap-0.5">
+              <dt className="text-caption font-medium text-foreground">{fact.label}</dt>
+              <dd className="text-body">{fact.value}</dd>
+              {fact.note && <dd className="text-caption text-muted-foreground">{fact.note}</dd>}
+            </div>
+          ))}
+        </dl>
+      )}
     </div>
   );
   const frame = cn(
@@ -143,7 +170,7 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
 
   if (props.mode === 'read')
     return (
-      <section data-ui="constraint-sheet" data-mode="read" className={frame}>
+      <section id={id} data-ui="constraint-sheet" data-mode="read" className={frame}>
         {head}
         {groups.map((group) => (
           <div key={group.legend}>
@@ -174,7 +201,7 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
 
   if (state === 'parsing')
     return (
-      <section data-ui="constraint-sheet" data-state="parsing" className={frame}>
+      <section id={id} data-ui="constraint-sheet" data-state="parsing" className={frame}>
         {head}
         <LatticeStatus label={text.reading} />
       </section>
@@ -199,6 +226,7 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
         hint={[field.hint, field.caption].filter(Boolean).join(' ') || undefined}
         error={field.error}
         edited={field.edited}
+        labels={{ edited: text.edited }}
       >
         {(wired) =>
           field.kind === 'select' && solving ? (
@@ -248,6 +276,7 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
   return (
     <div className="flex flex-col gap-4">
       <section
+        id={id}
         data-ui="constraint-sheet"
         data-state={state}
         aria-busy={solving || undefined}

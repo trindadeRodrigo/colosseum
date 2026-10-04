@@ -27,6 +27,10 @@ export type ConstraintSheetLabels = {
   reading: string;
   noPlan: string;
   editSheet: string;
+  /** In the hint of a field the person changed after the goal was read. */
+  edited: string;
+  /** Read once by a screen reader after the word MOCK, when the reading is not a live one. */
+  mockAnnounce: string;
 };
 export const CONSTRAINT_SHEET_LABELS: ConstraintSheetLabels = {
   title: 'How we read your goal',
@@ -41,6 +45,8 @@ export const CONSTRAINT_SHEET_LABELS: ConstraintSheetLabels = {
   reading: 'Reading your goal…',
   noPlan: 'No plan fits these limits.',
   editSheet: 'Edit sheet',
+  edited: 'edited',
+  mockAnnounce: ': sample data, not live',
 };
 
 export type CompactNavLabels = { skip: string; main: string; menu: string };

@@ -58,12 +58,14 @@ function routes(out) {
 }
 
 /**
- * Folders whose files are for development and tests only. No built route may come from them: the
- * wallet's dev page and test driver, the design system's sample content and test helpers, and every
- * page under app/dev (the showcase). components/ui/shipped.test.ts reads the imports for the same.
+ * Folders whose files are for development and tests only. No built route may come from them: a
+ * feature's `dev` and `test` folders (the wallet's dev page and test driver, the doubles the screens
+ * are tested against), a component folder's `fixtures` and `test` (the design system's sample content
+ * and test helpers), and every page under app/dev (the showcase). components/ui/shipped.test.ts and
+ * components/shell/product-routes.test.ts read the imports for the same.
  */
 export const DEV_ONLY =
-  /(^|\/)(features\/wallet\/(dev|test)|components\/ui\/(fixtures|test)|app\/dev)\//;
+  /(^|\/)(features\/[^/]+\/(dev|test)|components\/[^/]+\/(fixtures|test)|app\/dev)\//;
 /** A file every route is built from: the proof that the source maps name our files. */
 export const ALWAYS_BUILT = 'features/wallet/WalletProvider.tsx';
 

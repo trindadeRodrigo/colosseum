@@ -76,6 +76,9 @@ export default function MonitorPage() {
   const [view, setView] = useState<WalletView | null>(null);
   const [drift, setDrift] = useState<Drift | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  // The policy routes (/policies/*) are registered only when the server runs the first structurer
+  // (LEGACY_STRUCTURER). Where it does not, the positions still show and this says why the rest is not there.
+  const [policyOff, setPolicyOff] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
 
@@ -85,7 +88,14 @@ export default function MonitorPage() {
       const v = await apiGet<WalletView>(`/wallets/${wallet}/positions`);
       setView(v);
       const pol = v.policies[0];
-      if (pol) setDrift(await apiGet<Drift>(`/policies/${pol.id}/drift`));
+      if (pol) {
+        try {
+          setDrift(await apiGet<Drift>(`/policies/${pol.id}/drift`));
+          setPolicyOff(false);
+        } catch {
+          setPolicyOff(true);
+        }
+      }
     } catch (e) {
       setErr(String(e));
     }
@@ -363,6 +373,11 @@ export default function MonitorPage() {
             ).
           </p>
         </section>
+      ) : policyOff ? (
+        <p className="text-sm text-gray-600">
+          The policy view is not available on this server: drift against the policy, the rebalance
+          and the revoke are switched off here. Positions and past executions are below.
+        </p>
       ) : (
         <p className="text-sm text-gray-500">No policy for this wallet yet.</p>
       )}

@@ -1,105 +1,140 @@
 'use client';
 import { useId, useState } from 'react';
-import { accountLines, failureSentence } from './view';
+import { Button } from '../../components/ui/Button';
+import { Card, CardBody, CardHeader } from '../../components/ui/Card';
+import { LatticeStatus } from '../../components/ui/Lattice';
+import { StatusMark } from '../../components/ui/StatusMark';
+import { useT } from '../../i18n/I18nProvider';
+import { type SignInAttempt, type SignInFailure, signInFailure } from './sign-in-view';
 import { useWalletPort } from './WalletProvider';
 
-// Plain on purpose: the design system's Button and its tokens arrive with BRAND-1, and this control
-// takes them then. What is fixed here is the behaviour: one "Sign in" button that opens a choice of
-// passkey or wallet (GATES, SIGN-IN-LABEL), the signed-in state, and sign out. Square corners, no
-// spinner: a busy button changes its label.
+// The two ways in, on the primitives (GATES, SIGN-IN): a passkey, made here or already had, or a
+// wallet the person uses. Nothing of the wallet provider's is drawn: its hooks run behind `signIn()`
+// of the wallet port. Square corners, no spinner: a busy button changes its label. A failure is a
+// sentence that says what to do, never what the wallet or the provider threw.
 
-const quiet = 'rounded-[2px] border border-gray-500 px-3 py-1.5 text-sm hover:border-black';
-const solid = 'rounded-[2px] bg-black px-3 py-1.5 text-sm text-white';
+/** Which button is running: the two passkey buttons, or a wallet by its id. */
+type Busy = 'create' | 'use' | `wallet:${string}` | null;
 
-type Busy = 'passkey' | 'wallet' | 'out' | null;
-
-export function SignIn() {
+export function SignIn({ onSignedIn }: { onSignedIn?: () => void }) {
+  const t = useT();
   const port = useWalletPort();
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<Busy>(null);
-  const [problem, setProblem] = useState<string | null>(null);
-  const menu = useId();
+  const [failure, setFailure] = useState<SignInFailure | null>(null);
+  const passkeyId = useId();
+  const walletId = useId();
 
-  async function run(what: Exclude<Busy, null>, action: () => Promise<void>) {
+  async function run(
+    what: Exclude<Busy, null>,
+    attempt: SignInAttempt,
+    action: () => Promise<void>,
+  ) {
+    if (busy) return;
     setBusy(what);
-    setProblem(null);
+    setFailure(null);
     try {
       await action();
-      setOpen(false);
+      onSignedIn?.();
     } catch (e) {
-      setProblem(failureSentence(e));
+      setFailure(signInFailure(e, attempt));
     } finally {
       setBusy(null);
     }
   }
 
-  if (port.status === 'ready') {
-    const lines = accountLines(port.accounts);
+  // Sign-in is off, and the screen says why in words a person can use. The detail is for the team,
+  // and is shown by the development server only.
+  if (port.problem !== null)
     return (
-      <div className="flex flex-wrap items-center gap-3 text-sm">
-        {port.test && <span className="border border-gray-500 px-1.5 font-mono text-xs">MOCK</span>}
-        {lines.length === 0 && <span>Signed in, with no wallet connected here</span>}
-        {lines.map((line) => (
-          <span key={line.family} className="font-mono" title={line.address}>
-            {line.label}
-          </span>
-        ))}
-        <button
-          type="button"
-          className={quiet}
-          aria-busy={busy === 'out'}
-          aria-disabled={busy === 'out'}
-          onClick={() => busy || run('out', () => port.signOut())}
-        >
-          {busy === 'out' ? 'Signing out…' : 'Sign out'}
-        </button>
-        {problem && <p role="alert">{problem}</p>}
+      <div data-ui="sign-in" data-state="off" role="status" className="flex flex-col gap-2">
+        <p className="max-w-(--tf-measure-body) text-body">
+          {port.problemKind === 'api' ? t.signIn.off.api : t.signIn.off.setup}
+        </p>
+        {process.env.NODE_ENV !== 'production' && (
+          <p className="font-mono text-source text-muted-foreground">
+            {t.signIn.off.detail}: {port.problem}
+          </p>
+        )}
       </div>
     );
-  }
 
-  const loading = port.status === 'loading';
-  // Not set up: the button stays, switched off, with the reason in words beside it.
-  const off = loading || port.problem !== null;
+  if (port.status !== 'signed-out')
+    return (
+      <div data-ui="sign-in" data-state="loading">
+        <LatticeStatus label={t.signIn.loading} />
+      </div>
+    );
+
+  const resting = (what: Exclude<Busy, null>) => busy !== null && busy !== what;
   return (
-    <div className="text-sm">
-      <button
-        type="button"
-        className={solid}
-        aria-expanded={open}
-        aria-controls={menu}
-        aria-busy={loading}
-        aria-disabled={off}
-        onClick={() => off || setOpen((v) => !v)}
-      >
-        {loading ? 'Loading sign-in…' : 'Sign in'}
-      </button>
-      {port.problem && <p className="mt-2">Sign-in is off here: {port.problem}.</p>}
-      {open && !off && (
-        <div id={menu} className="mt-2 flex flex-wrap gap-2">
-          <button
-            type="button"
-            className={quiet}
-            aria-busy={busy === 'passkey'}
-            aria-disabled={busy !== null}
-            onClick={() => busy || run('passkey', () => port.signIn('passkey'))}
-          >
-            {busy === 'passkey' ? 'Waiting for your passkey…' : 'Passkey'}
-          </button>
-          <button
-            type="button"
-            className={quiet}
-            aria-busy={busy === 'wallet'}
-            aria-disabled={busy !== null}
-            onClick={() => busy || run('wallet', () => port.signIn('wallet'))}
-          >
-            {busy === 'wallet' ? 'Waiting for your wallet…' : 'Wallet'}
-          </button>
-        </div>
-      )}
-      {problem && (
-        <p className="mt-2" role="alert">
-          {problem}
+    <div data-ui="sign-in" data-state="ready" className="flex flex-col gap-4">
+      <div className="grid gap-6 min-[820px]:grid-cols-2">
+        <Card as="section" aria-labelledby={passkeyId} mock={port.test}>
+          <CardHeader title={t.signIn.passkey.title} level={2} id={passkeyId} />
+          <CardBody className="flex flex-col items-start gap-4">
+            <p className="text-body">{t.signIn.passkey.body}</p>
+            <div className="flex flex-wrap gap-3">
+              <Button
+                variant="primary"
+                busy={busy === 'create'}
+                busyLabel={t.signIn.passkey.waiting}
+                disabled={resting('create')}
+                onClick={() =>
+                  run('create', 'passkey-create', () => port.signIn('passkey', { create: true }))
+                }
+              >
+                {t.signIn.passkey.create}
+              </Button>
+              <Button
+                busy={busy === 'use'}
+                busyLabel={t.signIn.passkey.waiting}
+                disabled={resting('use')}
+                onClick={() => run('use', 'passkey-use', () => port.signIn('passkey'))}
+              >
+                {t.signIn.passkey.use}
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
+
+        <Card as="section" aria-labelledby={walletId} mock={port.test}>
+          <CardHeader title={t.signIn.wallet.title} level={2} id={walletId} />
+          <CardBody className="flex flex-col items-start gap-4">
+            <p className="text-body">{t.signIn.wallet.body}</p>
+            {port.found.length === 0 ? (
+              <p className="text-body-sm text-muted-foreground">{t.signIn.wallet.none}</p>
+            ) : (
+              <ul aria-label={t.signIn.wallet.found} className="flex flex-wrap gap-3">
+                {port.found.map((wallet) => {
+                  const what = `wallet:${wallet.id}` as const;
+                  return (
+                    <li key={wallet.id}>
+                      <Button
+                        busy={busy === what}
+                        busyLabel={t.signIn.wallet.waiting}
+                        disabled={resting(what)}
+                        onClick={() =>
+                          run(what, 'wallet', () => port.signIn('wallet', { wallet: wallet.id }))
+                        }
+                      >
+                        {wallet.name} · {t.signIn.wallet.family[wallet.family]}
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </CardBody>
+        </Card>
+      </div>
+      {failure && (
+        <p
+          role="alert"
+          data-ui="sign-in-failure"
+          className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm text-destructive"
+        >
+          <StatusMark status="off-track" size={12} className="mt-1.5" />
+          <span>{t.signIn.failure[failure]}</span>
         </p>
       )}
     </div>
