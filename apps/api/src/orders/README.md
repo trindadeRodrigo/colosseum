@@ -1,6 +1,6 @@
 # Orders: what this folder does, and what it does not do yet
 
-The order layer behind `/v1/orders` (DESIGN-VAULT 3.3). It plans the legs of an order, builds one unsigned transaction per leg, and settles a leg when the chain says its transaction landed. It holds no key and signs nothing. Today it runs on `packages/chain-mock` only; a real adapter drops in behind the same `ChainAdapter`.
+The order layer behind `/v1/orders` (DESIGN-VAULT 3.3). It plans the legs of an order, builds one unsigned transaction per leg, and settles a leg when the chain says its transaction landed. It holds no key and signs nothing. It runs on `packages/chain-mock`, and, since ADS-2, on Solana's real adapter (`@colosseum/chain-solana/vault`) where Solana is `live` or `readonly` on a test network or a local copy of mainnet. Mainnet and the EVM chains in `live` or `readonly` stop the API at start.
 
 | File | What it holds |
 |---|---|
@@ -8,7 +8,7 @@ The order layer behind `/v1/orders` (DESIGN-VAULT 3.3). It plans the legs of an 
 | `person.ts` | The chain a person's plans live on: the one stored on the user, at a pick or the first time an outside wallet named it |
 | `legs.ts` | Build, report, cancel, and the read that tracks sent legs again. `attemptFor`: which attempt a transaction is |
 | `store.ts` | The tables, through Drizzle. Every writer locks the leg row first, then its attempts; an EVM build takes a lock on (chain, wallet) before that |
-| `chains.ts` | The adapter registry by chain mode |
+| `chains.ts` | The adapter registry by chain mode: the mock for `mock`; for Solana in `live` or `readonly` on `testnet` or `local`, the real adapter, labelled `sandbox`, on the RPC at `SOLANA_RPC_URL` and the network's assets in `basket_assets` (or what `V1Deps.solana` hands in). Its program comes from the deploy's addresses (`V1Deps.contracts`); without them a real chain does not start |
 | `errors.ts` | A refusal (its body is the shared `OrderError`); a chain's refusal mapped onto the order codes |
 
 ## The rules an order follows
@@ -30,6 +30,13 @@ The order layer behind `/v1/orders` (DESIGN-VAULT 3.3). It plans the legs of an 
 - One transaction settles one step. A transaction already recorded against another step is refused here, and an attempt whose nonce it used is closed.
 - The first transaction the chain has seen keeps an open order open for 24 hours. A transaction that is only claimed does not, and nothing reopens an order that expired.
 
+## A real chain, as built (ADS-2)
+
+- Solana in `live` or `readonly` runs on `createSolanaVaultAdapter` with the chain's config, the server's RPC and the network's asset list, and every figure and step is labelled `sandbox`: the network has to be `testnet` or `local`. `readonly` builds nothing (the adapter refuses with `NotSupported`, after the route's own `CHAIN_UNAVAILABLE`).
+- A buy on Solana is a `create_vault` that carries the whole deposit, then one `swap` per asset: Solana carries no trade in a create (`tradesInCreate` false) and one trade per transaction. Each step is built when it is asked for, from the chain as it is then, so a swap's minimum is the one in its bytes at that moment (`preview.minimums`), as the leg's `expected` then says.
+- The portfolio asks prices only for the assets the chain's list has. A token a vault holds that the list does not have (a shared portfolio's author can name one) shows as `solana:mint-<hex>`, with no value and no weight, and does not stop the read.
+- Checked end to end on a local validator: a person's buy of three assets, four steps, each built by `POST .../build`, signed in the test with a key made for the run, reported with `signedTx`, relayed by the API and settled by the read that tracks it, and the portfolio read back from the chain with the three positions (`tests/solana-vault/validator.test.ts`, `SOLANA_LOCAL_VALIDATOR=1`).
+
 ## What moved into the shared packages
 
 The response shapes (`OrderDetail`, `PortfolioResponse`, `PersonResponse`, `FundingResponse`, `OrderError` with the chain's code, `retryable` and `blocking` in `details`) and the five adapter calls behind a report (`TxProbe`) are in `packages/schemas`. `Leg.expected` has one figure per trade, `Leg.cashRaw` the cash a step is about, and `Order.depositRaw` the cash the order moves, once. `GET /v1/funding` reads one wallet and names it: the one the query names (`wallet`, one of the person's on their chain), else the one the plans are held by. The amount ceiling and the slippage cap are `ORDER_LIMITS`, held by the request's schema; `ORDER_POLICY.slippageBps` is only the figure a buy gets when it names none. The rate limits are `LIMITS` in `plugins/limits.ts`.
@@ -39,8 +46,8 @@ The response shapes (`OrderDetail`, `PortfolioResponse`, `PersonResponse`, `Fund
 None of this is built. Each item is a way to lose money or trust once a chain is `live`.
 
 1. **Idempotency keys on order creation.** Two identical buys sent at once make two orders, and both can settle. `POST /v1/orders` has to take a key and answer the second request with the first order (`idempotency_keys` exists). On an EVM chain the second order now waits for the first one's open transaction; on Solana nothing stops both.
-2. **Relay, "carries" and `nonceOf` through the real adapters.** The five calls are part of `ChainAdapter` (`TxProbe`), and the mock is the only adapter that has them. A real adapter has to hash signed bytes back to the message it built, broadcast them, read the nonce a transaction was signed with, and fetch a reported transaction and match signer, target and call data to the attempt (on Solana, our instruction's accounts and data). The contract's "signed bytes" cases hold it to that.
-3. **Finding a landing nobody reported.** The mock can be asked about an attempt by its message, because its transaction ids are derived from it. A real chain cannot: on Solana the adapter has to search the signer's signatures, on EVM compare the account's nonce. `fate` is handed the signer and the nonce for that. Without it, a transaction that landed and was never reported is found only when its id arrives.
+2. **Relay, "carries" and `nonceOf` through the EVM adapter.** The Solana adapter has the five calls (ADS-2): it hashes signed bytes back to the message, relays only bytes whose every signature checks, and matches a reported transaction by its whole message, so signer, accounts and data are the attempt's or it is `another`. Held to the contract's "signed bytes" cases on a local validator, and through these routes end to end (`tests/solana-vault/validator.test.ts`). The EVM adapter does not have them yet.
+3. **Finding a landing nobody reported, on EVM.** On Solana `fate` looks through the signer's latest 100 transactions for the message, back to the slot the attempt's blockhash could first land in, and says `gone` only once the finalized height is past `validUntil` and a second look finds nothing. On EVM the adapter has to compare the account's nonce; until then a transaction that landed and was never reported is found only when its id arrives.
 4. **An outside EVM wallet that picks its own nonce, with two identical steps.** Two orders of one wallet with the same call (the same deposit into the same vault) share a message. Where the wallet signs on the stated nonce, each transaction is told apart by it. Where it does not, a transaction on a nonce nobody stated, at or above the lowest the step stated, settles the step it is reported to: the books then hold one deposit for one transaction, but possibly against the other order. A nonce below every stated one is refused: that transaction was sent before the step was built. The embedded wallet signs with the stated nonce and is not affected.
 5. **A second order of the same wallet on an EVM chain waits.** It is refused while the first holds an open transaction, and the web has to offer the way out: report or cancel the step named in `details.blocking`. An order left open and unsigned blocks until it expires, 15 minutes later.
 6. **`users` and `user_wallets`.** A `users` row is written when a person picks their chain, or the first time their outside wallet names it, and holds the chain. Nothing writes `user_wallets`, `orders.user_id` is null, and an order is tied to wallets only.
