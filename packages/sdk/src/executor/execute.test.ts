@@ -365,6 +365,36 @@ describe('the executor: a hostile API, at each step, is refused and nothing is s
     expect(result.status === 'refused' && result.refusal.code).toBe('step');
     expect(s.wallet.sign).not.toHaveBeenCalled();
   });
+
+  it('hands the wallet nothing but a pass the guard made, whatever a guard hands back', async () => {
+    for (const signOnly of [true, false]) {
+      const s = scene('solana', { signOnly });
+      const order = await s.double.buy(100);
+      // A copy of a real pass, of the same bytes and the same step, is not one.
+      const forged = makeExecute((input) => ({ ...runGuard(input) }));
+      const result = await forged(order, s.deps);
+      expect(result.status, String(signOnly)).toBe('error');
+      expect(s.wallet.sign).not.toHaveBeenCalled();
+      expect(s.wallet.send).not.toHaveBeenCalled();
+    }
+  });
+
+  it('builds and signs nothing when the API answers with another order', async () => {
+    const s = scene('solana');
+    const order = await s.double.buy(100);
+    const buildLeg = vi.fn(s.double.api.buildLeg);
+    const api: OrderApi = {
+      ...s.double.api,
+      buildLeg,
+      async getOrder(id) {
+        return { ...(await s.double.api.getOrder(id)), id: 'another-order' };
+      },
+    };
+    const result = await execute(order, { ...s.deps, api });
+    expect(result.status === 'error' && result.error.message).toMatch(/another order/);
+    expect(buildLeg).not.toHaveBeenCalled();
+    expect(s.wallet.sign).not.toHaveBeenCalled();
+  });
 });
 
 describe('the executor: what was approved is fixed before the API is asked anything', () => {

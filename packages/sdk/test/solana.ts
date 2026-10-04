@@ -327,6 +327,101 @@ export function wire(
   };
 }
 
+/** Solana's compact length, written its shortest way. */
+export function compactLength(n: number): Uint8Array {
+  const out: number[] = [];
+  for (let v = n; ; ) {
+    const low = v & 0x7f;
+    v >>= 7;
+    if (v === 0) {
+      out.push(low);
+      return Uint8Array.from(out);
+    }
+    out.push(low | 0x80);
+  }
+}
+
+/** The keys of a hand-written message: `first` in that order, then every other address the instructions name. */
+export const keysOf = (first: string[], instructions: Ix[]) => [
+  ...new Set([
+    ...first,
+    ...instructions.flatMap((ix) => (ix.accounts ?? []).map((a) => a.address as string)),
+    ...instructions.map((ix) => ix.programAddress as string),
+  ]),
+];
+
+/** An instruction by the indexes of its program and accounts in the message. */
+export type IndexedIx = { program: number; accounts: number[]; data: Uint8Array };
+
+/**
+ * A message written by hand, for what @solana/kit would never compile: a header, an order of the keys,
+ * a key no instruction uses, an index that points nowhere. `keys` are as given; an instruction is by
+ * address (found in `keys`) or by index. `slots` is how many signature slots go in front.
+ */
+export function handWritten(o: {
+  keys: string[];
+  instructions: (Ix | IndexedIx)[];
+  header?: [number, number, number];
+  version?: 0 | 'legacy';
+  tables?: { table: string; writable: number[]; readonly: number[] }[];
+  slots?: number;
+}): Wire & { message: Uint8Array } {
+  const at = (a: string) => {
+    const i = o.keys.indexOf(a);
+    if (i < 0) throw new Error(`the keys have no ${a}`);
+    return i;
+  };
+  const indexed = o.instructions.map((ix) =>
+    'programAddress' in ix
+      ? {
+          program: at(ix.programAddress),
+          accounts: (ix.accounts ?? []).map((a) => at(a.address)),
+          data: new Uint8Array(ix.data ?? []),
+        }
+      : ix,
+  );
+  const header = o.header ?? [1, 0, 0];
+  const message = join(
+    o.version === 'legacy' ? new Uint8Array() : Uint8Array.of(0x80),
+    Uint8Array.from(header),
+    compactLength(o.keys.length),
+    ...o.keys.map(raw),
+    raw(someone('blockhash')),
+    compactLength(indexed.length),
+    ...indexed.map((ix) =>
+      join(
+        Uint8Array.of(ix.program),
+        compactLength(ix.accounts.length),
+        Uint8Array.from(ix.accounts),
+        compactLength(ix.data.length),
+        ix.data,
+      ),
+    ),
+    o.version === 'legacy'
+      ? new Uint8Array()
+      : join(
+          compactLength(o.tables?.length ?? 0),
+          ...(o.tables ?? []).map((t) =>
+            join(
+              raw(t.table),
+              compactLength(t.writable.length),
+              Uint8Array.from(t.writable),
+              compactLength(t.readonly.length),
+              Uint8Array.from(t.readonly),
+            ),
+          ),
+        ),
+  );
+  const slots = o.slots ?? header[0];
+  return {
+    message,
+    payload: Buffer.from(join(compactLength(slots), new Uint8Array(64 * slots), message)).toString(
+      'base64',
+    ),
+    messageHash: createHash('sha256').update(message).digest('hex'),
+  };
+}
+
 /** A transaction as the API hands it out, for a step, around bytes. */
 export function solanaTx(step: ApprovedStep, bytes: Wire, over: Partial<BasketTx> = {}): BasketTx {
   return {

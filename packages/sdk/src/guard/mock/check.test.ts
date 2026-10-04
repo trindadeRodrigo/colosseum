@@ -20,6 +20,7 @@ import {
   usd,
 } from '../../../test/mock';
 import { SOLANA } from '../../../test/solana';
+import { deploymentsOf } from '../deployment';
 import { guardTransaction } from '../index';
 import type { GuardCheck } from '../refusal';
 import type { ApprovedStep, GuardInput } from '../types';
@@ -239,6 +240,20 @@ describe('the guard on the mock chain: a mock transaction is never taken for a r
     expect(refusalOf(() => guardTransaction(real))?.code).toBe('network');
     const labelled = { ...(w.cases.swap as Case).tx, provenance: 'sandbox' as const };
     expect(refusalOf(() => guardTransaction(input(w, 'swap', labelled)))?.code).toBe('network');
+  });
+
+  it("refuses the deployment of another chain, each chain's own file entry though it is", () => {
+    for (const [chain, other] of [
+      ['robinhood', 'base'],
+      ['solana', 'robinhood'],
+    ] as const) {
+      const theirs = deploymentsOf('mock')[other];
+      if (!theirs) throw new Error(`the mock's file has no ${other}`);
+      const given = { ...input(worlds[chain], 'swap'), deployment: theirs };
+      const refusal = refusalOf(() => guardTransaction(given));
+      expect(refusal?.code, chain).toBe('unsupported');
+      expect(refusal?.message).toBe(`no deployment was given for ${chain}`);
+    }
   });
 
   it('refuses the call a mock deployment once passed: native value to a stranger on a real chain id', () => {
@@ -479,6 +494,12 @@ negatives.push(
   ),
   onEvm('approve', 'target', 'a mock approval sent to a stranger', (tx, w) =>
     recalled(tx, {}, w.stranger),
+  ),
+  onEvm(
+    'approve',
+    'target',
+    'a mock call sent to a stranger, while the operation names the token',
+    (tx, w) => recalled(tx, { to: w.stranger }),
   ),
   onEvm('deposit', 'target', "a mock deposit sent to another person's vault", (tx, w) =>
     recalled(tx, {}, mockVaultAddress('robinhood', w.stranger, BASKET)),

@@ -10,8 +10,10 @@ import {
   createVaultIx,
   depositIx,
   flag,
+  handWritten,
   type Ix,
   join,
+  keysOf,
   mintOf,
   OWNER,
   openAccountIx,
@@ -545,6 +547,12 @@ const swap = (name: string, check: GuardCheck, build: () => Promise<Ix[]>): Nega
   input: async () => input(swapStep, wire(await build())),
 });
 const good = () => honest.deposit(BASKET_PROGRAM);
+/** A compute-budget instruction with a byte more, or naming an account. */
+const longer = (ix: Ix): Ix => ({ ...ix, data: join(ix.data as Uint8Array, Uint8Array.of(0)) });
+const naming = (ix: Ix): Ix => ({
+  ...ix,
+  accounts: [{ address: address(someone('spare')), role: AccountRole.READONLY }],
+});
 
 const negatives: Negative[] = [
   // ---- G-LINK: a hostile instruction in an allowed program
@@ -643,6 +651,84 @@ const negatives: Negative[] = [
     ],
   ),
   deposit('the unit price set twice', 'budget', async () => [...(await good()), unitPriceIx(1n)]),
+  deposit('the unit limit set twice', 'budget', async () => [...(await good()), unitLimitIx(1)]),
+  deposit('a unit limit with a byte left over', 'budget', async () => [
+    longer(unitLimitIx(400_000)),
+    unitPriceIx(10_000n),
+    await depositIx(BASKET_PROGRAM, CASH),
+  ]),
+  deposit('a unit limit that names an account', 'budget', async () => [
+    naming(unitLimitIx(400_000)),
+    unitPriceIx(10_000n),
+    await depositIx(BASKET_PROGRAM, CASH),
+  ]),
+  deposit('a unit price with a byte left over', 'budget', async () => [
+    unitLimitIx(400_000),
+    longer(unitPriceIx(10_000n)),
+    await depositIx(BASKET_PROGRAM, CASH),
+  ]),
+  deposit('a unit price that names an account', 'budget', async () => [
+    unitLimitIx(400_000),
+    naming(unitPriceIx(10_000n)),
+    await depositIx(BASKET_PROGRAM, CASH),
+  ]),
+  deposit(
+    'a token account paid for by the vault, which signs nothing',
+    'token_account',
+    async () => {
+      const open = await openAccountIx(VAULT, 'solana:usdc', { payer: VAULT });
+      return [
+        ...(await good()),
+        {
+          ...open,
+          accounts: (open.accounts ?? []).map((a, i) =>
+            i === 0 ? { ...a, role: AccountRole.WRITABLE } : a,
+          ),
+        },
+      ];
+    },
+  ),
+  deposit(
+    'a token account opened through another program than System',
+    'token_account',
+    async () => [
+      ...(await good()),
+      await openAccountIx(VAULT, 'solana:usdc', { system: STRANGER }),
+    ],
+  ),
+  deposit('a token account instruction with an account more', 'token_account', async () => {
+    const open = await openAccountIx(VAULT, 'solana:usdc');
+    return [
+      ...(await good()),
+      {
+        ...open,
+        accounts: [
+          ...(open.accounts ?? []),
+          { address: address(someone('spare')), role: AccountRole.READONLY },
+        ],
+      },
+    ];
+  }),
+  deposit(
+    "a token account opened under another token program than the token's",
+    'token_account',
+    async () => {
+      const [account] = await getProgramDerivedAddress({
+        programAddress: address(ASSOCIATED),
+        seeds: [raw(VAULT), raw(TOKEN_2022), raw(mintOf('solana:usdc'))],
+      });
+      const open = await openAccountIx(VAULT, 'solana:usdc', { account });
+      return [
+        ...(await good()),
+        {
+          ...open,
+          accounts: (open.accounts ?? []).map((a, i) =>
+            i === 5 ? { ...a, address: address(TOKEN_2022) } : a,
+          ),
+        },
+      ];
+    },
+  ),
 
   // ---- G-LINK: a withdraw built for a third party
   {
@@ -856,6 +942,32 @@ const negatives: Negative[] = [
   deposit('a transaction that names a stranger as its fee payer', 'signer', good, {
     feePayer: STRANGER,
   }),
+  {
+    name: 'a second signer that no instruction uses',
+    check: 'signer',
+    input: async () => {
+      const instructions = await good();
+      return input(
+        depositStep,
+        handWritten({
+          keys: keysOf([OWNER, STRANGER], instructions),
+          instructions,
+          header: [2, 0, 0],
+        }),
+      );
+    },
+  },
+  {
+    name: 'bytes a stranger pays for, with the person a plain account that signs nothing',
+    check: 'signer',
+    input: async () => {
+      const instructions = await good();
+      return input(
+        depositStep,
+        handWritten({ keys: keysOf([STRANGER, OWNER], instructions), instructions }),
+      );
+    },
+  },
   {
     name: 'bytes a stranger pays for and signs first',
     check: 'signer',
