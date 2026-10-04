@@ -4,6 +4,8 @@
 
 use anchor_lang::prelude::*;
 
+use crate::errors::BasketError;
+
 pub const CONFIG_SEED: &[u8] = b"config";
 pub const ASSETS_SEED: &[u8] = b"assets";
 pub const RECIPE_SEED: &[u8] = b"recipe";
@@ -14,6 +16,14 @@ pub const MAX_ASSETS: usize = 64;
 pub const MAX_COMPONENTS: usize = 12;
 pub const MAX_PRICE_ACCOUNTS: usize = 4;
 pub const BPS: u32 = 10_000;
+/// `AssetEntry.flags`, bit 0: the keeper may trade the asset and value a vault by its price.
+/// The admin sets it once the asset's price entry is seen to be live. The owner's own swap
+/// and withdrawal never read it.
+pub const ASSET_KEEPER: u8 = 1;
+/// A price range is at most this wide: its ceiling over its floor. Wide enough for a stock's
+/// worst month, too narrow to pass a price that is double or half the real one from the
+/// middle of the range, and never "no check".
+pub const MAX_PRICE_RANGE_RATIO: u64 = 2;
 
 /// One per program, at seeds ["config"].
 #[account]
@@ -35,7 +45,8 @@ pub struct Config {
     pub cash_mint: Pubkey,
     /// Stops the keeper paths only. No owner instruction reads it.
     pub keeper_paused: bool,
-    /// One-way; raises the floor on `publish_delay_s` and locks the three addresses above.
+    /// One-way; raises the floor on `publish_delay_s` and locks the three addresses above,
+    /// and the price accounts of the asset list.
     pub launched: bool,
     pub tolerance_bps: u16,
     pub loss_cap_bps: u16,
@@ -80,6 +91,33 @@ impl Config {
         self.session_open_utc_s = params.session_open_utc_s;
         self.session_close_utc_s = params.session_close_utc_s;
     }
+
+    /// Marks a day (days since 1970, UTC) as closed. A zero is an empty slot, so day zero
+    /// cannot be closed, and the list holds 32 days.
+    pub fn close_day(&mut self, day: u16) -> Result<()> {
+        require!(day != 0, BasketError::ParamOutOfBounds);
+        if self.closed_days.contains(&day) {
+            return Ok(());
+        }
+        let free = self
+            .closed_days
+            .iter_mut()
+            .find(|slot| **slot == 0)
+            .ok_or(BasketError::ParamOutOfBounds)?;
+        *free = day;
+        Ok(())
+    }
+
+    /// Takes a day off the list of closed days.
+    pub fn open_day(&mut self, day: u16) -> Result<()> {
+        require!(day != 0, BasketError::ParamOutOfBounds);
+        for slot in self.closed_days.iter_mut() {
+            if *slot == day {
+                *slot = 0;
+            }
+        }
+        Ok(())
+    }
 }
 
 /// The platform's list of tokens a vault may hold: one per program, at seeds ["assets"].
@@ -89,7 +127,8 @@ impl Config {
 /// 6,281 bytes in all.
 #[account(zero_copy(unsafe))]
 pub struct AssetRegistry {
-    /// The price accounts an entry's `price_slot` points into. Written by the keeper slot.
+    /// The price accounts an entry's `price_slot` points into. Written by
+    /// `set_price_account`, until `launched` is set.
     pub price_accounts: [Pubkey; MAX_PRICE_ACCOUNTS],
     /// How many of `assets` are in use.
     pub count: u8,
@@ -98,7 +137,8 @@ pub struct AssetRegistry {
 
 /// One listed token: 96 bytes. Offsets inside the entry: `mint` 0, `price_slot` 32,
 /// `price_index` 33, `twap_index` 35, `decimals` 37, `price_kind` 38, `session` 39,
-/// `max_weight_bps` 40, `flags` 42, `source_check` 43, `reserved` 75.
+/// `max_weight_bps` 40, `flags` 42, `source_check` 43, `min_price` 75, `max_price` 83,
+/// `reserved` 91.
 #[zero_copy(unsafe)]
 pub struct AssetEntry {
     pub mint: Pubkey,
@@ -114,11 +154,17 @@ pub struct AssetEntry {
     pub session: u8,
     /// The most a shared portfolio may hold of it. The registry also caps every weight at 50%.
     pub max_weight_bps: u16,
-    /// No bit has a meaning yet; must be zero.
+    /// Bit 0 is `ASSET_KEEPER`; the other bits must be zero.
     pub flags: u8,
     /// All zeros means off (DESIGN-VAULT.md section 5).
     pub source_check: [u8; 32],
-    pub reserved: [u8; 21],
+    /// The range the asset's price is plausible in, in millionths of a dollar for one whole
+    /// token: a keeper leg takes no price under `min_price` or over `max_price`. The admin
+    /// sets it and moves it by hand. Zero and zero is "no range", which only an asset the
+    /// keeper does not trade may have. The two took sixteen bytes of what was reserved.
+    pub min_price: u64,
+    pub max_price: u64,
+    pub reserved: [u8; 5],
 }
 
 impl AssetRegistry {
@@ -134,6 +180,12 @@ impl AssetRegistry {
 
     pub fn is_listed(&self, mint: &Pubkey) -> bool {
         self.find(mint).is_some()
+    }
+}
+
+impl AssetEntry {
+    pub fn keeper_on(&self) -> bool {
+        self.flags & ASSET_KEEPER != 0
     }
 }
 
@@ -296,6 +348,47 @@ impl Vault {
         {
             position.tracked = amount;
         }
+    }
+
+    /// The position on `mint`, if the mint is one of the vault's.
+    pub fn position(&self, mint: &Pubkey) -> Option<&Position> {
+        let count = (self.count as usize).min(MAX_POSITIONS);
+        self.positions[..count].iter().find(|p| p.mint == *mint)
+    }
+
+    /// True when the owner has accepted the asset: it is a position with a target above
+    /// zero. Holding a token is not accepting it.
+    pub fn accepts(&self, mint: &Pubkey) -> bool {
+        self.position(mint).is_some_and(|p| p.target_bps > 0)
+    }
+
+    /// Stamps the time of a keeper trade on the position of `mint`.
+    pub fn stamp_keeper(&mut self, mint: &Pubkey, now: i64) {
+        let count = (self.count as usize).min(MAX_POSITIONS);
+        if let Some(position) = self.positions[..count].iter_mut().find(|p| p.mint == *mint) {
+            position.last_keeper_ts = now;
+        }
+    }
+
+    /// Takes the weights of a version of a shared portfolio. A mint the version no longer
+    /// holds and the vault still does stays as a position with a target of zero, so the
+    /// keeper can sell it; one the vault holds nothing of goes. More than 16 lines in all
+    /// is refused: the owner sells what is left over first.
+    pub fn take_version(&mut self, version: &RecipeVersion) -> Result<()> {
+        let components = version.components();
+        let mut next: Vec<(Pubkey, u16)> = components
+            .iter()
+            .map(|component| (component.mint, component.weight_bps))
+            .collect();
+        let count = (self.count as usize).min(MAX_POSITIONS);
+        for held in self.positions[..count].iter().filter(|p| p.tracked > 0) {
+            if components.iter().all(|c| c.mint != held.mint) {
+                next.push((held.mint, 0));
+            }
+        }
+        require!(next.len() <= MAX_POSITIONS, BasketError::InvalidTargets);
+        self.set_positions(next.into_iter());
+        Ok(())
     }
 
     /// Replaces the targets. A mint that stays keeps what the program recorded for it

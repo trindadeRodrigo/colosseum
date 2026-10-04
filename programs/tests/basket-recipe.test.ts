@@ -419,6 +419,23 @@ describe('the shared-portfolio registry', () => {
       expect([state.pending.version, state.lastVersion]).toEqual([2, 2]);
     });
 
+    it('a cancel on such a portfolio spends the number of the version it takes back', async () => {
+      // Version 2 was published and is waiting when the counter is not there yet.
+      const account = svm.getAccount(recipe);
+      if (!account.exists) throw new Error('no recipe');
+      const data = new Uint8Array(account.data);
+      data.set([0, 0, 0, 0], RECIPE_SIZE - 32);
+      svm.setAccount({ ...account, data });
+      expect(readRecipe(svm, recipe).lastVersion).toBe(0);
+
+      expectOk(await cancel(creator));
+      expect(readRecipe(svm, recipe).lastVersion).toBe(2);
+      setClock(svm, START + DELAY + DELAY);
+      expectOk(await update());
+      const state = readRecipe(svm, recipe);
+      expect([state.pending.version, state.lastVersion]).toEqual([3, 3]);
+    });
+
     it('there is nothing to cancel once nothing waits', async () => {
       expectOk(await cancel(creator));
       expectError(await cancel(creator), ERR.NoPendingVersion);

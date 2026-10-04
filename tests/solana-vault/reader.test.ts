@@ -617,16 +617,6 @@ describe('Solana reader: vaults', () => {
     expect((await refusal(none.getAssetList(), 'Unavailable')).retryable).toBe(false);
   });
 
-  it('refuses to report a loss counter before the keeper leg defines it', async () => {
-    const vault = accountOf(fixture, 'vault:manual');
-    const lossAccumAt = VAULT_SIZE - 128 - 8 - 8;
-    const lost = patched(vault, [{ at: lossAccumAt, bytes: [9] }]);
-    const { reader } = world({ edit: (node) => node.accounts.set(vault.address, lost) });
-    expect((await refusal(reader.getVault(vault.address), 'NotSupported')).message).toContain(
-      'SOL-3',
-    );
-  });
-
   it("uses the vault's own keeper when it has one", async () => {
     const vault = accountOf(fixture, 'vault:manual');
     const keeperAt = 8 + 32 + 32 + 4 + 1 + 8 + 1;
@@ -949,5 +939,235 @@ describe('Solana reader: the node', () => {
       accounts.map((a, i) => (i % 7 === 0 ? null : a.lamports)),
     );
     expect(found[249]?.data).toEqual(new Uint8Array([249]));
+  });
+});
+
+const u64 = (value: bigint) => {
+  const bytes = new Uint8Array(8);
+  new DataView(bytes.buffer).setBigInt64(0, value, true);
+  return bytes;
+};
+const CLOCK = BigInt(fixture.clock.unixTimestamp);
+/** In a vault: positions start at byte 119 and are 50 bytes each; then the loss counter and its time. */
+const TRACKED_AT = (position: number) => 119 + 50 * position + 34;
+const LAST_KEEPER_AT = (position: number) => 119 + 50 * position + 42;
+const LOSS_ACCUM_AT = VAULT_SIZE - 128 - 8 - 8;
+const LOSS_TS_AT = LOSS_ACCUM_AT + 8;
+
+describe('Solana reader: the weekly loss counter', () => {
+  const vault = accountOf(fixture, 'vault:following');
+  // 1,000 dollars of cash, 2.3 SPYx at 100 dollars and 1.25 gold at 200.5: 1,480.625 dollars.
+  const VALUE = 1_480_625_000n;
+  const WEEK = 604_800n;
+  const lost = (amount: bigint, ago: bigint, edit?: (node: FakeNode) => void) => {
+    const account = patched(vault, [
+      { at: LOSS_ACCUM_AT, bytes: u64(amount) },
+      { at: LOSS_TS_AT, bytes: u64(CLOCK - ago) },
+    ]);
+    return world({
+      edit: (node) => {
+        node.accounts.set(vault.address, account);
+        edit?.(node);
+      },
+    });
+  };
+  const used = async (amount: bigint, ago: bigint, edit?: (node: FakeNode) => void) =>
+    (await lost(amount, ago, edit).reader.getVault(vault.address))?.lossUsedBps;
+
+  it('is nothing for a vault that never lost', async () => {
+    expect((await world().reader.getVault(vault.address))?.lossUsedBps).toBe(0);
+  });
+
+  it('is what is left of the counter, as a share of what the vault holds now', async () => {
+    expect(await used(VALUE / 100n, 0n)).toBe(100);
+    expect(await used(VALUE / 50n, 0n)).toBe(200);
+  });
+
+  it('falls in a straight line to nothing over seven days', async () => {
+    expect(await used(VALUE / 100n, WEEK / 2n)).toBe(50);
+    expect(await used(VALUE / 100n, WEEK - 1n)).toBe(0);
+    expect(await used(VALUE / 100n, WEEK)).toBe(0);
+    expect(await used(VALUE / 100n, 2n * WEEK)).toBe(0);
+  });
+
+  it('reads no more accounts for it than the vault takes anyway', async () => {
+    const plain = world();
+    await plain.reader.getVault(vault.address);
+    const counting = lost(VALUE / 100n, 0n);
+    await counting.reader.getVault(vault.address);
+    expect(counting.node.calls).toEqual(plain.node.calls);
+  });
+
+  it('counts a position whose price cannot be read for nothing: the share only gets larger', async () => {
+    // Without the price account the vault is its 1,000 dollars of cash.
+    const price = fixture.prices.account;
+    expect(await used(VALUE / 100n, 0n, (node) => node.accounts.delete(price))).toBe(148);
+  });
+
+  it('never reports more than the whole', async () => {
+    expect(await used(VALUE * 3n, 0n)).toBe(10_000);
+  });
+
+  it('shows on every read of the vault, by its owner too', async () => {
+    const { reader } = lost(VALUE / 100n, 0n);
+    const states = await reader.getVaults(names.owner);
+    expect(states.map((s) => s.lossUsedBps)).toEqual([100, 0, 0]);
+  });
+});
+
+describe('Solana reader: what a keeper needs to plan a leg', () => {
+  const following = accountOf(fixture, 'vault:following');
+  const config = accountOf(fixture, 'config');
+  const clock = accountOf(fixture, 'clock');
+  const context = async (
+    vault: string = names.vaults.following,
+    edit?: (node: FakeNode) => void,
+  ) => {
+    const { reader, node } = world({ edit });
+    const found = await reader.getKeeperContext(vault);
+    if (!found) throw new Error('no vault');
+    return { ...found, calls: node.calls };
+  };
+
+  it('gives the rules, the price account and each position as a leg would find it, in two calls', async () => {
+    const found = await context();
+    expect(found.calls).toEqual(['getMultipleAccounts', 'getMultipleAccounts']);
+    expect(found.vault).toEqual(await world().reader.getVault(names.vaults.following));
+    expect(found.rules).toEqual({
+      paused: false,
+      toleranceBps: 75,
+      lossCapBps: 100,
+      bandBps: 50,
+      twapDevBps: 200,
+      maxPriceAgeSeconds: 120,
+      maxTwapAgeSeconds: 3_600,
+      cooldownSeconds: 3_600,
+    });
+    expect(found.priceAccount).toBe(fixture.prices.account);
+    expect(found.blocked).toBeNull();
+    expect(found.positions).toEqual([
+      {
+        asset: assetId('spyx'),
+        mint: names.mints.spyx,
+        targetBps: 5_000,
+        // More arrived after the program last looked.
+        raw: '230000000',
+        trackedRaw: '200000000',
+        needsSync: true,
+        keeperOn: true,
+        price: { usdPerToken: '100', ageSeconds: 30 },
+        twap: { usdPerToken: '100', ageSeconds: 30 },
+        reference: null,
+        trade: null,
+        cooldownUntil: null,
+      },
+      {
+        asset: assetId('nvdax'),
+        mint: names.mints.nvdax,
+        targetBps: 3_000,
+        raw: '0',
+        trackedRaw: '0',
+        needsSync: false,
+        keeperOn: true,
+        price: { usdPerToken: '50', ageSeconds: 45 },
+        twap: { usdPerToken: '50', ageSeconds: 45 },
+        reference: null,
+        // Its multiplier changes in 2100: no window is near.
+        trade: null,
+        cooldownUntil: null,
+      },
+      {
+        asset: assetId('gold'),
+        mint: names.mints.gold,
+        targetBps: 2_000,
+        raw: '125000000',
+        trackedRaw: '0',
+        needsSync: true,
+        keeperOn: true,
+        // 400 s old, where the program takes 120: the price is shown and the asset is refused.
+        price: { usdPerToken: '200.5', ageSeconds: 400 },
+        twap: null,
+        reference: 'PriceStale',
+        trade: null,
+        cooldownUntil: null,
+      },
+    ]);
+  });
+
+  it('says an asset the admin has not switched on cannot be valued', async () => {
+    const found = await context(names.vaults.partial);
+    expect(found.positions.map((p) => [p.asset, p.keeperOn, p.reference])).toEqual([
+      [assetId('spyx'), true, null],
+      [assetId('tslax'), false, 'KeeperAssetOff'],
+    ]);
+    // The vault holds none of it, so a leg in SPYx is not stopped.
+    expect(found.blocked).toBeNull();
+  });
+
+  it('names what stops every leg: auto-follow off, the pause, a held asset that cannot be valued', async () => {
+    expect((await context(names.vaults.manual)).blocked).toBe('AutoFollowOff');
+    // Config's `keeper_paused` is the byte after its seven addresses.
+    const paused = patched(config, [{ at: 8 + 32 * 7, bytes: [1] }]);
+    const whilePaused = await context(names.vaults.following, (node) =>
+      node.accounts.set(config.address, paused),
+    );
+    expect([whilePaused.blocked, whilePaused.rules.paused]).toEqual(['KeeperPaused', true]);
+    // Once the program has recorded the gold the vault holds, its stale price stops every leg.
+    const recorded = patched(following, [{ at: TRACKED_AT(2), bytes: u64(125_000_000n) }]);
+    const withGold = await context(names.vaults.following, (node) =>
+      node.accounts.set(following.address, recorded),
+    );
+    expect(withGold.blocked).toBe('PriceStale');
+    expect(withGold.positions[2]?.needsSync).toBe(false);
+  });
+
+  it('says when the cooldown of an asset ends', async () => {
+    const traded = patched(following, [{ at: LAST_KEEPER_AT(0), bytes: u64(CLOCK - 100n) }]);
+    const found = await context(names.vaults.following, (node) =>
+      node.accounts.set(following.address, traded),
+    );
+    expect([found.positions[0]?.trade, found.positions[0]?.cooldownUntil]).toEqual([
+      'Cooldown',
+      Number(CLOCK) - 100 + 3_600,
+    ]);
+    const longAgo = patched(following, [{ at: LAST_KEEPER_AT(0), bytes: u64(CLOCK - 3_600n) }]);
+    const later = await context(names.vaults.following, (node) =>
+      node.accounts.set(following.address, longAgo),
+    );
+    expect(later.positions[0]?.trade).toBeNull();
+  });
+
+  it('says a stock cannot be traded on a Saturday, and an asset with no session can', async () => {
+    const saturday = new Uint8Array(clock.data);
+    new DataView(saturday.buffer).setBigInt64(32, CLOCK + 5n * 86_400n, true);
+    const found = await context(names.vaults.following, (node) =>
+      node.accounts.set(clock.address, { ...clock, data: saturday }),
+    );
+    expect(found.positions.map((p) => p.trade)).toEqual(['MarketClosed', 'MarketClosed', null]);
+    // Five days on, every price is stale too.
+    expect(found.positions.map((p) => p.reference)).toEqual([
+      'PriceStale',
+      'PriceStale',
+      'PriceStale',
+    ]);
+  });
+
+  it('gives no one price account when the asset list names none', async () => {
+    const assets = accountOf(fixture, 'assets');
+    const unnamed = patched(assets, [{ at: 8, bytes: new Uint8Array(32) }]);
+    const found = await context(names.vaults.following, (node) =>
+      node.accounts.set(assets.address, unnamed),
+    );
+    expect(found.priceAccount).toBeNull();
+    expect(found.positions.map((p) => p.reference)).toEqual([
+      'AssetNotPriced',
+      'AssetNotPriced',
+      'AssetNotPriced',
+    ]);
+  });
+
+  it('is null for an address with no vault', async () => {
+    expect(await world().reader.getKeeperContext(names.stranger)).toBeNull();
+    await refusal(world().reader.getKeeperContext('not an address'), 'BadInput');
   });
 });

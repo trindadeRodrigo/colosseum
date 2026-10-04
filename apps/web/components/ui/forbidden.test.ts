@@ -19,20 +19,22 @@ import {
 // composer, a typeface that is not one of the three, a font fetched from another origin.
 
 /**
- * What was written before the design system and still breaks it. WEB-1 and WEB-2 rebuild these pages
- * on the primitives, and each entry comes out with its page. An entry that no longer matches anything
- * fails the test, so the list can only shrink. Nothing is added here: new code follows the rules.
+ * What was written before the design system and still breaks it. WEB-2 rebuilds these pages on the
+ * primitives, and each entry comes out with its page. An entry that no longer matches anything fails
+ * the test, so the list can only shrink. Nothing is added here: new code follows the rules.
+ * WEB-1 moved the pages into their own route group, app/(structurer), as they were, and took the
+ * sign-in control off the list: it is built on the primitives now.
  */
 const LEGACY: Record<string, readonly Kind[]> = {
   // Rodrigo's pages and components: Tailwind's cool greys, blue links, 4px corners, chart colours,
   // and two uppercase labels
-  'app/layout.tsx': ['hue'],
-  'app/page.tsx': ['hue'],
-  'app/monitor/page.tsx': ['hue', 'radius'],
-  'app/embed/[id]/layout.tsx': ['hue', 'radius', 'case'],
-  'app/risk/page.tsx': ['hue'],
-  'app/risk/[asset]/page.tsx': ['hue'],
-  'app/risk/methodology/page.tsx': ['hue'],
+  'app/(structurer)/layout.tsx': ['hue'],
+  'app/(structurer)/page.tsx': ['hue'],
+  'app/(structurer)/monitor/page.tsx': ['hue', 'radius'],
+  'app/(structurer)/embed/[id]/layout.tsx': ['hue', 'radius', 'case'],
+  'app/(structurer)/risk/page.tsx': ['hue'],
+  'app/(structurer)/risk/[asset]/page.tsx': ['hue'],
+  'app/(structurer)/risk/methodology/page.tsx': ['hue'],
   'components/GoalFlow.tsx': ['hue', 'radius'],
   'components/PlanView.tsx': ['hue'],
   'components/Provenance.tsx': ['radius', 'case'],
@@ -40,19 +42,21 @@ const LEGACY: Record<string, readonly Kind[]> = {
   'components/ScheduleChart.tsx': ['hue'],
   'components/risk/CostCurveChart.tsx': ['hue'],
   'components/risk/HourOfWeekHeatmap.tsx': ['hue'],
-  // the sign-in control and its dev page (WAL-1), plain until they take the Button
-  'features/wallet/SignIn.tsx': ['hue'],
+  // the wallet check, a development page (WAL-1), plain until it takes the primitives
   'features/wallet/dev/DevWallet.tsx': ['hue'],
 };
 
+/** The product's own routes and what they are built from: none of it may ever be on the list above. */
+const PRODUCT = /^(app\/\(app\)|components\/shell|features\/(account|goal)|i18n)\//;
+
 /**
- * The stylesheet of @solana/wallet-adapter-react-ui, which app/providers.tsx imports: violet, shadows,
- * rounded corners, and DM Sans fetched from Google when a page loads. It is not part of globals.css, so
- * it shows only in the output of a build. It goes when the shell stops importing it (token-mapping.md,
- * section 7, restyles the adapter).
+ * The stylesheet of @solana/wallet-adapter-react-ui, which the layout of the pages not yet rebuilt
+ * imports (app/(structurer)/providers.tsx): violet, shadows, rounded corners, and DM Sans fetched from
+ * Google when a page loads. It is not part of globals.css, so it shows only in the output of a build.
+ * The product's routes do not import it. It goes with the last of those pages (WEB-2).
  */
 const ADAPTER = {
-  importedBy: 'app/providers.tsx',
+  importedBy: 'app/(structurer)/providers.tsx',
   stylesheet: '@solana/wallet-adapter-react-ui/styles.css',
   kinds: ['hue', 'shadow', 'radius', 'font', 'host', 'align'] as readonly Kind[],
 };
@@ -68,8 +72,13 @@ const CENTRED: Record<string, string> = {
     'exit-plan-line.md: the amount sits in the middle of its dimension line; a label on a drawing',
 };
 
-/** Tailwind's own base fonts, kept for those pages by the two `initial` lines in globals.css. */
+/**
+ * Tailwind's two base rules for type. They read the tokens now (the two `initial` lines that kept
+ * Tailwind's own fonts are gone), so neither is a finding any more.
+ */
 const BASE_FONT_RULES = ['html, :host', 'code, kbd, samp, pre'];
+/** The class that keeps the system's faces for the pages not yet rebuilt, and the one file that asks for it. */
+const SYSTEM_FACES = { utility: 'tf-system-faces', usedBy: 'app/(structurer)/layout.tsx' };
 
 /** Test files and what only they load are not shipped, and hold forbidden things on purpose. */
 const notScanned = (file: string) =>
@@ -239,8 +248,15 @@ describe('the forbidden things', () => {
     it('reads the app: the pages, the primitives and the showcase', () => {
       expect(files).toContain('app/globals.css');
       expect(files).toContain('components/ui/Button.tsx');
-      expect(files).toContain('app/page.tsx');
+      expect(files).toContain('app/(structurer)/page.tsx');
+      expect(files).toContain('app/(app)/goal/page.tsx');
+      expect(files).toContain('components/shell/AppNav.tsx');
       expect(files.some(notScanned)).toBe(false);
+    });
+
+    it('lists no file of the product as legacy', () => {
+      expect(files.filter((file) => PRODUCT.test(file)).length).toBeGreaterThan(10);
+      expect(Object.keys(LEGACY).filter((file) => PRODUCT.test(file))).toEqual([]);
     });
 
     it('finds nothing forbidden outside the pages listed as legacy', () => {
@@ -287,7 +303,7 @@ describe('the forbidden things', () => {
       });
       expect(upper.sort()).toEqual(['.tf-mock-plate', '.uppercase']);
       expect(users('uppercase').sort()).toEqual([
-        'app/embed/[id]/layout.tsx',
+        'app/(structurer)/embed/[id]/layout.tsx',
         'components/Provenance.tsx',
       ]);
     });
@@ -313,11 +329,30 @@ describe('the forbidden things', () => {
         expect(selectors.has(name), name).toBe(false);
     });
 
-    it('keeps Tailwind’s base fonts only for the pages not yet rebuilt', () => {
-      const kept = blamed.filter(base);
-      expect(kept.map((b) => b.finding.where.split(' > ').at(-1)).sort()).toEqual(
-        [...BASE_FONT_RULES].sort(),
+    it('sets the base fonts from the tokens, and keeps the system’s faces only for the pages not yet rebuilt', () => {
+      // no base rule is a finding any more: both resolve to the faces of the design system
+      expect(blamed.filter(base)).toEqual([]);
+      const families = new Map<string, string>();
+      root.walkDecls('font-family', (decl) => {
+        families.set((decl.parent as postcss.Rule).selector, decl.value.replace(/\s+/g, ' '));
+      });
+      const [sans, mono] = BASE_FONT_RULES.map((rule) => families.get(rule) ?? '');
+      expect(sans).toMatch(/^var\(--default-font-family\b/);
+      expect(mono).toMatch(/^var\(--default-mono-font-family\b/);
+      expect(vars.get('--default-font-family')).toBe('var(--tf-font-sans)');
+      expect(vars.get('--default-mono-font-family')).toBe('var(--tf-font-mono)');
+      // the pages in app/(structurer) keep the system's own faces, named from the allowed fallbacks
+      expect(families.get(`.${SYSTEM_FACES.utility}`)).toBe(
+        'system-ui, -apple-system, "Segoe UI", Arial, sans-serif',
       );
+      expect(families.get(`.${SYSTEM_FACES.utility} :is(code, kbd, samp, pre)`)).toBe(
+        'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+      );
+      expect(users(SYSTEM_FACES.utility)).toEqual([SYSTEM_FACES.usedBy]);
+      // and the base class of the design system goes on one <body>: the product's
+      expect(users('tf-app').filter((file) => !file.startsWith('app/(app)/dev/'))).toEqual([
+        'components/shell/AppDocument.tsx',
+      ]);
     });
 
     it('rounds nothing but the composer: 20px for the box, a round send button', () => {

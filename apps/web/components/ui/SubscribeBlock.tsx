@@ -128,7 +128,7 @@ export function SubscribeBlock({
           invalid={status === 'invalid-email'}
           sendText={text.subscribe}
           busySendText={text.subscribing}
-          labels={{ send: text.subscribe, busy: '' }}
+          labels={{ submit: text.subscribe, busy: '' }}
         />
         <fieldset aria-label={text.group} className="flex flex-wrap justify-center gap-x-5 gap-y-2">
           {options.map((option) => (

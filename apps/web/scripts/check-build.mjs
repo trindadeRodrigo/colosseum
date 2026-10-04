@@ -52,18 +52,38 @@ function routes(out) {
   for (const top of ['server/app', 'server/pages']) {
     const dir = join(out, top);
     if (existsSync(dir))
-      for (const name of readdirSync(dir)) found.add(`/${name.replace(/\.[a-z.]+$/, '')}`);
+      for (const name of firstSegments(dir)) found.add(`/${name.replace(/\.[a-z.]+$/, '')}`);
   }
   return [...found];
 }
 
+/** What a build wrote at the top of a routes folder, looking inside route groups: `(app)/dev` is `dev`. */
+function* firstSegments(dir) {
+  for (const name of readdirSync(dir)) {
+    const path = join(dir, name);
+    if (/^\(.+\)$/.test(name) && statSync(path).isDirectory()) yield* firstSegments(path);
+    else yield name;
+  }
+}
+
 /**
- * Folders whose files are for development and tests only. No built route may come from them: the
- * wallet's dev page and test driver, the design system's sample content and test helpers, and every
- * page under app/dev (the showcase). components/ui/shipped.test.ts reads the imports for the same.
+ * A route as its address. Some manifests name the route group a page is in, `/(app)/dev/ui/page`: a
+ * group is a folder and no part of the address.
+ */
+const address = (route) => route.replace(/\/\([^/]+\)(?=\/|$)/g, '') || '/';
+
+/**
+ * Folders whose files are for development and tests only. No built route may come from them: a
+ * folder named `dev`, `test` or `fixtures`, at any depth, under the app's own source folders. That is
+ * a feature's `dev` and `test` (the wallet's dev page and test driver, the doubles the screens are
+ * tested against), a component folder's `fixtures` and `test` (the design system's sample content and
+ * test helpers), the same under `i18n` and `lib`, and the pages under a `dev` folder of the app, in a
+ * route group or not (the showcase and the wallet check, in app/(app)/dev). A file of a package is
+ * never one of ours, whatever its folders are called. components/ui/shipped.test.ts and
+ * components/shell/product-routes.test.ts read the imports for the same.
  */
 export const DEV_ONLY =
-  /(^|\/)(features\/wallet\/(dev|test)|components\/ui\/(fixtures|test)|app\/dev)\//;
+  /^(?!.*(^|\/)node_modules\/).*(^|\/)(features|components|i18n|lib|app)\/([^/]+\/)*(dev|test|fixtures)\//;
 /** A file every route is built from: the proof that the source maps name our files. */
 export const ALWAYS_BUILT = 'features/wallet/WalletProvider.tsx';
 
@@ -105,7 +125,8 @@ export function checkBuild(out) {
         problems.push(`${relative(out, path)} contains "${marker}", from ${origin}`);
   }
   for (const route of routes(out))
-    if (/^\/dev(\/|$)/.test(route)) problems.push(`the build has a development route: ${route}`);
+    if (/^\/dev(\/|$)/.test(address(route)))
+      problems.push(`the build has a development route: ${route}`);
   if (!shipped)
     problems.push(
       `"${REQUIRED}" was not found: the check is not reading the build output, so it proves nothing`,

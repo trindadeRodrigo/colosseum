@@ -23,6 +23,8 @@ const ACCOUNT_TYPE_OFFSET = 165;
 const ACCOUNT_TYPE_MINT = 1;
 /** `ExtensionType::ScaledUiAmount` in the Token-2022 program. */
 const EXTENSION_SCALED_UI_AMOUNT = 25;
+/** `ExtensionType::TransferHook`: an authority, then the hook program. */
+const EXTENSION_TRANSFER_HOOK = 14;
 
 const addressEncoder = getAddressEncoder();
 const addressDecoder = getAddressDecoder();
@@ -58,6 +60,12 @@ export type MintInfo = {
   decimals: number;
   /** Null on a mint without the extension, which is every classic mint. */
   scaledUiAmount: ScaledUiAmount | null;
+  /**
+   * The program that runs inside every transfer of the token, or null when the mint names none: the
+   * stock tokens carry the extension with an authority and no program. The vault program lists no
+   * mint that has one and the keeper trades none.
+   */
+  hookProgram: Address | null;
 };
 
 /** Walks a Token-2022 mint's extensions and returns the value bytes of one type, or null. */
@@ -88,15 +96,23 @@ export function decodeMint(tokenProgram: Address, data: Uint8Array): MintInfo {
     throw new Error(`not a mint: ${data.length} bytes`);
   if (data[45] !== 1) throw new Error('the mint is not initialised');
   const decimals = data[44] ?? 0;
-  const scaled =
-    tokenProgram === TOKEN_2022_PROGRAM ? mintExtension(data, EXTENSION_SCALED_UI_AMOUNT) : null;
-  if (!scaled) return { tokenProgram, decimals, scaledUiAmount: null };
+  const extension = (type: number) =>
+    tokenProgram === TOKEN_2022_PROGRAM ? mintExtension(data, type) : null;
+  const hook = extension(EXTENSION_TRANSFER_HOOK);
+  // authority (32) | hook program (32); all zeros is no program.
+  const hookProgram =
+    hook && hook.length >= 64 && hook.subarray(32, 64).some((byte) => byte !== 0)
+      ? addressDecoder.decode(hook.subarray(32, 64))
+      : null;
+  const scaled = extension(EXTENSION_SCALED_UI_AMOUNT);
+  if (!scaled) return { tokenProgram, decimals, scaledUiAmount: null, hookProgram };
   // authority (32) | multiplier f64 | new multiplier effective at i64 | new multiplier f64
   if (scaled.length < 56) throw new Error('the scaled-UI-amount extension is cut short');
   const view = new DataView(scaled.buffer, scaled.byteOffset, scaled.byteLength);
   return {
     tokenProgram,
     decimals,
+    hookProgram,
     scaledUiAmount: {
       multiplier: view.getFloat64(32, true),
       newMultiplierEffectiveAt: view.getBigInt64(40, true),

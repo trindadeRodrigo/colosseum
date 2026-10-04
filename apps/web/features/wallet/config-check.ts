@@ -1,4 +1,4 @@
-import { ConfigResponse } from '@colosseum/schemas';
+import { type ChainStatus, ConfigResponse } from '@colosseum/schemas';
 import { apiUrl } from './api-url';
 import type { WalletChains } from './chains';
 
@@ -26,8 +26,14 @@ export function compareWithApi(chains: WalletChains, body: unknown): string | nu
   return null;
 }
 
-/** `again` is true when the API could not be asked at all, so asking later may give another answer. */
-export type ApiCheck = { ok: true } | { ok: false; problem: string; again: boolean };
+/**
+ * `again` is true when the API could not be asked at all, so asking later may give another answer.
+ * When all is well the API's own account of its chains comes along: how each is run (on the mock, on
+ * a test network) is what a screen labels a chain with.
+ */
+export type ApiCheck =
+  | { ok: true; chains: ChainStatus[] }
+  | { ok: false; problem: string; again: boolean };
 
 /**
  * Asks the API which networks it is on and compares. When the API cannot be reached the answer is a
@@ -48,5 +54,7 @@ export async function checkApi(
     return { ok: false, problem, again: true };
   }
   const problem = compareWithApi(chains, body);
-  return problem ? { ok: false, problem, again: false } : { ok: true };
+  if (problem) return { ok: false, problem, again: false };
+  // compareWithApi has just read it in this form.
+  return { ok: true, chains: ConfigResponse.parse(body).chains };
 }

@@ -291,6 +291,7 @@ export const ANCHOR = {
   ConstraintHasOne: 2001,
   ConstraintSeeds: 2006,
   ConstraintAssociated: 2009,
+  ConstraintAddress: 2012,
   ConstraintTokenOwner: 2015,
   ConstraintMintTokenProgram: 2022,
   AccountDiscriminatorMismatch: 3002,
