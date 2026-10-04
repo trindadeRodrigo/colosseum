@@ -2,7 +2,7 @@
 
 | Path | What |
 |---|---|
-| `basket/` | The vault program. Today: the config and its switches, the asset list, the shared-portfolio registry with the author limits, and the owner path: create a vault (with targets of its own or following a shared portfolio), deposit cash, swap through the one allowed router, set targets, withdraw any token to the owner. Design: `docs/vault/DESIGN-VAULT.md` sections 3.7, 5, 6 and 13 |
+| `basket/` | The vault program. The config and its switches, the asset list, the shared-portfolio registry with the author limits, the owner path (create a vault with targets of its own or following a shared portfolio, deposit cash, swap through the one allowed router, set targets, accept a version, switch auto-follow, withdraw any token to the owner) and the keeper path (one trade per call under the checks of section 5, and adopting a version that adds no asset). Design: `docs/vault/DESIGN-VAULT.md` sections 3.7, 5, 6 and 13 |
 | `mock-router/` | A test exchange for LiteSVM and devnet. Not part of the product. It takes the input token from the signer and pays the output from its own reserve at a price its admin sets. Only its upgrade authority can initialise it, and becomes that admin |
 | `puppet-router/` | A hostile router, for the tests only. It runs whatever calls a test scripts, with every privilege the vault handed it |
 | `test-hook/` | A hostile transfer hook, for the tests only. It logs the privileges it is handed and uses any signature it gets |
@@ -47,11 +47,13 @@ pnpm --dir programs/tests rules-bite --from=<text>    # from the first rule with
 
 `rules-bite` takes one check out of the vault program at a time, rebuilds, and reports which tests fail. A rule that no test notices is listed and the command exits 1. It edits files under `programs/basket` while it runs and restores them at the end, also when it is interrupted or terminated: do not build, test or commit that folder while it runs. A run that is killed outright (out of memory, `kill -9`) leaves its one edit behind; the next run refuses to start until `git checkout -- programs/basket` puts it back, and `--from` picks the run up where it stopped. When you add a check, add a line to its table. A check that no test in LiteSVM can notice goes in the same table with the reason (today one: the extra accounts of a transfer carry no signature, and Token-2022 strips signatures before calling a hook anyway).
 
-Three more things the suite holds:
+More that the suite holds:
 
 - `creator-limits.vectors.test.ts` drives the registry through every case of `fixtures/creator-limits/vectors.json`, building each case's state with real publishes at the times it gives. A refusal is `CreatorLimit`, and the rule's number is read from the log (`creator limit: reason=<number> <name>`).
 - `basket-swap-hostile.test.ts` makes `puppet-router` the router in Config. A test scripts the calls the router makes: the instruction data is eight bytes the router ignores, then one call after another (`src/puppet.ts` writes it).
-- `sizes.test.ts` prints the bytes and compute units of the create transactions at 7 and 12 targets, and fails if one that should fit no longer does.
+- `sizes.test.ts` prints the bytes and compute units of the create transactions at 7 and 12 targets, and fails if one that should fit no longer does. `keeper-sizes.test.ts` does the same for a keeper leg in a vault that holds 2, 7, 12 and 16 positions, and for an accept and an adopt.
+- `basket-keeper.test.ts` runs the keeper's leg through the test exchange against a price account written by hand in Scope's layout (`src/prices.ts`), one test for each check of section 5 at its boundary. `basket-keeper-hostile.test.ts` puts the hostile router behind it. `basket-accept.test.ts` is accept, adopt and the auto-follow switch; `basket-keeper-admin.test.ts` the setters the keeper slot added.
+- The price and average positions the tests give their assets are the real ones of SPYx and QQQx, read from `fixtures/solana-vault/scope-indexes.json`.
 
 ## A real route, replayed
 
@@ -79,28 +81,64 @@ The compute units differ from run to run because each run makes new keys, and fi
 ## What the program holds to today
 
 - Money comes in as the cash mint only (`Config.cash_mint`, gate `DEPOSIT`). `withdraw` takes out any token the vault holds, to a token account the owner owns, and reads no Config.
-- Cash is not a position. What a vault holds in cash is the balance of its associated token account for the cash mint; nothing is stored for it. `Position.tracked` is a hint: the program rewrites it when it moves that mint (on a withdrawal, and on both sides of a swap), and a token sent in from outside is not in it.
+- Cash is not a position. What a vault holds in cash is the balance of its associated token account for the cash mint; nothing is stored for it. `Position.tracked` is a hint: the program rewrites it when it moves that mint (on a withdrawal, on both sides of a swap, on a keeper leg) and anyone can have it rewritten from the vault's own token accounts (`sync_balances`). A token sent in from outside is not in it until then.
 - A target is a mint on the asset list, and never the cash mint. `create_vault` and `set_targets` hold the same rules.
-- A mint whose transfer hook names a program is not listed. The program walks the mint's extension list by hand (`mint_has_hook_program` in `checks.rs`): the token crate it is built with, `spl-token-2022` 6.0.0, knows extension types up to 24 and its `get_extension` stops with an error at the first newer one, and the stock tokens carry two of those (scaled UI amount 25, pausable 26) ahead of their hook. The first version of the check read that error as "no hook" and never saw the hook of the real mint; the tests now use the real mint's bytes from `fixtures/solana-vault/jupiter-route.json`, and the test stock mint has the real order. Nothing else in the programs reads an extension through the crate: `token_view` and Anchor's own token types use its `unpack`, which reads the fixed fields and the account-type byte and does not walk the list.
-- The owner trades through one program, `Config.router_program`, with one of four route selectors. The vault signs; the owner's signature is not passed on. The vault counts its own two token accounts before and after, takes no third token account of its own in the router's list, and leaves no delegate, no close authority, no other owner and no change of size behind.
-- A shared portfolio holds 3 to 12 listed assets, never cash, each from 2% to its ceiling in 50 bps steps; one version per publish delay, none while one waits; a version moves at most 20%. A version whose time has come is in effect with no transaction. A vault created to follow one takes the version in effect, if it is the version the person reviewed.
-- The router, the owner of the price accounts and the cash mint are fields of `Config`, set at `init_config` and changed only by the admin, and only until `launch()`. Each change emits the old and the new value. After `launch()` a change needs a program upgrade.
-- Every parameter has a hard bound, at `init_config` and in `set_params`. The guardian pauses the keeper paths and only the admin starts them again; no owner instruction reads the pause.
+- A mint whose transfer hook names a program is not listed, and the keeper does not trade one that gained a hook program after it was listed. The program walks the mint's extension list by hand (`mint_extension` in `checks.rs`): the token crate it is built with, `spl-token-2022` 6.0.0, knows extension types up to 24 and its `get_extension` stops with an error at the first newer one, and the stock tokens carry two of those (scaled UI amount 25, pausable 26) ahead of their hook. The first version of the check read that error as "no hook" and never saw the hook of the real mint; the tests now use the real mint's bytes from `fixtures/solana-vault/jupiter-route.json`, and the test stock mint has the real order. Nothing else in the programs reads an extension through the crate: `token_view` and Anchor's own token types use its `unpack`, which reads the fixed fields and the account-type byte and does not walk the list.
+- The owner trades through one program, `Config.router_program`, with one of four route selectors. The vault signs; the owner's signature is not passed on. The vault counts its own two token accounts before and after, takes no third token account of its own in the router's list, and leaves no delegate, no close authority, no other owner and no change of size behind. The keeper's leg makes the same checks with the same functions, and passes on the vault's signature only, never the keeper's.
+- A shared portfolio holds 3 to 12 listed assets, never cash, each from 2% to its ceiling in 50 bps steps; one version per publish delay, none while one waits; a version moves at most 20%. A version whose time has come is in effect with no transaction. A version number is never used twice: a cancel spends it.
+- A vault takes a version three ways: at creation, by the owner's `accept_version`, or, with auto-follow on, by `adopt_version`, which anyone may send and which takes only a version whose assets the vault already has a target on. A version that drops an asset leaves it in the vault as a position with a target of zero while the vault holds any of it, so the keeper can sell it.
+- The router, the owner of the price accounts, the cash mint and the price accounts of the asset list are set by the admin, and only until `launch()`. Each change emits the old and the new value. After `launch()` a change needs a program upgrade. The guardian and the default keeper can be replaced by the admin at any time.
+- Every parameter has a hard bound, at `init_config` and in `set_params`. The guardian pauses the keeper paths, pushes `closed_until` later and closes a day; only the admin undoes any of it. No owner instruction reads the pause, the closed days, a price, or an asset's keeper switch.
 
-## Before the keeper leg
+## The keeper's leg
 
-Left for SOL-3. None of it is built.
+`keeper_leg(amount_in, data)` is the one thing the keeper key can do to a vault, and only to one whose owner switched auto-follow on. It trades cash for one of the vault's positions, or the position for cash, through the router. In the order the program checks, once the accounts themselves have passed (the router and the price account are the ones Config names, the two token accounts are the vault's associated ones):
 
-- `keeper_leg` takes what `owner_swap` has: the router and selector checks, `refuse_other_vault_accounts` before and after the call, `check_untampered` on both accounts, the input and the output pinned to the vault's associated token accounts, and only the vault's signature passed on. It adds the keeper's own checks (section 5) and computes the minimum output itself. It is the first instruction to read `Config.keeper_paused`.
-- `sync_balances` before any valuation. `tracked` is not a balance, and cash is not tracked at all.
-- `accept_version` and `adopt_version` read the version in effect through `Recipe::active(now)`, never `current` alone, and write the targets through `Vault::set_positions`, which keeps `tracked` and `last_keeper_ts` for a mint that stays. The fields they write (`recipe`, `accepted_version`, `auto_follow`) are in place.
-- The asset list has no writer for `price_accounts`, and `AssetEntry.flags` must be zero until a bit means something. `Recipe.vetoed` is never written: the guardian's veto is `cancel_pending`.
-- Not built from the admin's and the guardian's lists: `set_guardian`, `set_closed`, `extend_closed_until`, `add_closed_day`. No instruction sets the guardian or the default keeper after `init_config`: until one does, rotating either key takes a program upgrade, and a guardian key in the wrong hands can cancel every version that waits and pause the keeper again and again.
-- The asset list has no way to take a token off it or to mark one as closed to new buys, and `upsert_asset` refuses a listed mint once its issuer gives it a hook program, so the entry of exactly the token that turned cannot be rewritten. A delist flag in `AssetEntry.flags` is the place for it.
-- A ceiling lowered under a weight a shared portfolio already holds leaves that portfolio with no version it can publish when the weight is above 20%: leaving the weight breaks the ceiling, and taking it out moves more than a version may. A version should be allowed to lower an over-ceiling weight toward its ceiling.
+| Check | Refusal |
+|---|---|
+| The signer is the vault's keeper, or Config's default when the vault names none | `NotKeeper` |
+| Auto-follow is on; the keeper is not paused | `AutoFollowOff`, `KeeperPaused` |
+| Cash is on exactly one side; the other side is a position of the vault | `NotCashLeg`, `MintNotAccepted` |
+| The asset was not traded by the keeper within the cooldown | `Cooldown` |
+| Its mint has no hook program and no multiplier change within a day, before or after | `HookNotAllowed`, `MultiplierWindow` |
+| For a stock: Monday to Friday, inside the session, not a closed day, not before `closed_until` | `MarketClosed` |
+| The asset, and every other position the vault holds something of, has a price reference (below) | `AssetNotPriced`, `KeeperAssetOff`, `PriceStale`, `PriceDeviation` |
+| The router is called for a route and nothing else, and its account list holds no third token account of the vault | `RouterNotAllowed`, `AccountTampered` |
+| A purchase finds the asset under its target, a sale over it | `NotTowardTarget` |
+| After the call: the vault's two token accounts are as they were but for the balance, and still no third one is in the list | `AccountTampered` |
+| At most `amount_in` was spent | `SpentTooMuch` |
+| What came in is worth what went out less the tolerance, at the reference price | `ReceivedTooLittle` |
+| The asset ends inside the band on the far side of its target, or before it | `PastTarget` |
+| What the leg lost, added to what is left of the week's losses, is within the cap | `LossCapReached` |
+
+A weight is the asset's value over everything the vault holds: its cash account at one dollar, the traded asset's own account, and the other positions by `tracked`, each at its price. The loss counter is in raw units of the cash mint; it falls in a straight line to nothing over seven days from the last loss, and a leg that loses nothing neither reads the cap nor touches the counter. Because the counter drains while it fills, the most that can be lost in any seven days is under twice the cap, not the cap (design section 5).
+
+### The price reference, and what the admin checks before switching an asset on
+
+A leg is valued at the entries of one price account in Kamino Scope's layout: the asset's price entry and the entry of its one-hour average. On every leg the program holds the price to `max_price_age_s`, the average to one hour, and the two to `twap_dev_bps` of each other. That catches a feed that stopped, or a price that jumped away from its own recent past. It does not catch a feed that is wrong and steady: on mainnet two stock tokens read exactly 1.0000 on every refresh for six months, and an average of that is 1.0000 too (`docs/risk/STATE-RISK.md`, 2026-10-02). A leg valued at such an entry is not bounded by the tolerance or by the loss cap.
+
+So the keeper trades an asset, and values a vault that holds it, only when bit 0 of the asset's `flags` is set. The admin sets it with `upsert_asset`, and before doing so checks, for that asset, over at least one full US session:
+
+1. The price index and the average index are the ones in `fixtures/solana-vault/scope-indexes.json` for the mint, in the price account named there, and the asset list names that account for the entry's slot (`set_price_account`).
+2. The price moves. Read the entry at the price index at least every minute through the session: it takes many different values, and none of them is a round placeholder.
+3. Its time refreshes. In market hours no two reads are more than `max_price_age_s` apart in the entry's own unix time, and the average's time is never more than an hour old.
+4. It is the price of the token. At three moments of the session, at least an hour apart, the entry is within 100 bps of the mid of the token's deepest pool against the dollar, read in the same minute (the liquidity layer's pool price, never the same feed).
+5. The exponent of both entries is at most 18, and the mint has no transfer hook program and no multiplier change scheduled.
+
+What was read, and when, goes into the ledger row of the deploy. The switch comes off the same way (`upsert_asset` with `flags` 0) the moment any of this stops holding; until the admin gets there, the guardian's `pause_keeper` stops every leg. The switch never touches the owner: `owner_swap` and `withdraw` do not read it.
+
+## Not built yet
+
+- `set_keeper`: the program honours a keeper a vault names for itself, and nothing writes that field. `close_vault`.
+- The comparison of an asset's price source with a pinned one (`source_check`, hostile case A5b). The field stays zero; the keeper leg refuses an asset whose field is not zero, so setting it is not mistaken for protection.
+- A keeper leg takes one price account. A vault whose positions are priced in two of the asset list's four slots cannot be valued, so every listed asset goes in one slot for now.
+- A strict bound of one cap on what can be lost in any seven days: the losses would be kept per day (eight daily sums fit in the vault's reserved bytes). Today's counter drains as it fills.
+- The guardian cannot switch a single asset off for the keeper: it has the pause, and the admin has the switch.
+- The asset list has no way to take a token off it or to mark one as closed to new buys, and `upsert_asset` refuses a listed mint once its issuer gives it a hook program, so the entry of exactly the token that turned cannot be rewritten: its keeper switch stays as it was, and the keeper leg itself refuses the mint. A delist flag in `AssetEntry.flags` is the place for it.
+- A ceiling lowered under a weight a shared portfolio already holds leaves that portfolio with no version it can publish when the weight is above 20%: leaving the weight breaks the ceiling, and taking it out moves more than a version may. A version should be allowed to lower an over-ceiling weight toward its ceiling. This changes the author limits on both chains.
+- Events are logged with `emit!`, in the transaction's log, which a long log can cut short. `emit_cpi!` is not used.
+- A proposed admin does not expire.
 - A version published before `launch()` keeps the delay it was published under. Publish nothing in the last short delay before launching, or cancel what waits.
-- The reader (`packages/chain-solana/src/vault`) refuses a vault with a non-zero `loss_accum` until the keeper leg defines its unit.
-- When `close_vault` arrives, an owner-only sweep of token accounts the vault owns that are not the associated ones. Tokens sent to such an account cannot be withdrawn today, and such an account in a router's list makes the swap fail.
 - The destination rule of `withdraw` looks at the token account's owner field only. A builder should send withdrawals to the owner's associated token account: an account someone else prepared and handed to the owner can still carry their delegate.
 
 ## Interface files
