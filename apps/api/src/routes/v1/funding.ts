@@ -29,8 +29,27 @@ const NATIVE: Record<Chain, { symbol: string; decimals: number }> = {
  * The wallet a person's plans are held by on their chain's family: the outside wallet they connected
  * when that is what names their chain, the wallet made in the app otherwise.
  */
-function walletOf(principal: Principal, family: Chain, outside: boolean): Address {
+function walletOf(
+  principal: Principal,
+  family: Chain,
+  outside: boolean,
+  named: Address | undefined,
+): Address {
   const mine = principal.wallets.filter((w) => w.family === family);
+  // Named by the caller: it has to be a wallet of the verified token, as an order's owner does, and
+  // one of the family the person's chain takes.
+  if (named !== undefined) {
+    if (!principal.wallets.some((w) => w.address === named))
+      throw new Refusal(403, 'the wallet in the request is not a wallet of the signed-in person');
+    if (!mine.some((w) => w.address === named))
+      throw new Refusal(
+        422,
+        family === 'evm'
+          ? 'the wallet in the request is not an EVM wallet, and the plans of this person are on an EVM chain'
+          : 'the wallet in the request is not a Solana wallet, and the plans of this person are on Solana',
+      );
+    return named;
+  }
   const wallet = mine.find((w) => (w.kind === 'external') === outside) ?? mine[0];
   if (!wallet) throw new Refusal(422, `no ${family} wallet is linked to this sign-in`);
   return wallet.address;
@@ -49,7 +68,7 @@ export function registerFundingRoute(scope: FastifyInstance, deps: OrderDeps) {
         summary:
           'What the signed-in wallet is missing on its chain: the dollar token and native gas',
         description:
-          'For the one chain the person’s plans live on. With `proposalId` and `amountUsd`, the need is that of a buy of that amount: the whole deposit in the chain’s dollar token, and the network fee of every step the order would have. With neither, the need is nothing and the answer is what the wallet holds. `missingRaw` is what to add. Every figure carries its source, its time and its method, and `provenance`: `mock` on the mock chain, `sandbox` on a test network.',
+          'For the one chain the person’s plans live on. With `proposalId` and `amountUsd`, the need is that of a buy of that amount: the whole deposit in the chain’s dollar token, and the network fee of every step the order would have. With neither, the need is nothing and the answer is what the wallet holds. `missingRaw` is what to add. It reads one wallet, named in the answer: `wallet` when the query names one of the person’s on that chain, and otherwise the wallet their plans are held by (the outside wallet when that names the chain, the wallet made in the app when the chain was picked). An order may name any of the person’s wallets of that family as its owner: ask about the one the order will name. Every figure carries its source, its time and its method, and `provenance`: `mock` on the mock chain, `sandbox` on a test network.',
         querystring: FundingQuery,
         response: { 200: FundingResponse, default: OrderError },
       },
@@ -60,7 +79,7 @@ export function registerFundingRoute(scope: FastifyInstance, deps: OrderDeps) {
       const entry = deps.chains.get(chain);
       const { family } = entry.config;
       const outside = (await personChain(deps.db, principal)).chainSource === 'wallet';
-      const wallet = walletOf(principal, family, outside);
+      const wallet = walletOf(principal, family, outside, req.query.wallet);
 
       let need: FundingNeed = { cashRaw: '0', legs: 0, newVault: false, newAccounts: 0 };
       const { amountUsd, proposalId } = req.query;

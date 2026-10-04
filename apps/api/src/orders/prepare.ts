@@ -419,6 +419,8 @@ export async function prepareIntent(req: IntentRequest, ctx: PrepareContext): Pr
     type: 'buy',
     owner: req.owner,
     summary: `Buy ${usd(cents)} of your plan on ${entry.config.name}`,
+    // Once, whatever the steps repeat: the approval and the deposit both carry it.
+    depositRaw: plan.need.cashRaw,
     legs,
     warnings: closed
       ? [

@@ -77,12 +77,21 @@ describe('a buy when the plan keeps cash', () => {
       expect(moved.map((l) => l.cashRaw)).toEqual(
         chain === 'solana' ? ['1000000000'] : ['1000000000', '1000000000'],
       );
+      // The deposit is on the order, once. Where a chain needs an approval the legs repeat it, so
+      // their sum is twice what the order moves.
+      expect(placed.depositRaw).toBe('1000000000');
+      expect(moved.reduce((n, l) => n + BigInt(l.cashRaw ?? '0'), 0n)).toBe(
+        chain === 'solana' ? 1_000_000_000n : 2_000_000_000n,
+      );
       const traded = placed.legs.flatMap((l) => l.trades).map((t) => BigInt(t.amountInRaw));
       expect(traded.reduce((n, x) => n + x, 0n)).toBe(1_000_000_000n);
-      expect((await settleAll(a, placed)).status).toBe('done');
+      const settled = await settleAll(a, placed);
+      // Read back from what is stored, it is the same figure: what left the wallet.
+      expect([settled.status, settled.depositRaw]).toEqual(['done', '1000000000']);
       const vault = await vaultOf(a);
       expect([vault.cash.raw, vault.valueUsd]).toEqual(['0', '999']);
       expect(await walletCash(a, chain)).toBe(9_000_000_000n);
+      expect(10_000_000_000n - (await walletCash(a, chain))).toBe(BigInt(settled.depositRaw ?? 0));
     }
   });
 
@@ -181,6 +190,7 @@ describe('a buy when the plan keeps cash', () => {
 
       // Again: a deposit and nothing else.
       const again = await order(a, { proposalId: planId, amountUsd: 500 });
+      expect(again.depositRaw).toBe('500000000');
       expect(again.legs.map((l) => [l.kind, l.cashRaw])).toEqual(
         chain === 'solana'
           ? [['deposit', '500000000']]

@@ -4,13 +4,14 @@ import swagger from '@fastify/swagger';
 import scalar from '@scalar/fastify-api-reference';
 import Fastify from 'fastify';
 import {
-  jsonSchemaTransform,
   serializerCompiler,
   validatorCompiler,
   type ZodTypeProvider,
 } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import { V1_SECURITY_SCHEMES, v1Transform } from './openapi';
 import { corsAllowlist, corsByPath } from './plugins/cors';
+import { requireDeclared } from './plugins/limits';
 import { registerMonitorRoutes } from './routes/monitor';
 import { registerPlanRoutes } from './routes/plans';
 import { registerReadRoutes } from './routes/read';
@@ -36,6 +37,8 @@ export async function buildApp(deps: { v1?: V1Deps; env?: EnvLike } = {}) {
   }).withTypeProvider<ZodTypeProvider>();
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
+  // Before any route: a path under /v1 is held to default deny wherever it is registered.
+  const inScope = requireDeclared(app);
   // /v1 answers a browser only from the allowlist (CORS_ORIGINS). Every other route, the risk layer's
   // /risk/* included, reflects any origin as it always has.
   await app.register(cors, { delegator: corsByPath(corsAllowlist(env)) });
@@ -48,8 +51,11 @@ export async function buildApp(deps: { v1?: V1Deps; env?: EnvLike } = {}) {
         description: `Goal-based structuring for self-custody wallets: goals in BRL, allocations across on-chain legs, BRL cash-flow schedule with stresses, per-leg risk sheet, and unsigned transactions for the partner wallet to sign.\n\n**${DISCLAIMER.en}**\n\n${DISCLAIMER.pt}`,
       },
       servers: [{ url: process.env.PUBLIC_API_URL ?? 'http://localhost:3001' }],
+      // The two tokens a signed-in /v1 route takes. No other route names them.
+      components: { securitySchemes: V1_SECURITY_SCHEMES },
     },
-    transform: jsonSchemaTransform,
+    // jsonSchemaTransform for every route; a /v1 route also shows who may call it.
+    transform: v1Transform,
   });
   await app.register(scalar, { routePrefix: '/docs' });
 
@@ -76,7 +82,7 @@ export async function buildApp(deps: { v1?: V1Deps; env?: EnvLike } = {}) {
     registerMonitorRebalanceRoute(app, monitor);
   }
   await registerRiskRoutes(app);
-  await registerV1Routes(app, env, deps.v1);
+  await registerV1Routes(app, env, { ...deps.v1, inScope });
 
   return app;
 }

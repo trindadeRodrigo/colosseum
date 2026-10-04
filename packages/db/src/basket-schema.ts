@@ -327,7 +327,10 @@ export const legs = pgTable(
     kind: text('kind').$type<LegKind>().notNull(),
     signer: text('signer').$type<Leg['signer']>().notNull(),
     description: text('description').notNull(),
-    /** The cash the step takes from the wallet, in raw units. Null on a step that moves none. */
+    /**
+     * The cash the step is about, in raw units: a deposit, or what an approval allows. The approval
+     * and the deposit of one order both hold it, so it is not summed over an order's rows.
+     */
     cashRaw: raw('cash_raw'),
     trades: jsonb('trades').$type<Trade[]>().notNull(),
     expected: jsonb('expected').$type<Leg['expected']>(),

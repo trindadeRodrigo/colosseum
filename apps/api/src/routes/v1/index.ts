@@ -26,12 +26,19 @@ export type V1Deps = {
   now?: () => Date;
   /** The rate limits. Default: `LIMITS`, the ones a server runs with. */
   limits?: Limits;
+  /**
+   * What `requireDeclared(root)` answered, when the app called it before its own routes, so that a
+   * /v1 path registered ahead of these is held to the rule too. Left out, it is called here.
+   */
+  inScope?: (scope: FastifyInstance) => void;
 };
 
 /** Every /v1 route. The app hands in its environment once; nothing under here reads process.env. */
 export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps: V1Deps = {}) {
   // First, so a flag or a chain config that cannot be read stops the app with its own message.
   const config = buildConfig(env);
+  // Default deny for every path under /v1, wherever it is registered from here on.
+  const inScope = deps.inScope ?? requireDeclared(app);
 
   const flags = parseFlags(env);
   const issuer = deps.auth === undefined ? authFromEnv(env) : deps.auth;
@@ -51,10 +58,11 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
   const orderDeps: OrderDeps = { db, chains, now: deps.now ?? (() => new Date()) };
 
   // Its own scope: sign-in, the rate limits and the error shape apply to these routes and to no
-  // others. Default deny: a route here that does not say who may call it and which budget it counts
-  // against stops the app at start, and a request is counted before it is turned away.
+  // others. Default deny: a route under /v1 that does not say who may call it and which budget it
+  // counts against, or that is registered outside this scope, stops the app at start. A request is
+  // counted before it is turned away.
   await app.register(async (scope) => {
-    requireDeclared(scope);
+    inScope(scope);
     identify(scope, issuer);
     registerLimits(scope, { limits: deps.limits, now: deps.now });
     enforceSignIn(scope);

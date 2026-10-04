@@ -83,7 +83,7 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
         tags,
         summary: 'Plan an order from an intent. Nothing is built or signed',
         description:
-          "Today: a buy of a stored plan (`proposalId`). An order is on one chain, the chain the signed-in person's plans live on (`GET /v1/me`), and the plan has to be one made for that chain. The whole amount is deposited in the chain's dollar token (`cashRaw` on the step that moves it). The trades buy the plan's assets with the invested share, in its proportions, and what the plan keeps in cash stays in the vault as cash. The answer lists one leg per step, in the order they are signed. `owner` must be wallets of the signed-in person. A chain that is switched off answers `CHAIN_UNAVAILABLE`. Every leg carries `provenance`: `mock` on the mock chain.",
+          "Today: a buy of a stored plan (`proposalId`). An order is on one chain, the chain the signed-in person's plans live on (`GET /v1/me`), and the plan has to be one made for that chain. The whole amount is deposited in the chain's dollar token: `depositRaw` on the order. Each step it concerns repeats it as `cashRaw`, the approval and the step that deposits alike, so the steps' figures are not added up. The trades buy the plan's assets with the invested share, in its proportions, and what the plan keeps in cash stays in the vault as cash. The answer lists one leg per step, in the order they are signed. `owner` must be wallets of the signed-in person. A chain that is switched off answers `CHAIN_UNAVAILABLE`. Every leg carries `provenance`: `mock` on the mock chain.",
         body: IntentRequest,
         response: { 200: OrderDetail, default: OrderError },
       },

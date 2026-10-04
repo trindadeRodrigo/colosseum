@@ -3,13 +3,31 @@
   "info": {
     "title": "Tenonfi API",
     "version": "1.0.0",
-    "description": "The /v1 routes: who is signed in and the chain their plans live on, what the wallet is missing there, orders with their steps, and the portfolio. The API holds no key and signs nothing: it builds each step's transaction, the person's wallet signs it, and the API matches what was sent to what it built.\n\nA signed-in route takes two headers: `Authorization: Bearer <access token>` and `privy-id-token: <identity token>`. Every refusal has one shape, with a `code` where one fits and `details.retryable`. Every figure carries its source, its time and its method, and `provenance`: anything that is not `live` is a test network or MOCK.\n\n**This tool is not licensed investment advice. It structures and explains an allocation from a goal you state; the decision and custody are yours. The distributor embedding this tool holds the client relationship.**"
+    "description": "The /v1 routes: who is signed in and the chain their plans live on, what the wallet is missing there, orders with their steps, and the portfolio. The API holds no key and signs nothing: it builds each step's transaction, the person's wallet signs it, and the API matches what was sent to what it built.\n\nA signed-in route takes two headers: `Authorization: Bearer <access token>` and `privy-id-token: <identity token>`. Each route says under `security` whether it needs them, and under `x-rate-limit` the class of requests it is counted in. Every answer carries `ratelimit-limit`, `ratelimit-remaining` and `ratelimit-reset`; a 429 carries `retry-after` too. Every refusal has one shape, with a `code` where one fits and `details.retryable`. Every figure carries its source, its time and its method, and `provenance`: anything that is not `live` is a test network or MOCK.\n\n**This tool is not licensed investment advice. It structures and explains an allocation from a goal you state; the decision and custody are yours. The distributor embedding this tool holds the client relationship.**"
+  },
+  "components": {
+    "securitySchemes": {
+      "accessToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "The access token of the sign-in, sent as `Authorization: Bearer <access token>`. It names the person and proves a live session."
+      },
+      "identityToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "privy-id-token",
+        "description": "The identity token of the same sign-in, sent as the header `privy-id-token`. It lists the wallets of the person: a wallet is read from here and from nowhere else."
+      }
+    }
   },
   "paths": {
     "/v1/config": {
       "get": {
         "summary": "Feature flags and the chains this deployment runs on",
         "description": "A feature shows only when its flag and the chain allow it. Each chain names its network (mainnet, testnet or local) and the provenance label its figures carry: anything that is not `live` is shown as a test network or as MOCK.",
+        "security": [],
+        "x-rate-limit": "standard",
         "responses": {
           "200": {
             "description": "Default Response",
@@ -209,6 +227,134 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "chainCode": {
+                          "type": "string",
+                          "enum": [
+                            "NotKeeper",
+                            "AutoFollowOff",
+                            "KeeperPaused",
+                            "MintNotAccepted",
+                            "RouterNotAllowed",
+                            "SpentTooMuch",
+                            "ReceivedTooLittle",
+                            "OtherAccountDebited",
+                            "AccountTampered",
+                            "PriceStale",
+                            "PriceDeviation",
+                            "MarketClosed",
+                            "MultiplierWindow",
+                            "NotTowardTarget",
+                            "PastTarget",
+                            "Cooldown",
+                            "LossCapReached",
+                            "AssetNotPriced",
+                            "NewAssetNeedsOwner",
+                            "VersionNotEffective",
+                            "CreatorLimit",
+                            "VersionMismatch",
+                            "WrongDestination",
+                            "ParamOutOfBounds",
+                            "NotUpgradeAuthority",
+                            "InvalidTargets",
+                            "NotCashMint",
+                            "ZeroAddress",
+                            "LockedAtLaunch",
+                            "HookNotAllowed",
+                            "AssetListFull",
+                            "SameMint",
+                            "NoPendingVersion",
+                            "NotCreatorOrGuardian",
+                            "NotOwner",
+                            "CashTokenNotSet",
+                            "DepositShortfall",
+                            "GasTooLow",
+                            "NotAdmin",
+                            "NoCode",
+                            "AssetIsRouter",
+                            "RouterIsAsset",
+                            "NotCreating",
+                            "RouterFailed",
+                            "BalanceUnreadable",
+                            "CashTokenNotRemovable",
+                            "HandoverNotDone",
+                            "AlreadySet",
+                            "RecipeExists",
+                            "BadInput",
+                            "NotSupported",
+                            "TooManyTrades",
+                            "BadTrade",
+                            "VaultNotFound",
+                            "VaultExists",
+                            "RecipeNotFound",
+                            "NotFollowing",
+                            "NotFunded",
+                            "NoGas",
+                            "AllowanceTooLow",
+                            "Expired",
+                            "NotBuiltHere",
+                            "Unavailable",
+                            "Unknown"
+                          ]
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "blocking": {
+                          "type": "object",
+                          "properties": {
+                            "orderId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "legId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["orderId", "legId"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_FUNDED",
+                        "ASSET_NOT_ELIGIBLE",
+                        "GOAL_NOT_ACHIEVABLE",
+                        "NEW_ASSET_NEEDS_APPROVAL",
+                        "VERSION_CHANGED",
+                        "CREATOR_LIMIT",
+                        "ORDER_EXPIRED",
+                        "US_PERSON",
+                        "RATE_LIMITED",
+                        "CHAIN_UNAVAILABLE"
+                      ]
+                    },
+                    "fix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
           }
         }
       }
@@ -217,8 +363,25 @@
       "get": {
         "summary": "What the signed-in wallet is missing on its chain: the dollar token and native gas",
         "tags": ["funding"],
-        "description": "For the one chain the person’s plans live on. With `proposalId` and `amountUsd`, the need is that of a buy of that amount: the whole deposit in the chain’s dollar token, and the network fee of every step the order would have. With neither, the need is nothing and the answer is what the wallet holds. `missingRaw` is what to add. Every figure carries its source, its time and its method, and `provenance`: `mock` on the mock chain, `sandbox` on a test network.",
+        "description": "For the one chain the person’s plans live on. With `proposalId` and `amountUsd`, the need is that of a buy of that amount: the whole deposit in the chain’s dollar token, and the network fee of every step the order would have. With neither, the need is nothing and the answer is what the wallet holds. `missingRaw` is what to add. It reads one wallet, named in the answer: `wallet` when the query names one of the person’s on that chain, and otherwise the wallet their plans are held by (the outside wallet when that names the chain, the wallet made in the app when the chain was picked). An order may name any of the person’s wallets of that family as its owner: ask about the one the order will name. Every figure carries its source, its time and its method, and `provenance`: `mock` on the mock chain, `sandbox` on a test network.",
         "parameters": [
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^0x[0-9a-f]{40}$"
+                }
+              ]
+            },
+            "in": "query",
+            "name": "wallet",
+            "required": false
+          },
           {
             "schema": {
               "type": "number",
@@ -240,6 +403,13 @@
             "required": false
           }
         ],
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "standard",
         "responses": {
           "200": {
             "description": "Default Response",
@@ -561,6 +731,13 @@
         "summary": "The signed-in person: their wallets, and the chain their plans live on",
         "tags": ["person"],
         "description": "A plan lives on one chain, the chain of the person’s wallet. Someone who connected an outside wallet is on the chain of that wallet’s family: Solana, or Robinhood Chain for an EVM wallet (`chainSource` is `wallet`). Someone who made a wallet in the app picks the chain once: until then `chain` is null and `chainOptions` lists what may be picked. The wallets are those of the verified identity token.",
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "standard",
         "responses": {
           "200": {
             "description": "Default Response",
@@ -793,6 +970,13 @@
             }
           }
         },
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "standard",
         "responses": {
           "200": {
             "description": "Default Response",
@@ -1006,7 +1190,7 @@
       "post": {
         "summary": "Plan an order from an intent. Nothing is built or signed",
         "tags": ["orders"],
-        "description": "Today: a buy of a stored plan (`proposalId`). An order is on one chain, the chain the signed-in person's plans live on (`GET /v1/me`), and the plan has to be one made for that chain. The whole amount is deposited in the chain's dollar token (`cashRaw` on the step that moves it). The trades buy the plan's assets with the invested share, in its proportions, and what the plan keeps in cash stays in the vault as cash. The answer lists one leg per step, in the order they are signed. `owner` must be wallets of the signed-in person. A chain that is switched off answers `CHAIN_UNAVAILABLE`. Every leg carries `provenance`: `mock` on the mock chain.",
+        "description": "Today: a buy of a stored plan (`proposalId`). An order is on one chain, the chain the signed-in person's plans live on (`GET /v1/me`), and the plan has to be one made for that chain. The whole amount is deposited in the chain's dollar token: `depositRaw` on the order. Each step it concerns repeats it as `cashRaw`, the approval and the step that deposits alike, so the steps' figures are not added up. The trades buy the plan's assets with the invested share, in its proportions, and what the plan keeps in cash stays in the vault as cash. The answer lists one leg per step, in the order they are signed. `owner` must be wallets of the signed-in person. A chain that is switched off answers `CHAIN_UNAVAILABLE`. Every leg carries `provenance`: `mock` on the mock chain.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1048,6 +1232,9 @@
                       },
                       "family": {
                         "type": "string"
+                      },
+                      "chains": {
+                        "not": {}
                       }
                     },
                     "required": ["type", "owner", "amountUsd"]
@@ -1264,6 +1451,13 @@
             }
           }
         },
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "build",
         "responses": {
           "200": {
             "description": "Default Response",
@@ -1296,6 +1490,11 @@
                     },
                     "summary": {
                       "type": "string"
+                    },
+                    "depositRaw": {
+                      "type": "string",
+                      "maxLength": 78,
+                      "pattern": "^(?:0|[1-9]\\d*)$"
                     },
                     "legs": {
                       "type": "array",
@@ -1791,6 +1990,13 @@
             "required": true
           }
         ],
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "standard",
         "responses": {
           "200": {
             "description": "Default Response",
@@ -1823,6 +2029,11 @@
                     },
                     "summary": {
                       "type": "string"
+                    },
+                    "depositRaw": {
+                      "type": "string",
+                      "maxLength": 78,
+                      "pattern": "^(?:0|[1-9]\\d*)$"
                     },
                     "legs": {
                       "type": "array",
@@ -2328,6 +2539,13 @@
             "required": true
           }
         ],
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "build",
         "responses": {
           "200": {
             "description": "Default Response",
@@ -2781,6 +2999,13 @@
             "required": true
           }
         ],
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "standard",
         "responses": {
           "200": {
             "description": "Default Response",
@@ -2813,6 +3038,11 @@
                     },
                     "summary": {
                       "type": "string"
+                    },
+                    "depositRaw": {
+                      "type": "string",
+                      "maxLength": 78,
+                      "pattern": "^(?:0|[1-9]\\d*)$"
                     },
                     "legs": {
                       "type": "array",
@@ -3351,6 +3581,13 @@
             "required": true
           }
         ],
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "standard",
         "responses": {
           "200": {
             "description": "Default Response",
@@ -3383,6 +3620,11 @@
                     },
                     "summary": {
                       "type": "string"
+                    },
+                    "depositRaw": {
+                      "type": "string",
+                      "maxLength": 78,
+                      "pattern": "^(?:0|[1-9]\\d*)$"
                     },
                     "legs": {
                       "type": "array",
@@ -3866,6 +4108,13 @@
         "summary": "The signed-in person's vaults on their chain, with holdings, prices and drift",
         "tags": ["portfolio"],
         "description": "Read from the one chain the person’s plans live on (`GET /v1/me`), for the wallets in the identity token: `chains` has that one entry. `driftBps` is the weight of a position minus its target. The entry and every price carry `provenance`; anything that is not `live` is a test network or MOCK.",
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "standard",
         "responses": {
           "200": {
             "description": "Default Response",

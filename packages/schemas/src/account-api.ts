@@ -36,9 +36,15 @@ export type PickChainRequest = z.infer<typeof PickChainRequest>;
  * The query of GET /v1/funding. With nothing, the answer is what the wallet holds. With a plan and an
  * amount, it is what a buy of that amount needs: the cash, and the network fee of every step the order
  * would have. The two come together: the fee depends on the plan's steps.
+ *
+ * `wallet` is the wallet to read, one of the person's on their chain. An order may name any of the
+ * person's wallets of that family as its owner, so a caller that holds more than one asks about the
+ * one the order will name. Left out, it is the wallet the person's plans are held by: the outside
+ * wallet when that is what names the chain, the wallet made in the app when the chain was picked.
  */
 export const FundingQuery = z
   .object({
+    wallet: Address.optional(),
     amountUsd: z.coerce
       .number()
       .positive()

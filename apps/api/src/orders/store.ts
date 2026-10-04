@@ -80,6 +80,10 @@ const toAttempt = (r: AttemptRow & { legId: string }): Attempt => ({
 const chainOrder = (chain: ChainId) => ChainId.options.indexOf(chain);
 
 function toOrder(r: OrderRow, legRows: LegRow[]): Order {
+  // What the order deposits is on the step that deposits. The approval repeats it and is not counted.
+  const deposit = legRows.find(
+    (l) => (l.kind === 'create_vault' || l.kind === 'deposit') && l.cashRaw !== null,
+  )?.cashRaw;
   return {
     id: r.id,
     type: r.type,
@@ -88,6 +92,7 @@ function toOrder(r: OrderRow, legRows: LegRow[]): Order {
       ...(r.ownerEvm ? { evm: r.ownerEvm } : {}),
     },
     summary: r.summary,
+    ...(deposit ? { depositRaw: deposit } : {}),
     legs: legRows
       .map(toLeg)
       .sort((a, b) => chainOrder(a.chain) - chainOrder(b.chain) || a.seq - b.seq),

@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app';
-import { corsAllowlist, DEFAULT_CORS_ORIGINS, plainPath, underV1 } from './cors';
+import { corsAllowlist, DEFAULT_CORS_ORIGINS } from './cors';
+import { plainPath, underV1 } from './paths';
 
 // API-2: /v1 answers a browser only from an origin on the allowlist. What the rest of the API does
 // is held by tests/risk-routes-untouched.test.ts.

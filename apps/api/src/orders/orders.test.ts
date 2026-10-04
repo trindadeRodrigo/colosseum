@@ -761,6 +761,7 @@ describe('no /v1 route can make the server sign', () => {
       'orders/store.ts',
       'plugins/auth.ts',
       'plugins/limits.ts',
+      'plugins/paths.ts',
       'routes/v1/config.ts',
       'routes/v1/funding.ts',
       'routes/v1/index.ts',

@@ -263,22 +263,29 @@ describe('the walking skeleton: a buy on the chain of the person’s wallet, on 
 });
 
 describe('one chain per order (gate ONE-CHAIN)', () => {
-  it('puts every leg of a buy on the chain of the person’s wallet, and reads no chain from the request', async () => {
+  it('puts every leg of a buy on the chain of the person’s wallet, and refuses a request that names a chain', async () => {
     for (const chain of CHAINS) {
       const a = await someone(chain);
-      // A request cannot name a chain: `chains` is no field of a buy, and one sent is not read.
-      const res = await post(a, '/v1/orders', {
-        type: 'buy',
-        owner: a.owner,
-        amountUsd: 1000,
-        proposalId: plans[chain],
-        chains: CHAINS,
-      });
-      expect(res.statusCode, res.body).toBe(200);
-      const placed = OrderDetail.parse(res.json());
+      const buy = { type: 'buy', owner: a.owner, amountUsd: 1000, proposalId: plans[chain] };
+      // A request cannot name a chain. The field a buy once took is refused with a sentence, not
+      // ignored: a caller that still asks for a split is told, and no order is made.
+      for (const chains of [CHAINS, [chain], []]) {
+        const res = await post(a, '/v1/orders', { ...buy, chains });
+        expect([chain, res.statusCode]).toEqual([chain, 400]);
+        expect(res.json().error).toMatch(
+          /a buy names no chain: an order is on the chain of the wallet, where the plan lives\. Leave `chains` out/,
+        );
+      }
+      const made = await data.db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(or(eq(orders.ownerSolana, a.solana), eq(orders.ownerEvm, a.evm)));
+      expect(made).toEqual([]);
+
+      const placed = await order(a);
       expect([...new Set(placed.legs.map((l) => l.chain))]).toEqual([chain]);
       // The whole amount is on that chain: nothing is split off to another.
-      expect(placed.legs.find((l) => l.cashRaw)?.cashRaw).toBe('1000000000');
+      expect(placed.depositRaw).toBe('1000000000');
     }
   });
 

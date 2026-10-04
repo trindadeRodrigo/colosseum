@@ -64,10 +64,14 @@ export const LegBase = z.object({
   signer: z.enum(['owner', 'keeper']),
   description: z.string(),
   /**
-   * The cash this step takes from the wallet, in the cash token's raw units: what a `create_vault` or
-   * a `deposit` puts into the vault, and what an `approve` lets the vault take. It is the whole
-   * deposit, which is more than the step's trades spend when the plan keeps a share in cash: the rest
-   * stays in the vault as cash. Absent on a step that moves no cash out of the wallet.
+   * The cash this step is about, in the cash token's raw units: what a `create_vault` or a `deposit`
+   * takes from the wallet into the vault, and what an `approve` allows the vault to take. An approval
+   * moves nothing. It is the whole deposit, which is more than the step's trades spend when the plan
+   * keeps a share in cash: the rest stays in the vault as cash. Absent on any other step.
+   *
+   * Do not add it up over an order's legs. On a chain that needs an approval, the approval and the
+   * step that deposits both carry the same amount, so the sum is twice the deposit. What the order
+   * moves is `Order.depositRaw`.
    */
   cashRaw: RawAmount.optional(),
   trades: z.array(Trade),
@@ -146,6 +150,13 @@ export const OrderBase = z.object({
   owner: Owner,
   /** Written by the server, never caller text. */
   summary: z.string(),
+  /**
+   * The cash this order moves from the wallet into the vault, once, in the raw units of the chain's
+   * cash token: the amount of a buy. This is the figure to show and to add up. The legs repeat it
+   * (`Leg.cashRaw` is on the approval and on the step that deposits), so their sum is not it. Absent
+   * for an order that deposits nothing.
+   */
+  depositRaw: RawAmount.optional(),
   legs: z.array(Leg),
   warnings: z.array(z.object({ code: z.string(), text: z.string() })),
   /** Granted only on the approval page. */
@@ -210,7 +221,17 @@ export const IntentRequest = z.discriminatedUnion('type', [
     maxSlippageBps: Bps.max(ORDER_LIMITS.maxSlippageBps).optional(),
     proposalId: z.string().optional(),
     family: z.string().optional(),
-    // No chain is named: a buy is on the chain of the person's wallet, where the plan lives.
+    /**
+     * Never sent. A buy names no chain: it is on the chain of the person's wallet, where the plan
+     * lives (gate ONE-CHAIN). The field a buy once took is refused with a sentence, not ignored, so a
+     * caller that still asks for a split across chains is told instead of getting another order.
+     */
+    chains: z
+      .never({
+        error:
+          'a buy names no chain: an order is on the chain of the wallet, where the plan lives. Leave `chains` out',
+      })
+      .optional(),
   }),
   z.object({
     type: z.literal('rebalance'),

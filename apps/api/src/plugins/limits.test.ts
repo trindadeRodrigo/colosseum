@@ -179,40 +179,105 @@ describe('rate limits on /v1, as the server runs them', () => {
 });
 
 describe('default deny for /v1', () => {
-  const scoped = async (declare: (scope: FastifyInstance) => void) => {
+  const handler = async () => ({ ok: true });
+  /** An app whose /v1 scope holds what `declare` adds, and whose root holds what `outside` adds. */
+  const started = async (
+    declare: (scope: FastifyInstance) => void,
+    outside: (root: FastifyInstance) => void = () => {},
+  ) => {
     const app = Fastify();
+    const inScope = requireDeclared(app);
     await app.register(async (scope) => {
-      requireDeclared(scope);
+      inScope(scope);
       registerAuth(scope, null);
       registerLimits(scope);
       declare(scope);
     });
+    outside(app);
     await app.ready();
     return app;
   };
+  const fine = { config: { auth: 'public', limit: 'standard' } } as const;
 
   it('does not start with a route that does not say who may call it, or which budget it counts against', async () => {
-    const handler = async () => ({ ok: true });
-    await expect(scoped((s) => s.get('/v1/open', handler))).rejects.toThrow(
+    await expect(started((s) => s.get('/v1/open', handler))).rejects.toThrow(
       'GET /v1/open declares no sign-in rule (config.auth)',
     );
     await expect(
-      scoped((s) => s.post('/v1/write', { config: { limit: 'standard' } }, handler)),
+      started((s) => s.post('/v1/write', { config: { limit: 'standard' } }, handler)),
     ).rejects.toThrow('POST /v1/write declares no sign-in rule (config.auth)');
     await expect(
-      scoped((s) => s.get('/v1/unlimited', { config: { auth: 'public' } }, handler)),
+      started((s) => s.get('/v1/unlimited', { config: { auth: 'public' } }, handler)),
     ).rejects.toThrow('GET /v1/unlimited declares no rate-limit class (config.limit)');
     await expect(
-      scoped((s) =>
+      started((s) =>
         s.get('/v1/odd', { config: { auth: 'public', limit: 'none' as never } }, handler),
       ),
     ).rejects.toThrow(/declares no rate-limit class/);
+    // Whatever the method, a nested plugin, a list of methods, or a rule that is no rule.
+    for (const method of ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] as const)
+      await expect(started((s) => s.route({ method, url: '/v1/x', handler }))).rejects.toThrow(
+        `${method} /v1/x declares no sign-in rule`,
+      );
+    const others: ((scope: FastifyInstance) => void)[] = [
+      (s) => s.register(async (child) => child.get('/v1/nested', handler)),
+      (s) => s.all('/v1/all', handler),
+      (s) => s.route({ method: ['GET', 'POST'], url: '/v1/list', handler }),
+      (s) => s.get('/v1/bad', { config: { auth: 'admin' as never, limit: 'standard' } }, handler),
+    ];
+    for (const add of others)
+      await expect(started(add)).rejects.toThrow(/declares no sign-in rule/);
     // With both, it starts and serves.
-    const app = await scoped((s) =>
-      s.get('/v1/fine', { config: { auth: 'public', limit: 'standard' } }, handler),
-    );
+    const app = await started((s) => s.get('/v1/fine', fine, handler));
     expect((await app.inject({ method: 'GET', url: '/v1/fine' })).statusCode).toBe(200);
     await app.close();
+  });
+
+  it('does not start with a /v1 route registered outside the /v1 scope, whatever it declares', async () => {
+    // With no rule it is refused as it is registered.
+    await expect(
+      started(
+        () => {},
+        (root) => root.get('/v1/open', handler),
+      ),
+    ).rejects.toThrow('GET /v1/open declares no sign-in rule (config.auth)');
+    // With a rule it would still be served with no sign-in checked and no request counted: the
+    // hooks that do both are the scope's. It is refused when the app is made ready.
+    await expect(
+      started(
+        (s) => s.get('/v1/fine', fine, handler),
+        (root) => root.get('/v1/open', { config: { auth: 'user', limit: 'standard' } }, handler),
+      ),
+    ).rejects.toThrow(
+      'GET /v1/open is registered outside the /v1 scope, where no sign-in is checked and no request is counted',
+    );
+    // However the path is spelled, and before the scope as after it.
+    for (const url of ['/V1/open', '/v1', '/%761/open']) {
+      const app = Fastify();
+      const inScope = requireDeclared(app);
+      expect(() => app.get(url, handler)).toThrow(/declares no sign-in rule/);
+      await app.register(async (scope) => inScope(scope));
+      await app.close();
+    }
+    // A route that is not under /v1 is none of this rule's business.
+    const app = await started(
+      (s) => s.get('/v1/fine', fine, handler),
+      (root) => {
+        root.get('/health', handler);
+        root.get('/risk/v1/assets', handler);
+        root.post('/v10/orders', handler);
+      },
+    );
+    expect((await app.inject({ method: 'GET', url: '/risk/v1/assets' })).statusCode).toBe(200);
+    await app.close();
+  });
+
+  it('holds the real app to it: a /v1 route added to the root of the API stops it', async () => {
+    const data = await testDb();
+    const { app } = await testApp({ issuer: null, db: data.db });
+    expect(() => app.get('/v1/extra', handler)).toThrow(/declares no sign-in rule/);
+    await app.close();
+    await data.cleanUp();
   });
 
   it('answers a path or a method that is no route with 404, and a route with no token with a refusal', async () => {

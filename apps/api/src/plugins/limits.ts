@@ -1,5 +1,6 @@
 import type { OrderError } from '@colosseum/schemas';
 import type { FastifyInstance } from 'fastify';
+import { underV1 } from './paths';
 
 // Rate limits for /v1 (DESIGN-VAULT section 10). The numbers are here and nowhere else. They are kept
 // in memory, per process: one API process is what the free host runs.
@@ -123,16 +124,40 @@ export function registerLimits(
 }
 
 /**
- * Default deny, at start: a /v1 route that does not say who may call it (`config.auth`) or which
- * budget it counts against (`config.limit`) stops the API before it serves anything.
+ * Default deny, at start, for every path under /v1 wherever it is registered. Called on the root
+ * before any route is added. The API then does not start with:
+ * - a /v1 route that does not say who may call it (`config.auth`) or which budget it counts against
+ *   (`config.limit`): refused as the route is registered;
+ * - a /v1 route registered outside the /v1 scope, where the hooks that check a sign-in and count a
+ *   request do not run, whatever the route declares: refused when the app is made ready.
+ *
+ * Answers the function that marks the /v1 scope: call it on the scope before its routes.
  */
-export function requireDeclared(scope: FastifyInstance): void {
-  scope.addHook('onRoute', (route) => {
+export function requireDeclared(root: FastifyInstance): (scope: FastifyInstance) => void {
+  const name = (route: { method: string | string[]; url: string }) =>
+    `${[route.method].flat().join(',')} ${route.url}`;
+  const seen: string[] = [];
+  const scoped = new Set<string>();
+  root.addHook('onRoute', (route) => {
+    if (!underV1(route.url)) return;
     // A HEAD route made for a GET shares its config.
     const { auth, limit } = route.config ?? {};
     if (auth !== 'public' && auth !== 'user')
-      throw new Error(`${route.method} ${route.url} declares no sign-in rule (config.auth)`);
+      throw new Error(`${name(route)} declares no sign-in rule (config.auth)`);
     if (!limit || !LIMIT_CLASSES.includes(limit))
-      throw new Error(`${route.method} ${route.url} declares no rate-limit class (config.limit)`);
+      throw new Error(`${name(route)} declares no rate-limit class (config.limit)`);
+    seen.push(name(route));
   });
+  root.addHook('onReady', async () => {
+    const outside = seen.find((route) => !scoped.has(route));
+    if (outside)
+      throw new Error(
+        `${outside} is registered outside the /v1 scope, where no sign-in is checked and no request is counted`,
+      );
+  });
+  return (scope) => {
+    scope.addHook('onRoute', (route) => {
+      scoped.add(name(route));
+    });
+  };
 }

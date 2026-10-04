@@ -526,6 +526,72 @@ describe('GET /v1/funding: what the wallet is missing on its chain', () => {
     expect(elsewhere.json().error).toMatch(/made for Robinhood Chain/);
   });
 
+  it('reads the wallet the query names when it is one of the person’s, the one an order will name', async () => {
+    // One person, two wallets of one family: the one made in the app holds the plan, the other is
+    // an outside wallet linked beside it. An order may name either as its owner.
+    const robin = await picked('robinhood');
+    const outsideWallet = (await someone('robinhood')).evm;
+    const both = {
+      ...robin,
+      headers: await signIn(issuer, robin.sub, [
+        { family: 'evm', address: robin.evm, client: 'privy' },
+        { family: 'evm', address: outsideWallet, client: 'metamask' },
+      ]),
+    } as Person;
+    // Only the outside wallet is funded.
+    const { adapter, mock } = registry.get('robinhood');
+    if (!mock) throw new Error('robinhood is not on the mock');
+    mock.fund(outsideWallet, {
+      gasRaw: '1000000000000000000',
+      assets: { [mock.cash]: '700000000' },
+    });
+    expect((await adapter.getWalletHoldings(robin.evm)).find((h) => h.asset === mock.cash)).toBe(
+      undefined,
+    );
+
+    // With no wallet named, it is the one the plan is held by, and it is short.
+    const held = (await funding(both, buyOf('robinhood', 500))).body;
+    expect([held.wallet, held.cash.haveRaw, held.ok]).toEqual([robin.evm, '0', false]);
+    // Named, the answer is for that wallet: what it holds, against the same need.
+    const named = (await funding(both, `${buyOf('robinhood', 500)}&wallet=${outsideWallet}`)).body;
+    expect([named.wallet, named.cash.haveRaw, named.cash.needRaw, named.cash.missingRaw]).toEqual([
+      outsideWallet,
+      '700000000',
+      '500000000',
+      '0',
+    ]);
+    expect(named.ok).toBe(true);
+    expect((await funding(both, `?wallet=${robin.evm}`)).body.wallet).toBe(robin.evm);
+    // The order that names it as its owner is the one the answer was for.
+    const placed = await post(both, '/v1/orders', {
+      type: 'buy',
+      owner: { evm: outsideWallet },
+      amountUsd: 500,
+      proposalId: plans.robinhood,
+    });
+    expect([placed.statusCode, placed.json().owner]).toEqual([200, { evm: outsideWallet }]);
+
+    // A wallet that is not the person's is refused before anything is read: nobody learns another
+    // wallet's balance here.
+    const stranger = (await someone('robinhood')).evm;
+    const reads = vi.spyOn(adapter, 'funding');
+    const refused = await get(both, `/v1/funding?wallet=${stranger}`);
+    expect([refused.statusCode, refused.json()]).toEqual([
+      403,
+      { error: 'the wallet in the request is not a wallet of the signed-in person' },
+    ]);
+    // The person's own wallet of the other family: theirs, and not one their chain takes.
+    const other = await get(robin, `/v1/funding?wallet=${robin.solana}`);
+    expect([other.statusCode, other.json().error]).toEqual([
+      422,
+      'the wallet in the request is not an EVM wallet, and the plans of this person are on an EVM chain',
+    ]);
+    // Not an address at all: refused as a query that cannot be read.
+    expect((await get(both, '/v1/funding?wallet=mine')).statusCode).toBe(400);
+    expect(reads).not.toHaveBeenCalled();
+    reads.mockRestore();
+  });
+
   it('takes its figures from the adapter’s read, its time from the clock and its label from the chain', async () => {
     const who = await someone('solana');
     const at = new Date('2026-10-05T15:00:00.000Z');
