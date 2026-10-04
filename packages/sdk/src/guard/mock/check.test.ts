@@ -1,5 +1,12 @@
+import { createHash } from 'node:crypto';
 import { mockAddress } from '@colosseum/chain-mock';
-import type { BasketTx, BuiltTx, ChainId, ConsentKind } from '@colosseum/schemas';
+import {
+  type BasketTx,
+  type BuiltTx,
+  type ChainId,
+  type ConsentKind,
+  evmCallPreimage,
+} from '@colosseum/schemas';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { eachBites, type Negative, refusalOf } from '../../../test/bites';
 import {
@@ -234,6 +241,21 @@ describe('the guard on the mock chain: a mock transaction is never taken for a r
     expect(refusalOf(() => guardTransaction(input(w, 'swap', labelled)))?.code).toBe('network');
   });
 
+  it('refuses the call a mock deployment once passed: native value to a stranger on a real chain id', () => {
+    const w = worlds.robinhood;
+    const { tx } = w.cases.approve as Case;
+    const hostile = recalled(
+      tx,
+      { value: '5000000000000000000', chainId: 4663, gas: 21_000 },
+      w.stranger,
+    );
+    const refusal = refusalOf(() => guardTransaction(input(w, 'approve', hostile)));
+    expect(['value', 'network', 'target']).toContain(refusal?.code);
+    // And the mock's own target for each step is the one the guard works out.
+    for (const name of Object.keys(w.cases))
+      expect(refusalOf(() => guardTransaction(input(w, name)))?.message ?? null, name).toBeNull();
+  });
+
   it('refuses bytes that are not an operation of the mock, and a field a step has no use for', () => {
     const w = worlds.solana;
     const { tx } = w.cases.swap as Case;
@@ -415,6 +437,56 @@ const negatives: Negative[] = [
     },
   },
 ];
+
+/** A mock call with other fields around the same operation, and the hash of the call as it then is. */
+const recalled = (
+  tx: BasketTx,
+  evm: Partial<NonNullable<BasketTx['evm']>>,
+  to?: string,
+): BasketTx => {
+  const moved = to
+    ? tampered(tx, (m) => {
+        m.to = to;
+      })
+    : tx;
+  const call = { ...(moved.evm as NonNullable<BasketTx['evm']>), ...evm, ...(to ? { to } : {}) };
+  const messageHash = createHash('sha256')
+    .update(evmCallPreimage({ ...call, signer: moved.signer, data: moved.payload }))
+    .digest('hex');
+  return { ...moved, evm: call, messageHash };
+};
+const onEvm = (
+  name: string,
+  check: GuardCheck,
+  what: string,
+  change: (tx: BasketTx, w: World) => BasketTx,
+): Negative => ({
+  name: `robinhood: ${what}`,
+  check,
+  input: () => {
+    const w = worlds.robinhood;
+    return input(w, name, change((w.cases[name] as Case).tx, w));
+  },
+});
+negatives.push(
+  // What passes as a mock step must not be a transaction of a real chain: a mock deployment for an
+  // EVM chain once passed a call that sent native value to a stranger on a real chain id.
+  onEvm('approve', 'value', 'a mock call that sends native value', (tx) =>
+    recalled(tx, { value: '5000000000000000000' }),
+  ),
+  onEvm('approve', 'network', 'a mock call for a real chain id', (tx) =>
+    recalled(tx, { chainId: 4663 }),
+  ),
+  onEvm('approve', 'target', 'a mock approval sent to a stranger', (tx, w) =>
+    recalled(tx, {}, w.stranger),
+  ),
+  onEvm('deposit', 'target', "a mock deposit sent to another person's vault", (tx, w) =>
+    recalled(tx, {}, mockVaultAddress('robinhood', w.stranger, BASKET)),
+  ),
+  onEvm('create_vault', 'target', 'a mock create sent to the factory', (tx, w) =>
+    recalled(tx, {}, w.adapter.mock.addresses.factory),
+  ),
+);
 
 describe('the guard on the mock chain: each negative is refused, and by the check that names it', () => {
   eachBites(negatives);

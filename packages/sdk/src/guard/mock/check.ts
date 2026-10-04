@@ -35,6 +35,9 @@ export function mockAddress(chain: string, label: string): string {
 export const mockVaultAddress = (chain: string, owner: string, basketId: string) =>
   mockAddress(chain, `vault:${owner}:${basketId}`);
 
+/** The chain id the mock builds for: no network at all. */
+const MOCK_EVM_CHAIN_ID = 0;
+
 /** The keys an operation of each kind may carry. One it does not list is a field the step cannot account for. */
 const FIELDS: Record<string, readonly string[]> = {
   approve: ['owner', 'basketId', 'amountRaw', 'spender'],
@@ -92,12 +95,29 @@ export function checkMock(ctx: Context, deployment: MockDeployment): void {
   );
   need('chain', message.chain === step.chain, `the operation is for ${String(message.chain)}`);
   need('signer', message.signer === owner, `the operation is signed by ${String(message.signer)}`);
-  need(
-    'target',
-    family === 'solana' || message.to === tx.evm?.to,
-    'the operation is sent somewhere else than the transaction says',
-  );
   need('step', op.kind === step.kind, `the operation is a ${op.kind}, and the step a ${step.kind}`);
+  const vault = mockVaultAddress(deployment.chain, owner, step.basketId);
+  if (family === 'evm') {
+    // The mock's call is no transaction of any chain: it carries no value, names chain id 0, which is
+    // no network, and goes where the mock sends that step. Held to all three, so that what passes as a
+    // mock step could never be a transfer on a real chain.
+    const evm = tx.evm;
+    need('value', evm?.value === '0', `the call sends ${evm?.value} of the native token`);
+    need(
+      'network',
+      evm?.chainId === MOCK_EVM_CHAIN_ID,
+      `the call is for chain ${evm?.chainId}, and the mock's are for none`,
+    );
+    const target =
+      step.kind === 'approve'
+        ? mockAddress(deployment.chain, `asset:${deployment.cash.split(':')[1]}`)
+        : vault;
+    need(
+      'target',
+      evm?.to === target && message.to === target,
+      `the call is to ${evm?.to}, and the mock sends this step to ${target}`,
+    );
+  }
   if (op.kind !== step.kind) return;
 
   const allowed = FIELDS[step.kind] ?? [];
@@ -107,7 +127,6 @@ export function checkMock(ctx: Context, deployment: MockDeployment): void {
       `the operation carries ${extra.join(', ')}, which a ${step.kind} has no use for`,
     );
 
-  const vault = mockVaultAddress(deployment.chain, owner, step.basketId);
   const amountIs = (value: Json | undefined, want: string, what: string) =>
     need(
       'amount',
