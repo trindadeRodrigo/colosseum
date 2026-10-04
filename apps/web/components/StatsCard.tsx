@@ -19,8 +19,7 @@ export async function StatsCard() {
   } catch {
     s = null;
   }
-  // /stats is registered only when the server runs the first structurer (LEGACY_STRUCTURER). Where it
-  // does not, or the server cannot be reached, the card says so in place of the numbers.
+  // When the server does not answer for /stats, the card says so in place of the numbers.
   if (!s)
     return (
       <section>

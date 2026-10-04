@@ -76,9 +76,12 @@ export default function MonitorPage() {
   const [view, setView] = useState<WalletView | null>(null);
   const [drift, setDrift] = useState<Drift | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  // The policy routes (/policies/*) are registered only when the server runs the first structurer
-  // (LEGACY_STRUCTURER). Where it does not, the positions still show and this says why the rest is not there.
+  // The server did not answer for the policy: the positions still show, and a sentence says the rest
+  // is not there.
   const [policyOff, setPolicyOff] = useState(false);
+  // The rebalance signs with a key on the server, so the API registers its route only with
+  // LEGACY_STRUCTURER on. Where it is off the route is not there, and a sentence says so.
+  const [rebalanceOff, setRebalanceOff] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
 
@@ -152,6 +155,10 @@ export default function MonitorPage() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({}),
       });
+      if (res.status === 404) {
+        setRebalanceOff(true);
+        return;
+      }
       const d = (await res.json()) as Record<string, unknown> & {
         outcome?: string;
         transaction?: { payload: string; executionId?: string };
@@ -350,7 +357,7 @@ export default function MonitorPage() {
             <button
               type="button"
               className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-50"
-              disabled={busy || !drift.proposal.triggered}
+              disabled={busy || rebalanceOff || !drift.proposal.triggered}
               onClick={runPolicy}
             >
               {busy ? 'Running…' : 'Run policy now'}
@@ -360,6 +367,12 @@ export default function MonitorPage() {
               orders open your wallet.
             </span>
           </div>
+          {rebalanceOff && (
+            <p className="text-sm text-gray-600">
+              This server did not run the policy: rebalancing from this page is switched off here.
+              Nothing was sent.
+            </p>
+          )}
           {result && (
             <pre className="overflow-auto rounded bg-gray-50 p-2 text-xs">
               {JSON.stringify(result, null, 1)}
@@ -375,8 +388,8 @@ export default function MonitorPage() {
         </section>
       ) : policyOff ? (
         <p className="text-sm text-gray-600">
-          The policy view is not available on this server: drift against the policy, the rebalance
-          and the revoke are switched off here. Positions and past executions are below.
+          The policy view is not available right now: the server did not answer for it. Rebalances
+          and past executions are below.
         </p>
       ) : (
         <p className="text-sm text-gray-500">No policy for this wallet yet.</p>
