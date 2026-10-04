@@ -193,6 +193,24 @@ describe('the test-network set-up', () => {
       toleranceBps: 75,
       bandBps: 50,
     });
+    // The clock reads Oct 7, 2026: the market's twelve closed days from there to the end of 2027.
+    const held = config.closedDays.filter((day) => day !== 0);
+    const dates = held.map((day) => new Date(day * 86_400_000).toISOString().slice(0, 10)).sort();
+    expect(dates).toEqual([
+      '2026-11-26',
+      '2026-12-25',
+      '2027-01-01',
+      '2027-01-18',
+      '2027-02-15',
+      '2027-03-26',
+      '2027-05-31',
+      '2027-06-18',
+      '2027-07-05',
+      '2027-09-06',
+      '2027-11-25',
+      '2027-12-24',
+    ]);
+    expect(deployment.closedDays).toEqual(dates);
   });
 
   it('lists every token with the entries of the index table, and switches the keeper on', async () => {

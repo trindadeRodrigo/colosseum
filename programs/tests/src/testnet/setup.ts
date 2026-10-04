@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   AccountRole,
   type Address,
@@ -32,6 +34,7 @@ import {
   initAssetsInstruction,
   initConfigInstruction,
   type Params,
+  setClosedDayInstruction,
   setDefaultKeeperInstruction,
   setGuardianInstruction,
   setParamsInstruction,
@@ -43,6 +46,7 @@ import {
   BASKET_PROGRAM,
   MOCK_ROUTER_PROGRAM,
   programDataAddress,
+  REPO_ROOT,
   SYSTEM_PROGRAM,
 } from '../env';
 import {
@@ -144,6 +148,8 @@ export type Deployment = {
     tokenAuthority: Address;
   };
   params: Params;
+  /** The market's closed days ahead that Config holds, as dates. */
+  closedDays: string[];
   cash: DeployedToken;
   assets: DeployedAsset[];
 };
@@ -230,6 +236,15 @@ function describe({ name, instruction }: Named): string[] {
     ...accounts.map((line) => `      ${line}`),
     `      data ${data.length / 2} bytes: ${data.length > 160 ? `${data.slice(0, 160)}…` : data}`,
   ];
+}
+
+/** The days the US market is closed, as days since 1970: fixtures/risk/us-market-holidays.json. */
+function marketHolidays(): { date: string; day: number }[] {
+  const file = join(REPO_ROOT, 'fixtures', 'risk', 'us-market-holidays.json');
+  const { closed }: { closed: string[] } = JSON.parse(readFileSync(file, 'utf8'));
+  return closed
+    .map((date) => ({ date, day: Date.parse(`${date}T00:00:00Z`) / 86_400_000 }))
+    .sort((a, b) => a.day - b.day);
 }
 
 const chunks = <T>(list: T[], size: number): T[][] =>
@@ -657,6 +672,37 @@ export async function setUp(
     else have(`Config is as the config file says: ${config}`);
   }
 
+  // 8b. The market's closed days ahead, from the same calendar as mainnet's. Config holds 32; a day
+  // already past is taken off only when there is no room for one ahead.
+  const today = Number((await chain.now()) / 86_400n);
+  const ahead = marketHolidays()
+    .filter((holiday) => holiday.day >= today)
+    .slice(0, 32);
+  const held = configAccount ? decodeConfig(configAccount.data).closedDays : [];
+  const missing = ahead.filter((holiday) => !held.includes(holiday.day));
+  const free = 32 - held.filter((day) => day !== 0).length;
+  const past = held
+    .filter((day) => day !== 0 && day < today)
+    .sort((a, b) => a - b)
+    .slice(0, Math.max(0, missing.length - free));
+  const dayOf = (day: number) => new Date(day * 86_400_000).toISOString().slice(0, 10);
+  const dayChanges: Named[] = [
+    ...(await Promise.all(
+      past.map(async (day) => ({
+        name: `set_closed_day ${dayOf(day)} (day ${day}), open: past, and its slot is needed`,
+        instruction: await setClosedDayInstruction(admin, day, false),
+      })),
+    )),
+    ...(await Promise.all(
+      missing.map(async (holiday) => ({
+        name: `set_closed_day ${holiday.date} (day ${holiday.day}), closed`,
+        instruction: await setClosedDayInstruction(admin, holiday.day, true),
+      })),
+    )),
+  ];
+  for (const batch of chunks(dayChanges, 12)) await run("the market's closed days", batch);
+  if (!dayChanges.length) have(`Config holds the ${ahead.length} closed days ahead`);
+
   // 9. The asset list, 10. its price account, 11. the tokens, and the keeper's switch on each.
   const assets = await assetsAddress();
   const assetsAccount = await chain.account(assets);
@@ -817,6 +863,7 @@ export async function setUp(
       tokenAuthority: admin.address,
     },
     params: plan.params,
+    closedDays: ahead.map((holiday) => holiday.date),
     cash: deployed(plan.cash),
     assets: plan.tokens.map((token) => ({
       ...deployed(token),
