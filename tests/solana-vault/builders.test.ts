@@ -6,6 +6,7 @@ import {
   type Composed,
   createTokenAccountInstruction,
   MAX_TRANSACTION_BYTES,
+  pricedOut,
   TOKEN_PROGRAM,
   unlistedAssetId,
 } from '@colosseum/chain-solana/vault';
@@ -18,7 +19,14 @@ import {
 } from '@solana/kit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createAccount, freezeAccount, initMint, MINT_BYTES, priceAccountBytes } from './admin';
-import { buildContractWorld, type ContractWorld, id, newKey, priceEntries } from './contract-world';
+import {
+  buildContractWorld,
+  type ContractWorld,
+  id,
+  newKey,
+  PRICED_SPREAD_BPS,
+  priceEntries,
+} from './contract-world';
 import {
   BASKET_PROGRAM,
   createSvmNode,
@@ -108,8 +116,8 @@ describe.skipIf(!PROGRAMS_BUILT)('the Solana builders, in LiteSVM with the real 
     node = await createSvmNode(deployer.address, start);
     node.svm.airdrop(deployer.address, lamports(1_000_000_000_000n));
     const priceAccount = (await newKey()).address;
-    const writePrices = (at: bigint) => {
-      const data = priceAccountBytes(priceEntries(EXTRA), at, node.svm.getClock().slot);
+    const writePrices = (at: bigint, header = true) => {
+      const data = priceAccountBytes(priceEntries(EXTRA), at, node.svm.getClock().slot, header);
       node.svm.setAccount({
         address: priceAccount,
         data,
@@ -119,7 +127,8 @@ describe.skipIf(!PROGRAMS_BUILT)('the Solana builders, in LiteSVM with the real 
         space: BigInt(data.length),
       });
     };
-    writePrices(start);
+    // Header-less: the test exchange takes it as its own price account first (`init_prices`).
+    writePrices(start, false);
     w = await buildContractWorld(
       {
         rpc: node.rpc,
@@ -233,6 +242,43 @@ describe.skipIf(!PROGRAMS_BUILT)('the Solana builders, in LiteSVM with the real 
     expect(
       message.instructions.map((ix) => message.staticAccounts[ix.programAddressIndex]),
     ).toEqual([COMPUTE_BUDGET_PROGRAM, ASSOCIATED_TOKEN_PROGRAM, BASKET_PROGRAM]);
+  });
+
+  it("quotes and swaps through a priced pair (TNET-4's kind 1) at the entry less its spread, both ways", async () => {
+    const f = w.fixture;
+    // Delta is $10 at its entry, 8 decimals; the dollar token has 6; the pair keeps 30 bps.
+    const buy = { sell: id('cash'), buy: id('delta'), amountInRaw: '1000000' };
+    const quote = await w.adapter.quote(buy, f.owner);
+    expect(quote.outRaw).toBe(
+      String(
+        pricedOut({
+          amountIn: 1_000_000n,
+          value: 1_000_000_000n,
+          exponent: 8n,
+          assetDecimals: 8,
+          cashDecimals: 6,
+          assetIsInput: false,
+          spreadBps: PRICED_SPREAD_BPS,
+        }),
+      ),
+    );
+    expect(quote.outRaw).toBe('9970000');
+    const before = await w.adapter.getVault(f.vault);
+    const tx = await w.adapter.buildOwnerSwap({ vault: f.vault, trades: [buy], slippageBps: 100 });
+    holdsTheGuardShape(tx, f.owner);
+    await w.must(tx);
+    const after = await w.adapter.getVault(f.vault);
+    const held = (v: typeof after) =>
+      BigInt(v?.positions.find((p) => p.asset === id('delta'))?.raw ?? 0);
+    expect(held(after) - held(before)).toBe(9_970_000n);
+    // And back: what a sale of it pays is the entry less the spread again.
+    const sell = { sell: id('delta'), buy: id('cash'), amountInRaw: '9970000' };
+    expect((await w.adapter.quote(sell, f.owner)).outRaw).toBe(
+      String((997_000n * 9_970n) / 10_000n),
+    );
+    await w.must(
+      await w.adapter.buildOwnerSwap({ vault: f.vault, trades: [sell], slippageBps: 100 }),
+    );
   });
 
   it('sizes the budget of a keeper leg in a vault of sixteen positions from its simulation', async () => {

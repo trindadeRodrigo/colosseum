@@ -41,6 +41,8 @@ import {
   initConfig,
   initMint,
   initPair,
+  initPricedPair,
+  initPrices,
   initRouter,
   MINT_BYTES,
   mintTo,
@@ -94,6 +96,9 @@ export const PARAMS: Params = {
 };
 
 export type MintName = 'cash' | 'alpha' | 'beta' | 'gamma' | 'delta';
+/** The asset the test exchange prices from the price account (a `kind` 1 pair), and its spread. */
+export const PRICED = 'delta';
+export const PRICED_SPREAD_BPS = 30;
 type Shelf = {
   decimals: number;
   token2022: boolean;
@@ -290,8 +295,29 @@ export async function buildContractWorld(
     ]);
 
   // The test exchange: both directions of cash and each asset, at the shelf prices, and full reserves.
-  await run(deployer, [await initRouter(deployer.address)]);
+  // The exchange takes the world's price account as its own, as on devnet (TNET-4). Delta trades at its
+  // entry there less a spread, both ways (`kind` 1, as every devnet pair is); the others at a fixed price.
+  await run(deployer, [
+    await initRouter(deployer.address),
+    await initPrices(deployer.address, priceAccount),
+  ]);
   for (const name of listed) {
+    if (name === PRICED) {
+      const priceIndex = at(name).index;
+      await run(deployer, [
+        await initPricedPair(deployer.address, mint('cash').address, mint(name).address, {
+          assetIsInput: false,
+          priceIndex,
+          spreadBps: PRICED_SPREAD_BPS,
+        }),
+        await initPricedPair(deployer.address, mint(name).address, mint('cash').address, {
+          assetIsInput: true,
+          priceIndex,
+          spreadBps: PRICED_SPREAD_BPS,
+        }),
+      ]);
+      continue;
+    }
     const there = pairPrice(at('cash'), at(name));
     const back = pairPrice(at(name), at('cash'));
     await run(deployer, [

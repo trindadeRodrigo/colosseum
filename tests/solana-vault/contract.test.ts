@@ -28,8 +28,8 @@ else
       const node = await createSvmNode(deployer.address, start);
       node.svm.airdrop(deployer.address, lamports(1_000_000_000_000n));
       const priceAccount = (await newKey()).address;
-      const writePrices = (at: bigint) => {
-        const data = priceAccountBytes(PRICE_ENTRIES, at, node.svm.getClock().slot);
+      const writePrices = (at: bigint, header = true) => {
+        const data = priceAccountBytes(PRICE_ENTRIES, at, node.svm.getClock().slot, header);
         node.svm.setAccount({
           address: priceAccount,
           data,
@@ -39,7 +39,8 @@ else
           space: BigInt(data.length),
         });
       };
-      writePrices(start);
+      // Header-less: the test exchange takes it as its own price account first (`init_prices`).
+      writePrices(start, false);
       const world = await buildContractWorld(
         {
           rpc: node.rpc,

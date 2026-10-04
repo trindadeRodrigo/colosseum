@@ -222,6 +222,41 @@ export async function initPair(
   };
 }
 
+/** The exchange takes the price account as its own: writes Scope's discriminator and its address. */
+export async function initPrices(admin: Address, prices: Address): Promise<IInstruction> {
+  return {
+    programAddress: MOCK_ROUTER_PROGRAM,
+    accounts: [s(admin), w(await exchangeAddress(MOCK_ROUTER_PROGRAM)), w(prices)],
+    data: anchor('init_prices'),
+  };
+}
+
+/** A pair that pays at the asset's entry in the exchange's price account, less `spreadBps`. */
+export async function initPricedPair(
+  admin: Address,
+  mintIn: Address,
+  mintOut: Address,
+  a: { assetIsInput: boolean; priceIndex: number; spreadBps: number },
+): Promise<IInstruction> {
+  return {
+    programAddress: MOCK_ROUTER_PROGRAM,
+    accounts: [
+      ws(admin),
+      ro(await exchangeAddress(MOCK_ROUTER_PROGRAM)),
+      ro(mintIn),
+      ro(mintOut),
+      w(await pairAddress(MOCK_ROUTER_PROGRAM, mintIn, mintOut)),
+      ro(SYSTEM_PROGRAM),
+    ],
+    data: new Bytes()
+      .raw(anchor('init_priced_pair'))
+      .u8(a.assetIsInput ? 1 : 0)
+      .u16(a.priceIndex)
+      .u16(a.spreadBps)
+      .done(),
+  };
+}
+
 export async function setPairPrice(
   admin: Address,
   mintIn: Address,
@@ -307,11 +342,22 @@ export async function mintTo(a: {
 
 export type PriceEntry = { index: number; twapIndex: number; value: bigint; exponent: bigint };
 
-/** A price account in Scope's layout, every entry and its average stamped at `at` (unix seconds). */
-export function priceAccountBytes(entries: PriceEntry[], at: bigint, slot: bigint): Uint8Array {
+/**
+ * A price account in Scope's layout, every entry and its average stamped at `at` (unix seconds).
+ * Without `header` its first 40 bytes are zero, as the test exchange's `init_prices` takes an account
+ * before it writes Scope's discriminator and its own address there.
+ */
+export function priceAccountBytes(
+  entries: PriceEntry[],
+  at: bigint,
+  slot: bigint,
+  header = true,
+): Uint8Array {
   const data = new Uint8Array(SCOPE_PRICES_BYTES);
-  data.set(SCOPE_PRICES_DISCRIMINATOR, 0);
-  data.set(enc.encode(MOCK_ROUTER_PROGRAM), 8);
+  if (header) {
+    data.set(SCOPE_PRICES_DISCRIMINATOR, 0);
+    data.set(enc.encode(MOCK_ROUTER_PROGRAM), 8);
+  }
   const view = new DataView(data.buffer);
   for (const e of entries)
     for (const index of [e.index, e.twapIndex]) {

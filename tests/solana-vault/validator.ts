@@ -44,7 +44,13 @@ export async function startValidator(port: number, notBefore: string): Promise<S
   const deployer = await newKey();
   const priceAccount = (await newKey()).address;
   const startAt = BigInt(Math.floor(Date.now() / 1000));
-  const data = priceAccountBytes(PRICE_ENTRIES, startAt + BigInt(PARAMS.maxPriceAgeS) - 100n, 0n);
+  // Header-less: the test exchange takes it as its own price account in the set-up (`init_prices`).
+  const data = priceAccountBytes(
+    PRICE_ENTRIES,
+    startAt + BigInt(PARAMS.maxPriceAgeS) - 100n,
+    0n,
+    false,
+  );
   const priceFile = join(dir, 'prices.json');
   writeFileSync(
     priceFile,
