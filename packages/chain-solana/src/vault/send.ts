@@ -27,8 +27,14 @@ import { ask, type VaultWriteRpc } from './rpc';
 // back to what was built. It holds no key, signs nothing and keeps no record of what it built: the
 // order layer stores each attempt's message hash and asks. The API may import it.
 
-/** How many of a signer's latest transactions `fate` looks through for an attempt nobody reported. */
-const FATE_SCAN = 100;
+/** How many of a signer's transactions one page of the node's list holds. */
+const FATE_PAGE = 100;
+/**
+ * How many pages `fate` reads, at most, back to the slot the attempt could first land in. Anyone can
+ * name an address in a transaction (a transfer of dust to it), so the list can be long; past this many
+ * pages `fate` cannot tell, and answers `open`, never `gone`.
+ */
+const FATE_PAGES = 10;
 /** A blockhash can be used for this many blocks after the one it was taken at. */
 const BLOCKHASH_BLOCKS = 150n;
 
@@ -110,22 +116,38 @@ export function createSolanaProbe(options: {
     return statuses.value[0] ?? null;
   };
 
-  /** Looks through the signer's latest transactions for one that carries the message. */
-  async function findLanded(attempt: AttemptRef): Promise<Signature | null> {
+  /**
+   * Looks through the signer's transactions, newest first, for one that carries the message, back to
+   * the first slot the attempt's blockhash could have landed in. `looked` is true when the whole window
+   * was read: the node listed a slot under it, or its list ended. Only then can "not found" mean it.
+   */
+  async function findLanded(
+    attempt: AttemptRef,
+  ): Promise<{ found: Signature | null; looked: boolean }> {
     const floor =
       attempt.validUntil === null ? null : BigInt(attempt.validUntil) - BLOCKHASH_BLOCKS;
-    const signatures = await ask('getSignaturesForAddress', () =>
-      rpc
-        .getSignaturesForAddress(attempt.signer as Address, { limit: FATE_SCAN, commitment })
-        .send(),
-    );
-    for (const entry of signatures) {
-      // A block's height is never above its slot, so a transaction from a slot under the floor was
-      // in a block too early to carry the attempt's blockhash. The list runs newest first.
-      if (floor !== null && BigInt(entry.slot) < floor) break;
-      if ((await hashOnChain(entry.signature)) === attempt.messageHash) return entry.signature;
+    let before: Signature | undefined;
+    for (let page = 0; page < FATE_PAGES; page++) {
+      const signatures = await ask('getSignaturesForAddress', () =>
+        rpc
+          .getSignaturesForAddress(attempt.signer as Address, {
+            limit: FATE_PAGE,
+            commitment,
+            ...(before ? { before } : {}),
+          })
+          .send(),
+      );
+      for (const entry of signatures) {
+        // A block's height is never above its slot, so a transaction from a slot under the floor was
+        // in a block too early to carry the attempt's blockhash.
+        if (floor !== null && BigInt(entry.slot) < floor) return { found: null, looked: true };
+        if ((await hashOnChain(entry.signature)) === attempt.messageHash)
+          return { found: entry.signature, looked: true };
+      }
+      if (signatures.length < FATE_PAGE) return { found: null, looked: true };
+      before = signatures[signatures.length - 1]?.signature;
     }
-    return null;
+    return { found: null, looked: false };
   }
 
   return {
@@ -184,19 +206,22 @@ export function createSolanaProbe(options: {
       const parsed = AttemptRef.safeParse(attempt);
       if (!parsed.success)
         throw new ChainError('BadInput', 'attempt: not an attempt this chain stores');
-      const found = await findLanded(parsed.data);
-      if (found) return { state: 'landed', txId: found };
+      const first = await findLanded(parsed.data);
+      if (first.found) return { state: 'landed', txId: first.found };
       if (parsed.data.validUntil === null) return { state: 'open' };
       const lastValid = BigInt(parsed.data.validUntil);
-      // The finalized height: a height read from a fork that is later dropped could be past the last
-      // valid block while the transaction still lands.
+      // The finalized height, from the same node as the list: a height read from a fork that is later
+      // dropped, or from a node ahead of the one listing, could be past the last valid block while the
+      // transaction still lands or is not listed yet.
       const height = await ask('getBlockHeight', () =>
         rpc.getBlockHeight({ commitment: 'finalized' }).send(),
       );
       if (BigInt(height) <= lastValid) return { state: 'open' };
-      // Past it. It may have landed between the two questions: look once more before saying gone.
+      // Past it. It may have landed between the two questions: look once more before saying gone, and
+      // say gone only when the whole window was read and it is not there.
       const late = await findLanded(parsed.data);
-      return late ? { state: 'landed', txId: late } : { state: 'gone' };
+      if (late.found) return { state: 'landed', txId: late.found };
+      return late.looked && first.looked ? { state: 'gone' } : { state: 'open' };
     },
 
     async nonceOf(seen) {

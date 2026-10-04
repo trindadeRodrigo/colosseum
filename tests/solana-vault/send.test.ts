@@ -66,6 +66,8 @@ function node() {
     sendFails: false,
     simulated: null as null | { err: unknown; logs: string[] },
     fetched: [] as string[],
+    /** The slots of entries the node lists that are not transactions of this test (a stranger's). */
+    slots: new Map<string, bigint>(),
     /** Runs before each answer: what lands on the chain between two questions. */
     before: (_method: string) => {},
   };
@@ -113,14 +115,17 @@ function node() {
           ? { slot: found.slot, meta: { err: found.err }, transaction: [found.wire, 'base64'] }
           : null;
       }),
-    getSignaturesForAddress: (address: string) =>
-      answer('getSignaturesForAddress', () =>
-        (state.bySigner.get(address) ?? []).map((signature) => ({
+    // Newest first, a page of `limit` at most, after `before` where it is given: as a node lists them.
+    getSignaturesForAddress: (address: string, config?: { limit?: number; before?: string }) =>
+      answer('getSignaturesForAddress', () => {
+        const all = state.bySigner.get(address) ?? [];
+        const from = config?.before ? all.indexOf(config.before) + 1 : 0;
+        return all.slice(from, from + (config?.limit ?? 1000)).map((signature) => ({
           signature,
-          slot: state.landed.get(signature)?.slot ?? 0n,
+          slot: state.landed.get(signature)?.slot ?? state.slots.get(signature) ?? 0n,
           err: null,
-        })),
-      ),
+        }));
+      }),
     getBlockHeight: () => answer('getBlockHeight', () => state.height),
   } as unknown as VaultWriteRpc;
   return { state, rpc, land };
@@ -242,6 +247,48 @@ describe('the Solana probe', () => {
     state.height = 900n;
     expect(await probe.fate(attempt)).toEqual({ state: 'open' });
     expect(state.fetched).toEqual([idOf(newer.signed)]);
+  });
+
+  it('finds a landed attempt behind more than a page of newer transactions that name its signer', async () => {
+    const { rpc, state, land } = node();
+    const probe = createSolanaProbe({ rpc, program: PROGRAM });
+    const t = await signedTx(11);
+    const id = land(t.signed, t.payer, 400n);
+    // A hundred and fifty transactions by anyone that name the owner after it landed: dust sent to the
+    // address does it. The node lists them first, a hundred to a page.
+    const later = Array.from({ length: 150 }, (_, i) =>
+      base58.decode(new Uint8Array(64).fill(i + 1)),
+    );
+    for (const [i, s] of later.entries()) state.slots.set(s, 401n + BigInt(i));
+    state.bySigner.set(t.payer, [...later.reverse(), id]);
+    state.height = 501n;
+    const attempt = {
+      messageHash: await probe.messageHashOf(t.wire),
+      signer: t.payer,
+      validUntil: '500',
+      nonce: null,
+    };
+    expect(await probe.fate(attempt)).toEqual({ state: 'landed', txId: id });
+  });
+
+  it('says open, never gone, when it cannot read back to the start of the window', async () => {
+    const { rpc, state } = node();
+    const probe = createSolanaProbe({ rpc, program: PROGRAM });
+    const t = await signedTx(12);
+    // More entries inside the window than it reads: it cannot tell whether the attempt is behind them.
+    const many = Array.from({ length: 1_050 }, (_, i) =>
+      base58.decode(new Uint8Array(64).fill(1).map((b, j) => (j < 2 ? (i >> (8 * j)) & 0xff : b))),
+    );
+    for (const [i, s] of many.entries()) state.slots.set(s, 2_000n - BigInt(i % 100));
+    state.bySigner.set(t.payer, many);
+    state.height = 2_001n;
+    const attempt = {
+      messageHash: await probe.messageHashOf(t.wire),
+      signer: t.payer,
+      validUntil: '2000',
+      nonce: null,
+    };
+    expect(await probe.fate(attempt)).toEqual({ state: 'open' });
   });
 
   it('has no nonce to report: Solana has none', async () => {
