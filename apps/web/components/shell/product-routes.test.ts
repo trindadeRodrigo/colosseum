@@ -164,6 +164,32 @@ describe('rule 1: nothing the product ships imports from a dev, test or fixtures
       expect(BUILD_DEV_ONLY.test(`../../apps/web/${file}`), file).toBe(false);
   });
 
+  it('is every dev, test and fixtures folder of the app, at any depth, and no package’s', () => {
+    for (const file of [
+      'features/goal/fixtures/plans.ts',
+      'features/goal/test/deep/plan.ts',
+      'features/goal/parts/test/plan.ts',
+      'components/ui/internal/test/x.tsx',
+      'i18n/test/words.ts',
+      'lib/test/server.ts',
+      'lib/fixtures/answers.ts',
+      'app/(app)/dev/wallet/page.dev.tsx',
+    ])
+      expect(BUILD_DEV_ONLY.test(`../../apps/web/${file}`), file).toBe(true);
+    for (const file of [
+      '../../node_modules/.pnpm/a@1.0.0/node_modules/a/lib/test/index.js',
+      '../../node_modules/b/components/fixtures/x.js',
+      '../../apps/web/i18n/tests.ts',
+      '../../apps/web/lib/testing.ts',
+      '../../apps/web/features/goal/fixtures.ts',
+      '../../apps/web/app/(app)/developers/page.tsx',
+    ])
+      expect(BUILD_DEV_ONLY.test(file), file).toBe(false);
+    // and it agrees with this test on every file the app has today
+    for (const file of files)
+      expect(BUILD_DEV_ONLY.test(`../../apps/web/${file}`), file).toBe(devOnly(file));
+  });
+
   it('bites: a screen that imports a double, and a page that imports the showcase', () => {
     const bad = (file: string, text: string) =>
       importsOf(file, text).filter((edge) => edge.file !== null && notShipped(edge.file));

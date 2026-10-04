@@ -74,14 +74,16 @@ const address = (route) => route.replace(/\/\([^/]+\)(?=\/|$)/g, '') || '/';
 
 /**
  * Folders whose files are for development and tests only. No built route may come from them: a
- * feature's `dev` and `test` folders (the wallet's dev page and test driver, the doubles the screens
- * are tested against), a component folder's `fixtures` and `test` (the design system's sample content
- * and test helpers), and every page under a `dev` folder of the app, in a route group or not (the
- * showcase and the wallet check, in app/(app)/dev). components/ui/shipped.test.ts and
+ * folder named `dev`, `test` or `fixtures`, at any depth, under the app's own source folders. That is
+ * a feature's `dev` and `test` (the wallet's dev page and test driver, the doubles the screens are
+ * tested against), a component folder's `fixtures` and `test` (the design system's sample content and
+ * test helpers), the same under `i18n` and `lib`, and the pages under a `dev` folder of the app, in a
+ * route group or not (the showcase and the wallet check, in app/(app)/dev). A file of a package is
+ * never one of ours, whatever its folders are called. components/ui/shipped.test.ts and
  * components/shell/product-routes.test.ts read the imports for the same.
  */
 export const DEV_ONLY =
-  /(^|\/)(features\/[^/]+\/(dev|test)|components\/[^/]+\/(fixtures|test)|app\/(\([^/]+\)\/)*dev)\//;
+  /^(?!.*(^|\/)node_modules\/).*(^|\/)(features|components|i18n|lib|app)\/([^/]+\/)*(dev|test|fixtures)\//;
 /** A file every route is built from: the proof that the source maps name our files. */
 export const ALWAYS_BUILT = 'features/wallet/WalletProvider.tsx';
 
