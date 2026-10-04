@@ -129,6 +129,14 @@ export function GoalScreen() {
   const chainName = chain ? (network?.name ?? t.chain.names[chain]) : '';
   const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.mockAnnounce };
   const link = buttonClass({ variant: 'link' });
+  // Why the API did not say which chain: it did not answer, it no longer knows this sign-in, or it
+  // asked for fewer requests. Each is a different thing for the person to do.
+  const unknownWhy =
+    account.status !== 'unknown' || account.why === 'unreachable'
+      ? t.chain.unknown.body
+      : account.why === 'signed_out'
+        ? t.chain.unknown.signedOut
+        : t.shell.slowDown;
   const chainFact: SheetFact =
     account.status === 'ready'
       ? {
@@ -146,12 +154,15 @@ export function GoalScreen() {
               value: (
                 <span className="inline-flex flex-wrap items-center gap-x-3">
                   <span>{t.goal.chain.unknown}</span>
-                  <Button variant="link" onClick={retry}>
-                    {t.chain.unknown.retry}
-                  </Button>
+                  {/* Asking again does not help a sign-in the server no longer knows. */}
+                  {account.why !== 'signed_out' && (
+                    <Button variant="link" onClick={retry}>
+                      {t.chain.unknown.retry}
+                    </Button>
+                  )}
                 </span>
               ),
-              note: t.chain.unknown.body,
+              note: unknownWhy,
             }
           : {
               label: t.goal.chain.label,
@@ -171,7 +182,9 @@ export function GoalScreen() {
     ...(account.status === 'signed-out' ? [t.goal.blocked.signedOut] : []),
     ...(account.status === 'needs-chain' ? [t.goal.blocked.chainNotChosen] : []),
     ...(account.status === 'no-wallet' ? [t.chain.noWallet] : []),
-    ...(account.status === 'unknown' ? [t.goal.blocked.chainUnknown] : []),
+    ...(account.status === 'unknown'
+      ? [account.why === 'unreachable' ? t.goal.blocked.chainUnknown : unknownWhy]
+      : []),
     ...(build.kind === 'refused' ? [t.goal.blocked.refused] : []),
   ];
 

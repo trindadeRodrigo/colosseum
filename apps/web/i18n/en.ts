@@ -132,6 +132,9 @@ export const en = {
       body: 'I can’t tell yet which chain your plan lives on: our server didn’t answer. Nothing is wrong with your wallet.',
       retry: 'Ask again',
       asking: 'Asking…',
+      /** The API answered 401: it does not know this sign-in any more. */
+      signedOut:
+        'Our server doesn’t recognise your sign-in any more, so I can’t tell which chain your plan lives on. Sign out, then sign in again.',
     },
     noWallet:
       'You’re signed in, but no wallet is linked to this sign-in yet, so there is no chain for your plan.',

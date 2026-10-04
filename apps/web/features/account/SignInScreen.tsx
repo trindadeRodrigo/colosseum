@@ -98,10 +98,28 @@ export function SignInScreen({ next = '/goal' }: { next?: string }) {
                 {t.chain.failure.takenUnknown(chainName(overruled))}
               </p>
             )}
-            <p className="max-w-(--tf-measure-body) text-body">{t.chain.unknown.body}</p>
-            <Button variant="primary" onClick={retry}>
-              {t.chain.unknown.retry}
-            </Button>
+            <p className="max-w-(--tf-measure-body) text-body">
+              {account.why === 'signed_out'
+                ? t.chain.unknown.signedOut
+                : account.why === 'busy'
+                  ? t.shell.slowDown
+                  : t.chain.unknown.body}
+            </p>
+            {/* Asking again does not help a sign-in the server no longer knows: the way on is out. */}
+            {account.why === 'signed_out' ? (
+              <Button
+                variant="primary"
+                busy={leaving}
+                busyLabel={t.shell.signingOut}
+                onClick={signOut}
+              >
+                {t.shell.signOut}
+              </Button>
+            ) : (
+              <Button variant="primary" onClick={retry}>
+                {t.chain.unknown.retry}
+              </Button>
+            )}
           </CardBody>
         </Card>
       )}

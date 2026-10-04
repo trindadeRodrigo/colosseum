@@ -122,6 +122,8 @@ export const pt: Dictionary = {
       body: 'Ainda não sei dizer em qual rede seu plano fica: nosso servidor não respondeu. Não há nada de errado com a sua carteira.',
       retry: 'Perguntar de novo',
       asking: 'Perguntando…',
+      signedOut:
+        'Nosso servidor não reconhece mais o seu login, então não sei dizer em qual rede seu plano fica. Saia e entre de novo.',
     },
     noWallet:
       'Você entrou, mas ainda não há carteira ligada a esta entrada, então não há rede para o seu plano.',

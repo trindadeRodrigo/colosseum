@@ -390,6 +390,35 @@ describe('when the API does not say where the plan lives', () => {
     expect(asks(host)).toBe(true);
   });
 
+  it('tells a sign-in the server no longer knows to sign out and in again, and does not offer to ask again', async () => {
+    const server = api(made());
+    server.force((path) => (path === '/v1/me' ? json({ error: 'sign in first' }, 401) : null));
+    const signOut = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+    portStore.set(signedInPort(EMBEDDED, { signOut }));
+    const host = await screen();
+    await settle();
+    expect(state(host)).toBe('unknown');
+    expect(host.textContent).toContain(en.chain.unknown.signedOut);
+    expect(host.textContent).not.toContain(en.chain.unknown.body);
+    expect(host.textContent).not.toContain(en.chain.unknown.retry);
+    await click(button(host, en.shell.signOut));
+    expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells someone the server asked to slow down to wait, and asks again when told to', async () => {
+    const server = api(made());
+    server.force((path) => (path === '/v1/me' ? json({ error: 'slow down' }, 429) : null));
+    portStore.set(signedInPort(EMBEDDED));
+    const host = await screen();
+    await settle();
+    expect(host.textContent).toContain(en.shell.slowDown);
+    expect(host.textContent).not.toContain(en.chain.unknown.body);
+    server.force(null);
+    await click(button(host, en.chain.unknown.retry));
+    await settle();
+    expect(asks(host)).toBe(true);
+  });
+
   it('says a signed-in person with no wallet has no chain, and makes the wallet when asked', async () => {
     const server = api(made({ wallets: [], chainOptions: [] }));
     const ensureWallets = vi

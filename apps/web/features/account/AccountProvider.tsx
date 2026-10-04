@@ -22,8 +22,11 @@ export type Account =
   /** The wallet is loading, or the API is being asked. */
   | { status: 'loading' }
   | { status: 'signed-out' }
-  /** The API did not say. Nothing is assumed in its place. */
-  | { status: 'unknown' }
+  /**
+   * The API did not say. Nothing is assumed in its place. `why` is for the sentence: it did not
+   * answer, it does not know this sign-in any more (401), or it asked for fewer requests (429).
+   */
+  | { status: 'unknown'; why: Unknown }
   /**
    * Signed in, with no wallet to have a chain: one a passkey sign-in owes the person could not be
    * made, or none is linked to the sign-in.
@@ -32,6 +35,8 @@ export type Account =
   /** A wallet made here, and no chain chosen yet: the one time it is asked. */
   | { status: 'needs-chain'; options: ChainId[] }
   | { status: 'ready'; chain: ChainId; source: 'picked' | 'wallet' };
+
+export type Unknown = 'unreachable' | 'signed_out' | 'busy';
 
 export type AccountValue = {
   account: Account;
@@ -54,7 +59,13 @@ export type AccountValue = {
 
 const AccountContext = createContext<AccountValue | null>(null);
 
-type Read = { key: string; person: Person | null };
+type Read = { key: string; person: Person | null; why?: Unknown };
+
+/** Why the API did not say who is signed in, as far as a person can do something about it. */
+const whyNot = (e: unknown): Unknown =>
+  e instanceof PersonError && (e.kind === 'signed_out' || e.kind === 'busy')
+    ? e.kind
+    : 'unreachable';
 
 export function AccountProvider({ children }: { children: ReactNode }) {
   const port = useWalletPort();
@@ -77,11 +88,11 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     if (key === null) return;
     let live = true;
     const { port: now, apiFetch: call } = latest.current;
-    const done = (person: Person | null) => {
-      if (live) setRead({ key, person });
+    const done = (person: Person | null, why?: Unknown) => {
+      if (live) setRead({ key, person, why });
     };
     if (now.test) done(localPerson(now.userId ?? 'test', now.accounts, null));
-    else fetchPerson(call).then(done, () => done(null));
+    else fetchPerson(call).then(done, (e: unknown) => done(null, whyNot(e)));
     return () => {
       live = false;
     };
@@ -104,10 +115,14 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         // Chosen before, on another device or in another tab: read where the plan does live, so the
         // screen can name that chain and not the one just tried.
         if (e instanceof PersonError && e.kind === 'taken') {
-          const person = await fetchPerson(call).catch(() => null);
+          let why: Unknown | undefined;
+          const person = await fetchPerson(call).catch((again: unknown) => {
+            why = whyNot(again);
+            return null;
+          });
           if (mine()) {
             setRefused({ key, tried: chain });
-            setRead({ key, person });
+            setRead({ key, person, why });
           }
         }
         throw e;
@@ -128,7 +143,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     if (port.status === 'signed-out' || key === null) return { status: 'signed-out' };
     if (!read || read.key !== key) return { status: 'loading' };
     const person = read.person;
-    if (!person) return { status: 'unknown' };
+    if (!person) return { status: 'unknown', why: read.why ?? 'unreachable' };
     if (person.chain)
       return { status: 'ready', chain: person.chain, source: person.chainSource ?? 'picked' };
     if (person.chainOptions.length === 0) return { status: 'no-wallet' };

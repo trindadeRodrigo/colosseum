@@ -36,7 +36,13 @@ const GOAL = 'Grow $40,000 for an apartment by June 2028';
 
 type Call = { method: string; path: string; body?: unknown };
 
-function api(options: { person?: Person; reading?: unknown; plan?: (body: unknown) => Response }) {
+function api(options: {
+  person?: Person;
+  /** What GET /v1/me answers with when there is no person: by default, a server that is not up. */
+  me?: number;
+  reading?: unknown;
+  plan?: (body: unknown) => Response;
+}) {
   const calls: Call[] = [];
   let down = false;
   portStore.setApi(async (path, init) => {
@@ -45,7 +51,8 @@ function api(options: { person?: Person; reading?: unknown; plan?: (body: unknow
     calls.push({ method, path, body });
     if (down) throw new TypeError('fetch failed');
     if (path === '/goals') return json(options.reading ?? READ_IN_DOLLARS);
-    if (path === '/v1/me') return options.person ? json(options.person) : json({}, 401);
+    if (path === '/v1/me')
+      return options.person ? json(options.person) : json({}, options.me ?? 503);
     // today's API: there is no route that builds a plan
     if (path === PERSONALIZE_PATH)
       return options.plan ? options.plan(body) : json({ error: 'Route not found' }, 404);
@@ -352,6 +359,28 @@ describe('“Build my plan”', () => {
     await click(find(facts, 'button'));
     await settle();
     expect(server.to('/v1/me')).toHaveLength(2);
+  });
+
+  it('says what to do when the server no longer knows the sign-in, or asks for fewer requests', async () => {
+    for (const [me, sentence] of [
+      [401, en.chain.unknown.signedOut],
+      [429, en.shell.slowDown],
+    ] as const) {
+      const server = api({ me });
+      portStore.set(signedInPort(PHANTOM));
+      const host = await screen();
+      await read(host);
+      await fill(host);
+      expect(summary(host)?.textContent, String(me)).toContain(sentence);
+      expect(summary(host)?.textContent).not.toContain(en.chain.unknown.body);
+      await click(buildButton(host));
+      expect(server.to(PERSONALIZE_PATH)).toEqual([]);
+      // asking again is offered only where it can help
+      const again = find(host, '[data-ui="sheet-facts"]').querySelectorAll('button');
+      expect(again, String(me)).toHaveLength(me === 401 ? 0 : 1);
+      await unmountAll();
+      window.sessionStorage.clear();
+    }
   });
 });
 
