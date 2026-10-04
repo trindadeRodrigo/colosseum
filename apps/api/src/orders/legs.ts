@@ -460,7 +460,10 @@ const NOT_THIS_STEP = 'that transaction is not the one built for this step';
  *   of its own, so the reverted one is never taken for it.
  * - The nonce is one no attempt states: an outside wallet chose its own. It is the newest attempt that
  *   can still land, or was closed without landing. A step that is already settled takes no such
- *   transaction: the same call on another nonce is another transaction.
+ *   transaction: the same call on another nonce is another transaction. Neither does a nonce below
+ *   every nonce the step's attempts state: a wallet's nonce only grows, so that transaction landed
+ *   before the step was first built. It is an older call of the same wallet that happens to be the
+ *   same call, an approval or a deposit made by another route, and not this step's.
  * - No nonce (Solana, or bytes that state none): the newest that can still land, then one that landed,
  *   then one that was closed.
  */
@@ -476,6 +479,8 @@ export function attemptFor(
   const pair = same.filter((a) => a.nonce === nonce);
   if (pair.length) return newest(pair.filter(final)) ?? newest(pair.filter(live)) ?? newest(pair);
   if (legSettled) return undefined;
+  const stated = same.flatMap((a) => (a.nonce === null ? [] : [a.nonce]));
+  if (stated.length && nonce < Math.min(...stated)) return undefined;
   return newest(same.filter(live)) ?? newest(same.filter((a) => !final(a)));
 }
 
@@ -530,7 +535,7 @@ export async function reportLeg(
     if (!attempt)
       throw new Refusal(
         409,
-        'this step is settled by another transaction: nothing was sent',
+        'these bytes are not a transaction this step can settle on: nothing was sent',
         NOT_BUILT_HERE,
       );
     await assertNotAnothers(attempt, nonce);

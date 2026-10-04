@@ -315,6 +315,16 @@ describe('which attempt at a step a transaction is', () => {
     expect(pick([attempt(1, 'failed', 5)], 9)).toBeUndefined();
   });
 
+  it('a nonce below every nonce the step stated is an older transaction, and not the step’s', () => {
+    // The same call, landed on nonce 3 before the step was first built on nonce 5.
+    expect(pick([attempt(1, 'built', 5)], 3)).toBeUndefined();
+    expect(pick([attempt(1, 'expired', 5), attempt(2, 'built', 6)], 4)).toBeUndefined();
+    expect(pick([attempt(1, 'failed', 5), attempt(2, 'built', 6)], 0)).toBeUndefined();
+    // From the lowest stated nonce up it may be the wallet's own choice.
+    expect(pick([attempt(1, 'expired', 5), attempt(2, 'built', 7)], 6)).toBe(2);
+    expect(pick([attempt(1, 'built', 5)], 6)).toBe(1);
+  });
+
   it('bytes that state no nonce: what can still land, then what landed, then what was closed', () => {
     expect(pick([attempt(1, 'failed', 5), attempt(2, 'built', 6)], null)).toBe(2);
     expect(pick([attempt(1, 'expired', 5), attempt(2, 'confirmed', 5)], null, true)).toBe(2);

@@ -11,6 +11,7 @@ import { eq, inArray, or } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ChainRegistry } from '../../orders/chains';
+import { basketIdOf } from '../../orders/prepare';
 import { chainOf, orderFlow, type Sent, walletOf } from '../../testing/flow';
 import {
   type HomeChain,
@@ -1163,6 +1164,93 @@ describe('on an EVM chain an attempt is the pair (message, nonce)', () => {
     expect(await adapter.nonceOf({ txId: legOf(relayed, first(byBytes).id).txId ?? '' })).toBe(own);
   });
 
+  it('does not take an older identical call of the same wallet for a step built after it', async () => {
+    const a = await someone('robinhood');
+    await fund(a);
+    const mock = mockOf('robinhood');
+    const { adapter } = registry.get('robinhood');
+    const basketId = basketIdOf(plans.robinhood);
+    const placed = await order(a, { amountUsd: 400 });
+    const approve = first(placed);
+    // The wallet made the very same approval before, by another route: the same call, so the same
+    // message, landed on a nonce that was used before this step was built.
+    const old = await mock.send(
+      await adapter.buildApprove({ owner: a.evm, basketId, amountRaw: approve.cashRaw ?? '' }),
+    );
+    const built = await build(a, placed, approve.id);
+    const oldNonce = await adapter.nonceOf({ txId: old.txId });
+    expect(await adapter.carries(old.txId, built.tx.messageHash)).toBe('this');
+    expect(oldNonce).toBeLessThan(built.attempt.nonce ?? -1);
+
+    const wrong = await post(a, legUrl(placed, approve.id, 'report'), { txId: old.txId });
+    expect([wrong.statusCode, wrong.json()]).toEqual([
+      409,
+      { error: 'that transaction is not the one built for this step' },
+    ]);
+    // Neither are bytes of that call signed on the old nonce.
+    if (!built.tx.evm) throw new Error('not an EVM transaction');
+    const stale = mock.sign({ ...built.tx, evm: { ...built.tx.evm, nonce: oldNonce ?? 0 } });
+    const bytes = await post(a, legUrl(placed, approve.id, 'report'), { signedTx: stale });
+    expect([bytes.statusCode, bytes.json().details]).toEqual([
+      409,
+      { chainCode: 'NotBuiltHere', retryable: false },
+    ]);
+    const after = await read(a, placed);
+    expect(legOf(after, approve.id)).toMatchObject({ status: 'built', txId: null });
+    expect(after.attempts.map((x) => [x.status, x.nonce])).toEqual([
+      ['built', built.attempt.nonce],
+    ]);
+    // The step settles on its own transaction.
+    const done = await report(a, placed, approve.id, { txId: await land(a, placed, approve.id) });
+    expect(legOf(done, approve.id).status).toBe('confirmed');
+  });
+
+  it('an identical deposit made before the order existed does not settle it: no cash, no done', async () => {
+    const a = await someone('robinhood');
+    const cash = await openVault(a);
+    const mock = mockOf('robinhood');
+    const { adapter } = registry.get('robinhood');
+    // What a $10 buy of this plan deposits and trades, read from an order that is then left alone.
+    const probe = await order(a, { amountUsd: 10 });
+    const like = probe.legs.find((l) => l.kind === 'deposit');
+    const [vault] = await adapter.getVaults(a.evm);
+    if (!like?.cashRaw || !vault) throw new Error('no deposit to copy');
+    // The wallet makes the very same approval and deposit by another route, with no order.
+    await mock.send(
+      await adapter.buildApprove({
+        owner: a.evm,
+        basketId: basketIdOf(plans.robinhood),
+        amountRaw: like.cashRaw,
+      }),
+    );
+    const old = await mock.send(
+      await adapter.buildDeposit({
+        vault: vault.address,
+        amountRaw: like.cashRaw,
+        trades: like.trades,
+        slippageBps: 100,
+      }),
+    );
+    const before = await cash();
+
+    // Now the order: its approval settles, its deposit is built, and the older deposit's id is reported.
+    const { placed, deposit } = await toDeposit(a);
+    const built = await build(a, placed, deposit.id);
+    expect(await adapter.carries(old.txId, built.tx.messageHash)).toBe('this');
+    const wrong = await post(a, legUrl(placed, deposit.id, 'report'), { txId: old.txId });
+    expect([wrong.statusCode, wrong.json().error]).toEqual([
+      409,
+      'that transaction is not the one built for this step',
+    ]);
+    const after = await read(a, placed);
+    expect([after.status, legOf(after, deposit.id).status]).toEqual(['open', 'built']);
+    expect(before - (await cash())).toBe(0n);
+    // The step is still there to be signed, and the order is done only when its own cash has moved.
+    const done = await report(a, placed, deposit.id, { txId: await land(a, placed, deposit.id) });
+    expect([done.status, legOf(done, deposit.id).status]).toEqual(['done', 'confirmed']);
+    expect(before - (await cash())).toBe(10_000_000n);
+  });
+
   it('does not take one order’s transaction for another order’s identical step', async () => {
     const a = await someone('robinhood');
     const cash = await openVault(a);
@@ -1189,13 +1277,10 @@ describe('on an EVM chain an attempt is the pair (message, nonce)', () => {
     expect(refused.json().error).toMatch(/can still land/);
 
     // The first order's transaction, reported to the second order's step: it carries the same call,
-    // but on the nonce the first order's attempt stated. It is that step's, and is refused here.
+    // but on a nonce that was used before this step was built. It is refused here.
     const wrong = await post(a, legUrl(two.placed, two.deposit.id, 'report'), { txId: firstTx });
     expect(wrong.statusCode).toBe(409);
-    expect(wrong.json()).toEqual({
-      error: 'that transaction was built for another step',
-      details: { chainCode: 'NotBuiltHere', retryable: false },
-    });
+    expect(wrong.json()).toEqual({ error: 'that transaction is not the one built for this step' });
     expect(legOf(await read(a, two.placed), two.deposit.id)).toMatchObject({
       status: 'built',
       txId: null,
@@ -1217,6 +1302,40 @@ describe('on an EVM chain an attempt is the pair (message, nonce)', () => {
     expect(legOf(done, two.deposit.id)).toMatchObject({ status: 'confirmed', txId: secondTx });
     expect(done.status).toBe('done');
     expect(before - (await cash())).toBe(20_000_000n);
+  });
+
+  it('a transaction another order stated on a later nonce is that order’s, and is refused here', async () => {
+    const a = await someone('robinhood');
+    await openVault(a);
+    const mock = mockOf('robinhood');
+    const { adapter } = registry.get('robinhood');
+    // This step is built first, then cancelled: it stated nonce N.
+    const here = await toDeposit(a);
+    const mine = await build(a, here.placed, here.deposit.id);
+    expect((await post(a, legUrl(here.placed, here.deposit.id, 'cancel'))).statusCode).toBe(200);
+    // Something else of the wallet takes that nonce, and then another order's identical deposit is
+    // built on a later one and lands, unreported.
+    await mock.send(await adapter.buildApprove({ owner: a.evm, basketId: '77', amountRaw: '1' }));
+    const other = await toDeposit(a);
+    const theirs = await build(a, other.placed, other.deposit.id);
+    expect(theirs.tx.messageHash).toBe(mine.tx.messageHash);
+    expect(theirs.attempt.nonce).toBeGreaterThan(mine.attempt.nonce ?? -1);
+    const theirTx = await land(a, other.placed, other.deposit.id);
+
+    // Reported here, it carries this step's call on a nonce this step never stated. It is not the
+    // wallet's own choice of nonce: the other order's attempt stated that very pair.
+    const wrong = await post(a, legUrl(here.placed, here.deposit.id, 'report'), { txId: theirTx });
+    expect([wrong.statusCode, wrong.json()]).toEqual([
+      409,
+      {
+        error: 'that transaction was built for another step',
+        details: { chainCode: 'NotBuiltHere', retryable: false },
+      },
+    ]);
+    expect(attemptsOf(await read(a, here.placed), here.deposit.id)).toEqual([[1, 'expired']]);
+    // Where it belongs, it settles.
+    const settled = await report(a, other.placed, other.deposit.id, { txId: theirTx });
+    expect(legOf(settled, other.deposit.id)).toMatchObject({ status: 'confirmed', txId: theirTx });
   });
 
   it('one transaction settles one step: an attempt whose nonce another step’s transaction used is closed', async () => {
