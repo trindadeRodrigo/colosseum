@@ -53,8 +53,8 @@ pub mod basket {
         SetConfig::set_params(ctx, params)
     }
 
-    /// Admin, one way. Locks the router, the price owner and the cash mint, and raises the
-    /// floor on the publish delay to two days.
+    /// Admin, one way. Locks the router, the price owner, the cash mint and the price
+    /// accounts of the asset list, and raises the floor on the publish delay to two days.
     pub fn launch(ctx: Context<SetConfig>) -> Result<()> {
         SetConfig::launch(ctx)
     }

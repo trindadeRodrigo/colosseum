@@ -41,7 +41,8 @@ pub struct Config {
     pub cash_mint: Pubkey,
     /// Stops the keeper paths only. No owner instruction reads it.
     pub keeper_paused: bool,
-    /// One-way; raises the floor on `publish_delay_s` and locks the three addresses above.
+    /// One-way; raises the floor on `publish_delay_s` and locks the three addresses above,
+    /// and the price accounts of the asset list.
     pub launched: bool,
     pub tolerance_bps: u16,
     pub loss_cap_bps: u16,
@@ -122,7 +123,8 @@ impl Config {
 /// 6,281 bytes in all.
 #[account(zero_copy(unsafe))]
 pub struct AssetRegistry {
-    /// The price accounts an entry's `price_slot` points into. Written by the keeper slot.
+    /// The price accounts an entry's `price_slot` points into. Written by
+    /// `set_price_account`, until `launched` is set.
     pub price_accounts: [Pubkey; MAX_PRICE_ACCOUNTS],
     /// How many of `assets` are in use.
     pub count: u8,

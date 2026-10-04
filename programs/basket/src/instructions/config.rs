@@ -84,9 +84,10 @@ pub struct SetConfig<'info> {
     pub config: Box<Account<'info, Config>>,
 }
 
-/// The router, the owner of the price accounts and the cash mint are what a vault trusts.
-/// The admin may change them while only team money is in. `launch()` locks all three: after
-/// it a change needs a program upgrade, which anyone can see.
+/// The router, the owner of the price accounts and the cash mint are what a vault trusts,
+/// and so are the price accounts the asset list names (`set_price_account`). The admin may
+/// change them while only team money is in. `launch()` locks them all: after it a change
+/// needs a program upgrade, which anyone can see.
 fn check_not_launched(config: &Config) -> Result<()> {
     require!(!config.launched, BasketError::LockedAtLaunch);
     Ok(())
@@ -128,8 +129,8 @@ impl SetConfig<'_> {
         Ok(())
     }
 
-    /// One way. Before the public link: the three addresses lock and the publish delay is
-    /// raised to two days if it was under.
+    /// One way. Before the public link: the three addresses and the price accounts lock,
+    /// and the publish delay is raised to two days if it was under.
     pub fn launch(ctx: Context<SetConfig>) -> Result<()> {
         let config = &mut ctx.accounts.config;
         check_not_launched(config)?;
