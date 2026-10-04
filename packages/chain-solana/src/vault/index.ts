@@ -5,6 +5,7 @@ export * from './accounts';
 export * from './adapter';
 export { displayAmount, multiplierString } from './amounts';
 export * from './compose';
+export * from './deployment';
 export * from './keeper';
 export * from './prices';
 export * from './program';

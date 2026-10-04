@@ -7,7 +7,6 @@ import {
   type EnvLike,
   parseChainConfigs,
   parseFlags,
-  readEnv,
 } from '@colosseum/schemas';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -122,13 +121,14 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
  * What Solana runs on when it is `live` or `readonly` and nothing was handed in: the RPC at
  * `SOLANA_RPC_URL` and the network's assets as `basket_assets` holds them. Nothing for any other mode.
  */
-async function solanaFromEnv(
+export async function solanaFromEnv(
   env: EnvLike,
   mode: string,
   db: Db,
 ): Promise<SolanaInputs | undefined> {
   if (mode !== 'live' && mode !== 'readonly') return undefined;
-  const url = readEnv(env, 'SOLANA_RPC_URL');
+  // As written: a URL can carry a key, and keys are case-sensitive (readEnv lower-cases).
+  const url = env.SOLANA_RPC_URL?.trim();
   if (!url) throw new Error(`CHAIN_MODE_SOLANA is ${mode}, and SOLANA_RPC_URL is not set`);
   const rows = await db.select().from(basketAssets).where(eq(basketAssets.chainId, 'solana'));
   const assets = rows.map(({ updatedAt: _, chainId, ...row }) =>

@@ -8,7 +8,7 @@ The order layer behind `/v1/orders` (DESIGN-VAULT 3.3). It plans the legs of an 
 | `person.ts` | The chain a person's plans live on: the one stored on the user, at a pick or the first time an outside wallet named it |
 | `legs.ts` | Build, report, cancel, and the read that tracks sent legs again. `attemptFor`: which attempt a transaction is |
 | `store.ts` | The tables, through Drizzle. Every writer locks the leg row first, then its attempts; an EVM build takes a lock on (chain, wallet) before that |
-| `chains.ts` | The adapter registry by chain mode: the mock for `mock`; for Solana in `live` or `readonly` on `testnet` or `local`, the real adapter, labelled `sandbox`, on the RPC at `SOLANA_RPC_URL` and the network's assets in `basket_assets` (or what `V1Deps.solana` hands in). Its program comes from the deploy's addresses (`V1Deps.contracts`); without them a real chain does not start |
+| `chains.ts` | The adapter registry by chain mode: the mock for `mock`; for Solana in `live` or `readonly` on `testnet` or `local`, the real adapter, labelled `sandbox`, on the RPC at `SOLANA_RPC_URL` and the network's assets in `basket_assets` (or what `V1Deps.solana` hands in) |
 | `errors.ts` | A refusal (its body is the shared `OrderError`); a chain's refusal mapped onto the order codes |
 
 ## The rules an order follows
@@ -32,6 +32,7 @@ The order layer behind `/v1/orders` (DESIGN-VAULT 3.3). It plans the legs of an 
 
 ## A real chain, as built (ADS-2)
 
+- A real chain's addresses come from the record its deploy committed, never from the environment alone: on Solana `deployments/solana-devnet.json` for `testnet` and `deployments/solana-local.json` for `local`, chosen by `CHAIN_NETWORK_SOLANA` (`src/deployments.ts`, read by the server in `app.ts`). Its vault program becomes `contracts.solana.program`, and its router and price account the config's: `CHAIN_ROUTER_SOLANA` and `CHAIN_PRICE_SOURCE_SOLANA` may say the same and the API does not start when either says another address. With no record, `live` and `readonly` do not start. The tokens come from `basket_assets`, which `pnpm exec tsx scripts/solana/basket-assets.ts [record]` fills from the same record (idempotent; it prints each row it adds, changes or leaves). `basket_assets` has no network column: one database serves one network, as `chains` already requires.
 - Solana in `live` or `readonly` runs on `createSolanaVaultAdapter` with the chain's config, the server's RPC and the network's asset list, and every figure and step is labelled `sandbox`: the network has to be `testnet` or `local`. `readonly` builds nothing (the adapter refuses with `NotSupported`, after the route's own `CHAIN_UNAVAILABLE`).
 - A buy on Solana is a `create_vault` that carries the whole deposit, then one `swap` per asset: Solana carries no trade in a create (`tradesInCreate` false) and one trade per transaction. Each step is built when it is asked for, from the chain as it is then, so a swap's minimum is the one in its bytes at that moment (`preview.minimums`), as the leg's `expected` then says.
 - The portfolio asks prices only for the assets the chain's list has. A token a vault holds that the list does not have (a shared portfolio's author can name one) shows as `solana:mint-<hex>`, with no value and no weight, and does not stop the read.
