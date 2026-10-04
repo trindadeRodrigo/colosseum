@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { forgetGoalDraft } from '../goal/draft';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { fetchPerson, localPerson, type Person, PersonError, storeChain } from './person';
 
@@ -82,6 +83,15 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       : null;
   const latest = useRef({ port, apiFetch, key });
   latest.current = { port, apiFetch, key };
+
+  // What a person typed is theirs: when they sign out, or another person signs in, the draft kept in
+  // the tab is forgotten. A person who was signed out and signs in keeps what they typed.
+  const who = port.userId;
+  const before = useRef(who);
+  useEffect(() => {
+    if (before.current !== null && before.current !== who) forgetGoalDraft();
+    before.current = who;
+  }, [who]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `round` asks again; the port and the fetch are read as they are when the effect runs
   useEffect(() => {

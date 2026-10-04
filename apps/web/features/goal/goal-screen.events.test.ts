@@ -433,7 +433,9 @@ describe('an answer that arrives late', () => {
     await act(async () => built());
     await settle();
     expect(host.textContent).not.toContain(en.goal.built.done.title);
-    expect(summary(host)?.textContent).toContain(en.goal.blocked.signedOut);
+    // and the goal went with the person who typed it
+    expect(sheet(host)).toBeNull();
+    expect(box(host).value).toBe('');
   });
 
   it('is not shown for another person who signed in meanwhile', async () => {
@@ -673,6 +675,33 @@ describe('the goal screen and the rest of the product', () => {
     await settle();
     expect(box(fresh).value).toBe('');
     expect(sheet(fresh)).toBeNull();
+  });
+
+  it('forgets what a person typed and read when they sign out: it is not the next person’s', async () => {
+    api({ person: onSolana });
+    portStore.set(signedInPort(PHANTOM));
+    const host = await screen();
+    await read(host);
+    await fill(host);
+    expect(window.sessionStorage.getItem('tf-goal')).toContain('apartment');
+    await act(async () => portStore.set(fakePort()));
+    await settle();
+    expect(box(host).value).toBe('');
+    expect(sheet(host)).toBeNull();
+    expect(host.textContent).toContain(en.goal.title);
+    expect(window.sessionStorage.getItem('tf-goal') ?? '').not.toContain('apartment');
+    expect(window.sessionStorage.getItem('tf-goal') ?? '').not.toContain('40,000');
+  });
+
+  it('forgets it for another person who signs in after the first, too', async () => {
+    api({ person: onSolana });
+    portStore.set(signedInPort(PHANTOM));
+    const host = await screen();
+    await read(host);
+    await act(async () => portStore.set(signedInPort(PHANTOM, { userId: 'did:privy:other' })));
+    await settle();
+    expect(box(host).value).toBe('');
+    expect(sheet(host)).toBeNull();
   });
 
   it('is in Portuguese for someone who reads Portuguese', async () => {

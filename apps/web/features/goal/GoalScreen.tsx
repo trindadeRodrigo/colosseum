@@ -15,6 +15,7 @@ import { useAccount } from '../account/AccountProvider';
 import { ChainName } from '../account/ChainName';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { type BuildOutcome, buildPlan, planProvenance } from './build-plan';
+import { GOAL_DRAFT } from './draft';
 import { type ReadFailure, ReadGoalError, readGoal } from './read-goal';
 import {
   checkSheet,
@@ -33,7 +34,7 @@ import {
 
 /** Where the limits sit in the page: "Edit limits" leads here. */
 const LIMITS = 'limits';
-const STORE = 'tf-goal';
+const STORE = GOAL_DRAFT;
 const SIGN_IN = '/sign-in?next=/goal';
 
 type Build = { kind: 'idle' } | { kind: 'solving' } | BuildOutcome;
@@ -106,6 +107,13 @@ export function GoalScreen() {
     whose.current = { who, where: where ?? last.where };
     wanted.current += 1;
     setBuild({ kind: 'idle' });
+    // The goal on the page was the person's who was here: when they sign out, or another person
+    // signs in, it goes with them. Someone who was signed out and signs in keeps what they typed.
+    if (last.who !== '' && last.who !== who) {
+      setText('');
+      setSheet(null);
+      setReadFailure(null);
+    }
   }, [who, where]);
 
   async function read(typed: string) {

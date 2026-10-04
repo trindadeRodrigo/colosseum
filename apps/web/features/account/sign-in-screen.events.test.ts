@@ -617,6 +617,33 @@ describe('one person after another in the same browser', () => {
   });
 });
 
+describe('the goal a person typed, kept in the tab', () => {
+  const DRAFT = JSON.stringify({ text: 'Grow $40,000 for an apartment', sheet: null });
+  beforeEach(() => window.sessionStorage.setItem('tf-goal', DRAFT));
+  afterEach(() => window.sessionStorage.clear());
+
+  it('is forgotten when they sign out, on whatever page they do it', async () => {
+    api(connected());
+    portStore.set(signedInPort(PHANTOM));
+    await screen();
+    await settle();
+    expect(window.sessionStorage.getItem('tf-goal')).toBe(DRAFT);
+    await act(async () => portStore.set(fakePort({ found: FOUND })));
+    await settle();
+    expect(window.sessionStorage.getItem('tf-goal')).toBeNull();
+  });
+
+  it('is kept when someone who typed it signed out goes on to sign in', async () => {
+    api(connected());
+    portStore.set(fakePort({ found: FOUND, signIn: signsInAs(PHANTOM) }));
+    const host = await screen('en', '/goal');
+    await click(button(host, 'Phantom'));
+    await settle();
+    expect(state(host)).toBe('ready');
+    expect(window.sessionStorage.getItem('tf-goal')).toBe(DRAFT);
+  });
+});
+
 describe('the screen itself', () => {
   it('shows the two ways in to someone signed out, under one heading', async () => {
     api(made());
