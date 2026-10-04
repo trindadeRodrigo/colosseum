@@ -335,6 +335,7 @@ export function GoalScreen() {
       {sheet && check && drawn ? (
         <ConstraintSheet<BasketSheet>
           id={LIMITS}
+          level={2}
           className="scroll-mt-6"
           goalText={sheet.goalText}
           source={sheet.source}
@@ -353,6 +354,7 @@ export function GoalScreen() {
       ) : reading ? (
         <ConstraintSheet<BasketSheet>
           id={LIMITS}
+          level={2}
           state="parsing"
           groups={[]}
           valid={null}

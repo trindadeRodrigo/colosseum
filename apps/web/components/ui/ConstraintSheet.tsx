@@ -81,6 +81,8 @@ type Common = {
   facts?: readonly SheetFact[];
   /** The id of the sheet in the page, for a link that leads to it ("Edit limits"). */
   id?: string;
+  /** The level of its title in the page outline: 2 right under the page's heading, 3 inside a section. */
+  level?: 2 | 3;
   labels?: Partial<ConstraintSheetLabels>;
   className?: string;
 };
@@ -128,7 +130,8 @@ function shown(field: SheetField): string {
 }
 
 export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
-  const { goalText, source, groups, facts, id, labels, className } = props;
+  const { goalText, source, groups, facts, id, level = 3, labels, className } = props;
+  const Title = `h${level}` as 'h2' | 'h3';
   const text = { ...CONSTRAINT_SHEET_LABELS, ...labels };
   const summary = useRef<HTMLDivElement>(null);
   const fixId = useId();
@@ -138,7 +141,7 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
   const head = (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 className="text-h4 font-semibold">{text.title}</h3>
+        <Title className="text-h4 font-semibold">{text.title}</Title>
         {source && (
           <p className="flex flex-wrap items-center gap-2 font-mono text-source text-muted-foreground">
             <span>

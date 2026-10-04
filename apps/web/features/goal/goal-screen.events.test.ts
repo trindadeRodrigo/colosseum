@@ -179,7 +179,7 @@ describe('reading a typed goal', () => {
     ]);
     const limits = find(host, '#limits');
     expect(limits.getAttribute('data-ui')).toBe('constraint-sheet');
-    expect(find(limits, 'h3').textContent).toBe(en.goal.sheet.title);
+    expect(find(limits, 'h2').textContent).toBe(en.goal.sheet.title);
     // the goal as the person wrote it, and how it was read, with the time
     expect(limits.textContent).toContain(`“${GOAL}”`);
     expect(limits.textContent).toMatch(/parser: llm \(a-model\) · \d{4}-\d{2}-\d{2}T[\d:]+Z/);
@@ -723,6 +723,23 @@ describe('the goal screen and the rest of the product', () => {
     expect(sheet(host)).toBeNull();
   });
 
+  it('has headings that descend in order: the goal, then the limits, then what came of them', async () => {
+    const levels = (host: HTMLElement) =>
+      [...host.querySelectorAll('h1, h2, h3, h4, h5, h6')].map((h) => Number(h.tagName[1]));
+    api({ person: onSolana });
+    portStore.set(signedInPort(PHANTOM));
+    const host = await screen();
+    expect(levels(host)).toEqual([1]);
+    await read(host);
+    expect(levels(host)).toEqual([1, 2]);
+    await fill(host);
+    await click(buildButton(host));
+    await settle();
+    // the limits and the outcome are both sections of the page: no level is skipped
+    expect(levels(host)).toEqual([1, 2, 2]);
+    expect(find(host, 'h1').textContent).toContain('$40,000');
+  });
+
   it('is in Portuguese for someone who reads Portuguese', async () => {
     api({});
     const pt = dictionary('pt');
@@ -730,7 +747,7 @@ describe('the goal screen and the rest of the product', () => {
     expect(find(host, 'h1').textContent).toBe(pt.goal.title);
     expect(box(host).getAttribute('lang')).toBe('pt-BR');
     await read(host, 'Juntar US$ 40.000 até junho de 2028');
-    expect(find(find(host, '#limits'), 'h3').textContent).toBe(pt.goal.sheet.title);
+    expect(find(find(host, '#limits'), 'h2').textContent).toBe(pt.goal.sheet.title);
     expect(buildButton(host).textContent).toContain(pt.goal.sheet.build);
     expect(host.textContent).toContain(pt.goal.blocked.signedOut);
   });
