@@ -13,7 +13,6 @@ import {
   type Ix,
   join,
   mintOf,
-  NEXT_PROGRAM,
   OWNER,
   openAccountIx,
   ownerSwapIx,
@@ -139,7 +138,6 @@ const input = (
   over: Partial<BasketTx> = {},
   consents: ConsentKind[] = [],
 ): GuardInput => ({ step, tx: solanaTx(step, bytes, over), deployment: SOLANA, consents });
-const NEXT = { program: NEXT_PROGRAM };
 
 describe('the guard on Solana: an honest transaction passes', () => {
   it('with the interface as committed: every step the program has today, on both message versions', async () => {
@@ -188,16 +186,18 @@ describe('the guard on Solana: an honest transaction passes', () => {
     expect(isGuarded(null)).toBe(false);
   });
 
-  it("with the keeper branch's two owner instructions: an accept, and the switch both ways", () => {
+  it("the owner's two instructions of the keeper path: an accept, and the switch both ways", () => {
     const cases: [ApprovedStep, Ix[], ConsentKind[]][] = [
       [acceptStep, [acceptIx()], ['new_asset']],
       [autoStep(true), [autoIx(true)], ['auto_follow_on']],
       [autoStep(false), [autoIx(false)], []],
     ];
-    for (const [step, instructions, consents] of cases) {
-      const given = input(step, wire(instructions), {}, consents);
-      expect(refusalOf(() => runGuard(given, NEXT))?.message ?? null, step.kind).toBeNull();
-    }
+    for (const [step, instructions, consents] of cases)
+      for (const version of [0, 'legacy'] as const) {
+        const given = input(step, wire(instructions, { version }), {}, consents);
+        expect(BasketTx.safeParse(given.tx).success, step.kind).toBe(true);
+        expect(refusalOf(() => guardTransaction(given))?.message ?? null, step.kind).toBeNull();
+      }
   });
 
   it("a swap whose route's accounts come from a lookup table", async () => {
@@ -247,25 +247,31 @@ describe('the guard on Solana: an honest transaction passes', () => {
 
 const acceptIx = (o: { recipe?: string; version?: number } = {}) =>
   vaultIx(
-    NEXT_PROGRAM,
+    BASKET_PROGRAM,
     'accept_version',
     { owner: OWNER, vault: VAULT, recipe: o.recipe ?? RECIPE },
     u32(o.version ?? 4),
   );
 const autoIx = (on: boolean) =>
-  vaultIx(NEXT_PROGRAM, 'set_auto_follow', { owner: OWNER, vault: VAULT }, flag(on));
+  vaultIx(BASKET_PROGRAM, 'set_auto_follow', { owner: OWNER, vault: VAULT }, flag(on));
 
-describe('the guard on Solana: what the committed interface cannot check yet', () => {
-  it('refuses an accept and the auto-follow switch as unsupported, until the table has them', () => {
+describe('the guard on Solana: what the interface it is given does not have', () => {
+  it('refuses a step whose instruction is not in the table as unsupported, until the table is regenerated', () => {
+    const { accept_version, set_auto_follow, ...rest } = BASKET_PROGRAM.instructions;
+    expect(accept_version && set_auto_follow).toBeTruthy();
+    const older: ProgramTable = { ...BASKET_PROGRAM, instructions: rest };
     const cases: [ApprovedStep, Ix[]][] = [
       [acceptStep, [acceptIx()]],
       [autoStep(true), [autoIx(true)]],
       [autoStep(false), [autoIx(false)]],
     ];
     for (const [step, instructions] of cases) {
-      const refusal = refusalOf(() =>
-        guardTransaction(input(step, wire(instructions), {}, ['new_asset', 'auto_follow_on'])),
-      );
+      const given = input(step, wire(instructions), {}, ['new_asset', 'auto_follow_on']);
+      expect(
+        refusalOf(() => guardTransaction(given)),
+        step.kind,
+      ).toBeNull();
+      const refusal = refusalOf(() => runGuard(given, { program: older }));
       expect(refusal?.code, step.kind).toBe('unsupported');
       expect(refusal?.message).toMatch(/regenerated/);
     }
@@ -366,13 +372,13 @@ describe('the guard on Solana: bytes that cannot be read are refused as malforme
       'malformed',
     );
     const two = vaultIx(
-      NEXT_PROGRAM,
+      BASKET_PROGRAM,
       'set_auto_follow',
       { owner: OWNER, vault: VAULT },
       Uint8Array.of(2),
     );
     expect(
-      refusalOf(() => runGuard(input(autoStep(true), wire([two]), {}, ['auto_follow_on']), NEXT))
+      refusalOf(() => guardTransaction(input(autoStep(true), wire([two]), {}, ['auto_follow_on'])))
         ?.code,
     ).toBe('malformed');
   });
@@ -570,9 +576,27 @@ const negatives: Negative[] = [
   {
     name: 'the auto-follow switch beside the swap',
     check: 'instruction',
-    overrides: NEXT,
     input: async () => input(swapStep, wire([...(await honest.swap()), autoIx(true)])),
   },
+  {
+    name: 'a version accepted beside the swap',
+    check: 'instruction',
+    input: async () =>
+      input(swapStep, wire([...(await honest.swap()), acceptIx()]), {}, ['new_asset']),
+  },
+  swap(
+    "the vault's balances written down beside the swap, by the person",
+    'instruction',
+    async () => [
+      ...(await honest.swap()),
+      vaultIx(
+        BASKET_PROGRAM,
+        'sync_balances',
+        { signer: OWNER, vault: VAULT, config: CONFIG },
+        new Uint8Array(),
+      ),
+    ],
+  ),
   swap('a change of targets beside the swap', 'instruction', async () => [
     ...(await honest.swap()),
     vaultIx(
@@ -728,19 +752,16 @@ const negatives: Negative[] = [
   {
     name: 'the auto-follow switch turned on, with no consent handed over',
     check: 'consent',
-    overrides: NEXT,
     input: () => input(autoStep(true), wire([autoIx(true)])),
   },
   {
     name: 'the auto-follow switch turned on, with the consent for something else',
     check: 'consent',
-    overrides: NEXT,
     input: () => input(autoStep(true), wire([autoIx(true)]), {}, ['new_asset']),
   },
   {
     name: 'a version accepted with no consent handed over',
     check: 'consent',
-    overrides: NEXT,
     input: () => input(acceptStep, wire([acceptIx()])),
   },
   {
@@ -755,7 +776,6 @@ const negatives: Negative[] = [
   {
     name: 'bytes that switch auto-follow on where the step switches it off',
     check: 'auto_follow',
-    overrides: NEXT,
     input: () => input(autoStep(false), wire([autoIx(true)])),
   },
 
@@ -987,8 +1007,17 @@ const negatives: Negative[] = [
   {
     name: 'an accept of another version',
     check: 'version',
-    overrides: NEXT,
     input: () => input(acceptStep, wire([acceptIx({ version: 5 })]), {}, ['new_asset']),
+  },
+  {
+    name: 'an accept of another shared portfolio',
+    check: 'version',
+    input: () => input(acceptStep, wire([acceptIx({ recipe: STRANGER })]), {}, ['new_asset']),
+  },
+  {
+    name: 'an accept where the step switches auto-follow',
+    check: 'instruction',
+    input: () => input(autoStep(false), wire([acceptIx()]), {}, ['new_asset']),
   },
   deposit('a unit price that burns the wallet as fees', 'fee', async () => [
     unitLimitIx(1_400_000),

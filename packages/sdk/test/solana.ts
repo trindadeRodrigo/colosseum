@@ -21,7 +21,7 @@ import { base58Encode } from '../src/bytes';
 import { tradesOf } from '../src/guard/context';
 import { type DeploymentFile, loadDeployments, type SolanaEntry } from '../src/guard/deployment';
 import { BASKET_PROGRAM } from '../src/guard/generated/basket-program';
-import type { IdlAccount, ProgramTable } from '../src/guard/solana/table';
+import type { ProgramTable } from '../src/guard/solana/table';
 import type { ApprovedStep, Loaded, SolanaDeployment } from '../src/guard/types';
 
 // Solana transactions for the guard's tests, built with @solana/kit: its message compiler and its
@@ -101,38 +101,6 @@ export const ASSETS = await derive(['assets'], PROGRAM);
 /** The associated token account of `holder` for an asset of the deployment. */
 export const tokenAccountOf = (holder: string, asset: string) =>
   derive([raw(holder), raw(programOf(asset)), raw(mintOf(asset))], ASSOCIATED);
-
-const account = (
-  name: string,
-  flags: Partial<Pick<IdlAccount, 'signer' | 'writable' | 'optional'>> = {},
-): IdlAccount => ({ name, signer: false, writable: false, optional: false, ...flags });
-
-/**
- * The committed interface plus the two instructions of the owner that the keeper branch adds, laid out
- * as that branch has them (sol/keeper at e9a7647): `accept_version` and `set_auto_follow`. The guard
- * refuses both steps until idl/basket.json has them and the table is generated again; this table is how
- * the tests reach the rules that are waiting for that day.
- */
-export const NEXT_PROGRAM: ProgramTable = {
-  ...BASKET_PROGRAM,
-  instructions: {
-    ...BASKET_PROGRAM.instructions,
-    accept_version: {
-      discriminator: [215, 87, 246, 194, 63, 68, 225, 179],
-      accounts: [
-        account('owner', { signer: true }),
-        account('vault', { writable: true }),
-        account('recipe'),
-      ],
-      args: [{ name: 'expected_version', type: 'u32' }],
-    },
-    set_auto_follow: {
-      discriminator: [255, 29, 5, 116, 253, 61, 227, 189],
-      accounts: [account('owner', { signer: true }), account('vault', { writable: true })],
-      args: [{ name: 'on', type: 'bool' }],
-    },
-  },
-};
 
 export type Ix = IInstruction;
 type Extra = { address: string; signer?: boolean; writable?: boolean };

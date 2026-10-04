@@ -23,6 +23,82 @@ export const BASKET_PROGRAM: ProgramTable = {
       ],
       args: [],
     },
+    accept_version: {
+      discriminator: [215, 87, 246, 194, 63, 68, 225, 179],
+      accounts: [
+        {
+          name: 'owner',
+          signer: true,
+          writable: false,
+          optional: false,
+        },
+        {
+          name: 'vault',
+          signer: false,
+          writable: true,
+          optional: false,
+        },
+        {
+          name: 'recipe',
+          signer: false,
+          writable: false,
+          optional: false,
+        },
+      ],
+      args: [
+        {
+          name: 'expected_version',
+          type: 'u32',
+        },
+      ],
+    },
+    add_closed_day: {
+      discriminator: [15, 14, 204, 43, 95, 53, 145, 157],
+      accounts: [
+        {
+          name: 'guardian',
+          signer: true,
+          writable: false,
+          optional: false,
+        },
+        {
+          name: 'config',
+          signer: false,
+          writable: true,
+          optional: false,
+        },
+      ],
+      args: [
+        {
+          name: 'day',
+          type: 'u16',
+        },
+      ],
+    },
+    adopt_version: {
+      discriminator: [213, 117, 253, 10, 21, 238, 139, 217],
+      accounts: [
+        {
+          name: 'vault',
+          signer: false,
+          writable: true,
+          optional: false,
+        },
+        {
+          name: 'recipe',
+          signer: false,
+          writable: false,
+          optional: false,
+        },
+        {
+          name: 'config',
+          signer: false,
+          writable: false,
+          optional: false,
+        },
+      ],
+      args: [],
+    },
     cancel_pending: {
       discriminator: [74, 87, 109, 242, 64, 192, 151, 71],
       accounts: [
@@ -163,6 +239,29 @@ export const BASKET_PROGRAM: ProgramTable = {
         },
       ],
     },
+    extend_closed_until: {
+      discriminator: [85, 142, 21, 59, 158, 186, 170, 37],
+      accounts: [
+        {
+          name: 'guardian',
+          signer: true,
+          writable: false,
+          optional: false,
+        },
+        {
+          name: 'config',
+          signer: false,
+          writable: true,
+          optional: false,
+        },
+      ],
+      args: [
+        {
+          name: 'closed_until',
+          type: 'i64',
+        },
+      ],
+    },
     init_assets: {
       discriminator: [194, 213, 246, 53, 30, 31, 17, 56],
       accounts: [
@@ -239,6 +338,93 @@ export const BASKET_PROGRAM: ProgramTable = {
           type: {
             defined: 'InitConfigArgs',
           },
+        },
+      ],
+    },
+    keeper_leg: {
+      discriminator: [46, 178, 18, 83, 188, 146, 82, 217],
+      accounts: [
+        {
+          name: 'keeper',
+          signer: true,
+          writable: false,
+          optional: false,
+        },
+        {
+          name: 'vault',
+          signer: false,
+          writable: true,
+          optional: false,
+        },
+        {
+          name: 'config',
+          signer: false,
+          writable: false,
+          optional: false,
+        },
+        {
+          name: 'assets',
+          signer: false,
+          writable: false,
+          optional: false,
+        },
+        {
+          name: 'input_mint',
+          signer: false,
+          writable: false,
+          optional: false,
+        },
+        {
+          name: 'output_mint',
+          signer: false,
+          writable: false,
+          optional: false,
+        },
+        {
+          name: 'vault_input',
+          signer: false,
+          writable: true,
+          optional: false,
+        },
+        {
+          name: 'vault_output',
+          signer: false,
+          writable: true,
+          optional: false,
+        },
+        {
+          name: 'input_token_program',
+          signer: false,
+          writable: false,
+          optional: false,
+        },
+        {
+          name: 'output_token_program',
+          signer: false,
+          writable: false,
+          optional: false,
+        },
+        {
+          name: 'router_program',
+          signer: false,
+          writable: false,
+          optional: false,
+        },
+        {
+          name: 'price_account',
+          signer: false,
+          writable: false,
+          optional: false,
+        },
+      ],
+      args: [
+        {
+          name: 'amount_in',
+          type: 'u64',
+        },
+        {
+          name: 'data',
+          type: 'bytes',
         },
       ],
     },
@@ -451,6 +637,29 @@ export const BASKET_PROGRAM: ProgramTable = {
         },
       ],
     },
+    set_auto_follow: {
+      discriminator: [255, 29, 5, 116, 253, 61, 227, 189],
+      accounts: [
+        {
+          name: 'owner',
+          signer: true,
+          writable: false,
+          optional: false,
+        },
+        {
+          name: 'vault',
+          signer: false,
+          writable: true,
+          optional: false,
+        },
+      ],
+      args: [
+        {
+          name: 'on',
+          type: 'bool',
+        },
+      ],
+    },
     set_cash_mint: {
       discriminator: [27, 163, 236, 15, 62, 222, 172, 245],
       accounts: [
@@ -475,6 +684,102 @@ export const BASKET_PROGRAM: ProgramTable = {
       ],
       args: [],
     },
+    set_closed_day: {
+      discriminator: [127, 61, 104, 98, 48, 199, 35, 113],
+      accounts: [
+        {
+          name: 'admin',
+          signer: true,
+          writable: false,
+          optional: false,
+        },
+        {
+          name: 'config',
+          signer: false,
+          writable: true,
+          optional: false,
+        },
+      ],
+      args: [
+        {
+          name: 'day',
+          type: 'u16',
+        },
+        {
+          name: 'closed',
+          type: 'bool',
+        },
+      ],
+    },
+    set_closed_until: {
+      discriminator: [89, 251, 200, 129, 26, 156, 0, 99],
+      accounts: [
+        {
+          name: 'admin',
+          signer: true,
+          writable: false,
+          optional: false,
+        },
+        {
+          name: 'config',
+          signer: false,
+          writable: true,
+          optional: false,
+        },
+      ],
+      args: [
+        {
+          name: 'closed_until',
+          type: 'i64',
+        },
+      ],
+    },
+    set_default_keeper: {
+      discriminator: [224, 25, 175, 84, 17, 219, 182, 224],
+      accounts: [
+        {
+          name: 'admin',
+          signer: true,
+          writable: false,
+          optional: false,
+        },
+        {
+          name: 'config',
+          signer: false,
+          writable: true,
+          optional: false,
+        },
+      ],
+      args: [
+        {
+          name: 'keeper',
+          type: 'pubkey',
+        },
+      ],
+    },
+    set_guardian: {
+      discriminator: [147, 243, 50, 121, 154, 164, 50, 30],
+      accounts: [
+        {
+          name: 'admin',
+          signer: true,
+          writable: false,
+          optional: false,
+        },
+        {
+          name: 'config',
+          signer: false,
+          writable: true,
+          optional: false,
+        },
+      ],
+      args: [
+        {
+          name: 'guardian',
+          type: 'pubkey',
+        },
+      ],
+    },
     set_params: {
       discriminator: [27, 234, 178, 52, 147, 2, 187, 141],
       accounts: [
@@ -497,6 +802,41 @@ export const BASKET_PROGRAM: ProgramTable = {
           type: {
             defined: 'Params',
           },
+        },
+      ],
+    },
+    set_price_account: {
+      discriminator: [6, 127, 170, 42, 66, 99, 161, 151],
+      accounts: [
+        {
+          name: 'admin',
+          signer: true,
+          writable: false,
+          optional: false,
+        },
+        {
+          name: 'config',
+          signer: false,
+          writable: false,
+          optional: false,
+        },
+        {
+          name: 'assets',
+          signer: false,
+          writable: true,
+          optional: false,
+        },
+        {
+          name: 'price_account',
+          signer: false,
+          writable: false,
+          optional: false,
+        },
+      ],
+      args: [
+        {
+          name: 'slot',
+          type: 'u8',
         },
       ],
     },
@@ -584,6 +924,30 @@ export const BASKET_PROGRAM: ProgramTable = {
           },
         },
       ],
+    },
+    sync_balances: {
+      discriminator: [148, 188, 122, 63, 81, 90, 11, 85],
+      accounts: [
+        {
+          name: 'signer',
+          signer: true,
+          writable: false,
+          optional: false,
+        },
+        {
+          name: 'vault',
+          signer: false,
+          writable: true,
+          optional: false,
+        },
+        {
+          name: 'config',
+          signer: false,
+          writable: false,
+          optional: false,
+        },
+      ],
+      args: [],
     },
     unpause_keeper: {
       discriminator: [56, 105, 78, 54, 98, 63, 180, 224],
@@ -768,6 +1132,14 @@ export const BASKET_PROGRAM: ProgramTable = {
         type: {
           array: ['u8', 32],
         },
+      },
+      {
+        name: 'min_price',
+        type: 'u64',
+      },
+      {
+        name: 'max_price',
+        type: 'u64',
       },
     ],
     Component: [
