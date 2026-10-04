@@ -1219,6 +1219,44 @@ describe('on an EVM chain an attempt is the pair (message, nonce)', () => {
     expect(before - (await cash())).toBe(20_000_000n);
   });
 
+  it('one transaction settles one step: an attempt whose nonce another step’s transaction used is closed', async () => {
+    const a = await someone('robinhood');
+    const cash = await openVault(a);
+    const before = await cash();
+    // Two orders with the identical deposit, both ready for it.
+    const [one, two] = [await toDeposit(a), await toDeposit(a)];
+    // The first is built and cancelled. The second is then built on the same nonce: the same call on
+    // the same nonce, so the two attempts are one transaction, and at most one deposit can land.
+    const first1 = await build(a, one.placed, one.deposit.id);
+    expect((await post(a, legUrl(one.placed, one.deposit.id, 'cancel'))).statusCode).toBe(200);
+    const second = await build(a, two.placed, two.deposit.id);
+    expect([second.tx.messageHash, second.attempt.nonce]).toEqual([
+      first1.tx.messageHash,
+      first1.attempt.nonce,
+    ]);
+    // It lands, and is reported to the first order: that step settles on it.
+    const sent = await mockOf('robinhood').send({ messageHash: first1.tx.messageHash });
+    const settled = await report(a, one.placed, one.deposit.id, { txId: sent.txId });
+    expect(legOf(settled, one.deposit.id)).toMatchObject({ status: 'confirmed', txId: sent.txId });
+
+    // The same transaction cannot settle the second order's step as well.
+    const again = await post(a, legUrl(two.placed, two.deposit.id, 'report'), { txId: sent.txId });
+    expect([again.statusCode, again.json().error]).toEqual([
+      409,
+      'that transaction is already recorded for another step',
+    ]);
+    expect(attemptsOf(await read(a, two.placed), two.deposit.id)).toEqual([[1, 'built']]);
+    // Its attempt can no longer land: the nonce is used. The next build finds that and closes it,
+    // so the step is not left waiting for a transaction that will never come.
+    const rebuilt = await post(a, legUrl(two.placed, two.deposit.id, 'build'));
+    expect(rebuilt.statusCode).toBe(409);
+    const after = await read(a, two.placed);
+    expect(attemptsOf(after, two.deposit.id)).toEqual([[1, 'expired']]);
+    expect(legOf(after, two.deposit.id)).toMatchObject({ status: 'expired', txId: null });
+    // One deposit left the wallet.
+    expect(before - (await cash())).toBe(10_000_000n);
+  });
+
   it('does not build two orders of one wallet on the same nonce: the second waits for the first', async () => {
     const a = await someone('robinhood');
     await fund(a);
