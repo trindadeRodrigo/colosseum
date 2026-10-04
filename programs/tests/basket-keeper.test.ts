@@ -59,8 +59,9 @@ import {
   refreshPrices,
   SESSION,
   STOCK_PRICE,
+  stampPrices,
 } from './src/keeper';
-import { setPriceInstruction } from './src/mock-router';
+import { setPricedPairInstruction, setPriceInstruction } from './src/mock-router';
 import { createPriceAccount, usd, writePrice } from './src/prices';
 import { CASH, stockFor, swapThroughExchange, tokenAccountFor } from './src/swap';
 import {
@@ -119,9 +120,9 @@ describe('keeper_leg', () => {
   const ownerBuys = async (dollars: number, mint: TestMint = w.stock) =>
     expectOk(await swapThroughExchange(w, { amountIn: BigInt(dollars) * USD, outputMint: mint }));
   /** Moves the clock and has the feed write every price again, as its crank does. */
-  const at = (time: bigint) => {
+  const at = async (time: bigint) => {
     setClock(w.svm, time);
-    refreshPrices(w);
+    await refreshPrices(w);
   };
   /** What the exchange pays for one raw unit of `mintIn`, as a fraction. */
   const exchangePays = async (mintIn: TestMint, mintOut: TestMint, num: bigint, den: bigint) =>
@@ -186,6 +187,41 @@ describe('keeper_leg', () => {
         spent: stockFor(30n * USD),
         received: 30n * USD,
         loss: 0n,
+      });
+    });
+
+    // As on a test network: the exchange pays the price in its own price account, the one the
+    // vault values the leg at, less a spread. What the leg loses is the spread, to the raw unit.
+    it("trades through a pair that pays the price account's price less a spread", async () => {
+      const spreadBps = 30;
+      const pair = { priceIndex: STOCK_PRICE.priceIndex, spreadBps };
+      expectOk(
+        await send(w.svm, w.admin, [
+          await setPricedPairInstruction(w.admin, w.cash.address, w.stock.address, {
+            ...pair,
+            assetIsInput: false,
+          }),
+          await setPricedPairInstruction(w.admin, w.stock.address, w.cash.address, {
+            ...pair,
+            assetIsInput: true,
+          }),
+        ]),
+      );
+      const bought = expectOk(await keeperLeg(w, { amountIn: 40n * USD, priced: true }));
+      expect(events(bought, 'KeeperTrade').map(decodeKeeperTrade)[0]).toMatchObject({
+        spent: 40n * USD,
+        received: 7_976_000n,
+        loss: 120_000n,
+      });
+      // The price falls to 400 dollars and the admin moves the range: an hour later the exchange
+      // sells at the new price.
+      await listed(w.stock, range(300, 500));
+      await at(SESSION + HOUR);
+      await refreshPrices(w, { stock: usd(400) });
+      const more = expectOk(await keeperLeg(w, { amountIn: 10n * USD, priced: true }));
+      expect(events(more, 'KeeperTrade').map(decodeKeeperTrade)[0]).toMatchObject({
+        received: 2_492_500n,
+        loss: 30_000n,
       });
     });
 
@@ -479,7 +515,7 @@ describe('keeper_leg', () => {
   describe('the price account', () => {
     it('is the one the asset list names for the asset', async () => {
       const twin = await createPriceAccount(w.svm, w.priceOwner);
-      refreshPrices({ svm: w.svm, prices: twin });
+      stampPrices(w.svm, twin);
       expectError(
         await keeperLeg(w, { amountIn: 40n * USD, priceAccount: twin }),
         ERR.AssetNotPriced,
@@ -488,7 +524,7 @@ describe('keeper_leg', () => {
 
     it('is owned by the price program Config names', async () => {
       const forged = await createPriceAccount(w.svm, w.stranger.address);
-      refreshPrices({ svm: w.svm, prices: forged });
+      stampPrices(w.svm, forged);
       expectError(
         await keeperLeg(w, { amountIn: 40n * USD, priceAccount: forged }),
         ERR.AssetNotPriced,
@@ -508,7 +544,7 @@ describe('keeper_leg', () => {
     it('holds a price at the entry: one nobody wrote is refused', async () => {
       writePrice(w.svm, w.prices, STOCK_PRICE.priceIndex, { value: 0n, unixTimestamp: SESSION });
       expectError(await buy(40), ERR.AssetNotPriced);
-      refreshPrices(w);
+      await refreshPrices(w);
       writePrice(w.svm, w.prices, STOCK_PRICE.twapIndex, { value: PRICE, unixTimestamp: 0n });
       expectError(await buy(40), ERR.AssetNotPriced);
     });
@@ -559,14 +595,14 @@ describe('keeper_leg', () => {
     it('refuses a price and its average that are both twice the pool price', async () => {
       // The feed says 1,000 dollars, price and average alike, fresh. The token trades at 500, and
       // the keeper's own pool sells it at the feed's price: 0.001 token for a dollar.
-      priceIs(1_000);
+      await priceIs(1_000);
       await exchangePays(w.cash, w.stock, 1n, 10n);
       expectError(await buy(50), ERR.PriceOutOfRange);
       expect(held()).toEqual(untouched);
     });
 
     it('refuses a placeholder: one dollar, on every refresh, with an average to match', async () => {
-      priceIs(1);
+      await priceIs(1);
       await exchangePays(w.cash, w.stock, 100n, 1n);
       expectError(await buy(1), ERR.PriceOutOfRange);
     });
@@ -574,7 +610,7 @@ describe('keeper_leg', () => {
     it('takes a price at the floor and at the ceiling, and none past either', async () => {
       // The exchange trades at the feed's price each time, so nothing else is wrong.
       const trades = async (dollars: number) => {
-        priceIs(dollars);
+        await priceIs(dollars);
         await exchangePays(w.cash, w.stock, 100_000_000n, BigInt(Math.round(dollars * 1e6)));
       };
       await trades(399.99);
@@ -583,7 +619,7 @@ describe('keeper_leg', () => {
       expectError(await buy(10), ERR.PriceOutOfRange);
       await trades(400);
       expectOk(await buy(10));
-      at(SESSION + HOUR);
+      await at(SESSION + HOUR);
       await trades(600);
       expectOk(await buy(10));
     });
@@ -611,12 +647,12 @@ describe('keeper_leg', () => {
 
     it('holds every asset the vault has something of to its range, not only the one traded', async () => {
       await ownerBuys(10, w.other);
-      refreshPrices(w, { other: usd(1_000) });
+      await refreshPrices(w, { other: usd(1_000) });
       expectError(await buy(40), ERR.PriceOutOfRange);
     });
 
     it('never stands between the owner and a trade', async () => {
-      priceIs(1_000);
+      await priceIs(1_000);
       await ownerBuys(40);
     });
   });
@@ -719,26 +755,26 @@ describe('keeper_leg', () => {
 
     it('refuses a stock on Saturday and on Sunday, with a feed that looks fresh', async () => {
       for (const days of [3n, 4n]) {
-        at(SESSION + days * DAY);
+        await at(SESSION + days * DAY);
         expectError(await buy(40), ERR.MarketClosed);
       }
-      at(SESSION + 5n * DAY);
+      await at(SESSION + 5n * DAY);
       expectOk(await buy(40));
     });
 
     it('refuses a stock one minute before the open, and takes it at the open', async () => {
-      at(midnight + 14n * HOUR + 29n * 60n);
+      await at(midnight + 14n * HOUR + 29n * 60n);
       expectError(await buy(40), ERR.MarketClosed);
-      at(midnight + 14n * HOUR + 30n * 60n - 1n);
+      await at(midnight + 14n * HOUR + 30n * 60n - 1n);
       expectError(await buy(40), ERR.MarketClosed);
-      at(midnight + 14n * HOUR + 30n * 60n);
+      await at(midnight + 14n * HOUR + 30n * 60n);
       expectOk(await buy(40));
     });
 
     it('takes a stock in the last second of the session and refuses it at the close', async () => {
-      at(midnight + 20n * HOUR);
+      await at(midnight + 20n * HOUR);
       expectError(await buy(40), ERR.MarketClosed);
-      at(midnight + 20n * HOUR - 1n);
+      await at(midnight + 20n * HOUR - 1n);
       expectOk(await buy(40));
     });
 
@@ -755,9 +791,9 @@ describe('keeper_leg', () => {
         await send(w.svm, w.admin, [await setClosedUntilInstruction(w.admin, SESSION + 60n)]),
       );
       expectError(await buy(40), ERR.MarketClosed);
-      at(SESSION + 59n);
+      await at(SESSION + 59n);
       expectError(await buy(40), ERR.MarketClosed);
-      at(SESSION + 60n);
+      await at(SESSION + 60n);
       expectOk(await buy(40));
     });
 
@@ -788,7 +824,7 @@ describe('keeper_leg', () => {
       // push later, or the admin opens a slot and closes today in it.
       const tomorrow = (BigInt(today) + 1n) * DAY;
       expectOk(await send(svm, guardian, [await extendClosedUntilInstruction(guardian, tomorrow)]));
-      at(SESSION + HOUR);
+      await at(SESSION + HOUR);
       expectError(await buy(10), ERR.MarketClosed);
       expectOk(
         await send(svm, admin, [
@@ -800,12 +836,12 @@ describe('keeper_leg', () => {
 
     it('does not take an empty slot of the closed days for a day', async () => {
       // Day zero, a Thursday, at 15:00. Every empty slot of the list holds a zero.
-      at(15n * HOUR);
+      await at(15n * HOUR);
       expectOk(await buy(40));
     });
 
     it('trades an asset that has no session at any hour', async () => {
-      at(SESSION + 3n * DAY);
+      await at(SESSION + 3n * DAY);
       expectOk(await buy(20, w.other));
     });
   });
@@ -936,9 +972,9 @@ describe('keeper_leg', () => {
     it('allows one trade per asset per cooldown', async () => {
       expectOk(await buy(20));
       expectError(await buy(20), ERR.Cooldown);
-      at(SESSION + HOUR - 1n);
+      await at(SESSION + HOUR - 1n);
       expectError(await buy(20), ERR.Cooldown);
-      at(SESSION + HOUR);
+      await at(SESSION + HOUR);
       expectOk(await buy(20));
       expect(position(w.stock).lastKeeperTs).toBe(SESSION + HOUR);
     });
@@ -962,7 +998,7 @@ describe('keeper_leg', () => {
       // leg is refused for the hour after it.
       expectError(await keeperLeg(w, { amountIn: 0n }), ERR.NothingTraded);
       expect(position(w.stock).lastKeeperTs).toBe(0n);
-      at(SESSION + 1n);
+      await at(SESSION + 1n);
       expectOk(await buy(40));
     });
   });
@@ -1085,7 +1121,7 @@ describe('keeper_leg', () => {
         expectOk(await keeperLeg(w, { amountIn: 1_490_000n, outputMint: w.other }));
         // A cooldown later, back down to 29.51%: toward the target and inside the band, and a
         // hair further from it. That was the leg that let the bounce go on; it is refused.
-        at(SESSION + HOUR);
+        await at(SESSION + HOUR);
         expectError(await sellOther(970_000n), ERR.PastTarget);
         // What is left to a keeper is a leg that ends no further out: here, at most to 29.52%.
         // (Amounts the exchange's rate divides exactly, so the tolerance is not what refuses.)
@@ -1193,7 +1229,7 @@ describe('keeper_leg', () => {
       expectOk(await buy(40));
       expectError(await buy(20, w.other), ERR.LossCapReached);
       // Half of the week on, half of the 20 cents is forgotten: 10 cents are free again.
-      at(SESSION + (7n * DAY) / 2n);
+      await at(SESSION + (7n * DAY) / 2n);
       expectError(await buy(20, w.other), ERR.LossCapReached);
       const meta = expectOk(await buy(19, w.other));
       const state = readVault(w.svm, w.vault);
@@ -1230,13 +1266,13 @@ describe('keeper_leg', () => {
       await halfPercentWorse();
       expectOk(await buy(40));
       // Half a week on, 100,000 of the 200,000 are left, and a small purchase loses 15 more.
-      at(SESSION + (7n * DAY) / 2n);
+      await at(SESSION + (7n * DAY) / 2n);
       expectOk(await keeperLeg(w, { amountIn: 3_000n, outputMint: w.other }));
       const state = readVault(w.svm, w.vault);
       expect([state.lossAccum, state.lossTs]).toEqual([100_015n, now(w.svm)]);
       // At the end of the first week a counter left alone would read nothing. This one has half
       // of its seven days to go: 50,007 are still held against the next loss of 100,000.
-      at(SESSION + 7n * DAY);
+      await at(SESSION + 7n * DAY);
       expectOk(await buy(20, w.other));
       expect(readVault(w.svm, w.vault).lossAccum).toBe(150_007n);
     });
@@ -1258,7 +1294,7 @@ describe('keeper_leg', () => {
       expectError(await more(), ERR.LossCapReached);
       // Seven days on, to the second, the counter reads nothing and the cap is there in full.
       // The owner sells the stock, so the keeper has it to buy again.
-      at(SESSION + 7n * DAY);
+      await at(SESSION + 7n * DAY);
       expectOk(
         await swapThroughExchange(w, {
           amountIn: balance(w.svm, w.vaultStock),
@@ -1352,7 +1388,7 @@ describe('keeper_leg', () => {
       // Recorded by the keeper itself, the unit does stop it: every position the vault holds
       // something of needs its reference.
       expectOk(await sync([w.vaultOther]));
-      at(SESSION + HOUR);
+      await at(SESSION + HOUR);
       expectError(await buy(10), ERR.KeeperAssetOff);
     });
 

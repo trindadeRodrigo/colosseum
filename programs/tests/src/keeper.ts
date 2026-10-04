@@ -18,13 +18,29 @@ import {
   type Target,
   upsertAssetInstruction,
 } from './basket';
-import { expectOk, now, programSigner, REPO_ROOT, type SendResult, send, setClock } from './env';
-import { initPairInstruction, routeInstruction } from './mock-router';
-import { createPriceAccount, writePrice } from './prices';
+import {
+  expectOk,
+  MOCK_ROUTER_PROGRAM,
+  now,
+  programSigner,
+  REPO_ROOT,
+  type SendResult,
+  send,
+  setClock,
+} from './env';
+import {
+  createPricesInstructions,
+  initPairInstruction,
+  PRICES_BYTES,
+  routeInstruction,
+  writePriceInstruction,
+} from './mock-router';
+import { writePrice } from './prices';
 import { createSwapWorld, STOCK_PER_CASH, type SwapWorld } from './swap';
 import { ata, createAtaInstruction, type TestMint } from './tokens';
 
-// What the keeper tests start from: the swap world, with a price account in Scope's layout, both
+// What the keeper tests start from: the swap world, with the test exchange's price account (Scope's
+// layout, made and written through the exchange's own instructions, as on a test network), both
 // listed assets priced and switched on for the keeper, and the vault on auto-follow.
 
 /** Wednesday Oct 7, 2026, 15:00 UTC: inside the session. */
@@ -47,20 +63,48 @@ export const OTHER_PRICE = scopeEntries('QQQx');
 
 export type KeeperWorld = SwapWorld & {
   keeper: KeyPairSigner;
-  /** The program that owns the price account, as Config has it. No code sits there. */
+  /** The program that owns the price account, as Config has it: the test exchange. */
   priceOwner: Address;
   prices: Address;
   vaultOther: Address;
 };
 
-/** Writes the four entries again, stamped with the chain's clock: what the feed's crank does. */
-export function refreshPrices(
-  w: Pick<KeeperWorld, 'svm' | 'prices'>,
-  values: { stock?: bigint; stockTwap?: bigint; other?: bigint; otherTwap?: bigint } = {},
-): void {
+type FourPrices = { stock?: bigint; stockTwap?: bigint; other?: bigint; otherTwap?: bigint };
+
+/** Writes the four entries again, stamped with the chain's clock, through the exchange's
+ * `write_price`: what the job that copies prices onto a test network does. */
+export async function refreshPrices(
+  w: Pick<KeeperWorld, 'svm' | 'admin' | 'prices'>,
+  values: FourPrices = {},
+): Promise<void> {
   const unixTimestamp = now(w.svm);
+  const entry = (value: bigint) => ({ value, unixTimestamp });
+  expectOk(
+    await send(w.svm, w.admin, [
+      await writePriceInstruction(w.admin, w.prices, {
+        ...STOCK_PRICE,
+        price: entry(values.stock ?? PRICE),
+        twap: entry(values.stockTwap ?? values.stock ?? PRICE),
+      }),
+      await writePriceInstruction(w.admin, w.prices, {
+        ...OTHER_PRICE,
+        price: entry(values.other ?? PRICE),
+        twap: entry(values.otherTwap ?? values.other ?? PRICE),
+      }),
+    ]),
+  );
+}
+
+/** The same four entries written straight into an account's bytes: for an account the exchange
+ * does not own, or one that is not its price account, which no instruction can write. */
+export function stampPrices(
+  svm: KeeperWorld['svm'],
+  prices: Address,
+  values: FourPrices = {},
+): void {
+  const unixTimestamp = now(svm);
   const write = (index: number, value: bigint) =>
-    writePrice(w.svm, w.prices, index, { value, unixTimestamp });
+    writePrice(svm, prices, index, { value, unixTimestamp });
   write(STOCK_PRICE.priceIndex, values.stock ?? PRICE);
   write(STOCK_PRICE.twapIndex, values.stockTwap ?? values.stock ?? PRICE);
   write(OTHER_PRICE.priceIndex, values.other ?? PRICE);
@@ -85,14 +129,19 @@ export async function createKeeperWorld(
   targets?: (w: SwapWorld) => Target[],
 ): Promise<KeeperWorld> {
   const keeper = await generateKeyPairSigner();
-  const priceOwner = (await generateKeyPairSigner()).address;
+  // As on a test network: the exchange is the price program, and its price account is the one
+  // the asset list names.
+  const priceOwner = MOCK_ROUTER_PROGRAM;
   const w = await createSwapWorld({ priceOwner, defaultKeeper: keeper.address });
   const { svm, admin, owner, vault } = w;
   svm.airdrop(keeper.address, lamports(10_000_000_000n));
   setClock(svm, SESSION);
 
-  const prices = await createPriceAccount(svm, priceOwner);
-  refreshPrices({ svm, prices });
+  const pricesKey = await generateKeyPairSigner();
+  const rent = svm.minimumBalanceForRentExemption(PRICES_BYTES);
+  expectOk(await send(svm, admin, await createPricesInstructions(admin, pricesKey, rent)));
+  const prices = pricesKey.address;
+  await refreshPrices({ svm, admin, prices });
   const { num, den } = STOCK_PER_CASH;
   expectOk(
     await send(svm, admin, [
@@ -136,6 +185,8 @@ export type LegOptions = {
   assets?: Address;
   /** More accounts after the exchange's own, which it ignores. */
   extra?: AccountMeta[];
+  /** The pair pays the price account's price: the exchange takes that account too. */
+  priced?: boolean;
 };
 
 /** A keeper leg through the test exchange: cash for the stock unless the mints say otherwise. */
@@ -151,6 +202,7 @@ export async function keeperLeg(w: KeeperWorld, o: LegOptions): Promise<SendResu
       destination: o.destination ?? (await ata(w.vault, outputMint)),
       amountIn: o.amountIn,
       minOut: 0n,
+      ...(o.priced ? { prices: w.prices } : {}),
     }),
   );
   const who = o.signer ?? w.keeper;
