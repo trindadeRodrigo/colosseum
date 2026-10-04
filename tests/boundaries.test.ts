@@ -93,18 +93,18 @@ type Exemption = { since: string; why: string; covers: readonly (readonly [strin
 const EXEMPT: readonly Exemption[] = [];
 
 // Rule 5 has one standing allowance, and it is not an exemption: it is held to a condition. The
-// structurer's server-signing routes stay in apps/api, switched off, not deleted (section 2, the
+// structurer's server-signing route stays in apps/api, switched off, not deleted (section 2, the
 // add-only rule). The file below may import a signing entry because nothing loads it but one dynamic
 // import in `loader`, inside an `if` on the flag: with LEGACY_STRUCTURER off the file is never loaded,
 // so no registered route reaches a signer and no key-reading code is in the process. A static import of
 // the file, a second loader, or the import moved out of the `if` fails the test. When the vault path
-// replaces these routes the file goes, and this entry with it.
+// replaces this route the file goes, and this entry with it.
 type BehindAFlag = { loader: string; flag: string; why: string };
 const BEHIND_A_FLAG: Record<string, BehindAFlag> = {
-  'apps/api/src/routes/monitor.ts': {
+  'apps/api/src/routes/monitor-rebalance.ts': {
     loader: 'apps/api/src/app.ts',
     flag: 'flags.legacyStructurer',
-    why: "Rodrigo's monitor routes: POST /policies/:id/rebalance loads the agent key and signs on the server.",
+    why: "Rodrigo's rebalance route, moved out of monitor.ts: POST /policies/:id/rebalance loads the agent key and signs on the server.",
   },
 };
 /** Where an app starts. What these load statically is what is in the process whatever the flags say. */
@@ -752,7 +752,7 @@ describe('import boundaries (DESIGN-VAULT.md section 2)', () => {
   });
 
   it('self-check: a flagged file loaded any other way is a problem', () => {
-    const file = 'apps/api/src/routes/monitor.ts';
+    const file = 'apps/api/src/routes/monitor-rebalance.ts';
     const allowed = BEHIND_A_FLAG[file];
     if (!allowed) throw new Error('no allowance to check');
     const signing: Violation = { file, line: 1, kind: 'signing', target: SOLANA, rule: 5 };

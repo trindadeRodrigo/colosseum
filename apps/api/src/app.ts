@@ -11,6 +11,7 @@ import {
 } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { corsAllowlist, corsByPath } from './plugins/cors';
+import { registerMonitorRoutes } from './routes/monitor';
 import { registerPlanRoutes } from './routes/plans';
 import { registerReadRoutes } from './routes/read';
 import { registerRiskRoutes } from './routes/risk';
@@ -64,13 +65,15 @@ export async function buildApp(deps: { v1?: V1Deps; env?: EnvLike } = {}) {
   await registerPlanRoutes(app);
   await registerTransactionRoutes(app);
   await registerReadRoutes(app);
-  // The structurer's monitor routes load a key file and sign with it on the server. They are switched
-  // off, not deleted: with LEGACY_STRUCTURER off (the default) the file is never loaded, so no route
-  // that reaches a signer is registered and no code that reads a key is in the process.
+  const monitor = await registerMonitorRoutes(app);
+  // One route of the structurer's monitor loads a key file and signs with it on the server: the
+  // rebalance. It is switched off, not deleted: with LEGACY_STRUCTURER off (the default) its file is
+  // never loaded, so no route that reaches a signer is registered and no code that reads a key is in
+  // the process. The monitor's reads and its unsigned revoke are always served.
   // tests/boundaries.test.ts holds this import to this `if`.
   if (flags.legacyStructurer) {
-    const { registerMonitorRoutes } = await import('./routes/monitor');
-    await registerMonitorRoutes(app);
+    const { registerMonitorRebalanceRoute } = await import('./routes/monitor-rebalance');
+    registerMonitorRebalanceRoute(app, monitor);
   }
   await registerRiskRoutes(app);
   await registerV1Routes(app, env, deps.v1);
