@@ -66,10 +66,12 @@ const grouped = (text: string, mark: string) =>
  * "40.000" are both forty thousand, "1,500.50" and "1.500,50" both fifteen hundred and a half. So a
  * change of language never changes an amount that is already typed. With both marks, the later one
  * sets off the cents. With one mark, three digits after it are thousands and one or two are cents.
+ * A dollar sign may come first, and spaces around the whole. A space inside the number is not read
+ * as anything: "10 20" is two numbers, and neither language sets off thousands with a space.
  * Null when nothing was typed, NaN when it is not a number that can be read one way only.
  */
 export function parseNumber(text: string): number | null {
-  const bare = text.replace(/US\$|\$|[\s\u00a0\u202f]/g, '');
+  const bare = text.trim().replace(/^(US\$|\$)\s*/, '');
   if (bare === '') return null;
   if (!/^\d[\d.,]*$/.test(bare)) return Number.NaN;
   const marks = [...new Set(bare.replace(/\d/g, ''))];

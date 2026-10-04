@@ -249,6 +249,10 @@ describe('a number as a person types one', () => {
       ['9,99', 9.99],
       ['1500,5', 1500.5],
       ['10', 10],
+      // spaces around it, and after the dollar sign
+      ['  40000  ', 40000],
+      ['$ 40,000', 40000],
+      ['US$\u202f40.000', 40000],
     ] as const)
       expect(parseNumber(typed), typed).toBe(means);
   });
@@ -274,6 +278,18 @@ describe('a number as a person types one', () => {
       '40,',
       ',5',
       '1..5',
+      // a space inside is not a thousands mark in either language: two numbers, not one
+      '10 20',
+      '1 5',
+      '40 000',
+      '40\u00a0000',
+      '$ 40 000',
+      // a sign anywhere but first, or twice, or another currency's
+      '4$0',
+      '40 $',
+      '$$40',
+      'US$US$40',
+      'R$ 40.000',
     ])
       expect(parseNumber(text), text).toBeNaN();
   });
