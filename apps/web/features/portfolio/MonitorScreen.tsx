@@ -25,7 +25,7 @@ export function MonitorScreen() {
   const t = useT();
   const lang = useLang();
   const port = useWalletPort();
-  const { account, retry } = useAccount();
+  const { account, retry, mock } = useAccount();
   const { state, again, busy } = usePortfolio();
   const words = t.portfolio;
   const link = buttonClass({ variant: 'link' });
@@ -69,7 +69,6 @@ export function MonitorScreen() {
         {t.shell.signIn}
       </Link>,
     );
-  else if (state.kind === 'throwaway') body = say(words.throwaway);
   else if (state.kind === 'no-account-chain')
     body =
       account.status === 'unknown'
@@ -122,11 +121,13 @@ export function MonitorScreen() {
           </Card>
         );
         break;
+      // The throwaway wallet of development has no account on a real API: that is why, not the
+      // sign-in. A stand-in API that answers it is read like any other.
       case 'signed-out':
-        body = say(words.signInAgain);
+        body = say(mock ? words.throwaway : words.signInAgain);
         break;
       case 'no-identity':
-        body = say(words.noIdentity, readAgain);
+        body = mock ? say(words.throwaway) : say(words.noIdentity, readAgain);
         break;
       case 'no-chain':
         body = say(

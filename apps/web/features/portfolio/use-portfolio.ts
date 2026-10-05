@@ -14,8 +14,6 @@ export type PortfolioState =
   | { kind: 'signed-out' }
   /** Signed in, and the chain is not known or not chosen: the account says why. */
   | { kind: 'no-account-chain' }
-  /** The throwaway wallet of development: the API has no account for it, so no vault to read. */
-  | { kind: 'throwaway' }
   /** Asked, and waiting for the answer. */
   | { kind: 'reading'; chain: ChainId }
   /** What the API answered, for this person and this chain. */
@@ -24,7 +22,7 @@ export type PortfolioState =
 export function usePortfolio(): { state: PortfolioState; again: () => void; busy: boolean } {
   const port = useWalletPort();
   const apiFetch = useApiFetch();
-  const { account, mock } = useAccount();
+  const { account } = useAccount();
   const [answer, setAnswer] = useState<{
     key: string;
     outcome: PortfolioOutcome;
@@ -33,7 +31,7 @@ export function usePortfolio(): { state: PortfolioState; again: () => void; busy
   const [busy, setBusy] = useState(false);
   const wanted = useRef('');
 
-  const chain = account.status === 'ready' && !mock ? account.chain : null;
+  const chain = account.status === 'ready' ? account.chain : null;
   const who = port.userId;
   const key = chain && who ? `${who}:${chain}:${round}` : '';
 
@@ -54,7 +52,6 @@ export function usePortfolio(): { state: PortfolioState; again: () => void; busy
   if (port.status === 'loading' || account.status === 'loading') state = { kind: 'loading' };
   else if (port.status === 'signed-out' || account.status === 'signed-out')
     state = { kind: 'signed-out' };
-  else if (account.status === 'ready' && mock) state = { kind: 'throwaway' };
   else if (!chain) state = { kind: 'no-account-chain' };
   else {
     // The last answer stays on the screen while it is read again, if it was for this person and

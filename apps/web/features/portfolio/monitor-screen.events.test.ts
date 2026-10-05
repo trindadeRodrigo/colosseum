@@ -385,6 +385,29 @@ it('shows a person only the answer read for them, when another signs in while a 
   expect(host.querySelector(`[title="${VAULT}"]`)).toBeNull();
 });
 
+describe('the throwaway wallet of development', () => {
+  const throwaway = () =>
+    portStore.set(signedInPort(PHANTOM, { test: true, userId: 'test:So111111' }, 'mock'));
+
+  it('is read like anyone, so a stand-in API that answers it shows its vault', async () => {
+    const server = api({ portfolio: () => json(portfolioBody(labelled('mock'))) });
+    throwaway();
+    const host = await screen();
+    expect(server.to('/v1/me')).toEqual([]);
+    expect(server.to(PORTFOLIO_PATH)).toHaveLength(1);
+    expect(vaults(host)).toHaveLength(1);
+    expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
+  });
+
+  it('is told it has no account, not to sign in again, when a real API refuses it', async () => {
+    api({ portfolio: () => json({ error: 'sign in first' }, 401) });
+    throwaway();
+    const host = await screen();
+    expect(text(host)).toContain(en.portfolio.throwaway);
+    expect(text(host)).not.toContain(en.portfolio.signInAgain);
+  });
+});
+
 describe('the monitor in Portuguese', () => {
   it('says every word of the vault in Portuguese, and the figures the Brazilian way', async () => {
     const pt = dictionary('pt');
