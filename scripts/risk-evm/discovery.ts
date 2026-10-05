@@ -266,6 +266,18 @@ export function fillFromSelf(c: Candidate, replies: Answer[]): string | null {
   return null;
 }
 
+/** The factories getPoolCalls asks for a tier, in the order of its calls. */
+export const getPoolFactories = (
+  chain: ChainConfig,
+  tier: { fee: number | null; tickSpacing: number | null },
+): string[] =>
+  chain.clFactories
+    .filter((f) => {
+      const by = f.getPoolBy === 'fee' ? tier.fee : tier.tickSpacing;
+      return by !== null && by >= 0;
+    })
+    .map((f) => f.address.toLowerCase());
+
 /** getPool on every allowlisted factory for a pair at one fee (or tick spacing). */
 export function getPoolCalls(
   chain: ChainConfig,
@@ -498,24 +510,25 @@ export type Price = {
 /** A dollar pool of a token, as read at one block. */
 export type DollarPool = {
   id: string;
+  kind: 'cl' | 'v4';
   tokenIs0: boolean;
   sqrtPriceX96: bigint;
-  /** Dollar tokens the pool holds, in dollars. */
+  /** Dollar tokens the pool holds, in dollars (v4: within the band). */
   dollarUsd: number;
   block: number;
 };
 
 /**
- * The price of a token from its dollar pools: the mid of the pool holding the most dollar tokens,
- * if that pool holds at least `minRefUsd`. A thinner pool prices nothing: its mid moves with a small
- * trade. Equal depth falls back to the pool id so the choice does not depend on input order.
+ * The price of a token from its dollar pools, of either kind: the mid of the pool holding the most
+ * dollar tokens, if that pool holds at least `minRefUsd`. A thinner pool prices nothing: its mid moves
+ * with a small trade. The caller passes only pools with liquidity in range: a pool with none keeps a
+ * stale price. Equal depth falls back to the pool id so the choice does not depend on input order.
  */
 export function priceFromDollarPools(
   address: string,
   pools: DollarPool[],
   dollarDecimals: number,
   minRefUsd: number,
-  method: 'mid_of_deepest_dollar_pool' | 'mid_of_deepest_v4_dollar_pool',
 ): Price {
   const best = [...pools]
     .filter((p) => p.dollarUsd >= minRefUsd && p.sqrtPriceX96 > 0n)
@@ -536,7 +549,7 @@ export function priceFromDollarPools(
   return {
     address: lower(address),
     usdPerRaw,
-    method,
+    method: best.kind === 'cl' ? 'mid_of_deepest_dollar_pool' : 'mid_of_deepest_v4_dollar_pool',
     refPool: best.id,
     refDollarUsd: best.dollarUsd,
     reason: null,
@@ -646,11 +659,12 @@ export function money(
   };
 }
 
-/** True when a pool holds nothing a row could describe: no balance (cl), no liquidity in range (v4). */
+/**
+ * True when a pool was read and has nothing a row could describe: no balance (cl), no liquidity in
+ * range (v4). A pool whose read failed is not idle: it keeps its row, with `pool_state_not_read`.
+ */
 export const isIdle = (kind: 'cl' | 'v4', s: PoolState): boolean =>
-  kind === 'cl'
-    ? (s.balance0 ?? 0n) === 0n && (s.balance1 ?? 0n) === 0n
-    : (s.liquidity ?? 0n) === 0n;
+  kind === 'cl' ? s.balance0 === 0n && s.balance1 === 0n : s.liquidity === 0n;
 
 // ---------------------------------------------------------------------------------------------
 // The file

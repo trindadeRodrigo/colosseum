@@ -38,6 +38,7 @@ import {
   fillFromSelf,
   gapsFor,
   getPoolCalls,
+  getPoolFactories,
   isIdle,
   type LogFilter,
   mergeCandidates,
@@ -631,7 +632,7 @@ export async function runDiscovery(
         fee: q.tier.fee,
         tickSpacing: q.tier.tickSpacing,
         hooks: null,
-        factory: lower(chain.clFactories[k]?.address ?? ZERO_ADDRESS),
+        factory: getPoolFactories(chain, q.tier)[k] ?? null,
         attested: true,
         createdBlock: null,
         sources: ['v3_factory_getpool'],
@@ -698,7 +699,8 @@ export async function runDiscovery(
       (c) => [{ target: stateView, callData: encodeGetLiquidity(c.id) }],
       LIQUIDITY_CHUNK,
     );
-    const live = first.filter((r) => (big(r.replies[0]) ?? 0n) > 0n).map((r) => r.item);
+    // a pool whose liquidity could not be read is kept: only one read as zero is idle
+    const live = first.filter((r) => big(r.replies[0]) !== 0n).map((r) => r.item);
     const liveIds = new Set(live.map((c) => c.id));
     for (const c of v4) {
       if (liveIds.has(c.id)) continue;
@@ -811,6 +813,7 @@ export async function runDiscovery(
       if (!tokenIs0 && !(c.token1 === token && c.token0 === dollar)) continue;
       const s = states.get(c.id);
       if (!s || s.sqrtPriceX96 === null || s.sqrtPriceX96 <= 0n) continue;
+      if ((s.liquidity ?? 0n) === 0n) continue; // nothing in range: the price is whatever it was left at
       let dollarRaw: number | null;
       if (kind === 'cl') {
         const b = tokenIs0 ? s.balance1 : s.balance0;
@@ -821,6 +824,7 @@ export async function runDiscovery(
       if (dollarRaw === null) continue;
       out.push({
         id: c.id,
+        kind,
         tokenIs0,
         sqrtPriceX96: s.sqrtPriceX96,
         dollarUsd: dollarRaw / dollarUnit,
@@ -829,24 +833,13 @@ export async function runDiscovery(
     }
     return out;
   };
-  const priceOf = (token: string): Price => {
-    const fromCl = priceFromDollarPools(
+  const priceOf = (token: string): Price =>
+    priceFromDollarPools(
       token,
-      dollarPoolsOf(token, 'cl'),
+      [...dollarPoolsOf(token, 'cl'), ...dollarPoolsOf(token, 'v4')],
       chain.dollar.decimals,
       opts.minRefUsd,
-      'mid_of_deepest_dollar_pool',
     );
-    return fromCl.usdPerRaw !== null
-      ? fromCl
-      : priceFromDollarPools(
-          token,
-          dollarPoolsOf(token, 'v4'),
-          chain.dollar.decimals,
-          opts.minRefUsd,
-          'mid_of_deepest_v4_dollar_pool',
-        );
-  };
   for (const t of stocks.keys()) prices.set(t, priceOf(t));
 
   // the other tokens worth a lookup: those of a pool whose stock side is at least the floor
@@ -883,6 +876,7 @@ export async function runDiscovery(
     (c) => [
       { target: dollar, callData: encodeBalanceOf(c.id) },
       { target: c.id, callData: `0x${SEL.slot0}` },
+      { target: c.id, callData: `0x${SEL.liquidity}` },
     ],
     MULTICALL_CHUNK,
   );
@@ -891,9 +885,11 @@ export async function runDiscovery(
     const bal = big(replies[0]);
     const slot0 = replies[1];
     if (bal === null || !slot0?.success || slot0.data.length < 66) continue;
+    if ((big(replies[2]) ?? 0n) === 0n) continue;
     const list = refPools.get(c.token) ?? [];
     list.push({
       id: c.id,
+      kind: 'cl',
       tokenIs0: c.tokenIs0,
       sqrtPriceX96: decodeSqrtPrice(slot0.data),
       dollarUsd: Number(bal) / dollarUnit,
@@ -904,13 +900,7 @@ export async function runDiscovery(
   for (const a of others)
     prices.set(
       a,
-      priceFromDollarPools(
-        a,
-        refPools.get(a) ?? [],
-        chain.dollar.decimals,
-        opts.minRefUsd,
-        'mid_of_deepest_dollar_pool',
-      ),
+      priceFromDollarPools(a, refPools.get(a) ?? [], chain.dollar.decimals, opts.minRefUsd),
     );
   if (wrapped) {
     const w = prices.get(wrapped) as Price;

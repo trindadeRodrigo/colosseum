@@ -108,10 +108,10 @@ pnpm risk-evm:discover --no-logs          # without the creation events (the fal
 4. **The money in a pool** (`tvlUsd`, with `tokenUsd` and `otherUsd` for the two sides):
    - a v3-style pool: the balances the pool holds (`balanceOf`), each at its token's price. `tvlMethod: "balances_held_by_the_pool"`.
    - a v4 pool has no balance of its own (the pool manager holds every pool's money). Its row is what its positions hold between price / 1.5 and price × 1.5: the tick bitmap and the liquidity of each initialized tick in that band are read at the same block as the price, and the amounts are added up tick by tick. `tvlMethod: "v4_positions_within_band_of_the_price"`. Liquidity placed further out is not counted.
-   - the same sum is made on Uniswap v3 pools and stored as `bandUsd` beside the measured balances. On Oct 5, over the 109 v3 dollar pools of $1,000 or more, it came to 98% of the balances at the median (88% at the 10th percentile, 99% at the 90th). Against DexScreener's own figure, the v4 rows above $50,000 sit at 99% at the median.
+   - the same sum is made on Uniswap v3 pools and stored as `bandUsd` beside the measured balances. On Oct 5, over the 109 v3 dollar pools of $1,000 or more, it came to 98% of the balances at the median (88% at the 10th percentile, 99% at the 90th). Against DexScreener's own figure, the v4 rows above $50,000 sit at 98% at the median.
    - `tvlUsd` is `null` with `tvlReason` when it was not measured, never zero: `token_not_priced`, `other_token_not_priced`, `stock_side_below_floor_other_token_not_looked_up`, `pool_state_not_read`.
-   - a pool that holds nothing (no balance; on v4, no liquidity in range at that block) has no row. It is counted on its token under `idle`.
-5. **Prices** (the `prices` list; each names its pool and block). The dollar token counts as one dollar, as in the collector. A stock is priced by the mid of its Uniswap v3 dollar pool holding the most dollar tokens, if that is at least $1,000 (`--min-ref-usd`); failing that by its deepest hookless v4 dollar pool; failing that it has no price. Any other token is looked up the same way, but only where a pool's stock side is worth $100 or more (`--min-side-usd`). The native coin takes the price of the wrapped coin the v4 position manager names (`WETH9()`).
+   - a pool read as empty (no balance; on v4, no liquidity at the price at that block, though it may hold positions further out) has no row. It is counted on its token under `idle`. A pool whose read failed keeps its row, with `pool_state_not_read`.
+5. **Prices** (the `prices` list; each names its pool and block). The dollar token counts as one dollar, as in the collector. A stock is priced by the mid of the reachable dollar pool holding the most dollar tokens (a Uniswap v3 pool's balance, a hookless v4 pool's dollar side within the band), if that is at least $1,000 (`--min-ref-usd`) and the pool has liquidity in range; otherwise it has no price. Any other token is looked up the same way, but only where a pool's stock side is worth $100 or more (`--min-side-usd`). The native coin takes the price of the wrapped coin the v4 position manager names (`WETH9()`).
 6. **State is read at one block per pool.** The endpoint drops a block's state within minutes and a full pass takes longer, so the pass moves to a fresh block every 45 seconds. Each row carries its own `block` and `fetchedAt`; the file gives the first and the last.
 7. **What a run could not have seen** is on each token under `gaps`: DexScreener failed for it, DexScreener returned its cap of 30 (other venues may have more), or the creation events were not available.
 
@@ -128,13 +128,14 @@ pnpm risk-evm:discover --no-logs          # without the creation events (the fal
 
 So the public endpoint lists every pool, in 3,240 queries of 100,000 blocks (13 minutes, once). The fallback was not needed; it exists and is tested (`--no-logs`): DexScreener and `getPool` only, with `v4_pools_from_dexscreener_only` on every token. The run records its own probe in the file (`logsProbe`).
 
-### The run of 2026-10-05 (blocks 81,021,135 to 81,038,266)
+### The run of 2026-10-05 (blocks 81,044,145 to 81,057,597)
 
-- 100,516 v4 pools and 2,544 Uniswap v3 pools name one of the 194 tokens. 38,420 hold nothing now; 64,836 have a row. Most are not stock markets: about 60,000 of the v4 pools carry one launch hook and pair a stock token with a newly made token.
-- 2,141 rows have a measured TVL, $91.1M together; 727 hold $1,000 or more, 542 of them reachable. By venue, pools of $1,000 or more: Uniswap v3 173 ($43.7M), Uniswap v4 430 ($43.4M, of which 61 hooked pools hold $7.1M), other venues 124 ($3.9M).
-- 98 of the 194 tokens have a price. The other 96 have no dollar pool holding $1,000, so their 2,248 rows are `token_not_priced`.
-- 60,447 rows pair a stock with a token that has no dollar price; 993 of them hold $1,000 or more on the stock side.
+- 100,538 v4 pools and 2,544 Uniswap v3 pools name one of the 194 tokens. 38,434 of them have no row: nothing in the pool, or on v4 no liquidity at the price at that block (such a pool may still hold positions further out). 64,845 have a row. Most are not stock markets: 40,038 of the rows carry one launch hook and pair a stock token with a newly made token.
+- 2,140 rows have a measured TVL, $91.0M together; 728 hold $1,000 or more, 543 of them reachable. By venue, pools of $1,000 or more: Uniswap v3 173 ($43.7M), Uniswap v4 430 ($43.3M, of which 60 hooked pools hold $7.0M), other venues 125 ($3.9M).
+- 98 of the 194 tokens have a price: 46 from a Uniswap v3 dollar pool, 52 from a v4 one. The other 96 have no dollar pool holding $1,000, so their 2,248 rows are `token_not_priced`.
+- 60,457 rows pair a stock with a token that has no dollar price here. For 52,361 the price was not looked up, because the stock side is under $100; for 8,096 it was looked up and no dollar pool of $1,000 exists. 994 of those hold $1,000 or more on the stock side.
 - All 54 pools the hourly collector would keep for its 21 tokens are among the rows, all `reachable` (`collectorCheck` in the file).
+- DexScreener answered for every token in this run. In the run before it failed for one (JOBY), which then carried `dexscreener_failed_other_venues_not_listed`; a file should be checked for that gap before it is used.
 
 Known limits:
 

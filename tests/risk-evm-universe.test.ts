@@ -23,6 +23,7 @@ import {
   dexPools,
   fileUnder,
   gapsFor,
+  isIdle,
   mergeCandidates,
   money,
   type PoolState,
@@ -400,15 +401,16 @@ describe('money in a pool', () => {
   });
 
   it('takes the price from the dollar pool holding the most dollars, above the floor only', () => {
-    const pool = (id: string, dollarUsd: number, sqrt: bigint) => ({
+    const pool = (id: string, dollarUsd: number, sqrt: bigint, kind: 'cl' | 'v4' = 'cl') => ({
       id,
+      kind,
       tokenIs0: true,
       sqrtPriceX96: sqrt,
       dollarUsd,
       block: 7,
     });
     const pools = [pool('0xb', 5_000, 2n * Q96), pool('0xa', 90_000, 3n * Q96)];
-    const p = priceFromDollarPools('0xT', pools, 6, 1_000, 'mid_of_deepest_dollar_pool');
+    const p = priceFromDollarPools('0xT', pools, 6, 1_000);
     expect(p).toMatchObject({
       address: '0xt',
       refPool: '0xa',
@@ -421,13 +423,19 @@ describe('money in a pool', () => {
     // input order does not matter, nor does a tie
     const tie = [pool('0xb', 5_000, 2n * Q96), pool('0xa', 5_000, 3n * Q96)];
     for (const list of [tie, [...tie].reverse()])
-      expect(
-        priceFromDollarPools('0xT', list, 6, 1_000, 'mid_of_deepest_dollar_pool').refPool,
-      ).toBe('0xa');
+      expect(priceFromDollarPools('0xT', list, 6, 1_000).refPool).toBe('0xa');
+    // a deeper v4 pool is the reference, and the price says which kind it came from
+    const withV4 = [...pools, pool('0xc', 400_000, 4n * Q96, 'v4')];
+    expect(priceFromDollarPools('0xT', withV4, 6, 1_000)).toMatchObject({
+      refPool: '0xc',
+      method: 'mid_of_deepest_v4_dollar_pool',
+    });
     // every pool under the floor: no price, with the reason, never a zero
-    expect(
-      priceFromDollarPools('0xT', pools, 6, 100_000, 'mid_of_deepest_dollar_pool'),
-    ).toMatchObject({ usdPerRaw: null, method: null, reason: 'no_dollar_pool_above_floor' });
+    expect(priceFromDollarPools('0xT', pools, 6, 100_000)).toMatchObject({
+      usdPerRaw: null,
+      method: null,
+      reason: 'no_dollar_pool_above_floor',
+    });
   });
 
   it('counts the ticks a band reaches and the bitmap words that hold them', () => {
@@ -501,6 +509,14 @@ describe('money in a pool', () => {
       tvlReason: null,
       bandUsd: 7,
     });
+  });
+
+  it('a pool that was read and holds nothing is idle; one that was not read is not', () => {
+    expect(isIdle('cl', state({ balance0: 0n, balance1: 0n }))).toBe(true);
+    expect(isIdle('cl', state({ balance0: 0n, balance1: 1n }))).toBe(false);
+    expect(isIdle('cl', state({ balance0: null, balance1: null }))).toBe(false);
+    expect(isIdle('v4', state({ liquidity: 0n }))).toBe(true);
+    expect(isIdle('v4', state({ liquidity: null }))).toBe(false);
   });
 
   it('gives null with a reason, never zero, when a side or the pool is not measured', () => {
@@ -700,21 +716,23 @@ describe('one discovery pass, replayed from the recording', () => {
     }
   });
 
-  it('prices each stock by the mid of its deepest Uniswap v3 dollar pool, recomputed here', () => {
+  it('prices each stock by the mid of its deepest reachable dollar pool, recomputed here', () => {
     for (const address of [NVDA, SPY]) {
       const price = file.prices.find((p) => p.address === address.toLowerCase());
+      // the dollar side of each: a v3 pool's raw balance at six decimals, a v4 pool's side in the band
+      const depth = (p: (typeof file.pools)[number]) =>
+        p.kind === 'cl' ? Number(BigInt(p.balanceOther as string)) / 1e6 : (p.otherUsd as number);
       const mine = file.pools.filter(
-        (p) => p.token === address && p.venue === 'uniswap-v3' && p.againstDollar,
+        (p) => p.token === address && p.reachable && p.againstDollar && p.liquidity !== '0',
       );
-      // the dollar side of each, from the raw balance and the dollar token's six decimals
-      const deepest = [...mine].sort((a, b) =>
-        Number(BigInt(b.balanceOther as string) - BigInt(a.balanceOther as string)),
-      )[0];
-      expect(price).toMatchObject({ method: 'mid_of_deepest_dollar_pool', refPool: deepest?.id });
-      expect(price?.refDollarUsd).toBeCloseTo(
-        Number(BigInt(deepest?.balanceOther as string)) / 1e6,
-        6,
-      );
+      expect(new Set(mine.map((p) => p.kind)).size).toBe(2);
+      const deepest = [...mine].sort((a, b) => depth(b) - depth(a))[0];
+      expect(price).toMatchObject({
+        method:
+          deepest?.kind === 'cl' ? 'mid_of_deepest_dollar_pool' : 'mid_of_deepest_v4_dollar_pool',
+        refPool: deepest?.id,
+      });
+      expect(price?.refDollarUsd).toBeCloseTo(depth(deepest as (typeof file.pools)[number]), 6);
       const s = Number(BigInt(deepest?.sqrtPriceX96 as string)) / 2 ** 96;
       const raw1Per0 = s * s;
       const dollarsPerRaw = (deepest?.tokenIs0 ? raw1Per0 : 1 / raw1Per0) / 1e6;
