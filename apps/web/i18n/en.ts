@@ -14,6 +14,7 @@ export const en = {
     home: 'tenonfi, your goal',
     goal: 'Goal',
     portfolio: 'Portfolio',
+    shelf: 'Shelf',
     signIn: 'Sign in',
     signOut: 'Sign out',
     signingOut: 'Signing out…',
@@ -720,6 +721,7 @@ export const en = {
       lead: (chain: string) =>
         `Your list of assets and weights, under a name, on ${chain}. Anyone can see it and follow it. You sign it with your wallet: I check the transaction against this form before your wallet is asked.`,
       signIn: 'Sign in to publish a portfolio.',
+      about: 'Its name and description',
       name: 'Name',
       nameHint: 'Plain letters, digits and punctuation, up to 280 characters.',
       slug: 'Address on the shelf',

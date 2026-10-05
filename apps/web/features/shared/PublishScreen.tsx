@@ -263,7 +263,7 @@ export function PublishScreen() {
       >
         <Card
           as="section"
-          aria-label={p.name}
+          aria-label={p.about}
           mock={mock}
           mockLabels={{ announce: t.shell.mockAnnounce }}
         >
@@ -404,7 +404,7 @@ export function PublishScreen() {
             variant="primary"
             busy={placing}
             busyLabel={p.reviewing}
-            disabled={tried && blocked.length > 0}
+            disabled={(tried && blocked.length > 0) || existing.kind === 'reading'}
             aria-describedby={blocked.length > 0 ? reasonId : undefined}
           >
             {p.review}

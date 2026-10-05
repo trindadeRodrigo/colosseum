@@ -244,7 +244,7 @@ function RecipeSection({
             ? f.unlisted
             : null;
   return (
-    <section aria-label={f.recipe(chainName)} className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <Card
         as="section"
         aria-label={f.recipe(chainName)}
@@ -317,7 +317,7 @@ function RecipeSection({
       {person.kind === 'ready' && own && followed && !blocked && (
         <VaultsPanel family={family} recipe={recipe} followed={followed} person={person} />
       )}
-    </section>
+    </div>
   );
 }
 

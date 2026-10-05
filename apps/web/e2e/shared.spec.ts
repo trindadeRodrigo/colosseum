@@ -51,12 +51,30 @@ async function signIn(page: Page) {
   await page.getByRole('button', { name: en.signIn.passkey.create }).click();
   await page.getByRole('button', { name: 'Solana' }).click();
   await page.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
-  await expect(page).toHaveURL(/\/goal$/);
+  await expect(page).toHaveURL(/:\d+\/$/);
+}
+
+/** The shelf, by the bar: the throwaway wallet lives in the page, so every move stays inside it. */
+async function toShelf(page: Page) {
+  await page
+    .getByRole('navigation', { name: en.shell.nav })
+    .getByRole('link', { name: en.shell.shelf })
+    .click();
+  await expect(page).toHaveURL(/\/shelf$/);
+}
+
+/** A portfolio's page, from the shelf. */
+async function toFamily(page: Page, name: string) {
+  await toShelf(page);
+  await page.locator('[data-ui="shelf-card"]').getByRole('link', { name }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(name);
 }
 
 /** Fills the publish form and signs the publish on the order screen, to its last step. */
 async function publish(page: Page, name: string, weights: [string, string][], photograph = false) {
-  await page.goto('/publish');
+  await toShelf(page);
+  await page.getByRole('link', { name: en.shared.shelf.publish }).first().click();
+  await expect(page).toHaveURL(/\/publish$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.shared.publish.title);
   await page.getByLabel(en.shared.publish.name, { exact: true }).fill(name);
   await page.getByLabel(en.shared.publish.copy, { exact: true }).fill('Three test tokens.');
@@ -99,7 +117,7 @@ test('publish a portfolio, find it on the shelf, buy it and follow it, every ste
     true,
   );
 
-  await page.goto('/shelf');
+  await toShelf(page);
   const card = page.locator('[data-ui="shelf-card"]');
   await expect(card).toHaveCount(1);
   await expect(card).toContainText('Three of the largest');
@@ -145,7 +163,7 @@ test('publish a portfolio, find it on the shelf, buy it and follow it, every ste
     await expect(steps.nth(i)).toHaveAttribute('data-status', 'confirmed');
 
   // The vault follows it now, and its public page reads it from the chain.
-  await page.goto('/indexes/three-of-the-largest');
+  await toFamily(page, 'Three of the largest');
   const mine = page.locator('[data-ui="my-vault"]');
   await expect(mine).toHaveCount(1);
   await expect(mine).toContainText(en.shared.vaults.following);
@@ -164,7 +182,7 @@ test('a portfolio that holds gold offers no auto-follow, and says why', async ({
     ['solana:nvda', '30'],
     ['solana:gold', '30'],
   ]);
-  await page.goto('/indexes/with-some-gold');
+  await toFamily(page, 'With some gold');
   const offer = page.locator('[data-ui="auto-follow-offer"]');
   await expect(offer).toHaveAttribute('data-offered', 'false');
   await expect(offer).toContainText(en.shared.offer.noOracle('GOLD', 'Solana'));

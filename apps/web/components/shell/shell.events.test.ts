@@ -61,7 +61,7 @@ describe('the frame', () => {
     expect(find(frame, 'nav').getAttribute('aria-label')).toBe(en.nav);
   });
 
-  it('shows the mark and the wordmark, in lower case, the goal as the first link and the portfolio after it', async () => {
+  it('shows the mark and the wordmark, in lower case, the goal as the first link, the portfolio after it, then the shelf', async () => {
     const host = await shell();
     const home = find<HTMLAnchorElement>(host, `a[aria-label="${en.home}"]`);
     expect(home.textContent).toBe('tenonfi');
@@ -71,15 +71,19 @@ describe('the frame', () => {
     expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
       [en.goal, '/'],
       [en.portfolio, '/monitor'],
+      [en.shelf, '/shelf'],
     ]);
     // the page a person is on is said, not only shown
-    expect(links.map((a) => a.getAttribute('aria-current'))).toEqual(['page', null]);
+    expect(links.map((a) => a.getAttribute('aria-current'))).toEqual(['page', null, null]);
     location.pathname = '/monitor';
     const monitor = [...find(await shell(), 'nav').querySelectorAll('a')];
-    expect(monitor.map((a) => a.getAttribute('aria-current'))).toEqual([null, 'page']);
+    expect(monitor.map((a) => a.getAttribute('aria-current'))).toEqual([null, 'page', null]);
+    location.pathname = '/shelf';
+    const shelf = [...find(await shell(), 'nav').querySelectorAll('a')];
+    expect(shelf.map((a) => a.getAttribute('aria-current'))).toEqual([null, null, 'page']);
     location.pathname = '/sign-in';
     const elsewhere = [...find(await shell(), 'nav').querySelectorAll('a')];
-    expect(elsewhere.map((a) => a.getAttribute('aria-current'))).toEqual([null, null]);
+    expect(elsewhere.map((a) => a.getAttribute('aria-current'))).toEqual([null, null, null]);
   });
 
   it('renders the disclaimer from the one constant, whole, at body size, in the language of the view', async () => {
@@ -104,7 +108,7 @@ describe('the frame', () => {
     // the port is still loading: the bar says nothing about the person yet
     portStore.set(fakePort({ status: 'loading' }));
     const loading = await shell();
-    expect(find(loading, 'header').textContent).toBe(`tenonfi${en.goal}${en.portfolio}`);
+    expect(find(loading, 'header').textContent).toBe(`tenonfi${en.goal}${en.portfolio}${en.shelf}`);
   });
 });
 
@@ -298,6 +302,7 @@ describe('English or Portuguese', () => {
     expect([...find(host, 'nav').querySelectorAll('a')].map((a) => a.textContent)).toEqual([
       pt.goal,
       pt.portfolio,
+      pt.shelf,
     ]);
     expect(find(host, 'header a[href="/sign-in"]').textContent).toBe(pt.signIn);
     expect(host.textContent).not.toMatch(/!/);

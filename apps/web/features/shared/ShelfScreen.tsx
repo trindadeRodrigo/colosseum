@@ -130,8 +130,15 @@ function FamilyCard({ family }: { family: SharedFamily }) {
       }}
     >
       <CardHeader
-        title={<span className="[overflow-wrap:anywhere]">{family.name}</span>}
-        href={href}
+        title={
+          // The card's one link, stretched over the card; a link of the app, so the page is not reloaded.
+          <Link
+            href={href}
+            className="outline-none [overflow-wrap:anywhere] after:absolute after:inset-0"
+          >
+            {family.name}
+          </Link>
+        }
         meta={recipe ? c.version(recipe.active.version) : undefined}
       />
       <CardBody className="flex flex-col gap-3">

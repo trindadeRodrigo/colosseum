@@ -13,6 +13,7 @@ export const pt: Dictionary = {
     home: 'tenonfi, seu objetivo',
     goal: 'Objetivo',
     portfolio: 'Portfólio',
+    shelf: 'Prateleira',
     signIn: 'Entrar',
     signOut: 'Sair',
     signingOut: 'Saindo…',
@@ -706,6 +707,7 @@ export const pt: Dictionary = {
       lead: (chain: string) =>
         `Sua lista de ativos e pesos, com um nome, na ${chain}. Qualquer pessoa pode vê-la e segui-la. Você assina com a sua carteira: confiro a transação com este formulário antes de pedir à carteira.`,
       signIn: 'Entre para publicar um portfólio.',
+      about: 'Nome e descrição',
       name: 'Nome',
       nameHint: 'Letras, números e pontuação simples, até 280 caracteres.',
       slug: 'Endereço na prateleira',
