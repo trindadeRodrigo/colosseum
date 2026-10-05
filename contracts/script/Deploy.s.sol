@@ -78,11 +78,10 @@ contract Deploy is Script {
     error ValueDoesNotFit(string key, uint256 value, uint256 most);
 
     /// Transactions printed so far in this run.
-    uint256 internal sent;
+    uint256 public sent;
 
     function run() external returns (Deployed memory d) {
         Config memory cfg = readConfig(_path());
-        if (cfg.adminIsDeployer) cfg.admin = msg.sender;
         vm.startBroadcast();
         d = deploy(cfg, msg.sender);
         vm.stopBroadcast();
@@ -104,6 +103,7 @@ contract Deploy is Script {
     /// Deploys and configures, as `deployer`: the address the calls below come from.
     function deploy(Config memory cfg, address deployer) public returns (Deployed memory d) {
         require(cfg.chainId == block.chainid, WrongChain(cfg.chainId, block.chainid));
+        if (cfg.adminIsDeployer) cfg.admin = deployer;
         require(cfg.admin != address(0), NoAdmin());
 
         // Every proxy is created with its init call inside its constructor, and the beacon with its owner.

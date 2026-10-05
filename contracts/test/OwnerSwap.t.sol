@@ -77,6 +77,30 @@ abstract contract OwnerSwapTest is SwapFixture {
         _assertNoAllowance(address(vault), address(cash), address(viaPermit2));
     }
 
+    /// A trade signed and not sent in time is not sent late: after its deadline it is refused, and so is a
+    /// batch that carries it. At the deadline itself it goes.
+    function test_ownerSwap_isRefusedAfterItsDeadline() public {
+        uint64 deadline = uint64(block.timestamp + 60);
+        Swap[] memory buy = _swaps(_swap(direct, address(cash), address(stockA), 600 * USD, 3 * unit));
+        vm.warp(deadline + 1);
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(IBasketVault.DeadlinePassed.selector, deadline, deadline + 1));
+        vault.ownerSwap(buy, deadline);
+
+        bytes[] memory batch = new bytes[](2);
+        batch[0] = abi.encodeCall(BasketVault.deposit, (100 * USD));
+        batch[1] = abi.encodeCall(BasketVault.ownerSwap, (buy, deadline));
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(IBasketVault.DeadlinePassed.selector, deadline, deadline + 1));
+        vault.multicall(batch);
+        _assertUntouched();
+
+        vm.warp(deadline);
+        vm.prank(owner);
+        vault.ownerSwap(buy, deadline);
+        assertEq(stockA.balanceOf(address(vault)), 3 * unit);
+    }
+
     /// The way a router pulls is the config's word, not the caller's: a router listed as direct gets no
     /// Permit2 allowance, and its pull through Permit2 fails.
     function test_ownerSwap_pullModeIsTheConfigs() public {

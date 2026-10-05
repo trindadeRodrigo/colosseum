@@ -849,13 +849,13 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
     }
 
     /// One word from a view of `target` that takes no argument, without trusting it: at most 32 bytes are
-    /// copied, and a revert or a short answer is `ok == false`.
+    /// copied, and a revert or a short answer is `ok == false` with a word of zero.
     function _readWord(address target, bytes4 selector) private view returns (bool ok, uint256 word) {
         assembly ("memory-safe") {
             mstore(0x00, selector)
             ok := staticcall(SWEEP_BALANCE_GAS, target, 0x00, 0x04, 0x00, 0x20)
             ok := and(ok, gt(returndatasize(), 0x1f))
-            word := mload(0x00)
+            word := mul(mload(0x00), ok)
         }
     }
 
