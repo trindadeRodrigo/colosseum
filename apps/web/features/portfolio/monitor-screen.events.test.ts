@@ -356,6 +356,35 @@ describe('the monitor, when there is nothing to read or the API cannot say', () 
   });
 });
 
+it('shows a person only the answer read for them, when another signs in while a read is on its way', async () => {
+  const pending: Array<(res: Response) => void> = [];
+  portStore.setApi(async (path) => {
+    if (path === '/v1/me') return json({ ...onSolana, userId: portStore.get().userId });
+    if (path === PORTFOLIO_PATH) return new Promise<Response>((resolve) => pending.push(resolve));
+    return json({}, 404);
+  });
+  signIn();
+  const host = await screen();
+  expect(pending).toHaveLength(1);
+  // another person signs in on this browser before the first read lands
+  await act(async () => portStore.set(signedInPort(PHANTOM, { userId: 'did:privy:other' })));
+  await settle();
+  expect(pending).toHaveLength(2);
+  // the first person's vault lands late: it is not shown to the second
+  await act(async () => pending[0]?.(json(portfolioBody())));
+  await settle();
+  expect(vaults(host)).toHaveLength(0);
+  expect(text(host)).toContain(en.portfolio.reading);
+  // the second person's own answer is
+  await act(async () =>
+    pending[1]?.(json(portfolioBody(chainOf([vault({ address: SECOND_VAULT })])))),
+  );
+  await settle();
+  expect(vaults(host)).toHaveLength(1);
+  expect(host.querySelector(`[title="${SECOND_VAULT}"]`)).not.toBeNull();
+  expect(host.querySelector(`[title="${VAULT}"]`)).toBeNull();
+});
+
 describe('the monitor in Portuguese', () => {
   it('says every word of the vault in Portuguese, and the figures the Brazilian way', async () => {
     const pt = dictionary('pt');
