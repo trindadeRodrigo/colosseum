@@ -96,6 +96,26 @@ function record(): SolanaDeploymentRecord {
 }
 const file = (r: unknown) => () => JSON.stringify(r);
 
+/** The record after a deploy dropped an asset from its config: listed for good, in `retired`. */
+function retire(r: SolanaDeploymentRecord, slug: string): SolanaDeploymentRecord {
+  const gone = r.assets.find((a) => a.id === `solana:${slug}-${run}`);
+  if (!gone) throw new Error(`no ${slug}`);
+  return {
+    ...r,
+    assets: r.assets.filter((a) => a !== gone),
+    retired: [
+      ...r.retired,
+      {
+        id: gone.id,
+        symbol: gone.symbol,
+        mint: gone.mint,
+        tokenProgram: gone.tokenProgram,
+        keeperOn: false,
+      },
+    ],
+  };
+}
+
 describe("the deploy's record gives a real Solana chain its addresses", () => {
   it('takes the program, the router and the price account from the record of the network', () => {
     const env = { CHAIN_MODE_SOLANA: 'live', CHAIN_NETWORK_SOLANA: 'testnet' };
@@ -229,6 +249,14 @@ describe("basket_assets is held to the record's mints at start", () => {
     expect(() => holdToRecord([cash, { ...gldx, session: 'us_equity' }], record())).toThrow(
       'has session us_equity',
     );
+    expect(() => holdToRecord([cash, { ...spyx, maxWeightBps: 9_000 }], record())).toThrow(
+      'has maxWeightBps 9000, and solana-devnet says 5000',
+    );
+    expect(() => holdToRecord([cash, { ...gldx, autoFollowEligible: true }], record())).toThrow(
+      'has autoFollowEligible true',
+    );
+    // A token the deploy retired: its row is let through, as a vault may still hold it.
+    expect(() => holdToRecord(rows, retire(record(), 'gldx'))).not.toThrow();
     expect(() => holdToRecord([spyx, gldx], record())).toThrow(
       "the cash row is not solana-devnet's cash",
     );
@@ -277,5 +305,14 @@ describe('basket_assets, filled from the record, is what the API runs Solana on'
     const mine = inputs?.assets.filter((a) => ids.includes(a.id));
     expect(mine?.map((a) => a.id).sort()).toEqual([...ids].sort());
     expect(mine?.find((a) => a.id === spyx?.id)?.maxWeightBps).toBe(4_000);
+
+    // The deploy retires gold: its row goes, the others stay, and a second run removes nothing more.
+    const retired = retire(moved, 'gldx');
+    expect((await fillBasketAssets(db, retired)).map((f) => [f.id, f.outcome])).toEqual([
+      [`solana:usdc-${run}`, 'same'],
+      [`solana:spyx-${run}`, 'same'],
+      [`solana:gldx-${run}`, 'removed'],
+    ]);
+    expect((await fillBasketAssets(db, retired)).map((f) => f.outcome)).toEqual(['same', 'same']);
   });
 });

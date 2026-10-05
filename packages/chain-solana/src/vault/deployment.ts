@@ -83,15 +83,6 @@ export const SolanaDeploymentRecord = z.strictObject({
 });
 export type SolanaDeploymentRecord = z.infer<typeof SolanaDeploymentRecord>;
 
-/** Every mint the record names, cash, the listed assets and the retired ones, by address. */
-export function deploymentMints(record: SolanaDeploymentRecord) {
-  const mints = new Map<string, { id: string | null; decimals: number | null }>();
-  mints.set(record.cash.mint, { id: record.cash.id, decimals: record.cash.decimals });
-  for (const a of record.assets) mints.set(a.mint, { id: a.id, decimals: a.decimals });
-  for (const r of record.retired) mints.set(r.mint, { id: r.id, decimals: null });
-  return mints;
-}
-
 /** What a chain config takes from the record: the program, the one router, the price account. */
 export function deploymentAddresses(record: SolanaDeploymentRecord) {
   return {

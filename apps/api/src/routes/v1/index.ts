@@ -155,15 +155,28 @@ export async function solanaFromEnv(
 
 /**
  * `basket_assets` against the deploy's record, at start: every Solana row is a row the record makes
- * (`deploymentAssets`), with the same mint, decimals, class, session and price entry, and the cash
- * row is the record's cash. One database serves one network, so a row of another network's deploy,
+ * (`deploymentAssets`), with the same mint, decimals, class, session, price entry, ceiling and keeper
+ * eligibility, and the cash row is the record's cash. A row of a token the record retired is let
+ * through. One database serves one network, so a row of another network's deploy,
  * or a hand-edited one (a `priceRef` moved to another entry), stops the API rather than build on it.
  * The table has no token program: the adapter reads it from each mint.
  */
 export function holdToRecord(assets: BasketAsset[], record: SolanaDeploymentRecord): void {
   const made = new Map(deploymentAssets(record).map((a) => [a.address, a]));
-  const fields = ['decimals', 'cls', 'session', 'priceKind', 'priceRef'] as const;
+  const fields = [
+    'decimals',
+    'cls',
+    'session',
+    'priceKind',
+    'priceRef',
+    'maxWeightBps',
+    'autoFollowEligible',
+  ] as const;
+  // A token the deploy retired stays listed on chain and may still be in a vault: its row is tolerated
+  // until the fill script takes it out.
+  const retired = new Set(record.retired.map((r) => r.mint));
   const wrong = assets.flatMap((a) => {
+    if (retired.has(a.address)) return [];
     const want = made.get(a.address);
     if (!want) return [`${a.id} (${a.address}) is not a token of ${record.network}`];
     return fields
