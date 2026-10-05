@@ -53,3 +53,6 @@ export function shortfallBps(outRaw: string, minOutRaw: string): number | null {
   const gap = (out - min) * 10_000n;
   return Number(gap / out + (gap % out === 0n ? 0n : 1n));
 }
+
+/** An asset as a plan on one chain names it: its id without the chain it is on. */
+export const assetName = (id: string) => id.slice(id.indexOf(':') + 1);

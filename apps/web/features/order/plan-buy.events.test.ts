@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { DISCLAIMER, TRUST_STATUS } from '@colosseum/schemas';
+import { DISCLAIMER, DISCLAIMER_SHORT, TRUST_STATUS } from '@colosseum/schemas';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buttonClass } from '../../components/ui/button-class';
@@ -125,11 +125,15 @@ describe('the plan screen', () => {
     rememberPlan(planOn());
     const host = await plan();
     expect(find(host, 'h1').textContent).toBe('Grow $40,000 over 36 months.');
-    const rows = [...host.querySelectorAll('tbody tr')].map((r) => r.textContent);
-    expect(rows[0]).toContain('solana:spyx');
-    expect(host.querySelector('[data-ui="plan-legs"]')?.textContent).toContain(
-      'Gold steadies the plan.',
-    );
+    // the plan pane of the showcase: the limits as chips, the figures as stat cells, the legs
+    const chips = find(host, `ul[aria-label="${en.plan.chips.label}"]`).textContent;
+    expect(chips).toContain('amount: $40,000');
+    expect(chips).toContain('chain: Solana');
+    expect(host.querySelectorAll('[data-ui="stat"]')).toHaveLength(4);
+    const legs = find(host, '[data-ui="plan-legs"]').textContent;
+    expect(legs).toContain('spyx');
+    expect(legs).not.toContain('solana:');
+    expect(legs).toContain('Gold steadies the plan.');
     // the projected range carries its pin, and the exit cost its own
     expect(host.querySelectorAll('[data-ui="pin"]').length).toBeGreaterThanOrEqual(2);
     expect(host.querySelector('[data-ui="exit-plan-line"]')?.textContent).toContain(
@@ -137,7 +141,10 @@ describe('the plan screen', () => {
     );
     // the disclaimer is the shell's foot, once per page: the screen does not repeat it
     expect(host.textContent).not.toContain(DISCLAIMER.en);
-    expect(host.textContent).toContain(en.plan.risk.none);
+    expect(host.textContent).toContain(DISCLAIMER_SHORT);
+    expect(host.textContent).toContain(en.plan.foot.sandbox);
+    // the API sent no risk roll-up, so there is no panel for one
+    expect(host.textContent).not.toContain(en.plan.risk.title);
     // a plan built on a test network: the plate, the hatch and the words
     expect(host.textContent).toContain('MOCK');
     expect(host.textContent).toContain(en.shell.testNetwork);
@@ -145,6 +152,35 @@ describe('the plan screen', () => {
     const next = primaryLink(host);
     expect(next?.textContent).toBe(en.plan.buy);
     expect(next?.getAttribute('href')).toBe(`/plan/${PLAN_ID}/buy`);
+  });
+
+  it('shows the risk roll-up as the API sent it, and a table when the plan has more than four parts', async () => {
+    api();
+    const base = planOn();
+    const extra = ['solana:aaplx', 'solana:nvdax'].map((assetId) => ({
+      chain: 'solana' as const,
+      assetId,
+      weightBps: 0,
+      amountUsd: 0,
+      reasons: [],
+    }));
+    rememberPlan({
+      ...base,
+      proposal: { ...base.proposal, lines: [...base.proposal.lines, ...extra] },
+      rollUp: {
+        byIssuer: [{ key: 'issuer one', bps: 6000 }],
+        byChain: [{ key: 'solana', bps: 10_000 }],
+        byClass: [{ key: 'stock', bps: 6000 }],
+        flags: [],
+        exit: { quotedBps: null, quotedAt: null, measuredWorstBps: 42, measuredShareBps: 6000 },
+      },
+    });
+    const host = await plan();
+    expect(host.querySelector('[data-ui="plan-legs"]')).toBeNull();
+    expect(host.querySelectorAll('tbody tr').length).toBeGreaterThanOrEqual(5);
+    expect(host.textContent).toContain(en.plan.risk.title);
+    expect(host.textContent).toContain('issuer one');
+    expect(host.textContent).toContain(en.plan.risk.notMeasured);
   });
 
   it('shows no plan that this tab does not have, or that another person built', async () => {

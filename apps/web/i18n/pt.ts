@@ -314,6 +314,27 @@ export const pt: Dictionary = {
     lead: (chain: string) =>
       `Montado para ${chain}, a partir dos seus limites. Nada é comprado antes de você revisar cada passo e assinar.`,
     holds: 'O que ele tem',
+    sub: (risk: string, chain: string) => `${risk} · em ${chain} · nada comprado ainda`,
+    riskWord: { low: 'Risco baixo', medium: 'Risco médio', high: 'Risco alto' },
+    chips: {
+      label: 'Seus limites',
+      goal: 'objetivo',
+      amount: 'valor',
+      horizon: 'prazo',
+      risk: 'risco',
+      chain: 'rede',
+    },
+    kpi: {
+      amount: 'você coloca',
+      horizon: 'por',
+      projected: 'projetado ao ano',
+      loss: 'numa queda forte',
+      estimate: 'estimativa',
+    },
+    legs: { afterHaircut: 'após desconto', quoted: 'cotado {rate}' },
+    exitPlan: 'Plano de saída',
+    costPrefix: 'custo',
+    foot: { sandbox: 'rede de teste, não real', mock: 'dados de exemplo, não reais' },
     columns: { asset: 'Ativo', share: 'Parte', amount: 'Valor', why: 'Por quê' },
     noReason: 'Nenhum motivo informado.',
     projected: 'Faixa projetada por ano, não é uma promessa',
@@ -326,7 +347,6 @@ export const pt: Dictionary = {
     inKind: 'Você também pode tirar os próprios tokens do seu cofre a qualquer momento.',
     risk: {
       title: 'Risco, como nosso servidor resumiu',
-      none: 'Nosso servidor não enviou um resumo de risco com este plano, então nenhum é mostrado aqui.',
       byClass: 'Por tipo de ativo',
       byIssuer: 'Por emissor',
       share: 'Parte',
@@ -505,6 +525,7 @@ export const pt: Dictionary = {
       settled: 'Concluído',
     },
     explorer: 'explorador',
+    signature: 'assinatura',
     notRetried: '(sem nova tentativa)',
     link: {
       tx: 'Tx',
@@ -513,7 +534,7 @@ export const pt: Dictionary = {
     },
     outcome: {
       done: (chain: string) =>
-        `Todos os passos estão confirmados em ${chain}, segundo nosso servidor. A transação de cada um está no link abaixo.`,
+        `Todos os passos estão confirmados em ${chain}, segundo nosso servidor. A transação de cada passo está no link ao lado dele.`,
       refused: (step: number) =>
         `Não assinei o passo ${step}: a transação que nosso servidor montou para ele não é o passo que você aprovou. Nada foi assinado para ele.`,
       refusedOrder:

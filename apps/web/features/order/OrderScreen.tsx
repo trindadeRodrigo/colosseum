@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card, CardBody, CardHeader, CardLoading } from '../../components/ui/Card';
+import { Card, CardBody, CardHeader, CardLoading, Stat, StatRow } from '../../components/ui/Card';
+import { CopyButton } from '../../components/ui/CopyButton';
 import { ExplorerLink } from '../../components/ui/ExplorerLink';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { type Dictionary, LOCALE } from '../../i18n';
@@ -12,7 +13,7 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { dollars } from '../goal/sheet';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
-import { formatBps, formatRaw, shortfallBps } from './amounts';
+import { assetName, formatBps, formatRaw, shortfallBps } from './amounts';
 import { type CallFailure, readOrder } from './order-api';
 import { keepOrder, type OrderRecord, recallOrder } from './order-record';
 import { legsInOrder, type NextStep, type OutcomeView, outcomeView, stepOf } from './order-view';
@@ -211,25 +212,20 @@ export function OrderScreen({ id }: { id: string }) {
       >
         <CardHeader title={t.order.stepsTitle} level={2} meta={t.chain.names[chain]} />
         <CardBody className="flex flex-col gap-4">
-          <dl className="grid gap-x-6 gap-y-1 text-body-sm sm:grid-cols-[auto_1fr]">
-            <dt className="text-muted-foreground">{t.order.review.deposit}</dt>
-            <dd className="tabular-nums">{amount}</dd>
-            <dt className="text-muted-foreground">{t.order.review.steps}</dt>
-            <dd className="tabular-nums">{legs.length}</dd>
+          <StatRow>
+            <Stat label={t.order.review.deposit}>{amount}</Stat>
+            <Stat label={t.order.review.steps}>{legs.length}</Stat>
             {!record.approved && (
-              <>
-                <dt className="text-muted-foreground">{t.order.review.expires}</dt>
-                <dd className="tabular-nums">
-                  <time dateTime={new Date(shown.expiresAt * 1000).toISOString()}>
-                    {new Intl.DateTimeFormat(LOCALE[lang], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    }).format(new Date(shown.expiresAt * 1000))}
-                  </time>
-                </dd>
-              </>
+              <Stat label={t.order.review.expires} className="max-[620px]:col-span-2">
+                <time dateTime={new Date(shown.expiresAt * 1000).toISOString()}>
+                  {new Intl.DateTimeFormat(LOCALE[lang], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  }).format(new Date(shown.expiresAt * 1000))}
+                </time>
+              </Stat>
             )}
-          </dl>
+          </StatRow>
           <ol className="flex flex-col divide-y divide-border">
             {legs.map((leg, i) => {
               const standing = now.legs.find((l) => l.id === leg.id) ?? leg;
@@ -429,13 +425,15 @@ function Step({
           {failed && ` ${t.order.notRetried}`}
         </span>
         {now.txId && (
-          <ExplorerLink
-            className="ml-auto"
-            signature={now.txId}
-            href={now.explorerUrl}
-            explorer={explorer}
-            labels={t.order.link}
-          />
+          <span className="ml-auto inline-flex items-center gap-2">
+            <ExplorerLink
+              signature={now.txId}
+              href={now.explorerUrl}
+              explorer={explorer}
+              labels={t.order.link}
+            />
+            <CopyButton value={now.txId} what={t.order.signature} />
+          </span>
         )}
       </p>
       {leg.trades.length === 0 ? null : (
@@ -445,11 +443,11 @@ function Step({
             const under = expected ? shortfallBps(expected.outRaw, expected.minOutRaw) : null;
             return (
               <li key={`${trade.sell}>${trade.buy}:${trade.amountInRaw}`} className="tabular-nums">
-                {t.order.review.spend(spend(trade.amountInRaw), trade.buy)}
+                {t.order.review.spend(spend(trade.amountInRaw), assetName(trade.buy))}
                 {expected && (
                   <>
                     {' · '}
-                    {t.order.review.atLeast(expected.minOutRaw, trade.buy)}
+                    {t.order.review.atLeast(expected.minOutRaw, assetName(trade.buy))}
                     {under !== null && ` · ${t.order.review.under(formatBps(under, locale))}`}
                   </>
                 )}

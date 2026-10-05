@@ -130,8 +130,8 @@ describe('the review', () => {
     expect(steps).toHaveLength(2);
     expect(steps[0]).toContain(en.order.kind.create_vault);
     expect(steps[0]).toContain('10 USDC');
-    expect(steps[1]).toContain(en.order.review.spend('6 USDC', 'solana:spyx'));
-    expect(steps[1]).toContain(en.order.review.atLeast('990000', 'solana:spyx'));
+    expect(steps[1]).toContain(en.order.review.spend('6 USDC', 'spyx'));
+    expect(steps[1]).toContain(en.order.review.atLeast('990000', 'spyx'));
     expect(steps[1]).toContain(en.order.review.under('1%'));
     expect(label(primary(host))).toBe(en.order.signAndBuy('$10'));
     // on a test network: the plate, the hatch and the words, together

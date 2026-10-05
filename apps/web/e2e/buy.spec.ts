@@ -11,8 +11,19 @@ import { dictionary } from '../i18n';
 
 const en = dictionary('en');
 const STUB = 'http://localhost:3901';
+/** Where the screenshots go: the folder a run names, or the test's own output folder. */
+const shot = (name: string) =>
+  process.env.SCREENSHOTS_DIR
+    ? `${process.env.SCREENSHOTS_DIR}/${name}.png`
+    : test.info().outputPath(`${name}.png`);
+const WIDTHS = [375, 1280] as const;
+const REFERENCE = new URL('../../../.design/branding/working-brand/patterns/', import.meta.url)
+  .href;
 
-/** axe on the page as it is, in light and in dark, and nothing wider than the window. */
+/**
+ * axe on the page as it is at 375 px, in light and in dark, nothing wider than the window, and a
+ * screenshot of each theme at 375 px and at 1280 px to set beside the guide's.
+ */
 async function check(page: Page, name: string) {
   for (const theme of ['light', 'dark'] as const) {
     await page.evaluate((t) => {
@@ -31,7 +42,11 @@ async function check(page: Page, name: string) {
     expect(found, `${name}, ${theme}`).toEqual([]);
     const wide = await page.evaluate(() => document.documentElement.scrollWidth);
     expect(wide, `${name}, ${theme}: no sideways scroll`).toBeLessThanOrEqual(375);
-    await page.screenshot({ path: test.info().outputPath(`${name}-${theme}.png`), fullPage: true });
+    for (const width of WIDTHS) {
+      await page.setViewportSize({ width, height: 812 });
+      await page.screenshot({ path: shot(`${name}-${width}-${theme}`), fullPage: true });
+    }
+    await page.setViewportSize({ width: 375, height: 812 });
   }
 }
 
@@ -98,4 +113,23 @@ test('a step the server lies about is refused by the guard, and nothing is signe
   await expect(steps.nth(1)).not.toHaveAttribute('data-status', 'confirmed');
   await expect(page.getByRole('link', { name: en.order.outcome.newOrder })).toBeVisible();
   await check(page, 'refused');
+});
+
+test('the guide and the prototype, photographed beside the screens', async ({ page }) => {
+  // What each screen is held to (guidelines.html, components and provenance; the prototype's plan
+  // pane), at the same widths and in both themes, for the report that compares them.
+  for (const width of WIDTHS)
+    for (const theme of ['light', 'dark'] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${REFERENCE}guidelines.html${theme === 'dark' ? '?theme=dark' : ''}`);
+      for (const part of ['components', 'provenance'])
+        await page
+          .locator(`#${part}`)
+          .screenshot({ path: shot(`guide-${part}-${width}-${theme}`) });
+      await page.goto(`${REFERENCE}prototypes/hero-3d.html`);
+      await page
+        .locator('article.case')
+        .first()
+        .screenshot({ path: shot(`prototype-case-${width}`) });
+    }
 });

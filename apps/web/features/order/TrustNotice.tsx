@@ -52,7 +52,7 @@ export function TrustNotice({
           <p className="max-w-(--tf-measure-body) text-body">{t.trust.lead}</p>
           <ul className="flex max-w-(--tf-measure-body) list-disc flex-col gap-2 pl-5 text-body-sm">
             {items.map((item) => (
-              <li key={item} className="break-words">
+              <li key={item} className="[overflow-wrap:anywhere]">
                 {item}
               </li>
             ))}

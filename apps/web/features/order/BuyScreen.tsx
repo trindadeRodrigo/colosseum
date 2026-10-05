@@ -3,10 +3,10 @@ import { chainFamily, type FundingFigure, TRUST_STATUS } from '@colosseum/schema
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
-import { Card, CardBody, CardHeader, CardLoading } from '../../components/ui/Card';
+import { Card, CardBody, CardFooter, CardHeader, CardLoading } from '../../components/ui/Card';
 import { DataTable } from '../../components/ui/DataTable';
+import { utcMinute } from '../../components/ui/ExecutionList';
 import { Field, Input } from '../../components/ui/Field';
-import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -178,34 +178,41 @@ export function BuyScreen({ id }: { id: string }) {
         <p className="max-w-(--tf-measure-body) text-body-lg">{t.buy.lead(chainName)}</p>
       </header>
 
-      <Field
-        label={t.buy.amount.label}
-        hint={t.buy.amount.hint(dollars(plan.proposal.sheet.amountUsd, lang))}
-        error={typed.trim() && amount === null ? t.buy.blocked.amount : undefined}
-      >
-        {(control) => (
-          <Input
-            {...control}
-            inputMode="decimal"
-            width="14ch"
-            value={typed}
-            onChange={(e) => setText(e.currentTarget.value)}
+      {/* Two columns from 1024px, as the guide sets its controls and their panels side by side. */}
+      <div className="grid items-start gap-6 lg:grid-cols-2 [&>*]:min-w-0">
+        <div className="flex flex-col gap-6">
+          <Card>
+            <CardBody>
+              <Field
+                label={t.buy.amount.label}
+                hint={t.buy.amount.hint(dollars(plan.proposal.sheet.amountUsd, lang))}
+                error={typed.trim() && amount === null ? t.buy.blocked.amount : undefined}
+              >
+                {(control) => (
+                  <Input
+                    {...control}
+                    inputMode="decimal"
+                    width="14ch"
+                    value={typed}
+                    onChange={(e) => setText(e.currentTarget.value)}
+                  />
+                )}
+              </Field>
+            </CardBody>
+          </Card>
+          <FundingCard
+            id={fundingId}
+            funding={funding}
+            chainName={chainName}
+            owner={owner}
+            mock={ready.mock}
+            mockBusy={addingMock}
+            onReadAgain={() => setRound((n) => n + 1)}
+            onMock={addMock}
           />
-        )}
-      </Field>
-
-      <FundingCard
-        id={fundingId}
-        funding={funding}
-        chainName={chainName}
-        owner={owner}
-        mock={ready.mock}
-        mockBusy={addingMock}
-        onReadAgain={() => setRound((n) => n + 1)}
-        onMock={addMock}
-      />
-
-      <TrustNotice chain={chain} accepted={accepted} checked={ticked} onCheck={setTicked} />
+        </div>
+        <TrustNotice chain={chain} accepted={accepted} checked={ticked} onCheck={setTicked} />
+      </div>
 
       <div className="flex flex-col items-start gap-2">
         <Button
@@ -266,8 +273,9 @@ function FundingCard({
   const lang = useLang();
   const locale = LOCALE[lang];
   const read = funding.kind === 'read' ? funding.funding : null;
-  const amount = (raw: string, f: FundingFigure) =>
-    `${formatRaw(raw, f.decimals, locale) ?? raw} ${f.symbol}`;
+  const amount = (raw: string, f: FundingFigure) => (
+    <span className="whitespace-nowrap">{`${formatRaw(raw, f.decimals, locale) ?? raw} ${f.symbol}`}</span>
+  );
   const rows: FundingRow[] = read
     ? [
         { key: 'cash', name: t.buy.funding.cash(read.cash.symbol), figure: read.cash },
@@ -321,13 +329,7 @@ function FundingCard({
                       key: 'have',
                       header: t.buy.funding.have,
                       numeric: true,
-                      cell: (r) => (
-                        <ProvenancePin
-                          value={amount(r.figure.haveRaw, r.figure)}
-                          obs={r.figure}
-                          labels={t.pin}
-                        />
-                      ),
+                      cell: (r) => amount(r.figure.haveRaw, r.figure),
                     },
                     {
                       key: 'need',
@@ -374,6 +376,23 @@ function FundingCard({
             )}
           </div>
         </CardBody>
+      )}
+      {read && (
+        // Where each balance comes from (card.md: the footer holds the source lines).
+        <CardFooter>
+          <ul className="flex flex-col gap-1 font-mono text-source text-muted-foreground [overflow-wrap:anywhere]">
+            {rows.map((r) => (
+              <li key={r.key}>
+                {[
+                  r.figure.symbol,
+                  r.figure.source,
+                  utcMinute(r.figure.fetchedAt),
+                  r.figure.method,
+                ].join(' · ')}
+              </li>
+            ))}
+          </ul>
+        </CardFooter>
       )}
     </Card>
   );

@@ -322,6 +322,27 @@ export const en = {
     lead: (chain: string) =>
       `Built for ${chain}, from your limits. Nothing is bought until you review every step and sign it.`,
     holds: 'What it holds',
+    sub: (risk: string, chain: string) => `${risk} · on ${chain} · nothing bought yet`,
+    riskWord: { low: 'Low risk', medium: 'Medium risk', high: 'High risk' },
+    chips: {
+      label: 'Your limits',
+      goal: 'goal',
+      amount: 'amount',
+      horizon: 'horizon',
+      risk: 'risk',
+      chain: 'chain',
+    },
+    kpi: {
+      amount: 'you put in',
+      horizon: 'for',
+      projected: 'projected a year',
+      loss: 'in a bad fall',
+      estimate: 'estimate',
+    },
+    legs: { afterHaircut: 'after haircut', quoted: 'quoted {rate}' },
+    exitPlan: 'Exit plan',
+    costPrefix: 'cost',
+    foot: { sandbox: 'test network, not live', mock: 'sample data, not live' },
     columns: { asset: 'Asset', share: 'Share', amount: 'Amount', why: 'Why' },
     noReason: 'No reason given.',
     projected: 'Projected range a year, not a promise',
@@ -334,7 +355,6 @@ export const en = {
     inKind: 'You can also take the tokens themselves out of your vault at any time.',
     risk: {
       title: 'Risk, as our server rolled it up',
-      none: 'Our server didn’t send a risk roll-up with this plan, so none is shown here.',
       byClass: 'By kind of asset',
       byIssuer: 'By issuer',
       share: 'Share',
@@ -507,6 +527,7 @@ export const en = {
       settled: 'Settled',
     },
     explorer: 'explorer',
+    signature: 'signature',
     notRetried: '(not retried)',
     link: {
       tx: 'Tx',
@@ -515,7 +536,7 @@ export const en = {
     },
     outcome: {
       done: (chain: string) =>
-        `Every step is confirmed on ${chain}, as our server reports it. Each one’s transaction is linked below.`,
+        `Every step is confirmed on ${chain}, as our server reports it. Each step’s transaction is linked beside it.`,
       refused: (step: number) =>
         `I didn’t sign step ${step}: the transaction our server built for it isn’t the step you approved. Nothing was signed for it.`,
       refusedOrder:

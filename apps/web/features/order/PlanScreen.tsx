@@ -1,10 +1,15 @@
 'use client';
-import type { BasketLine, ObservationRef, RiskRollUp } from '@colosseum/schemas';
+import {
+  type BasketLine,
+  DISCLAIMER_SHORT,
+  type ObservationRef,
+  type RiskRollUp,
+} from '@colosseum/schemas';
 import Link from 'next/link';
 import { useId } from 'react';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card, CardBody, CardHeader } from '../../components/ui/Card';
+import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/Card';
 import { DataTable } from '../../components/ui/DataTable';
 import { ExitPlanLine } from '../../components/ui/ExitPlanLine';
 import { MAX_LEGS, PlanLegs } from '../../components/ui/PlanLegs';
@@ -14,7 +19,7 @@ import { type Dictionary, type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { planProvenance } from '../goal/build-plan';
 import { dollars } from '../goal/sheet';
-import { formatBps } from './amounts';
+import { assetName, formatBps } from './amounts';
 import { PlanGate } from './PlanGate';
 import { usePlan } from './use-plan';
 
@@ -45,6 +50,7 @@ export function PlanScreen({ id }: { id: string }) {
   const lang = useLang();
   const state = usePlan(id);
   const headingId = useId();
+  const paneId = useId();
   const reasonId = useId();
   const here = `/plan/${encodeURIComponent(id)}`;
   if (state.kind !== 'ready') return <PlanGate state={state} next={here} />;
@@ -65,6 +71,17 @@ export function PlanScreen({ id }: { id: string }) {
       : t.plan.chainNotReady(chainName);
   const share = (bps: number) => formatBps(bps, locale);
 
+  const tableOnly = proposal.lines.length > MAX_LEGS;
+  const foot =
+    label === 'sandbox' ? t.plan.foot.sandbox : label === 'mock' ? t.plan.foot.mock : null;
+  const chips: [string, string][] = [
+    [t.plan.chips.goal, t.goal.options.goal[sheet.goal].toLowerCase()],
+    [t.plan.chips.amount, dollars(sheet.amountUsd, lang)],
+    [t.plan.chips.horizon, t.goal.card.months(sheet.horizonMonths)],
+    [t.plan.chips.risk, t.goal.options.risk[sheet.risk].toLowerCase()],
+    [t.plan.chips.chain, chainName],
+  ];
+
   return (
     <div data-ui="plan-screen" className="flex flex-col gap-8">
       <header className="flex flex-col gap-3">
@@ -80,71 +97,51 @@ export function PlanScreen({ id }: { id: string }) {
         <p className="max-w-(--tf-measure-body) text-body-lg">{t.plan.lead(chainName)}</p>
       </header>
 
+      {/* The plan pane of the showcase case (goal-showcase-case.md): head, the limits as chips, the
+          figures as stat cells, the legs with their reasons, the exit line, and a foot. */}
       <Card
         as="section"
-        aria-label={t.plan.holds}
+        aria-labelledby={paneId}
         mock={notLive}
         mockLabels={{
           announce: t.shell.mockAnnounce,
           note: label === 'sandbox' ? t.shell.testNetwork : undefined,
         }}
       >
-        <CardHeader title={t.plan.holds} level={2} />
-        <CardBody className="flex flex-col gap-6">
-          {proposal.lines.length <= MAX_LEGS && (
-            <PlanLegs
-              profile={sheet.goal === 'income' ? 'income' : undefined}
-              legs={proposal.lines.map((line) => ({
-                id: line.assetId,
-                name: line.assetId,
-                weight: line.weightBps / 10_000,
-                weightLabel: share(line.weightBps),
-                rate: null,
-                why: line.reasons[0]?.text,
-                mock: notLive,
-              }))}
-            />
-          )}
-          <DataTable<BasketLine>
-            caption={t.plan.holds}
-            captionHidden
-            rows={proposal.lines}
-            rowKey={(line) => `${line.assetId}:${line.viaIndex ?? ''}`}
-            columns={[
-              {
-                key: 'asset',
-                header: t.plan.columns.asset,
-                rowHeader: true,
-                cell: (l) => l.assetId,
-              },
-              {
-                key: 'share',
-                header: t.plan.columns.share,
-                numeric: true,
-                cell: (l) => share(l.weightBps),
-              },
-              {
-                key: 'amount',
-                header: t.plan.columns.amount,
-                numeric: true,
-                cell: (l) => dollars(l.amountUsd, lang),
-              },
-              // With the bar, each part's reason is under it; a plan of more parts has it here.
-              ...(proposal.lines.length > MAX_LEGS
-                ? [
-                    {
-                      key: 'why',
-                      header: t.plan.columns.why,
-                      cell: (l: BasketLine) =>
-                        l.reasons.map((r) => r.text).join(' ') || t.plan.noReason,
-                    },
-                  ]
-                : []),
-            ]}
-          />
-          <dl className="flex flex-col gap-1">
-            <dt className="text-caption text-muted-foreground">{t.plan.projected}</dt>
-            <dd className="text-body tabular-nums">
+        {/* The head flows beside the MOCK plate the card floats right; the rest clears it. */}
+        <div className="px-6 pt-6">
+          <h2 id={paneId} className="text-[1.125rem]/7 font-medium">
+            {t.plan.title}
+          </h2>
+          <p className="mt-1 text-body-sm text-muted-foreground">
+            {t.plan.sub(t.plan.riskWord[sheet.risk], chainName)}
+          </p>
+        </div>
+        <div className="clear-both flex flex-col gap-5 px-6 pt-5 pb-6">
+          <ul aria-label={t.plan.chips.label} className="flex flex-wrap gap-2">
+            {chips.map(([key, value]) => (
+              <li
+                key={key}
+                className="rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-source"
+              >
+                {key}: {value}
+              </li>
+            ))}
+          </ul>
+          <StatRow>
+            <Stat label={t.plan.kpi.amount}>{dollars(sheet.amountUsd, lang)}</Stat>
+            <Stat label={t.plan.kpi.horizon}>{t.goal.card.months(sheet.horizonMonths)}</Stat>
+            <Stat label={t.plan.kpi.loss} className="max-[620px]:col-span-2">
+              {dollars(card.expectedReturn.lossInFallUsd, lang)}{' '}
+              <span className="font-sans text-caption font-normal text-muted-foreground">
+                {t.plan.kpi.estimate}
+              </span>
+            </Stat>
+            {/* On a phone the last two take a row each: a range with its pin is the widest figure. */}
+            <Stat
+              label={t.plan.kpi.projected}
+              className="max-[620px]:col-span-2 max-[620px]:border-l-0"
+            >
               <ProvenancePin
                 value={t.plan.projectedValue(
                   percent(card.expectedReturn.lowPct, lang),
@@ -153,16 +150,62 @@ export function PlanScreen({ id }: { id: string }) {
                 obs={yieldObs}
                 labels={t.pin}
               />
-            </dd>
-            <dd className="text-body-sm text-muted-foreground">
-              {t.plan.basis(card.expectedReturn.basis)}
-            </dd>
-            {card.expectedReturn.lossInFallUsd > 0 && (
-              <dd className="text-body-sm">
-                {t.plan.lossInFall(dollars(card.expectedReturn.lossInFallUsd, lang))}
-              </dd>
+            </Stat>
+          </StatRow>
+          <p className="text-body-sm text-muted-foreground">
+            {t.plan.basis(card.expectedReturn.basis)}
+          </p>
+          <div className="flex flex-col gap-3">
+            <h3 className="text-[0.8125rem]/5 font-medium">{t.plan.holds}</h3>
+            {tableOnly ? (
+              <DataTable<BasketLine>
+                caption={t.plan.holds}
+                captionHidden
+                rows={proposal.lines}
+                rowKey={(line) => `${line.assetId}:${line.viaIndex ?? ''}`}
+                columns={[
+                  {
+                    key: 'asset',
+                    header: t.plan.columns.asset,
+                    rowHeader: true,
+                    cell: (l) => assetName(l.assetId),
+                  },
+                  {
+                    key: 'share',
+                    header: t.plan.columns.share,
+                    numeric: true,
+                    cell: (l) => share(l.weightBps),
+                  },
+                  {
+                    key: 'amount',
+                    header: t.plan.columns.amount,
+                    numeric: true,
+                    cell: (l) => dollars(l.amountUsd, lang),
+                  },
+                  {
+                    key: 'why',
+                    header: t.plan.columns.why,
+                    cell: (l) => l.reasons.map((r) => r.text).join(' ') || t.plan.noReason,
+                  },
+                ]}
+              />
+            ) : (
+              <PlanLegs
+                profile={sheet.goal === 'income' ? 'income' : undefined}
+                legs={proposal.lines.map((line) => ({
+                  id: line.assetId,
+                  name: assetName(line.assetId),
+                  weight: line.weightBps / 10_000,
+                  weightLabel: `${share(line.weightBps)} · ${dollars(line.amountUsd, lang)}`,
+                  rate: null,
+                  why: line.reasons[0]?.text,
+                  // The pane carries the plate for the whole plan, as the showcase case does.
+                  mock: false,
+                }))}
+                labels={{ afterHaircut: t.plan.legs.afterHaircut, quoted: t.plan.legs.quoted }}
+              />
             )}
-          </dl>
+          </div>
           <ExitPlanLine
             tiers={[
               {
@@ -175,11 +218,11 @@ export function PlanScreen({ id }: { id: string }) {
                         obs: exitObs,
                       },
                     }),
-                mock: notLive,
               },
             ]}
             caveat={card.exit.costBps === null ? t.plan.exitUnmeasured : undefined}
             inKind={t.plan.inKind}
+            labels={{ exitPlan: t.plan.exitPlan, costPrefix: t.plan.costPrefix }}
           />
           {proposal.verdict && (
             <p className="max-w-(--tf-measure-body) text-body">
@@ -198,16 +241,22 @@ export function PlanScreen({ id }: { id: string }) {
               </ul>
             </div>
           )}
-        </CardBody>
+        </div>
+        <div className="flex flex-wrap justify-between gap-x-6 gap-y-1 border-t border-border px-6 py-3 font-mono text-source text-muted-foreground">
+          <span>{foot}</span>
+          <span>{DISCLAIMER_SHORT}</span>
+        </div>
       </Card>
 
-      <RiskPanel
-        rollUp={plan.rollUp}
-        t={t}
-        share={share}
-        notLive={notLive}
-        sandbox={label === 'sandbox'}
-      />
+      {plan.rollUp && (
+        <RiskPanel
+          rollUp={plan.rollUp}
+          t={t}
+          share={share}
+          notLive={notLive}
+          sandbox={label === 'sandbox'}
+        />
+      )}
 
       <div className="flex flex-col items-start gap-2">
         {blocked ? (
@@ -237,7 +286,7 @@ function RiskPanel({
   notLive,
   sandbox,
 }: {
-  rollUp: RiskRollUp | null;
+  rollUp: RiskRollUp;
   t: Dictionary;
   share: (bps: number) => string;
   notLive: boolean;
@@ -260,7 +309,7 @@ function RiskPanel({
     <Card
       as="section"
       aria-label={t.plan.risk.title}
-      mock={rollUp !== null && notLive}
+      mock={notLive}
       mockLabels={{
         announce: t.shell.mockAnnounce,
         note: sandbox ? t.shell.testNetwork : undefined,
@@ -268,9 +317,7 @@ function RiskPanel({
     >
       <CardHeader title={t.plan.risk.title} level={2} />
       <CardBody className="flex flex-col gap-6">
-        {rollUp === null ? (
-          <p className="max-w-(--tf-measure-body) text-body-sm">{t.plan.risk.none}</p>
-        ) : (
+        {
           <>
             {shares(t.plan.risk.byClass, rollUp.byClass)}
             {shares(t.plan.risk.byIssuer, rollUp.byIssuer)}
@@ -290,7 +337,7 @@ function RiskPanel({
               </ul>
             )}
           </>
-        )}
+        }
       </CardBody>
     </Card>
   );
