@@ -51,14 +51,29 @@ async function check(page: Page, name: string) {
 }
 
 /** From a signed-out page to the buy screen of a plan, with the wallet funded and the notice ticked. */
+test('his landing page: the hero, the two sample cases, the typing box that hands a goal on', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.landing.stage.title);
+  await expect(page.locator('article[data-ui="showcase-case"]')).toHaveCount(2);
+  await check(page, 'landing');
+  const box = page.locator('#simulate textarea');
+  await box.fill('Grow $2,000 for ten years, high risk');
+  await box.press('Enter');
+  await expect(page).toHaveURL(/\/goal$/);
+  // the goal screen reads what the landing handed it
+  await expect(page.getByText(en.goal.sheet.title).first()).toBeVisible();
+});
+
 async function toReview(page: Page) {
   await page.request.post(`${STUB}/__stub/reset`);
   await page.goto('/sign-in');
   await page.getByRole('button', { name: en.signIn.passkey.create }).click();
   await page.getByRole('button', { name: 'Solana' }).click();
   await page.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
-  // home is the goal (WEB-2)
-  await expect(page).toHaveURL(/:\d+\/$/);
+  // sign-in leads to the goal; `/` is his landing page for a visitor (WEB-2b)
+  await expect(page).toHaveURL(/\/goal$/);
   await check(page, 'home');
 
   const goal = page.getByRole('textbox', { name: en.goal.composer.label, exact: true });

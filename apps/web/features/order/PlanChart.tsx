@@ -57,8 +57,8 @@ export function PlanChart({
 
   return (
     <figure data-ui="plan-chart" className="m-0 flex flex-col gap-2">
-      {/* biome-ignore lint/a11y/noNoninteractiveTabindex: a region that scrolls on a phone must be reachable by keyboard */}
-      <div
+      <section
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: a region that scrolls on a phone must be reachable by keyboard
         tabIndex={0}
         aria-label={words.table}
         className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
@@ -113,7 +113,7 @@ export function PlanChart({
             {t.goal.card.months(months)}
           </text>
         </svg>
-      </div>
+      </section>
       <figcaption className="flex flex-wrap items-baseline gap-x-2 text-body-sm">
         <span className="text-muted-foreground">{words.after(months)}:</span>
         <ProvenancePin value={`${money(low)} – ${money(high)}`} obs={yieldObs} labels={t.pin} />

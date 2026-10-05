@@ -135,6 +135,21 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
       />
       {/* Below the plate of a mocked card, so nothing in the body is narrowed by it. */}
       <CardBody density="dense" className="clear-right flex flex-col gap-3">
+        {/* The vault's facts as chips, as his case states its limits. */}
+        <ul aria-label={words.chips.label} className="flex flex-wrap gap-1.5">
+          {[
+            [words.chips.address, shorten(vault.address)],
+            [words.chips.version, String(vault.acceptedVersion)],
+            [words.chips.follow, (vault.autoFollow ? words.on : words.off).toLowerCase()],
+          ].map(([key, value]) => (
+            <li
+              key={key}
+              className="rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-[12px]"
+            >
+              {key}: {value}
+            </li>
+          ))}
+        </ul>
         {/* The value on a line of its own: with its pin and the plate it is wider than a cell of a
             phone's two columns. */}
         <dl data-ui="vault-value">
@@ -159,20 +174,6 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
           </Stat>
           <Stat label={words.lossUsed}>{share(lang, vault.lossUsedBps)}</Stat>
         </StatRow>
-        <ul aria-label={words.chips.label} className="flex flex-wrap gap-1.5">
-          {[
-            [words.chips.address, shorten(vault.address)],
-            [words.chips.version, String(vault.acceptedVersion)],
-            [words.chips.follow, (vault.autoFollow ? words.on : words.off).toLowerCase()],
-          ].map(([key, value]) => (
-            <li
-              key={key}
-              className="rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-[12px]"
-            >
-              {key}: {value}
-            </li>
-          ))}
-        </ul>
         <Parts vault={vault} />
         {missing > 0 && (
           <p className="text-body-sm text-muted-foreground">{words.unpriced(missing)}</p>
