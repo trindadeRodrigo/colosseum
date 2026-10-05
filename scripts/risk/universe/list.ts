@@ -54,7 +54,7 @@ export const STATED = {
   later:
     'The list is written from one run of its inputs. What happens to a stock that leaves the cut on a later run is not decided: no rule keeps or removes a row, and a new run writes the file again from scratch.',
   provenance:
-    "source, fetchedAt, method and provenance on a row are the cut's (the time is the pool read's); on an oracle they are the oracle input's. They are copied, so a list written from frozen inputs says fixture.",
+    "source, fetchedAt, method and provenance on a row are the cut's (the time is the pool read's); on an oracle they are the oracle input's. Each is copied from its own input and they can differ: the Solana rows say fixture (the frozen registry) while their oracles say what the Scope table says of itself.",
 };
 
 type Stamped = { source: string; fetchedAt: string; method: string; provenance: string };
@@ -279,10 +279,15 @@ export function robinhoodList(input: ListInputs): AssetList {
   if (cut.tracked.length === 0) fail('the cut names no tracked stock');
   const differs = pairMismatch(cut, oracles);
   if (differs.length > 0) fail(`the oracle map is not of this cut, refused: ${differs.join('; ')}`);
+  if (oracles.inputs.cut !== names.cut || oracles.inputs.universe !== names.universe)
+    fail(
+      `the oracle map was made from ${oracles.inputs.cut} and ${oracles.inputs.universe}, not from ${names.cut} and ${names.universe}: refused`,
+    );
   if (!(cut.counts.rankedUsd > 0)) fail('the cut ranks no money');
 
   const lower = (s: string) => s.toLowerCase();
   const token = new Map(universe.tokens.map((t) => [lower(t.address), t]));
+  if (token.size !== universe.tokens.length) fail('the token list names an address twice');
   const feedOf = new Map(oracles.tracked.map((r) => [lower(r.address), r]));
   const fundOf = new Map(oracles.funds.map((f) => [lower(f.address), f]));
   const poolsOf = new Map<string, ListCut['pools']>();
@@ -320,10 +325,21 @@ export function robinhoodList(input: ListInputs): AssetList {
       Object.entries(t.byVenue).every(([v, n]) => byVenue[v]?.pools === n);
     if (pools.length !== t.pools || reachable !== t.reachablePools || !sameVenues)
       fail(`${t.symbol}: the cut's pools do not add up to what it says of the stock`);
+    if (
+      !(t.poolsInCut >= 1 && t.poolsInCut <= t.pools) ||
+      !(t.cutUsd > 0 && t.cutUsd <= t.poolsUsd) ||
+      !(t.reachableUsd >= 0 && t.reachableUsd <= t.poolsUsd)
+    )
+      fail(`${t.symbol}: the cut's own figures for the stock contradict each other`);
 
     const row = feedOf.get(address) as ListOracles['tracked'][number];
     if (!row.feed && !row.reason) fail(`${t.symbol}: the oracle map gives no feed and no reason`);
+    if (row.feed && row.reason)
+      fail(`${t.symbol}: the oracle map gives a feed and a reason there is none (${row.reason})`);
     const fund = fundOf.get(address);
+    // the open question of a fund's feed is read from its funds row: without the row it would be lost
+    if (CLASS_BY_UNDERLYING[t.symbol] && !fund)
+      fail(`${t.symbol} is a fund and the oracle map has no funds row for it`);
     const oracle: TrackedOracle | null = row.feed
       ? {
           kind: 'chainlink',
@@ -493,6 +509,9 @@ export function solanaList(input: SolanaInputs): AssetList {
       add(byExitPath, d.exitPath);
     }
     const entry = scopeOf.get(mint);
+    const named = scope.assets.find((e) => e.symbol === symbol);
+    if (named && named.mint !== mint)
+      fail(`${symbol}: the Scope table has it under another mint than the registry`);
     if (entry && (entry.symbol !== symbol || entry.decimals !== decimals))
       fail(`${symbol}: the Scope table calls its mint ${entry.symbol}, ${entry.decimals} decimals`);
     const oracle: TrackedOracle | null = entry

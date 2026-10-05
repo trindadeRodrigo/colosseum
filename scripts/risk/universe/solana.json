@@ -38,7 +38,7 @@
     "prices": "oracle.prices is what the oracle map says the feed prices, copied; the map says it for the funds and the treasury token only, and for the others it is null with that reason. No multiplier is applied to anything.",
     "autoRebalance": "Derived here by the rule alone: true when the row has a confirmed oracle, false with the oracle's reason when it has none. Where the oracle is confirmed and what it prices is in question (a price taken from the pools; a feed whose directory entry does not say what it prices) the row is still written true, and autoRebalanceOpen names the question. Whether such a stock may be rebalanced automatically is for the vault stream; this file does not decide it.",
     "later": "The list is written from one run of its inputs. What happens to a stock that leaves the cut on a later run is not decided: no rule keeps or removes a row, and a new run writes the file again from scratch.",
-    "provenance": "source, fetchedAt, method and provenance on a row are the cut's (the time is the pool read's); on an oracle they are the oracle input's. They are copied, so a list written from frozen inputs says fixture."
+    "provenance": "source, fetchedAt, method and provenance on a row are the cut's (the time is the pool read's); on an oracle they are the oracle input's. Each is copied from its own input and they can differ: the Solana rows say fixture (the frozen registry) while their oracles say what the Scope table says of itself."
   },
   "assets": [
     {

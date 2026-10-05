@@ -9,7 +9,7 @@ pnpm risk:universe robinhood --allow-old    # a cut whose discovery is more than
 pnpm risk:universe solana                   # the frozen registry of Oct 1 and the Scope table
 ```
 
-**Inputs.** Robinhood Chain: `cut-robinhood-<stamp>.json` (`pnpm risk-evm:pareto`), `oracles-robinhood-<stamp>.json` (`pnpm risk-evm:oracles`) and `universe-robinhood-<stamp>.json` (`pnpm risk-evm:universe`), described in `scripts/risk-evm/README.md`. The command refuses a cut more than 24 hours old, a cut made by another rule than 80% and $1,000, and a cut and an oracle map that do not name the same token addresses under the same symbols. Solana: `fixtures/risk/universe/solana-registry-20261001T0139.json.gz` through `trackedSet`, `solana-registry-detail-20261001T0139.json.gz` (the same registry file, cut to the mint, its decimals, the quote mint, the venue and the way out of each pool of $1,000 or more) and `fixtures/solana-vault/scope-indexes.json`.
+**Inputs.** Robinhood Chain: `cut-robinhood-<stamp>.json` (`pnpm risk-evm:pareto`), `oracles-robinhood-<stamp>.json` (`pnpm risk-evm:oracles`) and `universe-robinhood-<stamp>.json` (`pnpm risk-evm:universe`), described in `scripts/risk-evm/README.md`. The command refuses a cut more than 24 hours old, a cut made by another rule than 80% and $1,000, an oracle map that was not made from this cut and this token list (by the names it records), and a cut and an oracle map that do not name the same token addresses under the same symbols. A fund of the class table with no row in the map's `funds` is refused too, since its open question is read from that row. Solana: `fixtures/risk/universe/solana-registry-20261001T0139.json.gz` through `trackedSet`, `solana-registry-detail-20261001T0139.json.gz` (the same registry file, cut to the mint, its decimals, the quote mint, the venue and the way out of each pool of $1,000 or more) and `fixtures/solana-vault/scope-indexes.json`.
 
 **A row** (schema `TrackedAsset` and `AssetList` in `packages/schemas/src/universe.ts`), one per tracked stock, keyed on the token address:
 
@@ -33,7 +33,7 @@ The file says the following in `stated`, so nothing is chosen silently:
 ### The lists of 2026-10-05
 
 - **Robinhood Chain** (cut `cut-robinhood-20261005T1947.json`, oracle map `oracles-robinhood-20261005T2312.json`): 30 rows, 427 ranked pools, 274 reachable, 46 of them pools of two stocks (32 under SPY). 24 rows with a Chainlink feed; 6 without (`no_feed`): AMC, COST, DJT, HIMS, LLY, RDDT. Class from the table: SPY, QQQ, GLD, SLV, USO, SGOV. Open: GLD, SGOV.
-- **Solana** (registry of 2026-10-01 01:38 UTC): 18 rows, 869 ranked pools (610 Raydium CPMM, 163 Raydium CLMM, 60 Orca, 36 Meteora; 71 straight to dollars, 58 through SOL, 22 through another stock, 718 other). 10 rows with a Scope oracle; 8 with `no_scope_entry`: AMZNx, COINx, GLDx, GMEx, MCDx, MSFTx, SPCXx, STRCx. Its provenance is `fixture`, as its inputs say.
+- **Solana** (registry of 2026-10-01 01:38 UTC): 18 rows, 869 ranked pools (610 Raydium CPMM, 163 Raydium CLMM, 60 Orca, 36 Meteora; 71 straight to dollars, 58 through SOL, 22 through another stock, 718 other). 10 rows with a Scope oracle; 8 with `no_scope_entry`: AMZNx, COINx, GLDx, GMEx, MCDx, MSFTx, SPCXx, STRCx. The list and its rows say `fixture`, as the frozen registry does; the oracles say `live`, as the Scope table says of itself.
 
 ## Files
 

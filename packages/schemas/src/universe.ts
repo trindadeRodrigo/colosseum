@@ -19,31 +19,36 @@ const Stamp = {
  * The oracle the vault would check a rebalance against. It is a reference, never a price: no answer is
  * stored here, and nothing is compared with a pool price (gate ORACLE-VS-DEX).
  */
-export const TrackedOracle = z.strictObject({
-  kind: z.enum(['chainlink', 'scope']),
-  /**
-   * Where the price is, in the form of `BasketAsset.priceRef`.
-   * - `chainlink`: the feed's proxy address, lower case.
-   * - `scope`: the entry index as a decimal string, 0 to 511, in `account`.
-   */
-  ref: z.string().min(1),
-  /** `scope`: the price account the index is in. `chainlink`: null. */
-  account: z.string().nullable(),
-  /** `scope`: the entry of the average the vault compares the price with. `chainlink`: null. */
-  twapRef: z.string().nullable(),
-  /** `chainlink`: description() and decimals() of the feed as its contract answered. `scope`: null. */
-  description: z.string().nullable(),
-  decimals: z.number().int().min(0).max(36).nullable(),
-  /**
-   * What the oracle prices, where its source says so. `token_with_multiplier`: the share's price times
-   * the issuer's multiplier. `token_from_pools`: a price taken from the pools on chain, which is not an
-   * independent check on the pools. Null with `pricesReason` where the source does not say. No
-   * multiplier is applied to anything here.
-   */
-  prices: z.enum(['token_with_multiplier', 'token_from_pools']).nullable(),
-  pricesReason: z.string().min(1).nullable(),
-  ...Stamp,
-});
+export const TrackedOracle = z
+  .strictObject({
+    kind: z.enum(['chainlink', 'scope']),
+    /**
+     * Where the price is, in the form of `BasketAsset.priceRef`.
+     * - `chainlink`: the feed's proxy address, lower case.
+     * - `scope`: the entry index as a decimal string, 0 to 511, in `account`.
+     */
+    ref: z.string().min(1),
+    /** `scope`: the price account the index is in. `chainlink`: null. */
+    account: z.string().nullable(),
+    /** `scope`: the entry of the average the vault compares the price with. `chainlink`: null. */
+    twapRef: z.string().nullable(),
+    /** `chainlink`: description() and decimals() of the feed as its contract answered. `scope`: null. */
+    description: z.string().nullable(),
+    decimals: z.number().int().min(0).max(36).nullable(),
+    /**
+     * What the oracle prices, where its source says so. `token_with_multiplier`: the share's price times
+     * the issuer's multiplier. `token_from_pools`: a price taken from the pools on chain, which is not an
+     * independent check on the pools. Null with `pricesReason` where the source does not say. No
+     * multiplier is applied to anything here.
+     */
+    prices: z.enum(['token_with_multiplier', 'token_from_pools']).nullable(),
+    pricesReason: z.string().min(1).nullable(),
+    ...Stamp,
+  })
+  .refine((o) => (o.prices === null) === (o.pricesReason !== null), {
+    message: 'what the oracle prices, or the reason it is not said',
+    path: ['pricesReason'],
+  });
 export type TrackedOracle = z.infer<typeof TrackedOracle>;
 
 /** The pools of one tracked stock. Counts only: the pools themselves stay in the chain's own files. */
@@ -141,7 +146,35 @@ export const TrackedAsset = TrackedAssetBase.refine((a) => a.id.startsWith(`${a.
   .refine((a) => (a.pools.reachable === null) === (a.reachableUsd === null), {
     message: 'reachable dollars go with reachable pools',
     path: ['reachableUsd'],
-  });
+  })
+  .refine((a) => a.inCut === a.pools.inCut > 0, {
+    message: 'inCut says whether a pool of the stock is in the cut',
+    path: ['inCut'],
+  })
+  .refine(
+    (a) =>
+      a.pools.inCut <= a.pools.ranked &&
+      (a.pools.reachable ?? 0) <= a.pools.ranked &&
+      a.pools.twoStock <= a.pools.ranked,
+    { message: 'a count of ranked pools is at most the ranked pools', path: ['pools'] },
+  )
+  .refine((a) => a.cutUsd <= a.tvlUsd && (a.reachableUsd ?? 0) <= a.tvlUsd, {
+    message: 'the money in the cut and in reach is part of the money in the ranked pools',
+    path: ['tvlUsd'],
+  })
+  .refine(
+    (a) =>
+      a.oracle === null ||
+      (a.oracle.kind === 'chainlink'
+        ? chainFamily(a.chain) === 'evm' && isAddressOf('evm', a.oracle.ref)
+        : a.chain === 'solana' &&
+          /^(?:0|[1-9]\d{0,2})$/.test(a.oracle.ref) &&
+          Number(a.oracle.ref) <= 511),
+    {
+      message: "the oracle's kind and ref are those of the asset's chain",
+      path: ['oracle', 'ref'],
+    },
+  );
 export type TrackedAsset = z.infer<typeof TrackedAsset>;
 
 /** One chain's file. */
@@ -177,8 +210,18 @@ export const AssetList = z
     message: 'one row per token address',
     path: ['assets'],
   })
-  .refine((l) => l.counts.assets === l.assets.length, {
-    message: 'the count is the number of rows',
-    path: ['counts', 'assets'],
-  });
+  .refine((l) => new Set(l.assets.map((a) => a.id)).size === l.assets.length, {
+    message: 'one row per id',
+    path: ['assets'],
+  })
+  .refine(
+    (l) =>
+      l.counts.assets === l.assets.length &&
+      l.counts.withOracle === l.assets.filter((a) => a.oracle !== null).length &&
+      l.counts.withoutOracle === l.assets.filter((a) => a.oracle === null).length &&
+      l.counts.autoRebalance === l.assets.filter((a) => a.autoRebalance).length &&
+      l.counts.rankedPools === l.assets.reduce((s, a) => s + a.pools.ranked, 0) &&
+      l.counts.twoStockPools === l.assets.reduce((s, a) => s + a.pools.twoStock, 0),
+    { message: 'the counts are those of the rows', path: ['counts'] },
+  );
 export type AssetList = z.infer<typeof AssetList>;

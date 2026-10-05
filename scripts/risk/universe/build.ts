@@ -51,7 +51,9 @@ const SOLANA = {
   scope: 'fixtures/solana-vault/scope-indexes.json',
 };
 
-const chain = args.find((a, i) => !a.startsWith('--') && !args[i - 1]?.startsWith('--'));
+/** The options that take a file; any other word that is not an option is the chain. */
+const FILE_OPTIONS = ['--cut', '--oracles', '--universe'];
+const chain = args.find((a, i) => !a.startsWith('--') && !FILE_OPTIONS.includes(args[i - 1] ?? ''));
 let list: AssetList;
 /** The issuer's name of each token, for the printout only. */
 const nameOf = new Map<string, string>();

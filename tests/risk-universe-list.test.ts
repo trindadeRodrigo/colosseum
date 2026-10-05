@@ -53,7 +53,7 @@ describe('the committed lists', () => {
     }
   });
 
-  it('Solana is the list its frozen inputs give, to the byte', () => {
+  it('Solana is the list its frozen inputs give, key for key', () => {
     expect(committed('solana')).toEqual(solanaList(solanaInputs()));
   });
 
@@ -169,12 +169,19 @@ describe('the Solana list (RU.10)', () => {
 
   it('refuses a Scope entry whose mint is another stock`s, and registry files of two reads', () => {
     const wrong = solanaInputs();
-    const aapl = wrong.scope.assets.find((a) => a.symbol === 'AAPLx');
     const nvda = wrong.scope.assets.find((a) => a.symbol === 'NVDAx');
-    if (!aapl || !nvda) throw new Error('fixture');
-    wrong.scope.assets = wrong.scope.assets.filter((a) => a !== nvda);
-    aapl.mint = nvda.mint;
-    expect(() => solanaList(wrong)).toThrow(/Scope table calls its mint AAPLx/);
+    if (!nvda) throw new Error('fixture');
+    nvda.symbol = 'AAPLy';
+    expect(() => solanaList(wrong)).toThrow(/Scope table calls its mint AAPLy/);
+    // the right symbol under another mint is refused too, never read as "no entry"
+    const moved = solanaInputs();
+    const entry = moved.scope.assets.find((a) => a.symbol === 'NVDAx');
+    if (!entry) throw new Error('fixture');
+    entry.mint = '11111111111111111111111111111111';
+    expect(() => solanaList(moved)).toThrow(/NVDAx: the Scope table has it under another mint/);
+    const twice = solanaInputs();
+    twice.scope.assets.push({ ...(twice.scope.assets[0] as (typeof twice.scope.assets)[number]) });
+    expect(() => solanaList(twice)).toThrow(/names a mint twice/);
     const two = solanaInputs();
     two.detail.fetched_at = '2026-10-02T00:00:00.000Z';
     expect(() => solanaList(two)).toThrow(/not of the same read/);
@@ -252,6 +259,11 @@ describe('the Robinhood list', () => {
     });
     row.reason = null;
     expect(() => robinhoodList(refused)).toThrow(/no feed and no reason/);
+    const both = robinhoodInputs();
+    const amd = both.oracles.tracked.find((r) => r.symbol === 'AMD');
+    if (!amd) throw new Error('fixture');
+    amd.reason = 'answer_not_positive';
+    expect(() => robinhoodList(both)).toThrow(/a feed and a reason/);
   });
 
   it('refuses a cut and an oracle map that do not name the same token addresses', () => {
@@ -281,6 +293,21 @@ describe('the Robinhood list', () => {
     amd.symbol = 'AMDX';
     expect(() => robinhoodList(renamed)).toThrow(/is AMD in the cut and AMDX in the map/);
     expect(pairMismatch(fx.cut, fx.oracles)).toEqual([]);
+
+    // the same addresses, and a map that says it was made from another cut or token list
+    const older = robinhoodInputs();
+    older.oracles.inputs.cut = 'cut-robinhood-20261004T1947.json';
+    expect(() => robinhoodList(older)).toThrow(/was made from cut-robinhood-20261004T1947.json/);
+    const otherList = robinhoodInputs();
+    otherList.oracles.inputs.universe = 'universe-robinhood-20261004T1805.json';
+    expect(() => robinhoodList(otherList)).toThrow(/refused/);
+    const dup = robinhoodInputs();
+    dup.oracles.tracked.push({
+      ...(dup.oracles.tracked[0] as (typeof dup.oracles.tracked)[number]),
+    });
+    expect(pairMismatch(dup.cut, dup.oracles)).toContain(
+      'the oracle map names a token address twice',
+    );
   });
 
   it('GLD and SGOV: the rule writes them true and names the open question; no multiplier', () => {
@@ -309,6 +336,10 @@ describe('the Robinhood list', () => {
       'GLD',
       'SGOV',
     ]);
+    // the question is read from the map's funds row: a fund without one is refused, not written plain
+    const lost = robinhoodInputs();
+    lost.oracles.funds = lost.oracles.funds.filter((f) => f.symbol !== 'GLD');
+    expect(() => robinhoodList(lost)).toThrow(/GLD is a fund and the oracle map has no funds row/);
   });
 
   it('the class of every fund of the oracle map comes from the table (DU7)', () => {
@@ -342,7 +373,7 @@ describe('the Robinhood list', () => {
       asOther += a.pools.twoStockAsOther;
     }
     // a two-stock pool whose other side is not tracked is nobody's twoStockAsOther
-    expect(asOther).toBeLessThanOrEqual(twoStock);
+    expect([twoStock, asOther]).toEqual([46, 42]);
     const spy = bySymbol(list, 'SPY');
     expect(spy.pools).toMatchObject({ ranked: 57, inCut: 27, reachable: 38, twoStock: 32 });
     expect(spy.pools.byVenue['uniswap-v4']).toEqual({ pools: 38, reachable: 30 });
@@ -366,6 +397,17 @@ describe('the Robinhood list', () => {
     const unconfirmed = robinhoodInputs();
     (unconfirmed.universe.tokens[0] as { confirmed: boolean }).confirmed = false;
     expect(() => robinhoodList(unconfirmed)).toThrow(/does not confirm/);
+    const twice = robinhoodInputs();
+    twice.universe.tokens.push({
+      ...(twice.universe.tokens[0] as (typeof twice.universe.tokens)[number]),
+    });
+    expect(() => robinhoodList(twice)).toThrow(/names an address twice/);
+    const money = robinhoodInputs();
+    (money.cut.tracked[0] as { cutUsd: number }).cutUsd = 9e12;
+    expect(() => robinhoodList(money)).toThrow(/contradict each other/);
+    const stray = robinhoodInputs();
+    (stray.cut.pools[0] as { asset: string }).asset = `0x${'34'.repeat(20)}`;
+    expect(() => robinhoodList(stray)).toThrow(/filed under an untracked token/);
     const gone = robinhoodInputs();
     gone.universe.tokens.pop();
     expect(() => robinhoodList(gone)).toThrow(/not in the token list/);
@@ -395,5 +437,39 @@ describe('the schema', () => {
     expect(TrackedAsset.safeParse({ ...row(), price: '1' }).success).toBe(false);
     const { source: _source, ...bare } = row();
     expect(TrackedAsset.safeParse(bare).success).toBe(false);
+  });
+
+  it('holds the oracle to its chain, the counts to the rows and the pools to each other', () => {
+    const nvda = () =>
+      JSON.parse(
+        JSON.stringify(bySymbol(robinhoodList(robinhoodInputs()), 'NVDA')),
+      ) as TrackedAsset;
+    const bad = (change: (a: TrackedAsset) => void) => {
+      const a = nvda();
+      change(a);
+      return TrackedAsset.safeParse(a).success;
+    };
+    expect(TrackedAsset.safeParse(nvda()).success).toBe(true);
+    expect(bad((a) => Object.assign(a.oracle ?? {}, { ref: 'banana' }))).toBe(false);
+    expect(bad((a) => Object.assign(a.oracle ?? {}, { kind: 'scope', ref: '317' }))).toBe(false);
+    expect(bad((a) => Object.assign(a.oracle ?? {}, { pricesReason: null }))).toBe(false);
+    expect(bad((a) => Object.assign(a, { inCut: false }))).toBe(false);
+    expect(bad((a) => Object.assign(a.pools, { inCut: a.pools.ranked + 1 }))).toBe(false);
+    expect(bad((a) => Object.assign(a, { cutUsd: a.tvlUsd * 2 }))).toBe(false);
+    const scope = JSON.parse(
+      JSON.stringify(bySymbol(solanaList(solanaInputs()), 'NVDAx')),
+    ) as TrackedAsset;
+    expect(TrackedAsset.safeParse(scope).success).toBe(true);
+    Object.assign(scope.oracle ?? {}, { ref: '512' });
+    expect(TrackedAsset.safeParse(scope).success).toBe(false);
+
+    const list = () => JSON.parse(JSON.stringify(robinhoodList(robinhoodInputs()))) as AssetList;
+    const counted = list();
+    counted.counts.withOracle = 25;
+    expect(AssetList.safeParse(counted).success).toBe(false);
+    const sameId = list();
+    (sameId.assets[1] as TrackedAsset).id = (sameId.assets[0] as TrackedAsset).id;
+    expect(AssetList.safeParse(sameId).success).toBe(false);
+    expect(AssetList.safeParse(list()).success).toBe(true);
   });
 });
