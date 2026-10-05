@@ -33,7 +33,7 @@ Node 22 or later and pnpm 11.
 
 ## Layout
 
-`apps/api` Fastify + zod → OpenAPI · `apps/risk-api` the `/risk/*` routes on their own · `apps/web` Next.js · `packages/schemas` shared zod types and the disclaimer · `packages/db` Drizzle schema and migrations · `packages/engine` parser, registry, solver, schedule, risk, policy · `packages/risk` pool decoders, exit-cost curves and the liquidity provider · `packages/chain-solana` Jupiter, Kamino, compose, sign · `packages/chain-evm` a stub until the EVM adapter · `scripts/verify` reproducible checks · `scripts/mainnet` anything that can send a transaction · `spikes/` the two vault test rigs · `.design/` the design system.
+`apps/api` Fastify + zod → OpenAPI · `apps/risk-api` the `/risk/*` routes on their own · `apps/web` Next.js · `packages/schemas` shared zod types and the disclaimer · `packages/db` Drizzle schema and migrations · `packages/engine` parser, registry, solver, schedule, risk, policy · `packages/risk` pool decoders, exit-cost curves and the liquidity provider · `packages/chain-solana` Jupiter, Kamino, compose, sign · `packages/chain-evm` the EVM vault reader, one codebase for every EVM chain · `scripts/verify` reproducible checks · `scripts/mainnet` anything that can send a transaction · `spikes/` the two vault test rigs · `.design/` the design system.
 
 ## How work moves
 

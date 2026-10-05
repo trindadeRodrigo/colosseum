@@ -10,6 +10,11 @@ vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
 describe('where sign-in leads on to', () => {
   it('is a page of this app, named by its plain path', () => {
     expect(nextPath('/goal')).toBe('/goal');
+    expect(nextPath('/monitor')).toBe('/monitor');
+    // home is a slash and nothing else, and only when home is one of the routes
+    expect(nextPath('/')).toBe('/');
+    expect(nextPath('/', ['/goal'])).toBe(AFTER_SIGN_IN);
+    expect(AFTER_SIGN_IN).toBe('/');
     // the plan, buy and order pages, each with one plain segment for its id
     const id = '7d9c2f4e-1b2a-4c3d-8e9f-0a1b2c3d4e5f';
     for (const page of [`/plan/${id}`, `/plan/${id}/buy`, `/orders/${id}`])
@@ -18,7 +23,7 @@ describe('where sign-in leads on to', () => {
       expect(nextPath(page)).toBe(AFTER_SIGN_IN);
   });
 
-  it('is the goal when it is told nothing', () => {
+  it('is home, the goal, when it is told nothing', () => {
     for (const nothing of [undefined, null, '', ['/goal'], 7, {}])
       expect(nextPath(nothing)).toBe(AFTER_SIGN_IN);
   });
@@ -49,12 +54,11 @@ describe('where sign-in leads on to', () => {
     '/goal#//evil.com',
     '/@evil.com',
     // not a page of this app
-    '/',
+    '//',
     '/nope',
     '/Goal',
     '/goal/extra',
     '/risk',
-    '/monitor',
     '/dev/ui',
     // not a place to go on to
     '/sign-in',
@@ -76,7 +80,15 @@ describe('the routes sign-in knows', () => {
       .filter((file) => /^app\/\(app\)\/(.+\/)?page\.tsx$/.test(file))
       .map((file) => file.replace(/^app\/\(app\)/, '').replace(/\/page\.tsx$/, '') || '/')
       .sort();
-    expect(pages).toEqual(['/goal', '/orders/[id]', '/plan/[id]', '/plan/[id]/buy', '/sign-in']);
+    expect(pages).toEqual([
+      '/',
+      '/goal',
+      '/monitor',
+      '/orders/[id]',
+      '/plan/[id]',
+      '/plan/[id]/buy',
+      '/sign-in',
+    ]);
     expect([...APP_ROUTES].sort()).toEqual(pages);
   });
 
@@ -87,7 +99,7 @@ describe('the routes sign-in knows', () => {
     };
     expect(await to('/goal')).toBe('/goal');
     for (const raw of ['/..//evil.com', '/.//x', '//evil.com', '/\\evil.com', ['/goal', '//x']])
-      expect(await to(raw)).toBe('/goal');
-    expect(await to(undefined)).toBe('/goal');
+      expect(await to(raw)).toBe('/');
+    expect(await to(undefined)).toBe('/');
   });
 });

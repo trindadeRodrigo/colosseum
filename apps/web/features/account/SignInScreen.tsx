@@ -12,6 +12,7 @@ import { useWalletPort } from '../wallet/WalletProvider';
 import { useAccount } from './AccountProvider';
 import { ChainName } from './ChainName';
 import { ChainPick } from './ChainPick';
+import { AFTER_SIGN_IN } from './next-path';
 
 // Sign-in as a product screen: the two ways in, then, for a person who made their wallet here, the one
 // question of where their plan lives. A person who connected a wallet is not asked: the chain is that
@@ -26,7 +27,7 @@ type Stage = 'out' | 'making' | 'reading' | 'pick' | 'unknown' | 'no-wallet' | '
 /** The stages a person waits through. Focus rests on the heading until one of the others comes. */
 const PASSING: readonly Stage[] = ['making', 'reading'];
 
-export function SignInScreen({ next = '/goal' }: { next?: string }) {
+export function SignInScreen({ next = AFTER_SIGN_IN }: { next?: string }) {
   const t = useT();
   const port = useWalletPort();
   const { account, retry, overruled } = useAccount();
