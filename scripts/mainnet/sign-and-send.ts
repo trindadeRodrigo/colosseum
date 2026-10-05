@@ -1,12 +1,6 @@
 import 'dotenv/config';
-import {
-  createRpc,
-  explorerTxUrl,
-  loadKeypair,
-  sendAndConfirm,
-  signBase64,
-  simulateBase64,
-} from '@colosseum/chain-solana';
+import { createRpc, explorerTxUrl, simulateBase64 } from '@colosseum/chain-solana';
+import { loadKeypair, sendAndConfirm, signBase64 } from '@colosseum/chain-solana/server';
 import type { UnsignedTx } from '@colosseum/schemas';
 
 // Partner-side reference flow: ask the API for a plan's unsigned transactions, sign each with the wallet,

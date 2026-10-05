@@ -188,6 +188,201 @@ From that record each pool's exact state can be rebuilt at any moment: price, ac
 - **YOU:** nothing. This step is read-only; no borrowing is executed.
 - **Done when:** the Phase 4 checks pass.
 
+### Step 10b — Lending-pool ingestion: registry, live state, positions, complete history *(decided 2026-10-01; start in a fresh session with `PROMPT-BUILD-LENDING.md`)*
+
+**Why.** The pool ingestion (Steps 1–5b) tells us how much stock can be sold and at what cost. The lending pools are the other half:
+- how much stock collateral could be seized and sold, and when;
+- how much of a lender's USDC is lent out and how much can be withdrawn;
+- what liquidations actually happened and what they cost.
+
+Step 10 reads parameters once an hour from the protocol APIs. That is not enough for risk analytics or for a "supply USDC against stock collateral" product. This step gives lending pools the same treatment the DEX pools got: a confirmed registry, a 5-minute collector, complete history, and replay-based checks.
+
+**What a lending pool is here.** One debt reserve that lenders supply into, plus the collateral reserves or vaults that secure borrowing from it.
+- **Kamino:** a market holds collateral reserves (the xStocks) and debt reserves (USDC, USDG, PYUSD). A lender's exposure is that market's collateral.
+- **Jupiter Lend:** each vault pairs one collateral with one debt token, and all vaults borrow from one shared liquidity layer per debt token. A lender's exposure to stock collateral is the stock vaults' share of that layer's debt. The accounts were mapped and decoded on-chain in item 1 (VL-5: 872 of 872 fields equal the SDK's coders on all 8 vaults); the layer itself is live-only (D12).
+
+**Probe 2026-10-01 ~20:10Z** (kept for the record; item 1's counts below replace it):
+
+| Finding | Evidence |
+|---|---|
+| 27 accounts are snapshotted hourly today: 19 Kamino reserves in 3 markets (xStocks Market 13, STRCx Market 2, Sentora xStocks Market 4) and 8 Jupiter Lend vaults (TSLAx, SPYx, QQQx, NVDAx, each against USDC and JupUSD) | `~/.colosseum/risk/markets/2026-10-01.jsonl`, 20:02Z |
+| Lending history is small. Transactions per day, from one page of 1,000 signatures per account: Kamino xStocks Market about 2,060 (by market address), STRCx Market about 1,120, Sentora about 260; Jupiter Lend vaults 8 to 77 each. The busiest DEX pool alone does about 250,000 a day. | `data/risk/lending-probe-20261001T2010.txt` |
+| The xStocks Market USDC reserve had $5.69M supplied and $5.19M borrowed (91% lent out). What a lender can withdraw is the first thing to measure. | same markets file, 20:02Z, Kamino API (not yet checked on-chain) |
+| `getTokenLargestAccounts` is not served by the Chainstack shared node. Holder searches must use `getProgramAccounts` by mint. | RPC error -32601, 20:12Z |
+| `@jup-ag/lend` (0.4.0-beta.0) and `@jup-ag/lend-read` (0.0.14) exist on npm. Not yet tried. | `npm view`, 20:09Z |
+| The pool history fetch (Step 5b.2) is still running: 13.8M of 24.9M transactions at about 495 tx/s, 128 parallel, 0 rate-limit errors. About 6 hours left. | `data/risk/history-full/fetch.jsonl`, 20:11Z |
+
+**Measured by item 1 (2026-10-01 20:45–21:26Z; `data/risk/lending-measure.jsonl`, STATE-RISK row 10b):**
+
+| Finding | Evidence |
+|---|---|
+| 4 Kamino markets list an xStock (a fourth, `BBmb1SYx…`, is missing from Kamino's API), 23 reserves; the same 8 Jupiter Lend xStock vaults on-chain and in the API; other programs holding xStocks listed for D14. | VL-1 |
+| History: **1,635,068 distinct transactions over 515 days** (from 2025-04-15), within D10's 3M. VL-4's 2,363,692 summed per group counted shared transactions more than once. First transaction: xStocks Market 2025-07-08, STRCx 2026-05-03, Sentora 2026-08-26, `BBmb1SYx` 2026-09-15, Jupiter Lend vaults 2026-03-20…31. | VL-4, item 4 |
+| Jupiter Lend's USDC liquidity layer sees about 139k transactions a day (≈27M over the vaults' life): live-only (D12). | VL-4 |
+| Kamino and Jupiter Lend decode on-chain: 805 Kamino reserve fields = klend-sdk, 872 Jupiter Lend fields = the read SDK; on-chain = API within interest accrued between reads (xStocks Market USDC: 5,702,241.03 on-chain at 21:21Z vs 5,702,229.73 API at 21:02Z). | VL-2, VL-5, item 3 |
+| Obligations per market: 7,041 xStocks, 337 STRCx, 25 Sentora, 1 `BBmb1SYx`; their cTokens equal the collateral vaults. | VL-6 |
+| klend logs no events (amounts from instructions and token balances); Jupiter Lend logs `LogOperate`/`LogUserPosition`. | VL-7 |
+| 10 curated vaults have a slot in a registered reserve, 6 hold cTokens (Sentora PYUSD 27% of the Sentora PYUSD reserve, Elemental USDC Turbo about 15% of the STRCx USDC reserve). | VL-8 |
+| Storage: about 1.3 KB per transaction compressed, 2.1 GB of raw bodies, 4.6 GB in all in `data/risk/lending-history/`. | item 4, 2026-10-02 |
+| The pool history fetch (Step 5b.2) finished 2026-10-02 01:39Z (24,776,866 transactions; 512 retried 15:48Z) and was repaired and closed at 16:19Z. | STATE-RISK row 5b |
+
+**Constraints.**
+- The running pool fetch (`history-full.ts`), the three risk launchd jobs and the old depth job are not disturbed. While the pool fetch runs, lending fetches use at most 16 parallel requests.
+- Nothing already exported by `scripts/risk/lib-history.ts` or `scripts/risk/history-full.ts` changes behaviour; new code is added beside it.
+- Read-only. No transaction is sent.
+- **The collector (items 1–3) must be live before the weekend starts, Fri Oct 2 20:00 ET.** The first weekend of oracle prices against DEX prices cannot be re-collected.
+- Obligations and positions are public chain data and are stored locally. The API and reports publish only market-level aggregates (LTV buckets, concentration shares), never a wallet's position.
+- New tables carry a `chain` column (`solana` today), and each venue sits behind one adapter (`discover`, `readState`, `readPositions`, `decodeTx`), so Base and Robinhood Chain markets can be added later without changing the pipeline. No EVM code in this step.
+
+**Do it in this order. Each item ends with a commit (`R10b.N: …`) and a line in STATE-RISK.**
+
+1. **Verify and measure (about 1 hour).** Results go to `data/risk/lending-measure.jsonl` and STATE-RISK.
+   - **VL-1 Venues.** Find every Solana lending venue that holds xStocks as collateral, not only the two we know:
+     - Kamino `Reserve` accounts by liquidity mint, searched on-chain for each of the 50 registry xStock mints;
+     - Jupiter Lend vaults from the API and from on-chain vault configs;
+     - token accounts by mint for the 18 assets of the 80% set, grouped by the program that owns each account's authority.
+
+     Programs we do not recognise are listed with their balance for the founder (D14). They are not ingested in this step.
+   - **VL-2 Account map.** For each reserve: the liquidity vault, the collateral mint and vault, the fee vault and the oracle accounts. For each Jupiter Lend vault: its config and state accounts, the liquidity-layer accounts for its debt token, and its oracle accounts. Each is decoded and compared with the API.
+   - **VL-3 Which addresses see every transaction.** Default: walk each reserve's vault token accounts (every money movement touches them) plus the market address (configuration changes). Over one day, confirm that the union covers every transaction found by walking the reserve accounts themselves.
+   - **VL-4 Count.** Walk signatures back to each market's first transaction, counting only. Record the total, the first date per market and the failed share.
+   - **VL-5 Jupiter Lend on-chain.** Decode vault config, state and positions with the two SDKs and compare with the API on all 8 vaults. If that fails, Jupiter Lend stays API-only, labelled `verification: 'api'`, and items 5–7 cover Kamino only.
+   - **VL-6 Obligations.** One `getProgramAccounts` per Kamino market: count, time, size. Check that the obligations' deposits and debts per reserve sum to the reserve's own totals.
+   - **VL-7 Events or instructions.** Check on 10 known transactions whether each program logs events for deposits, borrows and liquidations. If it does not, amounts come from the instructions plus token balance changes.
+   - **VL-8 Curated vaults** (founder, 2026-10-01: track them, do not offer them). Find every curated vault that supplies into a registered reserve: decode the vault accounts, list each vault's allocations, and check that its position in each of our reserves matches the supplier found in VL-6. Count its transactions for VL-4. If the vault accounts cannot be decoded, the vaults are still counted as suppliers and the gap is reported.
+2. **Registry.** `pnpm risk:lending-registry` writes `data/risk/lending-registry-<stamp>.json` and the table `risk_lending_pools`. One row per reserve or vault: chain, venue, program, market, role (`collateral` or `debt`), mints, vault accounts, oracle accounts, decimals, first-transaction time, the DEX-registry asset it maps to, and `verification` (`onchain` or `api`). Rows that fail confirmation are dropped with a reason.
+   - Curated vaults from VL-8 are rows too, with role `curated_vault`, their manager, and `offered: false`. That flag keeps them out of every product list until the founder changes it (D15). Nothing is added to the engine's asset registry.
+3. **Live collector.** A new job `com.colosseum.risk-lending` at minutes 1, 6, …, 56, from its own script `scripts/risk/collector/lending.ts`. `install.sh` gains a one-job mode so installing it does not reload the running jobs.
+   - **Every 5 minutes:** one batched read of every reserve, vault, liquidity-layer and oracle account, decoded on-chain. Per row: supplied, borrowed, available to withdraw, share lent out, supply and borrow rate computed from the on-chain rate curve, caps and remaining headroom, the borrow index, and the oracle price with its age. Per curated vault: total assets, share price, idle cash, and the amount allocated to each reserve.
+   - **Every hour:** every obligation and position (raw bytes, compressed, plus one decoded row each: collateral by asset, debt by asset, LTV), and raw bytes of all state accounts.
+   - Failures are rows, never retried in a loop. The hourly API rows in the pool collector stay as they are; they become the independent cross-check, as Jupiter quotes are for pools.
+   - Output: `~/.colosseum/risk/lending/`, `lending-positions/`, `raw-lending/`.
+4. **History fetcher** (`scripts/risk/lending-history.ts`). Reuses the checkpointed signature walk, the per-day partition and the done markers from Step 5b, with the output directory as a parameter. Output: `data/risk/lending-history/`.
+   - Window: each market's whole life (D10, founder 2026-10-01). If VL-4 counts more than 3 million transactions, stop and report before fetching.
+   - Starts as soon as items 1–3 are done, beside the pool fetch, at 16 parallel while that fetch runs (founder 2026-10-01).
+   - The raw body of every transaction is kept, compressed. So the fetch does not wait for the decoders of item 5.
+   - A decode pass over the raw bodies writes one row per transaction: decoded events, the pre and post balances of every reserve vault it touches, instruction names, any undecoded payload, and a truncated-log flag. It can be re-run whenever a decoder changes, without fetching again.
+   - Runs under `nohup` + `caffeinate`, resumable, with errors retried on the next run.
+5. **Decoders** (pure functions in `packages/risk/src/lending/`, tested against frozen mainnet transactions and account bytes in `fixtures/risk/`). Hand-written, with no SDK import in the package; each one is checked against the SDK's own decoding in a script (D11).
+   - **State:** Kamino `Reserve` and `Obligation` (the fields used, at fixed offsets); Jupiter Lend vault config, state and position.
+   - **Kamino transactions,** including calls made by other programs (leverage routers, curated vaults): lender deposit and redeem, collateral deposit and withdraw, borrow, repay, liquidation, flash loan, reserve-configuration change, socialised loss. Refreshes are counted, not stored.
+   - **Jupiter Lend transactions:** vault `operate` (collateral in or out, borrow or pay back), `liquidate`, and lender deposit and withdraw on the liquidity layer.
+   - **Curated-vault transactions:** user deposit and withdraw, and the manager's reallocations between reserves (from which reserve, to which, how much). A reallocation out of one of our reserves is the event that can leave the remaining lenders unable to withdraw.
+   - **Amounts** come from token balance changes, because instructions carry requests such as "all". The test: decoded amounts equal the vault balance changes exactly.
+   - **Liquidation row:** market, position, debt repaid, collateral seized, implied bonus, liquidator, and any DEX sale of the seized stock in the same transaction, decoded with the Step 5b pool decoders. That sale gives the realised price against the oracle price and the pool's mid price.
+   - **Configuration-change row:** which parameter, old and new value. This is the history of LTV, thresholds and caps.
+6. **Completeness checks** (`pnpm risk:lending-verify`). They decide whether the history can be trusted.
+   - Every walked signature is fetched or listed in `errors.jsonl`.
+   - **Vault-balance chain:** for every vault, each transaction's pre-balance equals the previous transaction's post-balance. This is exact and is the main check.
+   - **Backward replay:** from an hourly raw snapshot, undo events to an earlier snapshot. Available liquidity and collateral units must match exactly. Borrowed amounts must match within the interest accrued between events, recomputed from the reserve's rate curve; the error distribution is reported against `borrowReplayTolBps`.
+   - **Positions:** for every live obligation opened inside the fetched window, the sum of its collateral events equals its current collateral exactly.
+   - The 5-minute on-chain rows equal the hourly API rows at the same time, within rounding.
+7. **Reconstruction** (`pnpm risk:lending-reconstruct`). Hourly series per reserve since its first transaction: supplied, borrowed, available, share lent out, rates, collateral units by asset, number of positions, and the LTV distribution by collateral asset.
+   - USD values use the reconstructed pool mid price where Step 5b covers the hour. Earlier hours keep units only, with USD `null` and reason `no_price_source`. A uniform price source is Step 11 (the oracle standard).
+8. **Tables and import.** One additive migration: `risk_lending_pools`, `risk_lending_snapshots`, `risk_lending_events`, and `risk_lending_positions` (hourly aggregates per market and collateral asset: LTV buckets and top 1, 3 and 10 shares; no owner column). `pnpm risk:lending-import` runs hourly from its own job at minute 12. Every row carries `source`, `fetched_at`, `method` and `provenance`.
+9. **Analysis** (`pnpm risk:lending-report`; the founder's question: can the market absorb the collateral?). Report only; no product or UI in this step.
+   - **Per lending pool:** history covered, events by type, and the share of hours with more than `utilAlarmPct` lent out (default 95%, a policy input).
+   - **Lender concentration:** top 1, 3 and 10 suppliers' share, aggregates only. Curated vaults are products, not wallets, so they are named: each vault's share of each reserve's supply, its past reallocations, and what the share lent out would become if it left.
+   - **Liquidations:** count, USD, largest, and the realised sale price against the pool mid, by regime.
+   - **Oracle against DEX:** the gap between the lending oracle's price and the pool mid, by regime, from the 5-minute rows.
+   - **Collateral at risk:** for each price gap in `gapGridPct`, the stock collateral that becomes liquidatable per asset (from the positions), against the routed DEX sale capacity at a cost equal to the liquidation bonus, in the worst regime. The ratio of the two is the **liquidation coverage ratio**. It reuses `gapSim` and the routed curves, with every assumption listed.
+
+**Storage.** Raw bodies are about 15 KB each before compression and about 1.3 KB compressed: 2.1 GB measured for the whole history, 4.6 GB in all in `data/risk/lending-history/` (gitignored).
+
+**Done when:**
+- the registry is confirmed on-chain;
+- the 5-minute collector has run through one full weekend without gaps other than laptop sleep;
+- every signature in the window is fetched;
+- the vault-balance chain has 0 breaks and the replay matches the saved snapshots;
+- STATE-RISK records the counts, error rate and window;
+- `pnpm risk:lending-report` prints the liquidation table and the coverage-ratio table.
+
+**Not in this step:** the "supply USDC to a stock-collateral market" leg in the asset registry (Step 10), offering curated vaults as products (D15), dashboard pages, Base and Robinhood Chain markets, and the product catalogue. Each is planned separately and builds on these tables. The oracle standard is Step 11.
+
+### Step 11 — The oracle standard: one reference price per asset and time *(decided 2026-10-02; started the same day)*
+
+**Why.** Every USD figure in the risk layer needs a price, and today each script picks its own.
+- 84% of the lending history has no USD value (125,992 of 150,364 reserve-hours, `data/risk/lending-history/hourly/reserves.jsonl.gz`): the only price is the pool mid, and Step 5b covers 28 days (D16), while the lending history starts on 2025-07-08.
+- USDG, cbBTC, PYUSD, EURC and EUROP have no price at any hour.
+- The lending oracles and the DEX disagree off-hours: Kamino's Scope prices sit below the routed pool mid by a median 0.2% to 2.2% on weekday off-hours and within 0.34% in US market hours (Step 10b item 9, `lending-report-20261002T1619.json`; 189 and 34 samples). A price without its source and its regime cannot be compared with another.
+
+The oracle standard is one rule that answers "what is this asset's price at this time, from which source, and how old is it", used by every script, table and, later, the API.
+
+**What it is.**
+- **Sources** write **price observations** in one shape. A source is a pool mid, a lending venue's oracle, or (later) an external feed. Sources are never blended.
+- **One resolver** picks a price from the observations for an asset, a time and a **purpose** (founder, 2026-10-02: D17, D18):
+  - `valuation`: what the asset is worth. Order: pool mid, then an external feed once one is plugged in (D19), then a lending oracle. A price from a session that is open goes before a price an oracle is holding.
+  - `liquidation`: what a venue acts on. Only that venue's own oracle, never the DEX.
+- Every answer carries the price, its source and reference account, the observation's age, the regime at that time, and a **quality** label: `traded` (pool mid), `oracle_open` (a lending oracle while its session is open), `oracle_closed` (a lending oracle while it is closed: the last price of the session, held, not a traded price), `oracle_continuous` (an oracle of an asset priced around the clock: stablecoins, cbBTC), `external`, `par`. The other sources' prices at the same time are listed beside it, so both are always kept.
+- **Recent enough** (set from item 2): a stock's lending oracle moves only in its own session, so its age is counted in session time: the session has not opened again since the observation, at most `maxOpenAgeSec` (2 hours) of it has passed, and the observation is never more than `maxClosedAgeSec` (4 days) old. Friday's close is the oracle's price all weekend and is out of date at Monday's open. Kamino's session is US market hours; Jupiter Lend's is the whole weekday, Sunday 20:00 ET to Friday 20:00 ET, without holidays. Everything else is judged on wall clock (`maxAgeSec`: pool mid 1 hour, others 2 hours, USD stablecoins 1 day).
+- **Live** (found by item 2): an oracle that does not move through a US trading day is not pricing the stock (a placeholder). Its price is still what the venue acts on, so `liquidation` returns it, flagged; `valuation` does not use it.
+- **Checked** (found by item 2): klend logs when a price fails its own checks and logs the price anyway. A price that failed the TWAP check is passed over for a valuation (`disqualifyingChecks`), and the latest one that passed is used; `liquidation` returns it with the checks it failed. A failed heuristic check alone does not disqualify: klend's fixed bounds lag real prices for weeks.
+- **Unit:** USD per whole token as held on-chain (raw amount ÷ 10^decimals), which is what the pool mid measures. Item 2 checks that every source agrees on it.
+- No answer is a price too: `null` with a reason (`no_observation`, `stale`, `oracle_not_live`, `oracle_check_failed`, `no_quote_price`).
+
+**Probe 2026-10-02 ~17:40Z** (hints; item 2 replaces them with counts):
+
+| Finding | Evidence |
+|---|---|
+| klend logs the Scope price it used on every reserve refresh (`Token: SPYx Price: 765.9673`), in the raw bodies already fetched: 25 to 44 readings per token on a quiet day | `data/risk/lending-history/raw/2025-09-01.jsonl.gz` |
+| That day was a US holiday and MSTRx stayed at 334.1000: Scope holds the last price while the market is closed | same file |
+| Each of the 17 Kamino reserve tokens maps to one mint, so a logged symbol names one asset | `~/.colosseum/risk/lending-registry.json` |
+| Jupiter Lend's oracle program returns the exchange rate it used inside vault transactions (two u128, 60 returns on one day) | `raw/2026-09-10.jsonl.gz`, `Program return: jupnw4B6…` |
+| The live Kamino rows hold two prices: the Scope feed now (about 30 s old) and the reserve's price at its last refresh (27 hours old on a quiet reserve). Only the first is a current price. | `~/.colosseum/risk/lending/2026-10-02.jsonl`, 17:26Z |
+| The holiday calendar starts in 2026; the history needs 2025 | `fixtures/risk/us-market-holidays.json` |
+
+**Constraints.**
+- The six running launchd jobs are not stopped, reloaded or re-installed, and nothing is written into their output directories. The weekend collection that starts Fri Oct 2 20:00 ET cannot be repeated.
+- No new fetching for items 1–4: they read the raw bodies and hourly rows already on disk.
+- Read-only. `packages/risk` takes no SDK and never imports `packages/engine`.
+- Every observation and every resolved price carries `source`, `fetched_at`, `method` and `provenance`. No price literal outside `fixtures/`.
+
+**Do it in this order. Each item ends with a commit (`R11.N: …`) and a line in STATE-RISK.**
+
+1. **Extract the observations** (`pnpm risk:prices-extract` → `data/risk/prices/obs/<source>/<day>.jsonl.gz`). Parsers are pure functions in `packages/risk/src/prices/`, tested on frozen mainnet transactions.
+   - `kamino_scope`: each klend reserve refresh in the lending history, attributed to its reserve by the instruction's account, with the logged price, slot and block time. Refreshes of reserves outside the registry are counted, not stored.
+   - `jupiter_lend_oracle`: the oracle program's return value inside each vault transaction, in the vault's debt token.
+   - `pool_mid`: Step 5b's hourly mid of the asset's reference USDC pool, and the live 5-minute reference mid.
+   - Live rows of the two lending oracles from the 5-minute collector files (Scope feed price, Jupiter Lend cache price with its market status).
+2. **Validate** (`pnpm risk:prices-validate` → `data/risk/prices/validate-<stamp>.json`). It decides whether the logged prices can be trusted and sets the staleness limit.
+   - **P-1 Coverage:** observations per asset and day, and the distribution of the time between consecutive observations.
+   - **P-2 Extraction:** a logged price equals the reserve's stored price at the same refresh slot, as the collector read it later (the history ends 24 minutes before the collector starts, so the two never share a slot); a Jupiter Lend return agrees with the protocol API's oracle price in the hourly rows; one asset refreshed in two Kamino markets in one slot has one price.
+   - **P-1 Liveness:** every stock oracle moves within US trading days; the days it does not are listed.
+   - **P-3 Overlap:** each lending oracle against the pool mid from 2026-09-04, by asset and regime. This is the bias carried into earlier hours.
+   - **P-4 Unit:** in US market hours the sources agree within the P-3 spread, which a per-share price would not (the tokens' multipliers are 1.0017 to 1.0057).
+   - **P-5 Calendar:** on each 2025 date added to the holiday calendar, no Scope stock price changes.
+   - A failed check is a finding. The tolerance is not widened to pass it.
+3. **Resolver** (`packages/risk/src/prices/resolve.ts`, pure, no I/O). Inputs: an index of observations, the asset, the time, the purpose and `defaultPriceParams()` (`valuationOrder`, the limits from P-1, `parMints`, `continuousMints`), with the calendar and a clock of US market hours (`session.ts`). The liveness rule is `liveness.ts`. Output as in "What it is". Tests on frozen observations: order, staleness on market time, liveness, the quote conversion, both purposes, null reasons, an external source plugged in, determinism.
+4. **Use it.** `lending-reconstruct` takes its prices from the resolver instead of its own lookup. The share of reserve-hours without USD is recorded before and after, by asset and by quality, and every hour that had a price keeps the same one.
+   - `lending-import` is left as it is: its live rows already carry each venue's own oracle price, and it is the code of a running job, which is not edited before Oct 12.
+   - `lending-report` is left as it is: liquidations already carry the program's price. Its JupUSD debt is at par since D20; that script is being extended by the analytics work (`docs/risk/PLAN-ANALYTICS.md`), which carries the change.
+   - The hourly LTV tables take the venue's own oracle (D21): Kamino's logged price for collateral and debt, Jupiter Lend's oracle rate in the vault's debt token, so a Jupiter Lend LTV needs no USD price at all. An hour in which the venue's oracle has no recent observation has no LTV, with the reason.
+5. **Tables, import and the live price.** One additive migration: `risk_price_observations` and `risk_reference_prices` (per asset and hour, the valuation price with its source, age, regime and quality, and each venue's oracle price beside it). `pnpm risk:prices-import` fills them from the observation files (everything by default; `--recent` writes only the last two days and must not be used after a backfill). The live hours come from an hourly job of their own, `com.colosseum.risk-prices` at minute 14 (D22): `scripts/risk/prices/job.ts`, installed by `scripts/risk/prices/install-job.sh`. It reads only `~/.colosseum/risk` and Postgres, because launchd cannot read `~/Documents`; it edits no collector file and reloads no other job. The latest row per asset is the live reference price; the oracle-against-DEX gap per asset is published with it.
+6. **External source: the contract, not the code** (D19). An external feed is one more source. It is plugged in by writing observations with `priceSource: 'external:<name>'` and adding that name to `valuationOrder`; the resolver, the tables and the consumers do not change. What an adapter must state and pass:
+   - what it prices (the stock share or the token) and its session: the hours in which its price moves, as an entry in `sessionBySource` (or none, if it is judged on wall clock);
+   - the conversion to the standard unit: a per-share price is multiplied by the token's multiplier at that time, so the adapter needs the multiplier history of each mint;
+   - its licence and cost, and whether history back to 2025-07 is served;
+   - P-3 against the pool mid in US market hours, within `externalTolPct`, before it enters `valuationOrder`.
+
+   Candidates to check when the founder decides, none verified yet: an oracle network's historical API for the same feeds the venues use (Pyth, Chainlink Data Streams), the issuer's own price feed, and a licensed equities market-data API.
+
+   **Plugging one in, once chosen** (built and tested in items 1–5; `tests/risk-layer/prices.test.ts` plugs a test source in):
+   1. An adapter script writes its prices as observations with `writeObservations('external:<name>', <method>, <day>, rows)` (`scripts/risk/prices/lib.ts`), in the standard unit, with `source`, `fetched_at`, `method` and `provenance`.
+   2. `pnpm risk:prices-validate` compares it with the pool mid by asset and regime with no change to the script; the check "external sources agree with the pool mid in US market hours" must pass (`externalTolPct`, 0.5%).
+   3. Its name goes into `valuationOrder` in `defaultPriceParams()`, with its session in `sessionBySource` or its age limit in `maxAgeSec`.
+   4. `pnpm risk:lending-reconstruct` and `pnpm risk:prices-import` re-price the history; `price_source` on every row then says which hours it filled.
+
+   What it would fill today: the 9,474 reserve-hours in which Kamino held a placeholder for METAx and CRCLx, the hours before a reserve's first logged price, and off-hours, where a held oracle price is the only source before 2026-09-04.
+7. **Weekend** (Mon Oct 5). Re-run item 2 with the first weekend of 5-minute rows: the `weekend` regime's gap per asset, and whether `oracle_closed` needs a published haircut.
+
+**Done when:**
+- every check in item 2 is recorded, pass or finding;
+- the lending history's reserve-hours without USD fall to those with a stated reason, and the report says how many are `traded`, `oracle_open` and `oracle_closed`;
+- `risk_reference_prices` grows every hour with one row per registered asset;
+- the same inputs give the same resolved prices on two runs.
+
+**Not in this step:** an external adapter (D19), an API route or dashboard page for prices (Step 7), any change to `packages/engine` (Step 8), and full-life pool history (D16).
+
 ---
 
 **Throughout:**
@@ -215,6 +410,14 @@ Names in `code` are policy inputs stored next to every output. Anything not list
   - **LP-exit stress:** recompute the pool without the top `N` owners' positions (`lpExitN`, default 3).
 - **LP-withdrawal event.** Between consecutive snapshots, a drop of more than `withdrawalAlarmPct` (default 20%) in in-band liquidity, attributed to the `decrease_liquidity` or `remove_liquidity` transactions in that window. It feeds the policy as an early warning, before any withdrawal date.
 - **Trade history (calibration).** Each past swap gives its size and execution price. Pre-trade mid price comes from the pool state or the previous trade. Realised cost by size and hour-of-week is compared with the simulated curve for the same bucket, and the comparison is published.
+- **Reference price (the oracle standard, Step 11; `method_version = prices-0.1`).** One valuation per asset and time, from price observations that are never blended.
+  - Sources, in `valuationOrder`: the pool mid (Step 5b's hourly mid of the asset's reference USDC pool, and the collector's 5-minute reference mid), then the price Kamino's program logged at each reserve refresh, then the rate Jupiter Lend's oracle returned inside each vault transaction. USDC and JupUSD are at par (D20).
+  - An observation counts when it is recent enough: a stock oracle's age is counted in its own session (`sessionBySource`: US market hours for Kamino, the whole weekday for Jupiter Lend): no session open since the observation, at most `maxOpenAgeSec` of open session and `maxClosedAgeSec` in all; anything else at most `maxAgeSec` on wall clock.
+  - A price that failed the venue's TWAP check when it was logged is passed over (`disqualifyingChecks`).
+  - A price from an open session goes before a price an oracle is holding.
+  - A stock oracle that does not move through a US trading day is a placeholder (`minFrozenObs` observations over `minFrozenSpanSec`): no valuation is taken from it.
+  - A venue's liquidation price is that venue's own oracle, always, placeholder or not.
+  - Every price carries its source, its age, the regime and a quality (`traded`, `oracle_open`, `oracle_closed`, `oracle_continuous`, `external`, `par`); every other source's price at that time is kept beside it with its gap.
 - **Redemption.** An issuer redemption that settles after the horizon is listed with status `settles_after_horizon` and is not counted in recoverable value (founder, Oct 1).
 
 ## 5. Stack additions
@@ -240,6 +443,19 @@ Names in `code` are policy inputs stored next to every output. Anything not list
 | D7 | Merge into `main` / the hackathon submission | **Not before Oct 12 unless the founder says so (Q1)** | Founder, by Oct 9 |
 | D8 | Fold the old depth job | **After Oct 12**: final import, then unload. Its data stays read-only. | Oct 13 |
 | D9 | Orca adaptive fee | **Model it in Step 3** if Orca pools are in Tier A for assets the structurer uses; else keep the documented tolerance | Step 3 |
+| D10 | Lending history window and start | **Each market's whole life, fetched now beside the pool fetch at 16 parallel** (founder, 2026-10-01). Above 3 million transactions in VL-4: stop and report first. | done |
+| D11 | Lending decoders | **Hand-written in `packages/risk`, each checked against the protocol SDK in a script and on frozen bytes.** SDKs stay in `scripts/`. | Step 10b item 5 |
+| D12 | Jupiter Lend shared liquidity layer | **Live-only** (VL-4, 2026-10-01): the USDC layer's accounts see about 139k transactions a day, ≈27M over the vaults' life, far above D10's 3M; live 5-minute state since 2026-10-01 21:21Z. So Jupiter Lend has no replay or per-vault balance chain in item 6, and its lenders are not measured; the report states both. | done |
+| D13 | Position-level data | **Stored locally; published as aggregates only** (LTV buckets, top-N shares) | done |
+| D14 | Other lending venues found by VL-1 | **Listed with balances, not ingested for now** (founder, 2026-10-01); revisit when the list exists | done |
+| D15 | Curated vaults that supply into registered reserves | **Tracked** (registry, 5-minute state, history, reallocations) **but not offered** (founder, 2026-10-01): `offered: false`, nothing in the engine's asset registry | done |
+| D16 | Pool history window (Step 5b) | **28 days for the 29 older value pools until after the MVP; full-life history revisited then** (founder, 2026-10-02). The 5 pools created inside the window (MSFTx, AAPLx, SPCXx ×2, NVDAx/memecoin) are complete from creation; the lending pools are the long-horizon sample (whole life, D10). Estimated cost of the full life: 40–130 GB, 1–5 days at 500 tx/s, unmeasured. | done; revisit after the MVP |
+| D17 | Oracle standard: what it serves | **Both the valuation of history and the live reference price** (founder, 2026-10-02) | done |
+| D18 | When the DEX and a lending oracle disagree | **Keep both, never blend** (founder, 2026-10-02): valuation uses the pool mid where one exists and a lending oracle before that; a venue's liquidation triggers always use that venue's own oracle | done |
+| D19 | External price source | **Planned, not built** (founder, 2026-10-02): Step 11 item 6 is the contract an adapter must meet, so one can be plugged in without changing the resolver. Which source: open. | open |
+| D20 | JupUSD | **At par, like USDC** (founder, 2026-10-02), labelled as an assumption. Jupiter Lend prices a stock the same in its USDC and JupUSD vaults: implied JupUSD price 1.0000 at the median over 1,653 pairs, 0.9997–1.0002 for 98% of them. | done |
+| D21 | Price behind the hourly LTV tables | **The venue's own oracle, for the whole history** (founder, 2026-10-02); USD totals stay on the valuation price. The hourly lending rows in Postgres are deleted and imported again. | done |
+| D22 | Hourly price job | **Installed now** (founder, 2026-10-02), as a new job with its own installer (`scripts/risk/prices/`): no collector file is edited, no running job is reloaded. | done |
 
 ## 7. Acceptance mapping (`HANDOFF-RISK.md` §6)
 
@@ -259,6 +475,11 @@ Names in `code` are policy inputs stored next to every output. Anything not list
 - **V-POOL:** every venue decoder passes the same-pool Jupiter check in `tests/risk-layer/pools.test.ts`. Done for 4 venues.
 - **V-LP:** an LP withdrawal is detected within one snapshot (Step 4).
 - **V-HIST:** realised trade cost compared with the simulation per bucket (Step 5).
+- **V-LEND-REG:** every lending reserve and vault is confirmed on-chain and mapped to its DEX-registry asset (Step 10b items 1–2; `risk_lending_pools`).
+- **V-LEND-LIVE:** 5-minute decoded rows and hourly positions on disk, equal to the API rows at the same time (Step 10b items 3 and 6; `~/.colosseum/risk/lending/`).
+- **V-LEND-HIST:** the vault-balance chain has 0 breaks and the backward replay matches the saved snapshots (Step 10b item 6; `tests/risk-layer/lending.test.ts`, `data/risk/lending-history/verify-*.json`).
+- **V-LEND-RISK:** the liquidation table and the liquidation coverage ratio per asset and gap (Step 10b item 9; `pnpm risk:lending-report`).
+- **V-PRICE:** every USD value names its price source, age, regime and quality, and the logged oracle prices pass the checks of Step 11 item 2 (`pnpm risk:prices-validate`).
 
 ## 8. Risks
 
@@ -273,6 +494,15 @@ Names in `code` are policy inputs stored next to every output. Anything not list
 | Liquidity orders conflict with band invariants | Medium | Liquidity orders only to USDC and only reduce illiquid legs; invariants tested | Step 8 |
 | Scope creep (agent layer, design system) | Medium | Out of scope per spec; logged, not built | ongoing |
 | Discovery source (DexScreener) misses pools | Low–Medium | On-chain `getProgramAccounts` by mint for the 50 assets as a second pass | Step 1 |
+| The lending collector is not live before the first weekend | Medium | Items 1–3 of Step 10b come first, with a cut-off of Fri Oct 2 20:00 ET; history can wait, the weekend cannot | Step 10b item 3 |
+| The lending fetch slows the running pool fetch | Low | At most 16 parallel while `history-full.ts` runs; lending transactions per day are under 1% of the pools' (probe) | Step 10b item 4 |
+| A lending program's account layout differs from the SDK version we check against | Medium | Hourly on-chain rows compared with the API rows; a mismatch marks the venue `degraded` and stops its numbers being published | Step 10b item 6 |
+| Jupiter Lend accounts cannot be decoded | Medium | API-only, labelled; history and positions cover Kamino only, and the report says so | Step 10b item 1 (VL-5) |
+| Interest accrual hides a missing borrow or repay event in the replay | Low | The vault-balance chain is exact and is the main check; borrowed amounts are checked within a stated tolerance | Step 10b item 6 |
+| Installing the new job reloads the running collectors | Low | `install.sh` one-job mode; the other jobs' log mtimes are checked before and after | Step 10b item 3 |
+| No price for collateral before the pool-history window | High | Units kept, USD `null` with a reason; filled from the lending oracles' logged prices, labelled by source and regime | Step 11 |
+| A lending oracle's price is read as a traded price off-hours | High | Every resolved price carries its source, regime and quality; the off-hours gap per asset is measured and published (items 2 and 7) | Step 11 |
+| Logged prices are too sparse on quiet days | Medium | The gap distribution sets `maxAgeSec`; past it the price is `null` with reason `stale`, never carried forward | Step 11 item 2 |
 
 ## 9. Open questions
 
@@ -283,7 +513,7 @@ Names in `code` are policy inputs stored next to every output. Anything not list
 | Q3 | LP-withdrawal alarm: drop in liquidity near price that triggers it (`withdrawalAlarmPct`)? | 20% within ±2% of price |
 | Q4 | Tier A cut-off: 99% of liquidity (301 pools) or 95% (138)? | 99% |
 
-**Answered on Oct 1:** τ 1%; `shareOfDepth` 0.25; dry floor 0.25; too-slow issuer redemption is listed, not counted; no API rate limit locally, limited when live; old job re-installed with the key; start now; pool reads first.
+**Answered on Oct 1:** lending history covers each market's whole life and is fetched now, beside the pool fetch (D10); other lending venues are listed, not ingested, for now (D14); curated vaults are tracked but not offered (D15); τ 1%; `shareOfDepth` 0.25; dry floor 0.25; too-slow issuer redemption is listed, not counted; no API rate limit locally, limited when live; old job re-installed with the key; start now; pool reads first.
 
 ## 10. Self-check
 

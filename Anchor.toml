@@ -1,0 +1,20 @@
+[toolchain]
+anchor_version = "0.31.1"
+
+[features]
+resolution = true
+skip-lint = false
+
+# Named one by one: programs/tests is the test package, not a program.
+[workspace]
+members = ["programs/basket", "programs/mock-router", "programs/puppet-router", "programs/test-hook"]
+
+# The ids are the public keys of keypairs that are never committed (see programs/README.md).
+# Nothing here names a real cluster: deploys are a person's step, with their own flags.
+[programs.localnet]
+basket = "529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW"
+mock_router = "2ticePjZZ6e34bNUgUXz7v3uHm3jS8jvV13gesdvKn4f"
+
+[provider]
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"

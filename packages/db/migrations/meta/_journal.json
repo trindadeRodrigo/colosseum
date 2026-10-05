@@ -43,6 +43,55 @@
       "when": 1790820018428,
       "tag": "0005_rich_absorbing_man",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790964472752,
+      "tag": "0006_basket",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790979681515,
+      "tag": "0007_risk_lending_prices",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790981866158,
+      "tag": "0008_risk_lending_facts",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790985432999,
+      "tag": "0009_risk_network_fees",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790990523082,
+      "tag": "0010_risk_depth_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790996065565,
+      "tag": "0011_risk_pool_flow",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791060836138,
+      "tag": "0012_chain_pick_leg_cash",
+      "breakpoints": true
     }
   ]
 }

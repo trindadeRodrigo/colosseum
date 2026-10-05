@@ -1,0 +1,94 @@
+import { z } from 'zod';
+import { Address, AssetId, ChainId, RawAmount, Sourced } from './chain';
+import { Provenance } from './enums';
+import { ChainMode } from './flags';
+import { ORDER_LIMITS } from './order';
+import { WalletAccount } from './wallet';
+
+// The bodies of the /v1 routes about the signed-in person and their wallet: who they are and which
+// chain their plans live on (gates ONE-CHAIN and CHAIN-PICK), and what the wallet is missing there.
+
+/**
+ * GET /v1/me, and the answer of PUT /v1/me/chain. A person's plans live on one chain.
+ * - Someone who connected an outside wallet is on the chain of that wallet's family: a Solana wallet
+ *   means Solana, an EVM wallet means Robinhood Chain while Base is not deployed. `chainSource` is
+ *   `wallet`, and there is nothing to pick.
+ * - Someone who made a wallet in the app picks the chain once. Until then `chain` is null and
+ *   `chainOptions` lists what they may pick; after, `chainSource` is `picked` and it never changes.
+ */
+export const PersonResponse = z.object({
+  /** The person, as the sign-in provider names them. */
+  userId: z.string().min(1),
+  /** The wallets of the verified identity token. Nothing the request says is in here. */
+  wallets: z.array(WalletAccount),
+  chain: ChainId.nullable(),
+  chainSource: z.enum(['picked', 'wallet']).nullable(),
+  /** The chains this person may pick. Empty once there is a chain. */
+  chainOptions: z.array(ChainId),
+});
+export type PersonResponse = z.infer<typeof PersonResponse>;
+
+/** PUT /v1/me/chain. Set once: the same chain again answers as before, another one is refused. */
+export const PickChainRequest = z.strictObject({ chain: ChainId });
+export type PickChainRequest = z.infer<typeof PickChainRequest>;
+
+/**
+ * The query of GET /v1/funding. With nothing, the answer is what the wallet holds. With a plan and an
+ * amount, it is what a buy of that amount needs: the cash, and the network fee of every step the order
+ * would have. The two come together: the fee depends on the plan's steps.
+ *
+ * `wallet` is the wallet to read, one of the person's on their chain. An order may name any of the
+ * person's wallets of that family as its owner, so a caller that holds more than one asks about the
+ * one the order will name. Left out, it is the wallet the person's plans are held by: the outside
+ * wallet when that is what names the chain, the wallet made in the app when the chain was picked.
+ */
+export const FundingQuery = z
+  .object({
+    wallet: Address.optional(),
+    amountUsd: z.coerce
+      .number()
+      .positive()
+      .max(ORDER_LIMITS.maxAmountUsd, 'one order buys at most $1,000,000')
+      .optional(),
+    proposalId: z.uuid().optional(),
+  })
+  .refine((q) => (q.amountUsd === undefined) === (q.proposalId === undefined), {
+    message: 'send amountUsd and proposalId together, or neither',
+  });
+export type FundingQuery = z.infer<typeof FundingQuery>;
+
+/**
+ * One balance against what is needed of it, in raw units, with where the reading came from. `missingRaw`
+ * is the need less the holding and never under zero: what to add before the steps can be signed.
+ */
+export const FundingFigure = Sourced.extend({
+  symbol: z.string().min(1),
+  decimals: z.number().int().nonnegative(),
+  haveRaw: RawAmount,
+  needRaw: RawAmount,
+  missingRaw: RawAmount,
+});
+export type FundingFigure = z.infer<typeof FundingFigure>;
+
+/**
+ * GET /v1/funding: what the signed-in wallet is missing on its chain, the dollar token and the native
+ * token that pays the network fee. Every figure carries its source, time and method, and the chain's
+ * provenance: `mock` on the mock chain, `sandbox` on a test network, `live` on mainnet only.
+ */
+export const FundingResponse = z.object({
+  chain: ChainId,
+  name: z.string(),
+  mode: ChainMode,
+  provenance: Provenance,
+  wallet: Address,
+  /** The chain's dollar token: the only token a deposit is made in. */
+  cash: FundingFigure.extend({ asset: AssetId }),
+  /** The chain's native token, which pays the network fee of every step. */
+  gas: FundingFigure,
+  /** How many transactions the need was worked out for, and whether the first of them opens a vault. */
+  steps: z.number().int().nonnegative(),
+  newVault: z.boolean(),
+  /** True when nothing is missing. */
+  ok: z.boolean(),
+});
+export type FundingResponse = z.infer<typeof FundingResponse>;

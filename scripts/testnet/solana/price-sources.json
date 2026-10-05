@@ -1,0 +1,95 @@
+{
+  "about": "Where the devnet price copier (scripts/testnet/solana/prices.ts) reads each test token's price and its average on mainnet, read only. Every entry it writes keeps the source's own value, exponent and unix time; a chain of entries is their product, stamped with the oldest of their times.",
+  "scope": {
+    "account": "3t4JZcueEzTbVP6kLxXrL3VpWx45jDer4eqysweBchNH",
+    "owner": "HFn8GnPADiny6XqUoWE8uRPPxb29ikn4yTuPa9MF2fWJ",
+    "source": "Kamino Scope's price account on mainnet, the one fixtures/solana-vault/scope-indexes.json names"
+  },
+  "assets": {
+    "solana:spyx": {
+      "kind": "scope",
+      "price": [344],
+      "twap": [279],
+      "method": "scope_entry"
+    },
+    "solana:qqqx": {
+      "kind": "scope",
+      "price": [347],
+      "twap": [281],
+      "method": "scope_entry"
+    },
+    "solana:nvdax": {
+      "kind": "scope",
+      "price": [332],
+      "twap": [269],
+      "method": "scope_entry"
+    },
+    "solana:tslax": {
+      "kind": "scope",
+      "price": [338],
+      "twap": [273],
+      "method": "scope_entry"
+    },
+    "solana:aaplx": {
+      "kind": "scope",
+      "price": [317],
+      "twap": [259],
+      "method": "scope_entry"
+    },
+    "solana:googlx": {
+      "kind": "scope",
+      "price": [326],
+      "twap": [265],
+      "method": "scope_entry"
+    },
+    "solana:metax": {
+      "kind": "scope",
+      "price": [329],
+      "twap": [267],
+      "method": "scope_entry"
+    },
+    "solana:mstrx": {
+      "kind": "scope",
+      "price": [335],
+      "twap": [271],
+      "method": "scope_entry"
+    },
+    "solana:crclx": {
+      "kind": "scope",
+      "price": [323],
+      "twap": [263],
+      "method": "scope_entry"
+    },
+    "solana:hoodx": {
+      "kind": "scope",
+      "price": [320],
+      "twap": [261],
+      "method": "scope_entry"
+    },
+    "solana:syrupusdc": {
+      "kind": "scope",
+      "price": [314, 13],
+      "twap": [504, 456],
+      "method": "scope_chain",
+      "source": "The price chain and the average chain of Kamino's syrupUSDC reserve AwCyCPZYJSZ93xcVKNK7jR8e1BHzJXq1D4bReNuh9woY (Maple market 6WEGfej9B9wjxRs6t4BYpb9iCXd8CpTpJ8fVSNzHCC5y): syrupUSDC in USDC (314) times USDC in dollars (13), read from the reserve on 2026-10-05"
+    },
+    "solana:jlusdc": {
+      "kind": "jupiter-lend",
+      "lending": "2vVYHYM8VYnvZqQWpTJSj8o8DBf1wM8pVs3bsTgYZiqJ",
+      "price": [13],
+      "twap": [456],
+      "method": "jl_exchange_rate_times_scope",
+      "source": "Jupiter Lend's lending account for USDC and jlUSDC (program jup3YeL8QhtSx1e253b2FDvsMNC87fDrgQZivbrndc9): its token exchange price (USDC per jlUSDC, 1e12 precision) times Scope's USDC price (13) and USDC average (456), stamped with the older of the rate's last update and the Scope entry. The rate has no average of its own: the average entry is the same rate times USDC's average"
+    },
+    "solana:gldx": {
+      "kind": "pool-mid",
+      "pool": "78ReVNMLGRWmjtf2HmBoHUe2pRcsctXTTbxJnbhchyze",
+      "check": "5tGLudhm9pHtqbtfymvdarbD59AyMyYimXXwbFfzETV9",
+      "maxSpreadBps": 100,
+      "mint": "Xsv9hRk1z5ystj9MhnA7Lq4vjSsLwzL2nxrwmwtD3re",
+      "decimals": 8,
+      "method": "pool_mid",
+      "source": "The mid of the GLDx/USDC Raydium CLMM pool 78ReVNMLGRWmjtf2HmBoHUe2pRcsctXTTbxJnbhchyze (2,210 GLDx and 178,352 USDC on 2026-10-05), USDC counted as one dollar, refused unless the GLDx/USDC Orca Whirlpool 5tGLudhm9pHtqbtfymvdarbD59AyMyYimXXwbFfzETV9 is within 100 bps, stamped with that Whirlpool's reward_last_updated_timestamp (moved by every swap), so the price goes stale when the pool does. A pool keeps no average: the mid stands as the average too. Scope has no GLDx entry (no Kamino reserve), its Pyth push account was 23 days old, and Hermes asks for a key"
+    }
+  }
+}

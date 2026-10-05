@@ -1,0 +1,87 @@
+{
+  "schema": "meta-hash-vectors",
+  "version": 2,
+  "readme": "fixtures/creator-limits/README.md",
+  "fields": ["copy", "familyId", "kind", "name", "slug"],
+  "count": 6,
+  "cases": [
+    {
+      "case": "plain text",
+      "meta": {
+        "familyId": "abababababababababababababababababababababababababababababababab",
+        "slug": "sand-to-server",
+        "name": "From Sand to Server",
+        "copy": "Chips, and what runs on them.",
+        "kind": "index"
+      },
+      "canonical": "{\"copy\":\"Chips, and what runs on them.\",\"familyId\":\"abababababababababababababababababababababababababababababababab\",\"kind\":\"index\",\"name\":\"From Sand to Server\",\"slug\":\"sand-to-server\"}",
+      "utf8Hex": "7b22636f7079223a2243686970732c20616e6420776861742072756e73206f6e207468656d2e222c2266616d696c794964223a2261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162222c226b696e64223a22696e646578222c226e616d65223a2246726f6d2053616e6420746f20536572766572222c22736c7567223a2273616e642d746f2d736572766572227d",
+      "sha256": "617603a7ce81d16c5007683771e93eddff25c4e814206de147d64c36a2c348c3"
+    },
+    {
+      "case": "a single-asset portfolio with no copy",
+      "meta": {
+        "familyId": "0000000000000000000000000000000000000000000000000000000000000001",
+        "slug": "the-500",
+        "name": "The 500",
+        "copy": "",
+        "kind": "single"
+      },
+      "canonical": "{\"copy\":\"\",\"familyId\":\"0000000000000000000000000000000000000000000000000000000000000001\",\"kind\":\"single\",\"name\":\"The 500\",\"slug\":\"the-500\"}",
+      "utf8Hex": "7b22636f7079223a22222c2266616d696c794964223a2230303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303031222c226b696e64223a2273696e676c65222c226e616d65223a2254686520353030222c22736c7567223a227468652d353030227d",
+      "sha256": "927624504d3a948cb3b25a42bfa87a9625a30f1fa5442c8283ddd9a6f0e7b1c6"
+    },
+    {
+      "case": "quotes, a backslash, a slash and control characters",
+      "meta": {
+        "familyId": "abababababababababababababababababababababababababababababababab",
+        "slug": "escapes",
+        "name": "A \"quoted\" name",
+        "copy": "line one\nline two\ttabbed \\ a/b \u0001 \u001f \u007f \b\f\r",
+        "kind": "index"
+      },
+      "canonical": "{\"copy\":\"line one\\nline two\\ttabbed \\\\ a/b \\u0001 \\u001f \u007f \\b\\f\\r\",\"familyId\":\"abababababababababababababababababababababababababababababababab\",\"kind\":\"index\",\"name\":\"A \\\"quoted\\\" name\",\"slug\":\"escapes\"}",
+      "utf8Hex": "7b22636f7079223a226c696e65206f6e655c6e6c696e652074776f5c74746162626564205c5c20612f62205c7530303031205c7530303166207f205c625c665c72222c2266616d696c794964223a2261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162222c226b696e64223a22696e646578222c226e616d65223a2241205c2271756f7465645c22206e616d65222c22736c7567223a2265736361706573227d",
+      "sha256": "a86de6507ee5f06c9866fe836b9188d5ecc507d1ea72b64cd9de1951803e2283"
+    },
+    {
+      "case": "text outside ASCII is written as itself, in UTF-8",
+      "meta": {
+        "familyId": "abababababababababababababababababababababababababababababababab",
+        "slug": "acoes",
+        "name": "Ações",
+        "copy": "Renda em dólar — não é promessa. 𐍈",
+        "kind": "index"
+      },
+      "canonical": "{\"copy\":\"Renda em dólar — não é promessa. 𐍈\",\"familyId\":\"abababababababababababababababababababababababababababababababab\",\"kind\":\"index\",\"name\":\"Ações\",\"slug\":\"acoes\"}",
+      "utf8Hex": "7b22636f7079223a2252656e646120656d2064c3b36c617220e28094206ec3a36f20c3a92070726f6d657373612e20f0908d88222c2266616d696c794964223a2261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162222c226b696e64223a22696e646578222c226e616d65223a2241c3a7c3b56573222c22736c7567223a2261636f6573227d",
+      "sha256": "c9920fd9fdddfc32130745a35ff8f51a93127d8a8d09660dc5daa0f60fbb3d18"
+    },
+    {
+      "case": "text given with combining marks is hashed in its composed form (NFC)",
+      "meta": {
+        "familyId": "abababababababababababababababababababababababababababababababab",
+        "slug": "acoes",
+        "name": "Ac\u0327o\u0303es",
+        "copy": "Renda em do\u0301lar — na\u0303o e\u0301 promessa. 𐍈",
+        "kind": "index"
+      },
+      "canonical": "{\"copy\":\"Renda em dólar — não é promessa. 𐍈\",\"familyId\":\"abababababababababababababababababababababababababababababababab\",\"kind\":\"index\",\"name\":\"Ações\",\"slug\":\"acoes\"}",
+      "utf8Hex": "7b22636f7079223a2252656e646120656d2064c3b36c617220e28094206ec3a36f20c3a92070726f6d657373612e20f0908d88222c2266616d696c794964223a2261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162222c226b696e64223a22696e646578222c226e616d65223a2241c3a7c3b56573222c22736c7567223a2261636f6573227d",
+      "sha256": "c9920fd9fdddfc32130745a35ff8f51a93127d8a8d09660dc5daa0f60fbb3d18"
+    },
+    {
+      "case": "a line separator is not a control character and is written as itself",
+      "meta": {
+        "familyId": "abababababababababababababababababababababababababababababababab",
+        "slug": "lines",
+        "name": "Lines",
+        "copy": "one\u2028two\u2029three",
+        "kind": "index"
+      },
+      "canonical": "{\"copy\":\"one\u2028two\u2029three\",\"familyId\":\"abababababababababababababababababababababababababababababababab\",\"kind\":\"index\",\"name\":\"Lines\",\"slug\":\"lines\"}",
+      "utf8Hex": "7b22636f7079223a226f6e65e280a874776fe280a97468726565222c2266616d696c794964223a2261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162222c226b696e64223a22696e646578222c226e616d65223a224c696e6573222c22736c7567223a226c696e6573227d",
+      "sha256": "0a6a52de0fa4dcc65ee7ec80630cfc4241e92fee1012d6b09a3ca799313d7d6a"
+    }
+  ]
+}

@@ -94,13 +94,15 @@ const logDecoder =
     };
   };
 
-// Orca: PositionOpened is read; the others carry no layout change (fees, rewards, pool setup).
+// Orca: PositionOpened and LiquidityRepositioned are read; the others carry no layout change (fees, rewards, pool
+// setup).
 const ORCA_KNOWN = new Set(
   [
     'Traded',
     'LiquidityIncreased',
     'LiquidityDecreased',
     'PositionOpened',
+    'LiquidityRepositioned',
     'PositionHarvestUpdated',
     'PoolInitialized',
   ].map(eventDisc),

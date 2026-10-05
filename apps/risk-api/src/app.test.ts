@@ -10,6 +10,7 @@ import {
 } from '@colosseum/risk';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { ASSESS_MAX_WITHDRAWALS } from '../../api/src/routes/risk';
 import { buildRiskApp } from './app';
 
 // HANDOFF-RISK §6 P2.2 and P2.3: the standalone API serves only /risk/* and /docs, and
@@ -124,6 +125,36 @@ describe('standalone risk API', () => {
     expect(http.orders).toEqual(direct.orders);
     expect(http.checks).toEqual(direct.checks);
     expect(http.disclaimer).toContain('not licensed');
+    await app.close();
+  });
+
+  it('POST /risk/positions/assess refuses a body above its bounds and answers the largest one quickly', async () => {
+    const app = await buildRiskApp();
+    const withdrawals = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        at: new Date(Date.UTC(2026, 10 + i, 15, 12, i % 60)).toISOString(),
+        usd: 1_000,
+      }));
+    const body = (n: number) => ({
+      cashUsd: 10_000,
+      illiquid: [{ asset: 'FIXTURESPYX', valueUsd: 200_000 }],
+      withdrawals: withdrawals(n),
+      windowDays: 365,
+    });
+    const over = await app.inject({
+      method: 'POST',
+      url: '/risk/positions/assess',
+      payload: body(ASSESS_MAX_WITHDRAWALS + 1),
+    });
+    expect(over.statusCode).toBe(400);
+    const t = performance.now();
+    const max = await app.inject({
+      method: 'POST',
+      url: '/risk/positions/assess',
+      payload: body(ASSESS_MAX_WITHDRAWALS),
+    });
+    expect(max.statusCode).toBe(200);
+    expect(performance.now() - t).toBeLessThan(2_000);
     await app.close();
   });
 });

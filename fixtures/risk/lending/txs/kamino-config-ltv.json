@@ -1,0 +1,224 @@
+{
+  "name": "kamino-config-ltv",
+  "signature": "3KXXYUgZpChKZvxSHuJTaJCoEU9XK6rrgcG7Rg2qpRAFQTaFgNxorA7Zd9zAKWsV9vVzAGxocvsropoMcREKxo6K",
+  "slot": 447307559,
+  "blockTime": 1789493502,
+  "frozenAt": "2026-10-01T22:44:23.067Z",
+  "ctx": {
+    "reserveSymbols": { "8Pw7JiQELCWkcck9DtPzWtYwGnPLsUpLuZEKxZAQ4AAs": "SPYx" },
+    "pools": {}
+  },
+  "sdk": [
+    {
+      "path": "0",
+      "program": "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
+      "name": "updateReserveConfig",
+      "args": {
+        "mode": { "updateLoanToValuePct": {} },
+        "value": "46",
+        "skipConfigIntegrityValidation": true
+      }
+    },
+    {
+      "path": "1",
+      "program": "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
+      "name": "updateReserveConfig",
+      "args": {
+        "mode": { "updateBorrowRateCurve": {} },
+        "value": "00000000e803000010270000e803000010270000e803000010270000e803000010270000e803000010270000e803000010270000e803000010270000e803000010270000e803000010270000e803000010270000e8030000",
+        "skipConfigIntegrityValidation": true
+      }
+    },
+    {
+      "path": "2",
+      "program": "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
+      "name": "updateReserveConfig",
+      "args": {
+        "mode": { "updateDepositWithdrawalCap": {} },
+        "value": "00e87648170000000000000000000000",
+        "skipConfigIntegrityValidation": true
+      }
+    },
+    {
+      "path": "3",
+      "program": "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
+      "name": "updateReserveConfig",
+      "args": {
+        "mode": { "updateBadDebtLiquidationBonusBps": {} },
+        "value": "0a00",
+        "skipConfigIntegrityValidation": true
+      }
+    },
+    {
+      "path": "4",
+      "program": "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
+      "name": "updateReserveConfig",
+      "args": {
+        "mode": { "updateBorrowFactor": {} },
+        "value": "6400000000000000",
+        "skipConfigIntegrityValidation": true
+      }
+    },
+    {
+      "path": "5",
+      "program": "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
+      "name": "updateReserveConfig",
+      "args": {
+        "mode": { "updateReserveStatus": {} },
+        "value": "00",
+        "skipConfigIntegrityValidation": true
+      }
+    }
+  ],
+  "tx": {
+    "blockTime": 1789493502,
+    "meta": {
+      "computeUnitsConsumed": 320416,
+      "costUnits": 324357,
+      "err": null,
+      "fee": 81392,
+      "innerInstructions": [],
+      "loadedAddresses": { "readonly": [], "writable": [] },
+      "logMessages": [
+        "Program KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD invoke [1]",
+        "Program log: Instruction: UpdateReserveConfig",
+        "Program log: Reserve is used: false, is usage blocked: true, proposer authority locked: false",
+        "Program log: Updating reserve 8Pw7JiQELCWkcck9DtPzWtYwGnPLsUpLuZEKxZAQ4AAs SPYx config with mode UpdateLoanToValuePct",
+        "Program log: Market BBmb1SYx1MiJjeCFbGtrP8FcV9XJ3uYd4dLHhe1NbwAP Kurate EURC Market",
+        "Program log: Prv value: &mut reserve.config.loan_to_value_pct = 0",
+        "Program log: New value: &mut reserve.config.loan_to_value_pct = 70",
+        "Program log: WARNING! Skipping validation of the config",
+        "Program KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD consumed 52880 of 800000 compute units",
+        "Program KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD success",
+        "Program KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD invoke [1]",
+        "Program log: Instruction: UpdateReserveConfig",
+        "Program log: Reserve is used: false, is usage blocked: true, proposer authority locked: false",
+        "Program log: Updating reserve 8Pw7JiQELCWkcck9DtPzWtYwGnPLsUpLuZEKxZAQ4AAs SPYx config with mode UpdateBorrowRateCurve",
+        "Program log: Market BBmb1SYx1MiJjeCFbGtrP8FcV9XJ3uYd4dLHhe1NbwAP Kurate EURC Market",
+        "Program log: Prv value: &mut reserve.config.borrow_rate_curve = BorrowRateCurve { points: [CurvePoint { utilization_rate_bps: 0, borrow_rate_bps: 0 }, CurvePoint { utilization_rate_bps: 10000, borrow_rate_bps: 0 }, CurvePoint { utilization_rate_bps: 10000, borrow_rate_bps: 0 }, CurvePoint { utilization_rate_bps: 10000, borrow_rate_bps: 0 }, CurvePoint { utilization_rate_bps: 10000, borrow_rate_bps: 0 }, CurvePoint { utilization_rate_bps: 10000, borrow_rate_bps: 0 }, CurvePoint { utilization_rate_bps: 10000, borrow_rate_bps: 0 }, CurvePoint { utilization_rate_bps: 10000, borrow_rate_bps: 0 }, CurvePoint { utilization_rate_bps: 10000, borrow_rate_bps: 0 }, CurvePoint { utilization_rate_bps: 10000, borrow_rate_bps: 0 }, CurvePoint { utilization_rate_bps: 10000, borrow_rate_bps: 0 }] }",
+        "Program log: New value: &mut reserve.config.borrow_rate_curve = BorrowRateCurve { points: [CurvePoint { utilization_rate_bps: 0, borrow_rate_bps: 1000 }, CurvePoint { utilization_rate_bps: 10000, borrow_rate_bps: 1000 }, CurvePoint { utilization_rate_bps: 10000, borrow_rate_bps: 1000 }, CurvePoint { utilization_rate_bps: 10000, borrow_rate_bps: 1000 }, CurvePoint { utilization_rate_bps: 10000, borrow_rate_bps: 1000 }, CurvePoint { utilization_rate_bps: 10000, borrow_rate_bps: 1000 }, CurvePoint { utilization_rate_bps: 10000, borrow_rate_bps: 1000 }, CurvePoint { utilization_rate_bps: 10000, borrow_rate_bps: 1000 }, CurvePoint { utilization_rate_bps: 10000, borrow_rate_bps: 1000 }, CurvePoint { utilization_rate_bps: 10000, borrow_rate_bps: 1000 }, CurvePoint { utilization_rate_bps: 10000, borrow_rate_bps: 1000 }] }",
+        "Program log: WARNING! Skipping validation of the config",
+        "Program KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD consumed 75479 of 747120 compute units",
+        "Program KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD success",
+        "Program KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD invoke [1]",
+        "Program log: Instruction: UpdateReserveConfig",
+        "Program log: Reserve is used: false, is usage blocked: true, proposer authority locked: false",
+        "Program log: Updating reserve 8Pw7JiQELCWkcck9DtPzWtYwGnPLsUpLuZEKxZAQ4AAs SPYx config with mode UpdateDepositWithdrawalCap",
+        "Program log: Market BBmb1SYx1MiJjeCFbGtrP8FcV9XJ3uYd4dLHhe1NbwAP Kurate EURC Market",
+        "Program log: Prv value: &mut reserve.config.deposit_withdrawal_cap.config_capacity = 0",
+        "Program log: New value: &mut reserve.config.deposit_withdrawal_cap.config_capacity = 100000000000",
+        "Program log: Prv value: &mut reserve.config.deposit_withdrawal_cap.config_interval_length_seconds = 0",
+        "Program log: New value: &mut reserve.config.deposit_withdrawal_cap.config_interval_length_seconds = 0",
+        "Program log: WARNING! Skipping validation of the config",
+        "Program KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD consumed 50324 of 671641 compute units",
+        "Program KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD success",
+        "Program KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD invoke [1]",
+        "Program log: Instruction: UpdateReserveConfig",
+        "Program log: Reserve is used: false, is usage blocked: true, proposer authority locked: false",
+        "Program log: Updating reserve 8Pw7JiQELCWkcck9DtPzWtYwGnPLsUpLuZEKxZAQ4AAs SPYx config with mode UpdateBadDebtLiquidationBonusBps",
+        "Program log: Market BBmb1SYx1MiJjeCFbGtrP8FcV9XJ3uYd4dLHhe1NbwAP Kurate EURC Market",
+        "Program log: Prv value: &mut reserve.config.bad_debt_liquidation_bonus_bps = 0",
+        "Program log: New value: &mut reserve.config.bad_debt_liquidation_bonus_bps = 10",
+        "Program log: WARNING! Skipping validation of the config",
+        "Program KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD consumed 47495 of 621317 compute units",
+        "Program KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD success",
+        "Program KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD invoke [1]",
+        "Program log: Instruction: UpdateReserveConfig",
+        "Program log: Reserve is used: false, is usage blocked: true, proposer authority locked: false",
+        "Program log: Updating reserve 8Pw7JiQELCWkcck9DtPzWtYwGnPLsUpLuZEKxZAQ4AAs SPYx config with mode UpdateBorrowFactor",
+        "Program log: Market BBmb1SYx1MiJjeCFbGtrP8FcV9XJ3uYd4dLHhe1NbwAP Kurate EURC Market",
+        "Program log: Prv value: &mut reserve.config.borrow_factor_pct = 0",
+        "Program log: New value: &mut reserve.config.borrow_factor_pct = 100",
+        "Program log: WARNING! Skipping validation of the config",
+        "Program KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD consumed 47143 of 573822 compute units",
+        "Program KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD success",
+        "Program KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD invoke [1]",
+        "Program log: Instruction: UpdateReserveConfig",
+        "Program log: Reserve is used: false, is usage blocked: true, proposer authority locked: false",
+        "Program log: Updating reserve 8Pw7JiQELCWkcck9DtPzWtYwGnPLsUpLuZEKxZAQ4AAs SPYx config with mode UpdateReserveStatus",
+        "Program log: Market BBmb1SYx1MiJjeCFbGtrP8FcV9XJ3uYd4dLHhe1NbwAP Kurate EURC Market",
+        "Program log: Prv value: &mut reserve.config.status = Hidden",
+        "Program log: New value: &mut reserve.config.status = Active",
+        "Program log: WARNING! Skipping validation of the config",
+        "Program KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD consumed 46795 of 526679 compute units",
+        "Program KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD success",
+        "Program ComputeBudget111111111111111111111111111111 invoke [1]",
+        "Program ComputeBudget111111111111111111111111111111 success",
+        "Program ComputeBudget111111111111111111111111111111 invoke [1]",
+        "Program ComputeBudget111111111111111111111111111111 success"
+      ],
+      "postBalances": [552276686, 44460160, 24343360, 8073600, 1, 33141440, 0],
+      "postTokenBalances": [],
+      "preBalances": [552358078, 44460160, 24343360, 8073600, 1, 33141440, 0],
+      "preTokenBalances": [],
+      "rewards": [],
+      "status": { "Ok": null }
+    },
+    "slot": 447307559,
+    "transaction": {
+      "message": {
+        "accountKeys": [
+          "Ed3T7tukRawu8atGhwb2QZyA4NzP9kvjVUKo5qJYJaPK",
+          "8Pw7JiQELCWkcck9DtPzWtYwGnPLsUpLuZEKxZAQ4AAs",
+          "BBmb1SYx1MiJjeCFbGtrP8FcV9XJ3uYd4dLHhe1NbwAP",
+          "BEe6HXZf6cByeb8iCxukjB8k74kJN3cVbBAGi49Hfi6W",
+          "ComputeBudget111111111111111111111111111111",
+          "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
+          "Sysvar1nstructions1111111111111111111111111"
+        ],
+        "addressTableLookups": [],
+        "header": {
+          "numReadonlySignedAccounts": 0,
+          "numReadonlyUnsignedAccounts": 5,
+          "numRequiredSignatures": 1
+        },
+        "instructions": [
+          {
+            "accounts": [0, 3, 2, 1, 6],
+            "data": "2ivXXXmqyvaw63SFyN2qv",
+            "programIdIndex": 5,
+            "stackHeight": 1
+          },
+          {
+            "accounts": [0, 3, 2, 1, 6],
+            "data": "odCY56XSQfyrPyruMVCwc41jeAp78uMcWwPLH13NQNo6ss4mYbMa356iuHggXF7F8cTyY9PxA7A6vQm5yeLSYc9LgNgbPSa7cd43TT6wzR5K3dkELRZYe4EinwBeuN5rpUkiAKajuA8",
+            "programIdIndex": 5,
+            "stackHeight": 1
+          },
+          {
+            "accounts": [0, 3, 2, 1, 6],
+            "data": "DLf4nUbkMGR5Reopp2EC8BBrHg9aYJtSc1w6zVE88",
+            "programIdIndex": 5,
+            "stackHeight": 1
+          },
+          {
+            "accounts": [0, 3, 2, 1, 6],
+            "data": "8c3FjkpwCFWradTNMzcXqa",
+            "programIdIndex": 5,
+            "stackHeight": 1
+          },
+          {
+            "accounts": [0, 3, 2, 1, 6],
+            "data": "HiNsB1z6KRh5RDkxKVpF4NqnLQ5E5N",
+            "programIdIndex": 5,
+            "stackHeight": 1
+          },
+          {
+            "accounts": [0, 3, 2, 1, 6],
+            "data": "2ivXXXmqyvaxXZhLCkmM2",
+            "programIdIndex": 5,
+            "stackHeight": 1
+          },
+          { "accounts": [], "data": "E6NUis", "programIdIndex": 4, "stackHeight": 1 },
+          { "accounts": [], "data": "3DsQ7SGpXvUo", "programIdIndex": 4, "stackHeight": 1 }
+        ],
+        "recentBlockhash": "2miYShE3tSaFMKdGgS9w7ohK5Fphzheya9gTkgnCtmXK"
+      },
+      "signatures": [
+        "3KXXYUgZpChKZvxSHuJTaJCoEU9XK6rrgcG7Rg2qpRAFQTaFgNxorA7Zd9zAKWsV9vVzAGxocvsropoMcREKxo6K"
+      ]
+    },
+    "transactionIndex": 209,
+    "version": 0
+  }
+}
