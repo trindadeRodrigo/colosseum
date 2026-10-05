@@ -31,18 +31,6 @@ type SourceAsset =
       method: string;
       source?: string;
     }
-  | {
-      kind: 'pool-mid';
-      /** A Raydium CLMM pool of the token against USDC: the price is its mid. */
-      pool: string;
-      /** An Orca Whirlpool of the same pair the mid must agree with, to `maxSpreadBps`. */
-      check: string;
-      maxSpreadBps: number;
-      mint: string;
-      decimals: number;
-      method: string;
-      source?: string;
-    }
   | { kind: 'none'; why: string };
 
 export type Sources = {
@@ -115,74 +103,6 @@ function jupiterLendRate(data: Uint8Array): { rate: bigint; unixTimestamp: bigin
 
 const older = (a: bigint, b: bigint) => (a < b ? a : b);
 
-const RAYDIUM_CLMM = 'CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK';
-const ORCA_WHIRLPOOL = 'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc';
-/** A pool's mid is written with this many decimal places. */
-const POOL_EXPONENT = 8n;
-
-const u128At = (data: Uint8Array, at: number) => u64At(data, at) + (u64At(data, at + 8) << 64n);
-
-/** Dollars for one whole token at a pool's sqrt price, the token being mint 0 against USDC (6
- * decimals) at one dollar: (sqrt / 2^64)^2 · 10^(decimals − 6), scaled by 10^8, rounded down. */
-const midOf = (sqrtX64: bigint, decimals: number) => {
-  const shift = BigInt(decimals - 6) + POOL_EXPONENT;
-  return (sqrtX64 * sqrtX64 * 10n ** shift) >> 128n;
-};
-
-/** A Raydium CLMM pool's two mints and sqrt price, and an Orca Whirlpool's (programs/risk decoders). */
-function poolSide(data: Uint8Array, owner: string) {
-  const decoder = getAddressDecoder();
-  if (owner === RAYDIUM_CLMM && data.length === 1544)
-    return {
-      mint0: decoder.decode(data.slice(73, 105)),
-      mint1: decoder.decode(data.slice(105, 137)),
-      sqrtX64: u128At(data, 253),
-      updatedAt: 0n,
-    };
-  if (owner === ORCA_WHIRLPOOL && data.length === 653)
-    return {
-      mint0: decoder.decode(data.slice(101, 133)),
-      mint1: decoder.decode(data.slice(181, 213)),
-      sqrtX64: u128At(data, 65),
-      /** `reward_last_updated_timestamp`: moved by every swap and every change of liquidity. */
-      updatedAt: u64At(data, 261),
-    };
-  throw new Error(
-    `${owner} is neither a Raydium CLMM pool nor an Orca Whirlpool of the expected size`,
-  );
-}
-
-/** The mid of a token's USDC pool, checked against an Orca Whirlpool of the pair and stamped with
- * that pool's own last update, so the price goes stale when the pool does. The pool keeps no
- * average: the same mid stands as the average entry. */
-async function poolMid(
-  source: Source,
-  asset: Extract<SourceAsset, { kind: 'pool-mid' }>,
-): Promise<{ price: Entry; twap: Entry }> {
-  const [pool, check] = await Promise.all([
-    source.account(address(asset.pool)),
-    source.account(address(asset.check)),
-  ]);
-  if (!pool || !check) throw new Error('a pool is not there');
-  if (pool.owner !== RAYDIUM_CLMM || check.owner !== ORCA_WHIRLPOOL)
-    throw new Error('the pool is not a Raydium CLMM pool, or the check is not an Orca Whirlpool');
-  const sides = [pool, check].map((account) => {
-    const side = poolSide(account.data, account.owner);
-    if (side.mint0 !== asset.mint || side.mint1 !== USDC_MINT)
-      throw new Error(
-        `a pool is ${side.mint0} against ${side.mint1}, not ${asset.mint} against USDC`,
-      );
-    return side;
-  });
-  const [mid = 0n, other = 0n] = sides.map((side) => midOf(side.sqrtX64, asset.decimals));
-  const apart = mid > other ? mid - other : other - mid;
-  if (mid === 0n || apart * 10_000n > mid * BigInt(asset.maxSpreadBps))
-    throw new Error(`the two pools' mids are more than ${asset.maxSpreadBps} bps apart`);
-  const unixTimestamp = sides[1]?.updatedAt ?? 0n;
-  const entry = { value: mid, exponent: POOL_EXPONENT, unixTimestamp };
-  return { price: entry, twap: entry };
-}
-
 /** Reads every asset of `sources` from mainnet. An asset whose source cannot be read says why. */
 export async function readPrices(source: Source, sources: Sources): Promise<Reading[]> {
   const scope = await source.account(address(sources.scope.account));
@@ -210,14 +130,6 @@ export async function readPrices(source: Source, sources: Sources): Promise<Read
         twap: chained(scope.data, asset.twap),
         method: asset.method,
       });
-      continue;
-    }
-    if (asset.kind === 'pool-mid') {
-      try {
-        readings.push({ id, ...(await poolMid(source, asset)), method: asset.method });
-      } catch (error) {
-        readings.push({ id, none: (error as Error).message });
-      }
       continue;
     }
     try {

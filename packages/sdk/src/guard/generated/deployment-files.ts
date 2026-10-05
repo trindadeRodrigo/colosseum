@@ -90,11 +90,6 @@ export const DEPLOYMENT_FILES: Readonly<Record<string, unknown>> = deepFreeze({
             tokenProgram: 'token-2022',
             decimals: 8,
           },
-          'solana:gldx': {
-            mint: '32BAoiuKWNj8yzeEarBF52pdLbY3umSmreMqNFPHieiE',
-            tokenProgram: 'token-2022',
-            decimals: 8,
-          },
           'solana:jlusdc': {
             mint: 'GV49vP3U5XVbHJxT8vpDNTDZZWAKUtbFm8jHjzd6LUuc',
             tokenProgram: 'token',
@@ -104,6 +99,16 @@ export const DEPLOYMENT_FILES: Readonly<Record<string, unknown>> = deepFreeze({
             mint: 'GWFDMf5L2mCy6Z6v7fwPaavigDKeg8nkrg9xRCha4gAe',
             tokenProgram: 'token',
             decimals: 6,
+          },
+          'solana:paxg': {
+            mint: 'GZ2F1ryu8SgCGKhScVQLXzG5Q5Hp4NYocKd2F7ueeKh1',
+            tokenProgram: 'token-2022',
+            decimals: 6,
+          },
+          'solana:gldx': {
+            mint: '32BAoiuKWNj8yzeEarBF52pdLbY3umSmreMqNFPHieiE',
+            tokenProgram: 'token-2022',
+            decimals: 8,
           },
         },
       },

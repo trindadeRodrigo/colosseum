@@ -81,15 +81,12 @@
       "method": "jl_exchange_rate_times_scope",
       "source": "Jupiter Lend's lending account for USDC and jlUSDC (program jup3YeL8QhtSx1e253b2FDvsMNC87fDrgQZivbrndc9): its token exchange price (USDC per jlUSDC, 1e12 precision) times Scope's USDC price (13) and USDC average (456), stamped with the older of the rate's last update and the Scope entry. The rate has no average of its own: the average entry is the same rate times USDC's average"
     },
-    "solana:gldx": {
-      "kind": "pool-mid",
-      "pool": "78ReVNMLGRWmjtf2HmBoHUe2pRcsctXTTbxJnbhchyze",
-      "check": "5tGLudhm9pHtqbtfymvdarbD59AyMyYimXXwbFfzETV9",
-      "maxSpreadBps": 100,
-      "mint": "Xsv9hRk1z5ystj9MhnA7Lq4vjSsLwzL2nxrwmwtD3re",
-      "decimals": 8,
-      "method": "pool_mid",
-      "source": "The mid of the GLDx/USDC Raydium CLMM pool 78ReVNMLGRWmjtf2HmBoHUe2pRcsctXTTbxJnbhchyze (2,210 GLDx and 178,352 USDC on 2026-10-05), USDC counted as one dollar, refused unless the GLDx/USDC Orca Whirlpool 5tGLudhm9pHtqbtfymvdarbD59AyMyYimXXwbFfzETV9 is within 100 bps, stamped with that Whirlpool's reward_last_updated_timestamp (moved by every swap), so the price goes stale when the pool does. A pool keeps no average: the mid stands as the average too. Scope has no GLDx entry (no Kamino reserve), its Pyth push account was 23 days old, and Hermes asks for a key. Under gate UNIVERSE (Oct 5) a stock with no oracle is traded with the owner's signature only and an oracle is never blended with a pool price: tGLDx's keeper switch is off on devnet and its range stays. The program refuses every keeper leg in a vault that holds a switched-off asset, so a vault holding tGLDx is owner-signed for everything; this mid is copied for the reader and the loss record only"
+    "solana:paxg": {
+      "kind": "scope",
+      "price": [454],
+      "twap": [168],
+      "method": "scope_entry",
+      "source": "Kamino Scope's entries for PAXG (gate GOLD-PAXG): 454, the price of Kamino's PAXG reserve 5MHbdvbQTegtPfFikifciBopmdEmZvWXDUpcHkQaz1w4, capped and floored to Chainlink XAU/USD at entry 167, and 168, its one-hour average; read 15 to 62 s old on 2026-10-05. tGLDx, whose price was the GLDx/USDC pool mid, is retired on devnet"
     }
   }
 }
