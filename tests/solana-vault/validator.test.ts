@@ -4,13 +4,16 @@ import {
   assertNode,
   createVaultRpc,
   MAINNET_GENESIS_HASH,
+  recipeAddress,
   type SolanaDeploymentRecord,
+  vaultAddress,
 } from '@colosseum/chain-solana/vault';
 import {
   type OrderDetail,
   type PortfolioResponse,
   parseChainConfigs,
   parseFlags,
+  type Recipe,
 } from '@colosseum/schemas';
 import {
   getBase64EncodedWireTransaction,
@@ -28,8 +31,9 @@ import {
   testDb,
   testIssuer,
 } from '../../apps/api/src/testing/harness';
+import { runRound } from '../../apps/keeper/src/round';
 import { mintTo, transferSol } from './admin';
-import { id, newKey } from './contract-world';
+import { id, newKey, PARAMS } from './contract-world';
 import { BASKET_PROGRAM, MOCK_ROUTER_PROGRAM, PROGRAMS_BUILT } from './svm-node';
 import { type Started, sleep, startValidator } from './validator';
 
@@ -46,6 +50,10 @@ import { type Started, sleep, startValidator } from './validator';
 //
 //   anchor build --no-idl -- --tools-version v1.54
 //   SOLANA_LOCAL_VALIDATOR=1 pnpm exec vitest run tests/solana-vault/validator.test.ts
+//
+// Last, the keeper's round (apps/keeper) on a vault of its own that follows a shared portfolio: the
+// next version adopted and the vault moved toward it by a leg, each relayed with the node's preflight
+// and tracked until it settles.
 //
 // SOLANA_ADAPTER_VALIDATOR_PORT moves it off 28999 and the forty ports above it.
 
@@ -222,6 +230,103 @@ if (RUN) {
         await store.cleanUp();
       }
     });
+  });
+
+  describe('the keeper, on the same validator', () => {
+    it('adopts the next version of a shared portfolio a vault follows, and moves the vault toward it by a leg', async () => {
+      const { world, ledger } = await validator();
+      const { adapter } = world;
+      const { owner, deployer } = world.keys;
+      const cash = world.mints.cash;
+      if (!cash) throw new Error('the world has no cash mint');
+      await world.run(
+        deployer,
+        await mintTo({
+          mint: cash.address,
+          tokenProgram: cash.tokenProgram,
+          holder: owner.address,
+          authority: deployer.address,
+          amount: 300_000_000n,
+        }),
+      );
+      // A shared portfolio of its own, so nothing the contract's groups left behind is in the way.
+      const family = '33'.repeat(32);
+      const recipe = (version: number, weights: [string, number][]): Recipe => ({
+        schemaVersion: 1,
+        familyId: family,
+        chain: 'solana',
+        onchainId: null,
+        creator: owner.address,
+        kind: 'community',
+        version,
+        effectiveAt: 0,
+        components: weights.map(([name, weightBps]) => ({
+          kind: 'asset',
+          asset: id(name),
+          weightBps,
+        })),
+        metaHash: version.toString(16).padStart(2, '0').repeat(32),
+        maxFeeBps: 0,
+        flags: 0,
+      });
+      const publish = async (r: Recipe) =>
+        world.must(await adapter.buildPublishRecipe({ creator: owner.address, recipe: r }));
+      await publish(
+        recipe(1, [
+          ['alpha', 4_000],
+          ['beta', 3_000],
+          ['gamma', 3_000],
+        ]),
+      );
+      const at = await recipeAddress(BASKET_PROGRAM, owner.address, Buffer.from(family, 'hex'));
+      await world.must(
+        await adapter.buildCreateVault({
+          owner: owner.address,
+          basketId: '41',
+          targets: [],
+          recipeOnchainId: at,
+          expectedVersion: 1,
+          autoFollow: false,
+          depositRaw: '300000000',
+          slippageBps: 100,
+        }),
+      );
+      const vault = await vaultAddress(BASKET_PROGRAM, owner.address, 41n);
+      for (const [name, usd] of [
+        ['alpha', 120],
+        ['beta', 90],
+        ['gamma', 90],
+      ] as const)
+        await world.must(
+          await adapter.buildOwnerSwap({
+            vault,
+            trades: [{ sell: id('cash'), buy: id(name), amountInRaw: String(usd * 1_000_000) }],
+            slippageBps: 100,
+          }),
+        );
+      await world.must(await adapter.buildSetAutoFollow({ vault, on: true }));
+      // The next version, weights only, published a delay after the first and in effect a delay later.
+      await ledger.advance(PARAMS.publishDelayS + 1);
+      await publish(
+        recipe(2, [
+          ['alpha', 5_000],
+          ['beta', 2_000],
+          ['gamma', 3_000],
+        ]),
+      );
+      await ledger.advance(PARAMS.publishDelayS + 1);
+
+      const lines = await runRound({ adapter, sign: (tx) => world.sign(tx), settleMs: 60_000 });
+      const line = lines.find((l) => l.vault === vault);
+      expect([line?.outcome, line?.txIds.length]).toEqual(['acted', 2]);
+      for (const txId of line?.txIds ?? [])
+        expect((await adapter.track(txId, '0')).status).toBe('confirmed');
+      const after = await adapter.getVault(vault);
+      expect(after?.acceptedVersion).toBe(2);
+      expect(
+        Object.fromEntries((after?.positions ?? []).map((p) => [p.asset, p.targetBps])),
+      ).toMatchObject({ [id('alpha')]: 5_000, [id('beta')]: 2_000, [id('gamma')]: 3_000 });
+    }, 400_000);
   });
 } else
   describe.skip('adapter contract: solana, on a local validator (SOLANA_LOCAL_VALIDATOR=1 runs it)', () => {

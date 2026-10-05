@@ -10,7 +10,9 @@ on:
       - 'programs/**'
       - 'packages/chain-solana/**'
       - 'tests/solana-vault/**'
+      - 'tests/keeper/**'
       - 'apps/api/**'
+      - 'apps/keeper/**'
       - 'packages/db/**'
       - 'packages/schemas/**'
       - 'packages/basket/**'
@@ -27,7 +29,9 @@ on:
       - 'programs/**'
       - 'packages/chain-solana/**'
       - 'tests/solana-vault/**'
+      - 'tests/keeper/**'
       - 'apps/api/**'
+      - 'apps/keeper/**'
       - 'packages/db/**'
       - 'packages/schemas/**'
       - 'packages/basket/**'
@@ -155,14 +159,15 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-      # The adapter contract and the builders' sizes and shape, in LiteSVM on the programs built above.
+      # The adapter contract, the builders' sizes and shape, and the keeper's round, in LiteSVM on the
+      # programs built above.
       # SOLANA_PROGRAMS_REQUIRED makes a missing build fail them instead of skipping them.
       - name: The Solana adapter on the built programs
         env:
           SOLANA_PROGRAMS_REQUIRED: '1'
         run: |
           pnpm install --frozen-lockfile
-          pnpm exec vitest run tests/solana-vault/contract.test.ts tests/solana-vault/builders.test.ts
+          pnpm exec vitest run tests/solana-vault/contract.test.ts tests/solana-vault/builders.test.ts tests/keeper/keeper.test.ts
 
       - name: The committed interface files match the programs
         run: |
@@ -191,8 +196,9 @@ jobs:
           if [ "$count" -gt 0 ]; then echo "::warning title=cargo clippy::$count warnings, see the job summary"; fi
 
   # The money path on a local validator, on the programs the job above built: the adapter contract's
-  # sending groups (relay, track, fate, the state each transaction leaves) and the API end to end, a
-  # person's buy built, signed in the test, relayed and read back. One validator, stopped by the test.
+  # sending groups (relay, track, fate, the state each transaction leaves), the API end to end, a
+  # person's buy built, signed in the test, relayed and read back, and the keeper's round adopting a
+  # version and sending a leg. One validator, stopped by the test.
   validator:
     needs: program
     runs-on: ubuntu-24.04
