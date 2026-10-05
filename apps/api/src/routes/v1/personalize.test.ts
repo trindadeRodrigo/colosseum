@@ -125,20 +125,23 @@ describe('POST /v1/baskets/personalize', () => {
     });
     expect(reais.statusCode, reais.body).toBe(200);
     expect(PersonalizeResponse.parse(reais.json()).proposal.flags).toContain('fx_open:BRL');
-    // A theme sleeve or dated withdrawals are refused until the engine applies them, never ignored.
-    for (const over of [
-      {
-        sleeves: [
-          { kind: 'theme', shareBps: 5000, theme: 'ai' },
-          { kind: 'safe_yield', shareBps: 5000 },
-        ],
-      },
-      { obligations: [{ month: '2027-06', amount: 3000, currency: 'USD' }] },
-    ]) {
-      const refused = await post(who, PATH, { sheet: { ...asked, ...over } });
-      expect(refused.statusCode, JSON.stringify(over)).toBeGreaterThanOrEqual(400);
-      expect(refused.statusCode, JSON.stringify(over)).toBeLessThan(500);
-    }
+    // Dated withdrawals are applied: the plan is made, and its sheet says them back.
+    const obligations = [{ month: '2027-06', amount: 3000, currency: 'USD' }];
+    const withdrawing = await post(who, PATH, { sheet: { ...asked, obligations } });
+    expect(withdrawing.statusCode, withdrawing.body).toBe(200);
+    expect(PersonalizeResponse.parse(withdrawing.json()).proposal.sheet.obligations).toEqual(
+      obligations,
+    );
+    // A theme sleeve is refused until the engine applies it, never ignored.
+    const theme = {
+      sleeves: [
+        { kind: 'theme', shareBps: 5000, theme: 'ai' },
+        { kind: 'safe_yield', shareBps: 5000 },
+      ],
+    };
+    const refused = await post(who, PATH, { sheet: { ...asked, ...theme } });
+    expect(refused.statusCode).toBeGreaterThanOrEqual(400);
+    expect(refused.statusCode).toBeLessThan(500);
   });
 
   it('makes a plan to protect with no stock token, stores it, and a buy buys it on the same chain', async () => {

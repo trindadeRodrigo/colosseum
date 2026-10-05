@@ -760,7 +760,7 @@
                               },
                               "kind": {
                                 "type": "string",
-                                "enum": ["yield", "price", "liquidity"]
+                                "enum": ["yield", "price", "liquidity", "fx"]
                               }
                             },
                             "required": [

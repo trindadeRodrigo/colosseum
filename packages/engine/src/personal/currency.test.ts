@@ -1,7 +1,14 @@
-import type { BasketAsset, FxObservation } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
 import { compose } from './index';
-import { allReasons, fixtureContext, launchShelf, NOW, sheet, violations } from './testing';
+import {
+  allReasons,
+  fixtureContext,
+  launchShelf,
+  sheet,
+  usdBrl,
+  violations,
+  withReais,
+} from './testing';
 import { PersonalInputError, type PersonalSheet } from './types';
 
 // Slice 2 of docs/vault/PROMPT-BUILD-SOLVER.md, step 2: the goal's currency and the matching leg
@@ -15,32 +22,6 @@ const run = (s: PersonalSheet, shelf = launch, c = ctx) => {
   expect(violations(plan, shelf, c)).toEqual([]);
   return plan;
 };
-
-/** MOCK: a cash token in reais on Solana, for tests only; the launch shelf lists none. */
-export const reaisToken = (): BasketAsset => {
-  const usdc = launch.assets.find((a) => a.id === 'solana:usdc');
-  if (!usdc) throw new Error('no USDC on the launch shelf');
-  return {
-    ...usdc,
-    id: 'solana:brlx',
-    symbol: 'BRLX',
-    underlying: 'BRL',
-    issuer: 'brlx',
-    currency: 'BRL',
-    provenance: 'fixture',
-  };
-};
-export const withReais = { ...launch, assets: [...launch.assets, reaisToken()] };
-
-/** MOCK: a rate of dollars into reais, labelled as a fixture. */
-export const usdBrl = (value = 5.5): FxObservation => ({
-  pair: 'USDBRL',
-  value,
-  source: 'test fixture (MOCK)',
-  method: 'fixed in the test',
-  fetchedAt: NOW,
-  provenance: 'fixture',
-});
 
 describe('a goal in dollars and the same goal in reais, with no withdrawals', () => {
   it('hold the same lines; the reais one says on each that its value moves with the rate', () => {
@@ -58,7 +39,7 @@ describe('a goal in dollars and the same goal in reais, with no withdrawals', ()
   });
 
   it('a shelf with a token in reais: no `no_matching_leg` flag, and a token in reais is never cash in dollars', () => {
-    const reais = run(sheet({ goal: 'income', currency: 'BRL' }), withReais);
+    const reais = run(sheet({ goal: 'income', currency: 'BRL' }), withReais());
     expect(reais.flags).not.toContain('no_matching_leg:BRL');
     // The vault is funded in dollars: the dollar cash token stays the plan's cash.
     expect(reais.lines.some((l) => l.assetId === 'solana:usdc')).toBe(true);

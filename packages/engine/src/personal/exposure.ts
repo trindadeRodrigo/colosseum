@@ -27,6 +27,11 @@ export type SleevePlan = {
    */
   goalBps: number;
   safeYieldBps: number;
+  /**
+   * Of the goal sleeve, what is set aside for the next withdrawals (slice 2): taken off before the
+   * row is scaled, so `sized` adds up to `goalBps - setAsideBps`. Placed apart, before anything else.
+   */
+  setAsideBps: number;
   /** Why each sleeve is the size it is. Every line of a sleeve carries these. */
   reasons: Record<Sleeve, Reason[]>;
 };
@@ -52,14 +57,17 @@ function floorAt<T extends { monthsLeft: number }>(
  * gold. Within a split, the table's shares and the floors of the date are the goal sleeve's, scaled
  * to its share; what must not be lost is a sum of money, and the safe-yield sleeve counts toward it.
  */
-export function sizeSleeves(w: World): SleevePlan {
+export function sizeSleeves(w: World, setAside = 0): SleevePlan {
   const { sheet, P, lang } = w;
   const split = sleevesOf(sheet);
   const goalBps = sum(split.filter((x) => x.kind === 'goal').map((x) => x.shareBps));
   const safeYieldBps = sum(split.filter((x) => x.kind === 'safe_yield').map((x) => x.shareBps));
+  // What is set aside for withdrawals comes off the goal sleeve first; the table shares the rest.
+  const setAsideBps = Math.min(goalBps, Math.max(0, setAside));
+  const restBps = goalBps - setAsideBps;
   /** A share of the goal sleeve, as basis points of the whole plan: rounded down, or up for a floor. */
   const ofGoal = (bps: number, up = false) =>
-    up ? Math.ceil((bps * goalBps) / BPS) : Math.floor((bps * goalBps) / BPS);
+    up ? Math.ceil((bps * restBps) / BPS) : Math.floor((bps * restBps) / BPS);
   const row = P.sleeves[`${sheet.goal}:${sheet.risk}`] ?? {
     growthBps: 0,
     dollarYieldBps: 0,
@@ -72,7 +80,7 @@ export function sizeSleeves(w: World): SleevePlan {
     growth,
     dollarYield,
     gold,
-    cash: goalBps - growth - dollarYield - gold,
+    cash: restBps - growth - dollarYield - gold,
   };
   const sized = { ...table };
   const reasons: SleevePlan['reasons'] = { growth: [], dollarYield: [], gold: [], cash: [] };
@@ -146,14 +154,14 @@ export function sizeSleeves(w: World): SleevePlan {
   const keep = sheet.limits?.mustKeepUsd ?? 0;
   if (keep > 0) {
     const floor = Math.min(BPS, bpsOf(toCents(keep), w.amount));
-    const kept = sized.dollarYield + sized.cash + safeYieldBps;
+    const kept = sized.dollarYield + sized.cash + safeYieldBps + setAsideBps;
     if (kept < floor) {
       const gave = raise('dollarYield', floor - kept, ['growth', 'gold']);
       const why = reason('MUST_KEEP', { floorBps: floor, keepUsd: keep }, lang);
       if (gave.length > 0) say(why, ['dollarYield', 'cash', ...gave]);
     }
   }
-  return { table, sized, goalBps, safeYieldBps, reasons };
+  return { table, sized, goalBps, safeYieldBps, setAsideBps, reasons };
 }
 
 export type Part = { asset: BasketAsset; bps: number };

@@ -12,6 +12,7 @@ import {
   launchShelf,
   NOW,
   roomyYield,
+  usdBrl,
   violations,
 } from './testing';
 import {
@@ -22,7 +23,7 @@ import {
   PersonalSheet,
   SLEEVES,
 } from './types';
-import { buildWorld } from './world';
+import { buildWorld, monthAfter } from './world';
 
 // Generated people, generated parameter tables, generated shelves. For any valid sheet the plan keeps
 // the vault's target rules and every ceiling and cap, holds nothing excluded or ineligible, and is
@@ -93,22 +94,41 @@ const personOn = (chain: ChainId): fc.Arbitrary<PersonalSheet> =>
       );
     });
 
+/** A dated withdrawal, from two months back to a year and more ahead, in dollars or reais. */
+const withdrawal = fc.record({
+  month: fc.integer({ min: -2, max: 14 }).map((m) => monthAfter(NOW, m)),
+  amount: fc.oneof(fc.integer({ min: 1, max: 200_000 }), fc.constantFrom(500, 3000, 25_000)),
+  currency: fc.constantFrom('USD', 'BRL'),
+});
+
 /**
- * The same, and sometimes split (gate SLEEVES): a goal sleeve and a safe-yield sleeve, or the whole
+ * The same, and sometimes split (gate SLEEVES), in a currency, with withdrawals: a goal sleeve and a safe-yield sleeve, or the whole
  * plan in one of them.
  */
 const splitOn = (chain: ChainId): fc.Arbitrary<PersonalSheet> =>
-  fc.tuple(personOn(chain), maybe(fc.integer({ min: 0, max: 10_000 }))).map(([sheet, safe]) =>
-    safe === undefined
-      ? sheet
-      : PersonalSheet.parse({
+  fc
+    .tuple(
+      personOn(chain),
+      maybe(fc.integer({ min: 0, max: 10_000 })),
+      maybe(fc.constantFrom('USD', 'BRL')),
+      maybe(fc.array(withdrawal, { maxLength: 6 })),
+    )
+    .map(([sheet, safe, currency, obligations]) =>
+      PersonalSheet.parse(
+        filled({
           ...sheet,
-          sleeves: [
-            ...(safe < 10_000 ? [{ kind: 'goal' as const, shareBps: 10_000 - safe }] : []),
-            ...(safe > 0 ? [{ kind: 'safe_yield' as const, shareBps: safe }] : []),
-          ],
+          currency,
+          obligations,
+          sleeves:
+            safe === undefined
+              ? undefined
+              : [
+                  ...(safe < 10_000 ? [{ kind: 'goal' as const, shareBps: 10_000 - safe }] : []),
+                  ...(safe > 0 ? [{ kind: 'safe_yield' as const, shareBps: safe }] : []),
+                ],
         }),
-  );
+      ),
+    );
 
 const sleeveRow = fc.tuple(bps, bps, bps).map(([growth, dollarYield, gold]) => {
   const growthBps = growth;
@@ -231,6 +251,9 @@ function made(raw: World): { shelf: Shelf; context: ComposeContext } {
         Object.fromEntries(raw.notMeasured.map(([id, gaps]) => [id, [...gaps]])),
       ),
       params: raw.params,
+      // Every world can convert reais: a withdrawal in reais needs the rate, and an unused one only
+      // changes the hash.
+      fx: [usdBrl()],
     },
   };
 }

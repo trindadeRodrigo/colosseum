@@ -13,7 +13,7 @@ import {
 import { z } from 'zod';
 import { pickPrimaryYield } from '../risk/index';
 import { CREDIT_LEG_TYPES, legTypesOf } from './leg-types';
-import { BPS, byName, floorCents, shareOf, toCents, toUsd } from './money';
+import { BPS, byName, ceilCents, floorCents, shareOf, toCents, toUsd } from './money';
 import { PERSONAL_PARAMS } from './params';
 import { eligibleForGoal, sleeveOfClass } from './registry';
 import { reason } from './templates';
@@ -74,6 +74,13 @@ export type World = {
   liquidity: LiquidityProvider | undefined;
   /** The month of the goal's date, YYYY-MM. */
   goalMonth: string;
+  /** The month the plan is made in, YYYY-MM. */
+  nowMonth: string;
+  /**
+   * The sheet's withdrawals from this month on, each in dollars too, in order of month, currency and
+   * amount. One in another currency than dollars is converted at its FX reading, which is required.
+   */
+  withdrawals: Withdrawal[];
   /** The smallest line, the most with one issuer, and the most in one stock or crypto asset: cents. */
   minLine: number;
   stockCap: number;
@@ -112,6 +119,9 @@ export type World = {
    */
   ceilingNotes(asset: BasketAsset): Reason[];
 };
+
+/** A dated withdrawal, as the sheet gives it and in whole cents of dollars, rounded up. */
+export type Withdrawal = { month: string; amount: number; currency: string; cents: number };
 
 /** A provider that says which times of the week its figures were measured in. */
 export const reportsRegimes = (p: LiquidityProvider): p is RegimeLiquidityProvider =>
@@ -152,7 +162,7 @@ function inOrder(yields: YieldObservation[]): YieldObservation[] {
 const MONTHS_IN_A_YEAR = 12;
 
 /** The month `months` after the month of an ISO time, as YYYY-MM. Read from the text: no clock. */
-function monthAfter(iso: string, months: number): string {
+export function monthAfter(iso: string, months: number): string {
   const [year = '0', month = '1'] = iso.split('-');
   const index = Number(year) * MONTHS_IN_A_YEAR + (Number(month) - 1) + months;
   const y = Math.floor(index / MONTHS_IN_A_YEAR);
@@ -165,15 +175,11 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
   const parsedSheet = PersonalSheet.safeParse(sheetIn);
   if (!parsedSheet.success) throw new PersonalInputError('InvalidSheet', issues(parsedSheet.error));
   const sheet = parsedSheet.data;
-  // The sheet can carry a goal currency, withdrawals and sleeves (ENG-3 slice 2) before the engine
-  // applies them. Until it does, it refuses them rather than make a plan that ignores them.
-  const notYet: { path: string; message: string }[] = [];
-  if ((sheet.obligations ?? []).length > 0)
-    notYet.push({ path: 'obligations', message: 'dated withdrawals are not built yet' });
-  // A theme sleeve needs the curated lists of slice 4; a goal and a safe-yield sleeve are built.
+  // A theme sleeve needs the curated lists of slice 4; it is refused until then, never ignored.
   if (sheet.sleeves?.some((x) => x.kind === 'theme'))
-    notYet.push({ path: 'sleeves', message: 'a theme sleeve is not built yet' });
-  if (notYet.length > 0) throw new PersonalInputError('InvalidSheet', notYet);
+    throw new PersonalInputError('InvalidSheet', [
+      { path: 'sleeves', message: 'a theme sleeve is not built yet' },
+    ]);
 
   const parsedParams = PersonalParameters.safeParse(context.params ?? PERSONAL_PARAMS);
   if (!parsedParams.success)
@@ -325,7 +331,8 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
     return made;
   };
 
-  return {
+  const nowMonth = monthAfter(context.now, 0);
+  const world: World = {
     sheet,
     lang,
     P,
@@ -366,6 +373,8 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
     },
     liquidity,
     goalMonth: monthAfter(context.now, sheet.horizonMonths),
+    nowMonth,
+    withdrawals: [],
     // A vault's target is at least one basis point, so a line is too, whatever the table says.
     minLine: Math.max(toCents(P.minLineUsd), Math.ceil((amount * Math.max(1, P.minLineBps)) / BPS)),
     stockCap: shareOf(amount, capStock),
@@ -415,4 +424,33 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
     ceilingWhy: (a) => ceiling(a).why,
     ceilingNotes: (a) => ceiling(a).notes,
   };
+
+  // Withdrawals, in dollars. One before this month is past and counts for nothing, and the plan says
+  // so. One in another currency needs its FX reading: never guessed.
+  const missing = new Set<string>();
+  for (const o of byName(sheet.obligations ?? [], (o) => `${o.month} ${o.currency} ${o.amount}`)) {
+    if (o.month < nowMonth) {
+      flags.add('obligations_past');
+      continue;
+    }
+    let usd = o.amount;
+    if (o.currency !== 'USD') {
+      const fx = world.fxOf(o.currency);
+      if (!fx) {
+        missing.add(o.currency);
+        continue;
+      }
+      usd = o.amount / fx.value;
+    }
+    world.withdrawals.push({ ...o, cents: ceilCents(usd) });
+  }
+  if (missing.size > 0)
+    throw new PersonalInputError(
+      'InvalidContext',
+      [...missing].sort().map((cur) => ({
+        path: 'fx',
+        message: `a withdrawal in ${cur} needs an FX reading for USD${cur}`,
+      })),
+    );
+  return world;
 }

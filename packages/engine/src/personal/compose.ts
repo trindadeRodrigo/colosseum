@@ -23,12 +23,16 @@ import {
 import { byName, ceilCents, split, sum, toUsd } from './money';
 import { packageUp } from './packaging';
 import { Book, once, type Removed, type Sized, type Unit } from './placement';
+import { scheduleOf } from './schedule';
+import { checkCoverage, placeSetAside, setAsideOf } from './set-aside';
 import { reason, text } from './templates';
 import {
   type ComposeContext,
   type PersonalProposal,
+  type PersonalSchedule,
   type PersonalSheet,
   type PersonalVerdict,
+  reportsPools,
   SLEEVES,
   type Sleeve,
 } from './types';
@@ -206,12 +210,13 @@ function build(
   const w = buildWorld(sheetIn, shelf, context);
   const { sheet, P, lang } = w;
 
-  // ---- Exposure: how big each sleeve is.
-  const sleeves = sizeSleeves(w);
-  const [growth = 0, dollarYield = 0, gold = 0, cash = 0, safeYield = 0] = split(w.amount, [
-    ...SLEEVES.map((sleeve) => sleeves.sized[sleeve]),
-    sleeves.safeYieldBps,
-  ]);
+  // ---- Exposure: how big each sleeve is. What the next withdrawals need comes off the goal first.
+  const sa = setAsideOf(w);
+  const sleeves = sizeSleeves(w, sa?.bps ?? 0);
+  const [growth = 0, dollarYield = 0, gold = 0, cash = 0, safeYield = 0, setAside = 0] = split(
+    w.amount,
+    [...SLEEVES.map((sleeve) => sleeves.sized[sleeve]), sleeves.safeYieldBps, sleeves.setAsideBps],
+  );
   const book = new Book(w);
   const themes = resolveThemes(w, book.removed);
 
@@ -321,6 +326,32 @@ function build(
     book.cash.reasons.push(...unit.reasons, ...why);
     w.flags.add(canYield ? 'unplaced' : 'no_dollar_yield');
   };
+  // What is set aside for the next withdrawals is placed before anything else.
+  if (sa && setAside > 0)
+    placeSetAside(
+      w,
+      book,
+      setAside,
+      sa,
+      yielders.filter((a) => w.isRateOnly(a)),
+      ranked,
+    );
+  if (sa && setAside < sa.owed) {
+    w.flags.add('set_aside_short');
+    book.cash.reasons.push(
+      reason(
+        'SET_ASIDE_SHORT',
+        {
+          from: sa.from,
+          to: sa.to,
+          owedUsd: toUsd(sa.owed),
+          goalUsd: toUsd(setAside),
+          shortUsd: toUsd(sa.owed - setAside),
+        },
+        lang,
+      ),
+    );
+  }
   // The safe-yield sleeve is placed before the goal's dollar yield: it can hold only rate legs, so
   // it has first call on them, and the goal's dollar yield ranks every leg type on what is left.
   // What no rate leg takes stays in cash, said in the sleeve's own sentence.
@@ -366,17 +397,26 @@ function build(
     );
   }
 
+  // ---- The coverage check: the next withdrawals can be paid in time, or money moves to cash.
+  if (sa) {
+    const held = new Map<string, number>();
+    for (const h of safe) held.set(h.assetId, (held.get(h.assetId) ?? 0) + h.cents);
+    checkCoverage(w, book, sa, held);
+  }
+
   // ---- Packaging: lines, one recipe per chain, the card.
   const { lines, recipes, sleeves: held } = packageUp(w, book);
-  // A goal not in dollars: each line counted in another currency says that its value in the goal's
-  // currency moves with the rate (the open-FX line). A dollar goal has none.
+  // A goal not in dollars is open to the rate (the flag), and has a matching leg or says it has none.
+  // Each line counted in another currency than the goal's says that its value moves with the rate (the
+  // open-FX line): every line but cash in dollars for a goal in reais, and only a line in another
+  // currency, held for a withdrawal in it, for a goal in dollars.
   if (w.currency !== 'USD') {
     w.flags.add(`fx_open:${w.currency}`);
     if (!w.matchingOf(w.currency)) w.flags.add(`no_matching_leg:${w.currency}`);
-    for (const l of lines)
-      if ((w.byId.get(l.assetId)?.currency ?? 'USD') !== w.currency)
-        l.reasons.push(reason('FX_OPEN', { currency: w.currency }, lang));
   }
+  for (const l of lines)
+    if ((w.byId.get(l.assetId)?.currency ?? 'USD') !== w.currency)
+      l.reasons.push(reason('FX_OPEN', { currency: w.currency }, lang));
   // With a split, what each sleeve of the person's holds, by token, before the lines are rounded.
   const goalCents = w.amount - safeYield;
   const asSplit = sheet.sleeves
@@ -397,6 +437,37 @@ function build(
       })
     : undefined;
   const { card, yearlyLowUsd } = cardOf(w, lines);
+
+  // The schedule, in the goal's currency, when there are withdrawals. It needs the rate for a goal
+  // not in dollars; with none, there is no schedule, and the plan says so.
+  let schedule: PersonalSchedule | undefined;
+  const lastWithdrawal = w.withdrawals.at(-1);
+  if (withWays && lastWithdrawal) {
+    const rate = w.currency === 'USD' ? 1 : (w.fxOf(w.currency)?.value ?? null);
+    if (rate === null) w.flags.add(`schedule_no_fx:${w.currency}`);
+    else {
+      const [y0 = 0, m0 = 1] = w.nowMonth.split('-').map(Number);
+      const [y1 = 0, m1 = 1] = lastWithdrawal.month.split('-').map(Number);
+      const toLast = (y1 - y0) * MONTHS_IN_A_YEAR + (m1 - m0) + 1;
+      schedule = scheduleOf({
+        lines,
+        byId: w.byId,
+        yields: w.yields,
+        withdrawals: w.withdrawals,
+        currency: w.currency,
+        rate,
+        nowMonth: w.nowMonth,
+        months: Math.min(
+          BasketSheet.shape.horizonMonths.maxValue ?? toLast,
+          Math.max(sheet.horizonMonths, toLast),
+        ),
+        liquidity: w.liquidity,
+        tau: P.tau,
+        ceilingUsdOf: (a) => toUsd(w.ceilingOf(a)),
+      });
+      if (schedule.monthsPaid < schedule.monthsWithWithdrawal) w.flags.add('schedule_unpaid');
+    }
+  }
 
   // Income goals: whether the target is met at today's yields after haircut, and the ways to close a
   // gap. A way is listed only if it closes the gap: each one is tried by running the engine again.
@@ -489,6 +560,12 @@ function build(
             liquidity.covers(a.id) ? liquidity.exitCapacity(a.id, P.tau, EXIT_WINDOW_DAYS) : null,
             reportsRegimes(liquidity) ? liquidity.regimes(a.id) : null,
           ]),
+          // Which tokens sell into one pool, where the provider says (the coverage check reads it).
+          ...(reportsPools(liquidity)
+            ? {
+                pools: w.tokens.map((a) => [a.id, liquidity.poolOf(a.id, P.tau, EXIT_WINDOW_DAYS)]),
+              }
+            : {}),
           cost: lines.map((l) => [
             l.assetId,
             l.amountUsd,
@@ -516,6 +593,7 @@ function build(
     disclaimer: DISCLAIMER[lang],
     sleeves: held,
     ...(asSplit ? { split: asSplit } : {}),
+    ...(schedule ? { schedule } : {}),
   };
 }
 
