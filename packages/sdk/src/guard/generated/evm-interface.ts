@@ -4,17 +4,22 @@ import type { InterfaceTable } from '../evm/table';
 
 export const EVM_INTERFACE: InterfaceTable = {
   BasketVault: {
+    'acceptVersion(bytes32,uint32)': '0x86d8a9d5',
+    'adoptVersion()': '0x58785d12',
     'config()': '0x79502c55',
     'deposit(uint256)': '0xb6b55f25',
     'following()': '0x1d94dff1',
     'initialize(address,bytes32)': '0xbe13f47c',
+    'keeperSwap((address,address,address,uint256,uint256,bytes))': '0x96185faa',
     'multicall(bytes[])': '0xac9650d8',
     'owner()': '0x8da5cb5b',
-    'ownerSwap((address,address,address,uint256,uint256,bytes)[])': '0x28fa9033',
+    'ownerSwap((address,address,address,uint256,uint256,bytes)[],uint64)': '0x8ab4a3dd',
     'planId()': '0xbd300089',
+    'setAutoFollow(bool)': '0x0a2d66f6',
     'setTargets((address,uint16)[])': '0x0dd656db',
-    'start(bytes32,uint32,(address,uint16)[],uint256,(address,address,address,uint256,uint256,bytes)[])':
-      '0x64659e4e',
+    'snapshot()': '0x9711715a',
+    'start(bytes32,uint32,(address,uint16)[],bool,uint256,(address,address,address,uint256,uint256,bytes)[])':
+      '0x47472b17',
     'targets()': '0x26d60fb4',
     'tokens()': '0x9d63848a',
     'withdraw(address,uint256)': '0xf3fef3a3',
@@ -74,14 +79,15 @@ export const EVM_INTERFACE: InterfaceTable = {
     'params()': '0xcff0ab96',
     'pauseKeeper()': '0x9b798e5c',
     'pendingAdmin()': '0x26782247',
+    'priceDevBps()': '0xef36787a',
     'proposeAdmin(address)': '0x147bf6c4',
     'registry()': '0x7b103999',
     'removeAsset(address)': '0x4a5e42b1',
     'removedAssets()': '0x32f7e942',
     'routerPull(address)': '0x77831405',
     'sequencerFeed()': '0x3b521cb6',
-    'setAsset(address,(address,uint8,uint8,uint32,uint8,uint8,uint16,address,bytes4,bytes4,uint64))':
-      '0xac7daf47',
+    'setAsset(address,(address,uint8,uint8,uint32,uint8,uint8,uint16,address,bytes4,bytes4,uint64,uint8,address,uint128,uint128))':
+      '0xc03633a6',
     'setCashToken(address)': '0xb85e776d',
     'setClosedDay(uint32,bool)': '0x0d20a68d',
     'setClosedUntil(uint64)': '0x8f09f320',
@@ -89,6 +95,7 @@ export const EVM_INTERFACE: InterfaceTable = {
     'setHalt(address,uint64)': '0x9d61b974',
     'setKeeper(address)': '0x748747e6',
     'setParams((uint16,uint16,uint16,uint32,uint32,uint32))': '0x2f2fa25e',
+    'setPriceDevBps(uint16)': '0x3ba15c1d',
     'setRegistry(address)': '0xa91ee0dc',
     'setRouter(address,uint8)': '0x83f1d681',
     'setSequencerFeed(address)': '0x8a45d536',
@@ -106,8 +113,8 @@ export const EVM_INTERFACE: InterfaceTable = {
     'closedDay(uint32)': '0xe86cb696',
     'closedUntil()': '0xc9896435',
     'createVault(bytes32,(address,uint16)[],bytes32,uint32,bool)': '0xfabff88e',
-    'createVaultAndBuy(bytes32,(address,uint16)[],bytes32,uint32,bool,uint256,(address,address,address,uint256,uint256,bytes)[])':
-      '0xf8a17395',
+    'createVaultAndBuy(bytes32,(address,uint16)[],bytes32,uint32,bool,uint256,(address,address,address,uint256,uint256,bytes)[],uint64)':
+      '0xc4efdfbe',
     'extendClosedUntil(uint64)': '0x4385a1a5',
     'guardian()': '0x452a9320',
     'haltAsset(address,uint64)': '0x5ef54421',
@@ -121,6 +128,7 @@ export const EVM_INTERFACE: InterfaceTable = {
     'params()': '0xcff0ab96',
     'pauseKeeper()': '0x9b798e5c',
     'pendingAdmin()': '0x26782247',
+    'priceDevBps()': '0xef36787a',
     'proposeAdmin(address)': '0x147bf6c4',
     'proxiableUUID()': '0x52d1902d',
     'registry()': '0x7b103999',
@@ -128,8 +136,8 @@ export const EVM_INTERFACE: InterfaceTable = {
     'removedAssets()': '0x32f7e942',
     'routerPull(address)': '0x77831405',
     'sequencerFeed()': '0x3b521cb6',
-    'setAsset(address,(address,uint8,uint8,uint32,uint8,uint8,uint16,address,bytes4,bytes4,uint64))':
-      '0xac7daf47',
+    'setAsset(address,(address,uint8,uint8,uint32,uint8,uint8,uint16,address,bytes4,bytes4,uint64,uint8,address,uint128,uint128))':
+      '0xc03633a6',
     'setCashToken(address)': '0xb85e776d',
     'setClosedDay(uint32,bool)': '0x0d20a68d',
     'setClosedUntil(uint64)': '0x8f09f320',
@@ -137,6 +145,7 @@ export const EVM_INTERFACE: InterfaceTable = {
     'setHalt(address,uint64)': '0x9d61b974',
     'setKeeper(address)': '0x748747e6',
     'setParams((uint16,uint16,uint16,uint32,uint32,uint32))': '0x2f2fa25e',
+    'setPriceDevBps(uint16)': '0x3ba15c1d',
     'setRegistry(address)': '0xa91ee0dc',
     'setRouter(address,uint8)': '0x83f1d681',
     'setSequencerFeed(address)': '0x8a45d536',

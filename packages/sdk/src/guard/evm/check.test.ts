@@ -13,7 +13,7 @@ import {
   evmTx,
   FACTORY,
   MAX,
-  NEXT_INTERFACE,
+  now,
   OWNER,
   ROUTER,
   STRANGER,
@@ -22,6 +22,7 @@ import {
   tokenOf,
   VAULT,
   WEIGHTS,
+  WITHOUT_FOLLOWING,
   weights,
   ZERO32,
 } from '../../../test/evm';
@@ -125,7 +126,7 @@ const input = (
   over: Partial<BasketTx> = {},
   consents: ConsentKind[] = [],
 ): GuardInput => ({ step, tx: evmTx(step, c, over), deployment: EVM, consents });
-const NEXT = { evmInterface: NEXT_INTERFACE };
+const WITHOUT = { evmInterface: WITHOUT_FOLLOWING };
 
 describe('the guard on EVM: an honest call passes', () => {
   it("the vault it derives is the factory's, as viem worked it out", () => {
@@ -200,23 +201,35 @@ describe('the guard on EVM: an honest call passes', () => {
     ];
     for (const [step, data, consents] of cases)
       expect(
-        refusalOf(() =>
-          withRules(NEXT, () => runGuard(input(step, { to: VAULT, data }, {}, consents))),
-        )?.message ?? null,
+        refusalOf(() => guardTransaction(input(step, { to: VAULT, data }, {}, consents)))
+          ?.message ?? null,
         step.kind,
       ).toBeNull();
   });
+
+  it('a trade good until half an hour from now, and not a second longer', () => {
+    const last = BigInt(now() + 1_800);
+    expect(
+      refusalOf(() =>
+        guardTransaction(
+          input(swapStep, { to: VAULT, data: calls.ownerSwap([swapOf(SPY), swapOf(GOLD)], last) }),
+        ),
+      ),
+    ).toBeNull();
+  });
 });
 
-describe('the guard on EVM: what the committed ABIs cannot check yet', () => {
-  it('refuses an accept and the auto-follow switch as unsupported, until the table has them', () => {
+describe('the guard on EVM: what a table without a function cannot check', () => {
+  it('refuses an accept and the auto-follow switch as unsupported, where the table lacks them', () => {
     const cases: [ApprovedStep, Uint8Array][] = [
       [acceptStep, calls.acceptVersion(INDEX, 4)],
       [autoStep(false), calls.setAutoFollow(false)],
     ];
     for (const [step, data] of cases) {
       const refusal = refusalOf(() =>
-        guardTransaction(input(step, { to: VAULT, data }, {}, ['new_asset', 'auto_follow_on'])),
+        withRules(WITHOUT, () =>
+          runGuard(input(step, { to: VAULT, data }, {}, ['new_asset', 'auto_follow_on'])),
+        ),
       );
       expect(refusal?.code, step.kind).toBe('unsupported');
       expect(refusal?.message).toMatch(/regenerated/);
@@ -299,7 +312,6 @@ const next = (
 ): Negative => ({
   name,
   check,
-  rules: NEXT,
   input: () => input(step, { to: VAULT, data: data() }, {}, consents),
 });
 const strangersVault = () => evmVaultAddress(EVM, STRANGER, BASKET_ID);
@@ -397,6 +409,26 @@ const negatives: Negative[] = [
       to: VAULT,
       data: calls.multicall([honest.withdraw().data, transfer(STRANGER, 500n)]),
     }),
+  ),
+
+  // ---- a trade signed to stay good too long, or past its time
+  on(swapStep, 'a trade whose deadline has passed', 'deadline', () => ({
+    to: VAULT,
+    data: calls.ownerSwap([swapOf(SPY), swapOf(GOLD)], BigInt(now() - 1)),
+  })),
+  on(swapStep, 'a trade good for longer than half an hour', 'deadline', () => ({
+    to: VAULT,
+    data: calls.ownerSwap([swapOf(SPY), swapOf(GOLD)], BigInt(now() + 1_800 + 120)),
+  })),
+  on(swapStep, 'a trade good for ever', 'deadline', () => ({
+    to: VAULT,
+    data: calls.ownerSwap([swapOf(SPY), swapOf(GOLD)], (1n << 64n) - 1n),
+  })),
+  on(depositStep, 'a trade beside a deposit whose deadline has passed', 'deadline', () =>
+    honest.deposit([calls.deposit(CASH), calls.ownerSwap([swapOf(SPY)], BigInt(now() - 1))]),
+  ),
+  on(createStep, 'a create whose deadline has passed', 'deadline', () =>
+    honest.create(createStep, { deadline: BigInt(now() - 1) }),
   ),
 
   // ---- a larger amount, and an approval of everything

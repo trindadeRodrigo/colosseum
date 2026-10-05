@@ -199,8 +199,10 @@ export type AttemptRef = z.infer<typeof AttemptRef>;
  * Solana: an attempt is its message. It is `gone` once the chain is past `validUntil`.
  * EVM: an attempt is the pair (messageHash, nonce), since two builds of one call share a hash. It is
  * `landed` when the transaction at the signer's nonce is this call, `gone` when the signer's nonce has
- * passed the attempt's and another call used it, and `open` otherwise. Nothing expires by time. An
- * attempt with no nonce cannot be looked for and is `open`.
+ * passed the attempt's and another call used it, and `open` otherwise. Only a trade expires by time:
+ * `ownerSwap` and `createVaultAndBuy` carry a deadline, and an attempt of one whose deadline the chain's
+ * clock has passed, with no transaction on the chain, is `gone` (the adapter states the deadline as
+ * `validUntil`). An attempt with no nonce cannot be looked for and is `open`.
  */
 export const AttemptFate = z.discriminatedUnion('state', [
   z.object({ state: z.literal('open') }),
