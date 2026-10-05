@@ -194,6 +194,8 @@ jobs:
   # The money path on a local validator, on the programs the job above built: the adapter contract's
   # sending groups (relay, track, fate, the state each transaction leaves) and the API end to end, a
   # person's buy built, signed in the test, relayed and read back. One validator, stopped by the test.
+  # Beside it, in LiteSVM, the API's shared-portfolio orders held by the guard (API-3): they need the
+  # database this job has and the program job does not.
   validator:
     needs: program
     runs-on: ubuntu-24.04
@@ -258,4 +260,4 @@ jobs:
           SOLANA_PROGRAMS_REQUIRED: '1'
         run: |
           solana-test-validator --version
-          pnpm exec vitest run tests/solana-vault/validator.test.ts
+          pnpm exec vitest run tests/solana-vault/validator.test.ts tests/solana-vault/shared-routes.test.ts
