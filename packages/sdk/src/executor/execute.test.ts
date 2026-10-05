@@ -959,6 +959,42 @@ describe('the executor: one approved step gets one signature', () => {
     }
   });
 
+  it('EVM: a held signature whose nonce another transaction took is dropped, and the step signed once more', async () => {
+    const s = scene('robinhood');
+    const order = await s.double.buy(100);
+    const approve = order.legs.find((l) => l.kind === 'approve');
+    if (!approve) throw new Error('no approval');
+    let first: string | undefined;
+    // The report of the first signature never gets through: the API says the chain has not seen it.
+    const api: OrderApi = {
+      ...s.double.api,
+      async reportLeg(id, legId, body) {
+        if (legId === approve.id && 'signedTx' in body && first === undefined)
+          first = body.signedTx;
+        if (legId === approve.id && 'signedTx' in body && first === body.signedTx)
+          throw new ApiRefusal(409, { error: 'not seen yet', details: { retryable: true } });
+        return s.double.api.reportLeg(id, legId, body);
+      },
+    };
+    const chainRead = mockChainRead(s.w, () => s.wallet.asked);
+    const deps = { ...s.deps, api, chainRead, patience: { reportTries: 2 } };
+    expect(await execute(order, deps)).toMatchObject({ status: 'waiting', why: 'unseen' });
+    // Another transaction of the wallet takes nonce 0, the one the held signature was made on.
+    const other = await s.w.adapter.buildApprove({
+      owner: s.w.owner,
+      basketId: s.double.plan.basketId,
+      amountRaw: '1',
+      nonce: 0,
+    });
+    await s.w.adapter.mock.send(other);
+    const results: string[] = [];
+    for (let run = 0; run < 3; run += 1) results.push((await execute(order, deps)).status);
+    expect(results).toEqual(['done', 'done', 'done']);
+    const forApprove = s.wallet.asked.filter((tx) => tx.legId === approve.id);
+    expect(forApprove).toHaveLength(2);
+    expect(forApprove.map((tx) => tx.evm?.nonce)).toEqual([0, 1]);
+  });
+
   it('signs again when the chain says the first is gone, and only then', async () => {
     const outcomes: [string, ChainRead | undefined, string, number][] = [
       ['gone', saying('gone'), 'error', 3],

@@ -619,7 +619,9 @@ export function makeExecute(guard: Guard) {
         const before = record === 'unreadable' ? undefined : record;
         if (leg.status === 'built' && latest) {
           const held = before?.messageHash === latest.messageHash ? before : undefined;
-          if (held?.proof && !reported.has(latest.id)) {
+          // What was signed is reported again, unless the chain says it can never land. On EVM the
+          // message hash leaves the nonce out, so another transaction may have taken that nonce since.
+          if (held?.proof && !reported.has(latest.id) && (await fateOf(held)) !== 'gone') {
             reported.add(latest.id);
             const stop = await report(legId, held.proof);
             if (stop) return stop;
@@ -722,8 +724,13 @@ export function makeExecute(guard: Guard) {
 
         // ---- sign: one signature for an approved step
         let proof: ReportLegRequest;
-        if (before?.proof && before.messageHash === pass.tx.messageHash) {
-          // These very bytes were signed for this step: what was signed is reported again.
+        if (
+          before?.proof &&
+          before.messageHash === pass.tx.messageHash &&
+          (await fateOf(before)) !== 'gone'
+        ) {
+          // These very bytes were signed for this step: what was signed is reported again. Once the
+          // chain says that signature can never land, it is dropped and the step is signed once more.
           proof = before.proof;
         } else {
           // Bytes that were signed for another step of the order are not signed for this one.
