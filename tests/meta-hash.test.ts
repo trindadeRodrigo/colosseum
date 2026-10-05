@@ -26,7 +26,7 @@ const PIECES = [
   'ﬁ',
 ];
 const textOf = (n: number) =>
-  Array.from({ length: n }, () => PIECES[randomBytes(1)[0] % PIECES.length]).join('');
+  Array.from({ length: n }, () => PIECES[(randomBytes(1)[0] ?? 0) % PIECES.length]).join('');
 
 describe("the guard's text hash and packages/basket's", () => {
   it('agree on 2,000 texts made of the characters each rule is about', () => {
