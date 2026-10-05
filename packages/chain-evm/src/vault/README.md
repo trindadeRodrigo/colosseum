@@ -48,6 +48,16 @@ One codebase for every EVM chain. The reader takes a `ChainConfig` (its network,
 
 `assertNode(rpc, record)` at start: the node's chain id is the record's and never a mainnet's (4663, 8453), and the factory has code. A local copy of mainnet runs with another chain id (`anvil --chain-id 31337`): a signature made for 4663 is good on mainnet.
 
+## What the API needs to run Robinhood Chain on it
+
+Not wired yet: `apps/api/src/orders/chains.ts` refuses every chain but Solana in `live` and `readonly`. To run Robinhood Chain the way it runs Solana:
+
+- **The record**, committed: `deployments/robinhood-testnet.json` for `CHAIN_NETWORK_ROBINHOOD=testnet` (TNET-1 and TNET-2 write it when they deploy), `deployments/robinhood-local.json` for `local`. A reader of it beside `solanaDeployment` in `apps/api/src/deployments.ts`: `EvmDeploymentRecord.parse`, `network` equal to the file's name, and `deploymentAddresses(record)` into `contracts.robinhood` (`factory`, `registry`; `REQUIRED_CONTRACTS` asks for both) and into `CHAIN_ROUTER_ROBINHOOD`, which may say the same address and no other.
+- **The node:** `ROBINHOOD_RPC_URL` (`https://rpc.testnet.chain.robinhood.com` for the test network; an archive endpoint is not needed for reads of the latest block). `createEvmRpc(url)`, then `assertNode(rpc, record)` at start.
+- **The assets:** the `robinhood` rows of `basket_assets`, held to the record as `holdToRecord` holds Solana's (`deploymentAssets(record)` makes the rows; a fill script like `scripts/solana/basket-assets.ts` writes them). Each stock row's `priceRef` is its feed's address, lower-case.
+- **The mode:** `CHAIN_MODE_ROBINHOOD=readonly` can run on this reader alone once the registry takes an EVM entry, with the builders refusing `NotSupported`; `live` needs ADE-2. `CHAIN_NETWORK_ROBINHOOD` stays `testnet` (never `mainnet` here, as for Solana).
+- **On `local`:** the copy runs as chain id 31337, so the record says 31337, while the preset in `packages/schemas/src/chain-presets.ts` gives `local` mainnet's 4663. The builders (ADE-2) must sign with the record's chain id, or the preset changes; a transaction signed for 4663 is good on mainnet.
+
 ## The check
 
 `packages/chain-evm/test/fork.test.ts` forks Robinhood Chain mainnet at block 77,417,307 with anvil (chain id 31337), deploys the contracts on it as `Deploy.s.sol` does, lists the real USDG, NVDA, SPY, GLD, META, TSLA and MSFT tokens (the real NVDA feed, feeds of our own for the rest, MSFT taken off again), opens four vaults, publishes three shared portfolios, schedules a multiplier on the real NVDA token, and reads all of it back through the reader over JSON-RPC. It runs the adapter contract's `reads` group and the cases beyond it. Nothing is sent to any network.
