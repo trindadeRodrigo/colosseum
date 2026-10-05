@@ -746,6 +746,8 @@ describe('the /v1 route table', () => {
       '/v1/baskets/personalize',
       '/v1/config',
       '/v1/funding',
+      '/v1/indexes/{slug}',
+      '/v1/indexes/{slug}/versions',
       '/v1/me',
       '/v1/me/chain',
       '/v1/mock/fund',
@@ -756,6 +758,7 @@ describe('the /v1 route table', () => {
       '/v1/orders/{id}/legs/{legId}/cancel',
       '/v1/orders/{id}/legs/{legId}/report',
       '/v1/portfolio',
+      '/v1/shelf',
     ]);
     // No route lets a caller through without a token: 503 with no Privy app set, 401 with one.
     const res = await app.inject({ method: 'GET', url: '/v1/portfolio' });
@@ -808,10 +811,12 @@ describe('no /v1 route can make the server sign', () => {
     expect(files.map((f) => relative(src, f)).sort()).toEqual([
       'orders/chains.ts',
       'orders/errors.ts',
+      'orders/families.ts',
       'orders/legs.ts',
       'orders/person.ts',
       'orders/personalize.ts',
       'orders/prepare.ts',
+      'orders/shared.ts',
       'orders/store.ts',
       'plugins/auth.ts',
       'plugins/limits.ts',
@@ -824,6 +829,7 @@ describe('no /v1 route can make the server sign', () => {
       'routes/v1/mock.ts',
       'routes/v1/orders.ts',
       'routes/v1/portfolio.ts',
+      'routes/v1/shared.ts',
     ]);
     // The chain packages that can sign keep that behind their `./server` entry, and neither the
     // package's root nor that entry is here: the Solana adapter comes in by its key-free `./vault`

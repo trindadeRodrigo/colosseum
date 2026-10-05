@@ -1,3 +1,4 @@
+import { familyIdOf, metaHash } from '@colosseum/basket';
 import type { Db } from '@colosseum/db';
 import {
   type Address,
@@ -8,13 +9,16 @@ import {
   chainFamily,
   type Leg,
   type Order,
+  type Recipe,
   type ReportLegRequest,
   stampTx,
   type Trade,
 } from '@colosseum/schemas';
 import { assertBuilds, type ChainEntry, type ChainRegistry } from './chains';
 import { legErrorFromRevert, Refusal, refusing } from './errors';
+import { familyBySlug } from './families';
 import { basketIdOf, expectedOf, ORDER_POLICY, slippageOf, targetsOf, tradesFor } from './prepare';
+import { autoFollowOffer, familyText, followedOn, recipeTargets, refuseAutoFollow } from './shared';
 import {
   blockedBy,
   liveElsewhere,
@@ -124,10 +128,17 @@ async function buildFor(
   nonce: number | undefined,
 ): Promise<BuiltTx> {
   const { request, order } = stored;
-  if (request.type !== 'buy' || !request.proposalId)
+  if (request.type === 'publish' || request.type === 'follow')
+    return buildShared(deps, stored, leg, entry, owner, nonce);
+  if (request.type !== 'buy' || !(request.proposalId || request.family))
     throw new Refusal(501, `a ${request.type} order cannot be built yet`);
   const { adapter } = entry;
-  const basketId = basketIdOf(request.proposalId);
+  const followed = request.family
+    ? await refusing(() =>
+        followedOn(request.family ?? '', leg.chain, sharedOf(deps), request.version),
+      )
+    : null;
+  const basketId = basketIdOf(followed ? followed.family.familyId : (request.proposalId ?? ''));
   const slippageBps = slippageOf(request);
   const trades = leg.trades.length ? leg.trades : undefined;
   const shared = nonce === undefined ? {} : { nonce };
@@ -141,7 +152,33 @@ async function buildFor(
     case 'approve':
       return adapter.buildApprove({ owner, basketId, amountRaw: cashOf(leg), ...shared });
     case 'create_vault': {
-      const proposal = await loadProposal(deps.db, request.proposalId);
+      if (followed) {
+        // A vault that follows the version the order holds to: it copies that version's weights, and
+        // the trades are the ones planned for them.
+        const assets = await adapter.listAssets();
+        const cash = assets.find((x) => x.cls === 'cash');
+        if (!cash) throw new Error(`${entry.chain} lists no cash token`);
+        const targets = recipeTargets(followed.onchain.active);
+        const planned = order.legs.flatMap((l) => l.trades);
+        if (!sameTrades(planned, tradesFor(targets, BigInt(cashOf(leg)), cash.id)))
+          throw new Refusal(409, 'the shared portfolio has changed since the order was made', {
+            code: 'VERSION_CHANGED',
+            fix: 'Make the order again.',
+          });
+        return adapter.buildCreateVault({
+          owner,
+          basketId,
+          targets: [],
+          recipeOnchainId: followed.recipe.onchainId,
+          expectedVersion: followed.onchain.active.version,
+          autoFollow: false,
+          depositRaw: cashOf(leg),
+          trades,
+          slippageBps,
+          ...shared,
+        });
+      }
+      const proposal = await loadProposal(deps.db, request.proposalId ?? '');
       const recipe = proposal?.recipes.find((r) => r.chain === leg.chain);
       if (!recipe) throw new Refusal(409, 'the plan this order buys is no longer stored');
       const assets = await adapter.listAssets();
@@ -186,6 +223,83 @@ async function buildFor(
         slippageBps,
         ...shared,
       });
+    default:
+      throw new Refusal(501, `a ${leg.kind} step cannot be built yet`);
+  }
+}
+
+/** The store of shared portfolios, as the planning functions take it. */
+const sharedOf = (deps: OrderDeps) => ({
+  chains: deps.chains,
+  bySlug: (slug: string) => familyBySlug(deps.db, slug),
+});
+
+/**
+ * One step of a publish or a follow. Each is built from the order's stored request and the chain as it
+ * is now: a follow is refused with `VERSION_CHANGED` once another version is in effect than the one it
+ * holds to, and auto-follow on is checked again (gate GOLD-ONE-TAP).
+ */
+async function buildShared(
+  deps: OrderDeps,
+  stored: StoredOrder,
+  leg: Leg,
+  entry: ChainEntry,
+  owner: Address,
+  nonce: number | undefined,
+): Promise<BuiltTx> {
+  const { request } = stored;
+  const { adapter } = entry;
+  const shared = nonce === undefined ? {} : { nonce };
+  if (request.type === 'publish') {
+    if (leg.kind !== 'publish') throw new Refusal(501, `a ${leg.kind} step cannot be built yet`);
+    const draft = request.recipes.find((r) => r.chain === leg.chain);
+    if (!draft) throw new Error('a publish step on a chain the request has no recipe for');
+    const familyId = request.familyId ?? familyIdOf(request.family);
+    // The hash of the text the order was made with. The guard works it out again from the text the
+    // creator's form showed, and refuses bytes that carry another.
+    const recipe: Recipe = {
+      schemaVersion: 1,
+      familyId,
+      chain: leg.chain,
+      onchainId: null,
+      creator: owner,
+      kind: 'community',
+      version: 1,
+      effectiveAt: 0,
+      components: draft.components,
+      metaHash: metaHash(familyText(request, familyId)),
+      maxFeeBps: 0,
+      flags: 0,
+    };
+    return adapter.buildPublishRecipe({ creator: owner, recipe, ...shared });
+  }
+  if (request.type !== 'follow') throw new Error('not a shared-portfolio order');
+  const { onchain } = await refusing(() =>
+    followedOn(request.family, leg.chain, sharedOf(deps), request.version),
+  );
+  switch (leg.kind) {
+    case 'accept_version':
+      return adapter.buildAcceptVersion({
+        vault: request.vault,
+        recipeOnchainId: onchain.active.onchainId ?? '',
+        expectedVersion: onchain.active.version,
+        ...shared,
+      });
+    case 'set_auto_follow': {
+      if (request.autoFollow) {
+        const offer = autoFollowOffer(
+          entry,
+          [onchain.active, ...(onchain.pending ? [onchain.pending] : [])].map(recipeTargets),
+          await adapter.listAssets(),
+        );
+        if (!offer.offered) refuseAutoFollow(entry, offer);
+      }
+      return adapter.buildSetAutoFollow({
+        vault: request.vault,
+        on: request.autoFollow,
+        ...shared,
+      });
+    }
     default:
       throw new Refusal(501, `a ${leg.kind} step cannot be built yet`);
   }
