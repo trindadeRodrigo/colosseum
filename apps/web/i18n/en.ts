@@ -67,6 +67,17 @@ export const en = {
       passkeyNotUsed:
         'No passkey was used: the prompt was closed or ran out of time. If you have no passkey for this site yet, create one.',
       passkeyUnknown: 'I don’t know that passkey. Create a new one, or connect a wallet.',
+      /** Privy's `passkey_not_registered`: the passkey picked was made for another site or app. */
+      passkeyNotRegistered: 'That passkey isn’t registered here. Pick another, or create one.',
+      /** Privy's `max_accounts_reached`. */
+      accountsFull:
+        'This app can’t take new accounts right now. Use a passkey or wallet you’ve signed in with before, or come back later.',
+      /** Privy's `allowlist_rejected`. */
+      notInvited:
+        'This app is open to invited people only for now, and this sign-in isn’t on the list. Ask the team for an invite.',
+      /** Privy's `session_storage_unavailable`: a private window, or storage blocked. */
+      noStorage:
+        'This browser is blocking the storage a sign-in needs, as a private window does. Open the page in a normal window, then try again.',
       passkeyUnsupported:
         'This browser can’t use passkeys. Open the page in a current browser, or connect a wallet.',
       walletOff:
@@ -134,6 +145,9 @@ export const en = {
       unreachable:
         'I couldn’t save that: our server didn’t answer. Your choice isn’t stored yet. Try again.',
       signedOut: 'Your sign-in ran out before the choice was saved. Sign in again, then choose.',
+      /** The API answered 401 because the identity token was not sent: the sign-in service didn't give one. */
+      noIdentity:
+        'I couldn’t save that: the sign-in service didn’t give me the part of your sign-in that lists your wallets, so our server can’t check them. Your choice isn’t stored yet. Wait a minute, then try again.',
     },
     unknown: {
       body: 'I can’t tell yet which chain your plan lives on: our server didn’t answer. Nothing is wrong with your wallet.',
@@ -142,6 +156,9 @@ export const en = {
       /** The API answered 401: it does not know this sign-in any more. */
       signedOut:
         'Our server doesn’t recognise your sign-in any more, so I can’t tell which chain your plan lives on. Sign out, then sign in again.',
+      /** The API answered 401 because the identity token was not sent, even after asking for a new one. */
+      noIdentity:
+        'I can’t tell yet which chain your plan lives on: the sign-in service didn’t give me the part of your sign-in that lists your wallets, so our server can’t check them. Nothing is wrong with your wallet. Wait a minute, then ask again.',
     },
     noWallet:
       'You’re signed in, but no wallet is linked to this sign-in yet, so there is no chain for your plan.',
@@ -176,6 +193,9 @@ export const en = {
     /** Under the sheet's title, while the only reader is the one made for goals in reais. */
     readerNote:
       'Today’s reader was made for goals in reais, so it can miss a dollar amount or a date. Check each field: what it didn’t find is left empty for you.',
+    /** The same note, naming what the reader left empty: "Amount (dollars), Time frame (months)". */
+    readerMissed: (fields: string) =>
+      `Today’s reader was made for goals in reais, so it didn’t find these in your goal: ${fields}. Fill them in below. Nothing is built until every field fits.`,
     sheet: {
       title: 'How I read your goal',
       parser: 'parser',
@@ -214,6 +234,8 @@ export const en = {
       country: 'You state it. It decides which assets you may hold.',
       holdings: 'The plan fills gaps and avoids doubling up.',
       amount: 'What this plan starts with, from $10 to $1,000,000.',
+      /** Before the hint of a field the reader left empty. */
+      notFound: 'Not found in your goal: fill it in.',
     },
     captions: {
       income: 'An income plan holds no stock tokens.',
@@ -256,6 +278,9 @@ export const en = {
       /** The server answered 401 or 403 to "Build my plan". */
       signInAgain:
         'Our server doesn’t recognise your sign-in any more, so the plan wasn’t built. Sign out, then sign in again.',
+      /** The server answered 401 because the identity token was not sent. */
+      noIdentity:
+        'The plan wasn’t built: the sign-in service didn’t give me the part of your sign-in that lists your wallets, so our server can’t check them. Your limits are kept. Wait a minute, then try again.',
       chainOff: (chain: string) =>
         `${chain} is switched off on our server for now, so I can’t build a plan there. Your limits are kept.`,
     },
@@ -497,6 +522,8 @@ export const en = {
         auto_follow_on:
           'Switch auto-follow on: our keeper trades your vault toward its portfolio, within the limits above.',
         new_asset: 'Accept a version of the portfolio with an asset you don’t hold yet.',
+        publish:
+          'Publish this portfolio, or take it back, under your name: others can see it and follow it.',
       },
       consentNeeded: 'Tick each agreement above to continue.',
     },

@@ -62,6 +62,14 @@ export const pt: Dictionary = {
       passkeyNotUsed:
         'Nenhuma chave de acesso foi usada: a janela foi fechada ou o tempo acabou. Se você ainda não tem uma chave de acesso para este site, crie uma.',
       passkeyUnknown: 'Não reconheço essa chave de acesso. Crie uma nova ou conecte uma carteira.',
+      passkeyNotRegistered:
+        'Essa chave de acesso não está registrada aqui. Escolha outra ou crie uma.',
+      accountsFull:
+        'Este app não está aceitando contas novas agora. Use uma chave de acesso ou carteira com que você já entrou, ou volte mais tarde.',
+      notInvited:
+        'Por enquanto este app é só para convidados, e este login não está na lista. Peça um convite à equipe.',
+      noStorage:
+        'Este navegador está bloqueando o armazenamento de que o login precisa, como faz uma janela anônima. Abra a página em uma janela normal e tente de novo.',
       passkeyUnsupported:
         'Este navegador não consegue usar chaves de acesso. Abra a página em um navegador atualizado ou conecte uma carteira.',
       walletOff:
@@ -124,6 +132,8 @@ export const pt: Dictionary = {
       unreachable:
         'Não consegui salvar: nosso servidor não respondeu. Sua escolha ainda não está guardada. Tente de novo.',
       signedOut: 'Sua sessão expirou antes de a escolha ser salva. Entre de novo e escolha.',
+      noIdentity:
+        'Não consegui salvar: o serviço de login não me entregou a parte do seu login que lista suas carteiras, então nosso servidor não consegue conferi-las. Sua escolha ainda não está guardada. Espere um minuto e tente de novo.',
     },
     unknown: {
       body: 'Ainda não sei dizer em qual rede seu plano fica: nosso servidor não respondeu. Não há nada de errado com a sua carteira.',
@@ -131,6 +141,8 @@ export const pt: Dictionary = {
       asking: 'Perguntando…',
       signedOut:
         'Nosso servidor não reconhece mais o seu login, então não sei dizer em qual rede seu plano fica. Saia e entre de novo.',
+      noIdentity:
+        'Ainda não sei dizer em qual rede seu plano fica: o serviço de login não me entregou a parte do seu login que lista suas carteiras, então nosso servidor não consegue conferi-las. Não há nada de errado com a sua carteira. Espere um minuto e pergunte de novo.',
     },
     noWallet:
       'Você entrou, mas ainda não há carteira vinculada ao seu login, então não há rede para o seu plano.',
@@ -165,6 +177,8 @@ export const pt: Dictionary = {
     },
     readerNote:
       'O leitor de hoje foi feito para objetivos em reais, então pode deixar passar um valor em dólares ou uma data. Confira cada campo: o que ele não encontrou ficou em branco para você.',
+    readerMissed: (fields: string) =>
+      `O leitor de hoje foi feito para objetivos em reais, então não encontrou isto no seu objetivo: ${fields}. Preencha abaixo. Nada é montado até que todos os campos estejam certos.`,
     sheet: {
       title: 'Como li seu objetivo',
       parser: 'leitor',
@@ -207,6 +221,7 @@ export const pt: Dictionary = {
       country: 'É você quem declara. Define quais ativos você pode ter.',
       holdings: 'O plano preenche lacunas e evita repetir o que você já tem.',
       amount: 'Com quanto o plano começa, de US$ 10 a US$ 1.000.000.',
+      notFound: 'Não encontrei no seu objetivo: preencha.',
     },
     captions: {
       income: 'Um plano de renda não tem ações tokenizadas.',
@@ -249,6 +264,8 @@ export const pt: Dictionary = {
       refused: 'Nosso servidor não aceitou esses limites. Confira cada campo e tente de novo.',
       signInAgain:
         'Nosso servidor não reconhece mais o seu login, então o plano não foi montado. Saia e entre de novo.',
+      noIdentity:
+        'O plano não foi montado: o serviço de login não me entregou a parte do seu login que lista suas carteiras, então nosso servidor não consegue conferi-las. Seus limites continuam guardados. Espere um minuto e tente de novo.',
       chainOff: (chain: string) =>
         `${chain} está indisponível no nosso servidor por enquanto, então não consigo montar um plano nela. Seus limites continuam guardados.`,
     },
@@ -495,6 +512,8 @@ export const pt: Dictionary = {
         auto_follow_on:
           'Ativar o seguir automático: nosso operador negocia seu cofre em direção ao portfólio, dentro dos limites acima.',
         new_asset: 'Aceitar uma versão do portfólio com um ativo que você ainda não tem.',
+        publish:
+          'Publicar este portfólio, ou retirá-lo, em seu nome: outras pessoas podem vê-lo e segui-lo.',
       },
       consentNeeded: 'Marque cada concordância acima para continuar.',
     },

@@ -188,8 +188,27 @@ describe('reading a typed goal', () => {
     expect(find<HTMLSelectElement>(host, `#${FIELD_ID.risk}`).value).toBe('medium');
     expect(input(host, 'amount').value).toBe('');
     expect(input(host, 'horizon').value).toBe('');
-    // and the screen says why a dollar amount was not found
+    // and the screen says why a dollar amount was not found, and names what is left to fill
+    expect(host.textContent).toContain(
+      en.goal.readerMissed('Amount (dollars), Time frame (months), and Country where you live'),
+    );
+    // each field left empty says it was not found, before what it takes
+    for (const key of ['amount', 'horizon', 'country'] as const)
+      expect(find(host, `#${FIELD_ID[key]}`).closest('[data-ui="field"]')?.textContent).toContain(
+        en.goal.hints.notFound,
+      );
+    expect(find(host, `#${FIELD_ID.risk}`).closest('[data-ui="field"]')?.textContent).not.toContain(
+      en.goal.hints.notFound,
+    );
+  });
+
+  it('stops naming a field once the person has filled it', async () => {
+    api({});
+    const host = await screen();
+    await read(host);
+    await fill(host);
     expect(host.textContent).toContain(en.goal.readerNote);
+    expect(host.textContent).not.toContain(en.goal.hints.notFound);
   });
 
   it('makes the goal the heading of the page once it is read: still one heading, one serif line', async () => {
@@ -642,6 +661,15 @@ describe('what comes back from “Build my plan”', () => {
       expect(host.textContent).not.toContain('sign in first');
     },
   );
+
+  it('says the sign-in service gave no identity token, not to sign in again, when the server says so', async () => {
+    const { host } = await built(() =>
+      json({ error: 'sign in first: no identity token was sent' }, 401),
+    );
+    expect(summary(host)?.textContent).toContain(en.goal.blocked.noIdentity);
+    expect(summary(host)?.textContent).not.toContain(en.goal.blocked.signInAgain);
+    expect(host.textContent).not.toContain('no identity token was sent');
+  });
 
   it('says to choose the chain first when the server has none for this person, and asks who they are again', async () => {
     const { host, server } = await built(() =>

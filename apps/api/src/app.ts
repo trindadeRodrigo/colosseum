@@ -11,6 +11,7 @@ import {
 import { z } from 'zod';
 import { DEPLOYMENTS_DIR, solanaDeployment } from './deployments';
 import { V1_SECURITY_SCHEMES, v1Transform } from './openapi';
+import { bearingPlanInputs } from './plan-inputs';
 import { corsAllowlist, corsByPath } from './plugins/cors';
 import { requireDeclared } from './plugins/limits';
 import { registerMonitorRoutes } from './routes/monitor';
@@ -100,6 +101,7 @@ export async function buildApp(
     ...deps.v1,
     contracts: deps.v1?.contracts ?? solana.contracts,
     solanaRecord: deps.v1?.solanaRecord ?? solana.record,
+    planInputs: deps.v1?.planInputs ?? bearingPlanInputs,
     inScope,
   });
 

@@ -1,5 +1,5 @@
 import { BasketProposal, type BasketSheet, RiskRollUp } from '@colosseum/schemas';
-import type { ApiFetch } from '../account/person';
+import { type ApiFetch, signInRefusal } from '../account/person';
 
 // "Build my plan": one call, with the shapes of DESIGN-VAULT section 3.6. The route is not in the API
 // yet (it comes with the engine, in the next API slot), so this is written to the shape it needs and
@@ -10,7 +10,8 @@ import type { ApiFetch } from '../account/person';
 //   200     { id: string, proposal: BasketProposal, rollUp?: RiskRollUp }   the stored plan's id, the
 //                              plan, and the risk roll-up when the server sends one (shown as sent,
 //                              never worked out here; one that does not parse is left out)
-//   401/403 the server does not know who is asking, or does not let them: sign in again
+//   401/403 the server does not know who is asking, or does not let them: sign in again. A 401 that
+//           says no identity token was sent is the sign-in service's: wait and try again
 //   409     the server has no chain for this person yet: the chain is chosen first
 //   429     it asked for fewer requests
 //   4xx     { error, code? }   the server refused the sheet; with code 'GOAL_NOT_ACHIEVABLE' (the
@@ -28,6 +29,8 @@ export type BuildOutcome =
   | { kind: 'unavailable' }
   /** The server does not know this sign-in any more (401), or does not let it build (403). */
   | { kind: 'signed-out' }
+  /** The server was sent no identity token (401): the sign-in service did not give one. */
+  | { kind: 'no-identity' }
   /** The server has no chain for this person yet (409): it is chosen before a plan is built. */
   | { kind: 'no-chain' }
   /** The server is the final gate and refused the sheet. */
@@ -74,6 +77,8 @@ export async function buildPlan(apiFetch: ApiFetch, sheet: BasketSheet): Promise
   if (res.status === 404 || res.status === 405 || res.status === 501)
     return { kind: 'unavailable' };
   if (res.status === 429) return { kind: 'busy' };
+  if (res.status === 401 && (await signInRefusal(res)) === 'no_identity')
+    return { kind: 'no-identity' };
   const body: unknown = await res.json().catch(() => null);
   const answer = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
   // What the server says in a refusal is written for a developer: the screen has its own sentence,

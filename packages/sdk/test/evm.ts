@@ -49,9 +49,9 @@ export function evmDeployment(change: Partial<EvmEntry> = {}): Loaded<EvmDeploym
         routers: [ROUTER],
         cash: 'robinhood:usdc',
         assets: {
-          'robinhood:usdc': { address: anyone('token usdc') },
-          'robinhood:spy': { address: anyone('token spy') },
-          'robinhood:gold': { address: anyone('token gold') },
+          'robinhood:usdc': { address: anyone('token usdc'), decimals: 6 },
+          'robinhood:spy': { address: anyone('token spy'), decimals: 18 },
+          'robinhood:gold': { address: anyone('token gold'), decimals: 18 },
         },
         ...change,
       },

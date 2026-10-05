@@ -23,6 +23,7 @@ import {
   fieldOfId,
   fieldsOfDraft,
   goalSentence,
+  notFound,
   type ReadSheet,
   restoreGoal,
   sheetGroups,
@@ -179,14 +180,17 @@ export function GoalScreen() {
   const chainOff = network?.on === false;
   const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.mockAnnounce };
   const link = buttonClass({ variant: 'link' });
-  // Why the API did not say which chain: it did not answer, it no longer knows this sign-in, or it
-  // asked for fewer requests. Each is a different thing for the person to do.
+  // Why the API did not say which chain: it did not answer, it no longer knows this sign-in, it was
+  // sent no identity token, or it asked for fewer requests. Each is a different thing for the person
+  // to do.
   const unknownWhy =
     account.status !== 'unknown' || account.why === 'unreachable'
       ? t.chain.unknown.body
       : account.why === 'signed_out'
         ? t.chain.unknown.signedOut
-        : t.shell.slowDown;
+        : account.why === 'no_identity'
+          ? t.chain.unknown.noIdentity
+          : t.shell.slowDown;
   const chainFact: SheetFact =
     account.status === 'ready'
       ? {
@@ -237,6 +241,7 @@ export function GoalScreen() {
       : []),
     ...(chainOff ? [t.goal.blocked.chainOff(chainName)] : []),
     ...(build.kind === 'signed-out' ? [t.goal.blocked.signInAgain] : []),
+    ...(build.kind === 'no-identity' ? [t.goal.blocked.noIdentity] : []),
     // Said once: the account says the same when it has read that no chain is chosen.
     ...(build.kind === 'no-chain' && account.status !== 'needs-chain'
       ? [t.goal.blocked.chainNotChosen]
@@ -263,6 +268,15 @@ export function GoalScreen() {
 
   // A built plan is named by its own chain and labelled by its own figures, not by this page's.
   const plan = build.kind === 'built' ? build.proposal : null;
+  // The first reader was made for goals in reais: the note names what it left empty, for the person
+  // to fill in.
+  const missed = sheet ? notFound(sheet.fields, sheet.read).map((key) => t.goal.fields[key]) : [];
+  const readerNote =
+    missed.length > 0
+      ? t.goal.readerMissed(
+          new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(missed),
+        )
+      : t.goal.readerNote;
   const planLabel = plan ? planProvenance(plan) : 'live';
   const planChain = plan?.sheet.chains[0];
   const planChainName = planChain
@@ -336,9 +350,7 @@ export function GoalScreen() {
       </div>
 
       {sheet?.firstReader && (
-        <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
-          {t.goal.readerNote}
-        </p>
+        <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">{readerNote}</p>
       )}
 
       {sheet && check && drawn ? (

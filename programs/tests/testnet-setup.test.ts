@@ -1,6 +1,6 @@
-import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   type Address,
   createKeyPairSignerFromPrivateKeyBytes,
@@ -46,6 +46,20 @@ import { type DeployedAsset, type Deployment, guardSolanaEntry, setUp } from './
 import { mintExtensionEntries, TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from './src/tokens';
 
 const CONFIG_FILE = join(REPO_ROOT, 'scripts', 'testnet', 'solana', 'devnet.config.json');
+// The record a set-up writes after it retired a token. The API's start reads it in
+// tests/solana-vault/deployment.test.ts; here it is held to the shape this set-up writes today.
+// Write it again with WRITE_FIXTURES=1 in the change that moves that shape.
+const RETIRED_RECORD = join(REPO_ROOT, 'fixtures', 'testnet', 'solana-retired-record.json');
+
+/** Every key and the kind of every value, with the values themselves left out. */
+const shapeOf = (value: unknown): unknown =>
+  Array.isArray(value)
+    ? value.map(shapeOf)
+    : value && typeof value === 'object'
+      ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, shapeOf(v)]))
+      : value === null
+        ? 'null'
+        : typeof value;
 
 // The set-up of a Solana test network (scripts/testnet/solana/setup.ts), run here in LiteSVM with
 // the config file that is committed for devnet: the same steps, the same transactions, and then a
@@ -316,6 +330,10 @@ describe('the test-network set-up', () => {
     expect(entry.cash).toBe('solana:usdc');
     expect(Object.keys(entry.assets)).toHaveLength(14);
     for (const id of Object.keys(entry.assets)) expect(id).toMatch(/^solana:[a-z0-9][a-z0-9-]*$/);
+    // Each with the decimals its mint was made with, the cash's six among them.
+    for (const token of [deployment.cash, ...deployment.assets])
+      expect(entry.assets[token.id]?.decimals, token.id).toBe(token.decimals);
+    expect(entry.assets['solana:usdc']?.decimals).toBe(6);
     const addresses = [
       entry.program,
       entry.router,
@@ -530,13 +548,22 @@ describe('the test-network set-up, on a network that differs from its config', (
         symbol: 'tTSLAx',
         mint: tsla.mint,
         tokenProgram: 'token-2022',
+        decimals: tsla.decimals,
         keeperOn: false,
       },
     ]);
     expect(guardSolanaEntry(dropped.deployment).assets['solana:tslax']).toEqual({
       mint: tsla.mint,
       tokenProgram: 'token-2022',
+      decimals: tsla.decimals,
     });
+    // The record as the set-up writes it to a file, which the API's start reads.
+    const written = JSON.parse(JSON.stringify(dropped.deployment));
+    if (process.env.WRITE_FIXTURES === '1') {
+      mkdirSync(dirname(RETIRED_RECORD), { recursive: true });
+      writeFileSync(RETIRED_RECORD, `${JSON.stringify(written, null, 2)}\n`);
+    }
+    expect(shapeOf(JSON.parse(readFileSync(RETIRED_RECORD, 'utf8')))).toEqual(shapeOf(written));
     // A second run sends nothing and still records it, from the record it wrote.
     const again = await run(fewer, { previous: dropped.deployment });
     expect(again.transactions).toBe(0);
@@ -564,12 +591,14 @@ describe('the test-network set-up, on a network that differs from its config', (
         symbol: null,
         mint: tsla.mint,
         tokenProgram: 'token-2022',
+        decimals: tsla.decimals,
         keeperOn: false,
       },
     ]);
     expect(guardSolanaEntry(dropped.deployment).assets['solana:tslax']).toEqual({
       mint: tsla.mint,
       tokenProgram: 'token-2022',
+      decimals: tsla.decimals,
     });
     expect((await run(config(null))).transactions).toBe(1);
   });
