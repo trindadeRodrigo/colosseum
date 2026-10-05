@@ -102,7 +102,7 @@ Base: `staging`. Each stream works in a short-lived branch and opens a pull requ
 | `packages/sdk` | new, built; types from OpenAPI; the guard and the leg executor | Thom | schemas (types only; its tests may use the parsers, and chain-mock) |
 | `apps/api` | exists; new routes under `routes/v1/` | shared | all packages |
 | `apps/risk-api` | exists | Rodrigo; not touched | as today: schemas, db, risk, and the `/risk` routes file of `apps/api` by a relative path |
-| `apps/keeper`, `apps/mcp` | new | Thom | keeper: schemas, basket, db, chain-*; mcp: sdk |
+| `apps/keeper`, `apps/mcp` | keeper built on Solana (KEEP-1); mcp new | Thom | keeper: schemas, basket, db, chain-* (the signing entries included); mcp: sdk |
 | `apps/web` | exists | shared | schemas, sdk |
 | `programs/basket`, `programs/mock-router`, `idl/`, `contracts/` | new | Thom | none |
 | `content/risk-sheets/`, `content/chains.json` | new, data only | Rodrigo writes sheets | none |
@@ -1061,6 +1061,7 @@ The roll-up states the share of the plan that is measured.
 - EVM send: `pending` nonce stored on the attempt; `simulateContract` first; `maxFeePerGas` at twice the base fee (memory).
 - Retries: a reverted leg is never sent again. A leg that expired without landing is re-planned from chain state in the next pass, at most 3 times per vault and version, then an alert.
 - Alerts go to a Discord webhook: a rejected leg, three expired attempts, low gas, a stale feed in session, a vault past half its loss budget, a failed authority check. The keeper holds no guardian key; it only alerts. Each pass pings healthchecks.io.
+- As built (KEEP-1), on Solana only: `apps/keeper` (`README.md` there). Each round reads every auto-follow vault from the chain through the adapter, in random order, and gives each at most an adoption (a due version that adds no asset, not while paused), a sync, and one leg planned by `rebalancePlan` on chain state. Before building a leg it skips a vault that is blocked, has no price account or has used its loss budget, and passes over a trade on an asset in cooldown, out of session, in a multiplier window or with a transfer hook. Records that differ from the accounts are synced only when every changed position has a fresh reference in range; otherwise the vault is skipped with an alert, because a synced unit with no usable reference stops every leg in the vault. A reverted leg is remembered by the process and never sent again. One JSON line per vault per round; `--once`, `--loop`, `--dry-run`; the record's genesis checked, mainnet refused; it signs only as the record's default keeper. Not built yet: run and leg rows (`keeper_runs`, `keeper_legs`), so a restart forgets reverted legs; `synced_version`; the expired-attempt count; Helius Sender rebroadcast; alerts beyond the log line.
 
 | Piece | Where (all free) | Note |
 |---|---|---|
