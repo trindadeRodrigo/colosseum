@@ -4,16 +4,16 @@ import {
   address,
   appendTransactionMessageInstructions,
   compressTransactionMessageUsingAddressLookupTables,
-  createKeyPairSignerFromBytes,
   createDefaultRpcTransport,
+  createKeyPairSignerFromBytes,
   createSolanaRpcFromTransport,
   createTransactionMessage,
   getBase64EncodedWireTransaction,
   getBase64Encoder,
   getSignatureFromTransaction,
   getTransactionEncoder,
-  isSolanaError,
   type Instruction,
+  isSolanaError,
   type KeyPairSigner,
   pipe,
   type RpcTransport,
@@ -101,7 +101,11 @@ export type RpcChain = Chain & { genesisHash(): Promise<string> };
  * send carries the same signed bytes, so it is the same transaction. Any other error is thrown. */
 export function retryOn429(
   transport: RpcTransport,
-  { tries = 8, firstWaitMs = 500, wait = (ms: number) => new Promise((r) => setTimeout(r, ms)) } = {},
+  {
+    tries = 8,
+    firstWaitMs = 500,
+    wait = (ms: number) => new Promise((r) => setTimeout(r, ms)),
+  } = {},
 ): RpcTransport {
   return (async (config: Parameters<RpcTransport>[0]) => {
     for (let attempt = 1; ; attempt++) {

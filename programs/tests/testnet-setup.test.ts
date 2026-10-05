@@ -344,7 +344,7 @@ describe('the test-network set-up', () => {
   });
 
   it('refuses a config with a role left out, a range its first price is outside of, or an entry used twice', () => {
-    const base = file();
+    const base = { ...file(), roles: { guardian: null, defaultKeeper: null, priceWriter: null } };
     expect(() => planOf(base)).toThrow(/roles\.guardian is not set/);
     const outside = withRoles(file());
     outside.tokens[0].keeper = { minUsd: '100', maxUsd: '200' };
@@ -644,7 +644,10 @@ describe('the RPC transport the set-up runs on', () => {
     const other = failing([httpError(500)], null);
     await expect(retryOn429(other.transport, { wait: async () => {} })(config)).rejects.toThrow();
     expect(other.calls()).toBe(1);
-    const limited = failing(Array.from({ length: 5 }, () => httpError(429)), null);
+    const limited = failing(
+      Array.from({ length: 5 }, () => httpError(429)),
+      null,
+    );
     await expect(
       retryOn429(limited.transport, { tries: 3, wait: async () => {} })(config),
     ).rejects.toThrow();
