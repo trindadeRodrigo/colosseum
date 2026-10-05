@@ -392,7 +392,17 @@ export function checkSolana(ctx: Context, deployment: SolanaDeployment, table: P
             "the assets and weights in the bytes are not the version's",
           );
         // The hash of the text the creator saw, worked out here: never a hash handed over.
-        const textHash = step.text ? familyTextHash({ familyId: step.familyId, ...step.text }) : '';
+        const t = step.text;
+        // Only the four fields shown, under the step's own family: a family id inside the text is not read.
+        const textHash = t
+          ? familyTextHash({
+              familyId: step.familyId,
+              slug: t.slug,
+              name: t.name,
+              copy: t.copy,
+              kind: t.kind,
+            })
+          : '';
         args.meta_hash = (v) =>
           need(
             'recipe',

@@ -236,6 +236,19 @@ describe('the guard on Solana: a creator publishes, updates and takes back a sha
       const step = { ...publishStep, ...change } as ApprovedStep;
       expect(refusalOf(() => guardTransaction(input(step, bytes)))?.code, name).toBe('order');
     }
+    // A family id smuggled inside the text does not move the hash to another family: the bytes carry
+    // the hash of the same words under another family, and the guard, hashing under the step's own
+    // family, refuses them.
+    const other = hex('another family');
+    const smuggled = {
+      ...publishStep,
+      text: { ...TEXT, familyId: other } as typeof TEXT,
+    } as ApprovedStep;
+    const underOther = wire([...BUDGET, publishIx({ meta: familyTextHash({ familyId: other, ...TEXT }) })]);
+    expect(
+      refusalOf(() => guardTransaction(input(smuggled, underOther)))?.code,
+      'a family id inside the text',
+    ).toBe('recipe');
     // The hash of the text shown, handed over beside it, is no refusal.
     const handed = { ...publishStep, metaHash: META } as ApprovedStep;
     expect(refusalOf(() => guardTransaction(input(handed, bytes)))).toBeNull();

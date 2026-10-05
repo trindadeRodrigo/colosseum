@@ -233,7 +233,14 @@ function stepProblem(step: ApprovedStep): string | null {
         return 'the text shown has no slug or no name';
       if (t.kind !== 'index' && t.kind !== 'single') return 'the text shown is of no kind';
       // Throws on text that cannot be hashed, which is read as a step that cannot be read.
-      const hash = familyTextHash({ familyId: step.familyId, ...t });
+      // Only the four fields shown, under the step's own family: a family id inside the text is not read.
+      const hash = familyTextHash({
+        familyId: step.familyId,
+        slug: t.slug,
+        name: t.name,
+        copy: t.copy,
+        kind: t.kind,
+      });
       if (step.metaHash !== undefined && step.metaHash !== hash)
         return 'the text hash handed over is not the hash of the text shown';
       if (!targets(step.components) || !step.components.length)
