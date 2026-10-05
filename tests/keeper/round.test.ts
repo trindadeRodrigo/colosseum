@@ -3,9 +3,9 @@ import type {
   KeeperPosition,
   SolanaVaultAdapter,
 } from '@colosseum/chain-solana/vault';
-import { ChainError, type Price, type VaultState } from '@colosseum/schemas';
+import { ChainError, type Price, type TxStatus, type VaultState } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
-import { runRound } from '../../apps/keeper/src/round';
+import { newMemory, runRound } from '../../apps/keeper/src/round';
 
 // The round's decisions on a vault read from a stand-in for the chain: the loss budget, the cluster's
 // clock against a version's effective time, and the prices it asks for. The sending side runs against
@@ -132,5 +132,82 @@ describe("the keeper's round, on a vault read from the chain", () => {
       'skipped',
       'version 2 adds solana:gldx: the owner accepts it',
     ]);
+  });
+
+  /** All cash and a target of all spyx: every round plans one purchase, settled as `fate` says. */
+  function buying(fate: (txId: string) => TxStatus['status'], version: () => number) {
+    const sent: string[] = [];
+    let n = 0;
+    const ctx = () =>
+      context(
+        vault({
+          acceptedVersion: version(),
+          cash: holding(CASH, '100000000'),
+          positions: [{ ...holding(SPYX, '0'), targetBps: 10_000, lastKeeperAt: null }],
+        }),
+        0,
+      );
+    const adapter = {
+      ...chain(ctx()).adapter,
+      getKeeperContext: async () => ctx(),
+      buildKeeperLeg: async () => ({ signer: 'K', payload: '', lastValidBlockHeight: 1_000 }),
+      track: async (txId: string) => ({
+        status: fate(txId),
+        explorerUrl: '',
+        error: { code: 'ReceivedTooLittle', message: '' },
+      }),
+    } as unknown as SolanaVaultAdapter;
+    const options = {
+      adapter,
+      sign: async () => ({ wire: 'w', txId: `tx${++n}` }),
+      send: async () => {
+        sent.push(`tx${n}`);
+      },
+      settleMs: 0,
+    };
+    return { options, sent };
+  }
+
+  it('passes over a reverted leg with an alert in every round on that version, and sends it again on the next', async () => {
+    let version = 1;
+    const { options, sent } = buying(
+      (tx) => (tx === 'tx1' ? 'reverted' : 'confirmed'),
+      () => version,
+    );
+    const memory = newMemory();
+    const [first] = await runRound(options, memory);
+    expect([first?.alert, first?.reason]).toEqual([
+      true,
+      'the leg solana:cash -> solana:spyx reverted: ReceivedTooLittle; it is not sent again',
+    ]);
+    for (const _ of [1, 2]) {
+      const [later] = await runRound(options, memory);
+      expect([later?.outcome, later?.alert, later?.reason]).toEqual([
+        'skipped',
+        true,
+        'no trade can go now: solana:spyx: not sent again after it reverted on this version',
+      ]);
+    }
+    expect(sent).toEqual(['tx1']);
+    // The vault takes another version: the reverted legs of the one before are forgotten.
+    version = 2;
+    const [next] = await runRound(options, memory);
+    expect(next?.outcome).toBe('acted');
+    expect(sent).toEqual(['tx1', 'tx2']);
+    expect([...memory.reverted]).toEqual([]);
+  });
+
+  it('does not call a vault adopted for settling a leg sent in an earlier round', async () => {
+    let round = 1;
+    const { options } = buying(
+      () => (round === 1 ? 'pending' : 'reverted'),
+      () => 1,
+    );
+    const memory = newMemory();
+    await runRound(options, memory);
+    round = 2;
+    const [line] = await runRound(options, memory);
+    expect(line?.outcome).toBe('skipped');
+    expect(line?.reason).toMatch(/^leg tx1 reverted: ReceivedTooLittle; it is not sent again; /);
   });
 });

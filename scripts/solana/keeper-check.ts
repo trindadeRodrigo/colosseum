@@ -38,7 +38,8 @@ import {
 //   SOLANA_RPC_URL=<devnet> SOLANA_DEPLOYER_KEYPAIR=<path> pnpm exec tsx scripts/solana/keeper-check.ts setup
 //
 // It makes a test creator and a test owner (keys in this process only), funds them from the deploy key
-// (0.15 SOL each, 300 test dollars to the owner), publishes a portfolio of three assets, opens the
+// (0.15 SOL each, 300 test dollars to the owner), publishes a portfolio of three stocks with an oracle
+// (gold has none on devnet, and a portfolio holding it does not auto-follow: gate GOLD-ONE-TAP), opens the
 // owner's vault following it with auto-follow off, buys the three at the portfolio's weights, switches
 // auto-follow on, waits one publish delay and publishes the next version, weights only, which takes
 // effect one publish delay later. Then the keeper (apps/keeper) adopts it and rebalances. Devnet only: the node has to answer devnet's genesis, from the record.
@@ -200,7 +201,7 @@ async function main() {
     const first = recipe(creator.address, 1, [
       ['spyx', 4_000],
       ['qqqx', 3_000],
-      ['gldx', 3_000],
+      ['nvdax', 3_000],
     ]);
     await must(
       () => adapter.buildPublishRecipe({ creator: creator.address, recipe: first }),
@@ -231,7 +232,7 @@ async function main() {
     for (const [asset, dollars] of [
       ['spyx', 120],
       ['qqqx', 90],
-      ['gldx', 90],
+      ['nvdax', 90],
     ] as const)
       await must(
         () =>
@@ -261,7 +262,7 @@ async function main() {
     const second = recipe(creator.address, 2, [
       ['spyx', 5_000],
       ['qqqx', 2_000],
-      ['gldx', 3_000],
+      ['nvdax', 3_000],
     ]);
     await must(
       () => adapter.buildPublishRecipe({ creator: creator.address, recipe: second }),

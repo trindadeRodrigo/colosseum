@@ -9,7 +9,7 @@ import {
 import { type BuiltTx, ChainError } from '@colosseum/schemas';
 import { type Address, getBase58Decoder, getTransactionDecoder, lamports } from '@solana/kit';
 import { describe, expect, it } from 'vitest';
-import { loadMemory, saveMemory } from '../../apps/keeper/src/memory';
+import { legKey, loadMemory, saveMemory } from '../../apps/keeper/src/memory';
 import { runRound, type VaultLine } from '../../apps/keeper/src/round';
 import { priceAccountBytes, upsertAsset } from '../solana-vault/admin';
 import {
@@ -263,7 +263,8 @@ describe.skipIf(!PROGRAMS_BUILT)('the keeper, in LiteSVM with the real program',
     const memory = loadMemory(file);
     const second = of(await runRound(options, memory), f.vault);
     expect(second?.reason).toMatch(new RegExp(`leg ${sent} reverted: ReceivedTooLittle`));
-    expect([...memory.reverted]).toContain(`${f.vault} ${id('cash')}->${id('alpha')}`);
+    const version = (await s.w.adapter.getVault(f.vault))?.acceptedVersion ?? 0;
+    expect([...memory.reverted]).toContain(legKey(f.vault, version, id('cash'), id('alpha')));
     const legs = second?.txIds.map((t) => bought.get(t)) ?? [];
     expect(legs.length).toBeGreaterThan(0);
     expect(legs).not.toContain(id('alpha'));

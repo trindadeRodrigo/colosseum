@@ -8,8 +8,8 @@ import {
   type Trade,
   type TxStatus,
 } from '@colosseum/schemas';
-import { type KeeperMemory, newMemory } from './memory';
-import { legBlocked, nextTrade, syncDecision } from './policy';
+import { type KeeperMemory, legKey, newMemory, versionPrefix } from './memory';
+import { legBlocked, nextTrade, REVERTED, syncDecision } from './policy';
 
 export { type KeeperMemory, newMemory } from './memory';
 
@@ -18,7 +18,8 @@ export { type KeeperMemory, newMemory } from './memory';
 // kind a round: an adoption of a version that adds no asset, a sync of its records, and one leg. Each
 // is built, simulated by the builder, signed by the keeper, sent, and tracked until the chain settles
 // it. A leg, once handed to the node, is remembered with its signature until its fate is known, and
-// nothing more is planned for its vault until then; a leg that reverted is never sent again.
+// nothing more is planned for its vault until then; a leg that reverted is never sent again while the
+// vault is on the same version, and every round that passes it over says so with an alert.
 
 export type Outcome = 'acted' | 'adopted' | 'synced' | 'skipped' | 'would-act';
 
@@ -131,6 +132,7 @@ export async function runRound(
   for (const vault of vaults) {
     const txIds: string[] = [];
     const did: string[] = [];
+    let adopted = false;
     let synced = false;
     let alert = false;
     let budget = '';
@@ -147,7 +149,19 @@ export async function runRound(
     };
     /** Nothing more for the vault this round: what was done before says what the line is. */
     const stop = (reason: string, raise = false) =>
-      line(synced ? 'synced' : did.length ? 'adopted' : 'skipped', reason, raise);
+      line(synced ? 'synced' : adopted ? 'adopted' : 'skipped', reason, raise);
+
+    /** Reverted legs of other versions of this vault are forgotten: that version is gone. */
+    const forgetOtherVersions = async (version: number) => {
+      const keep = versionPrefix(vault, version);
+      let dropped = false;
+      for (const k of memory.reverted)
+        if (k.startsWith(`${vault} `) && !k.startsWith(keep)) {
+          memory.reverted.delete(k);
+          dropped = true;
+        }
+      if (dropped) await save();
+    };
 
     try {
       const before = await earlier(vault);
@@ -165,6 +179,7 @@ export async function runRound(
         stop('the vault is gone');
         continue;
       }
+      await forgetOtherVersions(ctx.vault.acceptedVersion);
       // Past half the loss budget, every line for the vault is an alert.
       if (ctx.rules.lossCapBps > 0 && ctx.vault.lossUsedBps * 2 >= ctx.rules.lossCapBps) {
         alert = true;
@@ -191,17 +206,19 @@ export async function runRound(
           line('would-act', `would adopt version ${pending.version}`);
           continue;
         }
-        const adopted = await land(adopt);
-        txIds.push(adopted.txId);
-        if (adopted.status.status !== 'confirmed') {
+        const adoption = await land(adopt);
+        txIds.push(adoption.txId);
+        if (adoption.status.status !== 'confirmed') {
           stop(
-            `the adoption of version ${pending.version} ${adopted.status.status}: ${adopted.status.error?.code ?? ''}`,
+            `the adoption of version ${pending.version} ${adoption.status.status}: ${adoption.status.error?.code ?? ''}`,
             true,
           );
           continue;
         }
         did.push(`adopted version ${pending.version}`);
+        adopted = true;
         ctx = (await adapter.getKeeperContext(vault)) as KeeperContext;
+        await forgetOtherVersions(ctx.vault.acceptedVersion);
       }
 
       // 2. Records that differ from the accounts are synced, if the policy lets it.
@@ -253,13 +270,16 @@ export async function runRound(
         stop('every position is inside the band');
         continue;
       }
-      const key = (t: Trade) => `${vault} ${t.sell}->${t.buy}`;
+      const version = ctx.vault.acceptedVersion;
+      const key = (t: Trade) => legKey(vault, version, t.sell, t.buy);
       const { trade, skipped } = nextTrade(
         plan.trades,
         ctx,
         cash,
         (t) => !memory.reverted.has(key(t)),
       );
+      // A leg passed over because it reverted on this version waits for a person: every round says so.
+      if (skipped.some((why) => why.endsWith(REVERTED))) alert = true;
       if (!trade) {
         stop(`no trade can go now: ${skipped.join('; ')}`);
         continue;
@@ -322,7 +342,12 @@ export async function runRound(
         stop(`the leg ${status.status} without landing; the next round plans again`);
         continue;
       }
-      line('acted', `sold ${trade.amountInRaw} raw ${trade.sell} for ${trade.buy}`);
+      line(
+        'acted',
+        `sold ${trade.amountInRaw} raw ${trade.sell} for ${trade.buy}${
+          skipped.length ? ` (passed over: ${skipped.join('; ')})` : ''
+        }`,
+      );
     } catch (e) {
       stop(`failed: ${codeOf(e)}`, true);
     }

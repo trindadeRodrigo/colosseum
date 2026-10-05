@@ -12,7 +12,7 @@ import {
   SolanaDeploymentRecord,
 } from '@colosseum/chain-solana/vault';
 import { parseChainConfigs } from '@colosseum/schemas';
-import { loadMemory, saveMemory } from './memory';
+import { loadMemory, lockState, saveMemory } from './memory';
 import { runRound, type VaultLine } from './round';
 
 // The keeper on Solana (DESIGN-VAULT 3.5, section 10): a worker with no HTTP listener.
@@ -29,8 +29,9 @@ import { runRound, type VaultLine } from './round';
 // is ever printed.
 //
 // What it remembers between runs (the legs it sent and has not settled, and the legs that reverted) is
-// in KEEPER_STATE_DIR (default ~/.tenonfi/keeper), one file per network, read at start and written
-// before anything is sent on the strength of it.
+// in KEEPER_STATE_DIR (default ~/.tenonfi/keeper), one file per network and genesis, read at start and
+// written before anything is sent on the strength of it. One keeper at a time holds it: a second one
+// refuses to start.
 
 const DEPLOYMENTS = fileURLToPath(new URL('../../../deployments/', import.meta.url));
 
@@ -89,8 +90,12 @@ async function main() {
   });
   const stateFile = join(
     process.env.KEEPER_STATE_DIR?.trim() || join(homedir(), '.tenonfi', 'keeper'),
-    `${record.network}.json`,
+    // The node's genesis, which assertNode held to the record's: a reset local validator starts afresh.
+    `${record.network}-${await rpc.getGenesisHash().send()}.json`,
   );
+  lockState(stateFile, (line) => console.error(line));
+  // Stopped by a signal, the process still exits through its exit handlers, which release the lock.
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => process.exit(1));
   const memory = loadMemory(stateFile);
   const log = (line: VaultLine) =>
     console.log(JSON.stringify({ at: new Date().toISOString(), network: record.network, ...line }));

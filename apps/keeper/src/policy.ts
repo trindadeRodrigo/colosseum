@@ -44,6 +44,9 @@ export function legBlocked(ctx: KeeperContext): Skip | null {
   return null;
 }
 
+/** How `nextTrade` says a trade was passed over because the same leg reverted on this version. */
+export const REVERTED = 'not sent again after it reverted on this version';
+
 /** The asset of a trade that is not the cash token. */
 const assetOf = (t: Trade, cash: AssetId) => (t.sell === cash ? t.buy : t.sell);
 
@@ -83,7 +86,7 @@ export function nextTrade(
       continue;
     }
     if (!held(t)) {
-      skipped.push(`${asset}: not sent again after it reverted`);
+      skipped.push(`${asset}: ${REVERTED}`);
       continue;
     }
     return { trade: t, skipped };

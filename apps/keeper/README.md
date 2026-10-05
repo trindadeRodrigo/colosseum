@@ -12,7 +12,7 @@ SOLANA_RPC_URL=<devnet node> KEEPER_SOLANA_KEYPAIR=<path to the keeper key> \
 - `CHAIN_NETWORK_SOLANA`: `testnet` (default, `deployments/solana-devnet.json`) or `local` (`deployments/solana-local.json`). `mainnet` is refused.
 - Everything it acts on comes from that record: the program, the test exchange, the price account, the tokens, and the keeper it signs as. The node behind `SOLANA_RPC_URL` has to answer the record's genesis, never mainnet's.
 - It signs with the one key at `KEEPER_SOLANA_KEYPAIR`, only if that key is the record's default keeper, and only transactions whose signer is that key. Neither the path nor anything in the file is ever printed: a file it cannot read is reported in those words only.
-- `KEEPER_STATE_DIR` (default `~/.tenonfi/keeper`) holds what it remembers between runs, one file per network (`solana-devnet.json`). See "Legs in flight and reverted legs".
+- `KEEPER_STATE_DIR` (default `~/.tenonfi/keeper`) holds what it remembers between runs, one file per network and genesis (`solana-devnet-<genesis>.json`), held by one keeper at a time. See "Legs in flight and reverted legs".
 
 ## A round
 
@@ -31,9 +31,9 @@ Gate UNIVERSE (`docs/GATES.md`): a stock is rebalanced by the vault only if it h
 
 The program goes further: a leg values every position it does not trade by its reference, so a vault that holds any of a switched-off asset gets no keeper leg at all (`KeeperAssetOff`). The keeper skips that vault before building, with an alert, and adoptions still go through.
 
-On devnet, tGLDx's price comes from a pool's mid, not an oracle, so its keeper switch is being turned off there. From then on, a devnet vault that holds tGLDx (the KEEP-1 check vault does) is skipped with that alert.
+On devnet, tGLDx's price comes from a pool's mid, not an oracle, so its keeper switch is off there. A devnet vault that holds tGLDx (the first KEEP-1 check vault does) is skipped with that alert.
 
-Thom decided on Oct 5 that a shared portfolio holding gold gets the one-tap rebalance prompt, which the owner signs, not auto-follow. The keeper never rebalances such a portfolio's vaults.
+Gate GOLD-ONE-TAP (Thom, Oct 5): a shared portfolio holding gold, or any asset with no oracle, gets the one-tap rebalance prompt, which the owner signs, not auto-follow. The keeper never rebalances such a portfolio's vaults.
 
 ## Sync policy
 
@@ -46,11 +46,11 @@ The reason, from the adapter's review: once synced, one raw unit of a position w
 A leg is remembered from the moment it is signed, before it is sent, with its signature and the last block height it can land in. It stays remembered until the chain settles its fate: an error from the node after sending, or no answer within the wait, does not make it "not taken", because the bytes may still land. Until its fate is known, nothing more is planned for its vault. The keeper asks for its status by signature at the start of every round:
 
 - landed: the vault is planned again;
-- reverted: its sale and purchase (vault, sell, buy) join the reverted set, and that leg is never sent again; the line raises an alert;
+- reverted: its vault, the vault's version, and its sale and purchase join the reverted set, and that leg is never sent again while the vault is on that version (decided by the team lead under Thom's authority, Oct 5). Every round that passes it over raises an alert, until a person looks. When the vault takes another version, its reverted legs of the version before are forgotten and it is planned afresh;
 - expired (past its last valid block height, finalized, and not found): it never landed, and the vault is planned again;
 - still able to land, or the status cannot be read: the vault waits, with an alert.
 
-What holds: the legs in flight and the reverted set are in the state file, read at start and written before a leg is sent and whenever either changes, so `--once` run twice remembers as `--loop` does. What does not: a deleted or lost state file forgets both; the file is per machine, so two keepers on two machines do not share it (run one); adoptions and syncs are not remembered, as each is planned again from the chain and the builder refuses one that is no longer due. `keeper_runs` and `keeper_legs` (`packages/db`) are not written yet.
+What holds: the legs in flight and the reverted set are in the state file, read at start and written (flushed, then renamed into place) before a leg is sent and whenever either changes, so `--once` run twice remembers as `--loop` does. A keeper takes the file with a lock beside it (`<file>.lock`, created only if absent, holding its process id) and refuses to start while a live process holds it; a lock whose process is gone is taken over, with a line on stderr. So a manual `--once` beside a `--loop` refuses instead of sending the same leg twice. What does not hold: a deleted or lost state file forgets both; the lock is per machine, so two keepers on two machines would not see each other (run one); adoptions and syncs are not remembered, as each is planned again from the chain and the builder refuses one that is no longer due. `keeper_runs` and `keeper_legs` (`packages/db`) are not written yet.
 
 ## For KEEP-2
 
@@ -61,9 +61,10 @@ What holds: the legs in flight and the reverted set are in the state file, read 
 
 - `tests/keeper/keeper.test.ts`, in LiteSVM with the real program: a weights-only version adopted and a leg sent; a changed position synced when it can be valued, and skipped with an alert when its price is out of range; a reverted leg not sent again in the next run, the memory read back from the state file; a leg whose send failed after the bytes went out kept and found reverted the next round; a pending leg holding its vault until it has expired; a vault holding an asset switched off for the keeper skipped with nothing built; a dry run that sends nothing.
 - `tests/keeper/policy.test.ts`: the choice of trade, passing over an asset switched off, one with no usable reference, and one in cooldown.
-- `tests/keeper/round.test.ts`, on a stand-in for the chain: the loss cap skipped and half the budget alerted; prices asked for the vault's own holdings only; a version adopted by the cluster's clock, not the machine's; a version that adds an asset left to the owner.
+- `tests/keeper/round.test.ts`, on a stand-in for the chain: the loss cap skipped and half the budget alerted; prices asked for the vault's own holdings only; a version adopted by the cluster's clock, not the machine's; a version that adds an asset left to the owner; a reverted leg passed over with an alert every round on its version and sent again on the next; a vault that only settled an earlier leg not called adopted.
+- `tests/keeper/memory.test.ts`: a second process refused while the first holds the state file, and let in once it is released; a lock whose process is gone taken over; the file written whole.
 - `tests/solana-vault/validator.test.ts`, on a local validator: a vault following its own shared portfolio, the next version published, the round adopting it and sending a leg through the node's preflight.
 
 ## The check on devnet
 
-`scripts/solana/keeper-check.ts setup` makes a test creator and owner (keys in that process only), funds them from the deploy key, publishes a three-asset portfolio, opens a vault following it, buys at its weights, switches auto-follow on and publishes the next version. Then `--once` runs the keeper. The run of Oct 5 is in `docs/vault/STATE-VAULT.md` (KEEP-1).
+`scripts/solana/keeper-check.ts setup` makes a test creator and owner (keys in that process only), funds them from the deploy key, publishes a portfolio of three stocks with an oracle (spyx, qqqx, nvdax), opens a vault following it, buys at its weights, switches auto-follow on and publishes the next version. Then `--once` runs the keeper. The run of Oct 5, made before gold was switched off, used gldx in place of nvdax; it is in `docs/vault/STATE-VAULT.md` (KEEP-1).
