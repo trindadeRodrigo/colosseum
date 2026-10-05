@@ -1,10 +1,20 @@
 import { randomUUID } from 'node:crypto';
-import { deploymentAssets, type SolanaDeploymentRecord } from '@colosseum/chain-solana/vault';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  assertNode,
+  deploymentAssets,
+  MAINNET_GENESIS_HASH,
+  type SolanaDeploymentRecord,
+  type VaultNodeRpc,
+} from '@colosseum/chain-solana/vault';
 import { basketAssets, createDb } from '@colosseum/db';
 import { parseChainConfigs } from '@colosseum/schemas';
 import { getAddressDecoder } from '@solana/kit';
 import { inArray } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
+import { buildApp } from '../../apps/api/src/app';
 import { solanaDeployment } from '../../apps/api/src/deployments';
 import { holdToRecord, solanaFromEnv } from '../../apps/api/src/routes/v1/index';
 import { fillBasketAssets } from '../../scripts/solana/basket-assets';
@@ -147,6 +157,59 @@ describe("the deploy's record gives a real Solana chain its addresses", () => {
   });
 });
 
+const DEVNET_GENESIS = 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG';
+/** A node that answers its genesis hash and nothing else. */
+const node = (genesis: string) =>
+  ({ getGenesisHash: () => ({ send: async () => genesis }) }) as unknown as VaultNodeRpc;
+
+describe('the node behind SOLANA_RPC_URL is the network the record is for', () => {
+  it("refuses mainnet's genesis whatever the label, and a node of another network than the record's", async () => {
+    await expect(assertNode(node(MAINNET_GENESIS_HASH), null)).rejects.toThrow('mainnet node');
+    await expect(
+      assertNode(node(MAINNET_GENESIS_HASH), { ...record(), genesisHash: MAINNET_GENESIS_HASH }),
+    ).rejects.toThrow('mainnet node');
+    await expect(
+      assertNode(node(DEVNET_GENESIS), { ...record(), genesisHash: key(50) }),
+    ).rejects.toThrow('not the network of the record solana-devnet');
+    await expect(
+      assertNode(node(DEVNET_GENESIS), { ...record(), genesisHash: DEVNET_GENESIS }),
+    ).resolves.toBeUndefined();
+    // A record that names no genesis is held to "not mainnet" alone.
+    await expect(assertNode(node(DEVNET_GENESIS), record())).resolves.toBeUndefined();
+  });
+
+  it('does not start a testnet label on a mainnet node', async () => {
+    const { db, client } = createDb();
+    try {
+      await expect(
+        solanaFromEnv({ SOLANA_RPC_URL: 'http://127.0.0.1:1' }, 'live', db, null, () =>
+          node(MAINNET_GENESIS_HASH),
+        ),
+      ).rejects.toThrow('mainnet node');
+    } finally {
+      await client.end();
+    }
+  });
+});
+
+describe('a chain on the mock reads no record', () => {
+  it('starts on the mock with a record it would refuse for a real chain', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'records-'));
+    writeFileSync(join(dir, 'solana-devnet.json'), JSON.stringify({ ...record(), extra: true }));
+    const env = { CHAIN_MODE_SOLANA: 'mock', CHAIN_NETWORK_SOLANA: 'testnet' };
+    try {
+      const app = await buildApp({ env, deployments: dir });
+      await app.close();
+      // The same record for a live chain is refused at start.
+      await expect(
+        buildApp({ env: { ...env, CHAIN_MODE_SOLANA: 'live' }, deployments: dir }),
+      ).rejects.toThrow('not a Solana deployment record');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("basket_assets is held to the record's mints at start", () => {
   it('passes the rows the record makes, and stops on a mint, a decimals or a cash it does not name', () => {
     const rows = deploymentAssets(record());
@@ -154,10 +217,17 @@ describe("basket_assets is held to the record's mints at start", () => {
     const [cash, spyx, gldx] = rows;
     if (!cash || !spyx || !gldx) throw new Error('rows');
     expect(() => holdToRecord([cash, { ...spyx, address: key(31) }], record())).toThrow(
-      'is not a mint of solana-devnet',
+      'is not a token of solana-devnet',
     );
     expect(() => holdToRecord([cash, { ...spyx, decimals: 6 }], record())).toThrow(
-      'has 6 decimals, and solana-devnet says 8',
+      'has decimals 6, and solana-devnet says 8',
+    );
+    // A price entry moved by hand: the keeper and the reads would value the asset at another entry.
+    expect(() => holdToRecord([cash, { ...spyx, priceRef: '345' }], record())).toThrow(
+      'has priceRef 345, and solana-devnet says 344',
+    );
+    expect(() => holdToRecord([cash, { ...gldx, session: 'us_equity' }], record())).toThrow(
+      'has session us_equity',
     );
     expect(() => holdToRecord([spyx, gldx], record())).toThrow(
       "the cash row is not solana-devnet's cash",
@@ -196,7 +266,14 @@ describe('basket_assets, filled from the record, is what the API runs Solana on'
     // Nothing for a chain that is not real; a real one needs the RPC; with it, the rows are its list.
     expect(await solanaFromEnv({}, 'mock', db)).toBeUndefined();
     await expect(solanaFromEnv({}, 'live', db)).rejects.toThrow('SOLANA_RPC_URL is not set');
-    const inputs = await solanaFromEnv({ SOLANA_RPC_URL: 'http://127.0.0.1:1' }, 'readonly', db);
+    const devnet = node(DEVNET_GENESIS);
+    const inputs = await solanaFromEnv(
+      { SOLANA_RPC_URL: 'http://127.0.0.1:1' },
+      'readonly',
+      db,
+      null,
+      () => devnet,
+    );
     const mine = inputs?.assets.filter((a) => ids.includes(a.id));
     expect(mine?.map((a) => a.id).sort()).toEqual([...ids].sort());
     expect(mine?.find((a) => a.id === spyx?.id)?.maxWeightBps).toBe(4_000);

@@ -1,5 +1,6 @@
-import { BasketAsset, SolanaAddress } from '@colosseum/schemas';
+import { BasketAsset, ChainError, SolanaAddress } from '@colosseum/schemas';
 import { z } from 'zod';
+import { ask, type VaultNodeRpc } from './rpc';
 
 // The record a Solana deploy writes (`deployments/solana-<network>.json`, made by the TNET-4 set-up:
 // `Deployment` in programs/tests/src/testnet/setup.ts). It is committed and reviewed like code, so what
@@ -147,4 +148,28 @@ export function deploymentAssets(record: SolanaDeploymentRecord): BasketAsset[] 
       }),
     ),
   ];
+}
+
+/** The genesis hash of Solana mainnet-beta: a node that answers it is mainnet, whatever it is called. */
+export const MAINNET_GENESIS_HASH = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d';
+
+/**
+ * The node is the network the record is for: never mainnet, and the record's own genesis where the
+ * record names one. Asked once, at start, of the node the server will build and send through.
+ */
+export async function assertNode(
+  rpc: VaultNodeRpc,
+  record: SolanaDeploymentRecord | null,
+): Promise<void> {
+  const genesis = await ask('getGenesisHash', () => rpc.getGenesisHash().send());
+  if (genesis === MAINNET_GENESIS_HASH)
+    throw new ChainError(
+      'NotSupported',
+      'the Solana RPC is a mainnet node, and this server runs a test network only',
+    );
+  if (record?.genesisHash && genesis !== record.genesisHash)
+    throw new ChainError(
+      'NotSupported',
+      `the Solana RPC is not the network of the record ${record.network}: its genesis is another`,
+    );
 }

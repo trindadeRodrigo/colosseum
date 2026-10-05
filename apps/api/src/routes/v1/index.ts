@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import {
+  assertNode,
   createVaultRpc,
-  deploymentMints,
+  deploymentAssets,
   type SolanaDeploymentRecord,
+  type VaultNodeRpc,
 } from '@colosseum/chain-solana/vault';
 import { basketAssets, createDb, type Db } from '@colosseum/db';
 import {
@@ -134,6 +136,7 @@ export async function solanaFromEnv(
   mode: string,
   db: Db,
   record: SolanaDeploymentRecord | null = null,
+  connect: (url: string) => VaultNodeRpc = createVaultRpc,
 ): Promise<SolanaInputs | undefined> {
   if (mode !== 'live' && mode !== 'readonly') return undefined;
   // As written: a URL can carry a key, and keys are case-sensitive (readEnv lower-cases).
@@ -144,23 +147,28 @@ export async function solanaFromEnv(
     BasketAsset.parse({ ...row, chain: chainId }),
   );
   if (record) holdToRecord(assets, record);
-  return { rpc: createVaultRpc(url), assets };
+  // The node is asked what network it is: a test label on a mainnet node does not start.
+  const rpc = connect(url);
+  await assertNode(rpc, record);
+  return { rpc, assets };
 }
 
 /**
- * `basket_assets` against the deploy's record, at start: every Solana row is a mint the record names,
- * with its decimals, and the cash row is the record's cash. One database serves one network, so a
- * row of another network's deploy, or a hand-edited one, stops the API rather than build on it. The
- * table has no token program: the adapter reads it from each mint.
+ * `basket_assets` against the deploy's record, at start: every Solana row is a row the record makes
+ * (`deploymentAssets`), with the same mint, decimals, class, session and price entry, and the cash
+ * row is the record's cash. One database serves one network, so a row of another network's deploy,
+ * or a hand-edited one (a `priceRef` moved to another entry), stops the API rather than build on it.
+ * The table has no token program: the adapter reads it from each mint.
  */
 export function holdToRecord(assets: BasketAsset[], record: SolanaDeploymentRecord): void {
-  const known = deploymentMints(record);
+  const made = new Map(deploymentAssets(record).map((a) => [a.address, a]));
+  const fields = ['decimals', 'cls', 'session', 'priceKind', 'priceRef'] as const;
   const wrong = assets.flatMap((a) => {
-    const named = known.get(a.address);
-    if (!named) return [`${a.id} (${a.address}) is not a mint of ${record.network}`];
-    if (named.decimals !== null && named.decimals !== a.decimals)
-      return [`${a.id} has ${a.decimals} decimals, and ${record.network} says ${named.decimals}`];
-    return [];
+    const want = made.get(a.address);
+    if (!want) return [`${a.id} (${a.address}) is not a token of ${record.network}`];
+    return fields
+      .filter((f) => a[f] !== want[f])
+      .map((f) => `${a.id} has ${f} ${a[f]}, and ${record.network} says ${want[f]}`);
   });
   const cash = assets.filter((a) => a.cls === 'cash');
   if (cash.length !== 1 || cash[0]?.address !== record.cash.mint)

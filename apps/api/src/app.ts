@@ -36,9 +36,13 @@ export async function buildApp(
 ) {
   const deployments =
     deps.deployments === undefined ? (deps.env ? null : DEPLOYMENTS_DIR) : deps.deployments;
-  const solana = deployments
-    ? solanaDeployment(deps.env ?? process.env, undefined, deployments)
-    : { env: deps.env ?? process.env, contracts: {}, record: null };
+  // The record gives a real chain its addresses. A chain on the mock or off has none to take, and its
+  // record is not read at all.
+  const real = ['live', 'readonly'].includes(parseFlags(deps.env ?? process.env).chainMode.solana);
+  const solana =
+    deployments && real
+      ? solanaDeployment(deps.env ?? process.env, undefined, deployments)
+      : { env: deps.env ?? process.env, contracts: {}, record: null };
   const env = solana.env;
   // Stops here on a flag it cannot read.
   const flags = parseFlags(env);

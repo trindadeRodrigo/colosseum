@@ -6,6 +6,7 @@ import {
   createSolanaRpc,
   type GetBalanceApi,
   type GetBlockHeightApi,
+  type GetGenesisHashApi,
   type GetLatestBlockhashApi,
   type GetMinimumBalanceForRentExemptionApi,
   type GetMultipleAccountsApi,
@@ -60,9 +61,12 @@ export type RawAccount = { address: Address; owner: Address; lamports: bigint; d
  * A client for the builders and the probe, from a URL the caller holds. The URL is never logged and
  * never put in a message: an RPC address can carry a key.
  */
-export function createVaultRpc(url: string): VaultWriteRpc {
+export function createVaultRpc(url: string): VaultNodeRpc {
   return createSolanaRpc(url);
 }
+
+/** The write side's calls and the node's genesis hash: what a server checks at start (`assertNode`). */
+export type VaultNodeRpc = VaultWriteRpc & Rpc<GetGenesisHashApi>;
 
 /** The most addresses one getMultipleAccounts call takes. */
 const BATCH = 100;
