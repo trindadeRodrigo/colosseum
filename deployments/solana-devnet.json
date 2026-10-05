@@ -335,7 +335,7 @@
       "twapIndex": 481,
       "indexSource": "test-network",
       "maxWeightBps": 5000,
-      "keeperOn": true,
+      "keeperOn": false,
       "range": {
         "minPrice": "262500000",
         "maxPrice": "455000000"
