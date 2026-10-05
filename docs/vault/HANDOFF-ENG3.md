@@ -67,22 +67,15 @@ Branch `engine/sheet`, from `engine/fill` (PR #46). Draft PR into `engine/fill`,
 - `f354d75` (**the second shared type change, its own commit; Thom approves**): `BasketAsset.currency?` (ISO 4217, only on cash tokens; no DB column until the first such token) and `ObservationRef.kind` gains `fx`. Test in `tests/vault-schemas.test.ts`.
 - `e273aae` **Step 2, currency and the matching leg** (done, as designed below): `world.currency`, `world.cash` is the dollar cash token, `world.matchingOf(cur)`, `world.fxOf(cur)` (records the `fx` observation only when used), `ComposeContext.fx` validated (pair `^[A-Z]{6}$`, finite positive rate; the latest reading per pair counts), hashed only when given. Flags `fx_open:<cur>` and `no_matching_leg:<cur>`; `FX_OPEN` sentence on every line not in the goal's currency. New input names `currency`, `obligations`. `violations()` holds the open-FX line both ways. Tests: `currency.test.ts` (4), which also exports the MOCK `reaisToken()`, `withReais` and `usdBrl()` for step 3. The API test now expects a reais goal with a goal/safe-yield split to be answered (200, `fx_open:BRL`).
 
-**Left in slice 2**, in this order. Each step removes its refusal in `world.ts` as it lands.
+- **Steps 3 to 6** (done, one commit after `f4383c1`; DESIGN §7 "As built (ENG-3 slice 2)" has the rules):
+  - Step 3, setting aside: `set-aside.ts` `setAsideOf` and `placeSetAside`; `world.withdrawals` (converted at the FX reading, refused without one, past ones flagged `obligations_past`); `sizeSleeves(w, setAsideBps)` scales the row to the goal less the set-aside; `Book.fillInOrder` for rate legs, most liquid first. The `obligations` refusal is gone. Cash for the liquidity window is read as the existing cash floor.
+  - Step 4, the coverage check: `checkCoverage`, one window's capacity a month (cautious), pools through the LOCAL TYPE `PooledLiquidityProvider` (no shared-type change); moves the unsellable part to cash, then stocks and gold; `Book.toCash`.
+  - Step 5, the schedule: `schedule.ts` `scheduleOf`, `PersonalProposal.schedule` (engine type only; the API strips it like `split`).
+  - Step 6, the tests: `withdrawals.test.ts` (12): set-aside on Solana (cash) and Robinhood (SGOV); window, past, short, missing FX; dollars against reais on the same shelf; the shared-pool fixture (`pooledLiquidity`, MOCK second rate leg `secondRateToken`); the schedule against the par draw on 200 random plans. `violations()` checks set-aside, the withdrawal sentences, coverage flags and the schedule; the property tests generate withdrawals and a currency. Two mutations (coverage blind to pools; set-aside never placed) fail tests. The API test now expects withdrawals to be answered and echoed.
+  - Property runs found three cases on the way, all fixed: a cap sentence for a rate leg too small for a line; a goal sleeve under a cent; a plan with no goal sleeve.
+- **Not done in slice 2:** an FX stress on the schedule (it comes with slice 3's status); the schedule draws at one rate for the whole term.
 
-2. *(done, see above)* **Currency and the matching leg.** For a goal in a currency other than dollars, the matching leg is the asset in that currency, if the shelf lists one. That is the BRL leg for reais: an abstract asset with a parameterised cap, no BRS-specific code (G-NORA open). It needs an FX observation per pair, with source, time and method. There is no BRL asset on the launch shelf, so a reais goal on it says so and holds the withdrawals in cash. A dollar goal has no matching leg, no FX stress and no open-FX line.
-3. **Setting aside.**
-   - First, cash for the liquidity window.
-   - Then the next `setAsideMonths` (6) of `obligations`: in the matching leg for other currencies, or in the most liquid rate legs for dollars.
-   - The reason names the months and the amounts.
-4. **The coverage check (C6).** For each withdrawal in the next 6 months: what can be sold in time, after exit cost, through `LiquidityProvider.exitCapacity` and `exitCost`, must cover what is owed. If it doesn't, move money toward cash and add a reason.
-   - The joint case: legs sharing one pool. The provider has no joint figure, so the fixture provider needs a "same pool" group. Test: per-asset caps pass, the shared pool fails, and the fix is visible.
-5. **The schedule, ported into `personal/schedule.ts`.** Monthly, in the goal's currency. Yield legs are sold at their measured exit cost, not at par (C7). Do not edit `packages/engine/src/schedule`. Test: with a provider, months funded falls or holds, never rises, against the par draw.
-6. **The tests the prompt names:**
-   - The same goal in dollars and in reais: the dollar plan has no matching leg, no FX stress and no open-FX line; the two differ only by the matching leg and what funded it.
-   - The coverage fixture.
-   - Sleeve validation (done) and the restore round trip (done).
-
-Then `/verify`, `/review-pr` by an agent that did not write it, take the draft PR out of draft, and update ENG-3 in `docs/vault/STATE-VAULT.md`.
+Next: `/verify`, `/review-pr` by an agent that did not write it, take #48 out of draft, update ENG-3 in `docs/vault/STATE-VAULT.md`.
 
 **Watch for:**
 - `violations()` in `testing.ts` must learn sleeves and the set-aside rule, or the property tests will not see a broken split.
