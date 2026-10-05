@@ -173,13 +173,20 @@ describe('trackedSet, by hand', () => {
     expect(trackedSet([], RULE).assets).toEqual([]);
   });
 
-  it('refuses a share outside (0, 1], a negative floor, a negative TVL and a repeated pool', () => {
+  it('refuses a share outside (0, 1], a negative floor, a TVL that is not a finite amount, a pool with no asset and a repeated pool', () => {
     expect(() => trackedSet(pools, { share: 0, minPoolUsd: 0 })).toThrow(/share/);
     expect(() => trackedSet(pools, { share: 1.2, minPoolUsd: 0 })).toThrow(/share/);
     expect(() => trackedSet(pools, { share: Number.NaN, minPoolUsd: 0 })).toThrow(/share/);
     expect(() => trackedSet(pools, { share: 0.8, minPoolUsd: -1 })).toThrow(/minPoolUsd/);
     expect(() => trackedSet([pool('a', 'A', -1)], RULE)).toThrow(/tvlUsd/);
     expect(() => trackedSet([pool('a', 'A', Number.NaN)], RULE)).toThrow(/tvlUsd/);
+    expect(() => trackedSet([pool('a', 'A', Number.POSITIVE_INFINITY)], RULE)).toThrow(/tvlUsd/);
+    // a figure that arrived as text from an untyped JSON row
+    expect(() => trackedSet([pool('a', 'A', '10' as unknown as number)], RULE)).toThrow(/tvlUsd/);
+    expect(() => trackedSet([pool('a', '', 1)], RULE)).toThrow(/names no asset/);
+    expect(() => trackedSet([pool('a', undefined as unknown as string, 1)], RULE)).toThrow(
+      /names no asset/,
+    );
     expect(() => trackedSet([pool('a', 'A', 1), pool('a', 'B', 2)], RULE)).toThrow(/twice/);
   });
 });

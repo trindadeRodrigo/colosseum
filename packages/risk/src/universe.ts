@@ -56,7 +56,13 @@ export function trackedSet<P extends UniversePool>(
   for (const p of pools) {
     if (seen.has(p.address)) throw new Error(`trackedSet: pool ${p.address} appears twice`);
     seen.add(p.address);
-    if (p.tvlUsd !== null && !(p.tvlUsd >= 0))
+    if (typeof p.asset !== 'string' || p.asset === '')
+      throw new Error(`trackedSet: pool ${p.address} names no asset`);
+    // typeof, not only a comparison: rows cast from JSON may carry a string, and a string would be concatenated.
+    if (
+      p.tvlUsd !== null &&
+      !(typeof p.tvlUsd === 'number' && Number.isFinite(p.tvlUsd) && p.tvlUsd >= 0)
+    )
       throw new Error(`trackedSet: pool ${p.address} has tvlUsd ${p.tvlUsd}`);
   }
   // A pool with no money names nothing, whatever the floor is.
