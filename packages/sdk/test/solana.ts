@@ -86,7 +86,7 @@ export const u32 = (n: number) => {
   out.writeUInt32LE(n);
   return new Uint8Array(out);
 };
-const u16 = (n: number) => {
+export const u16 = (n: number) => {
   const out = Buffer.alloc(2);
   out.writeUInt16LE(n);
   return new Uint8Array(out);

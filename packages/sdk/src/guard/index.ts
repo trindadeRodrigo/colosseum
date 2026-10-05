@@ -30,6 +30,7 @@ export {
   type SolanaEntry,
 } from './deployment';
 export { evmVaultAddress } from './evm/addresses';
+export { canonicalFamilyText, type FamilyText, familyTextHash } from './meta';
 export {
   GUARD_CHECKS,
   type GuardCheck,

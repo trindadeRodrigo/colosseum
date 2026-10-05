@@ -74,6 +74,21 @@ describe('what a failed sign-in is called', () => {
     ]);
   });
 
+  it('names a passkey not registered here, and the provider’s other refusals of a sign-in', () => {
+    expect(read(privy('passkey_not_registered', 'Passkey not registered'))).toEqual([
+      'unknown',
+      'passkey_not_registered',
+    ]);
+    // the words alone, with no code
+    expect(read(new Error('This passkey has not been registered'))).toEqual([
+      'unknown',
+      'passkey_not_registered',
+    ]);
+    expect(read(privy('max_accounts_reached', 'x'))).toEqual(['unknown', 'accounts_full']);
+    expect(read(privy('allowlist_rejected', 'x'))).toEqual(['unknown', 'not_invited']);
+    expect(read(privy('session_storage_unavailable', 'x'))).toEqual(['unsupported', 'no_storage']);
+  });
+
   it('still calls a wallet’s refusal a refusal, with nothing about a passkey in it', () => {
     expect(read(Object.assign(new Error('User denied'), { code: 4001 }))).toEqual([
       'rejected',
@@ -106,6 +121,10 @@ describe('the sentence each failure gets', () => {
 
   it('has a sentence for everything else, and never the text that was thrown', () => {
     expect(says(privy('user_does_not_exist', 'x'), 'passkey-use')).toBe('passkeyUnknown');
+    expect(says(privy('passkey_not_registered', 'x'), 'passkey-use')).toBe('passkeyNotRegistered');
+    expect(says(privy('max_accounts_reached', 'x'), 'passkey-create')).toBe('accountsFull');
+    expect(says(privy('allowlist_rejected', 'x'), 'wallet')).toBe('notInvited');
+    expect(says(privy('session_storage_unavailable', 'x'), 'passkey-use')).toBe('noStorage');
     expect(says(new Error('WebAuthn is not supported in this browser'), 'passkey-use')).toBe(
       'passkeyUnsupported',
     );

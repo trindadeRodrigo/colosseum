@@ -120,7 +120,13 @@ describe('the approved steps of an order', () => {
         { legs: [approve, { ...create, signer: 'keeper' }] },
         'unsupported',
       ],
-      ['a publish step', { legs: [approve, { ...create, kind: 'publish' }] }, 'unsupported'],
+      ['a keeper step', { legs: [approve, { ...create, kind: 'keeper_leg' }] }, 'unsupported'],
+      // Signed since AGT-4, once the screen says what is published: with nothing said, refused.
+      [
+        'a publish step with no terms',
+        { legs: [approve, { ...create, kind: 'publish' }] },
+        'order',
+      ],
     ];
     for (const [name, change, code] of cases)
       expect(
