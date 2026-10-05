@@ -24,6 +24,7 @@ import {
   type CopyOptions,
   copyRound,
   type Entry,
+  HINT,
   loadSources,
   type Reading,
   readPrices,
@@ -252,13 +253,12 @@ describe('the price copier', () => {
     ).toEqual(['tTSLAx']);
     const result = await copyRound(liteChain(svm), writer, deployment, readings, options());
     expect(result.unchanged).toEqual(['tSPYx']);
-    const persists =
-      'if it persists, a person checks the source and moves the range (upsert_asset) or --max-jump-bps';
+
     expect(result.refused).toEqual([
-      { id: 'tAAPLx', why: `price 450 is outside the keeper range 259.53 to 418.6; ${persists}` },
+      { id: 'tAAPLx', why: `price 450 is outside the keeper range 259.53 to 418.6; ${HINT.range}` },
       {
         id: 'tTSLAx',
-        why: `price 470 is more than 1000 bps from the 380 devnet holds; ${persists}`,
+        why: `price 470 is more than 1000 bps from the 380 devnet holds; ${HINT.jump}`,
       },
     ]);
     expect(result.written).toEqual(['tNVDAx']);
@@ -502,5 +502,58 @@ describe('the price copier', () => {
     expect(second.refused[0]?.why).toMatch(
       /^price .* is more than 1000 bps from the .* devnet holds; if it persists/,
     );
+  });
+  it('reaches the 5,000 bps cap after a long gap, and then points at the range, not at --max-jump-bps', async () => {
+    const crclx = asset('solana:crclx');
+    const at = read(crclx.priceIndex).unixTimestamp + 24n * 3600n;
+    const quote = (dollars: string, when: bigint): Reading => ({
+      id: 'solana:crclx',
+      price: p15(dollars, when),
+      twap: p15(dollars, when),
+      method: 'scope_entry',
+    });
+    // Down to 66, near the floor of 65.20: a day's gap allows it.
+    setClock(svm, at + 5n);
+    expect(
+      (await copyRound(liteChain(svm), writer, deployment, [quote('66', at)], options())).written,
+    ).toEqual(['tCRCLx']);
+    // Six hours on, 105 is inside the range (to 105.16) and 59% away: six hours' worth is capped at 5,000.
+    setClock(svm, at + 6n * 3600n + 5n);
+    const capped = await copyRound(
+      liteChain(svm),
+      writer,
+      deployment,
+      [quote('105', at + 6n * 3600n)],
+      options(),
+    );
+    expect(capped.refused).toEqual([
+      {
+        id: 'tCRCLx',
+        why: `price 105 is more than 5000 bps from the 66 devnet holds; ${HINT.capped}`,
+      },
+    ]);
+    expect(HINT.capped).not.toContain('--max-jump-bps');
+  });
+
+  it('reads every other asset when the lending account cannot be read', async () => {
+    const t = SESSION + 50n;
+    const base = fakeMainnet(
+      { 344: p15('776.6', t), 279: p15('776.2', t), 13: p15('1', t), 456: p15('1', t) },
+      { rate: 10n ** 12n, time: t },
+    );
+    const failing: Source = {
+      account: (target) =>
+        target === LENDING ? Promise.reject(new Error('the node timed out')) : base.account(target),
+    };
+    const readings = await readPrices(failing, sources);
+    expect(readings.find((r) => r.id === 'solana:jlusdc')).toEqual({
+      id: 'solana:jlusdc',
+      none: 'the node timed out',
+    });
+    expect(readings.find((r) => r.id === 'solana:spyx')).toMatchObject({
+      price: p15('776.6', t),
+      method: 'scope_entry',
+    });
+    expect(readings).toHaveLength(Object.keys(sources.assets).length);
   });
 });
