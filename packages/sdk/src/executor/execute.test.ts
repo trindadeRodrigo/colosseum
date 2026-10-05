@@ -6,7 +6,7 @@ import { withRules } from '../../test/rules';
 import { GUARD_CHECKS, type GuardCode } from '../guard/refusal';
 import { runGuard } from '../guard/run';
 import { ApiRefusal, type OrderApi } from './api';
-import type { ChainRead, Fate } from './chain-read';
+import { type ChainRead, chainReadOf, type Fate, type RpcCall } from './chain-read';
 import {
   DEFAULT_PATIENCE,
   type ExecutionEvent,
@@ -936,12 +936,8 @@ describe('the executor: one approved step gets one signature', () => {
         saying({ toString: () => 'gone' } as unknown as Fate),
         1,
       ],
-      // A read that cannot even say where the chain is: nothing is signed at all.
-      [
-        'a read with no height',
-        { ...saying('gone'), heightBefore: () => Promise.reject(new Error('rpc down')) },
-        0,
-      ],
+      // A read that cannot say where a real chain is signs nothing there (real-bytes.test.ts); the
+      // mock chain is not asked for a height at all.
     ];
     for (const [name, chainRead, signatures] of reads) {
       const s = scene('solana');
@@ -993,6 +989,23 @@ describe('the executor: one approved step gets one signature', () => {
     const forApprove = s.wallet.asked.filter((tx) => tx.legId === approve.id);
     expect(forApprove).toHaveLength(2);
     expect(forApprove.map((tx) => tx.evm?.nonce)).toEqual([0, 1]);
+  });
+
+  it('on a mock chain, a read of a real node is handed over and no blockhash is asked of it', async () => {
+    const asked: string[] = [];
+    // A node that knows no blockhash: on a real chain nothing would be signed.
+    const rpc: RpcCall = async (method) => {
+      asked.push(method);
+      if (method === 'isBlockhashValid') return { context: { slot: 1 }, value: false };
+      if (method === 'getBlockHeight') return 1;
+      return { context: { slot: 1 }, value: [null] };
+    };
+    const s = scene('solana');
+    const order = await s.double.buy(100);
+    const result = await execute(order, { ...s.deps, chainRead: chainReadOf({ solana: rpc }) });
+    expect(result.status).toBe('done');
+    expect(s.wallet.sign).toHaveBeenCalledTimes(order.legs.length);
+    expect(asked).toEqual([]);
   });
 
   it('signs again when the chain says the first is gone, and only then', async () => {

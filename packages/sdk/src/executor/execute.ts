@@ -442,7 +442,9 @@ export function makeExecute(guard: Guard) {
     ): Promise<Made> => {
       if (!isGuarded(pass)) throw new Error('only what the guard passed is signed');
       const { tx } = pass;
-      const height = await heightBefore(tx);
+      // The mock's transactions are no chain's bytes and carry their lifetime in the mock's own clock:
+      // there is no blockhash for a node to know.
+      const height = deployment.family === 'mock' ? 'none' : await heightBefore(tx);
       if (height === null) return { unknownBlockhash: true };
       const now = {
         times: (before?.times ?? 0) + 1,
