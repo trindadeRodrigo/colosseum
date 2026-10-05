@@ -186,7 +186,7 @@ export type Verdict = z.infer<typeof Verdict>;
 
 export const ObservationRef = Sourced.extend({
   id: z.string().min(1),
-  kind: z.enum(['yield', 'price', 'liquidity']),
+  kind: z.enum(['yield', 'price', 'liquidity', 'fx']),
 });
 export type ObservationRef = z.infer<typeof ObservationRef>;
 

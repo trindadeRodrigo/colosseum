@@ -874,6 +874,11 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
     expect(BasketAsset.safeParse({ ...asset, chain: 'solana' }).success).toBe(false);
     expect(BasketAsset.safeParse({ ...asset, id: 'base:nvda' }).success).toBe(false);
     expect(BasketAsset.safeParse({ ...asset, address: SOL }).success).toBe(false);
+    // A cash token may be counted in a currency of its own (the matching leg); nothing else may.
+    const reais = { ...asset, id: 'robinhood:brlx', symbol: 'BRLX', cls: 'cash', currency: 'BRL' };
+    expect(BasketAsset.safeParse(reais).success).toBe(true);
+    expect(BasketAsset.safeParse({ ...reais, currency: 'brl' }).success).toBe(false);
+    expect(BasketAsset.safeParse({ ...asset, currency: 'BRL' }).success).toBe(false);
   });
 
   it('holds a trade to two different assets on one chain, and a leg to its signer', () => {
