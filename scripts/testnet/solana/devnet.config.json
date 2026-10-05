@@ -180,27 +180,6 @@
       }
     },
     {
-      "id": "solana:gldx",
-      "modelOf": "GLDx",
-      "kind": "gold",
-      "tokenProgram": "token-2022",
-      "decimals": 8,
-      "priceIndex": 480,
-      "twapIndex": 481,
-      "session": 1,
-      "initialPrice": {
-        "usd": "350",
-        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
-        "fetchedAt": "2026-10-04T00:00:00Z",
-        "method": "placeholder"
-      },
-      "keeper": {
-        "minUsd": "262.5",
-        "maxUsd": "455",
-        "on": false
-      }
-    },
-    {
       "id": "solana:jlusdc",
       "modelOf": "jlUSDC",
       "kind": "dollar_yield",
@@ -240,6 +219,29 @@
       "keeper": {
         "minUsd": "0.9",
         "maxUsd": "1.5"
+      }
+    },
+    {
+      "id": "solana:paxg",
+      "modelOf": "PAXG",
+      "realName": "Paxos Gold",
+      "kind": "gold",
+      "tokenProgram": "token-2022",
+      "extensions": "paxg",
+      "decimals": 6,
+      "priceIndex": 454,
+      "twapIndex": 168,
+      "indexSource": "scope-indexes",
+      "session": 0,
+      "initialPrice": {
+        "usd": "4142.63",
+        "source": "Kamino Scope entry 454 on mainnet (the price of Kamino's PAXG reserve 5MHbdvbQTegtPfFikifciBopmdEmZvWXDUpcHkQaz1w4, capped and floored to Chainlink XAU/USD at entry 167), read by hand",
+        "fetchedAt": "2026-10-05T18:59:22Z",
+        "method": "scope_entry"
+      },
+      "keeper": {
+        "minUsd": "3210.54",
+        "maxUsd": "5178.29"
       }
     }
   ]

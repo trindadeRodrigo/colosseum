@@ -76,10 +76,6 @@ export const DEPLOYMENT_FILES: Readonly<Record<string, unknown>> = deepFreeze({
             mint: '5rbr2wh5BZBUYsJCkTFRiNznu7DQDh1NPRWJW7REUHnb',
             tokenProgram: 'token-2022',
           },
-          'solana:gldx': {
-            mint: '32BAoiuKWNj8yzeEarBF52pdLbY3umSmreMqNFPHieiE',
-            tokenProgram: 'token-2022',
-          },
           'solana:jlusdc': {
             mint: 'GV49vP3U5XVbHJxT8vpDNTDZZWAKUtbFm8jHjzd6LUuc',
             tokenProgram: 'token',
@@ -87,6 +83,14 @@ export const DEPLOYMENT_FILES: Readonly<Record<string, unknown>> = deepFreeze({
           'solana:syrupusdc': {
             mint: 'GWFDMf5L2mCy6Z6v7fwPaavigDKeg8nkrg9xRCha4gAe',
             tokenProgram: 'token',
+          },
+          'solana:paxg': {
+            mint: 'GZ2F1ryu8SgCGKhScVQLXzG5Q5Hp4NYocKd2F7ueeKh1',
+            tokenProgram: 'token-2022',
+          },
+          'solana:gldx': {
+            mint: '32BAoiuKWNj8yzeEarBF52pdLbY3umSmreMqNFPHieiE',
+            tokenProgram: 'token-2022',
           },
         },
       },
