@@ -107,6 +107,7 @@ describe('the committed OpenAPI document (packages/sdk/openapi.json)', () => {
       'GET /v1/indexes/{slug}',
       'GET /v1/indexes/{slug}/versions',
       'GET /v1/shelf',
+      'GET /v1/vaults/{chain}/{address}',
     ]);
     // The routes that ask a chain for quotes, and the one that runs the engine on a chain's shelf,
     // are the ones with the tighter budget.

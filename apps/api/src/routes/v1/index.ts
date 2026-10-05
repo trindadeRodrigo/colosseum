@@ -30,6 +30,7 @@ import { registerMockRoutes } from './mock';
 import { registerOrderRoutes } from './orders';
 import { registerPortfolioRoute } from './portfolio';
 import { registerSharedRoutes } from './shared';
+import { registerVaultRoute } from './vault';
 
 /**
  * What the /v1 routes run on. Left out, each comes from the environment the app hands in. A test hands
@@ -132,6 +133,7 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
     registerBasketRoutes(scope, orderDeps, deps.planInputs ?? (async () => ({})));
     registerPortfolioRoute(scope, orderDeps);
     registerSharedRoutes(scope, orderDeps);
+    registerVaultRoute(scope, orderDeps);
     // Out of the route table altogether unless a chain runs on the mock.
     if (chains.active().some((entry) => entry.mock)) registerMockRoutes(scope, orderDeps);
   });
