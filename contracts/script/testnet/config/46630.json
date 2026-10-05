@@ -1,8 +1,8 @@
 {
-  "about": "The Robinhood Chain test network kit (TNET-1, TNET-2). TEST NETWORK ONLY. Read by script/testnet/TestnetKit.s.sol, which the deployer runs and which makes the deployer the admin of everything it deploys. priceWriter is the price copier's key (never the deployer): it writes the price contracts and re-centres the pools. Every contract goes through the CREATE2 deployer with the salt below, so its address follows from this file and the deployer, and a second run finds each one and sends nothing. tokens[].source is the Chainlink feed on Robinhood Chain mainnet (4663) the copier (scripts/testnet/robinhood/prices.ts) copies; initialPrice is the round the kit writes first, read from that feed at fetchedAt. uniswap.cashPerSide is raw test cash (6 decimals): 1,000,000 test dollars a side. universalRouter holds Robinhood Chain mainnet's constructor arguments for 2.1.2, so the router here differs from mainnet's only in its address and chain. GLD and SGOV have Chainlink feeds on mainnet, so under gate UNIVERSE the keeper may rebalance them, unlike Solana's gold.",
+  "about": "The Robinhood Chain test network kit (TNET-1, TNET-2). TEST NETWORK ONLY. Read by script/testnet/TestnetKit.s.sol, which the deployer runs and which makes the deployer the admin of everything it deploys. priceWriter is the price copier's key (never the deployer; its key file is testnet-keys/robinhood-testnet-price-writer.key, outside the repo): it writes the price contracts and re-centres the pools. Every contract goes through the CREATE2 deployer with the salt below, so its address follows from this file and the deployer, and a second run finds each one and sends nothing. tokens[].source is the Chainlink feed on Robinhood Chain mainnet (4663) the copier (scripts/testnet/robinhood/prices.ts) copies; initialPrice is the round the kit writes first, read from that feed at fetchedAt. uniswap.cashPerSide is raw test cash (6 decimals): 1,000,000 test dollars a side. universalRouter holds Robinhood Chain mainnet's constructor arguments for 2.1.2, so the router here differs from mainnet's only in its address and chain. GLD and SGOV have Chainlink feeds on mainnet, so under gate UNIVERSE the keeper may rebalance them, unlike Solana's gold. tokens[].kind is the record's asset kind (deployments/robinhood-testnet.json).",
   "chainId": 46630,
   "salt": "tenonfi-testnet-v1",
-  "priceWriter": "0x0000000000000000000000000000000000000000",
+  "priceWriter": "0xcFC59e5C01D37215f4138Df6F97A2E90682d6Da7",
   "cash": {
     "symbol": "tUSDG",
     "name": "Test USDG (test network)",
@@ -33,6 +33,7 @@
       "symbol": "tSPY",
       "name": "Test SPDR S&P 500 ETF (test network)",
       "modelOf": "SPY",
+      "kind": "etf",
       "decimals": 18,
       "source": {
         "feed": "0x319724394D3A0e3669269846abE664Cd621f9f6A",
@@ -51,6 +52,7 @@
       "symbol": "tQQQ",
       "name": "Test Invesco QQQ (test network)",
       "modelOf": "QQQ",
+      "kind": "etf",
       "decimals": 18,
       "source": {
         "feed": "0x80901d846d5D7B030F26B480776EE3b29374C2ae",
@@ -69,6 +71,7 @@
       "symbol": "tNVDA",
       "name": "Test NVIDIA (test network)",
       "modelOf": "NVDA",
+      "kind": "stock",
       "decimals": 18,
       "source": {
         "feed": "0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15",
@@ -87,6 +90,7 @@
       "symbol": "tAAPL",
       "name": "Test Apple (test network)",
       "modelOf": "AAPL",
+      "kind": "stock",
       "decimals": 18,
       "source": {
         "feed": "0x6B22A786bAa607d76728168703a39Ea9C99f2cD0",
@@ -105,6 +109,7 @@
       "symbol": "tMSFT",
       "name": "Test Microsoft (test network)",
       "modelOf": "MSFT",
+      "kind": "stock",
       "decimals": 18,
       "source": {
         "feed": "0x45C3C877C15E6BA2EBB19eA114Ea508d14C1Af2E",
@@ -123,6 +128,7 @@
       "symbol": "tGOOGL",
       "name": "Test Alphabet (test network)",
       "modelOf": "GOOGL",
+      "kind": "stock",
       "decimals": 18,
       "source": {
         "feed": "0xF6f373a037c30F0e5010d854385cA89185AE638b",
@@ -141,6 +147,7 @@
       "symbol": "tAMZN",
       "name": "Test Amazon (test network)",
       "modelOf": "AMZN",
+      "kind": "stock",
       "decimals": 18,
       "source": {
         "feed": "0xD5a1508ceD74c084eBf3cBe853e2C968fB2a651C",
@@ -159,6 +166,7 @@
       "symbol": "tMETA",
       "name": "Test Meta (test network)",
       "modelOf": "META",
+      "kind": "stock",
       "decimals": 18,
       "source": {
         "feed": "0x7C38C00C30BEe9378381E7B6135d7283356D71b1",
@@ -177,6 +185,7 @@
       "symbol": "tTSLA",
       "name": "Test Tesla (test network)",
       "modelOf": "TSLA",
+      "kind": "stock",
       "decimals": 18,
       "source": {
         "feed": "0x4A1166a659A55625345e9515b32adECea5547C38",
@@ -195,6 +204,7 @@
       "symbol": "tGLD",
       "name": "Test SPDR Gold Shares (test network)",
       "modelOf": "GLD",
+      "kind": "gold",
       "decimals": 18,
       "source": {
         "feed": "0x470A51258068043bd43dC0a56245625C9fE86eB0",
@@ -213,6 +223,7 @@
       "symbol": "tSGOV",
       "name": "Test iShares 0-3 Month Treasury Bond ETF (test network)",
       "modelOf": "SGOV",
+      "kind": "dollar_yield",
       "decimals": 18,
       "source": {
         "feed": "0xa0DF4ee0fFf975306345875E3548Fcc519577A11",

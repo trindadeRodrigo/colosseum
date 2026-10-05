@@ -82,7 +82,7 @@ contract CopyPrices is Script {
     error DeployKey(address signer);
 
     function run() external returns (Result memory result) {
-        Record memory r = readRecord(vm.envOr("TESTNET_RECORD", string("../deployments/robinhood-testnet.json")));
+        Record memory r = readRecord(vm.envOr("TESTNET_RECORD", string("script/testnet/deployed/46630.json")));
         uint256 testFork = vm.activeFork();
         uint256 sourceFork = vm.createFork(vm.envOr("SOURCE_RPC_URL", SOURCE_RPC));
 

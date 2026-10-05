@@ -1,5 +1,5 @@
 // Fills the vault's config for the Robinhood Chain test network (contracts/script/config/46630.json)
-// from the kit's record (deployments/robinhood-testnet.json): the test cash as the cash token, each test
+// from the kit's own record (contracts/script/testnet/deployed/46630.json): the test cash as the cash token, each test
 // stock token priced by its test price contract and its average, its issuer's pause and its multiplier's
 // schedule read on the token, the keeper's switch on, and Universal Router 2.1.2 pulling through Permit2.
 // Each token's range is set around the price its test price contract holds now, from 0.775 to 1.25
@@ -16,7 +16,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-const RECORD = process.env.TESTNET_RECORD ?? join(ROOT, 'deployments', 'robinhood-testnet.json');
+const RECORD =
+  process.env.TESTNET_RECORD ??
+  join(ROOT, 'contracts', 'script', 'testnet', 'deployed', '46630.json');
 const CONFIG = join(ROOT, 'contracts', 'script', 'config', '46630.json');
 /** Where the filled file goes: the file itself, unless a rehearsal names another place. */
 const OUT = process.env.VAULT_CONFIG_OUT ?? CONFIG;

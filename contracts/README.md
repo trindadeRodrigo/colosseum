@@ -179,26 +179,26 @@ TEST NETWORK ONLY. Chain 46630 has Uniswap v4 (mainnet's PoolManager code at mai
 
 **Tests**: `test/testnet/TestnetContracts.t.sol` (the rules of the token, the stock token, the price contract and the stub; the market's are in `TestnetKit.t.sol`), `TestnetVault.t.sol` (the vault's keeper path against the test contracts: the feed and its average, their age, their distance, the range, the issuer's pause with `withdrawAll` skipping the paused token, the multiplier window either side of a change, the sequencer stub; the owner's path reads none of it), `TestnetKit.t.sol` (the kit on chain 46630 with the real PoolManager's code from `test/fixtures/v4-pool-manager.json` and Universal Router from source, then the vault deployed by `Deploy.s.sol` on the kit's tokens: an owner's buy and a keeper's rebalance through Universal Router 2.1.2, a keeper trade refused while its pool is off the test price and passed once re-centred; the same file runs on a fork of the live test network with `RH_TESTNET_FORK_URL`), `CopyPrices.t.sol` (the copier's reading and rules). `node script/rules-bite.mjs testnet` takes each rule out in turn.
 
-**Deploying it.** A person's step, on Thom's word, with a funded key; an agent runs only the dry runs.
+**Deploying it.** On Thom's word (given for 46630 on Oct 5), with funded test keys only.
 
-1. Keys, kept outside the repo (`testnet-keys/`): the deployer (admin of every kit contract and, with `adminIsDeployer`, of the vault's factory and beacon; the guardian's calls too), the price writer (writes the 22 price contracts and re-centres the pools; never the deployer), and later the keeper (`setKeeper`). Put the price writer's address in `script/testnet/config/46630.json` (`priceWriter`) and the keeper's, if made, in `script/config/46630.json`.
+1. Keys, kept outside the repo (`testnet-keys/robinhood-testnet-deployer.key` and `robinhood-testnet-price-writer.key`, with their addresses beside them): the deployer (admin of every kit contract and, with `adminIsDeployer`, of the vault's factory and beacon; the guardian's calls too), the price writer (writes the 22 price contracts and re-centres the pools; never the deployer), and later the keeper (`setKeeper`). Put the price writer's address in `script/testnet/config/46630.json` (`priceWriter`) and the keeper's, if made, in `script/config/46630.json`.
 2. Test ETH: 0.01 for the deployer covers both deploys many times over, and 0.05 (one faucet claim) for the price writer. Measured on a local fork of 46630 on 2026-10-05: the kit 137 transactions and 40.9 million gas, the vault 36 transactions and 14.6 million gas, one copier round that writes all eleven tokens and re-centres every pool 33 transactions and 3.35 million gas. The test network's own gas estimates run about 15% above the fork's (its L1 share); at its 0.01 gwei base fee the kit costs about 0.0005 ETH and the vault 0.0002.
 3. The kit, as a dry run, then sent:
 
    ```
    cd contracts
    forge script script/testnet/TestnetKit.s.sol --rpc-url https://rpc.testnet.chain.robinhood.com --sender <deployer>
-   TESTNET_RECORD=../deployments/robinhood-testnet.json forge script script/testnet/TestnetKit.s.sol \
+   TESTNET_RECORD=script/testnet/deployed/46630.json forge script script/testnet/TestnetKit.s.sol \
      --rpc-url https://rpc.testnet.chain.robinhood.com --sender <deployer> --broadcast --slow --interactives 1
    ```
 
-   A second dry run prints `transactions: 0`.
+   A second dry run prints `transactions: 0`. `script/testnet/deployed/46630.json` is the kit's own record: the market, each token's price contracts and its mainnet source, for the copier and the scripts below.
 4. The first copy, so that every price is fresh and every pool on it: `pnpm exec tsx scripts/testnet/robinhood/prices.ts --dry-run`, then with `PRICE_WRITER_KEY_FILE=<path>` and `--once`.
 5. The vault's config and the vault: `pnpm exec tsx scripts/testnet/robinhood/vault-config.ts`, then `forge script script/Deploy.s.sol` with the same RPC and `--sender <deployer>`, dry, then with `--broadcast --slow --interactives 1`.
 6. The copier for good: `FACTORY=<factory proxy> PRICE_WRITER_KEY_FILE=<path> pnpm exec tsx scripts/testnet/robinhood/prices.ts --loop`.
-7. Commit the record and the filled `script/config/46630.json`, and give the guard and the API the chain's addresses (the router, the cash, the factory and registry).
+7. The record the API and the guard read, in ADE-1's shape (`EvmDeploymentRecord`): `FACTORY=<factory proxy> pnpm exec tsx scripts/testnet/robinhood/record.ts` reads it all from the chain through the factory and writes `deployments/robinhood-testnet.json`. Commit it, the kit's record and the filled `script/config/46630.json`.
 
-Rehearsed on 2026-10-05 against `anvil --fork-url https://rpc.testnet.chain.robinhood.com`, anvil's own account deploying and a throwaway key writing prices: kit 137 of 137 sent, second run 0; `vault-config.ts`, then the vault 36 of 36 with 12 assets and the router; the copier's dry run would write 11, `--once` wrote 11 and re-centred 11 pools, a second `--once` wrote 0, and a run with the deploy key stopped at `DeployKey`.
+Rehearsed on 2026-10-05 against `anvil --fork-url https://rpc.testnet.chain.robinhood.com`, anvil's own account deploying and a throwaway key writing prices: kit 137 of 137 sent, second run 0; `vault-config.ts`, then the vault 36 of 36 with 12 assets and the router; the copier's dry run would write 11, `--once` wrote 11 and re-centred 11 pools, a second `--once` wrote 0, and a run with the deploy key stopped at `DeployKey`; `record.ts` wrote a record `EvmDeploymentRecord` parses, 11 assets.
 
 **Known limits.** The pools follow the copied price because the market moves them there; a real pool does not, and this is what the test exchange is for, as on Solana. The average is ours: Chainlink publishes none on Robinhood Chain. Robinhood's own test stock tokens on 46630 are not listed. What a real stock token does between its calls (when a scheduled multiplier shows in `uiMultiplier`, what pausing stops) is not published; the test token does the plain thing. The kit's first rounds are copied when the config is written and go stale until the copier runs.
 

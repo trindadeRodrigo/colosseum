@@ -3,6 +3,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { forgeArgs, parseArgs, readKey, roundLines } from '../scripts/testnet/robinhood/prices';
+import {
+  buildRecord,
+  type ChainView,
+  type FactoryAsset,
+  type KitConfig,
+  type KitState,
+  recordJson,
+} from '../scripts/testnet/robinhood/record';
 import { rangeAround, vaultAssets } from '../scripts/testnet/robinhood/vault-config';
 
 // The Robinhood Chain test network's two scripts (TNET-2): the price copier's loop and the vault config
@@ -115,5 +123,96 @@ describe("the vault's config from the kit's record", () => {
 
   it('refuses a token whose price contract holds no price', () => {
     expect(() => vaultAssets(record, new Map())).toThrow("tSPY's price contract holds no price");
+  });
+});
+
+describe("the API's record from the chain and the kit", () => {
+  const a = (n: number) => `0x${n.toString(16).padStart(40, '0')}`;
+  const kit: KitState = {
+    chainId: 46630,
+    admin: a(1),
+    priceWriter: a(2),
+    cash: a(3),
+    cashSymbol: 'tUSDG',
+    router: a(4),
+    tokens: [
+      { symbol: 'tSPY', modelOf: 'SPY', address: a(5) },
+      { symbol: 'tNVDA', modelOf: 'NVDA', address: a(6) },
+    ],
+  };
+  const config: KitConfig = {
+    cash: { symbol: 'tUSDG', name: 'Test USDG (test network)' },
+    tokens: [
+      { symbol: 'tSPY', name: 'Test SPDR S&P 500 ETF (test network)', kind: 'etf' },
+      { symbol: 'tNVDA', name: 'Test NVIDIA (test network)', kind: 'stock' },
+    ],
+  };
+  const listed = (feed: number, flags: number, min: bigint, max: bigint): FactoryAsset => ({
+    feed: a(feed),
+    tokenDecimals: 18,
+    feedDecimals: 8,
+    maxAge: 93600,
+    session: 1,
+    maxWeightBps: 5000,
+    flags,
+    averageFeed: a(feed + 1),
+    minPrice: min,
+    maxPrice: max,
+  });
+  const chain = (): ChainView => ({
+    chainId: 46630,
+    deployBlock: 129_500_000,
+    contracts: {
+      factory: a(20),
+      registry: a(21),
+      beacon: a(22),
+      vaultLogic: a(23),
+      factoryLogic: a(24),
+      registryLogic: a(25),
+    },
+    admin: a(1),
+    guardian: a(0),
+    keeper: a(0),
+    sequencerFeed: a(0),
+    cashToken: a(3),
+    routerPull: 2,
+    assets: new Map([
+      [
+        a(3),
+        { ...listed(0, 0, 0n, 0n), tokenDecimals: 6, session: 0, maxAge: 0, averageFeed: a(0) },
+      ],
+      [a(5), listed(10, 1, 60_152_912_311n, 97_020_826_308n)],
+      [a(6), listed(12, 0, 0n, 0n)],
+    ]),
+    removed: [a(6)],
+  });
+
+  it('writes the record in ADE-1 shape, as EvmDeploymentRecord parses it', () => {
+    const record = buildRecord(kit, config, chain());
+    expect(record.network).toBe('robinhood-testnet');
+    expect(record.evmChainId).toBe(46630);
+    expect(record.roles).toMatchObject({ priceWriter: a(2), tokenIssuer: a(1) });
+    expect(record.sequencerFeed).toBeNull();
+    expect(record.routers).toEqual([{ address: a(4), pull: 2 }]);
+    expect(record.cash).toMatchObject({ id: 'robinhood:tusdg', decimals: 6 });
+    expect(record.assets[0]).toMatchObject({
+      id: 'robinhood:tspy',
+      kind: 'etf',
+      keeperOn: true,
+      range: { minPrice: '60152912311', maxPrice: '97020826308' },
+      averageFeed: a(11),
+    });
+    expect(record.assets[1]).toMatchObject({ keeperOn: false, range: null });
+    expect(record.retired).toEqual([{ id: 'robinhood:tnvda', symbol: 'tNVDA', address: a(6) }]);
+    expect(recordJson(record)).not.toMatch(/"token":/);
+  });
+
+  it('refuses a node on another chain, another cash token, a router not at pull 2, an unlisted token', () => {
+    expect(() => buildRecord(kit, config, { ...chain(), chainId: 4663 })).toThrow('not 46630');
+    expect(() => buildRecord(kit, config, { ...chain(), cashToken: a(9) })).toThrow('cash token');
+    expect(() => buildRecord(kit, config, { ...chain(), routerPull: 1 })).toThrow('pull 2');
+    const c = chain();
+    c.assets.delete(a(5));
+    expect(() => buildRecord(kit, config, c)).toThrow('does not list tSPY');
   });
 });

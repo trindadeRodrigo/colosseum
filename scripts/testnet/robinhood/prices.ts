@@ -20,7 +20,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const CONTRACTS = join(ROOT, 'contracts');
 // Absolute, so that forge, run from contracts/, finds the same file.
 const RECORD = resolve(
-  process.env.TESTNET_RECORD ?? join(ROOT, 'deployments', 'robinhood-testnet.json'),
+  process.env.TESTNET_RECORD ??
+    join(ROOT, 'contracts', 'script', 'testnet', 'deployed', '46630.json'),
 );
 const TESTNET_RPC = process.env.RH_TESTNET_RPC_URL ?? 'https://rpc.testnet.chain.robinhood.com';
 

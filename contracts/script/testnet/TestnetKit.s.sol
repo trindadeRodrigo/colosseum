@@ -29,8 +29,10 @@ import {TestToken} from "../../testnet/TestToken.sol";
 /// The deployer is the admin of every contract here. The price writer the file names writes the price
 /// contracts and re-centres the pools; it is never the deployer.
 ///
-/// With `TESTNET_RECORD` set to a path, the run writes there what it deployed: the record the price copier,
-/// `scripts/testnet/robinhood/vault-config.mjs` and the app read.
+/// With `TESTNET_RECORD` set to a path (`script/testnet/deployed/<chain id>.json`), the run writes there
+/// what it deployed: the kit's own record, which the price copier, `scripts/testnet/robinhood/vault-config.ts`
+/// and `record.ts` read. The record the API reads is `deployments/robinhood-testnet.json`, which `record.ts`
+/// writes once the vault is deployed.
 contract TestnetKit is Script {
     using stdJson for string;
 
