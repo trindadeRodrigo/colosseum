@@ -28,7 +28,7 @@ Each is a check anyone can run. If one is missed by a day, the cut beside it is 
 | When | What must be true | If missed |
 |---|---|---|
 | **M1** Sat Oct 3, night | The walking skeleton on the mock: a buy on each chain the mock runs goes through the API as an order with its legs on that one chain, the legs settle, and the result reads back through the API. Every figure labelled MOCK. The contract tests pass on `chain-mock`. The three-profile test is green on starting numbers | Nothing is cut. The TypeScript streams add nothing new until it passes |
-| **M2** Mon Oct 5, night | The program and the contracts are deployed and `authority-check` is green. On Solana devnet: create a vault, buy into it, see it, withdraw the tokens to the owner | The deploy moves to Tue morning. A chain not deployed by Tue 12:00 BRT is read-only, Base first |
+| **M2** Mon Oct 5, night | The program and the contracts are deployed and `authority-check` is green. On Solana devnet: create a vault, buy into it, see it, withdraw the tokens to the owner | The deploy moves to Tue morning. A chain not deployed by Tue 12:00 BRT is read-only, Base first; for Robinhood Chain the cut is Wed Oct 7 12:00 BRT (gate `RH-PARALLEL`) |
 | **M3** Tue Oct 6, night | The same owner path on Robinhood Chain with a passkey wallet. A shared portfolio is published and followed. Rehearsal 1 recorded on Solana and Robinhood Chain, with a first auto-follow cycle on each | Auto-follow on Robinhood Chain becomes owner-signed only |
 | **M4** Wed Oct 7, night | Auto-follow has run a full cycle on Solana in market hours and is filmed. Portfolio and rebalance work end to end. Risk sheets render. An outside agent builds a plan and a person approves it from the link | Auto-follow on Solana becomes the one-tap prompt. The five extra agent tools stay out |
 | **M5** Thu Oct 8 | `G-SEC` recorded per chain at 12:00 BRT. Then `launch()`, so the delay is 48 hours from here on. Then `G-LINK`. Only then is the link shared | A chain that misses tier 1 ships owner-signed. The link is not shared until `G-LINK` passes |
@@ -60,7 +60,7 @@ In this order, each on its date. A cut flips a flag; it does not delete code.
 
 1. **Sat Oct 3.** The new Jupiter build route: fall back to the route the rig proved.
 2. **Taken on Oct 2.** Base comes after Solana and Robinhood Chain. It comes back on Tue Oct 6 only if M3 is met on time (TNET-3).
-   **Oct 5 (gate `RH-PARALLEL`):** Robinhood Chain is built in parallel with Solana; its read-only cut moves to Wed Oct 7 12:00 BRT. Shared portfolios ship with publish from the app (`SHARED-FULL`), and the agent tools follow the Solana buy screen and keeper (`AGENT-TOOLS`).
+   **Oct 5 (gate `RH-PARALLEL`):** Robinhood Chain is built in parallel with Solana and its read-only cut moves to Wed Oct 7 12:00 BRT. Its owner path at M3 and cut 3 move with it. Base's Tuesday condition cannot be judged before then, so Base stays out unless Thom says otherwise.
 3. **Tue Oct 6 at M3, final on Wed Oct 7.** Auto-follow on Robinhood Chain: owner-signed only.
 4. **Wed Oct 7 at M4, final that night.** Auto-follow on Solana: followers get the one-tap prompt instead. Thursday's session opens 30 minutes before `G-SEC`, and after `launch()` a cycle takes 48 hours, so there is no later day to try again.
 
