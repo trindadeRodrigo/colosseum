@@ -6,6 +6,7 @@ import {
   type LiquidityProvider,
   type ObservationRef,
   PersonalParams,
+  type PlanSleeve,
   type Verdict,
   type YieldObservation,
 } from '@colosseum/schemas';
@@ -176,6 +177,17 @@ export type PersonalObservation = Omit<ObservationRef, 'source' | 'fetchedAt'> &
 export type PersonalProposal = Omit<BasketProposal, 'sheet' | 'observations' | 'verdict'> & {
   sheet: PersonalSheet;
   sleeves: { sleeve: Sleeve; weightBps: number; amountUsd: number }[];
+  /**
+   * Present when the person split the plan (gate SLEEVES): each of their sleeves, its share and its
+   * dollars, and for the safe-yield sleeve what it holds by token (cash included), before the lines
+   * are rounded to whole basis points. The goal sleeve is the rest of every line.
+   */
+  split?: {
+    kind: PlanSleeve['kind'];
+    shareBps: number;
+    amountUsd: number;
+    holds: { assetId: string; amountUsd: number }[];
+  }[];
   observations: PersonalObservation[];
   verdict?: PersonalVerdict;
 };

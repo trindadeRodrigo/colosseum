@@ -73,6 +73,8 @@ export type World = {
   yieldCapOf(asset: BasketAsset): { cents: number; why: Reason } | null;
   /** Whether a dollar-yield token counts against the credit budget. */
   isCredit(asset: BasketAsset): boolean;
+  /** Whether a dollar-yield token is a rate leg and nothing else: what a safe-yield sleeve holds. */
+  isRateOnly(asset: BasketAsset): boolean;
   /** The most cents in credit and basis legs, by the person's credit tolerance, and its share. */
   creditBudget: { cents: number; bps: number; stated: boolean };
   flags: Set<string>;
@@ -153,8 +155,9 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
     });
   if ((sheet.obligations ?? []).length > 0)
     notYet.push({ path: 'obligations', message: 'dated withdrawals are not built yet' });
-  if (sheet.sleeves && !(sheet.sleeves.length === 1 && sheet.sleeves[0]?.kind === 'goal'))
-    notYet.push({ path: 'sleeves', message: 'a split into sleeves is not built yet' });
+  // A theme sleeve needs the curated lists of slice 4; a goal and a safe-yield sleeve are built.
+  if (sheet.sleeves?.some((x) => x.kind === 'theme'))
+    notYet.push({ path: 'sleeves', message: 'a theme sleeve is not built yet' });
   if (notYet.length > 0) throw new PersonalInputError('InvalidSheet', notYet);
 
   const parsedParams = PersonalParameters.safeParse(context.params ?? PERSONAL_PARAMS);
@@ -341,6 +344,10 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
           };
     },
     isCredit: (a) => (legTypesOf(a.symbol)?.types ?? []).some((t) => CREDIT_LEG_TYPES.includes(t)),
+    isRateOnly: (a) => {
+      const types = legTypesOf(a.symbol)?.types ?? [];
+      return types.length > 0 && types.every((t) => t === 'rate');
+    },
     creditBudget: (() => {
       const tolerance = sheet.limits?.creditTolerance ?? P.defaultCreditTolerance;
       const bps = P.creditShareBps[tolerance] ?? 0;

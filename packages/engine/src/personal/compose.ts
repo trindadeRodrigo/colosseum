@@ -5,6 +5,7 @@ import {
   DISCLAIMER,
   type Reason,
   type Shelf,
+  sleevesOf,
 } from '@colosseum/schemas';
 import { cardOf } from './card';
 import {
@@ -207,10 +208,10 @@ function build(
 
   // ---- Exposure: how big each sleeve is.
   const sleeves = sizeSleeves(w);
-  const [growth = 0, dollarYield = 0, gold = 0, cash = 0] = split(
-    w.amount,
-    SLEEVES.map((sleeve) => sleeves.sized[sleeve]),
-  );
+  const [growth = 0, dollarYield = 0, gold = 0, cash = 0, safeYield = 0] = split(w.amount, [
+    ...SLEEVES.map((sleeve) => sleeves.sized[sleeve]),
+    sleeves.safeYieldBps,
+  ]);
   const book = new Book(w);
   const themes = resolveThemes(w, book.removed);
 
@@ -320,6 +321,38 @@ function build(
     book.cash.reasons.push(...unit.reasons, ...why);
     w.flags.add(canYield ? 'unplaced' : 'no_dollar_yield');
   };
+  // The safe-yield sleeve is placed before the goal's dollar yield: it can hold only rate legs, so
+  // it has first call on them, and the goal's dollar yield ranks every leg type on what is left.
+  // What no rate leg takes stays in cash, said in the sleeve's own sentence.
+  const safe: { assetId: string; cents: number }[] = [];
+  let safeCash = 0;
+  if (safeYield > 0) {
+    ranked();
+    const unit: Sized = {
+      cents: safeYield,
+      reasons: [reason('SPLIT_SAFE_YIELD', { shareBps: sleeves.safeYieldBps }, lang)],
+    };
+    const rateOnly = yielders.filter((a) => w.isRateOnly(a));
+    const before = new Map(rateOnly.map((a) => [a.id, book.lines.get(a.id)?.cents ?? 0]));
+    const { left, why } = book.fillBanded(unit, rateOnly);
+    for (const a of rateOnly) {
+      const took = (book.lines.get(a.id)?.cents ?? 0) - (before.get(a.id) ?? 0);
+      if (took > 0) safe.push({ assetId: a.id, cents: took });
+    }
+    if (left > 0) {
+      safeCash = left;
+      const none = !rateOnly.some((a) => w.blockOf(a) === null && w.yields.has(a.id));
+      book.cash.cents += left;
+      book.cash.reasons.push(
+        ...unit.reasons,
+        ...why,
+        none
+          ? reason('SAFE_YIELD_NO_RATE', { usd: toUsd(left), chain: w.chain }, lang)
+          : reason('UNPLACED', { usd: toUsd(left) }, lang),
+      );
+      w.flags.add(none ? 'safe_yield_no_rate_leg' : 'unplaced');
+    }
+  }
   intoYield(yieldUnit);
   book.placeTogether(goldUnits, (unit) => tokensOf(w, unit.name, 'gold'));
   book.placeTogether(growthUnits, (unit) => tokensOf(w, unit.name, 'growth'));
@@ -335,6 +368,25 @@ function build(
 
   // ---- Packaging: lines, one recipe per chain, the card.
   const { lines, recipes, sleeves: held } = packageUp(w, book);
+  // With a split, what each sleeve of the person's holds, by token, before the lines are rounded.
+  const goalCents = w.amount - safeYield;
+  const asSplit = sheet.sleeves
+    ? sleevesOf(sheet).map((x) => {
+        const holds =
+          x.kind === 'safe_yield'
+            ? [...safe, ...(safeCash > 0 ? [{ assetId: w.cash.id, cents: safeCash }] : [])]
+            : [];
+        return {
+          kind: x.kind,
+          shareBps: x.shareBps,
+          amountUsd: toUsd(x.kind === 'safe_yield' ? safeYield : goalCents),
+          holds: byName(holds, (h) => h.assetId).map((h) => ({
+            assetId: h.assetId,
+            amountUsd: toUsd(h.cents),
+          })),
+        };
+      })
+    : undefined;
   const { card, yearlyLowUsd } = cardOf(w, lines);
 
   // Income goals: whether the target is met at today's yields after haircut, and the ways to close a
@@ -452,6 +504,7 @@ function build(
     observations,
     disclaimer: DISCLAIMER[lang],
     sleeves: held,
+    ...(asSplit ? { split: asSplit } : {}),
   };
 }
 

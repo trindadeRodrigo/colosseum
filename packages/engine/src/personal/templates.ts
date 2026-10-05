@@ -29,6 +29,7 @@ export const INPUT_NAMES = [
   'mustKeep',
   'mayNeed',
   'credit',
+  'sleeves',
 ] as const;
 export type InputName = (typeof INPUT_NAMES)[number];
 
@@ -41,6 +42,22 @@ export const REASON_TEMPLATES = {
     ['goal', 'risk'],
     'For {goal|goal} at {risk|risk}, the starting share of {sleeve|sleeve} is {sleeveBps|pct}.',
     'Para {goal|goal}, com {risk|risk}, a parcela inicial de {sleeve|sleeve} é {sleeveBps|pct}.',
+  ),
+  // The person's split of the plan (gate SLEEVES).
+  SPLIT_GOAL: rule(
+    ['sleeves', 'goal'],
+    'You set {shareBps|pct} of the plan for {goal|goal}; the shares here are of the whole plan.',
+    'Você destinou {shareBps|pct} do plano para {goal|goal}; as parcelas aqui são do plano inteiro.',
+  ),
+  SPLIT_SAFE_YIELD: rule(
+    ['sleeves'],
+    'You set {shareBps|pct} of the plan apart for dollar yield from a rate alone: tokens that pass through a government or money-market rate, with no lending to borrowers and no trading spread.',
+    'Você separou {shareBps|pct} do plano para rendimento em dólar só de taxa: tokens que repassam uma taxa de governo ou de mercado monetário, sem empréstimo a tomadores e sem spread de negociação.',
+  ),
+  SAFE_YIELD_NO_RATE: rule(
+    ['sleeves', 'chain'],
+    'No token you can hold on {chain|chain} pays a rate alone, so {usd|usd} of the part you set apart for it stays in cash.',
+    'Nenhum token que você pode ter na {chain|chain} paga só uma taxa, então {usd|usd} da parte separada para isso fica em caixa.',
   ),
   // The date sets a floor on dollar yield. What dollar yield has no room for stays in cash, so the
   // sentence names both: it is true of every plan, whatever the chain lists and whatever is capped.

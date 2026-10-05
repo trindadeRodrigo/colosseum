@@ -416,10 +416,20 @@ export function expectedSleeves(
 ): Record<Sleeve, number> {
   const row = table.sleeves[`${sheetOf.goal}:${sheetOf.risk}`];
   if (!row) throw new Error('no row');
-  let growth = row.growthBps;
-  let dollarYield = row.dollarYieldBps;
-  let gold = row.goldBps;
-  let cash = 10_000 - growth - dollarYield - gold;
+  // With a split (gate SLEEVES), the goal sleeve's share scales the row and the date's floors; the
+  // safe-yield share counts toward what must not be lost. The result is the goal sleeve only.
+  const share = (kind: string) =>
+    (sheetOf.sleeves ?? [{ kind: 'goal', shareBps: 10_000 }])
+      .filter((x) => x.kind === kind)
+      .reduce((n, x) => n + x.shareBps, 0);
+  const goalBps = share('goal');
+  const safeBps = share('safe_yield');
+  const scaled = (bps: number) => Math.floor((bps * goalBps) / 10_000);
+  const scaledUp = (bps: number) => Math.ceil((bps * goalBps) / 10_000);
+  let growth = scaled(row.growthBps);
+  let dollarYield = scaled(row.dollarYieldBps);
+  let gold = scaled(row.goldBps);
+  let cash = goalBps - growth - dollarYield - gold;
   const fromStocksThenGold = (need: number) => {
     const stocks = Math.min(growth, need);
     const metal = Math.min(gold, need - stocks);
@@ -439,17 +449,19 @@ export function expectedSleeves(
 
   const { glide } = sheetOf.rules;
   if (glide) {
-    const least = floorOf(
-      table.glideFloor,
-      sheetOf.horizonMonths,
-      (s: { dollarYieldBps: number }) => s.dollarYieldBps,
+    const least = scaledUp(
+      floorOf(
+        table.glideFloor,
+        sheetOf.horizonMonths,
+        (s: { dollarYieldBps: number }) => s.dollarYieldBps,
+      ),
     );
     if (dollarYield < least) dollarYield += fromStocksThenGold(least - dollarYield);
   }
   const said = sheetOf.limits?.mayNeedInMonths;
   const soon = glide ? Math.min(said ?? sheetOf.horizonMonths, sheetOf.horizonMonths) : said;
   if (soon !== undefined) {
-    const least = floorOf(table.cashFloor, soon, (s: { cashBps: number }) => s.cashBps);
+    const least = scaledUp(floorOf(table.cashFloor, soon, (s: { cashBps: number }) => s.cashBps));
     if (cash < least) {
       const found = fromStocksThenGold(least - cash);
       const fromYield = Math.min(dollarYield, least - cash - found);
@@ -460,7 +472,8 @@ export function expectedSleeves(
   const keep = sheetOf.limits?.mustKeepUsd ?? 0;
   if (keep > 0) {
     const least = Math.min(10_000, Math.ceil((cents(keep) * 10_000) / cents(sheetOf.amountUsd)));
-    if (dollarYield + cash < least) dollarYield += fromStocksThenGold(least - dollarYield - cash);
+    if (dollarYield + cash + safeBps < least)
+      dollarYield += fromStocksThenGold(least - dollarYield - cash - safeBps);
   }
   return { growth, dollarYield, gold, cash };
 }
@@ -726,6 +739,74 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
       held <= stockCap,
       `${name} holds ${held / 100}, over the single-stock cap of ${stockCap / 100}`,
     );
+
+  // The person's split (gate SLEEVES): each sleeve's share and dollars as asked, and the safe-yield
+  // sleeve in rate legs and cash only, never more of a token than its line holds.
+  const lineUsd = new Map(plan.lines.map((l) => [l.assetId, cents(l.amountUsd)]));
+  const splitSaid = allReasons(plan).filter((r) => r.rule.startsWith('SPLIT_'));
+  if (!s.sleeves) {
+    say(plan.split === undefined, 'a split on a plan whose sheet has none');
+    say(splitSaid.length === 0, `"${splitSaid[0]?.text}" said of a plan with no split`);
+  } else {
+    say(
+      JSON.stringify(plan.split?.map((x) => [x.kind, x.shareBps])) ===
+        JSON.stringify(s.sleeves.map((x) => [x.kind, x.shareBps])),
+      'the split on the plan is not the one asked for',
+    );
+    say(
+      sum((plan.split ?? []).map((x) => cents(x.amountUsd))) === amount,
+      'the sleeves do not add up to the amount',
+    );
+    for (const x of plan.split ?? []) {
+      say(
+        Math.abs(cents(x.amountUsd) - (amount * x.shareBps) / 10_000) <= 1,
+        `the ${x.kind} sleeve holds ${x.amountUsd}, not its share of ${x.shareBps} bps`,
+      );
+      if (x.kind !== 'safe_yield') continue;
+      say(
+        sum(x.holds.map((h) => cents(h.amountUsd))) === cents(x.amountUsd),
+        'the safe-yield sleeve holds more or less than its dollars',
+      );
+      for (const h of x.holds) {
+        const a = byId.get(h.assetId);
+        const rateOnly =
+          a?.cls === 'cash' ||
+          (a?.cls === 'dollar_yield' &&
+            (LEG_TYPES[a.symbol]?.types ?? []).length > 0 &&
+            (LEG_TYPES[a.symbol]?.types ?? []).every((t) => t === 'rate'));
+        say(rateOnly, `the safe-yield sleeve holds ${h.assetId}, which is not a rate leg`);
+        // Lines are rounded to whole basis points after the sleeves are filled: a cent or two.
+        const slack = Math.ceil(amount / 10_000) + 1;
+        say(
+          cents(h.amountUsd) <= (lineUsd.get(h.assetId) ?? 0) + slack,
+          `the safe-yield sleeve holds ${h.amountUsd} of ${h.assetId}, more than its line`,
+        );
+      }
+    }
+    const goalShare = s.sleeves.find((x) => x.kind === 'goal')?.shareBps ?? 0;
+    for (const r of splitSaid)
+      if (r.rule === 'SPLIT_GOAL')
+        say(
+          goalShare < 10_000 && Number(r.params.shareBps) === goalShare,
+          `"${r.text}" but the goal sleeve is ${goalShare} bps`,
+        );
+  }
+  // What must not be lost stays in dollar yield and cash, sleeves and all.
+  const mustKeep = s.limits?.mustKeepUsd ?? 0;
+  if (mustKeep > 0) {
+    const kept = sum(
+      plan.lines
+        .filter((l) => {
+          const c = byId.get(l.assetId)?.cls;
+          return c === 'cash' || c === 'dollar_yield';
+        })
+        .map((l) => cents(l.amountUsd)),
+    );
+    say(
+      kept + Math.ceil(amount / 10_000) >= Math.min(amount, cents(mustKeep)),
+      `${kept / 100} in dollar yield and cash, under the ${mustKeep} that must not be lost`,
+    );
+  }
 
   // A plan lives on one chain: every line is on it, no reason names another, and there is one
   // recipe, whose amount is the deposit.

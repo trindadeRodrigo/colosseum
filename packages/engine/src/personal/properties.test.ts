@@ -93,6 +93,23 @@ const personOn = (chain: ChainId): fc.Arbitrary<PersonalSheet> =>
       );
     });
 
+/**
+ * The same, and sometimes split (gate SLEEVES): a goal sleeve and a safe-yield sleeve, or the whole
+ * plan in one of them.
+ */
+const splitOn = (chain: ChainId): fc.Arbitrary<PersonalSheet> =>
+  fc.tuple(personOn(chain), maybe(fc.integer({ min: 0, max: 10_000 }))).map(([sheet, safe]) =>
+    safe === undefined
+      ? sheet
+      : PersonalSheet.parse({
+          ...sheet,
+          sleeves: [
+            ...(safe < 10_000 ? [{ kind: 'goal' as const, shareBps: 10_000 - safe }] : []),
+            ...(safe > 0 ? [{ kind: 'safe_yield' as const, shareBps: safe }] : []),
+          ],
+        }),
+  );
+
 const sleeveRow = fc.tuple(bps, bps, bps).map(([growth, dollarYield, gold]) => {
   const growthBps = growth;
   const dollarYieldBps = Math.min(dollarYield, 10_000 - growthBps);
@@ -220,12 +237,13 @@ function made(raw: World): { shelf: Shelf; context: ComposeContext } {
 
 describe.each(CHAINS)('for any valid sheet, on %s alone', (chain) => {
   const person = personOn(chain);
+  const anyone = splitOn(chain);
 
   it(
     'the plan keeps the vault’s target rules, every ceiling and cap, and holds nothing ruled out',
     () => {
       fc.assert(
-        fc.property(person, world, (sheet, raw) => {
+        fc.property(anyone, world, (sheet, raw) => {
           const { shelf, context } = made(raw);
           const plan = compose(sheet, shelf, context);
           expect(violations(plan, shelf, context)).toEqual([]);
@@ -240,7 +258,7 @@ describe.each(CHAINS)('for any valid sheet, on %s alone', (chain) => {
     'the plan is the same every time, in whatever order the shelf is listed',
     () => {
       fc.assert(
-        fc.property(person, world, fc.integer({ min: 1, max: 50 }), (sheet, raw, seed) => {
+        fc.property(anyone, world, fc.integer({ min: 1, max: 50 }), (sheet, raw, seed) => {
           const { shelf, context } = made(raw);
           const plan = compose(sheet, shelf, context);
           expect(compose(sheet, shelf, context)).toEqual(plan);
