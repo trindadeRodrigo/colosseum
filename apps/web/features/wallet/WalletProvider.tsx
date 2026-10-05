@@ -106,16 +106,24 @@ export function useWalletPort(): ScreenPort {
  * Signed out, the call goes out without them. `path` is the part after the API's address and starts
  * with one `/` ('/v1/config'); anything that would lead to another host is refused before the token
  * is asked for, and a redirect is an error, so the token is never carried to where one points.
+ * A call the API refuses with 401 while someone is signed in is sent once more, with fresh tokens;
+ * its second answer is the one returned.
  */
 export function useApiFetch(): (path: string, init?: RequestInit) => Promise<Response> {
   const port = useWalletPort();
   return useCallback(
     async (path, init) => {
       const url = apiUrl(API, path);
-      const headers = new Headers(init?.headers);
-      for (const [name, value] of Object.entries(await port.authHeaders()))
-        headers.set(name, value);
-      return fetch(url, { cache: 'no-store', ...init, headers, redirect: 'error' });
+      const send = async (fresh: boolean) => {
+        const signIn = await port.authHeaders(fresh ? { fresh } : undefined);
+        const headers = new Headers(init?.headers);
+        for (const [name, value] of Object.entries(signIn)) headers.set(name, value);
+        const res = await fetch(url, { cache: 'no-store', ...init, headers, redirect: 'error' });
+        return { res, signedIn: 'authorization' in signIn };
+      };
+      const first = await send(false);
+      if (first.res.status !== 401 || !first.signedIn) return first.res;
+      return (await send(true)).res;
     },
     [port],
   );
