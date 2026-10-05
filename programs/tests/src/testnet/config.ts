@@ -179,6 +179,8 @@ export function planOf(file: ConfigFile): SetupPlan {
     if (price === 0n) fail(`${token.id} has no first price`);
     for (const key of ['source', 'fetchedAt', 'method'] as const)
       if (!token.initialPrice[key]) fail(`${token.id}: initialPrice.${key} is empty`);
+    if (token.keeper?.on !== undefined && typeof token.keeper.on !== 'boolean')
+      fail(`${token.id}: keeper.on is true or false`);
     const range = token.keeper && {
       minPrice: scaled(token.keeper.minUsd, 6),
       maxPrice: scaled(token.keeper.maxUsd, 6),

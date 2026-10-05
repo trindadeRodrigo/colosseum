@@ -63,6 +63,11 @@ describe('the test-network set-up', () => {
   const lines: string[] = [];
 
   const file = () => JSON.parse(readFileSync(CONFIG_FILE, 'utf8'));
+  /** The tokens the committed config lists with their keeper switch off and their range kept. */
+  const switchedOff = (): string[] =>
+    file()
+      .tokens.filter((t: { keeper: { on?: boolean } | null }) => t.keeper?.on === false)
+      .map((t: { id: string }) => t.id);
   const withRoles = (config: ReturnType<typeof file>) => ({
     ...config,
     roles: {
@@ -265,7 +270,7 @@ describe('the test-network set-up', () => {
           session: asset.session,
           // Gate UNIVERSE: tGLDx's price is a pool's mid, not an oracle's, so the vault does not
           // rebalance it. Its range stays, so the price copier still bounds what it writes.
-          flags: asset.id === 'solana:gldx' ? 0 : ASSET_KEEPER,
+          flags: switchedOff().includes(asset.id) ? 0 : ASSET_KEEPER,
           minPrice: BigInt(asset.range?.minPrice ?? 0),
           maxPrice: BigInt(asset.range?.maxPrice ?? 0),
         }),
@@ -275,11 +280,11 @@ describe('the test-network set-up', () => {
         real ? 'scope-indexes' : 'test-network',
       ]);
     }
-    const gold = deployment.assets.find((a) => a.id === 'solana:gldx');
-    expect(gold).toMatchObject({
-      keeperOn: false,
-      range: { minPrice: '262500000', maxPrice: '455000000' },
-    });
+    for (const id of switchedOff()) {
+      const off = deployment.assets.find((a) => a.id === id);
+      expect(off?.keeperOn).toBe(false);
+      expect(off?.range).not.toBeNull();
+    }
     // The dollar token is never a position, so it is not on the list.
     expect(listed.some((e) => e.mint === deployment.cash.mint)).toBe(false);
   });
@@ -350,6 +355,33 @@ describe('the test-network set-up', () => {
     expect(lived.acceptedVersion).toBe(1);
   });
 
+  it('switches a listed token off and keeps its range, as the devnet run did for gold', async () => {
+    const [id] = switchedOff();
+    if (!id) throw new Error('the committed config switches no token off');
+    const token = deployment.assets.find((a) => a.id === id) as DeployedAsset;
+    const entryOf = async () => (await readAssets(svm)).assets.find((e) => e.mint === token.mint);
+    // The listing as it was before the change: on, with its range.
+    const on = withRoles(file());
+    const changed = on.tokens.find((t: { id: string }) => t.id === id);
+    changed.keeper = { minUsd: changed.keeper.minUsd, maxUsd: changed.keeper.maxUsd };
+    expect((await run(planOf(on))).transactions).toBe(1);
+    expect(await entryOf()).toMatchObject({ flags: ASSET_KEEPER });
+    // The committed config: one upsert_asset, flags 0, the same range.
+    const printed: string[] = [];
+    const off = await run(plan, { log: (line) => printed.push(line) });
+    expect(off.transactions).toBe(1);
+    expect(
+      printed.some((line) => line.includes(`upsert_asset ${token.symbol}: flags 0, range`)),
+    ).toBe(true);
+    expect(await entryOf()).toMatchObject({
+      flags: 0,
+      minPrice: BigInt(token.range?.minPrice ?? 0),
+      maxPrice: BigInt(token.range?.maxPrice ?? 0),
+    });
+    expect(off.deployment.assets.find((a) => a.id === id)).toMatchObject({ keeperOn: false });
+    expect((await run()).transactions).toBe(0);
+  });
+
   it('refuses a config with a role left out, a range its first price is outside of, or an entry used twice', () => {
     const base = { ...file(), roles: { guardian: null, defaultKeeper: null, priceWriter: null } };
     expect(() => planOf(base)).toThrow(/roles\.guardian is not set/);
@@ -365,6 +397,9 @@ describe('the test-network set-up', () => {
     const unknown = withRoles(file());
     unknown.tokens[0].modelOf = 'MSFTx';
     expect(() => planOf(unknown)).toThrow(/MSFTx has no entry/);
+    const notBoolean = withRoles(file());
+    notBoolean.tokens[0].keeper = { ...notBoolean.tokens[0].keeper, on: 'no' };
+    expect(() => planOf(notBoolean)).toThrow(/keeper\.on is true or false/);
   });
 
   it('runs on devnet and on this machine, and refuses mainnet wherever it is served from', () => {
