@@ -40,6 +40,10 @@ const CONFIG = 'src/VaultConfig.sol';
 const FACTORY = 'src/VaultFactory.sol';
 const REGISTRY = 'src/IndexRegistry.sol';
 const BEACON = 'src/VaultBeacon.sol';
+const TEST_TOKEN = 'src/testnet/TestToken.sol';
+const TEST_STOCK = 'src/testnet/TestStockToken.sol';
+const TEST_FEED = 'src/testnet/TestPriceFeed.sol';
+const TEST_SEQUENCER = 'src/testnet/StubSequencerFeed.sol';
 
 const WITHDRAW =
   'function withdraw(address token, uint256 amount) external onlyOwner nonReentrant {';
@@ -2345,6 +2349,168 @@ const RULES = [
     file: CONFIG,
     ...admin('function setPriceDevBps(uint16 bps)'),
     expect: 'test_setPriceDevBps_revertsForNonAdmin',
+  },
+  // ---- the test network's own contracts (TNET-1)
+  {
+    id: 'testnet-token-mint-role',
+    file: TEST_TOKEN,
+    find: 'function mint(address to, uint256 amount) external onlyRole(MINTER_ROLE) {',
+    replace: 'function mint(address to, uint256 amount) external {',
+    expect: 'test_cash_hasItsDecimals_andOnlyAMinterMints',
+  },
+  {
+    id: 'testnet-token-burn-role',
+    file: TEST_TOKEN,
+    find: 'function burn(address from, uint256 amount) external onlyRole(MINTER_ROLE) {',
+    replace: 'function burn(address from, uint256 amount) external {',
+    expect: 'test_cash_onlyAMinterBurns',
+  },
+  {
+    id: 'testnet-stock-pause-role',
+    file: TEST_STOCK,
+    find: 'function pause() external onlyRole(ISSUER_ROLE) {',
+    replace: 'function pause() external {',
+    expect: 'test_stock_onlyTheIssuerPausesAndSetsTheMultiplier',
+  },
+  {
+    id: 'testnet-stock-unpause-role',
+    file: TEST_STOCK,
+    find: 'function unpause() external onlyRole(ISSUER_ROLE) {',
+    replace: 'function unpause() external {',
+    expect: 'test_stock_onlyTheIssuerPausesAndSetsTheMultiplier',
+  },
+  {
+    id: 'testnet-stock-multiplier-now-role',
+    file: TEST_STOCK,
+    find: 'function updateMultiplier(uint256 newMultiplier) external onlyRole(ISSUER_ROLE) {',
+    replace: 'function updateMultiplier(uint256 newMultiplier) external {',
+    expect: 'test_stock_onlyTheIssuerPausesAndSetsTheMultiplier',
+  },
+  {
+    id: 'testnet-stock-multiplier-later-role',
+    file: TEST_STOCK,
+    find: 'function updateMultiplier(uint256 newMultiplier, uint256 effectiveAt_) external onlyRole(ISSUER_ROLE) {',
+    replace: 'function updateMultiplier(uint256 newMultiplier, uint256 effectiveAt_) external {',
+    expect: 'test_stock_onlyTheIssuerPausesAndSetsTheMultiplier',
+  },
+  {
+    id: 'testnet-stock-paused-moves-nothing',
+    file: TEST_STOCK,
+    find: 'require(!_paused, TokenPaused());',
+    replace: '',
+    expect: 'test_stock_paused_movesNothing',
+  },
+  {
+    id: 'testnet-stock-paused-vault-skips',
+    file: TEST_STOCK,
+    find: 'require(!_paused, TokenPaused());',
+    replace: '',
+    expect: 'test_issuerPause_stopsTheKeeper_andTheOwnerTakesTheRest',
+  },
+  {
+    id: 'testnet-stock-multiplier-at-its-time',
+    file: TEST_STOCK,
+    find: 'return block.timestamp >= _effectiveAt ? _newMultiplier : _multiplier;',
+    replace: 'return _newMultiplier;',
+    expect: 'test_stock_aScheduledMultiplier_takesEffectAtItsTime',
+  },
+  {
+    id: 'testnet-stock-multiplier-from-current',
+    file: TEST_STOCK,
+    find: 'uint256 current = uiMultiplier();',
+    replace: 'uint256 current = _newMultiplier;',
+    expect: 'test_stock_aSecondScheduleReplacesTheFirst',
+  },
+  {
+    id: 'testnet-stock-multiplier-not-zero',
+    file: TEST_STOCK,
+    find: 'require(newMultiplier != 0, ZeroMultiplier());',
+    replace: '',
+    expect: 'test_stock_aMultiplierOfZero_orInThePast_isRefused',
+  },
+  {
+    id: 'testnet-stock-multiplier-not-past',
+    file: TEST_STOCK,
+    find: 'require(effectiveAt_ >= block.timestamp, EffectiveInThePast(effectiveAt_, block.timestamp));',
+    replace: '',
+    expect: 'test_stock_aMultiplierOfZero_orInThePast_isRefused',
+  },
+  {
+    id: 'testnet-stock-schedule-read-by-vault',
+    file: TEST_STOCK,
+    find: '_effectiveAt = effectiveAt_;',
+    replace: '',
+    expect: 'test_multiplierWindow_aroundTheTestTokensChange',
+  },
+  {
+    id: 'testnet-feed-writer',
+    file: TEST_FEED,
+    find: 'require(msg.sender == writer || msg.sender == owner(), NotWriter(msg.sender));',
+    replace: '',
+    expect: 'test_feed_onlyTheWriterOrTheOwnerWrites',
+  },
+  {
+    id: 'testnet-feed-setWriter-owner',
+    file: TEST_FEED,
+    find: 'function setWriter(address writer_) external onlyOwner {',
+    replace: 'function setWriter(address writer_) external {',
+    expect: 'test_feed_theOwnerReplacesTheWriter',
+  },
+  {
+    id: 'testnet-feed-positive',
+    file: TEST_FEED,
+    find: 'require(answer > 0, AnswerNotPositive(answer));',
+    replace: '',
+    expect: 'test_feed_anAnswerOfZeroOrBelow_isRefused',
+  },
+  {
+    id: 'testnet-feed-newer',
+    file: TEST_FEED,
+    find: 'require(updatedAt > latest, NotNewer(updatedAt, latest));',
+    replace: '',
+    expect: 'test_feed_aTimeNotNewer_isRefused',
+  },
+  {
+    id: 'testnet-feed-ahead',
+    file: TEST_FEED,
+    find: 'require(updatedAt <= block.timestamp + MAX_AHEAD, StampedAhead(updatedAt, block.timestamp));',
+    replace: '',
+    expect: 'test_feed_aTimeTooFarAhead_isRefused',
+  },
+  {
+    id: 'testnet-feed-no-data',
+    file: TEST_FEED,
+    find: 'require(r.updatedAt != 0, NoDataPresent());',
+    replace: '',
+    expect: 'test_feed_beforeTheFirstRound_reverts',
+  },
+  {
+    id: 'testnet-feed-stamp-read-by-vault',
+    file: TEST_FEED,
+    find: 'return (roundId, r.answer, r.updatedAt, r.updatedAt, roundId);',
+    replace: 'return (roundId, r.answer, r.updatedAt, block.timestamp, roundId);',
+    expect: 'test_keeper_aStalePrice_isRefused',
+  },
+  {
+    id: 'testnet-sequencer-owner',
+    file: TEST_SEQUENCER,
+    find: 'function setDown(bool down_) external onlyOwner {',
+    replace: 'function setDown(bool down_) external {',
+    expect: 'test_sequencer_onlyTheOwnerFlipsIt',
+  },
+  {
+    id: 'testnet-sequencer-not-ahead',
+    file: TEST_SEQUENCER,
+    find: 'require(since <= block.timestamp, ChangedInTheFuture(since, block.timestamp));',
+    replace: '',
+    expect: 'test_sequencer_aTimeAhead_isRefused',
+  },
+  {
+    id: 'testnet-sequencer-time-of-change',
+    file: TEST_SEQUENCER,
+    find: '        changedAt = uint64(block.timestamp);\n',
+    replace: '',
+    expect: 'test_sequencerStub_justUp_thenAnHourLater_thenDown',
   },
 ];
 
