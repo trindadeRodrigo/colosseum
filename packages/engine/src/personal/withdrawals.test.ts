@@ -3,7 +3,9 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { compose } from './index';
 import { PERSONAL_PARAMS } from './params';
+import { Book } from './placement';
 import { scheduleOf } from './schedule';
+import { reason } from './templates';
 import {
   allReasons,
   ceilingUsd,
@@ -26,7 +28,7 @@ import {
   type PersonalProposal,
   type PersonalSheet,
 } from './types';
-import { monthAfter } from './world';
+import { buildWorld, monthAfter } from './world';
 
 // Slice 2 of docs/vault/PROMPT-BUILD-SOLVER.md, steps 3 to 6: what is set aside for the next
 // withdrawals, the coverage check (C6), the schedule in the goal's currency (C7), and the tests the
@@ -301,4 +303,22 @@ describe('the schedule, in the goal’s currency (C7)', () => {
       { numRuns: 200 },
     );
   }, 60_000);
+});
+
+describe('moving part of a line to cash', () => {
+  it('takes the line’s own part first, and keeps what is through a shared portfolio within the line', () => {
+    const w = buildWorld(sheet(), launch, ctx);
+    const book = new Book(w);
+    const token = w.tokens.find((a) => w.sleeveOf(a) === 'growth');
+    if (!token) throw new Error('no stock token on Solana');
+    const why = reason('COVERAGE_MOVED_UNCOUNTED', { usd: 0.5, month: inMonths(0) }, 'en');
+    book.put(token, 60, []);
+    book.put(token, 40, [], 'the-500');
+    book.toCash(token.id, 50, why);
+    expect(book.lines.get(token.id)?.cents).toBe(50);
+    expect(book.lines.get(token.id)?.via.get('the-500')).toBe(40);
+    book.toCash(token.id, 30, why);
+    expect(book.lines.get(token.id)?.via.get('the-500')).toBe(20);
+    expect(book.cash.cents).toBe(80);
+  });
 });

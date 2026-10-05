@@ -351,7 +351,8 @@ export class Book {
     line.cents -= moved;
     line.reasons.push(because);
     // A line held through a shared portfolio gives from what is through it last.
-    let owed = moved - Math.max(0, line.cents - sum([...line.via.values()]));
+    // What is through a portfolio is never more than the line it is part of.
+    let owed = Math.max(0, sum([...line.via.values()]) - line.cents);
     for (const [slug, through] of [...line.via.entries()].sort(([a], [b]) => (a < b ? 1 : -1))) {
       if (owed <= 0) break;
       const cut = Math.min(through, owed);

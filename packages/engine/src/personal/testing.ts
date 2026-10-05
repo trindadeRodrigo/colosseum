@@ -809,7 +809,7 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
       say(
         Math.abs(after - cap) <= 1 ||
           (plan.flags.includes('coverage_moved') && held === undefined) ||
-          (plan.flags.includes('coverage_moved') && after <= cap),
+          (movedFrom(String(r.params.asset)) > 0 && after <= cap),
         `"${r.text}" but the line holds ${held ? held.cents / 100 : 'nothing'}`,
       );
     }

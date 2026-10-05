@@ -132,6 +132,12 @@ describe('POST /v1/baskets/personalize', () => {
     expect(PersonalizeResponse.parse(withdrawing.json()).proposal.sheet.obligations).toEqual(
       obligations,
     );
+    // A withdrawal in reais needs an exchange rate the server does not read yet: refused, with the fix.
+    const inReais = await post(who, PATH, {
+      sheet: { ...asked, obligations: [{ month: '2027-06', amount: 3000, currency: 'BRL' }] },
+    });
+    expect(inReais.statusCode, inReais.body).toBe(422);
+    expect(inReais.body).toContain('USDBRL');
     // A theme sleeve is refused until the engine applies it, never ignored.
     const theme = {
       sleeves: [
