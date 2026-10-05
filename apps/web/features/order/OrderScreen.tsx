@@ -1,0 +1,507 @@
+'use client';
+import type { ConsentKind, Leg, OrderDetail } from '@colosseum/schemas';
+import Link from 'next/link';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { Button } from '../../components/ui/Button';
+import { buttonClass } from '../../components/ui/button-class';
+import { Card, CardBody, CardHeader, CardLoading, Stat, StatRow } from '../../components/ui/Card';
+import { CopyButton } from '../../components/ui/CopyButton';
+import { ExplorerLink } from '../../components/ui/ExplorerLink';
+import { StatusMark } from '../../components/ui/StatusMark';
+import { type Dictionary, LOCALE } from '../../i18n';
+import { useLang, useT } from '../../i18n/I18nProvider';
+import { useAccount } from '../account/AccountProvider';
+import { dollars } from '../goal/sheet';
+import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
+import { assetName, formatBps, formatRaw, shortfallBps } from './amounts';
+import { type CallFailure, readOrder } from './order-api';
+import { checkDeposit } from './order-check';
+import { keepOrder, type OrderRecord, recallOrder } from './order-record';
+import { legsInOrder, type NextStep, type OutcomeView, outcomeView, stepOf } from './order-view';
+import { chainReady, onMock } from './readiness';
+import { type RunOutcome, useOrderRunner } from './run-order';
+import { type ChainUnits, unitsFor } from './units';
+
+// The order: the review of every step, then signing it, then each step's status as it lands. The
+// review shows the order as the API made it; when the person presses the button that order, exactly as
+// shown, is kept with the consents they ticked, and every run is handed that and nothing read later.
+// The signing is `execute()` of @colosseum/sdk through run-order.ts: this screen never holds the wallet's
+// signing members, only the answer. Status changes are said in an aria-live region, with the explorer
+// link of each landed step.
+
+type Load = { kind: 'loading' } | { kind: 'read'; order: OrderDetail } | { kind: CallFailure };
+type Phase = { legId: string; phase: string } | null;
+
+export function OrderScreen({ id }: { id: string }) {
+  const t = useT();
+  const lang = useLang();
+  const port = useWalletPort();
+  const { account } = useAccount();
+  const apiFetch = useApiFetch();
+  const { run } = useOrderRunner();
+  const [load, setLoad] = useState<Load>({ kind: 'loading' });
+  const [record, setRecord] = useState<OrderRecord | null | undefined>(undefined);
+  const [live, setLive] = useState<OrderDetail | null>(null);
+  const [phase, setPhase] = useState<Phase>(null);
+  const [running, setRunning] = useState(false);
+  const [outcome, setOutcome] = useState<RunOutcome | null>(null);
+  const [consents, setConsents] = useState<ConsentKind[]>([]);
+  const [round, setRound] = useState(0);
+  const stop = useRef({ aborted: false });
+  const titleId = useId();
+  const reasonId = useId();
+  const userId = port.userId;
+
+  useEffect(() => {
+    setRecord(recallOrder(id, userId));
+  }, [id, userId]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `round` reads the order again
+  useEffect(() => {
+    if (port.status !== 'ready') return;
+    let mine = true;
+    setLoad({ kind: 'loading' });
+    readOrder(apiFetch, id).then((read) => {
+      if (mine) setLoad(read);
+    });
+    return () => {
+      mine = false;
+    };
+  }, [id, apiFetch, port.status, round]);
+
+  // Leaving the page stops the run between steps; what was signed is still reported.
+  useEffect(() => {
+    const signal = stop.current;
+    return () => {
+      signal.aborted = true;
+    };
+  }, []);
+
+  const go = useCallback(
+    async (again?: { legId: string; signedTimes: number }) => {
+      if (!record) return;
+      // The order as the review screen showed it, kept from the moment the person approved it.
+      let approved = record.approved;
+      // Never run an order that does not deposit what the person typed (order-check.ts).
+      const order = approved?.order ?? (load.kind === 'read' ? load.order : null);
+      if (
+        !order ||
+        !checkDeposit(order, record.amountUsd, unitsFor(record.chain, onMock(port, record.chain)))
+          .ok
+      )
+        return;
+      if (!approved) {
+        if (load.kind !== 'read') return;
+        approved = { order: load.order, consents, at: new Date().toISOString() };
+        const next = { ...record, approved };
+        if (!keepOrder(next)) {
+          setOutcome({ status: 'not-runnable', why: 'no-store' });
+          return;
+        }
+        setRecord(next);
+      }
+      stop.current = { aborted: false };
+      setRunning(true);
+      setOutcome(null);
+      const answer = await run({
+        order: approved.order,
+        plan: { proposalId: record.proposalId, lines: record.lines },
+        consents: approved.consents,
+        ...(again ? { approvedAgain: again } : {}),
+        onEvent: (event) => {
+          setLive(event.order);
+          setPhase({ legId: event.legId, phase: event.phase });
+        },
+        signal: stop.current,
+      });
+      if ('order' in answer) setLive(answer.order);
+      setPhase(null);
+      setOutcome(answer);
+      setRunning(false);
+    },
+    [record, load, consents, run, port],
+  );
+
+  if (port.status === 'loading' || account.status === 'loading' || record === undefined)
+    return (
+      <Card>
+        <CardLoading label={t.order.loading} />
+      </Card>
+    );
+  if (port.status === 'signed-out')
+    return (
+      <Notice
+        title={t.order.title}
+        body={t.order.signedOut}
+        href={`/sign-in?next=/orders/${encodeURIComponent(id)}`}
+        label={t.shell.signIn}
+      />
+    );
+  if (load.kind === 'loading')
+    return (
+      <Card>
+        <CardLoading label={t.order.loading} />
+      </Card>
+    );
+  if (load.kind !== 'read') {
+    const body =
+      load.kind === 'no-plan' || load.kind === 'signed-out'
+        ? t.order.failure.notFound
+        : load.kind === 'busy'
+          ? t.shell.slowDown
+          : load.kind === 'unreadable'
+            ? t.order.failure.unreadable
+            : t.order.failure.unreachable;
+    return (
+      <section aria-labelledby={titleId} className="flex flex-col items-start gap-4">
+        <h1 id={titleId} className="font-sans text-h2 font-semibold">
+          {t.order.title}
+        </h1>
+        <p className="max-w-(--tf-measure-body) text-body">{body}</p>
+        <Button variant="secondary" onClick={() => setRound((n) => n + 1)}>
+          {t.order.failure.retry}
+        </Button>
+      </section>
+    );
+  }
+  if (!record)
+    return (
+      <Notice
+        title={t.order.title}
+        body={t.order.elsewhere}
+        href="/goal"
+        label={t.plan.backToGoal}
+      />
+    );
+
+  const shown = record.approved?.order ?? load.order;
+  const now = live ?? load.order;
+  const chain = record.chain;
+  // Every amount on this screen is the order's own, read with units this repository committed, and the
+  // order is offered for signing only when it deposits what the person typed (order-check.ts).
+  const units = unitsFor(chain, onMock(port, chain));
+  const check = checkDeposit(shown, record.amountUsd, units);
+  const amount = check.ok
+    ? dollars(Number(check.depositRaw) / 10 ** check.decimals, lang)
+    : dollars(record.amountUsd, lang);
+  const cash = units?.tokens[units.cash];
+  const depositShown =
+    shown.depositRaw === undefined
+      ? '—'
+      : cash
+        ? `${formatRaw(shown.depositRaw, cash.decimals, LOCALE[lang]) ?? shown.depositRaw} ${cash.symbol}`
+        : shown.depositRaw;
+  const legs = legsInOrder(shown);
+  const done = now.status === 'done';
+  const view: OutcomeView | null = outcome ? outcomeView(outcome, t, chain) : null;
+  const needed = shown.needsConsent;
+  const consentMissing = !record.approved && needed.some((kind) => !consents.includes(kind));
+  const current = phase ? stepOf(shown, phase.legId) : 1;
+  const newOrder = `/plan/${encodeURIComponent(record.proposalId)}/buy`;
+  const testNetwork = shown.legs[0]?.provenance === 'sandbox';
+
+  // The one primary button of the view: sign, carry on, approve a step again, or nothing.
+  const next: NextStep | { kind: 'first' } =
+    view?.next ?? (record.approved ? { kind: 'run' } : { kind: 'first' });
+  const primaryLabel =
+    next.kind === 'approve-again'
+      ? t.order.outcome.approveAgain(next.step)
+      : next.kind === 'run' && view && outcome?.status === 'waiting'
+        ? t.order.outcome.lookAgain
+        : next.kind === 'run' && view
+          ? t.order.outcome.tryAgain
+          : record.approved
+            ? t.order.resume(amount)
+            : t.order.signAndBuy(amount);
+
+  return (
+    <div data-ui="order-screen" className="flex flex-col gap-8">
+      <header className="flex flex-col gap-3">
+        <h1 id={titleId} className="max-w-(--tf-measure-display) font-display text-h1 font-normal">
+          {record.approved ? t.order.title : t.order.review.title}
+        </h1>
+        {!record.approved && (
+          <p className="max-w-(--tf-measure-body) text-body-lg">{t.order.review.lead}</p>
+        )}
+      </header>
+
+      <Card
+        as="section"
+        aria-label={t.order.stepsTitle}
+        mock={shown.legs[0]?.provenance !== 'live'}
+        mockLabels={{
+          announce: t.shell.mockAnnounce,
+          note: testNetwork ? t.shell.testNetwork : undefined,
+        }}
+      >
+        <CardHeader title={t.order.stepsTitle} level={2} meta={t.chain.names[chain]} />
+        <CardBody className="flex flex-col gap-4">
+          <StatRow>
+            <Stat label={t.order.review.deposit}>{depositShown}</Stat>
+            <Stat label={t.order.review.steps}>{legs.length}</Stat>
+            {!record.approved && (
+              <Stat label={t.order.review.expires} className="max-[620px]:col-span-2">
+                <time dateTime={new Date(shown.expiresAt * 1000).toISOString()}>
+                  {new Intl.DateTimeFormat(LOCALE[lang], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  }).format(new Date(shown.expiresAt * 1000))}
+                </time>
+              </Stat>
+            )}
+          </StatRow>
+          <ol className="flex flex-col divide-y divide-border">
+            {legs.map((leg, i) => {
+              const standing = now.legs.find((l) => l.id === leg.id) ?? leg;
+              return (
+                <Step
+                  key={leg.id}
+                  n={i + 1}
+                  leg={leg}
+                  now={standing}
+                  phase={phase?.legId === leg.id ? phase.phase : null}
+                  units={units}
+                  explorer={`${t.chain.names[chain]} ${t.order.explorer}`}
+                  t={t}
+                  locale={LOCALE[lang]}
+                />
+              );
+            })}
+          </ol>
+        </CardBody>
+      </Card>
+
+      {shown.warnings.length > 0 && (
+        <section aria-label={t.order.review.warnings} className="flex flex-col gap-2">
+          <h2 className="text-h4 font-semibold">{t.order.review.warnings}</h2>
+          <ul className="flex max-w-(--tf-measure-body) list-disc flex-col gap-1 pl-5 text-body-sm">
+            {shown.warnings.map((w) => (
+              <li key={w.code}>{w.text}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {!record.approved && needed.length > 0 && (
+        <fieldset className="flex flex-col gap-2">
+          <legend className="pb-2 text-h4 font-semibold">{t.order.review.consents}</legend>
+          {needed.map((kind) => (
+            <label key={kind} className="inline-flex items-start gap-2 text-body">
+              <input
+                type="checkbox"
+                className="mt-1.5 size-4 accent-primary"
+                checked={consents.includes(kind)}
+                onChange={(e) => {
+                  const on = e.currentTarget.checked;
+                  setConsents((all) =>
+                    on ? [...all.filter((k) => k !== kind), kind] : all.filter((k) => k !== kind),
+                  );
+                }}
+              />
+              <span className="max-w-(--tf-measure-body)">{t.order.review.consent[kind]}</span>
+            </label>
+          ))}
+        </fieldset>
+      )}
+
+      <div aria-live="polite" data-ui="order-status" className="flex flex-col gap-2">
+        {running && phase && (
+          <p className="text-body">
+            {t.order.step(current)}:{' '}
+            {t.order.phase[phase.phase as keyof Dictionary['order']['phase']]}
+          </p>
+        )}
+        {!running && done && !view && (
+          <p className="text-body">{t.order.outcome.done(t.chain.names[chain])}</p>
+        )}
+        {view && (
+          <div className="flex max-w-(--tf-measure-body) flex-col gap-1">
+            <p
+              className={
+                view.alarm ? 'flex items-start gap-1.5 text-body text-destructive' : 'text-body'
+              }
+            >
+              {view.alarm && <StatusMark status="off-track" size={12} className="mt-1.5" />}
+              <span>{view.sentence}</span>
+            </p>
+            {view.check && (
+              <p className="font-mono text-source text-muted-foreground">{view.check}</p>
+            )}
+            {view.detail && (
+              <p className="font-mono text-source text-muted-foreground break-words">
+                {view.detail}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-col items-start gap-2">
+        {!check.ok && (
+          <p
+            role="alert"
+            className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body text-destructive"
+          >
+            <StatusMark status="off-track" size={12} className="mt-1.5" />
+            <span>
+              {check.why === 'units' && !chainReady(chain, onMock(port, chain))
+                ? t.order.outcome.notRunnable['no-deployment'](t.chain.names[chain])
+                : t.order.mismatch[check.why]}
+            </span>
+          </p>
+        )}
+        {check.ok &&
+          !done &&
+          next.kind !== 'none' &&
+          next.kind !== 'new-order' &&
+          next.kind !== 'other-order' && (
+            <Button
+              variant="primary"
+              busy={running}
+              busyLabel={t.order.signing(current, legs.length)}
+              disabled={consentMissing}
+              aria-describedby={consentMissing ? reasonId : undefined}
+              onClick={() =>
+                go(
+                  next.kind === 'approve-again'
+                    ? { legId: next.legId, signedTimes: next.signedTimes }
+                    : undefined,
+                )
+              }
+            >
+              {primaryLabel}
+            </Button>
+          )}
+        {consentMissing && (
+          <p id={reasonId} className="text-body-sm">
+            {t.order.review.consentNeeded}
+          </p>
+        )}
+        {next.kind === 'new-order' && (
+          <Link href={newOrder} className={buttonClass({ variant: 'primary' })}>
+            {t.order.outcome.newOrder}
+          </Link>
+        )}
+        {next.kind === 'other-order' && (
+          <Link
+            href={`/orders/${encodeURIComponent(next.orderId)}`}
+            className={buttonClass({ variant: 'primary' })}
+          >
+            {t.order.outcome.blockedLink}
+          </Link>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Notice({
+  title,
+  body,
+  href,
+  label,
+}: {
+  title: string;
+  body: string;
+  href: string;
+  label: string;
+}) {
+  const id = useId();
+  return (
+    <section aria-labelledby={id} className="flex flex-col items-start gap-4">
+      <h1 id={id} className="font-sans text-h2 font-semibold">
+        {title}
+      </h1>
+      <p className="max-w-(--tf-measure-body) text-body">{body}</p>
+      <Link href={href} className={buttonClass({ variant: 'secondary' })}>
+        {label}
+      </Link>
+    </section>
+  );
+}
+
+/** One step: what it does as the review showed it, and where it stands now. */
+function Step({
+  n,
+  leg,
+  now,
+  phase,
+  units,
+  explorer,
+  t,
+  locale,
+}: {
+  n: number;
+  /** The explorer's name, for the link's accessible name. */
+  explorer: string;
+  /** As the review showed it: what it may do. */
+  leg: Leg;
+  /** As the API last said: where it stands. */
+  now: Leg;
+  phase: string | null;
+  /** What each token's raw amount means, from what this repository committed. */
+  units: ChainUnits | null;
+  t: Dictionary;
+  locale: string;
+}) {
+  /** A raw amount of a token in whole units with its symbol, or null when its units are not known. */
+  const whole = (raw: string, asset: string) => {
+    const u = units?.tokens[asset];
+    const figure = u ? formatRaw(raw, u.decimals, locale) : null;
+    return u && figure !== null ? `${figure} ${u.symbol}` : null;
+  };
+  const spend = (raw: string) => (units ? whole(raw, units.cash) : null) ?? raw;
+  const status = phase
+    ? t.order.phase[phase as keyof Dictionary['order']['phase']]
+    : t.order.status[now.status];
+  const failed = now.status === 'failed';
+  return (
+    <li data-ui="order-step" data-status={now.status} className="flex flex-col gap-1 py-3">
+      <p className="flex flex-wrap items-baseline gap-x-2 text-body">
+        <span className="font-medium">
+          {t.order.step(n)} · {t.order.kind[leg.kind]}
+        </span>
+        {leg.cashRaw && <span className="tabular-nums">{spend(leg.cashRaw)}</span>}
+        <span aria-hidden="true">·</span>
+        <span className={failed ? 'inline-flex items-center gap-1.5 text-status-off' : undefined}>
+          {failed && <StatusMark status="off-track" />}
+          {status}
+          {failed && ` ${t.order.notRetried}`}
+        </span>
+        {now.txId && (
+          <span className="ml-auto inline-flex items-center gap-2">
+            <ExplorerLink
+              signature={now.txId}
+              href={now.explorerUrl}
+              explorer={explorer}
+              labels={t.order.link}
+            />
+            <CopyButton value={now.txId} what={t.order.signature} />
+          </span>
+        )}
+      </p>
+      {leg.trades.length === 0 ? null : (
+        <ul className="flex flex-col gap-0.5 text-body-sm text-muted-foreground">
+          {leg.trades.map((trade, i) => {
+            const expected = leg.expected[i];
+            const under = expected ? shortfallBps(expected.outRaw, expected.minOutRaw) : null;
+            return (
+              <li key={`${trade.sell}>${trade.buy}:${trade.amountInRaw}`} className="tabular-nums">
+                {t.order.review.spend(spend(trade.amountInRaw), assetName(trade.buy))}
+                {expected && (
+                  <>
+                    {' · '}
+                    {whole(expected.minOutRaw, trade.buy) !== null
+                      ? t.order.review.atLeastWhole(whole(expected.minOutRaw, trade.buy) as string)
+                      : t.order.review.atLeast(expected.minOutRaw, assetName(trade.buy))}
+                    {under !== null && ` · ${t.order.review.under(formatBps(under, locale))}`}
+                  </>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </li>
+  );
+}
