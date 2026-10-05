@@ -22,7 +22,8 @@ import { type MockWorld, tampered } from '../../packages/sdk/test/mock';
 //
 //   tsx tests/e2e/stub-api.ts            STUB_API_PORT (3901), WEB_ORIGIN (http://localhost:3100)
 //
-// Two routes of its own, for the spec: POST /__stub/reset forgets everything, and POST
+// Three routes of its own, for the spec: POST /__stub/reset forgets everything, GET /__stub/reports
+// lists the steps the web reported as signed, and POST
 // /__stub/tamper makes the next swap it builds carry a lower minimum than the order states, as a
 // server that lies would. MOCK throughout: every figure says so.
 
@@ -43,6 +44,8 @@ type World = {
 };
 let world: World = { adapter: createMockAdapter({ chain: CHAIN }) };
 let tamperNext = false;
+/** The steps the web reported signed bytes or an id for, in order. */
+let reports: string[] = [];
 
 const OBSERVED = {
   source: 'the e2e stub',
@@ -162,8 +165,10 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   if (path === '/__stub/reset' && method === 'POST') {
     world = { adapter: createMockAdapter({ chain: CHAIN }) };
     tamperNext = false;
+    reports = [];
     return send(res, 200, { ok: true });
   }
+  if (path === '/__stub/reports') return send(res, 200, reports);
   if (path === '/__stub/tamper' && method === 'POST') {
     tamperNext = true;
     return send(res, 200, { ok: true });
@@ -271,8 +276,10 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       }
       return send(res, 200, built);
     }
-    if (step === 'report')
+    if (step === 'report') {
+      reports.push(legId);
       return send(res, 200, await api.reportLeg(id, legId, (await read(req)) as never));
+    }
     return send(res, 200, await api.cancelLeg(id, legId));
   }
   return send(res, 404, { error: 'Route not found' });

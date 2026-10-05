@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import { GuardRefusal } from '@colosseum/sdk';
+import { deploymentsOf, GuardRefusal } from '@colosseum/sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { dictionary } from '../../i18n';
 import { json } from '../wallet/test/fake-port';
 import { formatBps, formatRaw, shortfallBps } from './amounts';
 import { placeOrder, readFunding, readOrder } from './order-api';
+import { checkDeposit, depositRawOf } from './order-check';
 import { keepOrder, recallOrder } from './order-record';
 import { outcomeView, refusalKind, stepOf } from './order-view';
 import { recallPlan, rememberPlan } from './plan-store';
@@ -21,6 +22,7 @@ import {
   recordOf,
   USER,
 } from './test/fixtures';
+import { unitsFor } from './units';
 
 // The pieces of the plan, buy and order screens that decide something without a screen: what a raw
 // amount reads as, what a vault holds, what this browser keeps and gives back, which chains can be
@@ -305,5 +307,62 @@ describe('what the order screen says about each answer of the executor', () => {
     expect(view({ status: 'not-runnable', why: 'no-deployment' }).sentence).toBe(
       en.order.outcome.notRunnable['no-deployment']('Solana'),
     );
+  });
+});
+
+describe('an order holds the amount the person typed, in committed units', () => {
+  const units = unitsFor('solana', false);
+
+  it('reads the cash token from the deploy record, the same one the guard derives from', () => {
+    expect(units?.cash).toBe(deploymentsOf('testnet').solana?.cash);
+    expect(units?.tokens[units.cash]).toEqual({ symbol: 'tUSDC', decimals: 6 });
+    expect(units?.tokens['solana:spyx']).toEqual({ symbol: 'tSPYx', decimals: 8 });
+    expect(unitsFor('solana', true)?.cash).toBe(deploymentsOf('mock').solana?.cash);
+    expect(unitsFor('robinhood', true)?.cash).toBe(deploymentsOf('mock').robinhood?.cash);
+    expect(unitsFor('robinhood', false)).toBeNull();
+  });
+
+  it('passes an order that deposits the amount, and whose steps stay within it', () => {
+    expect(depositRawOf(10, 6)).toBe(10_000_000n);
+    expect(depositRawOf(12.34, 6)).toBe(12_340_000n);
+    expect(checkDeposit(orderOn(), 10, units)).toEqual({
+      ok: true,
+      depositRaw: 10_000_000n,
+      decimals: 6,
+    });
+  });
+
+  it('refuses the review’s hostile answer: $40 typed, 40,000 dollars of cash deposited', () => {
+    const order = orderOn();
+    const hostile = {
+      ...order,
+      depositRaw: '40000000000',
+      legs: order.legs.map((l) => (l.cashRaw ? { ...l, cashRaw: '40000000000' } : l)),
+    };
+    expect(checkDeposit(hostile, 40, units)).toEqual({ ok: false, why: 'deposit' });
+    // read at the record's 6 decimals, that deposit is what a buy of $40,000 moves
+    expect(checkDeposit(hostile, 40_000, units)).toEqual({
+      ok: true,
+      depositRaw: 40_000_000_000n,
+      decimals: 6,
+    });
+  });
+
+  it('refuses a step about another amount, a trade that overspends, and a chain with no units', () => {
+    const order = orderOn();
+    const leg = (i: number, over: object) => ({
+      ...order,
+      legs: order.legs.map((l, j) => (j === i ? { ...l, ...over } : l)),
+    });
+    expect(checkDeposit(leg(0, { cashRaw: '1' }), 10, units)).toEqual({ ok: false, why: 'steps' });
+    const trade = (amountInRaw: string, sell = 'solana:usdc') =>
+      leg(1, { trades: [{ sell, buy: 'solana:spyx', amountInRaw }] });
+    expect(checkDeposit(trade('10000001'), 10, units)).toEqual({ ok: false, why: 'steps' });
+    expect(checkDeposit(trade('1', 'solana:gldx'), 10, units)).toEqual({ ok: false, why: 'steps' });
+    expect(checkDeposit({ ...order, depositRaw: undefined }, 10, units)).toEqual({
+      ok: false,
+      why: 'deposit',
+    });
+    expect(checkDeposit(order, 10, null)).toEqual({ ok: false, why: 'units' });
   });
 });

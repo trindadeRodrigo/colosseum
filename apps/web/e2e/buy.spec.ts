@@ -11,11 +11,9 @@ import { dictionary } from '../i18n';
 
 const en = dictionary('en');
 const STUB = 'http://localhost:3901';
-/** Where the screenshots go: the folder a run names, or the test's own output folder. */
-const shot = (name: string) =>
-  process.env.SCREENSHOTS_DIR
-    ? `${process.env.SCREENSHOTS_DIR}/${name}.png`
-    : test.info().outputPath(`${name}.png`);
+/** Screenshots are taken only for a run that names a folder for them (SCREENSHOTS_DIR). */
+const SHOTS = process.env.SCREENSHOTS_DIR;
+const shot = (name: string) => `${SHOTS}/${name}.png`;
 const WIDTHS = [375, 1280] as const;
 const REFERENCE = new URL('../../../.design/branding/working-brand/patterns/', import.meta.url)
   .href;
@@ -42,11 +40,13 @@ async function check(page: Page, name: string) {
     expect(found, `${name}, ${theme}`).toEqual([]);
     const wide = await page.evaluate(() => document.documentElement.scrollWidth);
     expect(wide, `${name}, ${theme}: no sideways scroll`).toBeLessThanOrEqual(375);
-    for (const width of WIDTHS) {
-      await page.setViewportSize({ width, height: 812 });
-      await page.screenshot({ path: shot(`${name}-${width}-${theme}`), fullPage: true });
+    if (SHOTS) {
+      for (const width of WIDTHS) {
+        await page.setViewportSize({ width, height: 812 });
+        await page.screenshot({ path: shot(`${name}-${width}-${theme}`), fullPage: true });
+      }
+      await page.setViewportSize({ width: 375, height: 812 });
     }
-    await page.setViewportSize({ width: 375, height: 812 });
   }
 }
 
@@ -108,6 +108,12 @@ test('a step the server lies about is refused by the guard, and nothing is signe
   const status = page.locator('[data-ui="order-status"]');
   await expect(status).toContainText(en.order.outcome.refused(2), { timeout: 60_000 });
   await expect(status).toContainText(en.order.outcome.check('minimum'));
+  // The wallet was never asked for the refused step: the stub was handed signed bytes for the first
+  // step and for nothing after it.
+  const reported = (await (await page.request.get(`${STUB}/__stub/reports`)).json()) as string[];
+  const legs = await page.locator('[data-ui="order-step"]').count();
+  expect(legs).toBe(4);
+  expect(new Set(reported).size).toBe(1);
   const steps = page.locator('[data-ui="order-step"]');
   await expect(steps.nth(0)).toHaveAttribute('data-status', 'confirmed');
   await expect(steps.nth(1)).not.toHaveAttribute('data-status', 'confirmed');
@@ -116,6 +122,7 @@ test('a step the server lies about is refused by the guard, and nothing is signe
 });
 
 test('the guide and the prototype, photographed beside the screens', async ({ page }) => {
+  test.skip(!SHOTS, 'only when SCREENSHOTS_DIR names a folder');
   // What each screen is held to (guidelines.html, components and provenance; the prototype's plan
   // pane), at the same widths and in both themes, for the report that compares them.
   for (const width of WIDTHS)

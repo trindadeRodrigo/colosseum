@@ -43,6 +43,9 @@ export function TrustNotice({
     ...(TRUST_STATUS.issuersCanFreeze ? [t.trust.issuers] : []),
     ...(TRUST_STATUS.usPersons === 'blocked' ? [t.trust.notUnitedStates] : []),
     ...(TRUST_STATUS.passkeyLoss ? [t.trust.passkey] : []),
+    ...(TRUST_STATUS.openChecks.length
+      ? [t.trust.openChecks(TRUST_STATUS.openChecks.map((c) => t.trust.checks[c]).join('; '))]
+      : []),
   ];
   return (
     <div data-ui="trust-notice">

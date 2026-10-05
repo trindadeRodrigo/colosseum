@@ -183,7 +183,6 @@ export function recordOf(chain: ChainId = 'solana', over: Partial<OrderRecord> =
     chain,
     amountUsd: 10,
     lines: linesOn(chain),
-    cash: { symbol: 'USDC', decimals: 6 },
     approved: null,
     ...over,
   };

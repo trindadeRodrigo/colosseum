@@ -402,7 +402,7 @@ export function GoalScreen() {
               {build.kind === 'built' && (
                 <Link
                   href={`/plan/${encodeURIComponent(build.id)}`}
-                  className={buttonClass({ variant: 'primary' })}
+                  className={buttonClass({ variant: 'link' })}
                 >
                   {t.goal.built.done.see}
                 </Link>

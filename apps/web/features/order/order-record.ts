@@ -35,8 +35,6 @@ export type OrderRecord = {
   chain: ChainId;
   amountUsd: number;
   lines: BasketLine[];
-  /** The chain's cash token as the funding read named it, to show amounts in. Display only. */
-  cash: { symbol: string; decimals: number } | null;
   approved: ApprovedOrder | null;
 };
 
@@ -58,11 +56,6 @@ function readRecord(value: unknown): OrderRecord | null {
     !(r.amountUsd > 0)
   )
     return null;
-  const c = (typeof r.cash === 'object' ? r.cash : null) as Record<string, unknown> | null;
-  const cash =
-    c && text(c.symbol) && Number.isInteger(c.decimals) && (c.decimals as number) >= 0
-      ? { symbol: c.symbol, decimals: c.decimals as number }
-      : null;
   let approved: ApprovedOrder | null = null;
   if (r.approved !== null) {
     const a = (typeof r.approved === 'object' ? r.approved : null) as Record<
@@ -81,7 +74,6 @@ function readRecord(value: unknown): OrderRecord | null {
     chain: chain.data,
     amountUsd: r.amountUsd,
     lines: lines.data,
-    cash,
     approved,
   };
 }

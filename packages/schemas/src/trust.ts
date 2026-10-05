@@ -37,6 +37,24 @@ export const TRUST_STATUS = {
   usPersons: 'blocked',
   /** A passkey that is lost and not synced loses the wallet it opens. */
   passkeyLoss: true,
+  /**
+   * The checks of tier 2 (DESIGN-VAULT section 13) not yet run and recorded. Each leaves the notice when
+   * docs/vault/SECURITY.md records it run; A1 and A11 on a replayed route are done for the owner's swap
+   * (Oct 3) and are not listed.
+   */
+  openChecks: [
+    'evm_invariants',
+    'solana_sequences',
+    'static_analysis',
+    'robinhood_fork',
+    'second_rehearsal',
+  ] as readonly (
+    | 'evm_invariants'
+    | 'solana_sequences'
+    | 'static_analysis'
+    | 'robinhood_fork'
+    | 'second_rehearsal'
+  )[],
   /** Set during an incident (docs/INCIDENT.md): a banner, and reads and withdrawals only. */
   incident: null as null | { since: string; text: string },
 } as const;

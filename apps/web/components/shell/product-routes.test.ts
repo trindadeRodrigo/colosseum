@@ -298,7 +298,7 @@ describe('rule 3: no screen can reach a key', () => {
 
   /**
    * The files that import packages/sdk: the runner, which calls `execute`; readiness.ts, which reads
-   * the committed deployments; and order-view.ts, for the types of the runner's answers.
+   * the committed deployments. (order-view.ts takes the runner's answer types from run-order.ts.)
    */
   const SDK_FILES = [RUNNER, 'features/order/readiness.ts'];
   const SDK = '@colosseum/sdk';

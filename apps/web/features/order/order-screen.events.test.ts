@@ -10,7 +10,7 @@ import {
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buttonClass } from '../../components/ui/button-class';
-import { click, mount, settle, unmountAll } from '../../components/ui/test/dom';
+import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary } from '../../i18n';
@@ -129,9 +129,10 @@ describe('the review', () => {
     const steps = [...host.querySelectorAll('[data-ui="order-step"]')].map((s) => s.textContent);
     expect(steps).toHaveLength(2);
     expect(steps[0]).toContain(en.order.kind.create_vault);
-    expect(steps[0]).toContain('10 USDC');
-    expect(steps[1]).toContain(en.order.review.spend('6 USDC', 'spyx'));
-    expect(steps[1]).toContain(en.order.review.atLeast('990000', 'spyx'));
+    // in whole units, with the symbols the test network's deploy recorded
+    expect(steps[0]).toContain('10 tUSDC');
+    expect(steps[1]).toContain(en.order.review.spend('6 tUSDC', 'spyx'));
+    expect(steps[1]).toContain(en.order.review.atLeastWhole('0.0099 tSPYx'));
     expect(steps[1]).toContain(en.order.review.under('1%'));
     expect(label(primary(host))).toBe(en.order.signAndBuy('$10'));
     // on a test network: the plate, the hatch and the words, together
@@ -188,6 +189,61 @@ describe('the review', () => {
       'https://explorer.example/tx/sig1?cluster=devnet',
     ]);
     expect(host.querySelector('[data-variant="primary"]')).toBeNull();
+  });
+});
+
+describe('an order that does not move what the person asked for', () => {
+  /** The review's hostile answer: a buy of $40, and an order that deposits 40,000 dollars of cash. */
+  function hostile(): OrderDetail {
+    const order = orderOn();
+    return {
+      ...order,
+      depositRaw: '40000000000',
+      legs: order.legs.map((leg) =>
+        leg.cashRaw === undefined ? leg : { ...leg, cashRaw: '40000000000' },
+      ),
+    };
+  }
+
+  it('shows the deposit the order states, in committed units, and offers nothing to sign', async () => {
+    api(hostile());
+    seed(recordOf('solana', { amountUsd: 40 }));
+    const host = await screen();
+    expect(host.querySelector('[data-ui="stat"]')?.textContent).toContain('40,000 tUSDC');
+    expect(host.querySelector('[data-variant="primary"]')).toBeNull();
+    expect(host.textContent).not.toContain(en.order.signAndBuy('$40'));
+    expect(find(host, '[role="alert"]').textContent).toBe(en.order.mismatch.deposit);
+    expect(run.calls).toHaveLength(0);
+  });
+
+  it('runs nothing after a reload either, whatever was kept as approved', async () => {
+    api(hostile());
+    seed(
+      recordOf('solana', {
+        amountUsd: 40,
+        approved: { order: hostile(), consents: [], at: '2026-10-05T12:00:00Z' },
+      }),
+    );
+    const host = await screen();
+    expect(host.querySelector('[data-variant="primary"]')).toBeNull();
+    expect(run.calls).toHaveLength(0);
+  });
+
+  it('offers nothing when a step moves more cash than the deposit', async () => {
+    const order = orderOn();
+    const greedy = {
+      ...order,
+      legs: order.legs.map((leg) =>
+        leg.kind === 'swap'
+          ? { ...leg, trades: leg.trades.map((t) => ({ ...t, amountInRaw: '20000000' })) }
+          : leg,
+      ),
+    };
+    api(greedy);
+    seed();
+    const host = await screen();
+    expect(host.querySelector('[data-variant="primary"]')).toBeNull();
+    expect(find(host, '[role="alert"]').textContent).toBe(en.order.mismatch.steps);
   });
 });
 
@@ -332,7 +388,7 @@ describe('what a run is handed after a reload', () => {
     expect(run.calls[0]?.order).toEqual(approved);
   });
 
-  it('shows the order and signs nothing when this browser does not have its plan', async () => {
+  it('says the order was made elsewhere, and signs nothing, when this browser does not have its plan', async () => {
     api(orderOn());
     const host = await screen();
     expect(host.textContent).toContain(en.order.elsewhere);
@@ -347,10 +403,9 @@ describe('a chain that is not ready', () => {
     api(orderOn('robinhood'), 'robinhood');
     seed(recordOf('robinhood'));
     const host = await screen();
-    await click(primary(host));
-    await settle();
+    expect(host.querySelector('[data-variant="primary"]')).toBeNull();
     expect(run.calls).toHaveLength(0);
-    expect(status(host)).toContain(
+    expect(find(host, '[role="alert"]').textContent).toBe(
       en.order.outcome.notRunnable['no-deployment']('Robinhood Chain'),
     );
   });

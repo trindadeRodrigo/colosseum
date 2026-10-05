@@ -129,7 +129,6 @@ export function BuyScreen({ id }: { id: string }) {
       chain,
       amountUsd: amount,
       lines: plan.proposal.lines,
-      cash: read ? { symbol: read.cash.symbol, decimals: read.cash.decimals } : null,
       approved: null,
     });
     if (!kept) {

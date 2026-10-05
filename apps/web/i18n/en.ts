@@ -390,6 +390,15 @@ export const en = {
     notUnitedStates: 'This product isn’t for people in the United States.',
     passkey:
       'A passkey that is lost and not synced to another device loses the wallet it opens. Add a second way in once you have deposited.',
+    openChecks: (list: string) =>
+      `Checks not run yet, so their findings are not in this notice: ${list}.`,
+    checks: {
+      evm_invariants: 'the vault contracts’ invariants under hostile callers',
+      solana_sequences: 'random sequences of the Solana program’s instructions',
+      static_analysis: 'static analysis of the programs and contracts',
+      robinhood_fork: 'a run on a copy of Robinhood Chain',
+      second_rehearsal: 'a second rehearsal on mainnet with the admin key',
+    },
     accept: 'I’ve read this and I accept it',
     accepted: 'You’ve accepted this notice in this browser.',
   },
@@ -479,6 +488,7 @@ export const en = {
       spend: (amount: string, asset: string) => `Spend ${amount} on ${asset}`,
       atLeast: (amount: string, asset: string) =>
         `receive at least ${amount} of ${asset}, in its smallest units`,
+      atLeastWhole: (amount: string) => `receive at least ${amount}`,
       under: (pct: string) => `${pct} under the quote`,
       noTrades: 'No trade in this step.',
       warnings: 'Our server warns',
@@ -489,6 +499,14 @@ export const en = {
         new_asset: 'Accept a version of the portfolio with an asset you don’t hold yet.',
       },
       consentNeeded: 'Tick each agreement above to continue.',
+    },
+    mismatch: {
+      units:
+        'I can’t check this order’s amounts: this app has no record of the cash token on this network. Nothing will be signed.',
+      deposit:
+        'This order doesn’t deposit the amount you asked for, so I won’t offer to sign it. Nothing was signed. Make a new order, and tell us if it happens again.',
+      steps:
+        'A step of this order moves another amount of cash than its deposit, so I won’t offer to sign it. Nothing was signed. Make a new order, and tell us if it happens again.',
     },
     signAndBuy: (amount: string) => `Sign and buy ${amount}`,
     resume: (amount: string) => `Continue the buy of ${amount}`,

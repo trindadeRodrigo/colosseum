@@ -382,6 +382,15 @@ export const pt: Dictionary = {
     notUnitedStates: 'Este produto não é para pessoas nos Estados Unidos.',
     passkey:
       'Uma chave de acesso perdida e não sincronizada com outro aparelho perde a carteira que ela abre. Adicione uma segunda forma de entrar depois do primeiro depósito.',
+    openChecks: (list: string) =>
+      `Verificações ainda não feitas, então o que elas encontrarem não está neste aviso: ${list}.`,
+    checks: {
+      evm_invariants: 'as invariantes dos contratos dos cofres sob chamadas hostis',
+      solana_sequences: 'sequências aleatórias das instruções do programa na Solana',
+      static_analysis: 'a análise estática dos programas e contratos',
+      robinhood_fork: 'uma execução numa cópia da Robinhood Chain',
+      second_rehearsal: 'um segundo ensaio na rede principal com a chave de administração',
+    },
     accept: 'Li e aceito',
     accepted: 'Você aceitou este aviso neste navegador.',
   },
@@ -477,6 +486,7 @@ export const pt: Dictionary = {
       spend: (amount: string, asset: string) => `Gastar ${amount} em ${asset}`,
       atLeast: (amount: string, asset: string) =>
         `receber pelo menos ${amount} de ${asset}, em suas menores unidades`,
+      atLeastWhole: (amount: string) => `receber pelo menos ${amount}`,
       under: (pct: string) => `${pct} abaixo da cotação`,
       noTrades: 'Nenhuma negociação neste passo.',
       warnings: 'Nosso servidor avisa',
@@ -487,6 +497,14 @@ export const pt: Dictionary = {
         new_asset: 'Aceitar uma versão do portfólio com um ativo que você ainda não tem.',
       },
       consentNeeded: 'Marque cada concordância acima para continuar.',
+    },
+    mismatch: {
+      units:
+        'Não consigo conferir os valores desta ordem: este app não tem registro do dinheiro nesta rede. Nada será assinado.',
+      deposit:
+        'Esta ordem não deposita o valor que você pediu, então não vou oferecer a assinatura. Nada foi assinado. Crie uma nova ordem e avise a gente se acontecer de novo.',
+      steps:
+        'Um passo desta ordem move outro valor em dinheiro que não o do depósito, então não vou oferecer a assinatura. Nada foi assinado. Crie uma nova ordem e avise a gente se acontecer de novo.',
     },
     signAndBuy: (amount: string) => `Assinar e comprar ${amount}`,
     resume: (amount: string) => `Continuar a compra de ${amount}`,

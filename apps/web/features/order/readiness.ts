@@ -8,9 +8,10 @@ import { publicWalletEnv, walletChains } from '../wallet/chains';
 // with no change here. The order runner reads the deployments it hands the executor from here too.
 
 /**
- * The network a chain's deployment is read for. `mock` when the chain runs on the mock: the API says
- * so, or the wallet is the throwaway one of development. Otherwise this app's own
- * `NEXT_PUBLIC_CHAIN_NETWORK_<CHAIN>`, never the API's word.
+ * The network a chain's deployment is read for. Every real network is this app's own
+ * `NEXT_PUBLIC_CHAIN_NETWORK_<CHAIN>`, never the API's word. The one thing the API's word can choose is
+ * the mock's file (with the throwaway wallet of development, the caller says `mock` too): its
+ * transactions are no chain's, and a real wallet refuses to sign them (features/wallet/port.ts).
  */
 export function networkFor(
   chain: ChainId,
