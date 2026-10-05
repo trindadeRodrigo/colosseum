@@ -1,11 +1,14 @@
+import { randomBytes } from 'node:crypto';
 import {
   closeSync,
   existsSync,
   fsyncSync,
+  linkSync,
   mkdirSync,
   openSync,
   readFileSync,
   renameSync,
+  statSync,
   unlinkSync,
   writeSync,
 } from 'node:fs';
@@ -106,41 +109,145 @@ const alive = (pid: number) => {
   }
 };
 
+/** A lock with no process id in it (cut short by a crash) counts as held until it is this old. */
+export const UNREADABLE_LOCK_MS = 30_000;
+
+type Token = { raw: string; pid: number; ageMs: number };
+
+/** What a lock file says, or null when there is none. */
+function readToken(path: string): Token | null {
+  try {
+    const raw = readFileSync(path, 'utf8');
+    const pid = Number(raw.trim().split(/\s+/)[0]);
+    return { raw, pid, ageMs: Date.now() - statSync(path).mtimeMs };
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw e;
+  }
+}
+
+/** Gone: its process is not running, or is this one (a reused pid, as pid 1 after a restart). */
+function stale(t: Token): boolean {
+  if (Number.isInteger(t.pid) && t.pid > 0) return t.pid === process.pid || !alive(t.pid);
+  return t.ageMs > UNREADABLE_LOCK_MS;
+}
+
+/** The locks this process holds: asked for again, they are refused, not taken for a reused pid's. */
+const heldHere = new Set<string>();
+
+const unique = (path: string, tag: string) =>
+  `${path}.${process.pid}.${randomBytes(6).toString('hex')}.${tag}`;
+
 /**
- * Takes the state file for this process: `<file>.lock`, created only if it does not exist, holding the
- * process id. Refuses while a live process holds it. A lock whose process is gone is taken over, and
- * `log` says so. The answer releases it; it is also released when the process exits.
+ * Creates `path` holding `token`, whole, or answers false if it exists: the token is written to a file
+ * of its own, flushed, and hard-linked into place, so `path` is never seen empty.
+ */
+function claim(path: string, token: string): boolean {
+  const tmp = unique(path, 'new');
+  const fd = openSync(tmp, 'wx', 0o600);
+  try {
+    writeSync(fd, token);
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  try {
+    linkSync(tmp, path);
+    return true;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'EEXIST') return false;
+    throw e;
+  } finally {
+    unlinkSync(tmp);
+  }
+}
+
+/**
+ * Moves aside the stale `path` that was read as `seen` and removes it. If what was moved is not what was
+ * read (another process replaced it meanwhile), it is put back and the answer is false.
+ */
+function removeStale(path: string, seen: Token): boolean {
+  const aside = unique(path, 'stale');
+  try {
+    renameSync(path, aside);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return true;
+    throw e;
+  }
+  const moved = readToken(aside);
+  if (moved?.raw === seen.raw) {
+    unlinkSync(aside);
+    return true;
+  }
+  try {
+    linkSync(aside, path);
+  } catch {
+    // Something else holds `path` now; it is refused below either way.
+  }
+  unlinkSync(aside);
+  return false;
+}
+
+/** Releases `path` if it still holds `token`. */
+function drop(path: string, token: string) {
+  try {
+    if (readFileSync(path, 'utf8') === token) unlinkSync(path);
+  } catch {
+    // Already gone.
+  }
+}
+
+/**
+ * Takes the state file for this process: `<file>.lock`, holding the process id, its start time and a
+ * nonce, created whole by a hard link and only if it does not exist. Refuses while a live process holds
+ * it, or while one is taking over a stale lock. A lock whose process is gone (or is this pid, reused) is
+ * taken over, and `log` says so: under a second lock, `<file>.lock.takeover`, taken the same way, the
+ * stale lock is moved aside and checked to be the one that was read before it is removed. Only the
+ * process holding the takeover removes a lock that is not its own. The answer releases it; it is also
+ * released when the process exits.
  */
 export function lockState(file: string, log: (line: string) => void = () => {}): () => void {
   mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
   const lock = `${file}.lock`;
-  for (let attempt = 0; ; attempt++) {
+  const takeover = `${lock}.takeover`;
+  const token = `${process.pid} ${new Date().toISOString()} ${randomBytes(8).toString('hex')}\n`;
+  const refuse = (t: Token | null) =>
+    new Error(
+      t && Number.isInteger(t.pid) && t.pid > 0
+        ? `another keeper (process ${t.pid}) holds ${lock}`
+        : `another keeper holds ${lock}`,
+    );
+
+  if (heldHere.has(lock)) throw refuse({ raw: '', pid: process.pid, ageMs: 0 });
+  if (!claim(lock, token)) {
+    const holder = readToken(lock);
+    if (holder && !stale(holder)) throw refuse(holder);
+    if (!claim(takeover, token)) {
+      const other = readToken(takeover);
+      if (other && !stale(other)) throw new Error(`another keeper is taking over ${lock}`);
+      // Its process died during a takeover: that lock is moved aside the same way, and taken once.
+      if (other && !removeStale(takeover, other))
+        throw new Error(`another keeper is taking over ${lock}`);
+      if (!claim(takeover, token)) throw new Error(`another keeper is taking over ${lock}`);
+    }
     try {
-      const fd = openSync(lock, 'wx', 0o600);
-      writeSync(fd, String(process.pid));
-      closeSync(fd);
-      break;
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'EEXIST' || attempt > 0) throw e;
-      const holder = Number(readFileSync(lock, 'utf8').trim());
-      if (Number.isInteger(holder) && holder > 0 && alive(holder))
-        throw new Error(`another keeper (process ${holder}) holds ${lock}`);
-      // Removed only if it still names the dead holder, so a keeper that took it meanwhile keeps it.
-      if (readFileSync(lock, 'utf8').trim() !== String(holder || ''))
-        throw new Error(`another keeper took ${lock} meanwhile`);
-      log(`taking over ${lock}: its process ${holder || '(none)'} is gone`);
-      unlinkSync(lock);
+      // Read again under the takeover: the lock may have been released or taken meanwhile.
+      const seen = readToken(lock);
+      if (seen && !stale(seen)) throw refuse(seen);
+      if (seen && !removeStale(lock, seen)) throw refuse(readToken(lock));
+      if (seen) log(`taking over ${lock}: its process ${seen.pid || '(none)'} is gone`);
+      if (!claim(lock, token)) throw refuse(readToken(lock));
+    } finally {
+      drop(takeover, token);
     }
   }
+  heldHere.add(lock);
   let held = true;
   const release = () => {
     if (!held) return;
     held = false;
-    try {
-      if (readFileSync(lock, 'utf8').trim() === String(process.pid)) unlinkSync(lock);
-    } catch {
-      // Already gone.
-    }
+    heldHere.delete(lock);
+    drop(lock, token);
   };
   process.once('exit', release);
   return release;

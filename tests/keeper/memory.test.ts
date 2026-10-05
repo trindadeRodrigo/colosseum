@@ -1,10 +1,17 @@
 import { type ChildProcess, execFile, spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
-import { lockState, newMemory, saveMemory } from '../../apps/keeper/src/memory';
+import { lockState, newMemory, saveMemory, UNREADABLE_LOCK_MS } from '../../apps/keeper/src/memory';
 
 // The state file belongs to one keeper at a time: two that each wrote back their own memory would
 // send a leg twice and drop each other's in-flight and reverted legs.
@@ -15,6 +22,9 @@ const children: ChildProcess[] = [];
 afterEach(() => {
   for (const c of children.splice(0)) c.kill();
 });
+
+/** What a lock taken by this process holds: its id, its start time, a nonce. */
+const mine = new RegExp(`^${process.pid} \\d{4}-\\d\\d-\\d\\dT[\\d:.]+Z [0-9a-f]{16}\\n$`);
 
 /** Another process asking for the same state file, as a second `keeper --once` would at start. */
 async function secondKeeper(file: string): Promise<string> {
@@ -28,7 +38,7 @@ describe("the keeper's state file", () => {
   it('refuses a second process while the first holds it, and lets one in once it is released', async () => {
     const file = stateFile();
     const release = lockState(file);
-    expect(readFileSync(`${file}.lock`, 'utf8')).toBe(String(process.pid));
+    expect(readFileSync(`${file}.lock`, 'utf8')).toMatch(mine);
     expect(await secondKeeper(file)).toBe(
       `another keeper (process ${process.pid}) holds ${file}.lock`,
     );
@@ -51,9 +61,77 @@ describe("the keeper's state file", () => {
     const said: string[] = [];
     const release = lockState(file, (line) => said.push(line));
     expect(said).toEqual([`taking over ${file}.lock: its process ${other.pid} is gone`]);
-    expect(readFileSync(`${file}.lock`, 'utf8')).toBe(String(process.pid));
+    expect(readFileSync(`${file}.lock`, 'utf8')).toMatch(mine);
     release();
   });
+
+  it('holds a lock with no process id in it until it is old, then takes it over', () => {
+    const file = stateFile();
+    writeFileSync(`${file}.lock`, '');
+    expect(() => lockState(file)).toThrow(`another keeper holds ${file}.lock`);
+    const old = (Date.now() - UNREADABLE_LOCK_MS - 1_000) / 1_000;
+    utimesSync(`${file}.lock`, old, old);
+    const said: string[] = [];
+    const release = lockState(file, (line) => said.push(line));
+    expect(said).toEqual([`taking over ${file}.lock: its process (none) is gone`]);
+    release();
+  });
+
+  it("takes over a lock that names this process's own id, which a restart can reuse", () => {
+    const file = stateFile();
+    writeFileSync(`${file}.lock`, `${process.pid} 2026-10-01T00:00:00.000Z 0000\n`);
+    const said: string[] = [];
+    const release = lockState(file, (line) => said.push(line));
+    expect(said).toEqual([`taking over ${file}.lock: its process ${process.pid} is gone`]);
+    expect(readFileSync(`${file}.lock`, 'utf8')).toMatch(mine);
+    release();
+  });
+
+  it('lets exactly one of six keepers started at once hold the file, in every trial', async () => {
+    // The review's race: starters asking at the same moment, with no lock, a lock whose process is
+    // gone, or a lock left empty long ago. Before the lock was linked into place whole, a starter could
+    // read it empty, take it for stale and take it too.
+    const dir = mkdtempSync(join(tmpdir(), 'keeper-race-'));
+    const dead = spawn('true');
+    await new Promise((resolve) => dead.once('exit', resolve));
+    const trials = 30;
+    const old = (Date.now() - UNREADABLE_LOCK_MS - 60_000) / 1_000;
+    for (let t = 0; t < trials; t++) {
+      mkdirSync(join(dir, `t${t}`));
+      const lock = join(dir, `t${t}`, 'state.json.lock');
+      if (t % 3 === 1) writeFileSync(lock, String(dead.pid));
+      if (t % 3 === 2) {
+        writeFileSync(lock, '');
+        utimesSync(lock, old, old);
+      }
+    }
+    const startAt = Date.now() + 15_000;
+    const slotMs = 300;
+    const starter = join(process.cwd(), 'tests/keeper/lock-starter.ts');
+    const outputs = await Promise.all(
+      Array.from({ length: 6 }, () =>
+        run(
+          'pnpm',
+          ['exec', 'tsx', starter, dir, String(startAt), String(slotMs), String(trials)],
+          {
+            cwd: process.cwd(),
+          },
+        ).then((r) => r.stdout.trim().split('\n')),
+      ),
+    );
+    const lines = outputs.flat();
+    const holders = Array.from(
+      { length: trials },
+      (_, t) => lines.filter((l) => l === `${t} took`).length,
+    );
+    const asked = Array.from(
+      { length: trials },
+      (_, t) => lines.filter((l) => l.startsWith(`${t} `) && !l.endsWith('late')).length,
+    );
+    expect(holders).toEqual(Array(trials).fill(1));
+    // A race only if they asked together: nearly every starter in nearly every trial.
+    expect(asked.reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(trials * 5);
+  }, 120_000);
 
   it('writes the memory whole, and leaves no file beside it', () => {
     const file = stateFile();
