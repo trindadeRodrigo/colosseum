@@ -163,7 +163,10 @@ export async function assertNode(
     timer = setTimeout(
       () =>
         reject(
-          new ChainError('Unavailable', `the Solana RPC did not say its network in ${timeoutMs} ms`),
+          new ChainError(
+            'Unavailable',
+            `the Solana RPC did not say its network in ${timeoutMs} ms`,
+          ),
         ),
       timeoutMs,
     );
