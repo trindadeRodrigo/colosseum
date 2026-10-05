@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import {
   type Address,
@@ -14,7 +14,7 @@ import {
   retryOn429,
   rpcChain,
 } from './src/testnet/chain';
-import { copyRound, type Entry, loadSources, readPrices, roundLine } from './src/testnet/prices';
+import { copyRound, loadSources, readPrices, roundLine } from './src/testnet/prices';
 import type { Deployment } from './src/testnet/setup';
 
 // Copies real prices onto the Solana test network's price account (TNET-5). Run it from the repo root:
@@ -26,8 +26,8 @@ import type { Deployment } from './src/testnet/setup';
 //   --loop                 a round every --interval seconds (default 30) until stopped
 //   --dry-run              read and print what would be written; send nothing
 //   --interval <s>         seconds between rounds in --loop
-//   --max-jump-bps <bps>   refuse a value further than this from the last one copied (default 1000)
-//   --state <file>         keep the last copied values here, so --max-jump-bps holds across restarts
+//   --max-jump-bps <bps>   refuse a value further than this from what devnet holds, per hour since
+//                          devnet's entry was stamped (default 1000; at least an hour's worth, at most 5000)
 //   --record <file>        the deployment record (default deployments/solana-devnet.json)
 //
 // MAINNET_RPC_URL is read only (default https://api.mainnet-beta.solana.com): the source must answer
@@ -71,34 +71,6 @@ function readOnly(url: string) {
   };
 }
 
-type Saved = Record<string, { value: string; exponent: string; unixTimestamp: string }>;
-
-function loadState(path: string | undefined): Map<string, Entry> {
-  if (!path || !existsSync(path)) return new Map();
-  const saved: Saved = JSON.parse(readFileSync(path, 'utf8'));
-  return new Map(
-    Object.entries(saved).map(([key, e]) => [
-      key,
-      {
-        value: BigInt(e.value),
-        exponent: BigInt(e.exponent),
-        unixTimestamp: BigInt(e.unixTimestamp),
-      },
-    ]),
-  );
-}
-
-function saveState(path: string | undefined, last: Map<string, Entry>): void {
-  if (!path) return;
-  const saved: Saved = Object.fromEntries(
-    [...last].map(([key, e]) => [
-      key,
-      { value: `${e.value}`, exponent: `${e.exponent}`, unixTimestamp: `${e.unixTimestamp}` },
-    ]),
-  );
-  writeFileSync(path, `${JSON.stringify(saved, null, 2)}\n`);
-}
-
 async function main(): Promise<void> {
   const once = flag('--once');
   const loop = flag('--loop');
@@ -128,8 +100,6 @@ async function main(): Promise<void> {
     );
   const writer = await keypairFromFile(need('SOLANA_PRICE_WRITER_KEYPAIR'));
   const sources = loadSources();
-  const statePath = value('--state');
-  const last = loadState(statePath);
   log(
     `copying mainnet prices onto ${cluster} as ${writer.address}; ${loop ? `every ${interval} s` : 'once'}${dryRun ? '; dry run: nothing is sent' : ''}; provenance sandbox`,
   );
@@ -146,11 +116,9 @@ async function main(): Promise<void> {
       const result = await copyRound(chain, writer, deployment, readings, {
         dryRun,
         maxJumpBps,
-        last,
         log,
       });
       log(roundLine(new Date(), round, result, dryRun));
-      if (!dryRun) saveState(statePath, last);
     } catch (error) {
       // A round that fails is logged and the next one tries again: a node that is down for a minute
       // is no reason to stop.

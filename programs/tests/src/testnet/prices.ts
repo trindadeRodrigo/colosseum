@@ -117,7 +117,6 @@ const older = (a: bigint, b: bigint) => (a < b ? a : b);
 
 const RAYDIUM_CLMM = 'CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK';
 const ORCA_WHIRLPOOL = 'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc';
-const CLOCK = address('SysvarC1ock11111111111111111111111111111111');
 /** A pool's mid is written with this many decimal places. */
 const POOL_EXPONENT = 8n;
 
@@ -138,46 +137,48 @@ function poolSide(data: Uint8Array, owner: string) {
       mint0: decoder.decode(data.slice(73, 105)),
       mint1: decoder.decode(data.slice(105, 137)),
       sqrtX64: u128At(data, 253),
+      updatedAt: 0n,
     };
   if (owner === ORCA_WHIRLPOOL && data.length === 653)
     return {
       mint0: decoder.decode(data.slice(101, 133)),
       mint1: decoder.decode(data.slice(181, 213)),
       sqrtX64: u128At(data, 65),
+      /** `reward_last_updated_timestamp`: moved by every swap and every change of liquidity. */
+      updatedAt: u64At(data, 261),
     };
   throw new Error(
     `${owner} is neither a Raydium CLMM pool nor an Orca Whirlpool of the expected size`,
   );
 }
 
-/** The mid of a token's USDC pool, checked against a second pool, stamped with mainnet's clock at
- * the read. The pool keeps no average: the same mid stands as the average entry. */
+/** The mid of a token's USDC pool, checked against an Orca Whirlpool of the pair and stamped with
+ * that pool's own last update, so the price goes stale when the pool does. The pool keeps no
+ * average: the same mid stands as the average entry. */
 async function poolMid(
   source: Source,
   asset: Extract<SourceAsset, { kind: 'pool-mid' }>,
 ): Promise<{ price: Entry; twap: Entry }> {
-  const [pool, check, clock] = await Promise.all([
+  const [pool, check] = await Promise.all([
     source.account(address(asset.pool)),
     source.account(address(asset.check)),
-    source.account(CLOCK),
   ]);
-  if (!pool || !check || !clock) throw new Error('a pool or the clock is not there');
-  const mids = [pool, check].map((account) => {
+  if (!pool || !check) throw new Error('a pool is not there');
+  if (pool.owner !== RAYDIUM_CLMM || check.owner !== ORCA_WHIRLPOOL)
+    throw new Error('the pool is not a Raydium CLMM pool, or the check is not an Orca Whirlpool');
+  const sides = [pool, check].map((account) => {
     const side = poolSide(account.data, account.owner);
     if (side.mint0 !== asset.mint || side.mint1 !== USDC_MINT)
       throw new Error(
         `a pool is ${side.mint0} against ${side.mint1}, not ${asset.mint} against USDC`,
       );
-    return midOf(side.sqrtX64, asset.decimals);
+    return side;
   });
-  const [mid = 0n, other = 0n] = mids;
+  const [mid = 0n, other = 0n] = sides.map((side) => midOf(side.sqrtX64, asset.decimals));
   const apart = mid > other ? mid - other : other - mid;
   if (mid === 0n || apart * 10_000n > mid * BigInt(asset.maxSpreadBps))
     throw new Error(`the two pools' mids are more than ${asset.maxSpreadBps} bps apart`);
-  const unixTimestamp = new DataView(clock.data.buffer, clock.data.byteOffset).getBigInt64(
-    32,
-    true,
-  );
+  const unixTimestamp = sides[1]?.updatedAt ?? 0n;
   const entry = { value: mid, exponent: POOL_EXPONENT, unixTimestamp };
   return { price: entry, twap: entry };
 }
@@ -219,12 +220,10 @@ export async function readPrices(source: Source, sources: Sources): Promise<Read
       }
       continue;
     }
-    const lending = await source.account(address(asset.lending));
-    if (!lending || lending.owner !== JL_LENDING_PROGRAM) {
-      readings.push({ id, none: `the lending account ${asset.lending} is not Jupiter Lend's` });
-      continue;
-    }
     try {
+      const lending = await source.account(address(asset.lending));
+      if (!lending || lending.owner !== JL_LENDING_PROGRAM)
+        throw new Error(`the lending account ${asset.lending} is not Jupiter Lend's`);
       const { rate, unixTimestamp } = jupiterLendRate(lending.data);
       const times = (dollars: Entry): Entry =>
         scaledEntry(
@@ -249,10 +248,10 @@ export async function readPrices(source: Source, sources: Sources): Promise<Read
 
 export type CopyOptions = {
   dryRun: boolean;
-  /** Refuse a value more than this far from the last value copied for the same entry. */
+  /** Refuse a value further than this from what devnet holds, per hour since devnet's entry was
+   * stamped (at least one hour's worth, at most `MAX_GAP_JUMP_BPS`), so a token that moved while
+   * the copier was stopped is copied when it starts again. */
   maxJumpBps: number;
-  /** The last value copied per entry, by `<id>:price` and `<id>:twap`; updated as values land. */
-  last: Map<string, Entry>;
   log: (line: string) => void;
 };
 
@@ -268,12 +267,17 @@ const micros = (entry: Entry) => (entry.value * 1_000_000n) / 10n ** entry.expon
 const dollars = (entry: Entry) => (Number(entry.value) / 10 ** Number(entry.exponent)).toString();
 const asDollars = (micro: bigint) => (Number(micro) / 1e6).toString();
 
-/** Why an entry must not be written, or null. */
+/** However long the gap, a move above this is refused: the keeper range bounds what is left. */
+export const MAX_GAP_JUMP_BPS = 5_000;
+const PERSISTS =
+  'if it persists, a person checks the source and moves the range (upsert_asset) or --max-jump-bps';
+
+/** Why an entry must not be written, or null. `held` is what devnet holds for the same entry. */
 function refusal(
   what: string,
   entry: Entry,
   range: { min: bigint; max: bigint } | null,
-  last: Entry | undefined,
+  held: Entry,
   now: bigint,
   maxJumpBps: number,
 ): string | null {
@@ -283,12 +287,14 @@ function refusal(
     return `${what} is stamped ${entry.unixTimestamp - now} s ahead of the cluster's clock`;
   const price = micros(entry);
   if (range && (price < range.min || price > range.max))
-    return `${what} ${dollars(entry)} is outside the keeper range ${asDollars(range.min)} to ${asDollars(range.max)}`;
-  if (last) {
-    const before = micros(last);
+    return `${what} ${dollars(entry)} is outside the keeper range ${asDollars(range.min)} to ${asDollars(range.max)}; ${PERSISTS}`;
+  const before = held.value > 0n ? micros(held) : 0n;
+  if (before > 0n) {
+    const hours = Math.max(1, Number(now - held.unixTimestamp) / 3600);
+    const allowed = Math.min(MAX_GAP_JUMP_BPS, Math.round(maxJumpBps * hours));
     const move = price > before ? price - before : before - price;
-    if (before > 0n && move * 10_000n > before * BigInt(maxJumpBps))
-      return `${what} ${dollars(entry)} is more than ${maxJumpBps} bps from the last copied ${dollars(last)}`;
+    if (move * 10_000n > before * BigInt(allowed))
+      return `${what} ${dollars(entry)} is more than ${allowed} bps from the ${dollars(held)} devnet holds; ${PERSISTS}`;
   }
   return null;
 }
@@ -340,7 +346,7 @@ export async function copyRound(
       continue;
     }
     if ('none' in reading) {
-      result.unchanged.push(`${asset.symbol} (no source)`);
+      result.unchanged.push(`${asset.symbol} (no source: ${reading.none})`);
       continue;
     }
     const onChain = entries.find((e) => e.mint === asset.mint);
@@ -361,24 +367,8 @@ export async function copyRound(
       continue;
     }
     const why =
-      (newerPrice &&
-        refusal(
-          'price',
-          reading.price,
-          range,
-          options.last.get(`${asset.id}:price`),
-          now,
-          options.maxJumpBps,
-        )) ||
-      (newerTwap &&
-        refusal(
-          'average',
-          reading.twap,
-          range,
-          options.last.get(`${asset.id}:twap`),
-          now,
-          options.maxJumpBps,
-        ));
+      (newerPrice && refusal('price', reading.price, range, heldPrice, now, options.maxJumpBps)) ||
+      (newerTwap && refusal('average', reading.twap, range, heldTwap, now, options.maxJumpBps));
     if (why) {
       result.refused.push({ id: asset.symbol, why });
       continue;
@@ -410,11 +400,7 @@ export async function copyRound(
       const sent = await chain.send(writer, instructions);
       result.signatures.push(sent.signature);
     }
-    for (const w of batch) {
-      result.written.push(w.symbol);
-      options.last.set(`${w.id}:price`, w.args.price);
-      options.last.set(`${w.id}:twap`, w.args.twap);
-    }
+    for (const w of batch) result.written.push(w.symbol);
   }
   return result;
 }

@@ -40,8 +40,14 @@ const LENDING = address('2vVYHYM8VYnvZqQWpTJSj8o8DBf1wM8pVs3bsTgYZiqJ');
 /** Mainnet as the copier sees it: Scope's account and Jupiter Lend's lending account, made by hand. */
 function fakeMainnet(
   entries: Record<number, Entry>,
-  jl: { rate: bigint; time: bigint },
-  gold?: { raydiumSqrt: bigint; orcaSqrt: bigint; clock: bigint },
+  jl: { rate: bigint; time: bigint; fToken?: string },
+  gold?: {
+    raydiumSqrt: bigint;
+    orcaSqrt: bigint;
+    orcaTime: bigint;
+    raydiumOwner?: string;
+    orcaQuote?: string;
+  },
 ): Source {
   const scope = new Uint8Array(28_712);
   const view = new DataView(scope.buffer);
@@ -56,7 +62,10 @@ function fakeMainnet(
   const lv = new DataView(lending.buffer);
   const encoder = getAddressEncoder();
   lending.set(encoder.encode(address('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')), 8);
-  lending.set(encoder.encode(address('9BEcn9aPEmhSPbPQeFGjidRiEKki46fVQDyPpSQXPA2D')), 40);
+  lending.set(
+    encoder.encode(address(jl.fToken ?? '9BEcn9aPEmhSPbPQeFGjidRiEKki46fVQDyPpSQXPA2D')),
+    40,
+  );
   lv.setBigUint64(115, jl.rate, true);
   lv.setBigUint64(123, jl.time, true);
   const accounts: Record<string, { data: Uint8Array; owner: Address }> = {
@@ -64,28 +73,30 @@ function fakeMainnet(
     [LENDING]: { data: lending, owner: address('jup3YeL8QhtSx1e253b2FDvsMNC87fDrgQZivbrndc9') },
   };
   if (gold) {
-    const pool = (size: number, mintsAt: [number, number], sqrtAt: number, sqrt: bigint) => {
+    const pool = (
+      size: number,
+      mintsAt: [number, number],
+      sqrtAt: number,
+      sqrt: bigint,
+      quote = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+    ) => {
       const data = new Uint8Array(size);
       data.set(encoder.encode(address('Xsv9hRk1z5ystj9MhnA7Lq4vjSsLwzL2nxrwmwtD3re')), mintsAt[0]);
-      data.set(encoder.encode(address('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')), mintsAt[1]);
+      data.set(encoder.encode(address(quote)), mintsAt[1]);
       const dv = new DataView(data.buffer);
       dv.setBigUint64(sqrtAt, sqrt & (2n ** 64n - 1n), true);
       dv.setBigUint64(sqrtAt + 8, sqrt >> 64n, true);
       return data;
     };
-    const clock = new Uint8Array(40);
-    new DataView(clock.buffer).setBigInt64(32, gold.clock, true);
     accounts['78ReVNMLGRWmjtf2HmBoHUe2pRcsctXTTbxJnbhchyze'] = {
       data: pool(1544, [73, 105], 253, gold.raydiumSqrt),
-      owner: address('CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK'),
+      owner: address(gold.raydiumOwner ?? 'CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK'),
     };
+    const orca = pool(653, [101, 181], 65, gold.orcaSqrt, gold.orcaQuote);
+    new DataView(orca.buffer).setBigUint64(261, gold.orcaTime, true);
     accounts['5tGLudhm9pHtqbtfymvdarbD59AyMyYimXXwbFfzETV9'] = {
-      data: pool(653, [101, 181], 65, gold.orcaSqrt),
+      data: orca,
       owner: address('whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc'),
-    };
-    accounts.SysvarC1ock11111111111111111111111111111111 = {
-      data: clock,
-      owner: address('Sysvar1111111111111111111111111111111111111'),
     };
   }
   return {
@@ -108,11 +119,10 @@ describe('the price copier', () => {
   let keeper: KeyPairSigner;
   let writer: KeyPairSigner;
   let deployment: Deployment;
-  const options = (last = new Map<string, Entry>()): CopyOptions => ({
-    dryRun: false,
+  const options = (dryRun = false, log: (line: string) => void = () => {}): CopyOptions => ({
+    dryRun,
     maxJumpBps: 1000,
-    last,
-    log: () => {},
+    log,
   });
   const asset = (id: string) => deployment.assets.find((a) => a.id === id) as DeployedAsset;
   const held = (index: number) => {
@@ -144,7 +154,9 @@ describe('the price copier', () => {
     ({ svm, deployer: admin } = await createWorld());
     keeper = await fundedSigner(svm);
     writer = await fundedSigner(svm);
-    setClock(svm, SESSION);
+    // The set-up's first prices are stamped half a day before the tests run, as on devnet, where
+    // they are days old: a real price is then copied however far it is from the placeholder.
+    setClock(svm, SESSION - 12n * 3600n);
     const file = JSON.parse(readFileSync(CONFIG_FILE, 'utf8'));
     file.roles = {
       guardian: admin.address,
@@ -156,6 +168,7 @@ describe('the price copier', () => {
       log: () => {},
       withLookupTable: false,
     }));
+    setClock(svm, SESSION);
   });
 
   it("lands each copied entry byte for byte with the source's value, exponent and time", async () => {
@@ -192,8 +205,8 @@ describe('the price copier', () => {
       exponent: 18n,
       unixTimestamp: t - 7n,
     });
-    // GLDx has no source: its placeholder stays, and the round says so.
-    expect(result.unchanged.some((line) => line === 'tGLDx (no source)')).toBe(true);
+    // This source has no gold pools: tGLDx is left as it is, and the round says why.
+    expect(result.unchanged).toContain('tGLDx (no source: a pool is not there)');
     // A stock whose source entry holds nothing is refused, never written as a zero.
     expect(result.refused.find((r) => r.id === 'tQQQx')?.why).toBe('the source holds no price');
   });
@@ -203,10 +216,6 @@ describe('the price copier', () => {
     setClock(svm, t + 5n);
     const spyx = asset('solana:spyx');
     const before = read(spyx.priceIndex);
-    const last = new Map<string, Entry>([
-      ['solana:tslax:price', p15('400', t - 600n)],
-      ['solana:tslax:twap', p15('400', t - 600n)],
-    ]);
     const readings: Reading[] = [
       // Older than what the account holds.
       {
@@ -222,7 +231,7 @@ describe('the price copier', () => {
         twap: p15('449', t),
         method: 'scope_entry',
       },
-      // TSLAx last copied at 400: 470 is in its range and 17.5% away.
+      // Devnet holds TSLAx at 380, copied 100 s ago: 470 is in its range and 24% away.
       { id: 'solana:tslax', price: p15('470', t), twap: p15('468', t), method: 'scope_entry' },
       {
         id: 'solana:nvdax',
@@ -231,18 +240,33 @@ describe('the price copier', () => {
         method: 'scope_entry',
       },
     ];
-    const result = await copyRound(liteChain(svm), writer, deployment, readings, options(last));
+    const tsla = (price: string, at: bigint): Reading => ({
+      id: 'solana:tslax',
+      price: p15(price, at),
+      twap: p15(price, at),
+      method: 'scope_entry',
+    });
+    expect(
+      (await copyRound(liteChain(svm), writer, deployment, [tsla('380', t - 100n)], options()))
+        .written,
+    ).toEqual(['tTSLAx']);
+    const result = await copyRound(liteChain(svm), writer, deployment, readings, options());
     expect(result.unchanged).toEqual(['tSPYx']);
+    const persists =
+      'if it persists, a person checks the source and moves the range (upsert_asset) or --max-jump-bps';
     expect(result.refused).toEqual([
-      { id: 'tAAPLx', why: 'price 450 is outside the keeper range 259.53 to 418.6' },
-      { id: 'tTSLAx', why: 'price 470 is more than 1000 bps from the last copied 400' },
+      { id: 'tAAPLx', why: `price 450 is outside the keeper range 259.53 to 418.6; ${persists}` },
+      {
+        id: 'tTSLAx',
+        why: `price 470 is more than 1000 bps from the 380 devnet holds; ${persists}`,
+      },
     ]);
     expect(result.written).toEqual(['tNVDAx']);
     expect(read(spyx.priceIndex)).toEqual(before);
     expect(read(asset('solana:aaplx').priceIndex).value).not.toBe(p15('450', t).value);
   });
 
-  it("copies gold from its pool's mid, checked against a second pool, with mainnet's clock", async () => {
+  it("copies gold from its pool's mid, checked against a second pool, stamped with that pool's time", async () => {
     const t = SESSION + 250n;
     setClock(svm, t + 5n);
     // GLDx at 379.71 dollars: 3.7971 raw USDC per raw GLDx (8 decimals against 6), as a sqrt in Q64.
@@ -252,7 +276,7 @@ describe('the price copier', () => {
         fakeMainnet(
           {},
           { rate: 0n, time: 0n },
-          { raydiumSqrt: sqrt(379.71), orcaSqrt: sqrt(orca), clock: t },
+          { raydiumSqrt: sqrt(379.71), orcaSqrt: sqrt(orca), orcaTime: t - 3n },
         ),
         { ...sources, assets: { 'solana:gldx': sources.assets['solana:gldx'] as never } },
       );
@@ -260,7 +284,7 @@ describe('the price copier', () => {
     if (!read1 || 'none' in read1) throw new Error(`no reading: ${JSON.stringify(read1)}`);
     expect(read1.method).toBe('pool_mid');
     expect(read1.price.exponent).toBe(8n);
-    expect(read1.price.unixTimestamp).toBe(t);
+    expect(read1.price.unixTimestamp).toBe(t - 3n);
     expect(Number(read1.price.value) / 1e8).toBeCloseTo(379.71, 4);
     expect(read1.twap).toEqual(read1.price);
     const result = await copyRound(liteChain(svm), writer, deployment, [read1], options());
@@ -274,10 +298,95 @@ describe('the price copier', () => {
     });
   });
 
-  it('signs with the price writer only: the deploy key is refused', async () => {
+  it('signs with the price writer only: the deploy key and any other key are refused', async () => {
     await expect(copyRound(liteChain(svm), admin, deployment, [], options())).rejects.toThrow(
       /the deploy key is the exchange's admin/,
     );
+    const stranger = await fundedSigner(svm);
+    await expect(copyRound(liteChain(svm), stranger, deployment, [], options())).rejects.toThrow(
+      `the exchange's price writer is ${writer.address}, not ${stranger.address}`,
+    );
+  });
+
+  it('sends nothing in a dry run, and refuses a time more than a minute ahead of the cluster', async () => {
+    const t = SESSION + 260n;
+    setClock(svm, t);
+    const nvdax = asset('solana:nvdax');
+    const before = held(nvdax.priceIndex);
+    const printed: string[] = [];
+    const dry = await copyRound(
+      liteChain(svm),
+      writer,
+      deployment,
+      [
+        {
+          id: 'solana:nvdax',
+          price: p15('237.5', t),
+          twap: p15('237.4', t),
+          method: 'scope_entry',
+        },
+      ],
+      options(true, (line) => printed.push(line)),
+    );
+    expect(dry.written).toEqual(['tNVDAx']);
+    expect(dry.signatures).toEqual([]);
+    expect(printed[0]).toMatch(/^ {4}would write tNVDAx: entry 332 237\.5 at /);
+    expect(held(nvdax.priceIndex)).toEqual(before);
+    const ahead = await copyRound(
+      liteChain(svm),
+      writer,
+      deployment,
+      [
+        {
+          id: 'solana:nvdax',
+          price: p15('237.5', t + 120n),
+          twap: p15('237.4', t),
+          method: 'scope_entry',
+        },
+      ],
+      options(),
+    );
+    expect(ahead.refused).toEqual([
+      { id: 'tNVDAx', why: "price is stamped 120 s ahead of the cluster's clock" },
+    ]);
+  });
+
+  it('gives no reading from a pool of the wrong program or pair, or a lending account of another token', async () => {
+    const sqrt = BigInt(Math.round(Math.sqrt(3.7971) * 2 ** 64));
+    const only = (id: string) => ({ ...sources, assets: { [id]: sources.assets[id] as never } });
+    const gold = (breakage: { raydiumOwner?: string; orcaQuote?: string }) =>
+      readPrices(
+        fakeMainnet(
+          {},
+          { rate: 0n, time: 0n },
+          { raydiumSqrt: sqrt, orcaSqrt: sqrt, orcaTime: 1n, ...breakage },
+        ),
+        only('solana:gldx'),
+      );
+    expect(await gold({ raydiumOwner: 'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc' })).toEqual([
+      {
+        id: 'solana:gldx',
+        none: 'the pool is not a Raydium CLMM pool, or the check is not an Orca Whirlpool',
+      },
+    ]);
+    const [wrongPair] = await gold({ orcaQuote: 'So11111111111111111111111111111111111111112' });
+    expect(wrongPair).toMatchObject({
+      id: 'solana:gldx',
+      none: expect.stringMatching(/not Xsv9.* against USDC$/),
+    });
+    const usdc = { 13: p15('1', 5n), 456: p15('1', 5n) };
+    const [jl] = await readPrices(
+      fakeMainnet(usdc, {
+        rate: 10n ** 12n,
+        time: 5n,
+        fToken: 'So11111111111111111111111111111111111111112',
+      }),
+      only('solana:jlusdc'),
+    );
+    expect(jl).toMatchObject({
+      id: 'solana:jlusdc',
+      none: expect.stringMatching(/not jlUSDC over USDC$/),
+    });
   });
 
   it('turns a keeper leg that fails for stale prices into one that passes', async () => {
@@ -357,5 +466,41 @@ describe('the price copier', () => {
     );
     expect(result.written).toEqual(['tSPYx', 'tQQQx', 'tjlUSDC']);
     expectOk(await send(svm, keeper, [await leg()]));
+  });
+  it('copies a move after a long gap, and refuses the same move one round later', async () => {
+    const metax = asset('solana:metax');
+    const heldAt = read(metax.priceIndex);
+    // Twelve hours after devnet's entry: a 15% rise is inside twelve hours' worth of 10%, capped at 50%.
+    const later = heldAt.unixTimestamp + 12n * 3600n;
+    setClock(svm, later + 10n);
+    const up = (micros: bigint, at: bigint): Reading => ({
+      id: 'solana:metax',
+      price: { value: micros * 10n ** 9n, exponent: 15n, unixTimestamp: at },
+      twap: { value: micros * 10n ** 9n, exponent: 15n, unixTimestamp: at },
+      method: 'scope_entry',
+    });
+    const before = (heldAt.value * 1_000_000n) / 10n ** heldAt.exponent;
+    const risen = (before * 115n) / 100n;
+    const first = await copyRound(
+      liteChain(svm),
+      writer,
+      deployment,
+      [up(risen, later)],
+      options(),
+    );
+    expect(first.written).toEqual(['tMETAx']);
+    // Thirty seconds on, 15% back down is more than one hour's worth.
+    setClock(svm, later + 40n);
+    const second = await copyRound(
+      liteChain(svm),
+      writer,
+      deployment,
+      [up((risen * 85n) / 100n, later + 30n)],
+      options(),
+    );
+    expect(second.refused).toHaveLength(1);
+    expect(second.refused[0]?.why).toMatch(
+      /^price .* is more than 1000 bps from the .* devnet holds; if it persists/,
+    );
   });
 });
