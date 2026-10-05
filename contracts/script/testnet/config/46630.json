@@ -1,0 +1,231 @@
+{
+  "about": "The Robinhood Chain test network kit (TNET-1, TNET-2). TEST NETWORK ONLY. Read by script/testnet/TestnetKit.s.sol, which the deployer runs and which makes the deployer the admin of everything it deploys. priceWriter is the price copier's key (never the deployer): it writes the price contracts and re-centres the pools. Every contract goes through the CREATE2 deployer with the salt below, so its address follows from this file and the deployer, and a second run finds each one and sends nothing. tokens[].source is the Chainlink feed on Robinhood Chain mainnet (4663) the copier (scripts/testnet/robinhood/prices.ts) copies; initialPrice is the round the kit writes first, read from that feed at fetchedAt. uniswap.cashPerSide is raw test cash (6 decimals): 1,000,000 test dollars a side. universalRouter holds Robinhood Chain mainnet's constructor arguments for 2.1.2, so the router here differs from mainnet's only in its address and chain. GLD and SGOV have Chainlink feeds on mainnet, so under gate UNIVERSE the keeper may rebalance them, unlike Solana's gold.",
+  "chainId": 46630,
+  "salt": "tenonfi-testnet-v1",
+  "priceWriter": "0x0000000000000000000000000000000000000000",
+  "cash": {
+    "symbol": "tUSDG",
+    "name": "Test USDG (test network)",
+    "modelOf": "USDG",
+    "decimals": 6
+  },
+  "uniswap": {
+    "poolManager": "0x8366a39CC670B4001A1121B8F6A443A643e40951",
+    "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    "fee": 500,
+    "tickSpacing": 10,
+    "driftBps": 10,
+    "cashPerSide": 1000000000000
+  },
+  "universalRouter": {
+    "artifact": "script/testnet/UniversalRouter-2.1.2.json",
+    "weth9": "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+    "v2Factory": "0x8bcEaA40B9AcdfAedF85AdF4FF01F5Ad6517937f",
+    "v3Factory": "0x1f7d7550B1b028f7571E69A784071F0205FD2EfA",
+    "pairInitCodeHash": "0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f",
+    "poolInitCodeHash": "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54",
+    "v3NFTPositionManager": "0x73991a25C818Bf1f1128dEAaB1492D45638DE0D3",
+    "v4PositionManager": "0x58daec3116aae6D93017bAAea7749052E8a04fA7",
+    "spokePool": "0xD29C85F15DF544bA632C9E25829fd29d767d7978"
+  },
+  "tokens": [
+    {
+      "symbol": "tSPY",
+      "name": "Test SPDR S&P 500 ETF (test network)",
+      "modelOf": "SPY",
+      "decimals": 18,
+      "source": {
+        "feed": "0x319724394D3A0e3669269846abE664Cd621f9f6A",
+        "description": "RHSPY / USD",
+        "decimals": 8
+      },
+      "initialPrice": {
+        "answer": 77616661047,
+        "updatedAt": 1791222309,
+        "source": "Chainlink RHSPY / USD 0x319724394D3A0e3669269846abE664Cd621f9f6A on Robinhood Chain mainnet (4663), latestRoundData()",
+        "fetchedAt": "2026-10-05T21:37:17Z",
+        "method": "chainlink_round"
+      }
+    },
+    {
+      "symbol": "tQQQ",
+      "name": "Test Invesco QQQ (test network)",
+      "modelOf": "QQQ",
+      "decimals": 18,
+      "source": {
+        "feed": "0x80901d846d5D7B030F26B480776EE3b29374C2ae",
+        "description": "Robinhood QQQ / USD",
+        "decimals": 8
+      },
+      "initialPrice": {
+        "answer": 75613452136,
+        "updatedAt": 1791222325,
+        "source": "Chainlink Robinhood QQQ / USD 0x80901d846d5D7B030F26B480776EE3b29374C2ae on Robinhood Chain mainnet (4663), latestRoundData()",
+        "fetchedAt": "2026-10-05T21:37:17Z",
+        "method": "chainlink_round"
+      }
+    },
+    {
+      "symbol": "tNVDA",
+      "name": "Test NVIDIA (test network)",
+      "modelOf": "NVDA",
+      "decimals": 18,
+      "source": {
+        "feed": "0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15",
+        "description": "RHNVDA / USD",
+        "decimals": 8
+      },
+      "initialPrice": {
+        "answer": 23903014289,
+        "updatedAt": 1791230163,
+        "source": "Chainlink RHNVDA / USD 0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15 on Robinhood Chain mainnet (4663), latestRoundData()",
+        "fetchedAt": "2026-10-05T21:37:17Z",
+        "method": "chainlink_round"
+      }
+    },
+    {
+      "symbol": "tAAPL",
+      "name": "Test Apple (test network)",
+      "modelOf": "AAPL",
+      "decimals": 18,
+      "source": {
+        "feed": "0x6B22A786bAa607d76728168703a39Ea9C99f2cD0",
+        "description": "Robinhood AAPL / USD",
+        "decimals": 8
+      },
+      "initialPrice": {
+        "answer": 33410767468,
+        "updatedAt": 1791208729,
+        "source": "Chainlink Robinhood AAPL / USD 0x6B22A786bAa607d76728168703a39Ea9C99f2cD0 on Robinhood Chain mainnet (4663), latestRoundData()",
+        "fetchedAt": "2026-10-05T21:37:17Z",
+        "method": "chainlink_round"
+      }
+    },
+    {
+      "symbol": "tMSFT",
+      "name": "Test Microsoft (test network)",
+      "modelOf": "MSFT",
+      "decimals": 18,
+      "source": {
+        "feed": "0x45C3C877C15E6BA2EBB19eA114Ea508d14C1Af2E",
+        "description": "RHMSFT / USD",
+        "decimals": 8
+      },
+      "initialPrice": {
+        "answer": 52583405489,
+        "updatedAt": 1791230078,
+        "source": "Chainlink RHMSFT / USD 0x45C3C877C15E6BA2EBB19eA114Ea508d14C1Af2E on Robinhood Chain mainnet (4663), latestRoundData()",
+        "fetchedAt": "2026-10-05T21:37:17Z",
+        "method": "chainlink_round"
+      }
+    },
+    {
+      "symbol": "tGOOGL",
+      "name": "Test Alphabet (test network)",
+      "modelOf": "GOOGL",
+      "decimals": 18,
+      "source": {
+        "feed": "0xF6f373a037c30F0e5010d854385cA89185AE638b",
+        "description": "Robinhood GOOGL / USD",
+        "decimals": 8
+      },
+      "initialPrice": {
+        "answer": 34585705711,
+        "updatedAt": 1791230036,
+        "source": "Chainlink Robinhood GOOGL / USD 0xF6f373a037c30F0e5010d854385cA89185AE638b on Robinhood Chain mainnet (4663), latestRoundData()",
+        "fetchedAt": "2026-10-05T21:37:17Z",
+        "method": "chainlink_round"
+      }
+    },
+    {
+      "symbol": "tAMZN",
+      "name": "Test Amazon (test network)",
+      "modelOf": "AMZN",
+      "decimals": 18,
+      "source": {
+        "feed": "0xD5a1508ceD74c084eBf3cBe853e2C968fB2a651C",
+        "description": "Robinhood AMZN / USD",
+        "decimals": 8
+      },
+      "initialPrice": {
+        "answer": 25178490000,
+        "updatedAt": 1791230104,
+        "source": "Chainlink Robinhood AMZN / USD 0xD5a1508ceD74c084eBf3cBe853e2C968fB2a651C on Robinhood Chain mainnet (4663), latestRoundData()",
+        "fetchedAt": "2026-10-05T21:37:17Z",
+        "method": "chainlink_round"
+      }
+    },
+    {
+      "symbol": "tMETA",
+      "name": "Test Meta (test network)",
+      "modelOf": "META",
+      "decimals": 18,
+      "source": {
+        "feed": "0x7C38C00C30BEe9378381E7B6135d7283356D71b1",
+        "description": "Robinhood META / USD",
+        "decimals": 8
+      },
+      "initialPrice": {
+        "answer": 74485809250,
+        "updatedAt": 1791210337,
+        "source": "Chainlink Robinhood META / USD 0x7C38C00C30BEe9378381E7B6135d7283356D71b1 on Robinhood Chain mainnet (4663), latestRoundData()",
+        "fetchedAt": "2026-10-05T21:37:17Z",
+        "method": "chainlink_round"
+      }
+    },
+    {
+      "symbol": "tTSLA",
+      "name": "Test Tesla (test network)",
+      "modelOf": "TSLA",
+      "decimals": 18,
+      "source": {
+        "feed": "0x4A1166a659A55625345e9515b32adECea5547C38",
+        "description": "RHTSLA / USD",
+        "decimals": 8
+      },
+      "initialPrice": {
+        "answer": 37831600000,
+        "updatedAt": 1791230132,
+        "source": "Chainlink RHTSLA / USD 0x4A1166a659A55625345e9515b32adECea5547C38 on Robinhood Chain mainnet (4663), latestRoundData()",
+        "fetchedAt": "2026-10-05T21:37:17Z",
+        "method": "chainlink_round"
+      }
+    },
+    {
+      "symbol": "tGLD",
+      "name": "Test SPDR Gold Shares (test network)",
+      "modelOf": "GLD",
+      "decimals": 18,
+      "source": {
+        "feed": "0x470A51258068043bd43dC0a56245625C9fE86eB0",
+        "description": "GLD / USD",
+        "decimals": 8
+      },
+      "initialPrice": {
+        "answer": 37960150669,
+        "updatedAt": 1791213470,
+        "source": "Chainlink GLD / USD 0x470A51258068043bd43dC0a56245625C9fE86eB0 on Robinhood Chain mainnet (4663), latestRoundData()",
+        "fetchedAt": "2026-10-05T21:37:17Z",
+        "method": "chainlink_round"
+      }
+    },
+    {
+      "symbol": "tSGOV",
+      "name": "Test iShares 0-3 Month Treasury Bond ETF (test network)",
+      "modelOf": "SGOV",
+      "decimals": 18,
+      "source": {
+        "feed": "0xa0DF4ee0fFf975306345875E3548Fcc519577A11",
+        "description": "Robinhood SGOV-USD",
+        "decimals": 8
+      },
+      "initialPrice": {
+        "answer": 10116689132,
+        "updatedAt": 1791158438,
+        "source": "Chainlink Robinhood SGOV-USD 0xa0DF4ee0fFf975306345875E3548Fcc519577A11 on Robinhood Chain mainnet (4663), latestRoundData()",
+        "fetchedAt": "2026-10-05T21:37:17Z",
+        "method": "chainlink_round"
+      }
+    }
+  ]
+}
