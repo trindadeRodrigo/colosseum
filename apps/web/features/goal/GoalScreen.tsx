@@ -13,6 +13,7 @@ import { dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { ChainName } from '../account/ChainName';
+import { rememberPlan } from '../order/plan-store';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { type BuildOutcome, buildPlan, planProvenance } from './build-plan';
 import { GOAL_DRAFT } from './draft';
@@ -154,6 +155,14 @@ export function GoalScreen() {
     setBuild({ kind: 'solving' });
     const outcome = await buildPlan(apiFetch, valid);
     if (wanted.current !== mine) return;
+    // The plan screen reads the plan from the tab: the API has no route that reads one back.
+    if (outcome.kind === 'built' && port.userId)
+      rememberPlan({
+        id: outcome.id,
+        userId: port.userId,
+        proposal: outcome.proposal,
+        rollUp: outcome.rollUp,
+      });
     setBuild(outcome);
     // The server has no chain for this person, whatever this page had read: it is asked again.
     if (outcome.kind === 'no-chain') retry();
@@ -402,6 +411,14 @@ export function GoalScreen() {
               <p className="max-w-(--tf-measure-body) text-body">
                 {t.goal.built.done.body(plan.lines.length, planChainName)}
               </p>
+              {build.kind === 'built' && (
+                <Link
+                  href={`/plan/${encodeURIComponent(build.id)}`}
+                  className={buttonClass({ variant: 'link' })}
+                >
+                  {t.goal.built.done.see}
+                </Link>
+              )}
             </CardBody>
           </Card>
         )}
