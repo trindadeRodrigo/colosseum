@@ -41,7 +41,9 @@
   /**
    * time({ title, value (html, pinned, from the caller), note, ranges:[{label, ms|null}], range (index),
    *        panes:[{ h, series:[{ type:'area'|'line'|'candle'|'bar', cls:'s1'|'s2', label, data:[{t, v}|{t,o,h,l,c}], dashedKey }], fmt, zero, refs:[{v,label}] }],
-   *        hourly (readout format), bands:[{t0,t1,label}], aria, src (html), empty (html when no data) })
+   *        hourly (readout format), bands:[{t0,t1,label}], aria, src (html), empty (html when no data), rangeTools (html beside the ranges) })
+ *   A point may carry `show` (the readout text in place of fmt(v)); a pane may set `tagSeries` (the series whose last value
+ *   tags the axis) and a series `noDot` (no hover square), which together draw a 100% stack as two areas, top one first.
    */
   function time(cfg) { return place(null, 'time', cfg); }
   function drawTime(el, c) {
@@ -96,7 +98,7 @@
       });
       g += '</g>';
       // last value tag on the axis for the first series
-      var s0 = p.series[0], lastD = s0.data.filter(vis).filter(function (q) { return s0.type === 'candle' ? q.c != null : q.v != null; }).pop();
+      var s0 = p.series[p.tagSeries || 0], lastD = s0.data.filter(vis).filter(function (q) { return s0.type === 'candle' ? q.c != null : q.v != null; }).pop();
       if (lastD) { var lv = s0.type === 'candle' ? lastD.c : lastD.v; g += '<line class="cc-last" x1="8" x2="' + (8 + plotW) + '" y1="' + Y(lv).toFixed(1) + '" y2="' + Y(lv).toFixed(1) + '"/>' + tag(W - AX + 2, Y(lv), p.fmt(lv), 'last ' + s0.cls); }
       if (pi > 0) g += '<line class="cc-sep" x1="0" x2="' + W + '" y1="' + (y - 4) + '" y2="' + (y - 4) + '"/>';
       if (p.title) g += '<text class="cc-panetitle" x="12" y="' + (y + 13) + '">' + esc(p.title) + '</text>';
@@ -113,13 +115,13 @@
     // hover: the nearest timestamp across panes
     var ts = []; c.panes.forEach(function (p) { p.series.forEach(function (s) { s.data.filter(vis).forEach(function (d) { if (ts.indexOf(d.t) < 0) ts.push(d.t); }); }); });
     ts.sort(function (a, b) { return a - b; });
-    var root = el.querySelector('svg'), hov = root.querySelector('.cc-hover'), read = el.querySelector('.cc-read'), idx = ts.length - 1;
+    var root = el.querySelector('.cc-plot > svg'),   /* the plot's svg: the header's pin is an svg too */ hov = root.querySelector('.cc-hover'), read = el.querySelector('.cc-read'), idx = ts.length - 1;
     function readout(t) {
       var parts = ['<span class="d">' + esc(fullDate(t, c.hourly)) + '</span>'];
       c.panes.forEach(function (p) { p.series.forEach(function (s) {
         var q = s.data.filter(function (d) { return d.t === t; })[0]; if (!q) return;
         if (s.type === 'candle') parts.push('<span>O <b>' + esc(p.fmt(q.o)) + '</b> H <b>' + esc(p.fmt(q.h)) + '</b> L <b>' + esc(p.fmt(q.l)) + '</b> C <b>' + esc(p.fmt(q.c)) + '</b></span>');
-        else parts.push('<span><i class="' + s.cls + '"></i>' + esc(s.label) + ' <b>' + (q.v == null ? 'no value' : esc(p.fmt(q.v))) + '</b>' + (q.dashed ? ' too few samples' : '') + '</span>');
+        else parts.push('<span><i class="' + s.cls + '"></i>' + esc(s.label) + ' <b>' + (q.v == null ? 'no value' : esc(q.show != null ? q.show : p.fmt(q.v))) + '</b>' + (q.dashed ? ' too few samples' : '') + '</span>');
       }); });
       read.innerHTML = parts.join('');
     }
@@ -127,7 +129,7 @@
       idx = Math.max(0, Math.min(ts.length - 1, i)); var t = ts[idx], px = X(t), h = '<line class="cc-cross" x1="' + px.toFixed(1) + '" x2="' + px.toFixed(1) + '" y1="0" y2="' + plotH + '"/>' + tag(px, plotH + 11, fullDate(t, c.hourly).replace(' UTC', ''), 'x', 'middle');
       var pg = panesGeo.filter(function (g2) { return py != null && py >= g2.top && py <= g2.top + g2.h; })[0];
       if (pg) { var v = pg.lo + (pg.top + pg.h - py) / pg.h * (pg.hi - pg.lo); h += '<line class="cc-cross" x1="8" x2="' + (8 + plotW) + '" y1="' + py.toFixed(1) + '" y2="' + py.toFixed(1) + '"/>' + tag(W - AX + 2, py, pg.fmt(v), 'y'); }
-      panesGeo.forEach(function (g2) { g2.series.forEach(function (s) { var q = s.data.filter(function (d) { return d.t === t; })[0]; if (!q || s.type === 'candle' || s.type === 'bar' || q.v == null) return; h += '<rect class="cc-dot ' + s.cls + '" x="' + (px - 3.5).toFixed(1) + '" y="' + (g2.Y(q.v) - 3.5).toFixed(1) + '" width="7" height="7"/>'; }); });
+      panesGeo.forEach(function (g2) { g2.series.forEach(function (s) { var q = s.data.filter(function (d) { return d.t === t; })[0]; if (!q || s.noDot || s.type === 'candle' || s.type === 'bar' || q.v == null) return; h += '<rect class="cc-dot ' + s.cls + '" x="' + (px - 3.5).toFixed(1) + '" y="' + (g2.Y(q.v) - 3.5).toFixed(1) + '" width="7" height="7"/>'; }); });
       hov.innerHTML = h; readout(t);
     }
     function pt(ev) { var p = root.createSVGPoint(); p.x = ev.clientX; p.y = ev.clientY; return p.matrixTransform(root.getScreenCTM().inverse()); }
@@ -141,7 +143,7 @@
   }
   function head(c) {
     return '<div class="cc-head"><div class="cc-title"><div class="t">' + esc(c.title) + '</div>' + (c.value ? '<div class="v">' + c.value + '</div>' : '') + (c.note ? '<div class="n">' + c.note + '</div>' : '') + '</div>' +
-      (c.ranges && c.ranges.length > 1 ? '<div class="an-seg cc-ranges" role="group" aria-label="Range">' + c.ranges.map(function (r, i) { return '<button type="button" data-range="' + i + '" aria-pressed="' + (i === (c.range || 0)) + '">' + esc(r.label) + '</button>'; }).join('') + '</div>' : '') + (c.tools || '') + '</div>';
+      '<div class="cc-rangebar">' + (c.ranges && c.ranges.length > 1 ? '<div class="an-seg cc-ranges" role="group" aria-label="Range">' + c.ranges.map(function (r, i) { return '<button type="button" data-range="' + i + '" aria-pressed="' + (i === (c.range || 0)) + '">' + esc(r.label) + '</button>'; }).join('') + '</div>' : '') + (c.rangeTools || '') + '</div>' + (c.tools || '') + '</div>';
   }
   function legend(c) { return '<div class="an-legend cc-legend">' + c.legend.map(function (l) { return '<span><i class="' + l.cls + '"></i>' + esc(l.label) + '</span>'; }).join('') + '</div>'; }
 
@@ -172,7 +174,7 @@
     g += '<text class="cc-side" x="14" y="' + (plotH - 8) + '">sell ←</text><text class="cc-side" x="' + (8 + plotW - 6) + '" y="' + (plotH - 8) + '" text-anchor="end">→ buy</text>';
     g += '<g class="cc-hover"></g><rect class="cc-hit" x="8" y="0" width="' + plotW + '" height="' + plotH + '"/>';
     el.innerHTML = head(c) + '<div class="cc-read" aria-live="polite"></div><div class="cc-plot" tabindex="0" role="img" aria-label="' + esc(c.aria || '') + '">' + svg(W, H, g) + '</div>' + legend({ legend: [{ cls: 's2', label: 'sell (exit)' }, { cls: 's1', label: 'buy (entry)' }] }) + (c.src || '');
-    var root = el.querySelector('svg'), hov = root.querySelector('.cc-hover'), read = el.querySelector('.cc-read'), sorted = pts.slice().sort(function (a, b) { return a.x - b.x; }), idx = -1;
+    var root = el.querySelector('.cc-plot > svg'),   /* the plot's svg: the header's pin is an svg too */ hov = root.querySelector('.cc-hover'), read = el.querySelector('.cc-read'), sorted = pts.slice().sort(function (a, b) { return a.x - b.x; }), idx = -1;
     function show(i) {
       idx = Math.max(0, Math.min(sorted.length - 1, i)); var p = sorted[idx], px = X(p.x);
       hov.innerHTML = '<line class="cc-cross" x1="' + px + '" x2="' + px + '" y1="0" y2="' + plotH + '"/><line class="cc-cross" x1="8" x2="' + (8 + plotW) + '" y1="' + Y(p.n) + '" y2="' + Y(p.n) + '"/>' + tag(W - AX + 2, Y(p.n), c.fmtY(p.n), 'y') + tag(px, plotH + 11, c.fmtX(p.x), 'x', 'middle');
@@ -209,7 +211,7 @@
     el.innerHTML = head(Object.assign({}, c, { tools: tools })) + (c.plate || '') +
       '<div class="cc-plot cc-distplot" tabindex="0" role="img" aria-label="' + esc(c.aria || '') + '"><div class="cc-pricetag" style="left:' + X(c.mid).toFixed(1) + 'px"><span>Pool price</span><b>' + esc(c.fmtP(c.mid) + ' ' + c.unit) + '</b></div>' + svg(W, H, g) + '</div>' +
       legend({ legend: [{ cls: 's2', label: c.quote + ' (below the price)' }, { cls: 's1', label: c.asset + ' (above the price)' }] }) + '<div class="cc-read" aria-live="polite"></div>' + (c.src || '');
-    var root = el.querySelector('svg'), read = el.querySelector('.cc-read'), cols = root.querySelectorAll('.cc-col'), idx = -1;
+    var root = el.querySelector('.cc-plot > svg'),   /* the plot's svg: the header's pin is an svg too */ read = el.querySelector('.cc-read'), cols = root.querySelectorAll('.cc-col'), idx = -1;
     function show(i) { idx = Math.max(0, Math.min(bs.length - 1, i)); cols.forEach(function (r) { r.classList.toggle('on', +r.getAttribute('data-i') === idx); }); var b = bs[idx];
       read.innerHTML = '<span><i class="' + (b.side === 'asset' ? 's1' : 's2') + '"></i>' + esc(c.fmtP(b.lo) + '–' + c.fmtP(b.hi) + ' ' + c.unit) + ' · <b>' + esc(b.usd == null ? 'no USD price' : c.fmtY(b.usd)) + '</b> in ' + esc(b.side === 'asset' ? c.asset : c.quote) + '</span>'; }
     function pt(ev) { var q = root.createSVGPoint(); q.x = ev.clientX; q.y = ev.clientY; return q.matrixTransform(root.getScreenCTM().inverse()); }
@@ -269,7 +271,7 @@
     if (c.ref) g += '<line class="cc-mid" x1="8" x2="' + (8 + plotW) + '" y1="' + Y(c.ref.v).toFixed(1) + '" y2="' + Y(c.ref.v).toFixed(1) + '"/>' + tag(12, Y(c.ref.v) - 11, c.ref.label, 'mid');
     g += '<line class="cc-axis" x1="8" x2="' + (8 + plotW) + '" y1="' + plotH + '" y2="' + plotH + '"/><rect class="cc-hit" x="8" y="0" width="' + plotW + '" height="' + plotH + '"/>';
     el.innerHTML = head(c) + '<div class="cc-read" aria-live="polite"></div><div class="cc-plot" tabindex="0" role="img" aria-label="' + esc(c.aria || '') + '">' + svg(W, H, g) + '</div>' + (c.series.length > 1 ? legend({ legend: c.series }) : '') + (c.src || '');
-    var root = el.querySelector('svg'), read = el.querySelector('.cc-read'), idx = -1;
+    var root = el.querySelector('.cc-plot > svg'),   /* the plot's svg: the header's pin is an svg too */ read = el.querySelector('.cc-read'), idx = -1;
     function show(i) { idx = Math.max(0, Math.min(n - 1, i)); root.querySelectorAll('.cc-col').forEach(function (r) { r.classList.toggle('on', +r.getAttribute('data-i') === idx); });
       read.innerHTML = '<span class="d">' + esc(c.cats[idx]) + '</span>' + c.series.map(function (s) { return '<span><i class="' + s.cls + '"></i>' + esc(s.label) + ' <b>' + (s.values[idx] == null ? 'no value' : esc(c.fmt(s.values[idx]))) + '</b></span>'; }).join(''); }
     function pt(ev) { var q = root.createSVGPoint(); q.x = ev.clientX; q.y = ev.clientY; return q.matrixTransform(root.getScreenCTM().inverse()); }

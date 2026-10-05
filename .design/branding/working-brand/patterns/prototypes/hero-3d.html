@@ -15,7 +15,9 @@
      5. #analytics (menu "Analytics"): the Bearing analytics view, assets/analytics.{js,css}. It reads the risk API at
         data-api on <html> and falls back to the snapshot in assets/analytics/; its figures are measured, not MOCK.
         While it is open the landing sections are hidden and the scene is paused; #top brings the landing back.
-        Its own aids: ?theme=light, ?check=1, ?api=<base> (a dead port shows the snapshot). Serve this folder over HTTP (the snapshot is read with fetch). -->
+        Its own aids: ?theme=light, ?check=1, ?api=<base> (a dead port shows the snapshot). Serve this folder over HTTP (the snapshot is read with fetch).
+     6. #analytics2/<page> (menu "Analytics 2.0"): the same data as pages behind a retractable side menu (stocks, commodities,
+        stablecoins, lending, simulation), assets/analytics2.{js,css}. It shares analytics.js's data layer, pins and aids. -->
 <style>
 @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap");
 :root {
@@ -207,7 +209,8 @@ form.sub .primary { border-radius:9999px; padding:10px 18px; }
 .foot { position:relative; z-index:2; background:var(--black); border-top:1px solid var(--hair); padding:28px 0 calc(env(safe-area-inset-bottom,0px) + 40px); font:400 12px var(--font-mono); color:var(--stone); }
 @media (prefers-reduced-motion: reduce) { .scroll-cue i { animation:none; } .bar-fill, .nav, .menu, .step-in { transition:none; } }
 </style>
-<link rel="stylesheet" href="assets/analytics.css">
+<link rel="stylesheet" href="assets/analytics.css?v=20261003c">
+<link rel="stylesheet" href="assets/analytics2.css?v=20261003c">
 </head>
 <body>
 
@@ -221,6 +224,7 @@ form.sub .primary { border-radius:9999px; padding:10px 18px; }
     <a href="#simulate">Invest</a>
     <a href="#resources">Resources</a>
     <a href="#analytics">Analytics</a>
+    <a href="#analytics2">Analytics 2.0</a>
     <a href="#simulate" class="cta">Connect wallet</a>
   </nav>
   <span class="proto">PROTOTYPE · landing</span>
@@ -355,11 +359,14 @@ form.sub .primary { border-radius:9999px; padding:10px 18px; }
 
 <!-- 5 · Bearing analytics view (assets/analytics.js renders it) -->
 <section class="an" id="analytics" aria-label="Bearing analytics" hidden></section>
+<!-- 6 · Bearing analytics 2.0 (assets/analytics2.js renders it) -->
+<section class="an an2" id="analytics2" aria-label="Bearing analytics 2.0" hidden></section>
 
 <footer class="foot" id="resources"><div class="wrap">tenonfi · prototype on the design branch · plans, rates and odds on this page are MOCK sample data, carry no live figures, and are not investment advice.</div></footer>
 
-<script src="assets/analytics-charts.js"></script>
-<script src="assets/analytics.js"></script>
+<script src="assets/analytics-charts.js?v=20261003c"></script>
+<script src="assets/analytics.js?v=20261003c"></script>
+<script src="assets/analytics2.js?v=20261003c"></script>
 <script src="assets/textures.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>

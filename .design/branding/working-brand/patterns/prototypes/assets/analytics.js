@@ -1210,7 +1210,7 @@
   function start() {
     if (started) return started;
     shell();
-    started = detectMode().then(function () {
+    started = ready().then(function () {
       if (S.mode === 'none') { els['an-banner'].className = 'an-banner'; els['an-banner'].innerHTML = '<b>Neither the API at ' + esc(API) + ' nor the snapshot answered.</b><span>Start the API (docs/risk/PROMPT-BUILD-ANALYTICS-PAGE.md) or serve this folder over HTTP.</span>'; return; }
       return Promise.all([get(R.assets(S.tau)), get(R.pools())]).then(function (rs) {
         if (rs[1].ok) rs[1].body.pools.forEach(function (p) { A.nPools++; if (!A.poolTimes[p.assetMint] || p.fetchedAt > A.poolTimes[p.assetMint]) A.poolTimes[p.assetMint] = p.fetchedAt; });
@@ -1242,6 +1242,14 @@
       else if (h === '#analytics' && S.lending) { S.lending = null; els['an-lendp'].innerHTML = ''; document.querySelectorAll('#an-lend tr.sel').forEach(function (r) { r.classList.remove('sel'); }); }
     });
   }
+  /* One API detection for both views; Analytics 2.0 (analytics2.js) reads through the same cache and pins. */
+  var modeP = null;
+  function ready() { return modeP || (modeP = detectMode()); }
+  window.TF_AN = { Q: Q, API: API, S: S, R: R, CAL: CAL, REASON: REASON, REGIMES: REGIMES, RW: RW, DISCLAIMER: DISCLAIMER,
+    ready: ready, get: get, post: post, pool: pool, mk: mk, fig: fig, pin: pin, reason: reason, status: status, closePop: closePop,
+    pct: pct, pct0: pct0, usd: usd, usdC: usdC, num: num, ratio: ratio, esc: esc, iso: iso, hhmm: hhmm, day: day, short: short, age: age,
+    venueW: venueW, explorer: explorer, regimeAt: regimeAt, etParts: etParts, minus: minus, nf: nf };
+
   function boot() {
     view = document.getElementById('analytics');
     if (!view) return;

@@ -83,13 +83,49 @@ const largest = {};
 for (const p of allPools.pools || []) if (/clmm|whirlpool|dlmm/.test(p.venue) && (!largest[p.assetSymbol] || (p.tvlUsd || 0) > (largest[p.assetSymbol].tvlUsd || 0))) largest[p.assetSymbol] = p;
 for (const s of stocks) if (largest[s]) keys.push(`/risk/pools/${e(largest[s].address)}/liquidity?bands=60&rangePct=0.3`);
 for (const m of markets.markets) for (const g of GAPS) keys.push(`POST /risk/markets/${m.account}/gap ${JSON.stringify({ gapPct: g })}`);
-await pool(keys);
+
+// Analytics 2.0 (../analytics2.js, the R2.* builders): 30 days of hourly capacity, each lending pool's 7- and 30-day
+// history, each sheet at a collateral position's full size (the loss if all of it is sold), and the simulation's default
+// (TSLAx, $100k): the issuer path and the sheet at the size of one hourly sale in each time of week.
+for (const s of stocks) keys.push(`/risk/assets/${e(s)}/history?days=30&tau=0.01`);
+for (const p of lending.pools) keys.push(`/risk/facts/lending/${e(p.account)}/history?days=7`, `/risk/facts/lending/${e(p.account)}/history?days=30`);
+// per pool (each row) and per asset over every pool with each Kamino market once (the counters, all pools selected)
+const seenPos = new Set(), byAsset = {};
+for (const p of lending.pools) {
+  const sheet = JSON.parse(await (await fetch(API + `/risk/facts/lending/${p.account}`)).text());
+  const mkey = p.venue === 'kamino' ? `kamino:${p.market}` : p.account;
+  for (const c of sheet.collateral || []) {
+    if (!(c.collateralUsd && c.collateralUsd.value > 0)) continue;
+    keys.push(`/risk/facts/assets/${e(c.asset)}?sizeUsd=${Math.max(1, Math.round(c.collateralUsd.value))}`);
+    if (seenPos.has(`${mkey}|${c.asset}`)) continue;
+    seenPos.add(`${mkey}|${c.asset}`);
+    byAsset[c.asset] = (byAsset[c.asset] || 0) + c.collateralUsd.value;
+  }
+}
+for (const [a, v] of Object.entries(byAsset)) keys.push(`/risk/facts/assets/${e(a)}?sizeUsd=${Math.max(1, Math.round(v))}`);
+for (const s of stocks) keys.push(`/risk/pools?asset=${e(s)}`);
+// the collector's hourly recordings: the list, each recorded pool's value hour by hour and its newest distribution
+const recorded = await take('/risk/pools/recorded');
+for (const p of (recorded && recorded.pools) || [])
+  keys.push(`/risk/pools/${e(p.address)}/liquidity/history?hours=720`, `/risk/pools/${e(p.address)}/liquidity?bands=60&rangePct=0.3`);
+// the lending page's tolerance box: hourly capacity of each collateral asset at the snapshot's other tolerances
+for (const a of collateral) for (const t of [0.005, 0.02]) keys.push(`/risk/assets/${e(a)}/history?days=30&tau=${t}`);
+keys.push('/risk/assets/TSLAx/split?side=sell&sizeUsd=100000', '/risk/recoverable?asset=TSLAx&notional=100000&hours=168&holderKyc=false', '/risk/recoverable?asset=TSLAx&notional=100000&hours=168&holderKyc=true');
+const tsla = assets.assets.find((a) => a.symbol === 'TSLAx');
+for (const r of REGIMES) {
+  const cap = tsla && tsla.capacityAtTau[r] && tsla.capacityAtTau[r].capacityUsd;
+  if (cap && cap < 100000) {
+    const chunk = Math.max(1, Math.round(100000 / Math.ceil(100000 / cap)));
+    keys.push(`/risk/facts/assets/TSLAx?sizeUsd=${chunk}`, `/risk/assets/TSLAx/split?side=sell&sizeUsd=${chunk}`);
+  }
+}
+await pool([...new Set(keys)]);
 
 const manifest = {
   captured_at: t0.toISOString(),
   finished_at: new Date().toISOString(),
   api: API,
-  note: 'Snapshot of the risk API for the analytics view. Measured figures, only old: the page shows them stale, never MOCK.',
+  note: 'Snapshot of the risk API for both analytics views (analytics.js and analytics2.js). Measured figures, only old: the page shows them stale, never MOCK.',
   routes: Object.keys(files).length,
   failed,
   files,

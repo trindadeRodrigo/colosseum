@@ -131,3 +131,34 @@ Snapshot recaptured 2026-10-03T03:32:07Z: 1,442 routes (20 MB), including the hi
 ## 8. Review fixes (independent review, 2026-10-03)
 
 Blocking, fixed: the simulator's dollar margin was `margin × seized`; the liquidator's gain or loss is `margin × debt repaid`, where debt = seized ÷ (1 + b). The page now prints it on the debt and names the debt. (The brief's example sentence has the same slip.) Should-fix, fixed: the simulator's figures carry `assumption` when an extra gap is used and the margin says when the exit cost is a lower bound; sequence guards on the asset table and panel against out-of-order responses; the "covered on both ratios" sentence now checks both; a missing transfer fee or pool count is a reason, never 0; ids built from API strings are slugged; pins on the coverage share, unfilled share, other venues' LTV and the bonus maximum; local paths are dropped from source lines; hash routing survives a malformed hash.
+
+## 9. Analytics 2.0 (2026-10-03, `#analytics2/<page>`, `assets/analytics2.{js,css}`)
+
+Live against the API at :3011, weekend regime, `?check=1` on every page: figures without a pin 0 on stocks (178 figures), commodities (11), stablecoins (23), lending (80), simulation (23). Counts and the person's own input carry no pin by design (class `a2-count`). No MOCK and no hatch outside the `?preview=1` distribution.
+
+Snapshot mode (`?api=http://localhost:1`): every page renders the same counters as live, all pins stale with their age, 0 figures "not in the snapshot". Snapshot recaptured 2026-10-03T14:16:53Z: 1,541 routes, the same 167 error answers as before (DA3 gate and routes the first view probes). `node scan.mjs`: 0 unknown base58 strings.
+
+Hand checks:
+- Lending, Sentora xStocks Market · PYUSD, weekend: collateral QQQx $576K, NVDAx $418K, SPYx $1.881M; capacity at ≤ 1% QQQx $79.3K, NVDAx $1.0M, SPYx $1.01M. Covered = (79.3K + 418K + 1.01M) ÷ 2.875M = 52.57%, as shown.
+- Lending counters, all pools: covered ≥ 6.82%, largest sale without loss ≥ $2.6M, equal to the reviewer's independent recomputation (collateral summed per asset first, each Kamino market once): 6.8% and $2.57M. Lower bound because METAx (xStocks Market, `not_imported`) and TSLAx/NVDAx in the JupUSD vaults (`no_reference_price`) have no collateral figure.
+- Simulation, TSLAx $100k, weekend (Sat 10:06 ET): next market open in 47.4 h (Mon 09:30 ET), checked against the regime rule (Mon 13:29Z off-hours, 13:31Z market hours). Weekend capacity $72.6K < $100k, so 2 hourly sales of $50k; loss = 2 × the sheet's exit.lossUsd at $50k.
+
+Independent review (one reviewer, read-only, live data): 4 blocking and 5 should-fix findings, all fixed and re-checked:
+1. Lending aggregates applied an asset's capacity once per market; now collateral is grouped by asset first (covered was 16.6%, is 6.8%).
+2. Null collateral was dropped and shown as "none posted"; now kept, shown by its reason, totals flagged lower bound.
+3. `/risk/pools` stops at 500 rows; pools are now read per asset (TSLAx 29 pools, not 14).
+4. Lending sums used `Date.now()` for the hourly/daily cutoff, so an old snapshot would add a day's hourly readings together; now `nowAt()` and one reading per pool per bucket.
+5–9. Partial sums flagged lower bound; stablecoin share lent out over reserves with both figures; per-hour lower bounds in capacity history; the KYC checkbox removed (the API's issuer path ignores it); empty filters say "nothing selected".
+
+Palette (dataviz `validate_palette.js`): two series dark #F3D8C4/#9D7751 ΔE 30.3, light #342515/#9D7751 ΔE 32.2; pie dark #F3D8C4,#9D7751,#DEB48C,#63482E,#AA9E92 worst adjacent ΔE 18.7 (with wrap); light #20150A,#BC946D,#63482E,#DEB48C,#7A6D5F worst 24.3; covered/not covered dark #7FA37A/#C2455F ΔE 23.9 (CVD 9.9), light #2F4A2A/#E58AA0 ΔE 39.3. Lightness-band and chroma-floor checks fail by the brand's low-chroma wood; every chart has a legend or direct labels and the pie lists every slice with its share.
+
+## 10. Lending tolerance box (2026-10-03)
+
+A text box beside the range tags of the lending chart sets the cost tolerance (0.1% to 10%, default 1%) for the whole lending page: counters, chart and table re-read `/risk/assets?tau=` and each collateral asset's `/history?days=30&tau=` at that tolerance. Live, weekend, all pools: covered 3.77% at 0.5%, 6.82% at 1%, 8.88% at 2%, 13.56% at 5%; 50 is refused with "Between 0.1% and 10%". The snapshot holds the 0.5%, 1% and 2% reads; other values offline show "not in the snapshot".
+
+Hand check at 1% (weekend, collateral summed per asset across pools, each Kamino market once): SPYx $14.45M against $1,013.6K capacity, NVDAx $4.75M / $1,000.4K, QQQx $4.17M / $79.3K, MSTRx $4.15M / $62.4K, TSLAx $4.13M / $72.8K, GOOGLx $2.98M / $70.9K, CRCLx $0.90M / $144.2K, HOODx $0.83M / $15.7K, STRCx $0.69M / $55.6K, AAPLx $0.59M / $51.8K: Σ min = $2.57M of $37.65M = 6.82%, as shown.
+
+## 11. Chart interaction fix (2026-10-03)
+
+Defect: every chart drawn by `analytics-charts.js` (time, depth, liquidity distribution, columns) bound its hover and keyboard handlers to `el.querySelector('svg')`, the first svg in the card. Since the headline value carries a provenance pin, that svg was the pin's icon, so hover, the crosshair, the readout and the arrow keys did nothing; the first hover threw "Cannot set properties of null". Both views were affected. Fixed: the engine binds to `.cc-plot > svg`. Checked with real pointer movement and synthetic events: crosshair and readout on the stocks capacity chart, lending covered and TVL charts and the first view's candles; arrow keys step the readout; liquidity zoom and per-bin readout; no console error.
+Added: pie hover (slice and legend row together, value and share in the ring, keyboard focus on rows) and flow hover (one path forward, the others dimmed). The page's assets carry `?v=` stamps so a browser does not keep an old copy from the prototype server, which sends no cache headers.

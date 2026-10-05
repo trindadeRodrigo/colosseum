@@ -310,3 +310,4 @@ html[data-theme="light"] .an { -webkit-font-smoothing:auto; }
 .an-mockline { display:flex; align-items:stretch; gap:8px; margin:0 0 8px; font-size:12.5px; color:var(--an-muted); }
 .an-mockband { width:6px; flex:none; background-image:repeating-linear-gradient(45deg, var(--an-muted) 0 1px, transparent 1px 6px); }
 .an-mockplate { display:inline-flex; align-items:center; height:20px; padding:0 6px; border:1px solid var(--an-muted); background:var(--an-card); color:var(--an-fg); font:500 12.5px/20px var(--font-mono); letter-spacing:.08em; text-transform:uppercase; align-self:center; }
+.cc-rangebar { display:inline-flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
