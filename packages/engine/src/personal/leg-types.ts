@@ -52,6 +52,19 @@ export const LEG_TYPES: Record<string, LegTypeRow> = {
       'packages/chain-mock/src/shelf.ts: the mock chain stand-in token, not a real asset (MOCK)',
     readAt: '2026-10-05',
   },
+  // The Solana test network's stand-ins take the leg types of the tokens they model, so a plan on it
+  // holds dollar yield as one on mainnet would. Not real assets: their figures are labelled sandbox.
+  tjlUSDC: {
+    types: ['market_deposit'],
+    source: 'fixtures/testnet: the test-network stand-in of jlUSDC, typed as jlUSDC is (sandbox)',
+    readAt: '2026-10-05',
+  },
+  tsyrupUSDC: {
+    types: ['credit', 'basis'],
+    source:
+      'fixtures/testnet: the test-network stand-in of syrupUSDC, typed as syrupUSDC is (sandbox)',
+    readAt: '2026-10-05',
+  },
 };
 
 /** Leg types that count against the credit budget. */
