@@ -117,9 +117,9 @@ describe('the monitor, for a person with a vault on their chain', () => {
         expect(cells[i]?.querySelector('[data-ui="figure"]')).toBeNull();
     }
     // the vault's value has its pin too, and its cash, switch and loss share none
+    expect(find(host, '[data-ui="vault-value"] [data-ui="figure"]')).toBeTruthy();
     const stats = [...host.querySelectorAll('[data-ui="stat"]')];
     expect(stats.map((stat) => stat.querySelector('[data-ui="figure"]') !== null)).toEqual([
-      true,
       false,
       false,
       false,

@@ -7,6 +7,7 @@ import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { Composer } from '../../components/ui/Composer';
 import { ConstraintSheet, type SheetFact } from '../../components/ui/ConstraintSheet';
+import { cn } from '../../components/ui/cn';
 import { GoalCard } from '../../components/ui/GoalCard';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { dictionary, LOCALE } from '../../i18n';
@@ -289,55 +290,67 @@ export function GoalScreen() {
 
   return (
     <div data-ui="goal-screen" className="flex flex-col gap-8">
-      {sheet ? (
-        // Once the goal is read it is the heading of the page, in the person's terms. A draft: the
-        // status of a goal comes from the engine, and there is no plan for it to speak of yet.
-        <GoalCard
-          variant="header"
-          state="draft"
-          sentence={goalSentence(sheet.fields, t, lang) ?? t.goal.card.unfinished}
-          note={fits ? t.goal.card.draftSet : t.goal.card.draftOpen}
-          action={{ label: t.goal.card.edit, href: `#${LIMITS}` }}
-        />
-      ) : (
-        <header className="flex flex-col gap-3">
-          <h1 className="max-w-(--tf-measure-display) font-display text-display font-normal">
-            {t.goal.title}
-          </h1>
-          <p className="max-w-(--tf-measure-body) text-body-lg text-foreground">{t.goal.lead}</p>
-        </header>
-      )}
+      {/* Before a goal is read, a wide screen sets the question beside the typing box, as his home
+          screen does (hero-3d.html, "Tell us what your money needs to do"); a phone stacks them. */}
+      <div
+        className={cn(
+          'flex flex-col gap-8',
+          !sheet && 'lg:grid lg:grid-cols-12 lg:items-start lg:gap-x-6',
+        )}
+      >
+        {sheet ? (
+          // Once the goal is read it is the heading of the page, in the person's terms. A draft: the
+          // status of a goal comes from the engine, and there is no plan for it to speak of yet.
+          <GoalCard
+            variant="header"
+            state="draft"
+            sentence={goalSentence(sheet.fields, t, lang) ?? t.goal.card.unfinished}
+            note={fits ? t.goal.card.draftSet : t.goal.card.draftOpen}
+            action={{ label: t.goal.card.edit, href: `#${LIMITS}` }}
+          />
+        ) : (
+          <header className="flex flex-col gap-3 lg:col-span-5">
+            <h1 className="max-w-(--tf-measure-display) font-display text-display font-normal">
+              {t.goal.title}
+            </h1>
+            <p className="max-w-(--tf-measure-body) text-body-lg text-foreground">{t.goal.lead}</p>
+          </header>
+        )}
 
-      <div ref={composer} className="flex max-w-(--tf-measure-docs) flex-col gap-3">
-        <Composer
-          label={t.goal.composer.label}
-          value={text}
-          onChange={setText}
-          onSubmit={read}
-          placeholder={t.goal.composer.placeholder}
-          maxLength={GOAL_TEXT.max}
-          hint={t.goal.composer.hint}
-          busy={reading}
-          // While a plan is being built the limits stand as they were sent: no other goal is read.
-          disabled={solving}
-          error={readSentence}
-          lang={LOCALE[lang]}
-          labels={{ submit: t.goal.composer.submit, busy: t.goal.composer.busy }}
-        />
-        <ul aria-label={t.goal.examples.label} className="flex flex-wrap gap-2">
-          {t.goal.examples.list.map((example) => (
-            <li key={example}>
-              <Button
-                variant="chip"
-                className="h-auto! min-h-8 py-1"
-                disabled={reading || solving}
-                onClick={() => fillWith(example)}
-              >
-                {example}
-              </Button>
-            </li>
-          ))}
-        </ul>
+        <div
+          ref={composer}
+          className={cn('flex max-w-(--tf-measure-docs) flex-col gap-3', !sheet && 'lg:col-span-7')}
+        >
+          <Composer
+            label={t.goal.composer.label}
+            value={text}
+            onChange={setText}
+            onSubmit={read}
+            placeholder={t.goal.composer.placeholder}
+            maxLength={GOAL_TEXT.max}
+            hint={t.goal.composer.hint}
+            busy={reading}
+            // While a plan is being built the limits stand as they were sent: no other goal is read.
+            disabled={solving}
+            error={readSentence}
+            lang={LOCALE[lang]}
+            labels={{ submit: t.goal.composer.submit, busy: t.goal.composer.busy }}
+          />
+          <ul aria-label={t.goal.examples.label} className="flex flex-wrap gap-2">
+            {t.goal.examples.list.map((example) => (
+              <li key={example}>
+                <Button
+                  variant="chip"
+                  className="h-auto! min-h-8 py-1"
+                  disabled={reading || solving}
+                  onClick={() => fillWith(example)}
+                >
+                  {example}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
 
       {sheet?.firstReader && (

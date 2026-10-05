@@ -34,8 +34,11 @@ export function MonitorScreen() {
   const chain = state.kind === 'reading' || state.kind === 'answered' ? state.chain : null;
   const network = chain ? port.network(chain) : null;
   const chainName = chain ? (network?.name ?? t.chain.names[chain]) : '';
-  const vaults =
-    state.kind === 'answered' && state.outcome.kind === 'read' ? state.outcome.chain.vaults : [];
+  const read =
+    state.kind === 'answered' && state.outcome.kind === 'read' ? state.outcome.chain : null;
+  const vaults = read?.vaults ?? [];
+  // How the chain is run: the API's word on the chain it read, or else the wallet's.
+  const chainLabel = read?.provenance ?? network?.provenance ?? 'mock';
 
   const readAgain = (
     <Button
@@ -159,7 +162,7 @@ export function MonitorScreen() {
         {chain && (
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body-sm">
             <span className="text-caption text-muted-foreground">{words.chain}</span>
-            <ChainName name={chainName} provenance={network?.provenance ?? 'mock'} labels={marks} />
+            <ChainName name={chainName} provenance={chainLabel} labels={marks} />
           </p>
         )}
       </header>

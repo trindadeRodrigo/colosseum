@@ -132,15 +132,21 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
           </span>
         }
       />
-      <CardBody density="dense" className="flex flex-col gap-3">
-        <StatRow>
-          <Stat label={words.value}>
+      {/* Below the plate of a mocked card, so nothing in the body is narrowed by it. */}
+      <CardBody density="dense" className="clear-right flex flex-col gap-3">
+        {/* The value on a line of its own: with its pin and the plate it is wider than a cell of a
+            phone's two columns. */}
+        <dl data-ui="vault-value">
+          <dt className="text-caption text-muted-foreground">{words.value}</dt>
+          <dd className="font-mono text-[1.125rem]/7 font-medium tabular-nums">
             <ProvenancePin
               value={dollars(lang, vault.valueUsd)}
               obs={vaultValueSource(chain, vault, words.valueMethod)}
               labels={t.pin}
             />
-          </Stat>
+          </dd>
+        </dl>
+        <StatRow>
           <Stat label={words.cash}>
             {tokens(lang, vault.cash.display)}{' '}
             <span className="text-caption text-muted-foreground">
