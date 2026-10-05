@@ -2559,7 +2559,7 @@
                       "type": "array",
                       "items": {
                         "type": "string",
-                        "enum": ["auto_follow_on", "new_asset"]
+                        "enum": ["auto_follow_on", "new_asset", "publish"]
                       }
                     },
                     "fees": {
@@ -3102,7 +3102,7 @@
                       "type": "array",
                       "items": {
                         "type": "string",
-                        "enum": ["auto_follow_on", "new_asset"]
+                        "enum": ["auto_follow_on", "new_asset", "publish"]
                       }
                     },
                     "fees": {
@@ -4119,7 +4119,7 @@
                       "type": "array",
                       "items": {
                         "type": "string",
-                        "enum": ["auto_follow_on", "new_asset"]
+                        "enum": ["auto_follow_on", "new_asset", "publish"]
                       }
                     },
                     "fees": {
@@ -4705,7 +4705,7 @@
                       "type": "array",
                       "items": {
                         "type": "string",
-                        "enum": ["auto_follow_on", "new_asset"]
+                        "enum": ["auto_follow_on", "new_asset", "publish"]
                       }
                     },
                     "fees": {

@@ -7,6 +7,7 @@ import type {
   RawAmount,
   Target,
 } from '@colosseum/schemas';
+import type { FamilyText } from './meta';
 
 // What the guard is given. None of it comes from the transaction it checks, and none of it should come
 // from the server that built that transaction: the step is what the person saw on the review screen,
@@ -24,6 +25,33 @@ export type ApprovedTrade = {
 export type Follow = {
   /** Solana: the recipe account. EVM: the 32-byte id as 0x hex. */
   recipeOnchainId: string;
+  version: number;
+};
+
+/**
+ * A creator's own shared portfolio, as the review screen showed it (gate `SHARED-FULL`). The portfolio
+ * is the registry's account for the creator, who is the step's owner, and this family: it is derived,
+ * never named. A publish order has no plan, so its step's `basketId` is '0'.
+ */
+export type Publication = {
+  /** `publish` the first version, `update` to the next one, `cancel` the version that waits. */
+  action: 'publish' | 'update' | 'cancel';
+  /** The family's id, 32 bytes as lower-case hex. */
+  familyId: string;
+  /** The assets and weights of the version: adding up to 10,000. Empty for a cancel. */
+  components: Target[];
+  /**
+   * The family's text as the screen showed it: its slug, name, copy and kind. The guard works out the
+   * hash the registry stores from this and the family id, and holds the bytes to it. It is the text the
+   * screen shows, never a server's answer. Null for a cancel.
+   */
+  text: Omit<FamilyText, 'familyId'> | null;
+  /** A text hash the caller was handed, if any: refused unless it is the hash of `text`. */
+  metaHash?: string;
+  /**
+   * The version the screen named: 1 for a publish, the next for an update, the one that waits for a
+   * cancel. The bytes carry no version: the registry numbers them, so this is shown, never checked.
+   */
   version: number;
 };
 
@@ -49,8 +77,7 @@ type StepBase = {
 
 /**
  * A step as the person approved it. Each kind carries exactly what its transaction may do; the guard
- * refuses bytes that do anything else. `publish` and the keeper's two kinds have no entry: this guard
- * signs none of them.
+ * refuses bytes that do anything else. The keeper's two kinds have no entry: this guard signs neither.
  */
 export type ApprovedStep = StepBase &
   (
@@ -79,6 +106,7 @@ export type ApprovedStep = StepBase &
         withdrawals: Withdrawal[] | 'all';
         held?: HeldToken[];
       }
+    | ({ kind: 'publish' } & Publication)
   );
 export type ApprovedKind = ApprovedStep['kind'];
 
@@ -165,4 +193,6 @@ export type PlanTerms = {
   withdrawals?: Withdrawal[];
   /** For a `withdraw` of everything: what the vault holds beyond the deployment's list, by the caller's own read. */
   held?: HeldToken[];
+  /** For a `publish` step: the shared portfolio as the creator saw it. */
+  publish?: Publication;
 };
