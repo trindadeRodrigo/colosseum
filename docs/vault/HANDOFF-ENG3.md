@@ -6,15 +6,15 @@
 
 | Piece | Branch | State |
 |---|---|---|
-| Rodrigo's decisions of Oct 5 and the prompt | `docs/decisions-oct5-rodrigo`, PR #43 into `staging` | Reviewed; review fixes pushed; **not merged** (an agent may not merge it without a second review of the fix commit; a person merges) |
+| Rodrigo's decisions of Oct 5 and the prompt | `docs/decisions-oct5-rodrigo`, PR #43 into `staging` | Open, **not merged** (a person merges); its content already reached `staging` through #47 |
 | The research note | `docs/portfolio-method`, PR #23 | Merged into `staging` |
-| Thom's engine (ENG-2): `compose`, sleeves table, exit ceilings, `POST /v1/baskets/personalize` | `eng/personal` | No PR yet; Thom opens it |
-| Slice 1: the banded fill and the caps (ENG-3) | `engine/fill`, PR #46 into `eng/personal` | Open; `pnpm verify` green; independently reviewed twice, findings fixed |
-| Slice 2: the sheet, currency, sleeves, coverage | `engine/sheet`, from `engine/fill` | See "Slice 2" below |
+| Thom's engine (ENG-2) | `eng/personal`, PR #47 | **Merged into `staging`** on Oct 5 |
+| Slice 1: the banded fill and the caps (ENG-3) | `engine/fill`, PR #46, **now into `staging`** | `staging` merged in at `1782c24`; Thom's two new roll-up pins in `personalize.test.ts` re-pinned to slice 1's plan (explained in the commit); engine + API tests green |
+| Slice 2: the sheet, currency, sleeves, coverage | `engine/sheet`, draft PR #48 into `engine/fill` | `engine/fill` merged in; see "Slice 2 progress" below |
 
 Worktree used: `~/Documents/Colosseum-engine` (a `git worktree` of the main checkout). Start the session in the main checkout (`~/Documents/Colosseum`) so the hooks load, and work in that worktree, or make a new one.
 
-Merge order: #43 → `eng/personal` → #46 → slice 2 → … Once `eng/personal` is in `staging`, retarget open PRs to `staging`.
+Merge order: #46 → #48 (retarget #48 to `staging` once #46 merges) → slice 3 …
 
 ## Settled in the last session (in `docs/GATES.md`)
 
@@ -55,13 +55,17 @@ Branch `engine/sheet`, from `engine/fill` (PR #46). Draft PR into `engine/fill`,
   - The API round-trips `currency`, `sleeves` and `restoreSplit`, and gives 400 on bad shares.
   - DESIGN 3.6 lists the fields.
 
+- `bcb739f` **Step 1, sleeves in the engine** (done):
+  - `sizeSleeves` scales the row and the date's floors to the goal share (floors rounded up); `mustKeep` counts the safe-yield share. `SleevePlan` gains `goalBps`, `safeYieldBps`.
+  - `compose` places the safe-yield sleeve **before** the goal's dollar yield (it can hold only rate legs, so it has first call on them), with `fillBanded` over `w.isRateOnly` tokens; what is left stays in cash with `SAFE_YIELD_NO_RATE` (no rate leg at all, flag `safe_yield_no_rate_leg`) or `UNPLACED`.
+  - New templates `SPLIT_GOAL`, `SPLIT_SAFE_YIELD`, `SAFE_YIELD_NO_RATE`; new input name `sleeves`.
+  - `PersonalProposal.split?` (engine type only; `sharedProposal` in the API strips it, so the API answer is unchanged). Rebalancing per sleeve (slice 4) will need it in the shared `BasketProposal`: a schema change for Thom then.
+  - A theme sleeve is still refused ("a theme sleeve is not built yet").
+  - Tests: `sleeves.test.ts` (10); the property tests now generate splits (`splitOn`) for the violations and determinism properties; `violations()` checks the split's shares and dollars, the safe-yield sleeve in rate legs and cash only, `SPLIT_*` sentences only on split plans, and that `mustKeepUsd` is in dollar yield and cash. Two mutations (safe yield over every leg type; `mustKeep` not counting the sleeve) each fail a test.
+  - **For Rodrigo:** on Solana the launch shelf has no rate-only token (jlUSDC is a market deposit, syrupUSDC credit and basis), so a safe-yield sleeve on Solana is all cash, said and flagged. On Robinhood Chain it is SGOV to its 40% cap, then cash.
+
 **Left in slice 2**, in this order. Each step removes its refusal in `world.ts` as it lands.
 
-1. **Sleeves in the engine.** `sizeSleeves` (`exposure.ts`) takes its sizes from `sleevesOf(sheet)` when the person gave a split:
-   - A goal sleeve keeps today's table and floors, scaled to its share.
-   - A safe-yield sleeve is dollar yield only, rate legs only (leg type `rate`), filled by `fillBanded`.
-   - A theme sleeve waits for slice 4. Until then, refuse a theme sleeve and accept goal plus safe-yield splits.
-   - The restore choice is stored only; slice 4 uses it.
 2. **Currency and the matching leg.** For a goal in a currency other than dollars, the matching leg is the asset in that currency, if the shelf lists one. That is the BRL leg for reais: an abstract asset with a parameterised cap, no BRS-specific code (G-NORA open). It needs an FX observation per pair, with source, time and method. There is no BRL asset on the launch shelf, so a reais goal on it says so and holds the withdrawals in cash. A dollar goal has no matching leg, no FX stress and no open-FX line.
 3. **Setting aside.**
    - First, cash for the liquidity window.
@@ -80,3 +84,10 @@ Then `/verify`, `/review-pr` by an agent that did not write it, take the draft P
 **Watch for:**
 - `violations()` in `testing.ts` must learn sleeves and the set-aside rule, or the property tests will not see a broken split.
 - Thom's tests that compare sleeves to `expectedSleeves()` must keep passing when no split is given.
+
+**Design agreed for steps 2 and 3** (by the session that built step 1; not built yet):
+- The matching leg is a shelf token of class `cash` with `currency` set (a new optional `BasketAsset.currency`, ISO 4217, only on cash tokens: **a second schema commit for Thom**). `world.cash` becomes the cash token in dollars; `world.matchingOf(currency)` the cash token in that currency on the chain, or null. No BRL-specific code (G-NORA): it is any currency.
+- Its cap: no new parameter. As a cash-class token it already takes the plan's 50% issuer cap (`SOLVER-CAPS`) and its exit ceiling (tier or measured). The old engine's `BRL_LEG_CAP_WEIGHT_DEFAULT` (0.3) is not carried over; if Rodrigo wants a separate cap, it is a parameter outside the table and his call.
+- FX: `ComposeContext.fx?: FxObservation[]`, pair `USD<cur>` (units of the currency per dollar), validated like yields, recorded in `observations` (kind `fx`). Needed only to convert withdrawals not in dollars; a goal in reais with no withdrawals needs none. A withdrawal in a currency with no FX reading is refused (`InvalidContext`), never guessed.
+- The open-FX line: for a goal not in dollars, flag `fx_open:<cur>` and an `FX_OPEN` reason on each line not in the goal's currency. A dollar goal has neither. With no matching leg on the shelf: flag `no_matching_leg:<cur>` and a reason on the cash line.
+- Set-aside (step 3): the withdrawals of this month and the next five, converted to dollars, become a set-aside share taken off the goal sleeve before the table is scaled (`sizeSleeves` scales to `goal − setAside`); if it is more than the goal sleeve, it is held to it, flagged `set_aside_short`, and said. Placed first: in the matching leg for withdrawals in its currency, in rate-only legs by measured exit capacity (most liquid first, unmeasured last, by id) for dollars, the rest in cash. The reason names the months and the amounts.
