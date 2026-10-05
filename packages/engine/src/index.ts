@@ -3,6 +3,7 @@ export * from './assets/index';
 export * from './errors';
 export * from './feeds/index';
 export * from './parser/index';
+export * from './personal/index';
 export * from './policy/index';
 export * from './risk/index';
 export * from './schedule/index';
