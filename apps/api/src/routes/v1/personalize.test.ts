@@ -107,8 +107,8 @@ describe('POST /v1/baskets/personalize', () => {
       expect(['stock', 'etf', 'crypto']).not.toContain(cls.get(line.assetId));
       expect(line.reasons.length).toBeGreaterThan(0);
     }
-    // The mock lists no GLD, so its gold share is held in dollar yield or cash; one issuer holds at
-    // most half at low risk, and the rest stays in cash.
+    // The mock's one issuer holds at most half at low risk: dollar yield fills it, so the gold share
+    // (PAXG, gate GOLD-PAXG) is held in cash with the rest.
     expect(proposal.lines.map((l) => [l.assetId, l.weightBps])).toEqual([
       ['solana:yield', 5000],
       ['solana:usdc', 5000],
@@ -118,8 +118,9 @@ describe('POST /v1/baskets/personalize', () => {
     expect(proposal.flags).toEqual(
       expect.arrayContaining(['ceiling_from_tier:solana:yield', 'shelf_provenance:mock']),
     );
-    // The same sheet with a goal to grow holds stocks from the same shelf: the rule is the goal's.
-    const grow = await post(who, PATH, { sheet: { ...asked, goal: 'grow' } });
+    // The same sheet with a goal to grow holds stocks from the same shelf: the rule is the goal's. At
+    // medium risk: at low, gold and dollar yield take all the half the mock's one issuer may hold.
+    const grow = await post(who, PATH, { sheet: { ...asked, goal: 'grow', risk: 'medium' } });
     expect(grow.statusCode, grow.body).toBe(200);
     expect(
       PersonalizeResponse.parse(grow.json()).proposal.lines.some((l) =>
@@ -144,6 +145,25 @@ describe('POST /v1/baskets/personalize', () => {
     expect(bought.legs.flatMap((l) => l.trades.map((t) => t.amountInRaw))).toEqual([
       String(25_000 * 10 ** 6),
     ]);
+  });
+
+  it('holds PAXG for gold on Solana and GLD on Robinhood Chain when nothing chosen fills it (gate GOLD-PAXG)', async () => {
+    for (const [kind, chain, gold] of [
+      ['solana', 'solana', 'PAXG'],
+      ['robinhood', 'robinhood', 'GLD'],
+    ] as const) {
+      const who = await someone(kind);
+      // At high risk the mock's one issuer may hold the whole plan.
+      const res = await post(who, PATH, { sheet: sheet({ chains: [chain], risk: 'high' }) });
+      expect(res.statusCode, res.body).toBe(200);
+      const { proposal } = PersonalizeResponse.parse(res.json());
+      const line = proposal.lines.find((l) => l.assetId === `${chain}:gold`);
+      expect(line?.weightBps, chain).toBe(2500);
+      expect(line?.reasons.map((r) => r.text)).toContain(
+        `${gold}: where a goal to protect starts when you choose no shared portfolio.`,
+      );
+      expect(proposal.removed).toEqual([]);
+    }
   });
 
   it('makes an income plan with no stock token either, even from a shared portfolio of stocks', async () => {

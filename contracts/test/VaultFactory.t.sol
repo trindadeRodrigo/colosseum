@@ -36,7 +36,7 @@ contract ProxyMaker is ConfigHarness {
     }
 
     function start(BasketVault made) external {
-        made.start(bytes32(0), 0, new Weight[](0), 0, new Swap[](0));
+        made.start(bytes32(0), 0, new Weight[](0), false, 0, new Swap[](0));
     }
 }
 
@@ -50,11 +50,11 @@ contract EvilFactoryLogic is VaultConfig, UUPSUpgradeable {
         bytes memory init = abi.encodeCall(IBasketVault.initialize, (victim, salt));
         bytes memory code = abi.encodePacked(type(BeaconProxy).creationCode, abi.encode(beacon_, init));
         vault = Create2.deploy(0, keccak256(abi.encode(victim, salt)), code);
-        IBasketVault(vault).start(bytes32(0), 0, new Weight[](0), cashAmount, swaps);
+        IBasketVault(vault).start(bytes32(0), 0, new Weight[](0), false, cashAmount, swaps);
     }
 
     function restart(address vault, uint256 cashAmount, Swap[] calldata swaps) external {
-        IBasketVault(vault).start(bytes32(0), 0, new Weight[](0), cashAmount, swaps);
+        IBasketVault(vault).start(bytes32(0), 0, new Weight[](0), false, cashAmount, swaps);
     }
 
     function _authorizeUpgrade(address) internal view override {
@@ -210,15 +210,38 @@ contract VaultFactoryTest is SwapFixture {
         assertEq(factory.vaultCount(), 1);
     }
 
-    /// Auto-follow arrives with the keeper path. Until then a vault cannot be created with it on.
-    function test_createVault_refusesAutoFollow() public {
+    /// Auto-follow can be on from the creation, by either call: the keeper may trade the vault at once.
+    function test_createVault_withAutoFollow_switchesItOn() public {
+        bytes32 plan3 = keccak256("plan-3");
+        address predicted = factory.vaultOf(owner, PLAN_2);
         vm.startPrank(owner);
-        vm.expectRevert(IVaultFactory.AutoFollowUnavailable.selector);
-        factory.createVault(PLAN_2, none, bytes32(0), 0, true);
-        vm.expectRevert(IVaultFactory.AutoFollowUnavailable.selector);
-        factory.createVaultAndBuy(PLAN_2, none, bytes32(0), 0, true, 0, noSwaps);
+        vm.expectEmit(predicted);
+        emit IBasketVault.AutoFollowSet(predicted, true);
+        address made = factory.createVault(PLAN_2, none, bytes32(0), 0, true);
+        address bought = factory.createVaultAndBuy(plan3, none, bytes32(0), 0, true, 0, noSwaps, LATER);
+        address off = factory.createVault(keccak256("plan-4"), none, bytes32(0), 0, false);
         vm.stopPrank();
+        (,, bool on) = BasketVault(payable(made)).following();
+        assertTrue(on);
+        (,, on) = BasketVault(payable(bought)).following();
+        assertTrue(on);
+        (,, on) = BasketVault(payable(off)).following();
+        assertFalse(on);
+    }
+
+    /// A create that trades carries the deadline its owner signed: sent after it, nothing is made.
+    function test_createVaultAndBuy_isRefusedAfterItsDeadline() public {
+        uint64 deadline = uint64(block.timestamp + 60);
+        vm.warp(deadline + 1);
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(IVaultFactory.DeadlinePassed.selector, deadline, deadline + 1));
+        factory.createVaultAndBuy(PLAN_2, none, bytes32(0), 0, false, 0, noSwaps, deadline);
         assertEq(factory.vaultOf(owner, PLAN_2).code.length, 0);
+        // At the deadline itself it still goes.
+        vm.warp(deadline);
+        vm.prank(owner);
+        factory.createVaultAndBuy(PLAN_2, none, bytes32(0), 0, false, 0, noSwaps, deadline);
+        assertGt(factory.vaultOf(owner, PLAN_2).code.length, 0);
     }
 
     /// The owner is the caller and nothing else. A stranger who uses Alice's plan id gets a vault of their
@@ -277,7 +300,7 @@ contract VaultFactoryTest is SwapFixture {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
         BasketVault(payable(made)).initialize(stranger, PLAN_2);
         vm.expectRevert(IBasketVault.NotCreating.selector);
-        BasketVault(payable(made)).start(bytes32(0), 0, none, 0, noSwaps);
+        BasketVault(payable(made)).start(bytes32(0), 0, none, false, 0, noSwaps);
         vm.expectRevert(abi.encodeWithSelector(IBasketVault.NotOwner.selector, stranger));
         BasketVault(payable(made)).withdraw(address(stockA), 5 * unit);
         vm.stopPrank();
@@ -293,7 +316,7 @@ contract VaultFactoryTest is SwapFixture {
     function test_start_revertsForTheFactoryOnceTheVaultIsMade() public {
         vm.prank(address(factory));
         vm.expectRevert(IBasketVault.NotCreating.selector);
-        vault.start(bytes32(0), 0, none, 0, noSwaps);
+        vault.start(bytes32(0), 0, none, false, 0, noSwaps);
     }
 
     /// A proxy made outside the factory has its maker as its config. Even in the transaction that made it,
@@ -307,7 +330,7 @@ contract VaultFactoryTest is SwapFixture {
         for (uint256 i; i < others.length; ++i) {
             vm.prank(others[i]);
             vm.expectRevert(IBasketVault.NotCreating.selector);
-            bare.start(bytes32(0), 0, none, 0, noSwaps);
+            bare.start(bytes32(0), 0, none, false, 0, noSwaps);
         }
 
         maker.start(bare);
@@ -366,7 +389,7 @@ contract VaultFactoryTest is SwapFixture {
         emit IBasketVault.OwnerTrade(predicted, address(cash), address(stockA), 600 * USD, 3 * unit);
         vm.expectEmit(predicted);
         emit IBasketVault.OwnerTrade(predicted, address(cash), address(stockB), 300 * USD, 2 * unit);
-        address made = factory.createVaultAndBuy(PLAN_2, targets, bytes32(0), 0, false, 1000 * USD, swaps);
+        address made = factory.createVaultAndBuy(PLAN_2, targets, bytes32(0), 0, false, 1000 * USD, swaps, LATER);
         vm.stopPrank();
 
         assertEq(made, predicted);
@@ -404,7 +427,7 @@ contract VaultFactoryTest is SwapFixture {
         cash.approve(predicted, 200 * USD);
 
         vm.prank(owner);
-        factory.createVaultAndBuy(PLAN_2, none, bytes32(0), 0, false, 200 * USD, noSwaps);
+        factory.createVaultAndBuy(PLAN_2, none, bytes32(0), 0, false, 200 * USD, noSwaps, LATER);
 
         assertEq(cash.balanceOf(predicted), 200 * USD);
         assertEq(cash.balanceOf(stranger), 500 * USD);
@@ -424,7 +447,7 @@ contract VaultFactoryTest is SwapFixture {
         vm.expectRevert(
             abi.encodeWithSelector(IBasketVault.DepositShortfall.selector, address(skim), 1000 * USD, 990 * USD)
         );
-        factory.createVaultAndBuy(PLAN_2, none, bytes32(0), 0, false, 1000 * USD, noSwaps);
+        factory.createVaultAndBuy(PLAN_2, none, bytes32(0), 0, false, 1000 * USD, noSwaps, LATER);
         vm.stopPrank();
         assertEq(skim.balanceOf(owner), 1000 * USD);
         assertEq(predicted.code.length, 0);
@@ -441,7 +464,7 @@ contract VaultFactoryTest is SwapFixture {
         vm.expectRevert(
             abi.encodeWithSelector(IBasketVault.ReceivedTooLittle.selector, address(stockA), 3 * unit, 3 * unit + 1)
         );
-        factory.createVaultAndBuy(PLAN_2, none, bytes32(0), 0, false, 1000 * USD, swaps);
+        factory.createVaultAndBuy(PLAN_2, none, bytes32(0), 0, false, 1000 * USD, swaps, LATER);
         vm.stopPrank();
 
         assertEq(predicted.code.length, 0);

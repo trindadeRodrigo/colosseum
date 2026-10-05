@@ -25,3 +25,16 @@ jobs:
       - run: pnpm db:migrate
       # The same command a person or a session runs locally: lint, typechecks, tests, build.
       - run: pnpm verify
+  # The app in a browser (apps/web/playwright.config.ts): the plan, buy and order screens at 375 px in
+  # light and dark with axe, on the mock chain and a stub of the API. No database, no real sign-in.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @colosseum/web exec playwright install --with-deps chromium
+      - run: pnpm --filter @colosseum/web e2e
+        env: { CI: '1' }

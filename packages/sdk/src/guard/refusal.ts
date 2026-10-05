@@ -68,6 +68,8 @@ export const GUARD_CHECKS = [
   'spender',
   /** An approval of everything, whatever the order says. */
   'unlimited',
+  /** A trade's deadline has passed, or is further off than a signed step may stay good. */
+  'deadline',
 ] as const;
 export type GuardCheck = (typeof GUARD_CHECKS)[number];
 

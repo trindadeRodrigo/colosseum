@@ -40,6 +40,7 @@ import {
   type Key,
   newKey,
   priceEntries,
+  shelfOf,
 } from './contract-world';
 import {
   BASKET_PROGRAM,
@@ -124,7 +125,11 @@ describe.skipIf(!PROGRAMS_BUILT)('shared portfolios through the API on Solana, i
           assets: Object.fromEntries(
             Object.entries(w.mints).map(([name, m]) => [
               id(name),
-              { mint: m.address, tokenProgram: m.tokenProgram === TOKEN ? 'token' : 'token-2022' },
+              {
+                mint: m.address,
+                tokenProgram: m.tokenProgram === TOKEN ? 'token' : 'token-2022',
+                decimals: shelfOf()[name]?.decimals ?? -1,
+              },
             ]),
           ),
         },

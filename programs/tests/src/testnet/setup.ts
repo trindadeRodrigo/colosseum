@@ -65,6 +65,7 @@ import {
 } from '../mock-router';
 import {
   mintExtensionEntries,
+  paxgExtensions,
   stockExtensions,
   TOKEN_2022_PROGRAM,
   TOKEN_PROGRAM,
@@ -139,6 +140,8 @@ export type RetiredAsset = {
   symbol: string | null;
   mint: Address;
   tokenProgram: 'token' | 'token-2022';
+  /** As the mint holds them. */
+  decimals: number;
   keeperOn: false;
 };
 
@@ -178,14 +181,15 @@ export type Deployment = {
 };
 
 /** A chain's entry in the SDK guard's deployment file (`SolanaEntry` in packages/sdk): the vault
- * program, the one router, the cash asset, and every asset's mint with its token program. The
- * guard's file holds one such entry per chain of a network, and nothing else of what is above. */
+ * program, the one router, the cash asset, and every asset's mint with its token program and its
+ * decimals, which a screen turns raw units into figures with. The guard's file holds one such entry
+ * per chain of a network, and nothing else of what is above. */
 export type GuardSolanaEntry = {
   family: 'solana';
   program: Address;
   router: Address;
   cash: string;
-  assets: Record<string, { mint: Address; tokenProgram: 'token' | 'token-2022' }>;
+  assets: Record<string, { mint: Address; tokenProgram: 'token' | 'token-2022'; decimals: number }>;
 };
 
 export function guardSolanaEntry(deployment: Deployment): GuardSolanaEntry {
@@ -203,7 +207,10 @@ export function guardSolanaEntry(deployment: Deployment): GuardSolanaEntry {
         ...deployment.retired.flatMap((token) =>
           token.id && !current.has(token.id) ? [{ ...token, id: token.id }] : [],
         ),
-      ].map((token) => [token.id, { mint: token.mint, tokenProgram: token.tokenProgram }]),
+      ].map((token) => [
+        token.id,
+        { mint: token.mint, tokenProgram: token.tokenProgram, decimals: token.decimals },
+      ]),
     ),
   };
 }
@@ -216,10 +223,13 @@ export type SetupResult = {
 
 /** Token-2022's numbers for the extensions a test token can carry, by the name the client gives them. */
 const EXTENSION_NAMES: Record<number, string> = {
+  1: 'TransferFeeConfig',
+  3: 'MintCloseAuthority',
   4: 'ConfidentialTransferMint',
   6: 'DefaultAccountState',
   12: 'PermanentDelegate',
   14: 'TransferHook',
+  16: 'ConfidentialTransferFee',
   18: 'MetadataPointer',
   19: 'TokenMetadata',
   25: 'ScaledUiAmountConfig',
@@ -445,12 +455,16 @@ export async function setUp(
     const mint = mintOf(token);
     const program = programOf(token);
     const omitted = new Set(options.omitExtensions ?? []);
-    const base: ExtensionArgs[] = token.stockExtensions
-      ? stockExtensions(admin.address, mint, token.multiplier).filter((e) => !omitted.has(e.__kind))
-      : [];
+    const set: ExtensionArgs[] =
+      token.extensionSet === 'stock'
+        ? stockExtensions(admin.address, mint, token.multiplier)
+        : token.extensionSet === 'paxg'
+          ? paxgExtensions(admin.address, mint)
+          : [];
+    const base = set.filter((e) => !omitted.has(e.__kind));
     // The name sits in the mint itself, after the other extensions, and is written after the mint
     // is initialised: the account is made at the size without it and paid for at the size with it.
-    const named: ExtensionArgs[] = token.stockExtensions
+    const named: ExtensionArgs[] = token.extensionSet
       ? [...base, tokenMetadata(admin.address, mint, token.name, token.symbol)]
       : [];
     const found = await chain.account(mint);
@@ -492,7 +506,7 @@ export async function setUp(
         }),
       },
       ...getPreInitializeInstructionsForMintExtensions(mint, named).map((instruction, i) => ({
-        name: `extension ${i + 1} of the stock token's set`,
+        name: `extension ${i + 1} of the ${token.extensionSet} token's set`,
         instruction,
       })),
       {
@@ -870,12 +884,15 @@ export async function setUp(
   const offs: Named[] = [];
   for (const entry of strays) {
     const before = known.get(entry.mint);
-    const owner = (await chain.account(entry.mint))?.owner;
+    const account = await chain.account(entry.mint);
+    const decimals = account?.data[44];
+    if (decimals === undefined) throw new Error(`the listed mint ${entry.mint} cannot be read`);
     retired.push({
       id: before?.id ?? null,
       symbol: before?.symbol ?? null,
       mint: entry.mint,
-      tokenProgram: owner === TOKEN_2022_PROGRAM ? 'token-2022' : 'token',
+      tokenProgram: account?.owner === TOKEN_2022_PROGRAM ? 'token-2022' : 'token',
+      decimals,
       keeperOn: false,
     });
     const what = `${before?.symbol ?? 'a mint no record names'} (${entry.mint})`;

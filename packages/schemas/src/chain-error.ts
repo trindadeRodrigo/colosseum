@@ -168,6 +168,37 @@ export const CONTRACT_ERROR_CODE = {
   VersionMismatch: 'VersionMismatch',
   /** The chain's config names no registry, so nothing can be followed there yet. */
   RegistryNotSet: 'NotSupported',
+  /** An owner's trade sent after the deadline it was signed with: built too long ago to be sent. */
+  DeadlinePassed: 'Expired',
+  // IBasketVault, the keeper's path (EVM-3): the program's names where the rule is the same.
+  NotKeeper: 'NotKeeper',
+  AutoFollowOff: 'AutoFollowOff',
+  KeeperPaused: 'KeeperPaused',
+  NotCashLeg: 'NotCashLeg',
+  NotTowardTarget: 'NotTowardTarget',
+  PastTarget: 'PastTarget',
+  Cooldown: 'Cooldown',
+  LossCapReached: 'LossCapReached',
+  AssetNotPriced: 'AssetNotPriced',
+  KeeperAssetOff: 'KeeperAssetOff',
+  PriceOutOfRange: 'PriceOutOfRange',
+  PriceStale: 'PriceStale',
+  PriceDeviation: 'PriceDeviation',
+  /** The chain's sequencer is down or came back less than an hour ago: its prices wait, as a stale one does. */
+  SequencerDown: 'PriceStale',
+  MarketClosed: 'MarketClosed',
+  /** The guardian halted keeper trades in the asset: the market is closed to the keeper for it. */
+  AssetHalted: 'MarketClosed',
+  /** The issuer paused the token: closed to the keeper until the issuer lifts it. */
+  AssetPaused: 'MarketClosed',
+  MultiplierWindow: 'MultiplierWindow',
+  /** What came in is worth less than what went out, less the tolerance: the program's ReceivedTooLittle. */
+  ValueTooLow: 'ReceivedTooLittle',
+  NothingTraded: 'NothingTraded',
+  /** The vault is worth more than the keeper's checks measure: the program refuses it as AssetNotPriced. */
+  ValueTooLarge: 'AssetNotPriced',
+  NewAssetNeedsOwner: 'NewAssetNeedsOwner',
+  VersionNotEffective: 'VersionNotEffective',
   // IVaultConfig
   NotAdmin: 'NotAdmin',
   NotPendingAdmin: 'NotAdmin',
@@ -195,8 +226,6 @@ export const CONTRACT_ERROR_CODE = {
   ParamOutOfBounds: 'ParamOutOfBounds',
   // IVaultFactory
   VaultExists: 'VaultExists',
-  /** Auto-follow cannot be switched on at creation until the keeper path exists. */
-  AutoFollowUnavailable: 'NotSupported',
   BeaconNotTheAdmins: 'HandoverNotDone',
   // IIndexRegistry
   CreatorLimit: 'CreatorLimit',

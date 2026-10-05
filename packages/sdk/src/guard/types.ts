@@ -129,8 +129,14 @@ export type SolanaDeployment = {
   /** `Config.router_program`: the only program a vault swaps through. */
   router: Address;
   cash: AssetId;
-  /** Every asset a step may name, with its mint and the token program that owns the mint. */
-  assets: Record<AssetId, { mint: Address; tokenProgram: 'token' | 'token-2022' }>;
+  /**
+   * Every asset a step may name, with its mint, the token program that owns the mint and its decimals:
+   * what a screen turns raw units into a figure with, so it never takes them from a server.
+   */
+  assets: Record<
+    AssetId,
+    { mint: Address; tokenProgram: 'token' | 'token-2022'; decimals: number }
+  >;
   fee?: FeeLimit;
 };
 
@@ -151,12 +157,19 @@ export type EvmDeployment = {
   /** The exchanges a vault may trade through. */
   routers: Address[];
   cash: AssetId;
-  assets: Record<AssetId, { token: Address }>;
+  /** Each asset's token contract and its decimals. */
+  assets: Record<AssetId, { token: Address; decimals: number }>;
   fee?: FeeLimit;
 };
 
 /** A chain that runs on packages/chain-mock. Its transactions are the mock's own, and move nothing. */
-export type MockDeployment = { family: 'mock'; chain: ChainId; cash: AssetId };
+export type MockDeployment = {
+  family: 'mock';
+  chain: ChainId;
+  cash: AssetId;
+  /** The decimals of the mock's cash token. */
+  cashDecimals: number;
+};
 
 /**
  * The mark of a deployment that `deploymentsOf` read from a file committed in this package. The class is never

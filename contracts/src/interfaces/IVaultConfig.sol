@@ -35,6 +35,7 @@ interface IVaultConfig {
     event ClosedUntilSet(uint64 until);
     event ClosedDaySet(uint32 indexed day, bool closed);
     event Launched();
+    event PriceDevSet(uint16 bps);
 
     error NotAdmin(address caller);
     error NotPendingAdmin(address caller);
@@ -59,9 +60,12 @@ interface IVaultConfig {
     error AdminHandoverPending(address pendingAdmin);
     error RegistryAlreadySet(address registry);
     /// `param` is the field's name as ASCII, left-aligned: "source", "session", "tokenDecimals",
-    /// "feedDecimals", "maxWeightBps", "maxAge", "toleranceBps", "lossCapBps", "assetCooldown",
-    /// "sessionOpen", "sessionClose".
+    /// "feedDecimals", "maxWeightBps", "maxAge", "flags", "maxPrice", "toleranceBps", "lossCapBps", "bandBps",
+    /// "assetCooldown", "sessionOpen", "sessionClose", "priceDevBps".
     error ParamOutOfBounds(bytes32 param, uint256 value);
+    /// The keeper's switch on an asset with no price to value it at: no Chainlink feed, no average feed
+    /// apart from it, or no price range.
+    error AssetNotPriced(address token);
 
     // ---- what a vault reads
 
@@ -120,6 +124,10 @@ interface IVaultConfig {
             uint32 sessionClose
         );
 
+    /// How far a price may be from its one-hour average for the keeper to trade at it, in bps of the
+    /// average. Zero until the admin sets it: a price must then equal its average.
+    function priceDevBps() external view returns (uint16);
+
     function admin() external view returns (address);
 
     function pendingAdmin() external view returns (address);
@@ -156,6 +164,9 @@ interface IVaultConfig {
     function setSequencerFeed(address feed) external;
 
     function setParams(Params calldata p) external;
+
+    /// At most 1,000 bps, the bound of the Solana program's `twap_dev_bps`.
+    function setPriceDevBps(uint16 bps) external;
 
     function unpauseKeeper() external;
 

@@ -70,7 +70,7 @@ export const PERSONAL_PARAMS: PersonalParameters = {
 
   // A plan to protect starts from no shared portfolio: the one it had (Storm Cellar) holds stocks.
   defaultTheme: { grow: 'the-500', income: null, protect: null },
-  defaultUnderlying: { growth: 'SPY', gold: 'GLD' },
+  defaultUnderlying: { growth: 'SPY', gold: ['PAXG', 'GLD'] },
 };
 
 /** `changed` is a change made since the prototype that Rodrigo has not read yet: he clears it. */
@@ -124,5 +124,6 @@ export const PERSONAL_PARAMS_STATUS: Record<Exclude<keyof PersonalParameters, 'v
   defaultUnderlying: {
     status: 'starting',
     from: 'The prototype: SPY for stocks and GLD for gold when no shared portfolio fills the sleeve.',
+    changed: 'Oct 5, gate GOLD-PAXG: PAXG first, GLD where PAXG is not listed (Thom)',
   },
 };

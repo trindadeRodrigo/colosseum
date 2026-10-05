@@ -1,4 +1,5 @@
 import type { AccountMeta, Address, KeyPairSigner } from '@solana/kit';
+import type { ExtensionArgs } from '@solana-program/token-2022';
 import type { LiteSVM } from 'litesvm';
 import {
   createVaultInstruction,
@@ -66,7 +67,12 @@ export type SwapWorld = {
 };
 
 export async function createSwapWorld(
-  options: { priceOwner?: Address; defaultKeeper?: Address } = {},
+  options: {
+    priceOwner?: Address;
+    defaultKeeper?: Address;
+    /** Another extension set for the stock token than the real stock tokens' (8 decimals still). */
+    stockExtensions?: (issuer: Address, mint: Address) => ExtensionArgs[];
+  } = {},
 ): Promise<SwapWorld> {
   const { svm, deployer: admin } = await createWorld();
   const guardian = await fundedSigner(svm);
@@ -76,7 +82,7 @@ export async function createSwapWorld(
   const stock = await createMint(svm, admin, {
     program: TOKEN_2022_PROGRAM,
     decimals: 8,
-    stock: true,
+    ...(options.stockExtensions ? { extensions: options.stockExtensions } : { stock: true }),
   });
   const other = await createMint(svm, admin, { program: TOKEN_PROGRAM, decimals: 8 });
   const unlisted = await createMint(svm, admin, { program: TOKEN_PROGRAM, decimals: 8 });
