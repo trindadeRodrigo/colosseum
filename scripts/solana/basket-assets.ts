@@ -18,7 +18,9 @@ import { and, eq, inArray } from 'drizzle-orm';
 export type Filled = {
   id: string;
   mint: string;
-  outcome: 'added' | 'changed' | 'same' | 'removed';
+  outcome: 'added' | 'changed' | 'same' | 'removed' | 'referenced';
+  /** Why a retired token's row stayed: what still points at it. */
+  reason?: string;
 };
 
 const columns = (a: BasketAsset) => ({
@@ -62,14 +64,31 @@ export async function fillBasketAssets(db: Db, record: SolanaDeploymentRecord): 
     out.push({ id: asset.id, mint: asset.address, outcome: 'added' });
   }
   // A token the deploy retired is no longer the network's to offer: its row goes. It stays listed on
-  // chain, and a vault that holds it still sees it and withdraws it, under its mint.
+  // chain, and a vault that holds it still sees it and withdraws it, under its mint. A row something
+  // else still points at (a price observed for it) stays, and says so; the API leaves it out anyway.
   const retired = record.retired.map((r) => r.mint);
-  if (retired.length) {
-    const gone = await db
-      .delete(basketAssets)
-      .where(and(eq(basketAssets.chainId, 'solana'), inArray(basketAssets.address, retired)))
-      .returning({ id: basketAssets.id, address: basketAssets.address });
-    for (const row of gone) out.push({ id: row.id, mint: row.address, outcome: 'removed' });
+  const rows = retired.length
+    ? await db
+        .select({ id: basketAssets.id, address: basketAssets.address })
+        .from(basketAssets)
+        .where(and(eq(basketAssets.chainId, 'solana'), inArray(basketAssets.address, retired)))
+    : [];
+  for (const row of rows) {
+    try {
+      await db.delete(basketAssets).where(eq(basketAssets.id, row.id));
+      out.push({ id: row.id, mint: row.address, outcome: 'removed' });
+    } catch (e) {
+      const code =
+        (e as { code?: string; cause?: { code?: string } }).code ??
+        (e as { cause?: { code?: string } }).cause?.code;
+      if (code !== '23503') throw e;
+      out.push({
+        id: row.id,
+        mint: row.address,
+        outcome: 'referenced',
+        reason: 'price_observations still names it, so its row stays',
+      });
+    }
   }
   return out;
 }
@@ -80,7 +99,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const { db, client } = createDb();
   try {
     for (const f of await fillBasketAssets(db, record))
-      console.log(`${f.outcome}\t${f.id}\t${f.mint}`);
+      console.log(`${f.outcome}\t${f.id}\t${f.mint}${f.reason ? `\t${f.reason}` : ''}`);
   } finally {
     await client.end();
   }

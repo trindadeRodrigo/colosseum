@@ -4,15 +4,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   assertNode,
+  createSolanaVaultAdapter,
   deploymentAssets,
   MAINNET_GENESIS_HASH,
   type SolanaDeploymentRecord,
+  unlistedAssetId,
   type VaultNodeRpc,
 } from '@colosseum/chain-solana/vault';
-import { basketAssets, createDb } from '@colosseum/db';
-import { parseChainConfigs } from '@colosseum/schemas';
-import { getAddressDecoder } from '@solana/kit';
-import { inArray } from 'drizzle-orm';
+import { basketAssets, createDb, priceObservations } from '@colosseum/db';
+import { type ChainError, parseChainConfigs } from '@colosseum/schemas';
+import { type Address, getAddressDecoder } from '@solana/kit';
+import { eq, inArray } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../../apps/api/src/app';
 import { solanaDeployment } from '../../apps/api/src/deployments';
@@ -238,7 +240,7 @@ describe('a chain on the mock reads no record', () => {
 });
 
 describe("basket_assets is held to the record's mints at start", () => {
-  it('passes the rows the record makes, and stops on a mint, a decimals or a cash it does not name', () => {
+  it('passes the rows the record makes, and stops on a mint, a decimals or a cash it does not name', async () => {
     const rows = deploymentAssets(record());
     expect(() => holdToRecord(rows, record())).not.toThrow();
     const [cash, spyx, gldx] = rows;
@@ -262,8 +264,33 @@ describe("basket_assets is held to the record's mints at start", () => {
     expect(() => holdToRecord([cash, { ...gldx, autoFollowEligible: true }], record())).toThrow(
       'has autoFollowEligible true',
     );
-    // A token the deploy retired: its row is let through, as a vault may still hold it.
-    expect(() => holdToRecord(rows, retire(record(), 'gldx'))).not.toThrow();
+    // A token the deploy retired: its row does not stop the start, and is left out of what the adapter
+    // lists, so it is sold and withdrawn, never bought.
+    const kept = holdToRecord(rows, retire(record(), 'gldx'));
+    expect(kept.map((a) => a.id)).toEqual([cash.id, spyx.id]);
+    const config = parseChainConfigs(
+      {
+        CHAIN_NETWORK_SOLANA: 'testnet',
+        CHAIN_ROUTER_SOLANA: key(2),
+        CHAIN_PRICE_SOURCE_SOLANA: key(3),
+      },
+      { solana: { program: key(1) } },
+    ).solana;
+    // Every refusal here comes before the node is asked anything.
+    const adapter = createSolanaVaultAdapter({ config, rpc: {} as never, assets: kept });
+    for (const bought of [gldx.id, unlistedAssetId(gldx.address as Address)]) {
+      const trade = { sell: cash.id, buy: bought, amountInRaw: '1000000' };
+      for (const work of [
+        adapter.quote(trade, key(20)),
+        adapter.buildOwnerSwap({ vault: key(21), trades: [trade], slippageBps: 100 }),
+      ]) {
+        const outcome = await work.then(
+          () => 'built',
+          (e: unknown) => e,
+        );
+        expect((outcome as ChainError).code).toBe('MintNotAccepted');
+      }
+    }
     expect(() => holdToRecord([spyx, gldx], record())).toThrow(
       "the cash row is not solana-devnet's cash",
     );
@@ -277,6 +304,7 @@ describe('basket_assets, filled from the record, is what the API runs Solana on'
   const { db, client } = createDb();
   const ids = deploymentAssets(record()).map((a) => a.id);
   afterAll(async () => {
+    await db.delete(priceObservations).where(inArray(priceObservations.assetId, ids));
     await db.delete(basketAssets).where(inArray(basketAssets.id, ids));
     await client.end();
   });
@@ -313,12 +341,30 @@ describe('basket_assets, filled from the record, is what the API runs Solana on'
     expect(mine?.map((a) => a.id).sort()).toEqual([...ids].sort());
     expect(mine?.find((a) => a.id === spyx?.id)?.maxWeightBps).toBe(4_000);
 
-    // The deploy retires gold: its row goes, the others stay, and a second run removes nothing more.
+    // The deploy retires gold. While a price observed for it still names its row, the row stays and
+    // the script says why; once nothing does, it goes, the others stay, and a second run removes
+    // nothing more.
     const retired = retire(moved, 'gldx');
+    const gold = `solana:gldx-${run}`;
+    await db.insert(priceObservations).values({
+      assetId: gold,
+      usdPerToken: '1',
+      source: 'test',
+      method: 'test',
+      fetchedAt: new Date(),
+      provenance: 'sandbox',
+    });
+    expect((await fillBasketAssets(db, retired)).find((f) => f.id === gold)).toEqual({
+      id: gold,
+      mint: key(12),
+      outcome: 'referenced',
+      reason: 'price_observations still names it, so its row stays',
+    });
+    await db.delete(priceObservations).where(eq(priceObservations.assetId, gold));
     expect((await fillBasketAssets(db, retired)).map((f) => [f.id, f.outcome])).toEqual([
       [`solana:usdc-${run}`, 'same'],
       [`solana:spyx-${run}`, 'same'],
-      [`solana:gldx-${run}`, 'removed'],
+      [gold, 'removed'],
     ]);
     expect((await fillBasketAssets(db, retired)).map((f) => f.outcome)).toEqual(['same', 'same']);
   });
