@@ -266,3 +266,38 @@ pnpm exec tsx scripts/testnet/solana/rehearse.ts <folder outside the repo> <rpc 
 It starts `solana-test-validator` with the features devnet has not turned on switched off (`scripts/testnet/solana/devnet-features.json`, from `solana feature status -u devnet --display-all --output json`; one of them, account data mapped in place, makes Token-2022 refuse a mint's metadata), gives a fresh key 10 SOL, and runs steps 1 to 4 with it, checking that the dry run printed what the first run sent and that the second run sent nothing. Refresh the feature file before a deploy if it is more than a few weeks old.
 
 The sizes and offsets of Config, Vault, Recipe and the asset list have not changed since SOL-2: the keeper's switch is a bit of a byte that was already there, the loss counter two fields that were, and the price range sixteen bytes of an entry that were reserved (`min_price` at 75, `max_price` at 83; an entry is still 96 bytes). A program already deployed at these ids upgrades in place and keeps its accounts; an entry written before the range reads as no range, so its switch, if it was on, passes no price until the admin writes one. Two instructions changed shape, and a client built against the earlier interface file fails on both: `upsert_asset` takes two more numbers, and `sync_balances` takes a signer and Config ahead of the vault's token accounts. The program is 582,952 bytes, 122,352 more than before the keeper leg, so an upgrade first extends the program's data account (`solana program deploy` does it, for the rent of the added bytes).
+
+## Copying prices onto the test network
+
+`scripts/testnet/solana/prices.ts` (TNET-5) copies real prices onto the devnet price account, so a test price moves and goes stale as the real one does. Each round it reads mainnet, read only, and writes through `write_price`, six assets a transaction, signed by the price writer the exchange names (`roles.priceWriter`): never the deploy key, which it refuses.
+
+- **What it copies.** `scripts/testnet/solana/price-sources.json` says where each token's two entries come from. The ten stock tokens: Kamino Scope's entries at the same indexes, value, exponent and unix time byte for byte. tsyrupUSDC: the price chain and average chain of Kamino's syrupUSDC reserve (Scope 314 × 13 and 504 × 456), their product stamped with the older time. tjlUSDC: Jupiter Lend's token exchange price for jlUSDC times Scope's USDC price (13) and average (456), stamped with the older of the rate's last update and the Scope entry; the rate has no average of its own. tGLDx has no honest fresh source on mainnet (no Kamino reserve, a Pyth push account last written weeks ago, and Pyth's Hermes now asks for a key), so its placeholder stays and every round says so.
+- **What it refuses.** An entry is written only when its source time is newer than what devnet holds; a time is never made up. A value outside the asset's keeper range on devnet, or more than `--max-jump-bps` (default 1,000) from the last value copied, is refused and logged, and the other assets go on. A source entry holding nothing is refused, never written as a zero. On Oct 5, tAAPLx, tGOOGLx and tMSTRx were refused because their real prices had left the ranges written at the set-up: the admin moves a range with `upsert_asset`, by hand, as "The price reference" says.
+- **Where it may write.** The destination's genesis is checked as the set-up checks it (mainnet refused), and the source must answer with mainnet's genesis. Nothing is ever sent to the source. Both RPCs retry on 429.
+
+One round, or a look at what one would write:
+
+```sh
+export SOLANA_RPC_URL=https://api.devnet.solana.com
+export SOLANA_PRICE_WRITER_KEYPAIR=<path of the price writer's key, outside the repo>
+# MAINNET_RPC_URL defaults to https://api.mainnet-beta.solana.com, read only
+pnpm exec tsx scripts/testnet/solana/prices.ts --once --dry-run
+pnpm exec tsx scripts/testnet/solana/prices.ts --once
+```
+
+Each round logs one line: what was written, what was unchanged and why, what was refused and why, and the signatures.
+
+**On this Mac.** It runs every 30 seconds (`--interval`), which keeps a copied price inside the program's 120 seconds: Scope itself lags 40 seconds or so. `caffeinate -i` keeps the Mac from sleeping while it runs. The log and the state file live outside the repo; the state file keeps the last copied values, so the jump check holds across restarts.
+
+```sh
+mkdir -p ~/Library/Logs/tenonfi
+nohup caffeinate -i pnpm exec tsx scripts/testnet/solana/prices.ts --loop \
+  --state ~/Library/Logs/tenonfi/devnet-prices-state.json \
+  >> ~/Library/Logs/tenonfi/devnet-prices.log 2>&1 &
+tail -f ~/Library/Logs/tenonfi/devnet-prices.log                     # watch it
+pkill -f 'scripts/testnet/solana/prices.ts --loop'                    # stop it: it ends after the round in flight
+```
+
+Run it from the repo root with the two variables exported in the same shell. It is not a launchd job and touches no existing collector: it is its own runner, started and stopped by hand. Each written round costs the writer one or two transaction fees (5,000 lamports each); out of market hours only tsyrupUSDC and tjlUSDC move. At most about 0.03 devnet SOL a day, so the writer's 1 SOL lasts a month.
+
+**On the keeper's machine, later.** The same command under the keeper's own supervisor (a systemd unit or the host's process manager), with `SOLANA_RPC_URL`, `MAINNET_RPC_URL` and `SOLANA_PRICE_WRITER_KEYPAIR` set there and the key copied there, the state file on that machine, and this Mac's job stopped first: two copiers would race to write the same entries. An EVM test network (TNET-1) adds a writer beside `copyRound` that takes the same readings from `readPrices`; the reading half does not change.

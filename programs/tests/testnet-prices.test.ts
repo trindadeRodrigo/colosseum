@@ -164,7 +164,7 @@ describe('the price copier', () => {
       unixTimestamp: t - 7n,
     });
     // GLDx has no source: its placeholder stays, and the round says so.
-    expect(result.unchanged.some((line) => line.startsWith('tGLDx (no source'))).toBe(true);
+    expect(result.unchanged.some((line) => line === 'tGLDx (no source)')).toBe(true);
     // A stock whose source entry holds nothing is refused, never written as a zero.
     expect(result.refused.find((r) => r.id === 'tQQQx')?.why).toBe('the source holds no price');
   });

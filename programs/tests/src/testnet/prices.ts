@@ -253,7 +253,7 @@ export async function copyRound(
       continue;
     }
     if ('none' in reading) {
-      result.unchanged.push(`${asset.symbol} (no source: ${reading.none})`);
+      result.unchanged.push(`${asset.symbol} (no source)`);
       continue;
     }
     const onChain = entries.find((e) => e.mint === asset.mint);
@@ -336,11 +336,10 @@ export async function copyRound(
 export function roundLine(at: Date, round: number, result: RoundResult, dryRun: boolean): string {
   const list = (items: string[]) => (items.length ? ` (${items.join(', ')})` : '');
   const refused = result.refused.map((r) => `${r.id}: ${r.why}`);
-  return [
-    `${at.toISOString()} round ${round}${dryRun ? ' (dry run)' : ''}:`,
+  return `${at.toISOString()} round ${round}${dryRun ? ' (dry run)' : ''}: ${[
     `${dryRun ? 'would write' : 'wrote'} ${result.written.length}${list(result.written)}`,
     `unchanged ${result.unchanged.length}${list(result.unchanged)}`,
     `refused ${result.refused.length}${list(refused)}`,
     ...(result.signatures.length ? [`tx ${result.signatures.join(' ')}`] : []),
-  ].join('; ');
+  ].join('; ')}`;
 }
