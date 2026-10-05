@@ -381,7 +381,7 @@ async function placeShared(body: Body): Promise<OrderDetail> {
   });
 }
 
-/** The vaults of whoever the stub has seen, as GET /v1/portfolio and the public page read them. */
+/** A vault as the public page reads it: what GET /v1/vaults/{chain}/{address} answers. */
 async function vaultView(address: string) {
   const state = await world.adapter.getVault(address);
   if (!state) return null;
@@ -513,6 +513,23 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       ok: f.ok,
     });
   }
+  if (path === '/v1/portfolio') {
+    // The vaults of the wallet that bought here, valued where apps/api values them (packages/basket),
+    // in the shape of its route.
+    const owner = world.double?.owner ?? lastWallet;
+    const { adapter } = world;
+    const states = owner ? await adapter.getVaults(owner) : [];
+    const listed = states.length ? await adapter.listAssets() : [];
+    const known = new Set(listed.map((a) => a.id));
+    const held = states.flatMap((v) => [v.cash.asset, ...v.positions.map((p) => p.asset)]);
+    const ids = [...new Set(held)].filter((id) => known.has(id));
+    const prices = ids.length ? await adapter.getPrices(ids) : [];
+    const vaults = states.map((v) => ({ ...view(v, prices, listed), provenance: 'mock' }));
+    return send(res, 200, {
+      chains: [{ chain: CHAIN, name: 'Solana', mode: 'mock', provenance: 'mock', vaults, prices }],
+      disclaimer: 'MOCK',
+    });
+  }
   if (path === '/v1/orders' && method === 'POST') {
     const body = (await read(req)) as Body & { owner?: { solana?: string }; amountUsd: number };
     if (body.type !== 'buy' || body.family !== undefined)
@@ -556,20 +573,6 @@ async function route(req: IncomingMessage, res: ServerResponse) {
             },
           ]
         : [],
-    });
-  }
-  if (path === '/v1/portfolio') {
-    const owner = world.double?.owner ?? lastWallet;
-    const vaults = [];
-    for (const v of owner ? await world.adapter.getVaults(owner) : []) {
-      const read = await vaultView(v.address);
-      if (read) vaults.push(read.vault);
-    }
-    return send(res, 200, {
-      chains: [
-        { chain: CHAIN, name: 'Solana', mode: 'mock', provenance: 'mock', vaults, prices: [] },
-      ],
-      disclaimer: DISCLAIMER.en,
     });
   }
   const vault = /^\/v1\/vaults\/([^/]+)\/([^/]+)$/.exec(path);

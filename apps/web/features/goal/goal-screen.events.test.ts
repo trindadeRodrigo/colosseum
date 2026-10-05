@@ -128,6 +128,34 @@ describe('the goal screen, before anything is read', () => {
     expect(server.to('/goals')).toEqual([]);
   });
 
+  it('says how to send under the chips, in the mono face, and the box is described by it', async () => {
+    api({});
+    const host = await screen();
+    const hint = [...host.querySelectorAll('p')].find(
+      (p) => p.textContent === en.goal.composer.hint,
+    ) as HTMLElement;
+    expect(hint.className).toContain('font-mono');
+    const chips = find(host, `ul[aria-label="${en.goal.examples.label}"]`);
+    expect(chips.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(box(host).getAttribute('aria-describedby')?.split(' ')).toContain(hint.id);
+  });
+
+  it('tells a visitor, and only a visitor, where a plan of their own comes from', async () => {
+    api({});
+    const visitor = await screen();
+    const link = [...visitor.querySelectorAll('a')].find(
+      (a) => a.textContent === en.goal.visitor.link,
+    );
+    expect(link?.getAttribute('href')).toBe('/sign-in?next=/');
+    expect(visitor.textContent).toContain(en.goal.visitor.after);
+    await unmountAll();
+    api({ person: onSolana });
+    portStore.set(signedInPort(PHANTOM));
+    const signedIn = await screen();
+    await settle();
+    expect(signedIn.textContent).not.toContain(en.goal.visitor.after);
+  });
+
   it('fills the box from an example and hands it over, without sending it', async () => {
     const server = api({});
     const host = await screen();
@@ -345,7 +373,7 @@ describe('“Build my plan”', () => {
     // and the way to sign in comes back to this screen
     const facts = find(host, '[data-ui="sheet-facts"]');
     expect(facts.textContent).toContain(en.goal.chain.unset);
-    expect(find(facts, 'a').getAttribute('href')).toBe('/sign-in?next=/goal');
+    expect(find(facts, 'a').getAttribute('href')).toBe('/sign-in?next=/');
     expect(find(facts, 'a').textContent).toBe(en.shell.signIn);
   });
 
@@ -369,7 +397,7 @@ describe('“Build my plan”', () => {
     const way = find(find(host, '[data-ui="sheet-facts"]'), 'a');
     expect([way.textContent, way.getAttribute('href')]).toEqual([
       en.goal.chain.choose,
-      '/sign-in?next=/goal',
+      '/sign-in?next=/',
     ]);
     // the choice is not offered here: it is asked in one place
     expect(host.querySelector('[role="group"]')).toBeNull();

@@ -38,7 +38,7 @@ export function PlanGate({
       </Link>
     </section>
   );
-  const goal = { href: '/goal', label: t.plan.backToGoal };
+  const goal = { href: '/', label: t.plan.backToGoal };
   if (state.kind === 'signed-out')
     return say(t.plan.title, t.plan.signedOut, {
       href: `/sign-in?next=${next}`,

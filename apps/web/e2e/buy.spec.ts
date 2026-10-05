@@ -57,7 +57,9 @@ async function toReview(page: Page) {
   await page.getByRole('button', { name: en.signIn.passkey.create }).click();
   await page.getByRole('button', { name: 'Solana' }).click();
   await page.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
-  await expect(page).toHaveURL(/\/goal$/);
+  // home is the goal (WEB-2)
+  await expect(page).toHaveURL(/:\d+\/$/);
+  await check(page, 'home');
 
   const goal = page.getByRole('textbox', { name: en.goal.composer.label, exact: true });
   await goal.fill('Grow $40 for three years, medium risk');
@@ -97,6 +99,26 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
   for (let i = 0; i < 4; i += 1)
     await expect(steps.nth(i)).toHaveAttribute('data-status', 'confirmed');
   await check(page, 'done');
+
+  // The monitor reads the vault the buy opened, with a pin on its value, under the MOCK plate.
+  await page.getByRole('navigation').getByRole('link', { name: en.shell.portfolio }).click();
+  await expect(page).toHaveURL(/\/monitor$/);
+  const vault = page.locator('section[data-ui="card"]').filter({
+    has: page.getByRole('heading', { name: en.portfolio.vault.title }),
+  });
+  await expect(vault).toHaveCount(1);
+  await expect(vault.locator('[data-ui="vault-value"] [data-ui="figure"]')).toHaveCount(1);
+  await expect(vault.locator('[data-ui="mock-plate"]').first()).toBeVisible();
+  await check(page, 'monitor');
+  // the disclaimer is under the vault, once: the shell's foot does not repeat it
+  await expect(page.locator('main [data-ui="disclaimer"]')).toBeVisible();
+  await expect(page.locator('[data-ui="disclaimer"]:visible')).toHaveCount(1);
+  // and home says where the money is, under the goal
+  await page.getByRole('navigation').getByRole('link', { name: en.shell.goal }).click();
+  await expect(page.getByRole('link', { name: en.portfolio.summary.see })).toBeVisible();
+  // a page with no disclaimer of its own keeps the foot's
+  await expect(page.locator('footer [data-ui="disclaimer"]')).toBeVisible();
+  await expect(page.locator('[data-ui="disclaimer"]:visible')).toHaveCount(1);
 });
 
 test('a step the server lies about is refused by the guard, and nothing is signed for it', async ({

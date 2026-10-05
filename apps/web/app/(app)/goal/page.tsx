@@ -1,13 +1,8 @@
-import { goalMetadata } from '../../../components/shell/metadata';
-import { GoalScreen } from '../../../features/goal/GoalScreen';
+import { redirect } from 'next/navigation';
 
-// The goal comes first: this is the product's first screen. It lives at /goal until the home page is
-// rebuilt on the primitives (WEB-2), when it takes `/`.
-
-export function generateMetadata() {
-  return goalMetadata();
-}
+// The goal screen was here until home was rebuilt on the primitives (WEB-2). It is home now; an old
+// link to /goal still lands on it.
 
 export default function GoalPage() {
-  return <GoalScreen />;
+  redirect('/');
 }
