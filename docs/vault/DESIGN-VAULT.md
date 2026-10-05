@@ -40,7 +40,7 @@ Nothing here has run on mainnet. The three $10 runs come first in time.
 - One object, the **order**, with **legs**, backs every buy, rebalance, publish and agent approval. Keeper legs sit in their own table, which only the keeper can write.
 - The browser handles bytes only. A guard checks every transaction down to the function and its arguments before it is signed.
 - EVM vaults are beacon proxies, so one transaction can fix every vault. Withdrawals go only to the owner, on both chain families. The value check is per trade.
-- Solana: Kamino Scope prices cover ten stock tokens and nothing else, so auto-follow runs only on vaults whose every asset is in that list.
+- Solana: Kamino Scope prices cover ten stock tokens and nothing else, so auto-follow runs only on vaults whose every asset is in that list. A shared portfolio that holds an asset with no oracle (gold) is not keeper-rebalanced: its followers get the one-tap prompt, and the app does not offer the auto-follow switch on it (gate `GOLD-ONE-TAP`).
 - EVM: a fresh price does not prove an open market, so stock legs trade only in a fixed weekday window, minus a list of closed days.
 - The model fills a form and nothing else. Explanation text comes from templates.
 - The keeper runs as a loop on a machine the team controls. GitHub's scheduler only runs workflows from the default branch **[C 16]**, which is `main`.
@@ -1384,7 +1384,7 @@ Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-L
 - The label on the sign-in button is "Sign in", opening a choice of passkey or wallet. His landing page says "Connect wallet" and changes to match.
 - The plan-leg bar allows four legs: sleeves go in the bar, with the tokens in a table under it.
 - The disclaimer says "the decision and custody are yours". Only the owner can withdraw from a vault, so it stays; the "unaudited, team holds the upgrade keys" notice sits beside it before the first deposit.
-- Auto-follow. It is off by default; the person sees an author's change 48 hours before it takes effect and can refuse; then the vault copies the change inside its own limits. It does not re-check the person's goal. Thom's decision is to keep it this way. It sits beside the voice rule that the agent "proposes and explains": the 48-hour notice is the proposal, and the person can refuse.
+- Auto-follow. It is off by default, and not offered at all on a portfolio that holds an asset with no oracle (gate `GOLD-ONE-TAP`): there the person rebalances with one tap. Where it is offered, the person sees an author's change 48 hours before it takes effect and can refuse; then the vault copies the change inside its own limits. It does not re-check the person's goal. Thom's decision is to keep it this way. It sits beside the voice rule that the agent "proposes and explains": the 48-hour notice is the proposal, and the person can refuse.
 
 **Thom**
 
