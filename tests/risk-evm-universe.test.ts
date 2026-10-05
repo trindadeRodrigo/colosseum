@@ -593,7 +593,10 @@ describe('one discovery pass, replayed from the recording', () => {
 
   it('comes to what the recording came to', () => {
     expect(file.counts).toEqual(fx.counts);
-    expect(file.bandCheck).toEqual(fx.bandCheck);
+    // ratios of floats: the last digit differs between machines, so nine decimals, not equality
+    expect(file.bandCheck.pools).toBe(fx.bandCheck.pools);
+    for (const k of ['medianRatio', 'p10', 'p90'] as const)
+      expect(file.bandCheck[k]).toBeCloseTo(fx.bandCheck[k] as number, 9);
     expect(file.blocks).toMatchObject({
       logsFrom: fx.fromBlock,
       logsTo: fx.block,
