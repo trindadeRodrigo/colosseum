@@ -111,9 +111,11 @@ export function SignInScreen({ next = '/goal' }: { next?: string }) {
       ? ''
       : account.why === 'signed_out'
         ? t.chain.unknown.signedOut
-        : account.why === 'busy'
-          ? t.shell.slowDown
-          : t.chain.unknown.body;
+        : account.why === 'no_identity'
+          ? t.chain.unknown.noIdentity
+          : account.why === 'busy'
+            ? t.shell.slowDown
+            : t.chain.unknown.body;
   const readySentence =
     account.status !== 'ready'
       ? ''
