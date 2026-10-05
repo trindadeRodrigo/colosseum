@@ -110,9 +110,15 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
   await expect(vault.locator('[data-ui="vault-value"] [data-ui="figure"]')).toHaveCount(1);
   await expect(vault.locator('[data-ui="mock-plate"]').first()).toBeVisible();
   await check(page, 'monitor');
+  // the disclaimer is under the vault, once: the shell's foot does not repeat it
+  await expect(page.locator('main [data-ui="disclaimer"]')).toBeVisible();
+  await expect(page.locator('[data-ui="disclaimer"]:visible')).toHaveCount(1);
   // and home says where the money is, under the goal
   await page.getByRole('navigation').getByRole('link', { name: en.shell.goal }).click();
   await expect(page.getByRole('link', { name: en.portfolio.summary.see })).toBeVisible();
+  // a page with no disclaimer of its own keeps the foot's
+  await expect(page.locator('footer [data-ui="disclaimer"]')).toBeVisible();
+  await expect(page.locator('[data-ui="disclaimer"]:visible')).toHaveCount(1);
 });
 
 test('a step the server lies about is refused by the guard, and nothing is signed for it', async ({

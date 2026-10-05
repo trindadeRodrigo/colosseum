@@ -305,6 +305,8 @@ describe('the monitor, when there is nothing to read or the API cannot say', () 
     const host = await screen();
     const status = find(host, '[data-ui="status"]');
     expect(status.textContent).toBe(en.portfolio.down.word);
+    // nothing is known to be wrong: watch, not off track
+    expect(status.getAttribute('data-status')).toBe('watch');
     expect(status.querySelector('svg')).not.toBeNull();
     expect(text(host)).toContain(en.portfolio.down.body('Solana'));
     const again = [...host.querySelectorAll('button')].find((b) =>
@@ -346,8 +348,10 @@ describe('the monitor, when there is nothing to read or the API cannot say', () 
     signIn();
     const host = await screen();
     expect(text(host)).toContain(en.portfolio.reading);
-    // the person signs out while the read is on its way
+    // the person signs out while the read is on its way: nothing is said to be reading any more
     await act(async () => portStore.set(fakePort()));
+    expect(host.querySelector('[aria-busy="true"]')).toBeNull();
+    expect(find(host, '[role="status"]').textContent).toBe('');
     await act(async () => release(json(portfolioBody())));
     await settle();
     expect(vaults(host)).toHaveLength(0);

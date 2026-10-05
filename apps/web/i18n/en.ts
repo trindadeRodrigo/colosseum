@@ -354,7 +354,7 @@ export const en = {
     down: {
       word: 'Unavailable',
       body: (chain: string) =>
-        `${chain} didn’t answer, so I can’t read your vault right now. Nothing is wrong with your vault. Try again in a moment.`,
+        `${chain} didn’t answer, so I can’t read your vault right now. Not being able to read it moves nothing. Try again in a moment.`,
     },
     unreachable: 'I couldn’t reach our server to read your vault. Try again.',
     unreadable:

@@ -336,7 +336,7 @@ export const pt: Dictionary = {
     down: {
       word: 'Indisponível',
       body: (chain: string) =>
-        `A ${chain} não respondeu, então não consigo ler seu cofre agora. Não há nada de errado com ele. Tente de novo daqui a pouco.`,
+        `A ${chain} não respondeu, então não consigo ler seu cofre agora. Não conseguir lê-lo não move nada. Tente de novo daqui a pouco.`,
     },
     unreachable: 'Não consegui falar com nosso servidor para ler seu cofre. Tente de novo.',
     unreadable:

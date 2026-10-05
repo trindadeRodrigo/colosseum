@@ -83,6 +83,11 @@ describe('reading the portfolio', () => {
     // a vault of another chain inside the person's chain
     const mixed = { ...portfolioBody(), chains: [chainOf([vault(), vault({ chain: 'base' })])] };
     expect((await readPortfolio(answering(json(mixed)), 'solana')).kind).toBe('unreadable');
+    // another chain's answer with no vault in it: not "no vault on Solana yet"
+    const emptyElsewhere = { ...portfolioBody(), chains: [chainOf([], { chain: 'robinhood' })] };
+    expect((await readPortfolio(answering(json(emptyElsewhere)), 'solana')).kind).toBe(
+      'unreadable',
+    );
     // the bite: the same answer for the person's own chain is read
     expect((await readPortfolio(answering(json(evmVault)), 'robinhood')).kind).toBe('read');
   });

@@ -117,7 +117,7 @@ export function MonitorScreen() {
         body = (
           <Card>
             <CardBody className="flex flex-col items-start gap-3">
-              <Status status="off-track">{words.down.word}</Status>
+              <Status status="watch">{words.down.word}</Status>
               <p className="max-w-(--tf-measure-body) text-body-sm">{words.down.body(chainName)}</p>
               {readAgain}
             </CardBody>

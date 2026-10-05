@@ -304,7 +304,7 @@ export function GoalScreen() {
       <div
         className={cn(
           'flex flex-col gap-8',
-          !sheet && 'lg:grid lg:grid-cols-12 lg:items-start lg:gap-x-6',
+          !sheet && 'lg:grid lg:grid-cols-12 lg:items-start lg:gap-x-12',
         )}
       >
         {sheet ? (
@@ -319,10 +319,13 @@ export function GoalScreen() {
           />
         ) : (
           <header className="flex flex-col gap-3 lg:col-span-5">
-            <h1 className="max-w-(--tf-measure-display) font-display text-display font-normal">
+            {/* Beside the box the question is set a step smaller, so it holds two lines, as his is. */}
+            <h1 className="max-w-(--tf-measure-display) font-display text-display font-normal lg:text-h1">
               {t.goal.title}
             </h1>
-            <p className="max-w-(--tf-measure-body) text-body-lg text-foreground">{t.goal.lead}</p>
+            <p className="max-w-(--tf-measure-body) text-body-lg text-muted-foreground">
+              {t.goal.lead}
+            </p>
           </header>
         )}
 
@@ -332,6 +335,8 @@ export function GoalScreen() {
         >
           <Composer
             label={t.goal.composer.label}
+            // The question above names the box (composer.md): its label is for a screen reader only.
+            labelHidden={!sheet}
             value={text}
             onChange={setText}
             onSubmit={read}

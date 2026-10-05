@@ -37,7 +37,11 @@ export function usePortfolio(): { state: PortfolioState; again: () => void; busy
 
   useEffect(() => {
     wanted.current = key;
-    if (!key || !chain) return;
+    // Nobody to read for (signed out, no chain): nothing is on its way, whatever was.
+    if (!key || !chain) {
+      setBusy(false);
+      return;
+    }
     setBusy(true);
     readPortfolio(apiFetch, chain).then((outcome) => {
       if (wanted.current !== key) return;
