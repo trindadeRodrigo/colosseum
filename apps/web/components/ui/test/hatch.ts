@@ -1,13 +1,14 @@
 import { all, classes, closest, type El, text } from './html';
 
-// The rule of the hatch (mock-plate.md, "Enforcement"): the hatch means MOCK or stale, and it never
+// The rule of the hatch (mock-plate.md, "Enforcement"): the hatch means MOCK, stale or a test network
+// (DESIGN-VAULT section 2, "Test networks"), and it never
 // appears without its word in the same component. The other way too: the word MOCK never appears
 // without a hatch in the same component ("three parts, never fewer"). And text never sits on the hatch.
 // A screen's own test can run this on its markup: `expect(hatchProblems(render(<Screen />))).toEqual([])`.
 
 /** Pieces of a component, not components: the search for the word goes on above them. */
 const PARTS = new Set(['hatch-band', 'pin', 'pin-glyph', 'plan-legs-bar']);
-const WORDS = new Set(['mock-plate', 'stale-plate', 'stale-tag']);
+const WORDS = new Set(['mock-plate', 'stale-plate', 'stale-tag', 'network-plate']);
 
 const isHatch = (el: El) => classes(el).includes('tf-hatch') || 'data-hatch' in el.attrs;
 const isPlate = (el: El) => el.attrs['data-ui'] === 'mock-plate';

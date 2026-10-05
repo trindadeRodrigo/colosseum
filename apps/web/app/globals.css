@@ -567,7 +567,7 @@
   }
 }
 
-/* The plate of a stale panel: the same box, in sentence case ("stale · 3 h"). */
+/* The plate of a stale panel or of a test network: the same box, in sentence case ("stale · 3 h", "test network"). */
 @utility tf-stale-plate {
   display: inline-flex;
   align-items: center;
