@@ -7,6 +7,7 @@ import {
   type KeyPairSigner,
   lamports,
 } from '@solana/kit';
+import type { ExtensionArgs } from '@solana-program/token-2022';
 import {
   ASSET_KEEPER,
   type AssetArgs,
@@ -127,12 +128,17 @@ export const keeperAsset = (
 
 export async function createKeeperWorld(
   targets?: (w: SwapWorld) => Target[],
+  stockExtensions?: (issuer: Address, mint: Address) => ExtensionArgs[],
 ): Promise<KeeperWorld> {
   const keeper = await generateKeyPairSigner();
   // As on a test network: the exchange is the price program, and its price account is the one
   // the asset list names.
   const priceOwner = MOCK_ROUTER_PROGRAM;
-  const w = await createSwapWorld({ priceOwner, defaultKeeper: keeper.address });
+  const w = await createSwapWorld({
+    priceOwner,
+    defaultKeeper: keeper.address,
+    ...(stockExtensions ? { stockExtensions } : {}),
+  });
   const { svm, admin, owner, vault } = w;
   svm.airdrop(keeper.address, lamports(10_000_000_000n));
   setClock(svm, SESSION);
