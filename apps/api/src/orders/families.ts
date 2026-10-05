@@ -1,6 +1,6 @@
 import { type Db, indexFamilies, recipes, recipeVersions, users } from '@colosseum/db';
 import type { ChainId, Recipe, RecipeVersionView, Target } from '@colosseum/schemas';
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 
 // The shared-portfolio tables (DESIGN-VAULT section 4): `index_families` holds the text, `recipes` a
 // family's recipe on one chain, `recipe_versions` the versions the server has seen. They are a cache:
@@ -110,7 +110,13 @@ const targetsOf = (r: Recipe): Target[] =>
  * A family's text and its recipe on one chain, once a publish has confirmed (DESIGN-VAULT section 6:
  * created or renamed only then). The text is the latest the creator published; the versions keep their
  * own hashes. Answers the recipe's row id, or null when the family is another creator's: two creators
- * can each publish a recipe under one new slug's id onchain, and the first to land keeps the family.
+ * can each publish a recipe under one new slug's id onchain, and the one first recorded here keeps the
+ * family. Which landed first onchain is not what decides: the server records a publish when a read of
+ * its order sees it confirmed.
+ *
+ * Two writes for one family run one after the other: the transaction first takes a lock on the family
+ * id (`pg_advisory_xact_lock`), which holds for a family that has no row yet, where a row lock has
+ * nothing to lock. So the text and the recipe of a family are always one creator's.
  */
 export async function writePublished(
   db: Db,
@@ -127,19 +133,24 @@ export async function writePublished(
   },
 ): Promise<string | null> {
   return db.transaction(async (tx) => {
-    // The family row first, locked, so two landings of one family are written one after the other.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`family:${w.familyId}`}))`);
     const [family] = await tx
       .select()
       .from(indexFamilies)
-      .where(eq(indexFamilies.familyId, w.familyId))
-      .for('update');
-    const [held] = await tx
-      .select({ creator: recipes.creator })
+      .where(eq(indexFamilies.familyId, w.familyId));
+    const held = await tx
+      .select({ chain: recipes.chainId, creator: recipes.creator })
       .from(recipes)
-      .where(and(eq(recipes.familyId, w.familyId), eq(recipes.chainId, w.chain)));
-    const theirs = held
-      ? held.creator !== w.creator
-      : family?.creatorUserId != null && family.creatorUserId !== w.creatorUserId;
+      .where(eq(recipes.familyId, w.familyId));
+    const here = held.find((r) => r.chain === w.chain);
+    // Another creator's: their recipe on this chain, their user row on the family, or, for a family
+    // with no user row, recipes on other chains and none here.
+    const theirs = here
+      ? here.creator !== w.creator
+      : family !== undefined &&
+        (family.creatorUserId !== null
+          ? family.creatorUserId !== w.creatorUserId
+          : held.length > 0);
     if (theirs) return null;
     await tx
       .insert(indexFamilies)
