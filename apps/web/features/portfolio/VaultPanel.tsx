@@ -1,4 +1,5 @@
 'use client';
+import { DISCLAIMER_SHORT } from '@colosseum/schemas';
 import { useId } from 'react';
 import { Card, CardBody, CardFooter, CardHeader, Stat, StatRow } from '../../components/ui/Card';
 import { type Column, DataTable } from '../../components/ui/DataTable';
@@ -158,6 +159,21 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
           </Stat>
           <Stat label={words.lossUsed}>{share(lang, vault.lossUsedBps)}</Stat>
         </StatRow>
+        <ul aria-label={words.chips.label} className="flex flex-wrap gap-1.5">
+          {[
+            [words.chips.address, shorten(vault.address)],
+            [words.chips.version, String(vault.acceptedVersion)],
+            [words.chips.follow, (vault.autoFollow ? words.on : words.off).toLowerCase()],
+          ].map(([key, value]) => (
+            <li
+              key={key}
+              className="rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-[12px]"
+            >
+              {key}: {value}
+            </li>
+          ))}
+        </ul>
+        <Parts vault={vault} />
         {missing > 0 && (
           <p className="text-body-sm text-muted-foreground">{words.unpriced(missing)}</p>
         )}
@@ -186,11 +202,61 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
           <p className="text-body-sm">{words.onlyCash}</p>
         )}
       </CardBody>
-      <CardFooter density="dense">
-        <p className="font-mono text-source text-muted-foreground">
-          {words.observed(utc(lang, vault.observedAt))}
-        </p>
+      <CardFooter
+        density="dense"
+        className="flex flex-wrap justify-between gap-3 font-mono text-[11px] text-muted-foreground"
+      >
+        <span>{words.observed(utc(lang, vault.observedAt))}</span>
+        <span>{DISCLAIMER_SHORT}</span>
       </CardFooter>
     </Card>
+  );
+}
+
+const FILL = ['bg-leg-1', 'bg-leg-2', 'bg-leg-3', 'bg-leg-4'] as const;
+
+/**
+ * What the vault holds, as the plan's parts are drawn (plan-leg.md, goal-showcase-case.md): one bar,
+ * a segment per holding by its weight now, cash the rest, then each part named with its weight and
+ * its target. At most four parts go in a bar; a vault with more is the table alone.
+ */
+function Parts({ vault }: { vault: Vault }) {
+  const t = useT();
+  const lang = useLang();
+  const words = t.portfolio.vault;
+  const parts = [...vault.positions].sort((a, b) => b.weightBps - a.weightBps);
+  if (parts.length === 0 || parts.length > FILL.length) return null;
+  const held = parts.reduce((sum, p) => sum + p.weightBps, 0);
+  return (
+    <div data-ui="vault-parts" className="flex flex-col gap-2">
+      <div aria-hidden="true" className="flex h-3 gap-0.5">
+        {parts.map((p, i) => (
+          <span key={p.asset} className={FILL[i]} style={{ width: `${p.weightBps / 100}%` }} />
+        ))}
+        {held < 10_000 && (
+          <span className="bg-muted" style={{ width: `${(10_000 - held) / 100}%` }} />
+        )}
+      </div>
+      <ul
+        aria-label={words.parts}
+        className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-x-4 gap-y-1.5"
+      >
+        {parts.map((p, i) => (
+          <li
+            key={p.asset}
+            className="grid grid-cols-[10px_1fr_auto] items-baseline gap-x-2 text-[13px]/5"
+          >
+            <span aria-hidden="true" className={`size-2.5 translate-y-px ${FILL[i]}`} />
+            <span className="font-mono">{assetName(p.asset)}</span>
+            <span className="font-mono text-[12px] font-medium tabular-nums">
+              {share(lang, p.weightBps)}
+            </span>
+            <span className="col-start-2 col-end-4 -mt-0.5 text-[12px]/4 text-muted-foreground">
+              {words.target(share(lang, p.targetBps))}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

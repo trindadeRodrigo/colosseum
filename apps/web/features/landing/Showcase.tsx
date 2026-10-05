@@ -73,7 +73,10 @@ function Legs({
   label: string;
 }) {
   return (
-    <ul aria-label={label} className="grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
+    <ul
+      aria-label={label}
+      className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-x-4 gap-y-1.5"
+    >
       {legs.map((leg, i) => {
         const name = names[i];
         if (!name) return null;
@@ -205,7 +208,7 @@ export function Showcase({ lang }: { lang: Lang }) {
           <p className="font-mono text-[12px] font-medium tracking-[0.06em] text-primary">
             {t.eyebrow}
           </p>
-          <h2 className="mt-2.5 mb-3 font-display text-[clamp(2rem,1.4rem+2vw,3.2rem)]/[1.15] font-normal tracking-[-0.01em]">
+          <h2 className="mt-2.5 mb-3 font-display [text-wrap:wrap] text-[clamp(2rem,1.4rem+2vw,3.2rem)]/[1.15] font-normal tracking-[-0.01em]">
             {t.title}
           </h2>
           <p className="max-w-[56ch] text-muted-foreground">{t.lead}</p>

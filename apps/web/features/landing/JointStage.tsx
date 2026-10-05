@@ -133,7 +133,7 @@ export function JointStage() {
       <div className="relative z-[1] mx-auto w-full max-w-page px-[clamp(16px,4vw,56px)]">
         <div className="flex min-h-svh items-center max-[819px]:items-end max-[819px]:pb-[10vh] motion-reduce:min-h-0 motion-reduce:items-start motion-reduce:py-28">
           <div className="grid w-full items-center gap-10 min-[820px]:grid-cols-[minmax(0,560px)_1fr]">
-            <div className="max-w-[560px] min-w-0 pt-18 max-[819px]:bg-background max-[819px]:p-6 max-[819px]:pt-10 motion-reduce:pt-0">
+            <div className="max-w-[560px] min-w-0 pt-18 max-[819px]:-mx-[clamp(16px,4vw,56px)] max-[819px]:bg-background max-[819px]:px-[clamp(16px,4vw,56px)] max-[819px]:py-6 max-[819px]:pt-10 motion-reduce:pt-0">
               <h1 className="font-display text-[clamp(2.4rem,1.6rem+2.6vw,4rem)]/[1.12] font-normal tracking-[-0.015em] [overflow-wrap:break-word]">
                 {t.title}
               </h1>
@@ -165,7 +165,7 @@ export function JointStage() {
             <div
               data-on={on === i}
               className={cn(
-                'max-w-[420px] transition-[color,transform] duration-[480ms] ease-seat motion-reduce:transition-none max-[819px]:bg-background max-[819px]:p-6',
+                'max-w-[420px] transition-[color,transform] duration-[480ms] ease-seat motion-reduce:transition-none max-[819px]:-mx-[clamp(16px,4vw,56px)] max-[819px]:bg-background max-[819px]:px-[clamp(16px,4vw,56px)] max-[819px]:py-6',
                 on === i ? 'translate-y-0' : 'translate-y-3 motion-reduce:translate-y-0',
               )}
             >

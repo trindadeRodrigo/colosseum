@@ -366,6 +366,9 @@ export const pt: Dictionary = {
       off: 'Desativado',
       lossUsed: 'Perdas do agente, últimos 7 dias',
       holdings: 'Posições',
+      chips: { label: 'O cofre', address: 'endereço', version: 'versão', follow: 'seguir' },
+      parts: 'As partes, por peso',
+      target: (share: string) => `alvo ${share}`,
       onlyCash: 'Só caixa por enquanto: nada foi comprado para este cofre ainda.',
       columns: {
         asset: 'Ativo',
@@ -427,6 +430,17 @@ export const pt: Dictionary = {
       estimate: 'estimativa',
     },
     legs: { afterHaircut: 'após desconto', quoted: 'cotado {rate}' },
+    chart: {
+      label: (months: number, low: string, high: string) =>
+        `O que o rendimento em dólar projeta em ${months} meses: de ${low} a ${high} ao ano.`,
+      after: (months: number) => `Depois de ${months} meses`,
+      projected: 'projetado',
+      low: 'ponta baixa',
+      high: 'ponta alta',
+      note: 'Só o que o rendimento em dólar paga é projetado. Os preços de ações e ouro não são, e podem cair.',
+      table: 'A projeção em tabela',
+      month: 'Mês',
+    },
     exitPlan: 'Plano de saída',
     costPrefix: 'custo',
     foot: { sandbox: 'rede de teste, não real', mock: 'dados de exemplo, não reais' },
@@ -725,7 +739,7 @@ export const pt: Dictionary = {
     stage: {
       label: 'Como a tenonfi encaixa',
       title:
-        'Nenhum produto serve para todo mundo. Então fazemos as peças — e os seus objetivos decidem como elas se encaixam.',
+        'Nenhum produto serve para todo mundo. Então fazemos as peças\u00a0— e os seus objetivos decidem como elas se encaixam.',
       taglineStrong: 'Sob medida. Cada encaixe à vista.',
       tagline:
         'Diga o que o seu dinheiro precisa fazer. A tenonfi monta o portfólio que leva até lá e mostra como.',
@@ -801,7 +815,7 @@ export const pt: Dictionary = {
           },
           { name: () => 'Empréstimo em dólar', why: 'taxa variável, saque imediato' },
         ],
-        exit: 'O saldo inteiro fica acessível em até um dia; os meses da viagem saem primeiro da reserva em caixa.',
+        exit: 'o saldo inteiro fica acessível em até um dia; os meses da viagem saem primeiro da reserva em caixa.',
         exitNote: 'Com fonte real depois que você conectar.',
       },
       growth: {
@@ -841,7 +855,7 @@ export const pt: Dictionary = {
           },
           { name: () => 'Ouro tokenizado', why: 'diversifica, sem rendimento' },
         ],
-        exit: 'As ações têm o tamanho que a Bearing mede que dá para vender na hora mais rasa da semana.',
+        exit: 'as ações têm o tamanho que a Bearing mede que dá para vender na hora mais rasa da semana.',
         exitNote: 'No fim de semana, sair é mais lento e custa mais.',
         oddsNote: 'As chances são estimativas.',
       },

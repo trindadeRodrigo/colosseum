@@ -385,6 +385,10 @@ export const en = {
       /** The vault's weekly loss counter, as a share of its value. */
       lossUsed: 'Keeper losses, last 7 days',
       holdings: 'Holdings',
+      /** The vault's facts as chips, his case's limits line. */
+      chips: { label: 'The vault', address: 'address', version: 'version', follow: 'auto-follow' },
+      parts: 'Its parts, by weight',
+      target: (share: string) => `target ${share}`,
       onlyCash: 'Only cash so far: nothing has been bought into this vault yet.',
       columns: {
         asset: 'Asset',
@@ -449,6 +453,18 @@ export const en = {
       estimate: 'estimate',
     },
     legs: { afterHaircut: 'after haircut', quoted: 'quoted {rate}' },
+    /** The chart of the plan pane: the balance the dollar yield projects, from the plan's own range. */
+    chart: {
+      label: (months: number, low: string, high: string) =>
+        `What the dollar yield projects over ${months} months: from ${low} to ${high} a year.`,
+      after: (months: number) => `After ${months} months`,
+      projected: 'projected',
+      low: 'low end',
+      high: 'high end',
+      note: 'Only what the dollar yield pays is projected. Prices of stocks and gold are not, and can fall.',
+      table: 'The projection as a table',
+      month: 'Month',
+    },
     exitPlan: 'Exit plan',
     costPrefix: 'cost',
     foot: { sandbox: 'test network, not live', mock: 'sample data, not live' },
@@ -743,7 +759,7 @@ export const en = {
     stage: {
       label: 'How tenonfi fits',
       title:
-        'No product fits everyone. So we make the pieces — and your goals decide how they fit.',
+        'No product fits everyone. So we make the pieces\u00a0— and your goals decide how they fit.',
       taglineStrong: 'Made to measure. Every joint shown.',
       tagline:
         'Tell us what your money needs to do. tenonfi builds the portfolio that gets it there, and shows you how.',
@@ -807,7 +823,7 @@ export const en = {
           { name: () => 'Tokenized treasuries', why: 'dollar yield, next-day redemption' },
           { name: () => 'Dollar lending', why: 'variable rate, instant withdrawal' },
         ],
-        exit: 'The whole balance is reachable within a day; the trip months are paid from the cash buffer first.',
+        exit: 'the whole balance is reachable within a day; the trip months are paid from the cash buffer first.',
         exitNote: 'Sourced live after you connect.',
       },
       growth: {
@@ -834,7 +850,7 @@ export const en = {
           },
           { name: () => 'Tokenized gold', why: 'diversifier, no yield' },
         ],
-        exit: 'Stocks are sized to what Bearing measures can be sold at the thinnest hour of the week.',
+        exit: 'stocks are sized to what Bearing measures can be sold at the thinnest hour of the week.',
         exitNote: 'Weekend exits are slower and cost more.',
         oddsNote: 'Odds are estimates.',
       },

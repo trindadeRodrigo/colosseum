@@ -68,7 +68,12 @@ export function TripChart({
   const payoutX = left + TRIP.months * bar;
   const grid = Array.from({ length: Math.floor(max / 1000) + 1 }, (_, i) => i * 1000);
   return (
-    <figure className="m-0 overflow-x-auto">
+    // biome-ignore lint/a11y/noNoninteractiveTabindex: a region that scrolls on a phone must be reachable by keyboard
+    <figure
+      tabIndex={0}
+      aria-label={labels.chart}
+      className="m-0 overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+    >
       <svg
         role="img"
         aria-label={labels.chart}
@@ -174,7 +179,12 @@ export function GrowthChart({
     .join(' ')} Z`;
   const grid = Array.from({ length: (max - min) / 5000 + 1 }, (_, i) => min + i * 5000);
   return (
-    <figure className="m-0 overflow-x-auto">
+    // biome-ignore lint/a11y/noNoninteractiveTabindex: a region that scrolls on a phone must be reachable by keyboard
+    <figure
+      tabIndex={0}
+      aria-label={labels.chart}
+      className="m-0 overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+    >
       <svg
         role="img"
         aria-label={labels.chart}

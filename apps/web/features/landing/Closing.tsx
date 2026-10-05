@@ -29,6 +29,7 @@ export function Closing() {
             { id: 'newsletter', label: t.newsletter },
           ]}
           status={status}
+          placeholder="you@example.com"
           onSubmit={(email, options) =>
             setStatus(
               !EMAIL.test(email) ? 'invalid-email' : options.length === 0 ? 'no-option' : 'success',

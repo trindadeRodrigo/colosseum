@@ -20,6 +20,7 @@ import { withAccount } from '../account/test/screen';
 import { EMBEDDED, fakePort, json, PHANTOM, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
 import { PERSONALIZE_PATH } from './build-plan';
+import { GOAL_HANDOFF } from './draft';
 import { GoalScreen } from './GoalScreen';
 import { FIELD_ID } from './sheet';
 import { proposalFor, READ_IN_DOLLARS, READ_IN_REAIS } from './test/plan';
@@ -109,6 +110,28 @@ beforeEach(() => {
   portStore.set(fakePort());
 });
 afterEach(unmountAll);
+
+describe('a goal handed over from the landing page', () => {
+  it('is read as the screen opens, once, and taken out of the tab', async () => {
+    const server = api({});
+    window.sessionStorage.setItem(GOAL_HANDOFF, GOAL);
+    const host = await screen();
+    await settle();
+    expect(server.to('/goals')).toEqual([
+      { method: 'POST', path: '/goals', body: { text: GOAL, language: 'en' } },
+    ]);
+    expect(box(host).value).toBe(GOAL);
+    expect(window.sessionStorage.getItem(GOAL_HANDOFF)).toBeNull();
+    expect(sheet(host)).not.toBeNull();
+  });
+
+  it('reads nothing when nothing was handed over', async () => {
+    const server = api({});
+    await screen();
+    await settle();
+    expect(server.to('/goals')).toEqual([]);
+  });
+});
 
 describe('the goal screen, before anything is read', () => {
   it('asks the one question, in the one serif line, with the typing box and three examples', async () => {

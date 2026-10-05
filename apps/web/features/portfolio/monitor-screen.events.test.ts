@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { DISCLAIMER } from '@colosseum/schemas';
+import { DISCLAIMER, DISCLAIMER_SHORT } from '@colosseum/schemas';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
@@ -215,6 +215,23 @@ describe('the monitor, for a person with a vault on their chain', () => {
     expect(text(host)).toContain(en.portfolio.vault.pendingAssets('SPYX'));
     expect(text(host)).toContain(en.portfolio.vault.unpriced(1));
     expect(text(host)).toContain(en.portfolio.vault.noPrice);
+  });
+
+  it('draws its parts as his case does: a bar by weight, each part with its weight and target', async () => {
+    api({ person: onSolana });
+    signIn();
+    const host = await screen();
+    const parts = find(host, '[data-ui="vault-parts"]');
+    const items = [...parts.querySelectorAll('li')].map((li) => li.textContent);
+    expect(items).toEqual([
+      `USDY63.46%${en.portfolio.vault.target('60.00%')}`,
+      `PAXG12.50%${en.portfolio.vault.target('15.00%')}`,
+    ]);
+    // the chips state the vault's facts, and the foot has the short disclaimer
+    const chips = find(host, `ul[aria-label="${en.portfolio.vault.chips.label}"]`).textContent;
+    expect(chips).toContain('version: 1');
+    expect(chips).toContain('auto-follow: on');
+    expect(host.textContent).toContain(DISCLAIMER_SHORT);
   });
 
   it('says a vault of cash alone in words, with no empty table', async () => {
