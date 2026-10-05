@@ -212,7 +212,16 @@ export async function compose(input: ComposeInput): Promise<Composed> {
     const cap = (maxLamports * 1_000_000n) / BigInt(limit);
     return wanted < cap ? wanted : cap;
   };
+  const tooLarge = (bytes: number) =>
+    new ChainError(
+      'NotSupported',
+      `the transaction is ${bytes} bytes, over the ${MAX_TRANSACTION_BYTES} a Solana transaction may be`,
+    );
   const trial = build(MAX_COMPUTE_UNITS, priceAt(MAX_COMPUTE_UNITS));
+  // A transaction that cannot be sent is refused before the node is asked to simulate it. The final
+  // one differs only in the two numbers of the budget, which keep their sizes.
+  const trialBytes = getTransactionEncoder().encode(trial).length;
+  if (trialBytes > MAX_TRANSACTION_BYTES) throw tooLarge(trialBytes);
   const simulated = await ask('simulateTransaction', () =>
     rpc
       .simulateTransaction(getBase64EncodedWireTransaction(trial), {
@@ -232,11 +241,7 @@ export async function compose(input: ComposeInput): Promise<Composed> {
   const price = priceAt(limit);
   const transaction = build(limit, price);
   const wire = getTransactionEncoder().encode(transaction);
-  if (wire.length > MAX_TRANSACTION_BYTES)
-    throw new ChainError(
-      'NotSupported',
-      `the transaction is ${wire.length} bytes, over the ${MAX_TRANSACTION_BYTES} a Solana transaction may be`,
-    );
+  if (wire.length > MAX_TRANSACTION_BYTES) throw tooLarge(wire.length);
   const signers = Object.keys(transaction.signatures).length;
   const priority = (price * BigInt(limit) + 999_999n) / 1_000_000n;
 
