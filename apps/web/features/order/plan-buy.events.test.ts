@@ -127,13 +127,16 @@ describe('the plan screen', () => {
     expect(find(host, 'h1').textContent).toBe('Grow $40,000 over 36 months.');
     const rows = [...host.querySelectorAll('tbody tr')].map((r) => r.textContent);
     expect(rows[0]).toContain('solana:spyx');
-    expect(rows[1]).toContain('Gold steadies the plan.');
+    expect(host.querySelector('[data-ui="plan-legs"]')?.textContent).toContain(
+      'Gold steadies the plan.',
+    );
     // the projected range carries its pin, and the exit cost its own
     expect(host.querySelectorAll('[data-ui="pin"]').length).toBeGreaterThanOrEqual(2);
     expect(host.querySelector('[data-ui="exit-plan-line"]')?.textContent).toContain(
       'up to $40,000 within a day',
     );
-    expect(host.textContent).toContain(DISCLAIMER.en);
+    // the disclaimer is the shell's foot, once per page: the screen does not repeat it
+    expect(host.textContent).not.toContain(DISCLAIMER.en);
     expect(host.textContent).toContain(en.plan.risk.none);
     // a plan built on a test network: the plate, the hatch and the words
     expect(host.textContent).toContain('MOCK');

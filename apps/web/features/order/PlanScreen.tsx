@@ -6,7 +6,6 @@ import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { DataTable } from '../../components/ui/DataTable';
-import { Disclaimer } from '../../components/ui/Disclaimer';
 import { ExitPlanLine } from '../../components/ui/ExitPlanLine';
 import { MAX_LEGS, PlanLegs } from '../../components/ui/PlanLegs';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
@@ -20,8 +19,9 @@ import { PlanGate } from './PlanGate';
 import { usePlan } from './use-plan';
 
 // The plan a goal built, before anything is bought: the goal first, then what the plan holds and why,
-// the projected range with its source, the exit plan, the risk as the API rolled it up, and the
-// disclaimer from the one constant. A plan built on anything that is not live carries the MOCK plate,
+// the projected range with its source, the exit plan, and the risk as the API rolled it up. The
+// disclaimer from the one constant is the foot of every product page (components/shell/AppShell.tsx),
+// so it is on this one once. A plan built on anything that is not live carries the MOCK plate,
 // with "test network" on a test network. "Buy this plan" leads to the buy screen; on a chain with no
 // deployment committed for its network it is off, and says why.
 
@@ -129,11 +129,17 @@ export function PlanScreen({ id }: { id: string }) {
                 numeric: true,
                 cell: (l) => dollars(l.amountUsd, lang),
               },
-              {
-                key: 'why',
-                header: t.plan.columns.why,
-                cell: (l) => l.reasons.map((r) => r.text).join(' ') || t.plan.noReason,
-              },
+              // With the bar, each part's reason is under it; a plan of more parts has it here.
+              ...(proposal.lines.length > MAX_LEGS
+                ? [
+                    {
+                      key: 'why',
+                      header: t.plan.columns.why,
+                      cell: (l: BasketLine) =>
+                        l.reasons.map((r) => r.text).join(' ') || t.plan.noReason,
+                    },
+                  ]
+                : []),
             ]}
           />
           <dl className="flex flex-col gap-1">
@@ -202,8 +208,6 @@ export function PlanScreen({ id }: { id: string }) {
         notLive={notLive}
         sandbox={label === 'sandbox'}
       />
-
-      <Disclaimer lang={lang} heading={t.shell.disclaimer} label={t.shell.disclaimer} />
 
       <div className="flex flex-col items-start gap-2">
         {blocked ? (
