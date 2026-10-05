@@ -28,3 +28,6 @@ packages/db/migrations/boundary-plant-*.ts
 
 # vitest reporter output
 .vitest/
+
+# Papers read for the research notes: copyrighted, never committed
+docs/vault/research/articles/
