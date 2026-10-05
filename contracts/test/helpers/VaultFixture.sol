@@ -19,6 +19,8 @@ abstract contract VaultFixture is Test {
     uint32 internal constant PUBLISH_DELAY = 300;
 
     address internal constant PERMIT2_ADDRESS = PERMIT2;
+    /// A deadline for an owner's trade that no test reaches, where the deadline is not what is tested.
+    uint64 internal constant LATER = type(uint64).max;
 
     address internal admin = makeAddr("admin");
     address internal owner = makeAddr("owner");
@@ -96,7 +98,11 @@ abstract contract VaultFixture is Test {
             pauseProbe: address(0),
             pauseSelector: bytes4(0),
             scheduleSelector: bytes4(0),
-            haltUntil: 0
+            haltUntil: 0,
+            flags: 0,
+            averageFeed: address(0),
+            minPrice: 0,
+            maxPrice: 0
         });
     }
 

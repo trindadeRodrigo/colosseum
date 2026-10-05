@@ -14,8 +14,8 @@ import { MockPlate } from '../ui/MockPlate';
 import { Mark } from './Mark';
 
 // The product's top bar (STYLE.md, Navigation): a plain bar on the ground with a hairline under it,
-// the mark and the wordmark at the left. No glass and no blur. The goal comes first: it is the one
-// link there is until the next screens are built. The landing's compact bar is another component
+// the mark and the wordmark at the left. No glass and no blur. The goal comes first: home is the goal,
+// then the portfolio (the monitor). The landing's compact bar is another component
 // (components/ui/CompactNav.tsx).
 //
 // Nothing here is the wallet adapter's button, which renders one thing on the server and another in
@@ -30,7 +30,10 @@ const LINK = cn(
 );
 
 /** The product's routes, in the order of the bar. */
-const ROUTES = [{ href: '/goal', key: 'goal' }] as const;
+const ROUTES = [
+  { href: '/', key: 'goal' },
+  { href: '/monitor', key: 'portfolio' },
+] as const;
 
 export function AppNav() {
   const t = useT();
@@ -40,7 +43,7 @@ export function AppNav() {
       <div className="flex min-h-14 flex-wrap items-center justify-between gap-x-6 gap-y-2 py-2">
         <div className="flex items-center gap-6">
           <Link
-            href="/goal"
+            href="/"
             aria-label={t.shell.home}
             className={cn('flex shrink-0 items-center gap-2.5 text-foreground', FOCUS)}
           >

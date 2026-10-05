@@ -138,7 +138,7 @@ export function ExitPlanLine({
                 <span aria-hidden="true">·</span>
                 <span
                   data-mock={mock || undefined}
-                  className={cn('inline-flex items-center gap-2', mock && 'h-5')}
+                  className={cn('inline-flex items-center gap-2', mock && 'min-h-5')}
                 >
                   {mock && <HatchBand />}
                   <span>

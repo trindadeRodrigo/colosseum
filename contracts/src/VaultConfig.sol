@@ -45,6 +45,9 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
         address sequencerFeed;
         mapping(uint32 day => bool) closedDays;
         address registry;
+        // ---- appended by EVM-3
+        // A keeper limit that `Params` has no room for: how far a price may be from its average.
+        uint16 priceDevBps;
     }
 
     // keccak256(abi.encode(uint256(keccak256("basket.storage.VaultConfig")) - 1)) & ~bytes32(uint256(0xff))
@@ -64,12 +67,19 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
     uint32 internal constant MIN_PRICE_AGE = 60;
     uint32 internal constant MAX_PRICE_AGE = 48 hours;
     /// The keeper's limits cannot be set looser than this without an upgrade (section 3.7, the same numbers
-    /// as the Solana program): what a trade may lose against the reference price, what a week may lose, and
-    /// the least time between two keeper trades in one asset.
+    /// as the Solana program): what a trade may lose against the reference price, what a week may lose, how
+    /// far past its target a trade may leave an asset, the least and the most time between two keeper trades
+    /// in one asset, and how far a price may be from its average.
     uint16 internal constant MAX_TOLERANCE_BPS = 300;
     uint16 internal constant MAX_LOSS_CAP_BPS = 500;
+    uint16 internal constant MAX_BAND_BPS = 500;
+    uint16 internal constant MAX_PRICE_DEV_BPS = 1000;
     uint32 internal constant MIN_ASSET_COOLDOWN = 600;
+    /// Seven days, the window of the loss cap: a longer cooldown is a pause by another name.
+    uint32 internal constant MAX_ASSET_COOLDOWN = 7 days;
     uint32 internal constant DAY = 86_400;
+    /// Bit 0 of an asset's `flags`: the keeper may trade it and value a vault by its price.
+    uint8 internal constant KEEPER_ON = 1;
     /// What the probe in `setRouter` may use. A token answers `allowance` in a few thousand.
     uint256 internal constant PROBE_GAS = 100_000;
 
@@ -97,6 +107,10 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
     /// Lists an asset or replaces its settings, the price feed included. The stored `haltUntil` is kept and
     /// the one passed in is ignored: a halt is the guardian's, and a feed update must not lift it. Listing a
     /// removed asset again puts it back.
+    ///
+    /// The keeper's switch (`flags` bit 0) goes on only with a price to value the asset at: a Chainlink
+    /// feed, its one-hour average as a feed of its own, and a range, the ceiling above the floor and at most
+    /// twice it. The admin sets the range around a price checked against the pool, and moves it by hand.
     function setAsset(address token, AssetConfig calldata cfg) external onlyAdmin {
         require(token != address(0), ZeroAddress());
         require(token.code.length != 0, NoCode(token));
@@ -111,6 +125,20 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
         if (cfg.feed != address(0)) {
             require(cfg.maxAge >= MIN_PRICE_AGE, ParamOutOfBounds("maxAge", cfg.maxAge));
             require(cfg.maxAge <= MAX_PRICE_AGE, ParamOutOfBounds("maxAge", cfg.maxAge));
+        }
+        require(cfg.flags <= KEEPER_ON, ParamOutOfBounds("flags", cfg.flags));
+        bool ranged = cfg.minPrice != 0 || cfg.maxPrice != 0;
+        if (ranged) {
+            require(
+                cfg.maxPrice > cfg.minPrice && cfg.maxPrice <= 2 * uint256(cfg.minPrice),
+                ParamOutOfBounds("maxPrice", cfg.maxPrice)
+            );
+        }
+        if (cfg.flags & KEEPER_ON != 0) {
+            require(
+                cfg.source == 1 && cfg.averageFeed != address(0) && cfg.averageFeed != cfg.feed && ranged,
+                AssetNotPriced(token)
+            );
         }
 
         uint64 halt = $.assets[token].haltUntil;
@@ -195,6 +223,13 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
 
     function setParams(Params calldata p) external onlyAdmin {
         _setParams(p);
+    }
+
+    /// @inheritdoc IVaultConfig
+    function setPriceDevBps(uint16 bps) external onlyAdmin {
+        require(bps <= MAX_PRICE_DEV_BPS, ParamOutOfBounds("priceDevBps", bps));
+        _config().priceDevBps = bps;
+        emit PriceDevSet(bps);
     }
 
     function unpauseKeeper() external onlyAdmin {
@@ -371,6 +406,11 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
         return (p.toleranceBps, p.lossCapBps, p.bandBps, p.assetCooldown, p.sessionOpen, p.sessionClose);
     }
 
+    /// @inheritdoc IVaultConfig
+    function priceDevBps() public view returns (uint16) {
+        return _config().priceDevBps;
+    }
+
     // ---- internals
 
     function _checkAdmin() internal view {
@@ -389,7 +429,9 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
     function _setParams(Params memory p) private {
         require(p.toleranceBps <= MAX_TOLERANCE_BPS, ParamOutOfBounds("toleranceBps", p.toleranceBps));
         require(p.lossCapBps <= MAX_LOSS_CAP_BPS, ParamOutOfBounds("lossCapBps", p.lossCapBps));
+        require(p.bandBps <= MAX_BAND_BPS, ParamOutOfBounds("bandBps", p.bandBps));
         require(p.assetCooldown >= MIN_ASSET_COOLDOWN, ParamOutOfBounds("assetCooldown", p.assetCooldown));
+        require(p.assetCooldown <= MAX_ASSET_COOLDOWN, ParamOutOfBounds("assetCooldown", p.assetCooldown));
         require(p.sessionClose <= DAY, ParamOutOfBounds("sessionClose", p.sessionClose));
         require(p.sessionOpen < p.sessionClose, ParamOutOfBounds("sessionOpen", p.sessionOpen));
         _config().params = p;

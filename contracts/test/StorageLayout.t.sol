@@ -2,7 +2,8 @@
 pragma solidity 0.8.37;
 
 import {BasketVault} from "../src/BasketVault.sol";
-import {Weight} from "../src/interfaces/Types.sol";
+import {AssetConfig, Weight} from "../src/interfaces/Types.sol";
+import {KeeperFixture} from "./helpers/KeeperFixture.sol";
 import {SwapFixture} from "./helpers/SwapFixture.sol";
 
 /// The vault logic with one more view, so that the place of a field nothing reads yet can be shown.
@@ -74,7 +75,11 @@ contract StorageLayoutTest is SwapFixture {
         uint256 first = _word(where, uint256(keccak256(abi.encode(s + 7))));
         assertEq(address(uint160(first)), targets[0].token, "targets: a token");
         assertEq(uint16(first >> 160), targets[0].bps, "targets: its weight, in the same slot");
-        assertEq(_word(where, s + 8), 0, "the next field a later version adds goes here");
+        // EVM-3, appended: their places are pinned with a keeper trade in KeeperStorageLayoutTest.
+        assertEq(_word(where, s + 8), 0, "lastKeeperAt: a mapping's own slot stays empty");
+        assertEq(_word(where, s + 9), 0, "lossAccum");
+        assertEq(_word(where, s + 10), 0, "lossTs");
+        assertEq(_word(where, s + 11), 0, "the next field a later version adds goes here");
         _assertPlainSlotsEmpty(where);
     }
 
@@ -119,7 +124,14 @@ contract StorageLayoutTest is SwapFixture {
     }
 
     function test_storage_ofTheFactory_theConfigNamespace() public {
+        AssetConfig memory priced = _assetConfig(18);
+        priced.flags = 1;
+        priced.averageFeed = stranger;
+        priced.minPrice = 100e8;
+        priced.maxPrice = 150e8;
         vm.startPrank(admin);
+        factory.setAsset(address(stockA), priced);
+        factory.setPriceDevBps(321);
         factory.launch();
         factory.proposeAdmin(stranger);
         factory.removeAsset(address(stockC));
@@ -160,6 +172,18 @@ contract StorageLayoutTest is SwapFixture {
         assertEq(_addr(where, s + 12), feed, "sequencerFeed");
         assertEq(_word(where, uint256(keccak256(abi.encode(uint256(20_800), s + 13)))), 1, "closedDays");
         assertEq(_addr(where, s + 14), address(registry), "registry");
+        // EVM-3, appended
+        assertEq(uint16(_word(where, s + 14) >> 160), 321, "priceDevBps, in the registry's slot");
+        assertEq(_word(where, s + 14) >> 176, 0, "priceDevBps ends at bit 175");
+        uint256 asset = uint256(keccak256(abi.encode(address(stockA), s + 4)));
+        uint256 third = _word(where, asset + 2);
+        assertEq(uint64(third), 0, "assets: haltUntil, alone at the start of the third slot");
+        assertEq(uint8(third >> 64), 1, "assets: flags, after haltUntil");
+        assertEq(address(uint160(third >> 72)), stranger, "assets: averageFeed, after flags");
+        uint256 fourth = _word(where, asset + 3);
+        assertEq(uint128(fourth), 100e8, "assets: minPrice, in the fourth slot");
+        assertEq(fourth >> 128, 150e8, "assets: maxPrice, beside it");
+        assertEq(_word(where, asset + 4), 0, "assets: an entry is four slots");
         assertEq(_word(where, s + 15), 0, "the next field a later version adds goes here");
         _assertPlainSlotsEmpty(where);
     }
@@ -230,5 +254,29 @@ contract StorageLayoutTest is SwapFixture {
         assertEq(_addr(address(beacon), 0), admin, "owner");
         assertEq(_addr(address(beacon), 1), address(logic), "implementation");
         assertEq(_addr(address(beacon), 2), stranger, "pendingOwner");
+    }
+}
+
+/// Where the keeper's fields of a vault are (EVM-3), written by a keeper trade that loses something.
+contract KeeperStorageLayoutTest is KeeperFixture {
+    function _decimals() internal pure override returns (uint8) {
+        return 18;
+    }
+
+    function setUp() public {
+        _deployKeeperPlatform();
+    }
+
+    function test_storage_theKeepersFields() public {
+        _keeperSwap(_buy(direct, address(stockA), 4000 * USD, 120));
+        uint256 s =
+            uint256(keccak256(abi.encode(uint256(keccak256("basket.storage.BasketVault")) - 1))) & ~uint256(0xff);
+        address where = address(vault);
+        assertEq(uint256(vm.load(where, bytes32(s + 8))), 0, "lastKeeperAt: the mapping's own slot");
+        bytes32 entry = keccak256(abi.encode(address(stockA), s + 8));
+        assertEq(uint256(vm.load(where, entry)), block.timestamp, "lastKeeperAt: an asset's entry");
+        assertEq(uint256(vm.load(where, bytes32(s + 9))), 48 * USD, "lossAccum");
+        assertEq(uint256(vm.load(where, bytes32(s + 10))), block.timestamp, "lossTs");
+        assertEq(uint256(vm.load(where, bytes32(s + 11))), 0, "the next field a later version adds goes here");
     }
 }

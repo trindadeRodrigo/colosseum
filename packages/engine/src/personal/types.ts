@@ -108,8 +108,14 @@ export const PersonalParameters = PersonalParams.extend({
   wayStepUsd: z.number().positive(),
   /** The shared portfolio a goal starts from when the person chooses none: a slug, or none. */
   defaultTheme: z.record(GoalKind, z.string().nullable()),
-  /** What fills a sleeve when no shared portfolio does: the ticker of an underlying. */
-  defaultUnderlying: z.object({ growth: z.string().min(1), gold: z.string().min(1) }),
+  /**
+   * What fills a sleeve when no shared portfolio does: the ticker of an underlying. Gold is a list in
+   * order: the first the person can hold on the chain.
+   */
+  defaultUnderlying: z.object({
+    growth: z.string().min(1),
+    gold: z.array(z.string().min(1)).min(1),
+  }),
   /** Yields after haircut within this of a band's top count as equal (a fraction: 0.005 is half a point). */
   yieldBand: z.number().nonnegative().max(1),
   /**

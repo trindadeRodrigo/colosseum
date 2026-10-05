@@ -1,0 +1,23 @@
+{
+  "about": "Robinhood Chain's test network (46630). TEST NETWORK ONLY. The deployer keeps the admin and the beacon (adminIsDeployer), and with no guardian the admin makes the guardian's calls, as on Solana devnet. No keeper yet: the keeper key is made and set with setKeeper before the keeper runs. No asset, cash token or router yet: the test tokens, the test price feeds and their averages (TNET-1) and the Universal Router with its pools (TNET-2) do not exist on this network. Once they do, their addresses go in assets, cashToken and routers and `settings()` lists them on the deployed factory. Closed days are the NYSE closures from fixtures/risk/us-market-holidays.json from 2026-10-05 on.",
+  "chainId": 46630,
+  "adminIsDeployer": true,
+  "admin": "0x0000000000000000000000000000000000000000",
+  "guardian": "0x0000000000000000000000000000000000000000",
+  "keeper": "0x0000000000000000000000000000000000000000",
+  "sequencerFeed": "0x0000000000000000000000000000000000000000",
+  "publishDelay": 300,
+  "params": {
+    "toleranceBps": 125,
+    "lossCapBps": 100,
+    "bandBps": 50,
+    "assetCooldown": 3600,
+    "sessionOpen": 52200,
+    "sessionClose": 72000
+  },
+  "priceDevBps": 200,
+  "cashToken": "0x0000000000000000000000000000000000000000",
+  "assets": [],
+  "routers": [],
+  "closedDays": [20783, 20812, 20819, 20836, 20864, 20903, 20969, 20987, 21004, 21067, 21147, 21176]
+}

@@ -151,6 +151,16 @@ describe('the words of the product, in each language', () => {
     expect(pt.shell.disclaimer).toBe('Aviso legal');
   });
 
+  it('says a passkey that is not registered here in so many words, in both languages', () => {
+    const [en, pt] = [dictionary('en'), dictionary('pt')];
+    expect(en.signIn.failure.passkeyNotRegistered).toBe(
+      'That passkey isn’t registered here. Pick another, or create one.',
+    );
+    expect(pt.signIn.failure.passkeyNotRegistered).toBe(
+      'Essa chave de acesso não está registrada aqui. Escolha outra ou crie uma.',
+    );
+  });
+
   it('still bans "unlock" as a word of promise, in Portuguese too', () => {
     expect('Desbloqueie rendimentos maiores').toMatch(BANNED.pt as RegExp);
     expect('desbloquear seu potencial').toMatch(BANNED.pt as RegExp);
@@ -172,9 +182,9 @@ describe('the words of the product, in each language', () => {
     ]);
   });
 
-  it('calls a part of a plan a part, and promises no screen that is not there', () => {
+  it('calls a part of a plan a part, and says nothing was bought', () => {
     expect(en.goal.built.done.body(3, 'Solana')).toBe(
-      'It has 3 parts on Solana. I can’t show it on this page yet. Nothing was bought.',
+      'It has 3 parts on Solana. Nothing was bought.',
     );
     expect(en.goal.built.done.body(1, 'Solana')).toContain('1 part on');
     expect(pt.goal.built.done.body(3, 'Solana')).toContain('3 partes');
