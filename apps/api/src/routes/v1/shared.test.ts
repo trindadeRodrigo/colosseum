@@ -349,13 +349,14 @@ describe('a creator publishes a shared portfolio', () => {
     }
   });
 
-  it('keeps a new slug for the creator whose publish landed first, when two raced for it', async () => {
+  it('keeps a new slug for the creator whose publish is recorded first, when two raced for it', async () => {
     const text = fresh();
     const first = await someone();
     const second = await someone();
     await fund(first);
     await fund(second);
     // Neither is stored yet, so both orders are made: each publishes under the slug's id with its key.
+    // The first read of a confirmed order records its family; the other creator's is not written.
     const a = await publish(first, text);
     const b = await publish(second, { ...text, copy: 'Other words, for the same slug.' });
     await settleAll(first, a);
@@ -374,6 +375,10 @@ describe('a creator publishes a shared portfolio', () => {
     const cases: [object, number, RegExp | string][] = [
       [{ creator: { solana: stranger.solana } }, 403, /not a wallet of the signed-in person/],
       [{ copy: 'See https://example.invalid for more' }, 422, /holds a link/],
+      [{ copy: 'Claim it at evil.xyz/airdrop' }, 422, /holds a link/],
+      [{ copy: 'Write to help@evil.xyz' }, 422, /holds a link/],
+      [{ copy: 'Safe \u202ereversed words' }, 422, /can't be seen or that turns text around/],
+      [{ copy: 'Zero\u200bwidth' }, 422, /can't be seen/],
       [{ name: 'Gold café' }, 422, /plain ASCII/],
       [{ name: ' Padded' }, 422, /no space at either end/],
       [{ copy: 'x'.repeat(281) }, 422, /281 characters, and the most is 280/],
@@ -589,6 +594,31 @@ describe('a person buys a shared portfolio, following it on their own chain', ()
     );
   });
 
+  it('refuses a deposit into the following vault once another version is in effect', async () => {
+    const creator = await someone();
+    const text = fresh();
+    await published(creator, text);
+    const buyer = await someone();
+    await fund(buyer);
+    const body = { type: 'buy', owner: buyer.owner, amountUsd: 20, family: text.slug };
+    await settleAll(buyer, OrderDetail.parse((await post(buyer, '/v1/orders', body)).json()));
+    // A second buy of the same portfolio is a deposit into the vault that follows version 1.
+    const again = OrderDetail.parse((await post(buyer, '/v1/orders', body)).json());
+    expect(again.legs[0]?.kind).toBe('deposit');
+    registry.get('solana').mock?.advance(301);
+    await settleAll(
+      creator,
+      await publish(creator, text, [
+        { kind: 'asset', asset: 'solana:spy', weightBps: 3000 },
+        { kind: 'asset', asset: 'solana:nvda', weightBps: 4000 },
+        { kind: 'asset', asset: 'solana:tsla', weightBps: 3000 },
+      ]),
+    );
+    registry.get('solana').mock?.advance(301);
+    const stale = await post(buyer, `/v1/orders/${again.id}/legs/${again.legs[0]?.id}/build`);
+    expect([stale.statusCode, stale.json().code]).toEqual([409, 'VERSION_CHANGED']);
+  });
+
   it('refuses a portfolio that is not on the chain the person is on (ONE-CHAIN)', async () => {
     const creator = await someone();
     const text = fresh();
@@ -682,6 +712,83 @@ describe('a vault follows a shared portfolio, and auto-follow where it is offere
       1,
       false,
     ]);
+  });
+
+  it('refuses to keep auto-follow on into a portfolio with no oracle, when planned and when built', async () => {
+    // A vault that already has auto-follow on, following a portfolio whose every asset has an oracle.
+    const creator = await someone();
+    const plain = fresh();
+    await published(creator, plain);
+    const gold = fresh();
+    await published(creator, gold, WITH_GOLD);
+    const { who, vault } = await withVault();
+    await settleAll(
+      who,
+      OrderDetail.parse(
+        (
+          await post(who, '/v1/orders', {
+            type: 'follow',
+            vault,
+            family: plain.slug,
+            autoFollow: true,
+          })
+        ).json(),
+      ),
+    );
+    expect((await registry.get('solana').adapter.getVault(vault))?.autoFollow).toBe(true);
+
+    // Asked to follow the gold portfolio with auto-follow kept on: refused, though the switch does not
+    // change, and nothing is planned.
+    const kept = await post(who, '/v1/orders', {
+      type: 'follow',
+      vault,
+      family: gold.slug,
+      autoFollow: true,
+    });
+    expect([kept.statusCode, kept.json().error]).toEqual([
+      422,
+      'this shared portfolio holds solana:gold, which has no price oracle on Solana, so it is not rebalanced for you',
+    ]);
+
+    // With auto-follow asked off, the switch goes off first, then the vault takes the version.
+    const off = OrderDetail.parse(
+      (
+        await post(who, '/v1/orders', {
+          type: 'follow',
+          vault,
+          family: gold.slug,
+          autoFollow: false,
+        })
+      ).json(),
+    );
+    expect(off.legs.map((l) => l.kind)).toEqual(['set_auto_follow', 'accept_version']);
+    await settleAll(who, off);
+    const after = await registry.get('solana').adapter.getVault(vault);
+    expect([after?.autoFollow, after?.acceptedVersion]).toEqual([false, 1]);
+  });
+
+  it('refuses the accept when the vault has auto-follow on by the time it is built', async () => {
+    const creator = await someone();
+    const gold = fresh();
+    await published(creator, gold, WITH_GOLD);
+    const { who, vault } = await withVault();
+    const placed = OrderDetail.parse(
+      (
+        await post(who, '/v1/orders', {
+          type: 'follow',
+          vault,
+          family: gold.slug,
+          autoFollow: false,
+        })
+      ).json(),
+    );
+    expect(placed.legs.map((l) => l.kind)).toEqual(['accept_version']);
+    // Meanwhile the owner switched auto-follow on, by another order or another app.
+    const { adapter, mock } = registry.get('solana');
+    await mock?.send(await adapter.buildSetAutoFollow({ vault, on: true }));
+    const built = await post(who, `/v1/orders/${placed.id}/legs/${placed.legs[0]?.id}/build`);
+    expect(built.statusCode).toBe(422);
+    expect(built.json().error).toMatch(/holds solana:gold, which has no price oracle/);
   });
 
   it('follows with auto-follow on where every asset has an oracle, with the consent it needs', async () => {

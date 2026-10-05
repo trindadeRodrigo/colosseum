@@ -46,17 +46,29 @@ const DIGIT_LETTERS: Record<string, string> = {
 };
 
 /**
- * The folded key of a name: lower case, digits that look like letters read as those letters, and
- * nothing but letters. Two names with one key are one name: the second is refused.
+ * The folded key of a name: lower case, digits that look like letters read as those letters, nothing
+ * but letters, then the shapes that pass for each other folded together: `rn` reads as `m`, and `i`,
+ * `l` and `1` as one letter. Two names with one key are one name: the second is refused.
  */
 export function nameKeyOf(name: string): string {
   return name
     .toLowerCase()
     .replace(/[0-9]/g, (d) => DIGIT_LETTERS[d] ?? d)
-    .replace(/[^a-z]/g, '');
+    .replace(/[^a-z]/g, '')
+    .replace(/rn/g, 'm')
+    .replace(/i/g, 'l');
 }
 
-const LINK = /:\/\/|www\./i;
+/**
+ * A link, refused in a name or a description: a scheme (`://`), `www.`, or a bare host and its path
+ * (`evil.xyz/airdrop`): dotted labels ending in letters, standing on their own, an email address included.
+ */
+const LINK = /:\/\/|www\.|(?<!\w)[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?![\w-])/i;
+/**
+ * A character a person cannot see or that turns text around: format characters (zero-width spaces and
+ * joiners, the bidi controls, a soft hyphen, a byte-order mark) and control characters but a newline.
+ */
+const HIDDEN = /\p{Cf}|(?!\n)\p{Cc}/u;
 const PRINTABLE_ASCII = /^[\x20-\x7e]+$/;
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -87,6 +99,11 @@ export function checkText(req: PublishRequest): void {
         `the ${what} is ${text.length} characters, and the most is ${SHARED_TEXT.maxChars}`,
       );
     if (LINK.test(text)) throw new Refusal(422, `the ${what} holds a link, and none is allowed`);
+    if (HIDDEN.test(text))
+      throw new Refusal(
+        422,
+        `the ${what} holds a character that can't be seen or that turns text around, and none is allowed`,
+      );
   }
   if (!nameKeyOf(req.name)) throw new Refusal(422, 'a name has at least one letter');
 }
@@ -350,6 +367,17 @@ export async function planFollow(
   const steps: SharedStep[] = [];
   const needsConsent: ('auto_follow_on' | 'new_asset')[] = [];
   const name = entry.config.name;
+  // Auto-follow on, asked for or already on, is held to the offer whatever else the order does: a
+  // vault that keeps auto-follow on and accepts a portfolio holding an asset with no oracle would be
+  // keeper-rebalanced into it (gate GOLD-ONE-TAP).
+  if (req.autoFollow) {
+    const offer = autoFollowOffer(
+      entry,
+      [active, ...(onchain.pending ? [onchain.pending] : [])].map(recipeTargets),
+      await entry.adapter.listAssets(),
+    );
+    if (!offer.offered) refuseAutoFollow(entry, offer);
+  }
   if (vault.recipeOnchainId !== active.onchainId || vault.acceptedVersion !== active.version) {
     // The vault takes the version's weights, assets it has no target on included: the guard asks the
     // person's own tap for every accept.
@@ -361,16 +389,10 @@ export async function planFollow(
     });
   }
   if (req.autoFollow !== vault.autoFollow) {
-    if (req.autoFollow) {
-      const offer = autoFollowOffer(
-        entry,
-        [active, ...(onchain.pending ? [onchain.pending] : [])].map(recipeTargets),
-        await entry.adapter.listAssets(),
-      );
-      if (!offer.offered) refuseAutoFollow(entry, offer);
-      needsConsent.push('auto_follow_on');
-    }
-    steps.push({
+    if (req.autoFollow) needsConsent.push('auto_follow_on');
+    // Off goes first: the vault takes a new version with the keeper already stopped. On goes last,
+    // once the vault follows the version the offer was held to.
+    steps[req.autoFollow ? 'push' : 'unshift']({
       chain,
       kind: 'set_auto_follow',
       description: req.autoFollow

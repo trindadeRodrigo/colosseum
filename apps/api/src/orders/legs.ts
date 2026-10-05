@@ -212,6 +212,12 @@ async function buildFor(
       });
     }
     case 'deposit':
+      // A deposit into a vault that follows a shared portfolio buys the version the order holds to,
+      // as the create does.
+      if (request.family)
+        await refusing(() =>
+          followedOn(request.family ?? '', leg.chain, sharedOf(deps), request.version),
+        );
       return adapter.buildDeposit({
         vault: await vault(),
         amountRaw: cashOf(leg),
@@ -280,23 +286,30 @@ async function buildShared(
   const { onchain } = await refusing(() =>
     followedOn(request.family, leg.chain, sharedOf(deps), request.version),
   );
+  /** The offer, held again when the step is built: the portfolio may have changed since (GOLD-ONE-TAP). */
+  const offered = async () => {
+    const offer = autoFollowOffer(
+      entry,
+      [onchain.active, ...(onchain.pending ? [onchain.pending] : [])].map(recipeTargets),
+      await adapter.listAssets(),
+    );
+    if (!offer.offered) refuseAutoFollow(entry, offer);
+  };
   switch (leg.kind) {
-    case 'accept_version':
+    case 'accept_version': {
+      // A vault that has auto-follow on when it takes a version is rebalanced into it by the keeper:
+      // asked for in the order, or on in the vault as the chain has it now.
+      const now = await refusing(() => adapter.getVault(request.vault));
+      if (request.autoFollow || now?.autoFollow) await offered();
       return adapter.buildAcceptVersion({
         vault: request.vault,
         recipeOnchainId: onchain.active.onchainId ?? '',
         expectedVersion: onchain.active.version,
         ...shared,
       });
+    }
     case 'set_auto_follow': {
-      if (request.autoFollow) {
-        const offer = autoFollowOffer(
-          entry,
-          [onchain.active, ...(onchain.pending ? [onchain.pending] : [])].map(recipeTargets),
-          await adapter.listAssets(),
-        );
-        if (!offer.offered) refuseAutoFollow(entry, offer);
-      }
+      if (request.autoFollow) await offered();
       return adapter.buildSetAutoFollow({
         vault: request.vault,
         on: request.autoFollow,
