@@ -45,32 +45,34 @@ export function TrustNotice({
     ...(TRUST_STATUS.passkeyLoss ? [t.trust.passkey] : []),
   ];
   return (
-    <Card as="section" aria-labelledby={titleId} data-ui="trust-notice">
-      <CardHeader title={t.trust.title} level={2} id={titleId} />
-      <CardBody className="flex flex-col gap-4">
-        <p className="max-w-(--tf-measure-body) text-body">{t.trust.lead}</p>
-        <ul className="flex max-w-(--tf-measure-body) list-disc flex-col gap-2 pl-5 text-body-sm">
-          {items.map((item) => (
-            <li key={item} className="break-words">
-              {item}
-            </li>
-          ))}
-        </ul>
-        {accepted ? (
-          <p className="text-body-sm text-muted-foreground">{t.trust.accepted}</p>
-        ) : (
-          <label htmlFor={boxId} className="inline-flex items-center gap-2 text-body">
-            <input
-              id={boxId}
-              type="checkbox"
-              className="size-4 accent-primary"
-              checked={checked}
-              onChange={(e) => onCheck(e.currentTarget.checked)}
-            />
-            {t.trust.accept}
-          </label>
-        )}
-      </CardBody>
-    </Card>
+    <div data-ui="trust-notice">
+      <Card as="section" aria-labelledby={titleId}>
+        <CardHeader title={t.trust.title} level={2} id={titleId} />
+        <CardBody className="flex flex-col gap-4">
+          <p className="max-w-(--tf-measure-body) text-body">{t.trust.lead}</p>
+          <ul className="flex max-w-(--tf-measure-body) list-disc flex-col gap-2 pl-5 text-body-sm">
+            {items.map((item) => (
+              <li key={item} className="break-words">
+                {item}
+              </li>
+            ))}
+          </ul>
+          {accepted ? (
+            <p className="text-body-sm text-muted-foreground">{t.trust.accepted}</p>
+          ) : (
+            <label htmlFor={boxId} className="inline-flex items-center gap-2 text-body">
+              <input
+                id={boxId}
+                type="checkbox"
+                className="size-4 accent-primary"
+                checked={checked}
+                onChange={(e) => onCheck(e.currentTarget.checked)}
+              />
+              {t.trust.accept}
+            </label>
+          )}
+        </CardBody>
+      </Card>
+    </div>
   );
 }
