@@ -36,7 +36,7 @@ import {
 /** Where the limits sit in the page: "Edit limits" leads here. */
 const LIMITS = 'limits';
 const STORE = GOAL_DRAFT;
-const SIGN_IN = '/sign-in?next=/goal';
+const SIGN_IN = '/sign-in?next=/';
 
 type Build = { kind: 'idle' } | { kind: 'solving' } | BuildOutcome;
 

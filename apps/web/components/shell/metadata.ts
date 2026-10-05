@@ -19,6 +19,12 @@ export async function goalMetadata() {
   return { title: t.goal.composer.label, description: t.goal.title };
 }
 
+export async function monitorMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.shell.portfolio, description: t.portfolio.lead };
+}
+
 export async function signInMetadata() {
   const { lang } = await readPreferences();
   const t = dictionary(lang);

@@ -345,7 +345,7 @@ describe('“Build my plan”', () => {
     // and the way to sign in comes back to this screen
     const facts = find(host, '[data-ui="sheet-facts"]');
     expect(facts.textContent).toContain(en.goal.chain.unset);
-    expect(find(facts, 'a').getAttribute('href')).toBe('/sign-in?next=/goal');
+    expect(find(facts, 'a').getAttribute('href')).toBe('/sign-in?next=/');
     expect(find(facts, 'a').textContent).toBe(en.shell.signIn);
   });
 
@@ -369,7 +369,7 @@ describe('“Build my plan”', () => {
     const way = find(find(host, '[data-ui="sheet-facts"]'), 'a');
     expect([way.textContent, way.getAttribute('href')]).toEqual([
       en.goal.chain.choose,
-      '/sign-in?next=/goal',
+      '/sign-in?next=/',
     ]);
     // the choice is not offered here: it is asked in one place
     expect(host.querySelector('[role="group"]')).toBeNull();

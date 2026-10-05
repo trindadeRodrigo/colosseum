@@ -13,6 +13,7 @@ export const en = {
     nav: 'Main',
     home: 'tenonfi, your goal',
     goal: 'Goal',
+    portfolio: 'Portfolio',
     signIn: 'Sign in',
     signOut: 'Sign out',
     signingOut: 'Signing out…',
@@ -311,6 +312,102 @@ export const en = {
         body: (parts: number, chain: string) =>
           `It has ${parts === 1 ? '1 part' : `${parts} parts`} on ${chain}. I can’t show it on this page yet. Nothing was bought.`,
       },
+    },
+  },
+  /** The words a provenance pin says, in the language of the view. */
+  pin: {
+    sourceFor: 'Source for {value}',
+    staleSuffix: ', stale, {age}',
+    mockSuffix: ', sample data',
+    stale: 'stale',
+    ageUnknown: 'age unknown',
+    missing: 'no source yet',
+    provenance: 'Provenance',
+    copy: 'Copy source',
+    copied: 'Copied',
+    kinds: {
+      mock: 'MOCK data, not live',
+      sandbox: 'test network, not live',
+      fixture: 'a fixture, not live',
+      prior_dataset: 'an earlier dataset, not live',
+    },
+    unknownKind: 'not live',
+  },
+
+  /** The monitor (/monitor), and the line about it on the home page. */
+  portfolio: {
+    title: (vaults: number): string =>
+      vaults > 1 ? 'What your vaults hold.' : 'What your vault holds.',
+    lead: 'Read from the chain your plan lives on, each time you open this page. Nothing here signs or moves anything.',
+    chain: 'Chain',
+    reading: 'Reading your vault…',
+    signedOut:
+      'Sign in to see your portfolio. It sits in a vault on the chain of your wallet, and only you can withdraw from it.',
+    noChain: 'Choose the chain your plan lives on first: your vault is on that chain.',
+    chooseChain: 'Choose the chain',
+    throwaway:
+      'The throwaway wallet has no account on our server, so there is no vault of it to read.',
+    unavailable:
+      'This server can’t read vaults yet, so there is nothing to show here. I won’t show made-up holdings in its place.',
+    /** The plan's chain did not answer, or is switched off here. */
+    down: {
+      word: 'Unavailable',
+      body: (chain: string) =>
+        `${chain} didn’t answer, so I can’t read your vault right now. Nothing is wrong with your vault. Try again in a moment.`,
+    },
+    unreachable: 'I couldn’t reach our server to read your vault. Try again.',
+    unreadable:
+      'Our server answered with something I couldn’t read, so I’m not showing it. Try again.',
+    signInAgain:
+      'Our server doesn’t recognise your sign-in any more, so I can’t read your vault. Sign out, then sign in again.',
+    noIdentity:
+      'I can’t read your vault yet: the sign-in service didn’t give me the part of your sign-in that lists your wallets. Wait a minute, then try again.',
+    again: 'Read again',
+    againBusy: 'Reading…',
+    empty: (chain: string) =>
+      `You have no vault on ${chain} yet. A vault is made when you buy your first plan.`,
+    startGoal: 'Start with your goal',
+    vault: {
+      title: 'Your vault',
+      address: 'Vault address',
+      value: 'Value',
+      cash: 'Cash',
+      autoFollow: 'Auto-follow',
+      on: 'On',
+      off: 'Off',
+      /** The vault's weekly loss counter, as a share of its value. */
+      lossUsed: 'Keeper losses, last 7 days',
+      holdings: 'Holdings',
+      onlyCash: 'Only cash so far: nothing has been bought into this vault yet.',
+      columns: {
+        asset: 'Asset',
+        amount: 'Amount',
+        price: 'Price',
+        value: 'Value',
+        weight: 'Weight',
+        target: 'Target',
+        drift: 'Drift',
+      },
+      noPrice: 'no price',
+      unpriced: (n: number) =>
+        n === 1
+          ? '1 holding has no price, so the value leaves it out.'
+          : `${n} holdings have no price, so the value leaves them out.`,
+      pending: (version: number, when: string) =>
+        `Version ${version} of the portfolio you follow takes effect on ${when}.`,
+      pendingAssets: (assets: string) => `It adds ${assets}, which you haven’t accepted yet.`,
+      observed: (when: string) => `Read from the chain on ${when}.`,
+      /** The method line in the pin of a vault's whole value. */
+      valueMethod: 'holdings read from the vault, times their prices; cash at one dollar',
+      /** The method line in the pin of one holding's value, after its price's own method. */
+      positionMethod: (method: string) => `${method}; times the amount the vault holds`,
+    },
+    /** On the home page, under the goal. */
+    summary: {
+      title: 'Your portfolio',
+      worth: (chain: string) => `Your vault on ${chain} is worth`,
+      many: (vaults: number, chain: string) => `You have ${vaults} vaults on ${chain}.`,
+      see: 'See your portfolio',
     },
   },
 };

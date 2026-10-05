@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import * as goalPage from '../../app/(app)/goal/page';
+import * as monitorPage from '../../app/(app)/monitor/page';
+import * as homePage from '../../app/(app)/page';
 import * as signInPage from '../../app/(app)/sign-in/page';
 import { dictionary, type Lang } from '../../i18n';
 import { read } from '../ui/test/css';
-import { goalMetadata, shellMetadata, signInMetadata } from './metadata';
+import { goalMetadata, monitorMetadata, shellMetadata, signInMetadata } from './metadata';
 
 // What a browser tab, a bookmark and a link preview say about each product page: its own title and
 // its own description, in the language of the view.
@@ -18,23 +19,27 @@ describe('the title and description of each product page', () => {
   it.each(['en', 'pt'] as Lang[])('are its own, in %s', async (lang) => {
     preference.lang = lang;
     const t = dictionary(lang);
-    const [onGoal, onSignIn, fallback] = await Promise.all([
+    const [onGoal, onSignIn, onMonitor, fallback] = await Promise.all([
       goalMetadata(),
       signInMetadata(),
+      monitorMetadata(),
       shellMetadata(),
     ]);
     expect(onGoal).toEqual({ title: t.goal.composer.label, description: t.goal.title });
     expect(onSignIn).toEqual({ title: t.shell.signIn, description: t.signIn.title });
-    // two pages, two titles, and sign-in does not carry the goal's description
-    expect(onSignIn.title).not.toBe(onGoal.title);
-    expect(onSignIn.description).not.toBe(onGoal.description);
+    expect(onMonitor).toEqual({ title: t.shell.portfolio, description: t.portfolio.lead });
+    // three pages, three titles, and none carries another's description
+    expect(new Set([onGoal.title, onSignIn.title, onMonitor.title]).size).toBe(3);
+    expect(new Set([onGoal.description, onSignIn.description, onMonitor.description]).size).toBe(3);
     // the product's name follows each title, and stands alone where a page names none
     expect(fallback.title).toEqual({ template: '%s · tenonfi', default: 'tenonfi' });
   });
 
   it('are what each page file hands Next', async () => {
     preference.lang = 'pt';
-    expect(await goalPage.generateMetadata()).toEqual(await goalMetadata());
+    // home is the goal
+    expect(await homePage.generateMetadata()).toEqual(await goalMetadata());
+    expect(await monitorPage.generateMetadata()).toEqual(await monitorMetadata());
     expect(await signInPage.generateMetadata()).toEqual(await signInMetadata());
     // the layout loads the fonts, which a test cannot: its lines are read as written
     expect(read('app/(app)/layout.tsx')).toMatch(

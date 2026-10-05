@@ -12,6 +12,7 @@ export const pt: Dictionary = {
     nav: 'Principal',
     home: 'tenonfi, seu objetivo',
     goal: 'Objetivo',
+    portfolio: 'Portfólio',
     signIn: 'Entrar',
     signOut: 'Sair',
     signingOut: 'Saindo…',
@@ -295,6 +296,95 @@ export const pt: Dictionary = {
         body: (parts: number, chain: string) =>
           `Ele tem ${parts === 1 ? '1 parte' : `${parts} partes`} na ${chain}. Ainda não consigo mostrar o plano nesta página. Nada foi comprado.`,
       },
+    },
+  },
+  pin: {
+    sourceFor: 'Fonte de {value}',
+    staleSuffix: ', desatualizado, {age}',
+    mockSuffix: ', dados de exemplo',
+    stale: 'desatualizado',
+    ageUnknown: 'idade desconhecida',
+    missing: 'ainda sem fonte',
+    provenance: 'Procedência',
+    copy: 'Copiar fonte',
+    copied: 'Copiado',
+    kinds: {
+      mock: 'dados MOCK, não reais',
+      sandbox: 'rede de teste, não real',
+      fixture: 'dados fixos, não reais',
+      prior_dataset: 'dados anteriores, não reais',
+    },
+    unknownKind: 'não real',
+  },
+
+  portfolio: {
+    title: (vaults: number) =>
+      vaults > 1 ? 'O que seus cofres guardam.' : 'O que seu cofre guarda.',
+    lead: 'Lido da rede onde seu plano fica, cada vez que você abre esta página. Nada aqui assina ou move coisa alguma.',
+    chain: 'Rede',
+    reading: 'Lendo seu cofre…',
+    signedOut:
+      'Entre para ver seu portfólio. Ele fica em um cofre na rede da sua carteira, e só você pode sacar dele.',
+    noChain: 'Primeiro escolha a rede onde seu plano fica: seu cofre está nessa rede.',
+    chooseChain: 'Escolher a rede',
+    throwaway:
+      'A carteira descartável não tem conta no nosso servidor, então não há cofre dela para ler.',
+    unavailable:
+      'Este servidor ainda não lê cofres, então não há nada para mostrar aqui. Não vou mostrar posições inventadas no lugar.',
+    down: {
+      word: 'Indisponível',
+      body: (chain: string) =>
+        `A ${chain} não respondeu, então não consigo ler seu cofre agora. Não há nada de errado com ele. Tente de novo daqui a pouco.`,
+    },
+    unreachable: 'Não consegui falar com nosso servidor para ler seu cofre. Tente de novo.',
+    unreadable:
+      'Nosso servidor respondeu com algo que não consegui ler, então não vou mostrar. Tente de novo.',
+    signInAgain:
+      'Nosso servidor não reconhece mais seu login, então não consigo ler seu cofre. Saia e entre de novo.',
+    noIdentity:
+      'Ainda não consigo ler seu cofre: o serviço de login não me deu a parte do seu login que lista suas carteiras. Espere um minuto e tente de novo.',
+    again: 'Ler de novo',
+    againBusy: 'Lendo…',
+    empty: (chain: string) =>
+      `Você ainda não tem cofre na ${chain}. Um cofre é criado quando você compra seu primeiro plano.`,
+    startGoal: 'Comece pelo seu objetivo',
+    vault: {
+      title: 'Seu cofre',
+      address: 'Endereço do cofre',
+      value: 'Valor',
+      cash: 'Caixa',
+      autoFollow: 'Seguir automaticamente',
+      on: 'Ativado',
+      off: 'Desativado',
+      lossUsed: 'Perdas do agente, últimos 7 dias',
+      holdings: 'Posições',
+      onlyCash: 'Só caixa por enquanto: nada foi comprado para este cofre ainda.',
+      columns: {
+        asset: 'Ativo',
+        amount: 'Quantidade',
+        price: 'Preço',
+        value: 'Valor',
+        weight: 'Peso',
+        target: 'Alvo',
+        drift: 'Desvio',
+      },
+      noPrice: 'sem preço',
+      unpriced: (n: number) =>
+        n === 1
+          ? '1 posição não tem preço, então o valor a deixa de fora.'
+          : `${n} posições não têm preço, então o valor as deixa de fora.`,
+      pending: (version: number, when: string) =>
+        `A versão ${version} do portfólio que você segue começa a valer em ${when}.`,
+      pendingAssets: (assets: string) => `Ela inclui ${assets}, que você ainda não aceitou.`,
+      observed: (when: string) => `Lido da rede em ${when}.`,
+      valueMethod: 'posições lidas do cofre, vezes seus preços; caixa a um dólar',
+      positionMethod: (method: string) => `${method}; vezes a quantidade que o cofre guarda`,
+    },
+    summary: {
+      title: 'Seu portfólio',
+      worth: (chain: string) => `Seu cofre na ${chain} vale`,
+      many: (vaults: number, chain: string) => `Você tem ${vaults} cofres na ${chain}.`,
+      see: 'Ver seu portfólio',
     },
   },
 };
