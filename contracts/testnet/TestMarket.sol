@@ -178,8 +178,10 @@ contract TestMarket is Ownable2Step {
         return uint160(sqrtPrice);
     }
 
-    /// Opens the pool at the test price. A pool someone else opened first is taken only if it sits within
-    /// `driftBps` of it, since this contract's liquidity would otherwise go in at their price.
+    /// Opens the pool at the test price. The pool's key is predictable, so someone may open it first at
+    /// another price: while it holds no liquidity, a swap moves it to the test price for nothing; a pool
+    /// someone has also put liquidity in away from the test price is refused, since this contract's
+    /// liquidity would go in at their price.
     function open(address token) external onlyOwner {
         uint160 target = testSqrtPrice(token);
         uint160 current = poolSqrtPrice(token);
@@ -188,7 +190,10 @@ contract TestMarket is Ownable2Step {
             emit Opened(token, poolId(token), target);
             return;
         }
-        require(_apartBps(current, target) <= driftBps, PoolOpenElsewhere(token, current, target));
+        if (_apartBps(current, target) <= driftBps) return;
+        require(poolLiquidity(token) == 0, PoolOpenElsewhere(token, current, target));
+        poolManager.unlock(abi.encode(ACTION_SWAP, token, uint256(target)));
+        emit Recentred(token, current, poolSqrtPrice(token));
     }
 
     /// Adds `cashPerSide` worth of liquidity over the whole range at the pool's price: about that much cash

@@ -14,6 +14,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertTestnetNode } from './node';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const RECORD =
@@ -137,6 +138,7 @@ async function latestAnswer(feed: string): Promise<bigint> {
 async function main() {
   const record = JSON.parse(readFileSync(RECORD, 'utf8')) as Record;
   if (record.chainId !== 46630) throw new Error(`the record is for chain ${record.chainId}`);
+  await assertTestnetNode(TESTNET_RPC);
   const prices = new Map<string, bigint>();
   for (const t of record.tokens) prices.set(t.feed, await latestAnswer(t.feed));
   const config = JSON.parse(readFileSync(CONFIG, 'utf8')) as Record & {

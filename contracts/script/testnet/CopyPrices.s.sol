@@ -65,6 +65,8 @@ contract CopyPrices is Script {
     /// What mainnet says of one asset, or why it says nothing.
     struct Reading {
         string why;
+        /// How much of the hour before the block the average's rounds cover, in seconds.
+        uint256 covered;
         int256 answer;
         uint256 updatedAt;
         int256 average;
@@ -79,6 +81,10 @@ contract CopyPrices is Script {
     }
 
     error NotTheWriter(address signer, address writer);
+    /// The chain written to is a mainnet: Robinhood Chain's or Base's.
+    error MainnetRefused(uint256 chainId);
+    /// The chain read from is not Robinhood Chain mainnet.
+    error SourceNotMainnet(uint256 chainId);
     error DeployKey(address signer);
 
     function run() external returns (Result memory result) {
@@ -87,10 +93,8 @@ contract CopyPrices is Script {
         uint256 sourceFork = vm.createFork(vm.envOr("SOURCE_RPC_URL", SOURCE_RPC));
 
         vm.selectFork(sourceFork);
-        Reading[] memory readings = new Reading[](r.assets.length);
-        for (uint256 i; i < r.assets.length; ++i) {
-            readings[i] = readSource(r.assets[i], block.timestamp);
-        }
+        checkSource(block.chainid);
+        Reading[] memory readings = readAll(r.assets, block.timestamp);
         console2.log(string.concat("source: Robinhood Chain mainnet, block ", vm.toString(block.number)));
 
         vm.selectFork(testFork);
@@ -121,7 +125,24 @@ contract CopyPrices is Script {
         require(signer == r.priceWriter, NotTheWriter(signer, r.priceWriter));
     }
 
+    /// The prices are read from Robinhood Chain mainnet and nowhere else.
+    function checkSource(uint256 chainId) public pure {
+        require(chainId == 4663, SourceNotMainnet(chainId));
+    }
+
     // ---- reading mainnet
+
+    /// Every asset's reading. A feed that reverts or a call that fails refuses that asset alone.
+    function readAll(Asset[] memory assets, uint256 now_) public view returns (Reading[] memory readings) {
+        readings = new Reading[](assets.length);
+        for (uint256 i; i < assets.length; ++i) {
+            try this.readSource(assets[i], now_) returns (Reading memory reading) {
+                readings[i] = reading;
+            } catch {
+                readings[i].why = "the source feed did not answer";
+            }
+        }
+    }
 
     /// The feed's latest round, and its average over the `WINDOW` before `now`: each round's answer weighted
     /// by the time it held, the latest held up to `now`. With no earlier round inside the window, the
@@ -164,6 +185,7 @@ contract CopyPrices is Script {
             updatedAt = beforeAt;
         }
         reading.average = held == 0 ? reading.answer : int256(sum / held);
+        reading.covered = held;
     }
 
     // ---- writing the test network
@@ -173,6 +195,7 @@ contract CopyPrices is Script {
         public
         returns (Result memory result)
     {
+        require(block.chainid != 4663 && block.chainid != 8453, MainnetRefused(block.chainid));
         TestMarket market = TestMarket(r.market);
         for (uint256 i; i < r.assets.length; ++i) {
             Asset memory a = r.assets[i];
@@ -216,6 +239,10 @@ contract CopyPrices is Script {
                 TestPriceFeed(a.average).write(reading.average, reading.averageAt);
                 line =
                     string.concat(line, " average ", _dollars(reading.average), " at ", vm.toString(reading.averageAt));
+                // The walk back stopped early (the feed's first round, a failed read, or `MAX_ROUNDS_BACK`).
+                if (reading.covered < WINDOW) {
+                    line = string.concat(line, " (over ", vm.toString(reading.covered), " s of the hour)");
+                }
             }
             ++result.written;
             console2.log(line);

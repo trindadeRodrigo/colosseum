@@ -72,6 +72,18 @@ abstract contract TestnetKitWorld is KitFixture {
         kit.deploy(c, address(kit));
     }
 
+    /// Robinhood Chain's and Base's mainnets are refused, whatever the file says.
+    function test_kit_refusesAMainnet() public ready {
+        TestnetKit.Config memory c = cfg;
+        uint256[2] memory mainnets = [uint256(4663), 8453];
+        for (uint256 i; i < mainnets.length; ++i) {
+            vm.chainId(mainnets[i]);
+            c.chainId = mainnets[i];
+            vm.expectRevert(abi.encodeWithSelector(TestnetKit.MainnetRefused.selector, mainnets[i]));
+            kit.deploy(c, address(kit));
+        }
+    }
+
     /// Each pool opens at its token's test price, whichever side of the pair the token sits on.
     function test_kit_eachPoolOpensAtItsTestPrice() public ready {
         bool below;
@@ -226,14 +238,15 @@ abstract contract TestnetKitWorld is KitFixture {
         market.unlockCallback(abi.encode(uint8(1), d.tokens[0].token, uint256(1e18)));
     }
 
-    /// A pool someone opened first at another price is not seeded: the market's liquidity would go in at
-    /// their price.
-    function test_market_aPoolOpenedElsewhere_isRefused() public ready {
+    /// The pool's key is predictable: someone may open it first at another price. While it is empty, `open`
+    /// moves it to the test price for nothing, and the market seeds it there.
+    function test_market_anEmptyPoolOpenedElsewhere_isMovedToItsTestPrice() public ready {
         TestStockToken extra = new TestStockToken("Extra", "tXTR", 18, address(kit));
         TestPriceFeed feed = new TestPriceFeed(8, "tXTR / USD (test network)", address(kit), writer);
         vm.prank(writer);
         feed.write(100e8, block.timestamp);
         vm.startPrank(address(kit));
+        extra.grantRole(extra.MINTER_ROLE(), d.market);
         market.setFeed(address(extra), address(feed));
         vm.stopPrank();
         PoolKey memory k = market.poolKey(address(extra));
@@ -243,11 +256,29 @@ abstract contract TestnetKitWorld is KitFixture {
             abi.encodeWithSignature("initialize((address,address,uint24,int24,address),uint160)", k, elsewhere)
         );
         assertTrue(ok);
-        vm.prank(address(kit));
-        vm.expectRevert(
-            abi.encodeWithSelector(TestMarket.PoolOpenElsewhere.selector, address(extra), elsewhere, target)
-        );
+        assertGt(market.driftOf(address(extra)), 2000);
+        vm.startPrank(address(kit));
         market.open(address(extra));
+        assertLe(market.driftOf(address(extra)), 1);
+        market.seed(address(extra), 1_000e6);
+        vm.stopPrank();
+        assertGt(market.poolLiquidity(address(extra)), 0);
+        assertEq(extra.balanceOf(d.market), 0);
+    }
+
+    /// A pool that holds liquidity away from the test price is not taken: `open` refuses it.
+    function test_market_aPoolWithLiquidityAwayFromItsPrice_isRefused() public ready {
+        uint256 i = _index("tMSFT");
+        address token = d.tokens[i].token;
+        BasketVault vault = _vault(new Weight[](0));
+        Swap[] memory swaps = _swaps(_buy(token, 10_000e6, 0));
+        vm.prank(owner);
+        vault.ownerSwap(swaps, type(uint64).max);
+        uint160 current = market.poolSqrtPrice(token);
+        uint160 target = market.testSqrtPrice(token);
+        vm.prank(address(kit));
+        vm.expectRevert(abi.encodeWithSelector(TestMarket.PoolOpenElsewhere.selector, token, current, target));
+        market.open(token);
     }
 
     function test_market_aTokenWithoutAFeed_hasNoPrice() public ready {

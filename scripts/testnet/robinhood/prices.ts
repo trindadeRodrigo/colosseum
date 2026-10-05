@@ -15,6 +15,7 @@ import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertTestnetNode } from './node';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const CONTRACTS = join(ROOT, 'contracts');
@@ -109,6 +110,8 @@ async function main() {
   };
   if (record.chainId !== 46630)
     throw new Error(`the record is for chain ${record.chainId}, not 46630`);
+  // The node, not the record, says which network a round would write to.
+  await assertTestnetNode(TESTNET_RPC);
   let key: string | null = null;
   if (!mode.dryRun) {
     const path = process.env.PRICE_WRITER_KEY_FILE;

@@ -88,6 +88,7 @@ contract CopyPricesTest is KitFixture {
         // 1,800 s at 100, 600 at 110, 600 at 120, over the 3,000 s the feed has rounds for
         assertEq(r.average, 106e8);
         assertEq(r.averageAt, t);
+        assertEq(r.covered, 3000, "the feed's rounds start 3,000 s into the hour");
     }
 
     /// A round from before the hour counts only from the hour's start.
@@ -98,6 +99,7 @@ contract CopyPricesTest is KitFixture {
         vm.warp(t - 1800);
         sources[0].write(200e8, t - 1800);
         assertEq(copier.readSource(record.assets[0], t).average, 150e8);
+        assertEq(copier.readSource(record.assets[0], t).covered, 1 hours);
     }
 
     /// No round held for any time inside the window: the average is the answer.
@@ -243,5 +245,44 @@ contract CopyPricesTest is KitFixture {
         vm.expectRevert(abi.encodeWithSelector(CopyPrices.NotTheWriter.selector, stranger, address(copier)));
         copier.checkSigner(record, stranger);
         copier.checkSigner(record, address(copier));
+    }
+
+    // ---- the networks it reads and writes
+
+    /// It writes nowhere that is Robinhood Chain's or Base's mainnet.
+    function test_copier_refusesToWriteOnAMainnet() public {
+        vm.warp(T0);
+        _sourcesAt(T0 - 10);
+        CopyPrices.Reading[] memory readings = _read();
+        uint256[2] memory mainnets = [uint256(4663), 8453];
+        for (uint256 i; i < mainnets.length; ++i) {
+            vm.chainId(mainnets[i]);
+            vm.expectRevert(abi.encodeWithSelector(CopyPrices.MainnetRefused.selector, mainnets[i]));
+            copier.copy(record, readings, 1000, address(factory));
+        }
+    }
+
+    /// It reads from Robinhood Chain mainnet and from nothing else.
+    function test_copier_readsOnlyFromRobinhoodMainnet() public {
+        copier.checkSource(4663);
+        vm.expectRevert(abi.encodeWithSelector(CopyPrices.SourceNotMainnet.selector, 46_630));
+        copier.checkSource(46_630);
+        vm.expectRevert(abi.encodeWithSelector(CopyPrices.SourceNotMainnet.selector, 8453));
+        copier.checkSource(8453);
+    }
+
+    /// A source that does not answer refuses its own token and no other.
+    function test_copier_aFeedThatDoesNotAnswer_refusesOnlyItsToken() public {
+        vm.warp(T0);
+        _sourcesAt(T0 - 10);
+        // A price contract with no round reverts on `latestRoundData`, as a broken feed would.
+        record.assets[3].source =
+            address(new TestPriceFeed(8, cfg.tokens[3].sourceDescription, address(this), address(0)));
+        CopyPrices.Reading[] memory readings = copier.readAll(record.assets, block.timestamp);
+        assertEq(readings[3].why, "the source feed did not answer");
+        assertEq(bytes(readings[2].why).length, 0);
+        CopyPrices.Result memory result = copier.copy(record, readings, 1000, address(factory));
+        assertEq(result.refused, 1);
+        assertEq(result.written, d.tokens.length - 1);
     }
 }

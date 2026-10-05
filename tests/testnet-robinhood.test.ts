@@ -1,7 +1,10 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { assertTestnetChainId, assertTestnetNode } from '../scripts/testnet/robinhood/node';
 import { forgeArgs, parseArgs, readKey, roundLines } from '../scripts/testnet/robinhood/prices';
 import {
   buildRecord,
@@ -208,11 +211,41 @@ describe("the API's record from the chain and the kit", () => {
   });
 
   it('refuses a node on another chain, another cash token, a router not at pull 2, an unlisted token', () => {
-    expect(() => buildRecord(kit, config, { ...chain(), chainId: 4663 })).toThrow('not 46630');
+    expect(() => buildRecord(kit, config, { ...chain(), chainId: 4663 })).toThrow("a mainnet's");
+    expect(() => buildRecord(kit, config, { ...chain(), chainId: 31337 })).toThrow('not 46630');
     expect(() => buildRecord(kit, config, { ...chain(), cashToken: a(9) })).toThrow('cash token');
     expect(() => buildRecord(kit, config, { ...chain(), routerPull: 1 })).toThrow('pull 2');
     const c = chain();
     c.assets.delete(a(5));
     expect(() => buildRecord(kit, config, c)).toThrow('does not list tSPY');
+  });
+});
+
+describe('the node a script talks to', () => {
+  it("refuses Robinhood Chain's and Base's mainnets, and any network but 46630", () => {
+    expect(() => assertTestnetChainId(4663)).toThrow("a mainnet's");
+    expect(() => assertTestnetChainId(8453)).toThrow("a mainnet's");
+    expect(() => assertTestnetChainId(31337)).toThrow('not 46630');
+    expect(() => assertTestnetChainId(46630)).not.toThrow();
+  });
+
+  it('asks the node itself, whatever the record says', async () => {
+    let answer = '0xb626';
+    const server = createServer((_, res) => {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: 1, result: answer }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      await expect(assertTestnetNode(url)).resolves.toBeUndefined();
+      answer = '0x1237';
+      await expect(assertTestnetNode(url)).rejects.toThrow("a mainnet's");
+      answer = '0x2105';
+      await expect(assertTestnetNode(url)).rejects.toThrow("a mainnet's");
+    } finally {
+      server.close();
+    }
+    await expect(assertTestnetNode(url)).rejects.toThrow('did not answer');
   });
 });

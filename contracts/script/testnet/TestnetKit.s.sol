@@ -103,6 +103,8 @@ contract TestnetKit is Script {
     }
 
     error WrongChain(uint256 configIsFor, uint256 runningOn);
+    /// Robinhood Chain's or Base's mainnet: the kit is for test networks only, whatever its file says.
+    error MainnetRefused(uint256 chainId);
     error NoPriceWriter();
     error WriterIsDeployer(address writer);
     error NoCreate2Deployer();
@@ -127,6 +129,7 @@ contract TestnetKit is Script {
 
     /// Deploys and sets up what is missing, as `deployer`: the address the calls below come from.
     function deploy(Config memory cfg, address deployer) public returns (Deployed memory d) {
+        require(block.chainid != 4663 && block.chainid != 8453, MainnetRefused(block.chainid));
         require(cfg.chainId == block.chainid, WrongChain(cfg.chainId, block.chainid));
         require(cfg.priceWriter != address(0), NoPriceWriter());
         require(cfg.priceWriter != deployer, WriterIsDeployer(cfg.priceWriter));
@@ -184,7 +187,11 @@ contract TestnetKit is Script {
                 market.setFeed(l.token, l.feed);
                 _tx(d.market, string.concat("setFeed(", t.symbol, ", its price contract)"));
             }
-            if (market.poolSqrtPrice(l.token) == 0) {
+            // Not yet open, or opened by someone else at another price and still empty.
+            if (
+                market.poolSqrtPrice(l.token) == 0
+                    || (market.poolLiquidity(l.token) == 0 && market.driftOf(l.token) > cfg.driftBps)
+            ) {
                 market.open(l.token);
                 _tx(
                     d.market,

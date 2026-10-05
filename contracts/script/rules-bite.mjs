@@ -2561,9 +2561,9 @@ const RULES = [
   {
     id: 'testnet-market-open-elsewhere',
     file: TEST_MARKET,
-    find: 'require(_apartBps(current, target) <= driftBps, PoolOpenElsewhere(token, current, target));',
+    find: 'require(poolLiquidity(token) == 0, PoolOpenElsewhere(token, current, target));',
     replace: '',
-    expect: 'test_market_aPoolOpenedElsewhere_isRefused',
+    expect: 'test_market_aPoolWithLiquidityAwayFromItsPrice_isRefused',
   },
   {
     id: 'testnet-market-leaves-a-pool-at-its-price',
@@ -2596,8 +2596,8 @@ const RULES = [
   {
     id: 'testnet-market-recentre-follows-the-copy',
     file: TEST_MARKET,
-    find: 'poolManager.unlock(abi.encode(ACTION_SWAP, token, uint256(target)));',
-    replace: '',
+    find: 'return false;\n        poolManager.unlock(abi.encode(ACTION_SWAP, token, uint256(target)));',
+    replace: 'return false;',
     expect: 'test_vault_aPoolFarFromItsTestPrice_isRefusedForTheKeeper',
   },
   {
@@ -2739,6 +2739,41 @@ const RULES = [
     find: '_refuse(result, a.symbol, why);\n                continue;',
     replace: '_refuse(result, a.symbol, why);',
     expect: 'test_copier_aJump_isRefused_andWidensWithTheGap',
+  },
+  {
+    id: 'testnet-market-open-moves-an-empty-pool',
+    file: TEST_MARKET,
+    find: 'require(poolLiquidity(token) == 0, PoolOpenElsewhere(token, current, target));\n        poolManager.unlock(abi.encode(ACTION_SWAP, token, uint256(target)));',
+    replace: 'require(poolLiquidity(token) == 0, PoolOpenElsewhere(token, current, target));',
+    expect: 'test_market_anEmptyPoolOpenedElsewhere_isMovedToItsTestPrice',
+  },
+  {
+    id: 'testnet-kit-no-mainnet',
+    file: KIT,
+    find: 'require(block.chainid != 4663 && block.chainid != 8453, MainnetRefused(block.chainid));',
+    replace: '',
+    expect: 'test_kit_refusesAMainnet',
+  },
+  {
+    id: 'testnet-copier-no-mainnet',
+    file: COPIER,
+    find: 'require(block.chainid != 4663 && block.chainid != 8453, MainnetRefused(block.chainid));',
+    replace: '',
+    expect: 'test_copier_refusesToWriteOnAMainnet',
+  },
+  {
+    id: 'testnet-copier-source-is-mainnet',
+    file: COPIER,
+    find: 'require(chainId == 4663, SourceNotMainnet(chainId));',
+    replace: '',
+    expect: 'test_copier_readsOnlyFromRobinhoodMainnet',
+  },
+  {
+    id: 'testnet-copier-one-feed-refuses-one-token',
+    file: COPIER,
+    find: 'readings[i].why = "the source feed did not answer";',
+    replace: '',
+    expect: 'test_copier_aFeedThatDoesNotAnswer_refusesOnlyItsToken',
   },
 ];
 

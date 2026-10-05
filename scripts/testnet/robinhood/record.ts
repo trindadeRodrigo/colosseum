@@ -18,6 +18,7 @@ import {
   VAULT_BEACON_ABI,
   VAULT_FACTORY_ABI,
 } from '@colosseum/chain-evm/vault';
+import { assertTestnetChainId } from './node';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const KIT_STATE = join(ROOT, 'contracts', 'script', 'testnet', 'deployed', '46630.json');
@@ -92,8 +93,7 @@ export function buildRecord(
   config: KitConfig,
   chain: ChainView,
 ): EvmDeploymentRecord {
-  if (chain.chainId !== 46630)
-    throw new Error(`the node answers chain id ${chain.chainId}, not 46630`);
+  assertTestnetChainId(chain.chainId);
   if (!same(chain.cashToken, kit.cash))
     throw new Error(`the factory's cash token is ${chain.cashToken}, not the kit's ${kit.cash}`);
   if (chain.routerPull !== 2) throw new Error(`the factory does not list ${kit.router} as pull 2`);
