@@ -15,6 +15,7 @@ import {
   getBytesDecoder,
   getBytesEncoder,
   getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -77,11 +78,25 @@ export const FROZEN_ERRORS = [
 ] as const;
 
 export const ERR = {
+  NotKeeper: 6000,
+  AutoFollowOff: 6001,
+  KeeperPaused: 6002,
   MintNotAccepted: 6003,
   RouterNotAllowed: 6004,
   SpentTooMuch: 6005,
   ReceivedTooLittle: 6006,
   AccountTampered: 6008,
+  PriceStale: 6009,
+  PriceDeviation: 6010,
+  MarketClosed: 6011,
+  MultiplierWindow: 6012,
+  NotTowardTarget: 6013,
+  PastTarget: 6014,
+  Cooldown: 6015,
+  LossCapReached: 6016,
+  AssetNotPriced: 6017,
+  NewAssetNeedsOwner: 6018,
+  VersionNotEffective: 6019,
   CreatorLimit: 6020,
   VersionMismatch: 6021,
   WrongDestination: 6022,
@@ -98,6 +113,12 @@ export const ERR = {
   SameMint: 6031,
   NoPendingVersion: 6032,
   NotCreatorOrGuardian: 6033,
+  // Appended by SOL-3.
+  NotCashLeg: 6034,
+  KeeperAssetOff: 6035,
+  // Appended by the SOL-3 fix round.
+  PriceOutOfRange: 6036,
+  NothingTraded: 6037,
 } as const;
 
 export const CONFIG_SIZE = 396;
@@ -107,6 +128,10 @@ export const RECIPE_SIZE = 1022;
 export const MAX_POSITIONS = 16;
 export const MAX_ASSETS = 64;
 export const MAX_COMPONENTS = 12;
+/** `AssetEntry.flags`, bit 0: the keeper may trade the asset. */
+export const ASSET_KEEPER = 1;
+/** A price account in Scope's layout: a 40-byte header and 512 entries of 56 bytes. */
+export const PRICES_SIZE = 40 + 56 * 512;
 
 const addressEncoder = getAddressEncoder();
 const u64 = getU64Encoder();
@@ -180,10 +205,12 @@ export type InitConfigArgs = {
   params: Params;
 };
 
-/** The starting values of DESIGN-VAULT.md section 5. They are settings, not figures the app shows. */
+/** The starting values of DESIGN-VAULT.md section 5. They are settings, not figures the app shows.
+ * The loss cap is half of what a person is promised: the counter drains as it fills, so seven
+ * days can hold just under twice the parameter. */
 export const DEFAULT_PARAMS: Params = {
   toleranceBps: 75,
-  lossCapBps: 200,
+  lossCapBps: 100,
   bandBps: 50,
   twapDevBps: 200,
   maxPriceAgeS: 120,
@@ -277,7 +304,9 @@ const assetEntryDecoder = getStructDecoder([
   ['maxWeightBps', getU16Decoder()],
   ['flags', getU8Decoder()],
   ['sourceCheck', bytes32],
-  ['reserved', fixDecoderSize(getBytesDecoder(), 21)],
+  ['minPrice', getU64Decoder()],
+  ['maxPrice', getU64Decoder()],
+  ['reserved', fixDecoderSize(getBytesDecoder(), 5)],
 ]);
 
 const assetRegistryDecoder = getStructDecoder([
@@ -321,18 +350,27 @@ function accountData(svm: LiteSVM, addr: Address, what: string): Uint8Array {
   return new Uint8Array(account.data);
 }
 
+/** Config, from the bytes of its account. */
+export const decodeConfig = (data: Uint8Array) => configDecoder.decode(data);
+/** A vault, from the bytes of its account. */
+export const decodeVault = (data: Uint8Array) => vaultDecoder.decode(data);
+/** The asset list from the bytes of its account, with only the entries in use. */
+export function decodeAssets(data: Uint8Array) {
+  const registry = assetRegistryDecoder.decode(data);
+  return { ...registry, assets: registry.assets.slice(0, registry.count) };
+}
+
 export async function readConfig(svm: LiteSVM) {
-  return configDecoder.decode(accountData(svm, await configAddress(), 'config'));
+  return decodeConfig(accountData(svm, await configAddress(), 'config'));
 }
 
 export function readVault(svm: LiteSVM, vault: Address) {
-  return vaultDecoder.decode(accountData(svm, vault, 'vault'));
+  return decodeVault(accountData(svm, vault, 'vault'));
 }
 
 /** The asset list, with only the entries in use. */
 export async function readAssets(svm: LiteSVM) {
-  const registry = assetRegistryDecoder.decode(accountData(svm, await assetsAddress(), 'assets'));
-  return { ...registry, assets: registry.assets.slice(0, registry.count) };
+  return decodeAssets(accountData(svm, await assetsAddress(), 'assets'));
 }
 
 export type Component = { mint: Address; weightBps: number };
@@ -467,6 +505,87 @@ export async function proposeAdminInstruction(
   };
 }
 
+/** The guardian and the default keeper are set by address. Accounts: admin (signer), config. */
+async function setKeyInstruction(
+  name: 'set_guardian' | 'set_default_keeper',
+  admin: TransactionSigner,
+  value: Address,
+  config?: Address,
+): Promise<Instruction> {
+  return {
+    programAddress: BASKET_PROGRAM,
+    accounts: [signer(admin), writable(config ?? (await configAddress()))],
+    data: concat(discriminator(name), addressEncoder.encode(value)),
+  };
+}
+
+export const setGuardianInstruction = (
+  admin: TransactionSigner,
+  value: Address,
+  config?: Address,
+) => setKeyInstruction('set_guardian', admin, value, config);
+export const setDefaultKeeperInstruction = (
+  admin: TransactionSigner,
+  value: Address,
+  config?: Address,
+) => setKeyInstruction('set_default_keeper', admin, value, config);
+
+/** Accounts: the admin (`set_closed_until`) or the guardian (`extend_closed_until`), config. */
+async function closedUntilInstruction(
+  name: 'set_closed_until' | 'extend_closed_until',
+  who: TransactionSigner,
+  closedUntil: bigint,
+  config?: Address,
+): Promise<Instruction> {
+  return {
+    programAddress: BASKET_PROGRAM,
+    accounts: [signer(who), writable(config ?? (await configAddress()))],
+    data: concat(discriminator(name), getI64Encoder().encode(closedUntil)),
+  };
+}
+
+export const setClosedUntilInstruction = (
+  admin: TransactionSigner,
+  closedUntil: bigint,
+  config?: Address,
+) => closedUntilInstruction('set_closed_until', admin, closedUntil, config);
+export const extendClosedUntilInstruction = (
+  guardian: TransactionSigner,
+  closedUntil: bigint,
+  config?: Address,
+) => closedUntilInstruction('extend_closed_until', guardian, closedUntil, config);
+
+/** Accounts: admin (signer), config. `day` is days since 1970, UTC. */
+export async function setClosedDayInstruction(
+  admin: TransactionSigner,
+  day: number,
+  closed: boolean,
+  config?: Address,
+): Promise<Instruction> {
+  return {
+    programAddress: BASKET_PROGRAM,
+    accounts: [signer(admin), writable(config ?? (await configAddress()))],
+    data: concat(
+      discriminator('set_closed_day'),
+      getU16Encoder().encode(day),
+      getBooleanEncoder().encode(closed),
+    ),
+  };
+}
+
+/** Accounts: guardian (signer), config. */
+export async function addClosedDayInstruction(
+  guardian: TransactionSigner,
+  day: number,
+  config?: Address,
+): Promise<Instruction> {
+  return {
+    programAddress: BASKET_PROGRAM,
+    accounts: [signer(guardian), writable(config ?? (await configAddress()))],
+    data: concat(discriminator('add_closed_day'), getU16Encoder().encode(day)),
+  };
+}
+
 /** Initialises Config with the default parameters and unused keys wherever the test names none. */
 export async function initConfig(
   svm: LiteSVM,
@@ -496,6 +615,8 @@ export async function forgeConfig(
     cashMint?: Address;
     routerProgram?: Address;
     publishDelayS?: number;
+    defaultKeeper?: Address;
+    keeperPaused?: boolean;
   },
 ): Promise<Address> {
   const forged = (await generateKeyPairSigner()).address;
@@ -512,6 +633,8 @@ export async function patchConfig(
     cashMint?: Address;
     routerProgram?: Address;
     publishDelayS?: number;
+    defaultKeeper?: Address;
+    keeperPaused?: boolean;
   },
   at?: Address,
 ): Promise<void> {
@@ -520,7 +643,9 @@ export async function patchConfig(
   const data = new Uint8Array(real.data);
   if (changes.admin) data.set(addressEncoder.encode(changes.admin), 8);
   if (changes.guardian) data.set(addressEncoder.encode(changes.guardian), 72);
+  if (changes.defaultKeeper) data.set(addressEncoder.encode(changes.defaultKeeper), 104);
   if (changes.routerProgram) data.set(addressEncoder.encode(changes.routerProgram), 136);
+  if (changes.keeperPaused !== undefined) data[232] = changes.keeperPaused ? 1 : 0;
   if (changes.cashMint) data.set(addressEncoder.encode(changes.cashMint), 200);
   if (changes.publishDelayS !== undefined)
     new DataView(data.buffer).setUint32(248, changes.publishDelayS, true);
@@ -555,6 +680,9 @@ export type AssetArgs = {
   maxWeightBps: number;
   flags: number;
   sourceCheck: Uint8Array;
+  /** The plausible price range, in millionths of a dollar for one whole token. */
+  minPrice: bigint;
+  maxPrice: bigint;
 };
 
 /** An entry with no price reference and the widest ceiling: what a test lists unless it says otherwise. */
@@ -567,6 +695,8 @@ export const DEFAULT_ASSET: AssetArgs = {
   maxWeightBps: 5_000,
   flags: 0,
   sourceCheck: new Uint8Array(32),
+  minPrice: 0n,
+  maxPrice: 0n,
 };
 
 const assetArgsEncoder = getStructEncoder([
@@ -578,6 +708,8 @@ const assetArgsEncoder = getStructEncoder([
   ['maxWeightBps', getU16Encoder()],
   ['flags', getU8Encoder()],
   ['sourceCheck', fixEncoderSize(getBytesEncoder(), 32)],
+  ['minPrice', u64],
+  ['maxPrice', u64],
 ]);
 
 /** Accounts: admin (signer), config, assets, the mint. */
@@ -619,6 +751,25 @@ export async function listAssets(
       ),
     );
   }
+}
+
+/** Accounts: admin (signer), config, assets, the price account. */
+export async function setPriceAccountInstruction(
+  admin: TransactionSigner,
+  slot: number,
+  priceAccount: Address,
+  overrides: { config?: Address; assets?: Address } = {},
+): Promise<Instruction> {
+  return {
+    programAddress: BASKET_PROGRAM,
+    accounts: [
+      signer(admin),
+      readonly(overrides.config ?? (await configAddress())),
+      writable(overrides.assets ?? (await assetsAddress())),
+      readonly(priceAccount),
+    ],
+    data: concat(discriminator('set_price_account'), getU8Encoder().encode(slot)),
+  };
 }
 
 /** Config, the empty asset list, and then each mint listed: what most tests start from. */
@@ -926,4 +1077,167 @@ export async function withdrawInstruction(input: {
     ],
     data: concat(discriminator('withdraw'), u64.encode(input.amount)),
   };
+}
+
+// ---- following, and the keeper ----
+
+/** Accounts: owner (signer), vault, the shared portfolio. */
+export async function acceptVersionInstruction(input: {
+  owner: TransactionSigner;
+  vault: Address;
+  recipe: Address;
+  expectedVersion: number;
+}): Promise<Instruction> {
+  return {
+    programAddress: BASKET_PROGRAM,
+    accounts: [signer(input.owner), writable(input.vault), readonly(input.recipe)],
+    data: concat(discriminator('accept_version'), getU32Encoder().encode(input.expectedVersion)),
+  };
+}
+
+/** Accounts: owner (signer), vault. */
+export async function setAutoFollowInstruction(input: {
+  owner: TransactionSigner;
+  vault: Address;
+  on: boolean;
+}): Promise<Instruction> {
+  return {
+    programAddress: BASKET_PROGRAM,
+    accounts: [signer(input.owner), writable(input.vault)],
+    data: concat(discriminator('set_auto_follow'), getBooleanEncoder().encode(input.on)),
+  };
+}
+
+/** Nobody signs. Accounts: vault, the shared portfolio it follows, config. */
+export async function adoptVersionInstruction(input: {
+  vault: Address;
+  recipe: Address;
+  config?: Address;
+}): Promise<Instruction> {
+  return {
+    programAddress: BASKET_PROGRAM,
+    accounts: [
+      writable(input.vault),
+      readonly(input.recipe),
+      readonly(input.config ?? (await configAddress())),
+    ],
+    data: discriminator('adopt_version'),
+  };
+}
+
+/** Accounts: the vault's owner or its keeper (signer), vault, config, then the vault's own token
+ * accounts to read. */
+export async function syncBalancesInstruction(input: {
+  signer: TransactionSigner;
+  vault: Address;
+  tokenAccounts: Address[];
+  config?: Address;
+}): Promise<Instruction> {
+  return {
+    programAddress: BASKET_PROGRAM,
+    accounts: [
+      signer(input.signer),
+      writable(input.vault),
+      readonly(input.config ?? (await configAddress())),
+      ...input.tokenAccounts.map(readonly),
+    ],
+    data: discriminator('sync_balances'),
+  };
+}
+
+/** Accounts: keeper (signer), vault, config, assets, the input mint, the output mint, the
+ * vault's token account for each, the token program of each, the router, the price account,
+ * then the router's own accounts in its order. */
+export async function keeperLegInstruction(input: {
+  keeper: TransactionSigner;
+  vault: Address;
+  inputMint: TestMint;
+  outputMint: TestMint;
+  amountIn: bigint;
+  router: Address;
+  data: Uint8Array;
+  routerAccounts: AccountMeta[];
+  priceAccount: Address;
+  vaultInput?: Address;
+  vaultOutput?: Address;
+  config?: Address;
+  assets?: Address;
+}): Promise<Instruction> {
+  return {
+    programAddress: BASKET_PROGRAM,
+    accounts: [
+      signer(input.keeper),
+      writable(input.vault),
+      readonly(input.config ?? (await configAddress())),
+      readonly(input.assets ?? (await assetsAddress())),
+      readonly(input.inputMint.address),
+      readonly(input.outputMint.address),
+      writable(input.vaultInput ?? (await ata(input.vault, input.inputMint))),
+      writable(input.vaultOutput ?? (await ata(input.vault, input.outputMint))),
+      readonly(input.inputMint.program),
+      readonly(input.outputMint.program),
+      readonly(input.router),
+      readonly(input.priceAccount),
+      ...input.routerAccounts,
+    ],
+    data: concat(
+      discriminator('keeper_leg'),
+      u64.encode(input.amountIn),
+      bytesWithLength.encode(input.data),
+    ),
+  };
+}
+
+/** The payload of a `KeeperTrade` event. */
+export function decodeKeeperTrade(payload: Uint8Array) {
+  return getStructDecoder([
+    ['vault', getAddressDecoder()],
+    ['mintIn', getAddressDecoder()],
+    ['mintOut', getAddressDecoder()],
+    ['spent', getU64Decoder()],
+    ['received', getU64Decoder()],
+    ['loss', getU64Decoder()],
+    ['lossUsedBps', getU16Decoder()],
+  ]).decode(payload);
+}
+
+/** The payload of a `Followed` or a `VersionAdopted` event: vault, portfolio, version. */
+export function decodeVersionEvent(payload: Uint8Array) {
+  return getStructDecoder([
+    ['vault', getAddressDecoder()],
+    ['recipe', getAddressDecoder()],
+    ['version', getU32Decoder()],
+  ]).decode(payload);
+}
+
+/** Rewrites bytes of a vault. Only a test can: no instruction sets a vault's own keeper yet,
+ * and `tracked` only moves when the program moves the tokens. */
+export function patchVault(
+  svm: LiteSVM,
+  vault: Address,
+  changes: {
+    keeper?: Address;
+    tracked?: { mint: Address; amount: bigint };
+    lossAccum?: bigint;
+    lossTs?: bigint;
+  },
+): void {
+  const account = svm.getAccount(vault);
+  if (!account.exists) throw new Error(`no vault at ${vault}`);
+  const data = new Uint8Array(account.data);
+  const view = new DataView(data.buffer);
+  // owner 8, recipe 40, accepted_version 72, auto_follow 76, basket_id 77, bump 85,
+  // keeper 86, count 118, positions 119 (50 bytes each), loss_accum 919, loss_ts 927.
+  if (changes.keeper) data.set(addressEncoder.encode(changes.keeper), 86);
+  if (changes.tracked) {
+    const state = vaultDecoder.decode(data);
+    const index = state.positions
+      .slice(0, state.count)
+      .findIndex((p) => p.mint === changes.tracked?.mint);
+    if (index < 0) throw new Error('the mint is not one of the positions');
+    view.setBigUint64(119 + 50 * index + 34, changes.tracked.amount, true);
+  }
+  if (changes.lossAccum !== undefined) view.setBigUint64(919, changes.lossAccum, true);
+  if (changes.lossTs !== undefined) view.setBigInt64(927, changes.lossTs, true);
+  svm.setAccount({ ...account, data });
 }

@@ -4,6 +4,7 @@ import {
   type Capabilities,
   type ChainConfig,
   ChainError,
+  type ChainErrorCode,
   type ChainReader,
   chainProvenance,
   explorerLink,
@@ -11,7 +12,6 @@ import {
   FundingNeed,
   type Holding,
   type Price,
-  type Provenance,
   Recipe,
   SolanaAddress,
   type TxStatus,
@@ -46,6 +46,17 @@ import {
   ZERO_ADDRESS,
 } from './accounts';
 import { displayAmount, multiplierString } from './amounts';
+import {
+  decayedLoss,
+  inMultiplierWindow,
+  keeperOn,
+  MAX_PRICE_EXPONENT,
+  MAX_TWAP_AGE_SECONDS,
+  priceAccountOf,
+  type ReferenceRefusal,
+  referenceOf,
+  valueInCash,
+} from './keeper';
 import { type ClusterClock, decodeClock, marketAt, readScopeAccount, SYSVAR_CLOCK } from './prices';
 import {
   ask,
@@ -55,7 +66,14 @@ import {
   type RawAccount,
   type VaultRpc,
 } from './rpc';
-import { SCOPE_PRICES_DISCRIMINATOR, scopeIndex } from './scope';
+import {
+  decodeScopeEntry,
+  SCOPE_PRICES_BYTES,
+  SCOPE_PRICES_DISCRIMINATOR,
+  type ScopeEntry,
+  scopeIndex,
+  scopePrice,
+} from './scope';
 import { describeFailure } from './status';
 import {
   associatedTokenAddress,
@@ -65,7 +83,9 @@ import {
   type MintInfo,
   multiplierAt,
   scheduledMultiplier,
+  TOKEN_PROGRAM,
 } from './tokens';
+import { unlistedAssetId } from './unlisted';
 
 // The read side of the Solana adapter (DESIGN-VAULT 3.2, ADS-1). Everything is read from the chain at
 // the moment it is asked for: there is no indexer and no cache of balances.
@@ -97,11 +117,66 @@ export type SolanaVaultReaderOptions = {
   assets: BasketAsset[];
   /** `readonly` until the builders exist (ADS-2). */
   trade?: 'live' | 'readonly';
-  /** False until the keeper leg is on chain (SOL-3). */
+  /** False until auto-follow is switched on for the network (gate G-SEC): the program has the keeper leg. */
   autoFollow?: boolean;
   commitment?: Commitment;
   /** The clock that stamps `fetchedAt` and `observedAt`. Ages come from the cluster's clock, not this one. */
   now?: () => Date;
+};
+
+/** One position of a vault, as the keeper's leg would find it now. */
+export type KeeperPosition = {
+  asset: AssetId;
+  mint: Address;
+  targetBps: number;
+  /** What the vault's token account holds. */
+  raw: string;
+  /** What the program has recorded. A leg values a position it does not trade by this. */
+  trackedRaw: string;
+  /** True when the two differ: `sync_balances` before a leg, or the weights are off. */
+  needsSync: boolean;
+  /** The admin's switch on the asset. */
+  keeperOn: boolean;
+  /** The price entry and its one-hour average, with their ages by the cluster's clock; null when unreadable. */
+  price: { usdPerToken: string; ageSeconds: number } | null;
+  twap: { usdPerToken: string; ageSeconds: number } | null;
+  /**
+   * Why the program would not value the asset now, by its own error; null when it would. While the
+   * vault holds any of the asset, this stops every leg in the vault, not only one in this asset.
+   */
+  reference: ReferenceRefusal | null;
+  /** Why the asset itself cannot be traded now, though it can be valued; null when it can. */
+  trade: 'Cooldown' | 'HookNotAllowed' | 'MultiplierWindow' | 'MarketClosed' | null;
+  /** Unix seconds from which the cooldown allows a trade in the asset again; null when it never traded. */
+  cooldownUntil: number | null;
+};
+
+/** What a keeper needs to plan a leg in one vault, all of it read at one moment. */
+export type KeeperContext = {
+  vault: VaultState;
+  /** The program's rules as Config has them now. */
+  rules: {
+    paused: boolean;
+    toleranceBps: number;
+    lossCapBps: number;
+    bandBps: number;
+    twapDevBps: number;
+    maxPriceAgeSeconds: number;
+    maxTwapAgeSeconds: number;
+    cooldownSeconds: number;
+  };
+  /**
+   * The one price account a leg passes: the account the asset list names for every position. Null
+   * when the positions are not all priced in one account, which a leg cannot value.
+   */
+  priceAccount: Address | null;
+  /** The vault's positions, in the program's order. */
+  positions: KeeperPosition[];
+  /**
+   * Why no leg at all would pass in this vault now: auto-follow off, the pause, or a position the
+   * vault holds that cannot be valued. Null when a leg in a tradable position could.
+   */
+  blocked: ChainErrorCode | null;
 };
 
 /** `provenance` is 'live' on mainnet and 'sandbox' on a test network or a local validator. */
@@ -111,6 +186,8 @@ export type SolanaVaultReader = ChainReader & {
   getConfig(): Promise<ConfigAccount>;
   /** The program's own asset list as it is now: the mints a vault may hold, and each one's entry. */
   getAssetList(): Promise<AssetRegistryAccount>;
+  /** A vault as `keeper_leg` would find it now, or null when there is no vault at the address. */
+  getKeeperContext(vault: string): Promise<KeeperContext | null>;
 };
 
 const refuse = (code: ConstructorParameters<typeof ChainError>[0], message: string): never => {
@@ -139,11 +216,19 @@ async function guarded<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * A token as a balance is read and shown: a listed asset, or one the app does not list, which a vault
+ * can still hold a line of (a shared portfolio's author put it there) and is shown under its mint.
+ */
+type Held = { id: AssetId; address: string; decimals: number };
+
 /** What every read of vaults and wallets starts from, taken in one call so it is one moment. */
 type Snapshot = {
   onchain: ConfigAccount;
   clock: ClusterClock;
-  /** By mint address, for every listed asset. */
+  /** The program's asset list, or null where it is not initialised. */
+  registry: AssetRegistryAccount | null;
+  /** By mint address, for every listed asset, and for each unlisted one a read has needed. */
   mints: Map<string, MintInfo>;
   /** The other accounts asked for in the same call, in order. */
   extra: (RawAccount | null)[];
@@ -205,16 +290,27 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
     return decodeConfig(account.data);
   }
 
-  /** Config, the clock and every listed mint, plus `extra`, in one call. */
+  let assetsPda: Promise<Address> | undefined;
+  const assetsAt = () => {
+    assetsPda ??= assetsAddress(program);
+    return assetsPda;
+  };
+
+  /** Config, the clock, the program's asset list and every listed mint, plus `extra`, in one call. */
   async function snapshot(extra: Address[] = []): Promise<Snapshot> {
     const mintAddresses = assets.map((a) => a.address as Address);
     const accounts = await getAccounts(
       rpc,
-      [await configAt(), SYSVAR_CLOCK, ...mintAddresses, ...extra],
+      [await configAt(), SYSVAR_CLOCK, await assetsAt(), ...mintAddresses, ...extra],
       commitment,
     );
     const onchain = readConfig(accounts[0] ?? null);
     const clock = decodeClock(accounts[1] ?? null);
+    const list = accounts[2];
+    const registry =
+      list && list.owner === program && isAccount('assets', list.data)
+        ? decodeAssetRegistry(list.data)
+        : null;
     if (onchain.cashMint !== cash?.address)
       refuse(
         'Unknown',
@@ -222,7 +318,7 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
       );
     const mints = new Map<string, MintInfo>();
     for (const [i, asset] of assets.entries()) {
-      const account = accounts[2 + i];
+      const account = accounts[3 + i];
       if (!account || !isTokenProgram(account.owner))
         return refuse('Unknown', `${asset.id} is listed, but there is no mint at its address`);
       const mint = decodeMint(account.owner, account.data);
@@ -233,7 +329,7 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
         );
       mints.set(asset.address, mint);
     }
-    return { onchain, clock, mints, extra: accounts.slice(2 + assets.length) };
+    return { onchain, clock, registry, mints, extra: accounts.slice(3 + assets.length) };
   }
 
   /**
@@ -242,7 +338,7 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
    * A frozen account's balance is still the holder's and is reported; `frozen` says it cannot move.
    */
   async function balances(
-    pairs: { holder: Address; asset: BasketAsset }[],
+    pairs: { holder: Address; asset: Held }[],
     snap: Snapshot,
   ): Promise<{ amount: bigint; frozen: boolean }[]> {
     return (await balancesAnd(pairs, [], snap)).amounts;
@@ -250,7 +346,7 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
 
   /** As `balances`, with `others` read in the same call and handed back as they are. */
   async function balancesAnd(
-    pairs: { holder: Address; asset: BasketAsset }[],
+    pairs: { holder: Address; asset: Held }[],
     others: Address[],
     snap: Snapshot,
   ): Promise<{ amounts: { amount: bigint; frozen: boolean }[]; others: (RawAccount | null)[] }> {
@@ -285,16 +381,14 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
     return decodeRecipe(account.data);
   }
 
-  /** The listed asset a shared portfolio's line names. The program lists mints; the ids are the caller's. */
-  function assetOfComponent(recipe: Address, mint: string): BasketAsset {
-    return (
-      byMint.get(mint) ??
-      refuse(
-        'MintNotAccepted',
-        `the shared portfolio ${recipe} holds ${mint}, which is not a listed asset`,
-      )
-    );
-  }
+  /**
+   * The id of the asset a line names: the caller's id for a listed mint, and for any other the id made
+   * from the mint. An author can put a token in a shared portfolio that this app does not list; it is
+   * shown as a token the app does not know, never refused, or one portfolio would stop every read of
+   * every vault that follows it.
+   */
+  const idOfMint = (mint: string): AssetId =>
+    byMint.get(mint)?.id ?? unlistedAssetId(mint as Address);
 
   /** One version of a shared portfolio in the shape every chain answers with. */
   function recipeOf(address: Address, account: RecipeAccount, version: RecipeVersion): Recipe {
@@ -314,7 +408,7 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
       effectiveAt: Number(version.effectiveAt),
       components: version.components.map((c) => ({
         kind: 'asset',
-        asset: assetOfComponent(address, c.mint).id,
+        asset: idOfMint(c.mint),
         weightBps: c.weightBps,
       })),
       metaHash: hex(version.metaHash),
@@ -336,13 +430,11 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
     return {
       version: next.version,
       effectiveAt: Number(next.effectiveAt),
-      newAssets: next.components
-        .filter((c) => !accepted.has(c.mint))
-        .map((c) => assetOfComponent(vault.recipe, c.mint).id),
+      newAssets: next.components.filter((c) => !accepted.has(c.mint)).map((c) => idOfMint(c.mint)),
     };
   }
 
-  function holding(asset: BasketAsset, raw: bigint, snap: Snapshot): Holding {
+  function holding(asset: Held, raw: bigint, snap: Snapshot): Holding {
     const mint = snap.mints.get(asset.address);
     if (!mint) return refuse('Unknown', `${asset.id} has no mint`);
     const multiplier = multiplierString(multiplierAt(mint, snap.clock.unixTimestamp));
@@ -367,21 +459,107 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
   /**
    * The assets whose token accounts a vault is read for: cash, then its targets in the program's
    * order, then every other listed asset. A token the vault holds without a target on it (sent in from
-   * outside, or left over when the targets changed) is still the owner's to see and to withdraw.
+   * outside, or left over when the targets changed) is still the owner's to see and to withdraw. A
+   * target on a mint the app does not list is read under the id made from its mint, with the decimals
+   * of its mint: `snap.mints` has it (`addUnlistedMints`).
    */
-  function vaultAssets(address: Address, vault: VaultAccount): BasketAsset[] {
+  function vaultAssets(address: Address, vault: VaultAccount, snap: Snapshot): Held[] {
     if (!cash) return refuse('Unknown', 'no cash token');
-    const targets = vault.positions.map((p) => {
+    const targets = vault.positions.map((p): Held => {
       const asset = byMint.get(p.mint);
-      if (!asset || asset.id === cash.id)
-        return refuse(
-          'MintNotAccepted',
-          `vault ${address} has a target on ${p.mint}, which is ${asset ? 'the cash token' : 'not a listed asset'}`,
-        );
-      return asset;
+      // The program refuses the cash mint as a target: a vault that has one is not one it wrote.
+      if (asset?.id === cash.id)
+        return refuse('Unknown', `vault ${address} has a target on the cash token`);
+      if (asset) return asset;
+      const mint = snap.mints.get(p.mint);
+      return { id: unlistedAssetId(p.mint), address: p.mint, decimals: mint?.decimals ?? 0 };
     });
     const others = assets.filter((a) => a.id !== cash.id && !targets.includes(a));
     return [cash, ...targets, ...others];
+  }
+
+  /**
+   * Reads the mints of the vaults' targets that the app does not list into the snapshot. A mint that
+   * cannot be decoded keeps the token program that owns it; one that is gone (a Token-2022 mint can be
+   * closed once nothing of it is left) is read as the program's list has it, holding nothing.
+   */
+  async function addUnlistedMints(vaults: VaultAccount[], snap: Snapshot): Promise<void> {
+    const unlisted = [...new Set(vaults.flatMap((v) => v.positions.map((p) => p.mint)))].filter(
+      (mint) => !snap.mints.has(mint),
+    );
+    if (unlisted.length === 0) return;
+    const accounts = await getAccounts(rpc, unlisted, commitment);
+    unlisted.forEach((mint, i) => {
+      const account = accounts[i];
+      const entry = snap.registry?.assets.find((e) => e.mint === mint);
+      const owner = account && isTokenProgram(account.owner) ? account.owner : null;
+      let info: MintInfo | null = null;
+      if (account && owner) {
+        try {
+          info = decodeMint(owner, account.data);
+        } catch {
+          info = null;
+        }
+      }
+      // A mint it cannot decode still says, by its owner, which program its token accounts are under.
+      snap.mints.set(
+        mint,
+        info ?? {
+          tokenProgram: owner ?? TOKEN_PROGRAM,
+          decimals: entry?.decimals ?? 0,
+          scaledUiAmount: null,
+          hookProgram: null,
+        },
+      );
+    });
+  }
+
+  /** The price accounts the asset list names, each once. */
+  const namedPriceAccounts = (snap: Snapshot): Address[] => [
+    ...new Set((snap.registry?.priceAccounts ?? []).filter((a) => a !== ZERO_ADDRESS)),
+  ];
+
+  /** The entry of a mint in the program's asset list and the price account it points at. */
+  function listed(mint: string, snap: Snapshot, prices: Map<string, RawAccount | null>) {
+    const entry = snap.registry?.assets.find((e) => e.mint === mint) ?? null;
+    const named = entry && snap.registry ? priceAccountOf(entry, snap.registry) : null;
+    return { entry, named, account: named ? (prices.get(named) ?? null) : null };
+  }
+
+  /**
+   * What is left of the vault's loss counter, as a share of what the vault holds now: cash at one
+   * dollar, and each position at its price entry as it is, fresh or not. A position whose price
+   * cannot be read counts for nothing, which makes the share larger, never smaller. The program
+   * measures the cap against the vault's value at the moment of a leg; this is the reader's best view
+   * of the same number between legs.
+   */
+  function lossUsedBps(
+    vault: VaultAccount,
+    cashRaw: bigint,
+    positionsRaw: bigint[],
+    snap: Snapshot,
+    prices: Map<string, RawAccount | null>,
+  ): number {
+    const left = decayedLoss(vault.lossAccum, vault.lossTs, snap.clock.unixTimestamp);
+    if (left === 0n) return 0;
+    let value = cashRaw;
+    for (const [i, position] of vault.positions.entries()) {
+      const raw = positionsRaw[i] ?? 0n;
+      const { entry, account } = listed(position.mint, snap, prices);
+      if (raw === 0n || !entry || entry.priceKind !== 1) continue;
+      if (
+        !account ||
+        account.owner !== snap.onchain.priceOwner ||
+        account.data.length !== SCOPE_PRICES_BYTES
+      )
+        continue;
+      const price = decodeScopeEntry(account.data, entry.priceIndex);
+      if (price.value === 0n || price.exponent > MAX_PRICE_EXPONENT) continue;
+      value += valueInCash(raw, price, entry.decimals, cash?.decimals ?? 0);
+    }
+    if (value === 0n) return 10_000;
+    const bps = (left * 10_000n) / value;
+    return bps > 10_000n ? 10_000 : Number(bps);
   }
 
   function vaultState(
@@ -390,15 +568,13 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
     held: Holding[],
     recipe: RecipeAccount | null,
     snap: Snapshot,
+    prices: Map<string, RawAccount | null>,
     observedAt: string,
   ): VaultState {
     const [cashHolding, ...rest] = held;
     if (!cashHolding) return refuse('Unknown', 'no cash holding');
     const targets = rest.slice(0, vault.positions.length);
     const others = rest.slice(vault.positions.length).filter((h) => h.raw !== '0');
-    // The unit of the loss counter is set by the keeper leg (SOL-3). Until then only zero can be reported.
-    if (vault.lossAccum !== 0n)
-      refuse('NotSupported', `vault ${address} has a loss counter; reading it arrives with SOL-3`);
     return {
       chain: 'solana',
       address,
@@ -422,29 +598,51 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
         // Held with no target: the weight it should have is zero.
         ...others.map((h) => ({ ...h, targetBps: 0, lastKeeperAt: null })),
       ],
-      lossUsedBps: 0,
+      lossUsedBps: lossUsedBps(
+        vault,
+        BigInt(cashHolding.raw),
+        targets.map((h) => BigInt(h.raw)),
+        snap,
+        prices,
+      ),
       observedAt,
       pending: recipe ? pendingFor(vault, recipe, snap.clock) : null,
     };
   }
 
-  /** Reads the token accounts of every vault in one batch. `Position.tracked` is never used: it is a hint. */
-  async function vaultStates(
+  /**
+   * Reads the token accounts of every vault in one batch. `Position.tracked` is never used for a
+   * balance: it is a hint. The price accounts the asset list names are read in the same call when a
+   * vault has a loss counter to show, or when `withPrices` asks for them.
+   */
+  async function readVaults(
     found: { address: Address; vault: VaultAccount }[],
     snap: Snapshot,
-  ): Promise<VaultState[]> {
+    withPrices = false,
+  ): Promise<{ states: VaultState[]; prices: Map<string, RawAccount | null> }> {
     const observedAt = now().toISOString();
-    const lists = found.map(({ address, vault }) => vaultAssets(address, vault));
+    await addUnlistedMints(
+      found.map(({ vault }) => vault),
+      snap,
+    );
+    const lists = found.map(({ address, vault }) => vaultAssets(address, vault, snap));
     // The shared portfolios these vaults follow, each once, read in the same call as the balances.
     const followed = [
       ...new Set(found.map(({ vault }) => vault.recipe).filter((r) => r !== ZERO_ADDRESS)),
     ];
+    const counting = found.some(
+      ({ vault }) => decayedLoss(vault.lossAccum, vault.lossTs, snap.clock.unixTimestamp) > 0n,
+    );
+    const priced = withPrices || counting ? namedPriceAccounts(snap) : [];
     const { amounts, others } = await balancesAnd(
       found.flatMap(({ address }, i) =>
         (lists[i] ?? []).map((asset) => ({ holder: address, asset })),
       ),
-      followed,
+      [...followed, ...priced],
       snap,
+    );
+    const prices = new Map(
+      priced.map((address, i) => [address as string, others[followed.length + i] ?? null]),
     );
     const recipes = new Map(
       followed.map((address, i) => {
@@ -457,12 +655,73 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
       }),
     );
     let at = 0;
-    return found.map(({ address, vault }, i) => {
+    const states = found.map(({ address, vault }, i) => {
       const held = (lists[i] ?? []).map((asset) =>
         holding(asset, amounts[at++]?.amount ?? 0n, snap),
       );
-      return vaultState(address, vault, held, recipes.get(vault.recipe) ?? null, snap, observedAt);
+      const recipe = recipes.get(vault.recipe) ?? null;
+      return vaultState(address, vault, held, recipe, snap, prices, observedAt);
     });
+    return { states, prices };
+  }
+
+  const vaultStates = async (found: { address: Address; vault: VaultAccount }[], snap: Snapshot) =>
+    (await readVaults(found, snap)).states;
+
+  /** A price entry as the keeper sees it: dollars for a whole token, and its age by the cluster's clock. */
+  const seen = (entry: ScopeEntry | null, clock: ClusterClock) => {
+    if (!entry) return null;
+    const age = clock.unixTimestamp - entry.unixTimestamp;
+    return { usdPerToken: scopePrice(entry), ageSeconds: age > 0n ? Number(age) : 0 };
+  };
+
+  /** One position of a vault as `keeper_leg` would find it. `raw` is what its token account holds. */
+  function keeperPosition(
+    position: VaultAccount['positions'][number],
+    raw: string,
+    snap: Snapshot,
+    prices: Map<string, RawAccount | null>,
+  ): KeeperPosition {
+    const asset = byMint.get(position.mint) ?? {
+      id: unlistedAssetId(position.mint),
+      address: position.mint,
+    };
+    const { entry, account } = listed(position.mint, snap, prices);
+    const now = snap.clock.unixTimestamp;
+    const reference = entry
+      ? referenceOf(entry, account, snap.onchain, now)
+      : { price: null, twap: null, refusal: 'AssetNotPriced' as const };
+    const cooldownUntil =
+      position.lastKeeperTs > 0n
+        ? Number(position.lastKeeperTs + BigInt(snap.onchain.assetCooldownS))
+        : null;
+    const mint = snap.mints.get(asset.address);
+    // In the program's order: the cooldown, the mint, then the market.
+    const trade =
+      cooldownUntil !== null && now < BigInt(cooldownUntil)
+        ? 'Cooldown'
+        : mint?.hookProgram
+          ? 'HookNotAllowed'
+          : mint && inMultiplierWindow(mint, now)
+            ? 'MultiplierWindow'
+            : marketAt(entry?.session === 1 ? 'us_equity' : 'always', snap.onchain, snap.clock) ===
+                'closed'
+              ? 'MarketClosed'
+              : null;
+    return {
+      asset: asset.id,
+      mint: position.mint,
+      targetBps: position.targetBps,
+      raw,
+      trackedRaw: position.tracked.toString(),
+      needsSync: position.tracked.toString() !== raw,
+      keeperOn: entry ? keeperOn(entry) : false,
+      price: seen(reference.price, snap.clock),
+      twap: seen(reference.twap, snap.clock),
+      reference: reference.refusal,
+      trade,
+      cooldownUntil,
+    };
   }
 
   const solanaAddress = (value: unknown, what: string) =>
@@ -531,10 +790,9 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
           clock,
           {
             maxAheadSeconds: onchain.maxPriceAgeS,
-            // Mainnet's account is Kamino's and starts with Scope's discriminator.
-            // TNET-4: the test network's price account is not defined yet, so its first bytes are not
-            // checked there. Once it is, check them on every network.
-            discriminator: config.network === 'mainnet' ? SCOPE_PRICES_DISCRIMINATOR : undefined,
+            // Scope's discriminator on every network: mainnet's account is Kamino's, and the test
+            // exchange's (TNET-4) starts with the same eight bytes.
+            discriminator: SCOPE_PRICES_DISCRIMINATOR,
           },
         );
         const fetchedAt = now().toISOString();
@@ -584,6 +842,47 @@ export function createSolanaVaultReader(options: SolanaVaultReaderOptions): Sola
         if (!account || account.owner !== program || !isAccount('vault', account.data)) return null;
         const [state] = await vaultStates([{ address, vault: decodeVault(account.data) }], snap);
         return state ?? null;
+      }),
+
+    getKeeperContext: (vault) =>
+      guarded(async (): Promise<KeeperContext | null> => {
+        const address = solanaAddress(vault, 'vault');
+        const snap = await snapshot([address]);
+        const account = snap.extra[0];
+        if (!account || account.owner !== program || !isAccount('vault', account.data)) return null;
+        const decoded = decodeVault(account.data);
+        const { states, prices } = await readVaults([{ address, vault: decoded }], snap, true);
+        const [state] = states;
+        if (!state) return null;
+        const positions = decoded.positions.map((position, i) =>
+          keeperPosition(position, state.positions[i]?.raw ?? '0', snap, prices),
+        );
+        // A leg passes one price account: every position it values has to be priced in it.
+        const named = new Set(
+          decoded.positions.map((p) => listed(p.mint, snap, prices).named ?? ZERO_ADDRESS),
+        );
+        const [only] = named;
+        const held = positions.find((p) => p.trackedRaw !== '0' && p.reference);
+        return {
+          vault: state,
+          rules: {
+            paused: snap.onchain.keeperPaused,
+            toleranceBps: snap.onchain.toleranceBps,
+            lossCapBps: snap.onchain.lossCapBps,
+            bandBps: snap.onchain.bandBps,
+            twapDevBps: snap.onchain.twapDevBps,
+            maxPriceAgeSeconds: snap.onchain.maxPriceAgeS,
+            maxTwapAgeSeconds: Number(MAX_TWAP_AGE_SECONDS),
+            cooldownSeconds: snap.onchain.assetCooldownS,
+          },
+          priceAccount: named.size === 1 && only && only !== ZERO_ADDRESS ? only : null,
+          positions,
+          blocked: !decoded.autoFollow
+            ? 'AutoFollowOff'
+            : snap.onchain.keeperPaused
+              ? 'KeeperPaused'
+              : (held?.reference ?? null),
+        };
       }),
 
     listAutoFollowVaults: (recipeOnchainId) =>

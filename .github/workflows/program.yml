@@ -1,11 +1,22 @@
 name: program
 
-# The Solana programs: build, the LiteSVM suite, the committed interface files, clippy.
+# The Solana programs: build, the LiteSVM suite, the committed interface files, clippy. Then the
+# Solana adapter held to the adapter contract on the programs just built (tests/solana-vault), which
+# the `ci` job skips: it has no built programs.
 # The tools and why each version is what it is: programs/README.md. A bump there is a bump of `env` here.
 on:
   pull_request:
     paths:
       - 'programs/**'
+      - 'packages/chain-solana/**'
+      - 'tests/solana-vault/**'
+      - 'apps/api/**'
+      - 'packages/db/**'
+      - 'packages/schemas/**'
+      - 'packages/basket/**'
+      - 'packages/engine/**'
+      - 'packages/risk/**'
+      - 'packages/chain-mock/**'
       - 'idl/**'
       - 'Anchor.toml'
       - 'Cargo.toml'
@@ -14,6 +25,15 @@ on:
   push:
     paths:
       - 'programs/**'
+      - 'packages/chain-solana/**'
+      - 'tests/solana-vault/**'
+      - 'apps/api/**'
+      - 'packages/db/**'
+      - 'packages/schemas/**'
+      - 'packages/basket/**'
+      - 'packages/engine/**'
+      - 'packages/risk/**'
+      - 'packages/chain-mock/**'
       - 'idl/**'
       - 'Anchor.toml'
       - 'Cargo.toml'
@@ -54,7 +74,9 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: programs/tests/pnpm-lock.yaml
+          cache-dependency-path: |
+            programs/tests/pnpm-lock.yaml
+            pnpm-lock.yaml
 
       - name: Rust toolchains
         run: |
@@ -122,6 +144,26 @@ jobs:
       - name: LiteSVM tests
         run: pnpm test:program
 
+      # For the validator job below: the two programs, never their keypairs.
+      - name: Keep the built programs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: programs
+          path: |
+            target/deploy/basket.so
+            target/deploy/mock_router.so
+          retention-days: 1
+          if-no-files-found: error
+
+      # The adapter contract and the builders' sizes and shape, in LiteSVM on the programs built above.
+      # SOLANA_PROGRAMS_REQUIRED makes a missing build fail them instead of skipping them.
+      - name: The Solana adapter on the built programs
+        env:
+          SOLANA_PROGRAMS_REQUIRED: '1'
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec vitest run tests/solana-vault/contract.test.ts tests/solana-vault/builders.test.ts
+
       - name: The committed interface files match the programs
         run: |
           for program in basket mock_router; do
@@ -147,3 +189,72 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$count" -gt 0 ]; then echo "::warning title=cargo clippy::$count warnings, see the job summary"; fi
+
+  # The money path on a local validator, on the programs the job above built: the adapter contract's
+  # sending groups (relay, track, fate, the state each transaction leaves) and the API end to end, a
+  # person's buy built, signed in the test, relayed and read back. One validator, stopped by the test.
+  validator:
+    needs: program
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: colosseum
+          POSTGRES_PASSWORD: colosseum
+          POSTGRES_DB: colosseum
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd "pg_isready -U colosseum"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Cache the Solana CLI with its validator
+        id: solana
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.local/share/solana
+          key: solana-${{ runner.os }}-${{ env.SOLANA_VERSION }}-validator
+
+      - name: Solana CLI and validator
+        if: steps.solana.outputs.cache-hit != 'true'
+        run: |
+          curl -sSfL --retry 3 -o "$RUNNER_TEMP/solana.tar.bz2" \
+            "https://github.com/anza-xyz/agave/releases/download/v${SOLANA_VERSION}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
+          echo "${SOLANA_SHA256}  $RUNNER_TEMP/solana.tar.bz2" | sha256sum -c -
+          mkdir -p "$HOME/.local/share/solana"
+          tar -xjf "$RUNNER_TEMP/solana.tar.bz2" -C "$HOME/.local/share/solana" \
+            solana-release/version.yml \
+            solana-release/bin/solana \
+            solana-release/bin/solana-test-validator
+
+      - name: Put the tools on the path
+        run: echo "$HOME/.local/share/solana/solana-release/bin" >> "$GITHUB_PATH"
+
+      - name: The programs the job above built
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: programs
+          path: target/deploy
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:migrate
+
+      - name: The Solana adapter and the API on a local validator
+        env:
+          SOLANA_LOCAL_VALIDATOR: '1'
+          SOLANA_PROGRAMS_REQUIRED: '1'
+        run: |
+          solana-test-validator --version
+          pnpm exec vitest run tests/solana-vault/validator.test.ts

@@ -2,8 +2,10 @@ import {
   type BasketTx,
   type Chain,
   type ChainId,
+  type ChainStatus,
   chainFamily,
   normalizeAddress,
+  type Provenance,
   RawAmount,
   type WalletAccount,
   type WalletCaps,
@@ -22,17 +24,91 @@ import {
   sameBytes,
 } from './bytes';
 import { solanaCluster, type WalletChains } from './chains';
-import type { EvmRequest, WalletDriver } from './driver';
+import type { EvmRequest, FoundWallet, SignInChoice, WalletDriver, WalletsOwed } from './driver';
 import { fail, toWalletError, WalletPortError } from './errors';
+
+/**
+ * Why sign-in is off. `api`: the API did not answer, and is asked again. `setup`: this copy of the app
+ * is not set up (a missing variable, networks that differ from the API's), which only the team can fix.
+ */
+export type ProblemKind = 'api' | 'setup';
+
+/** A chain as this app and the API run it: for the name a screen shows, and the label beside it. */
+export type ChainNetwork = {
+  id: ChainId;
+  /** "Solana", "Robinhood Chain". */
+  name: string;
+  /** "Solana devnet", "Robinhood Chain testnet". */
+  networkName: string;
+  /**
+   * What a figure or a name from this chain is labelled: `mock` while the API runs the chain on the
+   * mock, `sandbox` on a test network, `live` on mainnet. Anything but `live` is shown as not live.
+   */
+  provenance: Provenance;
+  /**
+   * False when the API has the chain switched off: nothing can be built there, so the chain is not
+   * offered at the pick (ChainPick) and a plan is not asked for on it (GoalScreen).
+   */
+  on: boolean;
+};
+
+/** What the bridge knows beyond the driver: why sign-in is off, and the API's own account of its chains. */
+export type PortContext = {
+  problemKind?: ProblemKind;
+  /** The chains of the API's GET /v1/config. Left out, the labels come from this app's own table. */
+  api?: readonly ChainStatus[];
+};
 
 /** WalletPort, plus what the web needs and the interface does not have yet. */
 export interface WebWalletPort extends WalletPort {
   /** Why sign-in cannot work here (a missing variable), or null. */
   readonly problem: string | null;
+  /** What kind of problem that is, for the sentence a person reads. Null when there is none. */
+  readonly problemKind: ProblemKind | null;
   /** True for the throwaway wallet of tests and mock mode. */
   readonly test: boolean;
+  /** The outside wallets found in this browser, for the sign-in screen to list. */
+  readonly found: FoundWallet[];
+  /**
+   * The same call as WalletPort's, with the choice a person made on the sign-in screen: create a
+   * passkey or use one, and which wallet. With no choice a passkey is used, not created.
+   */
+  signIn(method: 'passkey' | 'wallet', choice?: SignInChoice): Promise<void>;
+  /**
+   * A passkey sign-in owes the person a wallet of each family, and they are not all there: `making`
+   * while they are being made, `failed` when one could not be. The person is signed in (`userId` is
+   * theirs) and the status is `loading`, never `ready`: the chain is not asked for with one wallet.
+   */
+  readonly walletsOwed: WalletsOwed | null;
+  /** Makes the wallets a passkey sign-in owes the person, when making them failed the first time. */
+  ensureWallets(): Promise<void>;
+  /** The chain as it is run here, or null before the wallet has loaded. */
+  network(chain: ChainId): ChainNetwork | null;
   /** Signs a line of text: base58 on Solana, 0x hex on EVM. Not in WalletPort; the dev page uses it. */
   signMessage(family: Chain, text: string): Promise<string>;
+}
+
+/**
+ * The members of the port that reach a key: they sign, send, or show one. A screen is never handed
+ * them (`ScreenPort`). The whole port is behind `useSigningPort()` in signing.ts, and
+ * components/shell/product-routes.test.ts holds who may import that.
+ */
+export const SIGNING_MEMBERS = ['sign', 'send', 'signMessage', 'exportKey'] as const;
+export type SigningMember = (typeof SIGNING_MEMBERS)[number];
+
+/** The wallet as a screen has it: who is signed in and with what, and no way to a signature. */
+export type ScreenPort = Omit<WebWalletPort, SigningMember>;
+
+/** The port without its signing members: a new object that does not have them at all. */
+export function screenPort(port: WebWalletPort): ScreenPort {
+  const {
+    sign: _sign,
+    send: _send,
+    signMessage: _signMessage,
+    exportKey: _exportKey,
+    ...rest
+  } = port;
+  return rest;
 }
 
 /** One prompt signs up to three Solana transactions (DESIGN-VAULT section 9). */
@@ -53,6 +129,7 @@ export function createWalletPort(
   driver: WalletDriver,
   chains: WalletChains,
   problem: string | null = null,
+  context: PortContext = {},
 ): WebWalletPort {
   const raw = new Map<string, string>();
   const accounts: WalletAccount[] = [];
@@ -243,21 +320,45 @@ export function createWalletPort(
     }
   };
 
+  const network = (chain: ChainId): ChainNetwork => {
+    const mine = chains[chain];
+    const theirs = context.api?.find((c) => c.id === chain);
+    return {
+      id: chain,
+      name: mine.config.name,
+      networkName: mine.config.networkName,
+      // The API's label wins: it alone knows that a chain runs on the mock. A chain it has off has
+      // no label there, and keeps this app's.
+      provenance: driver.test ? 'mock' : (theirs?.provenance ?? mine.provenance),
+      on: theirs ? theirs.mode !== 'off' : true,
+    };
+  };
+
   return {
     status: problem ? 'signed-out' : driver.status,
     userId: driver.userId,
     accounts,
     problem,
+    problemKind: problem ? (context.problemKind ?? 'setup') : null,
     test: driver.test,
+    found: driver.found ?? [],
+    walletsOwed: problem ? null : (driver.walletsOwed ?? null),
     active,
     caps,
+    network,
 
-    signIn: (method) =>
+    signIn: (method, choice) =>
       guard(async () => {
         if (problem) throw fail('not_configured', problem);
-        await driver.signIn(method);
+        await driver.signIn(method, choice);
       }),
     signOut: () => guard(() => driver.signOut()),
+    ensureWallets: () =>
+      guard(async () => {
+        if (problem) throw fail('not_configured', problem);
+        if (driver.status === 'signed-out') throw fail('not_connected', 'not signed in');
+        await driver.ensureWallets?.();
+      }),
 
     sign: (chain, txs) =>
       guard(async () => {

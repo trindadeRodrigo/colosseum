@@ -41,7 +41,7 @@ const CLEAN = {
   'routes-manifest.json': JSON.stringify({ staticRoutes: [{ page: '/' }, { page: '/monitor' }] }),
   'server/pages-manifest.json': JSON.stringify({ '/404': 'pages/404.html' }),
   'server/app/monitor.html': '<html></html>',
-  'server/chunks/ssr/1.js.map': map(`${OURS}app/layout.tsx`, `${OURS}${ALWAYS_BUILT}`),
+  'server/chunks/ssr/1.js.map': map(`${OURS}app/(app)/layout.tsx`, `${OURS}${ALWAYS_BUILT}`),
 };
 
 describe('the check that runs after every production build', () => {
@@ -52,7 +52,9 @@ describe('the check that runs after every production build', () => {
     // The build script runs the check, and the dev page's route file has the development extension.
     const scripts = JSON.parse(readFileSync(join(web, 'package.json'), 'utf8')).scripts;
     expect(scripts.build).toBe('next build && node scripts/check-build.mjs');
-    expect(readFileSync(join(web, 'app/dev/wallet/page.dev.tsx'), 'utf8')).toContain('DevWallet');
+    expect(readFileSync(join(web, 'app/(app)/dev/wallet/page.dev.tsx'), 'utf8')).toContain(
+      'DevWallet',
+    );
     const config = readFileSync(join(web, 'next.config.ts'), 'utf8');
     expect(config).toContain("dev ? ['dev.tsx', ...ROUTES] : ROUTES");
   });
@@ -81,6 +83,34 @@ describe('the check that runs after every production build', () => {
     expect(checkBuild(folder)).toEqual(['the build has a development route: /dev']);
     // A route that only starts with the same letters is not one.
     expect(checkBuild(build({ ...CLEAN, 'server/app/developers.html': '' }))).toEqual([]);
+  });
+
+  it('fails on a /dev route inside a route group, as the build names it', () => {
+    // The development pages are in app/(app)/dev. A group is a folder and no part of the address, and
+    // the build names it in one manifest and in the folders it writes.
+    const manifest = build({
+      ...CLEAN,
+      'server/app-paths-manifest.json': JSON.stringify({
+        '/(app)/goal/page': 'app/(app)/goal/page.js',
+        '/(app)/dev/wallet/page': 'app/(app)/dev/wallet/page.js',
+      }),
+    });
+    expect(checkBuild(manifest)).toEqual([
+      'the build has a development route: /(app)/dev/wallet/page',
+    ]);
+    const folder = build({ ...CLEAN, 'server/app/(app)/dev/ui.html': '<html></html>' });
+    expect(checkBuild(folder)).toEqual(['the build has a development route: /dev']);
+    // The product's own routes in that group are not development routes.
+    const product = build({
+      ...CLEAN,
+      'server/app-paths-manifest.json': JSON.stringify({
+        '/(app)/goal/page': 'app/(app)/goal/page.js',
+        '/(structurer)/[...missing]/page': 'app/(structurer)/[...missing]/page.js',
+      }),
+      'server/app/(app)/goal.html': '',
+      'server/app/(app)/developers.html': '',
+    });
+    expect(checkBuild(product)).toEqual([]);
   });
 
   it('fails when it cannot find what every build ships, instead of passing on nothing', () => {
@@ -112,7 +142,10 @@ describe('the check that runs after every production build', () => {
     for (const file of ['features/wallet/dev/rpc.ts', 'features/wallet/test/fixtures.ts']) {
       const out = build({
         ...CLEAN,
-        'server/chunks/ssr/2.js.map': map(`${OURS}app/monitor/page.tsx`, `${OURS}${file}`),
+        'server/chunks/ssr/2.js.map': map(
+          `${OURS}app/(structurer)/monitor/page.tsx`,
+          `${OURS}${file}`,
+        ),
       });
       expect(checkBuild(out)).toEqual([`server/chunks/ssr/2.js.map was built from ${OURS}${file}`]);
     }

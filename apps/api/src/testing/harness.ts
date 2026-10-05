@@ -3,16 +3,21 @@ import { mockAddress } from '@colosseum/chain-mock';
 import {
   createDb,
   type Db,
+  indexFamilies,
   legAttempts,
   legs,
   orders,
   proposals,
+  recipes,
+  recipeVersions,
   seedChains,
+  users,
   vaults,
 } from '@colosseum/db';
 import {
   type BasketProposal,
   type ChainId,
+  type Component,
   DISCLAIMER,
   type EnvLike,
   parseChainConfigs,
@@ -23,6 +28,7 @@ import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { buildApp } from '../app';
 import { type ChainRegistry, createChainRegistry } from '../orders/chains';
 import { IDENTITY_TOKEN_HEADER, type TokenIssuer } from '../plugins/auth';
+import { LIMITS, type Limits } from '../plugins/limits';
 
 // For tests only. Nothing the server runs imports this file: the tokens here are signed with a key
 // pair made in the test, and the app under test is handed that pair's public half as its only issuer.
@@ -56,62 +62,124 @@ export async function testIssuer(name: string): Promise<TestIssuer> {
   };
 }
 
+/**
+ * How a test person signed in, which is what decides their chain (gates ONE-CHAIN, CHAIN-PICK):
+ * - `solana`: connected an outside Solana wallet. Their plans live on Solana.
+ * - `robinhood`: connected an outside EVM wallet. Their plans live on Robinhood Chain.
+ * - `passkey`: made their wallets in the app, one of each family. No chain until they pick one.
+ */
+export type PersonKind = 'solana' | 'robinhood' | 'passkey';
+/** The two chains a person can be on while Base is not deployed. */
+export type HomeChain = 'solana' | 'robinhood';
+
 export type Person = {
   sub: string;
+  kind: PersonKind;
+  /** The chain of the outside wallet. Null for a passkey person: theirs is the one they pick. */
+  chain: HomeChain | null;
+  /**
+   * A Solana and an EVM address nobody else has. Only the ones of the person's kind are in the
+   * identity token: the other is an address the token does not carry.
+   */
   solana: string;
   evm: string;
-  owner: { solana: string; evm: string };
+  /** The wallets the identity token lists, as the owner of an order. */
+  owner: { solana?: string; evm?: string };
   /** What the web app sends: the access token as a bearer, the identity token in its own header. */
   headers: Record<string, string>;
 };
 
 /**
- * A person with a Solana and an EVM wallet nobody else has. The identity token lists the EVM address in
- * upper case, as a wallet provider may, and an email account that is not a wallet.
+ * A person with wallets nobody else has. The identity token lists an EVM address in upper case, as a
+ * wallet provider may, and an email account that is not a wallet.
  */
-export async function person(issuer: TestIssuer): Promise<Person> {
+export async function person(issuer: TestIssuer, kind: PersonKind = 'solana'): Promise<Person> {
   const id = randomUUID();
   const sub = `did:privy:test-${id}`;
   const solana = mockAddress('solana', `api-test:${id}`);
   const evm = mockAddress('robinhood', `api-test:${id}`);
-  const linked = [
-    { type: 'wallet', address: solana, chain_type: 'solana', wallet_client_type: 'privy' },
+  const client = kind === 'passkey' ? 'privy' : kind === 'solana' ? 'phantom' : 'metamask';
+  const wallets = [
+    { type: 'wallet', address: solana, chain_type: 'solana', wallet_client_type: client },
     {
       type: 'wallet',
       address: `0x${evm.slice(2).toUpperCase()}`,
       chain_type: 'ethereum',
-      wallet_client_type: 'metamask',
+      wallet_client_type: client,
     },
+  ];
+  const has = { solana: kind !== 'robinhood', evm: kind !== 'solana' };
+  const linked = [
+    ...wallets.filter((w) => (w.chain_type === 'solana' ? has.solana : has.evm)),
     { type: 'email', address: 'someone@example.invalid' },
   ];
   const access = await issuer.sign(sub, { sid: id });
   const identity = await issuer.sign(sub, { linked_accounts: JSON.stringify(linked) });
   return {
     sub,
+    kind,
+    chain: kind === 'passkey' ? null : kind,
     solana,
     evm,
-    owner: { solana, evm },
+    owner: { ...(has.solana ? { solana } : {}), ...(has.evm ? { evm } : {}) },
     headers: { authorization: `Bearer ${access}`, [IDENTITY_TOKEN_HEADER]: identity },
   };
 }
 
-/** A stored plan: the same three assets on Solana (60%) and Robinhood Chain (40%). */
-export function planFixture(): BasketProposal {
-  const weights = { spy: 5000, nvda: 3000, gold: 2000 };
-  const split: [ChainId, number][] = [
-    ['solana', 600],
-    ['robinhood', 400],
-  ];
+/**
+ * The headers of a sign-in whose identity token lists exactly these wallets: for a mix `person` has no
+ * kind for, or the same person signing in again with other wallets. `client` is what made the wallet:
+ * `privy` is one made in the app, anything else an outside wallet.
+ */
+export async function signIn(
+  issuer: TestIssuer,
+  sub: string,
+  wallets: { family: 'solana' | 'evm'; address: string; client: string }[],
+): Promise<Record<string, string>> {
+  const linked = wallets.map((w) => ({
+    type: 'wallet',
+    address: w.address,
+    chain_type: w.family === 'solana' ? 'solana' : 'ethereum',
+    wallet_client_type: w.client,
+  }));
+  const access = await issuer.sign(sub, { sid: randomUUID() });
+  const identity = await issuer.sign(sub, { linked_accounts: JSON.stringify(linked) });
+  return { authorization: `Bearer ${access}`, [IDENTITY_TOKEN_HEADER]: identity };
+}
+
+/** The weights of the default test plan: three assets, nothing kept in cash. */
+export const WHOLE = { spy: 5000, nvda: 3000, gold: 2000 };
+
+/**
+ * A stored plan on one chain. `weights` are the plan's assets in basis points; what they leave of
+ * 10,000 is the plan's cash share, which the lines carry as the chain's cash token and the recipe
+ * leaves out. `components` replaces the recipe's components, for a plan that holds a shared portfolio
+ * as one line: the lines stay those of `weights`, which is what the person was shown.
+ */
+export function planFixture(
+  chain: ChainId = 'solana',
+  weights: Record<string, number> = WHOLE,
+  components?: Component[],
+): BasketProposal {
+  const amountUsd = 1000;
+  const invested = Object.values(weights).reduce((n, bps) => n + bps, 0);
+  const line = (slug: string, weightBps: number) => ({
+    chain,
+    assetId: `${chain}:${slug}`,
+    weightBps,
+    amountUsd: (amountUsd * weightBps) / 10_000,
+    reasons: [],
+  });
   return {
     sheet: {
       basketType: 'standard',
       goal: 'grow',
-      amountUsd: 1000,
+      amountUsd,
       horizonMonths: 60,
       risk: 'medium',
       themes: [],
       country: 'BR',
-      chains: ['solana', 'robinhood'],
+      chains: [chain],
       rules: { useHoldings: false, glide: false },
       language: 'en',
     },
@@ -119,27 +187,26 @@ export function planFixture(): BasketProposal {
     paramsHash: 'test',
     shelfVersion: 'test',
     inputsHash: `api-test:${randomUUID()}`,
-    lines: split.flatMap(([chain, amountUsd]) =>
-      Object.entries(weights).map(([slug, bps]) => ({
+    lines: [
+      ...Object.entries(weights).map(([slug, bps]) => line(slug, bps)),
+      ...(invested < 10_000 ? [line('usdc', 10_000 - invested)] : []),
+    ],
+    recipes: [
+      {
         chain,
-        assetId: `${chain}:${slug}`,
-        weightBps: (bps * amountUsd) / 1000,
-        amountUsd: (amountUsd * bps) / 10_000,
-        reasons: [],
-      })),
-    ),
-    recipes: split.map(([chain, amountUsd]) => ({
-      chain,
-      amountUsd,
-      components: Object.entries(weights).map(([slug, weightBps]) => ({
-        kind: 'asset' as const,
-        asset: `${chain}:${slug}`,
-        weightBps,
-      })),
-    })),
+        amountUsd,
+        components:
+          components ??
+          Object.entries(weights).map(([slug, weightBps]) => ({
+            kind: 'asset' as const,
+            asset: `${chain}:${slug}`,
+            weightBps,
+          })),
+      },
+    ],
     removed: [],
     card: {
-      moneyTodayUsd: 1000,
+      moneyTodayUsd: amountUsd,
       termMonths: 60,
       cashFlow: 'none',
       expectedReturn: { lowPct: 0, highPct: 0, basis: 'test fixture', lossInFallUsd: 0 },
@@ -152,20 +219,23 @@ export function planFixture(): BasketProposal {
 }
 
 /**
- * The database a test file works in, and the rows it must take away again. Other sessions share this
- * database, so every row a test makes hangs off a wallet or a plan made here, and `cleanUp` deletes
- * exactly those.
+ * The database a test file works in, and the rows it must take away again. Other sessions may share
+ * this database, so every row a test makes hangs off a person, a plan or a shared portfolio made here,
+ * and `cleanUp` deletes exactly those.
  */
 export async function testDb() {
   const { db, client } = createDb();
   await seedChains(db, parseChainConfigs({}));
   const owners: string[] = [];
+  const people: string[] = [];
   const plans: string[] = [];
+  const families: string[] = [];
   return {
     db,
-    /** Remembers a person's wallets, so their orders and vault rows are deleted at the end. */
+    /** Remembers a person, so their orders, vault rows and picked chain are deleted at the end. */
     track(p: Person) {
       owners.push(p.solana, p.evm);
+      people.push(p.sub);
       return p;
     },
     async storePlan(proposal = planFixture()): Promise<string> {
@@ -182,6 +252,54 @@ export async function testDb() {
       if (!row) throw new Error('plan insert');
       plans.push(row.id);
       return row.id;
+    },
+    /**
+     * A shared portfolio as the cache tables hold one: a family, its recipe on `chain`, and the
+     * version in effect. Answers the slug a plan names it by, and a way to put another version in
+     * effect.
+     */
+    async storeFamily(chain: ChainId, components: Component[]) {
+      const familyId = randomUUID().replaceAll('-', '').padEnd(64, '0');
+      const slug = `test-${familyId.slice(0, 12)}`;
+      families.push(familyId);
+      await db.insert(indexFamilies).values({
+        familyId,
+        slug,
+        nameKey: slug,
+        name: `Test ${slug}`,
+        copy: '',
+        creatorKind: 'platform',
+        kind: 'index',
+      });
+      const [recipe] = await db
+        .insert(recipes)
+        .values({
+          familyId,
+          chainId: chain,
+          onchainId: `test:${familyId}`,
+          creator: mockAddress(chain, 'creator'),
+          kind: 'community',
+        })
+        .returning({ id: recipes.id });
+      if (!recipe) throw new Error('recipe insert');
+      let version = 0;
+      const publish = async (next: Component[]) => {
+        await db
+          .update(recipeVersions)
+          .set({ status: 'superseded' })
+          .where(inArray(recipeVersions.recipeId, [recipe.id]));
+        version += 1;
+        await db.insert(recipeVersions).values({
+          recipeId: recipe.id,
+          version,
+          components: next,
+          metaHash: '0'.repeat(64),
+          effectiveAt: new Date(),
+          status: 'active',
+        });
+      };
+      await publish(components);
+      return { slug, publish };
     },
     async cleanUp() {
       if (owners.length) {
@@ -200,11 +318,34 @@ export async function testDb() {
         }
         await db.delete(vaults).where(inArray(vaults.owner, owners));
       }
+      if (people.length) await db.delete(users).where(inArray(users.privyId, people));
       if (plans.length) await db.delete(proposals).where(inArray(proposals.id, plans));
+      if (families.length) {
+        const mine = await db
+          .select({ id: recipes.id })
+          .from(recipes)
+          .where(inArray(recipes.familyId, families));
+        const recipeIds = mine.map((r) => r.id);
+        if (recipeIds.length) {
+          await db.delete(recipeVersions).where(inArray(recipeVersions.recipeId, recipeIds));
+          await db.delete(recipes).where(inArray(recipes.id, recipeIds));
+        }
+        await db.delete(indexFamilies).where(inArray(indexFamilies.familyId, families));
+      }
       await client.end();
     },
   };
 }
+
+/**
+ * Limits no test reaches by accident: a test file makes hundreds of requests a minute from one
+ * address. The limiter runs all the same. A test of the limits passes `LIMITS`, the server's own.
+ */
+export const ROOMY: Limits = {
+  windowSeconds: LIMITS.windowSeconds,
+  caller: { anonymous: 1_000_000, signedIn: 1_000_000 },
+  class: { standard: null, build: 1_000_000, parse: 1_000_000 },
+};
 
 /** The app with its /v1 routes on a mock registry the test can reach into. */
 export async function testApp(a: {
@@ -212,6 +353,7 @@ export async function testApp(a: {
   db: Db;
   env?: EnvLike;
   now?: () => Date;
+  limits?: Limits;
   /** Wraps the registry, to make a chain misbehave. */
   wrap?: (registry: ChainRegistry) => ChainRegistry;
 }) {
@@ -221,7 +363,14 @@ export async function testApp(a: {
     now: a.now,
   });
   const app = await buildApp({
-    v1: { auth: a.issuer, chains: a.wrap ? a.wrap(registry) : registry, db: a.db, now: a.now },
+    env,
+    v1: {
+      auth: a.issuer,
+      chains: a.wrap ? a.wrap(registry) : registry,
+      db: a.db,
+      now: a.now,
+      limits: a.limits ?? ROOMY,
+    },
   });
   return { app, registry };
 }

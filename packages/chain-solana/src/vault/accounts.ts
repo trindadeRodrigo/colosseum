@@ -128,7 +128,10 @@ const assetEntryDecoder = getStructDecoder([
   ['maxWeightBps', getU16Decoder()],
   ['flags', getU8Decoder()],
   ['sourceCheck', bytes32],
-  ['reserved', fixDecoderSize(getBytesDecoder(), 21)],
+  // The plausible price range, in millionths of a dollar for one whole token; zero and zero is none.
+  ['minPrice', getU64Decoder()],
+  ['maxPrice', getU64Decoder()],
+  ['reserved', fixDecoderSize(getBytesDecoder(), 5)],
 ]);
 
 const assetRegistryDecoder = getStructDecoder([

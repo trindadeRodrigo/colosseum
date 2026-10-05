@@ -2,20 +2,26 @@
 pragma solidity 0.8.37;
 
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import {IVaultConfig} from "./interfaces/IVaultConfig.sol";
-import {AssetConfig} from "./interfaces/Types.sol";
+import {IVaultConfig, PERMIT2} from "./interfaces/IVaultConfig.sol";
+import {AssetConfig, Params} from "./interfaces/Types.sol";
 
-/// The platform's settings for one chain, and the admin who may change them: the cash token, the listed
-/// assets with their price feeds, and the allowed routers. A vault is given this contract's address when it
-/// is created and reads from it; nothing here is a constant in the vault.
+/// The platform's settings for one chain, and the three roles around them: the cash token, the listed
+/// assets with their price feeds, the allowed routers, the keeper's limits and the guardian's switches. A
+/// vault is created by the contract that carries this and reads from it; nothing here is a constant in the
+/// vault.
 ///
-/// Two lists that must never overlap: a listed asset is never an allowed router, and a router is never a
-/// listed asset. With a token as the "router", swap data could be an `approve`, which moves no balance.
+/// Two lists that must never overlap, now or later: a token that is or ever was a listed asset is never an
+/// allowed router, and a router is never a listed asset. With a token as the "router", swap data could be
+/// an `approve`, which moves no balance.
 ///
-/// Abstract on purpose: the factory of EVM-2 inherits it, adds creation, the keeper, the guardian and the
-/// parameters, and is the contract behind the UUPS proxy. State lives in one ERC-7201 namespace, so the
-/// factory adds its own namespace beside it and neither moves the other.
+/// Nothing the guardian or the admin does here reaches the owner's path. A vault's `withdraw` reads no
+/// config at all; its deposit and its owner swap read the cash token, the asset list and the router list,
+/// and never the pause, a halt or the calendar.
+///
+/// Abstract on purpose: `VaultFactory` inherits it, adds creation, and is the contract behind the UUPS
+/// proxy. State lives in one ERC-7201 namespace; the factory keeps its own beside it.
 abstract contract VaultConfig is Initializable, IVaultConfig {
     using EnumerableSet for EnumerableSet.AddressSet;
 
@@ -27,6 +33,18 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
         mapping(address token => AssetConfig) assets;
         mapping(address router => uint8) routerPull;
         address cashToken;
+        // ---- appended by EVM-2
+        // Assets taken off the list. Kept so that one can still be sold, and can never become a router.
+        EnumerableSet.AddressSet removed;
+        address guardian;
+        bool keeperPaused;
+        bool launched;
+        uint64 closedUntil;
+        address keeper;
+        Params params;
+        address sequencerFeed;
+        mapping(uint32 day => bool) closedDays;
+        address registry;
     }
 
     // keccak256(abi.encode(uint256(keccak256("basket.storage.VaultConfig")) - 1)) & ~bytes32(uint256(0xff))
@@ -45,22 +63,40 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
     /// shorter than any feed updates, and past two days a Friday close would pass for a Monday price.
     uint32 internal constant MIN_PRICE_AGE = 60;
     uint32 internal constant MAX_PRICE_AGE = 48 hours;
+    /// The keeper's limits cannot be set looser than this without an upgrade (section 3.7, the same numbers
+    /// as the Solana program): what a trade may lose against the reference price, what a week may lose, and
+    /// the least time between two keeper trades in one asset.
+    uint16 internal constant MAX_TOLERANCE_BPS = 300;
+    uint16 internal constant MAX_LOSS_CAP_BPS = 500;
+    uint32 internal constant MIN_ASSET_COOLDOWN = 600;
+    uint32 internal constant DAY = 86_400;
+    /// What the probe in `setRouter` may use. A token answers `allowance` in a few thousand.
+    uint256 internal constant PROBE_GAS = 100_000;
 
     modifier onlyAdmin() {
         _checkAdmin();
         _;
     }
 
-    function _initVaultConfig(address admin_) internal onlyInitializing {
+    /// The guardian's calls only tighten, so the admin may make them too.
+    modifier onlyGuardian() {
+        ConfigStorage storage $ = _config();
+        require(msg.sender == $.guardian || msg.sender == $.admin, NotGuardian(msg.sender));
+        _;
+    }
+
+    function _initVaultConfig(address admin_, Params memory params_) internal onlyInitializing {
         require(admin_ != address(0), ZeroAddress());
         _config().admin = admin_;
         emit AdminChanged(address(0), admin_);
+        _setParams(params_);
     }
 
-    // ---- admin
+    // ---- admin: assets
 
     /// Lists an asset or replaces its settings, the price feed included. The stored `haltUntil` is kept and
-    /// the one passed in is ignored: a halt is the guardian's (EVM-3), and a feed update must not lift it.
+    /// the one passed in is ignored: a halt is the guardian's, and a feed update must not lift it. Listing a
+    /// removed asset again puts it back.
     function setAsset(address token, AssetConfig calldata cfg) external onlyAdmin {
         require(token != address(0), ZeroAddress());
         require(token.code.length != 0, NoCode(token));
@@ -78,24 +114,25 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
         }
 
         uint64 halt = $.assets[token].haltUntil;
+        $.removed.remove(token);
         $.assetList.add(token);
         $.assets[token] = cfg;
         $.assets[token].haltUntil = halt;
         emit AssetSet(token, $.assets[token]);
     }
 
-    /// Allows a router (1 direct, 2 through Permit2) or removes it (0). Removing always works.
-    function setRouter(address router, uint8 pull) external onlyAdmin {
-        require(router != address(0), ZeroAddress());
-        require(pull <= MAX_PULL, InvalidPull(pull));
+    /// @inheritdoc IVaultConfig
+    /// @dev The settings and the halt stay stored. What changes is the list: `isAsset` turns false, so the
+    /// token cannot be bought, named in new targets or published in a shared portfolio. Targets and shared
+    /// portfolios that already name it are left as they are; nothing can buy toward them. A vault's own
+    /// `tokens` are untouched, and `withdraw` never asks.
+    function removeAsset(address token) external onlyAdmin {
         ConfigStorage storage $ = _config();
-        if (pull != 0) {
-            require(router.code.length != 0, NoCode(router));
-            // Covers the cash token too: it is always a listed asset.
-            require(!$.assetList.contains(router), RouterIsAsset(router));
-        }
-        $.routerPull[router] = pull;
-        emit RouterSet(router, pull);
+        require(token != $.cashToken, CashTokenNotRemovable(token));
+        bool wasListed = $.assetList.remove(token);
+        require(wasListed, AssetNotListed(token));
+        $.removed.add(token);
+        emit AssetRemoved(token);
     }
 
     /// Names the chain's dollar token, the only token a vault takes as a deposit. It must be a listed asset,
@@ -105,6 +142,95 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
         require($.assetList.contains(token), AssetNotListed(token));
         $.cashToken = token;
         emit CashTokenSet(token);
+    }
+
+    // ---- admin: routers
+
+    /// Allows a router (1 direct, 2 through Permit2) or removes it (0). Removing always works.
+    function setRouter(address router, uint8 pull) external onlyAdmin {
+        require(router != address(0), ZeroAddress());
+        require(pull <= MAX_PULL, InvalidPull(pull));
+        ConfigStorage storage $ = _config();
+        if (pull != 0) {
+            require(router.code.length != 0, NoCode(router));
+            // Covers the cash token too: it is always a listed asset. A removed asset stays refused.
+            require(!$.assetList.contains(router) && !$.removed.contains(router), RouterIsAsset(router));
+            require(!_isReserved(router), RouterReserved(router));
+            require(!_answersAllowance(router), RouterIsToken(router));
+        }
+        $.routerPull[router] = pull;
+        emit RouterSet(router, pull);
+    }
+
+    // ---- admin: roles, limits and the registry
+
+    /// The registry is set once. It is a proxy, so its address does not change with its code.
+    function setRegistry(address registry_) external onlyAdmin {
+        ConfigStorage storage $ = _config();
+        require($.registry == address(0), RegistryAlreadySet($.registry));
+        require(registry_ != address(0), ZeroAddress());
+        require(registry_.code.length != 0, NoCode(registry_));
+        require($.routerPull[registry_] == 0, RouterReserved(registry_));
+        $.registry = registry_;
+        emit RegistrySet(registry_);
+    }
+
+    /// The zero address means there is no keeper.
+    function setKeeper(address keeper_) external onlyAdmin {
+        _config().keeper = keeper_;
+        emit KeeperSet(keeper_);
+    }
+
+    /// The zero address means there is no guardian; the admin can still make every guardian call.
+    function setGuardian(address guardian_) external onlyAdmin {
+        _config().guardian = guardian_;
+        emit GuardianSet(guardian_);
+    }
+
+    /// The zero address means the chain has no sequencer feed (Robinhood Chain).
+    function setSequencerFeed(address feed) external onlyAdmin {
+        _config().sequencerFeed = feed;
+        emit SequencerFeedSet(feed);
+    }
+
+    function setParams(Params calldata p) external onlyAdmin {
+        _setParams(p);
+    }
+
+    function unpauseKeeper() external onlyAdmin {
+        _config().keeperPaused = false;
+        emit KeeperUnpaused();
+    }
+
+    /// @inheritdoc IVaultConfig
+    function setHalt(address token, uint64 until) external onlyAdmin {
+        _halt(token, until);
+    }
+
+    function setClosedUntil(uint64 until) external onlyAdmin {
+        _config().closedUntil = until;
+        emit ClosedUntilSet(until);
+    }
+
+    function setClosedDay(uint32 day, bool closed) external onlyAdmin {
+        _config().closedDays[day] = closed;
+        emit ClosedDaySet(day, closed);
+    }
+
+    /// @inheritdoc IVaultConfig
+    /// @dev Routers, the cash token and the feeds stay the admin's to change after it, each with its event.
+    ///
+    /// The public comes in only once the keys are where they will stay. A deploy leaves the deployer as
+    /// admin and as the beacon's owner until the admin key accepts each; launched in between, a deployer key
+    /// could still replace every vault's code. So a proposed admin, or a beacon that is not the admin's, stops
+    /// the launch.
+    function launch() external onlyAdmin {
+        ConfigStorage storage $ = _config();
+        require(!$.launched, AlreadyLaunched());
+        require($.pendingAdmin == address(0), AdminHandoverPending($.pendingAdmin));
+        _checkLaunch();
+        $.launched = true;
+        emit Launched();
     }
 
     /// Step one of a handover. Nothing changes until `next` accepts, so a mistyped address cannot take the
@@ -120,6 +246,32 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
         emit AdminChanged($.admin, msg.sender);
         $.admin = msg.sender;
         $.pendingAdmin = address(0);
+    }
+
+    // ---- guardian: tighten only. The keeper's path reads these; the owner's path never does
+
+    function pauseKeeper() external onlyGuardian {
+        _config().keeperPaused = true;
+        emit KeeperPaused(msg.sender);
+    }
+
+    /// @inheritdoc IVaultConfig
+    function haltAsset(address token, uint64 until) external onlyGuardian {
+        uint64 stored = _config().assets[token].haltUntil;
+        require(until > stored, OnlyTighten(stored, until));
+        _halt(token, until);
+    }
+
+    function extendClosedUntil(uint64 until) external onlyGuardian {
+        ConfigStorage storage $ = _config();
+        require(until > $.closedUntil, OnlyTighten($.closedUntil, until));
+        $.closedUntil = until;
+        emit ClosedUntilSet(until);
+    }
+
+    function addClosedDay(uint32 day) external onlyGuardian {
+        _config().closedDays[day] = true;
+        emit ClosedDaySet(day, true);
     }
 
     // ---- views
@@ -153,14 +305,114 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
     }
 
     /// @inheritdoc IVaultConfig
+    function wasAsset(address token) public view returns (bool) {
+        ConfigStorage storage $ = _config();
+        return $.assetList.contains(token) || $.removed.contains(token);
+    }
+
+    /// @inheritdoc IVaultConfig
+    function removedAssets() public view returns (address[] memory) {
+        return _config().removed.values();
+    }
+
+    /// @inheritdoc IVaultConfig
     function routerPull(address router) public view returns (uint8) {
         return _config().routerPull[router];
+    }
+
+    /// @inheritdoc IVaultConfig
+    function registry() public view returns (address) {
+        return _config().registry;
+    }
+
+    function keeper() public view returns (address) {
+        return _config().keeper;
+    }
+
+    function guardian() public view returns (address) {
+        return _config().guardian;
+    }
+
+    function sequencerFeed() public view returns (address) {
+        return _config().sequencerFeed;
+    }
+
+    function keeperPaused() public view returns (bool) {
+        return _config().keeperPaused;
+    }
+
+    /// @inheritdoc IVaultConfig
+    function launched() public view returns (bool) {
+        return _config().launched;
+    }
+
+    function closedUntil() public view returns (uint64) {
+        return _config().closedUntil;
+    }
+
+    /// @inheritdoc IVaultConfig
+    function closedDay(uint32 day) public view returns (bool) {
+        return _config().closedDays[day];
+    }
+
+    function params()
+        public
+        view
+        returns (
+            uint16 toleranceBps,
+            uint16 lossCapBps,
+            uint16 bandBps,
+            uint32 assetCooldown,
+            uint32 sessionOpen,
+            uint32 sessionClose
+        )
+    {
+        Params storage p = _config().params;
+        return (p.toleranceBps, p.lossCapBps, p.bandBps, p.assetCooldown, p.sessionOpen, p.sessionClose);
     }
 
     // ---- internals
 
     function _checkAdmin() internal view {
         require(msg.sender == _config().admin, NotAdmin(msg.sender));
+    }
+
+    /// What else must hold before `launch()`. The factory checks its beacon here.
+    function _checkLaunch() internal view virtual {}
+
+    /// The addresses that are part of the platform and so never a router. The factory adds its beacon and
+    /// every vault.
+    function _isReserved(address target) internal view virtual returns (bool) {
+        return target == PERMIT2 || target == address(this) || target == _config().registry;
+    }
+
+    function _setParams(Params memory p) private {
+        require(p.toleranceBps <= MAX_TOLERANCE_BPS, ParamOutOfBounds("toleranceBps", p.toleranceBps));
+        require(p.lossCapBps <= MAX_LOSS_CAP_BPS, ParamOutOfBounds("lossCapBps", p.lossCapBps));
+        require(p.assetCooldown >= MIN_ASSET_COOLDOWN, ParamOutOfBounds("assetCooldown", p.assetCooldown));
+        require(p.sessionClose <= DAY, ParamOutOfBounds("sessionClose", p.sessionClose));
+        require(p.sessionOpen < p.sessionClose, ParamOutOfBounds("sessionOpen", p.sessionOpen));
+        _config().params = p;
+        emit ParamsSet(p);
+    }
+
+    /// A halt is kept for an asset that is listed or was: a removed asset can be listed again, and its halt
+    /// must still be there.
+    function _halt(address token, uint64 until) private {
+        ConfigStorage storage $ = _config();
+        require($.assetList.contains(token) || $.removed.contains(token), AssetNotListed(token));
+        $.assets[token].haltUntil = until;
+        emit AssetHalted(token, until);
+    }
+
+    /// Whether `target` answers `allowance(address,address)` with a full word, as an ERC-20 does. No real
+    /// router has that function. Nothing is copied back, and the call gets at most `PROBE_GAS`.
+    function _answersAllowance(address target) private view returns (bool yes) {
+        bytes memory probe = abi.encodeCall(IERC20.allowance, (address(this), address(this)));
+        assembly ("memory-safe") {
+            let ok := staticcall(PROBE_GAS, target, add(probe, 0x20), mload(probe), 0x00, 0x00)
+            yes := and(ok, gt(returndatasize(), 0x1f))
+        }
     }
 
     /// For the factory that inherits this: append fields to `ConfigStorage`, never reorder them.

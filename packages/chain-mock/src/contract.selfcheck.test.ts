@@ -399,15 +399,19 @@ const FAULTS: { fault: string; wrap: Wrap; caught: string[]; chains?: MockChain[
   },
   // ---- what the review of FRAME-1b found: five adapters that were wrong on the money path and passed.
   {
-    fault: "approves the factory even when the plan's vault exists",
+    fault: "approves a spender that is not the plan's vault",
     wrap: (real) => ({
-      // An approval for a plan nobody has: its vault never exists, so the spender is always the factory.
+      // An approval for a plan nobody has: the cash is approved to an address that is not this plan's
+      // vault, which is what approving the factory, or any other spender, comes to.
       buildApprove: (a) =>
         'spender' in a
           ? real.buildApprove(a)
           : real.buildApprove({ owner: a.owner, basketId: '999999', amountRaw: a.amountRaw }),
     }),
-    caught: ['an approval is for the plan it names: its vault takes that much, and no more'],
+    caught: [
+      'an approval is for the plan it names: its vault takes that much, and no more',
+      'opening a vault stores the targets and the switch it was asked for, and takes its first deposit',
+    ],
     chains: ['robinhood'],
   },
   {

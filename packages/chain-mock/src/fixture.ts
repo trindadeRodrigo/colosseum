@@ -43,7 +43,7 @@ export async function mockFixture(
     flags: 0,
   });
   const send = async (tx: Promise<Parameters<typeof mock.send>[0]>) => mock.send(await tx);
-  // An approval names the plan: it goes to the factory before the plan's vault exists, to the vault after.
+  // An approval names the plan: it goes to the plan's vault, by its address, before the vault exists and after.
   const approve = async (basketId: string, dollars: number) => {
     if (!adapter.capabilities.needsApprove) return;
     await send(adapter.buildApprove({ owner, basketId, amountRaw: usd(dollars) }));
@@ -78,10 +78,12 @@ export async function mockFixture(
   const recipeOnchainId = mockRecipeId(chain, owner, FAMILY);
   const newAssetRecipeId = mockRecipeId(chain, owner, NEW_ASSET_FAMILY);
 
-  // The three vaults are opened through the factory, which takes the cash of each from one approval.
-  await approve('1', 1600);
+  // Each vault takes its own first deposit, from an approval to the address it is about to have.
+  await approve('1', 1000);
   const vault = await open('1', 1000, recipeOnchainId);
+  await approve('2', 500);
   const manualVault = await open('2', 500);
+  await approve('3', 100);
   const newAssetVault = await open('3', 100, newAssetRecipeId);
   const buySpy = { sell: mock.cash, buy: `${chain}:spy`, amountInRaw: usd(300) };
   await send(adapter.buildOwnerSwap({ vault, trades: [buySpy], slippageBps: 100 }));

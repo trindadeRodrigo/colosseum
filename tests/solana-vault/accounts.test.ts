@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  ASSET_KEEPER,
   ASSETS_DISCRIMINATOR,
   ASSETS_SIZE,
   assetsAddress,
@@ -13,6 +14,7 @@ import {
   decodeRecipe,
   decodeVault,
   isAccount,
+  keeperOn,
   MAX_ASSETS,
   MAX_COMPONENTS,
   MAX_POSITIONS,
@@ -338,7 +340,7 @@ describe('the decoders against bytes the program wrote', () => {
       launched: false,
       // DEFAULT_PARAMS in programs/tests/src/basket.ts: the starting values of DESIGN-VAULT section 5.
       toleranceBps: 75,
-      lossCapBps: 200,
+      lossCapBps: 100,
       bandBps: 50,
       twapDevBps: 200,
       maxPriceAgeS: 120,
@@ -415,22 +417,33 @@ describe('the decoders against bytes the program wrote', () => {
     expect(account.address).toBe(names.assets);
     const list = decodeAssetRegistry(account.data);
     expect(list.count).toBe(4);
-    expect(list.priceAccounts).toEqual(Array.from({ length: 4 }, () => ZERO_ADDRESS));
+    // The first of the four slots names the price account; the others are empty.
+    expect(list.priceAccounts).toEqual([
+      fixture.prices.account,
+      ZERO_ADDRESS,
+      ZERO_ADDRESS,
+      ZERO_ADDRESS,
+    ]);
     expect(list.assets).toEqual(
       (['spyx', 'nvdax', 'gold', 'tslax'] as const).map((name) => ({
         mint: names.mints[name],
         priceSlot: 0,
-        priceIndex: 0,
-        twapIndex: 0,
+        priceIndex: fixture.prices.entries[name].index,
+        twapIndex: fixture.prices.entries[name].twapIndex,
         decimals: expected.mints[name].decimals,
-        priceKind: 0,
-        session: 0,
+        priceKind: 1,
+        session: name === 'gold' ? 0 : 1,
         maxWeightBps: 5_000,
-        flags: 0,
+        // Bit 0: the keeper may trade it. TSLAx is listed and priced, and off.
+        flags: fixture.prices.entries[name].keeperOn ? ASSET_KEEPER : 0,
         sourceCheck: new Uint8Array(32),
-        reserved: new Uint8Array(21),
+        // In millionths of a dollar; TSLAx, which the keeper does not trade, has none.
+        minPrice: BigInt((fixture.prices.entries[name].range?.min ?? 0) * 1_000_000),
+        maxPrice: BigInt((fixture.prices.entries[name].range?.max ?? 0) * 1_000_000),
+        reserved: new Uint8Array(5),
       })),
     );
+    expect(list.assets.map(keeperOn)).toEqual([true, true, true, false]);
   });
 
   it('decodes the shared portfolio: its creator, its family, the version in effect and the one that waits', async () => {

@@ -10,7 +10,26 @@ export type WalletReason =
   | 'unsupported'
   | 'wrong_account'
   | 'bad_transaction'
-  | 'changed';
+  | 'changed'
+  // What a sign-in can fail on. The sign-in screen has a sentence for each (sign-in-view.ts).
+  /** The provider refuses this way of signing in for this app: it is switched off in its dashboard. */
+  | 'method_off'
+  /** The passkey prompt was closed, or ran out of time. */
+  | 'passkey_cancelled'
+  /** The provider has no account for the passkey that was used. */
+  | 'passkey_unknown'
+  /** The browser has no passkeys at all. */
+  | 'passkey_unsupported'
+  /** The wallet that was picked is not in the browser any more. */
+  | 'wallet_gone'
+  /** The wallet is there and gave no account or no signature: locked, or closed without a word. */
+  | 'wallet_silent'
+  /** The provider asked for fewer requests. */
+  | 'too_many'
+  /** The provider could not be reached. */
+  | 'offline'
+  /** Signed in, and the wallet that goes with a passkey could not be made. */
+  | 'wallet_not_made';
 
 /**
  * The reasons that are a WalletErrorCode of their own: `not_connected`, `wrong_account`, `unsupported`
@@ -39,12 +58,32 @@ type Loose = {
   name?: unknown;
   message?: unknown;
   privyErrorCode?: unknown;
+  status?: unknown;
   cause?: unknown;
 };
 
 /** The same failure as a wallet, a provider and a browser each report it. */
 function classify(e: Loose, text: string): [WalletErrorCode, WalletReason | null] | null {
   const privy = typeof e.privyErrorCode === 'string' ? e.privyErrorCode : '';
+  // Sign-in first: several of these read like a refusal or an expiry in words, and are neither.
+  // Privy answers 403 "Login with passkey not allowed" when the method is off in its dashboard.
+  if (privy === 'disallowed_login_method' || /login with [\w ]+ not allowed/i.test(text))
+    return ['unsupported', 'method_off'];
+  // A closed or timed-out passkey prompt: the browser's NotAllowedError, which Privy rewords.
+  if (
+    privy === 'passkey_not_allowed' ||
+    e.name === 'NotAllowedError' ||
+    /passkey request timed out or rejected/i.test(text)
+  )
+    return ['rejected', 'passkey_cancelled'];
+  if (privy === 'user_does_not_exist') return ['unknown', 'passkey_unknown'];
+  if (/webauthn is not supported/i.test(text)) return ['unsupported', 'passkey_unsupported'];
+  if (privy === 'too_many_requests' || e.status === 429) return ['unknown', 'too_many'];
+  if (
+    privy === 'client_request_timeout' ||
+    /failed to fetch|networkerror|load failed|network request failed/i.test(text)
+  )
+    return ['unknown', 'offline'];
   // EIP-1193 4001; a wallet-standard wallet says it in words; a dismissed passkey prompt is
   // NotAllowedError; Privy reports a closed modal as an exited flow.
   if (

@@ -1,0 +1,9 @@
+{
+  "format": "guard-deployment/1",
+  "network": "mock",
+  "chains": {
+    "solana": { "family": "mock", "cash": "solana:usdc" },
+    "robinhood": { "family": "mock", "cash": "robinhood:usdc" },
+    "base": { "family": "mock", "cash": "base:usdc" }
+  }
+}

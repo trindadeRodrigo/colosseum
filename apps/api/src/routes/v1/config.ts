@@ -4,6 +4,7 @@ import {
   ConfigResponse,
   chainProvenance,
   type EnvLike,
+  OrderError,
   parseChainConfigs,
   parseFlags,
 } from '@colosseum/schemas';
@@ -36,16 +37,18 @@ export function buildConfig(
   };
 }
 
-export async function registerConfigRoute(app: FastifyInstance, env: EnvLike) {
-  const config = buildConfig(env);
+export function registerConfigRoute(app: FastifyInstance, config: ConfigResponse) {
   app.withTypeProvider<ZodTypeProvider>().get(
     '/v1/config',
     {
+      // Read before anybody is signed in: the web compares its networks with these first.
+      config: { auth: 'public', limit: 'standard' },
       schema: {
         summary: 'Feature flags and the chains this deployment runs on',
         description:
           'A feature shows only when its flag and the chain allow it. Each chain names its network (mainnet, testnet or local) and the provenance label its figures carry: anything that is not `live` is shown as a test network or as MOCK.',
-        response: { 200: ConfigResponse },
+        // Open to anybody, and counted like any other /v1 request: a 429 has the one refusal shape.
+        response: { 200: ConfigResponse, default: OrderError },
       },
     },
     async () => config,

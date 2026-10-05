@@ -1,8 +1,17 @@
 # contracts
 
-The EVM vault contracts, a Foundry project. The design is `docs/vault/DESIGN-VAULT.md`, sections 3.8, 5 and 13.
+The EVM vault contracts, a Foundry project. The design is `docs/vault/DESIGN-VAULT.md`, sections 3.8, 5, 6 and 13.
 
-Built so far (EVM-1): the vault's owner path behind a beacon (`src/BasketVault.sol`) and the platform settings it reads (`src/VaultConfig.sol`). The factory, the registry and the owner swap are EVM-2; the keeper path is EVM-3.
+Built so far:
+
+| Contract | What it is | Slot |
+|---|---|---|
+| `src/BasketVault.sol` | One person's vault for one plan, the logic behind every vault's beacon proxy. The owner's path: deposit cash, swap, set targets, withdraw in kind | EVM-1, EVM-2 |
+| `src/VaultFactory.sol` on `src/VaultConfig.sol` | Creates the vaults and lists them; holds the platform's settings, the three roles and the guardian's switches. A UUPS proxy | EVM-1, EVM-2 |
+| `src/IndexRegistry.sol` | The shared portfolios and the four author limits. A UUPS proxy | EVM-2 |
+| `src/VaultBeacon.sol` | The one beacon of a chain, handed over in two steps | EVM-2 |
+
+The keeper path is EVM-3: `keeperSwap`, `acceptVersion`, `adoptVersion`, `setAutoFollow`, `snapshot`.
 
 ## Run
 
@@ -15,28 +24,93 @@ RH_FORK_URL=https://robinhood.drpc.org pnpm test:contracts   # also the tests on
 
 The fork tests read a pinned block and send nothing. Without `RH_FORK_URL` they are skipped.
 
+The ABIs of the five contracts are committed in `idl/evm/`, beside the Solana interface files: `BasketVault`, `VaultFactory`, `VaultConfig` (the settings half of the factory), `IndexRegistry`, `VaultBeacon`. After a change to a contract's interface, `cd contracts && forge build && node script/abi.mjs` writes them again; `test/Abi.t.sol` fails while they are not what the build gives.
+
 Run forge from this folder, not with `--root`: with `--root` a failing run writes a `cache/` folder where it was called from.
+
+`rules-bite.mjs` works on copies of the project in a temporary folder and never edits the checkout. It runs one compiler at a time unless told otherwise (`--jobs 3` needs a machine with memory for three), and a full run takes about an hour and a half that way; `--from` and `--count` run it in pieces, and `RULES_BITE_DIR` keeps the copy between them. A rule bites only when its named test fails: a set-up that fails with the rule removed does not count. `--check` verifies in a second that each rule's text and test still exist, and prints how many rules and distinct removals there are, by file.
+
+## Deploy, as a dry run
+
+```
+anvil                                                                   # a local chain, in another terminal
+cd contracts && forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 \
+  --sender 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+```
+
+It simulates against the chain the URL answers for and prints what it would deploy: the vault logic, the beacon, the factory and the registry with their logic contracts, and the settings it wrote. Nothing is sent without `--broadcast`, and sending is a person's to do. The settings come from `script/config/<chain id>.json`; `example.json` shows every field. A file is refused on any chain but the one it names.
+
+The deployer is the admin while the script runs and proposes the file's admin at the end. Until that key calls `acceptAdmin()` on the factory and `acceptOwnership()` on the beacon, the deployer still holds both.
 
 ## What holds today
 
-- Tokens leave a vault only by the owner's call and only to the stored owner. No function takes a recipient. There is no `fallback` and no `receive`. A test pins the full list of entry points.
-- A deposit is the chain's cash token, read from the config each time. A token sent in from outside is not in `tokens()`; the owner takes it out with `withdraw(token, amount)`.
-- `withdraw` and `withdrawAll` call neither the config nor anything else but the token.
-- `withdrawAll` gives each token 100,000 gas for its balance read and 300,000 for its transfer, and needs 420,000 left before each token. Short of that it fails as a whole, so a token is never skipped for lack of gas. `withdraw` passes on all the gas.
-- State is in ERC-7201 namespaces: `basket.storage.BasketVault` and `basket.storage.VaultConfig`. Append to the structs, never reorder.
+**A vault and its owner**
 
-## Before the factory and the swaps
+- A vault is created by the factory and by nothing else. Its address is fixed by the factory, the beacon, the owner and the plan id, and the owner is the caller: no argument names one. `vaultOf(owner, planId)` answers before the vault exists, so a token sent there in advance waits for that owner.
+- The proxy's constructor runs `initialize(owner, planId)`; the caller becomes the vault's config. The factory's next call, `start`, sets the targets and runs the first deposit and swaps. `start` answers only the factory and only in the creating transaction: the mark it needs is in transient storage. After that the factory has no way into a vault.
+- Tokens leave a vault only by the owner's call: to the stored owner, or as the input of a swap the owner signed and for no more than its `amountIn`. No function takes a recipient. There is no `fallback`, no `receive` and no `isValidSignature`. `test/EntryPoints.t.sol` pins every entry point of every contract, each with its reason.
+- A deposit is the chain's cash token, read from the config each time. A token sent in from outside is not in `tokens()`; the owner takes it out with `withdraw(token, amount)`, or trades it if the platform lists it.
+- `withdraw` and `withdrawAll` call neither the config nor anything else but the token. `withdrawAll` gives each token 100,000 gas for its balance read and 300,000 for its transfer, and needs 420,000 left before each token. Short of that it fails as a whole, so a token is never skipped for lack of gas.
 
-Not built in EVM-1. EVM-2 and EVM-3 start from this list.
+**The owner's swap**
 
-1. **The factory creates every vault with the init call inside the proxy's constructor, and binds the address to the owner** (the salt includes the owner). A beacon proxy created without its init call belongs to whoever initialises it first: in the review a stranger did that and withdrew tokens that had been sent to the address in advance. The app and the keeper trust only vaults the factory registered (`vaultOf`, `vaultAt`), never an address that merely runs the same code.
-2. **Every way in adds the token to `tokens`.** `createVaultAndBuy`, the output of `ownerSwap` and the output of `keeperSwap` each add their token, as `deposit` does. Otherwise `withdrawAll` leaves it behind and reports nothing.
-3. **A token is never a router, and Permit2 is never a router.** With a token as the "router", swap data can be `approve(attacker, max)`: it moves no balance, so it passes every balance check. The config already refuses a listed asset as a router and a router as an asset. Permit2 is neither a listed asset nor ours, so the factory must refuse it by address, and with it the vault's own address.
-4. **There is no delisting.** An asset, once listed, stays. If a way to remove one is added, decide what happens to the cash token, to targets that name the asset, and to a vault's `tokens`.
-5. **`setAsset` keeps the stored `haltUntil`.** The guardian's `haltAsset` (tighten only) and the admin's way to shorten a halt are both still to build.
-6. **A later version of the vault logic that needs a `reinitializer` must gate it to the owner or the factory.** An open one is a second `initialize`.
-7. **`multicall` and the reentrancy guard cannot both be on the same functions.** `multicall` is a delegatecall to the vault itself, so a guarded `multicall` blocks every guarded call inside it. Guard the inner functions and leave `multicall` unguarded, and check that hostile case A17 (a router that re-enters `multicall`) still fails.
-8. **`isValidSignature` must be absent, with a test.** With ERC-1271 on the vault, the router's Permit2 command becomes usable from the keeper's call data. The entry-point test in `test/BasketVaultProxy.t.sol` is the place: it fails when any function is added.
-9. **The beacon should be `Ownable2Step`.** OpenZeppelin's `UpgradeableBeacon` hands ownership over in one step and can renounce it. A mistyped address there loses the upgrade key for every vault.
-10. **`initialize` will change.** It takes the owner, the plan id and the config today. Nothing is deployed, so EVM-2 adds the targets, the index and the registry freely, and appends to `VaultStorage`.
-11. **Each new check gets a row in `script/rules-bite.mjs`**, and each new entry point a line in the entry-point test.
+- The router must be on the config's list, which says how it pulls: 1 directly, 2 through Permit2. The vault approves exactly `amountIn`, calls the router, takes the approval back and reads that it is gone, on the token and inside Permit2.
+- The vault judges the swap by its own balances: at most `amountIn` of the input spent, at least `minOut` of the output received, no other token in `tokens()` lower than before. Both sides of a swap join `tokens()`.
+- The input is a token the platform lists or once listed; the output one it lists now. So an asset taken off the list can be sold and withdrawn, and not bought.
+- A token that is or was listed, Permit2, the factory, the registry, the beacon and every vault can never be a router. Neither can any contract that answers `allowance(address,address)` as a token does. The vault checks again for itself, Permit2 and any token it holds.
+- One reentrancy guard covers every function that changes state. `multicall` is outside it on purpose: it only calls back into the vault, and each inner call takes the guard.
+- A token whose balance cannot be read at all is left out of the "no other token went down" check, so that a token frozen by its issuer does not stop trades in the others.
+
+**The platform's settings**
+
+- The admin sets everything and is handed over in two steps. The guardian (or the admin) can only tighten: pause the keeper, halt an asset for longer, close the market for longer, add a closed day. Only the admin undoes any of it. None of it is read on the owner's path.
+- `launch()` is one-way. From then on the publish delay is at least 172,800 s. Routers, the cash token and the feeds stay the admin's to change, each with an event. It is refused while a hand-over is half done: an admin proposed and not yet accepted, or a beacon that is not the admin's or is being handed to someone. A deploy leaves both in that state until the admin key accepts each, and a deployer key left with the beacon could replace every vault's code.
+- The registry is set once. The keeper's limits have hard bounds: tolerance at most 300 bps, weekly loss cap at most 500 bps, cooldown at least 600 s.
+
+**Shared portfolios**
+
+- Version 1 takes effect at once. A later version takes effect one publish delay after it is published, by the clock and with no transaction; none can be published while one waits, and one per delay.
+- The four limits are checked on every version and a refusal carries the number of the lowest rule broken, `CreatorLimit(reason)`. `test/IndexRegistryVectors.t.sol` drives the registry through all 87 cases of `fixtures/creator-limits/vectors.json`. `previewPublish` gives the same answer without sending.
+- The creator, the guardian or the admin can cancel a waiting version. The wait before the next one is still counted from when it was published, and its number is not used again.
+- A vault that follows a shared portfolio copies the active version at creation, if it is the version the person reviewed: otherwise `VersionMismatch` (A18).
+
+**Storage**
+
+ERC-7201 namespaces: `basket.storage.BasketVault`, `basket.storage.VaultConfig`, `basket.storage.VaultFactory`, `basket.storage.IndexRegistry`. A later version adds fields at the end of `VaultStorage`, `ConfigStorage`, `FactoryStorage`, `RegistryStorage` and the registry's `Index`, and never reorders them. `test/StorageLayout.t.sol` pins where each field is, the `operator` in the slot it shares included.
+
+Three structs cannot grow at all, because of where they are stored: `Params` sits inline in `ConfigStorage` with fields after it, so a new keeper limit is a new field at the end of `ConfigStorage`; the registry's `StoredVersion` sits twice in a fixed array, so a field added to it would move the second version; `Weight` is an array element of one slot. `AssetConfig` is a mapping's value and can take fields at its end.
+
+## Known limits
+
+From the review of this slot. None lets anyone but the owner move a vault's tokens.
+
+- **A token sent to a vault's address before the vault exists** waits for its owner as long as the factory's logic carries the same proxy creation code: the address is derived from it. The project is built with no metadata hash in the bytecode (`bytecode_hash = "none"`, `cbor_metadata = false` in `foundry.toml`), so a comment, a file path or an unrelated source change does not move it. Two things still do: a change to the code of OpenZeppelin's `BeaconProxy` or of what it inherits, and a change to what the compiler emits for it (another solc version, optimizer setting or pipeline). A factory upgrade built after either would move `vaultOf` for every vault not yet created. `test_vaultOf_theProxysCreationCodeIsPinned` fails when a build changes that code. Vaults that exist are unaffected. The advice stands whatever the build: do not send tokens to a vault before it exists.
+- **Ether at a vault's address cannot be taken out.** Nothing in the vault is payable, so none can be sent to a live vault; ether sent to the address before the vault exists, or forced in, stays.
+- **`launch()` does not lengthen a wait that has begun.** The 48-hour floor holds for every version published after it. A version already waiting keeps the time it was given, so before `launch()` the team lets waiting versions take effect or cancels them.
+- **A shared portfolio can be left unable to publish.** An asset taken off the list cannot be in a new version at all, so every removed asset must leave in the same version, and a version may move 20% at most. A portfolio whose removed assets weigh more than 20% together cannot publish: two at 15% each do it, though neither is above 20%. The same holds for an asset that becomes the cash token, or whose ceiling falls more than 20 points under its weight. The four rules say this on every chain. The way out is the admin's: list one of the assets again, and the author steps down over two versions. Until a rule for it is decided, do not remove assets that a live portfolio holds above 20% together.
+- **A vault can follow a version that names a removed asset or today's cash token**: it copies the active version as it is. It cannot buy the removed asset. The keeper path has to live with such targets.
+- **A token that fixes Permit2's allowance at infinity** (some token libraries do by default) can be bought, withdrawn and sold through a router that pulls directly, and not sold through one that pulls through Permit2: the vault cannot set or clear that allowance. Do not list one on a chain whose only router is pull 2, and do not build test tokens that way.
+- **The check that a router is not a token** is made once, when the router is listed, with 100,000 gas for the probe. A contract that starts answering as a token later is not seen. What that could reach is a token sent to a vault from outside and never listed: listed tokens are refused by address.
+
+## What the app and the trust notice must say
+
+The admin key can replace the factory's logic. Through that it can reach two things a vault that exists is safe from: cash a person has approved to a vault not yet created, and tokens sent to that address in advance (`test_trust_theFactoryAdminReachesAVaultNotYetCreated_andNoVaultThatExists`). The beacon's key can replace every vault's code. So:
+
+- **Approve the exact amount, in the same step as the create.** The approval to `vaultOf(owner, planId)` and `createVaultAndBuy` go out together, the first for exactly `cashAmount`.
+- **Never send tokens to a vault's address before the vault exists.** Create it first.
+- **Never leave a standing allowance to a vault.** Each `deposit` gets its own approval for its own amount.
+- **Never create a vault through a shared helper contract.** The owner is `msg.sender` of the factory call: a helper that calls the factory owns the vault, for good.
+
+## For the keeper path (EVM-3)
+
+1. **The vault's storage is ready**: `indexId`, `acceptedVersion`, `autoFollow`, `operator` and `targets` are in `VaultStorage`. Nothing sets `autoFollow` or `operator` yet, and the factory refuses `autoFollow = true` at creation (`AutoFollowUnavailable`). Turning that on is a decision about what a create with auto-follow must check; lift the refusal in the same change that builds `setAutoFollow`. Append `lastKeeperAt` and the loss counter after `targets`.
+2. **`_follow` is the accept.** `acceptVersion(indexId, expectedVersion)` is `_follow` behind `onlyOwner nonReentrant`, plus `VersionNotEffective` for a version that is still waiting. `adoptVersion` reads the registry the same way.
+3. **Every new function that changes state takes the guard**, `adoptVersion` included: it is callable by anyone, and A17 is a router re-entering it mid-swap.
+4. **`keeperSwap` can reuse `_swap`**, which already does the approval, the take-back and the balance checks. Two things differ. The keeper's `minOut` is computed by the vault from the feeds, not passed in. And the "no other token went down" check leaves out a token whose balance could not be read before the swap: for the owner that is a liveness choice, for the keeper decide whether an unreadable accepted asset should stop the trade.
+5. **A removed asset keeps its settings** (`asset()` still answers, `isAsset` is false, `wasAsset` true), so it can be valued and sold. Decide whether the keeper may sell one.
+6. **The guardian's switches are stored and not yet read**: `keeperPaused`, `haltUntil`, `closedUntil`, `closedDay`, the params. The keeper path reads them; the owner path must never.
+7. **A later version of the vault logic that needs a `reinitializer` must gate it to the owner or the factory.** An open one is a second `initialize`.
+8. **Each new check gets a row in `script/rules-bite.mjs`**, and each new entry point a line in `test/EntryPoints.t.sol`.
+9. **Accept and adopt check that every asset of the version is still listed.** `_follow` copies the active version as it is today. And the guardian cancels waiting versions that name a removed asset.
+10. **A tracked token gone bad blocks later owner swaps, with no way to drop it.** A token in `tokens` whose balance read fails after having answered makes every later `ownerSwap` fail on `OtherTokenDebited`; one that never answers is skipped. Decide whether the owner may take a token out of `tokens`.
+11. **Versions published before `launch()`** keep their short wait. Either a setter that lengthens a waiting version, or a rule that `launch()` needs none waiting.

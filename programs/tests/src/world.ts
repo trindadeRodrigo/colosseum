@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto';
 import {
   type Address,
   generateKeyPairSigner,
+  getAddressEncoder,
   type Instruction,
   type KeyPairSigner,
   type TransactionSigner,
@@ -16,6 +18,7 @@ import {
   getUpdateMultiplierScaledUiMintInstruction,
 } from '@solana-program/token-2022';
 import {
+  ASSET_KEEPER,
   assetsAddress,
   configAddress,
   createVaultInstruction,
@@ -24,8 +27,10 @@ import {
   familyId,
   initAssetsInstruction,
   initConfigInstruction,
+  PRICES_SIZE,
   publishRecipeInstruction,
   recipeAddress,
+  setPriceAccountInstruction,
   updateRecipeInstruction,
   upsertAssetInstruction,
   vaultAddress,
@@ -140,6 +145,89 @@ export type World = {
   mints: Record<MintName, TestMint>;
 };
 
+/**
+ * The world's price account: round numbers at chosen indexes, so nobody reads one as a market price.
+ * `age` is how old the entry is, in seconds, at the moment the account is written. An asset's
+ * one-hour average sits at `twapIndex`, with the same value and the same age; the stock tokens are
+ * at the entries of the real ones (fixtures/solana-vault/scope-indexes.json). Cash has an entry in
+ * the account and none in the program's list, which never prices cash.
+ */
+export const WORLD_PRICES: Record<
+  MintName,
+  { index: number; twapIndex: number | null; value: bigint; exponent: bigint; age: number }
+> = {
+  usdc: { index: 13, twapIndex: null, value: 100_000_000n, exponent: 8n, age: 20 },
+  spyx: { index: 344, twapIndex: 279, value: 10_000_000_000n, exponent: 8n, age: 30 },
+  nvdax: { index: 332, twapIndex: 269, value: 500_000n, exponent: 4n, age: 45 },
+  // Older than the 120 s the keeper accepts: the reader still reports it, with its age.
+  gold: { index: 100, twapIndex: 101, value: 2_005n, exponent: 1n, age: 400 },
+  tslax: { index: 338, twapIndex: 273, value: 20n, exponent: 0n, age: 0 },
+};
+/** An entry nobody wrote. */
+export const WORLD_EMPTY_INDEX = 7;
+/** The assets the admin has switched on for the keeper. TSLAx is listed and priced, and off. */
+export const WORLD_KEEPER_ON: readonly MintName[] = ['spyx', 'nvdax', 'gold'];
+/** The price range of each asset the keeper trades, in dollars: a fifth either side of its price.
+ * TSLAx, which is off, has none. */
+export const WORLD_RANGES: Partial<Record<MintName, { min: number; max: number }>> = {
+  spyx: { min: 80, max: 120 },
+  nvdax: { min: 40, max: 60 },
+  gold: { min: 160, max: 240 },
+};
+
+/** The bytes of the world's price account in Scope's layout, each entry as old as `WORLD_PRICES`
+ * says at `now`. `mappings` fills the header's second field, which nothing here reads. */
+export function worldPriceAccount(slot: bigint, now: bigint, mappings: Address): Uint8Array {
+  const data = new Uint8Array(PRICES_SIZE);
+  // Scope's own header: Anchor's discriminator for `OraclePrices`, then the mappings account.
+  data.set(createHash('sha256').update('account:OraclePrices').digest().subarray(0, 8), 0);
+  data.set(getAddressEncoder().encode(mappings), 8);
+  const view = new DataView(data.buffer);
+  for (const { index, twapIndex, value, exponent, age } of Object.values(WORLD_PRICES))
+    for (const entry of twapIndex === null ? [index] : [index, twapIndex]) {
+      const at = 40 + 56 * entry;
+      view.setBigUint64(at, value, true);
+      view.setBigUint64(at + 8, exponent, true);
+      view.setBigUint64(at + 16, slot, true);
+      view.setBigUint64(at + 24, now - BigInt(age), true);
+    }
+  return data;
+}
+
+/** The world's prices as the fixture states them, by name. */
+export function worldPricesExpected() {
+  const decimal = (value: bigint, exponent: bigint) => {
+    const digits = value.toString().padStart(Number(exponent) + 1, '0');
+    const whole = digits.slice(0, digits.length - Number(exponent));
+    const frac = digits.slice(digits.length - Number(exponent)).replace(/0+$/, '');
+    return frac ? `${whole}.${frac}` : whole;
+  };
+  return Object.fromEntries(
+    Object.entries(WORLD_PRICES).map(([name, p]) => [
+      name,
+      {
+        index: p.index,
+        usdPerToken: decimal(p.value, p.exponent),
+        ageSeconds: p.age,
+        twapIndex: p.twapIndex,
+        keeperOn: WORLD_KEEPER_ON.includes(name as MintName),
+        range: WORLD_RANGES[name as MintName] ?? null,
+      },
+    ]),
+  ) as Record<
+    MintName,
+    {
+      index: number;
+      usdPerToken: string;
+      ageSeconds: number;
+      twapIndex: number | null;
+      keeperOn: boolean;
+      /** The plausible price range in dollars; null for an asset that has none. */
+      range: { min: number; max: number } | null;
+    }
+  >;
+}
+
 /** 2100-01-01: a multiplier scheduled for then is not in force in any test. */
 const FAR_FUTURE = 4_102_444_800n;
 const SOL = 1_000_000_000n;
@@ -200,11 +288,14 @@ async function mintTo(
 
 /**
  * Builds the world. `deployer` is the vault program's upgrade authority, holds SOL, and pays for
- * everything. `priceOwner` goes into Config as the program that must own a price account.
+ * everything. `priceAccount` is an account in Scope's layout that already exists and that
+ * `priceOwner` owns: the asset list names it, and `priceOwner` goes into Config as the program that
+ * must own a price account.
  */
 export async function buildWorld(
   ledger: Ledger,
   deployer: TransactionSigner,
+  priceAccount: Address,
   priceOwner: Address = MOCK_ROUTER_PROGRAM,
 ): Promise<World> {
   const [owner, other, stranger, guardian, keeper, creator] = await Promise.all(
@@ -249,12 +340,22 @@ export async function buildWorld(
     }),
   ]);
 
-  // The platform's list: the four assets. Cash is never a position, so it is not listed.
+  // The platform's list: the four assets, each with its price entry and its average in the one
+  // price account, the stock tokens on US hours. Cash is never a position, so it is not listed.
   await ledger.send(deployer, [
     await initAssetsInstruction(deployer),
+    await setPriceAccountInstruction(deployer, 0, priceAccount),
     ...(await Promise.all(
       (['spyx', 'nvdax', 'gold', 'tslax'] as const).map((name) =>
-        upsertAssetInstruction(deployer, mints[name].address),
+        upsertAssetInstruction(deployer, mints[name].address, {
+          priceKind: 1,
+          priceIndex: WORLD_PRICES[name].index,
+          twapIndex: WORLD_PRICES[name].twapIndex ?? 0,
+          session: name === 'gold' ? 0 : 1,
+          flags: WORLD_KEEPER_ON.includes(name) ? ASSET_KEEPER : 0,
+          minPrice: BigInt((WORLD_RANGES[name]?.min ?? 0) * 1_000_000),
+          maxPrice: BigInt((WORLD_RANGES[name]?.max ?? 0) * 1_000_000),
+        }),
       ),
     )),
   ]);

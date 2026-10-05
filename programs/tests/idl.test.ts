@@ -10,24 +10,36 @@ import {
 import { describe, expect, it } from 'vitest';
 import {
   acceptAdminInstruction,
+  acceptVersionInstruction,
+  addClosedDayInstruction,
+  adoptVersionInstruction,
   cancelPendingInstruction,
   createVaultInstruction,
   DEFAULT_PARAMS,
   depositInstruction,
+  extendClosedUntilInstruction,
   FROZEN_ERRORS,
   familyId,
   initAssetsInstruction,
   initConfigInstruction,
+  keeperLegInstruction,
   launchInstruction,
   ownerSwapInstruction,
   pauseKeeperInstruction,
   proposeAdminInstruction,
   publishRecipeInstruction,
+  setAutoFollowInstruction,
   setCashMintInstruction,
+  setClosedDayInstruction,
+  setClosedUntilInstruction,
+  setDefaultKeeperInstruction,
+  setGuardianInstruction,
   setParamsInstruction,
+  setPriceAccountInstruction,
   setPriceOwnerInstruction,
   setRouterInstruction,
   setTargetsInstruction,
+  syncBalancesInstruction,
   unpauseKeeperInstruction,
   updateRecipeInstruction,
   upsertAssetInstruction,
@@ -37,9 +49,14 @@ import {
 import { BASKET_PROGRAM, MOCK_ROUTER_PROGRAM, REPO_ROOT, SYSTEM_PROGRAM } from './src/env';
 import {
   initPairInstruction,
+  initPricedPairInstruction,
+  initPricesInstruction,
   initRouterInstruction,
   routeInstruction,
+  setPricedPairInstruction,
   setPriceInstruction,
+  setPriceWriterInstruction,
+  writePriceInstruction,
 } from './src/mock-router';
 import { type TestMint, TOKEN_PROGRAM } from './src/tokens';
 
@@ -139,6 +156,33 @@ describe('the committed IDL', () => {
         routerAccounts: [],
       }),
       withdraw: await withdrawInstruction({ owner: signer, vault, mint, amount: 1n }),
+      set_guardian: await setGuardianInstruction(signer, other),
+      set_default_keeper: await setDefaultKeeperInstruction(signer, other),
+      set_closed_until: await setClosedUntilInstruction(signer, 1n),
+      set_closed_day: await setClosedDayInstruction(signer, 1, true),
+      extend_closed_until: await extendClosedUntilInstruction(signer, 1n),
+      add_closed_day: await addClosedDayInstruction(signer, 1),
+      set_price_account: await setPriceAccountInstruction(signer, 0, other),
+      accept_version: await acceptVersionInstruction({
+        owner: signer,
+        vault,
+        recipe: other,
+        expectedVersion: 1,
+      }),
+      set_auto_follow: await setAutoFollowInstruction({ owner: signer, vault, on: true }),
+      adopt_version: await adoptVersionInstruction({ vault, recipe: other }),
+      sync_balances: await syncBalancesInstruction({ signer, vault, tokenAccounts: [] }),
+      keeper_leg: await keeperLegInstruction({
+        keeper: signer,
+        vault,
+        inputMint: mint,
+        outputMint: { ...mint, address: vault },
+        amountIn: 1n,
+        router: other,
+        data: new Uint8Array(8),
+        routerAccounts: [],
+        priceAccount: other,
+      }),
     };
     expect(Object.keys(built).sort()).toEqual(basket.instructions.map((i) => i.name).sort());
     for (const [name, instruction] of Object.entries(built)) {
@@ -157,8 +201,26 @@ describe('the committed IDL', () => {
     const mintOut: TestMint = { ...mintIn, address: signer.address };
     const built: Record<string, Instruction> = {
       init_router: await initRouterInstruction(signer),
+      init_prices: await initPricesInstruction(signer, signer.address),
+      set_price_writer: await setPriceWriterInstruction(signer, signer.address),
+      write_price: await writePriceInstruction(signer, signer.address, {
+        priceIndex: 1,
+        twapIndex: 2,
+        price: { value: 1n, unixTimestamp: 1n },
+        twap: { value: 1n, unixTimestamp: 1n },
+      }),
       init_pair: await initPairInstruction(signer, mintIn.address, mintOut.address, 1n, 1n),
       set_price: await setPriceInstruction(signer, mintIn.address, mintOut.address, 1n, 1n),
+      init_priced_pair: await initPricedPairInstruction(signer, mintIn.address, mintOut.address, {
+        assetIsInput: false,
+        priceIndex: 1,
+        spreadBps: 0,
+      }),
+      set_priced_pair: await setPricedPairInstruction(signer, mintIn.address, mintOut.address, {
+        assetIsInput: false,
+        priceIndex: 1,
+        spreadBps: 0,
+      }),
       route_v2: await routeInstruction({
         trader: signer,
         mintIn,
@@ -197,6 +259,8 @@ describe('the committed IDL', () => {
         'maxWeightBps',
         'flags',
         'sourceCheck',
+        'minPrice',
+        'maxPrice',
         'reserved',
       ].map(snake),
     );

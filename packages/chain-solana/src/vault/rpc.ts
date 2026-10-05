@@ -3,16 +3,23 @@ import {
   type Address,
   type Base58EncodedBytes,
   type Commitment,
+  createSolanaRpc,
   type GetBalanceApi,
   type GetBlockHeightApi,
+  type GetGenesisHashApi,
+  type GetLatestBlockhashApi,
   type GetMinimumBalanceForRentExemptionApi,
   type GetMultipleAccountsApi,
   type GetProgramAccountsApi,
+  type GetRecentPrioritizationFeesApi,
   type GetSignatureStatusesApi,
+  type GetSignaturesForAddressApi,
   type GetTransactionApi,
   getBase58Decoder,
   getBase64Encoder,
   type Rpc,
+  type SendTransactionApi,
+  type SimulateTransactionApi,
 } from '@solana/kit';
 
 // The RPC seam. The caller makes the client (`createSolanaRpc(url)`) and hands it in; nothing here knows
@@ -29,7 +36,37 @@ export type VaultRpc = Rpc<
     GetTransactionApi
 >;
 
+/**
+ * What the builders and the probe call on top of the reads: a blockhash, a simulation, the recent
+ * priority fees, a send, and a signer's recent signatures. Still no URL here and no key.
+ */
+export type VaultWriteRpc = Rpc<
+  GetBalanceApi &
+    GetBlockHeightApi &
+    GetMinimumBalanceForRentExemptionApi &
+    GetMultipleAccountsApi &
+    GetProgramAccountsApi &
+    GetSignatureStatusesApi &
+    GetTransactionApi &
+    GetLatestBlockhashApi &
+    SimulateTransactionApi &
+    GetRecentPrioritizationFeesApi &
+    SendTransactionApi &
+    GetSignaturesForAddressApi
+>;
+
 export type RawAccount = { address: Address; owner: Address; lamports: bigint; data: Uint8Array };
+
+/**
+ * A client for the builders and the probe, from a URL the caller holds. The URL is never logged and
+ * never put in a message: an RPC address can carry a key.
+ */
+export function createVaultRpc(url: string): VaultNodeRpc {
+  return createSolanaRpc(url);
+}
+
+/** The write side's calls and the node's genesis hash: what a server checks at start (`assertNode`). */
+export type VaultNodeRpc = VaultWriteRpc & Rpc<GetGenesisHashApi>;
 
 /** The most addresses one getMultipleAccounts call takes. */
 const BATCH = 100;
