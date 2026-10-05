@@ -149,7 +149,7 @@ The admin key can replace the factory's logic. Through that it can reach two thi
 5. The keeper may sell a removed asset still held as a target, and may not buy it.
 6. The keeper path reads the pause, the halts, `closedUntil`, the closed days and the params; the owner path reads none of them (`test_I4_theOwnersPath_withEveryKeeperSwitchAgainstIt`).
 7. Still true of any later version: a `reinitializer` must be gated to the owner or the factory.
-8. Done: 101 rows in `script/rules-bite.mjs` and the entry points in `test/EntryPoints.t.sol`.
+8. Done: 89 more rows in `script/rules-bite.mjs`, 318 in all, and the entry points in `test/EntryPoints.t.sol`.
 9. Not done, on purpose: accept and adopt copy a version that names a removed asset as it is, as Solana does. The keeper never buys a removed asset, so that weight stays in cash. The guardian still cancels waiting versions that name one.
 10. Still open: a token in `tokens` whose balance read fails after having answered blocks later swaps of the owner and of the keeper; the owner cannot drop it from `tokens`.
 11. Still open: versions published before `launch()` keep their short wait.
