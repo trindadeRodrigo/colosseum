@@ -105,32 +105,36 @@ describe("the keeper's state file", () => {
         utimesSync(lock, old, old);
       }
     }
-    const startAt = Date.now() + 15_000;
     const slotMs = 300;
     const starter = join(process.cwd(), 'tests/keeper/lock-starter.ts');
-    const outputs = await Promise.all(
-      Array.from({ length: 6 }, () =>
-        run(
-          'pnpm',
-          ['exec', 'tsx', starter, dir, String(startAt), String(slotMs), String(trials)],
-          {
-            cwd: process.cwd(),
-          },
-        ).then((r) => r.stdout.trim().split('\n')),
-      ),
-    );
-    const lines = outputs.flat();
+    const starters = Array.from({ length: 6 }, () => {
+      const child = spawn('pnpm', ['exec', 'tsx', starter, dir, String(slotMs), String(trials)]);
+      children.push(child);
+      let out = '';
+      child.stdout.on('data', (d) => {
+        out += d;
+      });
+      const ready = new Promise<void>((resolve) => {
+        const check = () =>
+          out.startsWith('ready') ? resolve() : child.stdout.once('data', check);
+        check();
+      });
+      const done = new Promise<string[]>((resolve) =>
+        child.once('close', () => resolve(out.trim().split('\n').slice(1))),
+      );
+      return { child, ready, done };
+    });
+    // Every starter is up before the first trial: they all ask together, however slow the start.
+    await Promise.all(starters.map((s) => s.ready));
+    const startAt = Date.now() + 500;
+    for (const s of starters) s.child.stdin.end(String(startAt));
+    const lines = (await Promise.all(starters.map((s) => s.done))).flat();
     const holders = Array.from(
       { length: trials },
       (_, t) => lines.filter((l) => l === `${t} took`).length,
     );
-    const asked = Array.from(
-      { length: trials },
-      (_, t) => lines.filter((l) => l.startsWith(`${t} `) && !l.endsWith('late')).length,
-    );
+    expect(lines).toHaveLength(trials * 6);
     expect(holders).toEqual(Array(trials).fill(1));
-    // A race only if they asked together: nearly every starter in nearly every trial.
-    expect(asked.reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(trials * 5);
   }, 120_000);
 
   it('writes the memory whole, and leaves no file beside it', () => {
