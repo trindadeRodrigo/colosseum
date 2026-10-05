@@ -316,6 +316,10 @@ describe('the test-network set-up', () => {
     expect(entry.cash).toBe('solana:usdc');
     expect(Object.keys(entry.assets)).toHaveLength(14);
     for (const id of Object.keys(entry.assets)) expect(id).toMatch(/^solana:[a-z0-9][a-z0-9-]*$/);
+    // Each with the decimals its mint was made with, the cash's six among them.
+    for (const token of [deployment.cash, ...deployment.assets])
+      expect(entry.assets[token.id]?.decimals, token.id).toBe(token.decimals);
+    expect(entry.assets['solana:usdc']?.decimals).toBe(6);
     const addresses = [
       entry.program,
       entry.router,
@@ -530,12 +534,14 @@ describe('the test-network set-up, on a network that differs from its config', (
         symbol: 'tTSLAx',
         mint: tsla.mint,
         tokenProgram: 'token-2022',
+        decimals: tsla.decimals,
         keeperOn: false,
       },
     ]);
     expect(guardSolanaEntry(dropped.deployment).assets['solana:tslax']).toEqual({
       mint: tsla.mint,
       tokenProgram: 'token-2022',
+      decimals: tsla.decimals,
     });
     // A second run sends nothing and still records it, from the record it wrote.
     const again = await run(fewer, { previous: dropped.deployment });
@@ -564,12 +570,14 @@ describe('the test-network set-up, on a network that differs from its config', (
         symbol: null,
         mint: tsla.mint,
         tokenProgram: 'token-2022',
+        decimals: tsla.decimals,
         keeperOn: false,
       },
     ]);
     expect(guardSolanaEntry(dropped.deployment).assets['solana:tslax']).toEqual({
       mint: tsla.mint,
       tokenProgram: 'token-2022',
+      decimals: tsla.decimals,
     });
     expect((await run(config(null))).transactions).toBe(1);
   });

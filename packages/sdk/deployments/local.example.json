@@ -10,10 +10,13 @@
       "assets": {
         "solana:usdc": {
           "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-          "tokenProgram": "token"
+          "tokenProgram": "token",
+          "decimals": 6
         }
       },
-      "fee": { "maxFeeNativeRaw": "5000000" }
+      "fee": {
+        "maxFeeNativeRaw": "5000000"
+      }
     },
     "robinhood": {
       "family": "evm",
@@ -23,10 +26,19 @@
       "routers": ["0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9"],
       "cash": "robinhood:usdc",
       "assets": {
-        "robinhood:usdc": { "address": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0" },
-        "robinhood:spy": { "address": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9" }
+        "robinhood:usdc": {
+          "address": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+          "decimals": 6
+        },
+        "robinhood:spy": {
+          "address": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+          "decimals": 18
+        }
       },
-      "fee": { "maxFeeNativeRaw": "1000000000000000", "maxGas": 5000000 }
+      "fee": {
+        "maxFeeNativeRaw": "1000000000000000",
+        "maxGas": 5000000
+      }
     }
   }
 }

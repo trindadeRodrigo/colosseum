@@ -139,6 +139,8 @@ export type RetiredAsset = {
   symbol: string | null;
   mint: Address;
   tokenProgram: 'token' | 'token-2022';
+  /** As the mint holds them. */
+  decimals: number;
   keeperOn: false;
 };
 
@@ -178,14 +180,15 @@ export type Deployment = {
 };
 
 /** A chain's entry in the SDK guard's deployment file (`SolanaEntry` in packages/sdk): the vault
- * program, the one router, the cash asset, and every asset's mint with its token program. The
- * guard's file holds one such entry per chain of a network, and nothing else of what is above. */
+ * program, the one router, the cash asset, and every asset's mint with its token program and its
+ * decimals, which a screen turns raw units into figures with. The guard's file holds one such entry
+ * per chain of a network, and nothing else of what is above. */
 export type GuardSolanaEntry = {
   family: 'solana';
   program: Address;
   router: Address;
   cash: string;
-  assets: Record<string, { mint: Address; tokenProgram: 'token' | 'token-2022' }>;
+  assets: Record<string, { mint: Address; tokenProgram: 'token' | 'token-2022'; decimals: number }>;
 };
 
 export function guardSolanaEntry(deployment: Deployment): GuardSolanaEntry {
@@ -203,7 +206,10 @@ export function guardSolanaEntry(deployment: Deployment): GuardSolanaEntry {
         ...deployment.retired.flatMap((token) =>
           token.id && !current.has(token.id) ? [{ ...token, id: token.id }] : [],
         ),
-      ].map((token) => [token.id, { mint: token.mint, tokenProgram: token.tokenProgram }]),
+      ].map((token) => [
+        token.id,
+        { mint: token.mint, tokenProgram: token.tokenProgram, decimals: token.decimals },
+      ]),
     ),
   };
 }
@@ -870,12 +876,15 @@ export async function setUp(
   const offs: Named[] = [];
   for (const entry of strays) {
     const before = known.get(entry.mint);
-    const owner = (await chain.account(entry.mint))?.owner;
+    const account = await chain.account(entry.mint);
+    const decimals = account?.data[44];
+    if (decimals === undefined) throw new Error(`the listed mint ${entry.mint} cannot be read`);
     retired.push({
       id: before?.id ?? null,
       symbol: before?.symbol ?? null,
       mint: entry.mint,
-      tokenProgram: owner === TOKEN_2022_PROGRAM ? 'token-2022' : 'token',
+      tokenProgram: account?.owner === TOKEN_2022_PROGRAM ? 'token-2022' : 'token',
+      decimals,
       keeperOn: false,
     });
     const what = `${before?.symbol ?? 'a mint no record names'} (${entry.mint})`;

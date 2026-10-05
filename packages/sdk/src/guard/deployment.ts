@@ -35,7 +35,7 @@ export type SolanaEntry = {
   /** `Config.router_program`: the only program a vault swaps through. */
   router: string;
   cash: AssetId;
-  assets: Record<AssetId, { mint: string; tokenProgram: 'token' | 'token-2022' }>;
+  assets: Record<AssetId, { mint: string; tokenProgram: 'token' | 'token-2022'; decimals: number }>;
   fee?: FeeLimit;
 };
 /** A chain's entry in a file for a real network, on an EVM chain. Addresses in lower case or with their checksum. */
@@ -50,11 +50,11 @@ export type EvmEntry = {
   routers: string[];
   cash: AssetId;
   /** Each asset's token contract. The field is `address`: a secret scanner reads `token` as a credential. */
-  assets: Record<AssetId, { address: string }>;
+  assets: Record<AssetId, { address: string; decimals: number }>;
   fee?: FeeLimit;
 };
 /** A chain's entry in the mock's file: the chain runs on packages/chain-mock and moves nothing. */
-export type MockEntry = { family: 'mock'; cash: AssetId };
+export type MockEntry = { family: 'mock'; cash: AssetId; cashDecimals: number };
 
 /** The file: packages/sdk/deployments/<network>.json. */
 export type DeploymentFile = {
@@ -101,6 +101,12 @@ function evmAddress(value: unknown, what: string): string {
   );
   must(!/^0x0{40}$/.test(lower), `${what} is the zero address`);
   return lower;
+}
+
+/** A token's decimals as the chain keeps them: a whole number from 0 to 255 (a mint's `u8`, ERC-20's `uint8`). */
+function decimalsOf(value: unknown, what: string): number {
+  must(count(value, 0) && (value as number) <= 255, `the decimals of ${what} are not 0 to 255`);
+  return value as number;
 }
 
 function solanaAddress(value: unknown, what: string): string {
@@ -158,7 +164,7 @@ function solanaOf(entry: Loose, network: DeploymentNetwork): SolanaDeployment {
   );
   const seen = [BASKET_PROGRAM.address, solanaAddress(entry.router, 'the router')];
   const { cash, assets } = assetsOf('solana', entry, seen, (a, id) => {
-    const asset = only(`the asset ${id}`, a, ['mint', 'tokenProgram']);
+    const asset = only(`the asset ${id}`, a, ['mint', 'tokenProgram', 'decimals']);
     must(
       asset.tokenProgram === 'token' || asset.tokenProgram === 'token-2022',
       `${id} names no token program`,
@@ -166,7 +172,11 @@ function solanaOf(entry: Loose, network: DeploymentNetwork): SolanaDeployment {
     const mint = solanaAddress(asset.mint, `the mint of ${id}`);
     return {
       address: mint,
-      value: { mint, tokenProgram: asset.tokenProgram as 'token' | 'token-2022' },
+      value: {
+        mint,
+        tokenProgram: asset.tokenProgram as 'token' | 'token-2022',
+        decimals: decimalsOf(asset.decimals, id),
+      },
     };
   });
   must(new Set(seen).size === seen.length, 'two of its addresses are the same');
@@ -212,9 +222,9 @@ function evmOf(
   const routers = (entry.routers as unknown[]).map((r) => evmAddress(r, 'a router'));
   const seen = [factory, beacon, ...routers];
   const { cash, assets } = assetsOf(chain, entry, seen, (a, id) => {
-    const asset = only(`the asset ${id}`, a, ['address']);
+    const asset = only(`the asset ${id}`, a, ['address', 'decimals']);
     const token = evmAddress(asset.address, `the token of ${id}`);
-    return { address: token, value: { token } };
+    return { address: token, value: { token, decimals: decimalsOf(asset.decimals, id) } };
   });
   must(new Set(seen).size === seen.length, 'two of its addresses are the same');
   let proxyCreationCode: string | undefined;
@@ -241,12 +251,17 @@ function evmOf(
 }
 
 function mockOf(chain: ChainId, entry: Loose): MockDeployment {
-  only('the entry', entry, ['family', 'cash']);
+  only('the entry', entry, ['family', 'cash', 'cashDecimals']);
   must(
     text(entry.cash) && entry.cash.startsWith(`${chain}:`) && entry.cash.length > chain.length + 1,
     `its cash is not an asset of ${chain}`,
   );
-  return { family: 'mock', chain, cash: entry.cash as AssetId };
+  return {
+    family: 'mock',
+    chain,
+    cash: entry.cash as AssetId,
+    cashDecimals: decimalsOf(entry.cashDecimals, String(entry.cash)),
+  };
 }
 
 function read(content: unknown, mark: boolean): DeploymentsRead {
