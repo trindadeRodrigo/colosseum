@@ -182,7 +182,17 @@ TEST NETWORK ONLY. Chain 46630 has Uniswap v4 (mainnet's PoolManager code at mai
 **Deploying it.** On Thom's word (given for 46630 on Oct 5), with funded test keys only.
 
 1. Keys, kept outside the repo (`testnet-keys/robinhood-testnet-deployer.key` and `robinhood-testnet-price-writer.key`, with their addresses beside them): the deployer (admin of every kit contract and, with `adminIsDeployer`, of the vault's factory and beacon; the guardian's calls too), the price writer (writes the 22 price contracts and re-centres the pools; never the deployer), and later the keeper (`setKeeper`). Put the price writer's address in `script/testnet/config/46630.json` (`priceWriter`) and the keeper's, if made, in `script/config/46630.json`.
-2. Test ETH: 0.01 for the deployer covers both deploys many times over, and 0.05 (one faucet claim) for the price writer. Measured on a local fork of 46630 on 2026-10-05: the kit 137 transactions and 40.9 million gas, the vault 36 transactions and 14.6 million gas, one copier round that writes all eleven tokens and re-centres every pool 33 transactions and 3.35 million gas. The test network's own gas estimates run about 15% above the fork's (its L1 share); at its 0.01 gwei base fee the kit costs about 0.0005 ETH and the vault 0.0002.
+2. Test ETH. The faucet is hard to reach, so only the deployer is funded (0.01 ETH, Oct 5) and it forwards the price writer's share. Measured on a local fork of 46630 on 2026-10-05: the kit 137 transactions and 40.9 million gas, the vault 36 transactions and 14.6 million gas, one copier round that writes all eleven tokens and re-centres every pool 33 transactions and 3.35 million gas. The test network's own gas estimates run about 15% above the fork's (its L1 share). At its 0.01 gwei base fee:
+
+   | Step | Gas, with the 15% | ETH |
+   |---|---|---|
+   | Kit | 47 million | 0.00047 |
+   | Vault | 17 million | 0.00017 |
+   | To the price writer | | 0.008 |
+   | Left with the deployer, for `setKeeper`, `settings()` and a re-run | | about 0.0013 |
+   | A copier round that writes every token and moves every pool | 3.9 million | 0.000039 |
+
+   So the price writer's 0.008 ETH pays for about 200 full rounds. A round with nothing newer on mainnet and every pool on its price sends nothing and costs nothing; what a loop costs is the mainnet rounds it copies (a few an hour per token in session, none off session), the averages catching up for an hour after each, and the pools that trades pulled away.
 3. The kit, as a dry run, then sent:
 
    ```
@@ -193,10 +203,11 @@ TEST NETWORK ONLY. Chain 46630 has Uniswap v4 (mainnet's PoolManager code at mai
    ```
 
    A second dry run prints `transactions: 0`. `script/testnet/deployed/46630.json` is the kit's own record: the market, each token's price contracts and its mainnet source, for the copier and the scripts below.
-4. The first copy, so that every price is fresh and every pool on it: `pnpm exec tsx scripts/testnet/robinhood/prices.ts --dry-run`, then with `PRICE_WRITER_KEY_FILE=<path>` and `--once`.
-5. The vault's config and the vault: `pnpm exec tsx scripts/testnet/robinhood/vault-config.ts`, then `forge script script/Deploy.s.sol` with the same RPC and `--sender <deployer>`, dry, then with `--broadcast --slow --interactives 1`.
-6. The copier for good: `FACTORY=<factory proxy> PRICE_WRITER_KEY_FILE=<path> pnpm exec tsx scripts/testnet/robinhood/prices.ts --loop`.
+4. The vault's config and the vault: `pnpm exec tsx scripts/testnet/robinhood/vault-config.ts` (each range around the price the kit wrote), then `forge script script/Deploy.s.sol` with the same RPC and `--sender <deployer>`, dry, then with `--broadcast --slow --interactives 1`.
+5. The price writer's gas, from the deployer: `cast send <price writer> --value 0.008ether --rpc-url https://rpc.testnet.chain.robinhood.com --interactive`.
+6. The first copy, so that every price is fresh and every pool on it: `pnpm exec tsx scripts/testnet/robinhood/prices.ts --dry-run`, then with `PRICE_WRITER_KEY_FILE=<path>` and `--once`.
 7. The record the API and the guard read, in ADE-1's shape (`EvmDeploymentRecord`): `FACTORY=<factory proxy> pnpm exec tsx scripts/testnet/robinhood/record.ts` reads it all from the chain through the factory and writes `deployments/robinhood-testnet.json`. Commit it, the kit's record and the filled `script/config/46630.json`.
+8. The copier runs while someone tests or shows the network, not for good: `FACTORY=<factory proxy> PRICE_WRITER_KEY_FILE=<path> pnpm exec tsx scripts/testnet/robinhood/prices.ts --loop --every <seconds>` (60 by default, 15 at the least). The vault takes a price and its average up to `maxAge` old, 93,600 s (26 hours) on 46630 as on mainnet, so for prices alone one `--once` a day in session keeps the keeper trading; the average also has to be within 200 bps of the price, which a round right after a move does not give until the average catches up. What needs a shorter interval is the pools: a buy moves its pool and the next keeper trade in that token is refused (`ValueTooLow`) until a round re-centres it, so while someone trades, `--every 60` to `300`.
 
 Rehearsed on 2026-10-05 against `anvil --fork-url https://rpc.testnet.chain.robinhood.com`, anvil's own account deploying and a throwaway key writing prices: kit 137 of 137 sent, second run 0; `vault-config.ts`, then the vault 36 of 36 with 12 assets and the router; the copier's dry run would write 11, `--once` wrote 11 and re-centred 11 pools, a second `--once` wrote 0, and a run with the deploy key stopped at `DeployKey`; `record.ts` wrote a record `EvmDeploymentRecord` parses, 11 assets.
 
