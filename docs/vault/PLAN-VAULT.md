@@ -1,6 +1,6 @@
 # PLAN-VAULT.md: the plan for the MVP
 
-Written on Thu Oct 1, at night. The freeze is Fri Oct 9 at 18:00 BRT and the submission is Mon Oct 12. What gets built is in `DESIGN-VAULT.md` (section 1 lists the nine MVP items); this file says when, in what order, who, and what is cut if we are late. The tasks themselves, with status and evidence, are rows in `STATE-VAULT.md`. This file does not repeat them. Where this file and section 16 of the design differ on a date, this file wins.
+Written on Thu Oct 1, at night. There is no feature freeze (decided on Oct 5, gate `NO-FREEZE`): building continues up to the submission on Mon Oct 12. What gets built is in `DESIGN-VAULT.md` (section 1 lists the nine MVP items); this file says when, in what order, who, and what is cut if we are late. The tasks themselves, with status and evidence, are rows in `STATE-VAULT.md`. This file does not repeat them. Where this file and section 16 of the design differ on a date, this file wins.
 
 ## Where we start
 
@@ -32,7 +32,7 @@ Each is a check anyone can run. If one is missed by a day, the cut beside it is 
 | **M3** Tue Oct 6, night | The same owner path on Robinhood Chain with a passkey wallet. A shared portfolio is published and followed. Rehearsal 1 recorded on Solana and Robinhood Chain, with a first auto-follow cycle on each | Auto-follow on Robinhood Chain becomes owner-signed only |
 | **M4** Wed Oct 7, night | Auto-follow has run a full cycle on Solana in market hours and is filmed. Portfolio and rebalance work end to end. Risk sheets render. An outside agent builds a plan and a person approves it from the link | Auto-follow on Solana becomes the one-tap prompt. The five extra agent tools stay out |
 | **M5** Thu Oct 8 | `G-SEC` recorded per chain at 12:00 BRT. Then `launch()`, so the delay is 48 hours from here on. Then `G-LINK`. Only then is the link shared | A chain that misses tier 1 ships owner-signed. The link is not shared until `G-LINK` passes |
-| **Freeze** Fri Oct 9, 18:00 BRT | `main` tagged. After it: P0 fixes only, each with a test | n/a |
+| **Submission** Mon Oct 12 | `main` tagged at submission. No feature freeze before it (gate `NO-FREEZE`) | n/a |
 
 **Where it runs.** Decided on Oct 2: test networks first, mainnet maybe later. "Deployed" in M2 to M5 means on Solana devnet and the EVM test networks. The stock tokens, Jupiter and the price feeds do not exist there, so the deploy brings its own: test tokens with the same shape as the real ones, a test exchange, test prices. The app and the API say "test network" on every figure that comes from them. Two things keep this honest. The program and the contracts take their router and price source from config, so the same code runs on mainnet by changing config, not code. And the tests still run the vault against the real tokens and pools on copies of mainnet, as the rigs do. What exists on each test network and what we bring is in `research/test-networks.md`; it adds about eight half-days of work the plan did not have before Oct 2 (rows TNET-1 to TNET-7). On a test network the prices and the clock are ours, so the market's hours and the 48-hour delay are tested by setting them, and "in session" below means a person at the keyboard.
 
@@ -49,8 +49,8 @@ Slot ids point at rows in `STATE-VAULT.md`. "In session" means in market hours, 
 | **Tue Oct 6** | Morning: KEEP-2 (Robinhood Chain). WEB-4 (the shelf, publish and follow). API-3. AGT-2 (SDK and MCP on the real API, hosted) | **In session:** a buy with a passkey wallet on Solana, and one on Robinhood Chain; auto-follow cycles on both; rehearsal 1 (OPS-7). **M3** |
 | **Wed Oct 7** | WEB-5 (portfolio and rebalance). RISK-2 (sheets render). AGT-3 (skill, `llms.txt`). SEC-3 (tier 2 runs). Add-backs decided | **In session:** rehearsal 2 and the market-open footage (OPS-8). The last day a full auto-follow cycle can be shown. **M4** |
 | **Thu Oct 8** | Fixes only, from the rehearsals and the gates | **12:00 BRT:** `G-SEC` per chain. Then `launch()`, `G-LINK`, the pause drill, the link shared, a new version of the demo portfolio published (OPS-9). **M5** |
-| **Fri Oct 9** | Fixes only | Freeze at 18:00 BRT; tag (OPS-10) |
-| **Sat Oct 10** | P0 fixes, each with a test. README and the documents brought up to date | Record the remaining screens (OPS-11). The version published on Oct 8 takes effect today, with the market closed |
+| **Fri Oct 9** | Building continues (no freeze) | |
+| **Sat Oct 10** | Building continues; every change still with its tests. README and the documents brought up to date | Record the remaining screens (OPS-11). The version published on Oct 8 takes effect today, with the market closed |
 | **Sun Oct 11** | | Edit both videos. Fill the submission form (OPS-11) |
 | **Mon Oct 12** | | **In session:** the Oct 8 version rebalances at production settings; if it fails, auto-follow is switched off on that chain. Then submit, with time to spare (OPS-12) |
 

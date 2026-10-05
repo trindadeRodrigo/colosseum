@@ -13,7 +13,7 @@ The Idea 1 MVP exists in this repo (`main`, commits D1-AM through D6-PM plus par
 - Goal → typed `ConstraintSheet` → deterministic solver (rules + LP) → BRL schedule with stresses → per-leg risk sheet → real mainnet execution (Jupiter swaps, Kamino deposit, xStocks buys) → stored policy → one mainnet rebalance under the policy → monitoring page → three-endpoint API with OpenAPI → unbranded embed.
 - Packages: `schemas`, `db` (Drizzle/Postgres, 15 tables), `engine`, `chain-solana`, `chain-evm` (stub). Apps: `api` (Fastify), `web` (Next.js). Tests in `tests/`.
 - **A depth cron already runs** (`scripts/depth-snapshot.mjs`, launchd job `com.colosseum.depth-snapshot`, every 15 min, from `~/.colosseum/depth/`): Jupiter **buy-side** quotes at $50 / $500 / $5k / $50k for SPYx, QQQx, USDY, syrupUSDC. Rows land in `depth_observations` via `pnpm depth:import`. This is the seed of the risk layer. It must keep running untouched through Oct 12 (the weekend of Oct 3–4 cannot be re-collected).
-- Hackathon constraints still apply to `main`: feature freeze Fri Oct 9 18:00 BRT, submission Oct 12. Remaining Idea 1 integrations (BRS via Nora, EVM adapter, second rebalance, deploy) are gated and tracked in `docs/GATES.md`; they are **not** part of this handoff.
+- Hackathon constraints still apply to `main`: no feature freeze (gate `NO-FREEZE`, Oct 5), submission Oct 12. Remaining Idea 1 integrations (BRS via Nora, EVM adapter, second rebalance, deploy) are gated and tracked in `docs/GATES.md`; they are **not** part of this handoff.
 
 ## 2. What we are adding, in one paragraph
 

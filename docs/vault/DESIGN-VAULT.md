@@ -42,7 +42,7 @@ Nothing here has run on mainnet. The three $10 runs come first in time.
 - EVM vaults are beacon proxies, so one transaction can fix every vault. Withdrawals go only to the owner, on both chain families. The value check is per trade.
 - Solana: Kamino Scope prices cover ten stock tokens and nothing else, so auto-follow runs only on vaults whose every asset is in that list.
 - EVM: a fresh price does not prove an open market, so stock legs trade only in a fixed weekday window, minus a list of closed days.
-- The model fills a form and nothing else. Explanation text comes from templates.
+- The model reads the goal into the sheet, asks questions where it is unclear, and says back what it understood; the person confirms before the engine runs (decided on Oct 5, gate `GUIDED-INTAKE`). It never sets weights or figures. Explanation text comes from templates.
 - The keeper runs as a loop on a machine the team controls. GitHub's scheduler only runs workflows from the default branch **[C 16]**, which is `main`.
 - The publish delay has a one-way launch latch: short while only team money is in, 48 hours and locked before the public link.
 - Hostile cases A1 to A18, a two-tier security gate per chain, and a separate gate before the public link is shared.
@@ -149,7 +149,7 @@ Nothing in the tree breaks these rules now, and the test's list of exemptions is
 
 Frozen in two steps. **v0 on Oct 2**, with the first types and the mock: streams start against it, and one named owner (Thom) approves any change. A walking skeleton on the mock (a buy on each chain through API, order, legs and report) proves it by Oct 3. **Final on Oct 4 evening**, after each real adapter has built and simulated a create, a deposit, one swap and one keeper leg on a fork. Only then does `tests/frozen.test.ts` start hashing the files; it hashes new files only, never his. Later changes are additive. Each TypeScript type below has a zod schema of the same name in `packages/schemas/src/`.
 
-**v0 as built (FRAME-1, Oct 2).** Where the listings below left a choice open, this is what the code in `packages/schemas` does. Thom approves a change until the freeze.
+**v0 as built (FRAME-1, Oct 2).** Where the listings below left a choice open, this is what the code in `packages/schemas` does. Thom approves a change.
 
 | Point | What the code does |
 |---|---|
@@ -162,7 +162,7 @@ Frozen in two steps. **v0 on Oct 2**, with the first types and the mock: streams
 | The parser's draft | `BasketSheetDraft`: every field of `BasketSheet`, each nullable (section 7) |
 | Interfaces | `ChainReader`, `OwnerBuilder`, `KeeperBuilder`, `TxProbe`, `Submitter`, `Signer`, `WalletPort` and `RollUpContext` are TypeScript types only: they hold functions |
 | Amended on Oct 3 (FRAME-1b) | What the first nine slots and their reviews asked for, before the freeze: a person's targets may leave a cash share; the author-limit reasons, the delay and `allowedAt`; the program's appended errors and the contracts' errors as codes; four more wallet codes and the message hash per family; `TxProbe`; an approval by plan; one expected figure per trade and the minimums in the preview; `OrderError`, `OrderDetail`, `PortfolioResponse`; a price's maximum age, a scheduled multiplier, a reader's label. After its review the same day: `preview.minimums` is required; an EVM transaction states its nonce and gas limit, and an EVM attempt is the pair (messageHash, nonce); `carries` has three answers; `nonceOf`. The listings below show the types as they are now |
-| Statuses and kinds in the database | `text`, typed from the zod types, not Postgres enums, so a change before the freeze is not a migration |
+| Statuses and kinds in the database | `text`, typed from the zod types, not Postgres enums, so a change to them is not a migration |
 | `leg_attempts` | Points at a row of `legs` or of `keeper_legs`, with a check that exactly one is set |
 | `orders` | The owner as two columns, `owner_solana` and `owner_evm`, and the request as it came |
 | `TxStatus.explorerUrl` | Required, and empty on a network with no explorer |
@@ -601,9 +601,9 @@ Six types are local to `packages/engine/src/personal/types.ts`, each marked `LOC
 
 | Local type | What the shared type lacks |
 |---|---|
-| `PersonalSheet` = `BasketSheet` plus `limits?: { mustKeepUsd?, mayNeedInMonths?, cannotHold?: { classes?, underlyings?, assets? } }`, and exactly one chain | What the person must not lose, how soon they may need the money, and what they cannot hold. `BasketProposal.sheet` is a `BasketSheet`, so parsing a plan with the shared schema drops the limits |
+| `PersonalSheet` = `BasketSheet` plus `limits?: { mustKeepUsd?, mayNeedInMonths?, creditTolerance?: 'none' \| 'limited' \| 'accept', cannotHold?: { classes?, underlyings?, assets? } }`, and exactly one chain | What the person must not lose, how soon they may need the money, how much credit risk they accept (ENG-3 slice 1), and what they cannot hold. `BasketProposal.sheet` is a `BasketSheet`, so parsing a plan with the shared schema drops the limits |
 | `HeldPosition` = `{ asset?: AssetId; underlying?: string; valueUsd: number }` | `Holding` is raw units with no price; the rule on holdings works in dollars |
-| `PersonalParameters` = `PersonalParams` plus `cashFloor`, `minLineUsd`, `holdingMinBps`, `fallBps`, `atEndMinBps`, `wayStepUsd`, `defaultTheme`, `defaultUnderlying` | The cash share and the other numbers the engine uses |
+| `PersonalParameters` = `PersonalParams` plus `cashFloor`, `minLineUsd`, `holdingMinBps`, `fallBps`, `atEndMinBps`, `wayStepUsd`, `defaultTheme`, `defaultUnderlying`, and from ENG-3 slice 1 the numbers of gate `SOLVER-PARAMS`: `yieldBand`, `capPerAssetBps` (by symbol, then by leg type), `issuerCapBps`, `creditShareBps`, `defaultCreditTolerance`, `setAsideMonths`, `driftBandBps`, `switchDays` | The cash share and the other numbers the engine uses |
 | `PersonalObservation` = `ObservationRef` with `source: string \| null` and `fetchedAt: string \| null` | A `LiquidityProvider` carries a method and a provenance, no source, and a time that may be null. Neither is made up: the caller names the source in `context.liquiditySource`, the time is the provider's `dataTo`, and what is missing is null and flagged (`liquidity_unsourced`, `liquidity_undated:<asset>`) |
 | `PersonalVerdict` = `Verdict` plus `noAmountCloses?: string` | A sentence that is not a way to close the gap. Every entry of `ways` closes it, so a caller that lists the ways shows only what the person can do |
 | `PersonalProposal` = `BasketProposal` plus `sleeves: { sleeve, weightBps, amountUsd }[]`, with `sheet: PersonalSheet`, `observations: PersonalObservation[]` and `verdict?: PersonalVerdict` | The four sleeves as the plan holds them, for the plan bar (section 17) |
@@ -974,17 +974,20 @@ Three pure steps. **Exposure:** how big each sleeve is (stocks and crypto, dolla
 |---|---|---|
 | Goal | What the plan may hold, by the asset registry: income, dollar yield and cash; protect, dollar yield, gold and cash; grow, everything | "Storm Cellar is left out: it holds SPY, and the asset list does not allow SPY in a plan for a goal to protect" |
 | Goal, risk | A table gives the three sleeve sizes | "For a goal to grow at medium risk, the starting share of dollar yield is 15%" |
+| Sleeves, or goal and risk | The person may split the plan into sleeves (a goal with dates, a theme, the safest liquid yield), each with its share; otherwise a table by goal and risk gives the sleeve sizes. Whether a grown sleeve is brought back to its share is the person's choice (decided on Oct 5, gate `SLEEVES`) Sleeves are built in slice 2 of ENG-3; until then the table alone sizes them | "50% AI theme, 50% dollar yield: your split" |
 | Time frame | A floor on dollar yield that rises as the date nears; what dollar yield has no room for stays in cash | "At least 40% is kept out of stocks, crypto and gold, in dollar yield or cash: you need this money in 18 months" |
-| Themes | Decide what is inside each sleeve | "From Sand to Server" |
+| Themes | Decide what is inside each sleeve. Which tokens count for a theme on each chain is curated by the team; a social side comes later (decided on Oct 5, gate `THEMES`) | "From Sand to Server" |
 | Holdings | Target is set on amount plus holdings, then holdings are subtracted | "No NVDA: you already hold $4,000" |
-| Risk | Cap per single stock and per issuer. Where an issuer's cap cuts a portfolio's stocks, each is cut in proportion to its weight | "No more than 70% of the plan with one issuer at medium risk" |
+| Risk | Cap per single stock and per issuer, by risk, for stocks and crypto. Where an issuer's cap cuts a portfolio's stocks, each is cut in proportion to its weight. Dollar yield, gold and cash: one issuer at most 50% of the plan, counting those sleeves only (Rodrigo, Oct 5) | "No more than 70% of the plan with one issuer at medium risk" |
+| Dollar yield | The banded fill (gate `SOLVER`): ranked by yield after haircut; yields within 0.5 points count as equal and share evenly, each token up to its cap (by symbol or leg type, lowered to its exit ceiling), its issuer's and the credit budget (by the person's credit tolerance, `limited` when unsaid). A token with no yield reading or no leg type is left out with the reason. What none can take stays in cash | "No more than 25% of the plan in tokens that lend to borrowers or trade a spread" |
 | Amount | Dollar ceiling per token = 0.25 × its measured exit capacity (gate `EXIT-SOURCE`). Where nothing is measured, the ceiling of its tier, said on the line and flagged. Overflow goes to dollar yield on the same chain, then to cash | "GLDx is limited to $10,000: beyond that, selling it would cost too much" |
 | Country | Blocked tokens are skipped; the rest of the sleeve takes their place | "TSLAx is left out: it is not offered in Brazil" |
 
 - A prototype over the launch shelf passes the handoff's test: three people, three plans, and each input alone moves the plan and adds a reason naming it. Its numbers are placeholders for Rodrigo.
+- The engine offers three candidate plans from one goal, each a different setting of the same engine inside the person's limits; the person chooses, and none is pre-selected (decided on Oct 5, gate `THREE-PLANS`). The rules that keep them distinct are in `docs/vault/research/portfolio-method.md` section 2.4. Built in slice 3 of ENG-3.
 - A plan holds at most 8 lines in the MVP (`maxLinesPerChain`: the shared type's name, and with one chain per plan it is the plan's limit). The vault itself allows 16.
 - **The card:** money needed today; expected return (a yield range on the dollar-yield share; stocks and gold assume no return, plus the dollar loss in a 20% fall); total term; cash-flow pattern; when you can get out. Income goals add a verdict with the gap and each way to close it.
-- **The model** fills `BasketSheetDraft` (every field nullable) and nothing else: Claude Haiku 4.5 on Anthropic's Messages API with structured outputs, about $0.002 a parse **[C 11]**. The call lives in `apps/api/src/llm.ts` with a 6-second timeout and a daily budget.
+- **The model** fills `BasketSheetDraft` (every field nullable), asks the person about each field the text leaves open or unclear, and says back what it understood before the confirm step (gate `GUIDED-INTAKE`). It never sets weights, picks assets or states a figure: Claude Haiku 4.5 on Anthropic's Messages API with structured outputs, about $0.002 a parse **[C 11]**. The call lives in `apps/api/src/llm.ts` with a 6-second timeout and a daily budget.
 - Checks after the model, in pure code: the amount and time frame must appear in the text; themes must be shelf slugs; any disagreement with the regex parser is flagged per field. The form is always the confirm step. Model down: the regex parser pre-fills it. That fails: it opens with defaults.
 - Shared portfolio names never reach the model. Explanation text is one template per rule, in English and Portuguese. A 12-goal evaluation set guards the parser.
 - A test bans "recommend", "suitable" and "best for you" in templates; the disclaimer stays in its one constant (section 17). This is positioning only: a plan built from a person's circumstances can count as advice whatever the wording.
@@ -996,7 +999,9 @@ Three pure steps. **Exposure:** how big each sleeve is (stocks and crypto, dolla
 | `params.ts` | The one parameter table, `PERSONAL_PARAMS`, and `PERSONAL_PARAMS_STATUS` |
 | `registry.ts` | A class's sleeve, and eligibility: each token is given the registry row the structurer's `isEligible` reads, and that function decides |
 | `exposure.ts` | Sleeve sizes (`sizeSleeves`), the shared portfolios a plan starts from, holdings, the cap on one stock |
-| `placement.ts` | Which token carries each exposure on the person's chain, within ceilings, issuer caps and the number of lines |
+| `placement.ts` | Which token carries each exposure on the person's chain, within ceilings, issuer caps and the number of lines; dollar yield through the banded fill (`Book.fillBanded`, ENG-3 slice 1) |
+| `fill.ts` | `bandedFill`: the pure fill of gate `SOLVER`, in whole cents. Ranked by yield after haircut, ties by id; yields within the band share equally, each up to its room and its groups' room (issuer, credit) |
+| `leg-types.ts` | The leg types of each dollar-yield token (rate, credit, basis, market deposit), with source and date; a local table until slice 2 puts them on the shelf asset |
 | `packaging.ts`, `card.ts` | Lines, the one recipe (checked through `flattenReport`), the card (its exit figure from `rollUp`) |
 | `compose.ts`, `world.ts` | The entry and its validation |
 | `templates.ts` | One template per rule in English and Portuguese, and the sentences of the card and the verdict |
@@ -1008,7 +1013,9 @@ Three pure steps. **Exposure:** how big each sleeve is (stocks and crypto, dolla
 | `sleeves` (stocks and crypto / dollar yield / gold, the rest cash) | grow 60/30/10, 80/15/5, 95/5/0; protect 0/75/25 at every risk; income 0/100/0 at every risk | The prototype for grow. Income is new: the prototype gave it a stock sleeve. **Changed on Oct 3, for Rodrigo to read:** the protect rows were 20/55/25, 35/40/25 and 50/25/25, and their stock share went to dollar yield (`PROTECT-NO-STOCKS`), so risk moves a plan to protect only through the issuer cap |
 | `glideFloor` (least dollar yield by months left) | 6: 80%, 12: 60%, 24: 40%, 36: 20%, 60: 10% | The prototype |
 | `cashFloor` (least cash by months left) | 3: 20%, 6: 10%, 12: 5% | New; the top step is the structurer's `cashMax` |
-| `capPerStockBps`, `capPerIssuerBps` | 10/20/35% and 50/70/100% by risk | The prototype |
+| `capPerStockBps`, `capPerIssuerBps` | 10/20/35% and 50/70/100% by risk, for stocks and crypto | The prototype |
+| `yieldBand`, `capPerAssetBps`, `issuerCapBps`, `creditShareBps`, `defaultCreditTolerance` | 0.5 points; syrupUSDC 40%, USDY 40%, else by leg type (market deposit 60%, rate, credit and basis 40%); 50% for dollar yield, gold and cash; none 0, limited 25%, accept 50%; limited | Gate `SOLVER-PARAMS` and Rodrigo's answers of Oct 5; marked `set` |
+| `setAsideMonths`, `driftBandBps`, `switchDays` | 6, 5 points, 7 days | Gate `SOLVER-PARAMS`; read from slice 2 and 4 |
 | `shareOfDepth`, `tau` | 0.25, 1% | The structurer's values: the share of a measured exit capacity a line may hold, and the cost it is read at |
 | `tierCeilingUsd` | A $50,000, B $10,000, C $1,500 | The prototype, from the sizes that define the shelf's tiers. A fallback since `EXIT-SOURCE`: read only where no capacity is measured |
 | `minLineBps`, `minLineUsd`, `maxLinesPerChain` | 50, $5, 8 | Section 3.6 and the prototype |
@@ -1063,6 +1070,7 @@ The roll-up states the share of the plan that is measured.
 - His `scripts/risk/compute.ts` already fits every row. It needs about six lines so curves keep the snapshot's method version; that change is his.
 - Measured today in session, selling $10k and $50k: Robinhood NVDA 0.01% and 0.07%; Base NVDAc 0.03% and 0.14%. The method is "best single pool", so cost is overstated when liquidity is split.
 - Those two hand measurements leave the pool fee out. The collector (`scripts/risk-evm/`, running hourly since Oct 2) includes it, as Rodrigo's curves do, because the fee is part of what a person loses on the way out: NVDA came to 0.07% and 0.15%, and most Robinhood Chain stock tokens, whose deep pools charge 0.3%, to 0.3% to 0.4% at $10k. It measures only pools the vault can reach (Uniswap v3 pools the factory confirms, and v4 pools without hooks), each against its own mid price. Exit cost shown anywhere in the product is on this basis: fee included.
+- Planned change (gate `UNIVERSE`, Oct 5; `docs/risk/PLAN-UNIVERSE.md`): the tokens come from an asset list built by the 80% rule, every pool of a listed token is kept, and the Chainlink feed is read at the same block. Until that is built, the collector is as described here.
 - The collector runs hourly from Oct 2, which gives weekend and weekday regimes by Oct 5. A 28-day backfill on dRPC's free archive works but is out unless a stream is idle.
 
 **Where the data runs.** His collectors stay on his Mac. The hosted database gets a dated dump of his curves first; an hourly copy job is a later add. Every sheet shows the date of its curves; stale curves are never shown as live.
@@ -1281,7 +1289,7 @@ One contract, three faces. Fastify emits the OpenAPI document, committed at `pac
 
 Abuse limits. Portfolio names and descriptions: 280 characters, links stripped, returned in a field named `untrusted`. An order cannot switch auto-follow on or accept a new asset by itself. `agentLabel` is shown as "unverified". A daily budget on the model; past it, the regex parser answers. A plan's quotes are all on its chain; they run in parallel with 8 seconds for the chain, from the cache where they can.
 
-## 13. Security model and tests before the freeze
+## 13. Security model and tests before the submission
 
 The keeper is the bounded risk: a leaked keeper key can cost each auto-follow vault at most 2% of the vault in any seven days (twice the weekly cap parameter, section 5) plus any error in the price reference, which on Solana is held inside the range the admin gave each asset. The upgrade key is the unbounded one: it can replace vault code, and there is no deposit cap. The API cannot sign, and it cannot make the keeper sign: the keeper plans from chain state and never reads a job the API wrote.
 
@@ -1407,8 +1415,8 @@ Stock markets are closed on Oct 3, 4, 10 and 11. Keeper trades on stocks, and an
 | Tue Oct 6 | A buy with a passkey wallet on each chain; publish and follow. In session: auto-follow cycles on Robinhood Chain; rehearsal 1 on Solana and Robinhood Chain. MCP against the real API |
 | Wed Oct 7 | In session: rehearsal 2, and the market-open footage. Portfolio and rebalance end to end. Sheets render. Add-backs decided |
 | Thu Oct 8 | `G-SEC` per chain at 12:00 BRT. Then `launch()`: the delay is 48 hours from here on. Then `G-LINK`, and only then is the link shared. Pause drill in session. In session: publish a version of the demo portfolio |
-| Fri Oct 9 | Spare session for a failed test cycle. Freeze at 18:00 BRT; tag. The version published on Oct 8 takes effect on Saturday, when the stock market is closed, so its rebalance waits for Monday |
-| Sat Oct 10 | P0 fixes only, each with a test. README, `HANDOFF-VAULT`, `DESIGN-VAULT`, `PRIOR-WORK`. Record the remaining screens |
+| Fri Oct 9 | Spare session for a failed test cycle; building continues, no freeze (gate `NO-FREEZE`). The version published on Oct 8 takes effect on Saturday, when the stock market is closed, so its rebalance waits for Monday |
+| Sat Oct 10 | Building continues, each change with its tests. README, `HANDOFF-VAULT`, `DESIGN-VAULT`, `PRIOR-WORK`. Record the remaining screens |
 | Sun Oct 11 | Edit both videos. Fill the submission form |
 | Mon Oct 12 | In session: the Oct 8 version adopts and rebalances at production settings. If it fails, auto-follow is switched off on that chain. Then submit with a buffer |
 
