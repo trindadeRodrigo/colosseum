@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { rollUp } from '@colosseum/basket';
 import type { Db } from '@colosseum/db';
 import {
   compose,
@@ -12,6 +13,7 @@ import {
   type ChainId,
   type LiquidityProvider,
   type ObservationRef,
+  type RiskRollUp,
   type Shelf,
   type YieldObservation,
 } from '@colosseum/schemas';
@@ -89,14 +91,16 @@ export function sharedProposal(plan: PersonalProposal): BasketProposal {
 }
 
 /**
- * A plan for this sheet on the person's chain. The sheet has been validated by the route's schema, and
- * `compose` validates it again before it computes anything. A sheet for another chain than the
- * person's is refused: a plan lives on the chain of their wallet.
+ * A plan for this sheet on the person's chain, and its risk roll-up: concentration by issuer, chain
+ * and class, and the exit figures, from the same shelf, measurements and time the plan was made with.
+ * A plan not bought yet has no stored quote, so the roll-up's quoted exit is null. The sheet has been
+ * validated by the route's schema, and `compose` validates it again before it computes anything. A
+ * sheet for another chain than the person's is refused: a plan lives on the chain of their wallet.
  */
 export async function personalize(
   sheet: PersonalSheet,
   ctx: PersonalizeContext,
-): Promise<BasketProposal> {
+): Promise<{ proposal: BasketProposal; rollUp: RiskRollUp }> {
   const chain = await ctx.homeChain();
   const asked = sheet.chains[0];
   if (sheet.chains.length !== 1 || asked !== chain)
@@ -127,5 +131,17 @@ export async function personalize(
       throw new Refusal(422, `no plan can be made from this sheet: ${e.message}`);
     throw e;
   }
-  return sharedProposal(plan);
+  const proposal = sharedProposal(plan);
+  return {
+    proposal,
+    rollUp: rollUp(
+      proposal.lines.map((l) => ({ asset: l.assetId, amountUsd: l.amountUsd })),
+      {
+        shelf,
+        ...(figures.liquidity ? { liquidity: figures.liquidity.provider } : {}),
+        quotes: [],
+        now: ctx.now,
+      },
+    ),
+  };
 }

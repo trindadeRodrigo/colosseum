@@ -99,7 +99,19 @@ describe('POST /v1/baskets/personalize', () => {
     const asked = sheet();
     const res = await post(who, PATH, { sheet: asked });
     expect(res.statusCode, res.body).toBe(200);
-    const { id, proposal } = PersonalizeResponse.parse(res.json());
+    const { id, proposal, rollUp } = PersonalizeResponse.parse(res.json());
+    // The roll-up beside it, from the same shelf and time: one issuer and one chain on the mock, the
+    // lines below by class, and no exit measured or quoted: null, never zero.
+    expect(rollUp).toEqual({
+      byIssuer: [{ key: 'mock', bps: 10_000 }],
+      byChain: [{ key: 'solana', bps: 10_000 }],
+      byClass: [
+        { key: 'cash', bps: 6000 },
+        { key: 'dollar_yield', bps: 4000 },
+      ],
+      flags: ['exit_not_measured', 'exit_quote_missing', 'issuer_concentration'],
+      exit: { quotedBps: null, quotedAt: null, measuredWorstBps: null, measuredShareBps: 0 },
+    });
 
     // What build-plan.ts holds an answer to: the goal, the amount and the chain that were sent.
     expect(proposal.sheet).toEqual(asked);
@@ -310,20 +322,36 @@ describe('what a line may weigh comes from the measured exit (gate EXIT-SOURCE)'
   };
 
   it('holds a line to its measured share, names the source, and keeps the tier for the rest, labelled', async () => {
-    const inputs: PlanInputs = async ({ chain }) =>
+    const inputs: PlanInputs = async ({ chain, assets }) =>
       chain === 'solana'
-        ? { liquidity: { provider: measured(20_000), source: 'Bearing test curves' } }
+        ? {
+            liquidity: { provider: measured(20_000), source: 'Bearing test curves' },
+            // The mock's yield token needs a reading to be held at all (ENG-3 slice 1).
+            yields: YieldObservation.array()
+              .parse(mockYields)
+              .filter((y) => assets.some((a) => a.id === y.assetId)),
+          }
         : {};
     const own = await testApp({ issuer: issuer.issuer, db: data.db, planInputs: inputs });
     undo.push(() => own.app.close());
     const who = await someone('solana');
     const res = await post(who, PATH, { sheet: sheet({ goal: 'grow', risk: 'medium' }) }, own.app);
     expect(res.statusCode, res.body).toBe(200);
-    const { proposal } = PersonalizeResponse.parse(res.json());
+    const { proposal, rollUp } = PersonalizeResponse.parse(res.json());
     // The tier would let SPY take $50,000; a quarter of the $20,000 measured is $5,000.
     expect(proposal.lines.find((l) => l.assetId === 'solana:spy')?.amountUsd).toBe(5_000);
     expect(proposal.flags).not.toContain('ceiling_from_tier:solana:spy');
     expect(proposal.flags).toContain('ceiling_from_tier:solana:yield');
+    // The roll-up reads the same measurement: $5,000 of SPY costs $5 to sell, over the $30,000 of SPY
+    // and cash it covers (cash costs nothing to leave; the yield token, a rate leg held to 40%, is
+    // the unmeasured rest), 1.67 bps on 60% of the plan.
+    expect(rollUp.exit).toEqual({
+      quotedBps: null,
+      quotedAt: null,
+      measuredWorstBps: 1.67,
+      measuredShareBps: 6000,
+    });
+    expect(rollUp.flags).toContain('exit_partly_measured');
     expect(proposal.observations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

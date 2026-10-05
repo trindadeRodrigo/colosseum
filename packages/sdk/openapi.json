@@ -26,7 +26,7 @@
       "post": {
         "summary": "Make a plan from a goal and its limits, and store it. Nothing is bought",
         "tags": ["plans"],
-        "description": "The sheet is validated before anything is computed, and a sheet that does not validate answers 400: the engine never runs on it. The plan is made by a deterministic engine on the chain the signed-in person's plans live on (`GET /v1/me`), from the assets listed there and the shared portfolios that have a recipe there. The sheet names that one chain: another answers 422, and a person with no chain yet gets 409. Stock tokens are never in a plan whose goal is to protect or to earn an income. A line's ceiling comes from the measured exit of its token where there is one; where there is none it is its tier's, and the line and `flags` say so (`ceiling_from_tier:<asset>`). Every line has its reasons; every figure the plan stands on is in `observations` with its source, time, method and provenance. The answer's `id` is what `POST /v1/orders` buys (`proposalId`). The plan is not advice: see `disclaimer`.",
+        "description": "The sheet is validated before anything is computed, and a sheet that does not validate answers 400: the engine never runs on it. The plan is made by a deterministic engine on the chain the signed-in person's plans live on (`GET /v1/me`), from the assets listed there and the shared portfolios that have a recipe there. The sheet names that one chain: another answers 422, and a person with no chain yet gets 409. Stock tokens are never in a plan whose goal is to protect or to earn an income. A line's ceiling comes from the measured exit of its token where there is one; where there is none it is its tier's, and the line and `flags` say so (`ceiling_from_tier:<asset>`). Every line has its reasons; every figure the plan stands on is in `observations` with its source, time, method and provenance. `rollUp` is the plan's concentration by issuer, chain and class and its exit figures, from the same figures; with no stored quote before a buy, its quoted exit is null. The answer's `id` is what `POST /v1/orders` buys (`proposalId`). The plan is not advice: see `disclaimer`.",
         "requestBody": {
           "required": true,
           "content": {
@@ -617,9 +617,114 @@
                         "disclaimer"
                       ],
                       "additionalProperties": false
+                    },
+                    "rollUp": {
+                      "type": "object",
+                      "properties": {
+                        "byIssuer": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "key": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "bps": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 10000
+                              }
+                            },
+                            "required": ["key", "bps"],
+                            "additionalProperties": false
+                          }
+                        },
+                        "byChain": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "key": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "bps": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 10000
+                              }
+                            },
+                            "required": ["key", "bps"],
+                            "additionalProperties": false
+                          }
+                        },
+                        "byClass": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "key": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "bps": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 10000
+                              }
+                            },
+                            "required": ["key", "bps"],
+                            "additionalProperties": false
+                          }
+                        },
+                        "flags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "exit": {
+                          "type": "object",
+                          "properties": {
+                            "quotedBps": {
+                              "type": ["number", "null"]
+                            },
+                            "quotedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "measuredWorstBps": {
+                              "type": ["number", "null"]
+                            },
+                            "measuredShareBps": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 10000
+                            }
+                          },
+                          "required": [
+                            "quotedBps",
+                            "quotedAt",
+                            "measuredWorstBps",
+                            "measuredShareBps"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": ["byIssuer", "byChain", "byClass", "flags", "exit"],
+                      "additionalProperties": false
                     }
                   },
-                  "required": ["id", "proposal"],
+                  "required": ["id", "proposal", "rollUp"],
                   "additionalProperties": false
                 }
               }
