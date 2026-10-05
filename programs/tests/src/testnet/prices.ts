@@ -273,7 +273,7 @@ export const MAX_GAP_JUMP_BPS = 5_000;
 export const HINT = {
   range: 'if it persists, a person checks the source and moves the range (upsert_asset)',
   jump: `if it persists, a person checks the source and raises --max-jump-bps (no gap allows more than ${MAX_GAP_JUMP_BPS} bps) or moves the range`,
-  capped: `no gap allows more than ${MAX_GAP_JUMP_BPS} bps: if the source is right, a person moves the range (upsert_asset) and writes the entry with the admin key`,
+  capped: `no gap allows more than ${MAX_GAP_JUMP_BPS} bps: if the source is right, a person writes the entry with the admin key (write_price)`,
 };
 
 /** Why an entry must not be written, or null. `held` is what devnet holds for the same entry. */
