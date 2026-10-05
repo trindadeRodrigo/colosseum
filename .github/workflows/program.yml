@@ -159,15 +159,15 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-      # The adapter contract, the builders' sizes and shape, and the keeper's round, in LiteSVM on the
-      # programs built above.
+      # The adapter contract, the builders' sizes and shape, the guard on the registry calls they
+      # build (AGT-4), and the keeper's round, in LiteSVM on the programs built above.
       # SOLANA_PROGRAMS_REQUIRED makes a missing build fail them instead of skipping them.
       - name: The Solana adapter on the built programs
         env:
           SOLANA_PROGRAMS_REQUIRED: '1'
         run: |
           pnpm install --frozen-lockfile
-          pnpm exec vitest run tests/solana-vault/contract.test.ts tests/solana-vault/builders.test.ts tests/keeper/keeper.test.ts
+          pnpm exec vitest run tests/solana-vault/contract.test.ts tests/solana-vault/builders.test.ts tests/solana-vault/registry-guard.test.ts tests/keeper/keeper.test.ts
 
       - name: The committed interface files match the programs
         run: |

@@ -20,6 +20,14 @@ export function signInFailure(error: unknown, attempt: SignInAttempt): SignInFai
       return passkey ? cancelled : 'walletRefused';
     case 'passkey_unknown':
       return 'passkeyUnknown';
+    case 'passkey_not_registered':
+      return 'passkeyNotRegistered';
+    case 'accounts_full':
+      return 'accountsFull';
+    case 'not_invited':
+      return 'notInvited';
+    case 'no_storage':
+      return 'noStorage';
     case 'passkey_unsupported':
       return 'passkeyUnsupported';
     case 'wallet_gone':

@@ -19,8 +19,10 @@ import type { FastifyInstance } from 'fastify';
 import { type ChainRegistry, createChainRegistry, type SolanaInputs } from '../../orders/chains';
 import { Refusal, refusalFromChainError } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
+import type { PlanInputs } from '../../orders/personalize';
 import { authFromEnv, enforceSignIn, identify, type TokenIssuer } from '../../plugins/auth';
 import { type Limits, registerLimits, requireDeclared } from '../../plugins/limits';
+import { registerBasketRoutes } from './baskets';
 import { buildConfig, registerConfigRoute } from './config';
 import { registerFundingRoute } from './funding';
 import { registerMeRoutes } from './me';
@@ -47,6 +49,11 @@ export type V1Deps = {
   solanaRecord?: SolanaDeploymentRecord | null;
   db?: Db;
   now?: () => Date;
+  /**
+   * Bearing's measured exits and the yields a plan is made with. Default: none, so every line's
+   * ceiling is its tier's and says so. The server hands in the reader of the stored figures.
+   */
+  planInputs?: PlanInputs;
   /** The rate limits. Default: `LIMITS`, the ones a server runs with. */
   limits?: Limits;
   /**
@@ -121,6 +128,7 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
     registerMeRoutes(scope, orderDeps);
     registerFundingRoute(scope, orderDeps);
     registerOrderRoutes(scope, orderDeps);
+    registerBasketRoutes(scope, orderDeps, deps.planInputs ?? (async () => ({})));
     registerPortfolioRoute(scope, orderDeps);
     // Out of the route table altogether unless a chain runs on the mock.
     if (chains.active().some((entry) => entry.mock)) registerMockRoutes(scope, orderDeps);

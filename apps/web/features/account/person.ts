@@ -24,11 +24,19 @@ export type ApiFetch = (path: string, init?: RequestInit) => Promise<Response>;
  * Why a call about the person failed, for the sentence a screen says.
  * - `unreachable`: the API did not answer, or not in a form this app reads. Asking again may work.
  * - `signed_out`: the API does not know who is asking (401): the sign-in ran out.
+ * - `no_identity`: the API was sent no identity token (401), even after the wallet was asked for a new
+ *   one: the sign-in service did not give one. Asking again later may work.
  * - `taken`: the chain was set before and is another one (409). It never changes.
  * - `not_offered`: this person cannot choose that chain (422).
  * - `busy`: the API asked for fewer requests (429).
  */
-export type PersonFailure = 'unreachable' | 'signed_out' | 'taken' | 'not_offered' | 'busy';
+export type PersonFailure =
+  | 'unreachable'
+  | 'signed_out'
+  | 'no_identity'
+  | 'taken'
+  | 'not_offered'
+  | 'busy';
 
 export class PersonError extends Error {
   readonly kind: PersonFailure;
@@ -46,6 +54,22 @@ const KIND_OF_STATUS: Record<number, PersonFailure> = {
   429: 'busy',
 };
 
+/**
+ * Why the API refused a sign-in (401), from what it says (apps/api/src/plugins/auth.ts): no identity
+ * token was sent, or it does not know the sign-in.
+ */
+export async function signInRefusal(res: Response): Promise<'no_identity' | 'signed_out'> {
+  const body: unknown = await res
+    .clone()
+    .json()
+    .catch(() => null);
+  const error =
+    typeof body === 'object' && body !== null ? (body as Record<string, unknown>).error : null;
+  return typeof error === 'string' && /no identity token/i.test(error)
+    ? 'no_identity'
+    : 'signed_out';
+}
+
 async function ask(apiFetch: ApiFetch, path: string, init?: RequestInit): Promise<Person> {
   let res: Response;
   try {
@@ -53,6 +77,7 @@ async function ask(apiFetch: ApiFetch, path: string, init?: RequestInit): Promis
   } catch {
     throw new PersonError('unreachable');
   }
+  if (res.status === 401) throw new PersonError(await signInRefusal(res));
   if (!res.ok) throw new PersonError(KIND_OF_STATUS[res.status] ?? 'unreachable');
   const person = readPerson(await res.json().catch(() => null));
   if (!person) throw new PersonError('unreachable');
