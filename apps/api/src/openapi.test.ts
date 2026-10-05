@@ -102,8 +102,13 @@ describe('the committed OpenAPI document (packages/sdk/openapi.json)', () => {
       }
     // The routes anybody may call, by name: a route opened by mistake fails here.
     expect(open).toEqual(['GET /v1/config']);
-    // The routes that ask a chain for quotes are the ones with the tighter budget.
-    expect(classes.build).toEqual(['POST /v1/orders', 'POST /v1/orders/{id}/legs/{legId}/build']);
+    // The routes that ask a chain for quotes, and the one that runs the engine on a chain's shelf,
+    // are the ones with the tighter budget.
+    expect(classes.build).toEqual([
+      'POST /v1/baskets/personalize',
+      'POST /v1/orders',
+      'POST /v1/orders/{id}/legs/{legId}/build',
+    ]);
     expect(classes.parse).toBeUndefined();
   });
 

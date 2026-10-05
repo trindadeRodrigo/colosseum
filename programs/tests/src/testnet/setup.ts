@@ -834,23 +834,24 @@ export async function setUp(
       ),
     );
   const switches = plan.tokens.filter((token) => {
-    const [flags, min, max] = token.range
-      ? [ASSET_KEEPER, token.range.minPrice, token.range.maxPrice]
-      : [0, 0n, 0n];
+    const flags = token.keeperOn ? ASSET_KEEPER : 0;
+    const [min, max] = token.range ? [token.range.minPrice, token.range.maxPrice] : [0n, 0n];
     // A token listed a moment ago has the keeper off and no range.
     return entryOf(token) ? !matches(token, flags, min, max) : token.range !== null;
   });
   for (const batch of chunks(switches, 6))
     await run(
-      `the keeper's switch: ${batch.map((t) => `${t.symbol} ${t.range ? 'on' : 'off'}`).join(', ')}`,
+      `the keeper's switch: ${batch.map((t) => `${t.symbol} ${t.keeperOn ? 'on' : 'off'}`).join(', ')}`,
       await Promise.all(
         batch.map(async (token) => ({
-          name: token.range
-            ? `upsert_asset ${token.symbol}: flags 1, range ${token.range.minPrice} to ${token.range.maxPrice} millionths of a dollar`
-            : `upsert_asset ${token.symbol}: flags 0, no range`,
+          name: `upsert_asset ${token.symbol}: flags ${token.keeperOn ? 1 : 0}, ${
+            token.range
+              ? `range ${token.range.minPrice} to ${token.range.maxPrice} millionths of a dollar`
+              : 'no range'
+          }`,
           instruction: await upsertAssetInstruction(admin, mintOf(token), {
             ...listing(token),
-            flags: token.range ? ASSET_KEEPER : 0,
+            flags: token.keeperOn ? ASSET_KEEPER : 0,
             minPrice: token.range?.minPrice ?? 0n,
             maxPrice: token.range?.maxPrice ?? 0n,
           }),
@@ -991,7 +992,7 @@ export async function setUp(
       twapIndex: token.twapIndex,
       indexSource: token.indexSource,
       maxWeightBps: token.maxWeightBps,
-      keeperOn: token.range !== null,
+      keeperOn: token.keeperOn,
       range: token.range && {
         minPrice: token.range.minPrice.toString(),
         maxPrice: token.range.maxPrice.toString(),

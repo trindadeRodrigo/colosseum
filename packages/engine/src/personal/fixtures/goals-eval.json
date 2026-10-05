@@ -1,0 +1,210 @@
+{
+  "about": "The 12-goal evaluation set for the sentence parser (DESIGN-VAULT section 7). Each goal is a sentence and the draft of the sheet it should parse to: every field of BasketSheetDraft, null where the sentence does not say. Months are counted from nowMonth, and 'by 2031' means January 2031, as the rules parser counts.",
+  "nowMonth": "2026-10",
+  "goals": [
+    {
+      "id": "en-grow-10y-high",
+      "text": "I have $20,000 and want to grow it over 10 years. I can take high risk.",
+      "expect": {
+        "basketType": null,
+        "goal": "grow",
+        "amountUsd": 20000,
+        "horizonMonths": 120,
+        "risk": "high",
+        "themes": null,
+        "country": null,
+        "chains": null,
+        "incomeTargetUsdMonthly": null,
+        "rules": null,
+        "language": "en"
+      }
+    },
+    {
+      "id": "en-protect-18m-low",
+      "text": "Protect $50k that I will need in 18 months, low risk.",
+      "expect": {
+        "basketType": null,
+        "goal": "protect",
+        "amountUsd": 50000,
+        "horizonMonths": 18,
+        "risk": "low",
+        "themes": null,
+        "country": null,
+        "chains": null,
+        "incomeTargetUsdMonthly": null,
+        "rules": null,
+        "language": "en"
+      }
+    },
+    {
+      "id": "en-income-300-month",
+      "text": "I want $300 a month of income from $80,000, at medium risk, for 5 years.",
+      "expect": {
+        "basketType": null,
+        "goal": "income",
+        "amountUsd": 80000,
+        "horizonMonths": 60,
+        "risk": "medium",
+        "themes": null,
+        "country": null,
+        "chains": null,
+        "incomeTargetUsdMonthly": 300,
+        "rules": null,
+        "language": "en"
+      }
+    },
+    {
+      "id": "en-grow-by-2031-theme-chain",
+      "text": "Grow $5,000 by 2031, starting from The Seven, on Solana.",
+      "expect": {
+        "basketType": null,
+        "goal": "grow",
+        "amountUsd": 5000,
+        "horizonMonths": 51,
+        "risk": null,
+        "themes": ["the-seven"],
+        "country": null,
+        "chains": ["solana"],
+        "incomeTargetUsdMonthly": null,
+        "rules": null,
+        "language": "en"
+      }
+    },
+    {
+      "id": "en-protect-country-no-stocks",
+      "text": "I live in Brazil and want to keep $10,000 safe for 2 years, with no stocks.",
+      "expect": {
+        "basketType": null,
+        "goal": "protect",
+        "amountUsd": 10000,
+        "horizonMonths": 24,
+        "risk": "low",
+        "themes": null,
+        "country": "BR",
+        "chains": null,
+        "incomeTargetUsdMonthly": null,
+        "rules": null,
+        "language": "en"
+      }
+    },
+    {
+      "id": "en-grow-6m-conservative",
+      "text": "Put $1,500 to work for 6 months, conservative.",
+      "expect": {
+        "basketType": null,
+        "goal": "grow",
+        "amountUsd": 1500,
+        "horizonMonths": 6,
+        "risk": "low",
+        "themes": null,
+        "country": null,
+        "chains": null,
+        "incomeTargetUsdMonthly": null,
+        "rules": null,
+        "language": "en"
+      }
+    },
+    {
+      "id": "pt-grow-10y-high",
+      "text": "Tenho US$ 20 mil e quero fazer esse dinheiro crescer em 10 anos, aceito risco alto.",
+      "expect": {
+        "basketType": null,
+        "goal": "grow",
+        "amountUsd": 20000,
+        "horizonMonths": 120,
+        "risk": "high",
+        "themes": null,
+        "country": null,
+        "chains": null,
+        "incomeTargetUsdMonthly": null,
+        "rules": null,
+        "language": "pt"
+      }
+    },
+    {
+      "id": "pt-protect-18m-low",
+      "text": "Quero proteger 50 mil dólares que vou precisar em 18 meses, com risco baixo.",
+      "expect": {
+        "basketType": null,
+        "goal": "protect",
+        "amountUsd": 50000,
+        "horizonMonths": 18,
+        "risk": "low",
+        "themes": null,
+        "country": null,
+        "chains": null,
+        "incomeTargetUsdMonthly": null,
+        "rules": null,
+        "language": "pt"
+      }
+    },
+    {
+      "id": "pt-income-300-month",
+      "text": "Quero uma renda de US$ 300 por mês com US$ 80.000, risco médio, por 5 anos.",
+      "expect": {
+        "basketType": null,
+        "goal": "income",
+        "amountUsd": 80000,
+        "horizonMonths": 60,
+        "risk": "medium",
+        "themes": null,
+        "country": null,
+        "chains": null,
+        "incomeTargetUsdMonthly": 300,
+        "rules": null,
+        "language": "pt"
+      }
+    },
+    {
+      "id": "pt-grow-by-2031-theme-chain",
+      "text": "Crescer US$ 5.000 até 2031, a partir do portfólio The Seven, na Solana.",
+      "expect": {
+        "basketType": null,
+        "goal": "grow",
+        "amountUsd": 5000,
+        "horizonMonths": 51,
+        "risk": null,
+        "themes": ["the-seven"],
+        "country": null,
+        "chains": ["solana"],
+        "incomeTargetUsdMonthly": null,
+        "rules": null,
+        "language": "pt"
+      }
+    },
+    {
+      "id": "pt-protect-country-no-stocks",
+      "text": "Moro no Brasil e quero guardar US$ 10 mil com segurança por 2 anos, sem ações.",
+      "expect": {
+        "basketType": null,
+        "goal": "protect",
+        "amountUsd": 10000,
+        "horizonMonths": 24,
+        "risk": "low",
+        "themes": null,
+        "country": "BR",
+        "chains": null,
+        "incomeTargetUsdMonthly": null,
+        "rules": null,
+        "language": "pt"
+      }
+    },
+    {
+      "id": "pt-grow-6m-conservative",
+      "text": "Aplicar US$ 1.500 por 6 meses, de forma conservadora.",
+      "expect": {
+        "basketType": null,
+        "goal": "grow",
+        "amountUsd": 1500,
+        "horizonMonths": 6,
+        "risk": "low",
+        "themes": null,
+        "country": null,
+        "chains": null,
+        "incomeTargetUsdMonthly": null,
+        "rules": null,
+        "language": "pt"
+      }
+    }
+  ]
+}
