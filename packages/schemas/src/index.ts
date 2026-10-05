@@ -25,5 +25,6 @@ export * from './policy';
 export * from './recipe';
 export * from './trust';
 export * from './tx';
+export * from './universe';
 export * from './vault';
 export * from './wallet';

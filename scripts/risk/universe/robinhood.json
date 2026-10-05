@@ -1,0 +1,2061 @@
+{
+  "chain": "robinhood",
+  "source": "cut-robinhood-20261005T1947.json, oracles-robinhood-20261005T2312.json and universe-robinhood-20261005T1805.json (pnpm risk-evm:pareto, pnpm risk-evm:oracles, pnpm risk-evm:universe); no chain read",
+  "fetchedAt": "2026-10-05T20:11:13.000Z",
+  "method": "universe-list-0.1",
+  "provenance": "live",
+  "inputs": {
+    "cut": "cut-robinhood-20261005T1947.json",
+    "oracles": "oracles-robinhood-20261005T2312.json",
+    "universe": "universe-robinhood-20261005T1805.json"
+  },
+  "rule": {
+    "share": 0.8,
+    "minPoolUsd": 1000
+  },
+  "rankedUsd": 90899429.588107,
+  "counts": {
+    "assets": 30,
+    "withOracle": 24,
+    "withoutOracle": 6,
+    "withoutOracleByReason": {
+      "no_feed": 6
+    },
+    "autoRebalance": 24,
+    "rankedPools": 427,
+    "reachablePools": 274,
+    "twoStockPools": 46
+  },
+  "stated": {
+    "rows": "One row per tracked stock, keyed on the token address. The tracked stocks are the ones the cut names at the rule in `rule`; every row of one run has inCut true.",
+    "identity": "id is the chain and the symbol in lower case; underlying is the symbol (on Solana without the trailing x); issuer and session (us_equity) are set here for every row, by chain. decimals is copied: on Robinhood Chain from the token list, where the contract confirmed it; on Solana from the registry.",
+    "cls": "DU7: funds and the treasury token are ranked with the stocks. cls comes from a table in scripts/risk/universe/list.ts keyed on the underlying (SPY and QQQ etf, GLD gold, SLV and USO commodity, SGOV dollar_yield); every other token is stock. clsSource says which. No input file carries a class.",
+    "pools": "pools.ranked is every pool of the stock with a measured TVL at the floor or more; dust and unmeasured are the ones left out, and an unmeasured pool is never counted as zero. The pools themselves are not in this file.",
+    "reach": "DU3: a pool the vault cannot reach (a hooked v4 pool, another venue) is counted in ranked and in byVenue, and left out of reachable and reachableUsd; nothing is dropped. On Solana reach is not recorded per pool, so reachable is null with its reason and byExitPath says how a seller reaches dollars.",
+    "twoStockPools": "A pool of two stocks is one pool, counted once, under the stock its chain files it (token0 on Robinhood Chain, the registry asset on Solana): it is in that row's ranked, tvlUsd and twoStock. The stock on the other side has it in twoStockAsOther only, and not in its money. Whether such a pool should count for both is not decided here.",
+    "money": "tvlUsd, cutUsd and reachableUsd are copied from the cut (Solana: summed from the registry by the same rule). share is derived here: tvlUsd over rankedUsd, the money in every ranked pool of the chain.",
+    "oracle": "oracle.ref is the address or index the vault would read. On Robinhood Chain it is the proxy the oracle map confirmed on chain, copied; a stock whose feed that map refused carries its reason, and no_feed means the directory lists none. On Solana it is the Scope entry of the frozen Kamino reserves; a stock with no entry is no_scope_entry. No price is stored and nothing is compared with a pool price (ORACLE-VS-DEX).",
+    "prices": "oracle.prices is what the oracle map says the feed prices, copied; the map says it for the funds and the treasury token only, and for the others it is null with that reason. No multiplier is applied to anything.",
+    "autoRebalance": "Derived here by the rule alone: true when the row has a confirmed oracle, false with the oracle's reason when it has none. Where the oracle is confirmed and what it prices is in question (a price taken from the pools; a feed whose directory entry does not say what it prices) the row is still written true, and autoRebalanceOpen names the question. Whether such a stock may be rebalanced automatically is for the vault stream; this file does not decide it.",
+    "later": "The list is written from one run of its inputs. What happens to a stock that leaves the cut on a later run is not decided: no rule keeps or removes a row, and a new run writes the file again from scratch.",
+    "provenance": "source, fetchedAt, method and provenance on a row are the cut's (the time is the pool read's); on an oracle they are the oracle input's. They are copied, so a list written from frozen inputs says fixture."
+  },
+  "assets": [
+    {
+      "id": "robinhood:spy",
+      "chain": "robinhood",
+      "address": "0x117cc2133c37b721f49de2a7a74833232b3b4c0c",
+      "symbol": "SPY",
+      "decimals": 18,
+      "cls": "etf",
+      "clsSource": "class_table",
+      "underlying": "SPY",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 57,
+        "inCut": 27,
+        "reachable": 38,
+        "reachableReason": null,
+        "byVenue": {
+          "0x5481864ddd46a2d798df0925c23b7846e776e5e3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "alandale": {
+            "pools": 2,
+            "reachable": 0
+          },
+          "giga-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "kittenswap": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "ramses-v3": {
+            "pools": 4,
+            "reachable": 0
+          },
+          "uniswap-v2": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 8,
+            "reachable": 8
+          },
+          "uniswap-v4": {
+            "pools": 38,
+            "reachable": 30
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 32,
+        "twoStockAsOther": 1,
+        "dust": 34,
+        "unmeasured": 1918
+      },
+      "tvlUsd": 20025464.235267863,
+      "cutUsd": 19044220.998666354,
+      "reachableUsd": 16684541.762739917,
+      "share": 0.22030351924109248,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0x319724394d3a0e3669269846abe664cd621f9f6a",
+        "account": null,
+        "twapRef": null,
+        "description": "RHSPY / USD",
+        "decimals": 8,
+        "prices": "token_with_multiplier",
+        "pricesReason": null,
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:nvda",
+      "chain": "robinhood",
+      "address": "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec",
+      "symbol": "NVDA",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "NVDA",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 36,
+        "inCut": 6,
+        "reachable": 16,
+        "reachableReason": null,
+        "byVenue": {
+          "0x3f9010f882f532e680a79875ab3e0e525e5e13fb": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "0x5481864ddd46a2d798df0925c23b7846e776e5e3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "alandale": {
+            "pools": 2,
+            "reachable": 0
+          },
+          "giga-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "kittenswap": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "ramses-v3": {
+            "pools": 2,
+            "reachable": 0
+          },
+          "topaz": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 8,
+            "reachable": 8
+          },
+          "uniswap-v4": {
+            "pools": 18,
+            "reachable": 8
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 2,
+        "twoStockAsOther": 6,
+        "dust": 64,
+        "unmeasured": 14491
+      },
+      "tvlUsd": 7795598.44608777,
+      "cutUsd": 6348574.450369535,
+      "reachableUsd": 6591984.6111462945,
+      "share": 0.08576069708481121,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0x379ec4f7c378f34a1b47e4f3cbebcbac3e8e9f15",
+        "account": null,
+        "twapRef": null,
+        "description": "RHNVDA / USD",
+        "decimals": 8,
+        "prices": null,
+        "pricesReason": "oracle_map_says_it_for_funds_only",
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:gld",
+      "chain": "robinhood",
+      "address": "0xc9a981fee1f9dec688bb123ccdecc63d0debfc4e",
+      "symbol": "GLD",
+      "decimals": 18,
+      "cls": "gold",
+      "clsSource": "class_table",
+      "underlying": "GLD",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 17,
+        "inCut": 4,
+        "reachable": 11,
+        "reachableReason": null,
+        "byVenue": {
+          "giga-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "ramses-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "rubicon": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 6,
+            "reachable": 6
+          },
+          "uniswap-v4": {
+            "pools": 7,
+            "reachable": 5
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 1,
+        "twoStockAsOther": 3,
+        "dust": 16,
+        "unmeasured": 1256
+      },
+      "tvlUsd": 6955433.475780872,
+      "cutUsd": 6606174.119142955,
+      "reachableUsd": 4587467.577462041,
+      "share": 0.07651790013752627,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0x470a51258068043bd43dc0a56245625c9fe86eb0",
+        "account": null,
+        "twapRef": null,
+        "description": "GLD / USD",
+        "decimals": 8,
+        "prices": "token_from_pools",
+        "pricesReason": null,
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": "oracle_prices_from_pools",
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:meta",
+      "chain": "robinhood",
+      "address": "0xc0d6457c16cc70d6790dd43521c899c87ce02f35",
+      "symbol": "META",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "META",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 16,
+        "inCut": 3,
+        "reachable": 9,
+        "reachableReason": null,
+        "byVenue": {
+          "giga-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "ramses-v3": {
+            "pools": 2,
+            "reachable": 0
+          },
+          "sushiswap-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 2,
+            "reachable": 2
+          },
+          "uniswap-v4": {
+            "pools": 10,
+            "reachable": 7
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 2,
+        "dust": 28,
+        "unmeasured": 2946
+      },
+      "tvlUsd": 5644679.871514182,
+      "cutUsd": 5114310.6775803855,
+      "reachableUsd": 5346057.352319399,
+      "share": 0.062098078030763726,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0x7c38c00c30bee9378381e7b6135d7283356d71b1",
+        "account": null,
+        "twapRef": null,
+        "description": "Robinhood META / USD",
+        "decimals": 8,
+        "prices": null,
+        "pricesReason": "oracle_map_says_it_for_funds_only",
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:spcx",
+      "chain": "robinhood",
+      "address": "0x4a0e65a3eccec6dbe60ae065f2e7bb85fae35eea",
+      "symbol": "SPCX",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "SPCX",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 24,
+        "inCut": 5,
+        "reachable": 14,
+        "reachableReason": null,
+        "byVenue": {
+          "0x5481864ddd46a2d798df0925c23b7846e776e5e3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "alandale": {
+            "pools": 2,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 4,
+            "reachable": 4
+          },
+          "uniswap-v4": {
+            "pools": 16,
+            "reachable": 10
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 1,
+        "twoStockAsOther": 2,
+        "dust": 31,
+        "unmeasured": 4840
+      },
+      "tvlUsd": 4829119.032567902,
+      "cutUsd": 4354118.999808658,
+      "reachableUsd": 4520179.324303888,
+      "share": 0.05312595529422033,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0xb265810950ba6c5c0ff821c9963014a56fd8bffb",
+        "account": null,
+        "twapRef": null,
+        "description": "Robinhood SPCX / USD",
+        "decimals": 8,
+        "prices": null,
+        "pricesReason": "oracle_map_says_it_for_funds_only",
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:mstr",
+      "chain": "robinhood",
+      "address": "0xec262a75e413fafd0df80480274532c79d42da09",
+      "symbol": "MSTR",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "MSTR",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 21,
+        "inCut": 5,
+        "reachable": 17,
+        "reachableReason": null,
+        "byVenue": {
+          "alandale": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "giga-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 5,
+            "reachable": 5
+          },
+          "uniswap-v4": {
+            "pools": 13,
+            "reachable": 12
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 1,
+        "dust": 17,
+        "unmeasured": 1169
+      },
+      "tvlUsd": 4552859.893607298,
+      "cutUsd": 3927020.7132843146,
+      "reachableUsd": 4343139.163016892,
+      "share": 0.05008678177891426,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0x396118bdfb181e6240e74d243f266b061c0edc3d",
+        "account": null,
+        "twapRef": null,
+        "description": "Robinhood MSTR / USD",
+        "decimals": 8,
+        "prices": null,
+        "pricesReason": "oracle_map_says_it_for_funds_only",
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:crcl",
+      "chain": "robinhood",
+      "address": "0xdf0992e440dd0be65bd8439b609d6d4366bf1cb5",
+      "symbol": "CRCL",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "CRCL",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 14,
+        "inCut": 2,
+        "reachable": 10,
+        "reachableReason": null,
+        "byVenue": {
+          "ramses-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 2,
+            "reachable": 2
+          },
+          "uniswap-v4": {
+            "pools": 10,
+            "reachable": 8
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 1,
+        "dust": 19,
+        "unmeasured": 277
+      },
+      "tvlUsd": 3457086.8130197907,
+      "cutUsd": 2727705.376560191,
+      "reachableUsd": 2951040.724959762,
+      "share": 0.03803199677583131,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0x6652edf64ba3731c4f2d3ce821a0fb1f1f6b482a",
+        "account": null,
+        "twapRef": null,
+        "description": "Robinhood CRCL / USD",
+        "decimals": 8,
+        "prices": null,
+        "pricesReason": "oracle_map_says_it_for_funds_only",
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:googl",
+      "chain": "robinhood",
+      "address": "0x2e0847e8910a9732eb3fb1bb4b70a580adad4fe3",
+      "symbol": "GOOGL",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "GOOGL",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 17,
+        "inCut": 4,
+        "reachable": 13,
+        "reachableReason": null,
+        "byVenue": {
+          "alandale": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "giga-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "ramses-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 4,
+            "reachable": 4
+          },
+          "uniswap-v4": {
+            "pools": 9,
+            "reachable": 9
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 2,
+        "twoStockAsOther": 3,
+        "dust": 27,
+        "unmeasured": 1294
+      },
+      "tvlUsd": 2454400.4387581386,
+      "cutUsd": 2219299.987030884,
+      "reachableUsd": 2374654.6693748804,
+      "share": 0.027001274374105252,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0xf6f373a037c30f0e5010d854385ca89185ae638b",
+        "account": null,
+        "twapRef": null,
+        "description": "Robinhood GOOGL / USD",
+        "decimals": 8,
+        "prices": null,
+        "pricesReason": "oracle_map_says_it_for_funds_only",
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:uso",
+      "chain": "robinhood",
+      "address": "0xa30fa36db767ad9ed3f7a60fc79526fb4d56d344",
+      "symbol": "USO",
+      "decimals": 18,
+      "cls": "commodity",
+      "clsSource": "class_table",
+      "underlying": "USO",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 6,
+        "inCut": 2,
+        "reachable": 5,
+        "reachableReason": null,
+        "byVenue": {
+          "uniswap-v3": {
+            "pools": 2,
+            "reachable": 2
+          },
+          "uniswap-v4": {
+            "pools": 3,
+            "reachable": 3
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 0,
+        "dust": 11,
+        "unmeasured": 502
+      },
+      "tvlUsd": 2421483.4494844833,
+      "cutUsd": 2325710.1170286513,
+      "reachableUsd": 2412261.171917312,
+      "share": 0.0266391490073916,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0x75a9c76ef439e2c7c2e5a34ab105ecfe3766431c",
+        "account": null,
+        "twapRef": null,
+        "description": "RHUSO / USD",
+        "decimals": 8,
+        "prices": "token_with_multiplier",
+        "pricesReason": null,
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:mu",
+      "chain": "robinhood",
+      "address": "0xff080c8ce2e5feadaca0da81314ae59d232d4afd",
+      "symbol": "MU",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "MU",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 13,
+        "inCut": 3,
+        "reachable": 7,
+        "reachableReason": null,
+        "byVenue": {
+          "0x5481864ddd46a2d798df0925c23b7846e776e5e3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "alandale": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "ramses-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 3,
+            "reachable": 3
+          },
+          "uniswap-v4": {
+            "pools": 6,
+            "reachable": 4
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 3,
+        "dust": 9,
+        "unmeasured": 553
+      },
+      "tvlUsd": 2292650.43307433,
+      "cutUsd": 2086371.9753857586,
+      "reachableUsd": 2183953.8762581632,
+      "share": 0.025221835202520273,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0x425eefdcf05ed6526c3ce61af99429a228a6d596",
+        "account": null,
+        "twapRef": null,
+        "description": "RHMU / USD",
+        "decimals": 8,
+        "prices": null,
+        "pricesReason": "oracle_map_says_it_for_funds_only",
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:sgov",
+      "chain": "robinhood",
+      "address": "0x92fd66527192e3e61d4ddd13322aa222de86f9b5",
+      "symbol": "SGOV",
+      "decimals": 18,
+      "cls": "dollar_yield",
+      "clsSource": "class_table",
+      "underlying": "SGOV",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 8,
+        "inCut": 2,
+        "reachable": 6,
+        "reachableReason": null,
+        "byVenue": {
+          "uniswap-v3": {
+            "pools": 3,
+            "reachable": 3
+          },
+          "uniswap-v4": {
+            "pools": 4,
+            "reachable": 3
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 0,
+        "dust": 15,
+        "unmeasured": 1270
+      },
+      "tvlUsd": 2243715.6521698814,
+      "cutUsd": 2058567.8099063588,
+      "reachableUsd": 2234983.0949708517,
+      "share": 0.024683495400761483,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0xa0df4ee0fff975306345875e3548fcc519577a11",
+        "account": null,
+        "twapRef": null,
+        "description": "Robinhood SGOV-USD",
+        "decimals": 8,
+        "prices": null,
+        "pricesReason": "not_stated_in_directory",
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": "what_the_oracle_prices_is_not_stated",
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:tsla",
+      "chain": "robinhood",
+      "address": "0x322f0929c4625ed5bad873c95208d54e1c003b2d",
+      "symbol": "TSLA",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "TSLA",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 14,
+        "inCut": 3,
+        "reachable": 9,
+        "reachableReason": null,
+        "byVenue": {
+          "alandale": {
+            "pools": 2,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 4,
+            "reachable": 4
+          },
+          "uniswap-v4": {
+            "pools": 7,
+            "reachable": 5
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 1,
+        "twoStockAsOther": 2,
+        "dust": 40,
+        "unmeasured": 2267
+      },
+      "tvlUsd": 2217344.885427156,
+      "cutUsd": 1750381.844207206,
+      "reachableUsd": 1995846.5685442758,
+      "share": 0.024393386135365434,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0x4a1166a659a55625345e9515b32adecea5547c38",
+        "account": null,
+        "twapRef": null,
+        "description": "RHTSLA / USD",
+        "decimals": 8,
+        "prices": null,
+        "pricesReason": "oracle_map_says_it_for_funds_only",
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:aapl",
+      "chain": "robinhood",
+      "address": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+      "symbol": "AAPL",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "AAPL",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 17,
+        "inCut": 3,
+        "reachable": 9,
+        "reachableReason": null,
+        "byVenue": {
+          "0x5481864ddd46a2d798df0925c23b7846e776e5e3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "alandale": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "ramses-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 4,
+            "reachable": 4
+          },
+          "uniswap-v4": {
+            "pools": 9,
+            "reachable": 5
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 1,
+        "twoStockAsOther": 3,
+        "dust": 38,
+        "unmeasured": 3014
+      },
+      "tvlUsd": 1955800.5833449222,
+      "cutUsd": 1350296.1329159588,
+      "reachableUsd": 1498543.7751312547,
+      "share": 0.021516093029485997,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0x6b22a786baa607d76728168703a39ea9c99f2cd0",
+        "account": null,
+        "twapRef": null,
+        "description": "Robinhood AAPL / USD",
+        "decimals": 8,
+        "prices": null,
+        "pricesReason": "oracle_map_says_it_for_funds_only",
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:coin",
+      "chain": "robinhood",
+      "address": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+      "symbol": "COIN",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "COIN",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 9,
+        "inCut": 2,
+        "reachable": 6,
+        "reachableReason": null,
+        "byVenue": {
+          "uniswap-v3": {
+            "pools": 2,
+            "reachable": 2
+          },
+          "uniswap-v4": {
+            "pools": 6,
+            "reachable": 4
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 1,
+        "dust": 28,
+        "unmeasured": 818
+      },
+      "tvlUsd": 1758026.112259553,
+      "cutUsd": 1586152.7726299842,
+      "reachableUsd": 1666103.1370149276,
+      "share": 0.019340342620693052,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0xa3a468a452940b7d6b69991207b508c609a98ef2",
+        "account": null,
+        "twapRef": null,
+        "description": "Robinhood COIN / USD",
+        "decimals": 8,
+        "prices": null,
+        "pricesReason": "oracle_map_says_it_for_funds_only",
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:hims",
+      "chain": "robinhood",
+      "address": "0xccee82fe024c36fa15e1005ede3e9e4787e23d09",
+      "symbol": "HIMS",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "HIMS",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 12,
+        "inCut": 2,
+        "reachable": 8,
+        "reachableReason": null,
+        "byVenue": {
+          "alandale": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 3,
+            "reachable": 3
+          },
+          "uniswap-v4": {
+            "pools": 6,
+            "reachable": 5
+          },
+          "up-v3": {
+            "pools": 2,
+            "reachable": 0
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 1,
+        "dust": 21,
+        "unmeasured": 668
+      },
+      "tvlUsd": 1646559.8240805836,
+      "cutUsd": 1367571.2082009218,
+      "reachableUsd": 1608479.4781356868,
+      "share": 0.01811408313057241,
+      "oracle": null,
+      "oracleReason": "no_feed",
+      "autoRebalance": false,
+      "autoRebalanceReason": "no_feed",
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:qqq",
+      "chain": "robinhood",
+      "address": "0xd5f3879160bc7c32ebb4dc785f8a4f505888de68",
+      "symbol": "QQQ",
+      "decimals": 18,
+      "cls": "etf",
+      "clsSource": "class_table",
+      "underlying": "QQQ",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 9,
+        "inCut": 2,
+        "reachable": 7,
+        "reachableReason": null,
+        "byVenue": {
+          "0x5481864ddd46a2d798df0925c23b7846e776e5e3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 4,
+            "reachable": 4
+          },
+          "uniswap-v4": {
+            "pools": 3,
+            "reachable": 3
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 6,
+        "dust": 19,
+        "unmeasured": 1267
+      },
+      "tvlUsd": 1582974.6403466573,
+      "cutUsd": 1503537.3705559778,
+      "reachableUsd": 1549374.847307028,
+      "share": 0.01741457176925749,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0x80901d846d5d7b030f26b480776ee3b29374c2ae",
+        "account": null,
+        "twapRef": null,
+        "description": "Robinhood QQQ / USD",
+        "decimals": 8,
+        "prices": "token_with_multiplier",
+        "pricesReason": null,
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:rddt",
+      "chain": "robinhood",
+      "address": "0x05b37fb53a299a1b874a619e1c4c404d52c36f4c",
+      "symbol": "RDDT",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "RDDT",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 13,
+        "inCut": 1,
+        "reachable": 8,
+        "reachableReason": null,
+        "byVenue": {
+          "alandale": {
+            "pools": 2,
+            "reachable": 0
+          },
+          "giga-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "ramses-v3": {
+            "pools": 2,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 4,
+            "reachable": 4
+          },
+          "uniswap-v4": {
+            "pools": 4,
+            "reachable": 4
+          }
+        },
+        "twoStock": 1,
+        "twoStockAsOther": 0,
+        "dust": 21,
+        "unmeasured": 687
+      },
+      "tvlUsd": 1455077.6686182374,
+      "cutUsd": 1065450.1814772573,
+      "reachableUsd": 1424962.999846673,
+      "share": 0.016007555550256337,
+      "oracle": null,
+      "oracleReason": "no_feed",
+      "autoRebalance": false,
+      "autoRebalanceReason": "no_feed",
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:amzn",
+      "chain": "robinhood",
+      "address": "0x12f190a9f9d7d37a250758b26824b97ce941bf54",
+      "symbol": "AMZN",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "AMZN",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 11,
+        "inCut": 1,
+        "reachable": 7,
+        "reachableReason": null,
+        "byVenue": {
+          "0x5481864ddd46a2d798df0925c23b7846e776e5e3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "alandale": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "giga-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 2,
+            "reachable": 2
+          },
+          "uniswap-v4": {
+            "pools": 6,
+            "reachable": 5
+          }
+        },
+        "twoStock": 1,
+        "twoStockAsOther": 1,
+        "dust": 24,
+        "unmeasured": 767
+      },
+      "tvlUsd": 1244146.5699126753,
+      "cutUsd": 938618.0956374723,
+      "reachableUsd": 1138769.8249656346,
+      "share": 0.013687066855647854,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0xd5a1508ced74c084ebf3cbe853e2c968fb2a651c",
+        "account": null,
+        "twapRef": null,
+        "description": "Robinhood AMZN / USD",
+        "decimals": 8,
+        "prices": null,
+        "pricesReason": "oracle_map_says_it_for_funds_only",
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:intc",
+      "chain": "robinhood",
+      "address": "0xc72b96e0e48ecd4dc75e1e45396e26300bc39681",
+      "symbol": "INTC",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "INTC",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 10,
+        "inCut": 3,
+        "reachable": 5,
+        "reachableReason": null,
+        "byVenue": {
+          "ramses-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 2,
+            "reachable": 2
+          },
+          "uniswap-v4": {
+            "pools": 6,
+            "reachable": 3
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 1,
+        "dust": 16,
+        "unmeasured": 488
+      },
+      "tvlUsd": 1230216.8063005866,
+      "cutUsd": 1068066.3066955889,
+      "reachableUsd": 795119.21843295,
+      "share": 0.013533823170014087,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0x3f390c5c24628ac7c489515402235fead71d1913",
+        "account": null,
+        "twapRef": null,
+        "description": "RHINTC / USD",
+        "decimals": 8,
+        "prices": null,
+        "pricesReason": "oracle_map_says_it_for_funds_only",
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:amc",
+      "chain": "robinhood",
+      "address": "0x05a3d1cd21d0c88145e82600e62e7e496e0f222b",
+      "symbol": "AMC",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "AMC",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 15,
+        "inCut": 2,
+        "reachable": 8,
+        "reachableReason": null,
+        "byVenue": {
+          "alandale": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "ramses-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 2,
+            "reachable": 2
+          },
+          "uniswap-v4": {
+            "pools": 10,
+            "reachable": 6
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 0,
+        "dust": 26,
+        "unmeasured": 1165
+      },
+      "tvlUsd": 1075779.9920412034,
+      "cutUsd": 689679.2059798377,
+      "reachableUsd": 730080.1774947342,
+      "share": 0.01183483765427231,
+      "oracle": null,
+      "oracleReason": "no_feed",
+      "autoRebalance": false,
+      "autoRebalanceReason": "no_feed",
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:pltr",
+      "chain": "robinhood",
+      "address": "0x894e1ec2d74ffe5aef8dc8a9e84686accb964f2a",
+      "symbol": "PLTR",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "PLTR",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 11,
+        "inCut": 1,
+        "reachable": 5,
+        "reachableReason": null,
+        "byVenue": {
+          "alandale": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "giga-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "ramses-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 2,
+            "reachable": 2
+          },
+          "uniswap-v4": {
+            "pools": 5,
+            "reachable": 3
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 1,
+        "dust": 14,
+        "unmeasured": 894
+      },
+      "tvlUsd": 971272.731446808,
+      "cutUsd": 632726.5921167661,
+      "reachableUsd": 915665.2413830194,
+      "share": 0.010685135603687949,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0x820abedff239034956b7a9d2f0a331f9f075eb4c",
+        "account": null,
+        "twapRef": null,
+        "description": "Robinhood PLTR / USD",
+        "decimals": 8,
+        "prices": null,
+        "pricesReason": "oracle_map_says_it_for_funds_only",
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:gme",
+      "chain": "robinhood",
+      "address": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+      "symbol": "GME",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "GME",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 16,
+        "inCut": 1,
+        "reachable": 12,
+        "reachableReason": null,
+        "byVenue": {
+          "alandale": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 4,
+            "reachable": 4
+          },
+          "uniswap-v4": {
+            "pools": 10,
+            "reachable": 8
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 1,
+        "twoStockAsOther": 0,
+        "dust": 33,
+        "unmeasured": 2223
+      },
+      "tvlUsd": 963374.7876490449,
+      "cutUsd": 562085.019932442,
+      "reachableUsd": 940904.6288705489,
+      "share": 0.010598248988078247,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0x27c71df6a64fb476468edf256cf72c038bab5b67",
+        "account": null,
+        "twapRef": null,
+        "description": "Robinhood GME / USD",
+        "decimals": 8,
+        "prices": null,
+        "pricesReason": "oracle_map_says_it_for_funds_only",
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:msft",
+      "chain": "robinhood",
+      "address": "0xe93237c50d904957cf27e7b1133b510c669c2e74",
+      "symbol": "MSFT",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "MSFT",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 6,
+        "inCut": 1,
+        "reachable": 4,
+        "reachableReason": null,
+        "byVenue": {
+          "alandale": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 1,
+            "reachable": 1
+          },
+          "uniswap-v4": {
+            "pools": 3,
+            "reachable": 3
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 2,
+        "dust": 18,
+        "unmeasured": 1752
+      },
+      "tvlUsd": 926402.1889637067,
+      "cutUsd": 624687.8436021585,
+      "reachableUsd": 890310.9893652817,
+      "share": 0.010191507176244308,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0x45c3c877c15e6ba2ebb19ea114ea508d14c1af2e",
+        "account": null,
+        "twapRef": null,
+        "description": "RHMSFT / USD",
+        "decimals": 8,
+        "prices": null,
+        "pricesReason": "oracle_map_says_it_for_funds_only",
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:djt",
+      "chain": "robinhood",
+      "address": "0x1d11f0496982706c5e14a514d4e79f2e6bde4516",
+      "symbol": "DJT",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "DJT",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 11,
+        "inCut": 2,
+        "reachable": 7,
+        "reachableReason": null,
+        "byVenue": {
+          "alandale": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "giga-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 3,
+            "reachable": 3
+          },
+          "uniswap-v4": {
+            "pools": 5,
+            "reachable": 4
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 0,
+        "dust": 22,
+        "unmeasured": 929
+      },
+      "tvlUsd": 865758.8125898269,
+      "cutUsd": 650079.9439646455,
+      "reachableUsd": 838481.7706520045,
+      "share": 0.009524359135286587,
+      "oracle": null,
+      "oracleReason": "no_feed",
+      "autoRebalance": false,
+      "autoRebalanceReason": "no_feed",
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:cost",
+      "chain": "robinhood",
+      "address": "0x4ea005168d7f09a7a0ba9d1def21a479950e44c2",
+      "symbol": "COST",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "COST",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 8,
+        "inCut": 1,
+        "reachable": 6,
+        "reachableReason": null,
+        "byVenue": {
+          "giga-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "ramses-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 2,
+            "reachable": 2
+          },
+          "uniswap-v4": {
+            "pools": 4,
+            "reachable": 4
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 0,
+        "dust": 18,
+        "unmeasured": 344
+      },
+      "tvlUsd": 783643.7566910317,
+      "cutUsd": 640957.981236715,
+      "reachableUsd": 750604.9128790253,
+      "share": 0.008620997516067595,
+      "oracle": null,
+      "oracleReason": "no_feed",
+      "autoRebalance": false,
+      "autoRebalanceReason": "no_feed",
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:lly",
+      "chain": "robinhood",
+      "address": "0x8005d266423c7ea827372c9c864491e5786600ea",
+      "symbol": "LLY",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "LLY",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 8,
+        "inCut": 1,
+        "reachable": 5,
+        "reachableReason": null,
+        "byVenue": {
+          "alandale": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "ramses-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 4,
+            "reachable": 4
+          },
+          "uniswap-v4": {
+            "pools": 1,
+            "reachable": 1
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 0,
+        "dust": 19,
+        "unmeasured": 354
+      },
+      "tvlUsd": 705432.1436182777,
+      "cutUsd": 246099.10432503355,
+      "reachableUsd": 665479.5754605996,
+      "share": 0.007760578331622163,
+      "oracle": null,
+      "oracleReason": "no_feed",
+      "autoRebalance": false,
+      "autoRebalanceReason": "no_feed",
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:amd",
+      "chain": "robinhood",
+      "address": "0x86923f96303d656e4aa86d9d42d1e57ad2023fdc",
+      "symbol": "AMD",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "AMD",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 6,
+        "inCut": 1,
+        "reachable": 6,
+        "reachableReason": null,
+        "byVenue": {
+          "uniswap-v3": {
+            "pools": 3,
+            "reachable": 3
+          },
+          "uniswap-v4": {
+            "pools": 3,
+            "reachable": 3
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 1,
+        "dust": 16,
+        "unmeasured": 765
+      },
+      "tvlUsd": 675358.6099007293,
+      "cutUsd": 511183.6441142783,
+      "reachableUsd": 675358.6099007293,
+      "share": 0.007429734300434939,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0x943a29e7ae51a4798823ca9eed2ed533b2a22c72",
+        "account": null,
+        "twapRef": null,
+        "description": "RHAMD / USD",
+        "decimals": 8,
+        "prices": null,
+        "pricesReason": "oracle_map_says_it_for_funds_only",
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:slv",
+      "chain": "robinhood",
+      "address": "0x411efb0e7f985935daec3d4c3ebaea0d0ad7d89f",
+      "symbol": "SLV",
+      "decimals": 18,
+      "cls": "commodity",
+      "clsSource": "class_table",
+      "underlying": "SLV",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 6,
+        "inCut": 1,
+        "reachable": 6,
+        "reachableReason": null,
+        "byVenue": {
+          "uniswap-v3": {
+            "pools": 4,
+            "reachable": 4
+          },
+          "uniswap-v4": {
+            "pools": 2,
+            "reachable": 2
+          }
+        },
+        "twoStock": 2,
+        "twoStockAsOther": 1,
+        "dust": 14,
+        "unmeasured": 286
+      },
+      "tvlUsd": 509038.359929707,
+      "cutUsd": 323552.58514513145,
+      "reachableUsd": 509038.359929707,
+      "share": 0.005600017098416512,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0x209b73908e92ae021826ed79609845451ecba2ce",
+        "account": null,
+        "twapRef": null,
+        "description": "Robinhood SLV / USD",
+        "decimals": 8,
+        "prices": "token_with_multiplier",
+        "pricesReason": null,
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:sndk",
+      "chain": "robinhood",
+      "address": "0xb90a19ff0af67f7779aff50a882a9cff42446400",
+      "symbol": "SNDK",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "SNDK",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 12,
+        "inCut": 1,
+        "reachable": 6,
+        "reachableReason": null,
+        "byVenue": {
+          "alandale": {
+            "pools": 2,
+            "reachable": 0
+          },
+          "ramses-v3": {
+            "pools": 1,
+            "reachable": 0
+          },
+          "uniswap-v3": {
+            "pools": 2,
+            "reachable": 2
+          },
+          "uniswap-v4": {
+            "pools": 6,
+            "reachable": 4
+          },
+          "up-v3": {
+            "pools": 1,
+            "reachable": 0
+          }
+        },
+        "twoStock": 1,
+        "twoStockAsOther": 0,
+        "dust": 18,
+        "unmeasured": 615
+      },
+      "tvlUsd": 414272.1633307769,
+      "cutUsd": 230168.20438261522,
+      "reachableUsd": 354486.85640390666,
+      "share": 0.004557478140489663,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0xfb133fa4b7b385802b693a293606682df47109a3",
+        "account": null,
+        "twapRef": null,
+        "description": "RHSNDK / USD",
+        "decimals": 8,
+        "prices": null,
+        "pricesReason": "oracle_map_says_it_for_funds_only",
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    },
+    {
+      "id": "robinhood:dell",
+      "chain": "robinhood",
+      "address": "0x941ae714ec6d8130c7b75d67160ca08f1e7d11dd",
+      "symbol": "DELL",
+      "decimals": 18,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "DELL",
+      "issuer": "Robinhood",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 4,
+        "inCut": 1,
+        "reachable": 4,
+        "reachableReason": null,
+        "byVenue": {
+          "uniswap-v3": {
+            "pools": 2,
+            "reachable": 2
+          },
+          "uniswap-v4": {
+            "pools": 2,
+            "reachable": 2
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 0,
+        "dust": 17,
+        "unmeasured": 264
+      },
+      "tvlUsd": 378727.25605130737,
+      "cutUsd": 274624.2690299923,
+      "reachableUsd": 378727.25605130737,
+      "share": 0.0041664426032972475,
+      "oracle": {
+        "kind": "chainlink",
+        "ref": "0x1c6c8cadbe02e19129c39ddb92281ce4c0bf206b",
+        "account": null,
+        "twapRef": null,
+        "description": "Robinhood DELL-USD",
+        "decimals": 8,
+        "prices": null,
+        "pricesReason": "oracle_map_says_it_for_funds_only",
+        "source": "https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, then description(), decimals(), latestRoundData() and aggregator() of each proxy by eth_call at block 81164628 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com",
+        "fetchedAt": "2026-10-05T23:12:17.000Z",
+        "method": "evm-oracles-0.1",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "cut-robinhood-20261005T1947.json (pnpm risk-evm:pareto) of discovery-robinhood-20261005T1947.json (pnpm risk-evm:discover: PoolCreated events of the v3 factory and Initialize events of the v4 pool manager (eth_getLogs, blocks 0 to 81044145), https://api.dexscreener.com/token-pairs/v1/robinhood/{token}, the factory's getPool(), then balanceOf(), slot0(), liquidity() and the v4 StateView by eth_call at blocks 81044145 to 81057597 on Robinhood Chain (chain 4663) through https://rpc.mainnet.chain.robinhood.com)",
+      "fetchedAt": "2026-10-05T20:11:13.000Z",
+      "method": "evm-cut-0.1",
+      "provenance": "live"
+    }
+  ]
+}

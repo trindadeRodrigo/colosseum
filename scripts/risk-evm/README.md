@@ -212,6 +212,10 @@ Every feed of the directory is read, whatever it is matched to (five reads each:
 - The six funds all have a feed. SPY, QQQ, SLV and USO: `token_with_multiplier`. **GLD: `token_from_pools`**, a reference price from the state of exchanges on chain, market hours "Crypto"; its aggregator does not answer a direct call. **SGOV: not stated**, the directory entry carries no product or asset name.
 - 11 feeds name a registry token outside both lists: ASML, BABA, CLSK, CRWV, EWY, IONQ, NBIS, ORCL, RGTI, RKLB, USAR.
 
+## The asset list
+
+`pnpm risk:universe robinhood` (PLAN-UNIVERSE RU.4) writes `scripts/risk/universe/robinhood.json` from the newest cut, oracle map and token list: one row per tracked stock, keyed on the token address, with its pools, its oracle or the reason it has none, and `autoRebalance`. It is committed, and it is what RU.6 makes the collector read. It refuses a cut and an oracle map that do not name the same token addresses. See `scripts/risk/universe/README.md`.
+
 ## Files
 
 | File | What it is |

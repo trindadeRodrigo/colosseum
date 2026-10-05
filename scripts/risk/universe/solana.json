@@ -1,0 +1,1232 @@
+{
+  "chain": "solana",
+  "source": "fixtures/risk/universe/solana-registry-20261001T0139.json.gz, fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz and fixtures/solana-vault/scope-indexes.json, through trackedSet of packages/risk; no chain read",
+  "fetchedAt": "2026-10-01T01:38:24.027Z",
+  "method": "universe-list-0.1",
+  "provenance": "fixture",
+  "inputs": {
+    "registry": "fixtures/risk/universe/solana-registry-20261001T0139.json.gz",
+    "detail": "fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz",
+    "scope": "fixtures/solana-vault/scope-indexes.json"
+  },
+  "rule": {
+    "share": 0.8,
+    "minPoolUsd": 1000
+  },
+  "rankedUsd": 41364269.9288201,
+  "counts": {
+    "assets": 18,
+    "withOracle": 10,
+    "withoutOracle": 8,
+    "withoutOracleByReason": {
+      "no_scope_entry": 8
+    },
+    "autoRebalance": 10,
+    "rankedPools": 869,
+    "reachablePools": null,
+    "twoStockPools": 22
+  },
+  "stated": {
+    "rows": "One row per tracked stock, keyed on the token address. The tracked stocks are the ones the cut names at the rule in `rule`; every row of one run has inCut true.",
+    "identity": "id is the chain and the symbol in lower case; underlying is the symbol (on Solana without the trailing x); issuer and session (us_equity) are set here for every row, by chain. decimals is copied: on Robinhood Chain from the token list, where the contract confirmed it; on Solana from the registry.",
+    "cls": "DU7: funds and the treasury token are ranked with the stocks. cls comes from a table in scripts/risk/universe/list.ts keyed on the underlying (SPY and QQQ etf, GLD gold, SLV and USO commodity, SGOV dollar_yield); every other token is stock. clsSource says which. No input file carries a class.",
+    "pools": "pools.ranked is every pool of the stock with a measured TVL at the floor or more; dust and unmeasured are the ones left out, and an unmeasured pool is never counted as zero. The pools themselves are not in this file.",
+    "reach": "DU3: a pool the vault cannot reach (a hooked v4 pool, another venue) is counted in ranked and in byVenue, and left out of reachable and reachableUsd; nothing is dropped. On Solana reach is not recorded per pool, so reachable is null with its reason and byExitPath says how a seller reaches dollars.",
+    "twoStockPools": "A pool of two stocks is one pool, counted once, under the stock its chain files it (token0 on Robinhood Chain, the registry asset on Solana): it is in that row's ranked, tvlUsd and twoStock. The stock on the other side has it in twoStockAsOther only, and not in its money. Whether such a pool should count for both is not decided here.",
+    "money": "tvlUsd, cutUsd and reachableUsd are copied from the cut (Solana: summed from the registry by the same rule). share is derived here: tvlUsd over rankedUsd, the money in every ranked pool of the chain.",
+    "oracle": "oracle.ref is the address or index the vault would read. On Robinhood Chain it is the proxy the oracle map confirmed on chain, copied; a stock whose feed that map refused carries its reason, and no_feed means the directory lists none. On Solana it is the Scope entry of the frozen Kamino reserves; a stock with no entry is no_scope_entry. No price is stored and nothing is compared with a pool price (ORACLE-VS-DEX).",
+    "prices": "oracle.prices is what the oracle map says the feed prices, copied; the map says it for the funds and the treasury token only, and for the others it is null with that reason. No multiplier is applied to anything.",
+    "autoRebalance": "Derived here by the rule alone: true when the row has a confirmed oracle, false with the oracle's reason when it has none. Where the oracle is confirmed and what it prices is in question (a price taken from the pools; a feed whose directory entry does not say what it prices) the row is still written true, and autoRebalanceOpen names the question. Whether such a stock may be rebalanced automatically is for the vault stream; this file does not decide it.",
+    "later": "The list is written from one run of its inputs. What happens to a stock that leaves the cut on a later run is not decided: no rule keeps or removes a row, and a new run writes the file again from scratch.",
+    "provenance": "source, fetchedAt, method and provenance on a row are the cut's (the time is the pool read's); on an oracle they are the oracle input's. They are copied, so a list written from frozen inputs says fixture."
+  },
+  "assets": [
+    {
+      "id": "solana:aaplx",
+      "chain": "solana",
+      "address": "XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp",
+      "symbol": "AAPLx",
+      "decimals": 8,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "AAPL",
+      "issuer": "Backed (xStocks)",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 35,
+        "inCut": 2,
+        "reachable": null,
+        "reachableReason": "reach_is_not_recorded_per_pool_on_solana",
+        "byVenue": {
+          "meteora_dlmm": {
+            "pools": 2,
+            "reachable": null
+          },
+          "orca_whirlpool": {
+            "pools": 4,
+            "reachable": null
+          },
+          "raydium_clmm": {
+            "pools": 7,
+            "reachable": null
+          },
+          "raydium_cpmm": {
+            "pools": 22,
+            "reachable": null
+          }
+        },
+        "twoStock": 1,
+        "twoStockAsOther": 2,
+        "byExitPath": {
+          "direct_usd": 4,
+          "other": 26,
+          "via_sol": 4,
+          "via_xstock": 1
+        },
+        "dust": 224,
+        "unmeasured": 0
+      },
+      "tvlUsd": 723613.8551937069,
+      "cutUsd": 549790.4891090456,
+      "reachableUsd": null,
+      "share": 0.017493693384143034,
+      "oracle": {
+        "kind": "scope",
+        "ref": "317",
+        "account": "3t4JZcueEzTbVP6kLxXrL3VpWx45jDer4eqysweBchNH",
+        "twapRef": "259",
+        "description": null,
+        "decimals": null,
+        "prices": null,
+        "pricesReason": "not_reported_by_the_scope_table",
+        "source": "fixtures/solana-vault/scope-indexes.json: fixtures/risk/lending/import.json: the Kamino collateral reserves of the registry, oracles.scopePriceChain and oracles.scopeTwapChain",
+        "fetchedAt": "2026-10-01T21:09:34.070Z",
+        "method": "kamino_reserve_decode",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "fixtures/risk/universe/solana-registry-20261001T0139.json.gz and fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz: data/risk/registry-20261001T0139.json (pnpm risk:registry: pool accounts and vault balances read on chain, priced in USD)",
+      "fetchedAt": "2026-10-01T01:38:24.027Z",
+      "method": "registry-0.1",
+      "provenance": "fixture"
+    },
+    {
+      "id": "solana:amznx",
+      "chain": "solana",
+      "address": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+      "symbol": "AMZNx",
+      "decimals": 8,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "AMZN",
+      "issuer": "Backed (xStocks)",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 15,
+        "inCut": 1,
+        "reachable": null,
+        "reachableReason": "reach_is_not_recorded_per_pool_on_solana",
+        "byVenue": {
+          "meteora_dlmm": {
+            "pools": 1,
+            "reachable": null
+          },
+          "raydium_clmm": {
+            "pools": 5,
+            "reachable": null
+          },
+          "raydium_cpmm": {
+            "pools": 9,
+            "reachable": null
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 1,
+        "byExitPath": {
+          "direct_usd": 1,
+          "other": 11,
+          "via_sol": 3
+        },
+        "dust": 100,
+        "unmeasured": 0
+      },
+      "tvlUsd": 477911.1008580161,
+      "cutUsd": 419466.78080887,
+      "reachableUsd": null,
+      "share": 0.011553717778179297,
+      "oracle": null,
+      "oracleReason": "no_scope_entry",
+      "autoRebalance": false,
+      "autoRebalanceReason": "no_scope_entry",
+      "autoRebalanceOpen": null,
+      "source": "fixtures/risk/universe/solana-registry-20261001T0139.json.gz and fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz: data/risk/registry-20261001T0139.json (pnpm risk:registry: pool accounts and vault balances read on chain, priced in USD)",
+      "fetchedAt": "2026-10-01T01:38:24.027Z",
+      "method": "registry-0.1",
+      "provenance": "fixture"
+    },
+    {
+      "id": "solana:coinx",
+      "chain": "solana",
+      "address": "Xs7ZdzSHLU9ftNJsii5fCeJhoRWSC32SQGzGQtePxNu",
+      "symbol": "COINx",
+      "decimals": 8,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "COIN",
+      "issuer": "Backed (xStocks)",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 18,
+        "inCut": 1,
+        "reachable": null,
+        "reachableReason": "reach_is_not_recorded_per_pool_on_solana",
+        "byVenue": {
+          "orca_whirlpool": {
+            "pools": 3,
+            "reachable": null
+          },
+          "raydium_clmm": {
+            "pools": 7,
+            "reachable": null
+          },
+          "raydium_cpmm": {
+            "pools": 8,
+            "reachable": null
+          }
+        },
+        "twoStock": 1,
+        "twoStockAsOther": 0,
+        "byExitPath": {
+          "direct_usd": 3,
+          "other": 12,
+          "via_sol": 2,
+          "via_xstock": 1
+        },
+        "dust": 108,
+        "unmeasured": 0
+      },
+      "tvlUsd": 1735342.9417032609,
+      "cutUsd": 1474574.0543425977,
+      "reachableUsd": null,
+      "share": 0.041952703255477494,
+      "oracle": null,
+      "oracleReason": "no_scope_entry",
+      "autoRebalance": false,
+      "autoRebalanceReason": "no_scope_entry",
+      "autoRebalanceOpen": null,
+      "source": "fixtures/risk/universe/solana-registry-20261001T0139.json.gz and fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz: data/risk/registry-20261001T0139.json (pnpm risk:registry: pool accounts and vault balances read on chain, priced in USD)",
+      "fetchedAt": "2026-10-01T01:38:24.027Z",
+      "method": "registry-0.1",
+      "provenance": "fixture"
+    },
+    {
+      "id": "solana:crclx",
+      "chain": "solana",
+      "address": "XsueG8BtpquVJX9LVLLEGuViXUungE6WmK5YZ3p3bd1",
+      "symbol": "CRCLx",
+      "decimals": 8,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "CRCL",
+      "issuer": "Backed (xStocks)",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 19,
+        "inCut": 2,
+        "reachable": null,
+        "reachableReason": "reach_is_not_recorded_per_pool_on_solana",
+        "byVenue": {
+          "meteora_dlmm": {
+            "pools": 1,
+            "reachable": null
+          },
+          "orca_whirlpool": {
+            "pools": 4,
+            "reachable": null
+          },
+          "raydium_clmm": {
+            "pools": 7,
+            "reachable": null
+          },
+          "raydium_cpmm": {
+            "pools": 7,
+            "reachable": null
+          }
+        },
+        "twoStock": 1,
+        "twoStockAsOther": 3,
+        "byExitPath": {
+          "direct_usd": 4,
+          "other": 11,
+          "via_sol": 3,
+          "via_xstock": 1
+        },
+        "dust": 133,
+        "unmeasured": 0
+      },
+      "tvlUsd": 4217342.575651204,
+      "cutUsd": 3905900.272167353,
+      "reachableUsd": null,
+      "share": 0.10195617093951939,
+      "oracle": {
+        "kind": "scope",
+        "ref": "323",
+        "account": "3t4JZcueEzTbVP6kLxXrL3VpWx45jDer4eqysweBchNH",
+        "twapRef": "263",
+        "description": null,
+        "decimals": null,
+        "prices": null,
+        "pricesReason": "not_reported_by_the_scope_table",
+        "source": "fixtures/solana-vault/scope-indexes.json: fixtures/risk/lending/import.json: the Kamino collateral reserves of the registry, oracles.scopePriceChain and oracles.scopeTwapChain",
+        "fetchedAt": "2026-10-01T21:09:34.070Z",
+        "method": "kamino_reserve_decode",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "fixtures/risk/universe/solana-registry-20261001T0139.json.gz and fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz: data/risk/registry-20261001T0139.json (pnpm risk:registry: pool accounts and vault balances read on chain, priced in USD)",
+      "fetchedAt": "2026-10-01T01:38:24.027Z",
+      "method": "registry-0.1",
+      "provenance": "fixture"
+    },
+    {
+      "id": "solana:gldx",
+      "chain": "solana",
+      "address": "Xsv9hRk1z5ystj9MhnA7Lq4vjSsLwzL2nxrwmwtD3re",
+      "symbol": "GLDx",
+      "decimals": 8,
+      "cls": "gold",
+      "clsSource": "class_table",
+      "underlying": "GLD",
+      "issuer": "Backed (xStocks)",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 63,
+        "inCut": 2,
+        "reachable": null,
+        "reachableReason": "reach_is_not_recorded_per_pool_on_solana",
+        "byVenue": {
+          "meteora_dlmm": {
+            "pools": 2,
+            "reachable": null
+          },
+          "orca_whirlpool": {
+            "pools": 7,
+            "reachable": null
+          },
+          "raydium_clmm": {
+            "pools": 10,
+            "reachable": null
+          },
+          "raydium_cpmm": {
+            "pools": 44,
+            "reachable": null
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 1,
+        "byExitPath": {
+          "direct_usd": 6,
+          "other": 54,
+          "via_sol": 3
+        },
+        "dust": 275,
+        "unmeasured": 0
+      },
+      "tvlUsd": 2281226.076642122,
+      "cutUsd": 1345320.7044396813,
+      "reachableUsd": null,
+      "share": 0.055149675808799974,
+      "oracle": null,
+      "oracleReason": "no_scope_entry",
+      "autoRebalance": false,
+      "autoRebalanceReason": "no_scope_entry",
+      "autoRebalanceOpen": null,
+      "source": "fixtures/risk/universe/solana-registry-20261001T0139.json.gz and fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz: data/risk/registry-20261001T0139.json (pnpm risk:registry: pool accounts and vault balances read on chain, priced in USD)",
+      "fetchedAt": "2026-10-01T01:38:24.027Z",
+      "method": "registry-0.1",
+      "provenance": "fixture"
+    },
+    {
+      "id": "solana:gmex",
+      "chain": "solana",
+      "address": "Xsf9mBktVB9BSU5kf4nHxPq5hCBJ2j2ui3ecFGxPRGc",
+      "symbol": "GMEx",
+      "decimals": 8,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "GME",
+      "issuer": "Backed (xStocks)",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 64,
+        "inCut": 1,
+        "reachable": null,
+        "reachableReason": "reach_is_not_recorded_per_pool_on_solana",
+        "byVenue": {
+          "meteora_dlmm": {
+            "pools": 1,
+            "reachable": null
+          },
+          "orca_whirlpool": {
+            "pools": 5,
+            "reachable": null
+          },
+          "raydium_clmm": {
+            "pools": 8,
+            "reachable": null
+          },
+          "raydium_cpmm": {
+            "pools": 50,
+            "reachable": null
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 1,
+        "byExitPath": {
+          "direct_usd": 5,
+          "other": 55,
+          "via_sol": 4
+        },
+        "dust": 193,
+        "unmeasured": 0
+      },
+      "tvlUsd": 695325.7929981973,
+      "cutUsd": 313032.8608400181,
+      "reachableUsd": null,
+      "share": 0.016809816641142665,
+      "oracle": null,
+      "oracleReason": "no_scope_entry",
+      "autoRebalance": false,
+      "autoRebalanceReason": "no_scope_entry",
+      "autoRebalanceOpen": null,
+      "source": "fixtures/risk/universe/solana-registry-20261001T0139.json.gz and fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz: data/risk/registry-20261001T0139.json (pnpm risk:registry: pool accounts and vault balances read on chain, priced in USD)",
+      "fetchedAt": "2026-10-01T01:38:24.027Z",
+      "method": "registry-0.1",
+      "provenance": "fixture"
+    },
+    {
+      "id": "solana:googlx",
+      "chain": "solana",
+      "address": "XsCPL9dNWBMvFtTmwcCA5v3xWPSMEBCszbQdiLLq6aN",
+      "symbol": "GOOGLx",
+      "decimals": 8,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "GOOGL",
+      "issuer": "Backed (xStocks)",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 40,
+        "inCut": 1,
+        "reachable": null,
+        "reachableReason": "reach_is_not_recorded_per_pool_on_solana",
+        "byVenue": {
+          "meteora_dlmm": {
+            "pools": 2,
+            "reachable": null
+          },
+          "orca_whirlpool": {
+            "pools": 3,
+            "reachable": null
+          },
+          "raydium_clmm": {
+            "pools": 8,
+            "reachable": null
+          },
+          "raydium_cpmm": {
+            "pools": 27,
+            "reachable": null
+          }
+        },
+        "twoStock": 1,
+        "twoStockAsOther": 0,
+        "byExitPath": {
+          "direct_usd": 6,
+          "other": 29,
+          "via_sol": 4,
+          "via_xstock": 1
+        },
+        "dust": 158,
+        "unmeasured": 0
+      },
+      "tvlUsd": 1050782.1508791773,
+      "cutUsd": 736353.916899761,
+      "reachableUsd": null,
+      "share": 0.02540313542792777,
+      "oracle": {
+        "kind": "scope",
+        "ref": "326",
+        "account": "3t4JZcueEzTbVP6kLxXrL3VpWx45jDer4eqysweBchNH",
+        "twapRef": "265",
+        "description": null,
+        "decimals": null,
+        "prices": null,
+        "pricesReason": "not_reported_by_the_scope_table",
+        "source": "fixtures/solana-vault/scope-indexes.json: fixtures/risk/lending/import.json: the Kamino collateral reserves of the registry, oracles.scopePriceChain and oracles.scopeTwapChain",
+        "fetchedAt": "2026-10-01T21:09:34.070Z",
+        "method": "kamino_reserve_decode",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "fixtures/risk/universe/solana-registry-20261001T0139.json.gz and fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz: data/risk/registry-20261001T0139.json (pnpm risk:registry: pool accounts and vault balances read on chain, priced in USD)",
+      "fetchedAt": "2026-10-01T01:38:24.027Z",
+      "method": "registry-0.1",
+      "provenance": "fixture"
+    },
+    {
+      "id": "solana:hoodx",
+      "chain": "solana",
+      "address": "XsvNBAYkrDRNhA7wPHQfX3ZUXZyZLdnCQDfHZ56bzpg",
+      "symbol": "HOODx",
+      "decimals": 8,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "HOOD",
+      "issuer": "Backed (xStocks)",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 20,
+        "inCut": 1,
+        "reachable": null,
+        "reachableReason": "reach_is_not_recorded_per_pool_on_solana",
+        "byVenue": {
+          "meteora_dlmm": {
+            "pools": 1,
+            "reachable": null
+          },
+          "orca_whirlpool": {
+            "pools": 2,
+            "reachable": null
+          },
+          "raydium_clmm": {
+            "pools": 4,
+            "reachable": null
+          },
+          "raydium_cpmm": {
+            "pools": 13,
+            "reachable": null
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 0,
+        "byExitPath": {
+          "direct_usd": 3,
+          "other": 15,
+          "via_sol": 2
+        },
+        "dust": 98,
+        "unmeasured": 0
+      },
+      "tvlUsd": 1647622.982300219,
+      "cutUsd": 1471623.5851892675,
+      "reachableUsd": null,
+      "share": 0.03983203342245515,
+      "oracle": {
+        "kind": "scope",
+        "ref": "320",
+        "account": "3t4JZcueEzTbVP6kLxXrL3VpWx45jDer4eqysweBchNH",
+        "twapRef": "261",
+        "description": null,
+        "decimals": null,
+        "prices": null,
+        "pricesReason": "not_reported_by_the_scope_table",
+        "source": "fixtures/solana-vault/scope-indexes.json: fixtures/risk/lending/import.json: the Kamino collateral reserves of the registry, oracles.scopePriceChain and oracles.scopeTwapChain",
+        "fetchedAt": "2026-10-01T21:09:34.070Z",
+        "method": "kamino_reserve_decode",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "fixtures/risk/universe/solana-registry-20261001T0139.json.gz and fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz: data/risk/registry-20261001T0139.json (pnpm risk:registry: pool accounts and vault balances read on chain, priced in USD)",
+      "fetchedAt": "2026-10-01T01:38:24.027Z",
+      "method": "registry-0.1",
+      "provenance": "fixture"
+    },
+    {
+      "id": "solana:mcdx",
+      "chain": "solana",
+      "address": "XsqE9cRRpzxcGKDXj1BJ7Xmg4GRhZoyY1KpmGSxAWT2",
+      "symbol": "MCDx",
+      "decimals": 8,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "MCD",
+      "issuer": "Backed (xStocks)",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 43,
+        "inCut": 1,
+        "reachable": null,
+        "reachableReason": "reach_is_not_recorded_per_pool_on_solana",
+        "byVenue": {
+          "meteora_dlmm": {
+            "pools": 3,
+            "reachable": null
+          },
+          "orca_whirlpool": {
+            "pools": 3,
+            "reachable": null
+          },
+          "raydium_clmm": {
+            "pools": 7,
+            "reachable": null
+          },
+          "raydium_cpmm": {
+            "pools": 30,
+            "reachable": null
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 0,
+        "byExitPath": {
+          "direct_usd": 3,
+          "other": 35,
+          "via_sol": 5
+        },
+        "dust": 175,
+        "unmeasured": 0
+      },
+      "tvlUsd": 630881.2844570115,
+      "cutUsd": 229877.18573077762,
+      "reachableUsd": null,
+      "share": 0.015251841396998811,
+      "oracle": null,
+      "oracleReason": "no_scope_entry",
+      "autoRebalance": false,
+      "autoRebalanceReason": "no_scope_entry",
+      "autoRebalanceOpen": null,
+      "source": "fixtures/risk/universe/solana-registry-20261001T0139.json.gz and fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz: data/risk/registry-20261001T0139.json (pnpm risk:registry: pool accounts and vault balances read on chain, priced in USD)",
+      "fetchedAt": "2026-10-01T01:38:24.027Z",
+      "method": "registry-0.1",
+      "provenance": "fixture"
+    },
+    {
+      "id": "solana:metax",
+      "chain": "solana",
+      "address": "Xsa62P5mvPszXL1krVUnU5ar38bBSVcWAB6fmPCo5Zu",
+      "symbol": "METAx",
+      "decimals": 8,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "META",
+      "issuer": "Backed (xStocks)",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 44,
+        "inCut": 1,
+        "reachable": null,
+        "reachableReason": "reach_is_not_recorded_per_pool_on_solana",
+        "byVenue": {
+          "meteora_dlmm": {
+            "pools": 2,
+            "reachable": null
+          },
+          "orca_whirlpool": {
+            "pools": 1,
+            "reachable": null
+          },
+          "raydium_clmm": {
+            "pools": 5,
+            "reachable": null
+          },
+          "raydium_cpmm": {
+            "pools": 36,
+            "reachable": null
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 0,
+        "byExitPath": {
+          "direct_usd": 4,
+          "other": 38,
+          "via_sol": 2
+        },
+        "dust": 78,
+        "unmeasured": 0
+      },
+      "tvlUsd": 1498054.5313936332,
+      "cutUsd": 1015310.8642736999,
+      "reachableUsd": null,
+      "share": 0.03621614823545768,
+      "oracle": {
+        "kind": "scope",
+        "ref": "329",
+        "account": "3t4JZcueEzTbVP6kLxXrL3VpWx45jDer4eqysweBchNH",
+        "twapRef": "267",
+        "description": null,
+        "decimals": null,
+        "prices": null,
+        "pricesReason": "not_reported_by_the_scope_table",
+        "source": "fixtures/solana-vault/scope-indexes.json: fixtures/risk/lending/import.json: the Kamino collateral reserves of the registry, oracles.scopePriceChain and oracles.scopeTwapChain",
+        "fetchedAt": "2026-10-01T21:09:34.070Z",
+        "method": "kamino_reserve_decode",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "fixtures/risk/universe/solana-registry-20261001T0139.json.gz and fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz: data/risk/registry-20261001T0139.json (pnpm risk:registry: pool accounts and vault balances read on chain, priced in USD)",
+      "fetchedAt": "2026-10-01T01:38:24.027Z",
+      "method": "registry-0.1",
+      "provenance": "fixture"
+    },
+    {
+      "id": "solana:msftx",
+      "chain": "solana",
+      "address": "XspzcW1PRtgf6Wj92HCiZdjzKCyFekVD8P5Ueh3dRMX",
+      "symbol": "MSFTx",
+      "decimals": 8,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "MSFT",
+      "issuer": "Backed (xStocks)",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 40,
+        "inCut": 2,
+        "reachable": null,
+        "reachableReason": "reach_is_not_recorded_per_pool_on_solana",
+        "byVenue": {
+          "meteora_dlmm": {
+            "pools": 2,
+            "reachable": null
+          },
+          "orca_whirlpool": {
+            "pools": 1,
+            "reachable": null
+          },
+          "raydium_clmm": {
+            "pools": 6,
+            "reachable": null
+          },
+          "raydium_cpmm": {
+            "pools": 31,
+            "reachable": null
+          }
+        },
+        "twoStock": 0,
+        "twoStockAsOther": 1,
+        "byExitPath": {
+          "direct_usd": 3,
+          "other": 35,
+          "via_sol": 2
+        },
+        "dust": 96,
+        "unmeasured": 0
+      },
+      "tvlUsd": 980279.8284396068,
+      "cutUsd": 700659.3844354197,
+      "reachableUsd": null,
+      "share": 0.023698709783261704,
+      "oracle": null,
+      "oracleReason": "no_scope_entry",
+      "autoRebalance": false,
+      "autoRebalanceReason": "no_scope_entry",
+      "autoRebalanceOpen": null,
+      "source": "fixtures/risk/universe/solana-registry-20261001T0139.json.gz and fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz: data/risk/registry-20261001T0139.json (pnpm risk:registry: pool accounts and vault balances read on chain, priced in USD)",
+      "fetchedAt": "2026-10-01T01:38:24.027Z",
+      "method": "registry-0.1",
+      "provenance": "fixture"
+    },
+    {
+      "id": "solana:mstrx",
+      "chain": "solana",
+      "address": "XsP7xzNPvEHS1m6qfanPUGjNmdnmsLKEoNAnHjdxxyZ",
+      "symbol": "MSTRx",
+      "decimals": 8,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "MSTR",
+      "issuer": "Backed (xStocks)",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 23,
+        "inCut": 2,
+        "reachable": null,
+        "reachableReason": "reach_is_not_recorded_per_pool_on_solana",
+        "byVenue": {
+          "meteora_dlmm": {
+            "pools": 2,
+            "reachable": null
+          },
+          "orca_whirlpool": {
+            "pools": 5,
+            "reachable": null
+          },
+          "raydium_clmm": {
+            "pools": 7,
+            "reachable": null
+          },
+          "raydium_cpmm": {
+            "pools": 9,
+            "reachable": null
+          }
+        },
+        "twoStock": 1,
+        "twoStockAsOther": 2,
+        "byExitPath": {
+          "direct_usd": 4,
+          "other": 14,
+          "via_sol": 4,
+          "via_xstock": 1
+        },
+        "dust": 141,
+        "unmeasured": 0
+      },
+      "tvlUsd": 1691293.5384389318,
+      "cutUsd": 1456918.2435110952,
+      "reachableUsd": null,
+      "share": 0.040887788938359614,
+      "oracle": {
+        "kind": "scope",
+        "ref": "335",
+        "account": "3t4JZcueEzTbVP6kLxXrL3VpWx45jDer4eqysweBchNH",
+        "twapRef": "271",
+        "description": null,
+        "decimals": null,
+        "prices": null,
+        "pricesReason": "not_reported_by_the_scope_table",
+        "source": "fixtures/solana-vault/scope-indexes.json: fixtures/risk/lending/import.json: the Kamino collateral reserves of the registry, oracles.scopePriceChain and oracles.scopeTwapChain",
+        "fetchedAt": "2026-10-01T21:09:34.070Z",
+        "method": "kamino_reserve_decode",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "fixtures/risk/universe/solana-registry-20261001T0139.json.gz and fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz: data/risk/registry-20261001T0139.json (pnpm risk:registry: pool accounts and vault balances read on chain, priced in USD)",
+      "fetchedAt": "2026-10-01T01:38:24.027Z",
+      "method": "registry-0.1",
+      "provenance": "fixture"
+    },
+    {
+      "id": "solana:nvdax",
+      "chain": "solana",
+      "address": "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh",
+      "symbol": "NVDAx",
+      "decimals": 8,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "NVDA",
+      "issuer": "Backed (xStocks)",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 128,
+        "inCut": 5,
+        "reachable": null,
+        "reachableReason": "reach_is_not_recorded_per_pool_on_solana",
+        "byVenue": {
+          "meteora_dlmm": {
+            "pools": 4,
+            "reachable": null
+          },
+          "orca_whirlpool": {
+            "pools": 5,
+            "reachable": null
+          },
+          "raydium_clmm": {
+            "pools": 16,
+            "reachable": null
+          },
+          "raydium_cpmm": {
+            "pools": 103,
+            "reachable": null
+          }
+        },
+        "twoStock": 4,
+        "twoStockAsOther": 2,
+        "byExitPath": {
+          "direct_usd": 4,
+          "other": 115,
+          "via_sol": 5,
+          "via_xstock": 4
+        },
+        "dust": 568,
+        "unmeasured": 0
+      },
+      "tvlUsd": 5530595.749097042,
+      "cutUsd": 4849302.204500811,
+      "reachableUsd": null,
+      "share": 0.13370466246869886,
+      "oracle": {
+        "kind": "scope",
+        "ref": "332",
+        "account": "3t4JZcueEzTbVP6kLxXrL3VpWx45jDer4eqysweBchNH",
+        "twapRef": "269",
+        "description": null,
+        "decimals": null,
+        "prices": null,
+        "pricesReason": "not_reported_by_the_scope_table",
+        "source": "fixtures/solana-vault/scope-indexes.json: fixtures/risk/lending/import.json: the Kamino collateral reserves of the registry, oracles.scopePriceChain and oracles.scopeTwapChain",
+        "fetchedAt": "2026-10-01T21:09:34.070Z",
+        "method": "kamino_reserve_decode",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "fixtures/risk/universe/solana-registry-20261001T0139.json.gz and fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz: data/risk/registry-20261001T0139.json (pnpm risk:registry: pool accounts and vault balances read on chain, priced in USD)",
+      "fetchedAt": "2026-10-01T01:38:24.027Z",
+      "method": "registry-0.1",
+      "provenance": "fixture"
+    },
+    {
+      "id": "solana:qqqx",
+      "chain": "solana",
+      "address": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "symbol": "QQQx",
+      "decimals": 8,
+      "cls": "etf",
+      "clsSource": "class_table",
+      "underlying": "QQQ",
+      "issuer": "Backed (xStocks)",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 49,
+        "inCut": 1,
+        "reachable": null,
+        "reachableReason": "reach_is_not_recorded_per_pool_on_solana",
+        "byVenue": {
+          "meteora_dlmm": {
+            "pools": 2,
+            "reachable": null
+          },
+          "orca_whirlpool": {
+            "pools": 4,
+            "reachable": null
+          },
+          "raydium_clmm": {
+            "pools": 8,
+            "reachable": null
+          },
+          "raydium_cpmm": {
+            "pools": 35,
+            "reachable": null
+          }
+        },
+        "twoStock": 4,
+        "twoStockAsOther": 2,
+        "byExitPath": {
+          "direct_usd": 5,
+          "other": 38,
+          "via_sol": 2,
+          "via_xstock": 4
+        },
+        "dust": 184,
+        "unmeasured": 0
+      },
+      "tvlUsd": 2624012.685358147,
+      "cutUsd": 2253283.472302856,
+      "reachableUsd": null,
+      "share": 0.0634366976589594,
+      "oracle": {
+        "kind": "scope",
+        "ref": "347",
+        "account": "3t4JZcueEzTbVP6kLxXrL3VpWx45jDer4eqysweBchNH",
+        "twapRef": "281",
+        "description": null,
+        "decimals": null,
+        "prices": null,
+        "pricesReason": "not_reported_by_the_scope_table",
+        "source": "fixtures/solana-vault/scope-indexes.json: fixtures/risk/lending/import.json: the Kamino collateral reserves of the registry, oracles.scopePriceChain and oracles.scopeTwapChain",
+        "fetchedAt": "2026-10-01T21:09:34.070Z",
+        "method": "kamino_reserve_decode",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "fixtures/risk/universe/solana-registry-20261001T0139.json.gz and fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz: data/risk/registry-20261001T0139.json (pnpm risk:registry: pool accounts and vault balances read on chain, priced in USD)",
+      "fetchedAt": "2026-10-01T01:38:24.027Z",
+      "method": "registry-0.1",
+      "provenance": "fixture"
+    },
+    {
+      "id": "solana:spcxx",
+      "chain": "solana",
+      "address": "Xs3oZwbHvqis4NYcf4YKWmEia2eC84wSiVrcYcTqpH8",
+      "symbol": "SPCXx",
+      "decimals": 8,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "SPCX",
+      "issuer": "Backed (xStocks)",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 138,
+        "inCut": 3,
+        "reachable": null,
+        "reachableReason": "reach_is_not_recorded_per_pool_on_solana",
+        "byVenue": {
+          "meteora_dlmm": {
+            "pools": 3,
+            "reachable": null
+          },
+          "orca_whirlpool": {
+            "pools": 4,
+            "reachable": null
+          },
+          "raydium_clmm": {
+            "pools": 28,
+            "reachable": null
+          },
+          "raydium_cpmm": {
+            "pools": 103,
+            "reachable": null
+          }
+        },
+        "twoStock": 1,
+        "twoStockAsOther": 1,
+        "byExitPath": {
+          "direct_usd": 4,
+          "other": 128,
+          "via_sol": 5,
+          "via_xstock": 1
+        },
+        "dust": 934,
+        "unmeasured": 0
+      },
+      "tvlUsd": 4027804.1928254077,
+      "cutUsd": 3219188.8345305263,
+      "reachableUsd": null,
+      "share": 0.09737399450676824,
+      "oracle": null,
+      "oracleReason": "no_scope_entry",
+      "autoRebalance": false,
+      "autoRebalanceReason": "no_scope_entry",
+      "autoRebalanceOpen": null,
+      "source": "fixtures/risk/universe/solana-registry-20261001T0139.json.gz and fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz: data/risk/registry-20261001T0139.json (pnpm risk:registry: pool accounts and vault balances read on chain, priced in USD)",
+      "fetchedAt": "2026-10-01T01:38:24.027Z",
+      "method": "registry-0.1",
+      "provenance": "fixture"
+    },
+    {
+      "id": "solana:spyx",
+      "chain": "solana",
+      "address": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "symbol": "SPYx",
+      "decimals": 8,
+      "cls": "etf",
+      "clsSource": "class_table",
+      "underlying": "SPY",
+      "issuer": "Backed (xStocks)",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 86,
+        "inCut": 5,
+        "reachable": null,
+        "reachableReason": "reach_is_not_recorded_per_pool_on_solana",
+        "byVenue": {
+          "meteora_dlmm": {
+            "pools": 5,
+            "reachable": null
+          },
+          "orca_whirlpool": {
+            "pools": 6,
+            "reachable": null
+          },
+          "raydium_clmm": {
+            "pools": 13,
+            "reachable": null
+          },
+          "raydium_cpmm": {
+            "pools": 62,
+            "reachable": null
+          }
+        },
+        "twoStock": 4,
+        "twoStockAsOther": 4,
+        "byExitPath": {
+          "direct_usd": 7,
+          "other": 72,
+          "via_sol": 3,
+          "via_xstock": 4
+        },
+        "dust": 684,
+        "unmeasured": 0
+      },
+      "tvlUsd": 6714062.173874331,
+      "cutUsd": 6284861.083826502,
+      "reachableUsd": null,
+      "share": 0.16231550044103113,
+      "oracle": {
+        "kind": "scope",
+        "ref": "344",
+        "account": "3t4JZcueEzTbVP6kLxXrL3VpWx45jDer4eqysweBchNH",
+        "twapRef": "279",
+        "description": null,
+        "decimals": null,
+        "prices": null,
+        "pricesReason": "not_reported_by_the_scope_table",
+        "source": "fixtures/solana-vault/scope-indexes.json: fixtures/risk/lending/import.json: the Kamino collateral reserves of the registry, oracles.scopePriceChain and oracles.scopeTwapChain",
+        "fetchedAt": "2026-10-01T21:09:34.070Z",
+        "method": "kamino_reserve_decode",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "fixtures/risk/universe/solana-registry-20261001T0139.json.gz and fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz: data/risk/registry-20261001T0139.json (pnpm risk:registry: pool accounts and vault balances read on chain, priced in USD)",
+      "fetchedAt": "2026-10-01T01:38:24.027Z",
+      "method": "registry-0.1",
+      "provenance": "fixture"
+    },
+    {
+      "id": "solana:strcx",
+      "chain": "solana",
+      "address": "Xs78JED6PFZxWc2wCEPspZW9kL3Se5J7L5TChKgsidH",
+      "symbol": "STRCx",
+      "decimals": 8,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "STRC",
+      "issuer": "Backed (xStocks)",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 15,
+        "inCut": 1,
+        "reachable": null,
+        "reachableReason": "reach_is_not_recorded_per_pool_on_solana",
+        "byVenue": {
+          "raydium_clmm": {
+            "pools": 6,
+            "reachable": null
+          },
+          "raydium_cpmm": {
+            "pools": 9,
+            "reachable": null
+          }
+        },
+        "twoStock": 1,
+        "twoStockAsOther": 0,
+        "byExitPath": {
+          "direct_usd": 2,
+          "other": 11,
+          "via_sol": 1,
+          "via_xstock": 1
+        },
+        "dust": 45,
+        "unmeasured": 0
+      },
+      "tvlUsd": 364138.7166701048,
+      "cutUsd": 240608.15435848362,
+      "reachableUsd": null,
+      "share": 0.008803218751272946,
+      "oracle": null,
+      "oracleReason": "no_scope_entry",
+      "autoRebalance": false,
+      "autoRebalanceReason": "no_scope_entry",
+      "autoRebalanceOpen": null,
+      "source": "fixtures/risk/universe/solana-registry-20261001T0139.json.gz and fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz: data/risk/registry-20261001T0139.json (pnpm risk:registry: pool accounts and vault balances read on chain, priced in USD)",
+      "fetchedAt": "2026-10-01T01:38:24.027Z",
+      "method": "registry-0.1",
+      "provenance": "fixture"
+    },
+    {
+      "id": "solana:tslax",
+      "chain": "solana",
+      "address": "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB",
+      "symbol": "TSLAx",
+      "decimals": 8,
+      "cls": "stock",
+      "clsSource": "default_stock",
+      "underlying": "TSLA",
+      "issuer": "Backed (xStocks)",
+      "session": "us_equity",
+      "inCut": true,
+      "pools": {
+        "ranked": 29,
+        "inCut": 2,
+        "reachable": null,
+        "reachableReason": "reach_is_not_recorded_per_pool_on_solana",
+        "byVenue": {
+          "meteora_dlmm": {
+            "pools": 3,
+            "reachable": null
+          },
+          "orca_whirlpool": {
+            "pools": 3,
+            "reachable": null
+          },
+          "raydium_clmm": {
+            "pools": 11,
+            "reachable": null
+          },
+          "raydium_cpmm": {
+            "pools": 12,
+            "reachable": null
+          }
+        },
+        "twoStock": 3,
+        "twoStockAsOther": 1,
+        "byExitPath": {
+          "direct_usd": 3,
+          "other": 19,
+          "via_sol": 4,
+          "via_xstock": 3
+        },
+        "dust": 359,
+        "unmeasured": 0
+      },
+      "tvlUsd": 2946982.5202557086,
+      "cutUsd": 2642482.768368656,
+      "reachableUsd": null,
+      "share": 0.07124464000759338,
+      "oracle": {
+        "kind": "scope",
+        "ref": "338",
+        "account": "3t4JZcueEzTbVP6kLxXrL3VpWx45jDer4eqysweBchNH",
+        "twapRef": "273",
+        "description": null,
+        "decimals": null,
+        "prices": null,
+        "pricesReason": "not_reported_by_the_scope_table",
+        "source": "fixtures/solana-vault/scope-indexes.json: fixtures/risk/lending/import.json: the Kamino collateral reserves of the registry, oracles.scopePriceChain and oracles.scopeTwapChain",
+        "fetchedAt": "2026-10-01T21:09:34.070Z",
+        "method": "kamino_reserve_decode",
+        "provenance": "live"
+      },
+      "oracleReason": null,
+      "autoRebalance": true,
+      "autoRebalanceReason": null,
+      "autoRebalanceOpen": null,
+      "source": "fixtures/risk/universe/solana-registry-20261001T0139.json.gz and fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz: data/risk/registry-20261001T0139.json (pnpm risk:registry: pool accounts and vault balances read on chain, priced in USD)",
+      "fetchedAt": "2026-10-01T01:38:24.027Z",
+      "method": "registry-0.1",
+      "provenance": "fixture"
+    }
+  ]
+}
