@@ -178,6 +178,40 @@ What the file holds, and what it does not decide:
 - 994 rows with no TVL hold $1,000 or more on the stock side, $5.0M of stock tokens in all, 796 of them under tracked stocks ($4.4M); 944 are v4 pools.
 - 96 tokens have no price. DexScreener was at its cap of 30 pairs for 21 tokens, all of them tracked, so pools on other venues may be missing for those.
 
+## The oracle map
+
+`pnpm risk-evm:oracles` (PLAN-UNIVERSE RU.5, method `evm-oracles-0.1`) gives each tracked stock of the newest cut its Chainlink feed, or the reason it has none. Read-only: one public GET (Chainlink's reference directory, `feeds-robinhood-mainnet.json`) and one `eth_call` through Multicall3 at one block.
+
+```sh
+pnpm risk-evm:oracles                    # the newest cut and token list in data/risk-evm/
+pnpm risk-evm:oracles --cut <file>       # another cut file
+pnpm risk-evm:oracles --universe <file>  # another token list
+pnpm risk-evm:oracles --allow-old        # a cut whose discovery is more than a day old
+```
+
+It writes `data/risk-evm/oracles-<chain>-<stamp>.json` (the stamp is the time of the block read) and prints the same in words, ending with the count and the names of the tracked stocks without a confirmed feed. The file is not committed and the hourly collector reads nothing of it. It refuses a cut more than 24 hours old, and a token list that does not hold every tracked stock.
+
+One row per tracked stock, keyed on the token address: `feed` (the address, `description`, `decimals`, the round's `answer`, `price` and `updatedAt`, `ageSeconds`, the session at the block) or `feed: null` with `reason`. Every row carries `source`, `fetchedAt`, `method` and `provenance`. The tokens of `config.ts` that are not tracked are in `collectedNotTracked`, apart. The file states the following in `stated`, so nothing below is chosen silently:
+
+- **How a feed is tied to a token.** By the directory's `name` and the token's symbol. The directory names no token address, so the symbol is the only tie. The name must read as the symbol, `RH` and the symbol, or `Robinhood` and the symbol, then `/ USD` or `-USD` (the forms in use on Oct 5: `GLD / USD`, `RHSPY / USD`, `Robinhood QQQ / USD`, `Robinhood DELL-USD`). The directory's `docs.baseAsset` is not used: three entries lack it and one reads `RHDELL`. Every tie that is not one to one is refused, and nothing picks between candidates: two registry tokens sharing a symbol get no feed (`symbol_shared_by_tokens`), two feeds naming one token are both listed in `candidates` (`two_feeds_name_the_token`), one feed reading as two tokens is refused (`feed_names_two_tokens`).
+- **How a feed is confirmed.** By its own contract: `description()` must name the token by the same rule, `decimals()` must equal the directory, `latestRoundData()` must give a positive answer with a time not after the block. Otherwise there is no feed and the row says why (`description_does_not_name_the_token`, `no_answer_from_the_feed`, `decimals_differ_from_directory`, `answer_not_positive`, `round_time_not_in_the_past`). `no_feed` means the directory lists none.
+- **Which address is stored.** The directory's `proxyAddress`, the one the vault would read: the aggregator behind a proxy is replaced when a feed is upgraded and the proxy stays. `aggregator()` of the proxy is recorded and compared with the directory's `contractAddress`, and the listed aggregator is called directly once to record whether it answers (GLD's does not). The second proxy the directory lists ("Shared SVR") is recorded and not read.
+- **The price.** Recorded as read (`answer`, an integer in the feed's decimals) and with the point placed (`price`). It is not compared with, corrected by or blended into a pool price (gate `ORACLE-VS-DEX`); RU.7 records it over time and RU.9 measures the gap. No multiplier is applied to anything.
+- **Age.** `ageSeconds` is the block's time less `updatedAt`. An old answer is still a confirmed feed: nothing is refused for age. The file counts the feeds older than the vault's 26 hours and older than their own heartbeat, and says whether the block was in the US session by the calendar of `packages/risk` (`fixtures/risk/us-market-holidays.json`).
+- **Funds and the treasury token** (`funds`: SPY, QQQ, GLD, SLV, USO, SGOV): whether a feed exists and what the directory says it prices. `token_with_multiplier` is the directory's product `primaryTokenizedPrice`, which Chainlink documents as the share's price times the issuer's multiplier (https://docs.chain.link/data-feeds/tokenized-equity-feeds). `token_from_pools` is its attribute `dex_state_price`. Where the directory says neither, the answer is `null` (`not_stated_in_directory`). The registry's multiplier is printed beside and applied to nothing.
+
+Every feed of the directory is read, whatever it is matched to (five reads each: `description()`, `decimals()`, `latestRoundData()` and `aggregator()` of the proxy, `latestRoundData()` of the listed aggregator), so the calls depend on the directory alone. `feedsOfOtherTokens` lists the feeds that name a registry token outside both lists.
+
+### The run of 2026-10-05 (block 81,159,297, 23:03 UTC, off session; on `cut-robinhood-20261005T1947.json`)
+
+- 58 feeds in the directory, none left out. 290 contract reads in one `eth_call`; 2 RPC calls, 0.6 seconds with the GET.
+- **24 of the 30 tracked stocks have a confirmed feed. 6 have none (`no_feed`): AMC, COST, DJT, HIMS, LLY, RDDT.** No feed was refused, no symbol is shared by two tokens, no stock has two feeds.
+- TSM, collected and not tracked, has a confirmed feed.
+- Every confirmed feed has 8 decimals and points at the aggregator the directory lists. The contracts name themselves in four ways: `Robinhood X / USD` (12 of the 24), `RHX / USD` (9), `Robinhood X-USD` (2: DELL, SGOV), `X / USD` (1: GLD).
+- Ages at the block, 3 hours after the close: 1 minute (SPCX) to 9.1 hours (AAPL), and 23.0 hours for SGOV. None older than 26 hours or than its 24-hour heartbeat.
+- The six funds all have a feed. SPY, QQQ, SLV and USO: `token_with_multiplier`. **GLD: `token_from_pools`**, a reference price from the state of exchanges on chain, market hours "Crypto"; its aggregator does not answer a direct call. **SGOV: not stated**, the directory entry carries no product or asset name.
+- 11 feeds name a registry token outside both lists: ASML, BABA, CLSK, CRWV, EWY, IONQ, NBIS, ORCL, RGTI, RKLB, USAR.
+
 ## Files
 
 | File | What it is |
@@ -198,8 +232,10 @@ What the file holds, and what it does not decide:
 | `multicall.ts`, `replay.ts` | Many reads in one `eth_call`; recorded answers given back to a test |
 | `record-discovery-fixture.ts` | Re-records `fixtures/risk-evm/robinhood-discovery.json.gz` from the chain |
 | `pareto.ts`, `cut.ts` | The command for the cut; the rule applied to a discovery file and what it reports. `cut.ts` has no I/O |
+| `oracles.ts`, `feeds.ts` | The command for the oracle map; the directory, the match, the confirmation and one pass. `feeds.ts` reads only through the client it is given |
+| `record-oracles-fixture.ts` | Re-records `fixtures/risk-evm/robinhood-oracles.json.gz` from the directory and the chain |
 
-After editing `ClQuoter.sol`, run `pnpm exec tsx scripts/risk-evm/build-quoter.ts`; a test fails while the JSON is stale. The tests are in `tests/risk-evm.test.ts`. They replay `fixtures/risk-evm/robinhood-nvda-quotes.json` and the endpoint errors in `fixtures/risk-evm/rpc-errors.json`; none calls the network. The token list and the discovery are tested in `tests/risk-evm-universe.test.ts`, which replays one recorded pass for two tokens (`fixtures/risk-evm/robinhood-discovery.json.gz`). The cut is tested in `tests/risk-evm-cut.test.ts`, on the discovery of Oct 5 frozen to what the cut reads (`fixtures/risk/universe/robinhood-discovery-20261005T1947.json.gz`, made by `pnpm risk:freeze-universe-fixture <discovery.json> --chain robinhood`).
+After editing `ClQuoter.sol`, run `pnpm exec tsx scripts/risk-evm/build-quoter.ts`; a test fails while the JSON is stale. The tests are in `tests/risk-evm.test.ts`. They replay `fixtures/risk-evm/robinhood-nvda-quotes.json` and the endpoint errors in `fixtures/risk-evm/rpc-errors.json`; none calls the network. The token list and the discovery are tested in `tests/risk-evm-universe.test.ts`, which replays one recorded pass for two tokens (`fixtures/risk-evm/robinhood-discovery.json.gz`). The cut is tested in `tests/risk-evm-cut.test.ts`, on the discovery of Oct 5 frozen to what the cut reads (`fixtures/risk/universe/robinhood-discovery-20261005T1947.json.gz`, made by `pnpm risk:freeze-universe-fixture <discovery.json> --chain robinhood`). The oracle map is tested in `tests/risk-evm-oracles.test.ts`, which replays one recorded pass (`fixtures/risk-evm/robinhood-oracles.json.gz`: the directory and the chain's answers at block 81,158,299).
 
 ## What Rodrigo's side needs before the API can serve these curves (RISK-1)
 
