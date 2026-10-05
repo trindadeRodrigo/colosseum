@@ -133,12 +133,11 @@ async function buildFor(
   if (request.type !== 'buy' || !(request.proposalId || request.family))
     throw new Refusal(501, `a ${request.type} order cannot be built yet`);
   const { adapter } = entry;
-  const followed = request.family
-    ? await refusing(() =>
-        followedOn(request.family ?? '', leg.chain, sharedOf(deps), request.version),
-      )
-    : null;
-  const basketId = basketIdOf(followed ? followed.family.familyId : (request.proposalId ?? ''));
+  // A buy of a shared portfolio reaches the vault numbered from the family's id.
+  const family = request.family ? await familyBySlug(deps.db, request.family) : null;
+  if (request.family && !family)
+    throw new Refusal(409, 'the shared portfolio this order buys is gone');
+  const basketId = basketIdOf(family ? family.familyId : (request.proposalId ?? ''));
   const slippageBps = slippageOf(request);
   const trades = leg.trades.length ? leg.trades : undefined;
   const shared = nonce === undefined ? {} : { nonce };
@@ -152,9 +151,13 @@ async function buildFor(
     case 'approve':
       return adapter.buildApprove({ owner, basketId, amountRaw: cashOf(leg), ...shared });
     case 'create_vault': {
-      if (followed) {
+      if (request.family) {
         // A vault that follows the version the order holds to: it copies that version's weights, and
-        // the trades are the ones planned for them.
+        // the trades are the ones planned for them. Once it is open the order's swaps buy what it
+        // follows, whatever the portfolio publishes meanwhile.
+        const followed = await refusing(() =>
+          followedOn(request.family ?? '', leg.chain, sharedOf(deps), request.version),
+        );
         const assets = await adapter.listAssets();
         const cash = assets.find((x) => x.cls === 'cash');
         if (!cash) throw new Error(`${entry.chain} lists no cash token`);

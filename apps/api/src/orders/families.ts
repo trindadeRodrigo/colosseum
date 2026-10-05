@@ -109,7 +109,8 @@ const targetsOf = (r: Recipe): Target[] =>
 /**
  * A family's text and its recipe on one chain, once a publish has confirmed (DESIGN-VAULT section 6:
  * created or renamed only then). The text is the latest the creator published; the versions keep their
- * own hashes. Answers the recipe's row id.
+ * own hashes. Answers the recipe's row id, or null when the family is another creator's: two creators
+ * can each publish a recipe under one new slug's id onchain, and the first to land keeps the family.
  */
 export async function writePublished(
   db: Db,
@@ -124,8 +125,22 @@ export async function writePublished(
     onchainId: string;
     creator: string;
   },
-): Promise<string> {
+): Promise<string | null> {
   return db.transaction(async (tx) => {
+    // The family row first, locked, so two landings of one family are written one after the other.
+    const [family] = await tx
+      .select()
+      .from(indexFamilies)
+      .where(eq(indexFamilies.familyId, w.familyId))
+      .for('update');
+    const [held] = await tx
+      .select({ creator: recipes.creator })
+      .from(recipes)
+      .where(and(eq(recipes.familyId, w.familyId), eq(recipes.chainId, w.chain)));
+    const theirs = held
+      ? held.creator !== w.creator
+      : family?.creatorUserId != null && family.creatorUserId !== w.creatorUserId;
+    if (theirs) return null;
     await tx
       .insert(indexFamilies)
       .values({

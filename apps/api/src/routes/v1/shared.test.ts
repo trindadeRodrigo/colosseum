@@ -301,6 +301,24 @@ describe('a creator publishes a shared portfolio', () => {
     ]);
   });
 
+  it('keeps a new slug for the creator whose publish landed first, when two raced for it', async () => {
+    const text = fresh();
+    const first = await someone();
+    const second = await someone();
+    await fund(first);
+    await fund(second);
+    // Neither is stored yet, so both orders are made: each publishes under the slug's id with its key.
+    const a = await publish(first, text);
+    const b = await publish(second, { ...text, copy: 'Other words, for the same slug.' });
+    await settleAll(first, a);
+    expect((await settleAll(second, b)).status).toBe('done');
+    const family = await page(text.slug);
+    expect([family.copy, family.recipes.map((r) => r.creator)]).toEqual([
+      text.copy,
+      [first.solana],
+    ]);
+  });
+
   it('refuses a publish it cannot plan, and says why', async () => {
     const creator = await someone();
     const text = fresh();

@@ -426,6 +426,12 @@ export async function recordPublished(
         onchainId,
         creator,
       });
+      if (!recipeId) {
+        log(
+          `the family ${familyId} on ${leg.chain} is another creator's: this publish is not written`,
+        );
+        continue;
+      }
       await syncVersions(ctx.db, recipeId, onchain);
     } catch (e) {
       // Another family took the slug or a look-alike name between the order and its landing. The chain
