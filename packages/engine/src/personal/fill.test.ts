@@ -240,3 +240,23 @@ describe('caps and groups (C8)', () => {
     }
   });
 });
+
+describe('where the fill is not exact: caps that overlap (note section 2.3)', () => {
+  it('an issuer with a credit and a plain token, both limits short: the fill leaves money a linear program would place', () => {
+    // A (5%, issuer X, credit), B (4%, X), C (3%, Y, credit); X and credit each take 100 of 200.
+    // The fill takes A, which uses up both limits: 100 placed. B and C would place all 200. The launch
+    // shelf has no issuer with both kinds today; a test like this one turns red if the fill changes.
+    const r = bandedFill({
+      amount: 200,
+      band: 0,
+      groupRoom: { 'issuer:X': 100, credit: 100 },
+      items: [
+        { id: 'A', yield: 0.05, room: 200, groups: ['issuer:X', 'credit'] },
+        { id: 'B', yield: 0.04, room: 200, groups: ['issuer:X'] },
+        { id: 'C', yield: 0.03, room: 200, groups: ['issuer:Y', 'credit'] },
+      ],
+    });
+    expect([...r.take]).toEqual([['A', 100]]);
+    expect(r.left).toBe(100);
+  });
+});

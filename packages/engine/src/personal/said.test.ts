@@ -678,7 +678,7 @@ describe('the words', () => {
       'Para um objetivo de crescimento, com risco médio, a parcela inicial de rendimento em dólar é 15%.',
       'Escolhido pelo rendimento após o deságio, entre os tokens de rendimento em dólar que você pode ter na Solana.',
       'US$ 1.500 que iria para SPY fica em rendimento em dólar ou caixa: no máximo 70% do plano fica com um só emissor, com risco médio, e Backed (xStocks) está nesse limite.',
-      'No máximo 25% do plano em tokens que emprestam a tomadores ou operam uma diferença de taxas: você não disse quanto risco de crédito aceita, e este é o limite até dizer. syrupUSDC está nesse limite.',
+      'No máximo 25% do plano em tokens que emprestam a tomadores ou operam uma diferença de taxas: você não disse quanto risco de crédito aceita, e este é o limite até dizer. Esses tokens juntos estão nesse limite.',
       'syrupUSDC comporta no máximo US$ 50.000: o custo de vender ainda não está medido, então o limite é o da faixa dele na lista de ativos.',
     ]);
   });

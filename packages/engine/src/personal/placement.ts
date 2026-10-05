@@ -173,23 +173,51 @@ export class Book {
       }
       able.push({ asset, yield: read.haircutYield, cap });
     }
-    // Lines: a token already in the plan keeps its line; new ones take the lines left, in rank order.
     const ranked = rank(able.map((a) => ({ ...a, id: a.asset.id })));
-    let free = w.P.maxLinesPerChain - this.lines.size;
-    let live = ranked.filter((a) => {
-      if (this.lines.has(a.id)) return true;
-      if (free > 0) {
-        free -= 1;
-        return true;
-      }
-      const full = this.noLineLeft(a.asset);
-      if (full) why.push(full);
-      return false;
-    });
+    type Able = (typeof ranked)[number];
     const held = (a: BasketAsset) => this.lines.get(a.id)?.cents ?? 0;
     const issuerKey = (a: BasketAsset) => `issuer:${a.issuer}`;
-    let tooSmall = false;
+    const creditWhy = (a: BasketAsset) =>
+      reason(
+        w.creditBudget.stated ? 'CREDIT_BUDGET' : 'CREDIT_BUDGET_UNSAID',
+        { capBps: w.creditBudget.bps },
+        w.lang,
+      );
+    /** The limit that leaves a token no room at all, or null when it can take something. */
+    const full = (a: Able): Reason | null => {
+      if (a.cap.cents - held(a.asset) <= 0) return a.cap.why;
+      if (w.issuerCapOf(a.asset) - this.usedOf(a.asset) <= 0) return this.issuerWhy(a.asset);
+      if (w.isCredit(a.asset) && w.creditBudget.cents - this.creditUsed <= 0)
+        return w.creditBudget.bps === 0
+          ? reason('CREDIT_NONE', { asset: a.asset.symbol }, w.lang)
+          : creditWhy(a.asset);
+      return null;
+    };
+    // A token with no room takes no line, and the limit that stops it is said.
+    const open = ranked.filter((a) => {
+      const stop = full(a);
+      if (!stop) return true;
+      why.push(stop);
+      if (stop.rule === 'CREDIT_NONE') leave(a.asset, stop);
+      return false;
+    });
+    const dropped = new Set<string>();
     for (;;) {
+      // Lines: a token already in the plan keeps its line; new ones take the lines left, in rank order.
+      let free = w.P.maxLinesPerChain - this.lines.size;
+      const noLine: Reason[] = [];
+      const live = open.filter((a) => {
+        if (dropped.has(a.id)) return false;
+        if (this.lines.has(a.id)) return true;
+        if (free > 0) {
+          free -= 1;
+          return true;
+        }
+        noLine.push(
+          reason('MAX_LINES', { asset: a.asset.symbol, max: w.P.maxLinesPerChain }, w.lang),
+        );
+        return false;
+      });
       const groupRoom: Record<string, number> = { credit: w.creditBudget.cents - this.creditUsed };
       for (const a of live)
         groupRoom[issuerKey(a.asset)] = w.issuerCapOf(a.asset) - this.usedOf(a.asset);
@@ -204,27 +232,23 @@ export class Book {
           groups: [issuerKey(a.asset), ...(w.isCredit(a.asset) ? ['credit'] : [])],
         })),
       });
-      // A new line has a least size: the lowest-ranked one short of it is left out, and the rest fill again.
+      // A new line has a least size: the lowest-ranked one short of it is left out, its line goes
+      // to the next token, and the rest fill again.
       const short = live.filter((a) => {
         const take = result.take.get(a.id) ?? 0;
         return !this.lines.has(a.id) && take > 0 && take < w.minLine;
       });
       const last = short.at(-1);
       if (last) {
-        tooSmall = true;
-        live = live.filter((a) => a !== last);
+        dropped.add(last.id);
         continue;
       }
+      why.push(...noLine);
       const whyBound = (a: (typeof live)[number]): Reason | null => {
         const b = result.bound.get(a.id);
         if (!b) return null;
         if (b.by === 'own') return a.cap.why;
-        if (b.group === 'credit')
-          return reason(
-            w.creditBudget.stated ? 'CREDIT_BUDGET' : 'CREDIT_BUDGET_UNSAID',
-            { capBps: w.creditBudget.bps, asset: a.asset.symbol },
-            w.lang,
-          );
+        if (b.group === 'credit') return creditWhy(a.asset);
         return this.issuerWhy(a.asset);
       };
       const byYield = reason('BY_YIELD', { chain: w.chain }, w.lang);
@@ -259,7 +283,8 @@ export class Book {
         left: result.left,
         placed: takers.length > 0,
         why: once(why),
-        tooSmall: result.left > 0 && tooSmall,
+        // Too small only when nothing but the least line size kept the money out.
+        tooSmall: result.left > 0 && dropped.size > 0 && live.length === 0,
       };
     }
   }

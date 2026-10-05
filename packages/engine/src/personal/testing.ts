@@ -675,6 +675,46 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
       .map((l) => l.cents),
   );
   say(credit <= creditCap, `credit and basis legs hold ${credit / 100}, over ${creditCap / 100}`);
+
+  // The sentences of the banded fill are true of the plan they are on.
+  const nonGrowthOf = (issuer: string) =>
+    sum(
+      lines
+        .filter((l) => l.a.issuer === issuer && sleeveOfClass(l.a.cls) !== 'growth')
+        .map((l) => l.cents),
+    );
+  const bySymbol = new Map(lines.map((l) => [l.a.symbol, l]));
+  const ys = new Map((ctx.yields ?? []).map((y) => [y.assetId, y.haircutYield]));
+  for (const r of allReasons(plan)) {
+    if (r.rule === 'CREDIT_BUDGET' || r.rule === 'CREDIT_BUDGET_UNSAID') {
+      say(Math.abs(credit - creditCap) <= 1, `"${r.text}" but credit holds ${credit / 100}`);
+      say(
+        (r.rule === 'CREDIT_BUDGET') === (s.limits?.creditTolerance !== undefined),
+        `"${r.text}" said of a tolerance that was ${s.limits?.creditTolerance ? '' : 'not '}stated`,
+      );
+    }
+    if (r.rule === 'CREDIT_NONE') say(credit === 0, `"${r.text}" but credit holds ${credit / 100}`);
+    if (r.rule === 'ASSET_CAP') {
+      const held = bySymbol.get(String(r.params.asset));
+      say(
+        Math.abs((held?.cents ?? 0) - Math.floor((amount * Number(r.params.capBps)) / 10_000)) <= 1,
+        `"${r.text}" but the line holds ${held ? held.cents / 100 : 'nothing'}`,
+      );
+    }
+    if (r.rule === 'SHARED_IN_BAND') {
+      const named = String(r.params.assets).split(',');
+      const held = named.map((n) => bySymbol.get(n));
+      say(
+        held.every((h) => h !== undefined),
+        `"${r.text}" names a token the plan does not hold`,
+      );
+      const rates = held.map((h) => (h ? (ys.get(h.a.id) ?? Number.NaN) : Number.NaN));
+      say(
+        Math.max(...rates) - Math.min(...rates) <= P.yieldBand + 1e-12,
+        `"${r.text}" but the yields are ${rates.join(', ')}`,
+      );
+    }
+  }
   const stockCap = Math.floor((amount * (P.capPerStockBps[s.risk] ?? 0)) / 10_000);
   for (const [name, held] of total((a) =>
     a.cls === 'stock' || a.cls === 'crypto' ? a.underlying : null,
@@ -832,6 +872,14 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
       );
     if (r.rule === 'ISSUER_CAP' || r.rule === 'OVERFLOW_ISSUER') {
       const with_ = total((a) => a.issuer).get(String(r.params.issuer)) ?? 0;
+      say(
+        with_ >= share(r.params.capBps) - Math.max(leastLine, share(3)),
+        `"${r.text}", and it holds ${with_ / 100}`,
+      );
+    }
+    // The plan's issuer cap counts dollar yield, gold and cash only (gate SOLVER-CAPS).
+    if (r.rule === 'ISSUER_CAP_PLAN' || r.rule === 'OVERFLOW_ISSUER_PLAN') {
+      const with_ = nonGrowthOf(String(r.params.issuer));
       say(
         with_ >= share(r.params.capBps) - Math.max(leastLine, share(3)),
         `"${r.text}", and it holds ${with_ / 100}`,

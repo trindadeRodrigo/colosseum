@@ -293,7 +293,8 @@ function build(
   const ranked = () => {
     for (const a of yielders) {
       const read = w.yields.get(a.id);
-      if (!read || w.blockOf(a) !== null) continue;
+      // Only a figure the fill ranked by: a token with no leg type is left out before any ranking.
+      if (!read || w.blockOf(a) !== null || w.yieldCapOf(a) === null) continue;
       const { source, method, fetchedAt, provenance } = read;
       w.observations.set(`yield ${a.id}`, {
         id: a.id,

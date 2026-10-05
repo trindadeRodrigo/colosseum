@@ -208,13 +208,18 @@ export const REASON_TEMPLATES = {
   ),
   CREDIT_BUDGET: rule(
     ['credit'],
-    'No more than {capBps|pct} of the plan in tokens that lend to borrowers or trade a spread, at the credit risk you accept: {asset} is at that limit.',
-    'No máximo {capBps|pct} do plano em tokens que emprestam a tomadores ou operam uma diferença de taxas, com o risco de crédito que você aceita: {asset} está nesse limite.',
+    'No more than {capBps|pct} of the plan in tokens that lend to borrowers or trade a spread, at the credit risk you accept: those tokens together are at that limit.',
+    'No máximo {capBps|pct} do plano em tokens que emprestam a tomadores ou operam uma diferença de taxas, com o risco de crédito que você aceita: esses tokens juntos estão nesse limite.',
+  ),
+  CREDIT_NONE: rule(
+    ['credit'],
+    '{asset} is left out: it lends to borrowers or trades a spread, and you accept no credit risk.',
+    '{asset} fica de fora: ele empresta a tomadores ou opera uma diferença de taxas, e você não aceita risco de crédito.',
   ),
   CREDIT_BUDGET_UNSAID: rule(
     [],
-    'No more than {capBps|pct} of the plan in tokens that lend to borrowers or trade a spread: you have not said how much credit risk you accept, and this is the limit until you do. {asset} is at that limit.',
-    'No máximo {capBps|pct} do plano em tokens que emprestam a tomadores ou operam uma diferença de taxas: você não disse quanto risco de crédito aceita, e este é o limite até dizer. {asset} está nesse limite.',
+    'No more than {capBps|pct} of the plan in tokens that lend to borrowers or trade a spread: you have not said how much credit risk you accept, and this is the limit until you do. Those tokens together are at that limit.',
+    'No máximo {capBps|pct} do plano em tokens que emprestam a tomadores ou operam uma diferença de taxas: você não disse quanto risco de crédito aceita, e este é o limite até dizer. Esses tokens juntos estão nesse limite.',
   ),
   EXIT_CEILING: rule(
     ['amount'],

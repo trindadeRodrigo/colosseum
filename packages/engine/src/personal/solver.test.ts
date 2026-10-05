@@ -103,6 +103,38 @@ describe('the caps on dollar yield (C5, C8)', () => {
   });
 });
 
+describe('lines go to tokens that can take money', () => {
+  it('a token with no room takes no line: the one after it does, and a token with no line is named', () => {
+    const one = { ...PERSONAL_PARAMS, maxLinesPerChain: 1 };
+    // No credit risk: syrupUSDC has no room at all, so the one line goes to jlUSDC.
+    const none = run(
+      sheet({ ...income, limits: { creditTolerance: 'none' } }),
+      fixtureContext({ params: one }),
+    );
+    expect(none.lines.map((l) => [l.assetId, l.weightBps])).toEqual([
+      ['solana:jlusdc', 5000],
+      ['solana:usdc', 5000],
+    ]);
+    expect(none.removed.find((r) => r.ref === 'syrupUSDC')?.reasons.map((r) => r.rule)).toEqual([
+      'CREDIT_NONE',
+    ]);
+    // One line and two tokens that can take money: the second is named as left out for want of a line.
+    const limited = run(income, fixtureContext({ params: one }));
+    expect(limited.lines.map((l) => l.assetId)).toEqual(['solana:syrupusdc', 'solana:usdc']);
+    expect(rulesOn(limited, 'solana:usdc')).toContain('MAX_LINES');
+  });
+
+  it('what the person says of credit risk moves the plan, and a reason names it', () => {
+    const base = run();
+    const none = run(sheet({ ...income, limits: { creditTolerance: 'none' } }));
+    expect(line(none, 'solana:syrupusdc')).toBeUndefined();
+    expect(none.removed.flatMap((r) => r.reasons).some((r) => r.inputs.includes('credit'))).toBe(
+      true,
+    );
+    expect(JSON.stringify(none.lines)).not.toBe(JSON.stringify(base.lines));
+  });
+});
+
 describe('what is left out, and why (C3, C9)', () => {
   it('a token with no yield reading is left out with the reason, never counted as zero', () => {
     const ctx = fixtureContext({
