@@ -85,3 +85,14 @@ Which route prices and runs a trade. Either founder can reopen it.
 | Gate | Status | Decision | Facts |
 |---|---|---|---|
 | **ROUTING** — Jupiter's route or ours | DECIDED | A trade done at once (one transaction) is quoted and run on Jupiter's route. A trade split over time is planned with our router (`routeTrade`): the analytics simulation's flow chart shows its slices, pools and cost. The client is offered the cheaper of the two. Every swap the vault sends, slices included, still goes through `Config.router_program` (Jupiter on mainnet), so the vault program does not change | Our router against the collector's Jupiter quotes, 10 xStocks, Oct 2 23:37Z to Oct 3 17:15Z (off-hours and weekend only), 2,306 pairs: median gap at most 0.5 bp at $1k and $10k, Jupiter better by 27 bp (sell) and 19 bp (buy) at $100k. With the same pools on both sides the $100k gap is 2.9 bp; the rest is pools we do not model: Byreal (excluded, D4 in `docs/risk/PLAN-RISK.md`), prop AMMs and an order book, and the two-hop pools |
+
+## Decided on 2026-10-05 (Thom)
+
+The plan's cut rules and three scope questions, taken on Monday afternoon with four days to the freeze.
+
+| Gate | Status | Decision | Facts |
+|---|---|---|---|
+| **RH-PARALLEL** | DECIDED | Robinhood Chain is built in parallel with Solana from Oct 5: EVM-3, ADE-1, ADE-2, TNET-1 and TNET-2 start now. The plan's cut ("a chain not deployed by Tue 12:00 BRT is read-only") moves to Wed Oct 7 12:00 BRT for Robinhood Chain | On Oct 5 none of the five slots had started; Solana devnet was deployed with real prices. The risk taken: both chains half done by the freeze. Solana's slots keep priority when they compete for the machine |
+| **SHARED-FULL** | DECIDED | Shared portfolios ship whole: the guard learns to sign `publish_recipe`, `update_recipe` and `cancel_pending` with a consent of their own, and the app has the publish form as well as the shelf and follow (API-3, WEB-4) | Until then the guard refused every registry call (AGT-1, design section 9), so a creator could not publish from the app |
+| **AGENT-TOOLS** | DECIDED | The agent surface (AGT-2 the SDK types and `apps/mcp`, AGT-3 the skill and `llms.txt`) stays in this week and is built once the Solana buy screen and the keeper work | They reuse the order API and the guard already merged |
+| **MAIN-OCT5** | DECIDED | `staging` merged into `main` on Oct 5 (PR #17), carrying every slot reviewed on its own pull request since Oct 2 | Later merges into `main` still need a person's word each time |

@@ -60,6 +60,7 @@ In this order, each on its date. A cut flips a flag; it does not delete code.
 
 1. **Sat Oct 3.** The new Jupiter build route: fall back to the route the rig proved.
 2. **Taken on Oct 2.** Base comes after Solana and Robinhood Chain. It comes back on Tue Oct 6 only if M3 is met on time (TNET-3).
+   **Oct 5 (gate `RH-PARALLEL`):** Robinhood Chain is built in parallel with Solana; its read-only cut moves to Wed Oct 7 12:00 BRT. Shared portfolios ship with publish from the app (`SHARED-FULL`), and the agent tools follow the Solana buy screen and keeper (`AGENT-TOOLS`).
 3. **Tue Oct 6 at M3, final on Wed Oct 7.** Auto-follow on Robinhood Chain: owner-signed only.
 4. **Wed Oct 7 at M4, final that night.** Auto-follow on Solana: followers get the one-tap prompt instead. Thursday's session opens 30 minutes before `G-SEC`, and after `launch()` a cycle takes 48 hours, so there is no later day to try again.
 
