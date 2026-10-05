@@ -111,6 +111,7 @@
     "@types/node": "^22.15.0",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.45.3",
+    "fast-check": "^4.10.2",
     "happy-dom": "20.14.5",
     "litesvm": "1.5.0",
     "tsx": "^4.23.15",
