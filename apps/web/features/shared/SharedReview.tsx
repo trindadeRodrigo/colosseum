@@ -31,7 +31,7 @@ export function SharedReview({ terms, chain }: { terms: SharedTerms; chain: Chai
           key: 'asset',
           header: t.plan.columns.asset,
           rowHeader: true,
-          cell: (r) => assetName(r.asset),
+          cell: (r) => assetName(r.asset).toUpperCase(),
         },
         {
           key: 'share',

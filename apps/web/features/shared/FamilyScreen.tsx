@@ -16,6 +16,7 @@ import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader, CardLoading } from '../../components/ui/Card';
 import { DataTable } from '../../components/ui/DataTable';
 import { utcMinute } from '../../components/ui/ExecutionList';
+import { MAX_LEGS, PlanLegs } from '../../components/ui/PlanLegs';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -259,11 +260,27 @@ function RecipeSection({
           <p className="text-body-sm text-muted-foreground">
             {f.inEffect} · {f.since(utcMinute(new Date(active.effectiveAt * 1000).toISOString()))}
           </p>
-          <WeightsTable
-            rows={active.components}
-            locale={locale}
-            caption={f.versionN(active.version)}
-          />
+          {/* The plan pane's legs (plan-leg.md) where a version holds four assets or fewer; a table
+              beyond, as the plan screen does. */}
+          {active.components.length > 0 && active.components.length <= MAX_LEGS ? (
+            <PlanLegs
+              legs={active.components.map((c) => ({
+                id: c.asset,
+                name: assetName(c.asset).toUpperCase(),
+                weight: c.weightBps / 10_000,
+                weightLabel: formatBps(c.weightBps, locale),
+                rate: null,
+                mock: false,
+              }))}
+              labels={{ afterHaircut: t.plan.legs.afterHaircut, quoted: t.plan.legs.quoted }}
+            />
+          ) : (
+            <WeightsTable
+              rows={active.components}
+              locale={locale}
+              caption={f.versionN(active.version)}
+            />
+          )}
           {pending && (
             <div className="flex flex-col gap-2 border-t border-border pt-4">
               <h3 className="text-h4 font-semibold">
@@ -626,6 +643,7 @@ function VersionsPanel({ slug, chain }: { slug: string; chain: ChainId | null })
         <DataTable<RecipeVersionView>
           key={entry.chain}
           caption={`${f.versions} · ${t.chain.names[entry.chain]}`}
+          captionHidden
           rows={entry.versions}
           rowKey={(r) => String(r.version)}
           columns={[

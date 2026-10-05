@@ -150,8 +150,9 @@ describe('a shared portfolio read from the chain by this app', () => {
     expect(mark.textContent).toContain(en.shared.check.differs('Solana'));
     // the chain's version 3 at 50/25/25, not the server's version 2 at 40/30/30
     expect(host.textContent).toContain(en.shared.family.versionN(3));
-    const rows = [...host.querySelectorAll('tbody tr')].map((r) => r.textContent);
-    expect(rows).toEqual(['SPYX50%', 'NVDAX25%', 'TSLAX25%']);
+    const legs = find(host, '[data-ui="plan-legs"]').textContent ?? '';
+    for (const part of ['SPYX', '50%', 'NVDAX', '25%', 'TSLAX']) expect(legs).toContain(part);
+    expect(legs).not.toContain('40%');
   });
 
   it('buys and follows the account, version and weights the chain holds, never the server’s', async () => {
