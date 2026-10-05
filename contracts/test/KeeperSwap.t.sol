@@ -251,6 +251,34 @@ abstract contract KeeperSwapTest is KeeperFixture {
         vault.withdraw(address(cash), 1 * USD);
     }
 
+    /// The traded asset and the cash must be readable too: they are what the trade is measured by.
+    function test_keeperSwap_theAssetOrTheCashUnreadable_isRefused() public {
+        address[2] memory traded = [address(stockA), address(cash)];
+        for (uint256 i; i < traded.length; ++i) {
+            vm.mockCallRevert(traded[i], abi.encodeWithSignature("balanceOf(address)", address(vault)), "");
+            _expectKeeperRevert(
+                _buy(direct, address(stockA), 4000 * USD, 0),
+                abi.encodeWithSelector(IBasketVault.BalanceUnreadable.selector, traded[i])
+            );
+            vm.clearMockedCalls();
+        }
+        _keeperSwap(_buy(direct, address(stockA), 4000 * USD, 0));
+    }
+
+    /// Permit2, the vault itself and a token it holds are never a router, whatever the config says: the
+    /// vault checks again for itself.
+    function test_hostile_permit2TheVaultOrATokenAsRouter_isRefusedTwice() public {
+        address[3] memory reserved = [PERMIT2_ADDRESS, address(vault), address(cash)];
+        for (uint256 i; i < reserved.length; ++i) {
+            Swap memory s = Swap(reserved[i], address(cash), address(stockA), 4000 * USD, 0, "");
+            _expectKeeperRevert(s, abi.encodeWithSelector(IBasketVault.RouterNotAllowed.selector, reserved[i]));
+            vm.mockCall(address(factory), abi.encodeWithSignature("routerPull(address)", reserved[i]), abi.encode(uint8(1)));
+            _expectKeeperRevert(s, abi.encodeWithSelector(IBasketVault.RouterNotAllowed.selector, reserved[i]));
+            vm.clearMockedCalls();
+        }
+        assertEq(cash.balanceOf(address(vault)), START);
+    }
+
     /// A17: a router that calls back into the vault mid-trade, into the keeper's trade or into adopt.
     function test_A17_reentryMidKeeperSwap_isRefused() public {
         bytes[2] memory inner = [
@@ -448,6 +476,15 @@ abstract contract KeeperSwapTest is KeeperFixture {
         );
     }
 
+    /// A trade that loses nothing does not start the seven days again.
+    function test_lossCap_aTradeThatLosesNothing_doesNotRestartTheSevenDays() public {
+        _keeperSwap(_buy(direct, address(stockA), 4000 * USD, 120));
+        _later(4 days);
+        _keeperSwap(_buy(direct, address(stockB), 3000 * USD, 0));
+        _later(3 days);
+        assertEq(vault.snapshot().lossUsedBps, 0);
+    }
+
     /// A loss starts the seven days again for all that is left on the counter.
     function test_lossCap_aLossRestartsTheSevenDays() public {
         _keeperSwap(_buy(direct, address(stockA), 4000 * USD, 120));
@@ -456,7 +493,8 @@ abstract contract KeeperSwapTest is KeeperFixture {
         // Seven days after the first loss, three after the second: the counter is not empty.
         _later(3 days);
         assertGt(vault.snapshot().lossUsedBps, 0);
-        _later(4 days);
+        // Past seven days after the second loss, nothing is left.
+        _later(5 days);
         assertEq(vault.snapshot().lossUsedBps, 0);
     }
 

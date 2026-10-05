@@ -130,7 +130,7 @@ abstract contract VaultConfig is Initializable, IVaultConfig {
         bool ranged = cfg.minPrice != 0 || cfg.maxPrice != 0;
         if (ranged) {
             require(
-                cfg.minPrice != 0 && cfg.maxPrice > cfg.minPrice && cfg.maxPrice <= 2 * uint256(cfg.minPrice),
+                cfg.maxPrice > cfg.minPrice && cfg.maxPrice <= 2 * uint256(cfg.minPrice),
                 ParamOutOfBounds("maxPrice", cfg.maxPrice)
             );
         }

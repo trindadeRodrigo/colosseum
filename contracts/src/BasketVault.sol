@@ -854,7 +854,7 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
         assembly ("memory-safe") {
             mstore(0x00, selector)
             ok := staticcall(SWEEP_BALANCE_GAS, target, 0x00, 0x04, 0x00, 0x20)
-            ok := and(ok, gt(returndatasize(), 0x1f))
+            ok := and(ok, iszero(lt(returndatasize(), 0x20)))
             word := mul(mload(0x00), ok)
         }
     }

@@ -138,6 +138,8 @@ contract FollowTest is KeeperFixture {
     function test_acceptVersion_keepsWhatTheVersionDropsWhileItIsHeld() public {
         _accept(1);
         _ownerBuys(address(stockC), 1000 * USD);
+        // A held asset the version keeps is there once, at the version's weight.
+        _ownerBuys(address(stockA), 1000 * USD);
         // Version 2 swaps C for D: 20% out and 20% in, a turnover of 20%.
         Weight[] memory four = new Weight[](4);
         BackdoorToken stockD = new BackdoorToken(dec);
