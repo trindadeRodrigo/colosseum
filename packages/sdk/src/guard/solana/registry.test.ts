@@ -346,7 +346,7 @@ describe('the guard on Solana: an interface that drops an account it cannot do w
 });
 
 describe('the registry calls elsewhere: not signed yet', () => {
-  it("on Robinhood Chain until IndexRegistry's interface is final, and on the mock", () => {
+  it("on Robinhood Chain until IndexRegistry's interface is final; the mock takes only its own publish", () => {
     const evmStep = {
       ...publishStep,
       chain: 'robinhood',
@@ -369,7 +369,8 @@ describe('the registry calls elsewhere: not signed yet', () => {
         consents: ['publish'],
       }),
     );
-    expect(onMock?.code).toBe('unsupported');
+    // Since WEB-4 the mock's own publish is checked (mock/check.test.ts); Solana bytes are not one.
+    expect(onMock?.code).toBe('malformed');
   });
 });
 
