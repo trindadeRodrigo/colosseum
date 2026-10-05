@@ -143,6 +143,19 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
   const parsedSheet = PersonalSheet.safeParse(sheetIn);
   if (!parsedSheet.success) throw new PersonalInputError('InvalidSheet', issues(parsedSheet.error));
   const sheet = parsedSheet.data;
+  // The sheet can carry a goal currency, withdrawals and sleeves (ENG-3 slice 2) before the engine
+  // applies them. Until it does, it refuses them rather than make a plan that ignores them.
+  const notYet: { path: string; message: string }[] = [];
+  if ((sheet.currency ?? 'USD') !== 'USD')
+    notYet.push({
+      path: 'currency',
+      message: 'a goal in a currency other than dollars is not built yet',
+    });
+  if ((sheet.obligations ?? []).length > 0)
+    notYet.push({ path: 'obligations', message: 'dated withdrawals are not built yet' });
+  if (sheet.sleeves && !(sheet.sleeves.length === 1 && sheet.sleeves[0]?.kind === 'goal'))
+    notYet.push({ path: 'sleeves', message: 'a split into sleeves is not built yet' });
+  if (notYet.length > 0) throw new PersonalInputError('InvalidSheet', notYet);
 
   const parsedParams = PersonalParameters.safeParse(context.params ?? PERSONAL_PARAMS);
   if (!parsedParams.success)

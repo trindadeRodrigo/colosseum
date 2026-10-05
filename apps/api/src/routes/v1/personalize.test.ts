@@ -94,6 +94,41 @@ const plansOf = async (sub: string) => {
 };
 
 describe('POST /v1/baskets/personalize', () => {
+  it('keeps the currency, the sleeves and the restore choice, as sent and as stored', async () => {
+    const who = await someone('solana');
+    const asked = sheet({
+      currency: 'USD',
+      sleeves: [{ kind: 'goal', shareBps: 10_000 }],
+      restoreSplit: true,
+    });
+    const res = await post(who, PATH, { sheet: asked });
+    expect(res.statusCode, res.body).toBe(200);
+    const { id, proposal } = PersonalizeResponse.parse(res.json());
+    expect(proposal.sheet).toEqual(asked);
+    expect((await loadProposal(data.db, id))?.sheet).toEqual(asked);
+    // Shares that do not add up are refused before the engine runs.
+    const bad = await post(who, PATH, {
+      sheet: { ...asked, sleeves: [{ kind: 'safe_yield', shareBps: 4000 }] },
+    });
+    expect(bad.statusCode).toBe(400);
+    // A split, a goal in reais or dated withdrawals are refused until the engine applies them, never
+    // ignored (ENG-3 slice 2).
+    for (const over of [
+      {
+        sleeves: [
+          { kind: 'theme', shareBps: 5000, theme: 'ai' },
+          { kind: 'safe_yield', shareBps: 5000 },
+        ],
+      },
+      { currency: 'BRL' },
+      { obligations: [{ month: '2027-06', amount: 3000, currency: 'USD' }] },
+    ]) {
+      const refused = await post(who, PATH, { sheet: { ...asked, ...over } });
+      expect(refused.statusCode, JSON.stringify(over)).toBeGreaterThanOrEqual(400);
+      expect(refused.statusCode, JSON.stringify(over)).toBeLessThan(500);
+    }
+  });
+
   it('makes a plan to protect with no stock token, stores it, and a buy buys it on the same chain', async () => {
     const who = await someone('solana');
     const asked = sheet();

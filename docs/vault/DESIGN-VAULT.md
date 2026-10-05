@@ -525,7 +525,13 @@ type BasketSheet = { basketType: 'standard'; goal: 'grow' | 'income' | 'protect'
   risk: 'low' | 'medium' | 'high'; themes: string[];   // up to 3 family slugs
   country: string;               // ISO two-letter, self-declared
   chains: ChainId[]; incomeTargetUsdMonthly?: number;
-  rules: { useHoldings: boolean; glide: boolean }; language: Language };
+  rules: { useHoldings: boolean; glide: boolean }; language: Language;
+  // ENG-3 slice 2, Oct 5 (Thom approves): all optional; left out = dollars, no withdrawals, one goal sleeve
+  currency?: string;             // ISO 4217
+  obligations?: { month: string; amount: number; currency: string }[];   // month YYYY-MM
+  sleeves?: ({ kind: 'goal'; shareBps: number } | { kind: 'theme'; shareBps: number; theme: string }
+    | { kind: 'safe_yield'; shareBps: number })[];   // shares add up to 10,000; one goal, one safe-yield at most
+  restoreSplit?: boolean };      // bring a grown sleeve back to its share: the person's choice (gate SLEEVES)
 type Shelf = { version: string; assets: BasketAsset[]; families: { meta: FamilyMeta; recipes: Recipe[] }[] };
 type PersonalParams = { version: string;               // Rodrigo owns the numbers
   sleeves: Record<string, { growthBps: number; dollarYieldBps: number; goldBps: number }>;   // key `${goal}:${risk}`
