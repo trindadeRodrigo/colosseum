@@ -34,14 +34,14 @@
       "kind": "stock",
       "multiplier": 1.0057146,
       "initialPrice": {
-        "usd": "773.62",
-        "source": "Kamino Scope entry 344 on mainnet, read by hand through the vault reader (docs/vault/STATE-VAULT.md, row ADS-1)",
-        "fetchedAt": "2026-10-02T18:48:00Z",
+        "usd": "776.80",
+        "source": "Kamino Scope entry 344 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",
+        "fetchedAt": "2026-10-05T15:10:14Z",
         "method": "scope_entry"
       },
       "keeper": {
-        "minUsd": "620",
-        "maxUsd": "930"
+        "minUsd": "602.02",
+        "maxUsd": "971.00"
       }
     },
     {
@@ -49,14 +49,14 @@
       "modelOf": "QQQx",
       "kind": "stock",
       "initialPrice": {
-        "usd": "600",
-        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
-        "fetchedAt": "2026-10-04T00:00:00Z",
-        "method": "placeholder"
+        "usd": "755.90",
+        "source": "Kamino Scope entry 347 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",
+        "fetchedAt": "2026-10-05T15:10:14Z",
+        "method": "scope_entry"
       },
       "keeper": {
-        "minUsd": "450",
-        "maxUsd": "780"
+        "minUsd": "585.83",
+        "maxUsd": "944.88"
       }
     },
     {
@@ -64,14 +64,14 @@
       "modelOf": "NVDAx",
       "kind": "stock",
       "initialPrice": {
-        "usd": "234.87",
-        "source": "Kamino Scope entry 332 on mainnet, read by hand through the vault reader (docs/vault/STATE-VAULT.md, row ADS-1)",
-        "fetchedAt": "2026-10-02T18:48:00Z",
+        "usd": "237.55",
+        "source": "Kamino Scope entry 332 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",
+        "fetchedAt": "2026-10-05T15:10:14Z",
         "method": "scope_entry"
       },
       "keeper": {
-        "minUsd": "190",
-        "maxUsd": "280"
+        "minUsd": "184.10",
+        "maxUsd": "296.94"
       }
     },
     {
@@ -79,14 +79,14 @@
       "modelOf": "TSLAx",
       "kind": "stock",
       "initialPrice": {
-        "usd": "400",
-        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
-        "fetchedAt": "2026-10-04T00:00:00Z",
-        "method": "placeholder"
+        "usd": "378.94",
+        "source": "Kamino Scope entry 338 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",
+        "fetchedAt": "2026-10-05T15:10:14Z",
+        "method": "scope_entry"
       },
       "keeper": {
-        "minUsd": "300",
-        "maxUsd": "520"
+        "minUsd": "293.68",
+        "maxUsd": "473.68"
       }
     },
     {
@@ -94,14 +94,14 @@
       "modelOf": "AAPLx",
       "kind": "stock",
       "initialPrice": {
-        "usd": "250",
-        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
-        "fetchedAt": "2026-10-04T00:00:00Z",
-        "method": "placeholder"
+        "usd": "334.88",
+        "source": "Kamino Scope entry 317 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",
+        "fetchedAt": "2026-10-05T15:10:14Z",
+        "method": "scope_entry"
       },
       "keeper": {
-        "minUsd": "187.5",
-        "maxUsd": "325"
+        "minUsd": "259.53",
+        "maxUsd": "418.60"
       }
     },
     {
@@ -109,14 +109,14 @@
       "modelOf": "GOOGLx",
       "kind": "stock",
       "initialPrice": {
-        "usd": "250",
-        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
-        "fetchedAt": "2026-10-04T00:00:00Z",
-        "method": "placeholder"
+        "usd": "345.76",
+        "source": "Kamino Scope entry 326 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",
+        "fetchedAt": "2026-10-05T15:10:14Z",
+        "method": "scope_entry"
       },
       "keeper": {
-        "minUsd": "187.5",
-        "maxUsd": "325"
+        "minUsd": "267.96",
+        "maxUsd": "432.20"
       }
     },
     {
@@ -124,14 +124,14 @@
       "modelOf": "METAx",
       "kind": "stock",
       "initialPrice": {
-        "usd": "700",
-        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
-        "fetchedAt": "2026-10-04T00:00:00Z",
-        "method": "placeholder"
+        "usd": "748.49",
+        "source": "Kamino Scope entry 329 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",
+        "fetchedAt": "2026-10-05T15:10:14Z",
+        "method": "scope_entry"
       },
       "keeper": {
-        "minUsd": "525",
-        "maxUsd": "910"
+        "minUsd": "580.08",
+        "maxUsd": "935.62"
       }
     },
     {
@@ -139,14 +139,14 @@
       "modelOf": "MSTRx",
       "kind": "stock",
       "initialPrice": {
-        "usd": "300",
-        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
-        "fetchedAt": "2026-10-04T00:00:00Z",
-        "method": "placeholder"
+        "usd": "162.50",
+        "source": "Kamino Scope entry 335 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",
+        "fetchedAt": "2026-10-05T15:10:14Z",
+        "method": "scope_entry"
       },
       "keeper": {
-        "minUsd": "225",
-        "maxUsd": "390"
+        "minUsd": "125.94",
+        "maxUsd": "203.12"
       }
     },
     {
@@ -154,14 +154,14 @@
       "modelOf": "CRCLx",
       "kind": "stock",
       "initialPrice": {
-        "usd": "100",
-        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
-        "fetchedAt": "2026-10-04T00:00:00Z",
-        "method": "placeholder"
+        "usd": "84.13",
+        "source": "Kamino Scope entry 323 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",
+        "fetchedAt": "2026-10-05T15:10:14Z",
+        "method": "scope_entry"
       },
       "keeper": {
-        "minUsd": "75",
-        "maxUsd": "130"
+        "minUsd": "65.20",
+        "maxUsd": "105.16"
       }
     },
     {
@@ -169,14 +169,14 @@
       "modelOf": "HOODx",
       "kind": "stock",
       "initialPrice": {
-        "usd": "100",
-        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
-        "fetchedAt": "2026-10-04T00:00:00Z",
-        "method": "placeholder"
+        "usd": "113.75",
+        "source": "Kamino Scope entry 320 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",
+        "fetchedAt": "2026-10-05T15:10:14Z",
+        "method": "scope_entry"
       },
       "keeper": {
-        "minUsd": "75",
-        "maxUsd": "130"
+        "minUsd": "88.16",
+        "maxUsd": "142.19"
       }
     },
     {

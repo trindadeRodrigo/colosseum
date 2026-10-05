@@ -186,11 +186,11 @@ describe('the price copier', () => {
         twap: { ...before, unixTimestamp: before.unixTimestamp - 1n },
         method: 'scope_entry',
       },
-      // AAPLx's range is 187.5 to 325.
+      // AAPLx's range is 259.53 to 418.6.
       {
         id: 'solana:aaplx',
-        price: p15('335.24', t),
-        twap: p15('335.01', t),
+        price: p15('450', t),
+        twap: p15('449', t),
         method: 'scope_entry',
       },
       // TSLAx last copied at 400: 470 is in its range and 17.5% away.
@@ -205,12 +205,12 @@ describe('the price copier', () => {
     const result = await copyRound(liteChain(svm), writer, deployment, readings, options(last));
     expect(result.unchanged).toEqual(['tSPYx']);
     expect(result.refused).toEqual([
-      { id: 'tAAPLx', why: 'price 335.24 is outside the keeper range 187.5 to 325' },
+      { id: 'tAAPLx', why: 'price 450 is outside the keeper range 259.53 to 418.6' },
       { id: 'tTSLAx', why: 'price 470 is more than 1000 bps from the last copied 400' },
     ]);
     expect(result.written).toEqual(['tNVDAx']);
     expect(read(spyx.priceIndex)).toEqual(before);
-    expect(read(asset('solana:aaplx').priceIndex).value).not.toBe(p15('335.24', t).value);
+    expect(read(asset('solana:aaplx').priceIndex).value).not.toBe(p15('450', t).value);
   });
 
   it('signs with the price writer only: the deploy key is refused', async () => {
