@@ -6,7 +6,7 @@
 
 ## Where this stands (2026-10-05)
 
-Nothing is built. The plan, this prompt, gate `UNIVERSE` and ledger row RISK-5 were written on branch `docs/universe-plan`.
+RU.1 is done (branch `universe/ru1`): `trackedSet` in `packages/risk/src/universe.ts`, checked on the frozen Solana registry. The next item is RU.2. The plan, this prompt, gate `UNIVERSE` and ledger row RISK-5 were written on branch `docs/universe-plan`; the status of every item is in section 6 of the plan.
 
 What already exists and is reused, not rebuilt:
 
@@ -23,7 +23,7 @@ The risk layer measures what tokenized stocks cost to sell. Until now it chose i
 
 Before you write code:
 
-1. Run `/start-work` with a branch `risk/universe-ru{N}` cut from `staging`. The ledger row is RISK-5.
+1. Run `/start-work` with a branch `universe/ru{N}` cut from `staging` (not `risk/…`: a local branch `risk` exists and git refuses a name under it). The ledger row is RISK-5.
 2. Read `docs/risk/PLAN-UNIVERSE.md` in full, then `CLAUDE.md`, then `docs/GATES.md` (gates `UNIVERSE`, `ROUTING`, `ORACLE-VS-DEX`, `EXIT-SOURCE`, `PRICE-JOB`).
 3. Read the code the item extends, as files, not summaries:
    - RU.1, RU.3: `scripts/risk/pool-pareto.ts`, `scripts/risk/retier.ts`, `packages/risk/src/index.ts`.
