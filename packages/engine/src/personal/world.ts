@@ -11,6 +11,7 @@ import {
 } from '@colosseum/schemas';
 import { z } from 'zod';
 import { pickPrimaryYield } from '../risk/index';
+import { CREDIT_LEG_TYPES, legTypesOf } from './leg-types';
 import { BPS, byName, floorCents, shareOf, toCents, toUsd } from './money';
 import { PERSONAL_PARAMS } from './params';
 import { eligibleForGoal, sleeveOfClass } from './registry';
@@ -60,8 +61,20 @@ export type World = {
   goalMonth: string;
   /** The smallest line, the most with one issuer, and the most in one stock or crypto asset: cents. */
   minLine: number;
-  issuerCap: number;
   stockCap: number;
+  /** The most cents with this token's issuer: by risk for stocks and crypto, the plan's cap for the rest. */
+  issuerCapOf(asset: BasketAsset): number;
+  /** Why an issuer takes no more, for this token's sleeve. */
+  issuerWhy(asset: BasketAsset): Reason;
+  /**
+   * For a dollar-yield token: the most cents it may take, the smaller of its cap in the plan and its exit
+   * ceiling, with the reason for whichever binds. Null when its leg type is not on the list.
+   */
+  yieldCapOf(asset: BasketAsset): { cents: number; why: Reason } | null;
+  /** Whether a dollar-yield token counts against the credit budget. */
+  isCredit(asset: BasketAsset): boolean;
+  /** The most cents in credit and basis legs, by the person's credit tolerance, and its share. */
+  creditBudget: { cents: number; bps: number; stated: boolean };
   flags: Set<string>;
   /** Every figure the plan was shaped by, whether or not its token ends up in the plan. */
   observations: Map<string, PersonalObservation>;
@@ -289,8 +302,41 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
     goalMonth: monthAfter(context.now, sheet.horizonMonths),
     // A vault's target is at least one basis point, so a line is too, whatever the table says.
     minLine: Math.max(toCents(P.minLineUsd), Math.ceil((amount * Math.max(1, P.minLineBps)) / BPS)),
-    issuerCap: shareOf(amount, capIssuer),
     stockCap: shareOf(amount, capStock),
+    issuerCapOf: (a) =>
+      sleeveOfClass(a.cls) === 'growth'
+        ? shareOf(amount, capIssuer)
+        : shareOf(amount, P.issuerCapBps),
+    issuerWhy: (a) =>
+      sleeveOfClass(a.cls) === 'growth'
+        ? reason('ISSUER_CAP', { capBps: capIssuer, risk: sheet.risk, issuer: a.issuer }, lang)
+        : reason('ISSUER_CAP_PLAN', { capBps: P.issuerCapBps, issuer: a.issuer }, lang),
+    yieldCapOf: (a) => {
+      const row = legTypesOf(a.symbol);
+      if (!row) return null;
+      const named = P.capPerAssetBps.bySymbol[a.symbol];
+      const capBps =
+        named ?? Math.min(...row.types.map((t) => P.capPerAssetBps.byLegType[t] ?? BPS));
+      const capCents = shareOf(amount, capBps);
+      const exit = ceiling(a);
+      // The smaller limit binds; on a tie the exit figure is named, as the one source (EXIT-SOURCE).
+      return exit.cents <= capCents
+        ? { cents: exit.cents, why: exit.why }
+        : {
+            cents: capCents,
+            why: reason('ASSET_CAP', { asset: a.symbol, capBps, maxUsd: toUsd(capCents) }, lang),
+          };
+    },
+    isCredit: (a) => (legTypesOf(a.symbol)?.types ?? []).some((t) => CREDIT_LEG_TYPES.includes(t)),
+    creditBudget: (() => {
+      const tolerance = sheet.limits?.creditTolerance ?? P.defaultCreditTolerance;
+      const bps = P.creditShareBps[tolerance] ?? 0;
+      return {
+        cents: shareOf(amount, bps),
+        bps,
+        stated: sheet.limits?.creditTolerance !== undefined,
+      };
+    })(),
     flags,
     observations,
     sleeveOf: (a) => sleeveOfClass(a.cls),

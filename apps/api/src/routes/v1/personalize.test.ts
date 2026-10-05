@@ -5,6 +5,7 @@ import {
   type ChainId,
   OrderError,
   type RegimeLiquidityProvider,
+  YieldObservation,
 } from '@colosseum/schemas';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -12,6 +13,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ChainRegistry } from '../../orders/chains';
 import type { PlanInputs } from '../../orders/personalize';
 import { loadProposal } from '../../orders/store';
+import { bearingPlanInputs } from '../../plan-inputs';
+import mockYields from '../../testing/fixtures/mock-yields.json';
 import { orderFlow } from '../../testing/flow';
 import {
   type PersonKind,
@@ -39,7 +42,19 @@ beforeAll(async () => {
   issuer = await testIssuer('personalize');
   data = await testDb();
   undo.push(() => data.cleanUp());
-  ({ app, registry } = await testApp({ issuer: issuer.issuer, db: data.db }));
+  // The mock chain's dollar-yield token has no stored reading, and the engine never counts a missing
+  // yield as zero: the test hands it one, from a fixture labelled mock.
+  const withMockYield: PlanInputs = async (q) => ({
+    ...(await bearingPlanInputs(q)),
+    yields: YieldObservation.array()
+      .parse(mockYields)
+      .filter((y) => q.assets.some((a) => a.id === y.assetId)),
+  });
+  ({ app, registry } = await testApp({
+    issuer: issuer.issuer,
+    db: data.db,
+    planInputs: withMockYield,
+  }));
   undo.push(() => app.close());
 });
 afterAll(async () => {
@@ -95,11 +110,11 @@ describe('POST /v1/baskets/personalize', () => {
       expect(['stock', 'etf', 'crypto']).not.toContain(cls.get(line.assetId));
       expect(line.reasons.length).toBeGreaterThan(0);
     }
-    // The mock lists no GLD, so its gold share is held in dollar yield or cash; one issuer holds at
-    // most half at low risk, and the rest stays in cash.
+    // The mock lists no GLD, so its gold share is held in dollar yield or cash. The mock's yield
+    // token is a rate leg: 40% of the plan at most (gate SOLVER-PARAMS). The rest stays in cash.
     expect(proposal.lines.map((l) => [l.assetId, l.weightBps])).toEqual([
-      ['solana:yield', 5000],
-      ['solana:usdc', 5000],
+      ['solana:yield', 4000],
+      ['solana:usdc', 6000],
     ]);
     expect(proposal.recipes.map((r) => [r.chain, r.amountUsd])).toEqual([['solana', 50_000]]);
     // Nothing is measured on the mock: the line's ceiling is its tier's, and the plan says so.
@@ -127,10 +142,10 @@ describe('POST /v1/baskets/personalize', () => {
     const buys = bought.legs.flatMap((l) => l.trades.map((t) => t.buy));
     expect(buys.length).toBeGreaterThan(0);
     expect(buys).toEqual(['solana:yield']);
-    // Half the deposit is bought; the cash share stays in the vault.
+    // 40% of the deposit is bought; the cash share stays in the vault.
     expect(bought.depositRaw).toBe(String(50_000 * 10 ** 6));
     expect(bought.legs.flatMap((l) => l.trades.map((t) => t.amountInRaw))).toEqual([
-      String(25_000 * 10 ** 6),
+      String(20_000 * 10 ** 6),
     ]);
   });
 

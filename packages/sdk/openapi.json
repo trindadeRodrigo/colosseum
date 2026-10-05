@@ -111,6 +111,10 @@
                             "minimum": 1,
                             "maximum": 480
                           },
+                          "creditTolerance": {
+                            "type": "string",
+                            "enum": ["none", "limited", "accept"]
+                          },
                           "cannotHold": {
                             "type": "object",
                             "properties": {

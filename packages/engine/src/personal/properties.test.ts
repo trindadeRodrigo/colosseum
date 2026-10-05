@@ -11,6 +11,7 @@ import {
   fixtureYields,
   launchShelf,
   NOW,
+  roomyYield,
   violations,
 } from './testing';
 import {
@@ -137,6 +138,15 @@ const table: fc.Arbitrary<PersonalParameters> = fc
       growth: fc.constantFrom('SPY', 'NVDA', 'JitoSOL', 'ZZZ'),
       gold: fc.constantFrom('GLD', 'SLV', 'ZZZ'),
     }),
+    // The banded fill's numbers (gate SOLVER-PARAMS), any of them.
+    yieldBand: fc.double({ min: 0, max: 0.05, noNaN: true }),
+    capPerAssetBps: fc.record({
+      bySymbol: fc.record({ syrupUSDC: bps }, { requiredKeys: [] }),
+      byLegType: fc.record({ rate: bps, credit: bps, basis: bps, market_deposit: bps }),
+    }),
+    issuerCapBps: bps,
+    creditShareBps: fc.record({ none: bps, limited: bps, accept: bps }),
+    defaultCreditTolerance: fc.constantFrom('none' as const, 'limited' as const, 'accept' as const),
   })
   .map(({ rows, ...rest }) =>
     PersonalParameters.parse({
@@ -351,7 +361,7 @@ describe.each(['solana', 'robinhood'] as const)('where there is room, on %s', (c
     })
     .map(({ rows, ...floors }) =>
       PersonalParameters.parse({
-        ...PERSONAL_PARAMS,
+        ...roomyYield(),
         ...floors,
         version: 'generated, with room',
         sleeves: Object.fromEntries(

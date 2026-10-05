@@ -28,6 +28,7 @@ export const INPUT_NAMES = [
   'cannotHold',
   'mustKeep',
   'mayNeed',
+  'credit',
 ] as const;
 export type InputName = (typeof INPUT_NAMES)[number];
 
@@ -99,6 +100,11 @@ export const REASON_TEMPLATES = {
     ['amount'],
     '{theme} cannot be held whole: {asset} takes at most {maxUsd|usd}.',
     '{theme} não cabe inteiro: {asset} comporta no máximo {maxUsd|usd}.',
+  ),
+  NOT_WHOLE_ISSUER_PLAN: rule(
+    [],
+    '{theme} cannot be held whole: more than {capBps|pct} of the plan would be with {issuer}, the most with one issuer.',
+    '{theme} não cabe inteiro: mais de {capBps|pct} do plano ficaria com {issuer}, o máximo com um só emissor.',
   ),
   NOT_WHOLE_ISSUER: rule(
     ['risk'],
@@ -175,10 +181,40 @@ export const REASON_TEMPLATES = {
     'Chosen by its yield after haircut, among the dollar-yield tokens you can hold on {chain|chain}.',
     'Escolhido pelo rendimento após o deságio, entre os tokens de rendimento em dólar que você pode ter na {chain|chain}.',
   ),
-  YIELD_NOT_READ: rule(
+  NO_YIELD: rule(
     [],
-    'There is no yield reading for this token, so the plan counts none for it.',
-    'Não há leitura de rendimento para este token, então o plano não considera rendimento para ele.',
+    '{asset} is left out: there is no yield reading for it, and the plan never counts a missing yield as zero.',
+    '{asset} fica de fora: não há leitura de rendimento para ele, e o plano nunca conta um rendimento ausente como zero.',
+  ),
+  NO_LEG_TYPE: rule(
+    [],
+    '{asset} is left out: what kind of yield it pays is not on the asset list yet.',
+    '{asset} fica de fora: o tipo de rendimento que ele paga ainda não está na lista de ativos.',
+  ),
+  SHARED_IN_BAND: rule(
+    [],
+    'Yields after haircut that differ by {bandBps|pct} or less count as equal, so {assets|list} share this part equally, each up to its limit.',
+    'Rendimentos após o deságio que diferem em {bandBps|pct} ou menos contam como iguais, então {assets|list} dividem esta parte igualmente, cada um até o seu limite.',
+  ),
+  ASSET_CAP: rule(
+    ['amount'],
+    '{asset} takes at most {capBps|pct} of the plan, {maxUsd|usd}: the limit for one token of its kind.',
+    '{asset} comporta no máximo {capBps|pct} do plano, {maxUsd|usd}: o limite para um token desse tipo.',
+  ),
+  ISSUER_CAP_PLAN: rule(
+    [],
+    'No more than {capBps|pct} of the plan with one issuer: {issuer} is at that limit.',
+    'No máximo {capBps|pct} do plano com um só emissor: {issuer} está nesse limite.',
+  ),
+  CREDIT_BUDGET: rule(
+    ['credit'],
+    'No more than {capBps|pct} of the plan in tokens that lend to borrowers or trade a spread, at the credit risk you accept: {asset} is at that limit.',
+    'No máximo {capBps|pct} do plano em tokens que emprestam a tomadores ou operam uma diferença de taxas, com o risco de crédito que você aceita: {asset} está nesse limite.',
+  ),
+  CREDIT_BUDGET_UNSAID: rule(
+    [],
+    'No more than {capBps|pct} of the plan in tokens that lend to borrowers or trade a spread: you have not said how much credit risk you accept, and this is the limit until you do. {asset} is at that limit.',
+    'No máximo {capBps|pct} do plano em tokens que emprestam a tomadores ou operam uma diferença de taxas: você não disse quanto risco de crédito aceita, e este é o limite até dizer. {asset} está nesse limite.',
   ),
   EXIT_CEILING: rule(
     ['amount'],
@@ -223,6 +259,11 @@ export const REASON_TEMPLATES = {
     ['risk'],
     '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: no more than {capBps|pct} of the plan is with one issuer at {risk|risk}, and {issuer} is at that limit.',
     '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: no máximo {capBps|pct} do plano fica com um só emissor, com {risk|risk}, e {issuer} está nesse limite.',
+  ),
+  OVERFLOW_ISSUER_PLAN: rule(
+    [],
+    '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: no more than {capBps|pct} of the plan is with one issuer, and {issuer} is at that limit.',
+    '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: no máximo {capBps|pct} do plano fica com um só emissor, e {issuer} está nesse limite.',
   ),
   OVERFLOW_STOCK_CAP: rule(
     ['risk'],

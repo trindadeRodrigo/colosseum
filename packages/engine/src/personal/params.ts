@@ -7,7 +7,7 @@ import type { PersonalParameters } from './types';
 // The rules in ./rules.test.ts hold whatever these numbers are.
 
 export const PERSONAL_PARAMS: PersonalParameters = {
-  version: 'personal-0.1-starting',
+  version: 'personal-0.2-starting-solver-params',
 
   // Sleeve sizes by goal and risk, in basis points of the plan. What a row leaves out of 10,000 is cash.
   sleeves: {
@@ -68,6 +68,31 @@ export const PERSONAL_PARAMS: PersonalParameters = {
   // A plan to protect starts from no shared portfolio: the one it had (Storm Cellar) holds stocks.
   defaultTheme: { grow: 'the-500', income: null, protect: null },
   defaultUnderlying: { growth: 'SPY', gold: 'GLD' },
+
+  // Gate SOLVER-PARAMS (Rodrigo, Oct 5). Each is a starting number with the test that will tune it.
+  // Tuned by C2: perturb each yield by its week-on-week spread; widen until adjacent ranks stop swapping.
+  yieldBand: 0.005,
+  // Tuned by C5 and R4: re-solve the fixture goals once yield tokens have curves; count money left unplaced.
+  // The registry caps of the old solver (Kamino 60%, syrupUSDC 40%, USDY 40%). A token the table does not
+  // name takes the figure of its leg type (Rodrigo, Oct 5): Kamino's for a market deposit, USDY's for a
+  // rate leg, syrupUSDC's for credit and basis.
+  capPerAssetBps: {
+    bySymbol: { syrupUSDC: 4000, USDY: 4000 },
+    byLegType: { market_deposit: 6000, rate: 4000, credit: 4000, basis: 4000 },
+  },
+  // Tuned by C8: inject an 80% loss on any credit or basis leg and count the months still paid.
+  // Dollar yield, gold and cash only (Rodrigo, Oct 5): on Solana every stock token has one issuer.
+  issuerCapBps: 5000,
+  // The old solver's credit budget (creditShareByTolerance), tuned by the same C8 test.
+  creditShareBps: { none: 0, limited: 2500, accept: 5000 },
+  // Until the guided intake asks (Rodrigo, Oct 5): the old parser's default.
+  defaultCreditTolerance: 'limited',
+  // Tuned by C15: replay the withdrawals at 0, 3, 6, 12 and 24 months set aside.
+  setAsideMonths: 6,
+  // Tuned by C14: replay recorded prices at 3, 5 and 7 points and count rebalances and exit cost.
+  driftBandBps: 500,
+  // Tuned by C2's perturbation test, on the safe-yield sleeve's switches.
+  switchDays: 7,
 };
 
 /** `changed` is a change made since the prototype that Rodrigo has not read yet: he clears it. */
@@ -121,5 +146,37 @@ export const PERSONAL_PARAMS_STATUS: Record<Exclude<keyof PersonalParameters, 'v
   defaultUnderlying: {
     status: 'starting',
     from: 'The prototype: SPY for stocks and GLD for gold when no shared portfolio fills the sleeve.',
+  },
+  yieldBand: {
+    status: 'set',
+    from: 'Gate SOLVER-PARAMS, Oct 5: yields within half a point count as equal.',
+  },
+  capPerAssetBps: {
+    status: 'set',
+    from: 'Gate SOLVER-PARAMS, Oct 5: the old registry caps; tokens the table does not name take their leg type figure (Rodrigo, Oct 5).',
+  },
+  issuerCapBps: {
+    status: 'set',
+    from: 'Gate SOLVER-PARAMS, Oct 5: one issuer at most 50% of a plan, for dollar yield, gold and cash (Rodrigo, Oct 5).',
+  },
+  creditShareBps: {
+    status: 'set',
+    from: 'Gate SOLVER-PARAMS, Oct 5: the old solver credit budget, carried over.',
+  },
+  defaultCreditTolerance: {
+    status: 'set',
+    from: 'Rodrigo, Oct 5: limited, the old parser default, until the guided intake asks.',
+  },
+  setAsideMonths: {
+    status: 'set',
+    from: 'Gate SOLVER-PARAMS, Oct 5: 6 months of withdrawals, as today.',
+  },
+  driftBandBps: {
+    status: 'set',
+    from: 'Gate SOLVER-PARAMS, Oct 5: a rebalance proposed at 5 points of drift.',
+  },
+  switchDays: {
+    status: 'set',
+    from: 'Gate SOLVER-PARAMS, Oct 5: the safe-yield sleeve switches only when another stays ahead for a week.',
   },
 };

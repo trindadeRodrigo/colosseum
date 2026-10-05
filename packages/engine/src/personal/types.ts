@@ -10,6 +10,7 @@ import {
   type YieldObservation,
 } from '@colosseum/schemas';
 import { z } from 'zod';
+import { LegType } from './leg-types';
 
 // The types of the personalization engine that packages/schemas does not hold yet. Each is marked
 // LOCAL TYPE and listed in DESIGN-VAULT 3.6: it moves to packages/schemas when the frame takes it.
@@ -34,6 +35,11 @@ export const PersonalLimits = z.object({
   mustKeepUsd: z.number().nonnegative().optional(),
   /** Months until they may need the money, when that is sooner than the goal's date. */
   mayNeedInMonths: BasketSheet.shape.horizonMonths.optional(),
+  /**
+   * How much credit risk they accept: the most of the plan in credit and basis legs (gate SOLVER-PARAMS,
+   * the old solver's budget). Left out: the table's default, until the guided intake asks.
+   */
+  creditTolerance: z.enum(['none', 'limited', 'accept']).optional(),
   /** What they cannot hold: whole classes, tickers of the underlying ('TSLA'), or single tokens. */
   cannotHold: z
     .object({
@@ -104,6 +110,28 @@ export const PersonalParameters = PersonalParams.extend({
   defaultTheme: z.record(GoalKind, z.string().nullable()),
   /** What fills a sleeve when no shared portfolio does: the ticker of an underlying. */
   defaultUnderlying: z.object({ growth: z.string().min(1), gold: z.string().min(1) }),
+  /** Yields after haircut within this of a band's top count as equal (a fraction: 0.005 is half a point). */
+  yieldBand: z.number().nonnegative().max(1),
+  /**
+   * The most of the plan in one dollar-yield token: by its symbol where the table names it, otherwise
+   * by its leg types (the smallest of them). Lowered to the token's exit ceiling where that is smaller.
+   */
+  capPerAssetBps: z.object({
+    bySymbol: z.record(z.string(), Bps),
+    byLegType: z.record(LegType, Bps),
+  }),
+  /** The most of the plan with one issuer, for dollar yield, gold and cash. Stocks keep `capPerIssuerBps`. */
+  issuerCapBps: Bps,
+  /** The most of the plan in credit and basis legs, by the person's credit tolerance. */
+  creditShareBps: z.record(z.enum(['none', 'limited', 'accept']), Bps),
+  /** The credit tolerance of a person who has not said. */
+  defaultCreditTolerance: z.enum(['none', 'limited', 'accept']),
+  /** Months of withdrawals set aside (slice 2). */
+  setAsideMonths: z.number().int().nonnegative(),
+  /** Drift inside a sleeve at which a rebalance is proposed, in basis points (slice 4). */
+  driftBandBps: Bps,
+  /** Days another asset must stay ahead by more than the band before the safe-yield sleeve switches (slice 4). */
+  switchDays: z.number().int().positive(),
 });
 export type PersonalParameters = z.infer<typeof PersonalParameters>;
 

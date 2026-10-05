@@ -1,4 +1,5 @@
 import type { BasketAsset, Reason } from '@colosseum/schemas';
+import { bandedFill, rank } from './fill';
 import { largestFirst, split, sum, toUsd } from './money';
 import { type RuleId, reason } from './templates';
 import type { World } from './world';
@@ -51,6 +52,7 @@ const OVERFLOW_FOR: Partial<Record<string, RuleId>> = {
   EXIT_CEILING: 'OVERFLOW_CEILING',
   TIER_CEILING: 'OVERFLOW_CEILING',
   ISSUER_CAP: 'OVERFLOW_ISSUER',
+  ISSUER_CAP_PLAN: 'OVERFLOW_ISSUER_PLAN',
   MAX_LINES: 'OVERFLOW_MAX_LINES',
   BELOW_MINIMUM: 'OVERFLOW_TOO_SMALL',
   NOT_ON_CHAIN: 'OVERFLOW_NOT_ON_CHAIN',
@@ -60,6 +62,9 @@ const OVERFLOW_FOR: Partial<Record<string, RuleId>> = {
   SINGLE_STOCK_CAP: 'OVERFLOW_STOCK_CAP',
   ALREADY_HELD_NONE: 'OVERFLOW_HELD',
 };
+
+/** Basis points in one whole: a yield band of 0.005 is 50. */
+const BPS_OF_ONE = 10_000;
 
 const keyOf = (r: Reason) => `${r.rule} ${JSON.stringify(r.params)}`;
 
@@ -74,6 +79,15 @@ export class Book {
   >();
   readonly cash = { cents: 0, reasons: [] as Reason[] };
   private readonly withIssuer = new Map<string, number>();
+  /** The same, counting dollar yield, gold and cash only: what the plan's issuer cap reads (Rodrigo, Oct 5). */
+  private readonly withIssuerOutsideGrowth = new Map<string, number>();
+
+  /** What is already with this token's issuer, as the cap for its sleeve counts it. */
+  private usedOf(asset: BasketAsset): number {
+    const counted =
+      this.w.sleeveOf(asset) === 'growth' ? this.withIssuer : this.withIssuerOutsideGrowth;
+    return counted.get(asset.issuer) ?? 0;
+  }
 
   constructor(private readonly w: World) {}
 
@@ -82,7 +96,7 @@ export class Book {
     const { w } = this;
     const ceiling = w.ceilingOf(asset);
     const underCeiling = ceiling - (this.lines.get(asset.id)?.cents ?? 0);
-    const underIssuerCap = w.issuerCap - (this.withIssuer.get(asset.issuer) ?? 0);
+    const underIssuerCap = w.issuerCapOf(asset) - this.usedOf(asset);
     if (underIssuerCap < underCeiling)
       return { cents: Math.max(0, underIssuerCap), why: this.issuerWhy(asset) };
     return { cents: Math.max(0, underCeiling), why: w.ceilingWhy(asset) };
@@ -90,12 +104,7 @@ export class Book {
 
   /** Why an issuer takes no more: the most of a plan one issuer may hold, at the person's risk. */
   private issuerWhy(asset: BasketAsset): Reason {
-    const { w } = this;
-    return reason(
-      'ISSUER_CAP',
-      { capBps: w.P.capPerIssuerBps[w.sheet.risk] ?? 0, risk: w.sheet.risk, issuer: asset.issuer },
-      w.lang,
-    );
+    return this.w.issuerWhy(asset);
   }
 
   /** The reason a token gets no line of its own when the plan is full, or null when it may. */
@@ -117,6 +126,142 @@ export class Book {
     if (via !== undefined) line.via.set(via, (line.via.get(via) ?? 0) + cents);
     this.lines.set(asset.id, line);
     this.withIssuer.set(asset.issuer, (this.withIssuer.get(asset.issuer) ?? 0) + cents);
+    if (this.w.sleeveOf(asset) !== 'growth')
+      this.withIssuerOutsideGrowth.set(
+        asset.issuer,
+        (this.withIssuerOutsideGrowth.get(asset.issuer) ?? 0) + cents,
+      );
+    if (this.w.sleeveOf(asset) === 'dollarYield' && this.w.isCredit(asset))
+      this.creditUsed += cents;
+  }
+
+  /** Cents placed in credit and basis legs so far. */
+  private creditUsed = 0;
+  /** Dollar-yield tokens already listed in `removed`, so a second fill does not list them again. */
+  private readonly yieldRemoved = new Set<string>();
+
+  /**
+   * Places a unit on dollar-yield tokens by the banded fill (gate SOLVER): ranked by yield after
+   * haircut, yields within the band share equally, each token up to its own cap, its issuer's and
+   * the credit budget. A token with no yield reading, or whose kind of yield is not listed, is left
+   * out with why. Returns what is left, as `fill` does.
+   */
+  fillBanded(unit: Sized, candidates: BasketAsset[]): Fill {
+    const { w } = this;
+    const why: Reason[] = [];
+    const leave = (asset: BasketAsset, because: Reason) => {
+      if (this.yieldRemoved.has(asset.id)) return;
+      this.yieldRemoved.add(asset.id);
+      this.removed.push({ ref: asset.symbol, reasons: [because] });
+    };
+    const able: { asset: BasketAsset; yield: number; cap: { cents: number; why: Reason } }[] = [];
+    for (const asset of [...candidates].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+      const blocked = w.blockOf(asset);
+      if (blocked) {
+        why.push(blocked);
+        continue;
+      }
+      const cap = w.yieldCapOf(asset);
+      if (!cap) {
+        leave(asset, reason('NO_LEG_TYPE', { asset: asset.symbol }, w.lang));
+        continue;
+      }
+      const read = w.yields.get(asset.id);
+      if (!read) {
+        leave(asset, reason('NO_YIELD', { asset: asset.symbol }, w.lang));
+        continue;
+      }
+      able.push({ asset, yield: read.haircutYield, cap });
+    }
+    // Lines: a token already in the plan keeps its line; new ones take the lines left, in rank order.
+    const ranked = rank(able.map((a) => ({ ...a, id: a.asset.id })));
+    let free = w.P.maxLinesPerChain - this.lines.size;
+    let live = ranked.filter((a) => {
+      if (this.lines.has(a.id)) return true;
+      if (free > 0) {
+        free -= 1;
+        return true;
+      }
+      const full = this.noLineLeft(a.asset);
+      if (full) why.push(full);
+      return false;
+    });
+    const held = (a: BasketAsset) => this.lines.get(a.id)?.cents ?? 0;
+    const issuerKey = (a: BasketAsset) => `issuer:${a.issuer}`;
+    let tooSmall = false;
+    for (;;) {
+      const groupRoom: Record<string, number> = { credit: w.creditBudget.cents - this.creditUsed };
+      for (const a of live)
+        groupRoom[issuerKey(a.asset)] = w.issuerCapOf(a.asset) - this.usedOf(a.asset);
+      const result = bandedFill({
+        amount: unit.cents,
+        band: w.P.yieldBand,
+        groupRoom,
+        items: live.map((a) => ({
+          id: a.id,
+          yield: a.yield,
+          room: a.cap.cents - held(a.asset),
+          groups: [issuerKey(a.asset), ...(w.isCredit(a.asset) ? ['credit'] : [])],
+        })),
+      });
+      // A new line has a least size: the lowest-ranked one short of it is left out, and the rest fill again.
+      const short = live.filter((a) => {
+        const take = result.take.get(a.id) ?? 0;
+        return !this.lines.has(a.id) && take > 0 && take < w.minLine;
+      });
+      const last = short.at(-1);
+      if (last) {
+        tooSmall = true;
+        live = live.filter((a) => a !== last);
+        continue;
+      }
+      const whyBound = (a: (typeof live)[number]): Reason | null => {
+        const b = result.bound.get(a.id);
+        if (!b) return null;
+        if (b.by === 'own') return a.cap.why;
+        if (b.group === 'credit')
+          return reason(
+            w.creditBudget.stated ? 'CREDIT_BUDGET' : 'CREDIT_BUDGET_UNSAID',
+            { capBps: w.creditBudget.bps, asset: a.asset.symbol },
+            w.lang,
+          );
+        return this.issuerWhy(a.asset);
+      };
+      const byYield = reason('BY_YIELD', { chain: w.chain }, w.lang);
+      const takers = live.filter((a) => (result.take.get(a.id) ?? 0) > 0);
+      for (const band of result.bands) {
+        const inBand = takers.filter((a) => band.includes(a.id));
+        const shared =
+          inBand.length > 1
+            ? [
+                reason(
+                  'SHARED_IN_BAND',
+                  {
+                    bandBps: Math.round(w.P.yieldBand * BPS_OF_ONE),
+                    assets: inBand.map((a) => a.asset.symbol).join(','),
+                  },
+                  w.lang,
+                ),
+              ]
+            : [];
+        for (const a of inBand) {
+          const bound = whyBound(a);
+          const reasons = [...unit.reasons, byYield, ...shared, ...(bound ? [bound] : [])];
+          this.put(a.asset, result.take.get(a.id) ?? 0, reasons);
+        }
+      }
+      if (result.left > 0)
+        for (const a of live) {
+          const bound = whyBound(a);
+          if (bound) why.push(bound);
+        }
+      return {
+        left: result.left,
+        placed: takers.length > 0,
+        why: once(why),
+        tooSmall: result.left > 0 && tooSmall,
+      };
+    }
   }
 
   /**
@@ -135,17 +280,23 @@ export class Book {
         return reason('NOT_WHOLE_SMALL', { theme, asset, usd: toUsd(p.cents) }, w.lang);
       const ofIssuer = (asked.get(p.asset.issuer) ?? 0) + p.cents;
       asked.set(p.asset.issuer, ofIssuer);
-      if (ofIssuer > w.issuerCap - (this.withIssuer.get(p.asset.issuer) ?? 0))
-        return reason(
-          'NOT_WHOLE_ISSUER',
-          {
-            theme,
-            capBps: w.P.capPerIssuerBps[w.sheet.risk] ?? 0,
-            risk: w.sheet.risk,
-            issuer: p.asset.issuer,
-          },
-          w.lang,
-        );
+      if (ofIssuer > w.issuerCapOf(p.asset) - this.usedOf(p.asset))
+        return w.sleeveOf(p.asset) === 'growth'
+          ? reason(
+              'NOT_WHOLE_ISSUER',
+              {
+                theme,
+                capBps: w.P.capPerIssuerBps[w.sheet.risk] ?? 0,
+                risk: w.sheet.risk,
+                issuer: p.asset.issuer,
+              },
+              w.lang,
+            )
+          : reason(
+              'NOT_WHOLE_ISSUER_PLAN',
+              { theme, capBps: w.P.issuerCapBps, issuer: p.asset.issuer },
+              w.lang,
+            );
       const ceiling = w.ceilingOf(p.asset);
       if (p.cents > ceiling - (this.lines.get(p.asset.id)?.cents ?? 0))
         return reason('NOT_WHOLE_CEILING', { theme, asset, maxUsd: toUsd(ceiling) }, w.lang);
@@ -253,7 +404,10 @@ export class Book {
       for (const issuer of issuers) {
         const group = live.filter((u) => tokenOf(u).issuer === issuer);
         const asks = group.map(askOf);
-        const room = Math.max(0, w.issuerCap - (this.withIssuer.get(issuer) ?? 0));
+        const first = group[0];
+        const room = first
+          ? Math.max(0, w.issuerCapOf(tokenOf(first)) - this.usedOf(tokenOf(first)))
+          : 0;
         const shares = sum(asks) > room ? split(room, asks) : asks;
         group.forEach((u, i) => {
           takes.set(u, shares[i] ?? 0);

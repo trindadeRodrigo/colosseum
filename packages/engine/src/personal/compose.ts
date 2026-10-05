@@ -188,10 +188,12 @@ function follow(
   return null;
 }
 
-/** The dollar-yield tokens of the person's chain: best yield after haircut first. */
+/** The dollar-yield tokens of the person's chain, by id: the banded fill ranks them. */
 function yieldTokens(w: World): BasketAsset[] {
-  const rate = (a: BasketAsset) => w.yields.get(a.id)?.haircutYield ?? -1;
-  return w.tokens.filter((a) => w.sleeveOf(a) === 'dollarYield').sort((a, b) => rate(b) - rate(a));
+  return byName(
+    w.tokens.filter((a) => w.sleeveOf(a) === 'dollarYield'),
+    (a) => a.id,
+  );
 }
 
 function build(
@@ -287,11 +289,6 @@ function build(
   // ---- Placement: dollar yield first, then gold, then stocks and crypto, largest first.
   const yielders = yieldTokens(w);
   const canYield = yielders.some((a) => w.blockOf(a) === null);
-  const byYield = (a: BasketAsset): Reason[] => [
-    w.yields.has(a.id)
-      ? reason('BY_YIELD', { chain: w.chain }, lang)
-      : reason('YIELD_NOT_READ', {}, lang),
-  ];
   /** The yields the dollar-yield tokens were ranked by are on the plan, held or not. */
   const ranked = () => {
     for (const a of yielders) {
@@ -314,7 +311,7 @@ function build(
   const intoYield = (unit: Sized) => {
     if (unit.cents <= 0) return;
     ranked();
-    const { left, why, tooSmall } = book.fill(unit, yielders, byYield);
+    const { left, why, tooSmall } = book.fillBanded(unit, yielders);
     if (left <= 0) return;
     const rule = !canYield ? 'NO_DOLLAR_YIELD' : tooSmall ? 'YIELD_TOO_SMALL' : 'UNPLACED';
     stays.set(rule, (stays.get(rule) ?? 0) + left);
