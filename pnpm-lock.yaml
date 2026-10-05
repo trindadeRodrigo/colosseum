@@ -183,6 +183,9 @@ importers:
       '@colosseum/schemas':
         specifier: workspace:*
         version: link:../../packages/schemas
+      '@colosseum/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
       '@privy-io/react-auth':
         specifier: 3.46.0
         version: 3.46.0(00cbe315cb09bf947f6d25127c255593)

@@ -1,0 +1,380 @@
+'use client';
+import { chainFamily, type FundingFigure, TRUST_STATUS } from '@colosseum/schemas';
+import { useRouter } from 'next/navigation';
+import { useEffect, useId, useRef, useState } from 'react';
+import { Button } from '../../components/ui/Button';
+import { Card, CardBody, CardHeader, CardLoading } from '../../components/ui/Card';
+import { DataTable } from '../../components/ui/DataTable';
+import { Field, Input } from '../../components/ui/Field';
+import { ProvenancePin } from '../../components/ui/ProvenancePin';
+import { StatusMark } from '../../components/ui/StatusMark';
+import { LOCALE } from '../../i18n';
+import { useLang, useT } from '../../i18n/I18nProvider';
+import { dollars, parseNumber } from '../goal/sheet';
+import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
+import { formatRaw } from './amounts';
+import {
+  type FundingOutcome,
+  fundMock,
+  type OrderOutcome,
+  placeOrder,
+  readFunding,
+} from './order-api';
+import { acceptTrust, keepOrder, trustAccepted } from './order-record';
+import { PlanGate } from './PlanGate';
+import { TrustNotice } from './TrustNotice';
+import { usePlan } from './use-plan';
+
+// Buying a plan: the amount, what the wallet is missing for it on the plan's chain (GET /v1/funding,
+// cash and network fees), the trust notice accepted once before the first deposit, and one primary
+// button that names the action and the amount. It makes the order (POST /v1/orders) and leads to the
+// order screen, where every step is reviewed before anything is signed. Nothing is signed here.
+
+const MIN_USD = 10;
+const MAX_USD = 1_000_000;
+
+type Funding = { kind: 'idle' } | { kind: 'reading' } | FundingOutcome;
+
+export function BuyScreen({ id }: { id: string }) {
+  const t = useT();
+  const lang = useLang();
+  const router = useRouter();
+  const port = useWalletPort();
+  const apiFetch = useApiFetch();
+  const state = usePlan(id);
+  const [text, setText] = useState<string | null>(null);
+  const [funding, setFunding] = useState<Funding>({ kind: 'idle' });
+  const [round, setRound] = useState(0);
+  const [ticked, setTicked] = useState(false);
+  const [placing, setPlacing] = useState(false);
+  const [failure, setFailure] = useState<OrderOutcome['kind'] | 'noStore' | null>(null);
+  const [failureCode, setFailureCode] = useState<string | null>(null);
+  const [addingMock, setAddingMock] = useState(false);
+  const reasonId = useId();
+  const fundingId = useId();
+  const asked = useRef(0);
+
+  const ready = state.kind === 'ready' ? state : null;
+  const plan = ready?.plan ?? null;
+  const chain = ready?.chain ?? null;
+  const owner = chain ? (port.active(chainFamily(chain))?.address ?? null) : null;
+  const typed = text ?? (plan ? String(plan.proposal.sheet.amountUsd) : '');
+  const parsed = parseNumber(typed);
+  const amount =
+    parsed !== null && !Number.isNaN(parsed) && parsed >= MIN_USD && parsed <= MAX_USD
+      ? parsed
+      : null;
+
+  // What the wallet is missing for this amount, read again a moment after the amount stops changing.
+  // Only the latest read is shown.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `round` reads the wallet again
+  useEffect(() => {
+    if (!plan || !owner || amount === null) {
+      setFunding({ kind: 'idle' });
+      return;
+    }
+    asked.current += 1;
+    const mine = asked.current;
+    setFunding({ kind: 'reading' });
+    const timer = setTimeout(async () => {
+      const read = await readFunding(apiFetch, {
+        proposalId: plan.id,
+        amountUsd: amount,
+        wallet: owner,
+      });
+      if (asked.current === mine) setFunding(read);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [plan, owner, amount, apiFetch, round]);
+
+  if (!ready || !plan || !chain) {
+    const gate = state.kind === 'ready' ? { kind: 'loading' as const } : state;
+    return <PlanGate state={gate} next={`/plan/${encodeURIComponent(id)}/buy`} />;
+  }
+
+  const chainName = t.chain.names[chain];
+  const accepted = trustAccepted(port.userId, TRUST_STATUS.textVersion);
+  const read = funding.kind === 'read' ? funding.funding : null;
+  const blocked = [
+    ...(!ready.buyable ? [t.plan.chainNotReady(chainName)] : []),
+    ...(ready.off ? [t.plan.chainOff(chainName)] : []),
+    ...(!owner ? [t.buy.blocked.wallet] : []),
+    ...(amount === null ? [t.buy.blocked.amount] : []),
+    ...(amount !== null && owner && !read?.ok ? [t.buy.blocked.funding] : []),
+    ...(!accepted && !ticked ? [t.buy.blocked.trust] : []),
+  ];
+
+  async function review() {
+    if (!plan || !chain || !owner || amount === null) return;
+    setPlacing(true);
+    setFailure(null);
+    setFailureCode(null);
+    const outcome = await placeOrder(apiFetch, {
+      proposalId: plan.id,
+      amountUsd: amount,
+      chain,
+      owner,
+    });
+    if (outcome.kind !== 'placed') {
+      setPlacing(false);
+      setFailure(outcome.kind);
+      if (outcome.kind === 'code') setFailureCode(outcome.code);
+      return;
+    }
+    if (!accepted && port.userId) acceptTrust(port.userId, TRUST_STATUS.textVersion);
+    const kept = keepOrder({
+      orderId: outcome.order.id,
+      userId: port.userId ?? '',
+      proposalId: plan.id,
+      chain,
+      amountUsd: amount,
+      lines: plan.proposal.lines,
+      cash: read ? { symbol: read.cash.symbol, decimals: read.cash.decimals } : null,
+      approved: null,
+    });
+    if (!kept) {
+      setPlacing(false);
+      setFailure('noStore');
+      return;
+    }
+    router.push(`/orders/${encodeURIComponent(outcome.order.id)}`);
+  }
+
+  async function addMock() {
+    if (!chain) return;
+    setAddingMock(true);
+    await fundMock(apiFetch, { chain, cashUsd: Math.max(amount ?? 0, MIN_USD) * 2 });
+    setAddingMock(false);
+    setRound((n) => n + 1);
+  }
+
+  const failureSentence =
+    failure === null
+      ? null
+      : failure === 'code' && failureCode
+        ? t.buy.failure[failureCode as keyof typeof t.buy.failure]
+        : failure === 'signed-out'
+          ? t.buy.failure.signedOut
+          : failure === 'no-chain'
+            ? t.buy.failure.noChain
+            : failure === 'no-plan'
+              ? t.buy.failure.noPlan
+              : failure === 'busy'
+                ? t.shell.slowDown
+                : failure === 'noStore'
+                  ? t.buy.failure.noStore
+                  : failure === 'unreadable'
+                    ? t.buy.failure.unreadable
+                    : failure === 'refused'
+                      ? t.buy.failure.refused
+                      : t.buy.failure.unreachable;
+
+  return (
+    <div data-ui="buy-screen" className="flex flex-col gap-8">
+      <header className="flex flex-col gap-3">
+        <h1 className="max-w-(--tf-measure-display) font-display text-h1 font-normal">
+          {t.buy.title}
+        </h1>
+        <p className="max-w-(--tf-measure-body) text-body-lg">{t.buy.lead(chainName)}</p>
+      </header>
+
+      <Field
+        label={t.buy.amount.label}
+        hint={t.buy.amount.hint(dollars(plan.proposal.sheet.amountUsd, lang))}
+        error={typed.trim() && amount === null ? t.buy.blocked.amount : undefined}
+      >
+        {(control) => (
+          <Input
+            {...control}
+            inputMode="decimal"
+            width="14ch"
+            value={typed}
+            onChange={(e) => setText(e.currentTarget.value)}
+          />
+        )}
+      </Field>
+
+      <FundingCard
+        id={fundingId}
+        funding={funding}
+        chainName={chainName}
+        owner={owner}
+        mock={ready.mock}
+        mockBusy={addingMock}
+        onReadAgain={() => setRound((n) => n + 1)}
+        onMock={addMock}
+      />
+
+      <TrustNotice chain={chain} accepted={accepted} checked={ticked} onCheck={setTicked} />
+
+      <div className="flex flex-col items-start gap-2">
+        <Button
+          variant="primary"
+          busy={placing}
+          busyLabel={t.buy.reviewing}
+          disabled={blocked.length > 0}
+          aria-describedby={blocked.length > 0 ? reasonId : undefined}
+          onClick={review}
+        >
+          {t.buy.review(
+            amount === null ? dollars(plan.proposal.sheet.amountUsd, lang) : dollars(amount, lang),
+          )}
+        </Button>
+        {blocked.length > 0 && (
+          <ul id={reasonId} className="flex max-w-(--tf-measure-body) flex-col gap-1 text-body-sm">
+            {blocked.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+        )}
+        {failureSentence && (
+          <p
+            role="alert"
+            className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm text-destructive"
+          >
+            <StatusMark status="off-track" size={12} className="mt-1.5" />
+            <span>{failureSentence}</span>
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+type FundingRow = { key: 'cash' | 'gas'; name: string; figure: FundingFigure };
+
+function FundingCard({
+  id,
+  funding,
+  chainName,
+  owner,
+  mock,
+  mockBusy,
+  onReadAgain,
+  onMock,
+}: {
+  id: string;
+  funding: Funding;
+  chainName: string;
+  owner: string | null;
+  mock: boolean;
+  mockBusy: boolean;
+  onReadAgain: () => void;
+  onMock: () => void;
+}) {
+  const t = useT();
+  const lang = useLang();
+  const locale = LOCALE[lang];
+  const read = funding.kind === 'read' ? funding.funding : null;
+  const amount = (raw: string, f: FundingFigure) =>
+    `${formatRaw(raw, f.decimals, locale) ?? raw} ${f.symbol}`;
+  const rows: FundingRow[] = read
+    ? [
+        { key: 'cash', name: t.buy.funding.cash(read.cash.symbol), figure: read.cash },
+        { key: 'gas', name: t.buy.funding.gas(read.gas.symbol), figure: read.gas },
+      ]
+    : [];
+  const sentence =
+    funding.kind === 'read'
+      ? null
+      : funding.kind === 'unreachable' || funding.kind === 'busy'
+        ? funding.kind === 'busy'
+          ? t.shell.slowDown
+          : t.buy.funding.failure.unreachable
+        : funding.kind === 'unreadable'
+          ? t.buy.funding.failure.unreadable
+          : funding.kind === 'no-plan'
+            ? t.buy.funding.failure.noPlan
+            : funding.kind === 'signed-out'
+              ? t.buy.failure.signedOut
+              : funding.kind === 'no-chain'
+                ? t.buy.failure.noChain
+                : funding.kind === 'refused'
+                  ? t.buy.funding.failure.refused
+                  : null;
+  return (
+    <Card
+      as="section"
+      aria-labelledby={id}
+      mock={read !== null && read.provenance !== 'live'}
+      mockLabels={{
+        announce: t.shell.mockAnnounce,
+        note: read?.provenance === 'sandbox' ? t.shell.testNetwork : undefined,
+      }}
+    >
+      <CardHeader title={t.buy.funding.title} level={2} id={id} />
+      {funding.kind === 'reading' || funding.kind === 'idle' ? (
+        <CardLoading label={t.buy.funding.reading} />
+      ) : (
+        <CardBody className="flex flex-col gap-4">
+          <div aria-live="polite" className="flex flex-col gap-4">
+            {read && (
+              <>
+                <DataTable<FundingRow>
+                  caption={t.buy.funding.title}
+                  captionHidden
+                  rows={rows}
+                  rowKey={(r) => r.key}
+                  columns={[
+                    { key: 'name', header: t.plan.risk.name, rowHeader: true, cell: (r) => r.name },
+                    {
+                      key: 'have',
+                      header: t.buy.funding.have,
+                      numeric: true,
+                      cell: (r) => (
+                        <ProvenancePin
+                          value={amount(r.figure.haveRaw, r.figure)}
+                          obs={r.figure}
+                          labels={t.pin}
+                        />
+                      ),
+                    },
+                    {
+                      key: 'need',
+                      header: t.buy.funding.need,
+                      numeric: true,
+                      cell: (r) => amount(r.figure.needRaw, r.figure),
+                    },
+                    {
+                      key: 'missing',
+                      header: t.buy.funding.missing,
+                      numeric: true,
+                      cell: (r) => amount(r.figure.missingRaw, r.figure),
+                    },
+                  ]}
+                />
+                <p className="max-w-(--tf-measure-body) text-body">
+                  {read.ok ? t.buy.funding.ok : t.buy.funding.short(chainName)}
+                </p>
+                {read.newVault && (
+                  <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
+                    {t.buy.funding.newVault}
+                  </p>
+                )}
+                {!read.ok && owner && (
+                  <p className="break-all font-mono text-source">{t.buy.funding.address(owner)}</p>
+                )}
+              </>
+            )}
+            {sentence && <p className="max-w-(--tf-measure-body) text-body-sm">{sentence}</p>}
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button variant="secondary" onClick={onReadAgain}>
+              {t.buy.funding.readAgain}
+            </Button>
+            {mock && read && !read.ok && (
+              <Button
+                variant="secondary"
+                busy={mockBusy}
+                busyLabel={t.buy.funding.mockFunding}
+                onClick={onMock}
+              >
+                {t.buy.funding.mockFund}
+              </Button>
+            )}
+          </div>
+        </CardBody>
+      )}
+    </Card>
+  );
+}

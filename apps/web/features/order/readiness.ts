@@ -1,0 +1,51 @@
+import type { ChainId } from '@colosseum/schemas';
+import { type DeploymentNetwork, deploymentsOf, type GuardDeployments } from '@colosseum/sdk';
+import { publicWalletEnv, walletChains } from '../wallet/chains';
+
+// Whether a chain can be bought on from this app: it needs a deployment committed for its network in
+// packages/sdk/deployments/, which the guard derives every address from. The test network's file has
+// Solana only until Robinhood Chain is deployed there (ADE-2); when its entry lands, the screens take it
+// with no change here. The order runner reads the deployments it hands the executor from here too.
+
+/**
+ * The network a chain's deployment is read for. `mock` when the chain runs on the mock: the API says
+ * so, or the wallet is the throwaway one of development. Otherwise this app's own
+ * `NEXT_PUBLIC_CHAIN_NETWORK_<CHAIN>`, never the API's word.
+ */
+export function networkFor(
+  chain: ChainId,
+  mock: boolean,
+): Exclude<DeploymentNetwork, 'local'> | null {
+  if (mock) return 'mock';
+  try {
+    return walletChains(publicWalletEnv())[chain].network;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The deployments of the chain's network as the package loaded them from the committed file, handed on
+ * as they came back. Null when the network has no file, or the file has no entry for the chain: nothing
+ * is signed there.
+ */
+export function deploymentsFor(chain: ChainId, mock: boolean): GuardDeployments | null {
+  const network = networkFor(chain, mock);
+  if (!network) return null;
+  try {
+    const deployments = deploymentsOf(network);
+    return deployments[chain] ? deployments : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The chain runs on the mock: the API says so, or the wallet is the throwaway one of development. */
+export const onMock = (
+  port: { test: boolean; network(chain: ChainId): { provenance: string } | null },
+  chain: ChainId,
+): boolean => port.test || port.network(chain)?.provenance === 'mock';
+
+/** True when an order on this chain can be signed from this app. */
+export const chainReady = (chain: ChainId, mock: boolean): boolean =>
+  deploymentsFor(chain, mock) !== null;

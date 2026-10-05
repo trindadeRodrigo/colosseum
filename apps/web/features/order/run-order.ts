@@ -1,0 +1,184 @@
+'use client';
+import {
+  type BasketLine,
+  type ChainId,
+  type ConsentKind,
+  chainFamily,
+  type OrderDetail,
+} from '@colosseum/schemas';
+import {
+  basketIdOfPlan,
+  type ChainRead,
+  chainReadOf,
+  createOrderApi,
+  type ExecutionEvent,
+  type ExecutionResult,
+  execute,
+  type RpcCall,
+  rpcAt,
+  type SignedRecord,
+  type SignedStore,
+} from '@colosseum/sdk';
+import { useCallback } from 'react';
+import { useSigningPort } from '../wallet/signing';
+import { useApiFetch } from '../wallet/WalletProvider';
+import { targetsOfPlan } from './plan-terms';
+import { deploymentsFor, onMock } from './readiness';
+
+// The one place in the app that signs: an order, through `execute(order, deps)` of @colosseum/sdk. The
+// executor runs the guard on the bytes of every step and asks the wallet only for what the guard
+// passed. The whole wallet port is handed to it here and nowhere else: the screen that calls `run` gets
+// the answer, never the port. components/shell/product-routes.test.ts holds this file to being the
+// only one the app ships that imports the whole port, and the order screen to being the only one that
+// imports this file. What it hands the executor is features/wallet/README.md, "Before any product
+// screen signs", item 3.
+
+/** Why an order cannot be run in this browser, before anything is asked of the API or the wallet. */
+export type NotRunnable =
+  /** The chain has no deployment committed for its network: nothing is signed there. */
+  | 'no-deployment'
+  /** No wallet of the order's family is signed in. */
+  | 'no-wallet'
+  /** This browser keeps nothing (local storage): a signature could be made twice. */
+  | 'no-store'
+  /** This browser cannot hold an order to one tab (`navigator.locks`). */
+  | 'no-lock'
+  /** The plan's lines name another chain than the order's. */
+  | 'plan-mismatch';
+
+export type RunOutcome =
+  | ExecutionResult
+  /** Another tab of this browser is running the same order. Nothing was done here. */
+  | { status: 'elsewhere' }
+  | { status: 'not-runnable'; why: NotRunnable }
+  /** Something the executor did not answer for: a store that failed mid-way, a bug. */
+  | { status: 'crashed'; message: string };
+
+export type RunInput = {
+  /** The order exactly as the review screen showed it when the person approved it. */
+  order: OrderDetail;
+  /** The plan it buys, as the plan screen showed it: its id and its lines. */
+  plan: { proposalId: string; lines: readonly BasketLine[] };
+  /** What the person ticked on the review screen, for this order. */
+  consents: readonly ConsentKind[];
+  /** Only after `needs_review`, and only with what that answer said, once the person approved again. */
+  approvedAgain?: { legId: string; signedTimes: number };
+  onEvent?: (event: ExecutionEvent) => void;
+  /** Set `aborted` to stop between steps: a signature already made is still reported. */
+  signal?: { readonly aborted: boolean };
+};
+
+/**
+ * One node per chain family, from this app's own variables. A URL that balances calls across nodes is
+ * not one node; with none set the executor gets no read of the chain, and then never signs a step a
+ * second time on its own: it asks the person (`needs_review`).
+ */
+const READ_RPC: Partial<Record<ChainId, string | undefined>> = {
+  solana: process.env.NEXT_PUBLIC_CHAIN_READ_RPC_SOLANA,
+  robinhood: process.env.NEXT_PUBLIC_CHAIN_READ_RPC_ROBINHOOD,
+  base: process.env.NEXT_PUBLIC_CHAIN_READ_RPC_BASE,
+};
+
+const nodeAt = (url: string | undefined): RpcCall | undefined => {
+  if (!url) return undefined;
+  try {
+    const parsed = new URL(url);
+    const local = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+    if (parsed.protocol !== 'https:' && !(local && parsed.protocol === 'http:')) return undefined;
+  } catch {
+    return undefined;
+  }
+  return rpcAt(url, (input, init) => fetch(input, { ...init, redirect: 'error' }));
+};
+
+/** The caller's own read of the chain, or none: on the mock no node is asked anything. */
+export function chainReadFor(chain: ChainId, mock: boolean): ChainRead | undefined {
+  if (mock) return undefined;
+  const node = nodeAt(READ_RPC[chain]);
+  if (!node) return undefined;
+  return chainReadOf(chainFamily(chain) === 'solana' ? { solana: node } : { evm: node });
+}
+
+const SIGNED = (key: string) => `tf-signed:${key}`;
+
+/**
+ * What has been signed, by order and step, in local storage: it outlives the page and the tab, and the
+ * tabs of this browser share it. A record that does not read comes back as something the executor
+ * cannot read, and it then asks the person instead of signing again. A write that fails throws, and
+ * the executor then stops.
+ */
+export const localSigned: SignedStore = {
+  get(key) {
+    const raw = window.localStorage.getItem(SIGNED(key));
+    if (raw === null) return undefined;
+    try {
+      return JSON.parse(raw) as SignedRecord;
+    } catch {
+      return { unreadable: raw } as unknown as SignedRecord;
+    }
+  },
+  set(key, record) {
+    window.localStorage.setItem(SIGNED(key), JSON.stringify(record));
+  },
+};
+
+/** True when this browser keeps what is written to local storage. */
+function storageWorks(): boolean {
+  try {
+    const probe = 'tf-signed:probe';
+    window.localStorage.setItem(probe, '1');
+    window.localStorage.removeItem(probe);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The order runner. `run` takes an order the person approved and walks it as far as it can go. */
+export function useOrderRunner(): { run: (input: RunInput) => Promise<RunOutcome> } {
+  const port = useSigningPort();
+  const apiFetch = useApiFetch();
+
+  const run = useCallback(
+    async (input: RunInput): Promise<RunOutcome> => {
+      const { order } = input;
+      const chain = order.legs[0]?.chain;
+      if (!chain) return { status: 'not-runnable', why: 'no-deployment' };
+      const mock = onMock(port, chain);
+      const deployments = deploymentsFor(chain, mock);
+      const deployment = deployments?.[chain];
+      if (!deployments || !deployment) return { status: 'not-runnable', why: 'no-deployment' };
+      if (!port.active(chainFamily(chain))) return { status: 'not-runnable', why: 'no-wallet' };
+      const targets = targetsOfPlan(input.plan.lines, chain, deployment.cash);
+      if (!targets) return { status: 'not-runnable', why: 'plan-mismatch' };
+      if (!storageWorks()) return { status: 'not-runnable', why: 'no-store' };
+      if (typeof navigator === 'undefined' || !navigator.locks)
+        return { status: 'not-runnable', why: 'no-lock' };
+
+      const go = () =>
+        execute(order, {
+          api: createOrderApi(apiFetch),
+          signer: port,
+          deployments,
+          plan: { basketId: basketIdOfPlan(input.plan.proposalId), targets, autoFollow: false },
+          consents: input.consents,
+          signed: localSigned,
+          chainRead: chainReadFor(chain, mock),
+          ...(input.approvedAgain ? { approvedAgain: input.approvedAgain } : {}),
+          onEvent: input.onEvent,
+          signal: input.signal,
+        });
+      try {
+        // One run of an order at a time, across the tabs of this browser: a second tab that ran while
+        // the first had asked the wallet and not yet written down what it signed would sign again.
+        return await navigator.locks.request(`order:${order.id}`, { ifAvailable: true }, (lock) =>
+          lock ? go() : ({ status: 'elsewhere' } as const),
+        );
+      } catch (e) {
+        return { status: 'crashed', message: e instanceof Error ? e.message : String(e) };
+      }
+    },
+    [port, apiFetch],
+  );
+  return { run };
+}
