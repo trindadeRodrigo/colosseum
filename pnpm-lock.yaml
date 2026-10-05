@@ -142,6 +142,18 @@ importers:
         specifier: ^4.23.15
         version: 4.23.15
 
+  apps/keeper:
+    dependencies:
+      '@colosseum/basket':
+        specifier: workspace:*
+        version: link:../../packages/basket
+      '@colosseum/chain-solana':
+        specifier: workspace:*
+        version: link:../../packages/chain-solana
+      '@colosseum/schemas':
+        specifier: workspace:*
+        version: link:../../packages/schemas
+
   apps/risk-api:
     dependencies:
       '@colosseum/db':
