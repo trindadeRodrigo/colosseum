@@ -155,10 +155,16 @@ export const pt: Dictionary = {
     lead: 'Diga em uma frase: com quanto você começa, por quanto tempo e quanto risco aceita. Eu transformo isso em limites que você pode conferir e mudar. Nada é montado antes de você pedir.',
     composer: {
       label: 'Seu objetivo',
-      placeholder: 'US$ 10.000 por cinco anos, risco médio',
+      placeholder:
+        'Descreva seu objetivo… um valor, uma data e com que rapidez você pode precisar do dinheiro de volta.',
       hint: 'Enter para ler · Shift+Enter para nova linha',
       submit: 'Ler meu objetivo',
       busy: 'Lendo seu objetivo…',
+    },
+    visitor: {
+      before: 'Gostou de como ficou?',
+      link: 'Entre',
+      after: 'para ter um plano na rede da sua carteira, com a fonte de cada número.',
     },
     examples: {
       label: 'Exemplos',

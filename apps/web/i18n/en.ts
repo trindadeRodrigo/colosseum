@@ -171,10 +171,16 @@ export const en = {
     lead: 'Say it in a sentence: how much you’re starting with, for how long, and how much risk you’ll take. I read it into limits you can check and change. Nothing is built until you say so.',
     composer: {
       label: 'Your goal',
-      placeholder: '$10,000 for five years, medium risk',
+      placeholder: 'Describe your goal… an amount, a date, and how fast you might need it back.',
       hint: 'Enter to read it · Shift+Enter for a new line',
       submit: 'Read my goal',
       busy: 'Reading your goal…',
+    },
+    /** Under the box, for a visitor: where a plan of their own comes from. */
+    visitor: {
+      before: 'Like how it reads?',
+      link: 'Sign in',
+      after: 'for a plan on the chain of your wallet, with every number sourced.',
     },
     examples: {
       label: 'Examples',

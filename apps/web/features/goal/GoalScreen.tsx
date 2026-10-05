@@ -55,6 +55,7 @@ export function GoalScreen() {
   const [build, setBuild] = useState<Build>({ kind: 'idle' });
   const composer = useRef<HTMLDivElement>(null);
   const outcomeId = useId();
+  const hintId = useId();
   // Which request for a plan is still wanted. An answer is shown only for the limits it was asked
   // for: when the limits change, are read again, or the person changes, the number moves on and an
   // answer on its way is dropped.
@@ -320,10 +321,10 @@ export function GoalScreen() {
         ) : (
           <header className="flex flex-col gap-3 lg:col-span-5">
             {/* Beside the box the question is set a step smaller, so it holds two lines, as his is. */}
-            <h1 className="max-w-(--tf-measure-display) font-display text-display font-normal lg:text-h1">
+            <h1 className="max-w-(--tf-measure-display) font-display text-h2 font-normal">
               {t.goal.title}
             </h1>
-            <p className="max-w-(--tf-measure-body) text-body-lg text-muted-foreground">
+            <p className="max-w-(--tf-measure-body) text-body text-muted-foreground">
               {t.goal.lead}
             </p>
           </header>
@@ -342,7 +343,8 @@ export function GoalScreen() {
             onSubmit={read}
             placeholder={t.goal.composer.placeholder}
             maxLength={GOAL_TEXT.max}
-            hint={t.goal.composer.hint}
+            // The hint is under the chips, in the mono face, as his simulator has it.
+            describedBy={hintId}
             busy={reading}
             // While a plan is being built the limits stand as they were sent: no other goal is read.
             disabled={solving}
@@ -364,6 +366,19 @@ export function GoalScreen() {
               </li>
             ))}
           </ul>
+          <p id={hintId} className="font-mono text-source text-muted-foreground">
+            {t.goal.composer.hint}
+          </p>
+          {/* A visitor is told where the plan comes from, as his simulator's last line does. */}
+          {!sheet && account.status === 'signed-out' && (
+            <p className="text-body-sm text-muted-foreground">
+              {t.goal.visitor.before}{' '}
+              <Link href={SIGN_IN} className={link}>
+                {t.goal.visitor.link}
+              </Link>{' '}
+              {t.goal.visitor.after}
+            </p>
+          )}
         </div>
       </div>
 
