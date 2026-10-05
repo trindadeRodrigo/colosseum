@@ -791,7 +791,8 @@ abstract contract KeeperSwapTest is KeeperFixture {
         uint256 huge = type(uint256).max - 1;
         vm.mockCall(address(cash), abi.encodeWithSignature("balanceOf(address)", address(vault)), abi.encode(huge));
         _expectKeeperRevert(
-            _buy(direct, address(stockA), 1000 * USD, 0), abi.encodeWithSelector(IBasketVault.ValueTooLarge.selector, huge)
+            _buy(direct, address(stockA), 1000 * USD, 0),
+            abi.encodeWithSelector(IBasketVault.ValueTooLarge.selector, huge)
         );
     }
 
