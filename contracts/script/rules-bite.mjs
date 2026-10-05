@@ -2694,7 +2694,7 @@ const RULES = [
   {
     id: 'testnet-copier-source-description',
     file: COPIER,
-    find: 'if (keccak256(bytes(feed.description())) != keccak256(bytes(a.sourceDescription))) {',
+    find: 'if (keccak256(bytes(said)) != keccak256(bytes(a.sourceDescription))) {',
     replace: 'if (false) {',
     expect: 'test_copier_aSourceThatSaysItIsAnotherFeed_isRefused',
   },
@@ -2771,8 +2771,9 @@ const RULES = [
   {
     id: 'testnet-copier-one-feed-refuses-one-token',
     file: COPIER,
-    find: 'readings[i].why = "the source feed did not answer";',
-    replace: '',
+    find: '(ok, ret) = address(feed).staticcall(abi.encodeCall(IAggregator.latestRoundData, ()));\n        if (!ok || ret.length < 160) {',
+    replace:
+      '(ok, ret) = address(feed).staticcall(abi.encodeCall(IAggregator.latestRoundData, ()));\n        if (false) {',
     expect: 'test_copier_aFeedThatDoesNotAnswer_refusesOnlyItsToken',
   },
 ];

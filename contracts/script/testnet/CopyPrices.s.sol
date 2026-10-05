@@ -45,6 +45,7 @@ contract CopyPrices is Script {
     uint256 public constant MAX_GAP_JUMP_BPS = 5000;
     /// The furthest back the average looks for rounds; a stock feed writes a few an hour.
     uint256 public constant MAX_ROUNDS_BACK = 64;
+    string internal constant NO_ANSWER = "the source feed did not answer";
 
     struct Asset {
         string symbol;
@@ -132,15 +133,12 @@ contract CopyPrices is Script {
 
     // ---- reading mainnet
 
-    /// Every asset's reading. A feed that reverts or a call that fails refuses that asset alone.
+    /// Every asset's reading. A feed that reverts or a call that fails refuses that asset alone: every read
+    /// of a source is a low-level call (a script cannot call itself to catch a revert).
     function readAll(Asset[] memory assets, uint256 now_) public view returns (Reading[] memory readings) {
         readings = new Reading[](assets.length);
         for (uint256 i; i < assets.length; ++i) {
-            try this.readSource(assets[i], now_) returns (Reading memory reading) {
-                readings[i] = reading;
-            } catch {
-                readings[i].why = "the source feed did not answer";
-            }
+            readings[i] = readSource(assets[i], now_);
         }
     }
 
@@ -149,11 +147,22 @@ contract CopyPrices is Script {
     /// average is the latest answer.
     function readSource(Asset memory a, uint256 now_) public view returns (Reading memory reading) {
         IAggregator feed = IAggregator(a.source);
-        if (keccak256(bytes(feed.description())) != keccak256(bytes(a.sourceDescription))) {
-            reading.why = string.concat("the source feed says it is ", feed.description());
+        (bool ok, bytes memory ret) = address(feed).staticcall(abi.encodeCall(IAggregator.description, ()));
+        if (!ok || ret.length < 64) {
+            reading.why = NO_ANSWER;
             return reading;
         }
-        (uint80 id, int256 answer,, uint256 updatedAt,) = feed.latestRoundData();
+        string memory said = abi.decode(ret, (string));
+        if (keccak256(bytes(said)) != keccak256(bytes(a.sourceDescription))) {
+            reading.why = string.concat("the source feed says it is ", said);
+            return reading;
+        }
+        (ok, ret) = address(feed).staticcall(abi.encodeCall(IAggregator.latestRoundData, ()));
+        if (!ok || ret.length < 160) {
+            reading.why = NO_ANSWER;
+            return reading;
+        }
+        (uint80 id, int256 answer,, uint256 updatedAt,) = abi.decode(ret, (uint80, int256, uint256, uint256, uint80));
         if (answer <= 0 || updatedAt == 0 || updatedAt > now_) {
             reading.why = "the source holds no price";
             return reading;
