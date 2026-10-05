@@ -123,6 +123,7 @@
     "@colosseum/chain-evm": "workspace:*",
     "@colosseum/chain-mock": "workspace:*",
     "@colosseum/basket": "workspace:*",
-    "@colosseum/risk": "workspace:*"
+    "@colosseum/risk": "workspace:*",
+    "@colosseum/sdk": "workspace:*"
   }
 }
