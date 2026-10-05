@@ -2,7 +2,7 @@
 pragma solidity 0.8.37;
 
 import {BasketVault} from "../src/BasketVault.sol";
-import {Weight} from "../src/interfaces/Types.sol";
+import {AssetConfig, Weight} from "../src/interfaces/Types.sol";
 import {KeeperFixture} from "./helpers/KeeperFixture.sol";
 import {SwapFixture} from "./helpers/SwapFixture.sol";
 
@@ -124,7 +124,14 @@ contract StorageLayoutTest is SwapFixture {
     }
 
     function test_storage_ofTheFactory_theConfigNamespace() public {
+        AssetConfig memory priced = _assetConfig(18);
+        priced.flags = 1;
+        priced.averageFeed = stranger;
+        priced.minPrice = 100e8;
+        priced.maxPrice = 150e8;
         vm.startPrank(admin);
+        factory.setAsset(address(stockA), priced);
+        factory.setPriceDevBps(321);
         factory.launch();
         factory.proposeAdmin(stranger);
         factory.removeAsset(address(stockC));
@@ -165,6 +172,18 @@ contract StorageLayoutTest is SwapFixture {
         assertEq(_addr(where, s + 12), feed, "sequencerFeed");
         assertEq(_word(where, uint256(keccak256(abi.encode(uint256(20_800), s + 13)))), 1, "closedDays");
         assertEq(_addr(where, s + 14), address(registry), "registry");
+        // EVM-3, appended
+        assertEq(uint16(_word(where, s + 14) >> 160), 321, "priceDevBps, in the registry's slot");
+        assertEq(_word(where, s + 14) >> 176, 0, "priceDevBps ends at bit 175");
+        uint256 asset = uint256(keccak256(abi.encode(address(stockA), s + 4)));
+        uint256 third = _word(where, asset + 2);
+        assertEq(uint64(third), 0, "assets: haltUntil, alone at the start of the third slot");
+        assertEq(uint8(third >> 64), 1, "assets: flags, after haltUntil");
+        assertEq(address(uint160(third >> 72)), stranger, "assets: averageFeed, after flags");
+        uint256 fourth = _word(where, asset + 3);
+        assertEq(uint128(fourth), 100e8, "assets: minPrice, in the fourth slot");
+        assertEq(fourth >> 128, 150e8, "assets: maxPrice, beside it");
+        assertEq(_word(where, asset + 4), 0, "assets: an entry is four slots");
         assertEq(_word(where, s + 15), 0, "the next field a later version adds goes here");
         _assertPlainSlotsEmpty(where);
     }

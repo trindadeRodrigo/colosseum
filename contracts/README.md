@@ -153,6 +153,7 @@ The admin key can replace the factory's logic. Through that it can reach two thi
 9. Not done, on purpose: accept and adopt copy a version that names a removed asset as it is, as Solana does. The keeper never buys a removed asset, so that weight stays in cash. The guardian still cancels waiting versions that name one.
 10. Still open: a token in `tokens` whose balance read fails after having answered blocks later swaps of the owner and of the keeper; the owner cannot drop it from `tokens`.
 11. Still open: versions published before `launch()` keep their short wait.
+12. The vault logic and the factory are one build: `start` changed selector and `asset()` returns the appended fields. A chain that already runs the EVM-2 contracts upgrades the beacon and the factory in one transaction (a batch from the admin's Safe), never one without the other. Nothing EVM is deployed yet.
 
 ## For the test network and the adapter
 
