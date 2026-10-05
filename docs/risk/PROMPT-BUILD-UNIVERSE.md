@@ -6,7 +6,7 @@
 
 ## Where this stands (2026-10-05)
 
-RU.1 and RU.2 are done. RU.1: `trackedSet` in `packages/risk/src/universe.ts`, checked on the frozen Solana registry. RU.2: `pnpm risk-evm:universe` and `pnpm risk-evm:discover` write the Robinhood token list and one row per pool (`scripts/risk-evm/README.md`, "The token list and every pool"); their files are under `data/risk-evm/` on the founder's machine and are not committed. The next item is RU.3. The plan, this prompt, gate `UNIVERSE` and ledger row RISK-5 were written on branch `docs/universe-plan`; the status of every item is in section 6 of the plan.
+RU.1, RU.2 and RU.3 are done. RU.1: `trackedSet` in `packages/risk/src/universe.ts`, checked on the frozen Solana registry. RU.2: `pnpm risk-evm:universe` and `pnpm risk-evm:discover` write the Robinhood token list and one row per pool (`scripts/risk-evm/README.md`, "The token list and every pool"); their files are under `data/risk-evm/` on the founder's machine and are not committed. RU.3: `pnpm risk-evm:pareto` writes the cut from the discovery file (`scripts/risk-evm/README.md`, "The cut"): 30 tracked stocks at 80%, `data/risk-evm/cut-robinhood-<stamp>.json`, not committed. The next item is RU.5. The plan, this prompt, gate `UNIVERSE` and ledger row RISK-5 were written on branch `docs/universe-plan`; the status of every item is in section 6 of the plan.
 
 What already exists and is reused, not rebuilt:
 
