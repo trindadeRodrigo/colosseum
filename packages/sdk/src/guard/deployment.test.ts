@@ -25,7 +25,7 @@ import {
 } from './deployment';
 import { evmVaultAddress } from './evm/addresses';
 import { BASKET_PROGRAM } from './generated/basket-program';
-import { guardTransaction } from './index';
+import { guardTransaction, readDeploymentFile as offered } from './index';
 import { configAddress, tokenAccountAddress, vaultAddress } from './solana/addresses';
 import type { ApprovedStep, GuardDeployments } from './types';
 
@@ -259,6 +259,8 @@ describe('a deployment is only what the loader read from a file', () => {
         },
       },
     };
+    // The package offers the reader, for a deploy to check its file with.
+    expect(offered).toBe(readDeploymentFile);
     const read = readDeploymentFile(fromApi).robinhood;
     expect(read).toMatchObject({ provenance: 'live', factory: e.anyone('evil factory') });
     expect(isLoadedDeployment(read)).toBe(false);

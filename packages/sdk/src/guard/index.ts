@@ -21,10 +21,12 @@ export {
   DEPLOYMENT_FORMAT,
   type DeploymentFile,
   type DeploymentNetwork,
+  type DeploymentsRead,
   deploymentsOf,
   type EvmEntry,
   isLoadedDeployment,
   type MockEntry,
+  readDeploymentFile,
   type SolanaEntry,
 } from './deployment';
 export { evmVaultAddress } from './evm/addresses';

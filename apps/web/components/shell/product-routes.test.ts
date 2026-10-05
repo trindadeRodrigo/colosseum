@@ -11,8 +11,8 @@ import { read, sourceFiles, WEB } from '../ui/test/css';
 //   1. nothing the product ships imports from a `dev`, `test` or `fixtures` folder;
 //   2. the product's routes do not reach the wallet adapter, whose button renders one thing on the
 //      server and another in the browser, nor the bar and the providers of the pages not yet rebuilt;
-//   3. no screen can reach a key: the guard that checks the bytes first is not built yet
-//      (packages/sdk). The port a screen is handed has no signing member, the whole port and the
+//   3. no screen can reach a key except through the executor of packages/sdk, which runs the guard on
+//      the bytes first. The port a screen is handed has no signing member, the whole port and the
 //      wallet libraries are importable only inside the wallet's seam, and outside it no signing
 //      member is so much as named.
 
@@ -269,8 +269,8 @@ describe('rule 3: no screen can reach a key', () => {
 
   /**
    * Who may import the whole port (features/wallet/signing.ts), among everything the app ships. Nobody
-   * yet: the guard that checks the bytes against the order is not built (packages/sdk, AGT-1). The
-   * one leg executor is added here, on purpose, when it exists.
+   * yet: the guard and the executor exist (packages/sdk, AGT-1), and no screen signs through them
+   * yet. The first screen that hands the port to `execute` is added here, on purpose.
    */
   const SIGNERS: readonly string[] = [];
   const SIGNING = 'features/wallet/signing.ts';
