@@ -2151,7 +2151,8 @@ const RULES = [
     id: 'follow-accept-owner-only',
     file: VAULT,
     find: 'function acceptVersion(bytes32 indexId, uint32 expectedVersion) external onlyOwner nonReentrant {',
-    replace: 'function acceptVersion(bytes32 indexId, uint32 expectedVersion) external nonReentrant {',
+    replace:
+      'function acceptVersion(bytes32 indexId, uint32 expectedVersion) external nonReentrant {',
     expect: 'test_acceptVersion_isTheOwners',
   },
   {
@@ -2431,7 +2432,7 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
 }
 
 // A copy has the layout of the repo as far as the project reads it: contracts/ with its sources, and beside
-// it the two folders its config points at through `..`. Dependencies and fixtures are links, not copies.
+// it the three folders its config points at through `..`. Dependencies and fixtures are links, not copies.
 function makeCopy(n, warm) {
   const dir = join(work, `job-${n}`);
   const project = join(dir, 'contracts');
@@ -2445,6 +2446,7 @@ function makeCopy(n, warm) {
     [join(root, 'node_modules'), join(project, 'node_modules')],
     [join(repo, 'node_modules'), join(dir, 'node_modules')],
     [join(repo, 'fixtures'), join(dir, 'fixtures')],
+    [join(repo, 'idl'), join(dir, 'idl')],
   ];
   for (const [target, link] of links) if (!existsSync(link)) symlinkSync(target, link);
   if (warm && !existsSync(join(project, 'cache'))) {
