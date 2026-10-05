@@ -693,7 +693,10 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
         `"${r.text}" said of a tolerance that was ${s.limits?.creditTolerance ? '' : 'not '}stated`,
       );
     }
-    if (r.rule === 'CREDIT_NONE') say(credit === 0, `"${r.text}" but credit holds ${credit / 100}`);
+    if (r.rule === 'CREDIT_NONE') {
+      say(credit === 0, `"${r.text}" but credit holds ${credit / 100}`);
+      say(s.limits?.creditTolerance === 'none', `"${r.text}" said to someone who did not say so`);
+    }
     if (r.rule === 'ASSET_CAP') {
       const held = bySymbol.get(String(r.params.asset));
       say(

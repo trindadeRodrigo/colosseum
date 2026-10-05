@@ -188,7 +188,7 @@ export class Book {
       if (a.cap.cents - held(a.asset) <= 0) return a.cap.why;
       if (w.issuerCapOf(a.asset) - this.usedOf(a.asset) <= 0) return this.issuerWhy(a.asset);
       if (w.isCredit(a.asset) && w.creditBudget.cents - this.creditUsed <= 0)
-        return w.creditBudget.bps === 0
+        return w.creditBudget.bps === 0 && w.creditBudget.stated
           ? reason('CREDIT_NONE', { asset: a.asset.symbol }, w.lang)
           : creditWhy(a.asset);
       return null;
@@ -202,6 +202,7 @@ export class Book {
       return false;
     });
     const dropped = new Set<string>();
+    const droppedSmall = new Set<string>();
     for (;;) {
       // Lines: a token already in the plan keeps its line; new ones take the lines left, in rank order.
       let free = w.P.maxLinesPerChain - this.lines.size;
@@ -241,6 +242,16 @@ export class Book {
       const last = short.at(-1);
       if (last) {
         dropped.add(last.id);
+        droppedSmall.add(last.id);
+        continue;
+      }
+      // A new line that took nothing (a higher token used up its issuer or the credit budget) is
+      // handed to a token left without one.
+      const idle = noLine.length
+        ? live.filter((a) => !this.lines.has(a.id) && (result.take.get(a.id) ?? 0) === 0).at(-1)
+        : undefined;
+      if (idle) {
+        dropped.add(idle.id);
         continue;
       }
       why.push(...noLine);
@@ -284,7 +295,7 @@ export class Book {
         placed: takers.length > 0,
         why: once(why),
         // Too small only when nothing but the least line size kept the money out.
-        tooSmall: result.left > 0 && dropped.size > 0 && live.length === 0,
+        tooSmall: result.left > 0 && droppedSmall.size > 0 && live.length === 0,
       };
     }
   }

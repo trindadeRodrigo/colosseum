@@ -224,3 +224,29 @@ describe('the same inputs give the same plan (C1)', () => {
     }
   });
 });
+
+describe('a line that took nothing is handed on', () => {
+  it('two credit tokens and one plain one, two lines: the plain one gets the line the second credit token could not use', () => {
+    // A second credit token at 4.0% after haircut: under syrupUSDC (4.68%) by more than the band, over
+    // jlUSDC (3.1%). syrupUSDC uses up the credit budget, so the second takes nothing.
+    const twin: BasketAsset = {
+      ...(shelf.assets.find((a) => a.id === 'solana:syrupusdc') as BasketAsset),
+      id: 'solana:syrupusdt',
+      symbol: 'syrupUSDC',
+      issuer: 'Twin',
+      address: 'So11111111111111111111111111111111111111112',
+    };
+    const on = { ...shelf, assets: [...shelf.assets, twin] };
+    const ys = [
+      ...fixtureYields(),
+      {
+        ...(fixtureYields().find((y) => y.assetId === 'solana:syrupusdc') as YieldObservation),
+        assetId: 'solana:syrupusdt',
+        haircutYield: 0.04,
+      },
+    ];
+    const ctx = fixtureContext({ yields: ys, params: { ...PERSONAL_PARAMS, maxLinesPerChain: 2 } });
+    const plan = run(income, ctx, on);
+    expect(line(plan, 'solana:jlusdc')?.weightBps).toBe(5000);
+  });
+});
