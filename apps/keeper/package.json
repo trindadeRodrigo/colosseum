@@ -10,6 +10,7 @@
   "dependencies": {
     "@colosseum/basket": "workspace:*",
     "@colosseum/chain-solana": "workspace:*",
-    "@colosseum/schemas": "workspace:*"
+    "@colosseum/schemas": "workspace:*",
+    "zod": "^4.6.5"
   }
 }

@@ -8,13 +8,17 @@ import {
   type Trade,
   type TxStatus,
 } from '@colosseum/schemas';
+import { type KeeperMemory, newMemory } from './memory';
 import { legBlocked, nextTrade, syncDecision } from './policy';
+
+export { type KeeperMemory, newMemory } from './memory';
 
 // One round of the keeper on one chain (DESIGN-VAULT 3.5, section 10): every vault with auto-follow on,
 // in random order, planned from the chain as it is now. A vault gets at most one transaction of each
 // kind a round: an adoption of a version that adds no asset, a sync of its records, and one leg. Each
 // is built, simulated by the builder, signed by the keeper, sent, and tracked until the chain settles
-// it. A leg that reverted is never sent again in this process: the next one waits for a person.
+// it. A leg, once handed to the node, is remembered with its signature until its fate is known, and
+// nothing more is planned for its vault until then; a leg that reverted is never sent again.
 
 export type Outcome = 'acted' | 'adopted' | 'synced' | 'skipped' | 'would-act';
 
@@ -31,10 +35,12 @@ export type VaultLine = {
 
 export type KeeperOptions = {
   adapter: SolanaVaultAdapter;
-  /** Signs a built transaction with the keeper's key and hands back the signed bytes. */
-  sign(tx: BuiltTx): Promise<string>;
+  /** Signs a built transaction with the keeper's key: the signed bytes and the transaction's id. */
+  sign(tx: BuiltTx): Promise<{ wire: string; txId: string }>;
   /** Sends signed bytes. Default: the adapter's relay, with the node's preflight. */
-  send?: (signed: string, tx: BuiltTx) => Promise<{ txId: string }>;
+  send?: (signed: string, tx: BuiltTx) => Promise<unknown>;
+  /** Called whenever the memory changes, before anything is sent on the strength of it. */
+  save?: (memory: KeeperMemory) => void | Promise<void>;
   /** Builds and plans, and sends nothing. */
   dryRun?: boolean;
   /** No trade worth less than this many dollars. */
@@ -44,16 +50,7 @@ export type KeeperOptions = {
   /** The order vaults are visited in; random by default, so no vault always goes last. */
   shuffle?: <T>(items: T[]) => T[];
   log?: (line: VaultLine) => void;
-  now?: () => Date;
 };
-
-/** What the keeper remembers between rounds of one process. */
-export type KeeperMemory = {
-  /** `vault sell->buy` of a leg that reverted: not sent again. */
-  reverted: Set<string>;
-};
-
-export const newMemory = (): KeeperMemory => ({ reverted: new Set() });
 
 const shuffled = <T>(items: T[]): T[] => {
   const out = [...items];
@@ -64,6 +61,8 @@ const shuffled = <T>(items: T[]): T[] => {
   return out;
 };
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const codeOf = (e: unknown) =>
+  e instanceof ChainError ? e.code : e instanceof Error ? e.message : String(e);
 
 export async function runRound(
   o: KeeperOptions,
@@ -72,115 +71,173 @@ export async function runRound(
   const { adapter } = o;
   const log = o.log ?? (() => {});
   const send = o.send ?? ((signed: string) => adapter.relay(signed));
+  const save = async () => {
+    await o.save?.(memory);
+  };
   const settleMs = o.settleMs ?? 90_000;
-  const now = o.now ?? (() => new Date());
   const assets = await adapter.listAssets();
   const cash = assets.find((a) => a.cls === 'cash')?.id as AssetId;
+  const priced = new Set<string>(assets.filter((a) => a.priceKind !== 'none').map((a) => a.id));
   const vaults = (o.shuffle ?? shuffled)(await adapter.listAutoFollowVaults());
   const lines: VaultLine[] = [];
 
-  /** Signs, sends and waits for the chain to settle it. */
-  async function land(tx: BuiltTx): Promise<{ txId: string; status: TxStatus }> {
-    const signed = await o.sign(tx);
-    const { txId } = await send(signed, tx);
+  /** Polls a sent transaction until the chain settles it or the wait is over. */
+  async function settle(txId: string, validUntil: string): Promise<TxStatus> {
     const until = Date.now() + settleMs;
     for (;;) {
-      const status = await adapter.track(txId, String(tx.lastValidBlockHeight));
-      if (status.status !== 'pending' || Date.now() >= until) return { txId, status };
+      const status = await adapter.track(txId, validUntil);
+      if (status.status !== 'pending' || Date.now() >= until) return status;
       await sleep(1_500);
     }
   }
 
-  const line = (
-    vault: string,
-    outcome: Outcome,
-    reason: string,
-    txIds: string[],
-    alert = false,
-  ) => {
-    const l: VaultLine = { vault, outcome, reason, txIds, alert };
-    lines.push(l);
-    log(l);
-    return l;
-  };
+  /** Signs, sends and waits: an adoption or a sync, which the next round plans again from the chain. */
+  async function land(tx: BuiltTx): Promise<{ txId: string; status: TxStatus }> {
+    const signed = await o.sign(tx);
+    await send(signed.wire, tx);
+    return {
+      txId: signed.txId,
+      status: await settle(signed.txId, String(tx.lastValidBlockHeight)),
+    };
+  }
+
+  /**
+   * The fate of the leg sent earlier for this vault, if there is one. A leg that landed or expired
+   * frees the vault, one that reverted joins the reverted set, one that is still open holds the vault.
+   */
+  async function earlier(vault: string): Promise<{ hold: string | null; note: string | null }> {
+    const sent = memory.inFlight.get(vault);
+    if (!sent) return { hold: null, note: null };
+    let status: TxStatus;
+    try {
+      status = await adapter.track(sent.txId, sent.validUntil);
+    } catch (e) {
+      return { hold: `the fate of leg ${sent.txId} could not be read (${codeOf(e)})`, note: null };
+    }
+    if (status.status === 'pending')
+      return { hold: `leg ${sent.txId} is not settled yet`, note: null };
+    if (status.status === 'reverted') memory.reverted.add(sent.key);
+    memory.inFlight.delete(vault);
+    await save();
+    return {
+      hold: null,
+      note:
+        status.status === 'reverted'
+          ? `leg ${sent.txId} reverted: ${status.error?.code ?? ''}; it is not sent again`
+          : `leg ${sent.txId} ${status.status}`,
+    };
+  }
 
   for (const vault of vaults) {
     const txIds: string[] = [];
+    const did: string[] = [];
+    let synced = false;
+    let alert = false;
+    let budget = '';
+    const line = (outcome: Outcome, reason: string, raise = false) => {
+      const l: VaultLine = {
+        vault,
+        outcome,
+        reason: [...did, reason].join('; ') + budget,
+        txIds,
+        alert: alert || raise,
+      };
+      lines.push(l);
+      log(l);
+    };
+    /** Nothing more for the vault this round: what was done before says what the line is. */
+    const stop = (reason: string, raise = false) =>
+      line(synced ? 'synced' : did.length ? 'adopted' : 'skipped', reason, raise);
+
     try {
-      let ctx = await adapter.getKeeperContext(vault);
-      if (!ctx) {
-        line(vault, 'skipped', 'the vault is gone', txIds);
+      const before = await earlier(vault);
+      if (before.hold) {
+        stop(before.hold, true);
         continue;
       }
+      if (before.note) {
+        did.push(before.note);
+        alert ||= before.note.includes('reverted');
+      }
 
-      // 1. A version that waits for the vault and adds no asset is adopted; one that adds an asset waits
-      // for the owner. Not while the keeper is paused: the program refuses it then.
+      let ctx = await adapter.getKeeperContext(vault);
+      if (!ctx) {
+        stop('the vault is gone');
+        continue;
+      }
+      // Past half the loss budget, every line for the vault is an alert.
+      if (ctx.rules.lossCapBps > 0 && ctx.vault.lossUsedBps * 2 >= ctx.rules.lossCapBps) {
+        alert = true;
+        budget = ` (loss budget: ${ctx.vault.lossUsedBps} of ${ctx.rules.lossCapBps} bps used)`;
+      }
+
+      // 1. A version that waits for the vault and adds no asset is adopted, once the cluster's clock
+      // has reached its time; one that adds an asset waits for the owner. Not while the keeper is
+      // paused: the program refuses it then.
       const pending = ctx.vault.pending;
-      if (pending && pending.effectiveAt * 1000 <= now().getTime()) {
+      if (pending && pending.effectiveAt <= ctx.clock) {
         if (pending.newAssets.length) {
-          line(
-            vault,
-            'skipped',
+          stop(
             `version ${pending.version} adds ${pending.newAssets.join(', ')}: the owner accepts it`,
-            txIds,
           );
           continue;
         }
         if (ctx.rules.paused) {
-          line(vault, 'skipped', 'the keeper is paused', txIds, true);
+          stop('the keeper is paused', true);
           continue;
         }
         const adopt = await adapter.buildAdoptVersion(vault);
         if (o.dryRun) {
-          line(vault, 'would-act', `would adopt version ${pending.version}`, txIds);
+          line('would-act', `would adopt version ${pending.version}`);
           continue;
         }
         const adopted = await land(adopt);
         txIds.push(adopted.txId);
         if (adopted.status.status !== 'confirmed') {
-          line(
-            vault,
-            'skipped',
+          stop(
             `the adoption of version ${pending.version} ${adopted.status.status}: ${adopted.status.error?.code ?? ''}`,
-            txIds,
             true,
           );
           continue;
         }
+        did.push(`adopted version ${pending.version}`);
         ctx = (await adapter.getKeeperContext(vault)) as KeeperContext;
       }
 
       // 2. Records that differ from the accounts are synced, if the policy lets it.
       const sync = syncDecision(ctx);
       if ('skip' in sync) {
-        line(vault, 'skipped', sync.skip, txIds, sync.alert);
+        stop(sync.skip, sync.alert);
         continue;
       }
       if (sync.sync) {
         if (o.dryRun) {
-          line(vault, 'would-act', 'would sync its records', txIds);
+          line('would-act', 'would sync its records');
           continue;
         }
-        const synced = await land(await adapter.buildSyncBalances(vault));
-        txIds.push(synced.txId);
-        if (synced.status.status !== 'confirmed') {
-          line(vault, 'skipped', `the sync ${synced.status.status}`, txIds, true);
+        const done = await land(await adapter.buildSyncBalances(vault));
+        txIds.push(done.txId);
+        if (done.status.status !== 'confirmed') {
+          stop(`the sync ${done.status.status}`, true);
           continue;
         }
+        did.push('synced its records');
+        synced = true;
         ctx = (await adapter.getKeeperContext(vault)) as KeeperContext;
       }
 
       // 3. One leg toward the targets, if the program would take one now.
       const blocked = legBlocked(ctx);
       if (blocked) {
-        line(vault, txIds.length ? 'adopted' : 'skipped', blocked.skip, txIds, blocked.alert);
+        stop(blocked.skip, blocked.alert);
         continue;
       }
       const targets: Target[] = ctx.vault.positions
         .filter((p) => p.targetBps > 0)
         .map((p) => ({ asset: p.asset, weightBps: p.targetBps }));
-      const priced = assets.filter((a) => a.priceKind !== 'none').map((a) => a.id);
-      const prices = await adapter.getPrices(priced);
+      // The prices of this vault's own holdings only: an asset another vault holds cannot stop it.
+      const mine = [cash, ...ctx.positions.map((p) => p.asset)].filter((a) => priced.has(a));
+      const prices = await adapter.getPrices([...new Set(mine)]);
       const plan = rebalancePlan(
         ctx.vault,
         targets,
@@ -189,22 +246,11 @@ export async function runRound(
         assets,
       );
       if (!plan.weighed) {
-        line(
-          vault,
-          'skipped',
-          `it cannot be weighed: no price for ${plan.unpriced.join(', ')}`,
-          txIds,
-          true,
-        );
+        stop(`it cannot be weighed: no price for ${plan.unpriced.join(', ')}`, true);
         continue;
       }
       if (plan.trades.length === 0) {
-        line(
-          vault,
-          txIds.length ? 'adopted' : 'skipped',
-          'every position is inside the band',
-          txIds,
-        );
+        stop('every position is inside the band');
         continue;
       }
       const key = (t: Trade) => `${vault} ${t.sell}->${t.buy}`;
@@ -215,12 +261,7 @@ export async function runRound(
         (t) => !memory.reverted.has(key(t)),
       );
       if (!trade) {
-        line(
-          vault,
-          txIds.length ? 'adopted' : 'skipped',
-          `no trade can go now: ${skipped.join('; ')}`,
-          txIds,
-        );
+        stop(`no trade can go now: ${skipped.join('; ')}`);
         continue;
       }
       let leg: BuiltTx;
@@ -229,58 +270,61 @@ export async function runRound(
       } catch (e) {
         // The builder simulated it and the program would refuse it: no fee is spent.
         if (!(e instanceof ChainError)) throw e;
-        line(
-          vault,
-          'skipped',
-          `the leg ${trade.sell} -> ${trade.buy} would be refused: ${e.code}`,
-          txIds,
-          !e.retryable,
-        );
+        stop(`the leg ${trade.sell} -> ${trade.buy} would be refused: ${e.code}`, !e.retryable);
         continue;
       }
       if (o.dryRun) {
-        line(
-          vault,
-          'would-act',
-          `would sell ${trade.amountInRaw} raw ${trade.sell} for ${trade.buy}`,
-          txIds,
-        );
+        line('would-act', `would sell ${trade.amountInRaw} raw ${trade.sell} for ${trade.buy}`);
         continue;
       }
-      let sent: { txId: string; status: TxStatus };
+
+      // From here the leg may land whatever the node answers: it is remembered before it is sent,
+      // and only its fate on the chain takes it out of memory.
+      const signed = await o.sign(leg);
+      const validUntil = String(leg.lastValidBlockHeight);
+      memory.inFlight.set(vault, {
+        vault,
+        key: key(trade),
+        txId: signed.txId,
+        validUntil,
+        sentAt: new Date().toISOString(),
+      });
+      await save();
+      txIds.push(signed.txId);
+      let status: TxStatus;
       try {
-        sent = await land(leg);
+        await send(signed.wire, leg);
+        status = await settle(signed.txId, validUntil);
       } catch (e) {
-        // Refused before it landed (the node's preflight): nothing was spent, and the next round plans
-        // again from the chain.
-        if (!(e instanceof ChainError)) throw e;
-        line(vault, 'skipped', `the leg was not taken: ${e.code}`, txIds, !e.retryable);
-        continue;
-      }
-      txIds.push(sent.txId);
-      if (sent.status.status === 'reverted') {
-        memory.reverted.add(key(trade));
-        line(
-          vault,
-          'skipped',
-          `the leg ${trade.sell} -> ${trade.buy} reverted: ${sent.status.error?.code}; it is not sent again`,
-          txIds,
+        stop(
+          `the leg ${trade.sell} -> ${trade.buy} was sent and no answer settled it (${codeOf(e)}); its fate is read before the vault is planned again`,
           true,
         );
         continue;
       }
-      if (sent.status.status !== 'confirmed') {
-        line(
-          vault,
-          'skipped',
-          `the leg is ${sent.status.status}; the next round plans again`,
-          txIds,
+      if (status.status === 'pending') {
+        stop(
+          `the leg ${trade.sell} -> ${trade.buy} is still pending; its fate is read before the vault is planned again`,
         );
         continue;
       }
-      line(vault, 'acted', `sold ${trade.amountInRaw} raw ${trade.sell} for ${trade.buy}`, txIds);
+      memory.inFlight.delete(vault);
+      if (status.status === 'reverted') memory.reverted.add(key(trade));
+      await save();
+      if (status.status === 'reverted') {
+        stop(
+          `the leg ${trade.sell} -> ${trade.buy} reverted: ${status.error?.code}; it is not sent again`,
+          true,
+        );
+        continue;
+      }
+      if (status.status !== 'confirmed') {
+        stop(`the leg ${status.status} without landing; the next round plans again`);
+        continue;
+      }
+      line('acted', `sold ${trade.amountInRaw} raw ${trade.sell} for ${trade.buy}`);
     } catch (e) {
-      line(vault, 'skipped', `failed: ${e instanceof Error ? e.message : String(e)}`, txIds, true);
+      stop(`failed: ${codeOf(e)}`, true);
     }
   }
   return lines;

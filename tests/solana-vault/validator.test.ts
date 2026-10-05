@@ -9,6 +9,7 @@ import {
   vaultAddress,
 } from '@colosseum/chain-solana/vault';
 import {
+  type BuiltTx,
   type OrderDetail,
   type PortfolioResponse,
   parseChainConfigs,
@@ -16,6 +17,8 @@ import {
   type Recipe,
 } from '@colosseum/schemas';
 import {
+  type Address,
+  getBase58Decoder,
   getBase64EncodedWireTransaction,
   getTransactionDecoder,
   partiallySignTransaction,
@@ -316,7 +319,14 @@ if (RUN) {
       );
       await ledger.advance(PARAMS.publishDelayS + 1);
 
-      const lines = await runRound({ adapter, sign: (tx) => world.sign(tx), settleMs: 60_000 });
+      const sign = async (tx: BuiltTx) => {
+        const wire = await world.sign(tx);
+        const signed = getTransactionDecoder().decode(new Uint8Array(Buffer.from(wire, 'base64')));
+        const signature = signed.signatures[tx.signer as Address];
+        if (!signature) throw new Error('not signed by the keeper');
+        return { wire, txId: getBase58Decoder().decode(signature) };
+      };
+      const lines = await runRound({ adapter, sign, settleMs: 60_000 });
       const line = lines.find((l) => l.vault === vault);
       expect([line?.outcome, line?.txIds.length]).toEqual(['acted', 2]);
       for (const txId of line?.txIds ?? [])

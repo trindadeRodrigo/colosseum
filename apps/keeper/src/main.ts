@@ -1,4 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadKeypair, signBase64 } from '@colosseum/chain-solana/server';
 import {
@@ -10,7 +12,8 @@ import {
   SolanaDeploymentRecord,
 } from '@colosseum/chain-solana/vault';
 import { parseChainConfigs } from '@colosseum/schemas';
-import { newMemory, runRound, type VaultLine } from './round';
+import { loadMemory, saveMemory } from './memory';
+import { runRound, type VaultLine } from './round';
 
 // The keeper on Solana (DESIGN-VAULT 3.5, section 10): a worker with no HTTP listener.
 //
@@ -22,7 +25,12 @@ import { newMemory, runRound, type VaultLine } from './round';
 // on comes from that network's deploy record (deployments/solana-<network>.json): the program, the
 // router, the price account, the tokens, and the keeper it signs as. The node behind SOLANA_RPC_URL has
 // to answer the record's genesis, never mainnet's. It signs with the one key at KEEPER_SOLANA_KEYPAIR,
-// and only if that key is the record's default keeper. The key's path is never printed.
+// and only if that key is the record's default keeper. Neither the key's path nor anything in the file
+// is ever printed.
+//
+// What it remembers between runs (the legs it sent and has not settled, and the legs that reverted) is
+// in KEEPER_STATE_DIR (default ~/.tenonfi/keeper), one file per network, read at start and written
+// before anything is sent on the strength of it.
 
 const DEPLOYMENTS = fileURLToPath(new URL('../../../deployments/', import.meta.url));
 
@@ -55,7 +63,12 @@ async function main() {
 
   const keyPath = process.env.KEEPER_SOLANA_KEYPAIR?.trim();
   if (!keyPath) throw new Error('KEEPER_SOLANA_KEYPAIR is not set');
-  const key = await loadKeypair(keyPath);
+  // The loader's own errors can name the path or quote the file: none of it is passed on.
+  const key = await loadKeypair(keyPath).catch(() => {
+    throw new Error(
+      'the file at KEEPER_SOLANA_KEYPAIR is not a Solana keypair this keeper can read',
+    );
+  });
   if (key.address !== record.roles.defaultKeeper)
     throw new Error(`the key at KEEPER_SOLANA_KEYPAIR is not ${record.network}'s default keeper`);
 
@@ -74,7 +87,11 @@ async function main() {
     assets: deploymentAssets(record),
     autoFollow: true,
   });
-  const memory = newMemory();
+  const stateFile = join(
+    process.env.KEEPER_STATE_DIR?.trim() || join(homedir(), '.tenonfi', 'keeper'),
+    `${record.network}.json`,
+  );
+  const memory = loadMemory(stateFile);
   const log = (line: VaultLine) =>
     console.log(JSON.stringify({ at: new Date().toISOString(), network: record.network, ...line }));
 
@@ -88,8 +105,10 @@ async function main() {
           // Only what the keeper itself builds, as the keeper.
           if (tx.signer !== key.address)
             throw new Error(`a transaction for ${tx.signer}, not the keeper`);
-          return (await signBase64(tx.payload, key)).wire;
+          const { wire, signature } = await signBase64(tx.payload, key);
+          return { wire, txId: signature };
         },
+        save: (m) => saveMemory(stateFile, m),
       },
       memory,
     );
@@ -100,6 +119,7 @@ async function main() {
         vaults: lines.length,
         acted: lines.filter((l) => l.outcome === 'acted').length,
         alerts: lines.filter((l) => l.alert).length,
+        inFlight: memory.inFlight.size,
       }),
     );
     if (!loop) return;
