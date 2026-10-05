@@ -153,7 +153,7 @@ Settled by the founder on 2026-10-05 (gate `UNIVERSE`): the rule of §1, both ch
 
 | Item | Status | Evidence |
 |---|---|---|
-| RU.1 The rule as a function | todo | |
+| RU.1 The rule as a function | done 2026-10-05 | `trackedSet(pools, { share, minPoolUsd })` in `packages/risk/src/universe.ts`, exported from `@colosseum/risk`. Pure: no I/O, no clock, no SDK. It returns the cut, the assets it names (sorted), every ranked pool of those assets, and the counts of their pools left out as dust or as unmeasured. A pool whose TVL is `null` is never ranked and never counted as zero; equal pools are ordered by address, so the result does not depend on input order. **Fixture:** `fixtures/risk/universe/solana-registry-20261001T0139.json.gz`, the registry of 2026-10-01 01:38Z cut to address, asset and TVL (5,951 pools), with `source`, `fetched_at`, `method`; made by `pnpm risk:freeze-universe-fixture <registry.json>` (no chain read). **Check:** `pnpm vitest run tests/risk-layer/universe.test.ts`, 13 passed: at 80% and $1,000 it returns the 18 stocks of §2 and their 869 pools. **The cut, by base:** pools of $1,000 or more (992 pools, the rule's base, DU1): **34 pools**, which is the 34 of `PLAN-RISK.md`; every pool with money (5,694): **35 pools**. The same 18 stocks on both. Wider cuts on the $1,000 base: 90% is 82 pools and 25 stocks, 95% is 206 and 34, 99% is 757 and 45. With no floor the 18 have 5,179 pools holding 96.3% of all pool TVL. `pnpm verify` passed (3,160 tests, 41 skipped). **Deviations:** the branch is `universe/ru1`, not `risk/universe-ru1` (see Discovered); it was cut from `docs/universe-plan`, not `staging`, because the plan was not merged yet (pull request 39). No caller is changed: `retier.ts` and `pool-pareto.ts` keep their own loops (the first writes the collector's registry, which is not touched before Oct 12) |
 | RU.2 Robinhood universe and discovery | todo | |
 | RU.3 The cut on Robinhood | todo | |
 | RU.4 The asset list | todo | |
@@ -172,3 +172,7 @@ Order: RU.1 → RU.2 → RU.3 → RU.5 → RU.4 → RU.6 → RU.7 → RU.8 → R
 ### Discovered
 
 *(findings outside an item go here, dated)*
+
+- **2026-10-05 (RU.1). A pool of two stocks is filed under one of them.** The Solana registry gives each pool one asset. 13 pools pair a tracked stock, as the quote side, with a stock outside the 18, and are filed under the other stock; one holds $1,000 or more (TQQQx/SPYx, $65,608). `trackedSet` follows the registry, so that pool is not among SPYx's 869. Counting it would make 870. RU.2 has the same question on Robinhood Chain (a pool of two stock tokens): it should write one row per pool and say which stock it is filed under. Whether such a pool is tracked under both is for RU.4 or RU.11, where the stock-to-stock pools are routed.
+- **2026-10-05 (RU.1). Branch names cannot start with `risk/`.** A local branch `risk` exists, and git refuses `risk/<name>` beside it. The build prompt now says `universe/ru{N}`.
+- **2026-10-05 (RU.1). `pnpm db:up` fails where `docker compose` is not installed** (`unknown shorthand flag: 'd'`); the container `colosseum-pg` was already running, and `pnpm db:migrate` alone applied `0012`. A stale `apps/web/.next/types` (from before the routes moved into groups) fails the web typecheck until the web app is built once. Both are this machine's state, not the code's.
