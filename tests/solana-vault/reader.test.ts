@@ -1082,6 +1082,8 @@ describe('Solana reader: what a keeper needs to plan a leg', () => {
     });
     expect(found.priceAccount).toBe(fixture.prices.account);
     expect(found.blocked).toBeNull();
+    // The cluster's clock, not the reader's.
+    expect(found.clock).toBe(Number(fixture.clock.unixTimestamp));
     expect(found.positions).toEqual([
       {
         asset: assetId('spyx'),
