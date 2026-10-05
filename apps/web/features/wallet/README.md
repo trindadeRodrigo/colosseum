@@ -15,7 +15,7 @@ The app talks to a wallet through `WalletPort` (`packages/schemas/src/wallet.ts`
 | `chains.ts` | Which network each chain is on in the browser, from the shared chain configs, with the public RPC URLs |
 | `bytes.ts` | base58, base64, and reading a Solana transaction's signers and fee payer |
 | `WalletProvider.tsx` | `<WalletProvider>`, `useWalletPort()`, `useApiFetch()`. A screen's port has no signing member |
-| `signing.ts` | `useSigningPort()`: the whole port, with `sign()`, `send()`, `signMessage()` and `exportKey()`. No product route may import it yet |
+| `signing.ts` | `useSigningPort()`: the whole port, with `sign()`, `send()`, `signMessage()` and `exportKey()`. One file the app ships imports it: the order runner, `features/order/run-order.ts` (WEB-3), which hands it to `execute()` |
 | `api-url.ts` | The address of an API call: one path under the API, never another host |
 | `config-check.ts`, `use-api-check.ts` | At start, the browser's networks against the API's `GET /v1/config` |
 | `SignIn.tsx` | The two ways in, on the primitives: create a passkey or use one, or a wallet from the list of those found. The screen around it, and the chain pick, are in `features/account/` |
@@ -69,9 +69,9 @@ The browser reads `NEXT_PUBLIC_CHAIN_NETWORK_<CHAIN>` and the API reads `CHAIN_N
 
 ## Before any product screen signs
 
-1. Nothing in product code calls `port.sign()` or `port.send()` until the guard (AGT-1) has checked the bytes against the order. The port checks that a transaction is for this account and network and that the wallet signed what it was given. It does not know what the order was, so it cannot tell a deposit from a transfer to someone else. `components/shell/product-routes.test.ts` (rule 3) holds this by what a screen can reach, not by how a call is spelled:
+1. Nothing in product code calls `port.sign()` or `port.send()`: the executor of `@colosseum/sdk` does, after the guard (AGT-1) has checked the bytes against the order. The port checks that a transaction is for this account and network and that the wallet signed what it was given. It does not know what the order was, so it cannot tell a deposit from a transfer to someone else. `components/shell/product-routes.test.ts` (rule 3) holds this by what a screen can reach, not by how a call is spelled:
    - the port a screen is handed has no signing member (`screen-port.events.test.ts` sees it with the provider mounted);
-   - nothing the app ships imports `signing.ts`, and a file outside the seam takes from a seam file only `useWalletPort`, `useApiFetch`, `WalletProvider` and types;
+   - nothing the app ships imports `signing.ts` but the order runner (`features/order/run-order.ts`), only the order screen imports the runner, and only `/orders/[id]` reaches either; a file outside the seam takes from a seam file only `useWalletPort`, `useApiFetch`, `WalletProvider` and types;
    - a screen imports only the packages on the test's list, which has no wallet or chain library, and `@privy-io` is imported by `privy-bridge.tsx` alone;
    - outside the seam no signing member is named at all: not called, read, taken apart, handed on as a prop or written as a string, and neither is a wallet's own method (`eth_sendTransaction`, `solana:signTransaction`) or `window.ethereum`.
 
@@ -87,6 +87,20 @@ The browser reads `NEXT_PUBLIC_CHAIN_NETWORK_<CHAIN>` and the API reads `CHAIN_N
    - `approvedAgain`: only after the executor answered `needs_review` and the person approved that step again on the screen, with that answer's `legId` and `signedTimes`. Never set by the screen on its own: it is good for one more signature.
 
    And with what comes back: `needs_review` shows the step again and asks the person, saying it was signed before and may still arrive; `waiting` says the order is on its way and offers to look again later, running the same order; `done` is the API's word that every step is confirmed, so the screen shows each step's explorer link rather than claiming more. On an EVM chain the signer sets the transaction around the call the guard passed: legacy or EIP-1559, its own fee per gas under the port's ceiling, no access list and no authorization list (`port.ts` checks all four).
+
+## The order runner, as built (WEB-3)
+
+`features/order/run-order.ts` is item 3. `useOrderRunner()` gives the order screen one function, `run({ order, plan, consents, approvedAgain?, onEvent, signal })`, and the answer; the port never leaves the file. `product-routes.test.ts` holds it to `execute(order, { api: createOrderApi(apiFetch), signer: port, deployments, plan, consents, signed, chainRead, approvedAgain })` and nothing else.
+
+- `order`: the order screen keeps the order it showed when the person pressed "Sign and buy", with the consents ticked, in local storage (`tf-order:<id>`, `features/order/order-record.ts`). Every run, a reload and a retry included, is handed that object; the API's later answers are only shown.
+- `deployments`: `deploymentsOf(network)` as it came back (`features/order/readiness.ts`). `network` is `mock` when the API says the chain runs on the mock or the wallet is the throwaway one, otherwise this app's `NEXT_PUBLIC_CHAIN_NETWORK_<CHAIN>` (unset: `testnet`). A network with no file (mainnet) or a file with no entry for the chain (Robinhood Chain on the test network, until ADE-2 deploys it) means nothing is signed, and the plan and buy screens say the chain is not ready.
+- `plan`: `basketIdOfPlan(proposalId)` and the targets, worked out from the plan's lines as the plan screen showed them (`features/order/plan-terms.ts`): every line but the deployment's cash, with an asset that comes through two lines added up.
+- `signed`: local storage, `tf-signed:<signedKey>`. A record that does not parse is handed over as one the executor cannot read, which answers `needs_review`. Before a run the screen checks that storage takes a write; if not, nothing runs.
+- `chainRead`: only from `NEXT_PUBLIC_CHAIN_READ_RPC_<CHAIN>`, an `https` URL of one node (or `http://localhost`), and never on the mock. Unset, the executor gets no read and never signs a step twice by itself: it asks the person. `api.devnet.solana.com` is a public pool, not one node; it is acceptable for the devnet check below and nowhere else.
+- The lock: ``navigator.locks.request(`order:${id}`, { ifAvailable: true }, …)``. A second tab gets no lock and runs nothing; the screen says the order is running elsewhere. A browser with no `navigator.locks` signs nothing.
+- `approvedAgain`: set only from the `needs_review` answer the screen just showed, when the person presses "Sign step N again".
+
+What the screen says for each answer is `features/order/order-view.ts`: `done` with each step's explorer link, `refused` with the step, a sentence by the check that failed and the check's name, `cancelled`, `waiting` and `error` with "Try again" or "Look again" (the same order run again), `failed` and `expired` with a new order, `blocked` with a link to the other order, `needs_review` with the step and how often it was signed. Status changes are said in an `aria-live` region.
 
 ## The throwaway wallet
 
@@ -151,5 +165,31 @@ The page is inside the product's bar. Signed out it shows the same two cards; si
 | 8 | Sign out in the bar, then use the passkey again | The same two addresses as in step 1 |
 
 If a step fails, the sentence on the page is the report: copy it with the step number.
+
+### A buy on devnet: `http://localhost:3000/goal` (WEB-3)
+
+What only a person can check: a passkey wallet that buys a plan on Solana devnet, every step checked by the guard and signed with no prompt.
+
+**Before.** Everything under "Before" above, then:
+
+- The API with Solana on devnet: `CHAIN_MODE_SOLANA=live`, `CHAIN_NETWORK_SOLANA=testnet`, and `SOLANA_RPC_URL` set to a devnet node whose genesis is the record's (`deployments/solana-devnet.json`). `basket_assets` filled from the record once: `pnpm exec tsx scripts/solana/basket-assets.ts`. The API refuses to start if any of this disagrees with the record (`apps/api/src/orders/README.md`, "A real chain").
+- The route that builds a plan, `POST /v1/baskets/personalize` (ENG-2's route). Without it the goal screen says the plan can't be built, and there is nothing to buy.
+- In `.env`, for the web: `NEXT_PUBLIC_CHAIN_READ_RPC_SOLANA=https://api.devnet.solana.com`, so the executor can tell from the chain whether an unreported signature can still land. Left out, it asks you instead (`needs_review`).
+- Your passkey's Solana wallet, which the sign-in screen and `/dev/wallet` show, funded on devnet: about 0.05 SOL from the faucet for fees and the vault's accounts, and test dollars (`tUSDC`, mint `AEtFZt8Fq4PYzBs4d8VoMypDDhjp9XTv6qvhJZhd8BUn`). Only the deploy key can mint them, until TNET-7 hands them out: `spl-token -u devnet create-account AEtFZt8Fq4PYzBs4d8VoMypDDhjp9XTv6qvhJZhd8BUn --owner <your address> --fee-payer <deploy key>`, then `spl-token -u devnet mint AEtFZt8Fq4PYzBs4d8VoMypDDhjp9XTv6qvhJZhd8BUn 50 --recipient-owner <your address> --mint-authority <deploy key> --fee-payer <deploy key>`.
+- The test exchange quotes a priced pair from the price account the price copier keeps (TNET-5). If a swap is refused at the chain, copy its sentence.
+
+| # | Do | You should see |
+|---|---|---|
+| 1 | Sign in with the passkey, on a person whose plan lives on Solana | `/goal`; the bar shows the Solana address |
+| 2 | Type a goal of about $20, press Enter, fill what is empty, press "Build my plan" | "Your plan is built." with "See your plan" |
+| 3 | Press "See your plan" | `/plan/<id>`: the goal as the heading, what the plan holds with each share and amount, the projected range and the exit cost each with a pin, the risk roll-up or the sentence that none was sent, the MOCK plate with "test network", the disclaimer at the foot, and "Buy this plan" |
+| 4 | Press "Buy this plan" | `/plan/<id>/buy`: the amount, "What your wallet needs" with tUSDC and SOL, each "You have" with its pin. If something is missing, the sentence and your address; fund it and press "Read my wallet again" |
+| 5 | Read "Before your first deposit", tick "I’ve read this and I accept it", press "Review the steps to buy $20" | `/orders/<id>`: "Review every step": open your vault and deposit, then one "Buy" per asset, each with what it spends and the least it receives |
+| 6 | Press "Sign and buy $20" | No passkey prompt and no Privy window. The button reads "Signing step 1 of N…", the status line follows each step, and each step turns "Confirmed" with "Tx ↗". At the end: "Every step is confirmed on Solana…" |
+| 7 | Open each "Tx ↗" | Solscan on devnet: success, signed by your address, the vault program `529j92AS…` |
+| 8 | Reload the page | "Your order", the steps as they stand, and no button once every step is confirmed |
+| 9 | Make a second order and open it in two tabs; press "Sign and buy" in both at once | One tab signs; the other says "This order is running in another tab of this browser" and signs nothing |
+
+If step 6 ends in "I didn’t sign step N … The price moved since you reviewed it", the test exchange's price moved between the order and the build: the guard holds the minimum to the one you saw (AGT-1). Make a new order and sign it straight away; note how often it happens. Any other refusal shows "Check that failed: <check>" and a line for the team: copy both.
 
 **The wallet path, if there is time.** Signed in with Phantom, `/dev/wallet` shows the Solana panel as "an outside wallet" that "prompts for each signature", and no EVM wallet. "Sign a message" opens Phantom. With MetaMask it shows an EVM address only; "Sign and send" asks MetaMask to add or switch to chain 46630, then to confirm, and the result says the outside wallet sent it itself. If Phantom's "Sign and send" ends in "the wallet signed a different transaction from the one it was given", Phantom added instructions of its own: note it, it decides whether Solana needs a `send()`.
