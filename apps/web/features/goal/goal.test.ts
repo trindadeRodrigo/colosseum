@@ -157,12 +157,34 @@ describe('building a plan: the one call, against a double of the route that is n
   it('sends the sheet to POST /v1/baskets/personalize and reads back the plan and its id', async () => {
     const proposal = proposalFor(SHEET);
     const api = vi.fn(async () => json({ id: 'plan-1', proposal }));
-    expect(await buildPlan(api, SHEET)).toEqual({ kind: 'built', id: 'plan-1', proposal });
+    expect(await buildPlan(api, SHEET)).toEqual({
+      kind: 'built',
+      id: 'plan-1',
+      proposal,
+      rollUp: null,
+    });
     expect(PERSONALIZE_PATH).toBe('/v1/baskets/personalize');
     expect(api).toHaveBeenCalledWith(PERSONALIZE_PATH, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ sheet: SHEET }),
+    });
+  });
+
+  it('keeps the risk roll-up the server sends with the plan, and leaves out one that does not parse', async () => {
+    const proposal = proposalFor(SHEET);
+    const rollUp = {
+      byIssuer: [{ key: 'one', bps: 6000 }],
+      byChain: [{ key: 'solana', bps: 10_000 }],
+      byClass: [{ key: 'stock', bps: 6000 }],
+      flags: [],
+      exit: { quotedBps: null, quotedAt: null, measuredWorstBps: 42, measuredShareBps: 6000 },
+    };
+    const sent = (body: unknown) => buildPlan(async () => json(body), SHEET);
+    expect(await sent({ id: 'plan-1', proposal, rollUp })).toMatchObject({ kind: 'built', rollUp });
+    expect(await sent({ id: 'plan-1', proposal, rollUp: { byIssuer: 'all' } })).toMatchObject({
+      kind: 'built',
+      rollUp: null,
     });
   });
 

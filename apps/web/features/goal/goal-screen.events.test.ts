@@ -128,6 +128,34 @@ describe('the goal screen, before anything is read', () => {
     expect(server.to('/goals')).toEqual([]);
   });
 
+  it('says how to send under the chips, in the mono face, and the box is described by it', async () => {
+    api({});
+    const host = await screen();
+    const hint = [...host.querySelectorAll('p')].find(
+      (p) => p.textContent === en.goal.composer.hint,
+    ) as HTMLElement;
+    expect(hint.className).toContain('font-mono');
+    const chips = find(host, `ul[aria-label="${en.goal.examples.label}"]`);
+    expect(chips.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(box(host).getAttribute('aria-describedby')?.split(' ')).toContain(hint.id);
+  });
+
+  it('tells a visitor, and only a visitor, where a plan of their own comes from', async () => {
+    api({});
+    const visitor = await screen();
+    const link = [...visitor.querySelectorAll('a')].find(
+      (a) => a.textContent === en.goal.visitor.link,
+    );
+    expect(link?.getAttribute('href')).toBe('/sign-in?next=/');
+    expect(visitor.textContent).toContain(en.goal.visitor.after);
+    await unmountAll();
+    api({ person: onSolana });
+    portStore.set(signedInPort(PHANTOM));
+    const signedIn = await screen();
+    await settle();
+    expect(signedIn.textContent).not.toContain(en.goal.visitor.after);
+  });
+
   it('fills the box from an example and hands it over, without sending it', async () => {
     const server = api({});
     const host = await screen();
@@ -188,8 +216,27 @@ describe('reading a typed goal', () => {
     expect(find<HTMLSelectElement>(host, `#${FIELD_ID.risk}`).value).toBe('medium');
     expect(input(host, 'amount').value).toBe('');
     expect(input(host, 'horizon').value).toBe('');
-    // and the screen says why a dollar amount was not found
+    // and the screen says why a dollar amount was not found, and names what is left to fill
+    expect(host.textContent).toContain(
+      en.goal.readerMissed('Amount (dollars), Time frame (months), and Country where you live'),
+    );
+    // each field left empty says it was not found, before what it takes
+    for (const key of ['amount', 'horizon', 'country'] as const)
+      expect(find(host, `#${FIELD_ID[key]}`).closest('[data-ui="field"]')?.textContent).toContain(
+        en.goal.hints.notFound,
+      );
+    expect(find(host, `#${FIELD_ID.risk}`).closest('[data-ui="field"]')?.textContent).not.toContain(
+      en.goal.hints.notFound,
+    );
+  });
+
+  it('stops naming a field once the person has filled it', async () => {
+    api({});
+    const host = await screen();
+    await read(host);
+    await fill(host);
     expect(host.textContent).toContain(en.goal.readerNote);
+    expect(host.textContent).not.toContain(en.goal.hints.notFound);
   });
 
   it('makes the goal the heading of the page once it is read: still one heading, one serif line', async () => {
@@ -326,7 +373,7 @@ describe('“Build my plan”', () => {
     // and the way to sign in comes back to this screen
     const facts = find(host, '[data-ui="sheet-facts"]');
     expect(facts.textContent).toContain(en.goal.chain.unset);
-    expect(find(facts, 'a').getAttribute('href')).toBe('/sign-in?next=/goal');
+    expect(find(facts, 'a').getAttribute('href')).toBe('/sign-in?next=/');
     expect(find(facts, 'a').textContent).toBe(en.shell.signIn);
   });
 
@@ -350,7 +397,7 @@ describe('“Build my plan”', () => {
     const way = find(find(host, '[data-ui="sheet-facts"]'), 'a');
     expect([way.textContent, way.getAttribute('href')]).toEqual([
       en.goal.chain.choose,
-      '/sign-in?next=/goal',
+      '/sign-in?next=/',
     ]);
     // the choice is not offered here: it is asked in one place
     expect(host.querySelector('[role="group"]')).toBeNull();
@@ -642,6 +689,15 @@ describe('what comes back from “Build my plan”', () => {
       expect(host.textContent).not.toContain('sign in first');
     },
   );
+
+  it('says the sign-in service gave no identity token, not to sign in again, when the server says so', async () => {
+    const { host } = await built(() =>
+      json({ error: 'sign in first: no identity token was sent' }, 401),
+    );
+    expect(summary(host)?.textContent).toContain(en.goal.blocked.noIdentity);
+    expect(summary(host)?.textContent).not.toContain(en.goal.blocked.signInAgain);
+    expect(host.textContent).not.toContain('no identity token was sent');
+  });
 
   it('says to choose the chain first when the server has none for this person, and asks who they are again', async () => {
     const { host, server } = await built(() =>

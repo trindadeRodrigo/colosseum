@@ -53,8 +53,11 @@ const baseMainnet: ChainPreset = {
  * (docs/vault/research/test-networks.md): their router and price source are ours, and stay null here
  * until a deploy sets them.
  * `local` is a copy of mainnet on the developer's machine, as the two rigs under spikes/ run: mainnet's
- * ids and addresses, no explorer, and never labelled live.
+ * addresses, no explorer, and never labelled live. An EVM copy runs under a chain id of its own
+ * (`anvil --chain-id`), never mainnet's: a transaction signed for mainnet's id is good on mainnet.
  */
+/** The chain ids local copies of the EVM mainnets run under: anvil's default, and the next. */
+export const LOCAL_EVM_CHAIN_IDS = { robinhood: 31_337, base: 31_338 } as const;
 export const CHAIN_PRESETS: ChainPresets = {
   solana: {
     family: 'solana',
@@ -83,7 +86,12 @@ export const CHAIN_PRESETS: ChainPresets = {
         router: null,
         priceSource: { kind: 'chainlink', address: null },
       },
-      local: { ...robinhoodMainnet, networkName: 'local copy of mainnet', explorerTx: null },
+      local: {
+        ...robinhoodMainnet,
+        networkName: 'local copy of mainnet',
+        evmChainId: LOCAL_EVM_CHAIN_IDS.robinhood,
+        explorerTx: null,
+      },
     },
   },
   base: {
@@ -98,7 +106,12 @@ export const CHAIN_PRESETS: ChainPresets = {
         router: null,
         priceSource: { kind: 'chainlink', address: null },
       },
-      local: { ...baseMainnet, networkName: 'local copy of mainnet', explorerTx: null },
+      local: {
+        ...baseMainnet,
+        networkName: 'local copy of mainnet',
+        evmChainId: LOCAL_EVM_CHAIN_IDS.base,
+        explorerTx: null,
+      },
     },
   },
 };

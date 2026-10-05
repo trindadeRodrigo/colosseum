@@ -83,6 +83,101 @@ jq -c 'select(.event == "slot" and .rows < .tokens) | {scheduledAt, rows, ended,
 - Settings are in `.env.example` under "EVM depth collector". Tokens, addresses and chains are in `config.ts`; Base is there, switched off (`--chain base` runs it once).
 - Curves: `pnpm risk:compute` fits every row of `risk_asset_snapshots`, these included, and today stores every curve as `risk-0.3`. The lines that keep `evmq-0.1` on EVM curves are Rodrigo's (RISK-1).
 
+## The token list and every pool
+
+Two commands beside the hourly collector (PLAN-UNIVERSE RU.2, gate `UNIVERSE`). They are read-only (`eth_getLogs`, `eth_call`, public GETs), they are run by hand, and the hourly run reads nothing they write: a plain `pnpm risk-evm:collect` behaves as before.
+
+```sh
+pnpm risk-evm:universe                    # the issuer's token list, each address checked on chain: 3 seconds, 2 RPC calls
+pnpm risk-evm:discover                    # every pool of every token: about 30 minutes, 1,500 RPC calls (4,200 the first time)
+pnpm risk-evm:discover --check-collector  # and compare with the pools the hourly collector would keep
+pnpm risk-evm:discover --only NVDA,SPY    # some symbols only
+pnpm risk-evm:discover --no-logs          # without the creation events (the fallback, with its gaps stated)
+```
+
+**`universe`** reads the issuer's registry (`api.robinhood.com/rhj/assets`) and asks each address for `decimals()` and `symbol()`. A token whose contract is silent or disagrees with the registry stays in the file as `confirmed: false` with the reason. It writes `data/risk-evm/universe-<chain>-<stamp>.json`. On 2026-10-05: 194 tokens, all confirmed.
+
+**`discover`** (method `evm-discovery-0.1`) writes `data/risk-evm/discovery-<chain>-<stamp>.json`: a summary per token, and one row per pool.
+
+1. **Where pools come from.** Three sources, merged by pool id:
+   - the creation events: `PoolCreated` of the Uniswap v3 factory and `Initialize` of the v4 pool manager, filtered on the tokens (either side of the pair). An event is the contract's own word, so it needs no second check. The events are kept in `data/risk-evm/creation-logs-<chain>.json`; a later run reads only the blocks since (`--rescan` starts over).
+   - DexScreener, every pair of the token (at most 30 a token). It is the only source for other venues. A v3-style pool it names must answer `token0()` and `token1()`; one that claims the allowlisted factory must be named by that factory's `getPool`, or it is refused.
+   - the factory asked directly: `getPool` for each pair seen, at each fee tier seen. On Oct 5 it named the same 2,544 pools as the events, and none besides.
+2. **One row per pool, keyed on the token address.** `token` is the stock's address as the registry writes it; a symbol is only a label. A pool of two stocks is one row, filed under token0 (the lower address), with `otherIsStock: true` and `filedUnder: "token0_of_two_stocks"`.
+3. **What the vault can reach.** `reachable` is true for a pool of the allowlisted factory and for a v4 pool with no hook. Anything else is kept and marked: `unreachableReason` is `has_hook` or `other_venue`. `againstDollar` says whether the other side is the dollar token, which is what the hourly collector quotes.
+4. **The money in a pool** (`tvlUsd`, with `tokenUsd` and `otherUsd` for the two sides):
+   - a v3-style pool: the balances the pool holds (`balanceOf`), each at its token's price. `tvlMethod: "balances_held_by_the_pool"`.
+   - a v4 pool has no balance of its own (the pool manager holds every pool's money). Its row is what its positions hold between price / 1.5 and price × 1.5: the tick bitmap and the liquidity of each initialized tick in that band are read at the same block as the price, and the amounts are added up tick by tick. `tvlMethod: "v4_positions_within_band_of_the_price"`. Liquidity placed further out is not counted.
+   - the same sum is made on Uniswap v3 pools and stored as `bandUsd` beside the measured balances. On Oct 5, over the 109 v3 dollar pools of $1,000 or more, it came to 98% of the balances at the median (88% at the 10th percentile, 99% at the 90th). Against DexScreener's own figure, the v4 rows above $50,000 sit at 98% at the median.
+   - `tvlUsd` is `null` with `tvlReason` when it was not measured, never zero: `token_not_priced`, `other_token_not_priced`, `stock_side_below_floor_other_token_not_looked_up`, `pool_state_not_read`.
+   - a pool read as empty (no balance; on v4, no liquidity at the price at that block, though it may hold positions further out) has no row. It is counted on its token under `idle`. A pool whose read failed keeps its row, with `pool_state_not_read`.
+5. **Prices** (the `prices` list; each names its pool and block). The dollar token counts as one dollar, as in the collector. A stock is priced by the mid of the reachable dollar pool holding the most dollar tokens (a Uniswap v3 pool's balance, a hookless v4 pool's dollar side within the band), if that is at least $1,000 (`--min-ref-usd`) and the pool has liquidity in range; otherwise it has no price. Any other token is looked up the same way, but only where a pool's stock side is worth $100 or more (`--min-side-usd`). The native coin takes the price of the wrapped coin the v4 position manager names (`WETH9()`).
+6. **State is read at one block per pool.** The endpoint drops a block's state within minutes and a full pass takes longer, so the pass moves to a fresh block every 45 seconds. Each row carries its own `block` and `fetchedAt`; the file gives the first and the last.
+7. **What a run could not have seen** is on each token under `gaps`: DexScreener failed for it, DexScreener returned its cap of 30 (other venues may have more), or the creation events were not available.
+
+### What the endpoints allowed for `eth_getLogs` (probe of 2026-10-05)
+
+| Question | `rpc.mainnet.chain.robinhood.com` | `robinhood.drpc.org` (free) |
+|---|---|---|
+| One query over the chain's life (81 million blocks) | refused: "only 10000000 are allowed" | refused: "ranges over 10000 blocks are not supported on free plan" |
+| Ten million blocks, no token filter | refused where it matches more than 10,000 logs | as above |
+| Ten million blocks, one value in each topic | answered | as above |
+| A list of tokens in one topic | at most 100,000 blocks a query | as above |
+| Ten such queries in one HTTP request, one request a second | answered; 16 refusals for rate in 3,240 queries, each answered on the next try | not tried |
+| Fifty in one request | refused for rate | not tried |
+
+So the public endpoint lists every pool, in 3,240 queries of 100,000 blocks (13 minutes, once). The fallback was not needed; it exists and is tested (`--no-logs`): DexScreener and `getPool` only, with `v4_pools_from_dexscreener_only` on every token. The run records its own probe in the file (`logsProbe`).
+
+### The run of 2026-10-05 (blocks 81,044,145 to 81,057,597)
+
+- 100,538 v4 pools and 2,544 Uniswap v3 pools name one of the 194 tokens. 38,434 of them have no row: nothing in the pool, or on v4 no liquidity at the price at that block (such a pool may still hold positions further out). 64,845 have a row. Most are not stock markets: 40,038 of the rows carry one launch hook and pair a stock token with a newly made token.
+- 2,140 rows have a measured TVL, $91.0M together; 728 hold $1,000 or more, 543 of them reachable. By venue, pools of $1,000 or more: Uniswap v3 173 ($43.7M), Uniswap v4 430 ($43.3M, of which 60 hooked pools hold $7.0M), other venues 125 ($3.9M).
+- 98 of the 194 tokens have a price: 46 from a Uniswap v3 dollar pool, 52 from a v4 one. The other 96 have no dollar pool holding $1,000, so their 2,248 rows are `token_not_priced`.
+- 60,457 rows pair a stock with a token that has no dollar price here. For 52,361 the price was not looked up, because the stock side is under $100; for 8,096 it was looked up and no dollar pool of $1,000 exists. 994 of those hold $1,000 or more on the stock side.
+- All 54 pools the hourly collector would keep for its 21 tokens are among the rows, all `reachable` (`collectorCheck` in the file).
+- DexScreener answered for every token in this run. In the run before it failed for one (JOBY), which then carried `dexscreener_failed_other_venues_not_listed`; a file should be checked for that gap before it is used.
+
+Known limits:
+
+- A v4 row leaves out liquidity further than a third below or a half above the price. A v4 pool whose band holds more than 900 initialized ticks is not summed (`pool_state_not_read`).
+- Other venues are only known through DexScreener, 30 pairs a token: 21 tokens were at that cap.
+- A price is one pool's mid at one block. It values a pool; it is not the price a trade gets, and it is never mixed with an oracle (gate `ORACLE-VS-DEX`).
+- A pool of two stocks is filed under one. Whether it also counts for the other is decided where such pools are routed.
+
+## The cut
+
+`pnpm risk-evm:pareto` (PLAN-UNIVERSE RU.3, method `evm-cut-0.1`) applies the 80% rule (`trackedSet` of `packages/risk`) to the newest discovery file. It reads that one file and calls nothing.
+
+```sh
+pnpm risk-evm:pareto                       # the newest discovery file, 80% and $1,000
+pnpm risk-evm:pareto --discovery <file>    # another file
+pnpm risk-evm:pareto --share 0.8 --min-pool-usd 1000
+pnpm risk-evm:pareto --allow-gaps          # a file in which DexScreener failed for a token
+pnpm risk-evm:pareto --allow-old           # a file more than a day old
+```
+
+It writes `data/risk-evm/cut-<chain>-<stamp>.json` (the stamp is the discovery file's) and prints the same in words. A cut by another share or floor is written beside it with the rule in its name (`…-share0.9-min1000.json`), so the rule's own file is never replaced by it. It refuses a discovery file more than 24 hours old, and one in which a token carries `dexscreener_failed_other_venues_not_listed`; with `--allow-gaps` the file is used and the token is named in the output.
+
+What the file holds, and what it does not decide:
+
+- **The mapping.** One row per pool: `address` is the pool id, `asset` the address of the stock the pool is filed under, `tvlUsd` as discovery measured it. A TVL that was not measured stays `null`: it is left out of the ranking and the total and counted (`counts.unmeasured`, by reason), never zero.
+- **`shares`**: pools and stocks at 80, 90, 95 and 99%. **`tracked`**: the stocks of the 80% cut, each with its pools in the cut, every ranked pool, how many the vault reaches, and its pools left out as dust or as unmeasured. **`cut`** and **`pools`**: the rows themselves.
+- **`unpricedTokens`**: the stocks with no dollar pool of $1,000. Their pools have no TVL and cannot enter the cut. Whether a thinner pool may price a stock is not decided.
+- **`unrankedHoldingStock`**: rows with no TVL whose stock side alone is $1,000 or more, by stock, venue and reason. Not ranked.
+- **`withoutV4`**: the same rule with the v4 rows taken out, because a v4 TVL is a band sum and a v3 TVL is the balances. Printed in full only when the two name different stocks.
+- **`twoStockPools`**: the pools of two stocks that touch a tracked stock. The rule counts such a pool for the stock it is filed under (token0) only; whether it counts for both is not decided.
+- **`vsCollector`**: the tracked stocks against the tokens of `config.ts`, and for each collected token that is not tracked, why and at what share it would enter.
+
+### The run of 2026-10-05 (on `discovery-robinhood-20261005T1947.json`)
+
+- 728 pools ranked ($90.9M). 80%: 93 pools, **30 stocks**, 427 ranked pools of those stocks ($84.0M), 274 of them reachable. 90%: 154 pools, 48 stocks. 95%: 225 and 67. 99%: 440 and 89.
+- The 30: AAPL AMC AMD AMZN COIN COST CRCL DELL DJT GLD GME GOOGL HIMS INTC LLY META MSFT MSTR MU NVDA PLTR QQQ RDDT SGOV SLV SNDK SPCX SPY TSLA USO. Against the collector's 21: 20 are in both; AMC, COST, DJT, GME, HIMS, LLY, PLTR, QQQ, RDDT and SPCX are tracked and not collected; TSM is collected and not tracked (its largest pool is rank 102; any cut above 82.0% names it).
+- The 93 pools of the cut: 42 Uniswap v3 ($36.8M) and 41 hookless v4 ($29.2M), all reachable; 8 hooked v4 ($6.0M) and 2 on another venue ($0.8M), not reachable.
+- Without the v4 pools (298 pools, $47.6M) the cut names 29 stocks: IBM and NFLX enter; AMD, PLTR and SNDK leave.
+- 19 of the 93 are pools of SPY against another stock ($9.3M), all filed under SPY. If such a pool also counted for its other side, TSM would be named too.
+- 994 rows with no TVL hold $1,000 or more on the stock side, $5.0M of stock tokens in all, 796 of them under tracked stocks ($4.4M); 944 are v4 pools.
+- 96 tokens have no price. DexScreener was at its cap of 30 pairs for 21 tokens, all of them tracked, so pools on other venues may be missing for those.
+
 ## Files
 
 | File | What it is |
@@ -97,8 +192,14 @@ jq -c 'select(.event == "slot" and .rows < .tokens) | {scheduledAt, rows, ended,
 | `import.ts` | JSONL into the database |
 | `ClQuoter.sol`, `cl-quoter.json` | The injected quoter and its compiled bytecode |
 | `build-quoter.ts`, `record-fixture.ts` | Rebuild the bytecode; re-record the test fixture. Both need Foundry |
+| `universe.ts`, `registry.ts` | The command for the token list; reading the registry and confirming it on chain |
+| `discover.ts`, `discover-run.ts` | The command for the pools; one discovery pass |
+| `discovery.ts` | Creation events, the merge of the sources, reach, filing, the money in a pool. No I/O |
+| `multicall.ts`, `replay.ts` | Many reads in one `eth_call`; recorded answers given back to a test |
+| `record-discovery-fixture.ts` | Re-records `fixtures/risk-evm/robinhood-discovery.json.gz` from the chain |
+| `pareto.ts`, `cut.ts` | The command for the cut; the rule applied to a discovery file and what it reports. `cut.ts` has no I/O |
 
-After editing `ClQuoter.sol`, run `pnpm exec tsx scripts/risk-evm/build-quoter.ts`; a test fails while the JSON is stale. The tests are in `tests/risk-evm.test.ts`. They replay `fixtures/risk-evm/robinhood-nvda-quotes.json` and the endpoint errors in `fixtures/risk-evm/rpc-errors.json`; none calls the network.
+After editing `ClQuoter.sol`, run `pnpm exec tsx scripts/risk-evm/build-quoter.ts`; a test fails while the JSON is stale. The tests are in `tests/risk-evm.test.ts`. They replay `fixtures/risk-evm/robinhood-nvda-quotes.json` and the endpoint errors in `fixtures/risk-evm/rpc-errors.json`; none calls the network. The token list and the discovery are tested in `tests/risk-evm-universe.test.ts`, which replays one recorded pass for two tokens (`fixtures/risk-evm/robinhood-discovery.json.gz`). The cut is tested in `tests/risk-evm-cut.test.ts`, on the discovery of Oct 5 frozen to what the cut reads (`fixtures/risk/universe/robinhood-discovery-20261005T1947.json.gz`, made by `pnpm risk:freeze-universe-fixture <discovery.json> --chain robinhood`).
 
 ## What Rodrigo's side needs before the API can serve these curves (RISK-1)
 

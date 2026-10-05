@@ -77,6 +77,8 @@ export const SolanaDeploymentRecord = z.strictObject({
       symbol: z.string().nullable(),
       mint: SolanaAddress,
       tokenProgram: z.enum(['token', 'token-2022']),
+      /** As the mint holds them: the set-up reads them from it. */
+      decimals: z.number().int().min(0).max(255),
       keeperOn: z.literal(false),
     }),
   ),

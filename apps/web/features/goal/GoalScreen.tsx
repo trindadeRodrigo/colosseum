@@ -7,12 +7,14 @@ import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { Composer } from '../../components/ui/Composer';
 import { ConstraintSheet, type SheetFact } from '../../components/ui/ConstraintSheet';
+import { cn } from '../../components/ui/cn';
 import { GoalCard } from '../../components/ui/GoalCard';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { ChainName } from '../account/ChainName';
+import { rememberPlan } from '../order/plan-store';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { type BuildOutcome, buildPlan, planProvenance } from './build-plan';
 import { GOAL_DRAFT } from './draft';
@@ -22,6 +24,7 @@ import {
   fieldOfId,
   fieldsOfDraft,
   goalSentence,
+  notFound,
   type ReadSheet,
   restoreGoal,
   sheetGroups,
@@ -35,7 +38,7 @@ import {
 /** Where the limits sit in the page: "Edit limits" leads here. */
 const LIMITS = 'limits';
 const STORE = GOAL_DRAFT;
-const SIGN_IN = '/sign-in?next=/goal';
+const SIGN_IN = '/sign-in?next=/';
 
 type Build = { kind: 'idle' } | { kind: 'solving' } | BuildOutcome;
 
@@ -52,6 +55,7 @@ export function GoalScreen() {
   const [build, setBuild] = useState<Build>({ kind: 'idle' });
   const composer = useRef<HTMLDivElement>(null);
   const outcomeId = useId();
+  const hintId = useId();
   // Which request for a plan is still wanted. An answer is shown only for the limits it was asked
   // for: when the limits change, are read again, or the person changes, the number moves on and an
   // answer on its way is dropped.
@@ -153,6 +157,14 @@ export function GoalScreen() {
     setBuild({ kind: 'solving' });
     const outcome = await buildPlan(apiFetch, valid);
     if (wanted.current !== mine) return;
+    // The plan screen reads the plan from the tab: the API has no route that reads one back.
+    if (outcome.kind === 'built' && port.userId)
+      rememberPlan({
+        id: outcome.id,
+        userId: port.userId,
+        proposal: outcome.proposal,
+        rollUp: outcome.rollUp,
+      });
     setBuild(outcome);
     // The server has no chain for this person, whatever this page had read: it is asked again.
     if (outcome.kind === 'no-chain') retry();
@@ -170,14 +182,17 @@ export function GoalScreen() {
   const chainOff = network?.on === false;
   const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.mockAnnounce };
   const link = buttonClass({ variant: 'link' });
-  // Why the API did not say which chain: it did not answer, it no longer knows this sign-in, or it
-  // asked for fewer requests. Each is a different thing for the person to do.
+  // Why the API did not say which chain: it did not answer, it no longer knows this sign-in, it was
+  // sent no identity token, or it asked for fewer requests. Each is a different thing for the person
+  // to do.
   const unknownWhy =
     account.status !== 'unknown' || account.why === 'unreachable'
       ? t.chain.unknown.body
       : account.why === 'signed_out'
         ? t.chain.unknown.signedOut
-        : t.shell.slowDown;
+        : account.why === 'no_identity'
+          ? t.chain.unknown.noIdentity
+          : t.shell.slowDown;
   const chainFact: SheetFact =
     account.status === 'ready'
       ? {
@@ -228,6 +243,7 @@ export function GoalScreen() {
       : []),
     ...(chainOff ? [t.goal.blocked.chainOff(chainName)] : []),
     ...(build.kind === 'signed-out' ? [t.goal.blocked.signInAgain] : []),
+    ...(build.kind === 'no-identity' ? [t.goal.blocked.noIdentity] : []),
     // Said once: the account says the same when it has read that no chain is chosen.
     ...(build.kind === 'no-chain' && account.status !== 'needs-chain'
       ? [t.goal.blocked.chainNotChosen]
@@ -254,6 +270,15 @@ export function GoalScreen() {
 
   // A built plan is named by its own chain and labelled by its own figures, not by this page's.
   const plan = build.kind === 'built' ? build.proposal : null;
+  // The first reader was made for goals in reais: the note names what it left empty, for the person
+  // to fill in.
+  const missed = sheet ? notFound(sheet.fields, sheet.read).map((key) => t.goal.fields[key]) : [];
+  const readerNote =
+    missed.length > 0
+      ? t.goal.readerMissed(
+          new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(missed),
+        )
+      : t.goal.readerNote;
   const planLabel = plan ? planProvenance(plan) : 'live';
   const planChain = plan?.sheet.chains[0];
   const planChainName = planChain
@@ -275,61 +300,90 @@ export function GoalScreen() {
 
   return (
     <div data-ui="goal-screen" className="flex flex-col gap-8">
-      {sheet ? (
-        // Once the goal is read it is the heading of the page, in the person's terms. A draft: the
-        // status of a goal comes from the engine, and there is no plan for it to speak of yet.
-        <GoalCard
-          variant="header"
-          state="draft"
-          sentence={goalSentence(sheet.fields, t, lang) ?? t.goal.card.unfinished}
-          note={fits ? t.goal.card.draftSet : t.goal.card.draftOpen}
-          action={{ label: t.goal.card.edit, href: `#${LIMITS}` }}
-        />
-      ) : (
-        <header className="flex flex-col gap-3">
-          <h1 className="max-w-(--tf-measure-display) font-display text-display font-normal">
-            {t.goal.title}
-          </h1>
-          <p className="max-w-(--tf-measure-body) text-body-lg text-foreground">{t.goal.lead}</p>
-        </header>
-      )}
+      {/* Before a goal is read, a wide screen sets the question beside the typing box, as his home
+          screen does (hero-3d.html, "Tell us what your money needs to do"); a phone stacks them. */}
+      <div
+        className={cn(
+          'flex flex-col gap-8',
+          !sheet && 'lg:grid lg:grid-cols-12 lg:items-start lg:gap-x-12',
+        )}
+      >
+        {sheet ? (
+          // Once the goal is read it is the heading of the page, in the person's terms. A draft: the
+          // status of a goal comes from the engine, and there is no plan for it to speak of yet.
+          <GoalCard
+            variant="header"
+            state="draft"
+            sentence={goalSentence(sheet.fields, t, lang) ?? t.goal.card.unfinished}
+            note={fits ? t.goal.card.draftSet : t.goal.card.draftOpen}
+            action={{ label: t.goal.card.edit, href: `#${LIMITS}` }}
+          />
+        ) : (
+          <header className="flex flex-col gap-3 lg:col-span-5">
+            {/* Beside the box the question is set a step smaller, so it holds two lines, as his is. */}
+            <h1 className="max-w-(--tf-measure-display) font-display text-h2 font-normal">
+              {t.goal.title}
+            </h1>
+            <p className="max-w-(--tf-measure-body) text-body text-muted-foreground">
+              {t.goal.lead}
+            </p>
+          </header>
+        )}
 
-      <div ref={composer} className="flex max-w-(--tf-measure-docs) flex-col gap-3">
-        <Composer
-          label={t.goal.composer.label}
-          value={text}
-          onChange={setText}
-          onSubmit={read}
-          placeholder={t.goal.composer.placeholder}
-          maxLength={GOAL_TEXT.max}
-          hint={t.goal.composer.hint}
-          busy={reading}
-          // While a plan is being built the limits stand as they were sent: no other goal is read.
-          disabled={solving}
-          error={readSentence}
-          lang={LOCALE[lang]}
-          labels={{ submit: t.goal.composer.submit, busy: t.goal.composer.busy }}
-        />
-        <ul aria-label={t.goal.examples.label} className="flex flex-wrap gap-2">
-          {t.goal.examples.list.map((example) => (
-            <li key={example}>
-              <Button
-                variant="chip"
-                className="h-auto! min-h-8 py-1"
-                disabled={reading || solving}
-                onClick={() => fillWith(example)}
-              >
-                {example}
-              </Button>
-            </li>
-          ))}
-        </ul>
+        <div
+          ref={composer}
+          className={cn('flex max-w-(--tf-measure-docs) flex-col gap-3', !sheet && 'lg:col-span-7')}
+        >
+          <Composer
+            label={t.goal.composer.label}
+            // The question above names the box (composer.md): its label is for a screen reader only.
+            labelHidden={!sheet}
+            value={text}
+            onChange={setText}
+            onSubmit={read}
+            placeholder={t.goal.composer.placeholder}
+            maxLength={GOAL_TEXT.max}
+            // The hint is under the chips, in the mono face, as his simulator has it.
+            describedBy={hintId}
+            busy={reading}
+            // While a plan is being built the limits stand as they were sent: no other goal is read.
+            disabled={solving}
+            error={readSentence}
+            lang={LOCALE[lang]}
+            labels={{ submit: t.goal.composer.submit, busy: t.goal.composer.busy }}
+          />
+          <ul aria-label={t.goal.examples.label} className="flex flex-wrap gap-2">
+            {t.goal.examples.list.map((example) => (
+              <li key={example}>
+                <Button
+                  variant="chip"
+                  className="h-auto! min-h-8 py-1"
+                  disabled={reading || solving}
+                  onClick={() => fillWith(example)}
+                >
+                  {example}
+                </Button>
+              </li>
+            ))}
+          </ul>
+          <p id={hintId} className="font-mono text-source text-muted-foreground">
+            {t.goal.composer.hint}
+          </p>
+          {/* A visitor is told where the plan comes from, as his simulator's last line does. */}
+          {!sheet && account.status === 'signed-out' && (
+            <p className="text-body-sm text-muted-foreground">
+              {t.goal.visitor.before}{' '}
+              <Link href={SIGN_IN} className={link}>
+                {t.goal.visitor.link}
+              </Link>{' '}
+              {t.goal.visitor.after}
+            </p>
+          )}
+        </div>
       </div>
 
       {sheet?.firstReader && (
-        <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
-          {t.goal.readerNote}
-        </p>
+        <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">{readerNote}</p>
       )}
 
       {sheet && check && drawn ? (
@@ -390,6 +444,14 @@ export function GoalScreen() {
               <p className="max-w-(--tf-measure-body) text-body">
                 {t.goal.built.done.body(plan.lines.length, planChainName)}
               </p>
+              {build.kind === 'built' && (
+                <Link
+                  href={`/plan/${encodeURIComponent(build.id)}`}
+                  className={buttonClass({ variant: 'link' })}
+                >
+                  {t.goal.built.done.see}
+                </Link>
+              )}
             </CardBody>
           </Card>
         )}

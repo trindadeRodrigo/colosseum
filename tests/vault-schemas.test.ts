@@ -1003,6 +1003,15 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
       IndexNotFound: 'RecipeNotFound',
       VaultExists: 'VaultExists',
       NotSorted: 'BadInput',
+      // The keeper's path: the program's names, and the program's code where the rule is its own.
+      NotKeeper: 'NotKeeper',
+      PastTarget: 'PastTarget',
+      LossCapReached: 'LossCapReached',
+      PriceOutOfRange: 'PriceOutOfRange',
+      ValueTooLow: 'ReceivedTooLittle',
+      ValueTooLarge: 'AssetNotPriced',
+      AssetHalted: 'MarketClosed',
+      DeadlinePassed: 'Expired',
     });
     // A new code only where no program error means the same.
     const added = [...new Set(Object.values(CONTRACT_ERROR_CODE))].filter(
@@ -1031,6 +1040,8 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
         'NotSupported',
         'RecipeNotFound',
         'VaultExists',
+        // Added with the keeper path: an owner's trade sent after its deadline.
+        'Expired',
       ].sort(),
     );
   });

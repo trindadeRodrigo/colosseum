@@ -168,6 +168,14 @@ export function dollars(amount: number, lang: Lang): string {
   }).format(amount);
 }
 
+/** The fields a plan cannot be built without. The monthly income may be left empty. */
+const NEEDED: readonly FieldKey[] = ['goal', 'amount', 'horizon', 'risk', 'country'];
+
+/** The fields a plan needs that the reader left empty and the person has not filled yet, in sheet order. */
+export function notFound(fields: SheetFields, read: SheetFields): FieldKey[] {
+  return NEEDED.filter((key) => read[key] === '' && fields[key].trim() === '');
+}
+
 /**
  * The goal as one sentence, from the limits as they stand: "Grow $40,000 over 36 months." Null while
  * the three things it is made of cannot all be read.
@@ -192,8 +200,13 @@ export function sheetGroups(
   lang: Lang,
 ): { groups: SheetGroup[]; amount: SheetField } {
   const g = t.goal;
+  const empty = new Set(notFound(fields, read));
   const field = (key: FieldKey, rest: Omit<SheetField, 'id' | 'label' | 'value'>): SheetField => {
     const error = errors[key];
+    // What the reader did not find says so, before what the field takes.
+    const hint = empty.has(key)
+      ? [g.hints.notFound, rest.hint].filter(Boolean).join(' ')
+      : rest.hint;
     return {
       id: FIELD_ID[key],
       label: g.fields[key],
@@ -201,6 +214,7 @@ export function sheetGroups(
       edited: fields[key] !== read[key],
       error: error ? said.goal.errors[error] : undefined,
       ...rest,
+      hint,
     };
   };
   const choose = { value: '', label: g.options.choose };

@@ -173,7 +173,7 @@ const table: fc.Arbitrary<PersonalParameters> = fc
     }),
     defaultUnderlying: fc.record({
       growth: fc.constantFrom('SPY', 'NVDA', 'JitoSOL', 'ZZZ'),
-      gold: fc.constantFrom('GLD', 'SLV', 'ZZZ'),
+      gold: fc.shuffledSubarray(['PAXG', 'GLD', 'SLV', 'ZZZ'], { minLength: 1 }),
     }),
     // The banded fill's numbers (gate SOLVER-PARAMS), any of them.
     yieldBand: fc.double({ min: 0, max: 0.05, noNaN: true }),

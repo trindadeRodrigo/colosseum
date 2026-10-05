@@ -72,17 +72,47 @@ describe('the committed deployment files', () => {
     expect(Object.keys(files)).toContain('mock');
   });
 
-  it("the mock's file names every chain, with the cash the mock itself uses", () => {
+  it("the mock's file names every chain, with the cash the mock itself uses and its decimals", async () => {
     const mock = deploymentsOf('mock');
     expect(Object.keys(mock).sort()).toEqual([...ChainId.options].sort());
     for (const chain of ChainId.options) {
+      const adapter = createMockAdapter({ chain });
+      const cash = (await adapter.listAssets()).find((a) => a.id === adapter.mock.cash);
       expect(mock[chain]).toEqual({
         family: 'mock',
         chain,
-        cash: createMockAdapter({ chain }).mock.cash,
+        cash: adapter.mock.cash,
+        cashDecimals: cash?.decimals,
       });
       expect(isLoadedDeployment(mock[chain])).toBe(true);
     }
+  });
+
+  it("the test network's decimals are the devnet record's, for every mint, and the loaded deployment carries them", () => {
+    const record = JSON.parse(
+      readFileSync(
+        join(DEPLOYMENTS, '..', '..', '..', 'deployments', 'solana-devnet.json'),
+        'utf8',
+      ),
+    ) as {
+      cash: { mint: string; decimals: number };
+      assets: { mint: string; decimals: number }[];
+      retired: { mint: string; decimals: number }[];
+    };
+    const byMint = new Map(
+      [record.cash, ...record.assets, ...record.retired].map((t) => [t.mint, t.decimals]),
+    );
+    const solana = deploymentsOf('testnet').solana;
+    if (solana?.family !== 'solana') throw new Error('no Solana on the test network');
+    expect(Object.keys(solana.assets).length).toBeGreaterThan(1);
+    for (const [id, asset] of Object.entries(solana.assets))
+      expect(asset.decimals, id).toBe(byMint.get(asset.mint));
+    // And every mint the record names is in the file: a listed token (tPAXG) or a retired one (tGLDx).
+    expect(new Set(Object.values(solana.assets).map((a) => a.mint))).toEqual(
+      new Set(byMint.keys()),
+    );
+    // What a screen turns the cash's raw units into dollars with: the file's, never a server's.
+    expect(solana.assets[solana.cash]?.decimals).toBe(6);
   });
 
   it('a network with no committed file has no deployment', () => {
@@ -255,7 +285,7 @@ describe('a deployment is only what the loader read from a file', () => {
           beacon: e.anyone('evil beacon'),
           routers: [],
           cash: 'robinhood:usdc',
-          assets: { 'robinhood:usdc': { address: e.anyone('evil usdc') } },
+          assets: { 'robinhood:usdc': { address: e.anyone('evil usdc'), decimals: 6 } },
         },
       },
     };
@@ -291,8 +321,8 @@ const fileOf = (network: DeploymentFile['network'] = 'local') => ({
       router: s.ROUTER,
       cash: 'solana:usdc',
       assets: {
-        'solana:usdc': { mint: s.someone('mint usdc'), tokenProgram: 'token' },
-        'solana:spy': { mint: s.someone('mint spy'), tokenProgram: 'token-2022' },
+        'solana:usdc': { mint: s.someone('mint usdc'), tokenProgram: 'token', decimals: 6 },
+        'solana:spy': { mint: s.someone('mint spy'), tokenProgram: 'token-2022', decimals: 8 },
       },
       fee: { maxFeeNativeRaw: '5000000' },
     } as Record<string, unknown>,
@@ -304,8 +334,8 @@ const fileOf = (network: DeploymentFile['network'] = 'local') => ({
       routers: [e.ROUTER],
       cash: 'robinhood:usdc',
       assets: {
-        'robinhood:usdc': { address: e.anyone('token usdc') },
-        'robinhood:spy': { address: e.anyone('token spy') },
+        'robinhood:usdc': { address: e.anyone('token usdc'), decimals: 6 },
+        'robinhood:spy': { address: e.anyone('token spy'), decimals: 18 },
       },
       fee: { maxFeeNativeRaw: '1000000000000000', maxGas: 5_000_000 },
     } as Record<string, unknown>,
@@ -386,6 +416,7 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
   const mint = (label: string, tokenProgram = 'token') => ({
     mint: s.someone(label),
     tokenProgram,
+    decimals: 8,
   });
 
   const wrong: [string, (f: File) => unknown, RegExp][] = [
@@ -422,7 +453,10 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
     ['no family', drop(sol, 'family'), /family is not solana/],
     [
       'a mock chain in a real network',
-      (f) => ({ ...f, chains: { ...f.chains, base: { family: 'mock', cash: 'base:usdc' } } }),
+      (f) => ({
+        ...f,
+        chains: { ...f.chains, base: { family: 'mock', cash: 'base:usdc', cashDecimals: 6 } },
+      }),
       /base: its family is not evm/,
     ],
     [
@@ -453,7 +487,7 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
     ],
     [
       'a mint that is not an address',
-      asset(sol, 'solana:spy', { mint: 'spy', tokenProgram: 'token' }),
+      asset(sol, 'solana:spy', { mint: 'spy', tokenProgram: 'token', decimals: 6 }),
       /mint of solana:spy/,
     ],
     [
@@ -463,8 +497,8 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
     ],
     [
       'a field nobody reads in an asset',
-      asset(sol, 'solana:spy', { ...mint('mint spy'), decimals: 6 }),
-      /decimals/,
+      asset(sol, 'solana:spy', { ...mint('mint spy'), symbol: 'SPY' }),
+      /symbol/,
     ],
     ['an asset that is not an object', asset(sol, 'solana:spy', 'spy'), /not an object/],
     ['no assets', drop(sol, 'assets'), /assets is not an object/],
@@ -538,33 +572,63 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
     ['one router twice', set(evm, 'routers', [e.ROUTER, e.ROUTER]), /addresses are the same/],
     [
       'the factory as the cash token',
-      asset(evm, 'robinhood:usdc', { address: e.FACTORY }),
+      asset(evm, 'robinhood:usdc', { address: e.FACTORY, decimals: 6 }),
       /addresses are the same/,
     ],
     [
       'a router as a token',
-      asset(evm, 'robinhood:spy', { address: e.ROUTER }),
+      asset(evm, 'robinhood:spy', { address: e.ROUTER, decimals: 6 }),
       /addresses are the same/,
     ],
     [
       'a token that is not an address',
-      asset(evm, 'robinhood:spy', { address: 'spy' }),
+      asset(evm, 'robinhood:spy', { address: 'spy', decimals: 6 }),
       /token of robinhood:spy/,
     ],
     [
       'a field nobody reads in a token',
-      asset(evm, 'robinhood:spy', { address: e.anyone('t'), decimals: 6 }),
-      /decimals/,
+      asset(evm, 'robinhood:spy', { address: e.anyone('t'), decimals: 6, symbol: 'SPY' }),
+      /symbol/,
     ],
     [
       'an asset of another chain on EVM',
-      asset(evm, 'base:usdc', { address: e.anyone('t') }),
+      asset(evm, 'base:usdc', { address: e.anyone('t'), decimals: 6 }),
       /not an asset of robinhood/,
     ],
     [
       'cash that is not listed on EVM',
       set(evm, 'cash', 'robinhood:gold'),
       /cash is not one of its assets/,
+    ],
+    [
+      'no decimals for a token',
+      asset(evm, 'robinhood:spy', { address: e.anyone('t') }),
+      /decimals of robinhood:spy/,
+    ],
+    [
+      'decimals as text',
+      asset(evm, 'robinhood:spy', { address: e.anyone('t'), decimals: '18' }),
+      /decimals/,
+    ],
+    [
+      'decimals past a byte',
+      asset(evm, 'robinhood:spy', { address: e.anyone('t'), decimals: 256 }),
+      /decimals/,
+    ],
+    [
+      'decimals below zero',
+      asset(sol, 'solana:spy', { ...mint('mint spy', 'token-2022'), decimals: -1 }),
+      /decimals of solana:spy/,
+    ],
+    [
+      'decimals of a fraction',
+      asset(sol, 'solana:spy', { ...mint('mint spy', 'token-2022'), decimals: 1.5 }),
+      /decimals/,
+    ],
+    [
+      'no decimals for a mint',
+      asset(sol, 'solana:usdc', { mint: s.someone('mint usdc'), tokenProgram: 'token' }),
+      /decimals of solana:usdc/,
     ],
     ["a proxy's code that is not hex", set(evm, 'proxyCreationCode', '0xzz'), /hex/],
     [
@@ -581,6 +645,16 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
       /cash is not an asset of base/,
     ],
     ['a mock chain with no cash', mockFile({ family: 'mock' }), /cash is not an asset of base/],
+    [
+      'a mock chain with no decimals for its cash',
+      mockFile({ family: 'mock', cash: 'base:usdc' }),
+      /cashDecimals of base:usdc/,
+    ],
+    [
+      'a mock chain with decimals that are no number',
+      mockFile({ family: 'mock', cash: 'base:usdc', cashDecimals: 6.5 }),
+      /cashDecimals of base:usdc/,
+    ],
     [
       'a mock chain with cash of no name',
       mockFile({ family: 'mock', cash: 'base:' }),

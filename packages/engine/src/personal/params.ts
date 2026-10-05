@@ -68,7 +68,7 @@ export const PERSONAL_PARAMS: PersonalParameters = {
 
   // A plan to protect starts from no shared portfolio: the one it had (Storm Cellar) holds stocks.
   defaultTheme: { grow: 'the-500', income: null, protect: null },
-  defaultUnderlying: { growth: 'SPY', gold: 'GLD' },
+  defaultUnderlying: { growth: 'SPY', gold: ['PAXG', 'GLD'] },
 
   // Gate SOLVER-PARAMS (Rodrigo, Oct 5). Each is a starting number with the test that will tune it.
   // Tuned by C2: perturb each yield by its week-on-week spread; widen until adjacent ranks stop swapping.
@@ -147,6 +147,7 @@ export const PERSONAL_PARAMS_STATUS: Record<Exclude<keyof PersonalParameters, 'v
   defaultUnderlying: {
     status: 'starting',
     from: 'The prototype: SPY for stocks and GLD for gold when no shared portfolio fills the sleeve.',
+    changed: 'Oct 5, gate GOLD-PAXG: PAXG first, GLD where PAXG is not listed (Thom)',
   },
   yieldBand: {
     status: 'set',
