@@ -4,7 +4,9 @@
 // holds (it comes with every sign-in and every refresh of the session) is used as it is. A new one is
 // asked for only when there is none, when it has run out, when it does not list a wallet linked since
 // it was made, or when the API refused the sign-in; one call at a time, and never again for a while
-// after Privy refused. What was held is still sent when asking fails.
+// after Privy refused. What was held is still sent when asking fails, until it has ended: an ended
+// token is not sent at all, so the API says none was sent and the screen says to wait, not to sign in
+// again.
 
 /** A token this close to its end is treated as ended: it could run out on the way. */
 const MARGIN_SECONDS = 60;
@@ -77,7 +79,8 @@ export function identityTokens(
 ): (ask: IdentityAsk) => Promise<string | null> {
   let user: string | null = null;
   let fetched: { token: string; at: number } | null = null;
-  // The wallets a token was last asked for: a token that does not list them is asked for once.
+  // The wallets a token came back for: a token that does not list them is asked for until one comes
+  // back, then not again for the same wallets.
   let askedFor: string | null = null;
   let quietUntil = 0;
   let inFlight: Promise<string | null> | null = null;
@@ -103,15 +106,18 @@ export function identityTokens(
     const lists = best !== null && ask.wallets.every((w) => best.claims.wallets.has(w));
     const justFetched = fetched !== null && now() - fetched.at < FRESH_MS;
     const stale = !alive || (!lists && askedFor !== want) || (ask.fresh === true && !justFetched);
-    if (!stale || now() < quietUntil) return best?.token ?? null;
+    // Past its end a token is refused by the API whatever it lists.
+    const held = best !== null && best.claims.exp !== null && best.claims.exp > now() / 1000;
+    const fallback = held ? best.token : null;
+    if (!stale || now() < quietUntil) return fallback;
 
-    askedFor = want;
     inFlight ??= fetchToken().finally(() => {
       inFlight = null;
     });
     try {
       const got = mine(await inFlight);
       if (got) {
+        askedFor = want;
         fetched = { token: got.token, at: now() };
         return got.token;
       }
@@ -119,6 +125,6 @@ export function identityTokens(
       // Privy refused (429) or did not answer: what was held is sent, and Privy is left alone a while.
     }
     quietUntil = now() + QUIET_MS;
-    return best?.token ?? null;
+    return fallback;
   };
 }
