@@ -47,6 +47,7 @@
     "risk:install-collector": "zsh scripts/risk/collector/install.sh",
     "risk:coverage": "tsx scripts/risk/coverage.ts",
     "risk:retier": "tsx scripts/risk/retier.ts",
+    "risk:freeze-universe-fixture": "tsx scripts/risk/freeze-universe-fixture.ts",
     "risk:import": "tsx scripts/risk/import.ts",
     "risk:compute": "tsx scripts/risk/compute.ts",
     "risk:history": "tsx scripts/risk/history-backfill.ts",
