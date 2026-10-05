@@ -293,8 +293,7 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
         $.tokens.add(leg.asset);
         $.tokens.add(leg.cash);
         require(
-            s.router != address(this) && s.router != PERMIT2 && !$.tokens.contains(s.router),
-            RouterNotAllowed(s.router)
+            s.router != address(this) && s.router != PERMIT2 && !$.tokens.contains(s.router), RouterNotAllowed(s.router)
         );
         address[] memory list = $.tokens.values();
         uint256[] memory held = new uint256[](list.length);
@@ -610,10 +609,7 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
     // ---- the keeper's rules (DESIGN-VAULT.md section 5)
 
     /// Checks 1, 2, 6, 8, 9, 10 and 11 and the direction of check 5, and values the vault for the rest.
-    function _beforeLeg(VaultStorage storage $, IVaultConfig cfg, Swap calldata s)
-        private
-        returns (Leg memory leg)
-    {
+    function _beforeLeg(VaultStorage storage $, IVaultConfig cfg, Swap calldata s) private returns (Leg memory leg) {
         // Check 1. There is no operator of a vault's own: as on Solana, where `set_keeper` is not built.
         require(msg.sender == cfg.keeper(), NotKeeper(msg.sender));
         require($.autoFollow, AutoFollowOff());
@@ -624,9 +620,7 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
         // bought only while it is listed; one taken off the list can still be sold.
         leg.cash = cfg.cashToken();
         bool inIsCash = s.tokenIn == leg.cash;
-        require(
-            leg.cash != address(0) && inIsCash != (s.tokenOut == leg.cash), NotCashLeg(s.tokenIn, s.tokenOut)
-        );
+        require(leg.cash != address(0) && inIsCash != (s.tokenOut == leg.cash), NotCashLeg(s.tokenIn, s.tokenOut));
         leg.buying = inIsCash;
         leg.asset = inIsCash ? s.tokenOut : s.tokenIn;
         bool isTarget;
@@ -687,8 +681,7 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
             ? (spent, _value(received, leg.price, leg.config, leg.cashDecimals))
             : (_value(spent, leg.price, leg.config, leg.cashDecimals), received);
         require(
-            receivedValue * BPS >= spentValue * (BPS - leg.params.toleranceBps),
-            ValueTooLow(spentValue, receivedValue)
+            receivedValue * BPS >= spentValue * (BPS - leg.params.toleranceBps), ValueTooLow(spentValue, receivedValue)
         );
 
         // Check 5: where the asset sits after the trade.
@@ -775,7 +768,8 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
     function _checkToken(address token, AssetConfig memory a) private view {
         if (a.scheduleSelector != bytes4(0)) {
             (bool ok, uint256 effectiveAt) = _readWord(token, a.scheduleSelector);
-            uint256 apart = effectiveAt > block.timestamp ? effectiveAt - block.timestamp : block.timestamp - effectiveAt;
+            uint256 apart =
+                effectiveAt > block.timestamp ? effectiveAt - block.timestamp : block.timestamp - effectiveAt;
             require(ok && apart >= MULTIPLIER_WINDOW, MultiplierWindow(token, effectiveAt));
         }
         if (a.pauseProbe != address(0) && a.pauseSelector != bytes4(0)) {

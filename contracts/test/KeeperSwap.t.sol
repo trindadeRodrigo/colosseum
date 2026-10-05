@@ -114,7 +114,9 @@ abstract contract KeeperSwapTest is KeeperFixture {
     function test_A13_autoFollowOff_isRefused() public {
         vm.prank(owner);
         vault.setAutoFollow(false);
-        _expectKeeperRevert(_buy(direct, address(stockA), 4000 * USD, 0), abi.encodeWithSelector(IBasketVault.AutoFollowOff.selector));
+        _expectKeeperRevert(
+            _buy(direct, address(stockA), 4000 * USD, 0), abi.encodeWithSelector(IBasketVault.AutoFollowOff.selector)
+        );
     }
 
     // ---- check 11: the pause
@@ -123,7 +125,9 @@ abstract contract KeeperSwapTest is KeeperFixture {
     function test_A8_paused_theKeeperIsRefused_andTheOwnerWithdraws() public {
         vm.prank(guardian);
         factory.pauseKeeper();
-        _expectKeeperRevert(_buy(direct, address(stockA), 4000 * USD, 0), abi.encodeWithSelector(IBasketVault.KeeperPaused.selector));
+        _expectKeeperRevert(
+            _buy(direct, address(stockA), 4000 * USD, 0), abi.encodeWithSelector(IBasketVault.KeeperPaused.selector)
+        );
 
         _ownerBuys(address(stockA), 1000 * USD);
         vm.startPrank(owner);
@@ -215,12 +219,10 @@ abstract contract KeeperSwapTest is KeeperFixture {
         _ownerBuys(address(stockB), 1000 * USD);
         Swap memory s = _buy(direct, address(stockA), 4000 * USD, 0);
         s.data = abi.encodeCall(
-            MockRouter.swapAndSeize,
-            (address(cash), address(stockA), 4000 * USD, 40 * unit, address(stockB), 5 * unit)
+            MockRouter.swapAndSeize, (address(cash), address(stockA), 4000 * USD, 40 * unit, address(stockB), 5 * unit)
         );
         _expectKeeperRevert(
-            s,
-            abi.encodeWithSelector(IBasketVault.OtherTokenDebited.selector, address(stockB), 20 * unit, 15 * unit)
+            s, abi.encodeWithSelector(IBasketVault.OtherTokenDebited.selector, address(stockB), 20 * unit, 15 * unit)
         );
     }
 
@@ -272,7 +274,9 @@ abstract contract KeeperSwapTest is KeeperFixture {
         for (uint256 i; i < reserved.length; ++i) {
             Swap memory s = Swap(reserved[i], address(cash), address(stockA), 4000 * USD, 0, "");
             _expectKeeperRevert(s, abi.encodeWithSelector(IBasketVault.RouterNotAllowed.selector, reserved[i]));
-            vm.mockCall(address(factory), abi.encodeWithSignature("routerPull(address)", reserved[i]), abi.encode(uint8(1)));
+            vm.mockCall(
+                address(factory), abi.encodeWithSignature("routerPull(address)", reserved[i]), abi.encode(uint8(1))
+            );
             _expectKeeperRevert(s, abi.encodeWithSelector(IBasketVault.RouterNotAllowed.selector, reserved[i]));
             vm.clearMockedCalls();
         }
@@ -288,7 +292,8 @@ abstract contract KeeperSwapTest is KeeperFixture {
         for (uint256 i; i < inner.length; ++i) {
             Swap memory s = _buy(direct, address(stockA), 4000 * USD, 0);
             s.data = abi.encodeCall(
-                MockRouter.swapAndCall, (address(cash), address(stockA), 4000 * USD, 40 * unit, address(vault), inner[i])
+                MockRouter.swapAndCall,
+                (address(cash), address(stockA), 4000 * USD, 40 * unit, address(vault), inner[i])
             );
             _expectKeeperRevert(
                 s,
@@ -335,7 +340,8 @@ abstract contract KeeperSwapTest is KeeperFixture {
     /// A7: a purchase of an asset over its target, a sale of one under it, and either at the target.
     function test_A7_theWrongDirection_isRefused() public {
         _expectKeeperRevert(
-            _sell(direct, address(stockA), 0, 0), abi.encodeWithSelector(IBasketVault.NotTowardTarget.selector, address(stockA))
+            _sell(direct, address(stockA), 0, 0),
+            abi.encodeWithSelector(IBasketVault.NotTowardTarget.selector, address(stockA))
         );
         _ownerBuys(address(stockA), 6000 * USD);
         _expectKeeperRevert(
@@ -455,7 +461,8 @@ abstract contract KeeperSwapTest is KeeperFixture {
         // Friday 15:00, four days on: three sevenths of 48 is left, and 36 more is past 49.76.
         _later(4 days);
         _expectKeeperRevert(
-            next, abi.encodeWithSelector(IBasketVault.LossCapReached.selector, 20_571_428 + 36 * USD, 9952 * USD * 50 / BPS)
+            next,
+            abi.encodeWithSelector(IBasketVault.LossCapReached.selector, 20_571_428 + 36 * USD, 9952 * USD * 50 / BPS)
         );
         // The Monday after, seven days on: nothing is left.
         _later(3 days);
@@ -744,11 +751,17 @@ abstract contract KeeperSwapTest is KeeperFixture {
 
         stockA.setSchedule(block.timestamp + 1 days - 1);
         _expectKeeperRevert(
-            s, abi.encodeWithSelector(IBasketVault.MultiplierWindow.selector, address(stockA), block.timestamp + 1 days - 1)
+            s,
+            abi.encodeWithSelector(
+                IBasketVault.MultiplierWindow.selector, address(stockA), block.timestamp + 1 days - 1
+            )
         );
         stockA.setSchedule(block.timestamp - 1 days + 1);
         _expectKeeperRevert(
-            s, abi.encodeWithSelector(IBasketVault.MultiplierWindow.selector, address(stockA), block.timestamp - 1 days + 1)
+            s,
+            abi.encodeWithSelector(
+                IBasketVault.MultiplierWindow.selector, address(stockA), block.timestamp - 1 days + 1
+            )
         );
         stockA.setSilent(true);
         _expectKeeperRevert(s, abi.encodeWithSelector(IBasketVault.MultiplierWindow.selector, address(stockA), 0));

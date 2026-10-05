@@ -250,8 +250,8 @@ contract KeeperStorageLayoutTest is KeeperFixture {
 
     function test_storage_theKeepersFields() public {
         _keeperSwap(_buy(direct, address(stockA), 4000 * USD, 120));
-        uint256 s = uint256(keccak256(abi.encode(uint256(keccak256("basket.storage.BasketVault")) - 1)))
-            & ~uint256(0xff);
+        uint256 s =
+            uint256(keccak256(abi.encode(uint256(keccak256("basket.storage.BasketVault")) - 1))) & ~uint256(0xff);
         address where = address(vault);
         assertEq(uint256(vm.load(where, bytes32(s + 8))), 0, "lastKeeperAt: the mapping's own slot");
         bytes32 entry = keccak256(abi.encode(address(stockA), s + 8));
