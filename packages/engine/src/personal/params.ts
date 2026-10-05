@@ -42,7 +42,10 @@ export const PERSONAL_PARAMS: PersonalParameters = {
 
   // The most of the plan in one stock or one crypto asset, by risk.
   capPerStockBps: { low: 1000, medium: 2000, high: 3500 },
-  // The most of the plan with one issuer, by risk.
+  // The most of the plan with one issuer, by risk. Open question for Rodrigo: gate SOLVER-PARAMS
+  // (his PR #43, Oct 5) sets one issuer at most 50% of a plan. Every stock token on a chain has one
+  // issuer, so 50% at every risk would hold a plan to grow to 50% stock tokens, while the gate's facts
+  // speak of yield assets. Left as it was until the engine's slices settle it.
   capPerIssuerBps: { low: 5000, medium: 7000, high: 10_000 },
 
   // Of a token's measured exit capacity, the share one plan may count on: the most dollars a line of
