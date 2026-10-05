@@ -1,12 +1,23 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { createMockAdapter, type MockAdapter, mockAddress } from '@colosseum/chain-mock';
+import { familyIdOf, metaHash, view } from '@colosseum/basket';
+import {
+  createMockAdapter,
+  type MockAdapter,
+  mockAddress,
+  mockRecipeId,
+} from '@colosseum/chain-mock';
 import {
   type BasketSheet,
+  ChainError,
   ConfigResponse,
   chainProvenance,
   DEFAULT_FLAGS,
+  DISCLAIMER,
   type OrderDetail,
   parseChainConfigs,
+  type Recipe,
+  type RecipeVersionView,
+  type SharedFamily,
   type Target,
 } from '@colosseum/schemas';
 import { ApiRefusal, basketIdOfPlan, deploymentsOf, type OrderApi } from '@colosseum/sdk';
@@ -38,11 +49,27 @@ const WEIGHTS: Target[] = [
   { asset: `${CHAIN}:gold`, weightBps: 1500 },
 ];
 
+type Published = { familyId: string; slug: string; name: string; copy: string; creator: string };
+
 type World = {
   adapter: MockAdapter;
-  double?: { owner: string; api: OrderApi; buy: (usd: number) => Promise<OrderDetail> };
+  double?: {
+    owner: string;
+    api: OrderApi;
+    buy: (usd: number) => Promise<OrderDetail>;
+    place: ReturnType<typeof apiDouble>['place'];
+  };
+  /** The shared portfolios publish orders were made for, by slug: shown once the chain holds them. */
+  published: Map<string, Published>;
+  /** Every version seen of each recipe, by its id. */
+  versions: Map<string, Map<number, RecipeVersionView>>;
 };
-let world: World = { adapter: createMockAdapter({ chain: CHAIN }) };
+const freshWorld = (): World => ({
+  adapter: createMockAdapter({ chain: CHAIN }),
+  published: new Map(),
+  versions: new Map(),
+});
+let world: World = freshWorld();
 let tamperNext = false;
 /** The steps the web reported signed bytes or an id for, in order. */
 let reports: string[] = [];
@@ -123,9 +150,245 @@ function doubleFor(owner: string) {
       await adapter.mock.send(tx);
     },
   };
+  // A wallet first seen here gets mock gas, as from a faucet: a publish or a follow deposits nothing,
+  // and its one step still pays the network fee.
+  adapter.mock.fund(owner, { gasRaw: '1000000000' });
   const made = apiDouble(w, { basketId: basketIdOfPlan(PLAN_ID), targets: WEIGHTS });
-  world.double = { owner, api: made.api, buy: made.buy };
+  world.double = { owner, api: made.api, buy: made.buy, place: made.place };
   return world.double;
+}
+
+// ---- Shared portfolios (WEB-4), as apps/api serves them, on the stub's mock chain. ----
+
+/** On this stub gold has no price oracle, as on Solana's test network before PAXG (GOLD-ONE-TAP). */
+const NO_ORACLE = new Set([`${CHAIN}:gold`]);
+
+const targetsOf = (r: Recipe): Target[] =>
+  r.components.flatMap((c) =>
+    c.kind === 'asset' ? [{ asset: c.asset, weightBps: c.weightBps }] : [],
+  );
+
+async function recipeAt(p: Published) {
+  try {
+    return await world.adapter.getRecipe(mockRecipeId(CHAIN, p.creator, p.familyId));
+  } catch (e) {
+    if (e instanceof ChainError) return null;
+    throw e;
+  }
+}
+
+/** A shared portfolio as GET /v1/indexes/{slug} answers it, or null before its publish landed. */
+async function familyOf(p: Published): Promise<SharedFamily | null> {
+  const read = await recipeAt(p);
+  if (!read) return null;
+  const hash = metaHash({ ...p, kind: 'index' });
+  const seen = world.versions.get(read.active.onchainId ?? '') ?? new Map();
+  for (const v of world.versions.get(read.active.onchainId ?? '')?.values() ?? [])
+    if (v.status === 'active' || v.status === 'pending') v.status = 'superseded';
+  const versionOf = (r: Recipe, status: 'active' | 'pending'): RecipeVersionView => ({
+    version: r.version,
+    effectiveAt: r.effectiveAt,
+    components: targetsOf(r),
+    metaHash: r.metaHash,
+    status,
+  });
+  const active = versionOf(read.active, 'active');
+  const pending = read.pending ? versionOf(read.pending, 'pending') : null;
+  seen.set(active.version, active);
+  if (pending) seen.set(pending.version, pending);
+  world.versions.set(read.active.onchainId ?? '', seen);
+  const held = [...targetsOf(read.active), ...(read.pending ? targetsOf(read.pending) : [])];
+  const without = [...new Set(held.map((t) => t.asset))].filter((a) => NO_ORACLE.has(a));
+  return {
+    familyId: p.familyId,
+    slug: p.slug,
+    name: p.name,
+    copy: p.copy,
+    kind: 'index',
+    platform: false,
+    creatorKind: 'community',
+    chains: [CHAIN],
+    recipes: [
+      {
+        chain: CHAIN,
+        name: 'Solana',
+        onchainId: read.active.onchainId ?? '',
+        creator: p.creator,
+        active,
+        pending,
+        autoFollow: without.length
+          ? { offered: false, reason: 'no_oracle', assets: without }
+          : { offered: true },
+        textMatches:
+          active.metaHash === hash ? 'active' : pending?.metaHash === hash ? 'pending' : null,
+        source: 'chain',
+        observedAt: new Date().toISOString(),
+        provenance: 'mock',
+      },
+    ],
+  };
+}
+
+const cashOf = (usd: number) => BigInt(Math.round(usd * 100)) * 10_000n;
+
+/** The trades of a deposit, as apps/api plans them (`tradesFor`). */
+function tradesFor(targets: Target[], cashRaw: bigint) {
+  const sum = targets.reduce((n, t) => n + t.weightBps, 0);
+  const invested = (cashRaw * BigInt(sum)) / 10_000n;
+  const shares = targets.map((t) => (invested * BigInt(t.weightBps)) / BigInt(sum));
+  const largest = targets.findIndex(
+    (t) => t.weightBps === Math.max(...targets.map((x) => x.weightBps)),
+  );
+  shares[largest] = (shares[largest] ?? 0n) + invested - shares.reduce((n, x) => n + x, 0n);
+  return targets.map((t, i) => ({
+    sell: world.adapter.mock.cash,
+    buy: t.asset,
+    amountInRaw: String(shares[i] ?? 0n),
+  }));
+}
+
+type Body = Record<string, unknown> & { type: string };
+
+/** POST /v1/orders for a publish, a buy of a shared portfolio, or a follow. */
+async function placeShared(body: Body): Promise<OrderDetail> {
+  const { adapter } = world;
+  if (body.type === 'publish') {
+    const creator = (body.creator as { solana?: string }).solana ?? '';
+    const slug = String(body.family);
+    const p: Published = {
+      familyId: familyIdOf(slug),
+      slug,
+      name: String(body.name),
+      copy: String(body.copy),
+      creator,
+    };
+    if (body.familyId !== undefined && body.familyId !== p.familyId)
+      throw new ApiRefusal(409, { error: 'the family id is not the one of this shared portfolio' });
+    const [draft] = body.recipes as { chain: string; components: Recipe['components'] }[];
+    const exists = await recipeAt(p);
+    world.published.set(slug, p);
+    return doubleFor(creator).place({
+      type: 'publish',
+      summary: 'Publish your shared portfolio on Solana',
+      needsConsent: ['publish'],
+      steps: [
+        {
+          kind: 'publish',
+          description: exists ? 'Publish the next version' : 'Publish version 1',
+          trades: [],
+        },
+      ],
+      build: () =>
+        adapter.buildPublishRecipe({
+          creator,
+          recipe: {
+            schemaVersion: 1,
+            familyId: p.familyId,
+            chain: CHAIN,
+            onchainId: null,
+            creator,
+            kind: 'community',
+            version: 1,
+            effectiveAt: 0,
+            components: draft?.components ?? [],
+            metaHash: metaHash({ ...p, kind: 'index' }),
+            maxFeeBps: 0,
+            flags: 0,
+          },
+        }),
+    });
+  }
+  const p = world.published.get(String(body.family));
+  const read = p && (await recipeAt(p));
+  if (!p || !read) throw new ApiRefusal(404, { error: 'no shared portfolio with that slug' });
+  const { active } = read;
+  if (body.version !== undefined && body.version !== active.version)
+    throw new ApiRefusal(409, { error: 'another version is in effect', code: 'VERSION_CHANGED' });
+  if (body.type === 'buy') {
+    const owner = (body.owner as { solana?: string }).solana ?? '';
+    const basketId = basketIdOfPlan(p.familyId);
+    const deposit = cashOf(Number(body.amountUsd));
+    const trades = tradesFor(targetsOf(active), deposit);
+    const vaultOf = async () =>
+      (await adapter.getVaults(owner)).find((v) => v.basketId === basketId)?.address ?? '';
+    const existing = await vaultOf();
+    return doubleFor(owner).place({
+      type: 'buy',
+      summary: 'Buy a shared portfolio on Solana, following it',
+      depositRaw: String(deposit),
+      needsConsent: [],
+      steps: [
+        {
+          kind: existing ? 'deposit' : 'create_vault',
+          description: 'Open the vault that follows it',
+          cashRaw: String(deposit),
+          trades: [],
+        },
+        ...trades.map((t) => ({ kind: 'swap' as const, description: 'Buy', trades: [t] })),
+      ],
+      build: async (leg) =>
+        leg.kind === 'create_vault'
+          ? adapter.buildCreateVault({
+              owner,
+              basketId,
+              targets: [],
+              recipeOnchainId: active.onchainId ?? '',
+              expectedVersion: active.version,
+              autoFollow: false,
+              depositRaw: String(deposit),
+              slippageBps: 100,
+            })
+          : leg.kind === 'deposit'
+            ? adapter.buildDeposit({
+                vault: await vaultOf(),
+                amountRaw: String(deposit),
+                slippageBps: 100,
+              })
+            : adapter.buildOwnerSwap({
+                vault: await vaultOf(),
+                trades: leg.trades,
+                slippageBps: 100,
+              }),
+    });
+  }
+  // a follow by a vault the person has
+  const state = await adapter.getVault(String(body.vault));
+  if (!state) throw new ApiRefusal(404, { error: 'no vault of yours at that address' });
+  const steps: { kind: 'accept_version' | 'set_auto_follow'; description: string; trades: [] }[] =
+    [];
+  if (state.recipeOnchainId !== active.onchainId || state.acceptedVersion !== active.version)
+    steps.push({ kind: 'accept_version', description: 'Follow the version in effect', trades: [] });
+  if (body.autoFollow !== state.autoFollow)
+    steps.push({ kind: 'set_auto_follow', description: 'Switch auto-follow', trades: [] });
+  return doubleFor(state.owner).place({
+    type: 'follow',
+    summary: 'Follow a shared portfolio with your vault on Solana',
+    needsConsent: [
+      ...(steps.some((x) => x.kind === 'accept_version') ? (['new_asset'] as const) : []),
+      ...(body.autoFollow && steps.some((x) => x.kind === 'set_auto_follow')
+        ? (['auto_follow_on'] as const)
+        : []),
+    ],
+    steps,
+    build: (leg) =>
+      leg.kind === 'accept_version'
+        ? adapter.buildAcceptVersion({
+            vault: state.address,
+            recipeOnchainId: active.onchainId ?? '',
+            expectedVersion: active.version,
+          })
+        : adapter.buildSetAutoFollow({ vault: state.address, on: Boolean(body.autoFollow) }),
+  });
+}
+
+/** The vaults of whoever the stub has seen, as GET /v1/portfolio and the public page read them. */
+async function vaultView(address: string) {
+  const state = await world.adapter.getVault(address);
+  if (!state) return null;
+  const listed = await world.adapter.listAssets();
+  const ids = [state.cash.asset, ...state.positions.map((p) => p.asset)];
+  const prices = await world.adapter.getPrices([...new Set(ids)]);
+  return { vault: { ...view(state, prices, listed), provenance: 'mock' as const }, prices };
 }
 
 const read = (req: IncomingMessage) =>
@@ -163,7 +426,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     return;
   }
   if (path === '/__stub/reset' && method === 'POST') {
-    world = { adapter: createMockAdapter({ chain: CHAIN }) };
+    world = freshWorld();
     tamperNext = false;
     reports = [];
     return send(res, 200, { ok: true });
@@ -199,7 +462,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   }
   if (path === '/v1/mock/fund' && method === 'POST') {
     const body = (await read(req)) as { cashUsd: number };
-    const owner = world.double?.owner ?? url.searchParams.get('wallet');
+    const owner = world.double?.owner ?? lastWallet;
     for (const who of [owner, lastWallet].filter((x): x is string => Boolean(x)))
       world.adapter.mock.fund(who, {
         gasRaw: '1000000000',
@@ -251,10 +514,76 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     });
   }
   if (path === '/v1/orders' && method === 'POST') {
-    const body = (await read(req)) as { owner: { solana?: string }; amountUsd: number };
-    const owner = body.owner.solana;
+    const body = (await read(req)) as Body & { owner?: { solana?: string }; amountUsd: number };
+    if (body.type !== 'buy' || body.family !== undefined)
+      return send(res, 200, await placeShared(body));
+    const owner = body.owner?.solana;
     if (!owner) return send(res, 422, { error: 'a buy names its owner' });
     return send(res, 200, await doubleFor(owner).buy(body.amountUsd));
+  }
+  if (path === '/v1/shelf') {
+    const families = [];
+    for (const p of world.published.values()) {
+      const family = await familyOf(p);
+      if (family)
+        families.push({
+          ...family,
+          recipes: family.recipes.map((r) => ({ ...r, source: 'cache' })),
+        });
+    }
+    return send(res, 200, { families, disclaimer: DISCLAIMER.en });
+  }
+  const shared = /^\/v1\/indexes\/([^/]+)(\/versions)?$/.exec(path);
+  if (shared) {
+    const p = world.published.get(decodeURIComponent(shared[1] ?? ''));
+    const family = p ? await familyOf(p) : null;
+    if (!family) return send(res, 404, { error: 'no shared portfolio with that slug' });
+    if (!shared[2]) return send(res, 200, { family, disclaimer: DISCLAIMER.en });
+    const [recipe] = family.recipes;
+    const seen = world.versions.get(recipe?.onchainId ?? '');
+    return send(res, 200, {
+      familyId: family.familyId,
+      slug: family.slug,
+      chains: recipe
+        ? [
+            {
+              chain: CHAIN,
+              onchainId: recipe.onchainId,
+              source: 'chain',
+              observedAt: recipe.observedAt,
+              provenance: 'mock',
+              versions: [...(seen?.values() ?? [])].sort((a, b) => b.version - a.version),
+            },
+          ]
+        : [],
+    });
+  }
+  if (path === '/v1/portfolio') {
+    const owner = world.double?.owner ?? lastWallet;
+    const vaults = [];
+    for (const v of owner ? await world.adapter.getVaults(owner) : []) {
+      const read = await vaultView(v.address);
+      if (read) vaults.push(read.vault);
+    }
+    return send(res, 200, {
+      chains: [
+        { chain: CHAIN, name: 'Solana', mode: 'mock', provenance: 'mock', vaults, prices: [] },
+      ],
+      disclaimer: DISCLAIMER.en,
+    });
+  }
+  const vault = /^\/v1\/vaults\/([^/]+)\/([^/]+)$/.exec(path);
+  if (vault) {
+    const read = vault[1] === CHAIN ? await vaultView(decodeURIComponent(vault[2] ?? '')) : null;
+    if (!read) return send(res, 404, { error: 'no vault at that address' });
+    return send(res, 200, {
+      chain: CHAIN,
+      name: 'Solana',
+      mode: 'mock',
+      provenance: 'mock',
+      ...read,
+      disclaimer: DISCLAIMER.en,
+    });
   }
   const order = /^\/v1\/orders\/([^/]+)$/.exec(path);
   const leg = /^\/v1\/orders\/([^/]+)\/legs\/([^/]+)\/(build|report|cancel)$/.exec(path);
