@@ -211,7 +211,12 @@ describe('a portfolio’s page (gate GOLD-ONE-TAP)', () => {
   });
 
   it('is not offered on another chain than the person’s (gate ONE-CHAIN)', async () => {
-    api({ family: familyOf(FAMILY_ID, { recipes: [], chains: ['robinhood'] }) });
+    api({
+      family: familyOf(FAMILY_ID, {
+        recipes: [recipeOf({ chain: 'robinhood', name: 'Robinhood Chain' })],
+        chains: ['robinhood'],
+      }),
+    });
     const host = await show(createElement(FamilyScreen, { slug: SLUG }));
     expect(host.textContent).toContain(en.shared.family.notHere('Solana'));
     expect(host.textContent).not.toContain(en.shared.family.buy);
