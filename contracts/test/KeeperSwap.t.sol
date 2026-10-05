@@ -785,6 +785,16 @@ abstract contract KeeperSwapTest is KeeperFixture {
         );
     }
 
+    /// Cash near 2^256 beside an asset: the cash alone is held to the bound before anything is added to it.
+    function test_keeperSwap_cashPastTheLargestValue_isRefusedBeforeItIsAdded() public {
+        _ownerBuys(address(stockA), 1000 * USD);
+        uint256 huge = type(uint256).max - 1;
+        vm.mockCall(address(cash), abi.encodeWithSignature("balanceOf(address)", address(vault)), abi.encode(huge));
+        _expectKeeperRevert(
+            _buy(direct, address(stockA), 1000 * USD, 0), abi.encodeWithSelector(IBasketVault.ValueTooLarge.selector, huge)
+        );
+    }
+
     // ---- a stolen keeper key, and the owner's path
 
     /// The keeper has one function. Everything that moves tokens to someone is the owner's.

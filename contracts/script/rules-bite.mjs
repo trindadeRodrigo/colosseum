@@ -778,8 +778,9 @@ const RULES = [
   {
     id: 'vault-multicall-is-outside-the-guard',
     file: VAULT,
-    find: VIEWS,
-    replace: `    function multicall(bytes[] calldata data) public override nonReentrant returns (bytes[] memory) {\n        return super.multicall(data);\n    }\n\n${VIEWS}`,
+    find: '        override(MulticallUpgradeable, IBasketVault)\n        returns (bytes[] memory)',
+    replace:
+      '        override(MulticallUpgradeable, IBasketVault)\n        nonReentrant\n        returns (bytes[] memory)',
     expect: 'test_multicall_batchesTheOwnersCalls',
   },
   // ---- the config: who may change it
@@ -2016,7 +2017,7 @@ const RULES = [
     file: VAULT,
     find: 'require(cash <= MAX_VALUE, ValueTooLarge(cash));',
     replace: '',
-    expect: 'test_keeperSwap_aVaultPastTheLargestValue_isRefused',
+    expect: 'test_keeperSwap_cashPastTheLargestValue_isRefusedBeforeItIsAdded',
   },
   // ---- the keeper's path: the trade itself
   {
