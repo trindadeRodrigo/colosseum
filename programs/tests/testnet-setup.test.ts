@@ -161,13 +161,14 @@ describe('the test-network set-up', () => {
       'tMSTRx',
       'tCRCLx',
       'tHOODx',
-      'tGLDx',
       'tjlUSDC',
       'tsyrupUSDC',
+      'tPAXG',
     ]);
     expect(deployment.cash).toMatchObject({ symbol: 'tUSDC', tokenProgram: 'token', decimals: 6 });
     for (const token of [deployment.cash, ...deployment.assets]) {
-      expect(token.name).toBe(`Test ${token.modelOf} (test network, no value)`);
+      const realName = token.modelOf === 'PAXG' ? 'Paxos Gold' : token.modelOf;
+      expect(token.name).toBe(`Test ${realName} (test network, no value)`);
       const account = data(token.mint);
       const program = token.tokenProgram === 'token-2022' ? TOKEN_2022_PROGRAM : TOKEN_PROGRAM;
       expect([token.symbol, account.programAddress]).toEqual([token.symbol, program]);
@@ -182,7 +183,7 @@ describe('the test-network set-up', () => {
     // SPYx on mainnet: metadata pointer 18, permanent delegate 12, default account state 6, scaled
     // UI amount 25, pausable 26, confidential transfer 4, transfer hook 14, and its metadata 19.
     const real = [18, 12, 6, 25, 26, 4, 14, 19];
-    for (const asset of deployment.assets.filter((a) => a.tokenProgram === 'token-2022')) {
+    for (const asset of deployment.assets.filter((a) => a.kind === 'stock')) {
       const account = data(asset.mint);
       const types = mintExtensionEntries(new Uint8Array(account.data)).map((e) => e.type);
       expect([asset.symbol, types]).toEqual([asset.symbol, real]);
@@ -196,6 +197,22 @@ describe('the test-network set-up', () => {
       const scaled = extensions.find((e) => e.__kind === 'ScaledUiAmountConfig');
       expect(scaled).toMatchObject({ authority: admin.address });
     }
+    // PAXG on mainnet (Oct 5): close authority 3, permanent delegate 12, transfer fee 1 (zero),
+    // confidential transfer 4 and its fee 16, transfer hook 14, metadata pointer 18, metadata 19.
+    const paxg = deployment.assets.find((a) => a.id === 'solana:paxg');
+    if (!paxg) throw new Error('no PAXG');
+    const paxgMint = data(paxg.mint);
+    expect(mintExtensionEntries(new Uint8Array(paxgMint.data)).map((e) => e.type)).toEqual([
+      3, 12, 1, 4, 16, 14, 18, 19,
+    ]);
+    const paxgExtensions = decodeMint(paxgMint).data.extensions;
+    const fee = (isSome(paxgExtensions) ? paxgExtensions.value : []).find(
+      (e) => e.__kind === 'TransferFeeConfig',
+    );
+    expect(fee).toMatchObject({
+      transferFeeConfigAuthority: admin.address,
+      newerTransferFee: { transferFeeBasisPoints: 0 },
+    });
     const spyx = deployment.assets.find((a) => a.id === 'solana:spyx');
     if (!spyx) throw new Error('no SPYx');
     const mint = decodeMint(data(spyx.mint)).data;
@@ -263,7 +280,7 @@ describe('the test-network set-up', () => {
     expect(deployment.closedDays).toEqual(dates);
   });
 
-  it('lists every token with the entries of the index table, and switches the keeper on but for gold', async () => {
+  it('lists every token with the entries of the index table, and switches the keeper on but where the config turns it off', async () => {
     const table: { assets: { symbol: string; priceIndex: number; twapIndex: number }[] } =
       JSON.parse(
         readFileSync(join(REPO_ROOT, 'fixtures', 'solana-vault', 'scope-indexes.json'), 'utf8'),
@@ -282,16 +299,15 @@ describe('the test-network set-up', () => {
           twapIndex: real?.twapIndex ?? asset.twapIndex,
           decimals: asset.decimals,
           session: asset.session,
-          // Gate UNIVERSE: tGLDx's price is a pool's mid, not an oracle's, so the vault does not
-          // rebalance it. Its range stays, so the price copier still bounds what it writes.
           flags: switchedOff().includes(asset.id) ? 0 : ASSET_KEEPER,
           minPrice: BigInt(asset.range?.minPrice ?? 0),
           maxPrice: BigInt(asset.range?.maxPrice ?? 0),
         }),
       ]);
+      const configured = file().tokens.find((t: { id: string }) => t.id === asset.id);
       expect([asset.symbol, asset.indexSource]).toEqual([
         asset.symbol,
-        real ? 'scope-indexes' : 'test-network',
+        real ? 'scope-indexes' : (configured?.indexSource ?? 'test-network'),
       ]);
     }
     for (const id of switchedOff()) {
@@ -373,20 +389,18 @@ describe('the test-network set-up', () => {
     expect(lived.acceptedVersion).toBe(1);
   });
 
-  it('switches a listed token off and keeps its range, as the devnet run did for gold', async () => {
-    const [id] = switchedOff();
-    if (!id) throw new Error('the committed config switches no token off');
+  it('switches a listed token off and keeps its range, as the devnet run of Oct 5 did for gold', async () => {
+    // The last token of the committed config, switched off by `"on": false` in its keeper entry.
+    const id = file().tokens.at(-1).id as string;
     const token = deployment.assets.find((a) => a.id === id) as DeployedAsset;
     const entryOf = async () => (await readAssets(svm)).assets.find((e) => e.mint === token.mint);
-    // The listing as it was before the change: on, with its range.
-    const on = withRoles(file());
-    const changed = on.tokens.find((t: { id: string }) => t.id === id);
-    changed.keeper = { minUsd: changed.keeper.minUsd, maxUsd: changed.keeper.maxUsd };
-    expect((await run(planOf(on))).transactions).toBe(1);
     expect(await entryOf()).toMatchObject({ flags: ASSET_KEEPER });
-    // The committed config: one upsert_asset, flags 0, the same range.
+    const offConfig = withRoles(file());
+    const changed = offConfig.tokens.find((t: { id: string }) => t.id === id);
+    changed.keeper = { ...changed.keeper, on: false };
+    // One upsert_asset, flags 0, the same range.
     const printed: string[] = [];
-    const off = await run(plan, { log: (line) => printed.push(line) });
+    const off = await run(planOf(offConfig), { log: (line) => printed.push(line) });
     expect(off.transactions).toBe(1);
     expect(
       printed.some((line) => line.includes(`upsert_asset ${token.symbol}: flags 0, range`)),
@@ -397,6 +411,9 @@ describe('the test-network set-up', () => {
       maxPrice: BigInt(token.range?.maxPrice ?? 0),
     });
     expect(off.deployment.assets.find((a) => a.id === id)).toMatchObject({ keeperOn: false });
+    expect((await run(planOf(offConfig))).transactions).toBe(0);
+    // Back to the committed config: on again.
+    expect((await run()).transactions).toBe(1);
     expect((await run()).transactions).toBe(0);
   });
 

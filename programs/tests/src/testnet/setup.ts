@@ -65,6 +65,7 @@ import {
 } from '../mock-router';
 import {
   mintExtensionEntries,
+  paxgExtensions,
   stockExtensions,
   TOKEN_2022_PROGRAM,
   TOKEN_PROGRAM,
@@ -222,10 +223,13 @@ export type SetupResult = {
 
 /** Token-2022's numbers for the extensions a test token can carry, by the name the client gives them. */
 const EXTENSION_NAMES: Record<number, string> = {
+  1: 'TransferFeeConfig',
+  3: 'MintCloseAuthority',
   4: 'ConfidentialTransferMint',
   6: 'DefaultAccountState',
   12: 'PermanentDelegate',
   14: 'TransferHook',
+  16: 'ConfidentialTransferFee',
   18: 'MetadataPointer',
   19: 'TokenMetadata',
   25: 'ScaledUiAmountConfig',
@@ -451,12 +455,16 @@ export async function setUp(
     const mint = mintOf(token);
     const program = programOf(token);
     const omitted = new Set(options.omitExtensions ?? []);
-    const base: ExtensionArgs[] = token.stockExtensions
-      ? stockExtensions(admin.address, mint, token.multiplier).filter((e) => !omitted.has(e.__kind))
-      : [];
+    const set: ExtensionArgs[] =
+      token.extensionSet === 'stock'
+        ? stockExtensions(admin.address, mint, token.multiplier)
+        : token.extensionSet === 'paxg'
+          ? paxgExtensions(admin.address, mint)
+          : [];
+    const base = set.filter((e) => !omitted.has(e.__kind));
     // The name sits in the mint itself, after the other extensions, and is written after the mint
     // is initialised: the account is made at the size without it and paid for at the size with it.
-    const named: ExtensionArgs[] = token.stockExtensions
+    const named: ExtensionArgs[] = token.extensionSet
       ? [...base, tokenMetadata(admin.address, mint, token.name, token.symbol)]
       : [];
     const found = await chain.account(mint);
@@ -498,7 +506,7 @@ export async function setUp(
         }),
       },
       ...getPreInitializeInstructionsForMintExtensions(mint, named).map((instruction, i) => ({
-        name: `extension ${i + 1} of the stock token's set`,
+        name: `extension ${i + 1} of the ${token.extensionSet} token's set`,
         instruction,
       })),
       {

@@ -107,6 +107,10 @@ describe('the committed deployment files', () => {
     expect(Object.keys(solana.assets).length).toBeGreaterThan(1);
     for (const [id, asset] of Object.entries(solana.assets))
       expect(asset.decimals, id).toBe(byMint.get(asset.mint));
+    // And every mint the record names is in the file: a listed token (tPAXG) or a retired one (tGLDx).
+    expect(new Set(Object.values(solana.assets).map((a) => a.mint))).toEqual(
+      new Set(byMint.keys()),
+    );
     // What a screen turns the cash's raw units into dollars with: the file's, never a server's.
     expect(solana.assets[solana.cash]?.decimals).toBe(6);
   });
