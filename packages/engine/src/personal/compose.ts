@@ -368,6 +368,15 @@ function build(
 
   // ---- Packaging: lines, one recipe per chain, the card.
   const { lines, recipes, sleeves: held } = packageUp(w, book);
+  // A goal not in dollars: each line counted in another currency says that its value in the goal's
+  // currency moves with the rate (the open-FX line). A dollar goal has none.
+  if (w.currency !== 'USD') {
+    w.flags.add(`fx_open:${w.currency}`);
+    if (!w.matchingOf(w.currency)) w.flags.add(`no_matching_leg:${w.currency}`);
+    for (const l of lines)
+      if ((w.byId.get(l.assetId)?.currency ?? 'USD') !== w.currency)
+        l.reasons.push(reason('FX_OPEN', { currency: w.currency }, lang));
+  }
   // With a split, what each sleeve of the person's holds, by token, before the lines are rounded.
   const goalCents = w.amount - safeYield;
   const asSplit = sheet.sleeves
@@ -468,6 +477,8 @@ function build(
     },
     holdings: w.given.holdings,
     yields: w.given.yields,
+    // Left out when none is given, so a plan with no FX reading hashes as it did before.
+    fx: w.given.fx.length > 0 ? w.given.fx : undefined,
     liquidity: liquidity
       ? {
           method: liquidity.methodVersion,

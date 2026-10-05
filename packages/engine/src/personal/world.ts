@@ -2,6 +2,7 @@ import { EXIT_WINDOW_DAYS } from '@colosseum/basket';
 import {
   type BasketAsset,
   type ChainId,
+  FxObservation,
   type Language,
   type LiquidityProvider,
   type Reason,
@@ -42,8 +43,17 @@ export type World = {
   amount: number;
   /** The person's chain: the one chain the plan lives on. */
   chain: ChainId;
-  /** That chain's cash token, which a vault is funded in. */
+  /** That chain's cash token in dollars, which a vault is funded in. */
   cash: BasketAsset;
+  /** The goal's currency (ISO 4217); dollars unless the sheet says otherwise. */
+  currency: string;
+  /**
+   * The matching leg for a currency other than dollars: the chain's cash token counted in it, or null
+   * when the shelf lists none (gate SOLVER; the BRL leg for reais, with no code of its own).
+   */
+  matchingOf(currency: string): BasketAsset | null;
+  /** The FX reading for dollars into this currency, recorded on the plan once used; null if none. */
+  fxOf(currency: string): FxObservation | null;
   /** What the chain lists that a plan can hold, by id. The cash token is not one of them. */
   tokens: BasketAsset[];
   /** Every token on the shelf, on any chain: a holding may be of one the person's chain lacks. */
@@ -55,7 +65,12 @@ export type World = {
   /** The yield the plan counts for each token: the best observation given for it. */
   yields: Map<string, YieldObservation>;
   /** Everything that was given, validated and in one order, for the hash of the inputs. */
-  given: { yields: YieldObservation[]; holdings: HeldPosition[]; liquiditySource: string | null };
+  given: {
+    yields: YieldObservation[];
+    fx: FxObservation[];
+    holdings: HeldPosition[];
+    liquiditySource: string | null;
+  };
   liquidity: LiquidityProvider | undefined;
   /** The month of the goal's date, YYYY-MM. */
   goalMonth: string;
@@ -108,6 +123,11 @@ const issues = (error: z.ZodError) =>
   error.issues.map((i) => ({ path: i.path.join('.'), message: i.message }));
 
 const IsoTime = z.string().datetime();
+/** An FX reading as `compose` takes it: a pair of two currencies and a finite rate. */
+const FxRead = FxObservation.extend({
+  pair: z.string().regex(/^[A-Z]{6}$/),
+  value: z.number().positive().finite(),
+});
 /** A yield observation as `compose` takes it: complete, and its yields finite numbers. */
 const YieldRead = YieldObservation.extend({
   quotedYield: z.number().finite(),
@@ -148,11 +168,6 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
   // The sheet can carry a goal currency, withdrawals and sleeves (ENG-3 slice 2) before the engine
   // applies them. Until it does, it refuses them rather than make a plan that ignores them.
   const notYet: { path: string; message: string }[] = [];
-  if ((sheet.currency ?? 'USD') !== 'USD')
-    notYet.push({
-      path: 'currency',
-      message: 'a goal in a currency other than dollars is not built yet',
-    });
   if ((sheet.obligations ?? []).length > 0)
     notYet.push({ path: 'obligations', message: 'dated withdrawals are not built yet' });
   // A theme sleeve needs the curated lists of slice 4; a goal and a safe-yield sleeve are built.
@@ -186,6 +201,20 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
   const parsedYields = z.array(YieldRead).safeParse(context.yields ?? []);
   if (!parsedYields.success)
     throw new PersonalInputError('InvalidContext', issues(parsedYields.error));
+  const parsedFx = z.array(FxRead).safeParse(context.fx ?? []);
+  if (!parsedFx.success) throw new PersonalInputError('InvalidContext', issues(parsedFx.error));
+  // In one order, each once; of two readings for one pair the latest counts, then the lowest value.
+  const fxInOrder = byName(parsedFx.data, (f) => JSON.stringify(Object.entries(f).sort()));
+  const fxByPair = new Map<string, FxObservation>();
+  for (const f of fxInOrder) {
+    const had = fxByPair.get(f.pair);
+    if (
+      !had ||
+      f.fetchedAt > had.fetchedAt ||
+      (f.fetchedAt === had.fetchedAt && f.value < had.value)
+    )
+      fxByPair.set(f.pair, f);
+  }
 
   const listed = byName(shelf.assets, (a) => a.id);
   const byId = new Map(listed.map((a) => [a.id, a]));
@@ -201,13 +230,15 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
 
   // The sheet names exactly one chain (PersonalSheet holds it to that).
   const [chain] = sheet.chains;
-  const cash = listed.find((a) => a.chain === chain && a.cls === 'cash');
+  const isDollars = (a: BasketAsset) => (a.currency ?? 'USD') === 'USD';
+  const cash = listed.find((a) => a.chain === chain && a.cls === 'cash' && isDollars(a));
   // A vault is funded in its chain's dollar token, so a chain with none listed cannot hold a plan.
   if (!chain || !cash)
     throw new PersonalInputError('InvalidShelf', [
       { path: 'assets', message: `the shelf lists no cash token on ${chain}` },
     ]);
   const tokens = listed.filter((a) => a.chain === chain && a.cls !== 'cash');
+  const currency = sheet.currency ?? 'USD';
 
   const amount = toCents(sheet.amountUsd);
   // What the person holds, by underlying. A holding under the threshold is ignored everywhere: it
@@ -303,6 +334,24 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
     amount,
     chain,
     cash,
+    currency,
+    matchingOf: (cur) =>
+      cur === 'USD'
+        ? null
+        : (listed.find((a) => a.chain === chain && a.cls === 'cash' && a.currency === cur) ?? null),
+    fxOf: (cur) => {
+      const read = fxByPair.get(`USD${cur}`) ?? null;
+      if (read)
+        observations.set(`fx ${read.pair}`, {
+          id: read.pair,
+          kind: 'fx',
+          source: read.source,
+          method: read.method,
+          fetchedAt: read.fetchedAt,
+          provenance: read.provenance,
+        });
+      return read;
+    },
     tokens,
     byId,
     families,
@@ -311,6 +360,7 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
     yields: pickPrimaryYield(inOrder(parsedYields.data)),
     given: {
       yields: inOrder(parsedYields.data),
+      fx: fxInOrder,
       holdings: byName(parsedHoldings.data, (h) => JSON.stringify(Object.entries(h).sort())),
       liquiditySource: context.liquiditySource?.trim() || null,
     },

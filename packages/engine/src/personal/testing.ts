@@ -791,6 +791,21 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
           `"${r.text}" but the goal sleeve is ${goalShare} bps`,
         );
   }
+  // A goal in dollars has no open-FX line; a goal in another currency has one on every line not
+  // counted in it, and the flag.
+  const goalCurrency = s.currency ?? 'USD';
+  say(
+    plan.flags.includes(`fx_open:${goalCurrency}`) === (goalCurrency !== 'USD'),
+    `the open-FX flag does not match a goal in ${goalCurrency}`,
+  );
+  for (const l of plan.lines) {
+    const inGoal = (byId.get(l.assetId)?.currency ?? 'USD') === goalCurrency;
+    say(
+      l.reasons.some((r) => r.rule === 'FX_OPEN') === !inGoal,
+      `${l.assetId}: the open-FX line is ${inGoal ? 'misplaced' : 'missing'}`,
+    );
+  }
+
   // What must not be lost stays in dollar yield and cash, sleeves and all.
   const mustKeep = s.limits?.mustKeepUsd ?? 0;
   if (mustKeep > 0) {

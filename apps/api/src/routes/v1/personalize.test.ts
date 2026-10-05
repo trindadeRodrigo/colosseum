@@ -111,8 +111,21 @@ describe('POST /v1/baskets/personalize', () => {
       sheet: { ...asked, sleeves: [{ kind: 'safe_yield', shareBps: 4000 }] },
     });
     expect(bad.statusCode).toBe(400);
-    // A split, a goal in reais or dated withdrawals are refused until the engine applies them, never
-    // ignored (ENG-3 slice 2).
+    // A goal in reais and a split into goal and safe yield are built (ENG-3 slice 2): the plan says
+    // its value in reais moves with the rate.
+    const reais = await post(who, PATH, {
+      sheet: {
+        ...asked,
+        currency: 'BRL',
+        sleeves: [
+          { kind: 'goal', shareBps: 6000 },
+          { kind: 'safe_yield', shareBps: 4000 },
+        ],
+      },
+    });
+    expect(reais.statusCode, reais.body).toBe(200);
+    expect(PersonalizeResponse.parse(reais.json()).proposal.flags).toContain('fx_open:BRL');
+    // A theme sleeve or dated withdrawals are refused until the engine applies them, never ignored.
     for (const over of [
       {
         sleeves: [
@@ -120,7 +133,6 @@ describe('POST /v1/baskets/personalize', () => {
           { kind: 'safe_yield', shareBps: 5000 },
         ],
       },
-      { currency: 'BRL' },
       { obligations: [{ month: '2027-06', amount: 3000, currency: 'USD' }] },
     ]) {
       const refused = await post(who, PATH, { sheet: { ...asked, ...over } });

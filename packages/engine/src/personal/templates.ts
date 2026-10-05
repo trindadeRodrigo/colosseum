@@ -30,6 +30,8 @@ export const INPUT_NAMES = [
   'mayNeed',
   'credit',
   'sleeves',
+  'currency',
+  'obligations',
 ] as const;
 export type InputName = (typeof INPUT_NAMES)[number];
 
@@ -58,6 +60,12 @@ export const REASON_TEMPLATES = {
     ['sleeves', 'chain'],
     'No token you can hold on {chain|chain} pays a rate alone, so {usd|usd} of the part you set apart for it stays in cash.',
     'Nenhum token que você pode ter na {chain|chain} paga só uma taxa, então {usd|usd} da parte separada para isso fica em caixa.',
+  ),
+  // A goal in a currency other than dollars.
+  FX_OPEN: rule(
+    ['currency'],
+    'This line is not counted in {currency}, the currency of your goal: its value in {currency} moves with the exchange rate.',
+    'Esta linha não é contada em {currency}, a moeda da sua meta: o valor dela em {currency} muda com o câmbio.',
   ),
   // The date sets a floor on dollar yield. What dollar yield has no room for stays in cash, so the
   // sentence names both: it is true of every plan, whatever the chain lists and whatever is capped.

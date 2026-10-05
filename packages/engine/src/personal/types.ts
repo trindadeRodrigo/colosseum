@@ -3,6 +3,7 @@ import {
   type BasketProposal,
   BasketSheet,
   Bps,
+  type FxObservation,
   type LiquidityProvider,
   type ObservationRef,
   PersonalParams,
@@ -148,6 +149,11 @@ export type ComposeContext = {
   holdings?: HeldPosition[];
   /** Yield observations, keyed by the shelf's asset id (`solana:syrupusdc`). */
   yields?: YieldObservation[];
+  /**
+   * FX readings, pair `USD<currency>` (units of the currency for one dollar), each with its source,
+   * time and method. Needed only to count a withdrawal that is not in dollars; never guessed.
+   */
+  fx?: FxObservation[];
   /** Measured exit capacity and cost, keyed by the shelf's asset id. */
   liquidity?: LiquidityProvider;
   /**
