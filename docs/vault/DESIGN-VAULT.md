@@ -40,7 +40,7 @@ Nothing here has run on mainnet. The three $10 runs come first in time.
 - One object, the **order**, with **legs**, backs every buy, rebalance, publish and agent approval. Keeper legs sit in their own table, which only the keeper can write.
 - The browser handles bytes only. A guard checks every transaction down to the function and its arguments before it is signed.
 - EVM vaults are beacon proxies, so one transaction can fix every vault. Withdrawals go only to the owner, on both chain families. The value check is per trade.
-- Solana: Kamino Scope prices cover ten stock tokens and nothing else, so auto-follow runs only on vaults whose every asset is in that list.
+- Solana: Kamino Scope prices cover ten stock tokens and nothing else, so auto-follow runs only on vaults whose every asset is in that list. A shared portfolio that holds an asset with no oracle (gold) is not keeper-rebalanced: its followers get the one-tap prompt, and the app does not offer the auto-follow switch on it (gate `GOLD-ONE-TAP`).
 - EVM: a fresh price does not prove an open market, so stock legs trade only in a fixed weekday window, minus a list of closed days.
 - The model fills a form and nothing else. Explanation text comes from templates.
 - The keeper runs as a loop on a machine the team controls. GitHub's scheduler only runs workflows from the default branch **[C 16]**, which is `main`.
@@ -996,6 +996,7 @@ The roll-up states the share of the plan that is measured.
 - His `scripts/risk/compute.ts` already fits every row. It needs about six lines so curves keep the snapshot's method version; that change is his.
 - Measured today in session, selling $10k and $50k: Robinhood NVDA 0.01% and 0.07%; Base NVDAc 0.03% and 0.14%. The method is "best single pool", so cost is overstated when liquidity is split.
 - Those two hand measurements leave the pool fee out. The collector (`scripts/risk-evm/`, running hourly since Oct 2) includes it, as Rodrigo's curves do, because the fee is part of what a person loses on the way out: NVDA came to 0.07% and 0.15%, and most Robinhood Chain stock tokens, whose deep pools charge 0.3%, to 0.3% to 0.4% at $10k. It measures only pools the vault can reach (Uniswap v3 pools the factory confirms, and v4 pools without hooks), each against its own mid price. Exit cost shown anywhere in the product is on this basis: fee included.
+- Planned change (gate `UNIVERSE`, Oct 5; `docs/risk/PLAN-UNIVERSE.md`): the tokens come from an asset list built by the 80% rule, every pool of a listed token is kept, and the Chainlink feed is read at the same block. Until that is built, the collector is as described here.
 - The collector runs hourly from Oct 2, which gives weekend and weekday regimes by Oct 5. A 28-day backfill on dRPC's free archive works but is out unless a stream is idle.
 
 **Where the data runs.** His collectors stay on his Mac. The hosted database gets a dated dump of his curves first; an hourly copy job is a later add. Every sheet shows the date of its curves; stale curves are never shown as live.
@@ -1396,7 +1397,7 @@ Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-L
 - The label on the sign-in button is "Sign in", opening a choice of passkey or wallet. His landing page says "Connect wallet" and changes to match.
 - The plan-leg bar allows four legs: sleeves go in the bar, with the tokens in a table under it.
 - The disclaimer says "the decision and custody are yours". Only the owner can withdraw from a vault, so it stays; the "unaudited, team holds the upgrade keys" notice sits beside it before the first deposit.
-- Auto-follow. It is off by default; the person sees an author's change 48 hours before it takes effect and can refuse; then the vault copies the change inside its own limits. It does not re-check the person's goal. Thom's decision is to keep it this way. It sits beside the voice rule that the agent "proposes and explains": the 48-hour notice is the proposal, and the person can refuse.
+- Auto-follow. It is off by default, and not offered at all on a portfolio that holds an asset with no oracle (gate `GOLD-ONE-TAP`): there the person rebalances with one tap. Where it is offered, the person sees an author's change 48 hours before it takes effect and can refuse; then the vault copies the change inside its own limits. It does not re-check the person's goal. Thom's decision is to keep it this way. It sits beside the voice rule that the agent "proposes and explains": the 48-hour notice is the proposal, and the person can refuse.
 
 **Thom**
 
