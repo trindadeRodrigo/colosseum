@@ -9,9 +9,9 @@ import {BasketVault} from "../../src/BasketVault.sol";
 import {IBasketVault} from "../../src/interfaces/IBasketVault.sol";
 import {PERMIT2} from "../../src/interfaces/IVaultConfig.sol";
 import {Swap, Weight} from "../../src/interfaces/Types.sol";
-import {PoolKey, TestMarket} from "../../src/testnet/TestMarket.sol";
-import {TestPriceFeed} from "../../src/testnet/TestPriceFeed.sol";
-import {TestStockToken} from "../../src/testnet/TestStockToken.sol";
+import {PoolKey, TestMarket} from "../../testnet/TestMarket.sol";
+import {TestPriceFeed} from "../../testnet/TestPriceFeed.sol";
+import {TestStockToken} from "../../testnet/TestStockToken.sol";
 import {KitFixture} from "../helpers/KitFixture.sol";
 
 /// The Robinhood Chain test network kit (TNET-2) run end to end: the kit, then the vault's platform on it

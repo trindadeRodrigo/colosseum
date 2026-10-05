@@ -4,10 +4,10 @@ pragma solidity 0.8.37;
 import {Test} from "forge-std/Test.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {StubSequencerFeed} from "../../src/testnet/StubSequencerFeed.sol";
-import {TestPriceFeed} from "../../src/testnet/TestPriceFeed.sol";
-import {TestStockToken} from "../../src/testnet/TestStockToken.sol";
-import {TestToken} from "../../src/testnet/TestToken.sol";
+import {StubSequencerFeed} from "../../testnet/StubSequencerFeed.sol";
+import {TestPriceFeed} from "../../testnet/TestPriceFeed.sol";
+import {TestStockToken} from "../../testnet/TestStockToken.sol";
+import {TestToken} from "../../testnet/TestToken.sol";
 
 /// The test network's own contracts (TNET-1), each on its own: who may do what, and what they answer.
 contract TestnetContractsTest is Test {

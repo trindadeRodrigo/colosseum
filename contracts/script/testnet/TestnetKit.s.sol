@@ -5,10 +5,10 @@ import {Script} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 import {AssetConfig} from "../../src/interfaces/Types.sol";
-import {TestMarket} from "../../src/testnet/TestMarket.sol";
-import {TestPriceFeed} from "../../src/testnet/TestPriceFeed.sol";
-import {TestStockToken} from "../../src/testnet/TestStockToken.sol";
-import {TestToken} from "../../src/testnet/TestToken.sol";
+import {TestMarket} from "../../testnet/TestMarket.sol";
+import {TestPriceFeed} from "../../testnet/TestPriceFeed.sol";
+import {TestStockToken} from "../../testnet/TestStockToken.sol";
+import {TestToken} from "../../testnet/TestToken.sol";
 
 /// TEST NETWORK ONLY. Sets up an EVM test network for the vault (TNET-1, TNET-2): the test cash, a test
 /// stock token per entry of the file with its price contract and its average, Universal Router 2.1.2, and

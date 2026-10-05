@@ -6,8 +6,8 @@ import {console2} from "forge-std/console2.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 import {IVaultConfig} from "../../src/interfaces/IVaultConfig.sol";
 import {AssetConfig} from "../../src/interfaces/Types.sol";
-import {TestMarket} from "../../src/testnet/TestMarket.sol";
-import {TestPriceFeed} from "../../src/testnet/TestPriceFeed.sol";
+import {TestMarket} from "../../testnet/TestMarket.sol";
+import {TestPriceFeed} from "../../testnet/TestPriceFeed.sol";
 
 interface IAggregator {
     function description() external view returns (string memory);

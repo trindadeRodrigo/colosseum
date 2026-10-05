@@ -3,10 +3,10 @@ pragma solidity 0.8.37;
 
 import {IBasketVault} from "../../src/interfaces/IBasketVault.sol";
 import {AssetConfig, Params, Swap, Weight} from "../../src/interfaces/Types.sol";
-import {StubSequencerFeed} from "../../src/testnet/StubSequencerFeed.sol";
-import {TestPriceFeed} from "../../src/testnet/TestPriceFeed.sol";
-import {TestStockToken} from "../../src/testnet/TestStockToken.sol";
-import {TestToken} from "../../src/testnet/TestToken.sol";
+import {StubSequencerFeed} from "../../testnet/StubSequencerFeed.sol";
+import {TestPriceFeed} from "../../testnet/TestPriceFeed.sol";
+import {TestStockToken} from "../../testnet/TestStockToken.sol";
+import {TestToken} from "../../testnet/TestToken.sol";
 import {VaultFixture} from "../helpers/VaultFixture.sol";
 import {MockRouter} from "../mocks/Routers.sol";
 

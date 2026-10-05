@@ -40,11 +40,11 @@ const CONFIG = 'src/VaultConfig.sol';
 const FACTORY = 'src/VaultFactory.sol';
 const REGISTRY = 'src/IndexRegistry.sol';
 const BEACON = 'src/VaultBeacon.sol';
-const TEST_TOKEN = 'src/testnet/TestToken.sol';
-const TEST_STOCK = 'src/testnet/TestStockToken.sol';
-const TEST_FEED = 'src/testnet/TestPriceFeed.sol';
-const TEST_SEQUENCER = 'src/testnet/StubSequencerFeed.sol';
-const TEST_MARKET = 'src/testnet/TestMarket.sol';
+const TEST_TOKEN = 'testnet/TestToken.sol';
+const TEST_STOCK = 'testnet/TestStockToken.sol';
+const TEST_FEED = 'testnet/TestPriceFeed.sol';
+const TEST_SEQUENCER = 'testnet/StubSequencerFeed.sol';
+const TEST_MARKET = 'testnet/TestMarket.sol';
 const KIT = 'script/testnet/TestnetKit.s.sol';
 const COPIER = 'script/testnet/CopyPrices.s.sol';
 
@@ -2833,7 +2833,7 @@ function makeCopy(n, warm) {
   const project = join(dir, 'contracts');
   mkdirSync(project, { recursive: true });
   // In a kept copy the sources are replaced, so a rule left out by a run that was killed is put back.
-  for (const name of ['src', 'test', 'script', 'foundry.toml']) {
+  for (const name of ['src', 'testnet', 'test', 'script', 'foundry.toml']) {
     rmSync(join(project, name), { recursive: true, force: true });
     cpSync(join(root, name), join(project, name), { recursive: true });
   }

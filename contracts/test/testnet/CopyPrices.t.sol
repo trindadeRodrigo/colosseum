@@ -2,7 +2,7 @@
 pragma solidity 0.8.37;
 
 import {CopyPrices} from "../../script/testnet/CopyPrices.s.sol";
-import {TestPriceFeed} from "../../src/testnet/TestPriceFeed.sol";
+import {TestPriceFeed} from "../../testnet/TestPriceFeed.sol";
 import {KitFixture} from "../helpers/KitFixture.sol";
 
 /// The price copier's round (`script/testnet/CopyPrices.s.sol`) on the kit's test network, with a test price

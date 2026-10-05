@@ -10,7 +10,7 @@ Built so far:
 | `src/VaultFactory.sol` on `src/VaultConfig.sol` | Creates the vaults and lists them; holds the platform's settings, the three roles and the guardian's switches. A UUPS proxy | EVM-1, EVM-2 |
 | `src/IndexRegistry.sol` | The shared portfolios and the four author limits. A UUPS proxy | EVM-2 |
 | `src/VaultBeacon.sol` | The one beacon of a chain, handed over in two steps | EVM-2 |
-| `src/testnet/` | TEST NETWORK ONLY: the test cash, the test stock token, the test price contract, the sequencer stub and the test market of the EVM test networks; never deployed on a mainnet. See "The Robinhood Chain test network" | TNET-1, TNET-2 |
+| `testnet/` | TEST NETWORK ONLY: the test cash, the test stock token, the test price contract, the sequencer stub and the test market of the EVM test networks; never deployed on a mainnet. See "The Robinhood Chain test network" | TNET-1, TNET-2 |
 
 ## Run
 
@@ -160,7 +160,7 @@ The admin key can replace the factory's logic. Through that it can reach two thi
 
 TEST NETWORK ONLY. Chain 46630 has Uniswap v4 (mainnet's PoolManager code at mainnet's address), Permit2, Multicall3, the CREATE2 deployer and Universal Router 2.1.1. It has no Universal Router 2.1.2, no Chainlink feed and none of our tokens (`docs/vault/research/test-networks.md`). The kit brings them, and the vault contracts run on it unchanged.
 
-**The contracts (`src/testnet/`)**
+**The contracts (`testnet/`)**, outside `src/` so that nothing reading the vault's own contracts (the error codes, the ABIs, an audit's tools) takes them for product code.
 
 | Contract | What it is |
 |---|---|
