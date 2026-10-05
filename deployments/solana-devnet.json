@@ -77,8 +77,8 @@
       "maxWeightBps": 5000,
       "keeperOn": true,
       "range": {
-        "minPrice": "620000000",
-        "maxPrice": "930000000"
+        "minPrice": "602020000",
+        "maxPrice": "971000000"
       },
       "spreadBps": 15,
       "pairs": {
@@ -103,8 +103,8 @@
       "maxWeightBps": 5000,
       "keeperOn": true,
       "range": {
-        "minPrice": "450000000",
-        "maxPrice": "780000000"
+        "minPrice": "585830000",
+        "maxPrice": "944880000"
       },
       "spreadBps": 15,
       "pairs": {
@@ -129,8 +129,8 @@
       "maxWeightBps": 5000,
       "keeperOn": true,
       "range": {
-        "minPrice": "190000000",
-        "maxPrice": "280000000"
+        "minPrice": "184100000",
+        "maxPrice": "296940000"
       },
       "spreadBps": 15,
       "pairs": {
@@ -155,8 +155,8 @@
       "maxWeightBps": 5000,
       "keeperOn": true,
       "range": {
-        "minPrice": "300000000",
-        "maxPrice": "520000000"
+        "minPrice": "293680000",
+        "maxPrice": "473680000"
       },
       "spreadBps": 15,
       "pairs": {
@@ -181,8 +181,8 @@
       "maxWeightBps": 5000,
       "keeperOn": true,
       "range": {
-        "minPrice": "187500000",
-        "maxPrice": "325000000"
+        "minPrice": "259530000",
+        "maxPrice": "418600000"
       },
       "spreadBps": 15,
       "pairs": {
@@ -207,8 +207,8 @@
       "maxWeightBps": 5000,
       "keeperOn": true,
       "range": {
-        "minPrice": "187500000",
-        "maxPrice": "325000000"
+        "minPrice": "267960000",
+        "maxPrice": "432200000"
       },
       "spreadBps": 15,
       "pairs": {
@@ -233,8 +233,8 @@
       "maxWeightBps": 5000,
       "keeperOn": true,
       "range": {
-        "minPrice": "525000000",
-        "maxPrice": "910000000"
+        "minPrice": "580080000",
+        "maxPrice": "935620000"
       },
       "spreadBps": 15,
       "pairs": {
@@ -259,8 +259,8 @@
       "maxWeightBps": 5000,
       "keeperOn": true,
       "range": {
-        "minPrice": "225000000",
-        "maxPrice": "390000000"
+        "minPrice": "125940000",
+        "maxPrice": "203120000"
       },
       "spreadBps": 15,
       "pairs": {
@@ -285,8 +285,8 @@
       "maxWeightBps": 5000,
       "keeperOn": true,
       "range": {
-        "minPrice": "75000000",
-        "maxPrice": "130000000"
+        "minPrice": "65200000",
+        "maxPrice": "105160000"
       },
       "spreadBps": 15,
       "pairs": {
@@ -311,8 +311,8 @@
       "maxWeightBps": 5000,
       "keeperOn": true,
       "range": {
-        "minPrice": "75000000",
-        "maxPrice": "130000000"
+        "minPrice": "88160000",
+        "maxPrice": "142190000"
       },
       "spreadBps": 15,
       "pairs": {

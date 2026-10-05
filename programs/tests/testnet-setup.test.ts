@@ -332,10 +332,10 @@ describe('the test-network set-up', () => {
       'publish',
       'accept',
     ]);
-    // 400 dollars of tSPYx at 773.62 less 15 bps, and 250 of tjlUSDC at one dollar less 5 bps.
+    // 400 dollars of tSPYx at 776.80 less 15 bps, and 250 of tjlUSDC at one dollar less 5 bps.
     expect(lived.holds).toEqual({
       'solana:usdc': 350_000000n,
-      'solana:spyx': 51_627_413n,
+      'solana:spyx': 51_416_065n,
       'solana:jlusdc': 249_875_000n,
     });
     // The leg lost its spread, 5 bps of 250 dollars, and the counter holds it.
