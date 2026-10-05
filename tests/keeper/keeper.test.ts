@@ -7,7 +7,7 @@ import type { BuiltTx } from '@colosseum/schemas';
 import { type Address, getTransactionDecoder, lamports } from '@solana/kit';
 import { describe, expect, it } from 'vitest';
 import { newMemory, runRound, type VaultLine } from '../../apps/keeper/src/round';
-import { priceAccountBytes } from '../solana-vault/admin';
+import { priceAccountBytes, upsertAsset } from '../solana-vault/admin';
 import {
   buildContractWorld,
   type ContractWorld,
@@ -15,6 +15,7 @@ import {
   newKey,
   PARAMS,
   PRICE_ENTRIES,
+  SHELF,
 } from '../solana-vault/contract-world';
 import {
   createSvmNode,
@@ -211,6 +212,46 @@ describe.skipIf(!PROGRAMS_BUILT)('the keeper, in LiteSVM with the real program',
     expect(
       [...memory.reverted].some((k) => k.startsWith(`${f.vault} `) && k.endsWith(`->${reverted}`)),
     ).toBe(true);
+  });
+
+  it('leaves a vault that holds an asset switched off for the keeper, and sends nothing', async () => {
+    const s = await world();
+    const f = s.w.fixture;
+    // Gate UNIVERSE: an asset with no oracle is the owner's to trade. The program values every
+    // position a leg does not trade by its reference, so while the vault holds gamma no leg passes.
+    const gamma = s.w.mints.gamma;
+    if (!gamma) throw new Error('mints');
+    await s.w.run(s.w.keys.deployer, [
+      await upsertAsset(s.w.keys.deployer.address, gamma.address, {
+        priceIndex: SHELF.gamma.index,
+        twapIndex: SHELF.gamma.index + 1,
+        keeperOn: false,
+        minPrice: BigInt(SHELF.gamma.usd * 800_000),
+        maxPrice: BigInt(SHELF.gamma.usd * 1_200_000),
+      }),
+    ]);
+    // Work to do: the next version moves the weights.
+    await s.w.must(
+      await s.w.adapter.buildPublishRecipe({ creator: f.owner, recipe: f.publishRecipe }),
+    );
+    s.node.advance(PARAMS.publishDelayS + 1);
+    s.writePrices(s.node.now());
+    let built = 0;
+    const adapter = {
+      ...s.w.adapter,
+      buildKeeperLeg: (...a: Parameters<SolanaVaultAdapter['buildKeeperLeg']>) => {
+        built++;
+        return s.w.adapter.buildKeeperLeg(...a);
+      },
+    } as SolanaVaultAdapter;
+    const line = of(await round({ ...s, w: { ...s.w, adapter } }), f.vault);
+    expect([line?.outcome, line?.reason, line?.alert]).toEqual([
+      'adopted',
+      'no leg would pass: KeeperAssetOff',
+      true,
+    ]);
+    expect(line?.txIds).toHaveLength(1);
+    expect(built).toBe(0);
   });
 
   it('plans and builds in a dry run, and sends nothing', async () => {

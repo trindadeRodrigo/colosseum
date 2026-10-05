@@ -49,7 +49,8 @@ const assetOf = (t: Trade, cash: AssetId) => (t.sell === cash ? t.buy : t.sell);
 
 /**
  * The first planned trade the program would let through now: sales come first in the plan, and a
- * trade in an asset under its cooldown, outside its session, or in its multiplier window waits.
+ * trade in an asset switched off for the keeper, with no reference the program takes, under its
+ * cooldown, outside its session, or in its multiplier window waits.
  * `skipped` says why each earlier one waits.
  */
 export function nextTrade(
@@ -65,6 +66,16 @@ export function nextTrade(
     const position = byAsset.get(asset);
     if (!position) {
       skipped.push(`${asset}: not a position of the vault`);
+      continue;
+    }
+    // An asset the admin has not switched on for the keeper (gate UNIVERSE: no oracle, so the owner
+    // trades it), or one the program would not value now: the program refuses the leg.
+    if (!position.keeperOn) {
+      skipped.push(`${asset}: off for the keeper, the owner trades it`);
+      continue;
+    }
+    if (position.reference) {
+      skipped.push(`${asset}: no reference the program would take (${position.reference})`);
       continue;
     }
     if (position.trade) {

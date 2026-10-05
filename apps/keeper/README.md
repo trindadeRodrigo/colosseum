@@ -19,9 +19,17 @@ Every vault with auto-follow on, read from the chain, in random order. For each 
 
 1. **Adopt.** A pending version whose time has come is adopted when it adds no asset and the keeper is not paused. One that adds an asset waits for the owner.
 2. **Sync.** See below.
-3. **Leg.** Not built while the vault is blocked for the keeper, has no price account, or has used its whole loss budget. The plan is `rebalancePlan` from `packages/basket` on the vault as the chain holds it and the prices the adapter reads (never the API's database). The first planned trade the program would take now is built: a trade on an asset in its cooldown, outside its session or on a closed day, in a multiplier window, or with a transfer hook is passed over. The builder simulates it, so a leg the program would refuse costs nothing.
+3. **Leg.** Not built while the vault is blocked for the keeper, has no price account, or has used its whole loss budget. The plan is `rebalancePlan` from `packages/basket` on the vault as the chain holds it and the prices the adapter reads (never the API's database). The first planned trade the program would take now is built: a trade on an asset switched off for the keeper, with no reference the program takes now, in its cooldown, outside its session or on a closed day, in a multiplier window, or with a transfer hook is passed over. The builder simulates it, so a leg the program would refuse costs nothing.
 
 It writes one JSON line per vault per round: `acted`, `adopted`, `synced` or `would-act` with the signatures, or `skipped` with the reason, and `alert: true` where a person should look. Then one line for the round: vaults, acted, alerts.
+
+## Assets with no oracle
+
+Gate UNIVERSE (`docs/GATES.md`): a stock is rebalanced by the vault only if it has an oracle, Scope on Solana. Without one it is the owner's to trade, and its keeper switch (bit 0 of its entry's flags, `keeperOn` in the deploy record) is off. The keeper passes over a planned trade in such an asset before building it.
+
+The program goes further: a leg values every position it does not trade by its reference, so a vault that holds any of a switched-off asset gets no keeper leg at all (`KeeperAssetOff`). The keeper skips that vault before building, with an alert, and adoptions still go through.
+
+On devnet, tGLDx's price comes from a pool's mid, not an oracle, so its keeper switch is being turned off there. From then on, a devnet vault that holds tGLDx (the KEEP-1 check vault does) is skipped with that alert.
 
 ## Sync policy
 
@@ -35,7 +43,8 @@ A leg that reverted is never sent again: the keeper remembers it (vault, sell, b
 
 ## Tests
 
-- `tests/keeper/keeper.test.ts`, in LiteSVM with the real program: a weights-only version adopted and a leg sent; a changed position synced when it can be valued, and skipped with an alert when its price is out of range; a reverted leg not sent again; a dry run that sends nothing.
+- `tests/keeper/keeper.test.ts`, in LiteSVM with the real program: a weights-only version adopted and a leg sent; a changed position synced when it can be valued, and skipped with an alert when its price is out of range; a reverted leg not sent again; a vault holding an asset switched off for the keeper skipped with nothing built; a dry run that sends nothing.
+- `tests/keeper/policy.test.ts`: the choice of trade, passing over an asset switched off, one with no usable reference, and one in cooldown.
 - `tests/solana-vault/validator.test.ts`, on a local validator: a vault following its own shared portfolio, the next version published, the round adopting it and sending a leg through the node's preflight.
 
 ## The check on devnet
