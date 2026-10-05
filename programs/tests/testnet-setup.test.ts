@@ -244,7 +244,7 @@ describe('the test-network set-up', () => {
     expect(deployment.closedDays).toEqual(dates);
   });
 
-  it('lists every token with the entries of the index table, and switches the keeper on', async () => {
+  it('lists every token with the entries of the index table, and switches the keeper on but for gold', async () => {
     const table: { assets: { symbol: string; priceIndex: number; twapIndex: number }[] } =
       JSON.parse(
         readFileSync(join(REPO_ROOT, 'fixtures', 'solana-vault', 'scope-indexes.json'), 'utf8'),
@@ -263,7 +263,9 @@ describe('the test-network set-up', () => {
           twapIndex: real?.twapIndex ?? asset.twapIndex,
           decimals: asset.decimals,
           session: asset.session,
-          flags: ASSET_KEEPER,
+          // Gate UNIVERSE: tGLDx's price is a pool's mid, not an oracle's, so the vault does not
+          // rebalance it. Its range stays, so the price copier still bounds what it writes.
+          flags: asset.id === 'solana:gldx' ? 0 : ASSET_KEEPER,
           minPrice: BigInt(asset.range?.minPrice ?? 0),
           maxPrice: BigInt(asset.range?.maxPrice ?? 0),
         }),
@@ -273,6 +275,11 @@ describe('the test-network set-up', () => {
         real ? 'scope-indexes' : 'test-network',
       ]);
     }
+    const gold = deployment.assets.find((a) => a.id === 'solana:gldx');
+    expect(gold).toMatchObject({
+      keeperOn: false,
+      range: { minPrice: '262500000', maxPrice: '455000000' },
+    });
     // The dollar token is never a position, so it is not on the list.
     expect(listed.some((e) => e.mint === deployment.cash.mint)).toBe(false);
   });

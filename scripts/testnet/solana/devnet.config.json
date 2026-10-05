@@ -196,7 +196,8 @@
       },
       "keeper": {
         "minUsd": "262.5",
-        "maxUsd": "455"
+        "maxUsd": "455",
+        "on": false
       }
     },
     {
