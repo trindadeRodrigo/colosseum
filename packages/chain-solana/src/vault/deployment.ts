@@ -83,15 +83,6 @@ export const SolanaDeploymentRecord = z.strictObject({
 });
 export type SolanaDeploymentRecord = z.infer<typeof SolanaDeploymentRecord>;
 
-/** Every mint the record names, cash, the listed assets and the retired ones, by address. */
-export function deploymentMints(record: SolanaDeploymentRecord) {
-  const mints = new Map<string, { id: string | null; decimals: number | null }>();
-  mints.set(record.cash.mint, { id: record.cash.id, decimals: record.cash.decimals });
-  for (const a of record.assets) mints.set(a.mint, { id: a.id, decimals: a.decimals });
-  for (const r of record.retired) mints.set(r.mint, { id: r.id, decimals: null });
-  return mints;
-}
-
 /** What a chain config takes from the record: the program, the one router, the price account. */
 export function deploymentAddresses(record: SolanaDeploymentRecord) {
   return {
@@ -153,15 +144,39 @@ export function deploymentAssets(record: SolanaDeploymentRecord): BasketAsset[] 
 /** The genesis hash of Solana mainnet-beta: a node that answers it is mainnet, whatever it is called. */
 export const MAINNET_GENESIS_HASH = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d';
 
+/** How long a server waits at start for the node to say which network it is. */
+export const NODE_CHECK_TIMEOUT_MS = 10_000;
+
 /**
  * The node is the network the record is for: never mainnet, and the record's own genesis where the
- * record names one. Asked once, at start, of the node the server will build and send through.
+ * record names one. Asked once, at start, of the node the server will build and send through. A node
+ * that does not answer in `timeoutMs` fails the start rather than hang it. A local copy of mainnet
+ * answers mainnet's genesis, so it is refused as mainnet is.
  */
 export async function assertNode(
   rpc: VaultNodeRpc,
   record: SolanaDeploymentRecord | null,
+  timeoutMs = NODE_CHECK_TIMEOUT_MS,
 ): Promise<void> {
-  const genesis = await ask('getGenesisHash', () => rpc.getGenesisHash().send());
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new ChainError(
+            'Unavailable',
+            `the Solana RPC did not say its network in ${timeoutMs} ms`,
+          ),
+        ),
+      timeoutMs,
+    );
+  });
+  const genesis = await Promise.race([
+    ask('getGenesisHash', () =>
+      rpc.getGenesisHash().send({ abortSignal: AbortSignal.timeout(timeoutMs) }),
+    ),
+    late,
+  ]).finally(() => clearTimeout(timer));
   if (genesis === MAINNET_GENESIS_HASH)
     throw new ChainError(
       'NotSupported',

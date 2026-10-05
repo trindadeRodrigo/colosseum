@@ -146,24 +146,42 @@ export async function solanaFromEnv(
   const assets = rows.map(({ updatedAt: _, chainId, ...row }) =>
     BasketAsset.parse({ ...row, chain: chainId }),
   );
-  if (record) holdToRecord(assets, record);
+  // What the adapter lists: without a record, the table as it is; with one, held to it, and never a
+  // token the deploy retired.
+  const listed = record ? holdToRecord(assets, record) : assets;
   // The node is asked what network it is: a test label on a mainnet node does not start.
   const rpc = connect(url);
   await assertNode(rpc, record);
-  return { rpc, assets };
+  return { rpc, assets: listed };
 }
 
 /**
  * `basket_assets` against the deploy's record, at start: every Solana row is a row the record makes
- * (`deploymentAssets`), with the same mint, decimals, class, session and price entry, and the cash
- * row is the record's cash. One database serves one network, so a row of another network's deploy,
- * or a hand-edited one (a `priceRef` moved to another entry), stops the API rather than build on it.
- * The table has no token program: the adapter reads it from each mint.
+ * (`deploymentAssets`), with the same mint, decimals, class, session, price entry, ceiling and keeper
+ * eligibility, and the cash row is the record's cash. One database serves one network, so a row of
+ * another network's deploy, or a hand-edited one (a `priceRef` moved to another entry), stops the API
+ * rather than build on it. The table has no token program: the adapter reads it from each mint.
+ *
+ * Answers the rows the adapter may list. A row of a token the deploy retired does not stop the start,
+ * and is left out: a retired token is sold and withdrawn, never bought, and the adapter shows it under
+ * its mint (`solana:mint-<hex>`) as it does once the fill script has removed the row.
  */
-export function holdToRecord(assets: BasketAsset[], record: SolanaDeploymentRecord): void {
+export function holdToRecord(assets: BasketAsset[], record: SolanaDeploymentRecord): BasketAsset[] {
   const made = new Map(deploymentAssets(record).map((a) => [a.address, a]));
-  const fields = ['decimals', 'cls', 'session', 'priceKind', 'priceRef'] as const;
+  const fields = [
+    'decimals',
+    'cls',
+    'session',
+    'priceKind',
+    'priceRef',
+    'maxWeightBps',
+    'autoFollowEligible',
+  ] as const;
+  // A token the deploy retired stays listed on chain and may still be in a vault: its row does not stop
+  // the start, and is left out of what the adapter lists.
+  const retired = new Set(record.retired.map((r) => r.mint));
   const wrong = assets.flatMap((a) => {
+    if (retired.has(a.address)) return [];
     const want = made.get(a.address);
     if (!want) return [`${a.id} (${a.address}) is not a token of ${record.network}`];
     return fields
@@ -179,4 +197,5 @@ export function holdToRecord(assets: BasketAsset[], record: SolanaDeploymentReco
     throw new Error(
       `basket_assets does not match the record of ${record.network}: ${wrong.slice(0, 3).join('; ')}`,
     );
+  return assets.filter((a) => !retired.has(a.address));
 }

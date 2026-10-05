@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { adapterContract } from '@colosseum/chain-mock/contract';
 import {
+  assertNode,
+  createVaultRpc,
+  MAINNET_GENESIS_HASH,
+  type SolanaDeploymentRecord,
+} from '@colosseum/chain-solana/vault';
+import {
   type OrderDetail,
   type PortfolioResponse,
   parseChainConfigs,
@@ -62,6 +68,25 @@ if (RUN) {
   });
   adapterContract('solana, on a local validator', async () => (await validator()).world.fixture, {
     groups: ['signed bytes', 'state after a transaction lands'],
+  });
+
+  describe("the node check a server makes at start, on the validator's own genesis", () => {
+    it('passes a local validator, and a record naming its genesis, and refuses a record naming another', async () => {
+      const { rpcUrl } = await validator();
+      const rpc = createVaultRpc(rpcUrl);
+      await expect(assertNode(rpc, null)).resolves.toBeUndefined();
+      const genesis = await rpc.getGenesisHash().send();
+      expect(genesis).not.toBe(MAINNET_GENESIS_HASH);
+      // Only the two fields the check reads.
+      const record = {
+        genesisHash: genesis,
+        network: 'solana-local',
+      } as unknown as SolanaDeploymentRecord;
+      await expect(assertNode(rpc, record)).resolves.toBeUndefined();
+      await expect(
+        assertNode(rpc, { ...record, genesisHash: MOCK_ROUTER_PROGRAM }),
+      ).rejects.toThrow('not the network of the record solana-local');
+    });
   });
 
   describe('the API on the Solana adapter, on the same validator', () => {
