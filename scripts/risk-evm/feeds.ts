@@ -16,7 +16,8 @@ export const ORACLES_METHOD = 'evm-oracles-0.1';
 /**
  * How a feed names a stock token, before the quote: the symbol alone ("GLD / USD"), "RH" and the
  * symbol ("RHSPY / USD"), or "Robinhood" and the symbol ("Robinhood QQQ / USD", "Robinhood DELL-USD").
- * The three forms the directory and the contracts used on Robinhood Chain on 2026-10-05.
+ * With the two ways of writing the quote, these are the forms the directory and the contracts used on
+ * Robinhood Chain on 2026-10-05.
  */
 const NAME_FORMS = [(s: string) => s, (s: string) => `RH${s}`, (s: string) => `Robinhood ${s}`];
 
@@ -301,13 +302,15 @@ export function matchToken(token: Wanted, tracked: boolean, ctx: MatchContext): 
   const i = named[0] as number;
   const f = ctx.feeds[i] as DirectoryFeed;
   const on = ctx.onchain[i] as OnchainFeed;
-  const others = [
+  /** The other symbols of the registry a name reads as a price of. */
+  const otherSymbols = (name: string) => [
     ...new Set(
       ctx.registry
-        .filter((t) => t.symbol !== token.symbol && namesToken(f.name, t.symbol))
+        .filter((t) => t.symbol !== token.symbol && namesToken(name, t.symbol))
         .map((t) => t.symbol),
     ),
   ];
+  const others = otherSymbols(f.name);
   if (others.length > 0)
     return row(
       null,
@@ -326,11 +329,18 @@ export function matchToken(token: Wanted, tracked: boolean, ctx: MatchContext): 
       'description_does_not_name_the_token',
       `the directory calls ${f.proxyAddress} "${f.name}", the contract calls itself "${on.description}", which is not a US dollar price of ${token.symbol}`,
     );
-  if (f.decimals !== null && f.decimals !== on.decimals)
+  const alsoNamed = otherSymbols(on.description);
+  if (alsoNamed.length > 0)
+    return row(
+      null,
+      'feed_names_two_tokens',
+      `the contract calls itself "${on.description}", which also reads as a price of ${alsoNamed.join(', ')}`,
+    );
+  if (f.decimals !== on.decimals)
     return row(
       null,
       'decimals_differ_from_directory',
-      `the directory says ${f.decimals} decimals, the contract ${on.decimals}`,
+      `the directory says ${f.decimals === null ? 'nothing of the' : f.decimals} decimals, the contract ${on.decimals}`,
     );
   if (BigInt(on.round.answer) <= 0n)
     return row(null, 'answer_not_positive', `latestRoundData() answered ${on.round.answer}`);
@@ -469,9 +479,9 @@ export type OraclesFile = {
 
 export const STATED = {
   matching:
-    "A feed is tied to a token by the directory's `name` and the token's symbol: the name must read as the symbol, RH and the symbol, or Robinhood and the symbol, then '/ USD' or '-USD'. The directory names no token address. Rows are keyed on the token address. Two tokens of the registry sharing a symbol get no feed (symbol_shared_by_tokens); two feeds naming one token are both listed and neither is chosen (two_feeds_name_the_token); one feed naming two tokens is refused (feed_names_two_tokens).",
+    "A feed is tied to a token by the directory's `name` and the token's symbol: the name must read as the symbol, RH and the symbol, or Robinhood and the symbol, then '/ USD' or '-USD'. The directory names no token address. Rows are keyed on the token address. Two tokens of the registry sharing a symbol get no feed (symbol_shared_by_tokens); two feeds naming one token are both listed and neither is chosen (two_feeds_name_the_token); one feed naming two tokens, by the directory's name or by its own description, is refused (feed_names_two_tokens).",
   confirmation:
-    'A matched feed is confirmed by its own contract at one block: description() must name the token by the same rule, decimals() must equal the directory, latestRoundData() must give a positive answer with a time not after the block. Otherwise the row has no feed and says why.',
+    'A matched feed is confirmed by its own contract at one block: description() must name the token by the same rule, decimals() must equal the decimals the directory gives, latestRoundData() must give a positive answer with a time not after the block. Otherwise the row has no feed and says why.',
   storedAddress:
     "The address stored is the directory's proxyAddress, the one the vault would read: the aggregator behind a proxy is replaced when a feed is upgraded and the proxy stays. aggregator() of the proxy and whether the listed aggregator answers a direct call are recorded beside it. The second proxy the directory lists (Shared SVR) is recorded and not read.",
   price:
@@ -512,6 +522,12 @@ export async function runOracles(
   const before = deps.rpc.stats();
   const { feeds, skipped } = parseDirectory(await deps.fetchJson(input.directoryUrl));
   const directoryFetchedAt = new Date(deps.now()).toISOString();
+  // a directory that lists nothing, or names no token of the registry, is a failed read, not thirty
+  // stocks without a feed
+  if (!feeds.some((f) => input.registry.some((t) => namesToken(f.name, t.symbol))))
+    throw new Error(
+      `the directory lists ${feeds.length} feeds and none names a token of the registry: nothing is written`,
+    );
   const head = await deps.rpc.call<{ number: string; timestamp: string }>('eth_getBlockByNumber', [
     'latest',
     false,

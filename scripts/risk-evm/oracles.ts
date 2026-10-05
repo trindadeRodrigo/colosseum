@@ -26,6 +26,13 @@ const stop = (message: string): never => {
   console.error(message);
   process.exit(1);
 };
+/** A file option; given with no value it is refused, never replaced by the newest file. */
+const fileOption = (name: string) => {
+  const v = option(name);
+  if (flag(name) && (v === undefined || v === '' || v.startsWith('--')))
+    stop(`${name} needs a file`);
+  return v;
+};
 
 /** A cut whose discovery is older than this is made again before its stocks are given an oracle. */
 const MAX_AGE_HOURS = 24;
@@ -38,9 +45,11 @@ const directoryUrl = DIRECTORY_URL[chain.id] ?? stop(`no Chainlink directory for
 
 const again = 'run pnpm risk-evm:universe, pnpm risk-evm:discover and pnpm risk-evm:pareto first';
 const cutPath =
-  option('--cut') ?? latestFile(dir, 'cut', chain.id) ?? stop(`no cut file in ${dir}: ${again}`);
+  fileOption('--cut') ??
+  latestFile(dir, 'cut', chain.id) ??
+  stop(`no cut file in ${dir}: ${again}`);
 const universePath =
-  option('--universe') ??
+  fileOption('--universe') ??
   latestFile(dir, 'universe', chain.id) ??
   stop(`no universe file in ${dir}: ${again}`);
 

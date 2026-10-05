@@ -37,6 +37,8 @@ const fx = JSON.parse(
   directoryUrl: string;
   directory: DirectoryEntry[];
   tracked: Wanted[];
+  collected: Wanted[];
+  rpcLabel: string;
   registry: Array<Wanted & { multiplier: string | null }>;
   answers: Record<string, RpcReply>;
   file: OraclesFile;
@@ -71,10 +73,10 @@ async function replay(change: Change = {}) {
     {
       directoryUrl: fx.directoryUrl,
       tracked: change.tracked ?? fx.tracked,
-      collected: chain.tokens,
+      collected: fx.collected,
       registry: change.registry ?? fx.registry,
       regime,
-      rpcLabel: chain.rpcDefault,
+      rpcLabel: fx.rpcLabel,
       inputs: fx.inputs,
     },
   );
@@ -165,7 +167,7 @@ describe('the oracle map on the recorded pass', () => {
     }
   });
 
-  it('the contracts name a stock in three ways, and all three are read', async () => {
+  it('the contracts name a stock in four ways, and all four are read', async () => {
     const { file } = await replay();
     expect(rowOf(file, 'SPY').feed?.description).toBe('RHSPY / USD');
     expect(rowOf(file, 'QQQ').feed?.description).toBe('Robinhood QQQ / USD');
@@ -348,7 +350,7 @@ describe('the pieces', () => {
     replies.map((r, i) => (i === at + offset ? reply : r));
   const word = (v: bigint) => v.toString(16).padStart(64, '0');
 
-  it('namesToken reads the three forms and nothing wider', () => {
+  it('namesToken reads the forms in use and nothing wider', () => {
     for (const t of [
       'SPY / USD',
       'RHSPY / USD',
@@ -452,5 +454,48 @@ describe('the pieces', () => {
     expect(unitsToDecimal('42', 0)).toBe('42');
     expect(unitsToDecimal('-5', 2)).toBe('-0.05');
     expect(unitsToDecimal('1000000000000000000', 18)).toBe('1.000000000000000000');
+  });
+});
+
+describe('from the review', () => {
+  it('a contract whose own description reads as two tokens is refused too', async () => {
+    // the directory's name is plain; MU's contract calls itself "RHMU / USD"
+    const { file } = await replay({
+      registry: [
+        ...fx.registry,
+        { address: '0x00000000000000000000000000000000000000bb', symbol: 'RHMU', multiplier: null },
+      ],
+    });
+    expect(rowOf(file, 'MU')).toMatchObject({ feed: null, reason: 'feed_names_two_tokens' });
+    expect(rowOf(file, 'MU').detail).toContain('the contract calls itself "RHMU / USD"');
+  });
+
+  it('a directory that lists nothing, or names no token, writes nothing', async () => {
+    await expect(replay({ directory: [] })).rejects.toThrow(/none names a token/);
+    await expect(
+      replay({
+        directory: fx.directory.filter(
+          (f) => !fx.registry.some((t) => namesToken(f.name, t.symbol)),
+        ),
+      }),
+    ).rejects.toThrow(/none names a token/);
+  });
+
+  it('a feed whose decimals the directory does not give is not confirmed', async () => {
+    const { file } = await replay({
+      directory: fx.directory.map((f) =>
+        f.name === 'Robinhood SPY / USD' ? { ...f, decimals: null } : f,
+      ),
+    });
+    expect(rowOf(file, 'SPY')).toMatchObject({
+      feed: null,
+      reason: 'decimals_differ_from_directory',
+    });
+    expect(file.counts.trackedWithFeed).toBe(23);
+  });
+
+  it('the replay does not read the collected list of config.ts', () => {
+    expect(fx.collected).toHaveLength(21);
+    expect(fx.file.source).toContain(fx.rpcLabel);
   });
 });

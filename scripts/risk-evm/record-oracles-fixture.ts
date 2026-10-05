@@ -105,6 +105,9 @@ const fixture = {
   directoryUrl,
   directory,
   tracked,
+  // the collector's tokens and the endpoint's name as they were at the recording: config.ts moves on
+  collected: chain.tokens.map(({ address, symbol }) => ({ address, symbol })),
+  rpcLabel: chain.rpcDefault,
   registry,
   answers,
   // what the pass came to when it was recorded: the replay must come to the same
