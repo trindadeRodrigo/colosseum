@@ -132,13 +132,23 @@ function fallback(
       reasons: [...says, startReason(w, theme.name, sleeve), ...opened],
     }));
   }
-  const ticker = P.defaultUnderlying[sleeve];
-  const can = holdable(w, ticker, sleeve);
-  if (can.ok)
-    return [{ name: ticker, weight: cents, reasons: [...says, startReason(w, ticker, sleeve)] }];
-  book.removed.push({ ref: ticker, reasons: can.why });
-  const [cause] = can.why;
-  if (cause) book.spill([ticker], cents, cause);
+  // The table's tickers in order (gold: PAXG, then GLD): the first the person can hold here fills it.
+  const tried = [P.defaultUnderlying[sleeve]].flat().map((ticker) => ({
+    ticker,
+    can: holdable(w, ticker, sleeve),
+  }));
+  const held = tried.find((t) => t.can.ok);
+  if (held)
+    return [
+      { name: held.ticker, weight: cents, reasons: [...says, startReason(w, held.ticker, sleeve)] },
+    ];
+  // What this chain lists and the person cannot hold says why; failing that, that none is listed.
+  const listed = tried.filter((t) => tokensOf(w, t.ticker, sleeve).length > 0);
+  const out = listed.length > 0 ? listed : tried;
+  for (const t of out) book.removed.push({ ref: t.ticker, reasons: t.can.why });
+  const names = out.map((t) => t.ticker);
+  const cause = out[0]?.can.why[0];
+  if (cause) book.spill(names, cents, cause);
   return [];
 }
 

@@ -39,6 +39,11 @@ export type ComposerProps = {
   maxLength?: number;
   /** Under the box: "Enter to fit · Shift+Enter for a new line". */
   hint?: string;
+  /**
+   * The id of a hint the screen draws itself, somewhere else (below the chips, as the landing's
+   * simulator has it). The box is described by it as by its own.
+   */
+  describedBy?: string;
   /** The text is being read: the box is read-only and the send button shows the still lattice. */
   busy?: boolean;
   /** The request failed. A sentence that says what to do. The typed text is kept. */
@@ -77,6 +82,7 @@ export function Composer({
   placeholder,
   maxLength,
   hint,
+  describedBy: elsewhere,
   busy = false,
   error,
   disabled = false,
@@ -127,7 +133,9 @@ export function Composer({
     send();
   }
 
-  const describedBy = [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(' ');
+  const describedBy = [hint ? hintId : null, elsewhere ?? null, error ? errorId : null]
+    .filter(Boolean)
+    .join(' ');
   const control = cn(
     'min-w-0 flex-1 bg-transparent text-body outline-none placeholder:text-muted-foreground',
     disabled ? 'text-muted-foreground' : 'text-foreground',

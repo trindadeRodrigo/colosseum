@@ -135,7 +135,7 @@ const table: fc.Arbitrary<PersonalParameters> = fc
     }),
     defaultUnderlying: fc.record({
       growth: fc.constantFrom('SPY', 'NVDA', 'JitoSOL', 'ZZZ'),
-      gold: fc.constantFrom('GLD', 'SLV', 'ZZZ'),
+      gold: fc.shuffledSubarray(['PAXG', 'GLD', 'SLV', 'ZZZ'], { minLength: 1 }),
     }),
   })
   .map(({ rows, ...rest }) =>

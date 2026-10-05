@@ -14,7 +14,9 @@ import { read, sourceFiles, WEB } from '../ui/test/css';
 //   3. no screen can reach a key except through the executor of packages/sdk, which runs the guard on
 //      the bytes first. The port a screen is handed has no signing member, the whole port and the
 //      wallet libraries are importable only inside the wallet's seam, and outside it no signing
-//      member is so much as named.
+//      member is so much as named. One file is let through, on purpose: the order runner
+//      (features/order/run-order.ts), which hands the whole port to `execute` and nothing else, and
+//      which only the order screen imports.
 
 // next-env.d.ts is Next's own file, written by its build and its dev server.
 const files = [...sourceFiles()].filter(
@@ -87,6 +89,11 @@ describe('the routes of the app', () => {
     expect(product.sort()).toEqual([
       'app/(app)/goal/page.tsx',
       'app/(app)/layout.tsx',
+      'app/(app)/monitor/page.tsx',
+      'app/(app)/orders/[id]/page.tsx',
+      'app/(app)/page.tsx',
+      'app/(app)/plan/[id]/buy/page.tsx',
+      'app/(app)/plan/[id]/page.tsx',
       'app/(app)/sign-in/page.tsx',
     ]);
     expect(older.sort()).toEqual([
@@ -95,8 +102,6 @@ describe('the routes of the app', () => {
       'app/(structurer)/embed/[id]/layout.tsx',
       'app/(structurer)/embed/[id]/page.tsx',
       'app/(structurer)/layout.tsx',
-      'app/(structurer)/monitor/page.tsx',
-      'app/(structurer)/page.tsx',
       'app/(structurer)/plans/[id]/page.tsx',
       'app/(structurer)/risk/[asset]/page.tsx',
       'app/(structurer)/risk/methodology/page.tsx',
@@ -223,7 +228,7 @@ describe('rule 2: the product’s routes do not reach the wallet adapter', () =>
     for (const file of [
       'components/Nav.tsx',
       'app/(structurer)/providers.tsx',
-      'components/GoalFlow.tsx',
+      'components/PlanView.tsx',
     ])
       expect(built.files.has(file), file).toBe(false);
   });
@@ -268,17 +273,35 @@ describe('rule 3: no screen can reach a key', () => {
   const screens = [...built.files].filter((file) => !SEAM.has(file));
 
   /**
-   * Who may import the whole port (features/wallet/signing.ts), among everything the app ships. Nobody
-   * yet: the guard and the executor exist (packages/sdk, AGT-1), and no screen signs through them
-   * yet. The first screen that hands the port to `execute` is added here, on purpose.
+   * Who may import the whole port (features/wallet/signing.ts), among everything the app ships: the
+   * order runner, which hands it to `execute()` of packages/sdk (AGT-1) as the signer and to nothing
+   * else. The executor runs the guard on the bytes of every step before it asks the wallet.
    */
-  const SIGNERS: readonly string[] = [];
+  const RUNNER = 'features/order/run-order.ts';
+  const SIGNERS: readonly string[] = [RUNNER];
   const SIGNING = 'features/wallet/signing.ts';
+  /** The one screen that imports the runner, and the one route built from it. */
+  const ORDER_SCREEN = 'features/order/OrderScreen.tsx';
+  const ORDER_ROUTE = 'app/(app)/orders/[id]/page.tsx';
 
   /** What a file outside the seam may take from a file of the seam, by name. Types are free. */
   const OPEN: Record<string, readonly string[]> = {
     'features/wallet/WalletProvider.tsx': ['useWalletPort', 'useApiFetch', 'WalletProvider'],
   };
+  /** More that one file may take, and no other: the runner the whole port, and both the network table. */
+  const OPEN_TO: Record<string, Record<string, readonly string[]>> = {
+    [RUNNER]: { [SIGNING]: ['useSigningPort'] },
+    'features/order/readiness.ts': {
+      'features/wallet/chains.ts': ['publicWalletEnv', 'walletChains'],
+    },
+  };
+
+  /**
+   * The files that import packages/sdk: the runner, which calls `execute`; readiness.ts, which reads
+   * the committed deployments. (order-view.ts takes the runner's answer types from run-order.ts.)
+   */
+  const SDK_FILES = [RUNNER, 'features/order/readiness.ts'];
+  const SDK = '@colosseum/sdk';
 
   /**
    * The packages a screen imports, all of them. A wallet or chain library is not one, and a new
@@ -310,7 +333,7 @@ describe('rule 3: no screen can reach a key', () => {
         const to = seam(node.moduleSpecifier);
         const clause = node.importClause;
         if (to && clause && !clause.isTypeOnly) {
-          const open = OPEN[to] ?? [];
+          const open = [...(OPEN[to] ?? []), ...(OPEN_TO[file]?.[to] ?? [])];
           if (clause.name) found.push(`${file} takes the default of ${to}`);
           const names = clause.namedBindings;
           if (names && ts.isNamespaceImport(names)) found.push(`${file} takes all of ${to}`);
@@ -325,7 +348,7 @@ describe('rule 3: no screen can reach a key', () => {
       if (ts.isExportDeclaration(node) && !node.isTypeOnly) {
         const to = seam(node.moduleSpecifier);
         if (to) {
-          const open = OPEN[to] ?? [];
+          const open = [...(OPEN[to] ?? []), ...(OPEN_TO[file]?.[to] ?? [])];
           const names = node.exportClause;
           if (!names || !ts.isNamedExports(names)) found.push(`${file} hands on all of ${to}`);
           else
@@ -387,8 +410,13 @@ describe('rule 3: no screen can reach a key', () => {
         ? name.text
         : null;
     const walk = (node: ts.Node) => {
-      // port.sign, port?.sign, port.sign.call(…), onConfirm={port.send}
-      if (ts.isPropertyAccessExpression(node) && MEMBERS.has(node.name.text))
+      // port.sign, port?.sign, port.sign.call(…), onConfirm={port.send}. The one `request` that is not
+      // a wallet's is the browser's lock, `navigator.locks.request`, named as that and nothing else.
+      if (
+        ts.isPropertyAccessExpression(node) &&
+        MEMBERS.has(node.name.text) &&
+        !(node.name.text === 'request' && node.expression.getText() === 'navigator.locks')
+      )
         found.push(`${file} names .${node.name.text}`);
       // a name written out as a string: port['sign'], const k = 'sign', { 'sign': go }, a wallet's
       // method asked for by name
@@ -449,7 +477,7 @@ describe('rule 3: no screen can reach a key', () => {
     // features/wallet/screen-port.events.test.ts
   });
 
-  it('lets no file the app ships import the whole port, but those listed', () => {
+  it('lets no file the app ships import the whole port, but the order runner', () => {
     const importers = shipped.filter((file) =>
       importsOf(file, read(file)).some((edge) => edge.file === SIGNING),
     );
@@ -461,8 +489,67 @@ describe('rule 3: no screen can reach a key', () => {
         read('features/wallet/dev/DevWallet.tsx'),
       ).some((edge) => edge.file === SIGNING),
     ).toBe(true);
-    // and nothing a product route is built from reaches it by any path
-    expect(built.files.has(SIGNING)).toBe(false);
+  });
+
+  it('lets only the order screen import the runner, and only the order route reach the whole port', () => {
+    // a value from the runner: the order screen alone
+    const takesRunner = (file: string) => {
+      const source = ts.createSourceFile(file, read(file), ts.ScriptTarget.Latest, true);
+      return source.statements.some(
+        (node) =>
+          ts.isImportDeclaration(node) &&
+          ts.isStringLiteral(node.moduleSpecifier) &&
+          target(file, node.moduleSpecifier.text) === RUNNER &&
+          !node.importClause?.isTypeOnly,
+      );
+    };
+    expect(shipped.filter(takesRunner)).toEqual([ORDER_SCREEN]);
+    // anything else that names the runner takes its types only
+    const naming = shipped.filter((file) =>
+      importsOf(file, read(file)).some((edge) => edge.file === RUNNER),
+    );
+    expect(naming.filter((file) => file !== ORDER_SCREEN)).toEqual([
+      'features/order/order-view.ts',
+    ]);
+    expect(takesRunner('features/order/order-view.ts')).toBe(false);
+    // by any path: every product route but the order's is built without the whole port
+    expect(product).toContain(ORDER_ROUTE);
+    expect(reach(product.filter((r) => r !== ORDER_ROUTE)).files.has(SIGNING)).toBe(false);
+    expect(reach(product.filter((r) => r !== ORDER_ROUTE)).files.has(RUNNER)).toBe(false);
+    expect(reach([ORDER_ROUTE]).files.has(SIGNING)).toBe(true);
+    expect(built.files.has(RUNNER)).toBe(true);
+  });
+
+  it('hands the whole port to execute() of packages/sdk, and to nothing else', () => {
+    const text = read(RUNNER);
+    // the port of useSigningPort() is the executor's signer, handed over by that name only
+    expect(text).toMatch(/const port = useSigningPort\(\);/);
+    expect(text).toMatch(/execute\(order, \{[\s\S]*signer: port,/);
+    // every other mention of the port reads something that signs nothing: whether it is the throwaway
+    // wallet or the mock (onMock), which account is active, and the hook's dependency list
+    const rest = text
+      .replace(/^\s*\/\/.*$|\/\*[\s\S]*?\*\//gm, '')
+      .replace('const port = useSigningPort();', '')
+      .replace('signer: port,', '')
+      .replace('onMock(port, chain)', '')
+      .replace('port.active(chainFamily(chain))', '')
+      .replace('[port, apiFetch]', '');
+    expect(rest.match(/\bport\b/g) ?? []).toEqual([]);
+    // what the executor is handed beside it is the README's list (features/wallet/README.md, item 3)
+    for (const dep of [
+      'api: createOrderApi(apiFetch)',
+      'deployments,',
+      'plan: { basketId: basketIdOfPlan(',
+      'consents: input.consents',
+      'signed: localSigned',
+      'chainRead: chainReadFor(',
+      'navigator.locks.request(`order:',
+    ])
+      expect(text, dep).toContain(dep);
+    // approvedAgain is handed over only when the screen was given one after needs_review
+    expect(text).toMatch(
+      /input\.approvedAgain \? \{ approvedAgain: input\.approvedAgain \} : \{\}/,
+    );
   });
 
   it('lets a screen take from the seam only what is open to it, by name', () => {
@@ -472,8 +559,15 @@ describe('rule 3: no screen can reach a key', () => {
   it('keeps wallet and chain libraries inside the seam', () => {
     const used = new Set<string>();
     for (const file of screens)
-      for (const edge of importsOf(file, read(file))) if (edge.file === null) used.add(edge.spec);
+      for (const edge of importsOf(file, read(file)))
+        if (edge.file === null && !(edge.spec === SDK && SDK_FILES.includes(file)))
+          used.add(edge.spec);
     expect([...used].sort()).toEqual(PACKAGES);
+    // packages/sdk is imported by the runner and the deployment reader, and by order-view.ts for types
+    const sdk = shipped.filter((file) =>
+      importsOf(file, read(file)).some((edge) => edge.spec === SDK),
+    );
+    expect(sdk.sort()).toEqual([...SDK_FILES].sort());
     // the wallet provider is named in one file of everything the app ships
     const naming = shipped.filter((file) =>
       importsOf(file, read(file)).some((edge) => edge.spec.startsWith('@privy-io/')),
@@ -529,6 +623,10 @@ describe('rule 3: no screen can reach a key', () => {
     // refuses both: the screen's port has no such member and takes no string as a key.
     for (const unseen of ["await port['si' + 'gn'](chain, txs);", 'await execute(port, order);'])
       expect(names(file, unseen), unseen).toEqual([]);
+    // the browser's lock is not a wallet's request, and a wallet's request still is
+    expect(names(file, "await navigator.locks.request('order:1', run);")).toEqual([]);
+    expect(names(file, "await wallet.locks.request('order:1', run);")).toHaveLength(1);
+    expect(names(file, "await navigator.request('eth_x');")).toHaveLength(1);
     expect(
       Object.keys(screenPort(fakePort())).filter((key) => /sign(?!In|Out)|send|export/i.test(key)),
     ).toEqual([]);
@@ -555,5 +653,11 @@ describe('rule 3: no screen can reach a key', () => {
     // or a library, which a screen may not import
     for (const spec of ['@privy-io/react-auth', 'viem', '@solana/kit', '@colosseum/sdk'])
       expect(PACKAGES, spec).not.toContain(spec);
+    // and what is open to the runner is open to it alone
+    expect(takes(file, "import { useSigningPort } from '../wallet/signing';")).toHaveLength(1);
+    expect(takes(RUNNER, "import { useSigningPort } from '../wallet/signing';")).toEqual([]);
+    expect(takes(RUNNER, "import { WalletContext } from '../wallet/WalletProvider';")).toHaveLength(
+      1,
+    );
   });
 });

@@ -42,13 +42,6 @@ const LENDING = address('2vVYHYM8VYnvZqQWpTJSj8o8DBf1wM8pVs3bsTgYZiqJ');
 function fakeMainnet(
   entries: Record<number, Entry>,
   jl: { rate: bigint; time: bigint; fToken?: string },
-  gold?: {
-    raydiumSqrt: bigint;
-    orcaSqrt: bigint;
-    orcaTime: bigint;
-    raydiumOwner?: string;
-    orcaQuote?: string;
-  },
 ): Source {
   const scope = new Uint8Array(28_712);
   const view = new DataView(scope.buffer);
@@ -73,33 +66,6 @@ function fakeMainnet(
     [SCOPE]: { data: scope, owner: address(sources.scope.owner) },
     [LENDING]: { data: lending, owner: address('jup3YeL8QhtSx1e253b2FDvsMNC87fDrgQZivbrndc9') },
   };
-  if (gold) {
-    const pool = (
-      size: number,
-      mintsAt: [number, number],
-      sqrtAt: number,
-      sqrt: bigint,
-      quote = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-    ) => {
-      const data = new Uint8Array(size);
-      data.set(encoder.encode(address('Xsv9hRk1z5ystj9MhnA7Lq4vjSsLwzL2nxrwmwtD3re')), mintsAt[0]);
-      data.set(encoder.encode(address(quote)), mintsAt[1]);
-      const dv = new DataView(data.buffer);
-      dv.setBigUint64(sqrtAt, sqrt & (2n ** 64n - 1n), true);
-      dv.setBigUint64(sqrtAt + 8, sqrt >> 64n, true);
-      return data;
-    };
-    accounts['78ReVNMLGRWmjtf2HmBoHUe2pRcsctXTTbxJnbhchyze'] = {
-      data: pool(1544, [73, 105], 253, gold.raydiumSqrt),
-      owner: address(gold.raydiumOwner ?? 'CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK'),
-    };
-    const orca = pool(653, [101, 181], 65, gold.orcaSqrt, gold.orcaQuote);
-    new DataView(orca.buffer).setBigUint64(261, gold.orcaTime, true);
-    accounts['5tGLudhm9pHtqbtfymvdarbD59AyMyYimXXwbFfzETV9'] = {
-      data: orca,
-      owner: address('whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc'),
-    };
-  }
   return {
     account: async (target) => {
       const found = accounts[target];
@@ -206,10 +172,40 @@ describe('the price copier', () => {
       exponent: 18n,
       unixTimestamp: t - 7n,
     });
-    // This source has no gold pools: tGLDx is left as it is, and the round says why.
-    expect(result.unchanged).toContain('tGLDx (no source: a pool is not there)');
+    // This source has no entry 454: tPAXG is refused, never written as a zero.
+    expect(result.refused.find((r) => r.id === 'tPAXG')?.why).toBe('the source holds no price');
     // A stock whose source entry holds nothing is refused, never written as a zero.
     expect(result.refused.find((r) => r.id === 'tQQQx')?.why).toBe('the source holds no price');
+  });
+
+  it("copies PAXG from its Kamino reserve's entries to tPAXG's own", async () => {
+    // Where the reserve reads PAXG on mainnet, from the index table and not from the copier's sources
+    // or the set-up's config: either pointing elsewhere leaves tPAXG without this reading.
+    const table: { assets: { symbol: string; priceIndex: number; twapIndex: number }[] } =
+      JSON.parse(
+        readFileSync(join(REPO_ROOT, 'fixtures', 'solana-vault', 'scope-indexes.json'), 'utf8'),
+      );
+    const real = table.assets.find((a) => a.symbol === 'PAXG');
+    if (!real) throw new Error('the index table has no PAXG');
+    const t = SESSION + 150n;
+    setClock(svm, t + 5n);
+    const price: Entry = { value: 414_276_000_000n, exponent: 8n, unixTimestamp: t };
+    const twap: Entry = { value: 414_198_500_000n, exponent: 8n, unixTimestamp: t - 2n };
+    const source = fakeMainnet(
+      { [real.priceIndex]: price, [real.twapIndex]: twap },
+      { rate: 1_062_999_156_547n, time: t - 7n },
+    );
+    const result = await copyRound(
+      liteChain(svm),
+      writer,
+      deployment,
+      await readPrices(source, sources),
+      options(),
+    );
+    expect(result.written).toContain('tPAXG');
+    const paxg = asset('solana:paxg');
+    expect(held(paxg.priceIndex)).toEqual(bytesOf(price));
+    expect(held(paxg.twapIndex)).toEqual(bytesOf(twap));
   });
 
   it('skips an entry no newer than the one held, and refuses a value outside the range or past a jump', async () => {
@@ -266,38 +262,6 @@ describe('the price copier', () => {
     expect(read(asset('solana:aaplx').priceIndex).value).not.toBe(p15('450', t).value);
   });
 
-  it("copies gold from its pool's mid, checked against a second pool, stamped with that pool's time", async () => {
-    const t = SESSION + 250n;
-    setClock(svm, t + 5n);
-    // GLDx at 379.71 dollars: 3.7971 raw USDC per raw GLDx (8 decimals against 6), as a sqrt in Q64.
-    const sqrt = (dollars: number) => BigInt(Math.round(Math.sqrt(dollars / 100) * 2 ** 64));
-    const gold = (orca: number) =>
-      readPrices(
-        fakeMainnet(
-          {},
-          { rate: 0n, time: 0n },
-          { raydiumSqrt: sqrt(379.71), orcaSqrt: sqrt(orca), orcaTime: t - 3n },
-        ),
-        { ...sources, assets: { 'solana:gldx': sources.assets['solana:gldx'] as never } },
-      );
-    const [read1] = await gold(379.68);
-    if (!read1 || 'none' in read1) throw new Error(`no reading: ${JSON.stringify(read1)}`);
-    expect(read1.method).toBe('pool_mid');
-    expect(read1.price.exponent).toBe(8n);
-    expect(read1.price.unixTimestamp).toBe(t - 3n);
-    expect(Number(read1.price.value) / 1e8).toBeCloseTo(379.71, 4);
-    expect(read1.twap).toEqual(read1.price);
-    const result = await copyRound(liteChain(svm), writer, deployment, [read1], options());
-    expect(result.written).toEqual(['tGLDx']);
-    expect(read(asset('solana:gldx').priceIndex)).toEqual(read1.price);
-    // Two pools more than 1% apart give no reading at all.
-    const [apart] = await gold(390);
-    expect(apart).toEqual({
-      id: 'solana:gldx',
-      none: "the two pools' mids are more than 100 bps apart",
-    });
-  });
-
   it('signs with the price writer only: the deploy key and any other key are refused', async () => {
     await expect(copyRound(liteChain(svm), admin, deployment, [], options())).rejects.toThrow(
       /the deploy key is the exchange's admin/,
@@ -351,29 +315,8 @@ describe('the price copier', () => {
     ]);
   });
 
-  it('gives no reading from a pool of the wrong program or pair, or a lending account of another token', async () => {
-    const sqrt = BigInt(Math.round(Math.sqrt(3.7971) * 2 ** 64));
+  it('gives no reading from a lending account of another token', async () => {
     const only = (id: string) => ({ ...sources, assets: { [id]: sources.assets[id] as never } });
-    const gold = (breakage: { raydiumOwner?: string; orcaQuote?: string }) =>
-      readPrices(
-        fakeMainnet(
-          {},
-          { rate: 0n, time: 0n },
-          { raydiumSqrt: sqrt, orcaSqrt: sqrt, orcaTime: 1n, ...breakage },
-        ),
-        only('solana:gldx'),
-      );
-    expect(await gold({ raydiumOwner: 'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc' })).toEqual([
-      {
-        id: 'solana:gldx',
-        none: 'the pool is not a Raydium CLMM pool, or the check is not an Orca Whirlpool',
-      },
-    ]);
-    const [wrongPair] = await gold({ orcaQuote: 'So11111111111111111111111111111111111111112' });
-    expect(wrongPair).toMatchObject({
-      id: 'solana:gldx',
-      none: expect.stringMatching(/not Xsv9.* against USDC$/),
-    });
     const usdc = { 13: p15('1', 5n), 456: p15('1', 5n) };
     const [jl] = await readPrices(
       fakeMainnet(usdc, {
