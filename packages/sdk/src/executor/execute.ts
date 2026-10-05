@@ -76,7 +76,9 @@ export type SignedRecord = {
 /**
  * What was signed, by order and step (`signedKey`). It has to outlive whatever runs the order: in a
  * browser the page and the tab (local storage), for an agent the process. A store that is lost forgets
- * that a step was signed, and a `Map` made anew for each run remembers nothing.
+ * that a step was signed, and a `Map` made anew for each run remembers nothing. Two runs of one order
+ * must not share it at the same time: the caller holds a lock named for the order around `execute`
+ * (in a browser `navigator.locks`), or both could sign a step before either writes it down.
  */
 export type SignedStore = {
   get(key: string): SignedRecord | undefined | Promise<SignedRecord | undefined>;

@@ -286,7 +286,9 @@ describe('the executor on Solana bytes, against an API that keeps what was signe
    * `processed`; its finalized block trails the tip by 32 blocks, as it always does, so not one of them
    * is valid there yet. Each signed transaction could still land.
    */
-  const hoarded = async (o: { knows?: boolean; finalizedStep?: number } = {}) => {
+  const hoarded = async (
+    o: { knows?: boolean; finalizedStep?: number; throwsOn?: string } = {},
+  ) => {
     const leg = {
       id: 'leg-1',
       orderId: 'order-1',
@@ -364,6 +366,7 @@ describe('the executor on Solana bytes, against an API that keeps what was signe
       },
     };
     const rpc: RpcCall = async (method, params) => {
+      if (method === o.throwsOn) throw new Error(`${method}: the node is down`);
       if (method === 'isBlockhashValid')
         return { context: { slot: 1 }, value: node.known.has(params[0] as string) };
       if (method === 'getBlockHeight')
@@ -430,5 +433,14 @@ describe('the executor on Solana bytes, against an API that keeps what was signe
     expect(signedAt).toEqual([]);
     expect(signed.size).toBe(0);
     expect(result).toMatchObject({ status: 'waiting', why: 'unknown_blockhash' });
+  });
+
+  it('signs nothing when the node throws instead of answering, on either read', async () => {
+    for (const throwsOn of ['isBlockhashValid', 'getBlockHeight']) {
+      const { result, signedAt, signed } = await hoarded({ throwsOn });
+      expect(signedAt, throwsOn).toEqual([]);
+      expect(signed.size, throwsOn).toBe(0);
+      expect(result, throwsOn).toMatchObject({ status: 'waiting', why: 'unknown_blockhash' });
+    }
   });
 });
