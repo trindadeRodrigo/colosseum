@@ -99,7 +99,9 @@
     "risk:prices-install-job": "zsh scripts/risk/prices/install-job.sh",
     "risk:prices-freeze-fixtures": "tsx scripts/risk/prices/freeze-fixtures.ts && biome format --write fixtures/risk/prices",
     "risk-evm:collect": "tsx scripts/risk-evm/collect.ts",
-    "risk-evm:import": "tsx scripts/risk-evm/import.ts"
+    "risk-evm:import": "tsx scripts/risk-evm/import.ts",
+    "risk-evm:universe": "tsx scripts/risk-evm/universe.ts",
+    "risk-evm:discover": "tsx scripts/risk-evm/discover.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
