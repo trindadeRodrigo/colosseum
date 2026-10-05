@@ -89,7 +89,7 @@
       "mint": "Xsv9hRk1z5ystj9MhnA7Lq4vjSsLwzL2nxrwmwtD3re",
       "decimals": 8,
       "method": "pool_mid",
-      "source": "The mid of the GLDx/USDC Raydium CLMM pool 78ReVNMLGRWmjtf2HmBoHUe2pRcsctXTTbxJnbhchyze (2,210 GLDx and 178,352 USDC on 2026-10-05), USDC counted as one dollar, refused unless the GLDx/USDC Orca Whirlpool 5tGLudhm9pHtqbtfymvdarbD59AyMyYimXXwbFfzETV9 is within 100 bps, stamped with that Whirlpool's reward_last_updated_timestamp (moved by every swap), so the price goes stale when the pool does. A pool keeps no average: the mid stands as the average too. Scope has no GLDx entry (no Kamino reserve), its Pyth push account was 23 days old, and Hermes asks for a key"
+      "source": "The mid of the GLDx/USDC Raydium CLMM pool 78ReVNMLGRWmjtf2HmBoHUe2pRcsctXTTbxJnbhchyze (2,210 GLDx and 178,352 USDC on 2026-10-05), USDC counted as one dollar, refused unless the GLDx/USDC Orca Whirlpool 5tGLudhm9pHtqbtfymvdarbD59AyMyYimXXwbFfzETV9 is within 100 bps, stamped with that Whirlpool's reward_last_updated_timestamp (moved by every swap), so the price goes stale when the pool does. A pool keeps no average: the mid stands as the average too. Scope has no GLDx entry (no Kamino reserve), its Pyth push account was 23 days old, and Hermes asks for a key. Under gate UNIVERSE (Oct 5) a stock with no oracle is traded with the owner's signature only and an oracle is never blended with a pool price: tGLDx's keeper switch is off on devnet, its range stays, and this mid keeps it valued and fresh for vaults that hold it"
     }
   }
 }
