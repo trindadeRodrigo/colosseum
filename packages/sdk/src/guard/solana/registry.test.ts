@@ -7,7 +7,9 @@ import * as e from '../../../test/evm';
 import { withRules } from '../../../test/rules';
 import {
   ASSETS,
+  BASKET_ID,
   CONFIG,
+  depositIx,
   type Ix,
   join,
   OWNER,
@@ -251,6 +253,43 @@ const on = (
   input: async () => input(step, wire([...BUDGET, await ix()]), {}, consents),
 });
 const notSigning = { signer: false, writable: true };
+
+describe('the guard on Solana: an interface that drops an account it cannot do without', () => {
+  it("is not one it knows: an owner's step without its owner or vault, a registry call without its creator or recipe", async () => {
+    const drop = (name: string, account: string): ProgramTable => {
+      const spec = BASKET_PROGRAM.instructions[name] as ProgramTable['instructions'][string];
+      return {
+        ...BASKET_PROGRAM,
+        instructions: {
+          ...BASKET_PROGRAM.instructions,
+          [name]: { ...spec, accounts: spec.accounts.filter((a) => a.name !== account) },
+        },
+      };
+    };
+    const deposit = await depositIx(BASKET_PROGRAM, '1000');
+    const depositStep: ApprovedStep = {
+      ...base,
+      basketId: BASKET_ID,
+      kind: 'deposit',
+      amountRaw: '1000',
+      trades: [],
+    };
+    const cases: [ProgramTable, ApprovedStep, Ix, string][] = [
+      [drop('deposit', 'owner'), depositStep, deposit, 'owner'],
+      [drop('deposit', 'vault'), depositStep, deposit, 'vault'],
+      [drop('publish_recipe', 'creator'), publishStep, publishIx(), 'creator'],
+      [drop('publish_recipe', 'recipe'), publishStep, publishIx(), 'recipe'],
+      [drop('cancel_pending', 'signer'), cancelStep, cancelIx(), 'signer'],
+    ];
+    for (const [table, step, ix, account] of cases) {
+      const refusal = refusalOf(() =>
+        withRules({ program: table }, () => runGuard(input(step, wire([ix]), {}, ['publish']))),
+      );
+      expect(refusal?.code, account).toBe('unsupported');
+      expect(refusal?.message, account).toMatch(new RegExp(`has no account ${account}`));
+    }
+  });
+});
 
 describe('the registry calls elsewhere: not signed yet', () => {
   it("on Robinhood Chain until IndexRegistry's interface is final, and on the mock", () => {
