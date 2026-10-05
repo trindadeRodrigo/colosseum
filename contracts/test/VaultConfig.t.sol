@@ -65,7 +65,11 @@ contract VaultConfigTest is Test {
             pauseProbe: address(0xBEEF),
             pauseSelector: bytes4(keccak256("paused()")),
             scheduleSelector: bytes4(keccak256("effectiveAt()")),
-            haltUntil: 0
+            haltUntil: 0,
+            flags: 0,
+            averageFeed: address(0),
+            minPrice: 0,
+            maxPrice: 0
         });
     }
 
@@ -775,7 +779,7 @@ contract VaultConfigTest is Test {
 
     function test_setParams_storesThemInsideTheBounds() public {
         // The bounds themselves are allowed.
-        Params memory p = Params(300, 500, 1000, 600, 0, 86_400);
+        Params memory p = Params(300, 500, 500, 600, 0, 86_400);
         vm.prank(admin);
         vm.expectEmit(address(config));
         emit IVaultConfig.ParamsSet(p);
@@ -783,7 +787,7 @@ contract VaultConfigTest is Test {
         (uint16 tolerance, uint16 lossCap, uint16 band, uint32 cooldown, uint32 open, uint32 close) = config.params();
         assertEq(tolerance, 300);
         assertEq(lossCap, 500);
-        assertEq(band, 1000);
+        assertEq(band, 500);
         assertEq(cooldown, 600);
         assertEq(open, 0);
         assertEq(close, 86_400);

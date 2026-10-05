@@ -6,6 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {TransientSlot} from "@openzeppelin/contracts/utils/TransientSlot.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {MulticallUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/MulticallUpgradeable.sol";
@@ -13,14 +14,13 @@ import {IBasketVault} from "./interfaces/IBasketVault.sol";
 import {IIndexRegistry} from "./interfaces/IIndexRegistry.sol";
 import {IPermit2} from "./interfaces/IPermit2.sol";
 import {IVaultConfig, PERMIT2} from "./interfaces/IVaultConfig.sol";
-import {Swap, Weight} from "./interfaces/Types.sol";
+import {AssetConfig, Params, Snapshot, Swap, Weight} from "./interfaces/Types.sol";
 
 /// One person's vault for one plan on one chain. The logic contract behind every vault's beacon proxy.
 ///
-/// This is the owner's path and creation (EVM-1, EVM-2): deposit the cash token, swap through an allowed
-/// router, set targets, and withdraw in kind to the owner. The keeper path, accept, adopt and auto-follow
-/// are EVM-3; their signatures are in `IBasketVault`, which this contract inherits once it implements all
-/// of it.
+/// The owner's path and creation (EVM-1, EVM-2): deposit the cash token, swap through an allowed router,
+/// set targets, and withdraw in kind to the owner. The keeper's path (EVM-3): accept a version and switch
+/// auto-follow (the owner), adopt a version (anyone, for a vault that follows), and the keeper's trade.
 ///
 /// Rules that hold here and must keep holding:
 /// - A vault is created by its factory and by nothing else: the proxy's constructor runs `initialize`, the
@@ -41,9 +41,14 @@ import {Swap, Weight} from "./interfaces/Types.sol";
 /// - One reentrancy guard covers every function that changes state. `multicall` is the one exception: it
 ///   only calls back into the vault, and each inner call takes the guard itself.
 /// - Amounts are raw token units. The vault never calls `decimals()`; the config states them.
+/// - The keeper can call one function, `keeperSwap`, and the checks of section 5 bound what it can lose:
+///   each trade at most the tolerance at the reference prices, a week at most the loss cap (twice it when
+///   spread to follow the counter's drain), and only toward the targets the owner chose. Tokens never leave
+///   by the keeper except as a trade's input. Nothing on the keeper's path is read by the owner's: a pause,
+///   a dead feed or a closed market stops the keeper and never the owner.
 /// - State lives in one ERC-7201 namespace. Later slots append to `VaultStorage`, never reorder it, and
 ///   inherit only bases that are stateless or namespaced.
-contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgradeable {
+contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgradeable, IBasketVault {
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
     using TransientSlot for *;
@@ -65,8 +70,16 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
         // Reserved (section 3.8). Nothing here sets it. It shares a slot with the two fields above: bits 0 to
         // 31 the version, 32 to 39 auto-follow, 40 to 199 the operator.
         address operator;
-        // Sorted by token. The owner's own, or a copy of the followed portfolio's accepted version.
+        // Sorted by token. The owner's own, or a copy of the followed portfolio's accepted version, with a
+        // target of zero for an asset a later version dropped while the vault still held it.
         Weight[] targets;
+        // ---- appended by EVM-3
+        // When the keeper last traded each asset (check 6).
+        mapping(address token => uint64) lastKeeperAt;
+        // The weekly loss counter (check 7): raw units of the cash token, cash at $1, and when it was last
+        // written. What is left of it falls in a straight line to nothing over seven days from then.
+        uint256 lossAccum;
+        uint64 lossTs;
     }
 
     // keccak256(abi.encode(uint256(keccak256("basket.storage.BasketVault")) - 1)) & ~bytes32(uint256(0xff))
@@ -95,6 +108,38 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
     uint256 internal constant MAX_TARGETS = 16;
     /// Marks a token whose balance could not be read. No token has this balance.
     uint256 private constant UNREADABLE = type(uint256).max;
+
+    /// Bit 0 of an asset's `flags`: the admin has switched the keeper on for it.
+    uint8 internal constant KEEPER_ON = 1;
+    /// The window of the loss cap.
+    uint256 internal constant LOSS_WINDOW = 7 days;
+    /// A keeper trade stays a day away from a change of the token's multiplier, before and after.
+    uint256 internal constant MULTIPLIER_WINDOW = 1 days;
+    /// How long after the sequencer comes back up its chain's prices are not trusted.
+    uint256 internal constant SEQUENCER_GRACE = 1 hours;
+    /// The most a vault may be worth for the keeper to trade it, in raw units of the cash token: 10^30, a
+    /// trillion dollars of an 18-decimal dollar. Every product the checks form is a part of a vault's value
+    /// times another part, times at most 2 * 10^4, so under this bound none comes near 2^256.
+    uint256 internal constant MAX_VALUE = 1e30;
+    /// `latestRoundData()` of a Chainlink aggregator.
+    bytes4 private constant LATEST_ROUND_DATA = 0xfeaf968c;
+
+    /// What a keeper trade knows before the router is called.
+    struct Leg {
+        address asset;
+        address cash;
+        bool buying;
+        uint16 targetBps;
+        uint8 cashDecimals;
+        AssetConfig config;
+        Params params;
+        /// The asset's price, in its feed's units.
+        uint256 price;
+        /// What the vault's other targets are worth, in raw units of the cash token.
+        uint256 others;
+        uint256 assetValue;
+        uint256 vaultValue;
+    }
 
     modifier onlyOwner() {
         require(msg.sender == _vault().owner, IBasketVault.NotOwner(msg.sender));
@@ -130,6 +175,7 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
         bytes32 indexId,
         uint32 expectedVersion,
         Weight[] calldata targets_,
+        bool autoFollow_,
         uint256 cashAmount,
         Swap[] calldata swaps
     ) external nonReentrant {
@@ -143,6 +189,7 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
         } else {
             _setOwnTargets($, targets_);
         }
+        if (autoFollow_) _setAutoFollow($, true);
         if (cashAmount != 0) _pullCash($, $.owner, cashAmount);
         if (swaps.length != 0) _swapAll($, swaps);
     }
@@ -162,7 +209,11 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
     /// pulls), calls the router with `data`, takes the approval back and checks it is gone, then reads its
     /// own balances: at most `amountIn` of the input left, at least `minOut` of the output arrived, and no
     /// other token in `tokens` went down.
-    function ownerSwap(Swap[] calldata swaps) external onlyOwner nonReentrant {
+    ///
+    /// Refused after `deadline`: a trade signed and not sent in time would otherwise land whenever its
+    /// nonce is next used, at whatever the market then gives above `minOut`.
+    function ownerSwap(Swap[] calldata swaps, uint64 deadline) external onlyOwner nonReentrant {
+        require(block.timestamp <= deadline, DeadlinePassed(deadline, uint64(block.timestamp)));
         _swapAll(_vault(), swaps);
     }
 
@@ -179,6 +230,81 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
         }
         $.autoFollow = false;
         _setOwnTargets($, targets_);
+    }
+
+    /// Takes the version in effect of a shared portfolio, the one the vault follows or another, as the
+    /// targets: the owner's consent to that version's weights, by its number. The number of the version that
+    /// waits is `VersionNotEffective`, any other but the one in effect `VersionMismatch`. An asset the version
+    /// drops and the vault still holds stays as a target of zero, for the keeper to sell. Auto-follow is left
+    /// as it was.
+    function acceptVersion(bytes32 indexId, uint32 expectedVersion) external onlyOwner nonReentrant {
+        VaultStorage storage $ = _vault();
+        (uint32 waiting,,) = _registry($).pending(indexId);
+        require(waiting == 0 || waiting != expectedVersion, VersionNotEffective(indexId, expectedVersion));
+        bytes32 before = $.indexId;
+        if (before != bytes32(0) && before != indexId) emit Unfollowed(address(this), before);
+        _follow($, indexId, expectedVersion);
+    }
+
+    /// Lets the keeper trade this vault toward its targets and anyone adopt a newer version of the
+    /// portfolio it follows, or stops both.
+    function setAutoFollow(bool on) external onlyOwner nonReentrant {
+        _setAutoFollow(_vault(), on);
+    }
+
+    // ---- anyone
+
+    /// Moves an auto-follow vault to the version in effect of the portfolio it follows, when that version
+    /// only changes weights among assets the owner accepted: each of its assets is a target above zero.
+    /// Holding a token is not accepting it. It is a keeper path: the guardian's pause stops it.
+    function adoptVersion() external nonReentrant {
+        VaultStorage storage $ = _vault();
+        require($.autoFollow, AutoFollowOff());
+        require(!$.config.keeperPaused(), KeeperPaused());
+        bytes32 indexId = $.indexId;
+        require(indexId != bytes32(0), IndexNotFound(indexId));
+        (uint32 version, Weight[] memory components) = _registry($).active(indexId);
+        // Nothing newer than what the vault holds is in effect: a version that waits is not.
+        require(version > $.acceptedVersion, VersionNotEffective(indexId, version));
+        for (uint256 i; i < components.length; ++i) {
+            require(_accepts($, components[i].token), NewAssetNeedsOwner(components[i].token));
+        }
+        _take($, components);
+        $.acceptedVersion = version;
+        emit VersionAdopted(address(this), indexId, version);
+    }
+
+    // ---- the keeper
+
+    /// One trade toward the targets: cash for one target, or one target for cash, through an allowed router.
+    /// Everything the owner's swap checks around the router's call is checked here too, and then the rules
+    /// of section 5, in the Solana program's order: the keeper, auto-follow, the pause, cash on one side, the
+    /// asset a target, the cooldown, the token's own state and the market, the price reference of every
+    /// target the vault holds, the largest value measured, the direction; after the call the amount spent
+    /// (something, and at most `amountIn`), `minOut`, the value received, the band, the distance from the
+    /// target and the weekly loss cap.
+    function keeperSwap(Swap calldata s) external nonReentrant returns (uint256 spent, uint256 received) {
+        VaultStorage storage $ = _vault();
+        IVaultConfig cfg = $.config;
+        Leg memory leg = _beforeLeg($, cfg, s);
+
+        uint8 pull = cfg.routerPull(s.router);
+        require(pull != 0, RouterNotAllowed(s.router));
+        $.tokens.add(leg.asset);
+        $.tokens.add(leg.cash);
+        require(
+            s.router != address(this) && s.router != PERMIT2 && !$.tokens.contains(s.router),
+            RouterNotAllowed(s.router)
+        );
+        address[] memory list = $.tokens.values();
+        uint256[] memory held = new uint256[](list.length);
+        for (uint256 j; j < list.length; ++j) {
+            held[j] = _held(list[j]);
+        }
+        (spent, received) = _trade(s, pull, list, held);
+        // A trade that spends nothing must not use up the asset's one trade of the cooldown.
+        require(spent != 0, NothingTraded());
+        _afterLeg($, leg, s, spent, received);
     }
 
     /// Sends `amount` of any token the vault holds to the owner, whether it was deposited or sent in from
@@ -215,6 +341,16 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
         }
     }
 
+    /// Several of the vault's own calls in one transaction. Outside the reentrancy guard on purpose: it only
+    /// calls back into the vault, and each inner call takes the guard and checks its own caller.
+    function multicall(bytes[] calldata data)
+        public
+        override(MulticallUpgradeable, IBasketVault)
+        returns (bytes[] memory)
+    {
+        return super.multicall(data);
+    }
+
     // ---- views
 
     function owner() external view returns (address) {
@@ -245,6 +381,59 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
         return ($.indexId, $.acceptedVersion, $.autoFollow);
     }
 
+    /// One read of the vault for the app and for agents. `tokens` are the targets in order, then the cash
+    /// token with what the targets leave of 10,000 bps. A balance that cannot be read is zero, and so is a
+    /// price whose feed does not answer: this is a view of the feeds as they stand, not the keeper's
+    /// reference, and it never reverts on a token or a feed. `lossUsedBps` is what is left of the weekly
+    /// counter over what the priced holdings are worth.
+    function snapshot() external view returns (Snapshot memory snap) {
+        VaultStorage storage $ = _vault();
+        IVaultConfig cfg = $.config;
+        Weight[] memory list = $.targets;
+        uint256 n = list.length + 1;
+        snap.owner = $.owner;
+        snap.indexId = $.indexId;
+        snap.acceptedVersion = $.acceptedVersion;
+        snap.autoFollow = $.autoFollow;
+        snap.planId = $.planId;
+        snap.tokens = new address[](n);
+        snap.targetBps = new uint16[](n);
+        snap.balances = new uint256[](n);
+        snap.prices = new uint256[](n);
+        snap.priceUpdatedAt = new uint64[](n);
+        snap.lastKeeperAt = new uint64[](n);
+
+        address cash = cfg.cashToken();
+        uint256 cashDecimals = cfg.asset(cash).tokenDecimals;
+        uint256 left = BPS;
+        uint256 worth;
+        for (uint256 i; i < n; ++i) {
+            address token = i < list.length ? list[i].token : cash;
+            uint256 held = _held(token);
+            held = held == UNREADABLE ? 0 : held;
+            snap.tokens[i] = token;
+            snap.balances[i] = held;
+            if (i == list.length) {
+                snap.targetBps[i] = uint16(left);
+                snap.prices[i] = 1e18;
+                worth += held * 1e18 / 10 ** cashDecimals;
+                continue;
+            }
+            snap.targetBps[i] = list[i].bps;
+            left -= list[i].bps;
+            snap.lastKeeperAt[i] = $.lastKeeperAt[token];
+            AssetConfig memory a = cfg.asset(token);
+            (uint256 price, uint256 stamp) = a.feed == address(0) ? (0, 0) : _readFeed(a.feed);
+            if (price == 0 || price > type(uint128).max) continue;
+            snap.prices[i] = price * 1e18 / 10 ** a.feedDecimals;
+            snap.priceUpdatedAt[i] = uint64(Math.min(stamp, type(uint64).max));
+            worth += Math.mulDiv(held, snap.prices[i], 10 ** a.tokenDecimals);
+        }
+        // The counter is in raw units of cash; `worth` in dollars at 18 decimals.
+        uint256 used = _lossLeft($) * 1e18 / 10 ** cashDecimals;
+        snap.lossUsedBps = worth == 0 ? 0 : uint16(Math.min(used * BPS / worth, type(uint16).max));
+    }
+
     // ---- internals
 
     /// Pulls the cash token from `from`: the owner, as the caller of `deposit` or as stored. The vault's
@@ -264,19 +453,60 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
     /// Copies the active version of a shared portfolio as the vault's targets, if it is the version the
     /// person reviewed. A create signed against version N that lands after N+1 took effect fails here (A18).
     function _follow(VaultStorage storage $, bytes32 indexId, uint32 expectedVersion) private {
-        address registry = $.config.registry();
-        require(registry != address(0), IBasketVault.RegistryNotSet());
-        (uint32 version, Weight[] memory components) = IIndexRegistry(registry).active(indexId);
+        (uint32 version, Weight[] memory components) = _registry($).active(indexId);
         require(version != 0, IBasketVault.IndexNotFound(indexId));
         require(version == expectedVersion, IBasketVault.VersionMismatch(indexId, expectedVersion, version));
 
-        delete $.targets;
-        for (uint256 i; i < components.length; ++i) {
-            $.targets.push(components[i]);
-        }
+        _take($, components);
         $.indexId = indexId;
         $.acceptedVersion = version;
         emit IBasketVault.Followed(address(this), indexId, version);
+    }
+
+    function _registry(VaultStorage storage $) private view returns (IIndexRegistry) {
+        address registry = $.config.registry();
+        require(registry != address(0), IBasketVault.RegistryNotSet());
+        return IIndexRegistry(registry);
+    }
+
+    /// Takes a version's weights as the targets. An asset the version drops and the vault still holds stays
+    /// as a target of zero, so the keeper can sell it; one it holds nothing of goes. A balance that cannot be
+    /// read counts as held. Both lists are sorted by token, and so is the result. More than 16 is
+    /// `InvalidTargets(1)`: the owner sells a leftover first.
+    function _take(VaultStorage storage $, Weight[] memory next) private {
+        Weight[] memory old = $.targets;
+        delete $.targets;
+        uint256 j;
+        for (uint256 i; i < old.length; ++i) {
+            address token = old[i].token;
+            while (j < next.length && next[j].token < token) {
+                $.targets.push(next[j++]);
+            }
+            if (j < next.length && next[j].token == token) continue;
+            if (_held(token) != 0) $.targets.push(Weight(token, 0));
+        }
+        while (j < next.length) {
+            $.targets.push(next[j++]);
+        }
+        require($.targets.length <= MAX_TARGETS, InvalidTargets(1));
+    }
+
+    /// Whether the owner accepted `token`: it is a target above zero.
+    function _accepts(VaultStorage storage $, address token) private view returns (bool) {
+        (bool found, uint16 bps) = _targetOf($, token);
+        return found && bps != 0;
+    }
+
+    function _targetOf(VaultStorage storage $, address token) private view returns (bool found, uint16 bps) {
+        Weight[] storage list = $.targets;
+        for (uint256 i; i < list.length; ++i) {
+            if (list[i].token == token) return (true, list[i].bps);
+        }
+    }
+
+    function _setAutoFollow(VaultStorage storage $, bool on) private {
+        $.autoFollow = on;
+        emit AutoFollowSet(address(this), on);
     }
 
     function _setOwnTargets(VaultStorage storage $, Weight[] calldata list) private {
@@ -335,16 +565,25 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
         }
     }
 
-    /// One swap. `held` is what the vault had of each token in `list` before it, and is updated to what it
-    /// has after.
+    /// One swap of the owner's. `held` is what the vault had of each token in `list` before it, and is
+    /// updated to what it has after.
     function _swap(Swap calldata s, uint8 pull, address[] memory list, uint256[] memory held) private {
+        (uint256 spent, uint256 received) = _trade(s, pull, list, held);
+        emit IBasketVault.OwnerTrade(address(this), s.tokenIn, s.tokenOut, spent, received);
+    }
+
+    /// Approves, calls the router, takes the approval back, and judges the trade by the vault's own
+    /// balances: at most `amountIn` spent, at least `minOut` received, no other token of `list` lower.
+    /// `held` is what the vault had of each token before, and is updated to what it has after.
+    function _trade(Swap calldata s, uint8 pull, address[] memory list, uint256[] memory held)
+        private
+        returns (uint256 spent, uint256 received)
+    {
         _approve(s.tokenIn, s.router, pull, s.amountIn);
         (bool ok, bytes memory reason) = s.router.call(s.data);
         require(ok, IBasketVault.RouterFailed(s.router, reason));
         _revoke(s.tokenIn, s.router, pull);
 
-        uint256 spent;
-        uint256 received;
         for (uint256 j; j < list.length; ++j) {
             address token = list[j];
             uint256 was = held[j];
@@ -366,7 +605,282 @@ contract BasketVault is Initializable, ReentrancyGuardTransient, MulticallUpgrad
                 require(left != UNREADABLE && left >= was, IBasketVault.OtherTokenDebited(token, was, left));
             }
         }
-        emit IBasketVault.OwnerTrade(address(this), s.tokenIn, s.tokenOut, spent, received);
+    }
+
+    // ---- the keeper's rules (DESIGN-VAULT.md section 5)
+
+    /// Checks 1, 2, 6, 8, 9, 10 and 11 and the direction of check 5, and values the vault for the rest.
+    function _beforeLeg(VaultStorage storage $, IVaultConfig cfg, Swap calldata s)
+        private
+        returns (Leg memory leg)
+    {
+        // Check 1. There is no operator of a vault's own: as on Solana, where `set_keeper` is not built.
+        require(msg.sender == cfg.keeper(), NotKeeper(msg.sender));
+        require($.autoFollow, AutoFollowOff());
+        // Check 11.
+        require(!cfg.keeperPaused(), KeeperPaused());
+
+        // Check 2. Cash on one side, and one side only: the other is a target of the vault. An asset is
+        // bought only while it is listed; one taken off the list can still be sold.
+        leg.cash = cfg.cashToken();
+        bool inIsCash = s.tokenIn == leg.cash;
+        require(
+            leg.cash != address(0) && inIsCash != (s.tokenOut == leg.cash), NotCashLeg(s.tokenIn, s.tokenOut)
+        );
+        leg.buying = inIsCash;
+        leg.asset = inIsCash ? s.tokenOut : s.tokenIn;
+        bool isTarget;
+        (isTarget, leg.targetBps) = _targetOf($, leg.asset);
+        require(isTarget, TokenNotAccepted(leg.asset));
+        require(!leg.buying || cfg.isAsset(leg.asset), TokenNotAccepted(leg.asset));
+
+        // Check 6.
+        Params memory p = leg.params;
+        (p.toleranceBps, p.lossCapBps, p.bandBps, p.assetCooldown, p.sessionOpen, p.sessionClose) = cfg.params();
+        uint256 until = uint256($.lastKeeperAt[leg.asset]) + p.assetCooldown;
+        require(block.timestamp >= until, Cooldown(leg.asset, uint64(until)));
+
+        // Checks 9 and 10, on the asset traded.
+        leg.config = cfg.asset(leg.asset);
+        _checkToken(leg.asset, leg.config);
+        _checkMarket(cfg, leg.asset, leg.config, p);
+
+        // Check 8, for the asset traded and for every other target the vault holds: the weights and the
+        // loss cap are shares of the whole, so one target that cannot be valued stops the trade.
+        _checkSequencer(cfg);
+        uint16 devBps = cfg.priceDevBps();
+        leg.price = _reference(leg.asset, leg.config, devBps);
+        leg.cashDecimals = cfg.asset(leg.cash).tokenDecimals;
+        Weight[] memory list = $.targets;
+        for (uint256 i; i < list.length; ++i) {
+            address token = list[i].token;
+            if (token == leg.asset) continue;
+            uint256 amount = _held(token);
+            require(amount != UNREADABLE, BalanceUnreadable(token));
+            if (amount == 0) continue;
+            // Watched by the trade's "no other token went down", whether or not it came in by a swap.
+            $.tokens.add(token);
+            AssetConfig memory a = cfg.asset(token);
+            leg.others += _value(amount, _reference(token, a, devBps), a, leg.cashDecimals);
+        }
+
+        uint256 assetHeld = _held(leg.asset);
+        uint256 cashHeld = _held(leg.cash);
+        require(assetHeld != UNREADABLE, BalanceUnreadable(leg.asset));
+        require(cashHeld != UNREADABLE, BalanceUnreadable(leg.cash));
+        leg.assetValue = _value(assetHeld, leg.price, leg.config, leg.cashDecimals);
+        leg.vaultValue = _total(leg.others, leg.assetValue, cashHeld);
+
+        // Check 5, before the trade.
+        _towardTarget(leg.buying, leg.assetValue, leg.vaultValue, leg.targetBps, leg.asset);
+    }
+
+    /// Checks 4, 5 and 7 on what the trade did, then writes the cooldown and the loss counter.
+    function _afterLeg(VaultStorage storage $, Leg memory leg, Swap calldata s, uint256 spent, uint256 received)
+        private
+    {
+        uint256 assetValue = _value(_held(leg.asset), leg.price, leg.config, leg.cashDecimals);
+        uint256 vaultValue = _total(leg.others, assetValue, _held(leg.cash));
+
+        // Check 4: what came in against what went out, at the reference price, cash at $1.
+        (uint256 spentValue, uint256 receivedValue) = leg.buying
+            ? (spent, _value(received, leg.price, leg.config, leg.cashDecimals))
+            : (_value(spent, leg.price, leg.config, leg.cashDecimals), received);
+        require(
+            receivedValue * BPS >= spentValue * (BPS - leg.params.toleranceBps),
+            ValueTooLow(spentValue, receivedValue)
+        );
+
+        // Check 5: where the asset sits after the trade.
+        _insideBand(leg.buying, assetValue, vaultValue, leg.targetBps, leg.params.bandBps, leg.asset);
+        _noFurther(leg.assetValue, leg.vaultValue, assetValue, vaultValue, leg.targetBps, leg.asset);
+
+        // Check 7: what the trade lost is added to what is left of the week's losses. A trade that lost
+        // nothing is not held to the cap and does not touch the counter.
+        uint256 loss = spentValue > receivedValue ? spentValue - receivedValue : 0;
+        uint256 used = _lossLeft($) + loss;
+        if (loss != 0) {
+            require(
+                used * BPS <= leg.vaultValue * leg.params.lossCapBps,
+                LossCapReached(used, leg.vaultValue * leg.params.lossCapBps / BPS)
+            );
+            $.lossAccum = used;
+            $.lossTs = uint64(block.timestamp);
+        }
+        $.lastKeeperAt[leg.asset] = uint64(block.timestamp);
+
+        uint256 usedBps = leg.vaultValue == 0 ? 0 : Math.min(used * BPS / leg.vaultValue, type(uint16).max);
+        emit KeeperTrade(address(this), s.tokenIn, s.tokenOut, spent, received, loss, uint16(usedBps));
+    }
+
+    /// Check 5, before the trade. A weight is the asset's value over everything the vault holds, cash
+    /// included. A purchase needs the asset under its target and a sale needs it over.
+    function _towardTarget(bool buying, uint256 assetValue, uint256 vaultValue, uint16 targetBps, address token)
+        private
+        pure
+    {
+        uint256 weight = assetValue * BPS;
+        uint256 target = vaultValue * targetBps;
+        require(buying ? weight < target : weight > target, NotTowardTarget(token));
+    }
+
+    /// Check 5, after the trade, the first half. The asset may sit anywhere inside the band, on either side
+    /// of its target; outside the band on the far side is past it.
+    function _insideBand(
+        bool buying,
+        uint256 assetValue,
+        uint256 vaultValue,
+        uint16 targetBps,
+        uint16 bandBps,
+        address token
+    ) private pure {
+        uint256 edge = buying ? uint256(targetBps) + bandBps : (targetBps > bandBps ? targetBps - bandBps : 0);
+        uint256 weight = assetValue * BPS;
+        uint256 limit = vaultValue * edge;
+        require(buying ? weight <= limit : weight >= limit, PastTarget(token));
+    }
+
+    /// Check 5, after the trade, the second half. The asset ends no further from its target than it began,
+    /// and a trade that crosses the target ends at most half as far on the other side. Inside the band
+    /// alone, a stolen key could carry an asset from one edge to the other and back each cooldown, paying the
+    /// tolerance each way; with "no further" alone it could still flip an asset that had drifted to exactly
+    /// as far on the other side. Half as far makes each crossing close the distance.
+    ///
+    /// `|a1/V1 - t| <= |a0/V0 - t|` is compared as `|a1*10^4 - t*V1| * V0 <= |a0*10^4 - t*V0| * V1`, so
+    /// nothing is divided; a trade that crossed has its left side doubled.
+    function _noFurther(
+        uint256 assetBefore,
+        uint256 vaultBefore,
+        uint256 assetAfter,
+        uint256 vaultAfter,
+        uint16 targetBps,
+        address token
+    ) private pure {
+        uint256 weightBefore = assetBefore * BPS;
+        uint256 targetBefore = vaultBefore * targetBps;
+        uint256 weightAfter = assetAfter * BPS;
+        uint256 targetAfter = vaultAfter * targetBps;
+        uint256 offBefore = weightBefore > targetBefore ? weightBefore - targetBefore : targetBefore - weightBefore;
+        uint256 offAfter = weightAfter > targetAfter ? weightAfter - targetAfter : targetAfter - weightAfter;
+        // Under its target before and over it after, or over it before and under it after.
+        bool crossed = (weightBefore < targetBefore && weightAfter > targetAfter)
+            || (weightBefore > targetBefore && weightAfter < targetAfter);
+        uint256 factor = crossed ? 2 : 1;
+        require(offAfter * vaultBefore * factor <= offBefore * vaultAfter, PastTarget(token));
+    }
+
+    /// Check 10, and the issuer's own switch: not within a day of a change of the token's multiplier,
+    /// before or after, by the token's own schedule; not paused by its issuer; not halted by the guardian.
+    /// A schedule or a pause probe that does not answer refuses the trade.
+    function _checkToken(address token, AssetConfig memory a) private view {
+        if (a.scheduleSelector != bytes4(0)) {
+            (bool ok, uint256 effectiveAt) = _readWord(token, a.scheduleSelector);
+            uint256 apart = effectiveAt > block.timestamp ? effectiveAt - block.timestamp : block.timestamp - effectiveAt;
+            require(ok && apart >= MULTIPLIER_WINDOW, MultiplierWindow(token, effectiveAt));
+        }
+        if (a.pauseProbe != address(0) && a.pauseSelector != bytes4(0)) {
+            (bool ok, uint256 paused) = _readWord(a.pauseProbe, a.pauseSelector);
+            require(ok && paused == 0, AssetPaused(token));
+        }
+        require(block.timestamp >= a.haltUntil, AssetHalted(token, a.haltUntil));
+    }
+
+    /// Check 9, for a US stock (`session` 1): Monday to Friday, UTC, from the session's open up to but not
+    /// at its close, not on a closed day, and not before `closedUntil`. An asset that trades at all hours is
+    /// always open. The same rule as the Solana program's `market_open`.
+    function _checkMarket(IVaultConfig cfg, address token, AssetConfig memory a, Params memory p) private view {
+        if (a.session == 0) return;
+        uint256 day = block.timestamp / 1 days;
+        uint256 second = block.timestamp % 1 days;
+        // Day 0 was a Thursday; 0 is Sunday.
+        uint256 weekday = (day + 4) % 7;
+        bool inSession = weekday >= 1 && weekday <= 5 && second >= p.sessionOpen && second < p.sessionClose;
+        bool open = inSession && !cfg.closedDay(uint32(day)) && block.timestamp >= cfg.closedUntil();
+        require(open, MarketClosed(token));
+    }
+
+    /// On a chain with a sequencer feed (Base), the sequencer is up and has been for an hour. Robinhood
+    /// Chain has none.
+    function _checkSequencer(IVaultConfig cfg) private view {
+        address feed = cfg.sequencerFeed();
+        if (feed == address(0)) return;
+        (bool ok, bytes memory ret) = feed.staticcall(abi.encodeWithSelector(LATEST_ROUND_DATA));
+        bool up;
+        if (ok && ret.length >= 160) {
+            (, int256 answer, uint256 startedAt,,) = abi.decode(ret, (uint80, int256, uint256, uint256, uint80));
+            up = answer == 0 && startedAt <= block.timestamp && block.timestamp - startedAt >= SEQUENCER_GRACE;
+        }
+        require(up, SequencerDown());
+    }
+
+    /// The price the keeper may value `token` at, in its feed's units, or the reason it may not. In the
+    /// Solana program's order: a feed, the admin's switch, a price, the asset's range, the price's age, the
+    /// average's age, and the distance between the two.
+    ///
+    /// The range is what bounds a wrong price that is steady and followed by its own average: the switch and
+    /// the range are the admin's, set only after the feed is seen to move with the market.
+    function _reference(address token, AssetConfig memory a, uint16 devBps) private view returns (uint256 price) {
+        require(a.source == 1 && a.feed != address(0), AssetNotPriced(token));
+        require(a.flags & KEEPER_ON != 0, KeeperAssetOff(token));
+        uint256 updatedAt;
+        (price, updatedAt) = _readFeed(a.feed);
+        require(price != 0, AssetNotPriced(token));
+        require(price >= a.minPrice && price <= a.maxPrice, PriceOutOfRange(token, price));
+        require(_fresh(updatedAt, a.maxAge), PriceStale(token, updatedAt));
+        (uint256 average, uint256 averageAt) = _readFeed(a.averageFeed);
+        require(average != 0, AssetNotPriced(token));
+        require(_fresh(averageAt, a.maxAge), PriceStale(token, averageAt));
+        uint256 apart = price > average ? price - average : average - price;
+        require(average <= type(uint128).max && apart * BPS <= average * devBps, PriceDeviation(token, price, average));
+    }
+
+    /// A price stamped at most `maxAge` ago, and not further ahead of the clock than that.
+    function _fresh(uint256 stamp, uint32 maxAge) private view returns (bool) {
+        return stamp <= block.timestamp ? block.timestamp - stamp <= maxAge : stamp - block.timestamp <= maxAge;
+    }
+
+    /// A Chainlink-style feed's answer and its time, or a zero answer for a feed that does not answer as one
+    /// or answers zero or below.
+    function _readFeed(address feed) private view returns (uint256 answer, uint256 updatedAt) {
+        (bool ok, bytes memory ret) = feed.staticcall(abi.encodeWithSelector(LATEST_ROUND_DATA));
+        if (!ok || ret.length < 160) return (0, 0);
+        (, int256 signed,, uint256 stamp,) = abi.decode(ret, (uint80, int256, uint256, uint256, uint80));
+        return signed > 0 ? (uint256(signed), stamp) : (0, 0);
+    }
+
+    /// One word from a view of `target` that takes no argument, without trusting it: at most 32 bytes are
+    /// copied, and a revert or a short answer is `ok == false`.
+    function _readWord(address target, bytes4 selector) private view returns (bool ok, uint256 word) {
+        assembly ("memory-safe") {
+            mstore(0x00, selector)
+            ok := staticcall(SWEEP_BALANCE_GAS, target, 0x00, 0x04, 0x00, 0x20)
+            ok := and(ok, gt(returndatasize(), 0x1f))
+            word := mload(0x00)
+        }
+    }
+
+    /// What `amount` of an asset is worth at `price`, in raw units of the cash token, rounded down.
+    function _value(uint256 amount, uint256 price, AssetConfig memory a, uint8 cashDecimals)
+        private
+        pure
+        returns (uint256 value)
+    {
+        value = Math.mulDiv(amount, price * 10 ** cashDecimals, 10 ** (uint256(a.feedDecimals) + a.tokenDecimals));
+        require(value <= MAX_VALUE, ValueTooLarge(value));
+    }
+
+    /// What the vault is worth: its other targets, the asset traded, and its cash at $1.
+    function _total(uint256 others, uint256 asset, uint256 cash) private pure returns (uint256 total) {
+        require(cash <= MAX_VALUE, ValueTooLarge(cash));
+        total = others + asset + cash;
+        require(total <= MAX_VALUE, ValueTooLarge(total));
+    }
+
+    /// What is left of the loss counter now.
+    function _lossLeft(VaultStorage storage $) private view returns (uint256) {
+        uint256 elapsed = block.timestamp - $.lossTs;
+        if (elapsed >= LOSS_WINDOW) return 0;
+        return $.lossAccum * (LOSS_WINDOW - elapsed) / LOSS_WINDOW;
     }
 
     /// Lets the router take exactly `amount` of `token`, the way the config says it pulls.

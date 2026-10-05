@@ -18,8 +18,16 @@ import {VaultFactory} from "../src/VaultFactory.sol";
 ///
 ///   forge script script/Deploy.s.sol --rpc-url <url> --sender <deployer>
 ///
-/// That is a dry run: it simulates against the chain the URL answers for and prints what it would deploy.
-/// Sending is `--broadcast`, and a person does that, never an agent.
+/// That is a dry run: it simulates against the chain the URL answers for and prints every transaction it
+/// would send, numbered, with its target and what it does. Sending is `--broadcast`, and a person does
+/// that, never an agent.
+///
+/// The second entry, `settings()`, writes the file's assets, routers, cash token and closed days into a
+/// factory already deployed, as its admin (`FACTORY` names it):
+///
+///   FACTORY=<address> forge script script/Deploy.s.sol --sig "settings()" --rpc-url <url> --sender <admin>
+///
+/// It is how a test network's tokens, feeds and exchange are listed once they exist, after the deploy.
 ///
 /// The deployer is the admin and the beacon's owner while the script runs, so that it can write the
 /// settings. At the end it proposes the config's admin for both. Until that key accepts
@@ -40,12 +48,15 @@ contract Deploy is Script {
 
     struct Config {
         uint256 chainId;
+        /// The deployer stays the admin and the beacon's owner: one key, as on a test network.
+        bool adminIsDeployer;
         address admin;
         address guardian;
         address keeper;
         address sequencerFeed;
         uint32 publishDelay;
         Params params;
+        uint16 priceDevBps;
         address cashToken;
         Asset[] assets;
         Router[] routers;
@@ -66,13 +77,28 @@ contract Deploy is Script {
     /// A number in the file is too large for its field, or a selector is not four bytes long.
     error ValueDoesNotFit(string key, uint256 value, uint256 most);
 
+    /// Transactions printed so far in this run.
+    uint256 internal sent;
+
     function run() external returns (Deployed memory d) {
-        string memory fallbackPath = string.concat("script/config/", vm.toString(block.chainid), ".json");
-        Config memory cfg = readConfig(vm.envOr("DEPLOY_CONFIG", fallbackPath));
+        Config memory cfg = readConfig(_path());
+        if (cfg.adminIsDeployer) cfg.admin = msg.sender;
         vm.startBroadcast();
         d = deploy(cfg, msg.sender);
         vm.stopBroadcast();
         _print(cfg, d, msg.sender);
+    }
+
+    /// Lists the file's assets, routers, cash token and closed days on the factory `FACTORY` names, and sets
+    /// the keeper's limits, as its admin. Nothing else: no role changes hands.
+    function settings() external {
+        Config memory cfg = readConfig(_path());
+        VaultFactory factory = VaultFactory(vm.envAddress("FACTORY"));
+        vm.startBroadcast();
+        writeSettings(cfg, factory);
+        vm.stopBroadcast();
+        console2.log("factory:", address(factory));
+        console2.log("transactions:", sent);
     }
 
     /// Deploys and configures, as `deployer`: the address the calls below come from.
@@ -82,34 +108,83 @@ contract Deploy is Script {
 
         // Every proxy is created with its init call inside its constructor, and the beacon with its owner.
         d.vaultLogic = address(new BasketVault());
+        _tx(d.vaultLogic, "create the vault logic (BasketVault)");
         d.beacon = address(new VaultBeacon(d.vaultLogic, deployer));
+        _tx(d.beacon, "create the beacon (VaultBeacon), owned by the deployer, pointing at the vault logic");
         d.factoryLogic = address(new VaultFactory());
+        _tx(d.factoryLogic, "create the factory logic (VaultFactory)");
         bytes memory init = abi.encodeCall(VaultFactory.initialize, (deployer, d.beacon, cfg.params));
         d.factory = address(new ERC1967Proxy(d.factoryLogic, init));
+        _tx(d.factory, "create the factory proxy: initialize(deployer as admin, beacon, keeper limits)");
         d.registryLogic = address(new IndexRegistry());
+        _tx(d.registryLogic, "create the registry logic (IndexRegistry)");
         init = abi.encodeCall(IndexRegistry.initialize, (d.factory, cfg.publishDelay));
         d.registry = address(new ERC1967Proxy(d.registryLogic, init));
+        _tx(d.registry, string.concat("create the registry proxy: initialize(factory, ", _n(cfg.publishDelay), " s)"));
 
         VaultFactory factory = VaultFactory(d.factory);
         factory.setRegistry(d.registry);
+        _tx(d.factory, "setRegistry(registry)");
         factory.setGuardian(cfg.guardian);
+        _tx(d.factory, string.concat("setGuardian(", vm.toString(cfg.guardian), ")"));
         factory.setKeeper(cfg.keeper);
-        if (cfg.sequencerFeed != address(0)) factory.setSequencerFeed(cfg.sequencerFeed);
-        for (uint256 i; i < cfg.assets.length; ++i) {
-            factory.setAsset(cfg.assets[i].token, cfg.assets[i].config);
+        _tx(d.factory, string.concat("setKeeper(", vm.toString(cfg.keeper), ")"));
+        if (cfg.sequencerFeed != address(0)) {
+            factory.setSequencerFeed(cfg.sequencerFeed);
+            _tx(d.factory, string.concat("setSequencerFeed(", vm.toString(cfg.sequencerFeed), ")"));
         }
-        if (cfg.cashToken != address(0)) factory.setCashToken(cfg.cashToken);
-        for (uint256 i; i < cfg.routers.length; ++i) {
-            factory.setRouter(cfg.routers[i].router, cfg.routers[i].pull);
-        }
-        for (uint256 i; i < cfg.closedDays.length; ++i) {
-            factory.setClosedDay(cfg.closedDays[i], true);
-        }
+        writeSettings(cfg, factory);
 
         // Hand both keys over. Each takes the new holder's own call to complete.
         if (cfg.admin != deployer) {
             factory.proposeAdmin(cfg.admin);
+            _tx(d.factory, string.concat("proposeAdmin(", vm.toString(cfg.admin), ")"));
             VaultBeacon(d.beacon).transferOwnership(cfg.admin);
+            _tx(d.beacon, string.concat("transferOwnership(", vm.toString(cfg.admin), ")"));
+        }
+    }
+
+    /// The settings that are the admin's to write at any time: the price deviation, the assets, the cash
+    /// token, the routers and the closed days. The keeper's other limits went in with `initialize`.
+    function writeSettings(Config memory cfg, VaultFactory factory) public {
+        address to = address(factory);
+        factory.setPriceDevBps(cfg.priceDevBps);
+        _tx(to, string.concat("setPriceDevBps(", _n(cfg.priceDevBps), ")"));
+        for (uint256 i; i < cfg.assets.length; ++i) {
+            Asset memory a = cfg.assets[i];
+            factory.setAsset(a.token, a.config);
+            _tx(
+                to,
+                string.concat(
+                    "setAsset(",
+                    vm.toString(a.token),
+                    ", feed ",
+                    vm.toString(a.config.feed),
+                    ", average ",
+                    vm.toString(a.config.averageFeed),
+                    ", range ",
+                    _n(a.config.minPrice),
+                    " to ",
+                    _n(a.config.maxPrice),
+                    ", keeper ",
+                    a.config.flags == 1 ? "on)" : "off)"
+                )
+            );
+        }
+        if (cfg.cashToken != address(0)) {
+            factory.setCashToken(cfg.cashToken);
+            _tx(to, string.concat("setCashToken(", vm.toString(cfg.cashToken), ")"));
+        }
+        for (uint256 i; i < cfg.routers.length; ++i) {
+            factory.setRouter(cfg.routers[i].router, cfg.routers[i].pull);
+            _tx(
+                to,
+                string.concat("setRouter(", vm.toString(cfg.routers[i].router), ", pull ", _n(cfg.routers[i].pull), ")")
+            );
+        }
+        for (uint256 i; i < cfg.closedDays.length; ++i) {
+            factory.setClosedDay(cfg.closedDays[i], true);
+            _tx(to, string.concat("setClosedDay(", _n(cfg.closedDays[i]), ", closed)"));
         }
     }
 
@@ -121,6 +196,7 @@ contract Deploy is Script {
     /// cut down (a `pull` of 257 would otherwise be read as 1).
     function parseConfig(string memory json) public view returns (Config memory cfg) {
         cfg.chainId = json.readUint(".chainId");
+        cfg.adminIsDeployer = vm.keyExistsJson(json, ".adminIsDeployer") && json.readBool(".adminIsDeployer");
         cfg.admin = json.readAddress(".admin");
         cfg.guardian = json.readAddress(".guardian");
         cfg.keeper = json.readAddress(".keeper");
@@ -134,6 +210,7 @@ contract Deploy is Script {
             sessionOpen: uint32(_fit(json, ".params.sessionOpen", type(uint32).max)),
             sessionClose: uint32(_fit(json, ".params.sessionClose", type(uint32).max))
         });
+        cfg.priceDevBps = uint16(_fit(json, ".priceDevBps", type(uint16).max));
         cfg.cashToken = json.readAddress(".cashToken");
 
         uint256 n = _count(json, ".assets");
@@ -152,7 +229,11 @@ contract Deploy is Script {
                 pauseProbe: json.readAddress(string.concat(entry, ".pauseProbe")),
                 pauseSelector: _selector(json, string.concat(entry, ".pauseSelector")),
                 scheduleSelector: _selector(json, string.concat(entry, ".scheduleSelector")),
-                haltUntil: 0
+                haltUntil: 0,
+                flags: uint8(_fit(json, string.concat(entry, ".flags"), type(uint8).max)),
+                averageFeed: json.readAddress(string.concat(entry, ".averageFeed")),
+                minPrice: uint128(_fit(json, string.concat(entry, ".minPrice"), type(uint128).max)),
+                maxPrice: uint128(_fit(json, string.concat(entry, ".maxPrice"), type(uint128).max))
             });
         }
 
@@ -174,6 +255,20 @@ contract Deploy is Script {
         }
     }
 
+    function _path() private view returns (string memory) {
+        return vm.envOr("DEPLOY_CONFIG", string.concat("script/config/", vm.toString(block.chainid), ".json"));
+    }
+
+    /// One transaction of the run, printed as it is made: its number, its target and what it does.
+    function _tx(address to, string memory what) private {
+        ++sent;
+        console2.log(string.concat("tx ", _n(sent), "  ", vm.toString(to), "  ", what));
+    }
+
+    function _n(uint256 value) private pure returns (string memory) {
+        return vm.toString(value);
+    }
+
     function _count(string memory json, string memory list) private view returns (uint256 n) {
         while (vm.keyExistsJson(json, string.concat(list, "[", vm.toString(n), "]"))) ++n;
     }
@@ -191,6 +286,7 @@ contract Deploy is Script {
     }
 
     function _print(Config memory cfg, Deployed memory d, address deployer) private view {
+        console2.log("transactions:", sent);
         console2.log("chain id:", block.chainid);
         console2.log("deployer:", deployer);
         console2.log("vault logic:    ", d.vaultLogic);

@@ -275,7 +275,11 @@ contract DeployTest is Test {
             pauseProbe: address(0),
             pauseSelector: bytes4(0),
             scheduleSelector: bytes4(0),
-            haltUntil: 0
+            haltUntil: 0,
+            flags: 0,
+            averageFeed: address(0),
+            minPrice: 0,
+            maxPrice: 0
         });
     }
 
