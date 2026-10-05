@@ -11,16 +11,28 @@ import { latestFile } from './registry';
 //   pnpm risk-evm:pareto --share 0.8 --min-pool-usd 1000
 //   pnpm risk-evm:pareto --allow-gaps           use a file in which DexScreener failed for a token
 //   pnpm risk-evm:pareto --allow-old            use a file more than a day old
-// Writes data/risk-evm/cut-<chain>-<stamp>.json, the stamp being the discovery file's own.
+// Writes data/risk-evm/cut-<chain>-<stamp>.json, the stamp being the discovery file's own. A cut by
+// another share or floor is written beside it, with the rule in its name.
 const args = process.argv.slice(2);
 const flag = (name: string) => args.includes(name);
 const option = (name: string) => {
   const i = args.indexOf(name);
   return i >= 0 ? args[i + 1] : undefined;
 };
+/** A number option; a value that is not a number of 0 or more is refused, never replaced by the default. */
 const num = (name: string, fallback: number) => {
+  const eq = args.find((a) => a.startsWith(`${name}=`));
+  if (eq) {
+    console.error(`write "${name} <value>", not "${eq}"`);
+    process.exit(1);
+  }
+  if (!flag(name)) return fallback;
   const v = Number(option(name));
-  return option(name) !== undefined && Number.isFinite(v) && v >= 0 ? v : fallback;
+  if (option(name) === undefined || option(name) === '' || !Number.isFinite(v) || v < 0) {
+    console.error(`${name} needs a number of 0 or more, got "${option(name) ?? ''}"`);
+    process.exit(1);
+  }
+  return v;
 };
 
 /** Gate UNIVERSE: the pools holding this share of the money name the tracked stocks. */
@@ -50,6 +62,12 @@ if (file.chainId !== chain.chainId) {
   process.exit(1);
 }
 const ageHours = (Date.now() - Date.parse(file.fetchedAt)) / 3_600_000;
+if (!Number.isFinite(ageHours) || ageHours < 0) {
+  console.error(
+    `${path} says it was fetched at "${file.fetchedAt}", which is not a time in the past`,
+  );
+  process.exit(1);
+}
 if (ageHours > MAX_AGE_HOURS && !flag('--allow-old')) {
   console.error(
     `${path} is ${ageHours.toFixed(1)} hours old: run pnpm risk-evm:universe and pnpm risk-evm:discover again, or pass --allow-old`,
@@ -76,7 +94,11 @@ const report = cutReport(input, {
 });
 
 const stampOf = basename(path).match(/-(\w+)\.json$/)?.[1] ?? 'unknown';
-const out = join(dir, `cut-${chain.id}-${stampOf}.json`);
+// a cut by another rule never takes the name of the rule's own file
+const { share, minPoolUsd } = report.rule;
+const other =
+  share === SHARE && minPoolUsd === MIN_POOL_USD ? '' : `-share${share}-min${minPoolUsd}`;
+const out = join(dir, `cut-${chain.id}-${stampOf}${other}.json`);
 // the head indented, then one pool a line, as the discovery file is written
 const { cut, pools, ...head } = report;
 const lines = (rows: unknown[]) => rows.map((r) => JSON.stringify(r)).join(',\n');
@@ -179,7 +201,7 @@ say(
 say(`  collected, not tracked (${v.collectedNotTracked.length}):`);
 for (const x of v.collectedNotTracked)
   say(
-    `    ${x.symbol.padEnd(6)} ${x.why}${x.rank === null ? '' : `: largest pool ${usd(x.largestPoolUsd)}, rank ${x.rank}, enters at ${pct(x.entersAtShare as number)}`}`,
+    `    ${x.symbol.padEnd(6)} ${x.why}${x.rank === null ? '' : `: largest pool ${usd(x.largestPoolUsd)}, rank ${x.rank}, named by a cut above ${pct(x.entersAtShare as number)}`}`,
   );
 say();
 if (report.inputGaps.dexscreenerFailed.length > 0)

@@ -11,7 +11,7 @@ import {
   DEXSCREENER_FAILED,
   failedTokens,
 } from '../scripts/risk-evm/cut';
-import type { PoolRow } from '../scripts/risk-evm/discovery';
+import { gapsFor, type PoolRow } from '../scripts/risk-evm/discovery';
 
 // PLAN-UNIVERSE RU.3 (gate UNIVERSE): the 80% rule on Robinhood Chain. The fixture is the discovery of
 // 2026-10-05 (blocks 81,044,145 to 81,057,597) frozen to what the cut reads
@@ -357,12 +357,17 @@ describe('the cut on rows made by hand', () => {
       ['D', 'not_priced', null],
       ['E', 'not_in_the_registry', null],
     ]);
-    expect(r.vsCollector.collectedNotTracked[0]?.entersAtShare).toBe(1);
+    // the money ranked above its pool: a cut of 90% stops before it, any wider cut names it
+    expect(r.vsCollector.collectedNotTracked[0]?.entersAtShare).toBe(0.9);
     expect(r.unpricedTokens.tokens.map((t) => t.symbol)).toEqual(['D']);
   });
 
   it('finds the tokens DexScreener failed for', () => {
     const tokens = [token(A), token(B, { gaps: [DEXSCREENER_FAILED] })];
+    // the string discovery writes is the one the cut looks for
+    expect(gapsFor({ eventsUsed: true, dexFailed: true, dexAtCap: false })).toEqual([
+      DEXSCREENER_FAILED,
+    ]);
     expect(failedTokens({ tokens })).toEqual(['B']);
     expect(failedTokens({ tokens: [token(A)] })).toEqual([]);
     const r = cutReport(input([row('p1', A, 9000)], tokens), {

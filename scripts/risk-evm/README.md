@@ -156,7 +156,7 @@ pnpm risk-evm:pareto --allow-gaps          # a file in which DexScreener failed 
 pnpm risk-evm:pareto --allow-old           # a file more than a day old
 ```
 
-It writes `data/risk-evm/cut-<chain>-<stamp>.json` (the stamp is the discovery file's) and prints the same in words. It refuses a discovery file more than 24 hours old, and one in which a token carries `dexscreener_failed_other_venues_not_listed`; with `--allow-gaps` the file is used and the token is named in the output.
+It writes `data/risk-evm/cut-<chain>-<stamp>.json` (the stamp is the discovery file's) and prints the same in words. A cut by another share or floor is written beside it with the rule in its name (`…-share0.9-min1000.json`), so the rule's own file is never replaced by it. It refuses a discovery file more than 24 hours old, and one in which a token carries `dexscreener_failed_other_venues_not_listed`; with `--allow-gaps` the file is used and the token is named in the output.
 
 What the file holds, and what it does not decide:
 
@@ -171,7 +171,7 @@ What the file holds, and what it does not decide:
 ### The run of 2026-10-05 (on `discovery-robinhood-20261005T1947.json`)
 
 - 728 pools ranked ($90.9M). 80%: 93 pools, **30 stocks**, 427 ranked pools of those stocks ($84.0M), 274 of them reachable. 90%: 154 pools, 48 stocks. 95%: 225 and 67. 99%: 440 and 89.
-- The 30: AAPL AMC AMD AMZN COIN COST CRCL DELL DJT GLD GME GOOGL HIMS INTC LLY META MSFT MSTR MU NVDA PLTR QQQ RDDT SGOV SLV SNDK SPCX SPY TSLA USO. Against the collector's 21: 20 are in both; AMC, COST, DJT, GME, HIMS, LLY, PLTR, QQQ, RDDT and SPCX are tracked and not collected; TSM is collected and not tracked (its largest pool is rank 102 and it enters at 82.2%).
+- The 30: AAPL AMC AMD AMZN COIN COST CRCL DELL DJT GLD GME GOOGL HIMS INTC LLY META MSFT MSTR MU NVDA PLTR QQQ RDDT SGOV SLV SNDK SPCX SPY TSLA USO. Against the collector's 21: 20 are in both; AMC, COST, DJT, GME, HIMS, LLY, PLTR, QQQ, RDDT and SPCX are tracked and not collected; TSM is collected and not tracked (its largest pool is rank 102; any cut above 82.0% names it).
 - The 93 pools of the cut: 42 Uniswap v3 ($36.8M) and 41 hookless v4 ($29.2M), all reachable; 8 hooked v4 ($6.0M) and 2 on another venue ($0.8M), not reachable.
 - Without the v4 pools (298 pools, $47.6M) the cut names 29 stocks: IBM and NFLX enter; AMD, PLTR and SNDK leave.
 - 19 of the 93 are pools of SPY against another stock ($9.3M), all filed under SPY. If such a pool also counted for its other side, TSM would be named too.

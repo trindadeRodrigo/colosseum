@@ -3,11 +3,11 @@
 // it and reports what the rule could not see, so nothing is chosen in silence.
 import { type TrackedSet, trackedSet, type UniversePool } from '@colosseum/risk';
 import type { DiscoveryFile } from './discover-run';
-import type { PoolRow } from './discovery';
+import { DEXSCREENER_AT_CAP, DEXSCREENER_FAILED, type PoolRow } from './discovery';
 
 export const CUT_METHOD = 'evm-cut-0.1';
 /** A token carrying this gap may be missing its pools on other venues: the file is refused or printed. */
-export const DEXSCREENER_FAILED = 'dexscreener_failed_other_venues_not_listed';
+export { DEXSCREENER_FAILED };
 export const SHARES = [0.8, 0.9, 0.95, 0.99];
 
 /**
@@ -217,7 +217,7 @@ export type CutReport = {
     collectedNotTracked: Array<
       Stock & {
         why: 'not_in_the_registry' | 'not_priced' | 'no_pool_at_the_floor' | 'below_the_cut';
-        /** Its largest ranked pool, the rank of that pool, and the share of the money up to and including it. */
+        /** Its largest ranked pool, the rank of that pool, and the share of the money in the pools ranked above it: the stock is named by any cut wider than that. */
         largestPoolUsd: number | null;
         rank: number | null;
         entersAtShare: number | null;
@@ -350,10 +350,10 @@ export function cutReport(
     const all = trackedSet(input.pools, { share: 1, minPoolUsd });
     let sum = 0;
     all.cut.forEach((p, i) => {
-      sum += p.tvlUsd as number;
       const k = lower(p.asset);
       if (!rank.has(k))
         rank.set(k, { usd: p.tvlUsd as number, rank: i + 1, at: sum / all.rankedUsd });
+      sum += p.tvlUsd as number;
     });
   }
   const tokenOf = new Map(input.tokens.map((t) => [lower(t.address), t]));
@@ -382,7 +382,7 @@ export function cutReport(
     inputGaps: {
       dexscreenerFailed: failedTokens(input),
       dexscreenerAtCap: input.tokens
-        .filter((t) => t.gaps.some((g) => g.startsWith('dexscreener_at_its_cap')))
+        .filter((t) => t.gaps.includes(DEXSCREENER_AT_CAP))
         .map((t) => t.symbol)
         .sort(),
     },
