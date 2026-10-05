@@ -15,6 +15,12 @@ describe('where sign-in leads on to', () => {
     expect(nextPath('/')).toBe('/');
     expect(nextPath('/', ['/goal'])).toBe(AFTER_SIGN_IN);
     expect(AFTER_SIGN_IN).toBe('/');
+    // the plan, buy and order pages, each with one plain segment for its id
+    const id = '7d9c2f4e-1b2a-4c3d-8e9f-0a1b2c3d4e5f';
+    for (const page of [`/plan/${id}`, `/plan/${id}/buy`, `/orders/${id}`])
+      expect(nextPath(page)).toBe(page);
+    for (const page of ['/plan', '/plan/a/b', '/orders', `/orders/${id}/buy`, '/plan/a.b/buy'])
+      expect(nextPath(page)).toBe(AFTER_SIGN_IN);
   });
 
   it('is home, the goal, when it is told nothing', () => {
@@ -74,7 +80,15 @@ describe('the routes sign-in knows', () => {
       .filter((file) => /^app\/\(app\)\/(.+\/)?page\.tsx$/.test(file))
       .map((file) => file.replace(/^app\/\(app\)/, '').replace(/\/page\.tsx$/, '') || '/')
       .sort();
-    expect(pages).toEqual(['/', '/goal', '/monitor', '/sign-in']);
+    expect(pages).toEqual([
+      '/',
+      '/goal',
+      '/monitor',
+      '/orders/[id]',
+      '/plan/[id]',
+      '/plan/[id]/buy',
+      '/sign-in',
+    ]);
     expect([...APP_ROUTES].sort()).toEqual(pages);
   });
 

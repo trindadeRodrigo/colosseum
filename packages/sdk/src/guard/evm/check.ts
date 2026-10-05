@@ -10,7 +10,8 @@ import type { InterfaceTable } from './table';
 // An EVM transaction against the step. It is one call, with no value, to one of three contracts and no
 // other: the cash token for an approval, the factory for a create, the person's own vault for
 // everything else. The vault's address is derived here. The function is the step's, its arguments are
-// the step's, and a `multicall` is opened and every call inside it is held to the same rule.
+// the step's, and a `multicall` is opened and every call inside it is held to the same rule. A call
+// that trades carries a deadline, and it is held to this guard's own clock.
 
 /** The most a transaction may state as its fee where the deployment sets no ceiling: 0.001 of the native token. */
 export const DEFAULT_EVM_FEE_WEI = 1_000_000_000_000_000n;
@@ -18,6 +19,12 @@ export const DEFAULT_EVM_FEE_WEI = 1_000_000_000_000_000n;
 export const DEFAULT_EVM_MAX_GAS = 5_000_000;
 /** How deep a `multicall` may hold another. */
 const MAX_DEPTH = 3;
+/**
+ * The longest a signed trade stays good: its deadline is in the future and at most this far off. The
+ * contracts refuse it after the deadline, so a signature that was never sent cannot land later at
+ * whatever the market then gives above its minimum.
+ */
+export const MAX_EVM_DEADLINE_S = 1_800;
 const ZERO32 = `0x${'0'.repeat(64)}`;
 
 const WEIGHTS = '(address,uint16)[]';
@@ -28,10 +35,10 @@ const FN = {
   createVault: ['VaultFactory', `createVault(bytes32,${WEIGHTS},bytes32,uint32,bool)`],
   createVaultAndBuy: [
     'VaultFactory',
-    `createVaultAndBuy(bytes32,${WEIGHTS},bytes32,uint32,bool,uint256,${SWAPS})`,
+    `createVaultAndBuy(bytes32,${WEIGHTS},bytes32,uint32,bool,uint256,${SWAPS},uint64)`,
   ],
   deposit: ['BasketVault', 'deposit(uint256)'],
-  ownerSwap: ['BasketVault', `ownerSwap(${SWAPS})`],
+  ownerSwap: ['BasketVault', `ownerSwap(${SWAPS},uint64)`],
   withdraw: ['BasketVault', 'withdraw(address,uint256)'],
   withdrawAll: ['BasketVault', 'withdrawAll()'],
   setTargets: ['BasketVault', `setTargets(${WEIGHTS})`],
@@ -93,6 +100,13 @@ export function checkEvm(ctx: Context, deployment: EvmDeployment, table: Interfa
     return listed.token.toLowerCase();
   };
   const routers = deployment.routers.map((r) => r.toLowerCase());
+  const now = Math.floor(Date.now() / 1000);
+  const checkDeadline = (deadline: bigint) =>
+    need(
+      'deadline',
+      deadline > BigInt(now) && deadline <= BigInt(now + MAX_EVM_DEADLINE_S),
+      `a trade is good until ${deadline}, and it is ${now}: a deadline is ahead of the clock by at most ${MAX_EVM_DEADLINE_S} s`,
+    );
 
   const evm = tx.evm;
   const call = reading('the call', legId, () => {
@@ -207,7 +221,7 @@ export function checkEvm(ctx: Context, deployment: EvmDeployment, table: Interfa
     const creates = buys || selector === selectorOf('createVault');
     need('function', creates, `the call is ${named(selector)}, and the step opens a vault`);
     if (!creates) return;
-    const [salt, targets, indexId, version, autoFollow, cash, swaps] = argsOf(
+    const [salt, targets, indexId, version, autoFollow, cash, swaps, deadline] = argsOf(
       buys ? 'createVaultAndBuy' : 'createVault',
       body,
     ) as [
@@ -218,7 +232,9 @@ export function checkEvm(ctx: Context, deployment: EvmDeployment, table: Interfa
       boolean,
       bigint | undefined,
       AbiValue[][] | undefined,
+      bigint | undefined,
     ];
+    if (deadline !== undefined) checkDeadline(deadline);
     const follow = step.follow;
     need('vault', salt === planIdOf(step.basketId), 'the vault is opened for another plan number');
     need(
@@ -268,7 +284,8 @@ export function checkEvm(ctx: Context, deployment: EvmDeployment, table: Interfa
     } else if (is('deposit'))
       atoms.push({ fn: 'deposit', amount: argsOf('deposit', rest)[0] as bigint });
     else if (is('ownerSwap')) {
-      const swaps = argsOf('ownerSwap', rest)[0] as AbiValue[][];
+      const [swaps, deadline] = argsOf('ownerSwap', rest) as [AbiValue[][], bigint];
+      checkDeadline(deadline);
       need('calls', swaps.length > 0, 'a swap call that makes no trade');
       for (const swap of swaps) atoms.push({ fn: 'swap', swap });
     } else if (is('withdraw')) {

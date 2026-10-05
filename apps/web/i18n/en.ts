@@ -310,7 +310,8 @@ export const en = {
         title: 'Your plan is built.',
         /** "Part" is the brand's word for a leg of a plan, as a person reads it. */
         body: (parts: number, chain: string) =>
-          `It has ${parts === 1 ? '1 part' : `${parts} parts`} on ${chain}. I can’t show it on this page yet. Nothing was bought.`,
+          `It has ${parts === 1 ? '1 part' : `${parts} parts`} on ${chain}. Nothing was bought.`,
+        see: 'See your plan',
       },
     },
   },
@@ -408,6 +409,314 @@ export const en = {
       worth: (chain: string) => `Your vault on ${chain} is worth`,
       many: (vaults: number, chain: string) => `You have ${vaults} vaults on ${chain}.`,
       see: 'See your portfolio',
+    },
+  },
+
+  plan: {
+    title: 'Your plan',
+    signedOut: 'Sign in to see this plan. A plan is one person’s, on the chain of their wallet.',
+    missing: {
+      title: 'I don’t have this plan in this tab.',
+      body: 'A plan is kept in the browser tab that built it, and this one isn’t here. Build it again from your goal: your limits are kept.',
+    },
+    backToGoal: 'Back to your goal',
+    otherChain: (plan: string, yours: string) =>
+      `This plan was made for ${plan}, and your plans live on ${yours}. Build it again from your goal.`,
+    lead: (chain: string) =>
+      `Built for ${chain}, from your limits. Nothing is bought until you review every step and sign it.`,
+    holds: 'What it holds',
+    sub: (risk: string, chain: string) => `${risk} · on ${chain} · nothing bought yet`,
+    riskWord: { low: 'Low risk', medium: 'Medium risk', high: 'High risk' },
+    chips: {
+      label: 'Your limits',
+      goal: 'goal',
+      amount: 'amount',
+      horizon: 'horizon',
+      risk: 'risk',
+      chain: 'chain',
+    },
+    kpi: {
+      amount: 'you put in',
+      horizon: 'for',
+      projected: 'projected a year',
+      loss: 'in a bad fall',
+      estimate: 'estimate',
+    },
+    legs: { afterHaircut: 'after haircut', quoted: 'quoted {rate}' },
+    exitPlan: 'Exit plan',
+    costPrefix: 'cost',
+    foot: { sandbox: 'test network, not live', mock: 'sample data, not live' },
+    columns: { asset: 'Asset', share: 'Share', amount: 'Amount', why: 'Why' },
+    noReason: 'No reason given.',
+    projected: 'Projected range a year, not a promise',
+    projectedValue: (low: string, high: string) => `${low} to ${high}`,
+    basis: (basis: string) => `How it was worked out: ${basis}.`,
+    lossInFall: (amount: string) =>
+      `In a bad fall, the engine counts a loss of about ${amount} on this plan.`,
+    exitUnmeasured: 'Not measured yet, so no cost is shown.',
+    exitCost: (cost: string) => `≤ ${cost}`,
+    inKind: 'You can also take the tokens themselves out of your vault at any time.',
+    risk: {
+      title: 'Risk, as our server rolled it up',
+      byClass: 'By kind of asset',
+      byIssuer: 'By issuer',
+      share: 'Share',
+      name: 'Name',
+      exitQuoted: 'Cost to sell, last quote',
+      exitMeasured: 'Cost to sell, worst measured',
+      measuredShare: 'Share of the plan measured',
+      notMeasured: 'not measured',
+    },
+    flags: 'What the engine flagged',
+    verdict: {
+      met: 'The income you asked for is met by this plan, on the engine’s numbers.',
+      gap: (gap: string) => `This plan falls short of the income you asked for by ${gap} a month.`,
+    },
+    buy: 'Buy this plan',
+    chainNotReady: (chain: string) =>
+      `${chain} isn’t ready for buying yet: its vaults aren’t deployed on this network. Your plan is kept, and can be bought once they are.`,
+    chainOff: (chain: string) =>
+      `${chain} is switched off on our server for now, so this plan can’t be bought there yet.`,
+  },
+
+  trust: {
+    title: 'Before your first deposit',
+    lead: 'Read this once. It is what you trust when you put money in a vault.',
+    unaudited: 'The vault code hasn’t been audited by anyone outside the team.',
+    keys: 'The team holds the keys that upgrade the vault code. An upgrade could change what a vault does, so the team could move funds.',
+    admin: (address: string) => `The key that upgrades it: ${address}.`,
+    keeper: (tolerance: string, loss: string) =>
+      `With auto-follow on, our keeper may trade only your plan’s assets, at most ${tolerance} worse than the reference price, and lose at most ${loss} of your vault in a week. Errors in the reference price add to that. You can switch auto-follow off and withdraw at any time.`,
+    keeperUnset:
+      'The keeper’s limits on this chain aren’t set yet, so auto-follow isn’t offered here.',
+    issuers: 'The issuers of stock tokens can pause, freeze or take back their tokens.',
+    notUnitedStates: 'This product isn’t for people in the United States.',
+    passkey:
+      'A passkey that is lost and not synced to another device loses the wallet it opens. Add a second way in once you have deposited.',
+    openChecks: (list: string) =>
+      `Checks not run yet, so their findings are not in this notice: ${list}.`,
+    checks: {
+      evm_invariants: 'the vault contracts’ invariants under hostile callers',
+      solana_sequences: 'random sequences of the Solana program’s instructions',
+      static_analysis: 'static analysis of the programs and contracts',
+      robinhood_fork: 'a run on a copy of Robinhood Chain',
+      second_rehearsal: 'a second rehearsal on mainnet with the admin key',
+    },
+    accept: 'I’ve read this and I accept it',
+    accepted: 'You’ve accepted this notice in this browser.',
+  },
+
+  buy: {
+    title: 'Buy your plan',
+    lead: (chain: string) =>
+      `The whole amount goes into a vault only you can withdraw from, on ${chain}, then buys each asset of the plan.`,
+    amount: {
+      label: 'Amount (dollars)',
+      hint: (planned: string) => `From $10 to $1,000,000. Your plan was built for ${planned}.`,
+    },
+    funding: {
+      title: 'What your wallet needs',
+      reading: 'Reading your wallet…',
+      cash: (symbol: string) => `Cash to deposit (${symbol})`,
+      gas: (symbol: string) => `Network fees (${symbol})`,
+      have: 'You have',
+      need: 'This buy needs',
+      missing: 'Missing',
+      ok: 'Your wallet has what this buy needs.',
+      short: (chain: string) =>
+        `Your wallet is short of what this buy needs. Add what is missing to your wallet on ${chain}, then read it again.`,
+      address: (address: string) => `Your address there: ${address}`,
+      newVault:
+        'This buy opens your vault for this plan, which costs a little more in fees the first time.',
+      readAgain: 'Read my wallet again',
+      mockFund: 'Add MOCK cash and fees',
+      mockFunding: 'Adding…',
+      failure: {
+        unreachable: 'I couldn’t read your wallet: our server didn’t answer. Try again.',
+        unreadable: 'Our server answered about your wallet in a form I couldn’t read. Try again.',
+        noPlan: 'Our server doesn’t have this plan. Build it again from your goal.',
+        refused: 'Our server didn’t accept this amount. Check it, then try again.',
+      },
+    },
+    review: (amount: string) => `Review the steps to buy ${amount}`,
+    reviewing: 'Making your order…',
+    blocked: {
+      amount: 'Enter an amount from $10 to $1,000,000 to continue.',
+      funding: 'Your wallet needs what is missing above before you can continue.',
+      trust: 'Accept the notice above to continue.',
+      wallet: 'No wallet of yours is signed in on this chain.',
+    },
+    failure: {
+      NOT_FUNDED:
+        'Your wallet doesn’t have enough for this buy any more. Read it again, then try again.',
+      ASSET_NOT_ELIGIBLE:
+        'One asset of this plan can’t be bought on this chain now. Build the plan again from your goal.',
+      VERSION_CHANGED:
+        'A shared portfolio in this plan changed after the plan was made. Build the plan again from your goal.',
+      ORDER_EXPIRED: 'That order ran out of time. Try again.',
+      US_PERSON: 'This product isn’t for people in the United States, so the order wasn’t made.',
+      RATE_LIMITED: 'Our server asked me to slow down. Wait a minute, then try again.',
+      CHAIN_UNAVAILABLE: 'This chain is switched off on our server for now. Nothing was ordered.',
+      unreachable: 'I couldn’t reach our server, so no order was made. Try again.',
+      unreadable:
+        'Our server answered with an order I couldn’t read, so I’m not showing it. Nothing was signed.',
+      noPlan: 'Our server doesn’t have this plan. Build it again from your goal.',
+      refused: 'Our server didn’t accept this order. Check the amount, then try again.',
+      signedOut:
+        'Our server doesn’t recognise your sign-in any more. Sign out, then sign in again.',
+      noChain: 'Choose the chain your plan lives on first.',
+      noStore:
+        'This browser keeps nothing between pages, so I can’t keep your order. Allow this site to store data, then try again.',
+    },
+  },
+
+  order: {
+    title: 'Your order',
+    loading: 'Reading your order…',
+    signedOut: 'Sign in to see this order. An order is one person’s, and only they can sign it.',
+    failure: {
+      notFound: 'I can’t find this order for you. It may belong to another sign-in.',
+      unreachable: 'I couldn’t read your order: our server didn’t answer. Try again.',
+      unreadable: 'Our server answered with an order I couldn’t read, so I’m not showing it.',
+      retry: 'Read it again',
+    },
+    elsewhere:
+      'This order was made in another browser, so its plan isn’t here to check the steps against. Open it where you made it, or make a new order.',
+    review: {
+      title: 'Review every step',
+      lead: 'Each step is built fresh when its turn comes, checked against what you see here, and only then signed by your wallet. A step that doesn’t match is not signed.',
+      deposit: 'Deposit',
+      steps: 'Steps',
+      expires: 'Sign before',
+      spend: (amount: string, asset: string) => `Spend ${amount} on ${asset}`,
+      atLeast: (amount: string, asset: string) =>
+        `receive at least ${amount} of ${asset}, in its smallest units`,
+      atLeastWhole: (amount: string) => `receive at least ${amount}`,
+      under: (pct: string) => `${pct} under the quote`,
+      noTrades: 'No trade in this step.',
+      warnings: 'Our server warns',
+      consents: 'What you agree to for this order',
+      consent: {
+        auto_follow_on:
+          'Switch auto-follow on: our keeper trades your vault toward its portfolio, within the limits above.',
+        new_asset: 'Accept a version of the portfolio with an asset you don’t hold yet.',
+        publish:
+          'Publish this portfolio, or take it back, under your name: others can see it and follow it.',
+      },
+      consentNeeded: 'Tick each agreement above to continue.',
+    },
+    mismatch: {
+      units:
+        'I can’t check this order’s amounts: this app has no record of the cash token on this network. Nothing will be signed.',
+      deposit:
+        'This order doesn’t deposit the amount you asked for, so I won’t offer to sign it. Nothing was signed. Make a new order, and tell us if it happens again.',
+      steps:
+        'A step of this order moves another amount of cash than its deposit, so I won’t offer to sign it. Nothing was signed. Make a new order, and tell us if it happens again.',
+    },
+    signAndBuy: (amount: string) => `Sign and buy ${amount}`,
+    resume: (amount: string) => `Continue the buy of ${amount}`,
+    signing: (n: number, total: number) => `Signing step ${n} of ${total}…`,
+    stepsTitle: 'Steps',
+    step: (n: number) => `Step ${n}`,
+    kind: {
+      approve: 'Allow the deposit',
+      create_vault: 'Open your vault and deposit',
+      deposit: 'Deposit',
+      swap: 'Buy',
+      set_targets: 'Set your vault’s targets',
+      accept_version: 'Accept a new version',
+      set_auto_follow: 'Switch auto-follow',
+      withdraw: 'Withdraw',
+      publish: 'Publish',
+      adopt_version: 'Keeper: adopt a version',
+      keeper_leg: 'Keeper: trade',
+    },
+    status: {
+      planned: 'Not started',
+      built: 'Built, not signed yet',
+      sent: 'Sent, waiting for the chain',
+      confirmed: 'Confirmed',
+      failed: 'Failed',
+      expired: 'Ran out of time',
+      skipped: 'Skipped',
+    },
+    phase: {
+      building: 'Building…',
+      checking: 'Checking it against your review…',
+      signing: 'Signing…',
+      reporting: 'Sending…',
+      landing: 'Waiting for the chain…',
+      waiting: 'Waiting…',
+      settled: 'Settled',
+    },
+    explorer: 'explorer',
+    signature: 'signature',
+    notRetried: '(not retried)',
+    link: {
+      tx: 'Tx',
+      view: 'View transaction {signature} on {explorer}',
+      unavailable: 'link unavailable',
+    },
+    outcome: {
+      done: (chain: string) =>
+        `Every step is confirmed on ${chain}, as our server reports it. Each step’s transaction is linked beside it.`,
+      refused: (step: number) =>
+        `I didn’t sign step ${step}: the transaction our server built for it isn’t the step you approved. Nothing was signed for it.`,
+      refusedOrder:
+        'I didn’t sign anything: this order doesn’t say enough for me to check its steps. Make a new order.',
+      refusedWhy: {
+        moved:
+          'The price moved since you reviewed it, so the step’s minimum is no longer the one you saw. Review a new order.',
+        mismatch:
+          'Something in it differs from what you approved. Make a new order; if it happens again, tell us.',
+        setup:
+          'This app can’t check steps on this network yet. Nothing can be signed here for now.',
+      },
+      check: (code: string) => `Check that failed: ${code}`,
+      cancelled: (step: number) =>
+        `Your wallet didn’t sign step ${step}, so it wasn’t sent. Nothing moved for it. You can try again.`,
+      failed: (step: number) =>
+        `Step ${step} reached the chain and failed. It isn’t sent again: a new attempt is yours to ask for, with a new order.`,
+      expired:
+        'This order ran out of time before every step was signed. Make a new order for the rest.',
+      blocked:
+        'Another order of this wallet has a transaction that can still land. Finish or cancel that order first.',
+      blockedLink: 'Open that order',
+      needsReview: (step: number, times: number) =>
+        `Step ${step} was signed ${times === 1 ? 'once' : `${times} times`} before and may still arrive. I can’t tell from the chain whether it can, so I won’t sign it again unless you say so. If you approve it again, it may happen twice.`,
+      approveAgain: (step: number) => `Sign step ${step} again`,
+      waiting: {
+        landing:
+          'Your order is on its way: a step is sent and the chain hasn’t taken it yet. Look again in a minute.',
+        in_flight:
+          'Your order is on its way: a step signed before can still land. Look again in a minute.',
+        unseen:
+          'Your order is on its way: our server hasn’t seen the last step on the chain yet. Look again in a minute.',
+        stopped: 'Stopped. What was signed is kept and reported when you continue.',
+        unknown_blockhash:
+          'The chain node this app reads from isn’t up to date, so nothing was signed. Look again in a minute.',
+      },
+      lookAgain: 'Look again',
+      error:
+        'Our server refused or didn’t answer, so the order stopped. What was signed is kept. Try again.',
+      tryAgain: 'Try again',
+      elsewhere:
+        'This order is running in another tab of this browser. Follow it there; nothing was done here.',
+      notRunnable: {
+        'no-deployment': (chain: string) =>
+          `${chain} isn’t ready for buying yet: its vaults aren’t deployed on this network. Nothing was signed.`,
+        'no-wallet':
+          'No wallet of yours is signed in on this order’s chain, so nothing was signed.',
+        'no-store':
+          'This browser keeps nothing between pages, so I won’t sign: a step could be signed twice. Allow this site to store data, then try again.',
+        'no-lock':
+          'This browser can’t keep an order to one tab, so I won’t sign here. Open the page in a current browser.',
+        'plan-mismatch':
+          'The plan kept for this order is for another chain, so nothing was signed. Make a new order.',
+      },
+      crashed:
+        'Something stopped the order before it finished. What was signed is kept. Try again.',
+      newOrder: 'Make a new order',
     },
   },
 };

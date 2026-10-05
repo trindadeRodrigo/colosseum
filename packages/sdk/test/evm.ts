@@ -49,9 +49,9 @@ export function evmDeployment(change: Partial<EvmEntry> = {}): Loaded<EvmDeploym
         routers: [ROUTER],
         cash: 'robinhood:usdc',
         assets: {
-          'robinhood:usdc': { address: anyone('token usdc') },
-          'robinhood:spy': { address: anyone('token spy') },
-          'robinhood:gold': { address: anyone('token gold') },
+          'robinhood:usdc': { address: anyone('token usdc'), decimals: 6 },
+          'robinhood:spy': { address: anyone('token spy'), decimals: 18 },
+          'robinhood:gold': { address: anyone('token gold'), decimals: 18 },
         },
         ...change,
       },
@@ -63,18 +63,21 @@ export const EVM = evmDeployment();
 export const tokenOf = (asset: string) => EVM.assets[asset]?.token ?? anyone(`token ${asset}`);
 
 /**
- * The committed ABIs plus the two functions of the owner that the keeper path adds to the vault
- * (DESIGN-VAULT 3.8): `acceptVersion` and `setAutoFollow`. The guard refuses both steps until the ABI
- * has them and the table is generated again; this table is how the tests reach the rules that wait.
+ * The committed ABIs without the two functions of the owner that the keeper path added to the vault:
+ * how the guard behaves with a table that lacks a step's function.
  */
-export const NEXT_INTERFACE: InterfaceTable = {
+export const WITHOUT_FOLLOWING: InterfaceTable = {
   ...EVM_INTERFACE,
-  BasketVault: {
-    ...EVM_INTERFACE.BasketVault,
-    'acceptVersion(bytes32,uint32)': selectorOf('acceptVersion(bytes32,uint32)'),
-    'setAutoFollow(bool)': selectorOf('setAutoFollow(bool)'),
-  },
+  BasketVault: Object.fromEntries(
+    Object.entries(EVM_INTERFACE.BasketVault ?? {}).filter(
+      ([signature]) => !/^(acceptVersion|setAutoFollow)\(/.test(signature),
+    ),
+  ),
 };
+
+/** Now, by the clock the guard reads, and a deadline ten minutes on: what an honest trade carries. */
+export const now = () => Math.floor(Date.now() / 1000);
+export const DEADLINE = BigInt(now() + 600);
 
 /** One call: the selector of `signature`, then its arguments. */
 export function call(signature: string, values: AbiValue[]): Uint8Array {
@@ -106,7 +109,8 @@ export const swapOf = (
 export const calls = {
   approve: (spender: string, amount: bigint) => call('approve(address,uint256)', [spender, amount]),
   deposit: (amount: bigint | string) => call('deposit(uint256)', [BigInt(amount)]),
-  ownerSwap: (swaps: AbiValue[][]) => call(`ownerSwap(${SWAPS})`, [swaps]),
+  ownerSwap: (swaps: AbiValue[][], deadline: bigint = DEADLINE) =>
+    call(`ownerSwap(${SWAPS},uint64)`, [swaps, deadline]),
   withdraw: (token: string, amount: bigint | string) =>
     call('withdraw(address,uint256)', [token, BigInt(amount)]),
   withdrawAll: () => call('withdrawAll()', []),
@@ -138,8 +142,9 @@ export const calls = {
     autoFollow?: boolean;
     cash: bigint | string;
     swaps: AbiValue[][];
+    deadline?: bigint;
   }) =>
-    call(`createVaultAndBuy(bytes32,${WEIGHTS},bytes32,uint32,bool,uint256,${SWAPS})`, [
+    call(`createVaultAndBuy(bytes32,${WEIGHTS},bytes32,uint32,bool,uint256,${SWAPS},uint64)`, [
       a.planId ?? PLAN_ID,
       a.targets,
       a.indexId ?? ZERO32,
@@ -147,6 +152,7 @@ export const calls = {
       a.autoFollow ?? false,
       BigInt(a.cash),
       a.swaps,
+      a.deadline ?? DEADLINE,
     ]),
 };
 

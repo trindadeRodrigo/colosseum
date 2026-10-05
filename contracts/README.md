@@ -6,12 +6,10 @@ Built so far:
 
 | Contract | What it is | Slot |
 |---|---|---|
-| `src/BasketVault.sol` | One person's vault for one plan, the logic behind every vault's beacon proxy. The owner's path: deposit cash, swap, set targets, withdraw in kind | EVM-1, EVM-2 |
+| `src/BasketVault.sol` | One person's vault for one plan, the logic behind every vault's beacon proxy. The owner's path: deposit cash, swap, set targets, withdraw in kind, accept a version, switch auto-follow. The keeper's swap, and the adopt anyone may call | EVM-1, EVM-2, EVM-3 |
 | `src/VaultFactory.sol` on `src/VaultConfig.sol` | Creates the vaults and lists them; holds the platform's settings, the three roles and the guardian's switches. A UUPS proxy | EVM-1, EVM-2 |
 | `src/IndexRegistry.sol` | The shared portfolios and the four author limits. A UUPS proxy | EVM-2 |
 | `src/VaultBeacon.sol` | The one beacon of a chain, handed over in two steps | EVM-2 |
-
-The keeper path is EVM-3: `keeperSwap`, `acceptVersion`, `adoptVersion`, `setAutoFollow`, `snapshot`.
 
 ## Run
 
@@ -36,11 +34,22 @@ Run forge from this folder, not with `--root`: with `--root` a failing run write
 anvil                                                                   # a local chain, in another terminal
 cd contracts && forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 \
   --sender 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+
+# Robinhood Chain's test network (46630), read only: the deployer's address, never its key
+cd contracts && forge script script/Deploy.s.sol --rpc-url https://rpc.testnet.chain.robinhood.com \
+  --sender <deployer address>
 ```
 
-It simulates against the chain the URL answers for and prints what it would deploy: the vault logic, the beacon, the factory and the registry with their logic contracts, and the settings it wrote. Nothing is sent without `--broadcast`, and sending is a person's to do. The settings come from `script/config/<chain id>.json`; `example.json` shows every field. A file is refused on any chain but the one it names.
+It simulates against the chain the URL answers for and prints every transaction it would send, numbered, with its target and what it does (`tx 1 ... create the vault logic`, ..., `setClosedDay(20783, closed)`), then what it deployed. Nothing is sent without `--broadcast`, and sending is a person's to do. The settings come from `script/config/<chain id>.json`; `example.json` shows every field. A file is refused on any chain but the one it names.
 
-The deployer is the admin while the script runs and proposes the file's admin at the end. Until that key calls `acceptAdmin()` on the factory and `acceptOwnership()` on the beacon, the deployer still holds both.
+The deployer is the admin while the script runs and proposes the file's admin at the end. Until that key calls `acceptAdmin()` on the factory and `acceptOwnership()` on the beacon, the deployer still holds both. A file with `"adminIsDeployer": true` keeps them with the deployer, as on a test network with one key: `46630.json` does, with no guardian (the admin makes the guardian's calls) and no keeper yet.
+
+`46630.json` lists no asset, no cash token and no router: the test tokens, the price feeds and the exchange of that network are TNET-1 and TNET-2. Once they exist, their addresses go into the file and the second entry lists them on the factory already deployed, as its admin:
+
+```
+FACTORY=<factory proxy> forge script script/Deploy.s.sol --sig "settings()" \
+  --rpc-url https://rpc.testnet.chain.robinhood.com --sender <admin address>
+```
 
 ## What holds today
 
@@ -74,6 +83,27 @@ The deployer is the admin while the script runs and proposes the file's admin at
 - The creator, the guardian or the admin can cancel a waiting version. The wait before the next one is still counted from when it was published, and its number is not used again.
 - A vault that follows a shared portfolio copies the active version at creation, if it is the version the person reviewed: otherwise `VersionMismatch` (A18).
 
+**The keeper's swap (EVM-3)**
+
+The checks of `DESIGN-VAULT.md` section 5, in the Solana program's order, each with a test at its boundary (`test/KeeperSwap.t.sol`, at 6, 8 and 18 decimals) and a bite row:
+
+- The caller is the config's `keeper()`. There is no operator of a vault's own: `setOperator` is not in the interface, as Solana's `set_keeper` is not built. Auto-follow on, the keeper not paused.
+- Cash on exactly one side; the other side a target of the vault, bought only while it is listed and sold whether or not it is. One trade per asset per cooldown, stamped only by a trade that spent something.
+- The token: not within a day of its multiplier change either way (`scheduleSelector`, `effectiveAt()` on Robinhood Chain), not paused by its issuer (`pauseProbe`), not halted by the guardian. A schedule or a probe that does not answer refuses the trade. For a stock (`session` 1): Monday to Friday, inside the session, not a closed day, not before `closedUntil`.
+- The reference price, for the asset and for every other target the vault holds: a Chainlink feed and the keeper's switch on, an answer above zero inside the asset's range, its average from `averageFeed`, both within `maxAge` of the clock either way, the two within `priceDevBps`. Base's sequencer feed, where the config names one. Cash at $1.
+- Direction before the trade; after it, the vault's own balances as for the owner's swap (exact approval, revoked and read back, `minOut`, no other token lower), the value received within the tolerance at the reference, the band, no further from the target and at most half as far on the other side when it crosses, and the weekly counter, which drains over seven days and starts again at each loss.
+- A stolen keeper key: `test/Keeper.invariant.t.sol` runs a keeper with a router that pays any price, pays someone else or takes another target, for seven days. The vault keeps 98% of its value at the reference (I2, twice the cap of 100 bps), no trade leaves its asset further from the target (I5), and nothing reaches the keeper or the router's choice (A1).
+
+**Following (EVM-3)**
+
+- `acceptVersion(indexId, version)` is the owner's: the version in effect, by its number (`VersionNotEffective` for the number that waits, `VersionMismatch` for any other). `setAutoFollow` is the owner's. A create can switch auto-follow on.
+- `adoptVersion()` is anyone's, for a vault with auto-follow on and the keeper not paused, when a newer version is in effect and each of its assets is a target above zero (`NewAssetNeedsOwner` otherwise).
+- Both keep an asset the version drops and the vault still holds as a target of zero, for the keeper to sell; past 16 targets is `InvalidTargets(1)`.
+
+**Deadlines (EVM-3)**
+
+`ownerSwap(swaps, deadline)` and `createVaultAndBuy(..., deadline)` are refused after `deadline`, in unix seconds. The guard passes one at most 30 minutes ahead of its own clock. The other owner calls take none; why is in `DESIGN-VAULT.md` 3.8, "Deadlines".
+
 **Storage**
 
 ERC-7201 namespaces: `basket.storage.BasketVault`, `basket.storage.VaultConfig`, `basket.storage.VaultFactory`, `basket.storage.IndexRegistry`. A later version adds fields at the end of `VaultStorage`, `ConfigStorage`, `FactoryStorage`, `RegistryStorage` and the registry's `Index`, and never reorders them. `test/StorageLayout.t.sol` pins where each field is, the `operator` in the slot it shares included.
@@ -92,6 +122,15 @@ From the review of this slot. None lets anyone but the owner move a vault's toke
 - **A token that fixes Permit2's allowance at infinity** (some token libraries do by default) can be bought, withdrawn and sold through a router that pulls directly, and not sold through one that pulls through Permit2: the vault cannot set or clear that allowance. Do not list one on a chain whose only router is pull 2, and do not build test tokens that way.
 - **The check that a router is not a token** is made once, when the router is listed, with 100,000 gas for the probe. A contract that starts answering as a token later is not seen. What that could reach is a token sent to a vault from outside and never listed: listed tokens are refused by address.
 
+**From EVM-3.** None lets anyone but the owner move a vault's tokens; each bounds or stops the keeper.
+
+- **Balances are read, not tracked.** There is no `tracked` and no `syncBalances`: the keeper's swap reads `balanceOf` of every target, which Solana's account model cannot. A target sent in counts at once. So a stranger's dust of a target the vault held none of, while that target's price cannot pass, stops the keeper for that vault; on Solana `tracked` hides such dust and only the owner or the keeper can record it. The owner sells the dust, or the price comes back.
+- **A target whose balance cannot be read stops the keeper** for the vault (`BalanceUnreadable`); the owner's path skips it as before.
+- **Cash is $1.** The 0.5% peg check first written for EVM is not built, as on Solana. A dollar token off its peg is the guardian's pause to stop.
+- **The average is held to `maxAge`**, not to an hour as on Solana, since a stock feed updates only in session. No Chainlink feed of an average exists on Robinhood Chain or Base: the switch goes on only for an asset whose average feed the platform provides (on the test network, TNET-1's price contract).
+- **The multiplier window does not compare the next multiplier with the current one**, as Solana does: a schedule that changes nothing still keeps the keeper away for a day either side.
+- **The keeper measures nothing past 10^30 raw units of cash** (`ValueTooLarge`): under that bound no product its checks form comes near 2^256.
+
 ## What the app and the trust notice must say
 
 The admin key can replace the factory's logic. Through that it can reach two things a vault that exists is safe from: cash a person has approved to a vault not yet created, and tokens sent to that address in advance (`test_trust_theFactoryAdminReachesAVaultNotYetCreated_andNoVaultThatExists`). The beacon's key can replace every vault's code. So:
@@ -101,16 +140,27 @@ The admin key can replace the factory's logic. Through that it can reach two thi
 - **Never leave a standing allowance to a vault.** Each `deposit` gets its own approval for its own amount.
 - **Never create a vault through a shared helper contract.** The owner is `msg.sender` of the factory call: a helper that calls the factory owns the vault, for good.
 
-## For the keeper path (EVM-3)
+## The notes EVM-2 left for the keeper path, and what EVM-3 did
 
-1. **The vault's storage is ready**: `indexId`, `acceptedVersion`, `autoFollow`, `operator` and `targets` are in `VaultStorage`. Nothing sets `autoFollow` or `operator` yet, and the factory refuses `autoFollow = true` at creation (`AutoFollowUnavailable`). Turning that on is a decision about what a create with auto-follow must check; lift the refusal in the same change that builds `setAutoFollow`. Append `lastKeeperAt` and the loss counter after `targets`.
-2. **`_follow` is the accept.** `acceptVersion(indexId, expectedVersion)` is `_follow` behind `onlyOwner nonReentrant`, plus `VersionNotEffective` for a version that is still waiting. `adoptVersion` reads the registry the same way.
-3. **Every new function that changes state takes the guard**, `adoptVersion` included: it is callable by anyone, and A17 is a router re-entering it mid-swap.
-4. **`keeperSwap` can reuse `_swap`**, which already does the approval, the take-back and the balance checks. Two things differ. The keeper's `minOut` is computed by the vault from the feeds, not passed in. And the "no other token went down" check leaves out a token whose balance could not be read before the swap: for the owner that is a liveness choice, for the keeper decide whether an unreadable accepted asset should stop the trade.
-5. **A removed asset keeps its settings** (`asset()` still answers, `isAsset` is false, `wasAsset` true), so it can be valued and sold. Decide whether the keeper may sell one.
-6. **The guardian's switches are stored and not yet read**: `keeperPaused`, `haltUntil`, `closedUntil`, `closedDay`, the params. The keeper path reads them; the owner path must never.
-7. **A later version of the vault logic that needs a `reinitializer` must gate it to the owner or the factory.** An open one is a second `initialize`.
-8. **Each new check gets a row in `script/rules-bite.mjs`**, and each new entry point a line in `test/EntryPoints.t.sol`.
-9. **Accept and adopt check that every asset of the version is still listed.** `_follow` copies the active version as it is today. And the guardian cancels waiting versions that name a removed asset.
-10. **A tracked token gone bad blocks later owner swaps, with no way to drop it.** A token in `tokens` whose balance read fails after having answered makes every later `ownerSwap` fail on `OtherTokenDebited`; one that never answers is skipped. Decide whether the owner may take a token out of `tokens`.
-11. **Versions published before `launch()`** keep their short wait. Either a setter that lengthens a waiting version, or a rule that `launch()` needs none waiting.
+1. Auto-follow: `setAutoFollow` is built, and a create may switch it on (`AutoFollowUnavailable` is gone). `lastKeeperAt`, `lossAccum` and `lossTs` are appended after `targets` (`test/StorageLayout.t.sol`). `operator` stays reserved and unread.
+2. `acceptVersion` is `_follow` behind `onlyOwner nonReentrant`, with `VersionNotEffective`; `adoptVersion` reads the registry the same way.
+3. Every new function that changes state takes the guard; A17 re-enters `keeperSwap` and `adoptVersion` mid-trade.
+4. `keeperSwap` reuses the owner's trade (`_trade`). Its `minOut` is passed in and held, as on the owner's path, and the vault also works out the value it must receive from the feeds (check 4). Every target must be readable: one that is not stops the keeper. A token outside the targets keeps the owner's rule.
+5. The keeper may sell a removed asset still held as a target, and may not buy it.
+6. The keeper path reads the pause, the halts, `closedUntil`, the closed days and the params; the owner path reads none of them (`test_I4_theOwnersPath_withEveryKeeperSwitchAgainstIt`).
+7. Still true of any later version: a `reinitializer` must be gated to the owner or the factory.
+8. Done: 89 more rows in `script/rules-bite.mjs`, 318 in all, and the entry points in `test/EntryPoints.t.sol`.
+9. Not done, on purpose: accept and adopt copy a version that names a removed asset as it is, as Solana does. The keeper never buys a removed asset, so that weight stays in cash. The guardian still cancels waiting versions that name one.
+10. Still open: a token in `tokens` whose balance read fails after having answered blocks later swaps of the owner and of the keeper; the owner cannot drop it from `tokens`.
+11. Still open: versions published before `launch()` keep their short wait.
+12. The vault logic and the factory are one build: `start` changed selector and `asset()` returns the appended fields. A chain that already runs the EVM-2 contracts upgrades the beacon and the factory in one transaction (a batch from the admin's Safe), never one without the other. Nothing EVM is deployed yet.
+
+## For the test network and the adapter
+
+What TNET-1 and TNET-2 need from these contracts, to list a test token for the keeper:
+
+- A price contract per token with Chainlink's `latestRoundData()` and 8 decimals, and a second one for the token's one-hour average, each with its own `updatedAt`. The keeper's switch cannot go on without the average.
+- On each test stock token, `effectiveAt()` and `paused()` as Robinhood's tokens have them, for `scheduleSelector` and `pauseProbe`.
+- The routers' addresses, with how each pulls (2 for Universal Router through Permit2), and the cash token. Then `script/config/46630.json` takes them, with each asset's range (`minPrice`, `maxPrice`, at most a factor two, around a price checked against the pool) and `flags` 1, and `settings()` writes them.
+
+What ADE-1 and ADE-2 need: the ABIs in `idl/evm/`; `snapshot()` for one read of a vault (the targets, then the cash token with what the targets leave); the keeper's swap carries `minOut` and the vault checks the value too; `ownerSwap` and `createVaultAndBuy` take a deadline the guard holds to at most 30 minutes ahead, which the adapter states as the attempt's `validUntil`; the error codes are in `packages/schemas` (`CONTRACT_ERROR_CODE`).

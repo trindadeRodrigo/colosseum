@@ -7,7 +7,15 @@
  * The product's pages a sign-in may lead on to, as Next names them: `[id]` stands for one segment.
  * next-path.test.ts holds this list to the pages under app/(app).
  */
-export const APP_ROUTES: readonly string[] = ['/', '/goal', '/monitor', '/sign-in'];
+export const APP_ROUTES: readonly string[] = [
+  '/',
+  '/goal',
+  '/monitor',
+  '/orders/[id]',
+  '/plan/[id]',
+  '/plan/[id]/buy',
+  '/sign-in',
+];
 
 /** Where sign-in leads when it is told nothing, or nothing it accepts: home, the goal. */
 export const AFTER_SIGN_IN = '/';

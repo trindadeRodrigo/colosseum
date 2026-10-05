@@ -120,6 +120,26 @@
             "name": "haltUntil",
             "type": "uint64",
             "internalType": "uint64"
+          },
+          {
+            "name": "flags",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "averageFeed",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "minPrice",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "maxPrice",
+            "type": "uint128",
+            "internalType": "uint128"
           }
         ]
       }
@@ -330,6 +350,11 @@
             "internalType": "bytes"
           }
         ]
+      },
+      {
+        "name": "deadline",
+        "type": "uint64",
+        "internalType": "uint64"
       }
     ],
     "outputs": [
@@ -584,6 +609,19 @@
   },
   {
     "type": "function",
+    "name": "priceDevBps",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "proposeAdmin",
     "inputs": [
       {
@@ -747,6 +785,26 @@
             "name": "haltUntil",
             "type": "uint64",
             "internalType": "uint64"
+          },
+          {
+            "name": "flags",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "averageFeed",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "minPrice",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "maxPrice",
+            "type": "uint128",
+            "internalType": "uint128"
           }
         ]
       }
@@ -882,6 +940,19 @@
             "internalType": "uint32"
           }
         ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setPriceDevBps",
+    "inputs": [
+      {
+        "name": "bps",
+        "type": "uint16",
+        "internalType": "uint16"
       }
     ],
     "outputs": [],
@@ -1227,6 +1298,26 @@
             "name": "haltUntil",
             "type": "uint64",
             "internalType": "uint64"
+          },
+          {
+            "name": "flags",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "averageFeed",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "minPrice",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "maxPrice",
+            "type": "uint128",
+            "internalType": "uint128"
           }
         ]
       }
@@ -1389,6 +1480,19 @@
   },
   {
     "type": "event",
+    "name": "PriceDevSet",
+    "inputs": [
+      {
+        "name": "bps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "RegistrySet",
     "inputs": [
       {
@@ -1521,8 +1625,14 @@
   },
   {
     "type": "error",
-    "name": "AutoFollowUnavailable",
-    "inputs": []
+    "name": "AssetNotPriced",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
   },
   {
     "type": "error",
@@ -1555,6 +1665,22 @@
     "type": "error",
     "name": "Create2EmptyBytecode",
     "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "DeadlinePassed",
+    "inputs": [
+      {
+        "name": "deadline",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "now",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ]
   },
   {
     "type": "error",

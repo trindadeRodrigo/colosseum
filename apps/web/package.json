@@ -7,10 +7,12 @@
     "dev": "next dev -p 3000",
     "build": "next build && node scripts/check-build.mjs",
     "start": "next start -p 3000",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@colosseum/schemas": "workspace:*",
+    "@colosseum/sdk": "workspace:*",
     "next": "^16.3.8",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
@@ -26,6 +28,8 @@
     "@solana-program/token": "0.9.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.63.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "tailwindcss": "^4.1.0",

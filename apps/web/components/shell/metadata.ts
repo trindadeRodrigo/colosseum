@@ -30,3 +30,21 @@ export async function signInMetadata() {
   const t = dictionary(lang);
   return { title: t.shell.signIn, description: t.signIn.title };
 }
+
+export async function planMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.plan.title, description: t.plan.buy };
+}
+
+export async function buyMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.buy.title, description: t.buy.funding.title };
+}
+
+export async function orderMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.order.title, description: t.order.review.title };
+}

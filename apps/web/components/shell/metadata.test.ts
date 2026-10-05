@@ -1,10 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as monitorPage from '../../app/(app)/monitor/page';
+import * as orderPage from '../../app/(app)/orders/[id]/page';
 import * as homePage from '../../app/(app)/page';
+import * as buyPage from '../../app/(app)/plan/[id]/buy/page';
+import * as planPage from '../../app/(app)/plan/[id]/page';
 import * as signInPage from '../../app/(app)/sign-in/page';
 import { dictionary, type Lang } from '../../i18n';
 import { read } from '../ui/test/css';
-import { goalMetadata, monitorMetadata, shellMetadata, signInMetadata } from './metadata';
+import {
+  buyMetadata,
+  goalMetadata,
+  monitorMetadata,
+  orderMetadata,
+  planMetadata,
+  shellMetadata,
+  signInMetadata,
+} from './metadata';
 
 // What a browser tab, a bookmark and a link preview say about each product page: its own title and
 // its own description, in the language of the view.
@@ -46,4 +57,22 @@ describe('the title and description of each product page', () => {
       /export function generateMetadata\(\) \{\s+return shellMetadata\(\);\s+\}/,
     );
   });
+
+  it.each(['en', 'pt'] as Lang[])(
+    'are their own on the plan, buy and order pages, in %s',
+    async (lang) => {
+      preference.lang = lang;
+      const t = dictionary(lang);
+      const pages = [await planMetadata(), await buyMetadata(), await orderMetadata()];
+      expect(pages).toEqual([
+        { title: t.plan.title, description: t.plan.buy },
+        { title: t.buy.title, description: t.buy.funding.title },
+        { title: t.order.title, description: t.order.review.title },
+      ]);
+      expect(new Set(pages.map((p) => p.title)).size).toBe(3);
+      expect(await planPage.generateMetadata()).toEqual(pages[0]);
+      expect(await buyPage.generateMetadata()).toEqual(pages[1]);
+      expect(await orderPage.generateMetadata()).toEqual(pages[2]);
+    },
+  );
 });
