@@ -1,8 +1,5 @@
-import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
-import { TestNetworkPlate } from './MockPlate';
 import { mockPlate } from './test/cases';
-import { hatchProblems } from './test/hatch';
 import { all, classes, hasClass, one, render, text, ui } from './test/html';
 
 describe('MockPlate (mock-plate.md)', () => {
@@ -66,13 +63,5 @@ describe('MockPlate (mock-plate.md)', () => {
     expect(text(render(mockPlate.staleNoAge))).toBe('stale · age unknown');
     expect(all(plate, (el) => hasClass(el, 'tf-hatch'))).toHaveLength(1);
     expect(all(plate, (el) => hasClass(el, 'tf-mock-plate'))).toHaveLength(0);
-  });
-
-  it('says "test network" for a test network, with the same band and never the word MOCK', () => {
-    const plate = render(createElement(TestNetworkPlate, { label: 'test network' }));
-    expect(text(plate)).toBe('test network');
-    expect(all(plate, (el) => hasClass(el, 'tf-hatch'))).toHaveLength(1);
-    expect(all(plate, (el) => hasClass(el, 'tf-mock-plate'))).toHaveLength(0);
-    expect(hatchProblems(plate)).toEqual([]);
   });
 });

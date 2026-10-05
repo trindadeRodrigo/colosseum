@@ -528,9 +528,8 @@ describe('the chain on the sheet', () => {
     expect(find(facts, 'dt').textContent).toBe(en.goal.chain.label);
     expect(facts.textContent).toContain('Solana');
     expect(facts.textContent).toContain(en.goal.chain.note);
-    // a test network: its own plate, which says so and does not say MOCK
-    expect(facts.querySelectorAll('[data-ui="network-plate"]')).toHaveLength(1);
-    expect(facts.querySelectorAll('.tf-mock-plate')).toHaveLength(0);
+    // a test network: the plate, and the words
+    expect(facts.querySelectorAll('.tf-mock-plate')).toHaveLength(1);
     expect(facts.textContent).toContain(en.shell.testNetwork);
     // no control sets it
     expect(facts.querySelectorAll('input, select, textarea')).toHaveLength(0);

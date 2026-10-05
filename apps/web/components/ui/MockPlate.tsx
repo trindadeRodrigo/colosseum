@@ -84,23 +84,6 @@ export type StalePlateProps = {
   className?: string;
 };
 
-/**
- * A figure or a name from a test network (`provenance: 'sandbox'`): the same band, with a plate that
- * says "test network" where a mock says MOCK (DESIGN-VAULT section 2, "Test networks"). It is not
- * live, and it is not a mock either: the two plates are never shown together for one thing.
- */
-export function TestNetworkPlate({ label, className }: { label: string; className?: string }) {
-  return (
-    <span
-      data-ui="network-plate"
-      className={cn('inline-flex h-5 items-stretch gap-1.5 align-middle', className)}
-    >
-      <HatchBand />
-      <span className="tf-stale-plate">{label}</span>
-    </span>
-  );
-}
-
 /** A stale panel or tile: the same band, with a plate that says how stale. A figure uses the hollow pin instead. */
 export function StalePlate({ ageSec, labels, className }: StalePlateProps) {
   return (

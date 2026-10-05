@@ -426,36 +426,6 @@ describe('when the choice cannot be stored', () => {
   });
 });
 
-describe('the chains on offer', () => {
-  it('carry the test-network plate on a test network, and no MOCK plate beside it', async () => {
-    api(made());
-    portStore.set(signedInPort(EMBEDDED, {}, 'sandbox'));
-    const host = await screen();
-    await settle();
-    expect(asks(host)).toBe(true);
-    const marks = host.querySelectorAll('[data-ui="chain-mark"]');
-    expect(marks).toHaveLength(2);
-    for (const mark of marks) {
-      expect(mark.querySelectorAll('[data-ui="network-plate"]')).toHaveLength(1);
-      expect(mark.textContent).toBe(en.shell.testNetwork);
-    }
-    expect(host.querySelectorAll('.tf-mock-plate')).toHaveLength(0);
-    expect(host.textContent).not.toContain('MOCK');
-    expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
-  });
-
-  it('carry the MOCK plate, and no test-network words, where the API runs the chain on the mock', async () => {
-    api(made());
-    portStore.set(signedInPort(EMBEDDED, {}, 'mock'));
-    const host = await screen();
-    await settle();
-    expect(host.querySelectorAll('[data-ui="chain-mark"] .tf-mock-plate')).toHaveLength(2);
-    expect(host.querySelectorAll('[data-ui="network-plate"]')).toHaveLength(0);
-    expect(host.textContent).not.toContain(en.shell.testNetwork);
-    expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
-  });
-});
-
 describe('when the API does not say where the plan lives', () => {
   it('assumes nothing, says so, and asks again when told to', async () => {
     const server = api(made());
@@ -889,7 +859,6 @@ describe('the throwaway wallet of development', () => {
   });
 
   it('marks a chain on a test network, and one the API runs on the mock, beside its name', async () => {
-    // a test network has its own plate, with no MOCK on it; a mock has the MOCK plate and no words
     for (const [provenance, words] of [
       ['sandbox', true],
       ['mock', false],
@@ -900,11 +869,8 @@ describe('the throwaway wallet of development', () => {
       await settle();
       const name = find(host, '[data-ui="chain-name"]');
       expect(name.textContent).toContain('Solana');
-      expect(name.querySelectorAll('.tf-mock-plate')).toHaveLength(words ? 0 : 1);
-      expect(name.querySelectorAll('[data-ui="network-plate"]')).toHaveLength(words ? 1 : 0);
-      expect(name.querySelectorAll('.tf-hatch')).toHaveLength(1);
+      expect(name.querySelectorAll('.tf-mock-plate')).toHaveLength(1);
       expect(name.textContent?.includes(en.shell.testNetwork)).toBe(words);
-      expect(name.textContent?.includes('MOCK')).toBe(!words);
       expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
       await unmountAll();
     }
