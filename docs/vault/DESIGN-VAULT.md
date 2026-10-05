@@ -149,7 +149,7 @@ Nothing in the tree breaks these rules now, and the test's list of exemptions is
 
 Frozen in two steps. **v0 on Oct 2**, with the first types and the mock: streams start against it, and one named owner (Thom) approves any change. A walking skeleton on the mock (a buy on each chain through API, order, legs and report) proves it by Oct 3. **Final on Oct 4 evening**, after each real adapter has built and simulated a create, a deposit, one swap and one keeper leg on a fork. Only then does `tests/frozen.test.ts` start hashing the files; it hashes new files only, never his. Later changes are additive. Each TypeScript type below has a zod schema of the same name in `packages/schemas/src/`.
 
-**v0 as built (FRAME-1, Oct 2).** Where the listings below left a choice open, this is what the code in `packages/schemas` does. Thom approves a change until the freeze.
+**v0 as built (FRAME-1, Oct 2).** Where the listings below left a choice open, this is what the code in `packages/schemas` does. Thom approves a change.
 
 | Point | What the code does |
 |---|---|
@@ -162,7 +162,7 @@ Frozen in two steps. **v0 on Oct 2**, with the first types and the mock: streams
 | The parser's draft | `BasketSheetDraft`: every field of `BasketSheet`, each nullable (section 7) |
 | Interfaces | `ChainReader`, `OwnerBuilder`, `KeeperBuilder`, `TxProbe`, `Submitter`, `Signer`, `WalletPort` and `RollUpContext` are TypeScript types only: they hold functions |
 | Amended on Oct 3 (FRAME-1b) | What the first nine slots and their reviews asked for, before the freeze: a person's targets may leave a cash share; the author-limit reasons, the delay and `allowedAt`; the program's appended errors and the contracts' errors as codes; four more wallet codes and the message hash per family; `TxProbe`; an approval by plan; one expected figure per trade and the minimums in the preview; `OrderError`, `OrderDetail`, `PortfolioResponse`; a price's maximum age, a scheduled multiplier, a reader's label. After its review the same day: `preview.minimums` is required; an EVM transaction states its nonce and gas limit, and an EVM attempt is the pair (messageHash, nonce); `carries` has three answers; `nonceOf`. The listings below show the types as they are now |
-| Statuses and kinds in the database | `text`, typed from the zod types, not Postgres enums, so a change before the freeze is not a migration |
+| Statuses and kinds in the database | `text`, typed from the zod types, not Postgres enums, so a change to them is not a migration |
 | `leg_attempts` | Points at a row of `legs` or of `keeper_legs`, with a check that exactly one is set |
 | `orders` | The owner as two columns, `owner_solana` and `owner_evm`, and the request as it came |
 | `TxStatus.explorerUrl` | Required, and empty on a network with no explorer |
@@ -983,6 +983,7 @@ The roll-up states the share of the plan that is measured.
 - His `scripts/risk/compute.ts` already fits every row. It needs about six lines so curves keep the snapshot's method version; that change is his.
 - Measured today in session, selling $10k and $50k: Robinhood NVDA 0.01% and 0.07%; Base NVDAc 0.03% and 0.14%. The method is "best single pool", so cost is overstated when liquidity is split.
 - Those two hand measurements leave the pool fee out. The collector (`scripts/risk-evm/`, running hourly since Oct 2) includes it, as Rodrigo's curves do, because the fee is part of what a person loses on the way out: NVDA came to 0.07% and 0.15%, and most Robinhood Chain stock tokens, whose deep pools charge 0.3%, to 0.3% to 0.4% at $10k. It measures only pools the vault can reach (Uniswap v3 pools the factory confirms, and v4 pools without hooks), each against its own mid price. Exit cost shown anywhere in the product is on this basis: fee included.
+- Planned change (gate `UNIVERSE`, Oct 5; `docs/risk/PLAN-UNIVERSE.md`): the tokens come from an asset list built by the 80% rule, every pool of a listed token is kept, and the Chainlink feed is read at the same block. Until that is built, the collector is as described here.
 - The collector runs hourly from Oct 2, which gives weekend and weekday regimes by Oct 5. A 28-day backfill on dRPC's free archive works but is out unless a stream is idle.
 
 **Where the data runs.** His collectors stay on his Mac. The hosted database gets a dated dump of his curves first; an hourly copy job is a later add. Every sheet shows the date of its curves; stale curves are never shown as live.
@@ -1327,8 +1328,8 @@ Stock markets are closed on Oct 3, 4, 10 and 11. Keeper trades on stocks, and an
 | Tue Oct 6 | A buy with a passkey wallet on each chain; publish and follow. In session: auto-follow cycles on Robinhood Chain; rehearsal 1 on Solana and Robinhood Chain. MCP against the real API |
 | Wed Oct 7 | In session: rehearsal 2, and the market-open footage. Portfolio and rebalance end to end. Sheets render. Add-backs decided |
 | Thu Oct 8 | `G-SEC` per chain at 12:00 BRT. Then `launch()`: the delay is 48 hours from here on. Then `G-LINK`, and only then is the link shared. Pause drill in session. In session: publish a version of the demo portfolio |
-| Fri Oct 9 | Spare session for a failed test cycle. Freeze at 18:00 BRT; tag. The version published on Oct 8 takes effect on Saturday, when the stock market is closed, so its rebalance waits for Monday |
-| Sat Oct 10 | P0 fixes only, each with a test. README, `HANDOFF-VAULT`, `DESIGN-VAULT`, `PRIOR-WORK`. Record the remaining screens |
+| Fri Oct 9 | Spare session for a failed test cycle; building continues, no freeze (gate `NO-FREEZE`). The version published on Oct 8 takes effect on Saturday, when the stock market is closed, so its rebalance waits for Monday |
+| Sat Oct 10 | Building continues, each change with its tests. README, `HANDOFF-VAULT`, `DESIGN-VAULT`, `PRIOR-WORK`. Record the remaining screens |
 | Sun Oct 11 | Edit both videos. Fill the submission form |
 | Mon Oct 12 | In session: the Oct 8 version adopts and rebalances at production settings. If it fails, auto-follow is switched off on that chain. Then submit with a buffer |
 
