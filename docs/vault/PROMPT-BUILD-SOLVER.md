@@ -16,13 +16,13 @@ There is no feature freeze (`NO-FREEZE`). Build as much as you can, in the order
 2. `docs/GATES.md`, the decisions of Oct 3 and Oct 5 above all: `ONE-CHAIN`, `EXIT-SOURCE`, `PROTECT-NO-STOCKS`, `UNIVERSE`, `SOLVER`, `SOLVER-PARAMS`, `SLEEVES`, `THEMES`, `THREE-PLANS`, `GUIDED-INTAKE`, `NO-FREEZE`.
 3. `docs/vault/research/portfolio-method.md`. Section 2.1 says what the old solver does, 2.3 why the linear program goes, 2.4 the three plans and the scorecard, 2.5 the status without odds, 2.6 the read-back check, 2.7 currency and stocks, 4.2 the changes table with the test for each row. Your tests come from that table.
 4. `docs/vault/DESIGN-VAULT.md` sections 2 (who imports whom), 3.6 (the types), 7 (the engine) and 8 (risk sheet).
-5. Code: `packages/engine/src/{solver,schedule,assets,risk,policy}` (the old engine, which you do not edit), `packages/schemas/src/{basket-sheet,basket,basket-asset,liquidity,recipe}.ts`, `packages/basket/src` (`flatten`, `planRebalance`, `rollUp`, `view`), `docs/vault/research/design-v2/personalization-proto/compose.mjs` (the prototype the engine was to start from), `docs/risk/PLAN-UNIVERSE.md` (which stocks are tracked).
+5. Code: `packages/engine/src/{solver,schedule,assets,risk,policy}` (the old engine, which you do not edit), `packages/schemas/src/{basket-sheet,basket,basket-asset,liquidity,recipe}.ts`, `packages/basket/src` (`flatten`, `planRebalance`, `rollUp`, `view`), Thom's ENG-2 port of the prototype on branch `eng/personal` (`packages/engine/src/personal/`: `compose`, the sleeve table, exit-source ceilings, issuer caps, `PROTECT-NO-STOCKS`, the 12-goal set and `POST /v1/baskets/personalize`), `docs/risk/PLAN-UNIVERSE.md` (which stocks are tracked).
 
 ### Settled; do not reopen
 
 - The engine is deterministic: the same inputs give the same plan, byte for byte. The model never sets a weight, picks an asset or states a figure.
 - Rules and a banded fill. No linear program in the new engine (`SOLVER`).
-- The old `solve()`, its parser, registry and `ConstraintSheet` stay as they are, and `tests/engine-baseline.test.ts` stays green. The new engine lives in `packages/engine/src/personal/`; ledger row ENG-2 is this work.
+- The old `solve()`, its parser, registry and `ConstraintSheet` stay as they are, and `tests/engine-baseline.test.ts` stays green. The new engine lives in `packages/engine/src/personal/`, which Thom's ENG-2 port on `eng/personal` already holds: the slices build on it, reuse what it covers (note section 4.3) and change what the decisions of Oct 5 change (decided by Rodrigo on Oct 5, after this prompt was first written). Ledger row ENG-2 is this work.
 - A plan lives on one chain (`ONE-CHAIN`). What an asset may weigh comes from Bearing's measured exit numbers; a tier stands in only where nothing is measured, labelled as a fallback (`EXIT-SOURCE`). Stocks never sit in an income or protect goal (`PROTECT-NO-STOCKS`).
 - Every yield, price, FX and exit figure carries `source`, `fetched_at` and `method`; nothing mocked or from a test network is shown as live. No yield number in code: the numbers below are policy parameters and live in the parameter table, never in logic.
 - No odds and no percentage chance of reaching a goal. ENG-1's "odds estimate" stays open for Rodrigo; do not build it.
@@ -139,7 +139,7 @@ Run at most two implementation agents at once, in their own worktrees, and never
 
 ### How each slice lands
 
-`/start-work` (branch `engine/<slice>` from `staging`), `/verify`, `/review-pr` by an agent that did not write it, `/open-pr`. Update ENG-2 in `docs/vault/STATE-VAULT.md` with the evidence of each slice, and DESIGN §3.6 and §7 where the code now differs from what they say.
+`/start-work` (branch `engine/<slice>` from `staging` once `eng/personal` is merged there; until then from `eng/personal`, and the pull request says it stacks on it), `/verify`, `/review-pr` by an agent that did not write it, `/open-pr`. Update ENG-2 in `docs/vault/STATE-VAULT.md` with the evidence of each slice, and DESIGN §3.6 and §7 where the code now differs from what they say.
 
 Stop and ask Rodrigo only for:
 - a product choice the documents do not settle;

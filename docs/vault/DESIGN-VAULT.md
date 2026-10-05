@@ -1202,7 +1202,7 @@ One contract, three faces. Fastify emits the OpenAPI document, committed at `pac
 
 Abuse limits. Portfolio names and descriptions: 280 characters, links stripped, returned in a field named `untrusted`. An order cannot switch auto-follow on or accept a new asset by itself. `agentLabel` is shown as "unverified". A daily budget on the model; past it, the regex parser answers. A plan's quotes are all on its chain; they run in parallel with 8 seconds for the chain, from the cache where they can.
 
-## 13. Security model and tests before the freeze
+## 13. Security model and tests before the submission
 
 The keeper is the bounded risk: a leaked keeper key can cost each auto-follow vault at most 2% of the vault in any seven days (twice the weekly cap parameter, section 5) plus any error in the price reference, which on Solana is held inside the range the admin gave each asset. The upgrade key is the unbounded one: it can replace vault code, and there is no deposit cap. The API cannot sign, and it cannot make the keeper sign: the keeper plans from chain state and never reads a job the API wrote.
 
