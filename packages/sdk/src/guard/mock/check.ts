@@ -65,6 +65,8 @@ export function checkMock(ctx: Context, deployment: MockDeployment): void {
   const { legId, owner } = step;
   const family = familyOf(deployment.chain);
   const malformed = (message: string) => new GuardRefusal('malformed', message, legId);
+  if (step.kind === 'publish')
+    throw new GuardRefusal('unsupported', 'the mock reader signs no shared portfolio yet', legId);
 
   const { message, hashed } = reading('the payload', legId, () => {
     if (family === 'solana') {

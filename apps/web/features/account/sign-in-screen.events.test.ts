@@ -412,6 +412,18 @@ describe('when the choice cannot be stored', () => {
       await unmountAll();
     }
   });
+
+  it('says when the sign-in service gave no identity token, which signing in again does not fix', async () => {
+    const { host, server } = await choosing(api(made()));
+    server.force((path) =>
+      path === '/v1/me/chain'
+        ? json({ error: 'sign in first: no identity token was sent' }, 401)
+        : null,
+    );
+    await click(button(host, en.chain.pick.confirm('Solana')));
+    await settle();
+    expect(alert(host)).toBe(en.chain.failure.noIdentity);
+  });
 });
 
 describe('when the API does not say where the plan lives', () => {
@@ -444,6 +456,23 @@ describe('when the API does not say where the plan lives', () => {
     expect(host.textContent).not.toContain(en.chain.unknown.retry);
     await click(button(host, en.shell.signOut));
     expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it('says the sign-in service gave no identity token, and offers to ask again, not to sign out', async () => {
+    const server = api(made());
+    server.force((path) =>
+      path === '/v1/me' ? json({ error: 'sign in first: no identity token was sent' }, 401) : null,
+    );
+    portStore.set(signedInPort(EMBEDDED));
+    const host = await screen();
+    await settle();
+    expect(state(host)).toBe('unknown');
+    expect(host.textContent).toContain(en.chain.unknown.noIdentity);
+    expect(host.textContent).not.toContain(en.chain.unknown.signedOut);
+    server.force(null);
+    await click(button(host, en.chain.unknown.retry));
+    await settle();
+    expect(asks(host)).toBe(true);
   });
 
   it('tells someone the server asked to slow down to wait, and asks again when told to', async () => {

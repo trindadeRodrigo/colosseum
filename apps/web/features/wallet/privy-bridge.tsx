@@ -6,6 +6,7 @@ import {
   PrivyProvider,
   useCreateWallet,
   useExportWallet,
+  useIdentityToken,
   useLoginWithPasskey,
   useLoginWithSiwe,
   useLoginWithSiws,
@@ -37,6 +38,7 @@ import {
   solanaWalletId,
   watchEvmWallets,
 } from './found-wallets';
+import { identityTokens, walletKey } from './identity-token';
 import { createWalletPort, idleDriver, type ProblemKind } from './port';
 import {
   canSignIn,
@@ -93,6 +95,16 @@ function privyConfig(chains: WalletChains): PrivyClientConfig {
       rpcs: { 'solana:mainnet': rpc(SOLANA_RPC.mainnet), 'solana:devnet': rpc(SOLANA_RPC.devnet) },
     },
   };
+}
+
+/** The identity token as Privy keeps it in a cookie, for a page that has not heard from Privy yet. */
+function identityCookie(): string | null {
+  if (typeof document === 'undefined') return null;
+  for (const pair of document.cookie.split(';')) {
+    const [name, ...value] = pair.trim().split('=');
+    if (name === 'privy-id-token') return decodeURIComponent(value.join('=')) || null;
+  }
+  return null;
 }
 
 /** Sign-in cannot work: the port says why, and stays signed out. */
@@ -173,6 +185,9 @@ function PrivyDriver({
   const { generateSiwsMessage, loginWithSiws } = useLoginWithSiws();
   const { createWallet } = useCreateWallet();
   const { createWallet: createSolanaWallet } = useCreateSolanaWallet();
+  // The identity token Privy holds: it comes with the sign-in and with each refresh of the session.
+  const { identityToken } = useIdentityToken();
+  const [identity] = useState(() => identityTokens(getIdentityToken));
 
   // The outside wallets in this browser: EVM wallets announce themselves, Solana wallets are in the
   // wallet standard's registry, which Privy's hook reads. Privy's own embedded wallet is not one.
@@ -208,6 +223,13 @@ function PrivyDriver({
     }
   }
 
+  // The wallets the identity token has to list, for the API to know them.
+  const linkedWallets = linked.flatMap((a) =>
+    a.type === 'wallet' && (a.chainType === 'ethereum' || a.chainType === 'solana')
+      ? [walletKey(a.chainType, a.address)]
+      : [],
+  );
+
   const userId = privy.user?.id ?? null;
   const session = privy.ready && privy.authenticated && userId !== null;
   // The wallets a passkey sign-in owes the person and Privy has not made: one of each family.
@@ -238,6 +260,8 @@ function PrivyDriver({
   // port is rebuilt only when what it reports (status, user, accounts) changes.
   const live = {
     privy,
+    identityToken,
+    linkedWallets,
     evm: evm.wallets,
     solana: solana.wallets,
     announced,
@@ -436,12 +460,20 @@ function PrivyDriver({
           ? ref.current.exportWallet({ address })
           : ref.current.exportSolanaWallet({ address }),
 
-      async tokens() {
+      async tokens(options) {
+        // Privy refreshes the access token only when it is about to run out, and the identity token
+        // comes with it. Both are read as Privy holds them: nothing here asks Privy per call.
         const access = await ref.current.privy.getAccessToken();
-        // The identity token lists the linked wallets. It exists once it is switched on in the Privy
-        // dashboard; until then the API gets the access token alone.
-        const identity = access ? await getIdentityToken().catch(() => null) : null;
-        return { access, identity };
+        const now = ref.current;
+        const who = now.privy.user?.id;
+        if (!access || !who) return { access, identity: null };
+        const token = await identity({
+          userId: who,
+          held: now.identityToken ?? identityCookie(),
+          wallets: now.linkedWallets,
+          fresh: options?.fresh,
+        });
+        return { access, identity: token };
       },
     };
     return createWalletPort(driver, chains, null, { api });

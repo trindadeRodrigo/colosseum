@@ -23,7 +23,7 @@ export const RISK_METHOD_VERSION = 'risk-0.3';
  */
 export async function loadLiquidityProvider(
   db: Db,
-  assets: Asset[],
+  assets: Pick<Asset, 'id' | 'mint'>[],
 ): Promise<RegimeLiquidityProvider | undefined> {
   if (process.env.RISK_LIQUIDITY === 'off') return undefined;
   const byMint = new Map(assets.filter((a) => a.mint).map((a) => [a.mint as string, a.id]));

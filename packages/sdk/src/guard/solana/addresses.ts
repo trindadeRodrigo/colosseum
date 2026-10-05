@@ -1,4 +1,4 @@
-import { addressBytes, base58Encode, concatBytes, utf8Encode } from '../../bytes';
+import { addressBytes, base58Encode, concatBytes, hexDecode, utf8Encode } from '../../bytes';
 import { onEd25519Curve, sha256 } from '../../hash';
 
 // The addresses a step's accounts must have, each worked out from the person's own address. Nothing here
@@ -13,7 +13,12 @@ export const TOKEN_PROGRAMS = {
   'token-2022': 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb',
 } as const;
 
-export const SEEDS = { vault: 'vault', config: 'config', assets: 'assets' } as const;
+export const SEEDS = {
+  vault: 'vault',
+  config: 'config',
+  assets: 'assets',
+  recipe: 'recipe',
+} as const;
 
 const MARKER = utf8Encode('ProgramDerivedAddress');
 
@@ -47,6 +52,13 @@ export const configAddress = (program: string) =>
 
 export const assetsAddress = (program: string) =>
   programAddress([utf8Encode(SEEDS.assets)], program);
+
+/** A creator's shared portfolio of one family: the registry's account. */
+export const recipeAddress = (program: string, creator: string, familyId: string) =>
+  programAddress(
+    [utf8Encode(SEEDS.recipe), addressBytes(creator), hexDecode(`0x${familyId}`)],
+    program,
+  );
 
 /** The associated token account of `holder` for `mint`, under the token program that owns the mint. */
 export const tokenAccountAddress = (holder: string, mint: string, tokenProgram: string) =>

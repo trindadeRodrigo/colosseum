@@ -62,9 +62,11 @@ export function ChainPick({ options, onConfirm, onFailed }: ChainPickProps) {
             ? t.chain.failure.notOffered
             : kind === 'signed_out'
               ? t.chain.failure.signedOut
-              : kind === 'busy'
-                ? t.shell.slowDown
-                : t.chain.failure.unreachable,
+              : kind === 'no_identity'
+                ? t.chain.failure.noIdentity
+                : kind === 'busy'
+                  ? t.shell.slowDown
+                  : t.chain.failure.unreachable,
       );
     } finally {
       setBusy(false);
