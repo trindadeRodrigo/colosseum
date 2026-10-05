@@ -180,7 +180,6 @@ export function registerSharedRoutes(scope: FastifyInstance, deps: OrderDeps) {
       const { chain } = req.query;
       const families: SharedFamily[] = [];
       for (const stored of await allFamilies(deps.db)) {
-        if (chain && !stored.recipes.some((r) => r.chain === chain)) continue;
         const family = await familyOf(deps, stored, chain, false);
         if (chain && !family.recipes.length) continue;
         families.push(family);

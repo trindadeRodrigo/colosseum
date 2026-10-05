@@ -78,7 +78,7 @@ afterAll(async () => {
   for (const step of undo.reverse()) await step();
 });
 
-const { post, get, fund, order, settleAll, read } = orderFlow({
+const { post, get, fund, order, build, land, report, settleAll, read } = orderFlow({
   app: () => app,
   registry: () => registry,
   plans: () => plans,
@@ -647,6 +647,42 @@ describe('a vault follows a shared portfolio, and auto-follow where it is offere
       409,
       'the vault already follows this shared portfolio as asked',
     ]);
+  });
+
+  it('checks the offer again when the switch is built: a version that waits with gold stops it', async () => {
+    const creator = await someone();
+    const text = fresh();
+    await published(creator, text);
+    const { who, vault } = await withVault();
+    const placed = OrderDetail.parse(
+      (
+        await post(who, '/v1/orders', {
+          type: 'follow',
+          vault,
+          family: text.slug,
+          autoFollow: true,
+        })
+      ).json(),
+    );
+    const [accept, autoFollow] = placed.legs;
+    if (!accept || !autoFollow) throw new Error('two steps');
+    await build(who, placed, accept.id);
+    await report(who, placed, accept.id, { txId: await land(who, placed, accept.id) });
+    // The creator publishes a version with gold, which waits: once it takes effect the keeper could
+    // not rebalance this vault, so the switch is not built.
+    registry.get('solana').mock?.advance(301);
+    await settleAll(
+      creator,
+      await publish(creator, text, [
+        { kind: 'asset', asset: 'solana:spy', weightBps: 4000 },
+        { kind: 'asset', asset: 'solana:nvda', weightBps: 3000 },
+        { kind: 'asset', asset: 'solana:tsla', weightBps: 1000 },
+        { kind: 'asset', asset: 'solana:gold', weightBps: 2000 },
+      ]),
+    );
+    const res = await post(who, `/v1/orders/${placed.id}/legs/${autoFollow.id}/build`);
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error).toMatch(/holds solana:gold, which has no price oracle/);
   });
 
   it("refuses another person's vault, a vault on another chain, and a stale version", async () => {

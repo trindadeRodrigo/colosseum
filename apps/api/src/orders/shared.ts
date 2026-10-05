@@ -408,7 +408,8 @@ export async function recordPublished(
     const entry = ctx.chains.get(leg.chain);
     const onchainId = await recipeIdOf(entry, creator, familyId);
     const onchain = await readRecipe(entry, onchainId);
-    if (!onchain || onchain.active.creator !== creator) continue;
+    // The id is derived from the creator, so a recipe found there is the creator's.
+    if (!onchain) continue;
     if (onchain.active.metaHash !== hash && onchain.pending?.metaHash !== hash) {
       log(`the recipe ${onchainId} on ${leg.chain} carries no version with the text of this order`);
       continue;
