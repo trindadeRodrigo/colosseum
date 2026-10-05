@@ -80,13 +80,32 @@ async function main() {
   });
 
   const signers = new Map<string, KeyPairSigner>([[deployer.address, deployer]]);
+  /** The public devnet node drops a call now and then: a call that did not get an answer is asked again. */
+  async function retry<T>(work: () => Promise<T>): Promise<T> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await work();
+      } catch (e) {
+        const unavailable =
+          e instanceof Error && /did not answer|fetch failed|429|503/.test(e.message);
+        if (!unavailable || attempt >= 5) throw e;
+        await new Promise((r) => setTimeout(r, 2_000 * attempt));
+      }
+    }
+  }
   async function sendWire(wire: string): Promise<string> {
-    const sig = await rpc
-      .sendTransaction(wire as never, { encoding: 'base64', preflightCommitment: 'confirmed' })
-      .send();
+    // The same signed bytes sent again land once, so a send that got no answer is sent again.
+    const sig = await retry(() =>
+      rpc
+        .sendTransaction(wire as never, { encoding: 'base64', preflightCommitment: 'confirmed' })
+        .send(),
+    );
     for (let i = 0; i < 120; i++) {
-      const { value } = await rpc.getSignatureStatuses([sig]).send();
-      const s = value[0];
+      const answer = await rpc
+        .getSignatureStatuses([sig])
+        .send()
+        .catch(() => null);
+      const s = answer?.value[0];
       if (s?.err) throw new Error(`${sig} failed: ${JSON.stringify(s.err)}`);
       if (s?.confirmationStatus === 'confirmed' || s?.confirmationStatus === 'finalized')
         return sig;
@@ -107,7 +126,8 @@ async function main() {
     const signed = await signTransaction([payer.keyPair], tx);
     say(what, await sendWire(getBase64EncodedWireTransaction(signed)));
   }
-  async function must(tx: BuiltTx, what: string) {
+  async function must(build: BuiltTx | (() => Promise<BuiltTx>), what: string) {
+    const tx = typeof build === 'function' ? await retry(build) : build;
     const signer = signers.get(tx.signer);
     if (!signer) throw new Error(`no key for ${tx.signer}`);
     const decoded = getTransactionDecoder().decode(getBase64Encoder().encode(tx.payload));
@@ -183,7 +203,7 @@ async function main() {
       ['gldx', 3_000],
     ]);
     await must(
-      await adapter.buildPublishRecipe({ creator: creator.address, recipe: first }),
+      () => adapter.buildPublishRecipe({ creator: creator.address, recipe: first }),
       'publish version 1',
     );
     const at = await recipeAddress(
@@ -193,16 +213,17 @@ async function main() {
     );
     console.log(`recipe\t${at}`);
     await must(
-      await adapter.buildCreateVault({
-        owner: owner.address,
-        basketId: '1',
-        targets: [],
-        recipeOnchainId: at,
-        expectedVersion: 1,
-        autoFollow: false,
-        depositRaw: '300000000',
-        slippageBps: 100,
-      }),
+      () =>
+        adapter.buildCreateVault({
+          owner: owner.address,
+          basketId: '1',
+          targets: [],
+          recipeOnchainId: at,
+          expectedVersion: 1,
+          autoFollow: false,
+          depositRaw: '300000000',
+          slippageBps: 100,
+        }),
       'open the vault, following version 1, auto-follow off',
     );
     const vault = await vaultAddress(program as Address, owner.address, 1n);
@@ -213,21 +234,22 @@ async function main() {
       ['gldx', 90],
     ] as const)
       await must(
-        await adapter.buildOwnerSwap({
-          vault,
-          trades: [
-            {
-              sell: 'solana:usdc',
-              buy: `solana:${asset}`,
-              amountInRaw: String(dollars * 1_000_000),
-            },
-          ],
-          slippageBps: 100,
-        }),
+        () =>
+          adapter.buildOwnerSwap({
+            vault,
+            trades: [
+              {
+                sell: 'solana:usdc',
+                buy: `solana:${asset}`,
+                amountInRaw: String(dollars * 1_000_000),
+              },
+            ],
+            slippageBps: 100,
+          }),
         `the owner buys $${dollars} of ${asset}`,
       );
     await must(
-      await adapter.buildSetAutoFollow({ vault, on: true }),
+      () => adapter.buildSetAutoFollow({ vault, on: true }),
       'auto-follow on, after the buys',
     );
     // The creator's key is needed once more, for the next version: kept in this process only, so the
@@ -242,7 +264,7 @@ async function main() {
       ['gldx', 3_000],
     ]);
     await must(
-      await adapter.buildPublishRecipe({ creator: creator.address, recipe: second }),
+      () => adapter.buildPublishRecipe({ creator: creator.address, recipe: second }),
       'publish version 2, weights only',
     );
     const { pending } = await adapter.getRecipe(at);
