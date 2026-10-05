@@ -266,7 +266,7 @@ describe('the test-network set-up', () => {
     expect(deployment.closedDays).toEqual(dates);
   });
 
-  it('lists every token with the entries of the index table, and switches the keeper on but for gold', async () => {
+  it('lists every token with the entries of the index table, and switches the keeper on but where the config turns it off', async () => {
     const table: { assets: { symbol: string; priceIndex: number; twapIndex: number }[] } =
       JSON.parse(
         readFileSync(join(REPO_ROOT, 'fixtures', 'solana-vault', 'scope-indexes.json'), 'utf8'),

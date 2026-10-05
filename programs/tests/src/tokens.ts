@@ -84,6 +84,8 @@ export function stockExtensions(
  * metadata pointer to the mint itself. The issuer holds every authority. The name, which the real
  * mint carries last, is `tokenMetadata`'s. */
 export function paxgExtensions(issuer: Address, mint: Address, feeBps = 0): ExtensionArgs[] {
+  // The most a transfer pays is u64::MAX here, stricter than mainnet PAXG's 0: a rate set in a test
+  // is charged in full, where on mainnet it charges nothing until the issuer raises the maximum too.
   const fee = { epoch: 0n, maximumFee: 2n ** 64n - 1n, transferFeeBasisPoints: feeBps };
   return [
     extension('MintCloseAuthority', { closeAuthority: issuer }),
