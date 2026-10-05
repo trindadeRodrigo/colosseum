@@ -46,7 +46,9 @@ export const PERSONAL_PARAMS: PersonalParameters = {
   capPerIssuerBps: { low: 5000, medium: 7000, high: 10_000 },
 
   // Of a token's measured exit capacity, the share one plan may count on: the most dollars a line of
-  // it holds (gate EXIT-SOURCE, Oct 3).
+  // it holds (gate EXIT-SOURCE, Oct 3). RES-1 (Rodrigo's research note, PR #23,
+  // docs/vault/research/portfolio-method.md section 2.2) reads it as ESMA's caution not to count on a
+  // full day's volume, and keeps it.
   shareOfDepth: 0.25,
   // The exit cost at which that capacity is read: 1%.
   tau: 0.01,
