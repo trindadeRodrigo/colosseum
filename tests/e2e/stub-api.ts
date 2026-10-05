@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { view } from '@colosseum/basket';
 import { createMockAdapter, type MockAdapter, mockAddress } from '@colosseum/chain-mock';
 import {
   type BasketSheet,
@@ -248,6 +249,23 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       steps: 4,
       newVault: true,
       ok: f.ok,
+    });
+  }
+  if (path === '/v1/portfolio') {
+    // The vaults of the wallet that bought here, valued where apps/api values them (packages/basket),
+    // in the shape of its route.
+    const owner = world.double?.owner ?? lastWallet;
+    const { adapter } = world;
+    const states = owner ? await adapter.getVaults(owner) : [];
+    const listed = states.length ? await adapter.listAssets() : [];
+    const known = new Set(listed.map((a) => a.id));
+    const held = states.flatMap((v) => [v.cash.asset, ...v.positions.map((p) => p.asset)]);
+    const ids = [...new Set(held)].filter((id) => known.has(id));
+    const prices = ids.length ? await adapter.getPrices(ids) : [];
+    const vaults = states.map((v) => ({ ...view(v, prices, listed), provenance: 'mock' }));
+    return send(res, 200, {
+      chains: [{ chain: CHAIN, name: 'Solana', mode: 'mock', provenance: 'mock', vaults, prices }],
+      disclaimer: 'MOCK',
     });
   }
   if (path === '/v1/orders' && method === 'POST') {

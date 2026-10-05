@@ -166,12 +166,7 @@ export function OrderScreen({ id }: { id: string }) {
   }
   if (!record)
     return (
-      <Notice
-        title={t.order.title}
-        body={t.order.elsewhere}
-        href="/goal"
-        label={t.plan.backToGoal}
-      />
+      <Notice title={t.order.title} body={t.order.elsewhere} href="/" label={t.plan.backToGoal} />
     );
 
   const shown = record.approved?.order ?? load.order;

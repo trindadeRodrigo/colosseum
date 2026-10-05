@@ -89,7 +89,9 @@ describe('the routes of the app', () => {
     expect(product.sort()).toEqual([
       'app/(app)/goal/page.tsx',
       'app/(app)/layout.tsx',
+      'app/(app)/monitor/page.tsx',
       'app/(app)/orders/[id]/page.tsx',
+      'app/(app)/page.tsx',
       'app/(app)/plan/[id]/buy/page.tsx',
       'app/(app)/plan/[id]/page.tsx',
       'app/(app)/sign-in/page.tsx',
@@ -100,8 +102,6 @@ describe('the routes of the app', () => {
       'app/(structurer)/embed/[id]/layout.tsx',
       'app/(structurer)/embed/[id]/page.tsx',
       'app/(structurer)/layout.tsx',
-      'app/(structurer)/monitor/page.tsx',
-      'app/(structurer)/page.tsx',
       'app/(structurer)/plans/[id]/page.tsx',
       'app/(structurer)/risk/[asset]/page.tsx',
       'app/(structurer)/risk/methodology/page.tsx',
@@ -228,7 +228,7 @@ describe('rule 2: the product’s routes do not reach the wallet adapter', () =>
     for (const file of [
       'components/Nav.tsx',
       'app/(structurer)/providers.tsx',
-      'components/GoalFlow.tsx',
+      'components/PlanView.tsx',
     ])
       expect(built.files.has(file), file).toBe(false);
   });
