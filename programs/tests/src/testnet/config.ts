@@ -33,8 +33,9 @@ type TokenFile = {
   /** What the exchange's reserve is filled to, in dollars at the first price. */
   reserveUsd?: string;
   initialPrice: SourcedPrice;
-  /** The price range that switches the keeper on for the token; null leaves it off. */
-  keeper: { minUsd: string; maxUsd: string } | null;
+  /** The token's price range, which switches the keeper on for it unless `on` is false (a token
+   * the vault does not rebalance, as gate UNIVERSE keeps a stock with no oracle); null: no range. */
+  keeper: { minUsd: string; maxUsd: string; on?: boolean } | null;
 };
 
 type ConfigFile = {
@@ -68,8 +69,10 @@ export type TokenPlan = {
   /** Raw units the exchange's reserve is filled to. */
   reserveRaw: bigint;
   initialPrice: SourcedPrice;
-  /** In millionths of a dollar for one whole token, as the asset list holds it; null: keeper off. */
+  /** In millionths of a dollar for one whole token, as the asset list holds it; null: no range. */
   range: { minPrice: bigint; maxPrice: bigint } | null;
+  /** The keeper's switch: on only with a range, and only when the config does not say off. */
+  keeperOn: boolean;
 };
 
 export type SetupPlan = {
@@ -157,6 +160,7 @@ export function planOf(file: ConfigFile): SetupPlan {
     reserveRaw: scaled(file.cash.reserve, file.cash.decimals),
     initialPrice: { usd: '1', source: 'cash counts as one dollar', fetchedAt: '', method: 'none' },
     range: null,
+    keeperOn: false,
   };
 
   const tokens = file.tokens.map((token): TokenPlan => {
@@ -175,6 +179,8 @@ export function planOf(file: ConfigFile): SetupPlan {
     if (price === 0n) fail(`${token.id} has no first price`);
     for (const key of ['source', 'fetchedAt', 'method'] as const)
       if (!token.initialPrice[key]) fail(`${token.id}: initialPrice.${key} is empty`);
+    if (token.keeper?.on !== undefined && typeof token.keeper.on !== 'boolean')
+      fail(`${token.id}: keeper.on is true or false`);
     const range = token.keeper && {
       minPrice: scaled(token.keeper.minUsd, 6),
       maxPrice: scaled(token.keeper.maxUsd, 6),
@@ -204,6 +210,7 @@ export function planOf(file: ConfigFile): SetupPlan {
       reserveRaw: (reserveUsd * 10n ** BigInt(decimals)) / price,
       initialPrice: token.initialPrice,
       range,
+      keeperOn: range !== null && token.keeper?.on !== false,
     };
   });
 

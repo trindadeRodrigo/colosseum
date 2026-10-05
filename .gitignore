@@ -30,3 +30,6 @@ packages/db/migrations/boundary-plant-*.ts
 .vitest/
 # Playwright's traces and screenshots (apps/web/playwright.config.ts)
 apps/web/e2e/.results/
+
+# Papers read for the research notes: copyrighted, never committed
+docs/vault/research/articles/
