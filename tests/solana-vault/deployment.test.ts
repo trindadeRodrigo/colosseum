@@ -360,6 +360,18 @@ describe('basket_assets, filled from the record, is what the API runs Solana on'
       outcome: 'referenced',
       reason: 'price_observations still names it, so its row stays',
     });
+    // The row is still there, and the adapter is not handed it: the retired token is never listed.
+    const stillThere = await solanaFromEnv(
+      { SOLANA_RPC_URL: 'http://127.0.0.1:1' },
+      'live',
+      db,
+      retired,
+      () => devnet,
+    );
+    expect(stillThere?.assets.map((a) => a.id)).not.toContain(gold);
+    expect(stillThere?.assets.map((a) => a.id)).toEqual(
+      expect.arrayContaining([`solana:usdc-${run}`, `solana:spyx-${run}`]),
+    );
     await db.delete(priceObservations).where(eq(priceObservations.assetId, gold));
     expect((await fillBasketAssets(db, retired)).map((f) => [f.id, f.outcome])).toEqual([
       [`solana:usdc-${run}`, 'same'],
@@ -367,5 +379,6 @@ describe('basket_assets, filled from the record, is what the API runs Solana on'
       [gold, 'removed'],
     ]);
     expect((await fillBasketAssets(db, retired)).map((f) => f.outcome)).toEqual(['same', 'same']);
-  });
+    // A dozen writes to the shared database: more than the default five seconds on a busy machine.
+  }, 30_000);
 });

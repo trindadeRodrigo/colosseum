@@ -7,8 +7,9 @@ import { and, eq, inArray } from 'drizzle-orm';
 
 // Fills `basket_assets` with a Solana network's tokens from its deploy record, the list the API's
 // Solana adapter runs on (`CHAIN_MODE_SOLANA=live` or `readonly`). Idempotent: a row that is already
-// what the record says is left alone, and the row of a token the record retired is removed. Prints
-// every row it adds, changes, leaves or removes.
+// what the record says is left alone, and the row of a token the record retired is removed, unless
+// something still points at it (a price observed for it): that row stays and is printed as
+// `referenced`, with the reason. Prints every row it adds, changes, leaves, removes or keeps so.
 //
 //   pnpm exec tsx scripts/solana/basket-assets.ts [deployments/solana-devnet.json]
 //
