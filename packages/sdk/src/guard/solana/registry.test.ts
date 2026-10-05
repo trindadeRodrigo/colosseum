@@ -32,6 +32,7 @@ import { approvedSteps } from '../approved';
 import { deploymentsOf } from '../deployment';
 import { BASKET_PROGRAM } from '../generated/basket-program';
 import { guardTransaction } from '../index';
+import { familyTextHash } from '../meta';
 import { runGuard } from '../run';
 import type { ApprovedStep, GuardInput, Publication } from '../types';
 import { recipeAddress } from './addresses';
@@ -47,7 +48,14 @@ vi.mock('../generated/deployment-files', () => import('../../../test/deployments
 
 const hex = (label: string) => createHash('sha256').update(label).digest('hex');
 const FAMILY = hex('sdk test: family');
-const META = hex('sdk test: family text');
+/** The text the review screen shows, and the hash the registry stores for it. */
+const TEXT = {
+  slug: 'sand-to-server',
+  name: 'From Sand to Server',
+  copy: 'Chips, and what runs on them.',
+  kind: 'index' as const,
+};
+const META = familyTextHash({ familyId: FAMILY, ...TEXT });
 const COMPONENTS = [
   { asset: 'solana:spy', weightBps: 6000 },
   { asset: 'solana:gold', weightBps: 4000 },
@@ -64,12 +72,12 @@ const RECIPE = await recipeOf(OWNER);
 const base = { legId: 'leg-1', chain: 'solana', owner: OWNER, basketId: '0' } as const;
 const terms = (action: Publication['action']): Publication =>
   action === 'cancel'
-    ? { action, familyId: FAMILY, components: [], metaHash: null, version: 2 }
+    ? { action, familyId: FAMILY, components: [], text: null, version: 2 }
     : {
         action,
         familyId: FAMILY,
         components: COMPONENTS,
-        metaHash: META,
+        text: TEXT,
         version: action === 'publish' ? 1 : 2,
       };
 const stepOf = (action: Publication['action']): ApprovedStep => ({
@@ -189,6 +197,19 @@ describe('the guard on Solana: a creator publishes, updates and takes back a sha
     ]);
     // A publish step with nothing said of what is published is refused before anything is built.
     expect(refusalOf(() => approvedSteps(order, { basketId: '0' }, SOLANA))?.code).toBe('order');
+    // Under the terms of a publish, no other step rides along, and only one publish.
+    const [leg] = order.legs;
+    const withPublish = { basketId: '0', publish: terms('publish') };
+    for (const [name, legs] of [
+      ['a swap beside the publish', [leg, { ...leg, id: 'leg-2', seq: 1, kind: 'swap' }]],
+      ['a withdrawal in place of the publish', [{ ...leg, kind: 'withdraw' }]],
+      ['two publishes', [leg, { ...leg, id: 'leg-2', seq: 1 }]],
+    ] as const)
+      expect(
+        refusalOf(() => approvedSteps({ ...order, legs: legs as never }, withPublish, SOLANA))
+          ?.code,
+        name,
+      ).toBe('order');
   });
 
   it('refuses a step that cannot mean what it says', () => {
@@ -202,16 +223,33 @@ describe('the guard on Solana: a creator publishes, updates and takes back a sha
         { components: [{ asset: 'solana:spy', weightBps: 9000 }] },
       ],
       ['an asset of another chain', { components: [{ asset: 'base:spy', weightBps: 10_000 }] }],
-      ['no text hash', { metaHash: null }],
+      ['no text', { text: null }],
+      ['a text with no name', { text: { ...TEXT, name: '' } }],
+      ['a slug that is no slug', { text: { ...TEXT, slug: 'Sand To Server' } }],
+      ['a text of no kind', { text: { ...TEXT, kind: 'basket' as never } }],
+      ['a copy that is not text', { text: { ...TEXT, copy: 7 as never } }],
+      ['text that cannot be written as UTF-8', { text: { ...TEXT, name: 'half \ud800 a pair' } }],
+      // A hash handed over beside the text: refused unless it is the text's own.
+      ['a text hash that is not the hash of the text shown', { metaHash: hex('other text') }],
     ];
     for (const [name, change] of wrong) {
       const step = { ...publishStep, ...change } as ApprovedStep;
       expect(refusalOf(() => guardTransaction(input(step, bytes)))?.code, name).toBe('order');
     }
-    const loaded = { ...cancelStep, components: COMPONENTS } as ApprovedStep;
-    expect(refusalOf(() => guardTransaction(input(loaded, wire([cancelIx()]))))?.code).toBe(
-      'order',
-    );
+    // The hash of the text shown, handed over beside it, is no refusal.
+    const handed = { ...publishStep, metaHash: META } as ApprovedStep;
+    expect(refusalOf(() => guardTransaction(input(handed, bytes)))).toBeNull();
+    for (const [name, change] of [
+      ['assets', { components: COMPONENTS }],
+      ['text', { text: TEXT }],
+      ['a text hash', { metaHash: META }],
+    ] as const) {
+      const loaded = { ...cancelStep, ...change } as ApprovedStep;
+      expect(
+        refusalOf(() => guardTransaction(input(loaded, wire([cancelIx()]))))?.code,
+        `a cancel that carries ${name}`,
+      ).toBe('order');
+    }
   });
 
   it('a cancel names no version: the bytes are held to the creator and the portfolio, and an interface that grew a version is not one it knows', () => {
@@ -333,6 +371,18 @@ describe('the guard on Solana: each registry negative is refused by the check th
     ),
     on(publishStep, "another family's text", 'recipe', () =>
       publishIx({ meta: hex('other text') }),
+    ),
+    // A server that hands the screen the hash of other words: the creator saw TEXT, the bytes carry
+    // the hash of a text that differs by one word.
+    on(publishStep, 'the hash of a text the creator did not see', 'recipe', () =>
+      publishIx({
+        meta: familyTextHash({ familyId: FAMILY, ...TEXT, copy: 'Chips, and what runs off them.' }),
+      }),
+    ),
+    on(updateStep, 'an update carrying the hash of other words', 'recipe', () =>
+      updateIx({
+        meta: familyTextHash({ familyId: FAMILY, ...TEXT, name: 'From Sand to Service' }),
+      }),
     ),
     on(publishStep, 'a stranger named as the creator', 'owner', () =>
       publishIx({ accounts: { creator: STRANGER }, flagsOf: { creator: notSigning } }),

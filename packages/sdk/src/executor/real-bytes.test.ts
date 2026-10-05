@@ -5,6 +5,7 @@ import vectors from '../../test/fixtures/evm-vectors.json';
 import * as s from '../../test/solana';
 import { base64Decode, base64Encode, concatBytes, hexDecode, hexEncode } from '../bytes';
 import { BASKET_PROGRAM } from '../guard/generated/basket-program';
+import { familyTextHash } from '../guard/meta';
 import { recipeAddress } from '../guard/solana/addresses';
 import type { ApprovedStep, GuardDeployment } from '../guard/types';
 import type { OrderApi } from './api';
@@ -134,7 +135,8 @@ const signedBy = (payload: string) => {
 
 describe('the executor on Solana bytes: a creator publishes a shared portfolio', () => {
   const FAMILY = 'ab'.repeat(32);
-  const META = 'cd'.repeat(32);
+  const TEXT = { slug: 'chips', name: 'Chips', copy: 'What runs on them.', kind: 'index' as const };
+  const META = familyTextHash({ familyId: FAMILY, ...TEXT });
   const components = [
     { asset: 'solana:spy', weightBps: 6000 },
     { asset: 'solana:gold', weightBps: 4000 },
@@ -143,7 +145,7 @@ describe('the executor on Solana bytes: a creator publishes a shared portfolio',
     action: 'publish' as const,
     familyId: FAMILY,
     components,
-    metaHash: META,
+    text: TEXT,
     version: 1,
   };
   const step: ApprovedStep = {

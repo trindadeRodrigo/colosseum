@@ -4,6 +4,7 @@ import {
   type ApprovedStep,
   type DeploymentFile,
   deploymentsOf,
+  familyTextHash,
   type GuardDeployment,
   GuardRefusal,
   guardTransaction,
@@ -41,6 +42,13 @@ vi.mock(
 
 const TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 const FAMILY = '33'.repeat(32);
+/** The text the creator's form shows for each version: the hash the registry stores is worked out from it. */
+const textOf = (version: number) => ({
+  slug: 'test-portfolio',
+  name: `Test portfolio, version ${version}`,
+  copy: 'Three test tokens.',
+  kind: 'index' as const,
+});
 
 describe.skipIf(!PROGRAMS_BUILT)(
   'the guard on the registry calls the adapter builds, in LiteSVM',
@@ -129,7 +137,7 @@ describe.skipIf(!PROGRAMS_BUILT)(
         asset: id(name),
         weightBps,
       })),
-      metaHash: `4${version}`.repeat(32),
+      metaHash: familyTextHash({ familyId: FAMILY, ...textOf(version) }),
       maxFeeBps: 0,
       flags: 0,
     });
@@ -148,7 +156,7 @@ describe.skipIf(!PROGRAMS_BUILT)(
               asset: c.kind === 'asset' ? c.asset : '',
               weightBps: c.weightBps,
             })),
-      metaHash: action === 'cancel' ? null : r.metaHash,
+      text: action === 'cancel' ? null : textOf(r.version),
       version: r.version,
     });
     const asLeg = (built: BuiltTx): BasketTx => ({
@@ -219,9 +227,13 @@ describe.skipIf(!PROGRAMS_BUILT)(
       const updated = asLeg(await w.adapter.buildPublishRecipe({ creator: owner(), recipe: next }));
       const updateStep = stepOf('update', next);
       expect(codeOf(updateStep, updated)).toBeNull();
-      expect(codeOf({ ...updateStep, metaHash: '45'.repeat(32) } as ApprovedStep, updated)).toBe(
-        'recipe',
-      );
+      // The words the form shows are not those of the bytes' hash: refused.
+      expect(
+        codeOf(
+          { ...updateStep, text: { ...textOf(2), copy: 'Other words.' } } as ApprovedStep,
+          updated,
+        ),
+      ).toBe('recipe');
       expect(codeOf(stepOf('publish', next), updated)).toBe('instruction');
       await w.must(updated);
 

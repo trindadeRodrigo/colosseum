@@ -2,6 +2,7 @@ import type { BasketTx, ConsentKind } from '@colosseum/schemas';
 import { type Context, familyOf, isRawAmount, tradesOf } from './context';
 import { isLoadedDeployment } from './deployment';
 import { checkEvm } from './evm/check';
+import { familyTextHash } from './meta';
 import { checkMock } from './mock/check';
 import { GuardRefusal } from './refusal';
 import { rules } from './rules';
@@ -220,10 +221,21 @@ function stepProblem(step: ApprovedStep): string | null {
       if (!hex32(step.familyId)) return 'the family id is not 32 bytes of hex';
       if (!Number.isInteger(step.version) || step.version < 1) return 'it names no version';
       if (step.action === 'cancel')
-        return step.metaHash === null && Array.isArray(step.components) && !step.components.length
+        return step.text === null &&
+          step.metaHash === undefined &&
+          Array.isArray(step.components) &&
+          !step.components.length
           ? null
           : 'a version taken back carries no assets and no text';
-      if (!hex32(step.metaHash)) return 'the text hash is not 32 bytes of hex';
+      const t = step.text;
+      // A copy may be empty; a field that is not text is refused where the hash is worked out.
+      if (!t || !/^[a-z0-9][a-z0-9-]*$/.test(t.slug) || !text(t.name))
+        return 'the text shown has no slug or no name';
+      if (t.kind !== 'index' && t.kind !== 'single') return 'the text shown is of no kind';
+      // Throws on text that cannot be hashed, which is read as a step that cannot be read.
+      const hash = familyTextHash({ familyId: step.familyId, ...t });
+      if (step.metaHash !== undefined && step.metaHash !== hash)
+        return 'the text hash handed over is not the hash of the text shown';
       if (!targets(step.components) || !step.components.length)
         return 'an asset is not of its chain';
       return step.components.reduce((n, c) => n + c.weightBps, 0) === 10_000

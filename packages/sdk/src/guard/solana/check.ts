@@ -1,6 +1,7 @@
 import { base64Decode, hexEncode } from '../../bytes';
 import { sha256 } from '../../hash';
 import { type Context, reading, sameWeights, tradesOf } from '../context';
+import { familyTextHash } from '../meta';
 import { type GuardCheck, GuardRefusal } from '../refusal';
 import type { ApprovedStep, ApprovedTrade, SolanaDeployment, Withdrawal } from '../types';
 import {
@@ -390,10 +391,12 @@ export function checkSolana(ctx: Context, deployment: SolanaDeployment, table: P
             sameWeights(targetsOf(step.components), componentsIn(v)),
             "the assets and weights in the bytes are not the version's",
           );
+        // The hash of the text the creator saw, worked out here: never a hash handed over.
+        const textHash = step.text ? familyTextHash({ familyId: step.familyId, ...step.text }) : '';
         args.meta_hash = (v) =>
           need(
             'recipe',
-            v instanceof Uint8Array && hexEncode(v) === step.metaHash,
+            v instanceof Uint8Array && hexEncode(v) === textHash,
             "the bytes publish another family's text",
           );
         if (call.name === 'update_recipe') break;

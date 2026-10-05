@@ -7,6 +7,7 @@ import type {
   RawAmount,
   Target,
 } from '@colosseum/schemas';
+import type { FamilyText } from './meta';
 
 // What the guard is given. None of it comes from the transaction it checks, and none of it should come
 // from the server that built that transaction: the step is what the person saw on the review screen,
@@ -39,8 +40,14 @@ export type Publication = {
   familyId: string;
   /** The assets and weights of the version: adding up to 10,000. Empty for a cancel. */
   components: Target[];
-  /** SHA-256 of the family's text, as lower-case hex. Null for a cancel. */
-  metaHash: string | null;
+  /**
+   * The family's text as the screen showed it: its slug, name, copy and kind. The guard works out the
+   * hash the registry stores from this and the family id, and holds the bytes to it. It is the text the
+   * screen shows, never a server's answer. Null for a cancel.
+   */
+  text: Omit<FamilyText, 'familyId'> | null;
+  /** A text hash the caller was handed, if any: refused unless it is the hash of `text`. */
+  metaHash?: string;
   /**
    * The version the screen named: 1 for a publish, the next for an update, the one that waits for a
    * cancel. The bytes carry no version: the registry numbers them, so this is shown, never checked.
