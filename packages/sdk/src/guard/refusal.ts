@@ -26,12 +26,16 @@ export const GUARD_CHECKS = [
   'minimum',
   /** A token is not the step's asset. */
   'asset',
-  /** The vault's targets are not the step's. */
+  /** The vault's targets, or a shared portfolio's assets and weights, are not the step's. */
   'targets',
   /** The auto-follow switch is not as the step has it. */
   'auto_follow',
   /** The shared portfolio followed, or its version, is not the step's. */
   'version',
+  /** The shared portfolio published, updated or taken back is not the step's: another creator's or family's, or other text. */
+  'recipe',
+  /** A shared portfolio published with a fee cap or flags that are not zero. */
+  'limits',
   /** The vault is not the person's own for this plan. */
   'vault',
   /** A trade goes through an exchange the deployment does not name. */

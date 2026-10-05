@@ -213,6 +213,23 @@ function stepProblem(step: ApprovedStep): string | null {
           ))
         ? null
         : 'a withdrawal names no asset of its chain';
+    case 'publish': {
+      const hex32 = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v);
+      if (!['publish', 'update', 'cancel'].includes(step.action))
+        return 'it publishes, updates or takes back nothing';
+      if (!hex32(step.familyId)) return 'the family id is not 32 bytes of hex';
+      if (!Number.isInteger(step.version) || step.version < 1) return 'it names no version';
+      if (step.action === 'cancel')
+        return step.metaHash === null && Array.isArray(step.components) && !step.components.length
+          ? null
+          : 'a version taken back carries no assets and no text';
+      if (!hex32(step.metaHash)) return 'the text hash is not 32 bytes of hex';
+      if (!targets(step.components) || !step.components.length)
+        return 'an asset is not of its chain';
+      return step.components.reduce((n, c) => n + c.weightBps, 0) === 10_000
+        ? null
+        : 'the weights do not add up to 10,000';
+    }
     default:
       return NO_SUCH_STEP;
   }
@@ -223,6 +240,7 @@ function consentFor(step: ApprovedStep): ConsentKind | null {
   if (step.kind === 'accept_version') return 'new_asset';
   if (step.kind === 'create_vault' && step.autoFollow) return 'auto_follow_on';
   if (step.kind === 'set_auto_follow' && step.on) return 'auto_follow_on';
+  if (step.kind === 'publish') return 'publish';
   return null;
 }
 

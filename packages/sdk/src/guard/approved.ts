@@ -21,6 +21,7 @@ const SIGNED_HERE: readonly string[] = [
   'accept_version',
   'set_auto_follow',
   'withdraw',
+  'publish',
 ];
 
 const refuse = (message: string, legId?: string) =>
@@ -167,6 +168,10 @@ export function approvedSteps(
           withdrawals: withdrawalsOf(leg),
           ...(plan.held ? { held: plan.held } : {}),
         };
+      case 'publish':
+        if (!plan.publish)
+          throw refuse('the step publishes a shared portfolio, and none was given', leg.id);
+        return { ...base, kind: 'publish', ...plan.publish };
       default:
         throw new GuardRefusal('unsupported', `this guard signs no ${leg.kind} step`, leg.id);
     }

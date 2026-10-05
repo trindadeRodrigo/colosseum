@@ -61,6 +61,11 @@ export function checkEvm(ctx: Context, deployment: EvmDeployment, table: Interfa
   const { step, tx, need } = ctx;
   const { legId, owner } = step;
   const unsupported = (message: string) => new GuardRefusal('unsupported', message, legId);
+  // IndexRegistry's `create`, `publish` and `cancel` are read here once its interface is final (EVM-3).
+  if (step.kind === 'publish')
+    throw unsupported(
+      "a shared portfolio is published on an EVM chain once IndexRegistry's interface is final",
+    );
 
   const selectorIf = (name: FnName): string | undefined => table[FN[name][0]]?.[FN[name][1]];
   /** The selector of a function this step cannot do without. */

@@ -27,6 +27,27 @@ export type Follow = {
   version: number;
 };
 
+/**
+ * A creator's own shared portfolio, as the review screen showed it (gate `SHARED-FULL`). The portfolio
+ * is the registry's account for the creator, who is the step's owner, and this family: it is derived,
+ * never named. A publish order has no plan, so its step's `basketId` is '0'.
+ */
+export type Publication = {
+  /** `publish` the first version, `update` to the next one, `cancel` the version that waits. */
+  action: 'publish' | 'update' | 'cancel';
+  /** The family's id, 32 bytes as lower-case hex. */
+  familyId: string;
+  /** The assets and weights of the version: adding up to 10,000. Empty for a cancel. */
+  components: Target[];
+  /** SHA-256 of the family's text, as lower-case hex. Null for a cancel. */
+  metaHash: string | null;
+  /**
+   * The version the screen named: 1 for a publish, the next for an update, the one that waits for a
+   * cancel. The bytes carry no version: the registry numbers them, so this is shown, never checked.
+   */
+  version: number;
+};
+
 /** One token leaving the vault for the owner's wallet. `amountRaw` null means whatever the vault holds. */
 export type Withdrawal = { asset: AssetId; amountRaw: RawAmount | null };
 
@@ -49,8 +70,7 @@ type StepBase = {
 
 /**
  * A step as the person approved it. Each kind carries exactly what its transaction may do; the guard
- * refuses bytes that do anything else. `publish` and the keeper's two kinds have no entry: this guard
- * signs none of them.
+ * refuses bytes that do anything else. The keeper's two kinds have no entry: this guard signs neither.
  */
 export type ApprovedStep = StepBase &
   (
@@ -79,6 +99,7 @@ export type ApprovedStep = StepBase &
         withdrawals: Withdrawal[] | 'all';
         held?: HeldToken[];
       }
+    | ({ kind: 'publish' } & Publication)
   );
 export type ApprovedKind = ApprovedStep['kind'];
 
@@ -165,4 +186,6 @@ export type PlanTerms = {
   withdrawals?: Withdrawal[];
   /** For a `withdraw` of everything: what the vault holds beyond the deployment's list, by the caller's own read. */
   held?: HeldToken[];
+  /** For a `publish` step: the shared portfolio as the creator saw it. */
+  publish?: Publication;
 };
