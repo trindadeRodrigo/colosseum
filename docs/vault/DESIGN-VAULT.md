@@ -40,7 +40,7 @@ Nothing here has run on mainnet. The three $10 runs come first in time.
 - One object, the **order**, with **legs**, backs every buy, rebalance, publish and agent approval. Keeper legs sit in their own table, which only the keeper can write.
 - The browser handles bytes only. A guard checks every transaction down to the function and its arguments before it is signed.
 - EVM vaults are beacon proxies, so one transaction can fix every vault. Withdrawals go only to the owner, on both chain families. The value check is per trade.
-- Solana: Kamino Scope prices cover ten stock tokens and nothing else, so auto-follow runs only on vaults whose every asset is in that list. A shared portfolio that holds an asset with no oracle (gold) is not keeper-rebalanced: its followers get the one-tap prompt, and the app does not offer the auto-follow switch on it (gate `GOLD-ONE-TAP`).
+- Solana: Kamino Scope prices cover ten stock tokens and gold, which on Solana is PAXG (Scope 454, capped and floored to Chainlink's XAU/USD; gate `GOLD-PAXG`), and nothing else, so auto-follow runs only on vaults whose every asset is in that list. A shared portfolio that holds an asset with no oracle is not keeper-rebalanced: its followers get the one-tap prompt, and the app does not offer the auto-follow switch on it (gate `GOLD-ONE-TAP`).
 - EVM: a fresh price does not prove an open market, so stock legs trade only in a fixed weekday window, minus a list of closed days.
 - The model fills a form and nothing else. Explanation text comes from templates.
 - The keeper runs as a loop on a machine the team controls. GitHub's scheduler only runs workflows from the default branch **[C 16]**, which is `main`.
@@ -1399,7 +1399,7 @@ Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-L
 19. Oct 2: the Solana shared portfolio that shows auto-follow. It must hold only Scope-priced tokens: AAPLx, CRCLx, GOOGLx, HOODx, METAx, MSTRx, NVDAx, QQQx, SPYx, TSLAx **[C 3]**. Taken: a new launch portfolio of NVDAx, AAPLx, GOOGLx, METAx and TSLAx. Its weights come from the measured curves and are set before it is published: on the measurements of Oct 1 to 2 the cap for TSLAx is near 6% (gate `EXIT-SOURCE`). The Seven needs MSFTx and AMZNx, which Scope does not price.
 20. The 500 is a single-asset portfolio outside the registry (section 6).
 21. US visitors: decided on Oct 1. No location block and no banner; the terms say the app is not for US persons.
-22. If the measured cap puts an asset below its weight in a launch portfolio, the recipe changes; the rule does not (gate `EXIT-SOURCE`). That is the case for the Tesla token in two launch portfolios, and GLDx against Storm Cellar's 25% is checked the same way.
+22. If the measured cap puts an asset below its weight in a launch portfolio, the recipe changes; the rule does not (gate `EXIT-SOURCE`). That is the case for the Tesla token in two launch portfolios, and gold against Storm Cellar's 25% is checked the same way: PAXG on Solana since Oct 5 (gate `GOLD-PAXG`), with the labelled fallback until Bearing measures its pools.
 23. Upgrade keys: decided on Oct 1, one disclosed key per chain. Still open: who holds each one and who is guardian on call each day. A mainnet deploy on Solana would lock about 5 SOL; mainnet is maybe later (gate `SHOW`).
 24. External wallets get one review screen and then several wallet prompts. The demo uses a passkey wallet.
 25. Auto-follow on stocks trades only Mon to Fri 14:30 to 20:00 UTC, and never on a listed closed day.

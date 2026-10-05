@@ -132,7 +132,7 @@ Nothing here blocks an item. It decides which facts are `null` on day one.
 **17. Assets that are not stocks.**
 - **Dollar-yield tokens and stablecoins:** a read-only snapshot script, outside the collector, simulates their pools with the same decoders and writes routed rows under its own `method_version`. Then the same exit facts apply. Plus the deviation from par or from the issuer's published value, and redemption terms as a labelled sheet.
 - **Lending supply legs outside the stock markets** (the engine's `kamino-usdc`): `LendingPoolFacts` once the reserve is registered. The lending collector reads the registry, so this waits for Oct 12.
-- **Gold** is an xStock (GLDx) and is already covered.
+- **Gold** was an xStock (GLDx), already covered. Since Oct 5 gold on Solana is PAXG (gate `GOLD-PAXG` in `docs/GATES.md`), whose pools are not measured yet.
 - **BRL leg:** FX variability from the BCB series and the parameterised cap. Nothing BRS-specific (CLAUDE.md).
 - **EVM stock tokens:** the builders read Thom's `evmq-0.1` rows as they are. No EVM code here.
 
