@@ -1,9 +1,9 @@
 {
   "network": "solana-devnet",
   "roles": {
-    "guardian": null,
-    "defaultKeeper": null,
-    "priceWriter": null
+    "guardian": "admin",
+    "defaultKeeper": "DeqGurwS6Hpw79sJzgMfARXh2EMvdXpkFADpw7WVg6A2",
+    "priceWriter": "FKdQQ5HL1Y5bzQuepNigXz2uf6k48Bre324FkY3fLKLi"
   },
   "params": {
     "toleranceBps": 75,

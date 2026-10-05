@@ -4,16 +4,20 @@ import {
   address,
   appendTransactionMessageInstructions,
   compressTransactionMessageUsingAddressLookupTables,
+  createDefaultRpcTransport,
   createKeyPairSignerFromBytes,
-  createSolanaRpc,
+  createSolanaRpcFromTransport,
   createTransactionMessage,
   getBase64EncodedWireTransaction,
   getBase64Encoder,
   getSignatureFromTransaction,
   getTransactionEncoder,
   type Instruction,
+  isSolanaError,
   type KeyPairSigner,
   pipe,
+  type RpcTransport,
+  SOLANA_ERROR__RPC__TRANSPORT_HTTP_ERROR,
   setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
@@ -92,9 +96,35 @@ export async function keypairFromFile(path: string): Promise<KeyPairSigner> {
 
 export type RpcChain = Chain & { genesisHash(): Promise<string> };
 
+/** A transport that waits and asks again when the node answers 429. The public devnet endpoint rate
+ * limits a run of 46 transactions and their reads; a repeated read changes nothing, and a repeated
+ * send carries the same signed bytes, so it is the same transaction. Any other error is thrown. */
+export function retryOn429(
+  transport: RpcTransport,
+  {
+    tries = 8,
+    firstWaitMs = 500,
+    wait = (ms: number) => new Promise((r) => setTimeout(r, ms)),
+  } = {},
+): RpcTransport {
+  return (async (config: Parameters<RpcTransport>[0]) => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await transport(config);
+      } catch (error) {
+        const limited =
+          isSolanaError(error, SOLANA_ERROR__RPC__TRANSPORT_HTTP_ERROR) &&
+          error.context.statusCode === 429;
+        if (!limited || attempt >= tries) throw error;
+        await wait(firstWaitMs * 2 ** (attempt - 1));
+      }
+    }
+  }) as RpcTransport;
+}
+
 /** A cluster over its JSON RPC. Every read and every confirmation is at `confirmed`. */
 export function rpcChain(url: string): RpcChain {
-  const rpc = createSolanaRpc(url);
+  const rpc = createSolanaRpcFromTransport(retryOn429(createDefaultRpcTransport({ url })));
   const base64 = getBase64Encoder();
   const account = async (target: Address): Promise<AccountView | null> => {
     const { value } = await rpc
