@@ -176,6 +176,12 @@ export function planOf(file: ConfigFile): SetupPlan {
     const stock = token.kind === 'stock';
     if (stock && !real)
       fail(`${token.modelOf} has no entry in fixtures/solana-vault/scope-indexes.json`);
+    // A token the index table lists takes its entries from it; a config that says otherwise is wrong.
+    for (const key of ['priceIndex', 'twapIndex', 'decimals'] as const)
+      if (real && token[key] !== undefined && token[key] !== real[key])
+        fail(
+          `${token.id}: ${key} ${token[key]} is not the ${real[key]} fixtures/solana-vault/scope-indexes.json gives ${token.modelOf}`,
+        );
     const priceIndex = real?.priceIndex ?? token.priceIndex;
     const twapIndex = real?.twapIndex ?? token.twapIndex;
     const decimals = real?.decimals ?? token.decimals;

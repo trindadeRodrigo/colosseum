@@ -178,6 +178,36 @@ describe('the price copier', () => {
     expect(result.refused.find((r) => r.id === 'tQQQx')?.why).toBe('the source holds no price');
   });
 
+  it("copies PAXG from its Kamino reserve's entries to tPAXG's own", async () => {
+    // Where the reserve reads PAXG on mainnet, from the index table and not from the copier's sources
+    // or the set-up's config: either pointing elsewhere leaves tPAXG without this reading.
+    const table: { assets: { symbol: string; priceIndex: number; twapIndex: number }[] } =
+      JSON.parse(
+        readFileSync(join(REPO_ROOT, 'fixtures', 'solana-vault', 'scope-indexes.json'), 'utf8'),
+      );
+    const real = table.assets.find((a) => a.symbol === 'PAXG');
+    if (!real) throw new Error('the index table has no PAXG');
+    const t = SESSION + 150n;
+    setClock(svm, t + 5n);
+    const price: Entry = { value: 414_276_000_000n, exponent: 8n, unixTimestamp: t };
+    const twap: Entry = { value: 414_198_500_000n, exponent: 8n, unixTimestamp: t - 2n };
+    const source = fakeMainnet(
+      { [real.priceIndex]: price, [real.twapIndex]: twap },
+      { rate: 1_062_999_156_547n, time: t - 7n },
+    );
+    const result = await copyRound(
+      liteChain(svm),
+      writer,
+      deployment,
+      await readPrices(source, sources),
+      options(),
+    );
+    expect(result.written).toContain('tPAXG');
+    const paxg = asset('solana:paxg');
+    expect(held(paxg.priceIndex)).toEqual(bytesOf(price));
+    expect(held(paxg.twapIndex)).toEqual(bytesOf(twap));
+  });
+
   it('skips an entry no newer than the one held, and refuses a value outside the range or past a jump', async () => {
     const t = SESSION + 200n;
     setClock(svm, t + 5n);
