@@ -216,6 +216,32 @@ describe('an order that does not move what the person asked for', () => {
     expect(run.calls).toHaveLength(0);
   });
 
+  it('reads every amount with the deployment file’s decimals, whatever decimals the answer states', async () => {
+    // an answer that says its tokens have 9 decimals: 10,000,000 raw tUSDC would read as 0.01 with them
+    const order = orderOn();
+    const says9 = {
+      ...order,
+      decimals: 9,
+      cashDecimals: 9,
+      legs: order.legs.map((leg) => ({
+        ...leg,
+        decimals: 9,
+        ...(leg.kind === 'swap'
+          ? { trades: leg.trades.map((t) => ({ ...t, decimals: 9, outDecimals: 9 })) }
+          : {}),
+      })),
+    } as OrderDetail;
+    api(says9);
+    seed();
+    const host = await screen();
+    const steps = [...host.querySelectorAll('[data-ui="order-step"]')].map((s) => s.textContent);
+    expect(steps[0]).toContain('10 tUSDC');
+    expect(steps[1]).toContain(en.order.review.spend('6 tUSDC', 'spyx'));
+    expect(steps[1]).toContain(en.order.review.atLeastWhole('0.0099 tSPYx'));
+    expect(host.querySelector('[data-ui="stat"]')?.textContent).toContain('10 tUSDC');
+    expect(label(primary(host))).toBe(en.order.signAndBuy('$10'));
+  });
+
   it('runs nothing after a reload either, whatever was kept as approved', async () => {
     api(hostile());
     seed(

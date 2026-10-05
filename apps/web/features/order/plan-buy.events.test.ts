@@ -64,7 +64,15 @@ const funding = (ok: boolean) => ({
   ok,
 });
 
-function api(o: { chain?: 'solana' | 'robinhood'; funded?: boolean; order?: () => Response } = {}) {
+function api(
+  o: {
+    chain?: 'solana' | 'robinhood';
+    funded?: boolean;
+    order?: () => Response;
+    /** Changes the funding answer before it is sent. */
+    say?: (answer: ReturnType<typeof funding>) => unknown;
+  } = {},
+) {
   const calls: Call[] = [];
   const person: Person = {
     userId: USER,
@@ -78,7 +86,8 @@ function api(o: { chain?: 'solana' | 'robinhood'; funded?: boolean; order?: () =
     const method = init?.method ?? 'GET';
     calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
     if (path === '/v1/me') return json(person);
-    if (path.startsWith('/v1/funding?')) return json(funding(funded));
+    if (path.startsWith('/v1/funding?'))
+      return json(o.say ? o.say(funding(funded)) : funding(funded));
     if (path === '/v1/orders' && method === 'POST') return o.order ? o.order() : json(orderOn());
     return json({ error: 'not found' }, 404);
   });
@@ -223,13 +232,30 @@ describe('the buy screen', () => {
       `/v1/funding?amountUsd=40000&proposalId=${PLAN_ID}&wallet=${SOLANA}`,
     );
     expect(host.textContent).toContain(en.buy.funding.short('Solana'));
-    expect(host.textContent).toContain('40,000 USDC');
+    // in whole units, with the units the test network's deployment committed
+    expect(host.textContent).toContain('40,000 tUSDC');
     const button = find(host, '[data-variant="primary"]');
     expect(label(button)).toBe(en.buy.review('$40,000'));
     expect(button.getAttribute('aria-disabled')).toBe('true');
     expect(host.textContent).toContain(en.buy.blocked.funding);
     await click(button);
     expect(server.to('/v1/orders')).toEqual([]);
+  });
+
+  it('reads the funding figures with committed decimals, whatever decimals the answer states', async () => {
+    // an answer that says 9 decimals for the dollar and 18 for SOL: 40,000 tUSDC would read as 40, and
+    // the network fee as nothing
+    api({
+      funded: false,
+      say: (a) => ({ ...a, cash: { ...a.cash, decimals: 9 }, gas: { ...a.gas, decimals: 18 } }),
+    });
+    rememberPlan(planOn());
+    const host = await buy();
+    expect(host.textContent).toContain(en.buy.funding.short('Solana'));
+    expect(host.textContent).toContain('40,000 tUSDC');
+    expect(host.textContent).toContain('1 SOL');
+    expect(host.textContent).toContain('0.02 SOL');
+    expect(host.textContent).not.toContain('40 tUSDC ');
   });
 
   it('asks for the trust notice once, before the first deposit, from the one constant', async () => {

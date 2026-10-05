@@ -322,6 +322,20 @@ describe('an order holds the amount the person typed, in committed units', () =>
     expect(unitsFor('robinhood', false)).toBeNull();
   });
 
+  it('takes every decimals from the deployment file the guard reads, and the mock’s from cashDecimals', () => {
+    const testnet = deploymentsOf('testnet').solana;
+    if (testnet?.family !== 'solana') throw new Error('the test network has a Solana deployment');
+    const assets = Object.entries(testnet.assets);
+    expect(assets.length).toBeGreaterThan(1);
+    for (const [id, asset] of assets) expect(units?.tokens[id]?.decimals).toBe(asset.decimals);
+    expect(Object.keys(units?.tokens ?? {}).sort()).toEqual(assets.map(([id]) => id).sort());
+    for (const chain of ['solana', 'robinhood', 'base'] as const) {
+      const mock = deploymentsOf('mock')[chain];
+      if (mock?.family !== 'mock') throw new Error('the mock has every chain');
+      expect(unitsFor(chain, true)?.tokens[mock.cash]?.decimals).toBe(mock.cashDecimals);
+    }
+  });
+
   it('passes an order that deposits the amount, and whose steps stay within it', () => {
     expect(depositRawOf(10, 6)).toBe(10_000_000n);
     expect(depositRawOf(12.34, 6)).toBe(12_340_000n);

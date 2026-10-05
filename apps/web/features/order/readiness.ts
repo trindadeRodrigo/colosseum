@@ -41,6 +41,15 @@ export function deploymentsFor(chain: ChainId, mock: boolean): GuardDeployments 
   }
 }
 
+/** The chain's own coin, which pays the network fee: this app's chain table, never the API's word. */
+export function gasUnitsFor(chain: ChainId): { symbol: string; decimals: number } | null {
+  try {
+    return walletChains(publicWalletEnv())[chain].gas;
+  } catch {
+    return null;
+  }
+}
+
 /** The chain runs on the mock: the API says so, or the wallet is the throwaway one of development. */
 export const onMock = (
   port: { test: boolean; network(chain: ChainId): { provenance: string } | null },

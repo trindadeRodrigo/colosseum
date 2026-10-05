@@ -1,44 +1,44 @@
 import type { AssetId, ChainId } from '@colosseum/schemas';
 import devnet from '../../../../deployments/solana-devnet.json';
-import { networkFor } from './readiness';
+import { deploymentsFor } from './readiness';
 
-// What a raw amount of each token means: its symbol and its decimals, from what this repository
-// committed, never from what the API answers. A hostile API that said the cash token had 9 decimals
-// would have a deposit of 40,000 dollars read as 40: the order screen shows and checks every amount
-// with these. The test network's tokens are the ones its deploy recorded (deployments/
-// solana-devnet.json); the mock's cash token is the mock's own dollar (6 decimals,
-// tests/web-units.test.ts holds it to packages/chain-mock). Anything else has no units here, and
-// nothing is signed for it.
+// What a raw amount of each token means: its decimals, from the deployment the guard derives every
+// address from (`deploymentsOf(network)[chain]` of `@colosseum/sdk`: `assets[id].decimals`, and
+// `cashDecimals` on the mock), never from what the API answers. A hostile API that said the cash token
+// had 9 decimals would have a deposit of 40,000 dollars read as 40: the order screen shows and checks
+// every amount with these. The symbol is a name only: the test network's deploy record names its tokens
+// (deployments/solana-devnet.json), the mock's dollar is USDC, and any other token goes by its id. A
+// chain with no deployment has no units here, and nothing is signed for it.
 
 export type TokenUnits = { symbol: string; decimals: number };
 export type ChainUnits = { cash: AssetId; tokens: Partial<Record<AssetId, TokenUnits>> };
 
-type RecordToken = { id: string; symbol: string; decimals: number };
-const fromRecord = (record: {
-  chain: string;
-  cash: RecordToken;
-  assets: RecordToken[];
-  retired: RecordToken[];
-}): ChainUnits => ({
-  cash: record.cash.id,
-  tokens: Object.fromEntries(
-    [record.cash, ...record.assets, ...record.retired].map((t) => [
-      t.id,
-      { symbol: t.symbol, decimals: t.decimals },
-    ]),
-  ),
-});
+/** The mock's dollar, as packages/chain-mock names it. Its decimals are the deployment's `cashDecimals`. */
+export const MOCK_CASH_SYMBOL = 'USDC';
 
-/** The mock's dollar, as packages/chain-mock lists it. */
-export const MOCK_CASH: TokenUnits = { symbol: 'USDC', decimals: 6 };
+const RECORDED: Record<string, string> = Object.fromEntries(
+  [devnet.cash, ...devnet.assets, ...devnet.retired].map((t) => [t.id, t.symbol]),
+);
+const symbolOf = (id: AssetId) => RECORDED[id] ?? id.slice(id.indexOf(':') + 1).toUpperCase();
 
 /** The units of a chain's tokens on the network this app signs for, or null when none are committed. */
 export function unitsFor(chain: ChainId, mock: boolean): ChainUnits | null {
-  if (mock) {
-    const cash = `${chain}:usdc`;
-    return { cash, tokens: { [cash]: MOCK_CASH } };
-  }
-  if (chain === 'solana' && networkFor(chain, false) === 'testnet')
-    return fromRecord(devnet as Parameters<typeof fromRecord>[0]);
-  return null;
+  const deployment = deploymentsFor(chain, mock)?.[chain];
+  if (!deployment) return null;
+  if (deployment.family === 'mock')
+    return {
+      cash: deployment.cash,
+      tokens: {
+        [deployment.cash]: { symbol: MOCK_CASH_SYMBOL, decimals: deployment.cashDecimals },
+      },
+    };
+  return {
+    cash: deployment.cash,
+    tokens: Object.fromEntries(
+      Object.entries(deployment.assets).map(([id, asset]) => [
+        id,
+        { symbol: symbolOf(id), decimals: asset.decimals },
+      ]),
+    ),
+  };
 }

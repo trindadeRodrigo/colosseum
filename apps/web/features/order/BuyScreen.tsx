@@ -22,7 +22,9 @@ import {
 } from './order-api';
 import { acceptTrust, keepOrder, trustAccepted } from './order-record';
 import { PlanGate } from './PlanGate';
+import { gasUnitsFor } from './readiness';
 import { TrustNotice } from './TrustNotice';
+import { type TokenUnits, unitsFor } from './units';
 import { usePlan } from './use-plan';
 
 // Buying a plan: the amount, what the wallet is missing for it on the plan's chain (GET /v1/funding,
@@ -205,6 +207,8 @@ export function BuyScreen({ id }: { id: string }) {
             chainName={chainName}
             owner={owner}
             mock={ready.mock}
+            units={unitsFor(chain, ready.mock)}
+            gasUnits={gasUnitsFor(chain)}
             mockBusy={addingMock}
             onReadAgain={() => setRound((n) => n + 1)}
             onMock={addMock}
@@ -247,7 +251,13 @@ export function BuyScreen({ id }: { id: string }) {
   );
 }
 
-type FundingRow = { key: 'cash' | 'gas'; name: string; figure: FundingFigure };
+type FundingRow = {
+  key: 'cash' | 'gas';
+  name: string;
+  figure: FundingFigure;
+  /** What a raw amount of it means, from what this repository committed; null shows the raw amount. */
+  units: TokenUnits | null;
+};
 
 function FundingCard({
   id,
@@ -255,6 +265,8 @@ function FundingCard({
   chainName,
   owner,
   mock,
+  units,
+  gasUnits,
   mockBusy,
   onReadAgain,
   onMock,
@@ -264,6 +276,9 @@ function FundingCard({
   chainName: string;
   owner: string | null;
   mock: boolean;
+  /** The chain's token units from its committed deployment: the API's decimals are never read. */
+  units: ReturnType<typeof unitsFor>;
+  gasUnits: TokenUnits | null;
   mockBusy: boolean;
   onReadAgain: () => void;
   onMock: () => void;
@@ -272,13 +287,30 @@ function FundingCard({
   const lang = useLang();
   const locale = LOCALE[lang];
   const read = funding.kind === 'read' ? funding.funding : null;
-  const amount = (raw: string, f: FundingFigure) => (
-    <span className="whitespace-nowrap">{`${formatRaw(raw, f.decimals, locale) ?? raw} ${f.symbol}`}</span>
-  );
+  // An amount in whole units with the committed decimals; with none committed, the raw amount alone.
+  const amount = (raw: string, u: TokenUnits | null) => {
+    const figure = u ? formatRaw(raw, u.decimals, locale) : null;
+    return (
+      <span className="whitespace-nowrap">
+        {u && figure !== null ? `${figure} ${u.symbol}` : raw}
+      </span>
+    );
+  };
+  const cashUnits = read && units ? (units.tokens[read.cash.asset] ?? null) : null;
   const rows: FundingRow[] = read
     ? [
-        { key: 'cash', name: t.buy.funding.cash(read.cash.symbol), figure: read.cash },
-        { key: 'gas', name: t.buy.funding.gas(read.gas.symbol), figure: read.gas },
+        {
+          key: 'cash',
+          name: t.buy.funding.cash(cashUnits?.symbol ?? read.cash.symbol),
+          figure: read.cash,
+          units: cashUnits,
+        },
+        {
+          key: 'gas',
+          name: t.buy.funding.gas(gasUnits?.symbol ?? read.gas.symbol),
+          figure: read.gas,
+          units: gasUnits,
+        },
       ]
     : [];
   const sentence =
@@ -328,19 +360,19 @@ function FundingCard({
                       key: 'have',
                       header: t.buy.funding.have,
                       numeric: true,
-                      cell: (r) => amount(r.figure.haveRaw, r.figure),
+                      cell: (r) => amount(r.figure.haveRaw, r.units),
                     },
                     {
                       key: 'need',
                       header: t.buy.funding.need,
                       numeric: true,
-                      cell: (r) => amount(r.figure.needRaw, r.figure),
+                      cell: (r) => amount(r.figure.needRaw, r.units),
                     },
                     {
                       key: 'missing',
                       header: t.buy.funding.missing,
                       numeric: true,
-                      cell: (r) => amount(r.figure.missingRaw, r.figure),
+                      cell: (r) => amount(r.figure.missingRaw, r.units),
                     },
                   ]}
                 />
