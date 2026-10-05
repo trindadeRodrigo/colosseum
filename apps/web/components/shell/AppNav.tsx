@@ -31,7 +31,7 @@ const LINK = cn(
 
 /** The product's routes, in the order of the bar. */
 const ROUTES = [
-  { href: '/', key: 'goal' },
+  { href: '/goal', key: 'goal' },
   { href: '/monitor', key: 'portfolio' },
 ] as const;
 

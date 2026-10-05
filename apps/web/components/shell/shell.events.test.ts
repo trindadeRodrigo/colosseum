@@ -42,7 +42,7 @@ const pressed = (group: Element) =>
 beforeEach(() => {
   portStore.set(fakePort());
   portStore.setApi(async () => json({}, 404));
-  location.pathname = '/';
+  location.pathname = '/goal';
   router.refresh.mockClear();
   document.documentElement.className = 'fonts tf-auto';
   for (const name of ['tf-theme', 'tf-lang']) remember(name, null);
@@ -69,7 +69,7 @@ describe('the frame', () => {
     expect(home.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
     const links = [...find(host, 'nav').querySelectorAll('a')];
     expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
-      [en.goal, '/'],
+      [en.goal, '/goal'],
       [en.portfolio, '/monitor'],
     ]);
     // the page a person is on is said, not only shown

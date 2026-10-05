@@ -8,7 +8,6 @@
  * next-path.test.ts holds this list to the pages under app/(app).
  */
 export const APP_ROUTES: readonly string[] = [
-  '/',
   '/goal',
   '/monitor',
   '/orders/[id]',
@@ -17,8 +16,8 @@ export const APP_ROUTES: readonly string[] = [
   '/sign-in',
 ];
 
-/** Where sign-in leads when it is told nothing, or nothing it accepts: home, the goal. */
-export const AFTER_SIGN_IN = '/';
+/** Where sign-in leads when it is told nothing, or nothing it accepts: the goal. */
+export const AFTER_SIGN_IN = '/goal';
 
 const SEGMENT = /^[A-Za-z0-9_-]+$/;
 

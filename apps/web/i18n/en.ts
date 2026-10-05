@@ -725,6 +725,158 @@ export const en = {
       newOrder: 'Make a new order',
     },
   },
+  /** His landing page (`/`, hero-3d.html), for a visitor. Every figure on it is MOCK sample data. */
+  landing: {
+    title: 'Goals, cut to fit',
+    description:
+      'Tell us what your money needs to do. tenonfi builds the portfolio that gets it there, and shows you how.',
+    nav: {
+      home: 'tenonfi home',
+      main: 'Main',
+      menu: 'Menu',
+      skip: 'Skip to content',
+      products: 'Products',
+      invest: 'Invest',
+      resources: 'Resources',
+      cta: 'Sign in',
+    },
+    stage: {
+      label: 'How tenonfi fits',
+      title:
+        'No product fits everyone. So we make the pieces — and your goals decide how they fit.',
+      taglineStrong: 'Made to measure. Every joint shown.',
+      tagline:
+        'Tell us what your money needs to do. tenonfi builds the portfolio that gets it there, and shows you how.',
+      cue: 'Scroll to see it fit',
+      drawing: 'The plan, cut to fit, slides through the goal and seats; the pin goes in last.',
+      steps: [
+        {
+          n: '01 · The pieces',
+          title: 'We cut the pieces.',
+          body: 'Dollar yield, treasuries, credit, cash: each one measured for what it really pays after risk, and how fast it can be turned back into dollars.',
+        },
+        {
+          n: '02 · The fit',
+          title: 'Your goal decides how they fit.',
+          body: 'An amount, a date, cash you must be able to reach. The plan is cut to those limits and to no one else’s.',
+        },
+        {
+          n: '03 · The pin',
+          title: 'Every joint stays in sight.',
+          body: 'Every number carries its source. Every portfolio has an exit plan before the agent invests.',
+        },
+      ],
+    },
+    show: {
+      label: 'Two goals, cut two ways',
+      eyebrow: 'Two goals, two cuts',
+      title: 'Same pieces. Different people. Different fit.',
+      lead: 'What a plan looks like when it starts from a life, not a product list. Sample plans: every figure below is illustrative.',
+      photoCaption: 'placeholder photo · generated',
+      sample: 'sample rates, not live',
+      estimate: 'estimate',
+      sampleUnit: 'sample',
+      perMonth: '/ month',
+      chips: 'The limits',
+      legs: 'How the pieces fit',
+      chartTable: 'The chart as a table',
+      month: 'Month',
+      balance: 'Balance',
+      exitPlan: 'Exit plan before investing',
+      trip: {
+        label: 'Example: a trip in 2029',
+        alt: 'A woman with a small backpack walks a coastal cliff trail at golden hour.',
+        who: (cash: string) => `Mariana · 31 · paid in ${cash}`,
+        quote:
+          'I want a savings plan I can reach any day, that pays me $1,000 a month during a three-month trip in 2029.',
+        title: 'Trip fund · Jan–Mar 2029',
+        sub: 'Low risk · reachable in 1 day · income, so no stocks',
+        chips: [
+          'target: $1,000/mo × 3',
+          'horizon: 27 months',
+          'liquidity: 1 day',
+          'credit risk: none',
+        ],
+        kpis: { save: 'you save', for: 'for', earned: 'earned on top', odds: 'odds of funding' },
+        months: (n: number) => `${n} months`,
+        chart:
+          'Monthly balance by part, growing until January 2029, then paying out $1,000 a month for three months.',
+        payout: 'trip: $1,000/mo × 3 →',
+        legs: [
+          { name: (cash: string) => `Cash buffer (${cash})`, why: 'pays the trip months first' },
+          { name: () => 'Tokenized treasuries', why: 'dollar yield, next-day redemption' },
+          { name: () => 'Dollar lending', why: 'variable rate, instant withdrawal' },
+        ],
+        exit: 'The whole balance is reachable within a day; the trip months are paid from the cash buffer first.',
+        exitNote: 'Sourced live after you connect.',
+      },
+      growth: {
+        label: 'Example: a growth goal with higher risk',
+        alt: 'A climber with a rope over his shoulder stands on a granite ridge above the clouds at sunrise.',
+        who: 'Diego · 38 · crypto-native',
+        quote:
+          'Turn $20,000 into $35,000 by 2031 for a season in the mountains. I can live with a 25% drop along the way.',
+        title: 'Mountain season · by Dec 2031',
+        sub: 'Higher risk · growth · stocks eligible · exits measured by Bearing',
+        chips: ['start: $20,000', 'target: $35,000', 'max drawdown: 25%', 'credit risk: accepted'],
+        kpis: { add: 'you add', base: 'base case', odds: 'odds of $35k', drop: 'drop budget' },
+        maxUnit: 'max',
+        chart:
+          'Projected balance to 2031 with a base path and a range from a weak to a strong case, against the $35,000 target.',
+        goalLine: 'goal $35k',
+        weak: 'weak case',
+        legs: [
+          { name: () => 'Tokenized treasuries', why: 'ballast and the exit of first resort' },
+          { name: () => 'Private credit', why: 'higher yield, slower exit (credit risk accepted)' },
+          {
+            name: (stocks: string) => `Tokenized stocks (${stocks})`,
+            why: 'growth part, sized to what Bearing measures can be sold',
+          },
+          { name: () => 'Tokenized gold', why: 'diversifier, no yield' },
+        ],
+        exit: 'Stocks are sized to what Bearing measures can be sold at the thinnest hour of the week.',
+        exitNote: 'Weekend exits are slower and cost more.',
+        oddsNote: 'Odds are estimates.',
+      },
+    },
+    sim: {
+      label: 'Try your own goal',
+      eyebrow: 'Try it · no wallet needed',
+      title: 'Tell us what your money needs to do.',
+      lead: 'Describe a goal in your own words. You’ll see how it’s read and how the pieces would fit, before you connect anything.',
+      examples: [
+        '$40,000 by June 2028, cash within 7 days',
+        '$3,000 a month from 2028',
+        'Grow $25,000 over 3 years, I accept credit risk',
+      ],
+      opening: 'Opening your goal…',
+    },
+    closing: {
+      label: 'Follow along',
+      eyebrow: 'Follow along',
+      title: 'Built piece by piece. Watch it come together.',
+      lede: 'Product updates as new pieces are cut, and a short letter on goals, liquidity and what tokenized assets really pay. No hype, no price calls.',
+      photoAlt:
+        'Offset timber beams, stacked and interlocked, frame a view of a forest through tall windows.',
+      photoCaption: 'stacked offset beams · reference photo',
+      email: 'Email address',
+      subscribe: 'Subscribe',
+      subscribing: 'Subscribing…',
+      group: 'What to receive',
+      updates: 'Product updates',
+      newsletter: 'Newsletter',
+      status: {
+        rest: 'Sign-ups aren’t open yet: nothing typed here is sent or kept.',
+        'invalid-email': 'That email doesn’t look complete. Check for an @ and a domain.',
+        'no-option': 'Pick at least one: product updates or the newsletter.',
+        submitting: 'Subscribing…',
+        success: 'Nothing was sent: sign-ups aren’t open yet, and your address wasn’t kept.',
+        already: 'You’re already on the list.',
+        error: 'We couldn’t save that just now. Try again in a minute.',
+      },
+    },
+    foot: 'The plans, rates and odds on this page are MOCK sample data. None of them is live.',
+  },
 };
 
 export type Dictionary = typeof en;

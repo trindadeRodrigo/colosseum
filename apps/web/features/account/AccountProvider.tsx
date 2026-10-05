@@ -10,6 +10,8 @@ import {
   useRef,
   useState,
 } from 'react';
+import { remember } from '../../components/shell/remember';
+import { SIGNED_IN_COOKIE } from '../../i18n';
 import { forgetGoalDraft } from '../goal/draft';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { fetchPerson, localPerson, type Person, PersonError, storeChain } from './person';
@@ -94,6 +96,14 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     if (before.current !== null && before.current !== who) forgetGoalDraft();
     before.current = who;
   }, [who]);
+
+  // The landing page sends a person signed in here to their goal, from this hint. Only a settled port
+  // changes it: while it loads, nothing is known.
+  const status = port.status;
+  useEffect(() => {
+    if (status === 'ready') remember(SIGNED_IN_COOKIE, '1');
+    else if (status === 'signed-out') remember(SIGNED_IN_COOKIE, null);
+  }, [status]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `round` asks again; the port and the fetch are read as they are when the effect runs
   useEffect(() => {

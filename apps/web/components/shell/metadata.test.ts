@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import * as goalPage from '../../app/(app)/goal/page';
 import * as monitorPage from '../../app/(app)/monitor/page';
 import * as orderPage from '../../app/(app)/orders/[id]/page';
-import * as homePage from '../../app/(app)/page';
 import * as buyPage from '../../app/(app)/plan/[id]/buy/page';
 import * as planPage from '../../app/(app)/plan/[id]/page';
 import * as signInPage from '../../app/(app)/sign-in/page';
@@ -49,7 +49,7 @@ describe('the title and description of each product page', () => {
   it('are what each page file hands Next', async () => {
     preference.lang = 'pt';
     // home is the goal
-    expect(await homePage.generateMetadata()).toEqual(await goalMetadata());
+    expect(await goalPage.generateMetadata()).toEqual(await goalMetadata());
     expect(await monitorPage.generateMetadata()).toEqual(await monitorMetadata());
     expect(await signInPage.generateMetadata()).toEqual(await signInMetadata());
     // the layout loads the fonts, which a test cannot: its lines are read as written

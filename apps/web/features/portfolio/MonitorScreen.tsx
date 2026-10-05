@@ -97,7 +97,7 @@ export function MonitorScreen() {
           vaults.length === 0
             ? say(
                 words.empty(chainName),
-                <Link href="/" className={link}>
+                <Link href="/goal" className={link}>
                   {words.startGoal}
                 </Link>,
               )
@@ -108,7 +108,7 @@ export function MonitorScreen() {
       case 'unavailable':
         body = say(
           words.unavailable,
-          <Link href="/" className={link}>
+          <Link href="/goal" className={link}>
             {words.startGoal}
           </Link>,
         );

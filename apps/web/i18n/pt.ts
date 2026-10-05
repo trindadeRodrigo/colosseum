@@ -708,4 +708,181 @@ export const pt: Dictionary = {
       newOrder: 'Criar uma nova ordem',
     },
   },
+  landing: {
+    title: 'Objetivos, cortados sob medida',
+    description:
+      'Diga o que o seu dinheiro precisa fazer. A tenonfi monta o portfólio que leva até lá e mostra como.',
+    nav: {
+      home: 'tenonfi, início',
+      main: 'Principal',
+      menu: 'Menu',
+      skip: 'Pular para o conteúdo',
+      products: 'Produtos',
+      invest: 'Investir',
+      resources: 'Recursos',
+      cta: 'Entrar',
+    },
+    stage: {
+      label: 'Como a tenonfi encaixa',
+      title:
+        'Nenhum produto serve para todo mundo. Então fazemos as peças — e os seus objetivos decidem como elas se encaixam.',
+      taglineStrong: 'Sob medida. Cada encaixe à vista.',
+      tagline:
+        'Diga o que o seu dinheiro precisa fazer. A tenonfi monta o portfólio que leva até lá e mostra como.',
+      cue: 'Role para ver o encaixe',
+      drawing:
+        'O plano, cortado sob medida, atravessa o objetivo e assenta; o pino entra por último.',
+      steps: [
+        {
+          n: '01 · As peças',
+          title: 'Nós cortamos as peças.',
+          body: 'Rendimento em dólar, títulos do Tesouro americano, crédito, caixa: cada um medido pelo que paga de verdade depois do risco, e pela rapidez com que volta a ser dólar.',
+        },
+        {
+          n: '02 · O encaixe',
+          title: 'O seu objetivo decide como elas se encaixam.',
+          body: 'Um valor, uma data, o dinheiro que você precisa poder alcançar. O plano é cortado nesses limites e em nenhum outro.',
+        },
+        {
+          n: '03 · O pino',
+          title: 'Cada encaixe fica à vista.',
+          body: 'Cada número traz a sua fonte. Cada portfólio tem um plano de saída antes de o agente investir.',
+        },
+      ],
+    },
+    show: {
+      label: 'Dois objetivos, dois cortes',
+      eyebrow: 'Dois objetivos, dois cortes',
+      title: 'As mesmas peças. Pessoas diferentes. Encaixes diferentes.',
+      lead: 'Como fica um plano quando ele parte de uma vida, não de uma lista de produtos. Planos de exemplo: todo número abaixo é ilustrativo.',
+      photoCaption: 'foto provisória · gerada',
+      sample: 'taxas de exemplo, não reais',
+      estimate: 'estimativa',
+      sampleUnit: 'exemplo',
+      perMonth: '/ mês',
+      chips: 'Os limites',
+      legs: 'Como as peças se encaixam',
+      chartTable: 'O gráfico em tabela',
+      month: 'Mês',
+      balance: 'Saldo',
+      exitPlan: 'Plano de saída antes de investir',
+      trip: {
+        label: 'Exemplo: uma viagem em 2029',
+        alt: 'Uma mulher com uma mochila pequena caminha por uma trilha à beira de um penhasco, no fim da tarde.',
+        who: (cash: string) => `Mariana · 31 · recebe em ${cash}`,
+        quote:
+          'Quero uma reserva que eu possa acessar a qualquer dia e que me pague US$ 1.000 por mês durante uma viagem de três meses em 2029.',
+        title: 'Reserva da viagem · jan–mar 2029',
+        sub: 'Risco baixo · acessível em 1 dia · renda, então sem ações',
+        chips: [
+          'alvo: US$ 1.000/mês × 3',
+          'prazo: 27 meses',
+          'liquidez: 1 dia',
+          'risco de crédito: nenhum',
+        ],
+        kpis: {
+          save: 'você guarda',
+          for: 'por',
+          earned: 'ganho a mais',
+          odds: 'chance de chegar lá',
+        },
+        months: (n: number) => `${n} meses`,
+        chart:
+          'Saldo mensal por parte, crescendo até janeiro de 2029 e depois pagando US$ 1.000 por mês durante três meses.',
+        payout: 'viagem: US$ 1.000/mês × 3 →',
+        legs: [
+          {
+            name: (cash: string) => `Reserva em caixa (${cash})`,
+            why: 'paga primeiro os meses da viagem',
+          },
+          {
+            name: () => 'Títulos do Tesouro tokenizados',
+            why: 'rendimento em dólar, resgate no dia seguinte',
+          },
+          { name: () => 'Empréstimo em dólar', why: 'taxa variável, saque imediato' },
+        ],
+        exit: 'O saldo inteiro fica acessível em até um dia; os meses da viagem saem primeiro da reserva em caixa.',
+        exitNote: 'Com fonte real depois que você conectar.',
+      },
+      growth: {
+        label: 'Exemplo: um objetivo de crescimento com mais risco',
+        alt: 'Um escalador com uma corda no ombro está de pé numa crista de granito acima das nuvens, ao nascer do sol.',
+        who: 'Diego · 38 · nativo de cripto',
+        quote:
+          'Transformar US$ 20.000 em US$ 35.000 até 2031 para uma temporada nas montanhas. Aguento uma queda de 25% no caminho.',
+        title: 'Temporada nas montanhas · até dez 2031',
+        sub: 'Risco mais alto · crescimento · ações permitidas · saídas medidas pela Bearing',
+        chips: [
+          'início: US$ 20.000',
+          'alvo: US$ 35.000',
+          'queda máxima: 25%',
+          'risco de crédito: aceito',
+        ],
+        kpis: {
+          add: 'você aporta',
+          base: 'cenário base',
+          odds: 'chance de US$ 35 mil',
+          drop: 'queda tolerada',
+        },
+        maxUnit: 'máx.',
+        chart:
+          'Saldo projetado até 2031, com um caminho base e uma faixa do cenário fraco ao forte, contra o alvo de US$ 35.000.',
+        goalLine: 'alvo US$ 35 mil',
+        weak: 'cenário fraco',
+        legs: [
+          { name: () => 'Títulos do Tesouro tokenizados', why: 'lastro e a primeira saída' },
+          {
+            name: () => 'Crédito privado',
+            why: 'rendimento maior, saída mais lenta (risco de crédito aceito)',
+          },
+          {
+            name: (stocks: string) => `Ações tokenizadas (${stocks})`,
+            why: 'crescimento, no tamanho que a Bearing mede para vender',
+          },
+          { name: () => 'Ouro tokenizado', why: 'diversifica, sem rendimento' },
+        ],
+        exit: 'As ações têm o tamanho que a Bearing mede que dá para vender na hora mais rasa da semana.',
+        exitNote: 'No fim de semana, sair é mais lento e custa mais.',
+        oddsNote: 'As chances são estimativas.',
+      },
+    },
+    sim: {
+      label: 'Teste o seu objetivo',
+      eyebrow: 'Teste · sem carteira',
+      title: 'Diga o que o seu dinheiro precisa fazer.',
+      lead: 'Descreva um objetivo com as suas palavras. Você vê como ele é lido e como as peças se encaixariam, antes de conectar qualquer coisa.',
+      examples: [
+        'US$ 40.000 até junho de 2028, dinheiro em até 7 dias',
+        'US$ 3.000 por mês a partir de 2028',
+        'Fazer US$ 25.000 crescerem em 3 anos, aceito risco de crédito',
+      ],
+      opening: 'Abrindo o seu objetivo…',
+    },
+    closing: {
+      label: 'Acompanhe',
+      eyebrow: 'Acompanhe',
+      title: 'Construído peça por peça. Veja tomar forma.',
+      lede: 'Novidades do produto a cada peça cortada, e uma carta curta sobre objetivos, liquidez e o que os ativos tokenizados pagam de verdade. Sem hype, sem palpite de preço.',
+      photoAlt:
+        'Vigas de madeira deslocadas, empilhadas e encaixadas, emolduram a vista de uma floresta por janelas altas.',
+      photoCaption: 'vigas empilhadas e deslocadas · foto de referência',
+      email: 'E-mail',
+      subscribe: 'Inscrever',
+      subscribing: 'Inscrevendo…',
+      group: 'O que receber',
+      updates: 'Novidades do produto',
+      newsletter: 'Carta',
+      status: {
+        rest: 'As inscrições ainda não abriram: nada do que você digitar aqui é enviado ou guardado.',
+        'invalid-email': 'Esse e-mail parece incompleto. Confira o @ e o domínio.',
+        'no-option': 'Escolha pelo menos um: novidades do produto ou a carta.',
+        submitting: 'Inscrevendo…',
+        success:
+          'Nada foi enviado: as inscrições ainda não abriram, e o seu e-mail não foi guardado.',
+        already: 'Você já está na lista.',
+        error: 'Não conseguimos guardar isso agora. Tente de novo em um minuto.',
+      },
+    },
+    foot: 'Os planos, taxas e chances desta página são dados de exemplo MOCK. Nenhum deles é real.',
+  },
 };

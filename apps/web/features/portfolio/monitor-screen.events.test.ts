@@ -275,7 +275,10 @@ describe('the monitor, when there is nothing to read or the API cannot say', () 
     const host = await screen();
     expect(text(host)).toContain(en.portfolio.empty('Solana'));
     const link = find(host, 'a');
-    expect([link.textContent, link.getAttribute('href')]).toEqual([en.portfolio.startGoal, '/']);
+    expect([link.textContent, link.getAttribute('href')]).toEqual([
+      en.portfolio.startGoal,
+      '/goal',
+    ]);
     expect(host.querySelector('table')).toBeNull();
   });
 
