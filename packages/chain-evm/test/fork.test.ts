@@ -12,8 +12,10 @@ import {
 } from '@colosseum/schemas';
 import {
   type Address,
+  createPublicClient,
   createTestClient,
   createWalletClient,
+  custom,
   encodeFunctionData,
   type Hex,
   http,
@@ -43,6 +45,7 @@ import { createEvmRpc } from '../src/vault/rpc';
 import { unlistedAssetId } from '../src/vault/unlisted';
 import {
   ACCOUNTS,
+  BTC8_HELD,
   buildWorld,
   DEPOSIT_RAW,
   type Fork,
@@ -102,10 +105,10 @@ describe.skipIf(!FORK_URL)('on a fork of Robinhood Chain', () => {
   };
   afterAll(async () => (await fork)?.stop());
 
-  const configOf = (world: World) => {
+  const configOf = (world: World, network = 'local') => {
     const { factory, registry } = deploymentAddresses(world.record);
     return parseChainConfigs(
-      { CHAIN_NETWORK_ROBINHOOD: 'local' },
+      { CHAIN_NETWORK_ROBINHOOD: network },
       { robinhood: { factory, registry } },
     ).robinhood;
   };
@@ -166,6 +169,7 @@ describe.skipIf(!FORK_URL)('on a fork of Robinhood Chain', () => {
         id('spy'),
         id('gld'),
         id('meta'),
+        id('btc8'),
       ]);
     });
 
@@ -228,6 +232,7 @@ describe.skipIf(!FORK_URL)('on a fork of Robinhood Chain', () => {
         REAL.gld,
         REAL.meta,
         REAL.tsla,
+        world.btc8,
         REAL.msft,
       ]);
       expect(of(REAL.nvda)).toEqual({
@@ -310,7 +315,123 @@ describe.skipIf(!FORK_URL)('on a fork of Robinhood Chain', () => {
       const { reader: wrongCash, world } = await readerOn({
         assets: (list) => list.map((a) => (a.cls === 'cash' ? { ...a, address: REAL.tsla } : a)),
       });
-      expect((await refuses(wrongCash.getVault(world.vault), 'Unavailable')).retryable).toBe(false);
+      const e2 = await refuses(wrongCash.getVault(world.vault), 'Unavailable');
+      expect([e2.retryable, e2.message.includes("the factory's cash token")]).toEqual([
+        false,
+        true,
+      ]);
+    });
+
+    it("holds each listed token's decimals to the factory's, at 6, 8 and 18", async () => {
+      const { reader, world } = await readerOn();
+      const held = await reader.getWalletHoldings(ACCOUNTS.owner);
+      expect(held.find((h) => h.asset === id('btc8'))).toEqual({
+        asset: id('btc8'),
+        raw: BTC8_HELD.toString(),
+        multiplier: '1',
+        display: '1.23456789',
+      });
+      const settled = (await reader.getAssetSettings()).map((x) => [x.asset, x.tokenDecimals]);
+      expect(settled).toContainEqual([id('usdg'), 6]);
+      expect(settled).toContainEqual([id('btc8'), 8]);
+      expect(settled).toContainEqual([id('nvda'), 18]);
+      const at = (slug: string, decimals: number) => (list: BasketAsset[]) =>
+        list.map((a) => (a.id === id(slug) ? { ...a, decimals } : a));
+      // Each read that shows a balance or a price refuses a list off by a power of ten.
+      const cases = [
+        [at('usdg', 18), (r: EvmVaultReader) => r.getVault(world.vault)],
+        [at('nvda', 8), (r: EvmVaultReader) => r.getVaults(ACCOUNTS.owner)],
+        [at('btc8', 6), (r: EvmVaultReader) => r.getWalletHoldings(ACCOUNTS.owner)],
+        [at('btc8', 18), (r: EvmVaultReader) => r.getPrices([id('btc8')])],
+      ] as const;
+      for (const [assets, read] of cases) {
+        const { reader: wrong } = await readerOn({ assets });
+        const e = await refuses(read(wrong), 'Unavailable');
+        expect(e.retryable).toBe(false);
+        expect(e.message).toContain('decimals');
+      }
+    });
+
+    it('refuses a stock token that answers no multiplier, and reads none on a token that has no need of one', async () => {
+      const { reader: asStock } = await readerOn({
+        assets: (list) =>
+          list.map((a) => (a.id === id('btc8') ? { ...a, cls: 'stock' as const } : a)),
+      });
+      const e = await refuses(asStock.getWalletHoldings(ACCOUNTS.owner), 'Unknown');
+      expect(e.message).toContain('uiMultiplier()');
+      const { reader } = await readerOn();
+      const held = await reader.getWalletHoldings(ACCOUNTS.owner);
+      expect(held.find((h) => h.asset === id('usdg'))?.multiplier).toBe('1');
+    });
+
+    it('reads only a node on the chain id of its config', async () => {
+      const { world } = await readerOn();
+      const onTestnet = createEvmVaultReader({
+        config: configOf(world, 'testnet'),
+        rpc: createEvmRpc(world.rpcUrl),
+        assets: deploymentAssets(world.record),
+      });
+      const e = await refuses(onTestnet.getPlatform(), 'Unavailable');
+      expect(e.message).toContain('31337');
+    });
+
+    it('names the pinned block and the override in every eth_call of a read', async () => {
+      const { world } = await readerOn();
+      const seen: { method: string; params: unknown[] }[] = [];
+      const spy = createPublicClient({
+        transport: custom({
+          async request({ method, params }) {
+            seen.push({ method, params: params as unknown[] });
+            const res = await fetch(world.rpcUrl, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+            });
+            const body = (await res.json()) as {
+              result?: unknown;
+              error?: { code: number; message: string; data?: unknown };
+            };
+            if (body.error) throw Object.assign(new Error(body.error.message), body.error);
+            return body.result;
+          },
+        }),
+      });
+      // Harmless: the balance of an address nobody reads.
+      const override = [{ address: STRANGER as Address, balance: 1n }];
+      const reader = createEvmVaultReader({
+        config: configOf(world),
+        rpc: spy as never,
+        assets: deploymentAssets(world.record),
+        stateOverride: override,
+      });
+      const reads: [string, () => Promise<unknown>][] = [
+        ['getVault', () => reader.getVault(world.vault)],
+        ['getVaults', () => reader.getVaults(ACCOUNTS.owner)],
+        ['getPrices', () => reader.getPrices([id('nvda'), id('spy'), id('btc8')])],
+        ['getRecipe', () => reader.getRecipe(world.recipeB)],
+        ['listAutoFollowVaults', () => reader.listAutoFollowVaults()],
+        ['getWalletHoldings', () => reader.getWalletHoldings(ACCOUNTS.owner)],
+        [
+          'funding',
+          () => reader.funding(ACCOUNTS.owner, { cashRaw: '1', legs: 1, newVault: false }),
+        ],
+        ['getPlatform', () => reader.getPlatform()],
+        ['getAssetSettings', () => reader.getAssetSettings()],
+      ];
+      for (const [name, read] of reads) {
+        seen.length = 0;
+        await read();
+        const calls = seen.filter((r) => r.method === 'eth_call');
+        expect(calls.length, name).toBeGreaterThan(0);
+        const blocks = new Set(calls.map((c) => c.params[1]));
+        expect(blocks.size, `${name}: one block`).toBe(1);
+        expect([...blocks][0], `${name}: a block number`).toMatch(/^0x[0-9a-f]+$/);
+        for (const c of calls)
+          expect(
+            Object.keys(c.params[2] ?? {}).map((k) => k.toLowerCase()),
+            `${name}: the override`,
+          ).toEqual([STRANGER]);
+      }
     });
 
     it('hands every call the state override it was given, for a chain read without a fork', async () => {

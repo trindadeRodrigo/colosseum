@@ -85,6 +85,8 @@ const PUBLISH_DELAY = 60;
 const MAX_AGE = 93_600;
 export const DEPOSIT_RAW = 50_000_000n;
 export const NVDA_GIFT = 120_000_000_000_000_000n;
+/** What the owner holds of the 8-decimal token: 1.23456789 of it. */
+export const BTC8_HELD = 123_456_789n;
 /** The multiplier the world schedules on NVDA, a week after the later of the two clocks. */
 export const SCHEDULED_MULTIPLIER = 1_010_000_000_000_000_000n;
 
@@ -96,6 +98,7 @@ const ERC20 = parseAbi([
   'function approve(address, uint256) returns (bool)',
 ]);
 const MOCK_FEED = parseAbi(['function set(int256 answer, uint256 updatedAt)']);
+const MINTABLE = parseAbi(['function mint(address to, uint256 amount)']);
 
 function artifact(file: string, name: string): { abi: Abi; bytecode: Hex } {
   const json = JSON.parse(readFileSync(join(CONTRACTS, 'out', file, `${name}.json`), 'utf8'));
@@ -105,7 +108,16 @@ function artifact(file: string, name: string): { abi: Abi; bytecode: Hex } {
 export type World = {
   rpcUrl: string;
   record: EvmDeploymentRecord;
-  feeds: { nvdaAverage: Address; spy: Address; gld: Address; meta: Address; tsla: Address };
+  feeds: {
+    nvdaAverage: Address;
+    spy: Address;
+    gld: Address;
+    meta: Address;
+    tsla: Address;
+    btc8: Address;
+  };
+  /** A token of 8 decimals of our own (the contracts' MockToken), listed as such. */
+  btc8: Address;
   /** The first vault: follows `recipeA` at version 1 with auto-follow on; version 2 is in effect. */
   vault: Address;
   /** Its own target on SPY, auto-follow off, and NVDA sent in with no target on it. */
@@ -288,6 +300,7 @@ export async function buildWorld(forkUrl: string, port: number): Promise<Fork> {
       gld: await feed(290_00000000n, now - 60n),
       meta: await feed(700_00000000n, now - 60n),
       tsla: await feed(400_00000000n, now - 60n),
+      btc8: await feed(60_000_00000000n, now - 60n),
     };
     const none = '0x0000000000000000000000000000000000000000';
     const assetConfig = (
@@ -333,6 +346,10 @@ export async function buildWorld(forkUrl: string, port: number): Promise<Fork> {
     // Listed and taken off again: a retired asset.
     await list(REAL.msft, { feed: feeds.meta, tokenDecimals: 18, session: 1, stock: true });
     await onFactory('removeAsset', [REAL.msft]);
+    // Decimals 6 (USDG), 18 (the stock tokens) and 8: a token of our own, which the owner holds.
+    const btc8 = await deploy('Tokens.sol', 'MockToken', [8]);
+    await list(btc8, { feed: feeds.btc8, tokenDecimals: 8, session: 0 });
+    await call(admin, btc8, MINTABLE, 'mint', [ACCOUNTS.owner, BTC8_HELD]);
     await onFactory('setCashToken', [REAL.usdg]);
 
     // The owners' cash, from a holder of the real dollar token.
@@ -512,8 +529,15 @@ export async function buildWorld(forkUrl: string, port: number): Promise<Fork> {
       evmChainId: FORK_CHAIN_ID,
       deployBlock: Number(PINNED_BLOCK) + 1,
       contracts: { factory, registry, beacon, vaultLogic, factoryLogic, registryLogic },
-      roles: { admin, guardian: ACCOUNTS.guardian, keeper: ACCOUNTS.keeper },
+      roles: {
+        admin,
+        guardian: ACCOUNTS.guardian,
+        keeper: ACCOUNTS.keeper,
+        priceWriter: null,
+        tokenIssuer: null,
+      },
       routers: [],
+      sequencerFeed: null,
       cash: {
         id: 'robinhood:usdg',
         symbol: 'USDG',
@@ -526,6 +550,10 @@ export async function buildWorld(forkUrl: string, port: number): Promise<Fork> {
         stock('spy', 'SPY', REAL.spy, feeds.spy, none, 1, false, 'etf'),
         stock('gld', 'GLD', REAL.gld, feeds.gld, none, 0, false, 'gold'),
         stock('meta', 'META', REAL.meta, feeds.meta, none, 1, false),
+        {
+          ...stock('btc8', 'BTC8', btc8, feeds.btc8, none, 0, false, 'crypto'),
+          decimals: 8,
+        },
       ],
       retired: [{ id: 'robinhood:msft', symbol: 'MSFT', address: REAL.msft }],
     };
@@ -536,6 +564,7 @@ export async function buildWorld(forkUrl: string, port: number): Promise<Fork> {
         rpcUrl,
         record,
         feeds,
+        btc8,
         vault,
         manualVault,
         newAssetVault,
@@ -564,7 +593,7 @@ function stock(
   averageFeed: Address,
   session: 0 | 1,
   keeperOn: boolean,
-  kind: 'stock' | 'etf' | 'gold' = 'stock',
+  kind: 'stock' | 'etf' | 'gold' | 'crypto' = 'stock',
 ): EvmDeploymentRecord['assets'][number] {
   return {
     id: `robinhood:${slug}`,

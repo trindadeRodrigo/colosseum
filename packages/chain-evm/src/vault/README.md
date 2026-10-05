@@ -16,7 +16,10 @@ One codebase for every EVM chain. The reader takes a `ChainConfig` (its network,
 
 ## How it reads
 
-- One moment per read: the latest block is asked first and every call of the read names it. Calls made together go as one JSON-RPC batch.
+- One moment per read: the latest block is asked first and every call of the read names it. Calls made together go as one JSON-RPC batch. A fork case holds every `eth_call` of each read to one block number and to the override, through a transport that records them.
+- The node's chain id is asked once and must be the config's `evmChainId` (`Unavailable`, not retryable, otherwise): a reader set up for the test network does not read a local copy, nor the other way round.
+- Each listed token's decimals, cash included, must be what the factory states (`asset(token).tokenDecimals`), checked on every read that shows a balance or a price: a list off by a power of ten is refused as `Unavailable`, not retryable. Held on the fork at 6 (USDG), 8 (a test token of our own) and 18 (the stock tokens).
+- A balance is read or refused by name (`BalanceUnreadable`): a token that reverts or has no code is never a zero.
 - `stateOverride` is handed to every `eth_call`. It is the room left for Base, whose stock tokens a plain fork cannot run: the code and storage a read needs are put in place for the call only. Nothing on Robinhood Chain uses it.
 - A vault is one `snapshot()`: its targets in the vault's order (by token address), then the cash token with the share the targets leave. Every token the app lists that the vault holds with no target on it is read too (`balanceOf`) and shown at a target of zero. A token it does not list is not seen unless it is a target.
 - `getVault` answers only for a vault the factory lists (`isVault`): an address that merely runs the same code is `null`.
@@ -27,7 +30,7 @@ One codebase for every EVM chain. The reader takes a `ChainConfig` (its network,
 
 ## Tokens and multipliers
 
-- A holding's `multiplier` is what the token answers to `uiMultiplier()` (18 decimals, ERC-8056): Robinhood's stock tokens turn it to `newUIMultiplier()` at `effectiveAt()` by themselves. `scheduled` is set while `effectiveAt()` is ahead of the block and the next multiplier differs. A token with no `uiMultiplier()` (the dollar token) is '1'.
+- A holding's `multiplier` is what the token answers to `uiMultiplier()` (18 decimals, ERC-8056): Robinhood's stock tokens turn it to `newUIMultiplier()` at `effectiveAt()` by themselves. `scheduled` is set while `effectiveAt()` is ahead of the block and the next multiplier differs. A token with no `uiMultiplier()` is '1' only where it may have none (the dollar token, a class other than stock or ETF, a token the app does not list); a stock or an ETF that answers none is refused with `Unknown`.
 - A target or a portfolio line on a token the app does not list shows under `robinhood:token-<hex>`, with the decimals the factory states for it, never refused: one author's portfolio must not stop every read of every vault that follows it.
 
 ## Prices
@@ -44,9 +47,22 @@ One codebase for every EVM chain. The reader takes a `ChainConfig` (its network,
 
 ## The record and the node
 
-`deployments/<chain>-<network>.json` (`robinhood-testnet`, `robinhood-local`) is what the API will read for a real EVM chain, as it reads `deployments/solana-devnet.json`: the six contracts, the roles, the routers with how each pulls, the cash token and the assets with their feeds, average feeds, ages, sessions, ceilings, keeper switches and ranges, and the retired tokens. Strict: a field it does not have is refused. Token contracts are under `address`, not `token`. `deploymentAssets(record)` makes the app's list from it, tier C and labelled `sandbox`.
+`deployments/<chain>-<network>.json` (`robinhood-testnet`, `robinhood-local`) is what the API will read for a real EVM chain, as it reads `deployments/solana-devnet.json`. Strict: a field it does not have is refused, and so is a record whose `evmChainId` is a mainnet's (4663, 8453). Token contracts are under `address`, not `token`. `deploymentAssets(record)` makes the app's list from it, tier C and labelled `sandbox`. The shape, every field required:
 
-`assertNode(rpc, record)` at start: the node's chain id is the record's and never a mainnet's (4663, 8453), and the factory has code. A local copy of mainnet runs with another chain id (`anvil --chain-id 31337`): a signature made for 4663 is good on mainnet.
+```
+{ network: 'robinhood-testnet' | 'robinhood-local' | 'base-…', chain, provenance: 'sandbox', evmChainId, deployBlock | null,
+  contracts: { factory, registry, beacon, vaultLogic, factoryLogic, registryLogic },
+  roles: { admin, guardian, keeper, priceWriter | null, tokenIssuer | null },
+  routers: [{ address, pull: 1 | 2 }], sequencerFeed | null,
+  cash: { id, symbol, name, address, decimals },
+  assets: [{ id, symbol, name, address, decimals, modelOf, kind, feed, feedDecimals, averageFeed (zero address for none),
+             maxAge, session: 0 | 1, maxWeightBps, keeperOn, range: { minPrice, maxPrice } | null }],
+  retired: [{ id | null, symbol | null, address }] }
+```
+
+`priceWriter` is who writes the test price feeds, `tokenIssuer` who mints, schedules multipliers on and pauses the test tokens, `sequencerFeed` what the factory's `sequencerFeed()` names; each is null where the network's own are used.
+
+`assertNode(rpc, record)` at start: the node's chain id is the record's and never a mainnet's, and the factory has code. A local copy of an EVM mainnet runs under its own chain id: the `local` presets are 31337 for Robinhood Chain and 31338 for Base (`LOCAL_EVM_CHAIN_IDS`), started with `anvil --chain-id`. A signature made for 4663 or 8453 is good on mainnet.
 
 ## What the API needs to run Robinhood Chain on it
 
@@ -56,7 +72,7 @@ Not wired yet: `apps/api/src/orders/chains.ts` refuses every chain but Solana in
 - **The node:** `ROBINHOOD_RPC_URL` (`https://rpc.testnet.chain.robinhood.com` for the test network; an archive endpoint is not needed for reads of the latest block). `createEvmRpc(url)`, then `assertNode(rpc, record)` at start.
 - **The assets:** the `robinhood` rows of `basket_assets`, held to the record as `holdToRecord` holds Solana's (`deploymentAssets(record)` makes the rows; a fill script like `scripts/solana/basket-assets.ts` writes them). Each stock row's `priceRef` is its feed's address, lower-case.
 - **The mode:** `CHAIN_MODE_ROBINHOOD=readonly` can run on this reader alone once the registry takes an EVM entry, with the builders refusing `NotSupported`; `live` needs ADE-2. `CHAIN_NETWORK_ROBINHOOD` stays `testnet` (never `mainnet` here, as for Solana).
-- **On `local`:** the copy runs as chain id 31337, so the record says 31337, while the preset in `packages/schemas/src/chain-presets.ts` gives `local` mainnet's 4663. The builders (ADE-2) must sign with the record's chain id, or the preset changes; a transaction signed for 4663 is good on mainnet.
+- **On `local`:** the preset, the record and the node all say 31337. The web never runs `local` (`walletChains` refuses it), so its dev self-transfer cannot sign for a copy.
 
 ## The check
 
@@ -66,5 +82,7 @@ Not wired yet: `apps/api/src/orders/chains.ts` refuses every chain but Solana in
 cd contracts && forge build && cd ..
 RH_FORK_URL=https://robinhood.drpc.org pnpm exec vitest run packages/chain-evm/test
 ```
+
+The world also deploys a token of 8 decimals of our own (the contracts' `MockToken`) and lists it, so decimals are held at 6, 8 and 18.
 
 The chain's own RPC keeps state for a few minutes only, so the fork needs an archive endpoint; dRPC's free one refused every method for a few minutes on Oct 5 and came back.

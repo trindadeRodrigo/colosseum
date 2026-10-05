@@ -235,10 +235,35 @@ export function createEvmVaultReader(options: EvmVaultReaderOptions): EvmVaultRe
 
   // ---- calls, all at one block
 
+  let checkedNode: Promise<void> | undefined;
+  /**
+   * The node answers the chain id the config gives, and a mainnet's only where the config is mainnet.
+   * Asked once; asked again after a node that did not answer.
+   */
+  const nodeIsTheConfigs = () => {
+    checkedNode ??= ask('eth_chainId', () => rpc.getChainId())
+      .then((answered) => {
+        if (answered !== config.evmChainId)
+          throw new ChainError(
+            'Unavailable',
+            `the EVM RPC answers chain id ${answered}, and ${config.name} on ${config.networkName} is ${config.evmChainId}`,
+            false,
+          );
+      })
+      .catch((e) => {
+        checkedNode = undefined;
+        throw e;
+      });
+    return checkedNode;
+  };
+
   async function moment(): Promise<Moment> {
-    const block = await ask('eth_getBlockByNumber', () =>
-      rpc.getBlock({ blockTag: 'latest', includeTransactions: false }),
-    );
+    const [block] = await Promise.all([
+      ask('eth_getBlockByNumber', () =>
+        rpc.getBlock({ blockTag: 'latest', includeTransactions: false }),
+      ),
+      nodeIsTheConfigs(),
+    ]);
     if (block.number === null) return refuse('Unavailable', 'the latest block has no number');
     return { block: block.number, time: block.timestamp };
   }
@@ -325,6 +350,7 @@ export function createEvmVaultReader(options: EvmVaultReaderOptions): EvmVaultRe
         `the factory's cash token is ${lower(cashToken)} and the app lists ${cash?.address}: the asset list is not this network's`,
         false,
       );
+    await assertDecimals(m, assets);
     return { cashToken: lower(cashToken), keeper: lower(keeper) };
   }
 
@@ -348,6 +374,29 @@ export function createEvmVaultReader(options: EvmVaultReaderOptions): EvmVaultRe
   const assetOf = (m: Moment, token: string) =>
     onFactory(m, 'asset', [token]) as Promise<OnchainAsset>;
 
+  /**
+   * Each listed asset, cash included, has the decimals the factory states for it: the vault values a
+   * balance by those, and a balance shown by others is off by a power of ten. A token the factory never
+   * listed states zero and is refused the same way: the list is not this network's.
+   */
+  async function assertDecimals(
+    m: Moment,
+    listed: readonly BasketAsset[],
+    known: (OnchainAsset | undefined)[] = [],
+  ): Promise<void> {
+    const onchain = await Promise.all(listed.map((a, i) => known[i] ?? assetOf(m, a.address)));
+    const wrong = listed.flatMap((a, i) => {
+      const stated = onchain[i]?.tokenDecimals;
+      return stated === a.decimals ? [] : [`${a.id} at ${stated}, not ${a.decimals}`];
+    });
+    if (wrong.length)
+      throw new ChainError(
+        'Unavailable',
+        `the factory states other decimals than the app lists: ${wrong.slice(0, 3).join('; ')}. The asset list is not this network's`,
+        false,
+      );
+  }
+
   /** The registry the factory names must be the one the config gives. */
   async function assertRegistry(m: Moment): Promise<void> {
     const named = lower((await onFactory(m, 'registry')) as string);
@@ -369,7 +418,7 @@ export function createEvmVaultReader(options: EvmVaultReaderOptions): EvmVaultRe
   /**
    * A token's multiplier in force at the block (`uiMultiplier()`), and one the issuer has scheduled
    * (`newUIMultiplier()` from `effectiveAt()`) that the block has not reached. A token with no
-   * `uiMultiplier()` has none: '1'.
+   * `uiMultiplier()` has none, '1', unless the app lists it as a stock or an ETF.
    */
   async function multiplierAt(
     m: Moment,
@@ -380,7 +429,14 @@ export function createEvmVaultReader(options: EvmVaultReaderOptions): EvmVaultRe
       tryRead<bigint>(m, token, TOKEN_ABI, 'newUIMultiplier'),
       tryRead<bigint>(m, token, TOKEN_ABI, 'effectiveAt'),
     ]);
-    if (ui === null) return { now: '1' };
+    if (ui === null) {
+      // The dollar token and a token the app does not list may have none. A stock token always has
+      // one: one that does not answer is not read as '1'.
+      const listed = byToken.get(token);
+      if (listed && (listed.cls === 'stock' || listed.cls === 'etf'))
+        return refuse('Unknown', `${listed.id} (${token}) answers no uiMultiplier()`);
+      return { now: '1' };
+    }
     if (ui === 0n) return refuse('Unknown', `${idOf(token)} answers a multiplier of zero`);
     // The token's own answer is the one in force: it turns to the next at `effectiveAt` by itself.
     const scheduled = next !== null && at !== null && next > 0n && at > m.time && next !== ui;
@@ -403,8 +459,13 @@ export function createEvmVaultReader(options: EvmVaultReaderOptions): EvmVaultRe
     };
   }
 
-  const balanceOf = (m: Moment, token: string, holder: Address) =>
-    tryRead<bigint>(m, lower(token), TOKEN_ABI, 'balanceOf', [holder]);
+  /** A balance, read or refused by name: a token that reverts or has no code is not a zero balance. */
+  async function balanceOf(m: Moment, token: string, holder: Address): Promise<bigint> {
+    const read = await tryRead<bigint>(m, lower(token), TOKEN_ABI, 'balanceOf', [holder]);
+    if (read === null)
+      return refuse('BalanceUnreadable', `${idOf(token)}: balanceOf(${holder}) does not answer`);
+    return read;
+  }
 
   /** A token as it is held: the app's asset, or one it does not list with the factory's decimals. */
   async function heldOf(m: Moment, token: string): Promise<Held> {
@@ -684,6 +745,7 @@ export function createEvmVaultReader(options: EvmVaultReaderOptions): EvmVaultRe
           Promise.all(priced.map((a) => assetOf(m, a.address))),
           priced.some((a) => a.session === 'us_equity') ? platformAt(m) : Promise.resolve(null),
         ]);
+        await assertDecimals(m, priced, onchain);
         const rounds = await Promise.all(
           onchain.map((a) => {
             const feed = lower(a.feed);
@@ -822,7 +884,10 @@ export function createEvmVaultReader(options: EvmVaultReaderOptions): EvmVaultRe
       guarded(async () => {
         const who = evmAddress(owner, 'owner');
         const m = await moment();
-        const amounts = await Promise.all(assets.map((a) => balanceOf(m, a.address, who)));
+        const [amounts] = await Promise.all([
+          Promise.all(assets.map((a) => balanceOf(m, a.address, who))),
+          assertDecimals(m, assets),
+        ]);
         const held = assets.flatMap((asset, i) => {
           const raw = amounts[i] ?? 0n;
           return raw > 0n ? [holding(m, asset, raw)] : [];
@@ -836,7 +901,7 @@ export function createEvmVaultReader(options: EvmVaultReaderOptions): EvmVaultRe
         const wanted = input(FundingNeed, need, 'need');
         const m = await moment();
         const [cashHave, gasHave, gasPrice] = await Promise.all([
-          balanceOf(m, cash.address, who).then((v) => v ?? 0n),
+          balanceOf(m, cash.address, who),
           ask('eth_getBalance', () => rpc.getBalance({ address: who, blockNumber: m.block })),
           ask('eth_gasPrice', () => rpc.getGasPrice()),
         ]);
@@ -925,6 +990,7 @@ export function createEvmVaultReader(options: EvmVaultReaderOptions): EvmVaultRe
           value: tx.value,
           gas: tx.gas,
           blockNumber: block - 1n,
+          ...overrides,
         }),
       );
     } catch (e) {

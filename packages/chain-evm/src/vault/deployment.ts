@@ -16,6 +16,9 @@ const Address = z
 const Raw = z.string().regex(/^\d+$/);
 const Kind = z.enum(['stock', 'etf', 'gold', 'commodity', 'dollar_yield', 'crypto']);
 
+/** The mainnets' chain ids: a node that answers one is mainnet, whatever it is called. */
+export const MAINNET_CHAIN_IDS: Readonly<Record<string, number>> = { robinhood: 4663, base: 8453 };
+
 // Strict throughout: a field the record does not have is a record of another shape, refused.
 const Token = z.strictObject({
   id: z.string().regex(/^(?:robinhood|base):[a-z0-9][a-z0-9-]*$/),
@@ -31,8 +34,16 @@ export const EvmDeploymentRecord = z
     network: z.string().regex(/^(?:robinhood|base)-(?:testnet|local)$/),
     chain: z.enum(['robinhood', 'base']),
     provenance: z.literal('sandbox'),
-    /** The number the node answers `eth_chainId` with. Never a mainnet's: a local copy runs as 31337. */
-    evmChainId: z.number().int().positive(),
+    /**
+     * The number the node answers `eth_chainId` with. Never a mainnet's: this record is for a test
+     * network or a local copy, and a local copy runs under its own number (31337), since a signature
+     * made for a mainnet's number is good on that mainnet.
+     */
+    evmChainId: z
+      .number()
+      .int()
+      .positive()
+      .refine((id) => !Object.values(MAINNET_CHAIN_IDS).includes(id), "a mainnet's chain id"),
     /** The block the factory was deployed in, where known: nothing of ours is older. */
     deployBlock: z.number().int().nonnegative().nullable(),
     contracts: z.strictObject({
@@ -43,7 +54,17 @@ export const EvmDeploymentRecord = z
       factoryLogic: Address,
       registryLogic: Address,
     }),
-    roles: z.strictObject({ admin: Address, guardian: Address, keeper: Address }),
+    roles: z.strictObject({
+      admin: Address,
+      guardian: Address,
+      keeper: Address,
+      /** Who writes the test price feeds (TNET-1's `TestPriceFeed.setWriter`); null where the feeds are real. */
+      priceWriter: Address.nullable(),
+      /** Who mints, schedules multipliers on and pauses the test tokens; null where the tokens are real. */
+      tokenIssuer: Address.nullable(),
+    }),
+    /** The chain's sequencer uptime feed as the factory names it (`sequencerFeed()`); null for none. */
+    sequencerFeed: Address.nullable(),
     /** `pull` 1 takes the input with `transferFrom`, 2 through Permit2. */
     routers: z.array(
       z.strictObject({ address: Address, pull: z.union([z.literal(1), z.literal(2)]) }),
@@ -149,9 +170,6 @@ export function deploymentAssets(record: EvmDeploymentRecord): BasketAsset[] {
     ),
   ];
 }
-
-/** The mainnets' chain ids: a node that answers one is mainnet, whatever it is called. */
-export const MAINNET_CHAIN_IDS: Readonly<Record<string, number>> = { robinhood: 4663, base: 8453 };
 
 /** How long a server waits at start for the node to say which network it is. */
 export const NODE_CHECK_TIMEOUT_MS = 10_000;

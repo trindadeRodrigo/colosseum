@@ -44,8 +44,9 @@ const RECORD = {
     factoryLogic: A(5),
     registryLogic: A(6),
   },
-  roles: { admin: A(7), guardian: A(8), keeper: A(9) },
+  roles: { admin: A(7), guardian: A(8), keeper: A(9), priceWriter: A(14), tokenIssuer: null },
   routers: [{ address: '0x204FAca1764B154221e35c0d20aBb3c525710498', pull: 2 }],
+  sequencerFeed: null,
   cash: { id: 'robinhood:usdg', symbol: 'USDG', name: 'Test dollar', address: A(10), decimals: 6 },
   assets: [
     {
@@ -116,6 +117,11 @@ describe('the deployment record', () => {
       { ...RECORD, assets: [{ ...RECORD.assets[0], token: A(11) }] },
       { ...RECORD, routers: [{ address: A(20), pull: 3 }] },
       { ...RECORD, network: 'robinhood-mainnet' },
+      // A record is for a test network or a local copy: never under a mainnet's number.
+      { ...RECORD, evmChainId: 4663 },
+      { ...RECORD, evmChainId: 8453 },
+      { ...RECORD, roles: { ...RECORD.roles, priceWriter: undefined } },
+      { ...RECORD, sequencerFeed: undefined },
     ];
     for (const record of bad) expect(EvmDeploymentRecord.safeParse(record).success).toBe(false);
   });
@@ -138,6 +144,17 @@ describe('the deployment record', () => {
       const e = await assertNode(node(chainId, code), record).catch((x: unknown) => x);
       expect(e, `${chainId} ${code}`).toBeInstanceOf(ChainError);
       expect((e as ChainError).code).toBe('NotSupported');
+    }
+    // A record that says a mainnet's number, on a node that answers it, is refused as mainnet: the
+    // schema refuses such a record, and the node check does not lean on the schema.
+    const onMainnet = { ...record, evmChainId: 4663 };
+    for (const chainId of [4663, 8453] as const) {
+      const e = await assertNode(node(chainId, '0x6080'), {
+        ...onMainnet,
+        evmChainId: chainId,
+      }).catch((x: unknown) => x);
+      expect((e as ChainError).code).toBe('NotSupported');
+      expect((e as ChainError).message).toContain("a mainnet's");
     }
     const silent = { getChainId: () => new Promise(() => {}), getCode: async () => '0x6080' };
     const e = await assertNode(silent as unknown as EvmRpc, record, 50).catch((x: unknown) => x);
