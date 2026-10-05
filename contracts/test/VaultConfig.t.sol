@@ -65,7 +65,11 @@ contract VaultConfigTest is Test {
             pauseProbe: address(0xBEEF),
             pauseSelector: bytes4(keccak256("paused()")),
             scheduleSelector: bytes4(keccak256("effectiveAt()")),
-            haltUntil: 0
+            haltUntil: 0,
+            flags: 0,
+            averageFeed: address(0),
+            minPrice: 0,
+            maxPrice: 0
         });
     }
 
@@ -775,7 +779,7 @@ contract VaultConfigTest is Test {
 
     function test_setParams_storesThemInsideTheBounds() public {
         // The bounds themselves are allowed.
-        Params memory p = Params(300, 500, 1000, 600, 0, 86_400);
+        Params memory p = Params(300, 500, 500, 600, 0, 86_400);
         vm.prank(admin);
         vm.expectEmit(address(config));
         emit IVaultConfig.ParamsSet(p);
@@ -783,7 +787,7 @@ contract VaultConfigTest is Test {
         (uint16 tolerance, uint16 lossCap, uint16 band, uint32 cooldown, uint32 open, uint32 close) = config.params();
         assertEq(tolerance, 300);
         assertEq(lossCap, 500);
-        assertEq(band, 1000);
+        assertEq(band, 500);
         assertEq(cooldown, 600);
         assertEq(open, 0);
         assertEq(close, 86_400);
@@ -813,6 +817,117 @@ contract VaultConfigTest is Test {
         Params memory p = _params();
         p.assetCooldown = 599;
         _expectParamsRefused(p, "assetCooldown", 599);
+    }
+
+    function test_setParams_revertsOnBandAbove500() public {
+        Params memory p = _params();
+        p.bandBps = 501;
+        _expectParamsRefused(p, "bandBps", 501);
+    }
+
+    /// Seven days is the window of the loss cap: a longer cooldown is a pause by another name.
+    function test_setParams_revertsOnCooldownAboveSevenDays() public {
+        Params memory p = _params();
+        p.assetCooldown = 7 days;
+        vm.prank(admin);
+        config.setParams(p);
+        p.assetCooldown = 7 days + 1;
+        vm.prank(admin);
+        vm.expectRevert(
+            abi.encodeWithSelector(IVaultConfig.ParamOutOfBounds.selector, bytes32("assetCooldown"), 7 days + 1)
+        );
+        config.setParams(p);
+    }
+
+    // ---- the price deviation, a keeper limit of its own
+
+    function test_setPriceDevBps_storesItUpTo1000() public {
+        assertEq(config.priceDevBps(), 0, "a price must equal its average until the admin says otherwise");
+        vm.prank(admin);
+        vm.expectEmit(address(config));
+        emit IVaultConfig.PriceDevSet(1000);
+        config.setPriceDevBps(1000);
+        assertEq(config.priceDevBps(), 1000);
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(IVaultConfig.ParamOutOfBounds.selector, bytes32("priceDevBps"), 1001));
+        config.setPriceDevBps(1001);
+        assertEq(config.priceDevBps(), 1000);
+    }
+
+    function test_setPriceDevBps_revertsForNonAdmin() public {
+        address[2] memory callers = [stranger, guardian];
+        for (uint256 i; i < callers.length; ++i) {
+            vm.prank(callers[i]);
+            vm.expectRevert(abi.encodeWithSelector(IVaultConfig.NotAdmin.selector, callers[i]));
+            config.setPriceDevBps(100);
+        }
+    }
+
+    // ---- the keeper's switch on an asset, and its price range
+
+    /// An asset the keeper may trade: a feed, an average apart from it, and a range of at most a factor two.
+    function _keeperOn() internal returns (AssetConfig memory a) {
+        a = _good();
+        a.flags = 1;
+        a.averageFeed = makeAddr("averageA");
+        a.minPrice = 100e8;
+        a.maxPrice = 200e8;
+    }
+
+    function test_setAsset_theKeepersSwitch_goesOnWithAPriceToValueAt() public {
+        AssetConfig memory a = _keeperOn();
+        vm.prank(admin);
+        config.setAsset(tokenA, a);
+        _assertSame(config.asset(tokenA), a);
+    }
+
+    function test_setAsset_theKeepersSwitch_needsAFeedAnAverageAndARange() public {
+        AssetConfig[4] memory bad;
+        bad[0] = _keeperOn();
+        bad[0].source = 0;
+        bad[0].feed = address(0);
+        bad[1] = _keeperOn();
+        bad[1].averageFeed = address(0);
+        bad[2] = _keeperOn();
+        bad[2].averageFeed = bad[2].feed;
+        bad[3] = _keeperOn();
+        bad[3].minPrice = 0;
+        bad[3].maxPrice = 0;
+        for (uint256 i; i < bad.length; ++i) {
+            vm.prank(admin);
+            vm.expectRevert(abi.encodeWithSelector(IVaultConfig.AssetNotPriced.selector, tokenA));
+            config.setAsset(tokenA, bad[i]);
+        }
+        assertFalse(config.isAsset(tokenA));
+    }
+
+    function test_setAsset_revertsOnAnyFlagButTheKeepersSwitch() public {
+        AssetConfig memory a = _keeperOn();
+        a.flags = 2;
+        _expectOutOfBounds("flags", 2, a);
+        a.flags = 3;
+        _expectOutOfBounds("flags", 3, a);
+    }
+
+    /// A range has a floor, a ceiling above it, and a ceiling at most twice the floor. With the switch off
+    /// a range may still be written, and none at all is allowed.
+    function test_setAsset_revertsOnARangeThatIsNotOne() public {
+        AssetConfig memory a = _keeperOn();
+        a.maxPrice = 200e8 + 1;
+        _expectOutOfBounds("maxPrice", 200e8 + 1, a);
+        a.maxPrice = 100e8;
+        _expectOutOfBounds("maxPrice", 100e8, a);
+        a.minPrice = 0;
+        a.maxPrice = 1;
+        _expectOutOfBounds("maxPrice", 1, a);
+        a.flags = 0;
+        a.minPrice = 1;
+        a.maxPrice = 0;
+        _expectOutOfBounds("maxPrice", 0, a);
+        a.minPrice = 100e8;
+        a.maxPrice = 200e8;
+        vm.prank(admin);
+        config.setAsset(tokenA, a);
     }
 
     function test_setParams_revertsOnASessionPastMidnight() public {

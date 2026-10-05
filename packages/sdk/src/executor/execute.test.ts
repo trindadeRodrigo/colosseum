@@ -410,7 +410,8 @@ describe('the executor: what was approved is fixed before the API is asked anyth
     const [first, second] = order.legs;
     if (!first || !second) throw new Error('two steps');
     const cases: [OrderDetail, GuardCode][] = [
-      [{ ...order, legs: [{ ...first, kind: 'publish' }, second] }, 'unsupported'],
+      [{ ...order, legs: [{ ...first, kind: 'adopt_version' }, second] }, 'unsupported'],
+      [{ ...order, legs: [{ ...first, kind: 'publish' }, second] }, 'order'],
       [{ ...order, legs: [first, { ...second, chain: 'robinhood' }] }, 'order'],
       [{ ...order, legs: [first, { ...second, expected: [] }] }, 'order'],
       [{ ...order, legs: [{ ...first, cashRaw: '2000000000' }, second] }, 'order'],

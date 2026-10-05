@@ -1,6 +1,7 @@
 import { base64Decode, hexEncode } from '../../bytes';
 import { sha256 } from '../../hash';
 import { type Context, reading, sameWeights, tradesOf } from '../context';
+import { familyTextHash } from '../meta';
 import { type GuardCheck, GuardRefusal } from '../refusal';
 import type { ApprovedStep, ApprovedTrade, SolanaDeployment, Withdrawal } from '../types';
 import {
@@ -8,6 +9,7 @@ import {
   assetsAddress,
   COMPUTE_BUDGET_PROGRAM,
   configAddress,
+  recipeAddress,
   SYSTEM_PROGRAM,
   TOKEN_PROGRAMS,
   tokenAccountAddress,
@@ -18,8 +20,9 @@ import type { IdlInstruction, ProgramTable } from './table';
 import { parseSolanaTransaction, type WireInstruction } from './wire';
 
 // A Solana transaction against the step. The bytes may hold three kinds of instruction and no other:
-//   the vault program's, which must be exactly the step's, with every account derived here from the
-//     person's address and every argument equal to the step's;
+//   the vault program's, which must be exactly the step's (an owner's step, or a creator's registry
+//     call on a shared portfolio of their own), with every account derived here from the person's
+//     address and every argument equal to the step's;
 //   "create this token account if it is missing", for the person's or their vault's account of a
 //     token the step moves, paid by the person;
 //   the compute unit limit and the compute unit price, once each, under the fee ceiling.
@@ -33,6 +36,13 @@ const SIGNATURE_FEE_LAMPORTS = 5_000n;
 const MAX_COMPUTE_UNITS = 1_400_000n;
 /** The instructions that pass accounts on: a swap's route, a withdrawal's transfer-hook accounts. */
 const FORWARDS = new Set(['owner_swap', 'withdraw']);
+/** The registry's instruction for each thing a creator does to a shared portfolio of their own. */
+const REGISTRY = {
+  publish: 'publish_recipe',
+  update: 'update_recipe',
+  cancel: 'cancel_pending',
+} as const;
+const REGISTRY_CALLS: ReadonlySet<string> = new Set(Object.values(REGISTRY));
 
 type Rule = { address: string; check: GuardCheck };
 type Token = { mint: string; program: string };
@@ -73,6 +83,8 @@ function slotsOf(step: ApprovedStep): Slot[] | null {
       return step.withdrawals === 'all'
         ? null
         : step.withdrawals.map((withdrawal) => ({ name: 'withdraw', withdrawal }));
+    case 'publish':
+      return [{ name: REGISTRY[step.action] }];
     case 'approve':
       throw new GuardRefusal('unsupported', 'Solana needs no approval', step.legId);
   }
@@ -108,6 +120,11 @@ export function checkSolana(ctx: Context, deployment: SolanaDeployment, table: P
   const vault = reading('the owner', legId, () => vaultAddress(program, owner, step.basketId));
   const config = configAddress(program);
   const assets = assetsAddress(program);
+  /** The creator's shared portfolio of the step's family, derived and never named. */
+  const recipe =
+    step.kind === 'publish'
+      ? reading('the family', legId, () => recipeAddress(program, owner, step.familyId))
+      : null;
   const token = (asset: string): Token => {
     const listed = deployment.assets[asset];
     if (!listed) throw unsupported(`the deployment lists no token for ${asset}`);
@@ -203,6 +220,15 @@ export function checkSolana(ctx: Context, deployment: SolanaDeployment, table: P
       return { key: row.mint, bps: row.target_bps };
     });
   };
+  const componentsIn = (value: Value | undefined) => {
+    if (!Array.isArray(value)) throw unsupported('the interface writes components another way');
+    return value.map((c) => {
+      const row = c as { [field: string]: Value };
+      if (typeof row.mint !== 'string' || typeof row.weight_bps !== 'number')
+        throw unsupported('the interface writes a component another way');
+      return { key: row.mint, bps: row.weight_bps };
+    });
+  };
   const targetsOf = (targets: { asset: string; weightBps: number }[]) =>
     targets.map((t) => ({ key: token(t.asset).mint, bps: t.weightBps }));
 
@@ -222,7 +248,7 @@ export function checkSolana(ctx: Context, deployment: SolanaDeployment, table: P
     };
     const args: Record<string, (value: Value) => void> = {};
     /** The accounts this guard cannot do without. An interface that drops one is not one it knows. */
-    const required = new Set(['owner', 'vault']);
+    const required = new Set(REGISTRY_CALLS.has(call.name) ? [] : ['owner', 'vault']);
     const rule = (name: string, address: string, check: GuardCheck) => {
       rules[name] = { address, check };
       required.add(name);
@@ -349,6 +375,49 @@ export function checkSolana(ctx: Context, deployment: SolanaDeployment, table: P
         if (step.kind !== 'set_auto_follow') break;
         args.on = (v) =>
           need('auto_follow', v === step.on, 'the bytes set auto-follow another way');
+        break;
+      }
+      case 'publish_recipe':
+      case 'update_recipe':
+      case 'cancel_pending': {
+        if (step.kind !== 'publish' || !recipe) break;
+        // The creator signs, and the shared portfolio is theirs for this family: never one named.
+        rule(call.name === 'cancel_pending' ? 'signer' : 'creator', owner, 'owner');
+        rule('recipe', recipe, 'recipe');
+        if (call.name === 'cancel_pending') break;
+        args.components = (v) =>
+          need(
+            'targets',
+            sameWeights(targetsOf(step.components), componentsIn(v)),
+            "the assets and weights in the bytes are not the version's",
+          );
+        // The hash of the text the creator saw, worked out here: never a hash handed over.
+        const t = step.text;
+        // Only the four fields shown, under the step's own family: a family id inside the text is not read.
+        const textHash = t
+          ? familyTextHash({
+              familyId: step.familyId,
+              slug: t.slug,
+              name: t.name,
+              copy: t.copy,
+              kind: t.kind,
+            })
+          : '';
+        args.meta_hash = (v) =>
+          need(
+            'recipe',
+            v instanceof Uint8Array && hexEncode(v) === textHash,
+            "the bytes publish another family's text",
+          );
+        if (call.name === 'update_recipe') break;
+        args.family_id = (v) =>
+          need(
+            'recipe',
+            v instanceof Uint8Array && hexEncode(v) === step.familyId,
+            'the bytes publish another family',
+          );
+        args.max_fee_bps = (v) => need('limits', v === 0, `the bytes set a fee cap of ${v}`);
+        args.flags = (v) => need('limits', v === 0, `the bytes set the flags ${v}`);
         break;
       }
     }

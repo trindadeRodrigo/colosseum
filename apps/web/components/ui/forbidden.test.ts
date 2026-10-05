@@ -29,16 +29,12 @@ const LEGACY: Record<string, readonly Kind[]> = {
   // Rodrigo's pages and components: Tailwind's cool greys, blue links, 4px corners, chart colours,
   // and two uppercase labels
   'app/(structurer)/layout.tsx': ['hue'],
-  'app/(structurer)/page.tsx': ['hue'],
-  'app/(structurer)/monitor/page.tsx': ['hue', 'radius'],
   'app/(structurer)/embed/[id]/layout.tsx': ['hue', 'radius', 'case'],
   'app/(structurer)/risk/page.tsx': ['hue'],
   'app/(structurer)/risk/[asset]/page.tsx': ['hue'],
   'app/(structurer)/risk/methodology/page.tsx': ['hue'],
-  'components/GoalFlow.tsx': ['hue', 'radius'],
   'components/PlanView.tsx': ['hue'],
   'components/Provenance.tsx': ['radius', 'case'],
-  'components/StatsCard.tsx': ['hue', 'radius'],
   'components/ScheduleChart.tsx': ['hue'],
   'components/risk/CostCurveChart.tsx': ['hue'],
   'components/risk/HourOfWeekHeatmap.tsx': ['hue'],
@@ -47,7 +43,7 @@ const LEGACY: Record<string, readonly Kind[]> = {
 };
 
 /** The product's own routes and what they are built from: none of it may ever be on the list above. */
-const PRODUCT = /^(app\/\(app\)|components\/shell|features\/(account|goal)|i18n)\//;
+const PRODUCT = /^(app\/\(app\)|components\/shell|features\/(account|goal|portfolio)|i18n)\//;
 
 /**
  * The stylesheet of @solana/wallet-adapter-react-ui, which the layout of the pages not yet rebuilt
@@ -248,8 +244,9 @@ describe('the forbidden things', () => {
     it('reads the app: the pages, the primitives and the showcase', () => {
       expect(files).toContain('app/globals.css');
       expect(files).toContain('components/ui/Button.tsx');
-      expect(files).toContain('app/(structurer)/page.tsx');
-      expect(files).toContain('app/(app)/goal/page.tsx');
+      expect(files).toContain('app/(structurer)/plans/[id]/page.tsx');
+      expect(files).toContain('app/(app)/page.tsx');
+      expect(files).toContain('app/(app)/monitor/page.tsx');
       expect(files).toContain('components/shell/AppNav.tsx');
       expect(files.some(notScanned)).toBe(false);
     });

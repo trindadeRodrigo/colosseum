@@ -86,6 +86,11 @@ export interface WebWalletPort extends WalletPort {
   network(chain: ChainId): ChainNetwork | null;
   /** Signs a line of text: base58 on Solana, 0x hex on EVM. Not in WalletPort; the dev page uses it. */
   signMessage(family: Chain, text: string): Promise<string>;
+  /**
+   * WalletPort's call, and with `fresh` after the API refused the sign-in: tokens newer than those
+   * sent, if the wallet can get them.
+   */
+  authHeaders(options?: { fresh?: boolean }): Promise<Record<string, string>>;
 }
 
 /**
@@ -418,11 +423,11 @@ export function createWalletPort(
         await driver.exportKey(family, rawOf(account));
       }),
 
-    authHeaders: () =>
+    authHeaders: (options) =>
       guard(async () => {
         // Signed out is not a failure: a route that needs no sign-in takes the same call.
         if (driver.status !== 'ready') return {};
-        const tokens = await driver.tokens();
+        const tokens = await driver.tokens(options);
         if (!tokens) return {};
         if (!tokens.access) throw new WalletPortError('expired', 'the session has ended: sign in');
         const headers: Record<string, string> = { authorization: `Bearer ${tokens.access}` };

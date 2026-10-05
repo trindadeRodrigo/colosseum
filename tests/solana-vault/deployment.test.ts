@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -93,7 +93,16 @@ function record(): SolanaDeploymentRecord {
       decimals: 6,
     },
     assets: [listed('spyx', 11, 'stock', 344), listed('gldx', 12, 'gold', 100)],
-    retired: [{ id: null, symbol: null, mint: key(13), tokenProgram: 'token', keeperOn: false }],
+    retired: [
+      {
+        id: null,
+        symbol: null,
+        mint: key(13),
+        tokenProgram: 'token',
+        decimals: 6,
+        keeperOn: false,
+      },
+    ],
   };
 }
 const file = (r: unknown) => () => JSON.stringify(r);
@@ -112,6 +121,7 @@ function retire(r: SolanaDeploymentRecord, slug: string): SolanaDeploymentRecord
         symbol: gone.symbol,
         mint: gone.mint,
         tokenProgram: gone.tokenProgram,
+        decimals: gone.decimals,
         keeperOn: false,
       },
     ],
@@ -176,6 +186,30 @@ describe("the deploy's record gives a real Solana chain its addresses", () => {
       [`solana:gldx-${run}`, 'gold', 'scope', '100', 'always'],
     ]);
     expect(assets.every((a) => a.provenance === 'sandbox')).toBe(true);
+  });
+
+  it('starts on the record a set-up wrote after it retired a token, decimals and all', () => {
+    // Written by programs/tests/testnet-setup.test.ts, which holds it to the shape the set-up writes.
+    const text = readFileSync(
+      new URL('../../fixtures/testnet/solana-retired-record.json', import.meta.url),
+      'utf8',
+    );
+    const written = JSON.parse(text) as SolanaDeploymentRecord;
+    expect(written.retired).toEqual([expect.objectContaining({ id: 'solana:tslax', decimals: 8 })]);
+    const env = { CHAIN_MODE_SOLANA: 'live', CHAIN_NETWORK_SOLANA: 'testnet' };
+    const done = solanaDeployment(env, () => text, '/records');
+    expect(done.contracts).toEqual({ solana: { program: written.programs.basket } });
+    const rows = deploymentAssets(written);
+    expect(rows.map((a) => a.id)).not.toContain('solana:tslax');
+    expect(() => holdToRecord(rows, written)).not.toThrow();
+    // A retired token's decimals are the mint's: none, or more than a mint can hold, is refused.
+    const [gone] = written.retired;
+    if (!gone) throw new Error('no retired token');
+    const { decimals: _, ...without } = gone;
+    for (const retired of [[without], [{ ...gone, decimals: 256 }]])
+      expect(() => solanaDeployment(env, file({ ...written, retired }), '/records')).toThrow(
+        'not a Solana deployment record',
+      );
   });
 });
 

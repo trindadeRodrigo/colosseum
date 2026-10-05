@@ -12,6 +12,7 @@ export const pt: Dictionary = {
     nav: 'Principal',
     home: 'tenonfi, seu objetivo',
     goal: 'Objetivo',
+    portfolio: 'Portfólio',
     signIn: 'Entrar',
     signOut: 'Sair',
     signingOut: 'Saindo…',
@@ -62,6 +63,14 @@ export const pt: Dictionary = {
       passkeyNotUsed:
         'Nenhuma chave de acesso foi usada: a janela foi fechada ou o tempo acabou. Se você ainda não tem uma chave de acesso para este site, crie uma.',
       passkeyUnknown: 'Não reconheço essa chave de acesso. Crie uma nova ou conecte uma carteira.',
+      passkeyNotRegistered:
+        'Essa chave de acesso não está registrada aqui. Escolha outra ou crie uma.',
+      accountsFull:
+        'Este app não está aceitando contas novas agora. Use uma chave de acesso ou carteira com que você já entrou, ou volte mais tarde.',
+      notInvited:
+        'Por enquanto este app é só para convidados, e este login não está na lista. Peça um convite à equipe.',
+      noStorage:
+        'Este navegador está bloqueando o armazenamento de que o login precisa, como faz uma janela anônima. Abra a página em uma janela normal e tente de novo.',
       passkeyUnsupported:
         'Este navegador não consegue usar chaves de acesso. Abra a página em um navegador atualizado ou conecte uma carteira.',
       walletOff:
@@ -124,6 +133,8 @@ export const pt: Dictionary = {
       unreachable:
         'Não consegui salvar: nosso servidor não respondeu. Sua escolha ainda não está guardada. Tente de novo.',
       signedOut: 'Sua sessão expirou antes de a escolha ser salva. Entre de novo e escolha.',
+      noIdentity:
+        'Não consegui salvar: o serviço de login não me entregou a parte do seu login que lista suas carteiras, então nosso servidor não consegue conferi-las. Sua escolha ainda não está guardada. Espere um minuto e tente de novo.',
     },
     unknown: {
       body: 'Ainda não sei dizer em qual rede seu plano fica: nosso servidor não respondeu. Não há nada de errado com a sua carteira.',
@@ -131,6 +142,8 @@ export const pt: Dictionary = {
       asking: 'Perguntando…',
       signedOut:
         'Nosso servidor não reconhece mais o seu login, então não sei dizer em qual rede seu plano fica. Saia e entre de novo.',
+      noIdentity:
+        'Ainda não sei dizer em qual rede seu plano fica: o serviço de login não me entregou a parte do seu login que lista suas carteiras, então nosso servidor não consegue conferi-las. Não há nada de errado com a sua carteira. Espere um minuto e pergunte de novo.',
     },
     noWallet:
       'Você entrou, mas ainda não há carteira vinculada ao seu login, então não há rede para o seu plano.',
@@ -142,10 +155,16 @@ export const pt: Dictionary = {
     lead: 'Diga em uma frase: com quanto você começa, por quanto tempo e quanto risco aceita. Eu transformo isso em limites que você pode conferir e mudar. Nada é montado antes de você pedir.',
     composer: {
       label: 'Seu objetivo',
-      placeholder: 'US$ 10.000 por cinco anos, risco médio',
+      placeholder:
+        'Descreva seu objetivo… um valor, uma data e com que rapidez você pode precisar do dinheiro de volta.',
       hint: 'Enter para ler · Shift+Enter para nova linha',
       submit: 'Ler meu objetivo',
       busy: 'Lendo seu objetivo…',
+    },
+    visitor: {
+      before: 'Gostou de como ficou?',
+      link: 'Entre',
+      after: 'para ter um plano na rede da sua carteira, com a fonte de cada número.',
     },
     examples: {
       label: 'Exemplos',
@@ -165,6 +184,8 @@ export const pt: Dictionary = {
     },
     readerNote:
       'O leitor de hoje foi feito para objetivos em reais, então pode deixar passar um valor em dólares ou uma data. Confira cada campo: o que ele não encontrou ficou em branco para você.',
+    readerMissed: (fields: string) =>
+      `O leitor de hoje foi feito para objetivos em reais, então não encontrou isto no seu objetivo: ${fields}. Preencha abaixo. Nada é montado até que todos os campos estejam certos.`,
     sheet: {
       title: 'Como li seu objetivo',
       parser: 'leitor',
@@ -207,6 +228,7 @@ export const pt: Dictionary = {
       country: 'É você quem declara. Define quais ativos você pode ter.',
       holdings: 'O plano preenche lacunas e evita repetir o que você já tem.',
       amount: 'Com quanto o plano começa, de US$ 10 a US$ 1.000.000.',
+      notFound: 'Não encontrei no seu objetivo: preencha.',
     },
     captions: {
       income: 'Um plano de renda não tem ações tokenizadas.',
@@ -249,6 +271,8 @@ export const pt: Dictionary = {
       refused: 'Nosso servidor não aceitou esses limites. Confira cada campo e tente de novo.',
       signInAgain:
         'Nosso servidor não reconhece mais o seu login, então o plano não foi montado. Saia e entre de novo.',
+      noIdentity:
+        'O plano não foi montado: o serviço de login não me entregou a parte do seu login que lista suas carteiras, então nosso servidor não consegue conferi-las. Seus limites continuam guardados. Espere um minuto e tente de novo.',
       chainOff: (chain: string) =>
         `${chain} está indisponível no nosso servidor por enquanto, então não consigo montar um plano nela. Seus limites continuam guardados.`,
     },
@@ -276,8 +300,412 @@ export const pt: Dictionary = {
       done: {
         title: 'Seu plano está montado.',
         body: (parts: number, chain: string) =>
-          `Ele tem ${parts === 1 ? '1 parte' : `${parts} partes`} na ${chain}. Ainda não consigo mostrar o plano nesta página. Nada foi comprado.`,
+          `Ele tem ${parts === 1 ? '1 parte' : `${parts} partes`} na ${chain}. Nada foi comprado.`,
+        see: 'Ver seu plano',
       },
+    },
+  },
+
+  pin: {
+    sourceFor: 'Fonte de {value}',
+    staleSuffix: ', desatualizado, {age}',
+    mockSuffix: ', dados de exemplo',
+    stale: 'desatualizado',
+    ageUnknown: 'idade desconhecida',
+    missing: 'ainda sem fonte',
+    provenance: 'Procedência',
+    copy: 'Copiar fonte',
+    copied: 'Copiado',
+    kinds: {
+      mock: 'dados MOCK, não reais',
+      sandbox: 'rede de teste, não real',
+      fixture: 'dados fixos, não reais',
+      prior_dataset: 'dados anteriores, não reais',
+    },
+    unknownKind: 'não real',
+  },
+
+  portfolio: {
+    title: (vaults: number) =>
+      vaults > 1 ? 'O que seus cofres guardam.' : 'O que seu cofre guarda.',
+    lead: 'Lido da rede onde seu plano fica, cada vez que você abre esta página. Nada aqui assina ou move coisa alguma.',
+    chain: 'Rede',
+    reading: 'Lendo seu cofre…',
+    signedOut:
+      'Entre para ver seu portfólio. Ele fica em um cofre na rede da sua carteira, e só você pode sacar dele.',
+    noChain: 'Primeiro escolha a rede onde seu plano fica: seu cofre está nessa rede.',
+    chooseChain: 'Escolher a rede',
+    throwaway:
+      'A carteira descartável não tem conta no nosso servidor, então não há cofre dela para ler.',
+    unavailable:
+      'Este servidor ainda não lê cofres, então não há nada para mostrar aqui. Não vou mostrar posições inventadas no lugar.',
+    down: {
+      word: 'Indisponível',
+      body: (chain: string) =>
+        `A ${chain} não respondeu, então não consigo ler seu cofre agora. Não conseguir lê-lo não move nada. Tente de novo daqui a pouco.`,
+    },
+    unreachable: 'Não consegui falar com nosso servidor para ler seu cofre. Tente de novo.',
+    unreadable:
+      'Nosso servidor respondeu com algo que não consegui ler, então não vou mostrar. Tente de novo.',
+    signInAgain:
+      'Nosso servidor não reconhece mais seu login, então não consigo ler seu cofre. Saia e entre de novo.',
+    noIdentity:
+      'Ainda não consigo ler seu cofre: o serviço de login não me deu a parte do seu login que lista suas carteiras. Espere um minuto e tente de novo.',
+    again: 'Ler de novo',
+    againBusy: 'Lendo…',
+    empty: (chain: string) =>
+      `Você ainda não tem cofre na ${chain}. Um cofre é criado quando você compra seu primeiro plano.`,
+    startGoal: 'Comece pelo seu objetivo',
+    vault: {
+      title: 'Seu cofre',
+      address: 'Endereço do cofre',
+      value: 'Valor',
+      cash: 'Caixa',
+      autoFollow: 'Seguir automaticamente',
+      on: 'Ativado',
+      off: 'Desativado',
+      lossUsed: 'Perdas do agente, últimos 7 dias',
+      holdings: 'Posições',
+      onlyCash: 'Só caixa por enquanto: nada foi comprado para este cofre ainda.',
+      columns: {
+        asset: 'Ativo',
+        amount: 'Quantidade',
+        price: 'Preço',
+        value: 'Valor',
+        weight: 'Peso',
+        target: 'Alvo',
+        drift: 'Desvio',
+      },
+      noPrice: 'sem preço',
+      unpriced: (n: number) =>
+        n === 1
+          ? '1 posição não tem preço, então o valor a deixa de fora.'
+          : `${n} posições não têm preço, então o valor as deixa de fora.`,
+      pending: (version: number, when: string) =>
+        `A versão ${version} do portfólio que você segue começa a valer em ${when}.`,
+      pendingAssets: (assets: string) => `Ela inclui ${assets}, que você ainda não aceitou.`,
+      observed: (when: string) => `Lido da rede em ${when}.`,
+      valueMethod: 'posições lidas do cofre, vezes seus preços; caixa a um dólar',
+      positionMethod: (method: string) => `${method}; vezes a quantidade que o cofre guarda`,
+    },
+    summary: {
+      title: 'Seu portfólio',
+      worth: (chain: string) => `Seu cofre na ${chain} vale`,
+      many: (vaults: number, chain: string) => `Você tem ${vaults} cofres na ${chain}.`,
+      see: 'Ver seu portfólio',
+    },
+  },
+
+  plan: {
+    title: 'Seu plano',
+    signedOut: 'Entre para ver este plano. Um plano é de uma pessoa, na rede da carteira dela.',
+    missing: {
+      title: 'Não tenho este plano nesta aba.',
+      body: 'Um plano fica guardado na aba do navegador que o montou, e este não está aqui. Monte de novo a partir do seu objetivo: seus limites continuam guardados.',
+    },
+    backToGoal: 'Voltar ao seu objetivo',
+    otherChain: (plan: string, yours: string) =>
+      `Este plano foi feito para ${plan}, e seus planos ficam em ${yours}. Monte de novo a partir do seu objetivo.`,
+    lead: (chain: string) =>
+      `Montado para ${chain}, a partir dos seus limites. Nada é comprado antes de você revisar cada passo e assinar.`,
+    holds: 'O que ele tem',
+    sub: (risk: string, chain: string) => `${risk} · em ${chain} · nada comprado ainda`,
+    riskWord: { low: 'Risco baixo', medium: 'Risco médio', high: 'Risco alto' },
+    chips: {
+      label: 'Seus limites',
+      goal: 'objetivo',
+      amount: 'valor',
+      horizon: 'prazo',
+      risk: 'risco',
+      chain: 'rede',
+    },
+    kpi: {
+      amount: 'você coloca',
+      horizon: 'por',
+      projected: 'projetado ao ano',
+      loss: 'numa queda forte',
+      estimate: 'estimativa',
+    },
+    legs: { afterHaircut: 'após desconto', quoted: 'cotado {rate}' },
+    exitPlan: 'Plano de saída',
+    costPrefix: 'custo',
+    foot: { sandbox: 'rede de teste, não real', mock: 'dados de exemplo, não reais' },
+    columns: { asset: 'Ativo', share: 'Parte', amount: 'Valor', why: 'Por quê' },
+    noReason: 'Nenhum motivo informado.',
+    projected: 'Faixa projetada por ano, não é uma promessa',
+    projectedValue: (low: string, high: string) => `${low} a ${high}`,
+    basis: (basis: string) => `Como foi calculada: ${basis}.`,
+    lossInFall: (amount: string) =>
+      `Numa queda forte, o motor conta uma perda de cerca de ${amount} neste plano.`,
+    exitUnmeasured: 'Ainda não foi medido, então nenhum custo é mostrado.',
+    exitCost: (cost: string) => `≤ ${cost}`,
+    inKind: 'Você também pode tirar os próprios tokens do seu cofre a qualquer momento.',
+    risk: {
+      title: 'Risco, como nosso servidor resumiu',
+      byClass: 'Por tipo de ativo',
+      byIssuer: 'Por emissor',
+      share: 'Parte',
+      name: 'Nome',
+      exitQuoted: 'Custo para vender, última cotação',
+      exitMeasured: 'Custo para vender, pior medido',
+      measuredShare: 'Parte do plano medida',
+      notMeasured: 'não medido',
+    },
+    flags: 'O que o motor sinalizou',
+    verdict: {
+      met: 'A renda que você pediu é atendida por este plano, nos números do motor.',
+      gap: (gap: string) => `Este plano fica ${gap} por mês abaixo da renda que você pediu.`,
+    },
+    buy: 'Comprar este plano',
+    chainNotReady: (chain: string) =>
+      `${chain} ainda não está pronta para compras: os cofres dela não estão implantados nesta rede. Seu plano fica guardado e pode ser comprado quando estiverem.`,
+    chainOff: (chain: string) =>
+      `${chain} está indisponível no nosso servidor por enquanto, então este plano ainda não pode ser comprado nela.`,
+  },
+
+  trust: {
+    title: 'Antes do seu primeiro depósito',
+    lead: 'Leia isto uma vez. É nisso que você confia quando coloca dinheiro em um cofre.',
+    unaudited: 'O código dos cofres não foi auditado por ninguém de fora da equipe.',
+    keys: 'A equipe tem as chaves que atualizam o código dos cofres. Uma atualização pode mudar o que um cofre faz, então a equipe poderia mover fundos.',
+    admin: (address: string) => `A chave que o atualiza: ${address}.`,
+    keeper: (tolerance: string, loss: string) =>
+      `Com o seguir automático ativado, nosso operador só pode negociar os ativos do seu plano, no máximo ${tolerance} pior que o preço de referência, e perder no máximo ${loss} do seu cofre numa semana. Erros no preço de referência somam a isso. Você pode desativar o seguir automático e sacar a qualquer momento.`,
+    keeperUnset:
+      'Os limites do operador nesta rede ainda não estão definidos, então o seguir automático não é oferecido aqui.',
+    issuers: 'Os emissores de tokens de ações podem pausar, congelar ou retomar seus tokens.',
+    notUnitedStates: 'Este produto não é para pessoas nos Estados Unidos.',
+    passkey:
+      'Uma chave de acesso perdida e não sincronizada com outro aparelho perde a carteira que ela abre. Adicione uma segunda forma de entrar depois do primeiro depósito.',
+    openChecks: (list: string) =>
+      `Verificações ainda não feitas, então o que elas encontrarem não está neste aviso: ${list}.`,
+    checks: {
+      evm_invariants: 'as invariantes dos contratos dos cofres sob chamadas hostis',
+      solana_sequences: 'sequências aleatórias das instruções do programa na Solana',
+      static_analysis: 'a análise estática dos programas e contratos',
+      robinhood_fork: 'uma execução numa cópia da Robinhood Chain',
+      second_rehearsal: 'um segundo ensaio na rede principal com a chave de administração',
+    },
+    accept: 'Li e aceito',
+    accepted: 'Você aceitou este aviso neste navegador.',
+  },
+
+  buy: {
+    title: 'Comprar seu plano',
+    lead: (chain: string) =>
+      `O valor inteiro vai para um cofre de onde só você pode sacar, em ${chain}, e então compra cada ativo do plano.`,
+    amount: {
+      label: 'Valor (dólares)',
+      hint: (planned: string) =>
+        `De US$ 10 a US$ 1.000.000. Seu plano foi montado para ${planned}.`,
+    },
+    funding: {
+      title: 'O que sua carteira precisa',
+      reading: 'Lendo sua carteira…',
+      cash: (symbol: string) => `Dinheiro para depositar (${symbol})`,
+      gas: (symbol: string) => `Taxas da rede (${symbol})`,
+      have: 'Você tem',
+      need: 'Esta compra precisa',
+      missing: 'Faltam',
+      ok: 'Sua carteira tem o que esta compra precisa.',
+      short: (chain: string) =>
+        `Falta na sua carteira o que esta compra precisa. Adicione o que falta à sua carteira em ${chain} e leia de novo.`,
+      address: (address: string) => `Seu endereço lá: ${address}`,
+      newVault:
+        'Esta compra abre o seu cofre para este plano, o que custa um pouco mais de taxa na primeira vez.',
+      readAgain: 'Ler minha carteira de novo',
+      mockFund: 'Adicionar dinheiro e taxas MOCK',
+      mockFunding: 'Adicionando…',
+      failure: {
+        unreachable: 'Não consegui ler sua carteira: nosso servidor não respondeu. Tente de novo.',
+        unreadable:
+          'Nosso servidor respondeu sobre sua carteira num formato que não consegui ler. Tente de novo.',
+        noPlan: 'Nosso servidor não tem este plano. Monte de novo a partir do seu objetivo.',
+        refused: 'Nosso servidor não aceitou este valor. Confira e tente de novo.',
+      },
+    },
+    review: (amount: string) => `Revisar os passos para comprar ${amount}`,
+    reviewing: 'Criando sua ordem…',
+    blocked: {
+      amount: 'Digite um valor de US$ 10 a US$ 1.000.000 para continuar.',
+      funding: 'Sua carteira precisa do que falta acima antes de você continuar.',
+      trust: 'Aceite o aviso acima para continuar.',
+      wallet: 'Nenhuma carteira sua está conectada nesta rede.',
+    },
+    failure: {
+      NOT_FUNDED:
+        'Sua carteira não tem mais o suficiente para esta compra. Leia de novo e tente outra vez.',
+      ASSET_NOT_ELIGIBLE:
+        'Um ativo deste plano não pode ser comprado nesta rede agora. Monte o plano de novo a partir do seu objetivo.',
+      VERSION_CHANGED:
+        'Um portfólio compartilhado deste plano mudou depois que o plano foi feito. Monte o plano de novo a partir do seu objetivo.',
+      ORDER_EXPIRED: 'Essa ordem perdeu o prazo. Tente de novo.',
+      US_PERSON:
+        'Este produto não é para pessoas nos Estados Unidos, então a ordem não foi criada.',
+      RATE_LIMITED:
+        'Nosso servidor pediu para eu ir mais devagar. Espere um minuto e tente de novo.',
+      CHAIN_UNAVAILABLE:
+        'Esta rede está indisponível no nosso servidor por enquanto. Nada foi pedido.',
+      unreachable:
+        'Não consegui falar com nosso servidor, então nenhuma ordem foi criada. Tente de novo.',
+      unreadable:
+        'Nosso servidor respondeu com uma ordem que não consegui ler, então não vou mostrá-la. Nada foi assinado.',
+      noPlan: 'Nosso servidor não tem este plano. Monte de novo a partir do seu objetivo.',
+      refused: 'Nosso servidor não aceitou esta ordem. Confira o valor e tente de novo.',
+      signedOut: 'Nosso servidor não reconhece mais o seu login. Saia e entre de novo.',
+      noChain: 'Escolha primeiro a rede onde seu plano fica.',
+      noStore:
+        'Este navegador não guarda nada entre páginas, então não consigo guardar sua ordem. Permita que este site guarde dados e tente de novo.',
+    },
+  },
+
+  order: {
+    title: 'Sua ordem',
+    loading: 'Lendo sua ordem…',
+    signedOut: 'Entre para ver esta ordem. Uma ordem é de uma pessoa, e só ela pode assinar.',
+    failure: {
+      notFound: 'Não encontro esta ordem para você. Ela pode ser de outro login.',
+      unreachable: 'Não consegui ler sua ordem: nosso servidor não respondeu. Tente de novo.',
+      unreadable:
+        'Nosso servidor respondeu com uma ordem que não consegui ler, então não vou mostrá-la.',
+      retry: 'Ler de novo',
+    },
+    elsewhere:
+      'Esta ordem foi criada em outro navegador, então o plano dela não está aqui para conferir os passos. Abra onde você a criou ou crie uma nova ordem.',
+    review: {
+      title: 'Revise cada passo',
+      lead: 'Cada passo é montado na hora, conferido com o que você vê aqui, e só então assinado pela sua carteira. Um passo que não confere não é assinado.',
+      deposit: 'Depósito',
+      steps: 'Passos',
+      expires: 'Assine antes de',
+      spend: (amount: string, asset: string) => `Gastar ${amount} em ${asset}`,
+      atLeast: (amount: string, asset: string) =>
+        `receber pelo menos ${amount} de ${asset}, em suas menores unidades`,
+      atLeastWhole: (amount: string) => `receber pelo menos ${amount}`,
+      under: (pct: string) => `${pct} abaixo da cotação`,
+      noTrades: 'Nenhuma negociação neste passo.',
+      warnings: 'Nosso servidor avisa',
+      consents: 'Com o que você concorda nesta ordem',
+      consent: {
+        auto_follow_on:
+          'Ativar o seguir automático: nosso operador negocia seu cofre em direção ao portfólio, dentro dos limites acima.',
+        new_asset: 'Aceitar uma versão do portfólio com um ativo que você ainda não tem.',
+        publish:
+          'Publicar este portfólio, ou retirá-lo, em seu nome: outras pessoas podem vê-lo e segui-lo.',
+      },
+      consentNeeded: 'Marque cada concordância acima para continuar.',
+    },
+    mismatch: {
+      units:
+        'Não consigo conferir os valores desta ordem: este app não tem registro do dinheiro nesta rede. Nada será assinado.',
+      deposit:
+        'Esta ordem não deposita o valor que você pediu, então não vou oferecer a assinatura. Nada foi assinado. Crie uma nova ordem e avise a gente se acontecer de novo.',
+      steps:
+        'Um passo desta ordem move outro valor em dinheiro que não o do depósito, então não vou oferecer a assinatura. Nada foi assinado. Crie uma nova ordem e avise a gente se acontecer de novo.',
+    },
+    signAndBuy: (amount: string) => `Assinar e comprar ${amount}`,
+    resume: (amount: string) => `Continuar a compra de ${amount}`,
+    signing: (n: number, total: number) => `Assinando o passo ${n} de ${total}…`,
+    stepsTitle: 'Passos',
+    step: (n: number) => `Passo ${n}`,
+    kind: {
+      approve: 'Autorizar o depósito',
+      create_vault: 'Abrir seu cofre e depositar',
+      deposit: 'Depositar',
+      swap: 'Comprar',
+      set_targets: 'Definir as metas do seu cofre',
+      accept_version: 'Aceitar uma nova versão',
+      set_auto_follow: 'Mudar o seguir automático',
+      withdraw: 'Sacar',
+      publish: 'Publicar',
+      adopt_version: 'Operador: adotar uma versão',
+      keeper_leg: 'Operador: negociar',
+    },
+    status: {
+      planned: 'Não começou',
+      built: 'Montado, ainda não assinado',
+      sent: 'Enviado, aguardando a rede',
+      confirmed: 'Confirmado',
+      failed: 'Falhou',
+      expired: 'Perdeu o prazo',
+      skipped: 'Pulado',
+    },
+    phase: {
+      building: 'Montando…',
+      checking: 'Conferindo com a sua revisão…',
+      signing: 'Assinando…',
+      reporting: 'Enviando…',
+      landing: 'Aguardando a rede…',
+      waiting: 'Aguardando…',
+      settled: 'Concluído',
+    },
+    explorer: 'explorador',
+    signature: 'assinatura',
+    notRetried: '(sem nova tentativa)',
+    link: {
+      tx: 'Tx',
+      view: 'Ver a transação {signature} no {explorer}',
+      unavailable: 'link indisponível',
+    },
+    outcome: {
+      done: (chain: string) =>
+        `Todos os passos estão confirmados em ${chain}, segundo nosso servidor. A transação de cada passo está no link ao lado dele.`,
+      refused: (step: number) =>
+        `Não assinei o passo ${step}: a transação que nosso servidor montou para ele não é o passo que você aprovou. Nada foi assinado para ele.`,
+      refusedOrder:
+        'Não assinei nada: esta ordem não diz o suficiente para eu conferir os passos. Crie uma nova ordem.',
+      refusedWhy: {
+        moved:
+          'O preço mudou desde a sua revisão, então o mínimo do passo não é mais o que você viu. Revise uma nova ordem.',
+        mismatch:
+          'Algo nele difere do que você aprovou. Crie uma nova ordem; se acontecer de novo, avise a gente.',
+        setup:
+          'Este app ainda não consegue conferir passos nesta rede. Nada pode ser assinado aqui por enquanto.',
+      },
+      check: (code: string) => `Conferência que falhou: ${code}`,
+      cancelled: (step: number) =>
+        `Sua carteira não assinou o passo ${step}, então ele não foi enviado. Nada se moveu por ele. Você pode tentar de novo.`,
+      failed: (step: number) =>
+        `O passo ${step} chegou à rede e falhou. Ele não é enviado de novo: uma nova tentativa é você quem pede, com uma nova ordem.`,
+      expired:
+        'Esta ordem perdeu o prazo antes de todos os passos serem assinados. Crie uma nova ordem para o resto.',
+      blocked:
+        'Outra ordem desta carteira tem uma transação que ainda pode chegar. Termine ou cancele aquela ordem primeiro.',
+      blockedLink: 'Abrir aquela ordem',
+      needsReview: (step: number, times: number) =>
+        `O passo ${step} foi assinado ${times === 1 ? 'uma vez' : `${times} vezes`} antes e ainda pode chegar. Não consigo saber pela rede se ainda pode, então não vou assinar de novo sem você dizer. Se você aprovar de novo, ele pode acontecer duas vezes.`,
+      approveAgain: (step: number) => `Assinar o passo ${step} de novo`,
+      waiting: {
+        landing:
+          'Sua ordem está a caminho: um passo foi enviado e a rede ainda não o recebeu. Olhe de novo em um minuto.',
+        in_flight:
+          'Sua ordem está a caminho: um passo assinado antes ainda pode chegar. Olhe de novo em um minuto.',
+        unseen:
+          'Sua ordem está a caminho: nosso servidor ainda não viu o último passo na rede. Olhe de novo em um minuto.',
+        stopped: 'Parado. O que foi assinado fica guardado e é informado quando você continuar.',
+        unknown_blockhash:
+          'O nó da rede que este app lê não está atualizado, então nada foi assinado. Olhe de novo em um minuto.',
+      },
+      lookAgain: 'Olhar de novo',
+      error:
+        'Nosso servidor recusou ou não respondeu, então a ordem parou. O que foi assinado fica guardado. Tente de novo.',
+      tryAgain: 'Tentar de novo',
+      elsewhere:
+        'Esta ordem está rodando em outra aba deste navegador. Acompanhe por lá; nada foi feito aqui.',
+      notRunnable: {
+        'no-deployment': (chain: string) =>
+          `${chain} ainda não está pronta para compras: os cofres dela não estão implantados nesta rede. Nada foi assinado.`,
+        'no-wallet':
+          'Nenhuma carteira sua está conectada na rede desta ordem, então nada foi assinado.',
+        'no-store':
+          'Este navegador não guarda nada entre páginas, então não vou assinar: um passo poderia ser assinado duas vezes. Permita que este site guarde dados e tente de novo.',
+        'no-lock':
+          'Este navegador não consegue manter uma ordem em uma só aba, então não vou assinar aqui. Abra a página num navegador atual.',
+        'plan-mismatch':
+          'O plano guardado para esta ordem é de outra rede, então nada foi assinado. Crie uma nova ordem.',
+      },
+      crashed: 'Algo parou a ordem antes do fim. O que foi assinado fica guardado. Tente de novo.',
+      newOrder: 'Criar uma nova ordem',
     },
   },
 };
