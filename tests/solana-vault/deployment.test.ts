@@ -196,6 +196,13 @@ describe('the node behind SOLANA_RPC_URL is the network the record is for', () =
     ).resolves.toBeUndefined();
     // A record that names no genesis is held to "not mainnet" alone.
     await expect(assertNode(node(DEVNET_GENESIS), record())).resolves.toBeUndefined();
+    // A node that never answers fails the start instead of hanging it.
+    const silent = {
+      getGenesisHash: () => ({ send: () => new Promise<string>(() => {}) }),
+    } as unknown as VaultNodeRpc;
+    await expect(assertNode(silent, record(), 50)).rejects.toThrow(
+      'did not say its network in 50 ms',
+    );
   });
 
   it('does not start a testnet label on a mainnet node', async () => {
