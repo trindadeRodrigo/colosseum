@@ -38,7 +38,11 @@ const SCOPE = address(sources.scope.account);
 const LENDING = address('2vVYHYM8VYnvZqQWpTJSj8o8DBf1wM8pVs3bsTgYZiqJ');
 
 /** Mainnet as the copier sees it: Scope's account and Jupiter Lend's lending account, made by hand. */
-function fakeMainnet(entries: Record<number, Entry>, jl: { rate: bigint; time: bigint }): Source {
+function fakeMainnet(
+  entries: Record<number, Entry>,
+  jl: { rate: bigint; time: bigint },
+  gold?: { raydiumSqrt: bigint; orcaSqrt: bigint; clock: bigint },
+): Source {
   const scope = new Uint8Array(28_712);
   const view = new DataView(scope.buffer);
   for (const [index, e] of Object.entries(entries)) {
@@ -59,6 +63,31 @@ function fakeMainnet(entries: Record<number, Entry>, jl: { rate: bigint; time: b
     [SCOPE]: { data: scope, owner: address(sources.scope.owner) },
     [LENDING]: { data: lending, owner: address('jup3YeL8QhtSx1e253b2FDvsMNC87fDrgQZivbrndc9') },
   };
+  if (gold) {
+    const pool = (size: number, mintsAt: [number, number], sqrtAt: number, sqrt: bigint) => {
+      const data = new Uint8Array(size);
+      data.set(encoder.encode(address('Xsv9hRk1z5ystj9MhnA7Lq4vjSsLwzL2nxrwmwtD3re')), mintsAt[0]);
+      data.set(encoder.encode(address('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')), mintsAt[1]);
+      const dv = new DataView(data.buffer);
+      dv.setBigUint64(sqrtAt, sqrt & (2n ** 64n - 1n), true);
+      dv.setBigUint64(sqrtAt + 8, sqrt >> 64n, true);
+      return data;
+    };
+    const clock = new Uint8Array(40);
+    new DataView(clock.buffer).setBigInt64(32, gold.clock, true);
+    accounts['78ReVNMLGRWmjtf2HmBoHUe2pRcsctXTTbxJnbhchyze'] = {
+      data: pool(1544, [73, 105], 253, gold.raydiumSqrt),
+      owner: address('CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK'),
+    };
+    accounts['5tGLudhm9pHtqbtfymvdarbD59AyMyYimXXwbFfzETV9'] = {
+      data: pool(653, [101, 181], 65, gold.orcaSqrt),
+      owner: address('whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc'),
+    };
+    accounts.SysvarC1ock11111111111111111111111111111111 = {
+      data: clock,
+      owner: address('Sysvar1111111111111111111111111111111111111'),
+    };
+  }
   return {
     account: async (target) => {
       const found = accounts[target];
@@ -211,6 +240,38 @@ describe('the price copier', () => {
     expect(result.written).toEqual(['tNVDAx']);
     expect(read(spyx.priceIndex)).toEqual(before);
     expect(read(asset('solana:aaplx').priceIndex).value).not.toBe(p15('450', t).value);
+  });
+
+  it("copies gold from its pool's mid, checked against a second pool, with mainnet's clock", async () => {
+    const t = SESSION + 250n;
+    setClock(svm, t + 5n);
+    // GLDx at 379.71 dollars: 3.7971 raw USDC per raw GLDx (8 decimals against 6), as a sqrt in Q64.
+    const sqrt = (dollars: number) => BigInt(Math.round(Math.sqrt(dollars / 100) * 2 ** 64));
+    const gold = (orca: number) =>
+      readPrices(
+        fakeMainnet(
+          {},
+          { rate: 0n, time: 0n },
+          { raydiumSqrt: sqrt(379.71), orcaSqrt: sqrt(orca), clock: t },
+        ),
+        { ...sources, assets: { 'solana:gldx': sources.assets['solana:gldx'] as never } },
+      );
+    const [read1] = await gold(379.68);
+    if (!read1 || 'none' in read1) throw new Error(`no reading: ${JSON.stringify(read1)}`);
+    expect(read1.method).toBe('pool_mid');
+    expect(read1.price.exponent).toBe(8n);
+    expect(read1.price.unixTimestamp).toBe(t);
+    expect(Number(read1.price.value) / 1e8).toBeCloseTo(379.71, 4);
+    expect(read1.twap).toEqual(read1.price);
+    const result = await copyRound(liteChain(svm), writer, deployment, [read1], options());
+    expect(result.written).toEqual(['tGLDx']);
+    expect(read(asset('solana:gldx').priceIndex)).toEqual(read1.price);
+    // Two pools more than 1% apart give no reading at all.
+    const [apart] = await gold(390);
+    expect(apart).toEqual({
+      id: 'solana:gldx',
+      none: "the two pools' mids are more than 100 bps apart",
+    });
   });
 
   it('signs with the price writer only: the deploy key is refused', async () => {

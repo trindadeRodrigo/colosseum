@@ -6,16 +6,66 @@
     "source": "Kamino Scope's price account on mainnet, the one fixtures/solana-vault/scope-indexes.json names"
   },
   "assets": {
-    "solana:spyx": { "kind": "scope", "price": [344], "twap": [279], "method": "scope_entry" },
-    "solana:qqqx": { "kind": "scope", "price": [347], "twap": [281], "method": "scope_entry" },
-    "solana:nvdax": { "kind": "scope", "price": [332], "twap": [269], "method": "scope_entry" },
-    "solana:tslax": { "kind": "scope", "price": [338], "twap": [273], "method": "scope_entry" },
-    "solana:aaplx": { "kind": "scope", "price": [317], "twap": [259], "method": "scope_entry" },
-    "solana:googlx": { "kind": "scope", "price": [326], "twap": [265], "method": "scope_entry" },
-    "solana:metax": { "kind": "scope", "price": [329], "twap": [267], "method": "scope_entry" },
-    "solana:mstrx": { "kind": "scope", "price": [335], "twap": [271], "method": "scope_entry" },
-    "solana:crclx": { "kind": "scope", "price": [323], "twap": [263], "method": "scope_entry" },
-    "solana:hoodx": { "kind": "scope", "price": [320], "twap": [261], "method": "scope_entry" },
+    "solana:spyx": {
+      "kind": "scope",
+      "price": [344],
+      "twap": [279],
+      "method": "scope_entry"
+    },
+    "solana:qqqx": {
+      "kind": "scope",
+      "price": [347],
+      "twap": [281],
+      "method": "scope_entry"
+    },
+    "solana:nvdax": {
+      "kind": "scope",
+      "price": [332],
+      "twap": [269],
+      "method": "scope_entry"
+    },
+    "solana:tslax": {
+      "kind": "scope",
+      "price": [338],
+      "twap": [273],
+      "method": "scope_entry"
+    },
+    "solana:aaplx": {
+      "kind": "scope",
+      "price": [317],
+      "twap": [259],
+      "method": "scope_entry"
+    },
+    "solana:googlx": {
+      "kind": "scope",
+      "price": [326],
+      "twap": [265],
+      "method": "scope_entry"
+    },
+    "solana:metax": {
+      "kind": "scope",
+      "price": [329],
+      "twap": [267],
+      "method": "scope_entry"
+    },
+    "solana:mstrx": {
+      "kind": "scope",
+      "price": [335],
+      "twap": [271],
+      "method": "scope_entry"
+    },
+    "solana:crclx": {
+      "kind": "scope",
+      "price": [323],
+      "twap": [263],
+      "method": "scope_entry"
+    },
+    "solana:hoodx": {
+      "kind": "scope",
+      "price": [320],
+      "twap": [261],
+      "method": "scope_entry"
+    },
     "solana:syrupusdc": {
       "kind": "scope",
       "price": [314, 13],
@@ -32,8 +82,14 @@
       "source": "Jupiter Lend's lending account for USDC and jlUSDC (program jup3YeL8QhtSx1e253b2FDvsMNC87fDrgQZivbrndc9): its token exchange price (USDC per jlUSDC, 1e12 precision) times Scope's USDC price (13) and USDC average (456), stamped with the older of the rate's last update and the Scope entry. The rate has no average of its own: the average entry is the same rate times USDC's average"
     },
     "solana:gldx": {
-      "kind": "none",
-      "why": "No honest fresh source on mainnet: GLDx has no Kamino reserve and so no Scope chain, its Pyth push account (FMGx9GMRAsAnFciE4HPHSMoWVZ6UgzmFJZ1nXdKVGH6e) was last updated about 23 days before 2026-10-05, and Pyth's Hermes service now asks for a key. Its placeholder stays."
+      "kind": "pool-mid",
+      "pool": "78ReVNMLGRWmjtf2HmBoHUe2pRcsctXTTbxJnbhchyze",
+      "check": "5tGLudhm9pHtqbtfymvdarbD59AyMyYimXXwbFfzETV9",
+      "maxSpreadBps": 100,
+      "mint": "Xsv9hRk1z5ystj9MhnA7Lq4vjSsLwzL2nxrwmwtD3re",
+      "decimals": 8,
+      "method": "pool_mid",
+      "source": "The mid of the GLDx/USDC Raydium CLMM pool 78ReVNMLGRWmjtf2HmBoHUe2pRcsctXTTbxJnbhchyze (2,210 GLDx and 178,352 USDC on 2026-10-05), USDC counted as one dollar, refused unless the GLDx/USDC Orca Whirlpool 5tGLudhm9pHtqbtfymvdarbD59AyMyYimXXwbFfzETV9 is within 100 bps, stamped with mainnet's clock at the read. A pool keeps no average: the mid stands as the average too. Scope has no GLDx entry (no Kamino reserve), its Pyth push account was 23 days old, and Hermes asks for a key"
     }
   }
 }
