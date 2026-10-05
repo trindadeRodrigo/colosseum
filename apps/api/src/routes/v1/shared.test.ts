@@ -4,6 +4,7 @@ import { mockRecipeId } from '@colosseum/chain-mock';
 import { indexFamilies } from '@colosseum/db';
 import {
   type BasketAsset,
+  ChainError,
   FamilyResponse,
   OrderDetail,
   PortfolioResponse,
@@ -299,6 +300,53 @@ describe('a creator publishes a shared portfolio', () => {
       409,
       'another shared portfolio has this name, or one that reads the same',
     ]);
+  });
+
+  it('answers the order while the chain does not, and writes the family on a later read', async () => {
+    let down = false;
+    const flaky: (r: ChainRegistry) => ChainRegistry = (inner) => {
+      const wrap = (entry: ReturnType<ChainRegistry['get']>) => ({
+        ...entry,
+        adapter: {
+          ...entry.adapter,
+          getRecipe: async (id: string) => {
+            if (down) throw new ChainError('Unavailable', 'the node did not answer');
+            return entry.adapter.getRecipe(id);
+          },
+        },
+      });
+      return { ...inner, get: (c) => wrap(inner.get(c)), active: () => inner.active().map(wrap) };
+    };
+    const shaky = await testApp({ issuer: issuer.issuer, db: data.db, wrap: flaky });
+    try {
+      const creator = await someone();
+      const text = fresh();
+      await fund(creator, shaky.app);
+      const placed = OrderDetail.parse(
+        (await post(creator, '/v1/orders', publishBody(creator, text), shaky.app)).json(),
+      );
+      const leg = placed.legs[0];
+      if (!leg) throw new Error('no step');
+      await build(creator, placed, leg.id, shaky.app);
+      down = true;
+      const done = await report(
+        creator,
+        placed,
+        leg.id,
+        { txId: await land(creator, placed, leg.id, shaky.app) },
+        shaky.app,
+      );
+      expect(done.status).toBe('done');
+      expect((await get(null, `/v1/indexes/${text.slug}`, shaky.app)).statusCode).toBe(404);
+      down = false;
+      expect((await read(creator, placed, shaky.app)).status).toBe('done');
+      const after = FamilyResponse.parse(
+        (await get(null, `/v1/indexes/${text.slug}`, shaky.app)).json(),
+      );
+      expect(after.family.recipes[0]?.active.version).toBe(1);
+    } finally {
+      await shaky.app.close();
+    }
   });
 
   it('keeps a new slug for the creator whose publish landed first, when two raced for it', async () => {

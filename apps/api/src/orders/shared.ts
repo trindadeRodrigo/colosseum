@@ -407,7 +407,15 @@ export async function recordPublished(
     if (await hasVersion(ctx.db, familyId, leg.chain, hash)) continue;
     const entry = ctx.chains.get(leg.chain);
     const onchainId = await recipeIdOf(entry, creator, familyId);
-    const onchain = await readRecipe(entry, onchainId);
+    let onchain: Awaited<ReturnType<typeof readRecipe>>;
+    try {
+      onchain = await readRecipe(entry, onchainId);
+    } catch (e) {
+      // The order is still answered: the family is written on a later read, once the chain answers.
+      if (!(e instanceof ChainError)) throw e;
+      log(`the recipe ${onchainId} on ${leg.chain} could not be read: ${e.message}`);
+      continue;
+    }
     // The id is derived from the creator, so a recipe found there is the creator's.
     if (!onchain) continue;
     if (onchain.active.metaHash !== hash && onchain.pending?.metaHash !== hash) {
