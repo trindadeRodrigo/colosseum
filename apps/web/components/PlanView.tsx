@@ -185,6 +185,78 @@ export function PlanView({ d, embed = false }: { d: PlanDetail; embed?: boolean 
         })()}
       </section>
 
+      {d.riskSheet.some((r) => (r.entry as Record<string, unknown>).liquidity) && (
+        <section>
+          <h2 className="font-semibold">Exit liquidity</h2>
+          <p className="text-xs text-gray-600">
+            How much of each leg can be sold for dollars at ≤ the cost tolerance, in the worst time
+            of week the plan's liquidity window can contain. Measured from on-chain pools; see{' '}
+            <a className="text-blue-700 underline" href="/risk/methodology">
+              methodology
+            </a>
+            .
+          </p>
+          <table className="mt-2 w-full text-xs">
+            <thead>
+              <tr className="text-left text-gray-500">
+                <th>Leg</th>
+                <th>Leg amount</th>
+                <th>Exit capacity (worst regime)</th>
+                <th>Score</th>
+                <th>Weekend ÷ market hours</th>
+                <th>If the top LPs leave</th>
+                <th>Samples · dates</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {d.riskSheet
+                .filter((r) => (r.entry as Record<string, unknown>).liquidity)
+                .map((r) => {
+                  const l = (r.entry as Record<string, unknown>).liquidity as {
+                    capacityUsd: number;
+                    capacityLowerBound: boolean;
+                    worstRegime: string;
+                    tau: number;
+                    score: number;
+                    legAmountUsd: number;
+                    weekendRatio: number | null;
+                    lpExitCostPct: number | null;
+                    samples: number;
+                    dataFrom: string | null;
+                    dataTo: string | null;
+                    provenance: string;
+                  };
+                  return (
+                    <tr key={r.assetId} className="border-t border-gray-100">
+                      <td className="py-1 pr-2">{r.assetId}</td>
+                      <td className="pr-2">US$ {Math.round(l.legAmountUsd).toLocaleString()}</td>
+                      <td className="pr-2">
+                        {l.capacityLowerBound ? '≥ ' : ''}US${' '}
+                        {Math.round(l.capacityUsd).toLocaleString()} at ≤{(l.tau * 100).toFixed(1)}%
+                        · {l.worstRegime.replaceAll('_', ' ')}
+                      </td>
+                      <td className="pr-2">{l.score.toFixed(2)}</td>
+                      <td className="pr-2">
+                        {l.weekendRatio === null ? '—' : l.weekendRatio.toFixed(2)}
+                      </td>
+                      <td className="pr-2">
+                        {l.lpExitCostPct === null ? '—' : `${l.lpExitCostPct.toFixed(2)}% cost`}
+                      </td>
+                      <td className="pr-2 text-gray-600">
+                        {l.samples} · {l.dataFrom?.slice(0, 10)} → {l.dataTo?.slice(0, 10)}
+                      </td>
+                      <td>
+                        <ProvenanceBadge value={l.provenance} />
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        </section>
+      )}
+
       <section>
         <h2 className="font-semibold">Risk sheet</h2>
         {d.riskSheet.length === 0 ? (

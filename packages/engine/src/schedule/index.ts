@@ -1,11 +1,13 @@
 import type {
   Asset,
   ConstraintSheet,
+  LiquidityProvider,
   PlanLeg,
   ScheduleRow,
   StressCase,
   YieldObservation,
 } from '@colosseum/schemas';
+import { SOLVER_PARAMS } from '../solver/index';
 import { currentMonth, monthsBetween, obligationsBrl } from '../solver/obligations';
 
 /** Stress parameters are policy inputs, not forecasts. */
@@ -15,6 +17,10 @@ export const STRESS_PARAMS = {
   fxMoveMonths: 12,
   creditGateMonths: 6,
   equityDrawdownFraction: 0.2,
+  /** liquidity_dry: depth multiplier = max(floor, min(1, measured weekend ratio)). Risk layer only. */
+  dryFactorFloor: 0.25,
+  /** Highest exit cost (percent) at which stock may be sold to fund a withdrawal. Risk layer only. */
+  exitImpactCapPct: 5,
 };
 
 export type ScheduleInput = {
@@ -26,11 +32,13 @@ export type ScheduleInput = {
   fxUsdBrl: number;
   nowMonth?: string;
   months?: number;
+  /** Optional measured exit liquidity: stock becomes drawable as a last resort, at its exit cost. */
+  liquidity?: LiquidityProvider;
 };
 
 export type StressSpec = { id: string; name: string; params: Record<string, number> };
 
-export const STRESSES = (holdsEquity: boolean): StressSpec[] => [
+export const STRESSES = (holdsEquity: boolean, withLiquidity = false): StressSpec[] => [
   {
     id: 'yields_fall',
     name: 'Yields fall',
@@ -60,7 +68,59 @@ export const STRESSES = (holdsEquity: boolean): StressSpec[] => [
         },
       ]
     : []),
+  ...(holdsEquity && withLiquidity
+    ? [
+        {
+          id: 'liquidity_dry',
+          name: 'Liquidity dries up (stock exit depth × measured weekend ratio, floored)',
+          params: { dryFactorFloor: STRESS_PARAMS.dryFactorFloor },
+        },
+      ]
+    : []),
 ];
+
+/**
+ * USD proceeds and value sold when selling up to `valueUsd` of a stock to raise `needUsd`, at the measured
+ * exit cost (worst regime of the window). Costs above exitImpactCapPct, or sizes beyond the measured curve,
+ * are not sold. `d` < 1 scales depth down (liquidity_dry): cost(y) becomes cost(y / d).
+ */
+function sellStock(
+  liq: LiquidityProvider,
+  assetId: string,
+  valueUsd: number,
+  needUsd: number,
+  windowDays: number,
+  d: number,
+): { sold: number; proceeds: number } {
+  const cap = STRESS_PARAMS.exitImpactCapPct / 100;
+  const cost = (y: number) => (y <= 0 ? 0 : liq.exitCost(assetId, y / d, windowDays));
+  const ok = (y: number) => {
+    const c = cost(y);
+    return c !== null && c <= cap;
+  };
+  const proceeds = (y: number) => y * (1 - (cost(y) ?? 1));
+  // largest sellable size
+  let lo = 0;
+  let hi = valueUsd;
+  if (!ok(hi)) {
+    for (let k = 0; k < 60; k++) {
+      const mid = (lo + hi) / 2;
+      if (ok(mid)) lo = mid;
+      else hi = mid;
+    }
+    hi = lo;
+  }
+  if (hi <= 0) return { sold: 0, proceeds: 0 };
+  if (proceeds(hi) <= needUsd) return { sold: hi, proceeds: proceeds(hi) };
+  let a = 0;
+  let b = hi;
+  for (let k = 0; k < 60; k++) {
+    const mid = (a + b) / 2;
+    if (proceeds(mid) < needUsd) a = mid;
+    else b = mid;
+  }
+  return { sold: b, proceeds: proceeds(b) };
+}
 
 export type ScheduleResult = {
   rows: ScheduleRow[];
@@ -144,12 +204,38 @@ export function buildSchedule(input: ScheduleInput, stress?: StressSpec): Schedu
       const liquid = [...usd.entries()].filter(([id]) => {
         const a = assets.get(id);
         const gated = gateMonths > 0 && m < gateMonths && a?.metadata.creditLeg;
-        return id !== 'usdc' && a?.mintPath !== 'unavailable' && !gated;
+        // with measured liquidity, stocks leave the at-par pool and are sold last at their exit cost
+        const stockAtCost = !!input.liquidity && a?.kind === 'equity';
+        return id !== 'usdc' && a?.mintPath !== 'unavailable' && !gated && !stockAtCost;
       });
       const total = liquid.reduce((s, [, v]) => s + v, 0);
       const takeUsd = Math.min(total, need / fx);
       if (total > 0) for (const [id, v] of liquid) usd.set(id, v - (v / total) * takeUsd);
       need -= takeUsd * fx;
+    }
+    if (need > 1e-6 && input.liquidity) {
+      // last resort (risk layer): sell stock at its measured exit cost, pro rata to value
+      const liq = input.liquidity;
+      const stocks = [...usd.entries()].filter(
+        ([id, v]) => v > 0 && assets.get(id)?.kind === 'equity',
+      );
+      const total = stocks.reduce((t, [, v]) => t + v, 0);
+      const needUsd = need / fx;
+      let raised = 0;
+      for (const [id, v] of stocks) {
+        const tau = SOLVER_PARAMS.impactTolerancePct / 100;
+        const d =
+          stress?.id === 'liquidity_dry'
+            ? Math.max(
+                STRESS_PARAMS.dryFactorFloor,
+                Math.min(1, liq.weekendRatio(id, tau) ?? STRESS_PARAMS.dryFactorFloor),
+              )
+            : 1;
+        const r = sellStock(liq, id, v, (needUsd * v) / total, sheet.liquidityWindowDays, d);
+        usd.set(id, v - r.sold);
+        raised += r.proceeds;
+      }
+      need -= Math.min(raised, needUsd) * fx;
     }
     const funded = need <= 1e-6;
     if (funded) monthsFunded++;
@@ -196,7 +282,7 @@ export function buildScheduleWithStresses(input: ScheduleInput): {
   const base = buildSchedule(input);
   const stresses: StressCase[] = [];
   const stressSummaries = [];
-  for (const s of STRESSES(holdsEquity)) {
+  for (const s of STRESSES(holdsEquity, !!input.liquidity)) {
     const r = buildSchedule(input, s);
     stresses.push({
       id: s.id,

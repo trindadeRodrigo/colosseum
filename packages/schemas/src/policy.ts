@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PolicyMechanism } from './enums';
+import { LiquidityTrigger } from './liquidity';
 
 export const WeightBand = z.object({
   assetId: z.string(),
@@ -25,7 +26,12 @@ export const Policy = z.object({
   wallet: z.string(),
   allowedAssets: z.array(z.string()).min(1),
   bands: z.array(WeightBand),
-  trigger: z.object({ driftPct: z.number().positive(), minIntervalHours: z.number().positive() }),
+  trigger: z.object({
+    driftPct: z.number().positive(),
+    minIntervalHours: z.number().positive(),
+    /** Optional liquidity trigger (risk layer). */
+    liquidity: LiquidityTrigger.optional(),
+  }),
   withdrawalDestination: z.string(),
   mechanism: PolicyMechanism,
   mechanismByAsset: z.record(z.string(), PolicyMechanism).default({}),

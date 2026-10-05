@@ -12,7 +12,7 @@ import {
 } from '@colosseum/engine';
 import type { ConstraintSheet } from '@colosseum/schemas';
 
-// Exports the income-goal schedule (base + stresses) to docs/schedule-check.csv for the spreadsheet cross-check.
+// Exports the income-goal schedule (base + stresses) to docs/structurer/schedule-check.csv for the spreadsheet cross-check.
 // Capital is a parameter (--capital), not a claim.
 const capitalUsd = Number(
   process.argv.includes('--capital')
@@ -50,7 +50,10 @@ const header = [
   `# haircut yields: ${r.legs.map((l) => `${l.assetId}=${(yields.get(l.assetId)?.haircutYield ?? 0).toFixed(6)} (${yields.get(l.assetId)?.method ?? 'n/a'})`).join(' ')}`,
   '# month formula: leg_usd[m] = leg_usd[m-1] * (1 + haircut_yield/12); withdrawal from BRL leg, then USDC, then liquid legs pro rata; balance_brl = sum(leg_usd)*fx + brl_leg',
 ];
-writeFileSync('docs/schedule-check.csv', `${header.join('\n')}\n${scheduleToCsv(s.base.rows)}\n`);
+writeFileSync(
+  'docs/structurer/schedule-check.csv',
+  `${header.join('\n')}\n${scheduleToCsv(s.base.rows)}\n`,
+);
 console.log(
   JSON.stringify(
     {

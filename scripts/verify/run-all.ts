@@ -12,14 +12,17 @@ const steps = [
   'v7-bcb',
 ];
 for (const s of steps) {
-  const r = spawnSync('pnpm', ['exec', 'tsx', new URL(`./${s}.ts`, import.meta.url).pathname], {
-    stdio: 'inherit',
-    env: process.env,
-  });
+  // V4 is a plain .mjs script; the others are TypeScript.
+  const r =
+    s === '../depth-snapshot'
+      ? spawnSync('node', [new URL('../depth-snapshot.mjs', import.meta.url).pathname], {
+          stdio: 'inherit',
+          env: process.env,
+        })
+      : spawnSync('pnpm', ['exec', 'tsx', new URL(`./${s}.ts`, import.meta.url).pathname], {
+          stdio: 'inherit',
+          env: process.env,
+        });
   if (r.status !== 0)
     console.log(JSON.stringify({ id: s, status: 'fail', note: `exit ${r.status}` }));
 }
-spawnSync('node', [new URL('../depth-snapshot.mjs', import.meta.url).pathname], {
-  stdio: 'inherit',
-  env: process.env,
-});

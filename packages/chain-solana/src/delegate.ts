@@ -55,16 +55,6 @@ export async function buildPolicySetupTx(
   return buildSignedV0(rpc, owner, ixs, []);
 }
 
-/** User-signed: revoke the delegate (policy off-switch). */
-export async function buildRevokeTx(
-  rpc: SolanaRpc,
-  owner: KeyPairSigner,
-  mint: Address,
-): Promise<SignedV0> {
-  const source = await ata(owner.address, mint);
-  return buildSignedV0(rpc, owner, [getRevokeInstruction({ source, owner })], []);
-}
-
 export type DelegatedSwap = SignedV0 & {
   quote: { inAmount: string; outAmount: string; priceImpactPct: string };
   agentInAta: Address;

@@ -1,4 +1,10 @@
-import type { Asset, DepthObservation, RiskSheetEntry, YieldObservation } from '@colosseum/schemas';
+import type {
+  Asset,
+  DepthObservation,
+  LiquidityProvider,
+  RiskSheetEntry,
+  YieldObservation,
+} from '@colosseum/schemas';
 
 export type RiskInputs = {
   assets: Asset[];
@@ -6,6 +12,14 @@ export type RiskInputs = {
   yields: Map<string, YieldObservation>;
   /** Latest depth observations per asset (buy side), any notionals. */
   depth: Map<string, DepthObservation[]>;
+  /** Optional measured exit liquidity: adds a structured `liquidity` block per covered leg. */
+  liquidity?: {
+    provider: LiquidityProvider;
+    tau: number;
+    windowDays: number;
+    /** USD amount of each leg in the plan. */
+    legAmounts: Map<string, number>;
+  };
 };
 
 const pctText = (n: number) => `${(n * 100).toFixed(3)}%`;
@@ -40,8 +54,20 @@ export function buildRiskSheet(input: RiskInputs): RiskSheetEntry[] {
       creditExposure: a.metadata.creditExposure ?? null,
       provenance: a.mintPath === 'unavailable' ? 'live' : (y?.provenance ?? 'live'),
       label: a.metadata.label ?? null,
+      ...liquidityBlock(input, a.id),
     };
   });
+}
+
+function liquidityBlock(input: RiskInputs, assetId: string) {
+  const l = input.liquidity;
+  if (!l?.provider.covers(assetId)) return {};
+  const entry = l.provider.entry(assetId, {
+    tau: l.tau,
+    windowDays: l.windowDays,
+    legAmountUsd: l.legAmounts.get(assetId) ?? 0,
+  });
+  return entry ? { liquidity: entry } : {};
 }
 
 /** Prefer realised/protocol observations over aggregator stand-ins when both exist. */

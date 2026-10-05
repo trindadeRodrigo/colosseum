@@ -8,14 +8,12 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "generate": "drizzle-kit generate",
-    "migrate": "tsx src/migrate.ts",
-    "seed": "tsx src/seed-assets.ts"
+    "migrate": "tsx src/migrate.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.3",
     "postgres": "^3.4.9",
-    "@colosseum/schemas": "workspace:*",
-    "@colosseum/engine": "workspace:*"
+    "@colosseum/schemas": "workspace:*"
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.11",

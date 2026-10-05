@@ -1,0 +1,160 @@
+import { WalletError, WalletErrorCode } from '@colosseum/schemas';
+
+/**
+ * Why a call failed, in this app's own words. Four of them are codes of WalletError too and are
+ * carried as `code`; `not_configured` and `bad_transaction` are this app's alone and go under `unknown`.
+ */
+export type WalletReason =
+  | 'not_configured'
+  | 'not_connected'
+  | 'unsupported'
+  | 'wrong_account'
+  | 'bad_transaction'
+  | 'changed'
+  // What a sign-in can fail on. The sign-in screen has a sentence for each (sign-in-view.ts).
+  /** The provider refuses this way of signing in for this app: it is switched off in its dashboard. */
+  | 'method_off'
+  /** The passkey prompt was closed, or ran out of time. */
+  | 'passkey_cancelled'
+  /** The provider has no account for the passkey that was used. */
+  | 'passkey_unknown'
+  /** The passkey picked is not one the provider registered for this app (Privy's `passkey_not_registered`). */
+  | 'passkey_not_registered'
+  /** The provider takes no new accounts for this app (Privy's `max_accounts_reached`). */
+  | 'accounts_full'
+  /** The app lets in invited people only, and this sign-in is not one (Privy's `allowlist_rejected`). */
+  | 'not_invited'
+  /** The browser blocks the storage a sign-in needs (Privy's `session_storage_unavailable`). */
+  | 'no_storage'
+  /** The browser has no passkeys at all. */
+  | 'passkey_unsupported'
+  /** The wallet that was picked is not in the browser any more. */
+  | 'wallet_gone'
+  /** The wallet is there and gave no account or no signature: locked, or closed without a word. */
+  | 'wallet_silent'
+  /** The provider asked for fewer requests. */
+  | 'too_many'
+  /** The provider could not be reached. */
+  | 'offline'
+  /** Signed in, and the wallet that goes with a passkey could not be made. */
+  | 'wallet_not_made';
+
+/**
+ * The reasons that are a WalletErrorCode of their own: `not_connected`, `wrong_account`, `unsupported`
+ * and `changed`. Each is carried as `code` too. The list is the shared one, so a reason that becomes a
+ * code there is carried here with no change.
+ */
+const CODES_OF_THEIR_OWN: readonly string[] = WalletErrorCode.options;
+
+export class WalletPortError extends WalletError {
+  readonly reason: WalletReason | null;
+  constructor(code: WalletErrorCode, message: string, reason: WalletReason | null = null) {
+    super(code, message);
+    this.reason = reason;
+  }
+}
+
+export const fail = (reason: WalletReason, message: string) =>
+  new WalletPortError(
+    CODES_OF_THEIR_OWN.includes(reason) ? (reason as WalletErrorCode) : 'unknown',
+    message,
+    reason,
+  );
+
+type Loose = {
+  code?: unknown;
+  name?: unknown;
+  message?: unknown;
+  privyErrorCode?: unknown;
+  status?: unknown;
+  cause?: unknown;
+};
+
+/** The same failure as a wallet, a provider and a browser each report it. */
+function classify(e: Loose, text: string): [WalletErrorCode, WalletReason | null] | null {
+  const privy = typeof e.privyErrorCode === 'string' ? e.privyErrorCode : '';
+  // Sign-in first: several of these read like a refusal or an expiry in words, and are neither.
+  // Privy answers 403 "Login with passkey not allowed" when the method is off in its dashboard.
+  if (privy === 'disallowed_login_method' || /login with [\w ]+ not allowed/i.test(text))
+    return ['unsupported', 'method_off'];
+  if (privy === 'passkey_not_registered' || /passkey.{0,40}not (been )?registered/i.test(text))
+    return ['unknown', 'passkey_not_registered'];
+  if (privy === 'max_accounts_reached') return ['unknown', 'accounts_full'];
+  if (privy === 'allowlist_rejected') return ['unknown', 'not_invited'];
+  if (privy === 'session_storage_unavailable') return ['unsupported', 'no_storage'];
+  // A closed or timed-out passkey prompt: the browser's NotAllowedError, which Privy rewords.
+  if (
+    privy === 'passkey_not_allowed' ||
+    e.name === 'NotAllowedError' ||
+    /passkey request timed out or rejected/i.test(text)
+  )
+    return ['rejected', 'passkey_cancelled'];
+  if (privy === 'user_does_not_exist') return ['unknown', 'passkey_unknown'];
+  if (/webauthn is not supported/i.test(text)) return ['unsupported', 'passkey_unsupported'];
+  if (privy === 'too_many_requests' || e.status === 429) return ['unknown', 'too_many'];
+  if (
+    privy === 'client_request_timeout' ||
+    /failed to fetch|networkerror|load failed|network request failed/i.test(text)
+  )
+    return ['unknown', 'offline'];
+  // EIP-1193 4001; a wallet-standard wallet says it in words; a dismissed passkey prompt is
+  // NotAllowedError; Privy reports a closed modal as an exited flow.
+  if (
+    e.code === 4001 ||
+    e.code === 'ACTION_REJECTED' ||
+    e.name === 'NotAllowedError' ||
+    e.name === 'UserRejectedRequestError' ||
+    /^exited_|user_exited|oauth_user_denied/.test(privy) ||
+    /user (rejected|denied|cancel+ed|closed|exited)|reject(ed)? (the|by) (request|user)|request rejected|declined/i.test(
+      text,
+    )
+  )
+    return ['rejected', null];
+  // 4902: the wallet does not know the chain. 4901: it is not connected to it.
+  if (
+    e.code === 4902 ||
+    e.code === 4901 ||
+    privy === 'unsupported_chain_id' ||
+    /chain.{0,40}(mismatch|not (supported|configured|match)|unsupported|unrecognized)|unsupported chain|wrong (chain|network)/i.test(
+      text,
+    )
+  )
+    return ['wrong_chain', null];
+  if (
+    privy === 'insufficient_balance' ||
+    /insufficient (funds|balance|lamports)|not enough (funds|sol|eth)|gas required exceeds/i.test(
+      text,
+    )
+  )
+    return ['no_gas', null];
+  if (
+    privy === 'missing_or_invalid_token' ||
+    /blockhash not found|block height exceeded|has expired|session expired|nonce too low/i.test(
+      text,
+    )
+  )
+    return ['expired', null];
+  if (e.code === 4900 || privy === 'must_be_authenticated' || /disconnected/i.test(text))
+    return ['not_connected', 'not_connected'];
+  if (
+    e.code === 4200 ||
+    privy === 'not_supported' ||
+    privy === 'unsupported_wallet_type' ||
+    /not (supported|implemented)|does not support/i.test(text)
+  )
+    return ['unsupported', 'unsupported'];
+  return null;
+}
+
+/** Anything a wallet, a provider or the browser throws, as the WalletError the port promises. */
+export function toWalletError(e: unknown): WalletError {
+  if (e instanceof WalletError) return e;
+  const at = (v: unknown): Loose => (typeof v === 'object' && v !== null ? (v as Loose) : {});
+  const message = (v: Loose) => (typeof v.message === 'string' ? v.message : '');
+  const top = typeof e === 'string' ? { message: e } : at(e);
+  const text = message(top) || 'the wallet failed without saying why';
+  // A provider often wraps the wallet's own error: the cause is read when the wrapper says nothing.
+  const found = classify(top, text) ?? classify(at(top.cause), message(at(top.cause)));
+  const [code, reason] = found ?? ['unknown', null];
+  return new WalletPortError(code, text, reason);
+}

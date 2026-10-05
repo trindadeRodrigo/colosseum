@@ -1,5 +1,11 @@
 /// <reference path="../types/javascript-lp-solver.d.ts" />
-import type { Asset, ConstraintSheet, PlanLeg, YieldObservation } from '@colosseum/schemas';
+import type {
+  Asset,
+  ConstraintSheet,
+  LiquidityProvider,
+  PlanLeg,
+  YieldObservation,
+} from '@colosseum/schemas';
 import solver from 'javascript-lp-solver';
 import { isEligible } from '../assets/eligibility';
 import { currentMonth, obligationsBrl, sumUsd } from './obligations';
@@ -29,6 +35,10 @@ export const SOLVER_PARAMS = {
     ConstraintSheet['creditTolerance'],
     number
   >,
+  /** Liquidity hook (used only when a LiquidityProvider is passed): max exit cost, in percent. */
+  impactTolerancePct: 1,
+  /** Share of measured exit capacity a plan may count on. */
+  shareOfDepth: 0.25,
 };
 
 export type SolveInput = {
@@ -38,6 +48,8 @@ export type SolveInput = {
   yields: Map<string, YieldObservation>;
   fxUsdBrl: number;
   nowMonth?: string;
+  /** Optional measured exit liquidity. Absent: stock caps are the registry caps only (behaviour unchanged). */
+  liquidity?: LiquidityProvider;
 };
 
 export type SolveResult = {
@@ -94,12 +106,35 @@ export function solve(input: SolveInput): SolveResult {
       ? SOLVER_PARAMS.equityShareByRisk[sheet.riskBudget]
       : 0;
   const equityLegs: Array<[Asset, number]> = [];
-  if (equityW > 0) {
+  if (equityW > 0 && !input.liquidity) {
     const each = Math.min(equityW / equities.length, ...equities.map((e) => e.capWeight));
     for (const e of equities) equityLegs.push([e, each]);
     const placed = each * equities.length;
     if (placed < equityW - 1e-9)
       binding.push(`equity budget ${equityW} limited by per-stock caps to ${r4(placed)}`);
+    equityW = placed;
+  } else if (equityW > 0 && input.liquidity) {
+    // effective cap = min(registry cap, shareOfDepth × worst-regime exit capacity at tau / capital)
+    const tau = SOLVER_PARAMS.impactTolerancePct / 100;
+    const target = equityW / equities.length;
+    let placed = 0;
+    for (const e of equities) {
+      const cap = input.liquidity.exitCapacity(e.id, tau, sheet.liquidityWindowDays);
+      const liqCap = cap ? (SOLVER_PARAMS.shareOfDepth * cap.capacityUsd) / capitalUsd : 0;
+      const w = Math.min(target, e.capWeight, liqCap);
+      if (liqCap < Math.min(target, e.capWeight) - 1e-9)
+        binding.push(
+          cap
+            ? `${e.id} capped at ${r4(w)} by ${cap.regime} exit capacity $${Math.round(cap.capacityUsd).toLocaleString('en-US')} at ≤${SOLVER_PARAMS.impactTolerancePct}% cost (share ${SOLVER_PARAMS.shareOfDepth}; ${cap.samples} samples, ${cap.dataFrom?.slice(0, 10) ?? '?'} → ${cap.dataTo?.slice(0, 10) ?? '?'}; ${input.liquidity.methodVersion})`
+            : `${e.id} excluded: no measured exit capacity (${input.liquidity.methodVersion})`,
+        );
+      if (w > 1e-9) equityLegs.push([e, w]);
+      placed += w;
+    }
+    if (placed < equityW - 1e-9)
+      binding.push(
+        `equity budget ${equityW} limited to ${r4(placed)} by caps and measured exit capacity`,
+      );
     equityW = placed;
   }
 

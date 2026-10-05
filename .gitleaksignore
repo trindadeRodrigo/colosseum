@@ -1,0 +1,13 @@
+# One line per finding that is not a secret: <commit>:<file>:<rule>:<line>, with the reason above it.
+
+# A public token account address passed to Jupiter as destinationTokenAccount (Sep 30).
+77b591276678da5bc33b039a2c1572b4ef128ac2:scripts/verify/v5-delegation.ts:generic-api-key:46
+
+# The addresses a local anvil chain gives the third and fourth contracts its first account deploys:
+# public, the same on every machine, in the example of a deployment file (Oct 4). The file's field was
+# renamed from `token` to `address` afterwards, so a real deployment file does not trip the rule.
+956fa4337aab570571d506ee85a7b264fee6c67a:packages/sdk/deployments/local.example.json:generic-api-key:26
+956fa4337aab570571d506ee85a7b264fee6c67a:packages/sdk/deployments/local.example.json:generic-api-key:27
+
+# The genesis hash of Solana's public testnet cluster, in a test that the set-up refuses it (Oct 4).
+33165e9cf7b3c00a7142358ac4186bd96e5676b0:programs/tests/testnet-setup.test.ts:generic-api-key:322

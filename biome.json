@@ -1,7 +1,27 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
   "files": {
-    "includes": ["**", "!**/node_modules", "!**/dist", "!**/.next", "!**/migrations/meta", "!data"]
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/.next",
+      "!contracts/out",
+      "!contracts/cache",
+      "!**/migrations/meta",
+      "!data",
+      "!secrets",
+      "!coverage",
+      "!.design",
+      "!.claude/settings.local.json",
+      "!.claude/worktrees",
+      "!**/next-env.d.ts",
+      "!**/target",
+      "!**/.anchor",
+      "!**/test-ledger",
+      "!keys",
+      "!idl"
+    ]
   },
   "formatter": {
     "indentStyle": "space",

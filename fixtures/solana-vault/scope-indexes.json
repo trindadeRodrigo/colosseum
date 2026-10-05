@@ -1,0 +1,89 @@
+{
+  "source": "fixtures/risk/lending/import.json: the Kamino collateral reserves of the registry, oracles.scopePriceChain and oracles.scopeTwapChain",
+  "method": "kamino_reserve_decode",
+  "fetchedAt": "2026-10-01T21:09:34.070Z",
+  "provenance": "live",
+  "priceAccount": "3t4JZcueEzTbVP6kLxXrL3VpWx45jDer4eqysweBchNH",
+  "assets": [
+    {
+      "symbol": "AAPLx",
+      "mint": "XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp",
+      "decimals": 8,
+      "priceIndex": 317,
+      "twapIndex": 259
+    },
+    {
+      "symbol": "CRCLx",
+      "mint": "XsueG8BtpquVJX9LVLLEGuViXUungE6WmK5YZ3p3bd1",
+      "decimals": 8,
+      "priceIndex": 323,
+      "twapIndex": 263
+    },
+    {
+      "symbol": "GOOGLx",
+      "mint": "XsCPL9dNWBMvFtTmwcCA5v3xWPSMEBCszbQdiLLq6aN",
+      "decimals": 8,
+      "priceIndex": 326,
+      "twapIndex": 265
+    },
+    {
+      "symbol": "HOODx",
+      "mint": "XsvNBAYkrDRNhA7wPHQfX3ZUXZyZLdnCQDfHZ56bzpg",
+      "decimals": 8,
+      "priceIndex": 320,
+      "twapIndex": 261
+    },
+    {
+      "symbol": "METAx",
+      "mint": "Xsa62P5mvPszXL1krVUnU5ar38bBSVcWAB6fmPCo5Zu",
+      "decimals": 8,
+      "priceIndex": 329,
+      "twapIndex": 267
+    },
+    {
+      "symbol": "MSTRx",
+      "mint": "XsP7xzNPvEHS1m6qfanPUGjNmdnmsLKEoNAnHjdxxyZ",
+      "decimals": 8,
+      "priceIndex": 335,
+      "twapIndex": 271
+    },
+    {
+      "symbol": "NVDAx",
+      "mint": "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh",
+      "decimals": 8,
+      "priceIndex": 332,
+      "twapIndex": 269
+    },
+    {
+      "symbol": "QQQx",
+      "mint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+      "decimals": 8,
+      "priceIndex": 347,
+      "twapIndex": 281
+    },
+    {
+      "symbol": "SPYx",
+      "mint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "decimals": 8,
+      "priceIndex": 344,
+      "twapIndex": 279
+    },
+    {
+      "symbol": "TSLAx",
+      "mint": "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB",
+      "decimals": 8,
+      "priceIndex": 338,
+      "twapIndex": 273
+    },
+    {
+      "symbol": "PAXG",
+      "mint": "5GgRAEmv8ZxF2PR5hY72Qs5x1bnQ6UK2RbTPoqJ3wSwW",
+      "decimals": 6,
+      "priceIndex": 454,
+      "twapIndex": 168,
+      "source": "Kamino's PAXG reserve 5MHbdvbQTegtPfFikifciBopmdEmZvWXDUpcHkQaz1w4 (\"PAX Gold\") on mainnet, decoded with decodeKaminoReserve (packages/risk/src/lending/kamino.ts): liquidity mint and decimals as this row says, scopePriceFeed the table's price account, scopePriceChain [454], scopeTwapChain [168] (gate GOLD-PAXG). Not in the frozen registry of Oct 1",
+      "method": "kamino_reserve_decode",
+      "fetchedAt": "2026-10-05T21:01:40.000Z"
+    }
+  ]
+}

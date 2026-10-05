@@ -1,0 +1,62 @@
+{
+  "about": "The shape of a network's file, with made-up addresses. It deploys nowhere: it has no admin and its chain id is 0. Copy it to <chain id>.json and fill it in. adminIsDeployer (optional, false when left out) keeps the deployer as admin and beacon owner, for a test network with one key; admin is then ignored. maxAge and assetCooldown are seconds; sessionOpen and sessionClose are seconds after midnight UTC; closedDays are days since 1970, UTC; pull is 1 for a router that takes its input with transferFrom and 2 for one that takes it through Permit2; source is 0 for no price and 1 for a Chainlink feed; session is 0 for always open and 1 for US stock hours. priceDevBps is how far a price may be from its average for the keeper to trade at it. flags is 1 to switch the keeper on for an asset, which needs a feed, an averageFeed (the same source's one-hour average) and a range: minPrice and maxPrice in the feed's units, the ceiling above the floor and at most twice it; 0 and 0 is no range.",
+  "chainId": 0,
+  "admin": "0x0000000000000000000000000000000000000000",
+  "guardian": "0x0000000000000000000000000000000000000002",
+  "keeper": "0x0000000000000000000000000000000000000003",
+  "sequencerFeed": "0x0000000000000000000000000000000000000004",
+  "publishDelay": 172800,
+  "params": {
+    "toleranceBps": 125,
+    "lossCapBps": 100,
+    "bandBps": 50,
+    "assetCooldown": 3600,
+    "sessionOpen": 52200,
+    "sessionClose": 72000
+  },
+  "priceDevBps": 200,
+  "cashToken": "0x1111111111111111111111111111111111111111",
+  "assets": [
+    {
+      "token": "0x1111111111111111111111111111111111111111",
+      "feed": "0x2222222222222222222222222222222222222222",
+      "tokenDecimals": 6,
+      "feedDecimals": 8,
+      "maxAge": 93600,
+      "session": 0,
+      "source": 1,
+      "maxWeightBps": 5000,
+      "pauseProbe": "0x0000000000000000000000000000000000000000",
+      "pauseSelector": "0x00000000",
+      "scheduleSelector": "0x00000000",
+      "flags": 0,
+      "averageFeed": "0x0000000000000000000000000000000000000000",
+      "minPrice": 0,
+      "maxPrice": 0
+    },
+    {
+      "token": "0x3333333333333333333333333333333333333333",
+      "feed": "0x4444444444444444444444444444444444444444",
+      "tokenDecimals": 18,
+      "feedDecimals": 8,
+      "maxAge": 93600,
+      "session": 1,
+      "source": 1,
+      "maxWeightBps": 2500,
+      "pauseProbe": "0x3333333333333333333333333333333333333333",
+      "pauseSelector": "0x5c975abb",
+      "scheduleSelector": "0x97a4064f",
+      "flags": 1,
+      "averageFeed": "0x6666666666666666666666666666666666666666",
+      "minPrice": 15000000000,
+      "maxPrice": 25000000000
+    }
+  ],
+  "routers": [
+    {
+      "router": "0x5555555555555555555555555555555555555555",
+      "pull": 2
+    }
+  ],
+  "closedDays": [20813]
+}

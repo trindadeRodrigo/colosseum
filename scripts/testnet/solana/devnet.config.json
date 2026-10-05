@@ -1,0 +1,248 @@
+{
+  "network": "solana-devnet",
+  "roles": {
+    "guardian": "admin",
+    "defaultKeeper": "DeqGurwS6Hpw79sJzgMfARXh2EMvdXpkFADpw7WVg6A2",
+    "priceWriter": "FKdQQ5HL1Y5bzQuepNigXz2uf6k48Bre324FkY3fLKLi"
+  },
+  "params": {
+    "toleranceBps": 75,
+    "lossCapBps": 100,
+    "bandBps": 50,
+    "twapDevBps": 200,
+    "maxPriceAgeS": 120,
+    "assetCooldownS": 3600,
+    "publishDelayS": 60,
+    "sessionOpenUtcS": 52200,
+    "sessionCloseUtcS": 72000
+  },
+  "cash": {
+    "id": "solana:usdc",
+    "modelOf": "USDC",
+    "decimals": 6,
+    "reserve": "10000000"
+  },
+  "defaults": {
+    "spreadBps": 15,
+    "maxWeightBps": 5000,
+    "reserveUsd": "1000000"
+  },
+  "tokens": [
+    {
+      "id": "solana:spyx",
+      "modelOf": "SPYx",
+      "kind": "stock",
+      "multiplier": 1.0057146,
+      "initialPrice": {
+        "usd": "776.80",
+        "source": "Kamino Scope entry 344 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",
+        "fetchedAt": "2026-10-05T15:10:14Z",
+        "method": "scope_entry"
+      },
+      "keeper": {
+        "minUsd": "602.02",
+        "maxUsd": "971.00"
+      }
+    },
+    {
+      "id": "solana:qqqx",
+      "modelOf": "QQQx",
+      "kind": "stock",
+      "initialPrice": {
+        "usd": "755.90",
+        "source": "Kamino Scope entry 347 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",
+        "fetchedAt": "2026-10-05T15:10:14Z",
+        "method": "scope_entry"
+      },
+      "keeper": {
+        "minUsd": "585.83",
+        "maxUsd": "944.88"
+      }
+    },
+    {
+      "id": "solana:nvdax",
+      "modelOf": "NVDAx",
+      "kind": "stock",
+      "initialPrice": {
+        "usd": "237.55",
+        "source": "Kamino Scope entry 332 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",
+        "fetchedAt": "2026-10-05T15:10:14Z",
+        "method": "scope_entry"
+      },
+      "keeper": {
+        "minUsd": "184.10",
+        "maxUsd": "296.94"
+      }
+    },
+    {
+      "id": "solana:tslax",
+      "modelOf": "TSLAx",
+      "kind": "stock",
+      "initialPrice": {
+        "usd": "378.94",
+        "source": "Kamino Scope entry 338 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",
+        "fetchedAt": "2026-10-05T15:10:14Z",
+        "method": "scope_entry"
+      },
+      "keeper": {
+        "minUsd": "293.68",
+        "maxUsd": "473.68"
+      }
+    },
+    {
+      "id": "solana:aaplx",
+      "modelOf": "AAPLx",
+      "kind": "stock",
+      "initialPrice": {
+        "usd": "334.88",
+        "source": "Kamino Scope entry 317 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",
+        "fetchedAt": "2026-10-05T15:10:14Z",
+        "method": "scope_entry"
+      },
+      "keeper": {
+        "minUsd": "259.53",
+        "maxUsd": "418.60"
+      }
+    },
+    {
+      "id": "solana:googlx",
+      "modelOf": "GOOGLx",
+      "kind": "stock",
+      "initialPrice": {
+        "usd": "345.76",
+        "source": "Kamino Scope entry 326 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",
+        "fetchedAt": "2026-10-05T15:10:14Z",
+        "method": "scope_entry"
+      },
+      "keeper": {
+        "minUsd": "267.96",
+        "maxUsd": "432.20"
+      }
+    },
+    {
+      "id": "solana:metax",
+      "modelOf": "METAx",
+      "kind": "stock",
+      "initialPrice": {
+        "usd": "748.49",
+        "source": "Kamino Scope entry 329 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",
+        "fetchedAt": "2026-10-05T15:10:14Z",
+        "method": "scope_entry"
+      },
+      "keeper": {
+        "minUsd": "580.08",
+        "maxUsd": "935.62"
+      }
+    },
+    {
+      "id": "solana:mstrx",
+      "modelOf": "MSTRx",
+      "kind": "stock",
+      "initialPrice": {
+        "usd": "162.50",
+        "source": "Kamino Scope entry 335 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",
+        "fetchedAt": "2026-10-05T15:10:14Z",
+        "method": "scope_entry"
+      },
+      "keeper": {
+        "minUsd": "125.94",
+        "maxUsd": "203.12"
+      }
+    },
+    {
+      "id": "solana:crclx",
+      "modelOf": "CRCLx",
+      "kind": "stock",
+      "initialPrice": {
+        "usd": "84.13",
+        "source": "Kamino Scope entry 323 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",
+        "fetchedAt": "2026-10-05T15:10:14Z",
+        "method": "scope_entry"
+      },
+      "keeper": {
+        "minUsd": "65.20",
+        "maxUsd": "105.16"
+      }
+    },
+    {
+      "id": "solana:hoodx",
+      "modelOf": "HOODx",
+      "kind": "stock",
+      "initialPrice": {
+        "usd": "113.75",
+        "source": "Kamino Scope entry 320 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",
+        "fetchedAt": "2026-10-05T15:10:14Z",
+        "method": "scope_entry"
+      },
+      "keeper": {
+        "minUsd": "88.16",
+        "maxUsd": "142.19"
+      }
+    },
+    {
+      "id": "solana:jlusdc",
+      "modelOf": "jlUSDC",
+      "kind": "dollar_yield",
+      "tokenProgram": "token",
+      "decimals": 6,
+      "priceIndex": 482,
+      "twapIndex": 483,
+      "session": 0,
+      "spreadBps": 5,
+      "initialPrice": {
+        "usd": "1",
+        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
+        "fetchedAt": "2026-10-04T00:00:00Z",
+        "method": "placeholder"
+      },
+      "keeper": {
+        "minUsd": "0.9",
+        "maxUsd": "1.5"
+      }
+    },
+    {
+      "id": "solana:syrupusdc",
+      "modelOf": "syrupUSDC",
+      "kind": "dollar_yield",
+      "tokenProgram": "token",
+      "decimals": 6,
+      "priceIndex": 484,
+      "twapIndex": 485,
+      "session": 0,
+      "spreadBps": 5,
+      "initialPrice": {
+        "usd": "1",
+        "source": "a round number chosen for the test network until real prices are copied onto it; not a market price",
+        "fetchedAt": "2026-10-04T00:00:00Z",
+        "method": "placeholder"
+      },
+      "keeper": {
+        "minUsd": "0.9",
+        "maxUsd": "1.5"
+      }
+    },
+    {
+      "id": "solana:paxg",
+      "modelOf": "PAXG",
+      "realName": "Paxos Gold",
+      "kind": "gold",
+      "tokenProgram": "token-2022",
+      "extensions": "paxg",
+      "decimals": 6,
+      "priceIndex": 454,
+      "twapIndex": 168,
+      "indexSource": "scope-indexes",
+      "session": 0,
+      "initialPrice": {
+        "usd": "4142.63",
+        "source": "Kamino Scope entry 454 on mainnet (the price of Kamino's PAXG reserve 5MHbdvbQTegtPfFikifciBopmdEmZvWXDUpcHkQaz1w4, capped and floored to Chainlink XAU/USD at entry 167), read by hand",
+        "fetchedAt": "2026-10-05T18:59:22Z",
+        "method": "scope_entry"
+      },
+      "keeper": {
+        "minUsd": "3210.54",
+        "maxUsd": "5178.29"
+      }
+    }
+  ]
+}

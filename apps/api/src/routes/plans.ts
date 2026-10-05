@@ -16,6 +16,7 @@ import {
   buildScheduleWithStresses,
   parseGoal,
   pickPrimaryYield,
+  SOLVER_PARAMS,
   SOLVER_VERSION,
   solve,
 } from '@colosseum/engine';
@@ -33,6 +34,7 @@ import {
 import { desc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import { loadLiquidityProvider } from '../liquidity';
 
 const rowToAsset = (r: typeof assetsTable.$inferSelect): Asset =>
   Asset.parse({
@@ -148,7 +150,8 @@ export async function registerPlanRoutes(app: FastifyInstance) {
         .values({ goalId, sheet, valid: true, validationErrors: [], origin: 'user_edit' })
         .returning();
       if (!cs) throw new Error('sheet insert');
-      const solved = solve({ sheet, capitalUsd, assets, yields, fxUsdBrl });
+      const liquidity = await loadLiquidityProvider(db, assets);
+      const solved = solve({ sheet, capitalUsd, assets, yields, fxUsdBrl, liquidity });
       const assetMap = new Map(assets.map((a) => [a.id, a]));
       const sched = buildScheduleWithStresses({
         sheet,
@@ -157,6 +160,7 @@ export async function registerPlanRoutes(app: FastifyInstance) {
         yields,
         capitalUsd,
         fxUsdBrl,
+        liquidity,
       });
       const legAssets = solved.legs
         .map((l) => assetMap.get(l.assetId))
@@ -165,6 +169,14 @@ export async function registerPlanRoutes(app: FastifyInstance) {
         assets: legAssets,
         yields,
         depth: new Map<string, DepthObservation[]>(),
+        liquidity: liquidity
+          ? {
+              provider: liquidity,
+              tau: SOLVER_PARAMS.impactTolerancePct / 100,
+              windowDays: sheet.liquidityWindowDays,
+              legAmounts: new Map(solved.legs.map((l) => [l.assetId, l.amountUsd])),
+            }
+          : undefined,
       });
 
       const [plan] = await db
@@ -230,6 +242,9 @@ export async function registerPlanRoutes(app: FastifyInstance) {
         stresses: sched.stresses,
         riskSheet: risk,
         solverVersion: `${SOLVER_VERSION}/${solved.method}`,
+        liquidity: liquidity
+          ? { methodVersion: liquidity.methodVersion, provenance: liquidity.provenance }
+          : null,
         disclaimer: DISCLAIMER.en,
         createdAt: plan.createdAt.toISOString(),
       };

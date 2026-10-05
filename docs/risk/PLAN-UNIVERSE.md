@@ -1,0 +1,192 @@
+# PLAN-UNIVERSE.md — the tracked stocks, every pool they trade in, and the oracle a rebalance needs
+
+*Written Mon 2026-10-05 on branch `docs/universe-plan` (cut from `staging` at `7bbdef6`). It continues `docs/risk/PLAN-RISK.md` and `docs/risk/PLAN-ANALYTICS.md`; methods and decisions there still apply. Build prompt: `docs/risk/PROMPT-BUILD-UNIVERSE.md`. Decision: gate `UNIVERSE` in `docs/GATES.md`. Ledger row: RISK-5 in `docs/vault/STATE-VAULT.md`.*
+
+*Scope: Solana and Robinhood Chain. Base is not in this plan (gates `BASE` and `RH-PARALLEL`).*
+
+---
+
+## 1. Summary
+
+- **The rule (founder, 2026-10-05).** On each chain, rank the pools of every stock token by the money they hold. The pools that make 80% of the total name the **tracked stocks**. Then track **every pool** of each tracked stock, not only the pools inside the 80%. More pools known means a better route for a trade.
+- **The oracle.** A rebalance the vault runs by itself is checked against an oracle price. So each tracked stock carries its oracle (which one, where, how old it runs, how far it sits from the pool price). A tracked stock with no oracle is still tracked and still tradable with the owner's signature; it is never rebalanced automatically.
+- **Solana: the cut is done, most pools are already collected.** 18 stocks, 869 live pools, read every 5 minutes or every hour since Oct 1. What is missing is using them: the router plans through 129 of the 869.
+- **Robinhood Chain: nothing systematic exists.** The collector measures 21 tokens picked by hand and keeps three pools each. The chain's 195 stock tokens were never ranked.
+- **What this plan builds.** One asset list per chain (the tracked stocks, their pools, their oracle), a Robinhood discovery pass and a collector that reads the list, the oracle recorded beside the pool price on both chains, and a router that can use the pools it ignores today.
+- **Most likely failure:** the Robinhood discovery. Uniswap v4 keeps every pool inside one contract, so listing all pools of a token needs event logs, and the free RPC may refuse the range. Item 2 probes this first and has a fallback.
+
+## 2. What we know now
+
+| Fact | Evidence |
+|---|---|
+| Solana, registry of 2026-10-01 01:39Z: the pools holding 80% of on-chain TVL belong to 18 stocks: AAPLx, AMZNx, COINx, CRCLx, GLDx, GMEx, GOOGLx, HOODx, MCDx, METAx, MSFTx, MSTRx, NVDAx, QQQx, SPCXx, SPYx, STRCx, TSLAx | `data/risk/registry-20261001T0139.json`, sorted by `tvlUsd` (recomputed 2026-10-05) |
+| Those 18 stocks have 5,179 pools with money in them; 869 hold $1,000 or more. Together the 18 hold 96.3% of all xStocks pool TVL | same file |
+| The 869 by venue: 610 Raydium CPMM, 163 Raydium CLMM, 60 Orca Whirlpool, 36 Meteora DLMM. By refresh: 661 every 5 minutes, 208 hourly. All 869 are already collected | same file; `docs/risk/STATE-RISK.md` rows 1 and 2 |
+| The 869 by how a seller reaches dollars: 71 straight to USDC or USDT, 58 through SOL, 22 through another xStock, 718 paired with some other token. The router (`routeTrade`) and the split snapshot use only the first two groups: 129 pools | same file (`exitPath`); `PLAN-ANALYTICS.md` §7 item 4 |
+| Raw tick and bin arrays are recorded hourly for 32 concentrated-liquidity pools (the 80% pools). The 18 stocks have 259 such pools | `PLAN-ANALYTICS.md` §7 item 20 |
+| Against Jupiter at $100k our router is worse by 27 bp (sell) and 19 bp (buy); with the same pools on both sides the gap is 2.9 bp. The rest is pools we do not model: one Raydium fork (Byreal), proprietary market makers, an order book, and two-hop pools | `docs/GATES.md`, gate `ROUTING` |
+| Solana oracle: Kamino Scope prices 10 of the 18 (AAPLx, CRCLx, GOOGLx, HOODx, METAx, MSTRx, NVDAx, QQQx, SPYx, TSLAx). No Scope entry found for AMZNx, COINx, GLDx, GMEx, MCDx, MSFTx, SPCXx, STRCx | `fixtures/solana-vault/scope-indexes.json` (from the Kamino collateral reserves, 2026-10-01) |
+| The Solana vault refuses a keeper trade unless the Scope price is at most 120 s old and within a set distance of its 1-hour average. The distance (200 bps) is a placeholder | `docs/vault/DESIGN-VAULT.md`, the rule table, row 8 |
+| Scope reads are already stored every 5 minutes (5,612 by Oct 2) in `risk_price_observations`, and `risk_reference_prices` holds one price per asset and hour with each venue's oracle beside it | `STATE-RISK.md` row 11 |
+| Robinhood Chain has 195 stock tokens in the issuer's registry; 36 have a Chainlink feed. ETFs sit in the same registry (SPY, QQQ, GLD, SLV, USO, SGOV) | `docs/vault/research/open-questions/launch-shelf.md` (Oct 1) |
+| The EVM collector reads 21 Robinhood tokens, keeps the three deepest pools DexScreener returns per token, measures only pools the vault's swap path reaches (Uniswap v3 pools the factory confirms, v4 pools with no hook), and stores the best single pool per size as `evmq-0.1` | `scripts/risk-evm/README.md`, `config.ts`, `pools.ts` |
+| Other venues on Robinhood Chain quote stock tokens tighter than Uniswap; the vault's router does not reach them | `scripts/risk-evm/README.md`, known limits |
+| Chainlink stock feeds on Robinhood Chain were seen 12 to 53 minutes old in session and 10 to 14 hours old off session. The EVM vault accepts a stock price up to 26 hours old inside a session window | `DESIGN-VAULT.md` line 68; `launch-shelf.md` spot checks |
+| EVM curves are still stored under the Solana method name with a cut address for a symbol: the six lines in `scripts/risk/compute.ts` and the `inArray` in `apps/api/src/liquidity.ts` are not written (RISK-1). `pnpm risk-evm:import` has never met a database | `origin/staging` at `7bbdef6`; ledger row REVM-1 |
+| `risk_price_observations` and `risk_reference_prices` have a `chain` column. `risk_pools` and `risk_asset_snapshots` do not | `packages/db/src/risk-schema.ts` |
+| The migration token is held by Thom (API-2) | ledger row MIGRATION |
+
+Known since RU.3 (§6): the 80% cut on Robinhood Chain names 30 stocks with 427 pools of $1,000 or more; $73.6M of their $84.0M sits in pools the vault reaches and $10.5M in pools it does not (hooked v4 pools, other venues). Not yet known, and item 5 finds out: how many of the 30 have a feed.
+
+## 3. The steps
+
+**Who does what:** the session builds. The founder does what is marked **YOU**. Each item ends with tests passing, `pnpm verify`, a commit `RU.N: …` and its row in §6.
+
+**Constraints for the whole plan.**
+
+- **Read-only on mainnet.** `eth_call`, `eth_getLogs`, account reads and public GETs. No transaction, no key, no wallet.
+- **Nothing running is disturbed.** The Solana collectors and their launchd jobs are not edited, reloaded or re-installed before Oct 12 (`CLAUDE.md`). Thom's EVM loop keeps its `evmq-0.1` row shape: his files gain options, they do not change what a plain run writes.
+- **Additive.** `LiquidityProvider`, the `/risk/*` routes and the `risk-0.3` and `evmq-0.1` rows keep their shape. New fields are optional.
+- **No migration in the first pass** (DU6). The token is taken only if an item cannot be done without one.
+- **Provenance.** Every figure carries `source`, `fetched_at`, `method` and `provenance`. A missing fact is `null` with a reason, never zero. No price, fee or yield literal outside `fixtures/`.
+- **Nothing under `data/` is committed.** The asset list of item 4 is the one generated file that is.
+
+### Phase 1 — Robinhood Chain
+
+**RU.1 — The 80% rule as one pure function.**
+`trackedSet(pools, { share: 0.8, minPoolUsd: 1000 })` in `packages/risk/src/universe.ts`: sorts by TVL, takes the shortest prefix that reaches the share, returns the pools of the cut, the assets they name, and every pool of those assets. No I/O. Both chains use it.
+- **Check:** on a frozen copy of the Solana registry of Oct 1 (pool address, asset, TVL only) it returns the 18 stocks of §2 and their 869 pools. The cut's pool count is pinned by the test; the 34 in `PLAN-RISK.md` was counted on a slightly different base and the test records which base gives which count.
+
+**RU.2 — Robinhood token list and pool discovery.**
+- `pnpm risk-evm:universe`: reads the issuer's registry (`api.robinhood.com/rhj/assets`), checks each address on chain (`decimals()`, `symbol()`), writes `data/risk-evm/universe-robinhood-<stamp>.json`.
+- `pnpm risk-evm:discover`: for every token, every pool, from three sources: DexScreener (at most 30 per token), the Uniswap v3 factory asked directly (`getPool` for the token against each quote token seen, at each fee tier), and Uniswap v4 `Initialize` events of the pool manager filtered by the token. Each pool is confirmed on chain as today. TVL is measured on chain where the pool holds its own balances (v3); for v4 it is computed from the pool's liquidity around the price, labelled as such.
+- A pool the vault cannot reach (a hook, another venue) is kept and marked `reachable: false` with the reason (DU3).
+- **Probe first:** whether the free RPC answers `eth_getLogs` over the pool manager's life. If not: dRPC's free archive, then DexScreener alone with the gap stated per token.
+- **Check:** every token of the registry has a row (pools found, or `no_pool`); for the 21 tokens of today's `config.ts` the three pools the collector uses are among those found; the run prints its RPC calls and duration.
+
+**RU.3 — The cut on Robinhood Chain.**
+`pnpm risk-evm:pareto` applies RU.1 to RU.2's file and writes the tracked stocks, the pools of the cut, and all pools of the tracked stocks.
+- **Check:** the file exists with counts at 80, 90, 95 and 99%; the tracked stocks are compared with the 21 collected today and the differences are listed for the founder.
+
+**RU.4 — The asset list, one file per chain.**
+`scripts/risk/universe/robinhood.json` and `solana.json`, generated by `pnpm risk:universe <chain>`, committed (DU2). One row per tracked stock:
+- identity in the vault's shape (`BasketAsset` fields: id, chain, address, symbol, decimals, class, underlying, issuer, session);
+- `inCut`, pool counts (all, reachable, by venue), TVL and share;
+- `oracle`: `{ kind: 'chainlink' | 'scope', ref }` or `null` with `reason`;
+- `autoRebalance`: true only with an oracle; otherwise false with the reason;
+- `source`, `fetchedAt`, `method` on the row and on the oracle.
+- A zod schema in `packages/schemas` (additive). The Solana file comes from the existing registry and the Scope fixture's source; no new chain read.
+- **Check:** both files parse; Solana has 18 rows, 10 with a Scope oracle and 8 with `no_scope_entry`; every Robinhood row with a feed names an address that item 5 confirmed.
+
+**RU.5 — The oracle map for Robinhood Chain.**
+Feeds from Chainlink's reference directory (`feeds-robinhood-mainnet.json`). Each is confirmed on chain: `description()`, `decimals()`, `latestRoundData()`. A feed whose description does not name the token is refused.
+- **Check:** every tracked stock has a confirmed feed or `no_feed`; the count of tracked stocks without one is printed for the founder.
+
+**RU.6 — The collector reads the list and keeps every pool.**
+- `scripts/risk-evm/config.ts` takes its Robinhood tokens from `robinhood.json` (the hand list stays as the fallback when the file is absent).
+- The per-token pool limit becomes a setting; with the list present it is "all reachable pools".
+- The asset row stays `evmq-0.1` (best single pool per size, now chosen among all). A new per-pool file `data/risk-evm/pools/<day>.jsonl` holds every pool's own quote at every size, method `evmq-pools-0.1`, so a split across pools can be computed later.
+- **Check:** a run on the list writes one asset row per tracked stock and one pool row per reachable pool; for a token collected today, cost at each size is equal to or lower than the three-pool run at the same block (it can only improve); calls and seconds are recorded, and stay inside the hour.
+
+**RU.7 — The oracle recorded beside the pool price.**
+In the same run and at the same block, one Multicall3 call reads `latestRoundData()` of every tracked stock's feed. Rows go to `data/risk-evm/oracle/<day>.jsonl`; `pnpm risk-evm:import` loads them into `risk_price_observations` (`chain: 'robinhood'`, `price_source: 'chainlink'`, `source_ts` = the feed's `updatedAt`). No migration: the table already has the chain.
+- **Check:** each row's age equals block time less `updatedAt`; a second import inserts nothing; a replayed fixture gives the same rows.
+
+**RU.8 — EVM curves reach the API (closes RISK-1's lines).**
+- The six lines in `scripts/risk/compute.ts` and the `inArray` in `apps/api/src/liquidity.ts`, as listed in `scripts/risk-evm/README.md`.
+- `pnpm db:seed` also writes an `assets` row per tracked EVM stock from `robinhood.json`, `mint` holding the address exactly as the collector writes it.
+- First real `pnpm risk-evm:import` against the local database. **YOU:** start the loop here (DU5: it runs on this machine). The files collected so far are on Thom's machine; they are imported too if he sends them, otherwise the history starts with the first local run.
+- **Check:** `GET /risk/assets/<id>` for one Robinhood stock answers with its own symbol and `evmq-0.1`; every Solana answer is byte-identical before and after (`pnpm risk:provider-check`).
+
+**RU.9 — What a rebalance needs to know, per asset.**
+An optional `oracle` block on `AssetFacts` (additive), for both chains, built from `risk_price_observations` and the pool mids:
+- which oracle and where; age at the median and the 95th percentile, by regime;
+- gap between oracle and pool mid at the median, the 95th percentile and the maximum, by regime (kept apart, never blended: gate `ORACLE-VS-DEX`);
+- the share of hours in which the vault's own check would have refused a trade, at the limits the vault holds today;
+- `autoRebalance` and its reason.
+- These measured ages and gaps are what replaces the vault's placeholder limits (Thom's side; this plan only delivers the numbers).
+- **Check:** on a fixture, each figure is recomputed by hand; a stock with no oracle answers `autoRebalance: false, reason: no_oracle` and every oracle figure `null`; a stock with fewer than 8 observations in a regime answers `insufficient_samples` there.
+
+### Phase 2 — Solana
+
+**RU.10 — The Solana list.** Covered by RU.4: 18 stocks, 869 pools, 10 oracles. No collector change. **Check:** RU.4's.
+
+**RU.11 — The router uses the pools it ignores.**
+- First, a table for the founder: the 740 unused pools (22 through another xStock, 718 other) by quote token, with TVL, so it is plain where the money sits.
+- Then `routeTrade` learns two hops: stock → quote token → dollars, only where the quote token's own way to dollars is measured (SOL, USDC, USDT, a tracked xStock). Other quote tokens stay listed, not routed.
+- The split snapshot (`pnpm risk:split-snapshot`) reads the wider set. It is our own script and job, not a collector.
+- **Check:** on frozen pools, a two-hop route equals the two swaps simulated by hand; with two hops off, every stored result is unchanged; `pnpm risk:routing-gap` is run before and after on the same quotes, and the $100k gap to Jupiter (27 bp sell, 19 bp buy) is reported as it comes out. If the gain is under 2 bp, that is recorded and the wider read is switched off.
+
+**RU.12 — Raw arrays and history for every concentrated-liquidity pool of the 18.**
+Today 32 pools are recorded hourly; the 18 stocks have 259. A new hourly job with its own installer writes the other pools' tick and bin arrays in the collector's format, the way the price job was added (gate `PRICE-JOB`): no existing collector file is edited and no running job is reloaded.
+- **YOU:** install it. Until then the session proves the bundle from a temporary folder only.
+- **Check:** one run's files decode with `packages/risk/src/pools`; the pool-liquidity route answers `basis=recorded` for a pool outside the 80%; the job's RPC calls and duration are recorded.
+
+**RU.13 — The venues we cannot read.**
+One table: for the 18 stocks, how much liquidity and 24-hour volume sits in Byreal, the proprietary market makers and the order book (from the discovery data, labelled as estimates). Decision D4 of `PLAN-RISK.md` stands: a venue is added only when its decoder passes the same validation as the four we have. This item decides, with numbers, which decoder is worth building first. It builds none.
+- **Check:** the table exists with its source and date.
+
+## 4. Decisions
+
+| # | Question | Default | Status |
+|---|---|---|---|
+| DU1 | Which money counts for the 80% | TVL measured on chain, pools of $1,000 or more, every confirmed venue, reachable or not | default |
+| DU2 | Where the asset list lives | `scripts/risk/universe/<chain>.json`, generated and committed. The collector, the seed and the vault's asset entries (OPS-4) read it | default |
+| DU3 | Robinhood pools the vault cannot reach | Tracked and marked, never routed. They show what an aggregator would get, and which venue is worth allowlisting | default |
+| DU4 | A second oracle on Solana for the 8 stocks Scope does not price | Not now. The vault reads Scope only; the 8 are tracked and owner-signed. Pyth lists feeds for most of them, unverified on chain | default; Thom's side if reopened |
+| DU5 | Where the Robinhood loop and its database run | On the founder's machine, locally, with the local database, as a new job started on his word. Thom's loop keeps running until the new one has a clean day. A dedicated machine or cloud infrastructure may take it over later; nothing is built for that now | decided 2026-10-05 (founder) |
+| DU6 | A `chain` column on `risk_pools` and `risk_asset_snapshots` | Not in the first pass. An EVM address cannot collide with a Solana one, and `venue` names the chain's exchange. Asked for later, with the migration token | default |
+| DU7 | ETFs in the Robinhood registry (SPY, GLD, SGOV, USO, SLV) | Ranked with the stocks: they are the same issuer's tokens in the same pools. Their class is set on the list row | default |
+
+Settled by the founder on 2026-10-05 (gate `UNIVERSE`): the rule of §1, both chains, and the oracle as a condition of automatic rebalancing.
+
+## 5. Not in this plan
+
+- Base.
+- A yield or exchange-rate reading for treasury and dollar-yield tokens. The collector measures the cost to sell; SGOV's multiplier and a yield token's rate over time are a separate step.
+- A router that splits one sale across pools on Robinhood Chain. RU.6 stores what it needs; building it waits for the numbers.
+- New decoders on Solana (RU.13 only ranks them).
+- Any change to the vault program, the contracts or their limits. RU.9 delivers measurements; who sets the limits from them is the vault stream.
+- A deploy, a hosted job, or any live data change.
+
+## 6. Status
+
+| Item | Status | Evidence |
+|---|---|---|
+| RU.1 The rule as a function | done 2026-10-05 | `trackedSet(pools, { share, minPoolUsd })` in `packages/risk/src/universe.ts`, exported from `@colosseum/risk`. Pure: no I/O, no clock, no SDK. It returns the cut, the assets it names (sorted), every ranked pool of those assets, and the counts of their pools left out as dust or as unmeasured. A pool whose TVL is `null` is never ranked and never counted as zero; a TVL that is not a finite number of 0 or more, or a pool with no asset, is refused; equal pools are ordered by address, so the result does not depend on input order. **Fixture:** `fixtures/risk/universe/solana-registry-20261001T0139.json.gz`, the registry file of 2026-10-01 01:39Z (`fetched_at` 01:38:24Z) cut to address, asset and TVL (5,951 pools), with `source`, `fetched_at`, `method`; made by `pnpm risk:freeze-universe-fixture <registry.json>` (no chain read). **Check:** `pnpm vitest run tests/risk-layer/universe.test.ts`, 13 passed: at 80% and $1,000 it returns the 18 stocks of §2 and their 869 pools. **The cut, by base:** pools of $1,000 or more (992 pools, the rule's base, DU1): **34 pools**, the same pools as the 34 of `STATE-RISK.md` Step 1 (the `retier.ts` rule). The 34 in `PLAN-RISK.md` section 2 was counted on DexScreener's estimates, a different base (301 pools at 99% there, 757 here), and only happens to be the same number; every pool with money (5,694): **35 pools**. The same 18 stocks on both. Wider cuts on the $1,000 base: 90% is 82 pools and 25 stocks, 95% is 206 and 34, 99% is 757 and 45. With no floor the 18 have 5,179 pools holding 96.3% of all pool TVL. `pnpm verify` passed (3,160 tests, 41 skipped). **Deviations:** the branch is `universe/ru1`, not `risk/universe-ru1` (see Discovered); it was cut from `docs/universe-plan`, not `staging`, because the plan was not merged yet (pull request 39). No caller is changed: `retier.ts` and `pool-pareto.ts` keep their own loops (the first writes the collector's registry, which is not touched before Oct 12) |
+| RU.2 Robinhood universe and discovery | done 2026-10-05 | `pnpm risk-evm:universe` and `pnpm risk-evm:discover` (`scripts/risk-evm/universe.ts`, `registry.ts`, `discover.ts`, `discover-run.ts`, `discovery.ts`; method `evm-discovery-0.1`; `scripts/risk-evm/README.md`, "The token list and every pool"). The hourly collector reads nothing they write and its code path is unchanged (`config.ts` gained two optional fields, `abi.ts` new selectors). **The probe, first:** the public RPC refuses one `eth_getLogs` over the chain's life ("only 10000000 are allowed"), refuses a ten-million-block query that matches more than 10,000 logs, and allows a list of tokens in a topic over at most 100,000 blocks. Ten such queries in one request, one request a second, were answered: 3,240 queries, 13 minutes, 16 refusals for rate, each answered on the next try. dRPC's free plan refuses any range over 10,000 blocks. So every pool was listed from the public endpoint and the fallback was not needed; it is built and tested (`--no-logs`). **The run** (blocks 81,044,145 to 81,057,597; file `data/risk-evm/discovery-robinhood-20261005T1947.json`, not committed): 194 tokens in the registry, all confirmed on chain, each with a row; none is `no_pool`. 100,538 v4 pools and 2,544 Uniswap v3 pools name a token; 38,434 have no row (empty, or on v4 no liquidity at the price); 64,845 rows. 2,140 rows have a measured TVL ($91.0M); 728 hold $1,000 or more, 543 of them reachable. 62,705 rows are `null` with a reason: 2,248 because the stock has no dollar pool of $1,000 to price it (96 of the 194 tokens); 52,361 because the stock side is under $100 and the other token's price was not looked up; 8,096 because it was looked up and the other token has no dollar pool of $1,000. **Check:** `--check-collector`: the collector's own lookup keeps 54 pools for the 21 tokens of `config.ts`; all 54 are among the rows, all `reachable`. The factory's `getPool` named the same 2,544 v3 pools as its events. Calls and duration are printed and stored per step: first run 4,217 RPC calls in 35 minutes, later runs about 1,500 in 24 to 30 (the events are kept; only new blocks are read). `pnpm vitest run tests/risk-evm-universe.test.ts`, 47 passed, replaying one recorded pass (`fixtures/risk-evm/robinhood-discovery.json.gz`, made by `record-discovery-fixture.ts`). **Deviations:** (1) the v4 figure is not "liquidity around the price" taken as constant: that was built first and ran up to 8 times DexScreener's figure. It is the sum, tick by tick, of what the positions hold between price / 1.5 and price × 1.5, read at the same block as the price. The same sum on 109 Uniswap v3 dollar pools is 98% of their measured balances at the median. (2) `getPool` is asked for the pairs seen, not for every quote token: it confirms the events, it does not replace them. (3) a pool that holds nothing has no row and is counted on its token. (4) the registry has 194 tokens today, not the 195 of sections 1 and 2 and of gate `UNIVERSE` (counted Oct 1). **From the review** (`/review-pr`, nothing blocking): a stock's price now comes from its deepest reachable dollar pool of either kind, and only from a pool with liquidity in range (before, a v3 pool at the $1,000 floor won over a deeper v4 pool); a pool whose read failed keeps its row instead of being counted as empty |
+| RU.3 The cut on Robinhood | done 2026-10-05 | `pnpm risk-evm:pareto` (`scripts/risk-evm/pareto.ts`, `cut.ts`; method `evm-cut-0.1`; `scripts/risk-evm/README.md`, "The cut"). It maps each discovery row to `trackedSet` as pool id, token address and TVL, reads one file and calls nothing, and writes `data/risk-evm/cut-robinhood-<stamp>.json` (not committed). It refuses a discovery more than a day old and one in which DexScreener failed for a token (`--allow-old`, `--allow-gaps`). **The run** (on `discovery-robinhood-20261005T1947.json`, 2 hours old, no token with the gap): 728 pools ranked, $90.9M. **80%: 93 pools, 30 stocks**, 427 ranked pools of those stocks ($84.0M), 274 reachable. 90%: 154 pools, 48 stocks; 95%: 225 and 67; 99%: 440 and 89. **Against the collector's 21:** 20 in both; tracked and not collected: AMC, COST, DJT, GME, HIMS, LLY, PLTR, QQQ, RDDT, SPCX; collected and not tracked: TSM (largest pool rank 102; any cut above 82.0% names it). **Stated, not chosen:** 62,705 rows have no TVL and are left out and counted; 96 tokens have no price and are listed; 994 rows with no TVL hold $1,000 or more on the stock side ($5.0M of stock tokens, 796 rows under tracked stocks), listed and not ranked; without the v4 pools the cut names 29 stocks (IBM and NFLX enter; AMD, PLTR, SNDK leave), printed beside the main cut; 106 pools pair two stocks, 101 touch a tracked stock and 19 are in the cut, all SPY against another stock ($9.3M). **Check:** `pnpm vitest run tests/risk-evm-cut.test.ts`, 15 passed, on the discovery frozen to what the cut reads (`fixtures/risk/universe/robinhood-discovery-20261005T1947.json.gz`: 3,135 rows; the 61,710 left out have no TVL and under $1,000 on the stock side); the fixture gives the same cut, stocks and pools as the full file; its counts of unmeasured rows are smaller by the rows left out. `pnpm verify` passed (3,417 tests, 41 skipped). **From the review** (`/review-pr`, nothing blocking): an option value that is not a number is refused instead of becoming the default; a cut by another share or floor is written under its own name; a discovery with no readable time is refused; the gap names are shared with discovery, not copied; the share at which TSM is named is the money ranked above its pool (82.0%), not including it. `freeze-universe-fixture.ts` takes `--chain`; the Solana fixture it writes is byte for byte the one committed. **Deviations:** the branch was cut from `universe/ru2`, not `staging`, on the founder's word (pull request 50 was still open); pull request 57 (https://github.com/trindadeRodrigo/colosseum/pull/57) is stacked on 50 |
+| RU.4 The asset list | todo | |
+| RU.5 Robinhood oracle map | todo | |
+| RU.6 Collector on the list, every pool | todo | |
+| RU.7 Oracle recorded | todo | |
+| RU.8 EVM curves in the API | todo | |
+| RU.9 Oracle facts per asset | todo | |
+| RU.10 Solana list | todo (with RU.4) | |
+| RU.11 Two-hop routing | todo | |
+| RU.12 Raw arrays for all CL pools | todo | |
+| RU.13 Unread venues, ranked | todo | |
+
+Order: RU.1 → RU.2 → RU.3 → RU.5 → RU.4 → RU.6 → RU.7 → RU.8 → RU.9, then Phase 2. RU.8's code does not wait for RU.2 and can go first if the Robinhood probe stalls. RU.11 and RU.13 depend on nothing in Phase 1.
+
+### Discovered
+
+*(findings outside an item go here, dated)*
+
+- **2026-10-05 (RU.1). A pool of two stocks is filed under one of them.** The Solana registry gives each pool one asset. 13 pools pair a tracked stock, as the quote side, with a stock outside the 18, and are filed under the other stock; one holds $1,000 or more (TQQQx/SPYx, $65,608). `trackedSet` follows the registry, so that pool is not among SPYx's 869. Counting it would make 870. RU.2 has the same question on Robinhood Chain (a pool of two stock tokens): it should write one row per pool and say which stock it is filed under. Whether such a pool is tracked under both is for RU.4 or RU.11, where the stock-to-stock pools are routed.
+- **2026-10-05 (RU.1). Branch names cannot start with `risk/`.** A local branch `risk` exists, and git refuses `risk/<name>` beside it. The build prompt now says `universe/ru{N}`.
+- **2026-10-05 (RU.1). `pnpm db:up` fails where `docker compose` is not installed** (`unknown shorthand flag: 'd'`); the container `colosseum-pg` was already running, and `pnpm db:migrate` alone applied `0012`. A stale `apps/web/.next/types` (from before the routes moved into groups) fails the web typecheck until the web app is built once. Both are this machine's state, not the code's.
+- **2026-10-05 (RU.1, from the review). For later items.** (a) The 80% loop now lives in three places: `trackedSet`, `retier.ts` and `pool-pareto.ts`. The two scripts are left alone until the collector freeze ends on Oct 12; folding them onto `trackedSet` afterwards is not yet an item. (b) `trackedSet` compares assets as given: RU.2 should key Robinhood pools on the token address, since two tokens may share a symbol. (c) `freeze-universe-fixture.ts` writes `chain: 'solana'`; RU.3 needs the chain as a parameter if it freezes a Robinhood file. (d) The registry has 257 pools at a TVL of exactly 0 and none at `null`, so whether a zero there is an empty pool or an unpriced one is not known from the file.
+- **2026-10-05 (RU.2). For RU.3: most "pools of a stock" on Robinhood Chain are not stock markets.** About 60,000 of the 100,538 v4 pools carry one launch hook (`0x4e34…a544`) and pair a stock token with a newly made token: the stock is the quote side. 40,038 of them hold something and are rows, marked `has_hook`, nearly all with `tvlUsd: null` because the other token has no dollar price. `trackedSet` leaves a `null` out and counts it, which is right for the cut; 994 rows with no TVL hold $1,000 or more on the stock side (`tokenUsd`), so RU.3 should say in its output that they were left out and what they hold.
+- **2026-10-05 (RU.2). For RU.3 and RU.4: 96 of the 194 tokens have no price.** None has a dollar pool holding $1,000 (the floor is `--min-ref-usd`). Their pools are `token_not_priced`, so they cannot enter the cut. Whether a thinner pool may price a stock is a choice for the founder, not made here.
+- **2026-10-05 (RU.2). A v3 TVL and a v4 TVL are not the same measurement.** v3 is every token the pool holds. v4 is what the positions hold within the band; liquidity further out is missing. On v3 pools the band sum is 98% of the balances at the median and 88% at the 10th percentile, so the v4 figure runs a little low. RU.3 ranks both in one list; it should print the cut with and without v4 pools if the two differ.
+- **2026-10-05 (RU.2). Pools of two stocks: 106 rows.** Filed under token0, with `otherIsStock`. Several of the largest SPY rows are SPY against NVDA, AAPL, GOOGL or QQQ. As on Solana, whether the other stock also counts them is for RU.4 or the routing item.
+- **2026-10-05 (RU.2). Narrow positions move every few blocks.** On the stock-to-stock v4 pools a market maker keeps positions three ticks wide and re-centres them constantly. Any reading that takes the tick list and the price from different blocks is wrong by multiples. RU.6's per-pool quotes are single calls at one block and are not affected; anything that reconstructs depth from ticks is.
+- **2026-10-05 (RU.2). A full discovery takes 30 minutes**, most of it reading 62,000 pools that will never be tracked. RU.6 reads the asset list, not this file, so the hourly run is not affected. If discovery is to run daily, RU.3 or RU.4 can pass `--only` with the tracked symbols.
+- **2026-10-05 (RU.2). dRPC answers a refused query with HTTP 400**, which `rpc.ts` treats as fatal rather than as an RPC error. It only matters if that endpoint is ever used for logs.
+- **2026-10-05 (RU.2). DexScreener can fail for a token in one run and answer in the next.** One run of Oct 5 lost JOBY; the next lost none. The token then carries `dexscreener_failed_other_venues_not_listed`. RU.3 should refuse, or at least print, a discovery file in which a token has that gap.
+- **2026-10-05 (RU.2). A v4 pool with no liquidity at the price has no row** (38,434 pools with the empty v3 ones). It may still hold positions further out. They are counted per token (`idle.v4NoLiquidityInRange`) and their ids stay in `creation-logs-robinhood.json`.
+- **2026-10-05 (RU.3). For the founder: three choices the cut does not make.** (a) v4 in or out: with v4 the 80% cut names AMD, PLTR and SNDK; without it, IBM and NFLX. The rule as written (DU1: every confirmed venue) gives the 30 with v4. (b) Pools of two stocks: 19 of the 93 cut pools are SPY against another stock ($9.3M of SPY's $19.0M in the cut), filed under SPY because its address is the lower one. Counted for both sides, TSM would be named. (c) The 96 unpriced tokens and the 994 unranked rows ($5.0M on the stock side) stay out until someone decides a thinner pool may price a token.
+- **2026-10-05 (RU.3). For RU.5 and RU.6: 30 stocks, not 21.** RU.5 needs a feed or `no_feed` for each of the 30. RU.6 goes from 54 pools to 274 reachable ranked pools (427 with the unreachable ones), so its calls and seconds must be measured against the hour. TSM is collected today and falls outside the cut; whether the collector keeps it is for RU.6 (the hand list stays as the fallback).
+- **2026-10-05 (RU.3). The cut sits close to its edge.** TSM is named by any cut above 82.0%; the 90% cut names 48 stocks. A daily discovery will move stocks in and out near the line. RU.4 writes the list from one run; a rule for when a stock leaves the list (so the collector's history is not broken by one thin day) is not written anywhere.
+- **2026-10-05 (RU.3). Other venues are under-seen for the tracked stocks.** DexScreener was at its cap of 30 pairs for 21 tokens, and all 21 are tracked. Uniswap pools come from the events and are complete; pools on other venues beyond the 30 are not listed.

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { YieldObservation } from './asset';
 import { ConstraintSheet } from './constraint-sheet';
 import { Profile, Provenance } from './enums';
+import { LiquidityEntry } from './liquidity';
 
 export const PlanLeg = z.object({
   assetId: z.string(),
@@ -47,6 +48,8 @@ export const RiskSheetEntry = z.object({
   creditExposure: z.string().nullable(),
   provenance: Provenance,
   label: z.string().nullable(),
+  /** Structured liquidity block (risk layer). Absent when no LiquidityProvider was used. */
+  liquidity: LiquidityEntry.optional(),
 });
 export type RiskSheetEntry = z.infer<typeof RiskSheetEntry>;
 
@@ -62,6 +65,8 @@ export const Plan = z.object({
   stresses: z.array(StressCase),
   riskSheet: z.array(RiskSheetEntry),
   solverVersion: z.string(),
+  /** Liquidity provider used for this plan (risk layer); null or absent when none. */
+  liquidity: z.object({ methodVersion: z.string(), provenance: z.string() }).nullable().optional(),
   disclaimer: z.string(),
   createdAt: z.string().datetime(),
 });

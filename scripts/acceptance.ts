@@ -15,7 +15,7 @@ import {
 import type { Asset, ConstraintSheet } from '@colosseum/schemas';
 import { desc, inArray } from 'drizzle-orm';
 
-// HANDOFF §4.5 acceptance checks, reproduced against live data and the database. Writes docs/ACCEPTANCE.md.
+// HANDOFF §4.5 acceptance checks, reproduced against live data and the database. Writes docs/structurer/ACCEPTANCE.md.
 // Status: pass | pending (needs a founder action) | fail. Run: pnpm acceptance
 type Check = { id: number; text: string; status: 'pass' | 'pending' | 'fail'; evidence: string };
 const checks: Check[] = [];
@@ -201,14 +201,14 @@ checks.push({
 // 7. schedule reproduces by hand
 let csvOk = false;
 try {
-  csvOk = readFileSync('docs/schedule-check.csv', 'utf8').includes('# month formula');
+  csvOk = readFileSync('docs/structurer/schedule-check.csv', 'utf8').includes('# month formula');
 } catch {}
 checks.push({
   id: 7,
   text: 'The BRL schedule reproduces by hand for one month (spreadsheet cross-check)',
   status: csvOk ? 'pass' : 'fail',
   evidence:
-    'docs/schedule-check.csv (formula in header) + tests/schedule.test.ts "reproduces month one by hand"',
+    'docs/structurer/schedule-check.csv (formula in header) + tests/schedule.test.ts "reproduces month one by hand"',
 });
 
 // 8. mocks labelled
@@ -266,7 +266,7 @@ const md = [
   `Registry vs database: ${drift.length === 0 ? 'in sync' : `OUT OF SYNC for ${drift.map((a) => a.id).join(', ')} → run pnpm db:seed`}.`,
   '',
 ];
-writeFileSync('docs/ACCEPTANCE.md', md.join('\n'));
+writeFileSync('docs/structurer/ACCEPTANCE.md', md.join('\n'));
 console.log(md.join('\n'));
 await client.end();
 process.exit(checks.some((c) => c.status === 'fail') || drift.length ? 1 : 0);

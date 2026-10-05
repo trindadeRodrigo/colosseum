@@ -1,0 +1,17 @@
+{
+  "source": "xStocks FAQ (docs.xstocks.fi) for window, minimum and KYC; settlement and capacity are scenario inputs (issuers do not publish capacity). Verify per PLAN-RISK Appendix A VR-6.",
+  "fetchedAt": "2026-10-01T02:00:00Z",
+  "models": {
+    "xstocks": {
+      "issuer": "Backed (xStocks)",
+      "window": "24x5",
+      "minNotionalUsd": 5000,
+      "kycRequired": true,
+      "settlementHours": 120,
+      "capacityUsdPerOpenHour": 100000,
+      "feePct": 0,
+      "provenance": "assumption",
+      "source": "xStocks FAQ (window, minimum, KYC); settlement T+5 from secondary source; capacity is a scenario input"
+    }
+  }
+}

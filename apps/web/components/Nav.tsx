@@ -10,6 +10,7 @@ export function Nav() {
           Structurer
         </Link>
         <Link href="/monitor">Monitor</Link>
+        <Link href="/risk">Liquidity</Link>
         <a
           href={`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'}/docs`}
           target="_blank"

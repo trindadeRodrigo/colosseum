@@ -1,0 +1,14 @@
+vault                          0x9ffb4ad77610a7c769833d521929fbc79c7fd3cd
+feedPrice8                     23026500000
+feedAgeSec                     760
+spentUsdc(6dp)                 10000000
+receivedNvdac(8dp)             4330827
+execPrice8                     23090278138
+valueBefore8                   999949790
+valueAfter8                    997237879
+gasDeployVault                 1255618
+gasKeeperSwap                  267603
+gasWithdrawAll                 32055
+vaultNvdacAfterSwap            4330827
+recipientNvdacAfterWithdraw    4330827
+recipientUsdcAfterWithdraw     13077378

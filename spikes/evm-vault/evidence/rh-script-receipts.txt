@@ -1,0 +1,5 @@
+CREATE BasketVault                                             gasUsed 1375512 status 0x1 effGasPrice(gwei) 0.017598002 logs 0
+approve(address,uint256)                                       gasUsed 57976 status 0x1 effGasPrice(gwei) 0.015398252 logs 1
+deposit(address,uint256)                                       gasUsed 70149 status 0x1 effGasPrice(gwei) 0.013473471 logs 1
+keeperSwap(address,address,address,uint256,uint256,bytes)      gasUsed 295659 status 0x1 effGasPrice(gwei) 0.011789288 logs 9
+withdrawAll(address)                                           gasUsed 96581 status 0x1 effGasPrice(gwei) 0.010315628 logs 2

@@ -1,0 +1,4142 @@
+{
+  "address": "529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW",
+  "metadata": {
+    "name": "basket",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "The vault program: a vault per plan, held by its owner"
+  },
+  "instructions": [
+    {
+      "name": "accept_admin",
+      "docs": [
+        "The proposed key. Takes the admin over."
+      ],
+      "discriminator": [
+        112,
+        42,
+        45,
+        90,
+        116,
+        181,
+        13,
+        170
+      ],
+      "accounts": [
+        {
+          "name": "pending_admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "accept_version",
+      "docs": [
+        "Owner. Takes the version in effect of a shared portfolio, if its number is",
+        "`expected_version`: the vault follows that portfolio from then on."
+      ],
+      "discriminator": [
+        215,
+        87,
+        246,
+        194,
+        63,
+        68,
+        225,
+        179
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "recipe"
+        }
+      ],
+      "args": [
+        {
+          "name": "expected_version",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "add_closed_day",
+      "docs": [
+        "Guardian. Closes a day (days since 1970, UTC)."
+      ],
+      "discriminator": [
+        15,
+        14,
+        204,
+        43,
+        95,
+        53,
+        145,
+        157
+      ],
+      "accounts": [
+        {
+          "name": "guardian",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "day",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "adopt_version",
+      "docs": [
+        "Anyone. Moves an auto-follow vault to the version in effect of the portfolio it",
+        "follows, when the version brings in no asset the owner has not accepted."
+      ],
+      "discriminator": [
+        213,
+        117,
+        253,
+        10,
+        21,
+        238,
+        139,
+        217
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "recipe",
+          "docs": [
+            "The shared portfolio the vault follows, and no other."
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "cancel_pending",
+      "docs": [
+        "Creator or guardian. Takes back the version that is waiting."
+      ],
+      "discriminator": [
+        74,
+        87,
+        109,
+        242,
+        64,
+        192,
+        151,
+        71
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "recipe",
+          "writable": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_vault",
+      "docs": [
+        "Owner. One vault per owner per plan id. With a shared portfolio passed, the vault",
+        "takes the weights of its version in effect, if that is `expected_version`."
+      ],
+      "discriminator": [
+        29,
+        237,
+        247,
+        208,
+        193,
+        82,
+        54,
+        135
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              },
+              {
+                "kind": "arg",
+                "path": "basket_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "config",
+          "docs": [
+            "Read for the cash mint, which is never a target."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "assets",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  115,
+                  115,
+                  101,
+                  116,
+                  115
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "recipe",
+          "docs": [
+            "The shared portfolio to follow. Left out (the program's own id in its place) for a",
+            "vault with targets of its own."
+          ],
+          "optional": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "basket_id",
+          "type": "u64"
+        },
+        {
+          "name": "targets",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "Target"
+              }
+            }
+          }
+        },
+        {
+          "name": "auto_follow",
+          "type": "bool"
+        },
+        {
+          "name": "expected_version",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "deposit",
+      "docs": [
+        "Owner. Cash only: the mint must be Config's cash mint. Into the vault's associated",
+        "token account."
+      ],
+      "discriminator": [
+        242,
+        35,
+        198,
+        137,
+        82,
+        225,
+        242,
+        182
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault"
+        },
+        {
+          "name": "config",
+          "docs": [
+            "Read for the cash mint. Only the one Config, at its own address."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "vault_token_account",
+          "docs": [
+            "The one token account the vault uses for this mint: the associated token account",
+            "for (vault, mint, the mint's own token program)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "source",
+          "docs": [
+            "Where the tokens come from. The token program checks that the owner may move them."
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "extend_closed_until",
+      "docs": [
+        "Guardian. Pushes `closed_until` later, never earlier."
+      ],
+      "discriminator": [
+        85,
+        142,
+        21,
+        59,
+        158,
+        186,
+        170,
+        37
+      ],
+      "accounts": [
+        {
+          "name": "guardian",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "closed_until",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "init_assets",
+      "docs": [
+        "Admin, once. Creates the empty asset list."
+      ],
+      "discriminator": [
+        194,
+        213,
+        246,
+        53,
+        30,
+        31,
+        17,
+        56
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "assets",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  115,
+                  115,
+                  101,
+                  116,
+                  115
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "init_config",
+      "docs": [
+        "Admin, once. The signer must be the program's upgrade authority and becomes the admin."
+      ],
+      "discriminator": [
+        23,
+        235,
+        115,
+        232,
+        168,
+        96,
+        1,
+        231
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "The program's upgrade authority. It becomes the admin."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "cash_mint",
+          "docs": [
+            "The one mint a vault takes as a deposit. It has to be a mint of a token program: an",
+            "address that is not one, locked in by `launch()`, would mean no deposits until an",
+            "upgrade."
+          ]
+        },
+        {
+          "name": "program",
+          "docs": [
+            "This program, to find its program data account."
+          ],
+          "address": "529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW"
+        },
+        {
+          "name": "program_data"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "InitConfigArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "keeper_leg",
+      "docs": [
+        "Keeper. One trade of an auto-follow vault through Config's router, signed by the",
+        "vault: cash for one of its positions or the other way, toward the target, at most",
+        "`amount_in` spent, and at least the reference price less the tolerance received.",
+        "`data` and the remaining accounts are the router's instruction."
+      ],
+      "discriminator": [
+        46,
+        178,
+        18,
+        83,
+        188,
+        146,
+        82,
+        217
+      ],
+      "accounts": [
+        {
+          "name": "keeper",
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "assets",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  115,
+                  115,
+                  101,
+                  116,
+                  115
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "input_mint"
+        },
+        {
+          "name": "output_mint"
+        },
+        {
+          "name": "vault_input",
+          "docs": [
+            "What the vault spends from: its associated token account for the input mint."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "account",
+                "path": "input_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "input_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "vault_output",
+          "docs": [
+            "What the vault is paid into: its associated token account for the output mint."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "account",
+                "path": "output_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "output_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "input_token_program"
+        },
+        {
+          "name": "output_token_program"
+        },
+        {
+          "name": "router_program"
+        },
+        {
+          "name": "price_account",
+          "docs": [
+            "and to be the account the asset list names for each asset that is valued."
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "amount_in",
+          "type": "u64"
+        },
+        {
+          "name": "data",
+          "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "launch",
+      "docs": [
+        "Admin, one way. Locks the router, the price owner, the cash mint and the price",
+        "accounts of the asset list, and raises the floor on the publish delay to two days."
+      ],
+      "discriminator": [
+        153,
+        241,
+        93,
+        225,
+        22,
+        69,
+        74,
+        61
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "owner_swap",
+      "docs": [
+        "Owner. One trade through Config's router, signed by the vault: at most `max_in` of",
+        "the input leaves and at least `min_out` of the output arrives, by the vault's own",
+        "count. `data` and the remaining accounts are the router's instruction."
+      ],
+      "discriminator": [
+        12,
+        59,
+        193,
+        156,
+        47,
+        162,
+        240,
+        108
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "Read for the router and the cash mint. Only the one Config, at its own address."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "assets",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  115,
+                  115,
+                  101,
+                  116,
+                  115
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "input_mint"
+        },
+        {
+          "name": "output_mint"
+        },
+        {
+          "name": "vault_input",
+          "docs": [
+            "What the vault spends from: its associated token account for the input mint."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "account",
+                "path": "input_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "input_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "vault_output",
+          "docs": [
+            "What the vault is paid into: its associated token account for the output mint."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "account",
+                "path": "output_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "output_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "input_token_program"
+        },
+        {
+          "name": "output_token_program"
+        },
+        {
+          "name": "router_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "max_in",
+          "type": "u64"
+        },
+        {
+          "name": "min_out",
+          "type": "u64"
+        },
+        {
+          "name": "data",
+          "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "pause_keeper",
+      "docs": [
+        "Guardian. Stops the keeper paths. The owner path reads no such switch."
+      ],
+      "discriminator": [
+        155,
+        213,
+        197,
+        244,
+        116,
+        255,
+        251,
+        45
+      ],
+      "accounts": [
+        {
+          "name": "guardian",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "propose_admin",
+      "docs": [
+        "Admin. Names the key that may take the admin over."
+      ],
+      "discriminator": [
+        121,
+        214,
+        199,
+        212,
+        87,
+        39,
+        117,
+        234
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "pending_admin",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "publish_recipe",
+      "docs": [
+        "Creator. The first version of a shared portfolio; it takes effect at once."
+      ],
+      "discriminator": [
+        209,
+        229,
+        198,
+        141,
+        172,
+        92,
+        229,
+        96
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "recipe",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  99,
+                  105,
+                  112,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              },
+              {
+                "kind": "arg",
+                "path": "family_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "assets",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  115,
+                  115,
+                  101,
+                  116,
+                  115
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "family_id",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "components",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "Component"
+              }
+            }
+          }
+        },
+        {
+          "name": "meta_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "max_fee_bps",
+          "type": "u16"
+        },
+        {
+          "name": "flags",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "set_auto_follow",
+      "docs": [
+        "Owner. Lets the keeper trade the vault toward its targets, or stops it."
+      ],
+      "discriminator": [
+        255,
+        29,
+        5,
+        116,
+        253,
+        61,
+        227,
+        189
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "on",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "set_cash_mint",
+      "docs": [
+        "Admin, until `launch()`. The one mint a vault takes as a deposit: the chain's dollar",
+        "token, passed as an account, which has to be a mint of a token program."
+      ],
+      "discriminator": [
+        27,
+        163,
+        236,
+        15,
+        62,
+        222,
+        172,
+        245
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "cash_mint"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "set_closed_day",
+      "docs": [
+        "Admin. Closes a day (days since 1970, UTC) or opens it again."
+      ],
+      "discriminator": [
+        127,
+        61,
+        104,
+        98,
+        48,
+        199,
+        35,
+        113
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "day",
+          "type": "u16"
+        },
+        {
+          "name": "closed",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "set_closed_until",
+      "docs": [
+        "Admin. The time before which the stock market counts as closed, later or earlier."
+      ],
+      "discriminator": [
+        89,
+        251,
+        200,
+        129,
+        26,
+        156,
+        0,
+        99
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "closed_until",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "set_default_keeper",
+      "docs": [
+        "Admin. A new default keeper."
+      ],
+      "discriminator": [
+        224,
+        25,
+        175,
+        84,
+        17,
+        219,
+        182,
+        224
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "keeper",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "set_guardian",
+      "docs": [
+        "Admin. A new guardian."
+      ],
+      "discriminator": [
+        147,
+        243,
+        50,
+        121,
+        154,
+        164,
+        50,
+        30
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "guardian",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "set_params",
+      "docs": [
+        "Admin. Every parameter, inside the hard bounds."
+      ],
+      "discriminator": [
+        27,
+        234,
+        178,
+        52,
+        147,
+        2,
+        187,
+        141
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "Params"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "set_price_account",
+      "docs": [
+        "Admin, until `launch()`. Names the price account of one of the asset list's four",
+        "slots: an account the price program owns, passed as an account."
+      ],
+      "discriminator": [
+        6,
+        127,
+        170,
+        42,
+        66,
+        99,
+        161,
+        151
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "assets",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  115,
+                  115,
+                  101,
+                  116,
+                  115
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "price_account"
+        }
+      ],
+      "args": [
+        {
+          "name": "slot",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "set_price_owner",
+      "docs": [
+        "Admin, until `launch()`. The program that must own a price account for the vault to",
+        "read it: Kamino Scope on mainnet, the test price program on devnet."
+      ],
+      "discriminator": [
+        58,
+        135,
+        118,
+        146,
+        2,
+        200,
+        205,
+        39
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "price_owner",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "set_router",
+      "docs": [
+        "Admin, until `launch()`. The one program a vault may swap through: Jupiter on",
+        "mainnet, the test exchange on devnet."
+      ],
+      "discriminator": [
+        236,
+        248,
+        107,
+        200,
+        151,
+        160,
+        44,
+        250
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "router_program",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "set_targets",
+      "docs": [
+        "Owner. The vault's own targets; it stops following a shared portfolio."
+      ],
+      "discriminator": [
+        28,
+        232,
+        16,
+        206,
+        7,
+        118,
+        12,
+        122
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "Read for the cash mint, which is never a target."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "assets",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  115,
+                  115,
+                  101,
+                  116,
+                  115
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "targets",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "Target"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "sync_balances",
+      "docs": [
+        "The vault's owner or its keeper. Records what the vault's own token accounts hold.",
+        "The accounts after Config are those token accounts."
+      ],
+      "discriminator": [
+        148,
+        188,
+        122,
+        63,
+        81,
+        90,
+        11,
+        85
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "unpause_keeper",
+      "docs": [
+        "Admin. Starts the keeper paths again."
+      ],
+      "discriminator": [
+        56,
+        105,
+        78,
+        54,
+        98,
+        63,
+        180,
+        224
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_recipe",
+      "docs": [
+        "Creator. A later version; it takes effect one publish delay later."
+      ],
+      "discriminator": [
+        79,
+        118,
+        143,
+        237,
+        68,
+        36,
+        242,
+        15
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "signer": true,
+          "relations": [
+            "recipe"
+          ]
+        },
+        {
+          "name": "recipe",
+          "writable": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "assets",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  115,
+                  115,
+                  101,
+                  116,
+                  115
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "components",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "Component"
+              }
+            }
+          }
+        },
+        {
+          "name": "meta_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "upsert_asset",
+      "docs": [
+        "Admin. Lists a token, or rewrites the entry of one that is listed."
+      ],
+      "discriminator": [
+        236,
+        173,
+        176,
+        44,
+        167,
+        62,
+        33,
+        253
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "assets",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  115,
+                  115,
+                  101,
+                  116,
+                  115
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint",
+          "docs": [
+            "A mint of either token program."
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "AssetArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "withdraw",
+      "docs": [
+        "Owner. Any token the vault holds, one mint per call, in kind, to a token account the",
+        "owner owns. Reads no config, registry or price: nothing but an upgrade can block it."
+      ],
+      "discriminator": [
+        183,
+        18,
+        70,
+        156,
+        148,
+        109,
+        161,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "vault_token_account",
+          "docs": [
+            "The associated token account for (vault, mint, the mint's own token program)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "destination",
+          "docs": [
+            "Any token account of this mint that the vault's owner owns."
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "AssetRegistry",
+      "discriminator": [
+        60,
+        94,
+        213,
+        134,
+        205,
+        170,
+        175,
+        68
+      ]
+    },
+    {
+      "name": "Config",
+      "discriminator": [
+        155,
+        12,
+        170,
+        224,
+        30,
+        250,
+        204,
+        130
+      ]
+    },
+    {
+      "name": "Recipe",
+      "discriminator": [
+        10,
+        162,
+        156,
+        100,
+        56,
+        193,
+        205,
+        77
+      ]
+    },
+    {
+      "name": "Vault",
+      "discriminator": [
+        211,
+        8,
+        232,
+        43,
+        2,
+        152,
+        117,
+        119
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "AdminChanged",
+      "discriminator": [
+        232,
+        34,
+        31,
+        226,
+        62,
+        18,
+        19,
+        114
+      ]
+    },
+    {
+      "name": "AdminProposed",
+      "discriminator": [
+        129,
+        249,
+        226,
+        227,
+        199,
+        82,
+        110,
+        243
+      ]
+    },
+    {
+      "name": "AssetSet",
+      "discriminator": [
+        175,
+        84,
+        64,
+        85,
+        102,
+        200,
+        50,
+        40
+      ]
+    },
+    {
+      "name": "AutoFollowSet",
+      "discriminator": [
+        48,
+        43,
+        24,
+        143,
+        225,
+        43,
+        41,
+        39
+      ]
+    },
+    {
+      "name": "CashMintSet",
+      "discriminator": [
+        181,
+        72,
+        234,
+        184,
+        59,
+        194,
+        13,
+        245
+      ]
+    },
+    {
+      "name": "ClosedDaySet",
+      "discriminator": [
+        109,
+        194,
+        38,
+        254,
+        231,
+        56,
+        94,
+        96
+      ]
+    },
+    {
+      "name": "ClosedUntilSet",
+      "discriminator": [
+        209,
+        86,
+        73,
+        202,
+        63,
+        14,
+        3,
+        55
+      ]
+    },
+    {
+      "name": "Followed",
+      "discriminator": [
+        236,
+        182,
+        255,
+        24,
+        25,
+        185,
+        209,
+        23
+      ]
+    },
+    {
+      "name": "GuardianSet",
+      "discriminator": [
+        159,
+        49,
+        155,
+        156,
+        176,
+        88,
+        29,
+        190
+      ]
+    },
+    {
+      "name": "KeeperPauseSet",
+      "discriminator": [
+        139,
+        68,
+        206,
+        186,
+        32,
+        138,
+        157,
+        125
+      ]
+    },
+    {
+      "name": "KeeperSet",
+      "discriminator": [
+        116,
+        85,
+        200,
+        22,
+        76,
+        163,
+        56,
+        243
+      ]
+    },
+    {
+      "name": "KeeperTrade",
+      "discriminator": [
+        205,
+        156,
+        35,
+        197,
+        48,
+        227,
+        179,
+        150
+      ]
+    },
+    {
+      "name": "Launched",
+      "discriminator": [
+        209,
+        127,
+        29,
+        152,
+        129,
+        212,
+        189,
+        183
+      ]
+    },
+    {
+      "name": "ParamsSet",
+      "discriminator": [
+        57,
+        111,
+        33,
+        252,
+        120,
+        76,
+        98,
+        245
+      ]
+    },
+    {
+      "name": "PriceAccountSet",
+      "discriminator": [
+        184,
+        147,
+        189,
+        171,
+        55,
+        139,
+        251,
+        117
+      ]
+    },
+    {
+      "name": "PriceOwnerSet",
+      "discriminator": [
+        207,
+        245,
+        120,
+        247,
+        89,
+        83,
+        251,
+        146
+      ]
+    },
+    {
+      "name": "RecipePublished",
+      "discriminator": [
+        215,
+        177,
+        52,
+        66,
+        252,
+        230,
+        48,
+        48
+      ]
+    },
+    {
+      "name": "RouterSet",
+      "discriminator": [
+        178,
+        160,
+        175,
+        231,
+        87,
+        8,
+        101,
+        145
+      ]
+    },
+    {
+      "name": "TargetsSet",
+      "discriminator": [
+        38,
+        113,
+        237,
+        249,
+        195,
+        203,
+        18,
+        212
+      ]
+    },
+    {
+      "name": "Unfollowed",
+      "discriminator": [
+        181,
+        126,
+        70,
+        2,
+        95,
+        63,
+        168,
+        239
+      ]
+    },
+    {
+      "name": "VaultCreated",
+      "discriminator": [
+        117,
+        25,
+        120,
+        254,
+        75,
+        236,
+        78,
+        115
+      ]
+    },
+    {
+      "name": "VersionAdopted",
+      "discriminator": [
+        15,
+        93,
+        4,
+        88,
+        197,
+        38,
+        211,
+        12
+      ]
+    },
+    {
+      "name": "VersionCancelled",
+      "discriminator": [
+        14,
+        70,
+        234,
+        10,
+        195,
+        250,
+        144,
+        253
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "NotKeeper",
+      "msg": "signer is not the vault's keeper"
+    },
+    {
+      "code": 6001,
+      "name": "AutoFollowOff",
+      "msg": "auto-follow is off for this vault"
+    },
+    {
+      "code": 6002,
+      "name": "KeeperPaused",
+      "msg": "the keeper is paused"
+    },
+    {
+      "code": 6003,
+      "name": "MintNotAccepted",
+      "msg": "mint is not one of the vault's assets"
+    },
+    {
+      "code": 6004,
+      "name": "RouterNotAllowed",
+      "msg": "swap target is not the allowed router"
+    },
+    {
+      "code": 6005,
+      "name": "SpentTooMuch",
+      "msg": "the vault spent more than max_in"
+    },
+    {
+      "code": 6006,
+      "name": "ReceivedTooLittle",
+      "msg": "the vault received less than min_out"
+    },
+    {
+      "code": 6007,
+      "name": "OtherAccountDebited",
+      "msg": "another vault token account was debited"
+    },
+    {
+      "code": 6008,
+      "name": "AccountTampered",
+      "msg": "owner, delegate, close authority or size changed on a vault token account"
+    },
+    {
+      "code": 6009,
+      "name": "PriceStale",
+      "msg": "price is too old"
+    },
+    {
+      "code": 6010,
+      "name": "PriceDeviation",
+      "msg": "price is too far from its average"
+    },
+    {
+      "code": 6011,
+      "name": "MarketClosed",
+      "msg": "the market for this asset is closed"
+    },
+    {
+      "code": 6012,
+      "name": "MultiplierWindow",
+      "msg": "within the window around a multiplier change"
+    },
+    {
+      "code": 6013,
+      "name": "NotTowardTarget",
+      "msg": "trade does not move the vault toward its targets"
+    },
+    {
+      "code": 6014,
+      "name": "PastTarget",
+      "msg": "trade would go past the target"
+    },
+    {
+      "code": 6015,
+      "name": "Cooldown",
+      "msg": "asset was traded too recently"
+    },
+    {
+      "code": 6016,
+      "name": "LossCapReached",
+      "msg": "weekly loss cap reached"
+    },
+    {
+      "code": 6017,
+      "name": "AssetNotPriced",
+      "msg": "asset has no price reference"
+    },
+    {
+      "code": 6018,
+      "name": "NewAssetNeedsOwner",
+      "msg": "a new asset needs the owner to accept it"
+    },
+    {
+      "code": 6019,
+      "name": "VersionNotEffective",
+      "msg": "version is not in effect yet"
+    },
+    {
+      "code": 6020,
+      "name": "CreatorLimit",
+      "msg": "outside the limits for a shared portfolio"
+    },
+    {
+      "code": 6021,
+      "name": "VersionMismatch",
+      "msg": "the version is not the one that was reviewed"
+    },
+    {
+      "code": 6022,
+      "name": "WrongDestination",
+      "msg": "destination token account does not belong to the vault's owner"
+    },
+    {
+      "code": 6023,
+      "name": "ParamOutOfBounds",
+      "msg": "parameter outside its hard bound"
+    },
+    {
+      "code": 6024,
+      "name": "NotUpgradeAuthority",
+      "msg": "signer is not the program's upgrade authority"
+    },
+    {
+      "code": 6025,
+      "name": "InvalidTargets",
+      "msg": "too many targets, a mint listed twice or left empty, or weights above 100%"
+    },
+    {
+      "code": 6026,
+      "name": "NotCashMint",
+      "msg": "a vault takes deposits in the cash mint only"
+    },
+    {
+      "code": 6027,
+      "name": "ZeroAddress",
+      "msg": "the zero address, which is also the system program, is not accepted here"
+    },
+    {
+      "code": 6028,
+      "name": "LockedAtLaunch",
+      "msg": "fixed at launch; changing it needs a program upgrade"
+    },
+    {
+      "code": 6029,
+      "name": "HookNotAllowed",
+      "msg": "the mint has a transfer hook program"
+    },
+    {
+      "code": 6030,
+      "name": "AssetListFull",
+      "msg": "the asset list is full"
+    },
+    {
+      "code": 6031,
+      "name": "SameMint",
+      "msg": "a swap needs two different mints"
+    },
+    {
+      "code": 6032,
+      "name": "NoPendingVersion",
+      "msg": "no version is waiting"
+    },
+    {
+      "code": 6033,
+      "name": "NotCreatorOrGuardian",
+      "msg": "signer is neither the creator nor the guardian"
+    },
+    {
+      "code": 6034,
+      "name": "NotCashLeg",
+      "msg": "a keeper leg has cash on exactly one side"
+    },
+    {
+      "code": 6035,
+      "name": "KeeperAssetOff",
+      "msg": "the keeper is not switched on for this asset"
+    },
+    {
+      "code": 6036,
+      "name": "PriceOutOfRange",
+      "msg": "price is outside the range set for this asset"
+    },
+    {
+      "code": 6037,
+      "name": "NothingTraded",
+      "msg": "a keeper leg that trades nothing"
+    }
+  ],
+  "types": [
+    {
+      "name": "AdminChanged",
+      "docs": [
+        "Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "previous_admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "new_admin",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AdminProposed",
+      "docs": [
+        "Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pending_admin",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AssetArgs",
+      "docs": [
+        "What the admin chooses for one token. Its decimals are read from the mint."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "price_slot",
+            "type": "u8"
+          },
+          {
+            "name": "price_index",
+            "type": "u16"
+          },
+          {
+            "name": "twap_index",
+            "type": "u16"
+          },
+          {
+            "name": "price_kind",
+            "type": "u8"
+          },
+          {
+            "name": "session",
+            "type": "u8"
+          },
+          {
+            "name": "max_weight_bps",
+            "type": "u16"
+          },
+          {
+            "name": "flags",
+            "type": "u8"
+          },
+          {
+            "name": "source_check",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "min_price",
+            "docs": [
+              "The plausible price range, in millionths of a dollar for one whole token."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "max_price",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AssetEntry",
+      "docs": [
+        "One listed token: 96 bytes. Offsets inside the entry: `mint` 0, `price_slot` 32,",
+        "`price_index` 33, `twap_index` 35, `decimals` 37, `price_kind` 38, `session` 39,",
+        "`max_weight_bps` 40, `flags` 42, `source_check` 43, `min_price` 75, `max_price` 83,",
+        "`reserved` 91."
+      ],
+      "serialization": "bytemuckunsafe",
+      "repr": {
+        "kind": "rust",
+        "packed": true
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "price_slot",
+            "docs": [
+              "Which of the registry's `price_accounts` holds this asset's price."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "price_index",
+            "type": "u16"
+          },
+          {
+            "name": "twap_index",
+            "type": "u16"
+          },
+          {
+            "name": "decimals",
+            "docs": [
+              "Read from the mint when the entry is written."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "price_kind",
+            "docs": [
+              "0 none, 1 Scope layout."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "session",
+            "docs": [
+              "0 always open, 1 US market hours."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "max_weight_bps",
+            "docs": [
+              "The most a shared portfolio may hold of it. The registry also caps every weight at 50%."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "flags",
+            "docs": [
+              "Bit 0 is `ASSET_KEEPER`; the other bits must be zero."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "source_check",
+            "docs": [
+              "All zeros means off (DESIGN-VAULT.md section 5)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "min_price",
+            "docs": [
+              "The range the asset's price is plausible in, in millionths of a dollar for one whole",
+              "token: a keeper leg takes no price under `min_price` or over `max_price`. The admin",
+              "sets it and moves it by hand. Zero and zero is \"no range\", which only an asset the",
+              "keeper does not trade may have. The two took sixteen bytes of what was reserved."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "max_price",
+            "type": "u64"
+          },
+          {
+            "name": "reserved",
+            "type": {
+              "array": [
+                "u8",
+                5
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "AssetRegistry",
+      "docs": [
+        "The platform's list of tokens a vault may hold: one per program, at seeds [\"assets\"].",
+        "",
+        "Zero-copy and packed: the bytes are the fields in this order with no padding. 8 bytes of",
+        "discriminator, then `price_accounts` at 8, `count` at 136, and entry `i` at `137 + 96·i`.",
+        "6,281 bytes in all."
+      ],
+      "serialization": "bytemuckunsafe",
+      "repr": {
+        "kind": "rust",
+        "packed": true
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "price_accounts",
+            "docs": [
+              "The price accounts an entry's `price_slot` points into. Written by",
+              "`set_price_account`, until `launched` is set."
+            ],
+            "type": {
+              "array": [
+                "pubkey",
+                4
+              ]
+            }
+          },
+          {
+            "name": "count",
+            "docs": [
+              "How many of `assets` are in use."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "assets",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "AssetEntry"
+                  }
+                },
+                64
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "AssetSet",
+      "docs": [
+        "The admin listed a token or changed its entry. Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "index",
+            "type": "u8"
+          },
+          {
+            "name": "max_weight_bps",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AutoFollowSet",
+      "docs": [
+        "The owner switched auto-follow."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "on",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CashMintSet",
+      "docs": [
+        "The admin changed the mint a vault takes as a deposit."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "old",
+            "type": "pubkey"
+          },
+          {
+            "name": "new",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ClosedDaySet",
+      "docs": [
+        "A day (days since 1970, UTC) was closed, by the admin or the guardian, or opened again",
+        "by the admin. Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "day",
+            "type": "u16"
+          },
+          {
+            "name": "closed",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ClosedUntilSet",
+      "docs": [
+        "The time before which the market counts as closed was set, by the admin or (later only)",
+        "by the guardian. Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "closed_until",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Component",
+      "docs": [
+        "One line of a shared portfolio."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "weight_bps",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Config",
+      "docs": [
+        "One per program, at seeds [\"config\"]."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "pending_admin",
+            "docs": [
+              "Two-step hand-over; all zeros when none is pending."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "guardian",
+            "type": "pubkey"
+          },
+          {
+            "name": "default_keeper",
+            "type": "pubkey"
+          },
+          {
+            "name": "router_program",
+            "docs": [
+              "The only program a vault may swap through. Never fixed in code: Jupiter on mainnet,",
+              "the test exchange on devnet. Locked once `launched` is set."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "price_owner",
+            "docs": [
+              "The program that must own a price account. Never fixed in code: Kamino Scope on",
+              "mainnet, the test price program on devnet. Locked once `launched` is set."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "cash_mint",
+            "docs": [
+              "The one mint a vault takes as a deposit: the chain's dollar token. Never fixed in",
+              "code: USDC on mainnet, the test dollar token on devnet. Locked once `launched` is set."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "keeper_paused",
+            "docs": [
+              "Stops the keeper paths only. No owner instruction reads it."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "launched",
+            "docs": [
+              "One-way; raises the floor on `publish_delay_s` and locks the three addresses above,",
+              "and the price accounts of the asset list."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "tolerance_bps",
+            "type": "u16"
+          },
+          {
+            "name": "loss_cap_bps",
+            "type": "u16"
+          },
+          {
+            "name": "band_bps",
+            "type": "u16"
+          },
+          {
+            "name": "twap_dev_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_price_age_s",
+            "type": "u16"
+          },
+          {
+            "name": "asset_cooldown_s",
+            "type": "u32"
+          },
+          {
+            "name": "publish_delay_s",
+            "type": "u32"
+          },
+          {
+            "name": "session_open_utc_s",
+            "type": "u32"
+          },
+          {
+            "name": "session_close_utc_s",
+            "type": "u32"
+          },
+          {
+            "name": "closed_until",
+            "type": "i64"
+          },
+          {
+            "name": "closed_days",
+            "docs": [
+              "Days since 1970, UTC."
+            ],
+            "type": {
+              "array": [
+                "u16",
+                32
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "The bump of this account's own address, so every read can check the address."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "reserved",
+            "type": {
+              "array": [
+                "u8",
+                63
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Followed",
+      "docs": [
+        "The vault now follows a shared portfolio, at this version. Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "recipe",
+            "type": "pubkey"
+          },
+          {
+            "name": "version",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GuardianSet",
+      "docs": [
+        "The admin changed the guardian. Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "old",
+            "type": "pubkey"
+          },
+          {
+            "name": "new",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InitConfigArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "guardian",
+            "type": "pubkey"
+          },
+          {
+            "name": "default_keeper",
+            "type": "pubkey"
+          },
+          {
+            "name": "router_program",
+            "type": "pubkey"
+          },
+          {
+            "name": "price_owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "params",
+            "type": {
+              "defined": {
+                "name": "Params"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "KeeperPauseSet",
+      "docs": [
+        "The keeper paths were stopped (by the guardian) or started again (by the admin)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "paused",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "KeeperSet",
+      "docs": [
+        "The admin changed the default keeper. Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "old",
+            "type": "pubkey"
+          },
+          {
+            "name": "new",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "KeeperTrade",
+      "docs": [
+        "One trade by the keeper, as the vault measured it on its own token accounts. `loss` is",
+        "what the leg lost at the reference price and `loss_used_bps` what the weekly counter",
+        "then holds, as a share of the vault's value; `loss` is in raw units of the cash mint.",
+        "Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint_in",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint_out",
+            "type": "pubkey"
+          },
+          {
+            "name": "spent",
+            "type": "u64"
+          },
+          {
+            "name": "received",
+            "type": "u64"
+          },
+          {
+            "name": "loss",
+            "type": "u64"
+          },
+          {
+            "name": "loss_used_bps",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Launched",
+      "docs": [
+        "The one-way switch was thrown: the three addresses are locked and the publish delay is",
+        "at least two days."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "publish_delay_s",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Params",
+      "docs": [
+        "The keeper and registry settings an admin chooses, within the hard bounds in `checks`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "tolerance_bps",
+            "type": "u16"
+          },
+          {
+            "name": "loss_cap_bps",
+            "type": "u16"
+          },
+          {
+            "name": "band_bps",
+            "type": "u16"
+          },
+          {
+            "name": "twap_dev_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_price_age_s",
+            "type": "u16"
+          },
+          {
+            "name": "asset_cooldown_s",
+            "type": "u32"
+          },
+          {
+            "name": "publish_delay_s",
+            "type": "u32"
+          },
+          {
+            "name": "session_open_utc_s",
+            "type": "u32"
+          },
+          {
+            "name": "session_close_utc_s",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ParamsSet",
+      "docs": [
+        "The admin changed the parameters."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "params",
+            "type": {
+              "defined": {
+                "name": "Params"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Position",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "target_bps",
+            "type": "u16"
+          },
+          {
+            "name": "tracked",
+            "docs": [
+              "The balance the vault's token account held when the program last looked. A hint,",
+              "not a balance: an issuer with a permanent delegate, or anyone sending tokens in,",
+              "changes the real one. Anything that values the vault reads the token accounts."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "last_keeper_ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PriceAccountSet",
+      "docs": [
+        "The admin named the price account of a slot of the asset list."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "slot",
+            "type": "u8"
+          },
+          {
+            "name": "old",
+            "type": "pubkey"
+          },
+          {
+            "name": "new",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PriceOwnerSet",
+      "docs": [
+        "The admin changed the program that must own a price account."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "old",
+            "type": "pubkey"
+          },
+          {
+            "name": "new",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Recipe",
+      "docs": [
+        "A shared portfolio: one per creator per family, at seeds [\"recipe\", creator, family_id].",
+        "1,022 bytes. Only the version in effect and the one waiting live here; history is in the",
+        "`RecipePublished` events. `last_version` took four bytes of what was reserved: the size",
+        "and every other offset are as they were."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "family_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "current",
+            "type": {
+              "defined": {
+                "name": "RecipeVersion"
+              }
+            }
+          },
+          {
+            "name": "pending",
+            "docs": [
+              "The version that is published and not yet in effect; `version` zero when there is none."
+            ],
+            "type": {
+              "defined": {
+                "name": "RecipeVersion"
+              }
+            }
+          },
+          {
+            "name": "last_publish_ts",
+            "docs": [
+              "The time of the last publish, whether or not that version was later cancelled."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "max_fee_bps",
+            "docs": [
+              "Stored and required to be zero."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "flags",
+            "docs": [
+              "Stored and required to be zero."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "vetoed",
+            "docs": [
+              "Not written yet: the guardian's veto is `cancel_pending`."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "last_version",
+            "docs": [
+              "The highest version number ever given out, cancelled ones included, so a number is",
+              "never used twice. Zero on an account written before this field existed: the number",
+              "of the version in effect stands in for it."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "reserved",
+            "type": {
+              "array": [
+                "u8",
+                28
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "RecipePublished",
+      "docs": [
+        "A version of a shared portfolio was published. Same name and fields as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "recipe",
+            "type": "pubkey"
+          },
+          {
+            "name": "version",
+            "type": "u32"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "components",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "Component"
+                }
+              }
+            }
+          },
+          {
+            "name": "effective_at",
+            "type": "i64"
+          },
+          {
+            "name": "turnover_bps",
+            "type": "u16"
+          },
+          {
+            "name": "meta_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "RecipeVersion",
+      "docs": [
+        "One version of a shared portfolio: 453 bytes. `version` zero means the slot is empty."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "type": "u32"
+          },
+          {
+            "name": "effective_at",
+            "docs": [
+              "Unix seconds. The version is in effect from this second on."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "meta_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "count",
+            "docs": [
+              "How many of `components` are in use."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "components",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "Component"
+                  }
+                },
+                12
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "RouterSet",
+      "docs": [
+        "The admin changed the program a vault may swap through."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "old",
+            "type": "pubkey"
+          },
+          {
+            "name": "new",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Target",
+      "docs": [
+        "One line of a vault's targets."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "target_bps",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TargetsSet",
+      "docs": [
+        "The owner set the vault's own targets. Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "count",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Unfollowed",
+      "docs": [
+        "The vault stopped following. Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "recipe",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Vault",
+      "docs": [
+        "One per owner per plan, at seeds [\"vault\", owner, basket_id as u64 LE]. It stores the",
+        "state and is the authority of the vault's token accounts.",
+        "",
+        "Borsh. The field order is frozen: `owner` is at byte 8, `recipe` at 40,",
+        "`accepted_version` at 72 and `auto_follow` at 76, and other code filters on them."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "recipe",
+            "docs": [
+              "The shared portfolio this vault follows; all zeros when it follows none."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "accepted_version",
+            "docs": [
+              "The version of `recipe` whose weights the vault took; zero when it follows none."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "auto_follow",
+            "type": "bool"
+          },
+          {
+            "name": "basket_id",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "keeper",
+            "docs": [
+              "All zeros means Config's default keeper."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "count",
+            "docs": [
+              "How many of `positions` are in use."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "positions",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "Position"
+                  }
+                },
+                16
+              ]
+            }
+          },
+          {
+            "name": "loss_accum",
+            "type": "u64"
+          },
+          {
+            "name": "loss_ts",
+            "type": "i64"
+          },
+          {
+            "name": "reserved",
+            "docs": [
+              "Byte 0 is the vault type; 0 is the standard vault."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                128
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "VaultCreated",
+      "docs": [
+        "Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "basket_id",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VersionAdopted",
+      "docs": [
+        "An auto-follow vault took a version that only changes weights, with no signature from",
+        "its owner. Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "recipe",
+            "type": "pubkey"
+          },
+          {
+            "name": "version",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VersionCancelled",
+      "docs": [
+        "A waiting version was cancelled, by the creator or the guardian. Same name as the EVM event."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "recipe",
+            "type": "pubkey"
+          },
+          {
+            "name": "version",
+            "type": "u32"
+          },
+          {
+            "name": "by",
+            "type": "pubkey"
+          }
+        ]
+      }
+    }
+  ]
+}

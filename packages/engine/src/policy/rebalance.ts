@@ -1,4 +1,4 @@
-import type { LegOrder, Policy } from '@colosseum/schemas';
+import type { LegOrder, LiquidityAssessment, Policy } from '@colosseum/schemas';
 import { computeDrift, type PositionValue } from './drift';
 
 export type RebalanceInput = {
@@ -10,6 +10,8 @@ export type RebalanceInput = {
   minOrderUsd?: number;
   now?: Date;
   lastRebalanceAt?: Date;
+  /** Optional liquidity assessment (risk layer). A likely breach takes precedence over drift. */
+  liquidity?: LiquidityAssessment;
 };
 
 export type RebalanceProposal = { triggered: boolean; reason: string; orders: LegOrder[] };
@@ -38,6 +40,8 @@ export function proposeRebalance(input: RebalanceInput): RebalanceProposal {
     positions.filter((p) => allowed.has(p.assetId)),
   );
   if (d.total <= 0) return { triggered: false, reason: 'no positions', orders: [] };
+  if (input.liquidity?.likelyBreach && input.liquidity.orders.length > 0)
+    return liquidityProposal(input, d.total, positions);
   const triggered = d.anyOutOfBand || d.maxAbsDrift * 100 >= policy.trigger.driftPct;
   if (!triggered)
     return {
@@ -100,3 +104,53 @@ function mechanismFor(
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Liquidity-breach proposal: sell illiquid legs to USDC ahead of a withdrawal that the measured exit capacity
+ * may not cover under the dry stress. Invariants (tested): only allowed assets; destination is always the owner;
+ * orders only reduce the legs the assessment names, never by more than their current value; USDC never ends
+ * above its band max.
+ */
+function liquidityProposal(
+  input: RebalanceInput,
+  total: number,
+  positions: RebalanceInput['positions'],
+): RebalanceProposal {
+  const { policy, dexAssets } = input;
+  const a = input.liquidity as LiquidityAssessment;
+  const allowed = new Set(policy.allowedAssets);
+  if (!allowed.has('usdc'))
+    return {
+      triggered: false,
+      reason: 'liquidity_breach found but USDC is not an allowed asset in this policy',
+      orders: [],
+    };
+  const value = new Map(positions.map((p) => [p.assetId, p.valueUsd]));
+  const band = policy.bands.find((b) => b.assetId === 'usdc');
+  let usdcRoom = band
+    ? Math.max(0, band.max * total - (value.get('usdc') ?? 0))
+    : Number.POSITIVE_INFINITY;
+  const orders: LegOrder[] = [];
+  for (const o of a.orders) {
+    if (!allowed.has(o.fromAssetId) || o.fromAssetId === 'usdc') continue;
+    const amount = Math.min(o.amountUsd, value.get(o.fromAssetId) ?? 0, usdcRoom);
+    if (amount < (input.minOrderUsd ?? 1) - 1e-6) continue;
+    usdcRoom -= amount;
+    orders.push({
+      fromAssetId: o.fromAssetId,
+      toAssetId: 'usdc',
+      amountUsd: round2(amount),
+      mechanism: mechanismFor(policy, o.fromAssetId, 'usdc', amount, dexAssets),
+      destination: policy.withdrawalDestination,
+      reason: `liquidity_breach: shortfall ${round2(a.shortfallUsd)} USD under the dry stress in ${a.monthsAtRisk.join(', ')} (${a.methodVersion})`,
+    });
+  }
+  return {
+    triggered: orders.length > 0,
+    reason:
+      orders.length > 0
+        ? 'liquidity_breach'
+        : 'liquidity_breach found but no order fits the policy limits',
+    orders,
+  };
+}

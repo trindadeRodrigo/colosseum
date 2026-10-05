@@ -1,0 +1,16 @@
+[toolchain]
+anchor_version = "0.31.1"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+vault_swap = "78mDDDYW2yEz9qmNeLbgCAcsKH7CrqmYDPtNUpVhUHic"
+
+[programs.mainnet]
+vault_swap = "78mDDDYW2yEz9qmNeLbgCAcsKH7CrqmYDPtNUpVhUHic"
+
+[provider]
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"

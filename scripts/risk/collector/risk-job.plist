@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>__LABEL__</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-c</string>
+    <string>set -a; source __HOME_DIR__/env; set +a; __NODE_BIN__/node __HOME_DIR__/__SCRIPT__.mjs >> __HOME_DIR__/__SCRIPT__.log 2>&amp;1</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <array>
+__MINUTES__
+  </array>
+  <key>StandardErrorPath</key><string>__HOME_DIR__/launchd.err</string>
+</dict>
+</plist>

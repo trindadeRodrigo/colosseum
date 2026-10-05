@@ -1,0 +1,47 @@
+{
+  "provenance": "fixture",
+  "source": "frozen inputs for tests/engine-baseline.test.ts (no-provider proof, HANDOFF-RISK §6 P3.1)",
+  "nowMonth": "2026-10",
+  "fxUsdBrl": 5.2,
+  "capitalUsd": 100000,
+  "yields": [
+    ["kamino-usdc", "protocol_api", 0.04],
+    ["usdy", "realised_30d", 0.05],
+    ["syrupusdc", "realised_30d", 0.055]
+  ],
+  "sheets": {
+    "income": {
+      "language": "pt",
+      "currency": "BRL",
+      "profile": "income",
+      "target": { "kind": "monthly_cashflow", "amountBrl": 3000, "startMonth": "2028-01" },
+      "horizonMonths": 120,
+      "liquidityWindowDays": 7,
+      "riskBudget": "low",
+      "creditTolerance": "limited",
+      "fxStance": "hedge_near_term"
+    },
+    "accumulation": {
+      "language": "pt",
+      "currency": "BRL",
+      "profile": "accumulation",
+      "target": { "kind": "balance", "amountBrl": 250000, "byMonth": "2029-10" },
+      "horizonMonths": 36,
+      "liquidityWindowDays": 30,
+      "riskBudget": "medium",
+      "creditTolerance": "accept",
+      "fxStance": "accept_fx"
+    },
+    "high_risk": {
+      "language": "en",
+      "currency": "BRL",
+      "profile": "high_risk",
+      "target": { "kind": "balance", "amountBrl": 500000, "byMonth": "2031-10" },
+      "horizonMonths": 60,
+      "liquidityWindowDays": 30,
+      "riskBudget": "high",
+      "creditTolerance": "accept",
+      "fxStance": "accept_fx"
+    }
+  }
+}

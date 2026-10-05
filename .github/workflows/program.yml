@@ -1,0 +1,266 @@
+name: program
+
+# The Solana programs: build, the LiteSVM suite, the committed interface files, clippy. Then the
+# Solana adapter held to the adapter contract on the programs just built (tests/solana-vault), which
+# the `ci` job skips: it has no built programs.
+# The tools and why each version is what it is: programs/README.md. A bump there is a bump of `env` here.
+on:
+  pull_request:
+    paths:
+      - 'programs/**'
+      - 'packages/chain-solana/**'
+      - 'tests/solana-vault/**'
+      - 'tests/keeper/**'
+      - 'apps/api/**'
+      - 'apps/keeper/**'
+      - 'packages/db/**'
+      - 'packages/schemas/**'
+      - 'packages/basket/**'
+      - 'packages/engine/**'
+      - 'packages/risk/**'
+      - 'packages/chain-mock/**'
+      - 'idl/**'
+      - 'Anchor.toml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/program.yml'
+  push:
+    paths:
+      - 'programs/**'
+      - 'packages/chain-solana/**'
+      - 'tests/solana-vault/**'
+      - 'tests/keeper/**'
+      - 'apps/api/**'
+      - 'apps/keeper/**'
+      - 'packages/db/**'
+      - 'packages/schemas/**'
+      - 'packages/basket/**'
+      - 'packages/engine/**'
+      - 'packages/risk/**'
+      - 'packages/chain-mock/**'
+      - 'idl/**'
+      - 'Anchor.toml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/program.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: program-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SOLANA_VERSION: 3.0.1
+  # sha256 of solana-release-x86_64-unknown-linux-gnu.tar.bz2, from the release page
+  SOLANA_SHA256: c5bd5e55d87ce71214e312819e3c6cbb55e3b538b4ac3179ee91aec155a23578
+  PLATFORM_TOOLS: v1.54
+  ANCHOR_VERSION: 0.31.1
+  # sha256 of anchor-0.31.1-x86_64-unknown-linux-gnu. The release publishes none: this is the file as
+  # first downloaded here on 2026-10-02.
+  ANCHOR_SHA256: 5e5f8fc0f75f2c3dc5cceb082a7f735d09be2207540291ffad370eb5b2dc959b
+  # Clippy runs on the Rust that platform tools v1.54 build the programs with.
+  RUST_CLIPPY: 1.89.0
+  # Anchor builds the interface files with a nightly. This is the one the committed files were made with.
+  RUST_IDL: nightly-2025-09-09
+
+jobs:
+  program:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            programs/tests/pnpm-lock.yaml
+            pnpm-lock.yaml
+
+      - name: Rust toolchains
+        run: |
+          rustup toolchain install "$RUST_CLIPPY" --profile minimal --component clippy --no-self-update
+          rustup toolchain install "$RUST_IDL" --profile minimal --no-self-update
+
+      - name: Cache the Solana CLI and the platform tools
+        id: solana
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.local/share/solana
+            ~/.cache/solana
+          key: solana-${{ runner.os }}-${{ env.SOLANA_VERSION }}-tools-${{ env.PLATFORM_TOOLS }}
+
+      - name: Solana CLI
+        if: steps.solana.outputs.cache-hit != 'true'
+        run: |
+          curl -sSfL --retry 3 -o "$RUNNER_TEMP/solana.tar.bz2" \
+            "https://github.com/anza-xyz/agave/releases/download/v${SOLANA_VERSION}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
+          echo "${SOLANA_SHA256}  $RUNNER_TEMP/solana.tar.bz2" | sha256sum -c -
+          mkdir -p "$HOME/.local/share/solana"
+          # Only what a build needs: the validator and the rest stay in the archive.
+          tar -xjf "$RUNNER_TEMP/solana.tar.bz2" -C "$HOME/.local/share/solana" \
+            solana-release/version.yml \
+            solana-release/bin/cargo-build-sbf \
+            solana-release/bin/solana \
+            solana-release/bin/solana-keygen \
+            solana-release/bin/platform-tools-sdk
+
+      - name: Anchor CLI
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -sSfL --retry 3 -o "$HOME/.local/bin/anchor" \
+            "https://github.com/solana-foundation/anchor/releases/download/v${ANCHOR_VERSION}/anchor-${ANCHOR_VERSION}-x86_64-unknown-linux-gnu"
+          echo "${ANCHOR_SHA256}  $HOME/.local/bin/anchor" | sha256sum -c -
+          chmod +x "$HOME/.local/bin/anchor"
+
+      - name: Put the tools on the path
+        run: |
+          echo "$HOME/.local/share/solana/solana-release/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Versions
+        run: |
+          solana --version
+          anchor --version
+          cargo-build-sbf --version
+
+      - name: Cache cargo and target
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-${{ runner.os }}-${{ env.PLATFORM_TOOLS }}-${{ env.RUST_CLIPPY }}-${{ env.RUST_IDL }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ env.PLATFORM_TOOLS }}-${{ env.RUST_CLIPPY }}-${{ env.RUST_IDL }}-
+
+      - name: Build the programs
+        run: anchor build --no-idl -- --tools-version "$PLATFORM_TOOLS"
+
+      - name: LiteSVM tests
+        run: pnpm test:program
+
+      # For the validator job below: the two programs, never their keypairs.
+      - name: Keep the built programs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: programs
+          path: |
+            target/deploy/basket.so
+            target/deploy/mock_router.so
+          retention-days: 1
+          if-no-files-found: error
+
+      # The adapter contract, the builders' sizes and shape, the guard on the registry calls they
+      # build (AGT-4), and the keeper's round, in LiteSVM on the programs built above.
+      # SOLANA_PROGRAMS_REQUIRED makes a missing build fail them instead of skipping them.
+      - name: The Solana adapter on the built programs
+        env:
+          SOLANA_PROGRAMS_REQUIRED: '1'
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec vitest run tests/solana-vault/contract.test.ts tests/solana-vault/builders.test.ts tests/solana-vault/registry-guard.test.ts tests/keeper/keeper.test.ts
+
+      - name: The committed interface files match the programs
+        run: |
+          for program in basket mock_router; do
+            RUSTUP_TOOLCHAIN="$RUST_IDL" anchor idl build -p "$program" -o "$RUNNER_TEMP/$program.json"
+            if ! diff -u "idl/$program.json" "$RUNNER_TEMP/$program.json"; then
+              echo "::error file=idl/$program.json::The committed file differs from a fresh build. Run: anchor idl build -p $program -o idl/$program.json"
+              exit 1
+            fi
+          done
+
+      # Warnings are listed, not failed on, until the program settles. A compile error or a lint clippy
+      # denies by default still fails the step.
+      - name: Clippy
+        run: |
+          set -o pipefail
+          cargo +"$RUST_CLIPPY" clippy --workspace --all-targets --locked 2>&1 | tee "$RUNNER_TEMP/clippy.log"
+          grep '^warning' "$RUNNER_TEMP/clippy.log" | grep -v ' generated ' | sort | uniq -c | sort -rn > "$RUNNER_TEMP/clippy.txt" || true
+          count=$(awk '{ n += $1 } END { print n + 0 }' "$RUNNER_TEMP/clippy.txt")
+          {
+            echo "### cargo clippy on Rust $RUST_CLIPPY: $count warnings (listed, not failed on)"
+            echo '```'
+            cat "$RUNNER_TEMP/clippy.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$count" -gt 0 ]; then echo "::warning title=cargo clippy::$count warnings, see the job summary"; fi
+
+  # The money path on a local validator, on the programs the job above built: the adapter contract's
+  # sending groups (relay, track, fate, the state each transaction leaves), the API end to end, a
+  # person's buy built, signed in the test, relayed and read back, and the keeper's round adopting a
+  # version and sending a leg. One validator, stopped by the test.
+  validator:
+    needs: program
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: colosseum
+          POSTGRES_PASSWORD: colosseum
+          POSTGRES_DB: colosseum
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd "pg_isready -U colosseum"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Cache the Solana CLI with its validator
+        id: solana
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.local/share/solana
+          key: solana-${{ runner.os }}-${{ env.SOLANA_VERSION }}-validator
+
+      - name: Solana CLI and validator
+        if: steps.solana.outputs.cache-hit != 'true'
+        run: |
+          curl -sSfL --retry 3 -o "$RUNNER_TEMP/solana.tar.bz2" \
+            "https://github.com/anza-xyz/agave/releases/download/v${SOLANA_VERSION}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
+          echo "${SOLANA_SHA256}  $RUNNER_TEMP/solana.tar.bz2" | sha256sum -c -
+          mkdir -p "$HOME/.local/share/solana"
+          tar -xjf "$RUNNER_TEMP/solana.tar.bz2" -C "$HOME/.local/share/solana" \
+            solana-release/version.yml \
+            solana-release/bin/solana \
+            solana-release/bin/solana-test-validator
+
+      - name: Put the tools on the path
+        run: echo "$HOME/.local/share/solana/solana-release/bin" >> "$GITHUB_PATH"
+
+      - name: The programs the job above built
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: programs
+          path: target/deploy
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:migrate
+
+      - name: The Solana adapter and the API on a local validator
+        env:
+          SOLANA_LOCAL_VALIDATOR: '1'
+          SOLANA_PROGRAMS_REQUIRED: '1'
+        run: |
+          solana-test-validator --version
+          pnpm exec vitest run tests/solana-vault/validator.test.ts

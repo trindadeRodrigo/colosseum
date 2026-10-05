@@ -1,0 +1,100 @@
+name: contracts
+
+# The EVM vault contracts (Foundry). It runs when contracts/ or this file changes, and the forge job
+# is skipped while a branch has no contracts/ yet.
+on:
+  pull_request:
+    paths:
+      - 'contracts/**'
+      - '.github/workflows/contracts.yml'
+  push:
+    paths:
+      - 'contracts/**'
+      - '.github/workflows/contracts.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contracts-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The newest release whose formatter leaves the committed sources as they are (they were written on
+  # 1.2.3-nightly). Tried on 2026-10-02, eleven releases from v1.2.3 to v1.8.4: all pass the 149 tests and
+  # build the same BasketVault bytecode; from v1.4.0 on, `forge fmt` joins one 120-column declaration in
+  # IIndexRegistry.sol. Moving to a newer release means reformatting that line in the same change.
+  FOUNDRY_VERSION: v1.3.6
+  # sha256 of foundry_v1.3.6_linux_amd64.tar.gz, from the release page
+  FOUNDRY_SHA256: 01248d7ce267f5b7958bc9b331d068c6c2d8eeb182e58f0b556d7295f398e2ce
+
+jobs:
+  present:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      contracts: ${{ steps.look.outputs.contracts }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          sparse-checkout: contracts/foundry.toml
+          sparse-checkout-cone-mode: false
+      - id: look
+        run: |
+          if [ -f contracts/foundry.toml ]; then
+            echo "contracts=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "contracts=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No contracts/foundry.toml on this branch: the forge job is skipped."
+          fi
+
+  forge:
+    needs: present
+    if: needs.present.outputs.contracts == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Foundry
+        run: |
+          curl -sSfL --retry 3 -o "$RUNNER_TEMP/foundry.tar.gz" \
+            "https://github.com/foundry-rs/foundry/releases/download/${FOUNDRY_VERSION}/foundry_${FOUNDRY_VERSION}_linux_amd64.tar.gz"
+          echo "${FOUNDRY_SHA256}  $RUNNER_TEMP/foundry.tar.gz" | sha256sum -c -
+          mkdir -p "$HOME/.foundry/bin"
+          tar -xzf "$RUNNER_TEMP/foundry.tar.gz" -C "$HOME/.foundry/bin"
+          echo "$HOME/.foundry/bin" >> "$GITHUB_PATH"
+          "$HOME/.foundry/bin/forge" --version
+
+      # OpenZeppelin and forge-std come from pnpm (contracts/package.json); there are no git submodules.
+      - run: pnpm install --frozen-lockfile
+
+      - name: Cache the Solidity compiler
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.svm
+            ~/.local/share/svm
+          key: solc-${{ runner.os }}-${{ hashFiles('contracts/foundry.toml') }}
+
+      # The fork tests skip themselves: no RPC URL is set here, and none is needed.
+      - name: Tests
+        run: pnpm test:contracts
+
+      - name: Contract sizes
+        if: ${{ !cancelled() }}
+        working-directory: contracts
+        run: forge build --sizes
+
+      - name: Formatting
+        if: ${{ !cancelled() }}
+        working-directory: contracts
+        run: forge fmt --check
