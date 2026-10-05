@@ -56,9 +56,9 @@ export function solanaDeployment(change: Partial<SolanaEntry> = {}): Loaded<Sola
         router: ROUTER,
         cash: 'solana:usdc',
         assets: {
-          'solana:usdc': { mint: someone('mint usdc'), tokenProgram: 'token' },
-          'solana:spy': { mint: someone('mint spy'), tokenProgram: 'token-2022' },
-          'solana:gold': { mint: someone('mint gold'), tokenProgram: 'token' },
+          'solana:usdc': { mint: someone('mint usdc'), tokenProgram: 'token', decimals: 6 },
+          'solana:spy': { mint: someone('mint spy'), tokenProgram: 'token-2022', decimals: 8 },
+          'solana:gold': { mint: someone('mint gold'), tokenProgram: 'token', decimals: 8 },
         },
         ...change,
       },

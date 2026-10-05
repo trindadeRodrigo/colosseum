@@ -321,32 +321,6 @@
       }
     },
     {
-      "id": "solana:gldx",
-      "symbol": "tGLDx",
-      "name": "Test GLDx (test network, no value)",
-      "modelOf": "GLDx",
-      "kind": "gold",
-      "mint": "32BAoiuKWNj8yzeEarBF52pdLbY3umSmreMqNFPHieiE",
-      "tokenProgram": "token-2022",
-      "decimals": 8,
-      "reserve": "G8MzHRM3nbwQmLMoyca2hHAyrb26Ln8NNS2ZJrNHzcY8",
-      "session": 1,
-      "priceIndex": 480,
-      "twapIndex": 481,
-      "indexSource": "test-network",
-      "maxWeightBps": 5000,
-      "keeperOn": false,
-      "range": {
-        "minPrice": "262500000",
-        "maxPrice": "455000000"
-      },
-      "spreadBps": 15,
-      "pairs": {
-        "buy": "DSeNA3N3fH73r7PkwxwUDDtVK531Xtr3fraUAfTpSkRS",
-        "sell": "7h1DQdFLJCSbKnbvAQwvvUJNNAdkdXHbH17GQQJqdCN7"
-      }
-    },
-    {
       "id": "solana:jlusdc",
       "symbol": "tjlUSDC",
       "name": "Test jlUSDC (test network, no value)",
@@ -397,7 +371,42 @@
         "buy": "3G1g7Su7sA8CXZsECd5be9Koz38NPzSL5LsVRzjUg49w",
         "sell": "R7zFs9kuiRVz63BKvZCPJEv7omPXDkdwruBP7XDc24N"
       }
+    },
+    {
+      "id": "solana:paxg",
+      "symbol": "tPAXG",
+      "name": "Test Paxos Gold (test network, no value)",
+      "modelOf": "PAXG",
+      "kind": "gold",
+      "mint": "GZ2F1ryu8SgCGKhScVQLXzG5Q5Hp4NYocKd2F7ueeKh1",
+      "tokenProgram": "token-2022",
+      "decimals": 6,
+      "reserve": "E5Hi3bN99KbC2cwaj6Zbu8r9RQMnKrpcgkFVgvTsexsG",
+      "session": 0,
+      "priceIndex": 454,
+      "twapIndex": 168,
+      "indexSource": "scope-indexes",
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "3210540000",
+        "maxPrice": "5178290000"
+      },
+      "spreadBps": 15,
+      "pairs": {
+        "buy": "6MNq86Egstd4ggeLPRRb8XCXLGovegpHcoLPhaU13kdf",
+        "sell": "DjXgNtL52CBPt6GevuYgQCpefoxdiUEFFxXqbgnUGBqC"
+      }
     }
   ],
-  "retired": []
+  "retired": [
+    {
+      "id": "solana:gldx",
+      "symbol": "tGLDx",
+      "mint": "32BAoiuKWNj8yzeEarBF52pdLbY3umSmreMqNFPHieiE",
+      "tokenProgram": "token-2022",
+      "decimals": 8,
+      "keeperOn": false
+    }
+  ]
 }

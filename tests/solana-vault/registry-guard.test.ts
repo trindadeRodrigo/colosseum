@@ -20,6 +20,7 @@ import {
   newKey,
   PARAMS,
   priceEntries,
+  shelfOf,
 } from './contract-world';
 import {
   BASKET_PROGRAM,
@@ -111,6 +112,8 @@ describe.skipIf(!PROGRAMS_BUILT)(
                 {
                   mint: m.address,
                   tokenProgram: m.tokenProgram === TOKEN ? 'token' : 'token-2022',
+                  // As the world made the mint.
+                  decimals: shelfOf()[name]?.decimals ?? -1,
                 },
               ]),
             ),

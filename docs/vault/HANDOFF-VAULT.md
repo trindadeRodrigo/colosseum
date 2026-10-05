@@ -42,7 +42,7 @@ When a goal can't be met as set, the product says so, shows the gap and the ways
 A shared portfolio is a named, versioned list of assets and weights that anyone can publish. In the positioning's terms it is an idea. Here an idea is an input, never the product.
 
 - **It always goes through the goal.** Choosing one sets the themes on the sheet. The goal, the limits, what the person already holds and the exit plan then decide how much of it they hold, and the plan says why, line by line. Someone who only wants to hold it still gets the sheet, the reasons and the exit plan at their size.
-- **Following.** When its author publishes a new version, the people following it are told, with the change. They rebalance with one tap. A switch, off by default, lets the vault do it by itself: after a 48-hour delay, inside the vault's limits, and never into a new asset without the owner's tap. A portfolio that holds an asset with no price oracle (gold on Solana) has no such switch: its followers always rebalance with one tap (gate `GOLD-ONE-TAP`).
+- **Following.** When its author publishes a new version, the people following it are told, with the change. They rebalance with one tap. A switch, off by default, lets the vault do it by itself: after a 48-hour delay, inside the vault's limits, and never into a new asset without the owner's tap. A portfolio that holds an asset with no price oracle has no such switch: its followers always rebalance with one tap (gate `GOLD-ONE-TAP`). Gold on Solana is PAXG, which has one (gate `GOLD-PAXG`).
 - **Limits on authors.** 3 to 12 assets, each between 2% and 50%; one new version every 48 hours; a version moves at most 20% of the portfolio. An asset's maximum weight is capped by its measured exit capacity, from Bearing. Where nothing is measured, the tier on the asset list stands in and is labelled as a fallback.
 - **Why have them.** They are the reason to come back and the thing to share, and each one carries the exit plan to whoever picks it up.
 - **At launch:** about six, serious assets only, no meme tokens. Names and weights are drafts in `research/open-questions/launch-shelf.md`. The weights are brought under the measured caps before anything is published: on the measurements of Oct 1 to 2 the Tesla token's cap is near 6%, and two launch portfolios hold it at 14 to 15%.
@@ -89,7 +89,7 @@ Decided from the research in `research/vaults/decision-memo.md`:
 
 Each chain has its own shelf. A plan is built from the shelf of its chain, and a shared portfolio is offered only to a person whose chain it has a recipe on.
 
-Checked on Solana (Oct 1): plans of $1k–$50k trade at low cost in the main stock tokens (about 0.07% for a $50k S&P 500 leg). Gold only works up to about $10k per plan. Details in `research/solana-liquidity.md`.
+Checked on Solana (Oct 1): plans of $1k–$50k trade at low cost in the main stock tokens (about 0.07% for a $50k S&P 500 leg). Gold only works up to about $10k per plan. Details in `research/solana-liquidity.md`. That gold was GLDx; since Oct 5 gold on Solana is PAXG (gate `GOLD-PAXG`), whose pools Bearing has not measured yet: a $10k sale through Jupiter read about zero impact on Oct 5.
 
 Stock tokens on the two EVM chains exist on mainnet only, so development and tests use a few real dollars. Whether a normal wallet in Brazil can hold them is unconfirmed.
 
