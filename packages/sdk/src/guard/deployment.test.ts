@@ -97,7 +97,7 @@ describe('the committed deployment files', () => {
     ) as {
       cash: { mint: string; decimals: number };
       assets: { mint: string; decimals: number }[];
-      retired: { mint: string; decimals?: number }[];
+      retired: { mint: string; decimals: number }[];
     };
     const byMint = new Map(
       [record.cash, ...record.assets, ...record.retired].map((t) => [t.mint, t.decimals]),
@@ -644,12 +644,12 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
     [
       'a mock chain with no decimals for its cash',
       mockFile({ family: 'mock', cash: 'base:usdc' }),
-      /decimals of base:usdc/,
+      /cashDecimals of base:usdc/,
     ],
     [
       'a mock chain with decimals that are no number',
       mockFile({ family: 'mock', cash: 'base:usdc', cashDecimals: 6.5 }),
-      /decimals/,
+      /cashDecimals of base:usdc/,
     ],
     [
       'a mock chain with cash of no name',

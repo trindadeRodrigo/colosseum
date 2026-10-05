@@ -104,8 +104,8 @@ function evmAddress(value: unknown, what: string): string {
 }
 
 /** A token's decimals as the chain keeps them: a whole number from 0 to 255 (a mint's `u8`, ERC-20's `uint8`). */
-function decimalsOf(value: unknown, what: string): number {
-  must(count(value, 0) && (value as number) <= 255, `the decimals of ${what} are not 0 to 255`);
+function decimalsOf(value: unknown, what: string, field = 'decimals'): number {
+  must(count(value, 0) && (value as number) <= 255, `the ${field} of ${what} are not 0 to 255`);
   return value as number;
 }
 
@@ -260,7 +260,7 @@ function mockOf(chain: ChainId, entry: Loose): MockDeployment {
     family: 'mock',
     chain,
     cash: entry.cash as AssetId,
-    cashDecimals: decimalsOf(entry.cashDecimals, String(entry.cash)),
+    cashDecimals: decimalsOf(entry.cashDecimals, String(entry.cash), 'cashDecimals'),
   };
 }
 
