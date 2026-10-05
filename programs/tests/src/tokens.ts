@@ -78,6 +78,39 @@ export function stockExtensions(
   ];
 }
 
+/** The extensions PAXG carries on mainnet (read on 2026-10-05), in the order its mint has them:
+ * a close authority, a permanent delegate, a transfer fee (zero, and the issuer may raise it),
+ * confidential transfers and their fee, a transfer hook with an authority and no program, and a
+ * metadata pointer to the mint itself. The issuer holds every authority. The name, which the real
+ * mint carries last, is `tokenMetadata`'s. */
+export function paxgExtensions(issuer: Address, mint: Address, feeBps = 0): ExtensionArgs[] {
+  const fee = { epoch: 0n, maximumFee: 2n ** 64n - 1n, transferFeeBasisPoints: feeBps };
+  return [
+    extension('MintCloseAuthority', { closeAuthority: issuer }),
+    extension('PermanentDelegate', { delegate: issuer }),
+    extension('TransferFeeConfig', {
+      transferFeeConfigAuthority: issuer,
+      withdrawWithheldAuthority: issuer,
+      withheldAmount: 0n,
+      olderTransferFee: fee,
+      newerTransferFee: fee,
+    }),
+    extension('ConfidentialTransferMint', {
+      authority: some(issuer),
+      autoApproveNewAccounts: false,
+      auditorElgamalPubkey: none(),
+    }),
+    extension('ConfidentialTransferFee', {
+      authority: some(issuer),
+      elgamalPubkey: issuer,
+      harvestToMintEnabled: true,
+      withheldAmount: new Uint8Array(64),
+    }),
+    extension('TransferHook', { authority: issuer, programId: SYSTEM_PROGRAM }),
+    extension('MetadataPointer', { authority: some(issuer), metadataAddress: some(mint) }),
+  ];
+}
+
 /** The name and the symbol a Token-2022 mint carries in its own account, where the real stock
  * tokens carry theirs: after the hook, last in the list. */
 export function tokenMetadata(
@@ -124,15 +157,15 @@ export async function createMint(
     decimals: number;
     /** The stock token's extension set. */
     stock?: boolean;
-    /** Or any other extensions, given the issuer's address. */
-    extensions?: (issuer: Address) => ExtensionArgs[];
+    /** Or any other extensions, given the issuer's address and the mint's. */
+    extensions?: (issuer: Address, mint: Address) => ExtensionArgs[];
   },
 ): Promise<TestMint> {
   const mint = await generateKeyPairSigner();
   const issuer = await generateKeyPairSigner();
   const extensions = options.stock
     ? stockExtensions(issuer.address, mint.address)
-    : (options.extensions?.(issuer.address) ?? []);
+    : (options.extensions?.(issuer.address, mint.address) ?? []);
   // A mint without extensions is the base 82 bytes under either token program.
   const space = extensions.length ? BigInt(getMintSize(extensions)) : 82n;
   const config = { programAddress: options.program };
