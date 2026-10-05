@@ -56,8 +56,9 @@ const LAYOUT: Record<string, Row> = {
   [SOLANA]: { may: [SCHEMAS], inTests: [MOCK] },
   [EVM]: { may: [SCHEMAS], inTests: [MOCK] },
   [MOCK]: { may: [SCHEMAS, BASKET] },
-  // The built SDK carries no workspace code. Its tests may use the parsers.
-  [SDK]: { may: [SCHEMAS], typesOnly: [SCHEMAS], inTests: [SCHEMAS] },
+  // The built SDK carries no workspace code. Its tests may use the parsers, and run the guard and the
+  // executor against the mock chain.
+  [SDK]: { may: [SCHEMAS], typesOnly: [SCHEMAS], inTests: [SCHEMAS, MOCK] },
   'apps/api': { may: [SCHEMAS, BASKET, ENGINE, RISK, DB, SOLANA, EVM, MOCK, SDK] },
   // "As today": it mounts the /risk routes file of apps/api by a relative path.
   'apps/risk-api': { may: [SCHEMAS, DB, RISK, 'apps/api'] },
@@ -943,8 +944,9 @@ describe('import boundaries: each rule bites', () => {
       "import '@x/schemas';\nimport '@x/basket';\nimport '@x/chain-mock/contract';\nconst db = require('@x/db');",
     'packages/chain-mock/src/contract.ts': "import { it } from 'vitest';\nexport const cases = 1;",
     'packages/sdk/src/index.ts':
-      "import type { Order } from '@x/schemas';\nimport { type Leg } from '@x/schemas';\nimport { parse } from '@x/schemas';\ntype T = import('@x/basket').Target;",
-    'packages/sdk/src/guard.test.ts': "import { parse } from '@x/schemas';",
+      "import type { Order } from '@x/schemas';\nimport { type Leg } from '@x/schemas';\nimport { parse } from '@x/schemas';\ntype T = import('@x/basket').Target;\nimport { mock } from '@x/chain-mock';",
+    'packages/sdk/src/guard.test.ts':
+      "import { parse } from '@x/schemas';\nimport { mock } from '@x/chain-mock';\nimport '@x/basket';",
     'packages/new-thing/src/index.ts': "import '@x/schemas';",
     'apps/api/src/server.ts':
       "import '@x/db';\nimport '@x/engine';\nimport { build } from '@x/chain-solana';\nimport '@x/sdk';\nimport { sign } from '@x/chain-solana/server';\nimport { read, signer } from '@x/chain-evm';\nconst m = await import(process.argv[2]);\nconst port = process.env.PORT;",
@@ -1012,8 +1014,10 @@ describe('import boundaries: each rule bites', () => {
         `packages/schemas/src/index.ts:3 outside node:fs (${RULES[1]})`,
         `packages/schemas/src/index.ts:4 leaves-workspace fixtures/x.json (${RULES[1]})`,
         `packages/schemas/src/tx.test.ts:3 outside fast-check (${RULES[1]})`,
+        `packages/sdk/src/guard.test.ts:3 import ${BASKET} (${RULES.table})`,
         `packages/sdk/src/index.ts:3 import ${SCHEMAS} (${RULES.table})`,
         `packages/sdk/src/index.ts:4 import ${BASKET} (${RULES.table})`,
+        `packages/sdk/src/index.ts:5 import ${MOCK} (${RULES.table})`,
       ].sort(),
     );
   });

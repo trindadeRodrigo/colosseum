@@ -6,6 +6,8 @@ import {
   type SolanaVaultReader,
   TOKEN_ACCOUNT_BYTES_BOUND,
   toBase58,
+  unlistedAssetId,
+  unlistedMint,
   VAULT_SIZE,
 } from '@colosseum/chain-solana/vault';
 import { ChainError, type ChainErrorCode, isStalePrice } from '@colosseum/schemas';
@@ -292,19 +294,17 @@ describe('Solana reader: prices', () => {
     expect(e.message).toContain(assetId('spyx'));
   });
 
-  it("checks the first bytes of the price account on mainnet, where it is Kamino's", async () => {
+  it("checks the first bytes of the price account on every network: Scope's, and the test exchange's", async () => {
     const price = accountOf(fixture, 'price');
     const other = patched(price, [{ at: 0, bytes: new Uint8Array(8).fill(7) }]);
     const edit = (node: FakeNode) => node.accounts.set(price.address, other);
-    const e = await refusal(
-      world({ network: 'mainnet', edit }).reader.getPrices([assetId('spyx')]),
-      'AssetNotPriced',
-    );
-    expect(e.message).toMatch(/discriminator/);
-    // Elsewhere the account is ours and not yet defined (TNET-4): owner and size are what is checked.
-    expect(
-      await world({ network: 'testnet', edit }).reader.getPrices([assetId('spyx')]),
-    ).toHaveLength(1);
+    for (const network of ['mainnet', 'testnet', 'local'] as const) {
+      const e = await refusal(
+        world({ network, edit }).reader.getPrices([assetId('spyx')]),
+        'AssetNotPriced',
+      );
+      expect(e.message).toMatch(/discriminator/);
+    }
     expect(await world({ network: 'mainnet' }).reader.getPrices([assetId('spyx')])).toHaveLength(1);
   });
 
@@ -561,14 +561,21 @@ describe('Solana reader: vaults', () => {
       expect(weightsOnly.vault?.pending).toMatchObject({ version: 2, newAssets: [] });
     });
 
-    it('refuses a shared portfolio that holds a mint the asset list does not have', async () => {
+    it('shows a mint the asset list does not have under its own id, and refuses nothing for it', async () => {
+      // An author can put in a shared portfolio a token this app does not list. Every follower would
+      // otherwise be refused for it: the vault reads, and the token shows under its mint.
       const withoutTsla = assetsOf(fixture).filter((a) => a.id !== assetId('tslax'));
       const { reader } = world({ assets: withoutTsla });
-      const e = await refusal(reader.getRecipe(names.recipes.core), 'MintNotAccepted');
-      expect(e.message).toContain(names.mints.tslax);
-      // The vault is told about that version too, so it is refused with it.
-      await refusal(reader.getVault(names.vaults.following), 'MintNotAccepted');
+      const unlisted = unlistedAssetId(names.mints.tslax as Address);
+      expect(unlistedMint(unlisted)).toBe(names.mints.tslax);
+      const portfolio = await reader.getRecipe(names.recipes.core);
+      expect(
+        portfolio.pending?.components.map((c) => (c.kind === 'asset' ? c.asset : null)),
+      ).toContain(unlisted);
+      const following = await reader.getVault(names.vaults.following);
+      expect(following?.pending?.newAssets).toEqual([unlisted]);
       expect((await reader.getVault(names.vaults.manual))?.pending).toBeNull();
+      expect(await reader.getVaults(names.owner)).toHaveLength(3);
     });
 
     it('refuses a vault whose shared portfolio is not there, or is not one', async () => {
@@ -627,12 +634,41 @@ describe('Solana reader: vaults', () => {
     expect((await reader.getVault(vault.address))?.keeper).toBe(names.guardian);
   });
 
-  it('refuses a vault with a target on a mint that is not listed, or on the cash token', async () => {
+  it('reads the balance of an unlisted mint it cannot decode under the token program that owns it', async () => {
+    // SPYx is a Token-2022 mint. Off the app's list, and with bytes that are no mint, it still says by
+    // its owner where the vault's account of it is.
+    const withoutSpyx = assetsOf(fixture).filter((a) => a.id !== assetId('spyx'));
+    const mint = accountOf(fixture, 'mint:spyx');
+    const broken = { ...mint, data: new Uint8Array(7) };
+    const { reader } = world({
+      assets: withoutSpyx,
+      edit: (node) => node.accounts.set(mint.address, broken),
+    });
+    const following = await reader.getVault(names.vaults.following);
+    expect(
+      following?.positions.find((p) => p.asset === unlistedAssetId(names.mints.spyx as Address))
+        ?.raw,
+    ).toBe(fixture.expected.vaults.following.held.spyx);
+  });
+
+  it('reads a target on a mint that is not listed under its mint, and refuses one on the cash token', async () => {
     const withoutGold = assetsOf(fixture).filter((a) => a.id !== assetId('gold'));
     const { reader } = world({ assets: withoutGold });
-    const e = await refusal(reader.getVault(names.vaults.manual), 'MintNotAccepted');
-    expect(e.message).toContain(names.mints.gold);
-    // A vault with only listed mints still reads.
+    const manual = await reader.getVault(names.vaults.manual);
+    const unlisted = unlistedAssetId(names.mints.gold as Address);
+    // Its line, with the weight the vault holds it to, its balance and the decimals of its mint.
+    expect(manual?.positions.find((p) => p.asset === unlisted)).toMatchObject({
+      targetBps: 4_000,
+      raw: '0',
+      display: '0',
+    });
+    const following = await reader.getVault(names.vaults.following);
+    expect(following?.positions.find((p) => p.asset === unlisted)).toMatchObject({
+      raw: fixture.expected.vaults.following.held.gold,
+      display: '1.25',
+    });
+    // The whole owner still reads.
+    expect(await reader.getVaults(names.owner)).toHaveLength(3);
     expect((await reader.getVault(names.vaults.partial))?.positions).toHaveLength(2);
 
     const vault = accountOf(fixture, 'vault:others');
@@ -641,9 +677,10 @@ describe('Solana reader: vaults', () => {
       { at: firstMintAt, bytes: getAddressEncoder().encode(names.mints.usdc as Address) },
     ]);
     const cashTarget = world({ edit: (node) => node.accounts.set(vault.address, onCash) }).reader;
-    expect(
-      (await refusal(cashTarget.getVault(vault.address), 'MintNotAccepted')).message,
-    ).toContain('cash');
+    // The program refuses the cash mint as a target, so a vault with one is not one it wrote.
+    expect((await refusal(cashTarget.getVault(vault.address), 'Unknown')).message).toContain(
+      'cash',
+    );
   });
 });
 

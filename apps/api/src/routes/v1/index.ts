@@ -1,8 +1,22 @@
 import { randomUUID } from 'node:crypto';
-import { createDb, type Db } from '@colosseum/db';
-import { ChainError, type EnvLike, parseChainConfigs, parseFlags } from '@colosseum/schemas';
+import {
+  assertNode,
+  createVaultRpc,
+  deploymentAssets,
+  type SolanaDeploymentRecord,
+  type VaultNodeRpc,
+} from '@colosseum/chain-solana/vault';
+import { basketAssets, createDb, type Db } from '@colosseum/db';
+import {
+  BasketAsset,
+  ChainError,
+  type EnvLike,
+  parseChainConfigs,
+  parseFlags,
+} from '@colosseum/schemas';
+import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { type ChainRegistry, createChainRegistry } from '../../orders/chains';
+import { type ChainRegistry, createChainRegistry, type SolanaInputs } from '../../orders/chains';
 import { Refusal, refusalFromChainError } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { authFromEnv, enforceSignIn, identify, type TokenIssuer } from '../../plugins/auth';
@@ -22,6 +36,15 @@ export type V1Deps = {
   /** Whose tokens are trusted. Default: the Privy app named by PRIVY_APP_ID, or nobody. */
   auth?: TokenIssuer | null;
   chains?: ChainRegistry;
+  /**
+   * Our deployments on each chain's network, by name (`program` on Solana; `factory` and `registry` on
+   * EVM), as a deploy writes them. A chain in `live` or `readonly` does not start without its own.
+   */
+  contracts?: Parameters<typeof parseChainConfigs>[1];
+  /** What Solana runs on in `live` or `readonly`. Default: `SOLANA_RPC_URL` and the `basket_assets` rows. */
+  solana?: SolanaInputs;
+  /** The deploy's record the addresses came from: `basket_assets` is held to its mints at start. */
+  solanaRecord?: SolanaDeploymentRecord | null;
   db?: Db;
   now?: () => Date;
   /** The rate limits. Default: `LIMITS`, the ones a server runs with. */
@@ -36,18 +59,12 @@ export type V1Deps = {
 /** Every /v1 route. The app hands in its environment once; nothing under here reads process.env. */
 export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps: V1Deps = {}) {
   // First, so a flag or a chain config that cannot be read stops the app with its own message.
-  const config = buildConfig(env);
+  const config = buildConfig(env, deps.contracts);
   // Default deny for every path under /v1, wherever it is registered from here on.
   const inScope = deps.inScope ?? requireDeclared(app);
 
   const flags = parseFlags(env);
   const issuer = deps.auth === undefined ? authFromEnv(env) : deps.auth;
-  const chains =
-    deps.chains ??
-    createChainRegistry(flags, parseChainConfigs(env), {
-      seed: `${Date.now()}:${randomUUID()}`,
-      now: deps.now,
-    });
   let db = deps.db;
   if (!db) {
     // Opens no connection until the first query.
@@ -55,6 +72,15 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
     db = own.db;
     app.addHook('onClose', () => own.client.end());
   }
+  const chains =
+    deps.chains ??
+    createChainRegistry(flags, parseChainConfigs(env, deps.contracts), {
+      seed: `${Date.now()}:${randomUUID()}`,
+      now: deps.now,
+      solana:
+        deps.solana ??
+        (await solanaFromEnv(env, flags.chainMode.solana, db, deps.solanaRecord ?? null)),
+    });
   const orderDeps: OrderDeps = { db, chains, now: deps.now ?? (() => new Date()) };
 
   // Its own scope: sign-in, the rate limits and the error shape apply to these routes and to no
@@ -99,4 +125,58 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
     // Out of the route table altogether unless a chain runs on the mock.
     if (chains.active().some((entry) => entry.mock)) registerMockRoutes(scope, orderDeps);
   });
+}
+
+/**
+ * What Solana runs on when it is `live` or `readonly` and nothing was handed in: the RPC at
+ * `SOLANA_RPC_URL` and the network's assets as `basket_assets` holds them. Nothing for any other mode.
+ */
+export async function solanaFromEnv(
+  env: EnvLike,
+  mode: string,
+  db: Db,
+  record: SolanaDeploymentRecord | null = null,
+  connect: (url: string) => VaultNodeRpc = createVaultRpc,
+): Promise<SolanaInputs | undefined> {
+  if (mode !== 'live' && mode !== 'readonly') return undefined;
+  // As written: a URL can carry a key, and keys are case-sensitive (readEnv lower-cases).
+  const url = env.SOLANA_RPC_URL?.trim();
+  if (!url) throw new Error(`CHAIN_MODE_SOLANA is ${mode}, and SOLANA_RPC_URL is not set`);
+  const rows = await db.select().from(basketAssets).where(eq(basketAssets.chainId, 'solana'));
+  const assets = rows.map(({ updatedAt: _, chainId, ...row }) =>
+    BasketAsset.parse({ ...row, chain: chainId }),
+  );
+  if (record) holdToRecord(assets, record);
+  // The node is asked what network it is: a test label on a mainnet node does not start.
+  const rpc = connect(url);
+  await assertNode(rpc, record);
+  return { rpc, assets };
+}
+
+/**
+ * `basket_assets` against the deploy's record, at start: every Solana row is a row the record makes
+ * (`deploymentAssets`), with the same mint, decimals, class, session and price entry, and the cash
+ * row is the record's cash. One database serves one network, so a row of another network's deploy,
+ * or a hand-edited one (a `priceRef` moved to another entry), stops the API rather than build on it.
+ * The table has no token program: the adapter reads it from each mint.
+ */
+export function holdToRecord(assets: BasketAsset[], record: SolanaDeploymentRecord): void {
+  const made = new Map(deploymentAssets(record).map((a) => [a.address, a]));
+  const fields = ['decimals', 'cls', 'session', 'priceKind', 'priceRef'] as const;
+  const wrong = assets.flatMap((a) => {
+    const want = made.get(a.address);
+    if (!want) return [`${a.id} (${a.address}) is not a token of ${record.network}`];
+    return fields
+      .filter((f) => a[f] !== want[f])
+      .map((f) => `${a.id} has ${f} ${a[f]}, and ${record.network} says ${want[f]}`);
+  });
+  const cash = assets.filter((a) => a.cls === 'cash');
+  if (cash.length !== 1 || cash[0]?.address !== record.cash.mint)
+    wrong.push(
+      `the cash row is not ${record.network}'s cash, ${record.cash.id} (${record.cash.mint})`,
+    );
+  if (wrong.length)
+    throw new Error(
+      `basket_assets does not match the record of ${record.network}: ${wrong.slice(0, 3).join('; ')}`,
+    );
 }
