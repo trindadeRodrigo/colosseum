@@ -269,8 +269,12 @@ const asDollars = (micro: bigint) => (Number(micro) / 1e6).toString();
 
 /** However long the gap, a move above this is refused: the keeper range bounds what is left. */
 export const MAX_GAP_JUMP_BPS = 5_000;
-const PERSISTS =
-  'if it persists, a person checks the source and moves the range (upsert_asset) or --max-jump-bps';
+/** What a person does about a refusal that keeps coming back. */
+export const HINT = {
+  range: 'if it persists, a person checks the source and moves the range (upsert_asset)',
+  jump: `if it persists, a person checks the source and raises --max-jump-bps (no gap allows more than ${MAX_GAP_JUMP_BPS} bps) or moves the range`,
+  capped: `no gap allows more than ${MAX_GAP_JUMP_BPS} bps: if the source is right, a person moves the range (upsert_asset) and writes the entry with the admin key`,
+};
 
 /** Why an entry must not be written, or null. `held` is what devnet holds for the same entry. */
 function refusal(
@@ -287,14 +291,14 @@ function refusal(
     return `${what} is stamped ${entry.unixTimestamp - now} s ahead of the cluster's clock`;
   const price = micros(entry);
   if (range && (price < range.min || price > range.max))
-    return `${what} ${dollars(entry)} is outside the keeper range ${asDollars(range.min)} to ${asDollars(range.max)}; ${PERSISTS}`;
+    return `${what} ${dollars(entry)} is outside the keeper range ${asDollars(range.min)} to ${asDollars(range.max)}; ${HINT.range}`;
   const before = held.value > 0n ? micros(held) : 0n;
   if (before > 0n) {
     const hours = Math.max(1, Number(now - held.unixTimestamp) / 3600);
     const allowed = Math.min(MAX_GAP_JUMP_BPS, Math.round(maxJumpBps * hours));
     const move = price > before ? price - before : before - price;
     if (move * 10_000n > before * BigInt(allowed))
-      return `${what} ${dollars(entry)} is more than ${allowed} bps from the ${dollars(held)} devnet holds; ${PERSISTS}`;
+      return `${what} ${dollars(entry)} is more than ${allowed} bps from the ${dollars(held)} devnet holds; ${allowed === MAX_GAP_JUMP_BPS ? HINT.capped : HINT.jump}`;
   }
   return null;
 }
