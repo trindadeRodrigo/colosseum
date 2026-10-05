@@ -244,7 +244,10 @@ describe('the guard on Solana: a creator publishes, updates and takes back a sha
       ...publishStep,
       text: { ...TEXT, familyId: other } as typeof TEXT,
     } as ApprovedStep;
-    const underOther = wire([...BUDGET, publishIx({ meta: familyTextHash({ familyId: other, ...TEXT }) })]);
+    const underOther = wire([
+      ...BUDGET,
+      publishIx({ meta: familyTextHash({ familyId: other, ...TEXT }) }),
+    ]);
     expect(
       refusalOf(() => guardTransaction(input(smuggled, underOther)))?.code,
       'a family id inside the text',
