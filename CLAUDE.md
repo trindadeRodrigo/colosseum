@@ -18,7 +18,7 @@ Before any work, read the spec for the piece you touch:
 
 - Every yield, price or FX figure in code, DB or UI carries `source`, `fetched_at` and `method`. No hard-coded APYs anywhere. A test fails the build if a numeric yield literal appears outside `fixtures/`.
 - Anything mocked or stubbed is labelled `MOCK` in the UI and in the API response (`"provenance": "mock"`). A figure from a test network or a local copy of mainnet is `"provenance": "sandbox"` and gets the same plate, with the words "test network". Never display either as live.
-- The solver is deterministic. The LLM only parses goals into a zod-validated `ConstraintSheet`. If validation fails, the user sees the error and edits the sheet; the solver never runs on unvalidated input.
+- The solver is deterministic. The LLM reads the goal into a zod-validated sheet: it asks the person questions where the goal is unclear and always says back what it understood, and the person confirms before the solver runs (gate `GUIDED-INTAKE`). It never sets weights, picks assets or states a figure. If validation fails, the user sees the error and edits the sheet; the solver never runs on unvalidated input.
 - Stock tokens are ineligible for income plans and for plans whose goal is to protect (gate `PROTECT-NO-STOCKS`). Enforce in the asset registry, not in the prompt. Test it.
 - A plan lives on one chain, the chain of the person's wallet: the deposit, the vault and every trade are there, and nothing is split across chains (gate `ONE-CHAIN`).
 - What an asset may weigh comes from Bearing's measured exit numbers: the cap on chain, the ceiling in a plan, the exit cost shown. A tier stands in only where nothing is measured, and is labelled as a fallback (gate `EXIT-SOURCE`).
