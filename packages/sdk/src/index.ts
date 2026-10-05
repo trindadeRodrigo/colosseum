@@ -12,4 +12,5 @@ export {
   type ChainRecipeVersion,
   RECIPE_ACCOUNT_SIZE,
   readSolanaRecipe,
+  vaultOf,
 } from './registry';

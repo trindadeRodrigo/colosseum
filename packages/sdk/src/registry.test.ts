@@ -177,3 +177,21 @@ describe("a shared portfolio, read from the caller's own node", () => {
     ).rejects.toThrow('32 bytes');
   });
 });
+
+describe('the vault a plan number names, as the guard derives it', () => {
+  it('is the program’s account on Solana and the mock’s own on the mock, and none on EVM', async () => {
+    const { vaultAddress } = await import('./guard/solana/addresses');
+    const { mockVaultAddress } = await import('./guard/mock/check');
+    const { vaultOf } = await import('./registry');
+    expect(vaultOf({ family: 'solana', chain: 'solana' }, CREATOR, '42')).toBe(
+      vaultAddress(BASKET_PROGRAM.address, CREATOR, '42'),
+    );
+    expect(vaultOf({ family: 'mock', chain: 'solana' }, CREATOR, '42')).toBe(
+      mockVaultAddress('solana', CREATOR, '42'),
+    );
+    expect(vaultOf({ family: 'solana', chain: 'solana' }, CREATOR, '43')).not.toBe(
+      vaultOf({ family: 'solana', chain: 'solana' }, CREATOR, '42'),
+    );
+    expect(vaultOf({ family: 'evm', chain: 'robinhood' }, `0x${'1'.repeat(40)}`, '42')).toBeNull();
+  });
+});

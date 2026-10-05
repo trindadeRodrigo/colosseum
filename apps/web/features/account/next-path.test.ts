@@ -76,7 +76,18 @@ describe('the routes sign-in knows', () => {
       .filter((file) => /^app\/\(app\)\/(.+\/)?page\.tsx$/.test(file))
       .map((file) => file.replace(/^app\/\(app\)/, '').replace(/\/page\.tsx$/, '') || '/')
       .sort();
-    expect(pages).toEqual(['/goal', '/orders/[id]', '/plan/[id]', '/plan/[id]/buy', '/sign-in']);
+    expect(pages).toEqual([
+      '/goal',
+      '/indexes/[slug]',
+      '/indexes/[slug]/buy',
+      '/orders/[id]',
+      '/plan/[id]',
+      '/plan/[id]/buy',
+      '/publish',
+      '/shelf',
+      '/sign-in',
+      '/vaults/[chain]/[address]',
+    ]);
     expect([...APP_ROUTES].sort()).toEqual(pages);
   });
 

@@ -32,10 +32,10 @@ import { usePlan } from './use-plan';
 // button that names the action and the amount. It makes the order (POST /v1/orders) and leads to the
 // order screen, where every step is reviewed before anything is signed. Nothing is signed here.
 
-const MIN_USD = 10;
-const MAX_USD = 1_000_000;
+export const MIN_USD = 10;
+export const MAX_USD = 1_000_000;
 
-type Funding = { kind: 'idle' } | { kind: 'reading' } | FundingOutcome;
+export type Funding = { kind: 'idle' } | { kind: 'reading' } | FundingOutcome;
 
 export function BuyScreen({ id }: { id: string }) {
   const t = useT();
@@ -259,7 +259,8 @@ type FundingRow = {
   units: TokenUnits | null;
 };
 
-function FundingCard({
+/** What the wallet holds and is missing for a buy, with where each balance comes from. */
+export function FundingCard({
   id,
   funding,
   chainName,

@@ -2,8 +2,9 @@ import type { AssetId } from '@colosseum/schemas';
 import { base58Encode, base64Decode, hexEncode, sameBytes, utf8Encode } from './bytes';
 import type { RpcCall } from './executor/chain-read';
 import { BASKET_PROGRAM } from './guard/generated/basket-program';
-import { recipeAddress } from './guard/solana/addresses';
-import type { SolanaDeployment } from './guard/types';
+import { mockVaultAddress } from './guard/mock/check';
+import { recipeAddress, vaultAddress } from './guard/solana/addresses';
+import type { GuardDeployment, SolanaDeployment } from './guard/types';
 import { sha256 } from './hash';
 
 // A shared portfolio as the Solana registry holds it, read by the caller from its own node: what a
@@ -136,4 +137,20 @@ export async function readSolanaRecipe(
   const active = waiting.version !== 0 && now >= waiting.effectiveAt ? waiting : current;
   const pending = waiting.version !== 0 && now < waiting.effectiveAt ? waiting : null;
   return { address, creator, familyId, active, pending, clock: now };
+}
+
+/**
+ * The vault of `owner` for the plan number `basketId`, as the guard derives it for this deployment: on
+ * Solana the program's account, on the mock the mock's own. A screen holds a vault's address and its
+ * plan number to each other with this before it names that number in a step. Null on an EVM chain,
+ * whose vault is derived with the factory's code (`evmVaultAddress`).
+ */
+export function vaultOf(
+  deployment: Pick<GuardDeployment, 'family' | 'chain'>,
+  owner: string,
+  basketId: string,
+): string | null {
+  if (deployment.family === 'solana') return vaultAddress(BASKET_PROGRAM.address, owner, basketId);
+  if (deployment.family === 'mock') return mockVaultAddress(deployment.chain, owner, basketId);
+  return null;
 }

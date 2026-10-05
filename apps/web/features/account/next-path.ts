@@ -9,10 +9,15 @@
  */
 export const APP_ROUTES: readonly string[] = [
   '/goal',
+  '/indexes/[slug]',
+  '/indexes/[slug]/buy',
   '/orders/[id]',
   '/plan/[id]',
   '/plan/[id]/buy',
+  '/publish',
+  '/shelf',
   '/sign-in',
+  '/vaults/[chain]/[address]',
 ];
 
 /** Where sign-in leads when it is told nothing, or nothing it accepts. */
