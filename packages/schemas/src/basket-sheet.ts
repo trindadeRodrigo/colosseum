@@ -190,6 +190,22 @@ export const ObservationRef = Sourced.extend({
 });
 export type ObservationRef = z.infer<typeof ObservationRef>;
 
+/**
+ * One of the person's sleeves as the plan was made (gate SLEEVES, ENG-3 slice 4): its share, its
+ * dollars, and for the safe-yield and theme sleeves what it holds by token, cash included, before the
+ * lines are rounded to whole basis points. The goal sleeve's `holds` is empty: it is the rest of every
+ * line. A stored plan keeps this so each sleeve can be rebalanced against its own targets.
+ */
+export const PlanSplitSleeve = z.object({
+  kind: z.enum(['goal', 'theme', 'safe_yield']),
+  /** A theme sleeve's slug. */
+  theme: z.string().min(1).optional(),
+  shareBps: Bps.min(1),
+  amountUsd: z.number().nonnegative(),
+  holds: z.array(z.object({ assetId: AssetId, amountUsd: z.number().nonnegative() })),
+});
+export type PlanSplitSleeve = z.infer<typeof PlanSplitSleeve>;
+
 export const BasketProposalBase = z.object({
   sheet: BasketSheet,
   engineVersion: z.string().min(1),
@@ -210,6 +226,8 @@ export const BasketProposalBase = z.object({
   flags: z.array(z.string()),
   observations: z.array(ObservationRef),
   disclaimer: z.string(),
+  /** Present when the person split the plan (gate SLEEVES): each sleeve and its targets. Additive. */
+  split: z.array(PlanSplitSleeve).optional(),
 });
 
 export const BasketProposal = BasketProposalBase.refine(

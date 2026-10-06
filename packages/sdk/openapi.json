@@ -776,6 +776,51 @@
                         },
                         "disclaimer": {
                           "type": "string"
+                        },
+                        "split": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": ["goal", "theme", "safe_yield"]
+                              },
+                              "theme": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "shareBps": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 10000
+                              },
+                              "amountUsd": {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              "holds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "assetId": {
+                                      "type": "string",
+                                      "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                    },
+                                    "amountUsd": {
+                                      "type": "number",
+                                      "minimum": 0
+                                    }
+                                  },
+                                  "required": ["assetId", "amountUsd"],
+                                  "additionalProperties": false
+                                }
+                              }
+                            },
+                            "required": ["kind", "shareBps", "amountUsd", "holds"],
+                            "additionalProperties": false
+                          }
                         }
                       },
                       "required": [
@@ -1427,6 +1472,51 @@
                               },
                               "disclaimer": {
                                 "type": "string"
+                              },
+                              "split": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "enum": ["goal", "theme", "safe_yield"]
+                                    },
+                                    "theme": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "shareBps": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 10000
+                                    },
+                                    "amountUsd": {
+                                      "type": "number",
+                                      "minimum": 0
+                                    },
+                                    "holds": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "assetId": {
+                                            "type": "string",
+                                            "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                          },
+                                          "amountUsd": {
+                                            "type": "number",
+                                            "minimum": 0
+                                          }
+                                        },
+                                        "required": ["assetId", "amountUsd"],
+                                        "additionalProperties": false
+                                      }
+                                    }
+                                  },
+                                  "required": ["kind", "shareBps", "amountUsd", "holds"],
+                                  "additionalProperties": false
+                                }
                               }
                             },
                             "required": [

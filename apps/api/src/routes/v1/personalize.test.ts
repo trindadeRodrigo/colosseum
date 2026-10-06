@@ -154,7 +154,15 @@ describe('POST /v1/baskets/personalize', () => {
       },
     });
     expect(reais.statusCode, reais.body).toBe(200);
-    expect(PersonalizeResponse.parse(reais.json()).proposal.flags).toContain('fx_open:BRL');
+    const split = PersonalizeResponse.parse(reais.json());
+    expect(split.proposal.flags).toContain('fx_open:BRL');
+    // The split is in the shared shape since slice 4, answered and stored, so each sleeve of a stored
+    // plan can be rebalanced against its own targets.
+    expect(split.proposal.split?.map((x) => [x.kind, x.shareBps])).toEqual([
+      ['goal', 6000],
+      ['safe_yield', 4000],
+    ]);
+    expect((await loadProposal(data.db, split.id))?.split).toEqual(split.proposal.split);
     // Dated withdrawals are applied: the plan is made, and its sheet says them back.
     const obligations = [{ month: '2027-06', amount: 3000, currency: 'USD' }];
     const withdrawing = await post(who, PATH, { sheet: { ...asked, obligations } });

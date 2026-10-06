@@ -75,8 +75,9 @@ export function shelfVersionOf(
 }
 
 /**
- * The plan in the shared shape. The limits leave the sheet (its lines already hold them), the sleeves
- * and the verdict's sentence beside the ways are not in the shape, and a figure that names no source
+ * The plan in the shared shape. The limits leave the sheet (its lines already hold them), the four
+ * sleeves and the verdict's sentence beside the ways are not in the shape, the person's split stays
+ * (`split`, so a stored plan can be rebalanced sleeve by sleeve), and a figure that names no source
  * or no time is not stated as one: the plan's flags already say it (`liquidity_unsourced`,
  * `liquidity_undated:<asset>`). The result is held to the shared schema, lines adding up to 10,000.
  */

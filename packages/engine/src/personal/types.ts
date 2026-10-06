@@ -9,7 +9,6 @@ import {
   PersonalParams,
   PlanCandidateId,
   type PlanScorecard,
-  type PlanSleeve,
   type PlanStatus,
   type Verdict,
   type YieldObservation,
@@ -254,19 +253,8 @@ export type PersonalObservation = Omit<ObservationRef, 'source' | 'fetchedAt'> &
 export type PersonalProposal = Omit<BasketProposal, 'sheet' | 'observations' | 'verdict'> & {
   sheet: PersonalSheet;
   sleeves: { sleeve: Sleeve; weightBps: number; amountUsd: number }[];
-  /**
-   * Present when the person split the plan (gate SLEEVES): each of their sleeves, its share and its
-   * dollars, and for the safe-yield and theme sleeves what each holds by token (cash included), before
-   * the lines are rounded to whole basis points. The goal sleeve is the rest of every line.
-   */
-  split?: {
-    kind: PlanSleeve['kind'];
-    /** A theme sleeve's slug. */
-    theme?: string;
-    shareBps: number;
-    amountUsd: number;
-    holds: { assetId: string; amountUsd: number }[];
-  }[];
+  // `split` (the person's sleeves, gate SLEEVES) is the shared `BasketProposal.split` since ENG-3
+  // slice 4: each sleeve, its share and dollars, and what the safe-yield and theme sleeves hold.
   observations: PersonalObservation[];
   verdict?: PersonalVerdict;
   /** Present when the sheet has withdrawals: the plan month by month, in the goal's currency. */
