@@ -715,7 +715,7 @@
 
   /* the system's own face, for a partner that names none: the embed never inherits our faces */
   --tf-embed-system-font:
-    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
   /* the partner's buttons may be rounder than their boxes (a pill, in the guide's sample) */
   --tf-embed-button-radius: var(--embed-button-radius, var(--radius));
