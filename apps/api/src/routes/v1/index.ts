@@ -149,7 +149,9 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
     registerMeRoutes(scope, orderDeps);
     registerFundingRoute(scope, orderDeps);
     registerOrderRoutes(scope, orderDeps);
-    registerBasketRoutes(scope, orderDeps, deps.planInputs ?? (async () => ({})));
+    registerBasketRoutes(scope, orderDeps, deps.planInputs ?? (async () => ({})), {
+      agentSurface: flags.agentSurface,
+    });
     registerPortfolioRoute(scope, orderDeps);
     registerSharedRoutes(scope, orderDeps);
     registerVaultRoute(scope, orderDeps);

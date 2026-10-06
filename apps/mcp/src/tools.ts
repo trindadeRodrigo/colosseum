@@ -66,7 +66,7 @@ async function calling(run: () => Promise<CallToolResult>): Promise<CallToolResu
 }
 
 const NOT_ADVICE =
-  'Not advice. The person decides, and signs every step in the app with their own wallet.';
+  'Show them the plan’s disclaimer. The person decides, and signs every step in the app with their own wallet.';
 
 // ---------------------------------------------------------------------------------------------------------
 // Schemas, cut from the OpenAPI document.

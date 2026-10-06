@@ -338,7 +338,14 @@ describe('what the server passes on, and what it cannot do', () => {
     const files = readdirSync(dir, { recursive: true })
       .map(String)
       .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && !f.startsWith('test/'));
-    expect(files.sort()).toEqual(['contract.ts', 'http.ts', 'main.ts', 'server.ts', 'tools.ts']);
+    expect(files.sort()).toEqual([
+      'contract.ts',
+      'http.ts',
+      'llms.ts',
+      'main.ts',
+      'server.ts',
+      'tools.ts',
+    ]);
     const imported = new Set<string>();
     for (const file of files) {
       const source = readFileSync(join(dir, file), 'utf8');

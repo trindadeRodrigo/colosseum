@@ -1,10 +1,13 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
+import openapi from '@colosseum/sdk/openapi.json' with { type: 'json' };
 import type { McpHttpHandler } from '@modelcontextprotocol/server';
+import { llmsTxt } from './llms';
 import type { McpConfig } from './server';
 
-// The MCP handler on Node's HTTP server: `/mcp` is the server, `/health` says it is up, and nothing
-// else is served. A request from a browser page (it carries `Origin`) is refused unless that origin is
+// The MCP handler on Node's HTTP server: `/mcp` is the server, `/llms.txt` says what it is to an agent
+// (AGT-3), `/openapi.json` is the API's document the tools are cut from, `/health` says it is up, and
+// nothing else is served. A request from a browser page (it carries `Origin`) is refused unless that origin is
 // allowed, so a page cannot drive the server from a person's browser.
 
 export type ServeConfig = McpConfig & {
@@ -74,6 +77,19 @@ export function serveNode(mcp: McpHttpHandler, config: ServeConfig) {
     const path = (req.url ?? '/').split('?')[0];
     const reply = async () => {
       if (path === '/health') return write(res, Response.json({ ok: true }));
+      if (path === '/openapi.json') return write(res, Response.json(openapi));
+      if (path === '/llms.txt') {
+        const self = `${req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'}://${req.headers.host ?? `localhost:${config.port}`}`;
+        const text = llmsTxt({
+          mcpUrl: `${self}/mcp`,
+          apiUrl: config.apiUrl,
+          appUrl: config.appUrl,
+        });
+        return write(
+          res,
+          new Response(text, { headers: { 'content-type': 'text/plain; charset=utf-8' } }),
+        );
+      }
       if (path !== '/mcp')
         return write(res, Response.json({ error: 'not found' }, { status: 404 }));
       const origin = req.headers.origin;

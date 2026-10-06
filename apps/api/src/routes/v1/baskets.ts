@@ -36,7 +36,17 @@ export type LinkedPlanResponse = z.infer<typeof LinkedPlanResponse>;
 
 export const BasketIdParams = z.object({ id: z.string().uuid() });
 
-export function registerBasketRoutes(scope: FastifyInstance, deps: OrderDeps, inputs: PlanInputs) {
+export function registerBasketRoutes(
+  scope: FastifyInstance,
+  deps: OrderDeps,
+  inputs: PlanInputs,
+  flags: { agentSurface: boolean } = { agentSurface: false },
+) {
+  /** The plans made from a link are the agent surface's: switched off, they are not there. */
+  const surfaced = () => {
+    if (!flags.agentSurface)
+      throw new Refusal(404, 'plans from a link are switched off on this server (AGENT_SURFACE)');
+  };
   const f = scope.withTypeProvider<ZodTypeProvider>();
   /** The plan, made on `chain` from the sheet. */
   const make = (sheet: PersonalizeRequest['sheet'], chain: () => Promise<ChainId>) =>
@@ -87,6 +97,7 @@ export function registerBasketRoutes(scope: FastifyInstance, deps: OrderDeps, in
       },
     },
     async (req): Promise<PersonalizeResponse> => {
+      surfaced();
       const { sheet } = req.body;
       // The sheet names exactly one chain (`PersonalSheet`): the plan is made there.
       const { proposal, rollUp } = await make(sheet, async () => sheet.chains[0] as ChainId);
@@ -103,12 +114,13 @@ export function registerBasketRoutes(scope: FastifyInstance, deps: OrderDeps, in
         tags: ['plans'],
         summary: 'A plan made from a link (`POST /v1/baskets/propose`), by its id',
         description:
-          'Answers a plan stored with no person, which is what `POST /v1/baskets/propose` makes. A plan a person made in the app is theirs and answers 404 here, as an id that names no plan does.',
+          'Answers a plan stored with no person, which is what `POST /v1/baskets/propose` makes, while the agent surface is on. A plan a person made in the app is theirs and answers 404 here, as an id that names no plan does.',
         params: BasketIdParams,
         response: { 200: LinkedPlanResponse, default: OrderError },
       },
     },
     async (req): Promise<LinkedPlanResponse> => {
+      surfaced();
       const proposal = await loadLinkedProposal(deps.db, req.params.id);
       if (!proposal) throw new Refusal(404, 'no plan made from a link has that id');
       return { id: req.params.id, proposal };

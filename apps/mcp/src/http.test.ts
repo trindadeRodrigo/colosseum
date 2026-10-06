@@ -72,6 +72,14 @@ describe('the HTTP server', () => {
     expect(await res.text()).toContain('"name":"build_plan"');
     expect(await (await fetch(`${base}/health`)).json()).toEqual({ ok: true });
     expect((await fetch(`${base}/`)).status).toBe(404);
+    // what an agent reads first, with this deployment's own addresses, and the API's document
+    const llms = await (await fetch(`${base}/llms.txt`)).text();
+    expect(llms).toContain(`MCP server (Streamable HTTP, no login): ${base}/mcp`);
+    expect(llms).toContain('App: http://localhost:3000');
+    expect(llms).toContain('build_plan');
+    expect(llms).toContain("carries the API's disclaimer");
+    const doc = (await (await fetch(`${base}/openapi.json`)).json()) as { paths: object };
+    expect(Object.keys(doc.paths)).toContain('/v1/baskets/propose');
     expect((await fetch(`${base}/mcp/../health`)).status).toBe(200);
   });
 

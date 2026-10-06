@@ -36,6 +36,7 @@ beforeAll(async () => {
   ({ app, registry } = await testApp({
     issuer: issuer.issuer,
     db: data.db,
+    env: { AGENT_SURFACE: 'on' },
     planInputs: withMockYield,
   }));
   undo.push(() => app.close());
@@ -45,6 +46,7 @@ afterAll(async () => {
 });
 
 const fallback = { solana: '', robinhood: '' };
+const withMockYieldOff: PlanInputs = async () => ({});
 const { post, get, fund, order } = orderFlow({
   app: () => app,
   registry: () => registry,
@@ -132,5 +134,18 @@ describe('a plan proposed from a link', () => {
     const bad = await post(null, '/v1/baskets/propose', { sheet: { ...sheet(), amountUsd: -1 } });
     expect(bad.statusCode).toBe(400);
     expect((await data.db.select({ id: proposals.id }).from(proposals)).length).toBe(before);
+  });
+
+  it('is not there while the agent surface is off', async () => {
+    const off = await testApp({ issuer: issuer.issuer, db: data.db, planInputs: withMockYieldOff });
+    try {
+      const made = await post(null, '/v1/baskets/propose', { sheet: sheet() }, off.app);
+      expect(made.statusCode).toBe(404);
+      expect(OrderError.parse(made.json()).error).toMatch(/AGENT_SURFACE/);
+      const read = await get(null, `/v1/baskets/${crypto.randomUUID()}`, off.app);
+      expect(read.statusCode).toBe(404);
+    } finally {
+      await off.app.close();
+    }
   });
 });

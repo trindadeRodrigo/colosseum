@@ -2059,7 +2059,7 @@
       "get": {
         "summary": "A plan made from a link (`POST /v1/baskets/propose`), by its id",
         "tags": ["plans"],
-        "description": "Answers a plan stored with no person, which is what `POST /v1/baskets/propose` makes. A plan a person made in the app is theirs and answers 404 here, as an id that names no plan does.",
+        "description": "Answers a plan stored with no person, which is what `POST /v1/baskets/propose` makes, while the agent surface is on. A plan a person made in the app is theirs and answers 404 here, as an id that names no plan does.",
         "parameters": [
           {
             "schema": {
