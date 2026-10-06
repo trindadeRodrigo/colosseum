@@ -81,7 +81,7 @@ jq -c 'select(.event == "slot" and .rows < .tokens) | {scheduledAt, rows, ended,
 
 - The import is idempotent: the table's key is `(asset_mint, fetched_at)` and existing rows are left alone.
 - Settings are in `.env.example` under "EVM depth collector". Tokens, addresses and chains are in `config.ts`; Base is there, switched off (`--chain base` runs it once).
-- Curves: `pnpm risk:compute` fits every row of `risk_asset_snapshots`, these included, and today stores every curve as `risk-0.3`. The lines that keep `evmq-0.1` on EVM curves are Rodrigo's (RISK-1).
+- Curves: `pnpm risk:compute` fits every row of `risk_asset_snapshots`, these included, and stores an EVM curve under the collector's symbol and `evmq-0.1` (the last section). Nothing scheduled runs the import or that compute for these rows: the API's answer for an EVM stock is as new as the last `pnpm risk-evm:import` and `pnpm risk:compute` run by hand.
 
 ## The token list and every pool
 
@@ -288,15 +288,18 @@ A list run also reads the Chainlink feed of every tracked stock that has one (PL
 
 After editing `ClQuoter.sol`, run `pnpm exec tsx scripts/risk-evm/build-quoter.ts`; a test fails while the JSON is stale. The tests are in `tests/risk-evm.test.ts`. They replay `fixtures/risk-evm/robinhood-nvda-quotes.json` and the endpoint errors in `fixtures/risk-evm/rpc-errors.json`; none calls the network. The token list and the discovery are tested in `tests/risk-evm-universe.test.ts`, which replays one recorded pass for two tokens (`fixtures/risk-evm/robinhood-discovery.json.gz`). The cut is tested in `tests/risk-evm-cut.test.ts`, on the discovery of Oct 5 frozen to what the cut reads (`fixtures/risk/universe/robinhood-discovery-20261005T1947.json.gz`, made by `pnpm risk:freeze-universe-fixture <discovery.json> --chain robinhood`). The oracle read is tested in `tests/risk-evm-oracle-run.test.ts`, on the same recording and by hand. The run on the list is tested in `tests/risk-evm-list.test.ts`, which replays two recorded runs for NVDA and GME at one block (`fixtures/risk-evm/robinhood-list-run.json.gz`): every reachable pool, then the three deepest. The oracle map is tested in `tests/risk-evm-oracles.test.ts`, which replays one recorded pass (`fixtures/risk-evm/robinhood-oracles.json.gz`: the directory and the chain's answers at block 81,164,613).
 
-## What Rodrigo's side needs before the API can serve these curves (RISK-1)
+## How these curves reach the API (RISK-1, PLAN-UNIVERSE RU.8)
 
-`scripts/risk/compute.ts` already fits every row; it needs about six lines so EVM curves keep their own symbol and method version. Line numbers are for the file as it is on `staging` on Oct 2.
+Built on 2026-10-06. The six lines this section once listed are in `scripts/risk/curve-rows.ts`, the part of `pnpm risk:compute` that has no I/O.
 
-1. In the select (lines 30 to 35), add `asset: riskAssetSnapshots.asset` and `methodVersion: riskAssetSnapshots.methodVersion`.
-2. After line 41: `const meta = new Map<string, { asset: string; version: string }>();`
-3. Inside the loop that starts at line 42: `meta.set(r.assetMint, { asset: r.asset, version: r.methodVersion });`
-4. Line 70: `assetSymbol: symbol.get(mint) ?? meta.get(mint)?.asset ?? mint.slice(0, 6),` (today an EVM row's symbol would be `0xd060`).
-5. Line 81: keep the snapshot's version when it starts with `evmq-`, otherwise `CURVE_METHOD_VERSION` as today, so Solana rows stay `risk-0.3`.
-6. Line 82, `source`: it says "routed: best split across dollar-exit pools", which is wrong for EVM rows; make it follow the version.
+- **Compute.** A snapshot whose method version starts with `evmq-` is fitted like any other and stored in `risk_depth_curves` under the symbol the collector wrote and under its own version (`evmq-0.1`), with a `source` that says "best single pool per size", not "routed". A Solana row is stored as before, `risk-0.3`: run on the 61,019 snapshots of the local database, the old and the new code wrote the same 282 rows, byte for byte.
+- **The readers.** `apps/api/src/curve-version.ts` gives the version an address is read under: `evmq-0.1` for an EVM address, `risk-0.3` for a Solana one (no Solana address starts with `0x`). The liquidity provider (`apps/api/src/liquidity.ts`) and the fact sheet (`GET /risk/facts/assets/:id`, `apps/api/src/facts.ts`) use it. A curve stored for an EVM address under `risk-0.3` is never served.
+- **The `assets` rows.** `pnpm db:seed` writes one row per tracked stock of `scripts/risk/universe/robinhood.json`, id `robinhood:<symbol>`. Its `mint` is the address **as the cut the list names spells it** (`inputs.cut`, in `data/risk-evm/`): the place `listRun` takes it from for `asset_mint`. That is the issuer registry's spelling, mixed case for 29 of the 30 and lower case for LLY, so it is copied and never worked out as a checksum. On a machine without that cut the registry rows are seeded, the EVM rows are not, and the run says so. A row offers nothing to a plan (gate `EVM-ROWS`).
+- **The check.** `GET /risk/facts/assets/robinhood:nvda` (or the address in the collector's spelling) answers with the symbol `NVDA` and `evmq-0.1`. The lower-case address finds nothing. The other `/risk/assets/:id/…` routes find an asset through `risk_pools`, which has no EVM row (DU6), and answer 404 for these.
 
-Outside `compute.ts`: `apps/api/src/liquidity.ts:37` filters on one method version with `eq` and needs `inArray`; and each EVM token needs an `assets` row whose `mint` is the token address exactly as written in `config.ts`, because that is what `asset_mint` holds.
+**Two jobs on the founder's machine still run code built before this.** They are not touched before Oct 12, and each will write rows for the EVM addresses once these files are imported:
+
+- `com.colosseum.risk-refresh` (minute 10, bundle of Oct 2) runs the old compute: it writes each EVM curve again under `risk-0.3` with the address cut to six letters as its symbol. The readers above never serve those rows; they stay in `risk_depth_curves` until the bundle is rebuilt and someone removes them. It does not write the `evmq-0.1` rows.
+- `com.colosseum.risk-prices` (minute 14) reads every row of `risk_price_observations` in its window. With the Chainlink rows in the table it files them as a lending oracle and writes a row in `risk_reference_prices` for each EVM address, under `chain: 'solana'`. The source (`scripts/risk/prices/job.ts`) now reads Solana rows only; the installed bundle does not until it is rebuilt. `pnpm risk:prices-import` reads files, not the table, and is not affected.
+
+Known limits of this step: the provider says one method version for every answer (`risk-0.3`), also for an EVM stock; the vault's asset entries hold an EVM address in lower case, so they do not find these curves by address yet.
