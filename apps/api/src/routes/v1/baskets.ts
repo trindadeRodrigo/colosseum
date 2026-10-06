@@ -146,7 +146,7 @@ export function registerBasketRoutes(
           { fix: 'Name themes by the slug of a shared portfolio on the shelf (GET /v1/shelf).' },
         );
       const { proposal, rollUp } = await make(sheet, async () => chain);
-      const id = await insertProposal(deps.db, proposal, null);
+      const id = await insertProposal(deps.db, proposal, null, true);
       return { id, proposal, rollUp };
     },
   );

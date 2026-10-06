@@ -23,20 +23,7 @@ import {
   type Shelf,
   type VaultView,
 } from '@colosseum/schemas';
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  gte,
-  inArray,
-  isNotNull,
-  isNull,
-  lt,
-  ne,
-  notInArray,
-  sql,
-} from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, ne, notInArray, sql } from 'drizzle-orm';
 import { Refusal } from './errors';
 
 // The order tables (DESIGN-VAULT section 4), read and written through Drizzle. A leg row mirrors its
@@ -204,7 +191,7 @@ export async function countLinkedSince(db: Db, since: Date): Promise<number> {
   const [row] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(proposals)
-    .where(and(isNull(proposals.userId), gte(proposals.createdAt, since)));
+    .where(and(eq(proposals.fromLink, true), gte(proposals.createdAt, since)));
   return row?.n ?? 0;
 }
 
@@ -217,7 +204,7 @@ export async function forgetUnboughtLinked(db: Db, before: Date): Promise<number
     .delete(proposals)
     .where(
       and(
-        isNull(proposals.userId),
+        eq(proposals.fromLink, true),
         lt(proposals.createdAt, before),
         sql`not exists (select 1 from ${orders} where ${orders.request}->>'proposalId' = ${proposals.id}::text)`,
         sql`not exists (select 1 from ${baskets} where ${baskets.proposalId} = ${proposals.id})`,
@@ -227,25 +214,25 @@ export async function forgetUnboughtLinked(db: Db, before: Date): Promise<number
   return gone.length;
 }
 
-/** True when the plan with this id was made from a link: stored with no person (gate `AGENT-LINK`). */
+/** True when the plan with this id was made from a link (`from_link`, gate `AGENT-LINK`). */
 export async function isLinkedProposal(db: Db, id: string): Promise<boolean> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return false;
   const [row] = await db
     .select({ id: proposals.id })
     .from(proposals)
-    .where(and(eq(proposals.id, id), isNull(proposals.userId)));
+    .where(and(eq(proposals.id, id), eq(proposals.fromLink, true)));
   return row !== undefined;
 }
 
 /**
- * A plan made from a link (`POST /v1/baskets/propose`), by its id: one stored with no person. A plan a
- * person made in the app is theirs, and is not answered here.
+ * A plan made from a link (`POST /v1/baskets/propose`), by its id: one marked `from_link`. A plan a
+ * person made in the app is theirs, and is not answered here, even one stored with no user row.
  */
 export async function loadLinkedProposal(db: Db, id: string): Promise<BasketProposal | null> {
   const [row] = await db
     .select({ proposal: proposals.proposal })
     .from(proposals)
-    .where(and(eq(proposals.id, id), isNull(proposals.userId)));
+    .where(and(eq(proposals.id, id), eq(proposals.fromLink, true)));
   if (!row) return null;
   const parsed = BasketProposal.safeParse(row.proposal);
   if (!parsed.success)
@@ -263,6 +250,8 @@ export async function insertProposal(
   db: Db,
   proposal: BasketProposal,
   privyId: string | null,
+  /** Made from a link (gate `AGENT-LINK`): stored with no person, and marked so. */
+  fromLink = false,
 ): Promise<string> {
   const [user] = privyId
     ? await db.select({ id: users.id }).from(users).where(eq(users.privyId, privyId))
@@ -273,6 +262,7 @@ export async function insertProposal(
     .values({
       inputsHash: proposal.inputsHash,
       userId,
+      fromLink,
       proposal,
       engineVersion: proposal.engineVersion,
       shelfVersion: proposal.shelfVersion,
@@ -282,10 +272,10 @@ export async function insertProposal(
     .returning({ id: proposals.id });
   if (row) return row.id;
   const [same] = await db
-    .select({ id: proposals.id, userId: proposals.userId })
+    .select({ id: proposals.id, userId: proposals.userId, fromLink: proposals.fromLink })
     .from(proposals)
     .where(eq(proposals.inputsHash, proposal.inputsHash));
-  if (same && same.userId === userId) return same.id;
+  if (same && same.userId === userId && same.fromLink === fromLink) return same.id;
   throw new Refusal(503, 'the plan could not be stored: make it again in a moment', {
     details: { retryable: true },
   });

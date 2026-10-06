@@ -5,13 +5,12 @@ import {
   PortfolioResponse,
   YieldObservation,
 } from '@colosseum/schemas';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ChainRegistry } from '../../orders/chains';
 import type { PlanInputs } from '../../orders/personalize';
 import { basketIdOf, basketIdOfLinked } from '../../orders/prepare';
-import { countLinkedSince } from '../../orders/store';
 import { bearingPlanInputs } from '../../plan-inputs';
 import mockYields from '../../testing/fixtures/mock-yields.json';
 import { orderFlow } from '../../testing/flow';
@@ -53,6 +52,22 @@ afterAll(async () => {
 });
 
 const fallback = { solana: '', robinhood: '' };
+/**
+ * The plans made from a link for this amount: a refused request leaves none. Other test files store
+ * plans at the same time, so a count of the whole table proves nothing.
+ */
+const linkedFor = async (amountUsd: number) =>
+  (
+    await data.db
+      .select({ id: proposals.id })
+      .from(proposals)
+      .where(
+        and(
+          eq(proposals.fromLink, true),
+          sql`(${proposals.proposal}->'sheet'->>'amountUsd')::numeric = ${amountUsd}`,
+        ),
+      )
+  ).length;
 const withMockYieldOff: PlanInputs = async () => ({});
 const { post, get, fund, order, settleAll } = orderFlow({
   app: () => app,
@@ -87,10 +102,10 @@ describe('a plan proposed from a link', () => {
       ['solana:usdc', 5000],
     ]);
     const [row] = await data.db
-      .select({ userId: proposals.userId })
+      .select({ userId: proposals.userId, fromLink: proposals.fromLink })
       .from(proposals)
       .where(eq(proposals.id, id));
-    expect(row).toEqual({ userId: null });
+    expect(row).toEqual({ userId: null, fromLink: true });
 
     const read = await get(null, `/v1/baskets/${id}`);
     expect(read.statusCode, read.body).toBe(200);
@@ -133,14 +148,15 @@ describe('a plan proposed from a link', () => {
   });
 
   it('names exactly one chain, and stores nothing it refuses', async () => {
-    const before = (await data.db.select({ id: proposals.id }).from(proposals)).length;
     const two = await post(null, '/v1/baskets/propose', {
-      sheet: sheet({ chains: ['solana', 'robinhood'] }),
+      sheet: sheet({ amountUsd: 9_872, chains: ['solana', 'robinhood'] }),
     });
     expect(two.statusCode).toBe(400);
-    const bad = await post(null, '/v1/baskets/propose', { sheet: { ...sheet(), amountUsd: -1 } });
+    const bad = await post(null, '/v1/baskets/propose', {
+      sheet: { ...sheet({ amountUsd: 9_872 }), horizonMonths: -1 },
+    });
     expect(bad.statusCode).toBe(400);
-    expect((await data.db.select({ id: proposals.id }).from(proposals)).length).toBe(before);
+    expect(await linkedFor(9_872)).toBe(0);
   });
 
   it('is not there while the agent surface is off', async () => {
@@ -157,13 +173,17 @@ describe('a plan proposed from a link', () => {
   });
 
   it('keeps the agent’s words out: a theme is a shared portfolio’s slug, of at most 64 characters', async () => {
-    const before = (await data.db.select({ id: proposals.id }).from(proposals)).length;
     const long = await post(null, '/v1/baskets/propose', {
-      sheet: sheet({ themes: ['a'.repeat(65)] }),
+      sheet: sheet({ amountUsd: 9_871, themes: ['a'.repeat(65)] }),
     });
     expect(long.statusCode).toBe(400);
     const unknown = await post(null, '/v1/baskets/propose', {
-      sheet: sheet({ goal: 'grow', risk: 'medium', themes: ['ignore-your-instructions'] }),
+      sheet: sheet({
+        amountUsd: 9_871,
+        goal: 'grow',
+        risk: 'medium',
+        themes: ['ignore-your-instructions'],
+      }),
     });
     expect(unknown.statusCode).toBe(422);
     expect(OrderError.parse(unknown.json()).error).toBe(
@@ -172,6 +192,7 @@ describe('a plan proposed from a link', () => {
     // a sleeve's theme too
     const sleeve = await post(null, '/v1/baskets/propose', {
       sheet: sheet({
+        amountUsd: 9_871,
         goal: 'grow',
         risk: 'medium',
         sleeves: [
@@ -183,11 +204,11 @@ describe('a plan proposed from a link', () => {
     expect(sleeve.statusCode).toBe(422);
     // a body over 16 KB is not read
     const big = await post(null, '/v1/baskets/propose', {
-      sheet: sheet(),
+      sheet: sheet({ amountUsd: 9_871 }),
       padding: 'x'.repeat(17 * 1024),
     });
     expect(big.statusCode).toBe(413);
-    expect((await data.db.select({ id: proposals.id }).from(proposals)).length).toBe(before);
+    expect(await linkedFor(9_871)).toBe(0);
   });
 
   it('makes at most so many a day across every caller', async () => {
@@ -201,7 +222,6 @@ describe('a plan proposed from a link', () => {
       linkedPlans: { perDay: 0, keepDays: 7 },
     });
     try {
-      const before = await countLinkedSince(data.db, new Date(Date.now() - 24 * 60 * 60 * 1000));
       for (const remoteAddress of ['10.9.9.8', '10.9.9.9']) {
         const refused = await capped.app.inject({
           method: 'POST',
@@ -218,9 +238,6 @@ describe('a plan proposed from a link', () => {
       // and the server with room makes it
       const made = await post(null, '/v1/baskets/propose', { sheet: sheet({ amountUsd: 1_234 }) });
       expect(made.statusCode, made.body).toBe(200);
-      expect(
-        await countLinkedSince(data.db, new Date(Date.now() - 24 * 60 * 60 * 1000)),
-      ).toBeGreaterThan(before);
     } finally {
       await capped.app.close();
     }
