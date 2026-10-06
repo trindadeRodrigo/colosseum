@@ -81,6 +81,15 @@ describe('the commodities page on the recording', () => {
     }
   });
 
+  it('makes each ticker in the table a 24px target (WCAG 2.5.8)', async () => {
+    const host = await mount(onSnapshot(createElement(DexPage, { page: 'commodities' })));
+    await settle(host, (h) => h.querySelector('[data-ui="bearing-kpis"]') != null && !busy(h));
+    const tickers = [...host.querySelectorAll('a[href^="/analytics/simulation?asset="]')];
+    expect(tickers.length).toBeGreaterThan(0);
+    for (const a of tickers)
+      expect(a.className.split(' ')).toEqual(expect.arrayContaining(['min-h-6', 'min-w-6']));
+  });
+
   it('the asset filter narrows every block, and None says nothing is selected', async () => {
     const host = await mount(onSnapshot(createElement(DexPage, { page: 'commodities' })));
     await settle(host, (h) => h.querySelector('[data-ui="bearing-kpis"]') != null && !busy(h));

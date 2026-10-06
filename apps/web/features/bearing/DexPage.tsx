@@ -288,7 +288,7 @@ function assetColumns(
       cell: (id) => (
         <Link
           href={`/analytics/simulation?asset=${encodeURIComponent(id)}`}
-          className="font-semibold underline decoration-1 underline-offset-[3px] hover:decoration-2"
+          className="inline-flex min-h-6 min-w-6 items-center font-semibold underline decoration-1 underline-offset-[3px] hover:decoration-2"
         >
           {id}
         </Link>

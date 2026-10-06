@@ -379,7 +379,7 @@ function LendBody(p: {
             target="_blank"
             rel="noopener"
             aria-label={t.table.explorer(poolName(row.meta, t.market))}
-            className="font-mono text-source font-normal underline decoration-1 underline-offset-[3px] hover:decoration-2"
+            className="inline-flex min-h-6 items-center font-mono text-source font-normal underline decoration-1 underline-offset-[3px] hover:decoration-2"
           >
             {short(row.meta.account)} ↗
           </a>

@@ -130,7 +130,8 @@ export function EmbedShell(props: EmbedShellProps) {
           href={credit.href}
           target="_blank"
           rel="noopener"
-          className="inline-flex items-center gap-[0.4em] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          // 24px tall at least, so it is a target a finger can hit (WCAG 2.5.8)
+          className="inline-flex min-h-6 items-center gap-[0.4em] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
           {text.poweredBy}
           {credit.symbol}

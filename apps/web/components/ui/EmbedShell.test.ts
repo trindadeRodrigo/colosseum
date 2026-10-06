@@ -48,6 +48,11 @@ describe('EmbedShell (embed-shell.md)', () => {
     expect(all(shell, ui('explorer-link')).length).toBeGreaterThan(0);
   });
 
+  it('makes the credit a target a finger can hit: 24px tall at least (WCAG 2.5.8)', () => {
+    const credit = one(render(embed.ready), ui('embed-credit'));
+    expect(classes(credit)).toEqual(expect.arrayContaining(['inline-flex', 'min-h-6']));
+  });
+
   it('credits the brand at the foot, in the partner’s muted colour, linking to the public plan', () => {
     const credit = one(shell, ui('embed-credit'));
     expect(text(credit)).toBe('Powered bytenonfi');
