@@ -32,6 +32,11 @@ export const pt: Dictionary = {
     testNetwork: 'rede de teste',
     slowDown: 'Nosso servidor pediu para eu ir mais devagar. Espere um minuto e tente de novo.',
     mockAnnounce: ': dados de exemplo, não são reais',
+    wait: {
+      slow: 'Acordando o serviço de dados: da primeira vez isso pode levar até um minuto.',
+      over: 'Nosso servidor não respondeu a tempo, então nada aparece aqui ainda.',
+      retry: 'Tentar de novo',
+    },
   },
 
   signIn: {

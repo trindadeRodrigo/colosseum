@@ -35,6 +35,12 @@ export const en = {
     /** When the server answers that it is being asked too often. */
     slowDown: 'Our server asked me to slow down. Wait a minute, then try again.',
     mockAnnounce: ': sample data, not live',
+    /** A wait for data (components/ui/Skeleton.tsx). */
+    wait: {
+      slow: 'Waking the data service: this can take up to a minute the first time.',
+      over: 'Our server didn’t answer in time, so nothing is shown here yet.',
+      retry: 'Try again',
+    },
   },
 
   signIn: {
