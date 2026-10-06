@@ -496,6 +496,53 @@ describe('a mix with withdrawals (review of Oct 6, finding 2)', () => {
     );
     expect(aside(plan)[0]).toMatchObject({ sleeve: 'growth', usd: 10_000, leftBps: 0 });
   });
+
+  it('the candidates say what they are measured against, and each one shown holds it', () => {
+    const all = candidates(withdrawing(mix({ growthBps: 10_000 })), shelf, ctx);
+    expect(all.shown.length).toBeGreaterThan(0);
+    for (const c of all.shown) {
+      expect(violations(c.plan, shelf, ctx), c.id).toEqual([]);
+      expect(sleeveBps(c.plan, shelf, 'growth'), c.id).toBe(8200);
+    }
+    // Cover sets a year aside: 76% would be left for stocks, another share than the plan's 82%.
+    expect(all.notShown.find((n) => n.id === 'cover')?.why).toBe(
+      'Cover is not shown: it would hold 76% of the plan in stocks and crypto, where the plan for the mix you asked for holds 82%.',
+    );
+    const pt = candidates(withdrawing(mix({ growthBps: 10_000 }), { language: 'pt' }), shelf, ctx);
+    expect(pt.notShown.find((n) => n.id === 'cover')?.why).toBe(
+      'Cobertura não aparece: ele teria 76% do plano em ações e cripto, e o plano para a composição que você pediu tem 82%.',
+    );
+  });
+});
+
+describe('a candidate that would change a share the mix states is not made', () => {
+  it('only credit: Spread would hold 60% in dollar yield where the plan holds 90%', () => {
+    const all = candidates(
+      sheet({ rules: noGlide, mix: mix({ dollarYieldBps: 10_000, creditBps: 10_000 }) }),
+      shelf,
+      ctx,
+    );
+    for (const c of all.shown) expect(sleeveBps(c.plan, shelf, 'dollarYield'), c.id).toBe(9000);
+    expect(all.notShown.find((n) => n.id === 'spread')?.why).toBe(
+      'Spread is not shown: it would hold 60% of the plan in dollar yield, where the plan for the mix you asked for holds 90%.',
+    );
+  });
+
+  it('a class the mix gives no share to is not measured: all in gold, Cover sets more aside and is shown', () => {
+    const all = candidates(
+      sheet({ rules: noGlide, obligations: monthly(300, 8), mix: mix({ goldBps: 10_000 }) }),
+      shelf,
+      ctx,
+    );
+    expect(all.shown.map((c) => c.id)).toEqual(['cover', 'carry']);
+    for (const c of all.shown) {
+      expect(violations(c.plan, shelf, ctx), c.id).toEqual([]);
+      expect(sleeveBps(c.plan, shelf, 'gold'), c.id).toBe(5000);
+    }
+    expect(all.notShown.map((n) => n.why)).toEqual([
+      'Spread is not shown: it would hold 30% of the plan in gold, where the plan for the mix you asked for holds 50%.',
+    ]);
+  });
 });
 
 describe('self-check: the measure sees what it measures (review of Oct 6, finding 8)', () => {
@@ -678,6 +725,65 @@ describe('properties: any mix', () => {
         },
       ),
       { numRuns: 120 },
+    );
+  }, 240_000);
+
+  it('with withdrawals, each candidate shown keeps every rule and holds the shares the plan for the mix holds', () => {
+    fc.assert(
+      fc.property(
+        mixes,
+        fc.constantFrom(...starts),
+        fc.constantFrom(2000, 10_000, 250_000),
+        withdrawals,
+        (m, [chain, themes], amountUsd, list) => {
+          const s = sheet({
+            chains: [chain],
+            themes,
+            amountUsd,
+            mix: m,
+            rules: { useHoldings: true, glide: false },
+            ...(list.length > 0 ? { obligations: owed(amountUsd, list) } : {}),
+          });
+          const all = candidates(s, shelf, ctx);
+          expect(all.shown.length).toBeGreaterThan(0);
+          expect(all.shown.length + all.notShown.length).toBe(3);
+          const carry = compose(s, shelf, ctx);
+          const stated = {
+            growth: m.growthBps,
+            dollarYield: m.dollarYieldBps,
+            gold: m.goldBps,
+            cash: m.cashBps,
+          };
+          for (const c of all.shown) {
+            expect(violations(c.plan, shelf, ctx), c.id).toEqual([]);
+            // One risk for the three: the limits are the mix's, not a candidate's to vary.
+            expect(c.plan.sheet.risk, c.id).toBe(carry.sheet.risk);
+            // A share the mix states is the one the plan made for the mix as it is holds.
+            for (const sleeve of ['growth', 'dollarYield', 'gold', 'cash'] as const)
+              if (stated[sleeve] > 0)
+                expect(
+                  Math.abs(sleeveBps(c.plan, shelf, sleeve) - sleeveBps(carry, shelf, sleeve)),
+                  `${c.id} ${sleeve}`,
+                ).toBeLessThanOrEqual(Math.max(c.plan.lines.length, carry.lines.length));
+          }
+          // What a sentence says a candidate is measured against is what the plans shown hold.
+          for (const n of all.notShown) {
+            const held = /where the plan for the mix you asked for holds ([\d.]+)%/.exec(n.why);
+            const of = / of the plan in (stocks and crypto|dollar yield|gold|cash),/.exec(n.why);
+            if (!held || !of) continue;
+            const sleeve = (
+              {
+                'stocks and crypto': 'growth',
+                'dollar yield': 'dollarYield',
+                gold: 'gold',
+                cash: 'cash',
+              } as const
+            )[of[1] as 'gold'];
+            expect(sleeveBps(carry, shelf, sleeve), n.why).toBe(Math.round(Number(held[1]) * 100));
+          }
+        },
+      ),
+      { numRuns: 60 },
     );
   }, 240_000);
 });

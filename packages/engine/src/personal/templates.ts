@@ -508,8 +508,8 @@ export const TEXT_TEMPLATES = {
     pt: '{plan|candidate} não aparece: ele guarda o mesmo que {other|candidate}.',
   },
   CANDIDATE_BREAKS_MIX: {
-    en: '{plan|candidate} is not shown: it would hold {heldBps|pct} of the plan in {sleeve|sleeve}, which is not the mix you asked for.',
-    pt: '{plan|candidate} não aparece: ele teria {heldBps|pct} do plano em {sleeve|sleeve}, o que não é a composição que você pediu.',
+    en: '{plan|candidate} is not shown: it would hold {heldBps|pct} of the plan in {sleeve|sleeve}, where the plan for the mix you asked for holds {mixBps|pct}.',
+    pt: '{plan|candidate} não aparece: ele teria {heldBps|pct} do plano em {sleeve|sleeve}, e o plano para a composição que você pediu tem {mixBps|pct}.',
   },
   CANDIDATE_DOMINATED: {
     en: '{plan|candidate} is not shown: {other|candidate} is as good on every line of the comparison, and better on one.',
