@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { rollUp } from '@colosseum/basket';
 import type { Db } from '@colosseum/db';
 import {
+  type ComposeContext,
+  candidates,
   compose,
   PersonalInputError,
   type PersonalProposal,
@@ -13,6 +15,10 @@ import {
   type ChainId,
   type LiquidityProvider,
   type ObservationRef,
+  type PlanCandidateId,
+  type PlanCandidateNotShown,
+  type PlanScorecard,
+  PlanStatus,
   type RiskRollUp,
   type Shelf,
   type YieldObservation,
@@ -90,17 +96,34 @@ export function sharedProposal(plan: PersonalProposal): BasketProposal {
   });
 }
 
+/** A candidate as the route stores and answers it, before it has an id. */
+export type MadeCandidate = {
+  candidate: PlanCandidateId;
+  proposal: BasketProposal;
+  rollUp: RiskRollUp;
+  scorecard: PlanScorecard;
+  status?: PlanStatus;
+};
+
 /**
  * A plan for this sheet on the person's chain, and its risk roll-up: concentration by issuer, chain
  * and class, and the exit figures, from the same shelf, measurements and time the plan was made with.
  * A plan not bought yet has no stored quote, so the roll-up's quoted exit is null. The sheet has been
  * validated by the route's schema, and `compose` validates it again before it computes anything. A
  * sheet for another chain than the person's is refused: a plan lives on the chain of their wallet.
+ *
+ * Beside it, the candidates of gate THREE-PLANS from the same figures: those shown, in their fixed
+ * order, each with its roll-up, scorecard and status; and those not shown, with why.
  */
 export async function personalize(
   sheet: PersonalSheet,
   ctx: PersonalizeContext,
-): Promise<{ proposal: BasketProposal; rollUp: RiskRollUp }> {
+): Promise<{
+  proposal: BasketProposal;
+  rollUp: RiskRollUp;
+  candidates: MadeCandidate[];
+  notShown: PlanCandidateNotShown[];
+}> {
   const chain = await ctx.homeChain();
   const asked = sheet.chains[0];
   if (sheet.chains.length !== 1 || asked !== chain)
@@ -115,15 +138,18 @@ export async function personalize(
   const families = await ctx.loadFamilies(chain);
   const shelf: Shelf = { version: shelfVersionOf(chain, assets, families), assets, families };
   const figures = await ctx.inputs(chain, assets);
+  const context: ComposeContext = {
+    now: ctx.now,
+    ...(figures.yields ? { yields: figures.yields } : {}),
+    ...(figures.liquidity
+      ? { liquidity: figures.liquidity.provider, liquiditySource: figures.liquidity.source }
+      : {}),
+  };
   let plan: PersonalProposal;
+  let made: ReturnType<typeof candidates>;
   try {
-    plan = compose(sheet, shelf, {
-      now: ctx.now,
-      ...(figures.yields ? { yields: figures.yields } : {}),
-      ...(figures.liquidity
-        ? { liquidity: figures.liquidity.provider, liquiditySource: figures.liquidity.source }
-        : {}),
-    });
+    plan = compose(sheet, shelf, context);
+    made = candidates(sheet, shelf, context);
   } catch (e) {
     // The sheet is the caller's to fix. A shelf, a figure or a parameter the engine cannot run on is
     // the server's, and fails as one.
@@ -142,10 +168,8 @@ export async function personalize(
       });
     throw e;
   }
-  const proposal = sharedProposal(plan);
-  return {
-    proposal,
-    rollUp: rollUp(
+  const rolledUp = (proposal: BasketProposal) =>
+    rollUp(
       proposal.lines.map((l) => ({ asset: l.assetId, amountUsd: l.amountUsd })),
       {
         shelf,
@@ -153,6 +177,22 @@ export async function personalize(
         quotes: [],
         now: ctx.now,
       },
-    ),
+    );
+  const proposal = sharedProposal(plan);
+  return {
+    proposal,
+    rollUp: rolledUp(proposal),
+    candidates: made.shown.map(({ id, plan: p }) => {
+      const shared = sharedProposal(p);
+      if (!p.scorecard) throw new Error(`the ${id} candidate came with no scorecard`);
+      return {
+        candidate: id,
+        proposal: shared,
+        rollUp: rolledUp(shared),
+        scorecard: p.scorecard,
+        ...(p.status ? { status: PlanStatus.parse(p.status) } : {}),
+      };
+    }),
+    notShown: made.notShown.map((n) => ({ candidate: n.id, why: n.why })),
   };
 }

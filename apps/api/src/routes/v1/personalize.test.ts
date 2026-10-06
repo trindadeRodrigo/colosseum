@@ -222,6 +222,39 @@ describe('POST /v1/baskets/personalize', () => {
     ]);
   });
 
+  it('answers the candidates of gate THREE-PLANS, each stored with its id, none marked, and a buy buys one', async () => {
+    const who = await someone('solana');
+    const months = Array.from({ length: 24 }, (_, m) => {
+      const at = new Date(Date.UTC(2027, m, 1)).toISOString().slice(0, 7);
+      return { month: at, amount: 1_500, currency: 'USD' };
+    });
+    const asked = sheet({ goal: 'income', horizonMonths: 36, obligations: months });
+    const res = await post(who, PATH, { sheet: asked });
+    expect(res.statusCode, res.body).toBe(200);
+    const answer = PersonalizeResponse.parse(res.json());
+    const shown = answer.candidates.map((c) => c.candidate);
+    // In the fixed order, each once, with what is not shown said; nothing selects one.
+    expect(shown).toEqual(['cover', 'spread', 'carry'].filter((id) => shown.some((s) => s === id)));
+    expect(shown.length + answer.candidatesNotShown.length).toBe(3);
+    expect(res.body).not.toMatch(/"(selected|recommended|isDefault|default)"/);
+    // No odds, no percentile, no chance.
+    expect(res.body).not.toMatch(/probab|percentil|\bchances?\b|\bodds\b|likel(y|ihood)/i);
+    const ids = answer.candidates.map((c) => c.id);
+    expect(new Set([answer.id, ...ids]).size).toBe(ids.length + 1);
+    for (const c of answer.candidates) {
+      expect(c.proposal.sheet).toEqual(asked);
+      expect(await loadProposal(data.db, c.id)).toEqual(c.proposal);
+      expect(c.status?.base.monthsWithWithdrawal).toBe(24);
+      expect(c.scorecard.openFxUsd).toBeUndefined();
+    }
+    // Each is a plan a buy can name.
+    const first = answer.candidates[0];
+    if (!first) throw new Error('no candidate');
+    await fund(who, undefined, 60_000);
+    const bought = await order(who, { proposalId: first.id, amountUsd: 50_000 });
+    expect(bought.legs.length).toBeGreaterThan(0);
+  });
+
   it('holds PAXG for gold on Solana and GLD on Robinhood Chain when nothing chosen fills it (gate GOLD-PAXG)', async () => {
     for (const [kind, chain, gold, bps] of [
       ['solana', 'solana', 'PAXG', 1000],
