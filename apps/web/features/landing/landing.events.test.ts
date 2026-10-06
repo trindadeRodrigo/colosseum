@@ -263,7 +263,7 @@ describe('the hero on a phone (hero-3d.html, its 820px rule)', () => {
 });
 
 describe('the showcase', () => {
-  it('shows his two sample people, each case MOCK in its head and on every pinned figure', async () => {
+  it('shows his two sample people, each case sample on every pinned figure and said once', async () => {
     browser();
     const host = await landing();
     const cases = [...host.querySelectorAll('article[data-ui="showcase-case"]')];
@@ -272,10 +272,9 @@ describe('the showcase', () => {
       en.landing.show.growth.label,
     ]);
     for (const c of cases) {
-      // the plate in the case's head, not only the pins' own
-      expect(
-        c.querySelector('[data-ui="case-head"] [data-ui="mock-plate"]')?.textContent,
-      ).toContain('MOCK');
+      // said once at the case's foot, not by a word beside each figure (MOCK-QUIET)
+      expect(c.textContent).not.toContain('MOCK');
+      expect(c.textContent).toContain(en.landing.show.sample);
       const pins = [...c.querySelectorAll('[data-ui="figure"]')];
       expect(pins.length).toBeGreaterThan(0);
       // nothing in a sample case is drawn as live
@@ -284,6 +283,9 @@ describe('the showcase', () => {
       expect(c.querySelector('blockquote')?.textContent).toMatch(/^“.+”$/);
     }
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
+    // the page never writes the word MOCK: its foot and each case say "sample" (MOCK-QUIET)
+    expect(host.textContent).not.toMatch(/MOCK/);
+    expect(host.querySelectorAll('[data-ui="sample-note"]')).toHaveLength(2);
   });
 
   it('draws each plan as a joint whose parts are its legend’s, share for share', async () => {

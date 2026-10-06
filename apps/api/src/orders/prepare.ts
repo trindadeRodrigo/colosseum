@@ -63,7 +63,7 @@ export type PrepareContext = {
    * number then takes the buyer too (`basketIdOfLinked`). Left out, no plan is.
    */
   isLinkedPlan?(id: string): Promise<boolean>;
-  /** The chain the person's plans live on (gates ONE-CHAIN, CHAIN-PICK). Refuses when there is none yet. */
+  /** The person's current chain, where a new plan is made (CHAIN-SWITCH). Refuses when there is none yet. */
   homeChain(): Promise<ChainId>;
   /** The shared portfolios that have a recipe on `chain`, each with that recipe as it is in effect. */
   loadFamilies(chain: ChainId): Promise<Shelf['families']>;
@@ -222,7 +222,7 @@ const chunk = <T>(items: T[], size: number): T[][] =>
 
 type Step = Pick<Leg, 'kind' | 'description' | 'trades' | 'cashRaw'>;
 
-/** A buy on the person's chain, before it is an order: its steps, and what they need of the wallet. */
+/** A buy on one chain, before it is an order: its steps, and what they need of the wallet. */
 export type BuyPlan = {
   entry: ChainEntry;
   owner: Address;
@@ -238,11 +238,27 @@ export type BuyPlan = {
 };
 
 /**
+ * The one recipe of a stored plan, and so its chain (ONE-CHAIN). A plan is bought on its own chain,
+ * whatever the person's current chain is now (CHAIN-SWITCH).
+ */
+export function recipeOf(proposal: BasketProposal): BasketProposal['recipes'][number] {
+  const [recipe, ...more] = proposal.recipes;
+  if (!recipe) throw new Refusal(422, 'this plan names no chain');
+  if (more.length)
+    throw new Refusal(
+      422,
+      `this plan is spread over ${proposal.recipes.length} chains, and a plan lives on one: make the plan again`,
+    );
+  return recipe;
+}
+
+/**
  * The plan of a buy: the one chain it is on, the vault it reaches, and its steps. Nothing is quoted and
  * nothing is stored, so the funding check plans with the same function the order does.
  *
- * A buy is on one chain, the chain of the person's wallet, and so is the plan it buys: a stored plan
- * with recipes on several chains, or one made for another chain, is refused.
+ * A buy of a stored plan is on the plan's own chain, whatever the person's current chain is; a plan with
+ * recipes on several chains is refused. A buy of a shared portfolio opens a vault, so it is a new plan,
+ * on the current chain.
  */
 export async function planBuy(
   req: Extract<IntentRequest, { type: 'buy' }>,
@@ -260,19 +276,8 @@ export async function planBuy(
   const proposal = UUID.test(req.proposalId) ? await ctx.loadProposal(req.proposalId) : null;
   if (!proposal) throw new Refusal(404, 'no plan with that id');
 
-  const chain = await ctx.homeChain();
-  const [recipe, ...more] = proposal.recipes;
-  if (!recipe) throw new Refusal(422, 'this plan names no chain');
-  if (more.length)
-    throw new Refusal(
-      422,
-      `this plan is spread over ${proposal.recipes.length} chains, and a plan lives on one: make the plan again`,
-    );
-  if (recipe.chain !== chain)
-    throw new Refusal(
-      422,
-      `this plan was made for ${ctx.chains.name(recipe.chain)}, and your plans live on ${ctx.chains.name(chain)}: make the plan again`,
-    );
+  const recipe = recipeOf(proposal);
+  const chain = recipe.chain;
   // Refuses a chain that is off before anything is planned.
   const entry = ctx.chains.get(chain);
   const owner = req.owner[chainFamily(chain)];
@@ -519,7 +524,6 @@ export async function prepareOrder(req: IntentRequest, ctx: PrepareContext): Pro
       ...shared,
       principal: ctx.principal,
       chains: ctx.chains,
-      homeChain: ctx.homeChain,
     };
     if (req.type === 'publish') {
       const { familyId, steps } = await refusing(() => planPublish(req, sctx));

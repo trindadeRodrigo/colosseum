@@ -111,7 +111,7 @@ let reports: string[] = [];
 
 const OBSERVED = {
   source: 'the e2e stub',
-  method: 'MOCK: made up for the end-to-end spec',
+  method: 'sample: made up for the end-to-end spec',
   fetchedAt: '2026-10-05T12:00:00.000Z',
   provenance: 'mock' as const,
 };
@@ -136,7 +136,9 @@ function proposal(sheet: BasketSheet) {
       assetId: t.asset,
       weightBps: t.weightBps,
       amountUsd: (sheet.amountUsd * t.weightBps) / 10_000,
-      reasons: [{ rule: 'stub', inputs: [], params: {}, text: 'MOCK: a reason the stub made up.' }],
+      reasons: [
+        { rule: 'stub', inputs: [], params: {}, text: 'Sample: a reason the stub made up.' },
+      ],
     })),
     { chain: CHAIN, assetId: cash, weightBps: 500, amountUsd: sheet.amountUsd / 20, reasons: [] },
   ];
@@ -159,8 +161,8 @@ function proposal(sheet: BasketSheet) {
       moneyTodayUsd: sheet.amountUsd,
       termMonths: sheet.horizonMonths,
       cashFlow: 'none',
-      expectedReturn: { lowPct: 0, highPct: 0, basis: 'MOCK', lossInFallUsd: 0 },
-      exit: { text: 'MOCK: up to the whole amount within a day', costBps: 25 },
+      expectedReturn: { lowPct: 0, highPct: 0, basis: 'sample', lossInFallUsd: 0 },
+      exit: { text: 'Sample: up to the whole amount within a day', costBps: 25 },
     },
     flags: [],
     observations: [
@@ -547,7 +549,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       wallet,
       cash: {
         ...stamp,
-        method: 'MOCK: the wallet’s balance on the mock chain',
+        method: 'sample: the wallet’s balance on the mock chain',
         asset: world.adapter.mock.cash,
         symbol: CASH_SYMBOL,
         decimals: 6,
@@ -557,7 +559,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       },
       gas: {
         ...stamp,
-        method: 'MOCK: the wallet’s gas on the mock chain',
+        method: 'sample: the wallet’s gas on the mock chain',
         ...GAS,
         haveRaw: f.gasHaveRaw,
         needRaw: f.gasNeedRaw,

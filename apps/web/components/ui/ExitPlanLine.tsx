@@ -50,7 +50,7 @@ export type ExitTier = {
   text: string;
   /** A cost or a price in this tier, with its source: "≤ 0.50%". */
   cost?: { figure: string; obs: PinSource | null; detail?: string };
-  /** This tier is not live: it carries the hatch band and the MOCK plate. */
+  /** This tier is not live: it carries the hatch band and the sample glyph. */
   mock?: boolean;
 };
 

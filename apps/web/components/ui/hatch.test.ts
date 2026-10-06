@@ -7,10 +7,11 @@ import { classTokens } from './test/forbidden';
 import { hatchProblems } from './test/hatch';
 import { all, classes, parse, render } from './test/html';
 
-// mock-plate.md, "Enforcement": a hatch with no MOCK plate (or stale tag) in the same component fails,
-// and so does a MOCK plate with no hatch: three parts, never fewer.
+// mock-plate.md, "Enforcement", as MOCK-QUIET (Thom, Oct 6) changed it: a hatch with nothing that says
+// sample or stale in the same component fails (the card's quiet line, a named glyph, a named pin, or
+// "stale"), so does a glyph with no hatch or no name, and the boxed word MOCK is never drawn.
 
-describe('the hatch never appears without its word, nor the word MOCK without its hatch', () => {
+describe('the hatch never appears without words that say sample, and the word MOCK is never boxed', () => {
   const groups = Object.entries(cases).flatMap(([group, set]) =>
     Object.entries(set as Record<string, unknown>)
       .filter(([, node]) => isValidElement(node))
@@ -31,27 +32,22 @@ describe('the hatch never appears without its word, nor the word MOCK without it
     expect(hatchProblems(page)).toEqual([]);
   });
 
-  it('bites: a band alone, a hatched glyph alone, a word on the hatch', () => {
+  it('bites: a band alone, a pin with no name, a word on the hatch', () => {
     const band = parse(
       '<div data-ui="card"><span class="tf-hatch w-1.5"></span><p>6.40%</p></div>',
     );
-    expect(hatchProblems(band)).toHaveLength(1);
-    expect(hatchProblems(band)[0]).toContain('no MOCK plate');
+    expect(hatchProblems(band)).toEqual([expect.stringContaining('nothing that says sample')]);
     const glyph = parse(
       '<span data-ui="figure">6.40%<button data-ui="pin"><svg data-hatch=""></svg></button></span>',
     );
     expect(hatchProblems(glyph)).toHaveLength(1);
-    // the word in another row does not count
+    // the line in another row does not count
     const rows = parse(
-      '<div data-ui="data-table"><div data-mock="true"><span class="tf-hatch"></span>a</div><div data-mock="true"><span data-ui="mock-plate">MOCK</span></div></div>',
+      '<div data-ui="data-table"><div data-mock="true"><span class="tf-hatch"></span>a</div><div data-mock="true"><p data-ui="sample-note">Sample figures</p></div></div>',
     );
-    // one row has the hatch with no word, the other the word with no hatch
-    expect(hatchProblems(rows)).toEqual([
-      expect.stringContaining('no MOCK plate'),
-      expect.stringContaining('says MOCK with no hatch'),
-    ]);
+    expect(hatchProblems(rows)).toEqual([expect.stringContaining('nothing that says sample')]);
     const onIt = parse(
-      '<div data-ui="card"><span class="tf-hatch">MOCK</span><span data-ui="mock-plate">MOCK</span></div>',
+      '<div data-ui="card"><span class="tf-hatch">sample</span><p data-ui="sample-note">Sample figures</p></div>',
     );
     expect(hatchProblems(onIt)).toEqual([expect.stringContaining('has text on its hatch')]);
     const stale = parse(
@@ -60,20 +56,26 @@ describe('the hatch never appears without its word, nor the word MOCK without it
     expect(hatchProblems(stale)).toEqual([]);
   });
 
-  it('bites the other way: the word with no hatch, and a hatch that belongs to another row', () => {
-    const plate = parse(
-      '<div data-ui="card"><p>6.40%</p><span data-ui="mock-plate">MOCK</span></div>',
-    );
-    expect(hatchProblems(plate)).toEqual([expect.stringContaining('says MOCK with no hatch')]);
-    const rows = parse(
-      '<ul data-ui="execution-list"><li data-mock="true"><span class="tf-hatch"></span><span data-ui="mock-plate">MOCK</span></li><li data-mock="true"><span data-ui="mock-plate">MOCK</span></li></ul>',
-    );
-    expect(hatchProblems(rows)).toEqual([expect.stringContaining('says MOCK with no hatch')]);
-    // whole: the plate with its own band, the plate after a hatched pin, the plate in a hatched frame
+  it('bites the other way: a glyph with no hatch or no name, and the boxed word', () => {
+    expect(
+      hatchProblems(
+        parse(
+          '<p>6.40% <span data-ui="sample-glyph" role="img" aria-label="sample figure"></span></p>',
+        ),
+      ),
+    ).toEqual([expect.stringContaining('no hatch')]);
+    expect(
+      hatchProblems(parse('<p>6.40% <span data-ui="sample-glyph" class="tf-hatch"></span></p>')),
+    ).toEqual([expect.stringContaining('no name')]);
+    expect(
+      hatchProblems(parse('<div data-ui="card"><span class="tf-mock-plate">MOCK</span></div>')),
+    ).toEqual([expect.stringContaining('boxed word MOCK')]);
+    // whole: a card's band with its line, a named glyph, a named hatched pin, a hatched frame with its line
     for (const whole of [
-      '<p><span data-ui="mock-plate"><span data-ui="hatch-band" class="tf-hatch"></span><span>MOCK</span></span></p>',
-      '<span data-ui="figure">6.40%<button data-ui="pin"><svg data-hatch=""></svg></button><span data-ui="mock-plate">MOCK</span></span>',
-      '<div data-ui="mock-frame" class="tf-hatch"><div class="bg-card"><span data-ui="mock-plate">MOCK</span></div></div>',
+      '<div data-ui="card"><span data-ui="hatch-band" class="tf-hatch"></span><p>6.40%</p><p data-ui="sample-note">Sample figures</p></div>',
+      '<p>6.40% <span data-ui="sample-glyph" class="tf-hatch" role="img" aria-label="sample figure"></span></p>',
+      '<span data-ui="figure">6.40%<button data-ui="pin" aria-label="Source for 6.40%, sample figure"><svg data-hatch=""></svg></button></span>',
+      '<div data-ui="mock-frame" class="tf-hatch"><div class="bg-card"><p data-ui="sample-note">Sample figures</p></div></div>',
     ])
       expect(hatchProblems(parse(whole))).toEqual([]);
   });

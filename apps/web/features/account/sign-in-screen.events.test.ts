@@ -829,7 +829,7 @@ describe('where focus goes, and what a screen reader is told, when the screen ch
 });
 
 describe('the throwaway wallet of development', () => {
-  it('keeps its choice in the page, stores nothing on the API, and says MOCK with its hatch', async () => {
+  it('keeps its choice in the page, stores nothing on the API, and says sample with its hatch', async () => {
     const server = api(made());
     portStore.set(signedInPort(EMBEDDED, { test: true }, 'mock'));
     const host = await screen();
@@ -837,31 +837,34 @@ describe('the throwaway wallet of development', () => {
     expect(asks(host)).toBe(true);
     expect(host.textContent).toContain(en.chain.pick.mock);
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
-    expect(host.querySelectorAll('.tf-mock-plate')).toHaveLength(1);
+    expect(host.querySelectorAll('[data-ui="sample-note"]')).toHaveLength(1);
+    expect(host.textContent).not.toContain('MOCK');
     await click(button(host, 'Solana'));
     await click(button(host, en.chain.pick.confirm('Solana')));
     await settle();
     expect(state(host)).toBe('ready');
     expect(server.calls).toEqual([]);
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
-    expect(host.querySelectorAll('.tf-mock-plate').length).toBeGreaterThan(0);
+    expect(host.querySelectorAll('[data-ui="sample-note"]').length).toBeGreaterThan(0);
   });
 
-  it('says the words a screen reader hears after MOCK in Portuguese on a Portuguese page', async () => {
+  it('says that it is sample in Portuguese on a Portuguese page', async () => {
     api(made());
     portStore.set(signedInPort(EMBEDDED, { test: true }, 'mock'));
     const pt = dictionary('pt');
     const host = await screen('pt');
     await settle();
     // the pick
-    expect(find(host, '.tf-mock-plate').textContent).toBe(`MOCK${pt.shell.mockAnnounce}`);
+    expect(find(host, '[data-ui="sample-note"]').textContent).toBe(pt.shell.mockAnnounce);
     await click(button(host, 'Solana'));
     await click(button(host, pt.chain.pick.confirm('Solana')));
     await settle();
     // and the card that says where the plan lives
-    for (const plate of host.querySelectorAll('.tf-mock-plate'))
-      expect(plate.textContent).toBe(`MOCK${pt.shell.mockAnnounce}`);
-    expect(host.textContent).not.toContain('sample data');
+    for (const line of host.querySelectorAll('[data-ui="sample-note"]'))
+      expect(line.textContent?.startsWith(pt.shell.mockAnnounce)).toBe(true);
+    for (const glyph of host.querySelectorAll('[data-ui="sample-glyph"][aria-label]'))
+      expect(glyph.getAttribute('aria-label')).toBe(pt.shell.sampleFigure);
+    expect(host.textContent).not.toContain('Sample figures');
   });
 
   it('marks a chain on a test network, and one the API runs on the mock, beside its name', async () => {
@@ -875,7 +878,8 @@ describe('the throwaway wallet of development', () => {
       await settle();
       const name = find(host, '[data-ui="chain-name"]');
       expect(name.textContent).toContain('Solana');
-      expect(name.querySelectorAll('.tf-mock-plate')).toHaveLength(1);
+      expect(name.querySelectorAll('[data-ui="sample-glyph"]')).toHaveLength(1);
+      expect(name.textContent).not.toContain('MOCK');
       expect(name.textContent?.includes(en.shell.testNetwork)).toBe(words);
       expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
       await unmountAll();
