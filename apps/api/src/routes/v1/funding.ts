@@ -9,6 +9,8 @@ import {
 } from '@colosseum/schemas';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import type { TestFunds } from '../../faucet/test-funds';
+import type { ChainEntry } from '../../orders/chains';
 import { Refusal, refusing } from '../../orders/errors';
 import { familyByNameKey, familyBySlug } from '../../orders/families';
 import type { OrderDeps } from '../../orders/legs';
@@ -59,7 +61,11 @@ function walletOf(
 const missing = (need: string, have: string) =>
   (BigInt(need) > BigInt(have) ? BigInt(need) - BigInt(have) : 0n).toString();
 
-export function registerFundingRoute(scope: FastifyInstance, deps: OrderDeps) {
+export function registerFundingRoute(
+  scope: FastifyInstance,
+  deps: OrderDeps,
+  testFunds?: TestFunds,
+) {
   scope.withTypeProvider<ZodTypeProvider>().get(
     '/v1/funding',
     {
@@ -84,85 +90,100 @@ export function registerFundingRoute(scope: FastifyInstance, deps: OrderDeps) {
       },
     },
     async (req): Promise<FundingResponse> => {
-      const principal = signedIn(req);
-      const chain = await homeChain(deps.db, principal);
-      const entry = deps.chains.get(chain);
-      const { family } = entry.config;
-      const outside = (await personChain(deps.db, principal)).chainSource === 'wallet';
-      const wallet = walletOf(principal, family, outside, req.query.wallet);
-
-      let need: FundingNeed = { cashRaw: '0', legs: 0, newVault: false, newAccounts: 0 };
-      const { amountUsd, proposalId, family: slug } = req.query;
-      if (amountUsd !== undefined && (proposalId !== undefined || slug !== undefined))
-        // Planned by the function an order is planned with, so the steps counted are the order's.
-        need = (
-          await planBuy(
-            {
-              type: 'buy',
-              owner: { [family]: wallet },
-              amountUsd,
-              ...(slug !== undefined ? { family: slug } : { proposalId }),
-            },
-            {
-              principal,
-              chains: deps.chains,
-              loadProposal: (id) => loadProposal(deps.db, id),
-              isLinkedPlan: (id) => isLinkedProposal(deps.db, id),
-              homeChain: async () => chain,
-              loadFamilies: (on) => loadFamilies(deps.db, on),
-              shared: {
-                db: deps.db,
-                bySlug: (s) => familyBySlug(deps.db, s),
-                byNameKey: (k) => familyByNameKey(deps.db, k),
-              },
-            },
-          )
-        ).need;
-
-      const { adapter } = entry;
-      const [read, assets] = await refusing(() =>
-        Promise.all([adapter.funding(wallet, need), adapter.listAssets()]),
-      );
-      const cash = assets.find((a) => a.cls === 'cash');
-      if (!cash) throw new Error(`${entry.chain} lists no cash token`);
-      const stamp = {
-        source: entry.source,
-        fetchedAt: deps.now().toISOString(),
-        provenance: entry.provenance,
-      };
-      const cashMissing = missing(read.cashNeedRaw, read.cashHaveRaw);
-      const gasMissing = missing(read.gasNeedRaw, read.gasHaveRaw);
-      const native = NATIVE[family];
-      return {
-        chain: entry.chain,
-        name: entry.config.name,
-        mode: entry.mode,
-        provenance: entry.provenance,
-        wallet,
-        cash: {
-          ...stamp,
-          method: `the wallet's ${cash.symbol} balance, read by the chain adapter, against the deposit`,
-          asset: cash.id,
-          symbol: cash.symbol,
-          decimals: cash.decimals,
-          haveRaw: read.cashHaveRaw,
-          needRaw: read.cashNeedRaw,
-          missingRaw: cashMissing,
-        },
-        gas: {
-          ...stamp,
-          method: `the wallet's ${native.symbol} balance, read by the chain adapter, against the network fee of ${need.legs} step(s)${need.newVault ? ' and a new vault' : ''}`,
-          symbol: native.symbol,
-          decimals: native.decimals,
-          haveRaw: read.gasHaveRaw,
-          needRaw: read.gasNeedRaw,
-          missingRaw: gasMissing,
-        },
-        steps: need.legs,
-        newVault: need.newVault,
-        // The adapter's own verdict, and nothing missing by the figures shown.
-        ok: read.ok && cashMissing === '0' && gasMissing === '0',
-      };
+      const { entry, read } = await readFunding(deps, signedIn(req), req.query);
+      // Said only where the server can send test funds: every other answer is as it was.
+      return testFunds?.offered(entry) ? { ...read, testFunds: true } : read;
     },
   );
+}
+
+/**
+ * What the person's wallet holds and is missing on their chain for this buy (the query of GET
+ * /v1/funding), with the chain's entry it was read on. The test faucet reads the same, so it sends
+ * what this says is missing and nothing the request states.
+ */
+export async function readFunding(
+  deps: OrderDeps,
+  principal: Principal,
+  query: FundingQuery,
+): Promise<{ entry: ChainEntry; read: FundingResponse }> {
+  const chain = await homeChain(deps.db, principal);
+  const entry = deps.chains.get(chain);
+  const { family } = entry.config;
+  const outside = (await personChain(deps.db, principal)).chainSource === 'wallet';
+  const wallet = walletOf(principal, family, outside, query.wallet);
+
+  let need: FundingNeed = { cashRaw: '0', legs: 0, newVault: false, newAccounts: 0 };
+  const { amountUsd, proposalId, family: slug } = query;
+  if (amountUsd !== undefined && (proposalId !== undefined || slug !== undefined))
+    // Planned by the function an order is planned with, so the steps counted are the order's.
+    need = (
+      await planBuy(
+        {
+          type: 'buy',
+          owner: { [family]: wallet },
+          amountUsd,
+          ...(slug !== undefined ? { family: slug } : { proposalId }),
+        },
+        {
+          principal,
+          chains: deps.chains,
+          loadProposal: (id) => loadProposal(deps.db, id),
+          isLinkedPlan: (id) => isLinkedProposal(deps.db, id),
+          homeChain: async () => chain,
+          loadFamilies: (on) => loadFamilies(deps.db, on),
+          shared: {
+            db: deps.db,
+            bySlug: (s) => familyBySlug(deps.db, s),
+            byNameKey: (k) => familyByNameKey(deps.db, k),
+          },
+        },
+      )
+    ).need;
+
+  const { adapter } = entry;
+  const [held, assets] = await refusing(() =>
+    Promise.all([adapter.funding(wallet, need), adapter.listAssets()]),
+  );
+  const cash = assets.find((a) => a.cls === 'cash');
+  if (!cash) throw new Error(`${entry.chain} lists no cash token`);
+  const stamp = {
+    source: entry.source,
+    fetchedAt: deps.now().toISOString(),
+    provenance: entry.provenance,
+  };
+  const cashMissing = missing(held.cashNeedRaw, held.cashHaveRaw);
+  const gasMissing = missing(held.gasNeedRaw, held.gasHaveRaw);
+  const native = NATIVE[family];
+  const read: FundingResponse = {
+    chain: entry.chain,
+    name: entry.config.name,
+    mode: entry.mode,
+    provenance: entry.provenance,
+    wallet,
+    cash: {
+      ...stamp,
+      method: `the wallet's ${cash.symbol} balance, read by the chain adapter, against the deposit`,
+      asset: cash.id,
+      symbol: cash.symbol,
+      decimals: cash.decimals,
+      haveRaw: held.cashHaveRaw,
+      needRaw: held.cashNeedRaw,
+      missingRaw: cashMissing,
+    },
+    gas: {
+      ...stamp,
+      method: `the wallet's ${native.symbol} balance, read by the chain adapter, against the network fee of ${need.legs} step(s)${need.newVault ? ' and a new vault' : ''}`,
+      symbol: native.symbol,
+      decimals: native.decimals,
+      haveRaw: held.gasHaveRaw,
+      needRaw: held.gasNeedRaw,
+      missingRaw: gasMissing,
+    },
+    steps: need.legs,
+    newVault: need.newVault,
+    // The adapter's own verdict, and nothing missing by the figures shown.
+    ok: held.ok && cashMissing === '0' && gasMissing === '0',
+  };
+  return { entry, read };
 }

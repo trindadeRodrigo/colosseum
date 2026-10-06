@@ -3332,6 +3332,9 @@
                     },
                     "ok": {
                       "type": "boolean"
+                    },
+                    "testFunds": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -8598,6 +8601,283 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED"
+                      ]
+                    },
+                    "fix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/testnet/fund": {
+      "post": {
+        "summary": "Test network only: send the signed-in wallet the test tokens and gas a buy is missing",
+        "tags": ["funding"],
+        "description": "For the one chain the person’s plans live on, when it runs on a test network and this server holds a faucet key for it (GET /v1/funding says `testFunds: true`). The server works out what is missing for this buy itself, as GET /v1/funding does, and sends that with a small margin: test dollars minted to the wallet, and the native token for fees. Never on mainnet. A person may ask three times a day, the faucet as a whole a hundred; one send is at most $5,000 in test dollars. The answer names what was sent and the test network’s transaction ids, and nothing about the node or the key.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "wallet": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{40}$"
+                      }
+                    ]
+                  },
+                  "amountUsd": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000000
+                  },
+                  "proposalId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "family": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]*$"
+                  }
+                },
+                "required": ["amountUsd"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "build",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "chain": {
+                      "type": "string",
+                      "enum": ["solana", "base", "robinhood"]
+                    },
+                    "provenance": {
+                      "type": "string",
+                      "enum": ["sandbox"]
+                    },
+                    "wallet": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                        },
+                        {
+                          "type": "string",
+                          "pattern": "^0x[0-9a-f]{40}$"
+                        }
+                      ]
+                    },
+                    "cash": {
+                      "type": "object",
+                      "properties": {
+                        "symbol": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "decimals": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "raw": {
+                          "type": "string",
+                          "maxLength": 78,
+                          "pattern": "^(?:0|[1-9]\\d*)$"
+                        }
+                      },
+                      "required": ["symbol", "decimals", "raw"],
+                      "additionalProperties": false
+                    },
+                    "gas": {
+                      "type": "object",
+                      "properties": {
+                        "symbol": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "decimals": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "raw": {
+                          "type": "string",
+                          "maxLength": 78,
+                          "pattern": "^(?:0|[1-9]\\d*)$"
+                        }
+                      },
+                      "required": ["symbol", "decimals", "raw"],
+                      "additionalProperties": false
+                    },
+                    "txIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "left": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": ["chain", "provenance", "wallet", "cash", "gas", "txIds", "left"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "chainCode": {
+                          "type": "string",
+                          "enum": [
+                            "NotKeeper",
+                            "AutoFollowOff",
+                            "KeeperPaused",
+                            "MintNotAccepted",
+                            "RouterNotAllowed",
+                            "SpentTooMuch",
+                            "ReceivedTooLittle",
+                            "OtherAccountDebited",
+                            "AccountTampered",
+                            "PriceStale",
+                            "PriceDeviation",
+                            "MarketClosed",
+                            "MultiplierWindow",
+                            "NotTowardTarget",
+                            "PastTarget",
+                            "Cooldown",
+                            "LossCapReached",
+                            "AssetNotPriced",
+                            "NewAssetNeedsOwner",
+                            "VersionNotEffective",
+                            "CreatorLimit",
+                            "VersionMismatch",
+                            "WrongDestination",
+                            "ParamOutOfBounds",
+                            "NotUpgradeAuthority",
+                            "InvalidTargets",
+                            "NotCashMint",
+                            "ZeroAddress",
+                            "LockedAtLaunch",
+                            "HookNotAllowed",
+                            "AssetListFull",
+                            "SameMint",
+                            "NoPendingVersion",
+                            "NotCreatorOrGuardian",
+                            "NotCashLeg",
+                            "KeeperAssetOff",
+                            "PriceOutOfRange",
+                            "NothingTraded",
+                            "NotOwner",
+                            "CashTokenNotSet",
+                            "DepositShortfall",
+                            "GasTooLow",
+                            "NotAdmin",
+                            "NoCode",
+                            "AssetIsRouter",
+                            "RouterIsAsset",
+                            "NotCreating",
+                            "RouterFailed",
+                            "BalanceUnreadable",
+                            "CashTokenNotRemovable",
+                            "HandoverNotDone",
+                            "AlreadySet",
+                            "RecipeExists",
+                            "BadInput",
+                            "NotSupported",
+                            "TooManyTrades",
+                            "BadTrade",
+                            "VaultNotFound",
+                            "VaultExists",
+                            "RecipeNotFound",
+                            "NotFollowing",
+                            "NotFunded",
+                            "NoGas",
+                            "AllowanceTooLow",
+                            "Expired",
+                            "NotBuiltHere",
+                            "Unavailable",
+                            "Unknown"
+                          ]
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "blocking": {
+                          "type": "object",
+                          "properties": {
+                            "orderId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "legId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["orderId", "legId"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_FUNDED",
+                        "ASSET_NOT_ELIGIBLE",
+                        "GOAL_NOT_ACHIEVABLE",
+                        "NEW_ASSET_NEEDS_APPROVAL",
+                        "VERSION_CHANGED",
+                        "CREATOR_LIMIT",
+                        "ORDER_EXPIRED",
+                        "US_PERSON",
+                        "RATE_LIMITED",
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
