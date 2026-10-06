@@ -49,7 +49,7 @@ export type DataTableProps<Row> = {
   rowStatus?: (row: Row) => RowStatus | null;
   /** The header of the status column. */
   statusHeader?: string;
-  /** A row of mock data: a hatch band on its left edge and the MOCK plate in its first cell. */
+  /** A row of mock data: a hatch band on its left edge and the sample glyph in its first cell. */
   rowMock?: (row: Row) => boolean;
   labels?: Partial<DataTableLabels>;
   className?: string;

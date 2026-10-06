@@ -31,7 +31,8 @@ export const pt: Dictionary = {
     language: 'Idioma',
     testNetwork: 'rede de teste',
     slowDown: 'Nosso servidor pediu para eu ir mais devagar. Espere um minuto e tente de novo.',
-    mockAnnounce: ': dados de exemplo, não são reais',
+    mockAnnounce: 'Números de exemplo',
+    sampleFigure: 'número de exemplo',
   },
 
   signIn: {
@@ -333,7 +334,7 @@ export const pt: Dictionary = {
   pin: {
     sourceFor: 'Fonte de {value}',
     staleSuffix: ', desatualizado, {age}',
-    mockSuffix: ', dados de exemplo',
+    mockSuffix: ', número de exemplo',
     stale: 'desatualizado',
     ageUnknown: 'idade desconhecida',
     missing: 'ainda sem fonte',
@@ -341,7 +342,7 @@ export const pt: Dictionary = {
     copy: 'Copiar fonte',
     copied: 'Copiado',
     kinds: {
-      mock: 'dados MOCK, não reais',
+      mock: 'dados de exemplo, não reais',
       sandbox: 'rede de teste, não real',
       fixture: 'dados fixos, não reais',
       prior_dataset: 'dados anteriores, não reais',
@@ -487,7 +488,6 @@ export const pt: Dictionary = {
     },
     exitPlan: 'Plano de saída',
     costPrefix: 'custo',
-    foot: { sandbox: 'rede de teste, não real', mock: 'dados de exemplo, não reais' },
     columns: { asset: 'Ativo', share: 'Parte', amount: 'Valor', why: 'Por quê' },
     noReason: 'Nenhum motivo informado.',
     projected: 'Faixa projetada por ano, não é uma promessa',
@@ -572,7 +572,7 @@ export const pt: Dictionary = {
       newVault:
         'Esta compra abre o seu cofre para este plano, o que custa um pouco mais de taxa na primeira vez.',
       readAgain: 'Ler minha carteira de novo',
-      mockFund: 'Adicionar dinheiro e taxas MOCK',
+      mockFund: 'Adicionar dinheiro e taxas de exemplo',
       mockFunding: 'Adicionando…',
       failure: {
         unreachable: 'Não consegui ler sua carteira: nosso servidor não respondeu. Tente de novo.',
@@ -705,7 +705,7 @@ export const pt: Dictionary = {
       differs: (chain: string) =>
         `A resposta do nosso servidor difere do que a ${chain} tem. Mostro a versão e os pesos da rede, e seguir fica preso a eles.`,
       unverified: {
-        mock: 'Rede MOCK: não há rede para ler, então estas são palavras do nosso servidor, não conferidas.',
+        mock: 'Rede de exemplo: não há rede para ler, então estas são palavras do nosso servidor, não conferidas.',
         'no-node': (chain: string) =>
           `Não conferido na ${chain}: este app não tem um nó próprio para ler. Estas são palavras do nosso servidor.`,
         'no-deployment': (chain: string) =>
@@ -1204,7 +1204,7 @@ export const pt: Dictionary = {
         error: 'Não conseguimos guardar isso agora. Tente de novo em um minuto.',
       },
     },
-    foot: 'Os planos, taxas e chances desta página são dados de exemplo MOCK. Nenhum deles é real.',
+    foot: 'Os planos, taxas e chances desta página são dados de exemplo. Nenhum deles é real.',
   },
 
   embed: {

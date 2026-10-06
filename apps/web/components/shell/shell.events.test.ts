@@ -269,13 +269,16 @@ describe('who is signed in, in the bar', () => {
     expect(find(host, '[data-ui="account-said"]').textContent).toBe('');
   });
 
-  it('marks the throwaway wallet of development with the hatch and the word MOCK', async () => {
+  it('marks the throwaway wallet of development with the named sample glyph, never MOCK', async () => {
     portStore.set(signedInPort(PHANTOM, { test: true }, 'mock'));
     const host = await shell();
     await settle();
     const account = find(host, '[data-ui="account"]');
-    expect(account.querySelectorAll('.tf-mock-plate')).toHaveLength(1);
+    expect(account.querySelector('[data-ui="sample-glyph"]')?.getAttribute('aria-label')).toBe(
+      en.sampleFigure,
+    );
     expect(account.querySelectorAll('.tf-hatch')).toHaveLength(1);
+    expect(account.textContent).not.toContain('MOCK');
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
 });

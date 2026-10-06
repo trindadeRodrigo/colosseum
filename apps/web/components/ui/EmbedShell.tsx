@@ -1,9 +1,11 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { cn } from './cn';
+import { SampleNote } from './internal/mock-parts';
 
 // embed-shell.md. Inside a partner's app the brand recedes: the partner's colours, font, radius and
-// buttons take over. What survives is the proof: the pin and its popover, the hatch with the word
-// MOCK, hairline structure, the disclaimer, explorer links, and a small credit.
+// buttons take over. What survives is the proof: the pin and its popover, the hatch with the quiet line
+// that says the figures are sample (MOCK-QUIET), hairline structure, the disclaimer, explorer links,
+// and a small credit.
 //
 // The shell is read-only: no navigation, no wallet, nothing to sign. It is a section, not a main: the
 // host owns the landmarks. The receding is done in CSS (`tf-embed` in globals.css): the primitives
@@ -61,9 +63,11 @@ export type EmbedShellProps = Common &
         credit: EmbedCredit;
         /**
          * The partner's muted colour is too faint on their ground (under 4.5:1): the hatch is not drawn
-         * and the word MOCK stays. The embed's own check decides this; the shell obeys.
+         * and the quiet line stays. The embed's own check decides this; the shell obeys.
          */
         suppressHatch?: boolean;
+        /** The figures are sample: one quiet line under the lead ("Sample figures · test network"). */
+        sample?: { line: string; note?: string };
       }
     | { state: 'loading' }
     /** Not found, or revoked: one sentence and nothing else. */
@@ -93,7 +97,7 @@ export function EmbedShell(props: EmbedShellProps) {
       </section>
     );
 
-  const { title, lead, children, schedule, credit, suppressHatch = false } = props;
+  const { title, lead, children, schedule, credit, suppressHatch = false, sample } = props;
   return (
     <section
       {...frame}
@@ -104,6 +108,13 @@ export function EmbedShell(props: EmbedShellProps) {
         {title}
       </h2>
       {lead && <p className="mt-[0.5em] text-[length:var(--tf-e-lead)] leading-snug">{lead}</p>}
+      {sample && (
+        <SampleNote
+          line={sample.line}
+          note={sample.note}
+          className="mt-[0.5em] text-[length:var(--tf-e-small)]"
+        />
+      )}
       <div className="mt-[1em] grid gap-[1em] border-t border-border pt-[1em] @min-[560px]:grid-cols-2">
         <div
           className={cn('flex min-w-0 flex-col gap-[1em]', !schedule && '@min-[560px]:col-span-2')}

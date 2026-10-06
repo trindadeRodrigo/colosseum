@@ -28,8 +28,8 @@ import { usePlan } from './use-plan';
 // The plan a goal built, before anything is bought: the goal first, then what the plan holds and why,
 // the projected range with its source, the exit plan, and the risk as the API rolled it up. The
 // disclaimer from the one constant is the foot of every product page (components/shell/AppShell.tsx),
-// so it is on this one once. A plan built on anything that is not live carries the MOCK plate,
-// with "test network" on a test network. "Buy this plan" leads to the buy screen; on a chain with no
+// so it is on this one once. A plan built on anything that is not live is hatched and says so in
+// one line, with "test network" on a test network. "Buy this plan" leads to the buy screen; on a chain with no
 // deployment committed for its network it is off, and says why.
 
 /** The first observation of a kind, as a pin takes it. Null when the plan names none: the pin shows a dash. */
@@ -74,8 +74,6 @@ export function PlanScreen({ id }: { id: string }) {
   const share = (bps: number) => formatBps(bps, locale);
 
   const tableOnly = proposal.lines.length > MAX_LEGS;
-  const foot =
-    label === 'sandbox' ? t.plan.foot.sandbox : label === 'mock' ? t.plan.foot.mock : null;
   const chips: [string, string][] = [
     [t.plan.chips.goal, t.goal.options.goal[sheet.goal].toLowerCase()],
     [t.plan.chips.amount, dollars(sheet.amountUsd, lang)],
@@ -119,7 +117,7 @@ export function PlanScreen({ id }: { id: string }) {
           note: label === 'sandbox' ? t.shell.testNetwork : undefined,
         }}
       >
-        {/* The head flows beside the MOCK plate the card floats right; the rest clears it. */}
+        {/* The head, then the rest; a sample card says so once at its foot. */}
         <div className="px-6 pt-6">
           <h2 id={paneId} className="text-[1.125rem]/7 font-medium">
             {t.plan.title}
@@ -259,8 +257,8 @@ export function PlanScreen({ id }: { id: string }) {
             </div>
           )}
         </div>
-        <div className="flex flex-wrap justify-between gap-x-6 gap-y-1 border-t border-border px-6 py-3 font-mono text-source text-muted-foreground">
-          <span>{foot}</span>
+        {/* The card's own line says once that it is sample, and on a test network (MOCK-QUIET). */}
+        <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 border-t border-border px-6 py-3 font-mono text-source text-muted-foreground">
           <span>{DISCLAIMER_SHORT}</span>
         </div>
       </Card>
