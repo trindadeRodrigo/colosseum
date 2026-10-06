@@ -49,18 +49,39 @@ const jsonl = <T>(path: string): T[] =>
         .map((l) => JSON.parse(l) as T)
     : [];
 
-async function replay(mode: 'list' | 'three') {
+async function replay(
+  mode: 'list' | 'three',
+  o: { maxPools?: number; oldCut?: string; refuse?: boolean } = {},
+) {
   const { tokens, listed } = plan();
   const dir = mkdtempSync(join(tmpdir(), `risk-evm-${mode}-`));
   if (mode === 'three')
     writeFileSync(join(dir, 'pools-robinhood.json'), JSON.stringify(fx.threePools));
-  const rpc = replayRpc(fx.answers);
+  if (o.oldCut)
+    writeFileSync(
+      join(dir, 'pools-robinhood-list.json'),
+      JSON.stringify({
+        ...fx.threePools,
+        maxPools: Number.MAX_SAFE_INTEGER,
+        cut: o.oldCut,
+        // two days old, so the run confirms it again
+        discoveredAt: new Date(
+          Date.parse(fx.threePools.discoveredAt) - 48 * 3_600_000,
+        ).toISOString(),
+      }),
+    );
+  // the confirmation is the only call at 'latest': the endpoint refuses it
+  const rpc = replayRpc(fx.answers, (r) =>
+    o.refuse && r.method === 'eth_call' && (r.params as unknown[])[1] === 'latest'
+      ? { error: { message: 'rate limit exceeded' } }
+      : undefined,
+  );
   const events: Record<string, unknown>[] = [];
   const summary = await collectOnce(
     { ...robinhood, tokens },
     {
       dir,
-      maxPools: mode === 'list' ? Number.MAX_SAFE_INTEGER : 3,
+      maxPools: o.maxPools ?? (mode === 'list' ? Number.MAX_SAFE_INTEGER : 3),
       minLiquidityUsd: 10_000,
       poolsMaxAgeHours: 24,
       rediscover: false,
@@ -188,6 +209,28 @@ describe('a run on the asset list, replayed', async () => {
     // section 6, RU.6). What the wider run adds is the pool rows, not a cheaper asset row.
   });
 
+  it('with a pool limit, a confirmed pool left out says so and is not asked', async () => {
+    const limited = await replay('list', { maxPools: 3 });
+    const reasons = limited.summary.list?.poolRowsByReason ?? {};
+    expect(reasons.not_confirmed_on_chain).toBeUndefined();
+    expect(reasons.beyond_the_pool_limit).toBe(
+      fx.cut.pools.filter((p) => p.reachable && p.otherSymbol === 'USDG').length - 6,
+    );
+    // the same three pools a token as the three-pool run, so the same asset rows but for their source
+    const strip = (r: AssetSnapshotRow) => ({ ...r, source: '' });
+    expect(limited.assets.map(strip)).toEqual(three.assets.map(strip));
+  });
+
+  it('never falls back to pools confirmed from another cut', async () => {
+    await expect(
+      replay('list', { oldCut: 'cut-robinhood-OLD.json', refuse: true }),
+    ).rejects.toThrow(/rate limit/);
+    // the same refusal with this cut's own list on file, grown old: the run goes on with it, as the plain run does
+    const own = await replay('list', { oldCut: fx.names.cut, refuse: true });
+    expect(own.summary.rows).toBe(2);
+    expect(own.events.some((e) => e.event === 'discover_failed_using_old_list')).toBe(true);
+  });
+
   it('a run without the list is as it was: no pool file, no list in its summary', () => {
     expect(three.summary.list).toBeUndefined();
     expect(three.pools).toEqual([]);
@@ -302,12 +345,14 @@ describe('pool rows, by hand', () => {
           pool('0xa5'),
           pool('0xa6'),
           pool('0xa7', { reachable: false }),
+          pool('0xa8'),
         ],
       },
     },
     blockTime: new Date('2026-10-06T00:00:00.000Z'),
     blockNumber: 7,
-    confirmed: ['0xa1', '0xa4', '0xa5', '0xa6'].map(ref),
+    confirmed: ['0xa1', '0xa4', '0xa5', '0xa6', '0xa8'].map(ref),
+    asked: ['0xa1', '0xa4', '0xa5', '0xa6'].map(ref),
     priced: [
       { ref: ref('0xa1'), midUsd: 10 },
       { ref: ref('0xa5'), midUsd: 14 },
@@ -320,7 +365,15 @@ describe('pool rows, by hand', () => {
   const by = (id: string) => rows.find((r) => r.pool === id) as PoolSnapshotRow;
 
   it('gives a row to every reachable pool and none to an unreachable one', () => {
-    expect(rows.map((r) => r.pool)).toEqual(['0xa1', '0xa2', '0xa3', '0xa4', '0xa5', '0xa6']);
+    expect(rows.map((r) => r.pool)).toEqual([
+      '0xa1',
+      '0xa2',
+      '0xa3',
+      '0xa4',
+      '0xa5',
+      '0xa6',
+      '0xa8',
+    ]);
   });
 
   it('computes a quoted pool`s cost against its own mid, the unfilled part counted as lost', () => {
@@ -348,6 +401,9 @@ describe('pool rows, by hand', () => {
     expect(by('0xa4')).toMatchObject({ reason: 'no_price_at_the_block', fee: 3000 });
     expect(by('0xa5')).toMatchObject({ reason: 'mid_far_from_the_median', midUsd: 14 });
     expect(by('0xa6')).toMatchObject({ reason: 'no_quote_at_any_size', quoted: false });
+    // asked and silent: a point per size, each null
+    expect(by('0xa6').sell?.every((x) => x.outUsd === null && x.costPct === null)).toBe(true);
+    expect(by('0xa8')).toMatchObject({ reason: 'beyond_the_pool_limit', fee: 3000, sell: null });
     for (const id of ['0xa2', '0xa3', '0xa4', '0xa5']) {
       expect(by(id).sell).toBeNull();
       expect(by(id).buy).toBeNull();

@@ -152,6 +152,7 @@ export type PoolPoint = {
 export type NoQuoteReason =
   | 'not_against_the_dollar_token'
   | 'not_confirmed_on_chain'
+  | 'beyond_the_pool_limit'
   | 'no_price_at_the_block'
   | 'mid_far_from_the_median'
   | 'no_quote_at_any_size';
@@ -194,8 +195,9 @@ export type PoolRowsInput = {
   listed: ListRun;
   blockTime: Date;
   blockNumber: number;
-  /** The pools the chain confirmed for the token (the run's pool list). */
+  /** The pools the chain confirmed for the token, and the ones of them the run asked (the pool limit). */
   confirmed: PoolRef[];
+  asked: PoolRef[];
   /** The pools that gave a price at the block, and the ones within the median band that were asked for quotes. */
   priced: Array<{ ref: PoolRef; midUsd: number }>;
   quotes: PoolQuotes[];
@@ -228,6 +230,7 @@ export function poolRows(r: PoolRowsInput): PoolSnapshotRow[] {
   const grid = r.grid ?? GRID_USD;
   const decimals = { token: r.token.decimals, dollar: r.chain.dollar.decimals };
   const confirmed = new Map(r.confirmed.map((p) => [lower(p.id), p]));
+  const asked = new Set(r.asked.map((p) => lower(p.id)));
   const priced = new Map(r.priced.map((p) => [lower(p.ref.id), p.midUsd]));
   const quotes = new Map(r.quotes.map((q) => [lower(q.pool), q]));
   return (r.listed.pools[r.token.symbol] ?? [])
@@ -242,13 +245,15 @@ export function poolRows(r: PoolRowsInput): PoolSnapshotRow[] {
         ? 'not_against_the_dollar_token'
         : !ref
           ? 'not_confirmed_on_chain'
-          : !priced.has(lower(p.id))
-            ? 'no_price_at_the_block'
-            : !q
-              ? 'mid_far_from_the_median'
-              : !any
-                ? 'no_quote_at_any_size'
-                : null;
+          : !asked.has(lower(p.id))
+            ? 'beyond_the_pool_limit'
+            : !priced.has(lower(p.id))
+              ? 'no_price_at_the_block'
+              : !q
+                ? 'mid_far_from_the_median'
+                : !any
+                  ? 'no_quote_at_any_size'
+                  : null;
       return {
         pool: p.id,
         assetMint: r.token.address,

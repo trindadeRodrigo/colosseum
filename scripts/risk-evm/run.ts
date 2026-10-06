@@ -316,7 +316,7 @@ async function pinLatest(rpc: Rpc, now: () => number): Promise<Pin> {
   }
 }
 
-type TokenPools = { token: TokenConfig; pools: PoolRef[] };
+type TokenPools = { token: TokenConfig; pools: PoolRef[]; confirmed: PoolRef[] };
 /** Pool prices read at one block. Quotes for these tokens are asked at the same block, never another. */
 type Mids = { pin: Pin; byToken: Map<string, LivePool[]> };
 
@@ -412,6 +412,8 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
       poolsRediscovered = true;
     } catch (e) {
       if (e instanceof RpcUnreachable || !cache) throw e;
+      // a list run never falls back to pools confirmed from another cut: its rows would name this one
+      if (listed && cache.cut !== listed.cut) throw e;
       opts.log({ event: 'discover_failed_using_old_list', error: String(e) });
     }
   }
@@ -419,9 +421,12 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
   const todo: TokenPools[] = chain.tokens
     .filter((token) => !opts.only || opts.only.has(token.symbol))
     .map((token) => {
-      const listed = cache.tokens[token.symbol];
-      const sameToken = listed?.address.toLowerCase() === token.address.toLowerCase();
-      return { token, pools: sameToken ? listed.pools : [] };
+      const kept = cache.tokens[token.symbol];
+      const sameToken = kept?.address.toLowerCase() === token.address.toLowerCase();
+      const confirmed = sameToken ? kept.pools : [];
+      // a list run's file holds every confirmed pool; the limit is applied here, so a pool left out by
+      // it is known as confirmed and says so on its row
+      return { token, confirmed, pools: listed ? confirmed.slice(0, opts.maxPools) : confirmed };
     });
 
   // 3. per token: the pools' prices and their quotes, both at one block, then the row
@@ -437,6 +442,7 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
   const writePoolRows = (
     token: TokenConfig,
     confirmed: PoolRef[],
+    asked: PoolRef[],
     at: Pin,
     priced: LivePool[],
     quotes: PoolQuotes[],
@@ -449,6 +455,7 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
       blockTime: at.time,
       blockNumber: at.number,
       confirmed,
+      asked,
       priced,
       quotes,
       source: sourceAt(at),
@@ -473,7 +480,7 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
   /** Paused past the hour: what is not measured yet belongs to the next run, which is due now. */
   const nextRunDue = () => opts.until !== undefined && now() >= opts.until;
   const NEXT_RUN_DUE = 'the next scheduled run is due';
-  for (const [i, { token, pools }] of todo.entries()) {
+  for (const [i, { token, pools, confirmed }] of todo.entries()) {
     if (nextRunDue()) {
       aborted = NEXT_RUN_DUE;
       left = { error: `not tried: ${aborted}`, retry: false };
@@ -489,8 +496,9 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
     results.push(result);
     if (pools.length === 0) {
       result.error = 'no eligible pool';
-      // its reachable pools are all against another token: each still gets its row, with the reason
-      writePoolRows(token, pools, pin, [], []);
+      // its reachable pools are all against another token: each still gets its row, with the reason,
+      // stamped with the block the run holds (nothing is read for it)
+      writePoolRows(token, confirmed, pools, pin, [], []);
       continue;
     }
     for (let again = 0; ; ) {
@@ -526,11 +534,11 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
           result.error = priced.length
             ? 'the pools disagree on the price'
             : 'no pool returned a price';
-          writePoolRows(token, pools, at, priced, []);
+          writePoolRows(token, confirmed, pools, at, priced, []);
           break;
         }
         const quotes = await quoteToken(chain, rpc, token, live, at.tag, opts.log);
-        writePoolRows(token, pools, at, priced, quotes);
+        writePoolRows(token, confirmed, pools, at, priced, quotes);
         const row = buildRow({
           token,
           dollarDecimals: chain.dollar.decimals,
@@ -632,7 +640,7 @@ async function confirmListed(
       token,
       cands: listCandidates(chain, listed.pools[token.symbol] ?? []),
     })),
-    maxPools,
+    Number.MAX_SAFE_INTEGER,
     'latest',
   );
   return {
