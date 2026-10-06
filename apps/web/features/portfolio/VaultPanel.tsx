@@ -211,7 +211,7 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
         className="flex flex-wrap justify-between gap-3 font-mono text-[11px] text-muted-foreground"
       >
         <span>{words.observed(utc(lang, vault.observedAt))}</span>
-        <span>{DISCLAIMER_SHORT}</span>
+        <span>{DISCLAIMER_SHORT[lang]}</span>
       </CardFooter>
     </Card>
   );

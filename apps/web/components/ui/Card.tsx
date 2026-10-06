@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { cn } from './cn';
-import { HatchBand, MockWord } from './internal/mock-parts';
+import { HatchBand, SampleNote } from './internal/mock-parts';
 import { LatticeGlyph, LatticeStatus } from './Lattice';
 
 // card.md. A card is a planed face: lighter than the ground, a hairline edge, no shadow, and at most
@@ -27,13 +27,12 @@ export type CardProps = {
   current?: 'page' | 'true';
   /**
    * The data inside is not live. The card draws both halves itself: a hatch band down its left edge
-   * and the MOCK plate at its top right, level with the header's title. Nothing else is needed.
+   * and one quiet line at its foot ("Sample figures"). Nothing else is needed (MOCK-QUIET).
    */
   mock?: boolean;
   /**
-   * Words for the plate of a mocked card. `announce` is what a screen reader hears after MOCK, in the
-   * language of the view. `note` is read by everyone, under the plate: "test network", for a card
-   * whose figures come from one.
+   * Words for that line, in the language of the view. `announce` is the line ("Sample figures");
+   * `note` follows it after a dot: "test network", for a card whose figures come from one.
    */
   mockLabels?: { announce?: string; note?: string };
   as?: 'div' | 'section' | 'article' | 'li';
@@ -76,30 +75,13 @@ export function Card({
         <>
           <HatchBand />
           <div className="min-w-0 flex-1">
-            {/* Floated, so the header sits beside it and a body with no header wraps around it. */}
-            {mockLabels?.note ? (
-              <span
-                className={cn(
-                  'float-right ml-4 flex flex-col items-end gap-1',
-                  density === 'dense' ? 'mt-4.5 mr-4' : 'mt-7 mr-6',
-                )}
-              >
-                <MockWord announce sentence={mockLabels.announce} />
-                <span data-ui="mock-note" className="text-caption text-muted-foreground">
-                  {mockLabels.note}
-                </span>
-              </span>
-            ) : (
-              <MockWord
-                announce
-                sentence={mockLabels?.announce}
-                className={cn(
-                  'float-right ml-4',
-                  density === 'dense' ? 'mt-4.5 mr-4' : 'mt-7 mr-6',
-                )}
-              />
-            )}
             <div className="contents">{children}</div>
+            {/* Said once, quietly, at the foot of the card (MOCK-QUIET). */}
+            <SampleNote
+              line={mockLabels?.announce}
+              note={mockLabels?.note}
+              className={density === 'dense' ? 'px-4 pb-3' : 'px-6 pb-5'}
+            />
           </div>
         </>
       ) : (

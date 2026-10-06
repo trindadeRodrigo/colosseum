@@ -92,9 +92,11 @@ describe('home', () => {
       en.portfolio.summary.see,
       '/monitor',
     ]);
-    // a test network: the hatch, MOCK, and the words
-    expect(card.querySelector('[data-ui="mock-plate"]')).not.toBeNull();
-    expect(find(card, '[data-ui="mock-note"]').textContent).toBe(en.shell.testNetwork);
+    // a test network: the hatch and one quiet line with the words, never MOCK
+    expect(card.textContent).not.toContain('MOCK');
+    expect(find(card, '[data-ui="sample-note"]').textContent).toBe(
+      `${en.shell.mockAnnounce} · ${en.shell.testNetwork}`,
+    );
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
     // still one serif line on the page, and no primary button but the goal's own
     expect(host.querySelectorAll('.font-display')).toHaveLength(1);

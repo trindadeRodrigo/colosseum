@@ -323,13 +323,15 @@ describe('POST /v1/baskets/personalize', () => {
     );
   });
 
-  it('refuses a sheet for a chain the person’s plans do not live on, and stores nothing', async () => {
+  it('refuses a sheet for another chain than the current one, and stores nothing', async () => {
     const who = await someone('solana');
     const res = await post(who, PATH, { sheet: sheet({ chains: ['robinhood'] }) });
     expect(res.statusCode, res.body).toBe(422);
     const body = OrderError.parse(res.json());
-    expect(body.error).toBe('your plans live on Solana, and this sheet names Robinhood Chain');
-    expect(body.fix).toBe('Make the plan for Solana: send chains ["solana"].');
+    expect(body.error).toBe('your current chain is Solana, and this sheet names Robinhood Chain');
+    expect(body.fix).toBe(
+      'Make the plan for Solana: send chains ["solana"], or switch the current chain with PUT /v1/me/chain.',
+    );
     expect(await plansOf(who.sub)).toEqual([]);
     // A person who picked Robinhood Chain is refused Solana the same way.
     const picked = await someone('passkey');
@@ -337,6 +339,12 @@ describe('POST /v1/baskets/personalize', () => {
     const other = await post(picked, PATH, { sheet: sheet() });
     expect(other.statusCode, other.body).toBe(422);
     expect(await plansOf(picked.sub)).toEqual([]);
+    // Switched to Solana, the same sheet makes a plan there (CHAIN-SWITCH).
+    expect((await put(picked, '/v1/me/chain', { chain: 'solana' })).statusCode).toBe(200);
+    const made = await post(picked, PATH, { sheet: sheet() });
+    expect(made.statusCode, made.body).toBe(200);
+    expect(made.json().proposal.recipes.map((r: { chain: string }) => r.chain)).toEqual(['solana']);
+    expect(await plansOf(picked.sub)).toHaveLength(1);
   });
 
   it('answers 409 to a person with no chain yet, and 401 to nobody', async () => {
@@ -344,7 +352,7 @@ describe('POST /v1/baskets/personalize', () => {
     const res = await post(fresh, PATH, { sheet: sheet() });
     expect(res.statusCode, res.body).toBe(409);
     expect(OrderError.parse(res.json()).fix).toBe(
-      'Pick Solana or Robinhood Chain once, with PUT /v1/me/chain.',
+      'Pick Solana or Robinhood Chain with PUT /v1/me/chain. You can switch later.',
     );
     expect((await post(null, PATH, { sheet: sheet() })).statusCode).toBe(401);
   });

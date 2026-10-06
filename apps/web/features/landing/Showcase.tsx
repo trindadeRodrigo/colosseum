@@ -1,7 +1,6 @@
 import { DISCLAIMER_SHORT } from '@colosseum/schemas';
 import type { ReactNode } from 'react';
 import { Disclaimer } from '../../components/ui/Disclaimer';
-import { MockPlate } from '../../components/ui/MockPlate';
 import { PinGlyph, ProvenancePin } from '../../components/ui/ProvenancePin';
 import { dictionary, type Lang, LOCALE } from '../../i18n';
 import { CaseScope, Legs } from './CaseParts';
@@ -11,8 +10,8 @@ import { GROWTH, SAMPLE, type SampleLeg, TICKERS, TRIP } from './sample';
 
 // "Same pieces. Different people. Different fit." (goal-showcase-case.md): two sample people, each
 // with the goal in their own words over their plan drawn as a joint, and the plan cut for it beside them: the limits
-// as chips, four figures, the chart, the parts and the exit plan. Everything in a case is MOCK, and
-// says so with the plate in its head and the hatched pin on every figure that stands on a rate. The
+// as chips, four figures, the chart, the parts and the exit plan. Everything in a case is sample, and
+// says so once at its foot and with the hatched pin on every figure that stands on a rate. The
 // full disclaimer sits once under the section.
 
 const whole = (lang: Lang, usd: number) =>
@@ -38,7 +37,7 @@ function Kpis({ items }: { items: Kpi[] }) {
         <div
           key={kpi.label}
           className={[
-            '@container min-w-0 px-3 py-2.5',
+            'min-w-0 px-3 py-2.5',
             // hairlines between the cells: four in a row, or two by two on a phone
             i % 2 === 0
               ? 'border-r border-border'
@@ -48,10 +47,9 @@ function Kpis({ items }: { items: Kpi[] }) {
           ].join(' ')}
         >
           <dt className="text-caption font-medium text-muted-foreground">{kpi.label}</dt>
-          {/* A figure with its pin and MOCK plate is one unbreakable line (ProvenancePin). In a cell
-              narrower than 12rem (all four, at every width this page has today) the plate goes
-              under the figure; the figure and its pin stay together. */}
-          <dd className="mt-0.5 font-mono text-[1.125rem]/7 font-medium tabular-nums @max-[12rem]:[&_[data-ui=figure]_[data-ui=mock-plate]]:ml-0 @max-[12rem]:[&_[data-ui=figure]_[data-ui=mock-plate]]:flex @max-[12rem]:[&_[data-ui=figure]_[data-ui=mock-plate]]:w-fit">
+          {/* A figure with its pin is one unbreakable line (ProvenancePin): a sample one's pin is
+              hatched, and the case says once, at its foot, that its rates are sample (MOCK-QUIET). */}
+          <dd className="mt-0.5 font-mono text-[1.125rem]/7 font-medium tabular-nums">
             {kpi.value}
             {kpi.unit && (
               // a unit such as "Dec 2031" is never broken across lines
@@ -90,7 +88,6 @@ function Case({
   foot?: string;
 }) {
   const t = dictionary(lang).landing.show;
-  const mockAnnounce = dictionary(lang).shell.mockAnnounce;
   return (
     <article
       aria-label={words.label}
@@ -119,7 +116,6 @@ function Case({
               <h3 className="text-[1.125rem]/6 font-medium">{words.title}</h3>
               <p className="mt-0.5 text-[13px]/5 text-muted-foreground">{words.sub}</p>
             </div>
-            <MockPlate labels={{ announce: mockAnnounce }} />
           </div>
           <ul aria-label={t.chips} className="flex flex-wrap gap-1.5">
             {chips.map((chip) => (
@@ -138,10 +134,10 @@ function Case({
             {t.exitPlan}: {exit} <span className="text-muted-foreground">{exitNote}</span>
           </p>
           <div className="flex flex-wrap justify-between gap-3 border-t border-border pt-2.5 font-mono text-[12px]/5 text-muted-foreground">
-            <span className="inline-flex items-center gap-1">
+            <span data-ui="sample-note" className="inline-flex items-center gap-1">
               {t.sample} <PinGlyph state="mock" />
             </span>
-            <span>{foot ? `${foot} ${DISCLAIMER_SHORT}` : DISCLAIMER_SHORT}</span>
+            <span>{foot ? `${foot} ${DISCLAIMER_SHORT[lang]}` : DISCLAIMER_SHORT[lang]}</span>
           </div>
         </div>
       </CaseScope>
@@ -218,7 +214,6 @@ export function Showcase({ lang }: { lang: Lang }) {
                 lang={lang}
                 labels={{ ...chartLabels, chart: t.growth.chart }}
                 goal={t.growth.goalLine}
-                weak={t.growth.weak}
               />
             }
             legs={GROWTH.legs}

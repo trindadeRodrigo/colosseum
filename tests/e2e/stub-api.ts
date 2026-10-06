@@ -40,11 +40,12 @@ import { riskAnswer } from './stub-risk';
 //
 //   tsx tests/e2e/stub-api.ts            STUB_API_PORT (3901), WEB_ORIGIN (http://localhost:3100)
 //
-// Plans an agent proposes from a link are made and read back as the API does (AGT-2). Three routes of
+// Plans an agent proposes from a link are made and read back as the API does (AGT-2). Four routes of
 // its own, for the spec: POST /__stub/reset forgets everything, GET /__stub/reports
-// lists the steps the web reported as signed, and POST
+// lists the steps the web reported as signed, POST
 // /__stub/tamper makes the next swap it builds carry a lower minimum than the order states, as a
-// server that lies would. MOCK throughout: every figure says so. The /risk routes are the one
+// server that lies would, and POST /__stub/test-network has the funding answer as a test network's
+// with test funds offered (POST /v1/testnet/fund), as a server with a faucet key does. MOCK throughout: every figure says so. The /risk routes are the one
 // exception: they answer from Rodrigo's recording of the risk API (stub-risk.ts), measured and old.
 
 const PORT = Number(process.env.STUB_API_PORT ?? 3901);
@@ -96,6 +97,8 @@ const freshWorld = (): World => ({
 });
 let world: World = freshWorld();
 let tamperNext = false;
+/** The funding answers as a test network's, and the test faucet sends (POST /__stub/test-network). */
+let testNetwork = false;
 /** The plan an agent proposed from a link (`POST /v1/baskets/propose`), read back by its id. */
 let linked: ReturnType<typeof proposal> | null = null;
 /** The risk roll-up of a plan an agent proposed: MOCK, nothing measured, as on the mock chain. */
@@ -111,7 +114,7 @@ let reports: string[] = [];
 
 const OBSERVED = {
   source: 'the e2e stub',
-  method: 'MOCK: made up for the end-to-end spec',
+  method: 'sample: made up for the end-to-end spec',
   fetchedAt: '2026-10-05T12:00:00.000Z',
   provenance: 'mock' as const,
 };
@@ -136,7 +139,9 @@ function proposal(sheet: BasketSheet) {
       assetId: t.asset,
       weightBps: t.weightBps,
       amountUsd: (sheet.amountUsd * t.weightBps) / 10_000,
-      reasons: [{ rule: 'stub', inputs: [], params: {}, text: 'MOCK: a reason the stub made up.' }],
+      reasons: [
+        { rule: 'stub', inputs: [], params: {}, text: 'Sample: a reason the stub made up.' },
+      ],
     })),
     { chain: CHAIN, assetId: cash, weightBps: 500, amountUsd: sheet.amountUsd / 20, reasons: [] },
   ];
@@ -159,8 +164,8 @@ function proposal(sheet: BasketSheet) {
       moneyTodayUsd: sheet.amountUsd,
       termMonths: sheet.horizonMonths,
       cashFlow: 'none',
-      expectedReturn: { lowPct: 0, highPct: 0, basis: 'MOCK', lossInFallUsd: 0 },
-      exit: { text: 'MOCK: up to the whole amount within a day', costBps: 25 },
+      expectedReturn: { lowPct: 0, highPct: 0, basis: 'sample', lossInFallUsd: 0 },
+      exit: { text: 'Sample: up to the whole amount within a day', costBps: 25 },
     },
     flags: [],
     observations: [
@@ -468,6 +473,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   if (path === '/__stub/reset' && method === 'POST') {
     world = freshWorld();
     tamperNext = false;
+    testNetwork = false;
     reports = [];
     linked = null;
     return send(res, 200, { ok: true });
@@ -476,6 +482,10 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   if (path.startsWith('/risk/') && method === 'GET') {
     const answer = riskAnswer(`${path}${url.search}`);
     return send(res, answer.status, answer.body);
+  }
+  if (path === '/__stub/test-network' && method === 'POST') {
+    testNetwork = true;
+    return send(res, 200, { ok: true });
   }
   if (path === '/__stub/tamper' && method === 'POST') {
     tamperNext = true;
@@ -526,6 +536,35 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       });
     return send(res, 200, { chain: CHAIN, provenance: 'mock', wallets: [] });
   }
+  if (path === '/v1/testnet/fund' && method === 'POST') {
+    if (!testNetwork) return send(res, 404, { error: 'this server sends no test funds' });
+    const body = (await read(req)) as { amountUsd: number; wallet: string };
+    const need = {
+      cashRaw: String(Math.round(body.amountUsd * 1_000_000)),
+      legs: 4,
+      newVault: true,
+    };
+    const f = await world.adapter.funding(body.wallet, need);
+    // What is missing, with the API's margins: 1% of cash, 25% of gas.
+    const short = (n: string, h: string) => (BigInt(n) > BigInt(h) ? BigInt(n) - BigInt(h) : 0n);
+    const cash = short(f.cashNeedRaw, f.cashHaveRaw);
+    const gas = short(f.gasNeedRaw, f.gasHaveRaw);
+    const cashRaw = cash + (cash + 99n) / 100n;
+    const gasRaw = gas + (gas + 3n) / 4n;
+    world.adapter.mock.fund(body.wallet, {
+      gasRaw: gasRaw.toString(),
+      assets: { [world.adapter.mock.cash]: cashRaw.toString() },
+    });
+    return send(res, 200, {
+      chain: CHAIN,
+      provenance: 'sandbox',
+      wallet: body.wallet,
+      cash: { symbol: 'USDC', decimals: 6, raw: cashRaw.toString() },
+      gas: { ...GAS, raw: gasRaw.toString() },
+      txIds: ['stub-test-network-tx'],
+      left: 2,
+    });
+  }
   if (path === '/v1/funding') {
     const wallet = url.searchParams.get('wallet') ?? '';
     lastWallet = wallet;
@@ -534,20 +573,24 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     const f = await world.adapter.funding(wallet, need);
     const missing = (n: string, h: string) =>
       String(BigInt(n) > BigInt(h) ? BigInt(n) - BigInt(h) : 0n);
+    const provenance = testNetwork ? 'sandbox' : 'mock';
     const stamp = {
-      source: 'the mock chain',
+      source: testNetwork ? 'the stub, as a test network' : 'the mock chain',
       fetchedAt: new Date().toISOString(),
-      provenance: 'mock',
+      provenance,
     };
     return send(res, 200, {
       chain: CHAIN,
       name: CHAIN_NAME,
-      mode: 'mock',
-      provenance: 'mock',
+      mode: testNetwork ? 'live' : 'mock',
+      provenance,
+      ...(testNetwork ? { testFunds: true } : {}),
       wallet,
       cash: {
         ...stamp,
-        method: 'MOCK: the wallet’s balance on the mock chain',
+        method: testNetwork
+          ? 'the wallet’s balance, read by the stub as a test network'
+          : 'sample: the wallet’s balance on the mock chain',
         asset: world.adapter.mock.cash,
         symbol: CASH_SYMBOL,
         decimals: 6,
@@ -557,7 +600,9 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       },
       gas: {
         ...stamp,
-        method: 'MOCK: the wallet’s gas on the mock chain',
+        method: testNetwork
+          ? 'the wallet’s gas, read by the stub as a test network'
+          : 'sample: the wallet’s gas on the mock chain',
         ...GAS,
         haveRaw: f.gasHaveRaw,
         needRaw: f.gasNeedRaw,

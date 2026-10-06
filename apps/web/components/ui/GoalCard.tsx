@@ -3,7 +3,7 @@ import { useId } from 'react';
 import { Button } from './Button';
 import { ChainBadge } from './ChainBadge';
 import { cn } from './cn';
-import { HatchBand, MockWord } from './internal/mock-parts';
+import { HatchBand, SampleNote } from './internal/mock-parts';
 import { LatticeStatus } from './Lattice';
 import { ProvenancePin } from './ProvenancePin';
 import type { PinLabels, PinSource } from './provenance';
@@ -16,8 +16,13 @@ import { Status, type StatusKind, statusWord } from './StatusMark';
 export type GoalCardLabels = {
   /** While the card waits for its goal. */
   loading: string;
+  /** A sample card's one quiet line (MOCK-QUIET). */
+  sample: string;
 };
-export const GOAL_CARD_LABELS: GoalCardLabels = { loading: 'Loading your goal' };
+export const GOAL_CARD_LABELS: GoalCardLabels = {
+  loading: 'Loading your goal',
+  sample: 'Sample figures',
+};
 
 export type GoalCardAmount = {
   /** The current value as shown: "$12,480 of $40,000". It is a priced figure, so it carries a pin. */
@@ -36,7 +41,7 @@ type Common = {
   variant?: 'card' | 'header';
   /** Header only: profile · solver version · created. */
   meta?: string;
-  /** An input of this plan is not live: a hatch band on the left edge and the MOCK plate after the status. */
+  /** An input of this plan is not live: a hatch band on the left edge and one quiet line. */
   mock?: boolean;
   /** The chain the goal's plan or vault is on, as a badge after the status. */
   chain?: ChainId;
@@ -141,7 +146,6 @@ export function GoalCard(props: GoalCardProps) {
                 )
               )}
               {chain && <ChainBadge chain={chain} />}
-              {mock && <MockWord announce />}
             </div>
             {props.reason && <p className="text-body-sm text-foreground">{props.reason}</p>}
             {(props.amount || props.detail) && (
@@ -162,7 +166,7 @@ export function GoalCard(props: GoalCardProps) {
         )}
 
         {props.state === 'draft' && chain && <ChainBadge chain={chain} />}
-        {props.state === 'draft' && mock && <MockWord announce />}
+        {mock && <SampleNote line={labels?.sample ?? GOAL_CARD_LABELS.sample} />}
         {header && meta && <p className="text-caption text-muted-foreground">{meta}</p>}
         <Button
           variant="link"

@@ -18,11 +18,13 @@ import { assetTicker } from '../order/amounts';
 // source, time and method are handed on to its pin as they came.
 //
 //   GET /v1/portfolio
-//   200     { chains: [{ chain, name, mode, provenance, vaults, prices }], disclaimer }
+//   200     { chains: [{ chain, name, mode, provenance, vaults, prices }], unavailable, disclaimer }
+//           `unavailable`: the person's chains that could not be read this time, each with why; the
+//           others are answered all the same
 //   401/403 the server does not know this sign-in, or was sent no identity token
 //   409     no chain is chosen yet (or the chain refused the read: `details.chainCode`)
 //   429     it asked for fewer requests
-//   503     the chain is switched off here, or did not answer
+//   503     none of the person's chains could be read
 //
 // A server without the route answers 404, and the screen says it cannot read vaults: it shows no
 // holdings in their place.
@@ -30,12 +32,22 @@ import { assetTicker } from '../order/amounts';
 export const PORTFOLIO_PATH = '/v1/portfolio';
 
 export type PortfolioChain = PortfolioResponse['chains'][number];
+export type UnavailableChain = PortfolioResponse['unavailable'][number];
 export type Vault = PortfolioChain['vaults'][number];
 export type Position = Vault['positions'][number];
 
 export type PortfolioOutcome =
-  /** Every chain the API answered for, the person's own first. */
-  | { kind: 'read'; chains: [PortfolioChain, ...PortfolioChain[]] }
+  /**
+   * Every chain the API could read, the person's current chain first when it is among them; the
+   * chains it could not read, with why; and where the current chain stands: read, unavailable this
+   * time, or not held in this sign-in (no wallet of theirs signs there, so nothing was asked of it).
+   */
+  | {
+      kind: 'read';
+      chains: PortfolioChain[];
+      unavailable: UnavailableChain[];
+      current: 'read' | 'unavailable' | 'not-held';
+    }
   /** The route is not there: this server cannot read vaults. */
   | { kind: 'unavailable' }
   /** The server does not know this sign-in any more (401), or does not let it read (403). */
@@ -84,13 +96,20 @@ export async function readPortfolio(apiFetch: ApiFetch, chain: ChainId): Promise
   const parsed = PortfolioResponse.safeParse(body);
   if (!parsed.success) return { kind: 'unreadable' };
   const entries = parsed.data.chains;
-  const own = entries.find((entry) => entry.chain === chain);
-  // Not for the person's chain, a chain twice, or a vault filed under a chain it is not on.
-  if (!own || new Set(entries.map((entry) => entry.chain)).size !== entries.length)
-    return { kind: 'unreadable' };
+  const { unavailable } = parsed.data;
+  // A chain twice, read and unavailable at once, or a vault filed under a chain it is not on.
+  const named = [...entries.map((entry) => entry.chain), ...unavailable.map((u) => u.chain)];
+  if (new Set(named).size !== named.length) return { kind: 'unreadable' };
   if (entries.some((entry) => entry.vaults.some((vault) => vault.chain !== entry.chain)))
     return { kind: 'unreadable' };
-  return { kind: 'read', chains: [own, ...entries.filter((entry) => entry !== own)] };
+  // The chains that were read are shown, whatever happened to the current one.
+  const own = entries.find((entry) => entry.chain === chain);
+  return {
+    kind: 'read',
+    chains: own ? [own, ...entries.filter((entry) => entry !== own)] : entries,
+    unavailable,
+    current: own ? 'read' : unavailable.some((u) => u.chain === chain) ? 'unavailable' : 'not-held',
+  };
 }
 
 /**

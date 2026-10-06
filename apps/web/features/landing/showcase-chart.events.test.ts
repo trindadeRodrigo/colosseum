@@ -11,7 +11,8 @@ import { TICKERS } from './sample';
 
 // The showcase's two charts with real events: a mouse, a finger and the keyboard each move the
 // crosshair to a month and the readout under the chart says that month's figures, every one pinned
-// MOCK. Pointing at the legend lights a series and dims the rest. Before it is measured a chart is laid
+// on its sample pin. With nothing pointed at, the same line is the legend: the series' names, and
+// pointing at one lights it and dims the rest. Before it is measured a chart is laid
 // out 640 wide (happy-dom measures nothing), so a position in the plot is a position in the drawing.
 
 const en = dictionary('en');
@@ -43,7 +44,6 @@ async function growth(lang: Lang = 'en') {
       lang,
       labels: labels(lang, t.chart),
       goal: t.goalLine,
-      weak: t.weak,
     }),
   );
 }
@@ -69,14 +69,22 @@ const out = (el: Element, pointerType: 'mouse' | 'touch' = 'mouse') =>
   );
 
 const readout = (host: HTMLElement) => find(host, '[data-ui="chart-readout"]');
+/** What the line says with nothing pointed at: the legend's names, then how to point (for a screen reader). */
+const idle = (host: HTMLElement) => {
+  const line = readout(host);
+  const names = [...line.querySelectorAll('[data-ui="case-legend"] li')].map(
+    (li) => li.textContent,
+  );
+  return { names, hint: line.querySelector('.sr-only')?.textContent ?? null };
+};
 /** The centre of a month's bar on the trip chart, 640 wide: 44px of axis, then 30 bars. */
 const tripBar = (i: number) => 44 + ((640 - 54) / 30) * (i + 0.5);
 
 describe('the trip chart', () => {
-  it('reads out the month under a mouse: the balance by part and what was put in, each pinned MOCK', async () => {
+  it('reads out the month under a mouse: the balance by part and what was put in, each on its sample pin', async () => {
     const host = await trip();
     const plot = plotOf(host);
-    expect(readout(host).textContent).toBe(en.landing.show.readout.hint);
+    expect(idle(host).hint).toBe(en.landing.show.readout.hint);
     expect(readout(host).getAttribute('aria-live')).toBe('polite');
     await fire(plot, pointer('pointermove', tripBar(0)));
     const text = readout(host).textContent;
@@ -97,7 +105,7 @@ describe('the trip chart', () => {
     expect(readout(host).textContent).toContain(`${en.landing.show.readout.paidOut} $1,000`);
     // the mouse leaves: nothing is pointed at
     await out(plot);
-    expect(readout(host).textContent).toBe(en.landing.show.readout.hint);
+    expect(idle(host).hint).toBe(en.landing.show.readout.hint);
     expect(host.querySelectorAll('[data-ui="chart-cross"]')).toHaveLength(0);
   });
 
@@ -107,7 +115,7 @@ describe('the trip chart', () => {
     expect(plot.style.touchAction).toBe('pan-y pinch-zoom');
     // a finger that only passes over the plot (a scroll) moves nothing
     await fire(plot, pointer('pointermove', tripBar(3), 'touch'));
-    expect(readout(host).textContent).toBe(en.landing.show.readout.hint);
+    expect(idle(host).hint).toBe(en.landing.show.readout.hint);
     await fire(plot, pointer('pointerdown', tripBar(5), 'touch'));
     expect(readout(host).textContent).toContain('Mar 2027');
     await fire(plot, pointer('pointermove', tripBar(6), 'touch'));
@@ -126,11 +134,11 @@ describe('the trip chart', () => {
     await fire(plot, pointer('pointerdown', tripBar(5), 'touch'));
     expect(readout(host).textContent).toContain('Mar 2027');
     await fire(plot, pointer('pointercancel', tripBar(5), 'touch'));
-    expect(readout(host).textContent).toBe(en.landing.show.readout.hint);
+    expect(idle(host).hint).toBe(en.landing.show.readout.hint);
     expect(host.querySelectorAll('[data-ui="chart-cross"]')).toHaveLength(0);
     // and a later pass does not drag it back
     await fire(plot, pointer('pointermove', tripBar(9), 'touch'));
-    expect(readout(host).textContent).toBe(en.landing.show.readout.hint);
+    expect(idle(host).hint).toBe(en.landing.show.readout.hint);
   });
 
   it('takes the crosshair away when focus leaves the plot', async () => {
@@ -139,7 +147,7 @@ describe('the trip chart', () => {
     await press(plot, 'End');
     expect(readout(host).textContent).toContain('Mar 2029');
     await fire(plot, new FocusEvent('focusout', { bubbles: true }));
-    expect(readout(host).textContent).toBe(en.landing.show.readout.hint);
+    expect(idle(host).hint).toBe(en.landing.show.readout.hint);
   });
 
   it('is one tab stop the arrow keys step month by month, Home and End to the ends, Escape away', async () => {
@@ -158,7 +166,7 @@ describe('the trip chart', () => {
     await press(plot, 'Home');
     expect(readout(host).textContent).toContain('Oct 2026');
     await press(plot, 'Escape');
-    expect(readout(host).textContent).toBe(en.landing.show.readout.hint);
+    expect(idle(host).hint).toBe(en.landing.show.readout.hint);
   });
 
   it('lights the part the legend points at and dims the others', async () => {
@@ -179,7 +187,7 @@ describe('the trip chart', () => {
   it('says its figures in the reader’s language', async () => {
     const host = await trip('pt');
     const plot = plotOf(host);
-    expect(readout(host).textContent).toBe(dictionary('pt').landing.show.readout.hint);
+    expect(idle(host).hint).toBe(dictionary('pt').landing.show.readout.hint);
     await press(plot, 'Home');
     const text = readout(host).textContent ?? '';
     expect(text).toMatch(/out\.? de 2026/);
@@ -189,7 +197,7 @@ describe('the trip chart', () => {
 });
 
 describe('the mountain chart', () => {
-  it('reads out the base, weak and strong cases against the goal, pinned MOCK, and lights the range', async () => {
+  it('reads out the base, weak and strong cases against the goal, on sample pins, and lights the range', async () => {
     const host = await growth();
     const plot = plotOf(host);
     await press(plot, 'End');
@@ -204,6 +212,13 @@ describe('the mountain chart', () => {
     // a point every third month: the crosshair snaps to the nearest
     await fire(plot, pointer('pointermove', 50));
     expect(readout(host).textContent).toContain('Oct 2026');
+    // the mouse leaves the plot: the line is the legend again, in the same place
+    await out(plot);
+    expect(idle(host).names).toEqual([
+      en.landing.show.readout.base,
+      en.landing.show.readout.range,
+      en.landing.show.readout.goal,
+    ]);
     const range = find(host, '[data-ui="case-legend"] li[data-series="range"]');
     await over(range);
     expect(find(host, 'path[data-series="base"]').getAttribute('opacity')).toBe('0.25');
@@ -233,5 +248,89 @@ describe('both charts', () => {
           expect(start, tick.textContent ?? '').toBeGreaterThanOrEqual(0);
         }
       }
+    });
+});
+
+describe('the words of a chart', () => {
+  /** A text's box, as the 12px mono face sets it: about 7.4px a character, 12px tall. */
+  const textBox = (t: SVGTextElement) => {
+    const x = Number(t.getAttribute('x'));
+    const y = Number(t.getAttribute('y'));
+    const w = (t.textContent ?? '').length * 7.4;
+    const anchor = t.getAttribute('text-anchor') ?? 'start';
+    const left = anchor === 'end' ? x - w : anchor === 'middle' ? x - w / 2 : x;
+    return { left, right: left + w, top: y - 12, bottom: y + 3 };
+  };
+  const rectBox = (r: Element) => {
+    const x = Number(r.getAttribute('x'));
+    const y = Number(r.getAttribute('y'));
+    return {
+      left: x,
+      right: x + Number(r.getAttribute('width')),
+      top: y,
+      bottom: y + Number(r.getAttribute('height')),
+    };
+  };
+  type Box = ReturnType<typeof rectBox>;
+  const meet = (a: Box, b: Box) =>
+    a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+
+  async function at(width: number, draw: () => Promise<HTMLElement>) {
+    const was = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+      configurable: true,
+      get: () => width,
+    });
+    try {
+      const host = await draw();
+      return host;
+    } finally {
+      if (was) Object.defineProperty(HTMLElement.prototype, 'clientWidth', was);
+    }
+  }
+
+  for (const lang of ['en', 'pt'] as const)
+    for (const width of [300, 700])
+      it(`never sets a word on a bar of the trip chart (${lang}, ${width} wide)`, async () => {
+        const host = await at(width, () => trip(lang));
+        const svg = find(host, '[data-chart="trip"] svg');
+        expect(svg.getAttribute('viewBox')).toBe(`0 0 ${width} 232`);
+        const bars = [...svg.querySelectorAll('rect[data-series]')].map(rectBox);
+        expect(bars.length).toBeGreaterThan(0);
+        const words = [...svg.querySelectorAll<SVGTextElement>('text')];
+        const note = svg.querySelector<SVGTextElement>('[data-ui="chart-note"]');
+        expect(note?.textContent).toBe(dictionary(lang).landing.show.trip.payout);
+        for (const word of words) {
+          const box = textBox(word);
+          expect(
+            bars.some((bar) => meet(box, bar)),
+            `"${word.textContent}" on a bar`,
+          ).toBe(false);
+          // and on the drawing, not off its edge
+          expect(box.left).toBeGreaterThanOrEqual(0);
+          expect(box.right).toBeLessThanOrEqual(width);
+        }
+        // the payout's words sit in the band above the tallest bar
+        const top = Math.min(...bars.map((b) => b.top));
+        expect(textBox(note as SVGTextElement).bottom).toBeLessThanOrEqual(top);
+        await unmountAll();
+      });
+
+  for (const lang of ['en', 'pt'] as const)
+    it(`keeps the goal's words above the plot of the growth chart (${lang})`, async () => {
+      const host = await at(300, () => growth(lang));
+      const svg = find(host, '[data-chart="growth"] svg');
+      const notes = [...svg.querySelectorAll<SVGTextElement>('[data-ui="chart-note"]')];
+      expect(notes.map((n) => n.textContent)).toEqual([
+        dictionary(lang).landing.show.growth.goalLine,
+      ]);
+      // the band: above the highest grid line, where nothing else is drawn
+      const lines = [...svg.querySelectorAll('line[stroke="var(--border)"]')].map((l) =>
+        Number(l.getAttribute('y1')),
+      );
+      for (const n of notes) expect(textBox(n).bottom).toBeLessThanOrEqual(Math.min(...lines));
+      // no word marks the weak case inside the plot: the line under the chart names it
+      expect(svg.textContent).not.toContain(dictionary(lang).landing.show.readout.weak);
+      await unmountAll();
     });
 });

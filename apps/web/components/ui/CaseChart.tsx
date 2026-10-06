@@ -54,14 +54,19 @@ export function CasePlot({
   );
 }
 
-/** The line that reads out the point under the crosshair, or says how to point while there is none. */
+/**
+ * The line that reads out the point under the crosshair. While there is none it shows `idle` (the
+ * legend: the same series, in the same places) and says how to point.
+ */
 export function CaseReadout({
   at,
   hint,
+  idle,
   children,
 }: {
   at: ChartCursorAt;
   hint: string;
+  idle?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -70,7 +75,14 @@ export function CaseReadout({
       data-ui="chart-readout"
       className="flex min-h-5 flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[12px]/5 text-muted-foreground"
     >
-      {at === null ? <span>{hint}</span> : children}
+      {at === null ? (
+        <>
+          {idle}
+          <span className={idle ? 'sr-only' : undefined}>{hint}</span>
+        </>
+      ) : (
+        children
+      )}
     </div>
   );
 }
