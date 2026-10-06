@@ -666,7 +666,7 @@ export const WORDS: Record<Language, Words> = {
       cash: 'cash',
     },
     chain: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
-    // The working names of the three candidates (gate THREE-PLANS): product words are a brand decision.
+    // The names of the three candidates (gates THREE-PLANS, CANDIDATE-NAMES, Rodrigo, Oct 6).
     candidate: { cover: 'Cover', spread: 'Spread', carry: 'Carry' },
     // One of the person's sleeves, as a rebalance names it; a theme's slug is written after it.
     part: {

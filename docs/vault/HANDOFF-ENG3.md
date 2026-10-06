@@ -51,7 +51,6 @@ Left before slice 3 merges: `/review-pr` by an agent that did not write it, Thom
   - the choices of rebalancing per sleeve listed in its pull request (the sleeve book derived from the plan only within the drift band of it; with `restoreSplit` off a deposit or withdrawal follows what each sleeve holds; the refill goes to cash; the switch's last day; dust at `minLineUsd`, batch cost at `tau`; `fxMaxAgeDays` 3, a new `starting` number);
   - the stress sizes (`stress` in `params.ts`, the old engine's: yields −50%, credit gated 6 months, the goal currency ±20% over 12 months; stocks and gold fall `fallBps`);
   - the candidate overrides (`candidates` in `params.ts`: Cover 12 months, credit half the person's limit (set: gate `COVER-CREDIT`), tau 0.5%, shareOfDepth 0.125; Spread one band, issuer 30%; distinct from 1,000 bps), and `wayScaleStepBps` (1%);
-  - the working names Cover, Spread, Carry (and Cobertura, Diversificação, Rendimento) in `WORDS.candidate`: a brand decision;
   - the 25% cash in Solana income plans;
   - the theme sleeve's open choices listed in PR #72 (a theme in a plan to protect or for income is held in dollar yield and cash, not refused; capped equal weights redistribute; measured names rank before tier names). Themes first is decided (`THEME-FIRST`).
 - **Thom:**
