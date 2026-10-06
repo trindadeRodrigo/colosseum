@@ -33,3 +33,7 @@ apps/web/e2e/.results/
 
 # Papers read for the research notes: copyrighted, never committed
 docs/vault/research/articles/
+
+# The plan playground: Rodrigo's own goals and the reports stay local (try/README.md)
+try/mine/
+try/out/
