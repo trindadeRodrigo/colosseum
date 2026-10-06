@@ -6,7 +6,8 @@
 // It also looks for one string every build ships and one file every route is built from, so a change
 // in where Next writes its output makes this check fail instead of pass on nothing.
 // Last, it runs the design system's test of the built stylesheet and fonts, which a plain test run
-// skips for want of a build (components/ui/forbidden.test.ts).
+// skips for want of a build (components/ui/forbidden.test.ts), and starts the build to ask who may
+// frame each address (check-frames.mjs).
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -180,6 +181,12 @@ function builtStylesheetCheck() {
   return run.status ?? 1;
 }
 
+/** Starts the build and asks who may frame each address (check-frames.mjs). Returns the exit code. */
+function framesCheck() {
+  const script = join(dirname(fileURLToPath(import.meta.url)), 'check-frames.mjs');
+  return spawnSync(process.execPath, [script], { stdio: 'inherit' }).status ?? 1;
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const out = resolve(process.argv[2] ?? '.next');
   const problems = checkBuild(out);
@@ -189,6 +196,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   } else {
     console.log('Build check: no development-only code or route in the build.');
     // Only for the build in its usual place: the test reads apps/web/.next and nothing else.
-    if (process.argv[2] === undefined) process.exitCode = builtStylesheetCheck();
+    if (process.argv[2] === undefined) process.exitCode = builtStylesheetCheck() || framesCheck();
   }
 }

@@ -670,7 +670,9 @@
   container-type: inline-size;
 
   --tf-embed-fg: var(--embed-fg, CanvasText);
-  --tf-embed-muted: var(--embed-muted, GrayText);
+  /* GrayText on Canvas is under 4.5:1 in light (#808080 on white, 3.9:1): with no partner colour the
+     muted text is the partner's own text colour, mixed toward the ground, which holds AA in both */
+  --tf-embed-muted: var(--embed-muted, color-mix(in oklab, CanvasText 62%, Canvas));
   --tf-embed-bg: var(--embed-bg, Canvas);
   --tf-embed-border: var(--embed-border, color-mix(in oklab, var(--tf-embed-fg) 40%, transparent));
   --tf-embed-accent: var(--embed-accent, var(--tf-embed-fg));
@@ -727,11 +729,18 @@
   --tf-e-credit: max(0.6944em, 11px);
   --tf-e-leading: 1.5;
 
+  /* the partner's buttons may be rounder than their boxes (a pill, in the guide's sample) */
+  --tf-embed-button-radius: var(--embed-button-radius, var(--radius));
+
+  /* the partner's container, as guidelines section 08 draws it: their ground, their hairline,
+     their radius, and room inside */
   background-color: var(--tf-embed-bg);
   color: var(--tf-embed-fg);
   font-family: var(--embed-font, inherit);
   line-height: 1.5;
+  border: 1px solid var(--tf-embed-border);
   border-radius: var(--embed-radius, inherit);
+  padding: 1.25em;
 }
 
 /* Inside the embed, type is the partner's: their face, and sizes in em of their text. */

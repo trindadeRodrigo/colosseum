@@ -101,8 +101,11 @@ describe('the committed OpenAPI document (packages/sdk/openapi.json)', () => {
         expect(Object.keys(responses), name).toContain('default');
       }
     // The routes anybody may call, by name: a route opened by mistake fails here. The shelf and a
-    // shared portfolio's page are the same for everyone (DESIGN-VAULT section 10).
+    // shared portfolio's page are the same for everyone (DESIGN-VAULT section 10). A plan proposed from
+    // a link is made and read back with no sign-in (AGT-2, section 12).
     expect(open).toEqual([
+      'POST /v1/baskets/propose',
+      'GET /v1/baskets/{id}',
       'GET /v1/config',
       'GET /v1/indexes/{slug}',
       'GET /v1/indexes/{slug}/versions',
@@ -113,6 +116,7 @@ describe('the committed OpenAPI document (packages/sdk/openapi.json)', () => {
     // are the ones with the tighter budget.
     expect(classes.build).toEqual([
       'POST /v1/baskets/personalize',
+      'POST /v1/baskets/propose',
       'POST /v1/orders',
       'POST /v1/orders/{id}/legs/{legId}/build',
     ]);

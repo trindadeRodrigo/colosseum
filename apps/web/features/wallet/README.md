@@ -51,7 +51,7 @@ Before a key is touched:
 After the wallet answers, before anything is returned as signed:
 
 - Solana: as many transactions as were sent, in the same order, each with the same message byte for byte and a valid signature of this account in its slot.
-- EVM: a legacy or EIP-1559 transaction with no access list, the same target, data, value and chain, signed by this account, with `gas × fee per gas` no more than ten times the fee the transaction states, or no more than 0.001 ETH when it states none (`chains.ts`). The wallet fills in the nonce, the gas and the fee, so this is the only place the whole signed transaction is seen.
+- EVM: a legacy or EIP-1559 transaction with no access list, the same target, data, value and chain, signed by this account, with `gas × fee per gas` no more than ten times the fee the transaction states, or no more than 0.001 ETH when it states none (`chains.ts`). The wallet is handed the nonce, the gas and the fee the transaction states (`evm.nonce`, `evm.gas`, and a price per gas of `preview.feeNativeRaw` over the gas, with no tip), since Privy's embedded wallet signs the fields it is given and fills in none; a wallet may still sign with others, so this is the only place the whole signed transaction is seen.
 
 A wallet that adds instructions before it signs, as Phantom does to some transactions, fails with `changed`: `sign()` hands back only what the API built. The design's other path for such a wallet (it sends, the web reports the id) needs a `send()` on Solana, which `WalletPort` does not have.
 

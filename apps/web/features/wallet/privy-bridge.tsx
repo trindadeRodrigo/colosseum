@@ -412,7 +412,12 @@ function PrivyDriver({
       },
 
       async signEvm(address, request) {
-        const out = await ref.current.signTransaction(request, { address, ...quiet });
+        // Privy names the gas limit `gasLimit`, and fills in nothing it is not given.
+        const { gas, ...rest } = request;
+        const out = await ref.current.signTransaction(
+          { ...rest, ...(gas === undefined ? {} : { gasLimit: gas, type: 2 }) },
+          { address, ...quiet },
+        );
         return out.signature;
       },
       async sendEvm(address, request) {

@@ -10,11 +10,13 @@ import { useId } from 'react';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/Card';
+import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
 import { ExitPlanLine } from '../../components/ui/ExitPlanLine';
 import { MAX_LEGS, PlanLegs } from '../../components/ui/PlanLegs';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import type { PinSource } from '../../components/ui/provenance';
+import { StatusMark } from '../../components/ui/StatusMark';
 import { type Dictionary, type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { planProvenance } from '../goal/build-plan';
@@ -85,7 +87,8 @@ export function PlanScreen({ id }: { id: string }) {
 
   return (
     <div data-ui="plan-screen" className="flex flex-col gap-8">
-      <header className="flex flex-col gap-3">
+      <header className="flex flex-col items-start gap-3">
+        <ChainBadge chain={chain} />
         <h1
           id={headingId}
           className="max-w-(--tf-measure-display) font-display text-h1 font-normal"
@@ -96,6 +99,15 @@ export function PlanScreen({ id }: { id: string }) {
           )}
         </h1>
         <p className="max-w-(--tf-measure-body) text-body-lg">{t.plan.lead(chainName)}</p>
+        {plan.fromLink && (
+          <p
+            data-ui="plan-from-link"
+            className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm"
+          >
+            <StatusMark status="watch" className="mt-1.5" />
+            <span>{t.plan.fromLink}</span>
+          </p>
+        )}
       </header>
 
       {/* The plan pane of the showcase case (goal-showcase-case.md): head, the limits as chips, the

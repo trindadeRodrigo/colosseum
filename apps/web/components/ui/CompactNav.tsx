@@ -20,6 +20,11 @@ import { COMPACT_NAV_LABELS, type CompactNavLabels } from './labels';
 // call to action. Solid, with a hairline: no glass and no blur. The product's own screens use the
 // plain bar of STYLE.md, not this.
 //
+// The compact bar floats, and the page scrolls under it. So that no line of copy is ever read behind
+// it or beside it, the band it floats in (the top of the window down to 12px under the bar) is the
+// page's own ground while the bar is compact: copy passes under that ground, and the bar still sits
+// on the page as it does in hero-3d.html. Over the hero, before step 03, there is no ground.
+//
 // The mark and the wordmark are handed in: there is no final logo artwork yet (DES-1).
 
 export type NavLink = {
@@ -189,6 +194,15 @@ export function CompactNav({
       >
         {text.skip}
       </a>
+      <div
+        aria-hidden="true"
+        data-ui="compact-nav-ground"
+        className={cn(
+          'fixed inset-x-0 top-0 z-30 h-[calc(env(safe-area-inset-top,0px)+82px)] bg-background',
+          'transition-opacity duration-[480ms] ease-seat motion-reduce:transition-none',
+          compact ? 'opacity-100' : 'pointer-events-none opacity-0',
+        )}
+      />
       <div
         data-ui="compact-nav-bar"
         className={cn(

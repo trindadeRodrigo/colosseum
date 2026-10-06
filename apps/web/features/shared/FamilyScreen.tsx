@@ -20,7 +20,7 @@ import { MAX_LEGS, PlanLegs } from '../../components/ui/PlanLegs';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { assetName, formatBps } from '../order/amounts';
+import { assetTicker, formatBps } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
 import { keepOrder } from '../order/order-record';
 import { networkFor } from '../order/readiness';
@@ -277,7 +277,7 @@ function RecipeSection({
             <PlanLegs
               legs={active.components.map((c) => ({
                 id: c.asset,
-                name: assetName(c.asset).toUpperCase(),
+                name: assetTicker(c.asset),
                 weight: c.weightBps / 10_000,
                 weightLabel: formatBps(c.weightBps, locale),
                 rate: null,
@@ -396,7 +396,7 @@ function WeightsTable({
                 </span>
               </span>
             ) : (
-              assetName(r.asset).toUpperCase()
+              assetTicker(r.asset)
             ),
         },
         {
@@ -652,7 +652,7 @@ export function FollowPrompt({
       </p>
       {added.length > 0 && (
         <p className="max-w-(--tf-measure-body) text-body-sm">
-          {p.newAssets(added.map((a) => assetName(a).toUpperCase()).join(', '))}
+          {p.newAssets(added.map((a) => assetTicker(a)).join(', '))}
         </p>
       )}
       {behind && (
