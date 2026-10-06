@@ -119,6 +119,44 @@ test('the two sample cases fit their cards on a phone and a tablet, in English a
   }
 });
 
+test('the plan drawn as a joint answers a mouse and a finger, and lights its part in the list', async ({
+  page,
+  browser,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  const growth = page.locator('article[data-ui="showcase-case"]').nth(1);
+  await growth.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  // a mouse resting in the middle of the stocks layer's face, not on any of its lines
+  const stocks = growth.locator('[data-part="layer"][data-chart="3"]');
+  const face = await stocks.locator('path[data-part="hit"]').boundingBox();
+  if (!face) throw new Error('the stocks layer has no face to rest on');
+  await page.mouse.move(face.x + face.width * 0.3, face.y + face.height / 2);
+  await expect(stocks).toHaveAttribute('data-lit', 'true');
+  await expect(growth.locator('[data-ui="case-leg"][data-chart="3"]')).toHaveAttribute(
+    'data-lit',
+    'true',
+  );
+  // and a row lights its layer
+  await growth.locator('[data-ui="case-leg"][data-chart="1"]').hover();
+  await expect(growth.locator('[data-part="layer"][data-chart="1"]')).toHaveAttribute(
+    'data-lit',
+    'true',
+  );
+  // a phone: a tap picks the part, a tap elsewhere lets it go
+  const phone = await browser.newContext({ viewport: { width: 375, height: 812 }, hasTouch: true });
+  const tap = await phone.newPage();
+  await tap.goto(page.url());
+  const card = tap.locator('article[data-ui="showcase-case"]').nth(1);
+  await card.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  const gold = card.locator('[data-part="layer"][data-chart="4"]');
+  await gold.tap();
+  await expect(gold).toHaveAttribute('data-lit', 'true');
+  await card.locator('blockquote').tap();
+  await expect(gold).toHaveAttribute('data-lit', 'false');
+  await phone.close();
+});
+
 async function toReview(page: Page) {
   await page.request.post(`${STUB}/__stub/reset`);
   await page.goto('/sign-in');
