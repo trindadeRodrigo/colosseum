@@ -136,7 +136,7 @@ contract VaultHandler is Test {
         Swap[] memory list = new Swap[](1);
         list[0] = s;
         vm.prank(owner);
-        vault.ownerSwap(list);
+        vault.ownerSwap(list, type(uint64).max);
         _assertSwapped(s, inVault, used, paid);
         ++swaps;
         if (used < s.amountIn) ++swapsThatLeftSomeUnused;
@@ -195,7 +195,7 @@ contract VaultHandler is Test {
         Swap[] memory list = new Swap[](1);
         list[0] = s;
         vm.prank(owner);
-        (bool ok,) = address(vault).call(abi.encodeCall(BasketVault.ownerSwap, (list)));
+        (bool ok,) = address(vault).call(abi.encodeCall(BasketVault.ownerSwap, (list, type(uint64).max)));
         assertFalse(ok, "a swap through a cheating router went through");
     }
 
@@ -216,7 +216,7 @@ contract VaultHandler is Test {
         (list[0], used, paid) = _swapOf(routerSeed, tokenSeed, outSeed, inVault[tokenSeed % tokens.length], usedBps);
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeCall(BasketVault.deposit, (deposit));
-        calls[1] = abi.encodeCall(BasketVault.ownerSwap, (list));
+        calls[1] = abi.encodeCall(BasketVault.ownerSwap, (list, type(uint64).max));
         vm.prank(owner);
         vault.multicall(calls);
         _assertSwapped(list[0], inVault, used, paid);
@@ -258,8 +258,8 @@ contract VaultHandler is Test {
             abi.encodeCall(BasketVault.withdrawAll, ()),
             abi.encodeCall(BasketVault.deposit, (amount)),
             abi.encodeCall(BasketVault.initialize, (caller, bytes32(0))),
-            abi.encodeCall(BasketVault.start, (bytes32(0), 0, new Weight[](0), amount, list)),
-            abi.encodeCall(BasketVault.ownerSwap, (list)),
+            abi.encodeCall(BasketVault.start, (bytes32(0), 0, new Weight[](0), false, amount, list)),
+            abi.encodeCall(BasketVault.ownerSwap, (list, type(uint64).max)),
             abi.encodeCall(BasketVault.setTargets, (new Weight[](0))),
             abi.encodeCall(IBasketVault.multicall, (batch)),
             abi.encodeWithSignature("deposit(address,uint256)", token, amount),

@@ -7,6 +7,7 @@ import {
   proposals,
   recipes,
   recipeVersions,
+  users,
   vaults,
 } from '@colosseum/db';
 import {
@@ -182,6 +183,44 @@ export async function loadProposal(db: Db, id: string): Promise<BasketProposal |
   if (!parsed.success)
     throw new Refusal(409, 'the stored plan cannot be read: make the plan again');
   return parsed.data;
+}
+
+/**
+ * Stores a plan made for a person and answers its id, which `POST /v1/orders` buys by. The row names
+ * the person where they have a user row. The same plan stored again by the same person answers the id
+ * it has; a plan identical to one another person stored at the same moment is not shared with them:
+ * the answer says to try again, which makes a plan at another time.
+ */
+export async function insertProposal(
+  db: Db,
+  proposal: BasketProposal,
+  privyId: string | null,
+): Promise<string> {
+  const [user] = privyId
+    ? await db.select({ id: users.id }).from(users).where(eq(users.privyId, privyId))
+    : [];
+  const userId = user?.id ?? null;
+  const [row] = await db
+    .insert(proposals)
+    .values({
+      inputsHash: proposal.inputsHash,
+      userId,
+      proposal,
+      engineVersion: proposal.engineVersion,
+      shelfVersion: proposal.shelfVersion,
+      paramsHash: proposal.paramsHash,
+    })
+    .onConflictDoNothing({ target: proposals.inputsHash })
+    .returning({ id: proposals.id });
+  if (row) return row.id;
+  const [same] = await db
+    .select({ id: proposals.id, userId: proposals.userId })
+    .from(proposals)
+    .where(eq(proposals.inputsHash, proposal.inputsHash));
+  if (same && same.userId === userId) return same.id;
+  throw new Refusal(503, 'the plan could not be stored: make it again in a moment', {
+    details: { retryable: true },
+  });
 }
 
 /**

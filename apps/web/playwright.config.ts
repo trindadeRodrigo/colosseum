@@ -1,0 +1,48 @@
+import { defineConfig, devices } from '@playwright/test';
+
+// The end-to-end spec of the app (DESIGN-VAULT section 11, "Checks"): every screen it opens is checked
+// with axe at 375 px, in light and dark. It runs the app under `next dev` with the throwaway wallet, in
+// front of a stub of the API on the mock chain (tests/e2e/stub-api.ts). `pnpm --filter @colosseum/web
+// e2e`; CI runs it in its own job. Nothing here reaches a real chain or a real sign-in.
+
+const WEB = 3100;
+const API = 3901;
+
+export default defineConfig({
+  testDir: './e2e',
+  outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR ?? 'e2e/.results',
+  fullyParallel: false,
+  workers: 1,
+  retries: 0,
+  forbidOnly: Boolean(process.env.CI),
+  timeout: 120_000,
+  expect: { timeout: 20_000 },
+  reporter: [['list']],
+  use: {
+    baseURL: `http://localhost:${WEB}`,
+    ...devices['Desktop Chrome'],
+    viewport: { width: 375, height: 812 },
+    locale: 'en-US',
+    trace: 'retain-on-failure',
+  },
+  webServer: [
+    {
+      command: 'pnpm exec tsx ../../tests/e2e/stub-api.ts',
+      url: `http://localhost:${API}/v1/config`,
+      env: { STUB_API_PORT: String(API), WEB_ORIGIN: `http://localhost:${WEB}` },
+      reuseExistingServer: !process.env.CI,
+      timeout: 60_000,
+    },
+    {
+      command: `pnpm exec next dev -p ${WEB}`,
+      url: `http://localhost:${WEB}/sign-in`,
+      env: {
+        NEXT_PUBLIC_API_URL: `http://localhost:${API}`,
+        NEXT_PUBLIC_WALLET_DRIVER: 'test',
+        NEXT_TELEMETRY_DISABLED: '1',
+      },
+      reuseExistingServer: !process.env.CI,
+      timeout: 240_000,
+    },
+  ],
+});

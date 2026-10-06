@@ -743,6 +743,7 @@ describe('the /v1 route table', () => {
     const app = await buildApp();
     await app.ready();
     expect(v1Paths(app.swagger())).toEqual([
+      '/v1/baskets/personalize',
       '/v1/config',
       '/v1/funding',
       '/v1/me',
@@ -809,11 +810,13 @@ describe('no /v1 route can make the server sign', () => {
       'orders/errors.ts',
       'orders/legs.ts',
       'orders/person.ts',
+      'orders/personalize.ts',
       'orders/prepare.ts',
       'orders/store.ts',
       'plugins/auth.ts',
       'plugins/limits.ts',
       'plugins/paths.ts',
+      'routes/v1/baskets.ts',
       'routes/v1/config.ts',
       'routes/v1/funding.ts',
       'routes/v1/index.ts',
@@ -825,12 +828,15 @@ describe('no /v1 route can make the server sign', () => {
     // The chain packages that can sign keep that behind their `./server` entry, and neither the
     // package's root nor that entry is here: the Solana adapter comes in by its key-free `./vault`
     // entry, which tests/boundaries.test.ts holds to reaching no signing file. packages/basket is
-    // arithmetic over what it is handed: it imports the schemas and nothing else.
+    // arithmetic over what it is handed: it imports the schemas and nothing else. The engine comes in
+    // by its `./personal` entry, which reads no clock, network or environment
+    // (packages/engine/src/personal/purity.test.ts), not by its root, which holds the model client.
     expect([...packages.keys()].sort()).toEqual([
       '@colosseum/basket',
       '@colosseum/chain-mock',
       '@colosseum/chain-solana/vault',
       '@colosseum/db',
+      '@colosseum/engine/personal',
       '@colosseum/schemas',
       'drizzle-orm',
       'fastify',

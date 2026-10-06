@@ -90,7 +90,11 @@ contract RobinhoodForkSwapTest is VaultFixture {
             pauseProbe: address(0),
             pauseSelector: bytes4(0),
             scheduleSelector: bytes4(0),
-            haltUntil: 0
+            haltUntil: 0,
+            flags: 0,
+            averageFeed: address(0),
+            minPrice: 0,
+            maxPrice: 0
         });
     }
 
@@ -138,7 +142,7 @@ contract RobinhoodForkSwapTest is VaultFixture {
 
         vm.prank(owner);
         uint256 gasBefore = gasleft();
-        vault.ownerSwap(_swaps(s));
+        vault.ownerSwap(_swaps(s), LATER);
         uint256 gasUsed = gasBefore - gasleft();
 
         uint256 received = IRealToken(NVDA).balanceOf(address(vault));
@@ -168,7 +172,7 @@ contract RobinhoodForkSwapTest is VaultFixture {
         });
         vm.prank(owner);
         gasBefore = gasleft();
-        vault.ownerSwap(_swaps(back));
+        vault.ownerSwap(_swaps(back), LATER);
         gasUsed = gasBefore - gasleft();
         assertEq(IRealToken(NVDA).balanceOf(address(vault)), received - received / 2);
         assertGe(IRealToken(USDG).balanceOf(address(vault)), 40e6 + minUsdg);
@@ -191,7 +195,7 @@ contract RobinhoodForkSwapTest is VaultFixture {
         Swap memory s = _buy(10e6, stranger);
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(IBasketVault.ReceivedTooLittle.selector, NVDA, 0, s.minOut));
-        vault.ownerSwap(_swaps(s));
+        vault.ownerSwap(_swaps(s), LATER);
         assertEq(IRealToken(USDG).balanceOf(address(vault)), 50e6);
         assertEq(IRealToken(NVDA).balanceOf(stranger), 0);
         _assertNothingApproved(address(vault), USDG);
@@ -204,7 +208,7 @@ contract RobinhoodForkSwapTest is VaultFixture {
         s.data = UniV4Calldata.exactInSingle(_pool(), USDG, 10e6, s.minOut, address(0), block.timestamp + 300);
         vm.prank(owner);
         vm.expectPartialRevert(IBasketVault.RouterFailed.selector);
-        vault.ownerSwap(_swaps(s));
+        vault.ownerSwap(_swaps(s), LATER);
         assertEq(IRealToken(USDG).balanceOf(address(vault)), 50e6);
         _assertNothingApproved(address(vault), USDG);
     }
@@ -218,7 +222,7 @@ contract RobinhoodForkSwapTest is VaultFixture {
         vm.startPrank(owner);
         IRealToken(USDG).approve(predicted, 40e6);
         uint256 gasBefore = gasleft();
-        address made = factory.createVaultAndBuy(PLAN_2, targets, bytes32(0), 0, false, 40e6, _swaps(s));
+        address made = factory.createVaultAndBuy(PLAN_2, targets, bytes32(0), 0, false, 40e6, _swaps(s), LATER);
         uint256 gasUsed = gasBefore - gasleft();
         vm.stopPrank();
 
@@ -248,14 +252,14 @@ contract RobinhoodForkSwapTest is VaultFixture {
 
         vm.startPrank(owner);
         IRealToken(USDG).approve(predicted, 50e6);
-        factory.createVaultAndBuy(PLAN_2, targets, bytes32(0), 0, false, 40e6, _swaps(first));
+        factory.createVaultAndBuy(PLAN_2, targets, bytes32(0), 0, false, 40e6, _swaps(first), LATER);
         console2.log("gas, createVaultAndBuy with one swap:", _lastGas());
 
         BasketVault(payable(predicted)).deposit(10e6);
         console2.log("gas, deposit:", _lastGas());
 
         Swap memory buy = _buy(10e6, address(0));
-        BasketVault(payable(predicted)).ownerSwap(_swaps(buy));
+        BasketVault(payable(predicted)).ownerSwap(_swaps(buy), LATER);
         console2.log("gas, ownerSwap USDG -> NVDA (a token already held):", _lastGas());
 
         uint256 held = IRealToken(NVDA).balanceOf(predicted);
@@ -267,7 +271,7 @@ contract RobinhoodForkSwapTest is VaultFixture {
             minOut: 1,
             data: UniV4Calldata.exactInSingle(_pool(), NVDA, held / 2, 1, address(0), block.timestamp + 300)
         });
-        BasketVault(payable(predicted)).ownerSwap(_swaps(sell));
+        BasketVault(payable(predicted)).ownerSwap(_swaps(sell), LATER);
         console2.log("gas, ownerSwap NVDA -> USDG:", _lastGas());
 
         BasketVault(payable(predicted)).setTargets(targets);
@@ -283,7 +287,7 @@ contract RobinhoodForkSwapTest is VaultFixture {
         // The first buy into a token the vault does not hold yet: a fresh balance slot and a new entry in
         // `tokens`. The shared fixture's vault holds only USDG.
         vm.prank(owner);
-        vault.ownerSwap(_swaps(buy));
+        vault.ownerSwap(_swaps(buy), LATER);
         console2.log("gas, ownerSwap USDG -> NVDA (the first of that token):", _lastGas());
         _assertNothingApproved(address(vault), USDG);
         _assertNothingApproved(predicted, NVDA);

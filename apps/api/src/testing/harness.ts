@@ -27,6 +27,7 @@ import { inArray, or } from 'drizzle-orm';
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { buildApp } from '../app';
 import { type ChainRegistry, createChainRegistry } from '../orders/chains';
+import type { PlanInputs } from '../orders/personalize';
 import { IDENTITY_TOKEN_HEADER, type TokenIssuer } from '../plugins/auth';
 import { LIMITS, type Limits } from '../plugins/limits';
 
@@ -318,7 +319,21 @@ export async function testDb() {
         }
         await db.delete(vaults).where(inArray(vaults.owner, owners));
       }
-      if (people.length) await db.delete(users).where(inArray(users.privyId, people));
+      if (people.length) {
+        // The plans a person made through the API name them: those go before the person does.
+        const mine = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(inArray(users.privyId, people));
+        if (mine.length)
+          await db.delete(proposals).where(
+            inArray(
+              proposals.userId,
+              mine.map((u) => u.id),
+            ),
+          );
+        await db.delete(users).where(inArray(users.privyId, people));
+      }
       if (plans.length) await db.delete(proposals).where(inArray(proposals.id, plans));
       if (families.length) {
         const mine = await db
@@ -356,6 +371,8 @@ export async function testApp(a: {
   limits?: Limits;
   /** Wraps the registry, to make a chain misbehave. */
   wrap?: (registry: ChainRegistry) => ChainRegistry;
+  /** The figures a plan is made with. Default: the server's reader of the stored ones. */
+  planInputs?: PlanInputs;
 }) {
   const env = a.env ?? {};
   const registry = createChainRegistry(parseFlags(env), parseChainConfigs(env), {
@@ -370,6 +387,7 @@ export async function testApp(a: {
       db: a.db,
       now: a.now,
       limits: a.limits ?? ROOMY,
+      ...(a.planInputs ? { planInputs: a.planInputs } : {}),
     },
   });
   return { app, registry };

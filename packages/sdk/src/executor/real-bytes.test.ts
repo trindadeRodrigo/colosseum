@@ -5,6 +5,8 @@ import vectors from '../../test/fixtures/evm-vectors.json';
 import * as s from '../../test/solana';
 import { base64Decode, base64Encode, concatBytes, hexDecode, hexEncode } from '../bytes';
 import { BASKET_PROGRAM } from '../guard/generated/basket-program';
+import { familyTextHash } from '../guard/meta';
+import { recipeAddress } from '../guard/solana/addresses';
 import type { ApprovedStep, GuardDeployment } from '../guard/types';
 import type { OrderApi } from './api';
 import { chainReadOf, type RpcCall, SOLANA_MARGIN_BLOCKS, SOLANA_VALID_BLOCKS } from './chain-read';
@@ -130,6 +132,81 @@ const signedBy = (payload: string) => {
   bytes.set(SIGNATURE, 1);
   return base64Encode(bytes);
 };
+
+describe('the executor on Solana bytes: a creator publishes a shared portfolio', () => {
+  const FAMILY = 'ab'.repeat(32);
+  const TEXT = { slug: 'chips', name: 'Chips', copy: 'What runs on them.', kind: 'index' as const };
+  const META = familyTextHash({ familyId: FAMILY, ...TEXT });
+  const components = [
+    { asset: 'solana:spy', weightBps: 6000 },
+    { asset: 'solana:gold', weightBps: 4000 },
+  ];
+  const publication = {
+    action: 'publish' as const,
+    familyId: FAMILY,
+    components,
+    text: TEXT,
+    version: 1,
+  };
+  const step: ApprovedStep = {
+    legId: 'leg-1',
+    chain: 'solana',
+    owner: s.OWNER,
+    basketId: '0',
+    kind: 'publish',
+    ...publication,
+  };
+  const publishBytes = async (meta = META) => {
+    const recipe = recipeAddress(BASKET_PROGRAM.address, s.OWNER, FAMILY);
+    return s.wire([
+      s.vaultIx(
+        BASKET_PROGRAM,
+        'publish_recipe',
+        {
+          creator: s.OWNER,
+          recipe,
+          config: s.CONFIG,
+          assets: s.ASSETS,
+          system_program: s.SYSTEM,
+        },
+        s.join(
+          Buffer.from(FAMILY, 'hex'),
+          s.targetsArg(components),
+          Buffer.from(meta, 'hex'),
+          s.u16(0),
+          Uint8Array.of(0),
+        ),
+      ),
+    ]);
+  };
+  const run = async (bytes: s.Wire, consents: ('publish' | 'new_asset')[] = ['publish']) => {
+    const tx = s.solanaTx(step, bytes);
+    const sc = scene('solana', s.OWNER, { kind: 'publish', cashRaw: undefined }, tx, () =>
+      signedBy(bytes.payload),
+    );
+    // A publish moves no cash: the order states no deposit.
+    const order = { ...sc.order, depositRaw: undefined };
+    const deps = { ...sc.deps(s.SOLANA), plan: { basketId: '0', publish: publication }, consents };
+    return { ...sc, result: await execute(order, deps) };
+  };
+
+  it('walks it like any other step: built, checked, signed and reported', async () => {
+    const bytes = await publishBytes();
+    const { result, reported, asked } = await run(bytes);
+    expect(result.status).toBe('done');
+    expect(asked.map((tx) => tx.payload)).toEqual([bytes.payload]);
+    expect(reported).toEqual([{ signedTx: signedBy(bytes.payload) }]);
+  });
+
+  it('signs nothing for bytes that publish other text, or with no consent to publish', async () => {
+    const other = await run(await publishBytes('ef'.repeat(32)));
+    expect(other.result.status === 'refused' && other.result.refusal.code).toBe('recipe');
+    expect(other.asked).toEqual([]);
+    const unasked = await run(await publishBytes(), ['new_asset']);
+    expect(unasked.result.status === 'refused' && unasked.result.refusal.code).toBe('consent');
+    expect(unasked.asked).toEqual([]);
+  });
+});
 
 describe('the executor on Solana bytes', () => {
   const run = async (hand: (payload: string, other: string) => string) => {

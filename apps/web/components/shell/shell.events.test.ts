@@ -42,7 +42,7 @@ const pressed = (group: Element) =>
 beforeEach(() => {
   portStore.set(fakePort());
   portStore.setApi(async () => json({}, 404));
-  location.pathname = '/goal';
+  location.pathname = '/';
   router.refresh.mockClear();
   document.documentElement.className = 'fonts tf-auto';
   for (const name of ['tf-theme', 'tf-lang']) remember(name, null);
@@ -61,19 +61,25 @@ describe('the frame', () => {
     expect(find(frame, 'nav').getAttribute('aria-label')).toBe(en.nav);
   });
 
-  it('shows the mark and the wordmark, in lower case, and the goal as the first link', async () => {
+  it('shows the mark and the wordmark, in lower case, the goal as the first link and the portfolio after it', async () => {
     const host = await shell();
     const home = find<HTMLAnchorElement>(host, `a[aria-label="${en.home}"]`);
     expect(home.textContent).toBe('tenonfi');
-    expect(home.getAttribute('href')).toBe('/goal');
+    expect(home.getAttribute('href')).toBe('/');
     expect(home.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
     const links = [...find(host, 'nav').querySelectorAll('a')];
-    expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([[en.goal, '/goal']]);
+    expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      [en.goal, '/'],
+      [en.portfolio, '/monitor'],
+    ]);
     // the page a person is on is said, not only shown
-    expect(links[0]?.getAttribute('aria-current')).toBe('page');
+    expect(links.map((a) => a.getAttribute('aria-current'))).toEqual(['page', null]);
+    location.pathname = '/monitor';
+    const monitor = [...find(await shell(), 'nav').querySelectorAll('a')];
+    expect(monitor.map((a) => a.getAttribute('aria-current'))).toEqual([null, 'page']);
     location.pathname = '/sign-in';
-    const elsewhere = await shell();
-    expect(find(elsewhere, 'nav a').getAttribute('aria-current')).toBeNull();
+    const elsewhere = [...find(await shell(), 'nav').querySelectorAll('a')];
+    expect(elsewhere.map((a) => a.getAttribute('aria-current'))).toEqual([null, null]);
   });
 
   it('renders the disclaimer from the one constant, whole, at body size, in the language of the view', async () => {
@@ -98,7 +104,7 @@ describe('the frame', () => {
     // the port is still loading: the bar says nothing about the person yet
     portStore.set(fakePort({ status: 'loading' }));
     const loading = await shell();
-    expect(find(loading, 'header').textContent).toBe(`tenonfi${en.goal}`);
+    expect(find(loading, 'header').textContent).toBe(`tenonfi${en.goal}${en.portfolio}`);
   });
 });
 
@@ -289,7 +295,10 @@ describe('English or Portuguese', () => {
     const pt = dictionary('pt').shell;
     const host = await shell('pt');
     expect(find(host, 'a[href="#content"]').textContent).toBe(pt.skip);
-    expect(find(host, 'nav a').textContent).toBe(pt.goal);
+    expect([...find(host, 'nav').querySelectorAll('a')].map((a) => a.textContent)).toEqual([
+      pt.goal,
+      pt.portfolio,
+    ]);
     expect(find(host, 'header a[href="/sign-in"]').textContent).toBe(pt.signIn);
     expect(host.textContent).not.toMatch(/!/);
   });

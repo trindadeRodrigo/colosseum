@@ -68,6 +68,11 @@ export interface WalletDriver {
   sendEvm(address: string, request: EvmRequest): Promise<`0x${string}`>;
   signEvmMessage(address: string, message: string): Promise<`0x${string}`>;
   exportKey(family: Chain, address: string): Promise<void>;
-  /** The API's sign-in tokens, or null for a driver that has none. */
-  tokens(): Promise<{ access: string | null; identity: string | null } | null>;
+  /**
+   * The API's sign-in tokens, or null for a driver that has none. `fresh`: the API refused the ones
+   * sent, so new ones are wanted.
+   */
+  tokens(options?: {
+    fresh?: boolean;
+  }): Promise<{ access: string | null; identity: string | null } | null>;
 }

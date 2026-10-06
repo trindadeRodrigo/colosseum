@@ -141,7 +141,12 @@ export type Owner = z.infer<typeof Owner>;
 export const OrderType = z.enum(['buy', 'rebalance', 'follow', 'publish', 'withdraw', 'settings']);
 export type OrderType = z.infer<typeof OrderType>;
 
-export const ConsentKind = z.enum(['auto_follow_on', 'new_asset']);
+/**
+ * What a person agrees to on the review screen, beside the order: following a shared portfolio by
+ * itself, taking an asset new to the vault, and publishing (or taking back) a shared portfolio of their
+ * own (gate `SHARED-FULL`).
+ */
+export const ConsentKind = z.enum(['auto_follow_on', 'new_asset', 'publish']);
 export type ConsentKind = z.infer<typeof ConsentKind>;
 
 export const OrderBase = z.object({

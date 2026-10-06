@@ -25,7 +25,8 @@ export type Account =
   | { status: 'signed-out' }
   /**
    * The API did not say. Nothing is assumed in its place. `why` is for the sentence: it did not
-   * answer, it does not know this sign-in any more (401), or it asked for fewer requests (429).
+   * answer, it does not know this sign-in any more (401), it was sent no identity token (401), or it
+   * asked for fewer requests (429).
    */
   | { status: 'unknown'; why: Unknown }
   /**
@@ -37,7 +38,7 @@ export type Account =
   | { status: 'needs-chain'; options: ChainId[] }
   | { status: 'ready'; chain: ChainId; source: 'picked' | 'wallet' };
 
-export type Unknown = 'unreachable' | 'signed_out' | 'busy';
+export type Unknown = 'unreachable' | 'signed_out' | 'no_identity' | 'busy';
 
 export type AccountValue = {
   account: Account;
@@ -64,7 +65,8 @@ type Read = { key: string; person: Person | null; why?: Unknown };
 
 /** Why the API did not say who is signed in, as far as a person can do something about it. */
 const whyNot = (e: unknown): Unknown =>
-  e instanceof PersonError && (e.kind === 'signed_out' || e.kind === 'busy')
+  e instanceof PersonError &&
+  (e.kind === 'signed_out' || e.kind === 'no_identity' || e.kind === 'busy')
     ? e.kind
     : 'unreachable';
 

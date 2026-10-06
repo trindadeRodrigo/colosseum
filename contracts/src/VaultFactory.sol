@@ -62,8 +62,8 @@ contract VaultFactory is VaultConfig, UUPSUpgradeable, IVaultFactory {
         uint32 expectedVersion,
         bool autoFollow
     ) external returns (address vault) {
-        vault = _deploy(salt, autoFollow);
-        IBasketVault(vault).start(indexId, expectedVersion, targets, 0, new Swap[](0));
+        vault = _deploy(salt);
+        IBasketVault(vault).start(indexId, expectedVersion, targets, autoFollow, 0, new Swap[](0));
     }
 
     /// @inheritdoc IVaultFactory
@@ -74,10 +74,12 @@ contract VaultFactory is VaultConfig, UUPSUpgradeable, IVaultFactory {
         uint32 expectedVersion,
         bool autoFollow,
         uint256 cashAmount,
-        Swap[] calldata swaps
+        Swap[] calldata swaps,
+        uint64 deadline
     ) external returns (address vault) {
-        vault = _deploy(salt, autoFollow);
-        IBasketVault(vault).start(indexId, expectedVersion, targets, cashAmount, swaps);
+        require(block.timestamp <= deadline, DeadlinePassed(deadline, uint64(block.timestamp)));
+        vault = _deploy(salt);
+        IBasketVault(vault).start(indexId, expectedVersion, targets, autoFollow, cashAmount, swaps);
     }
 
     // ---- views
@@ -124,8 +126,7 @@ contract VaultFactory is VaultConfig, UUPSUpgradeable, IVaultFactory {
 
     /// Creates the caller's vault for `salt` and lists it. The owner is `msg.sender` and nothing else: no
     /// argument names one.
-    function _deploy(bytes32 salt, bool autoFollow) private returns (address vault) {
-        require(!autoFollow, AutoFollowUnavailable());
+    function _deploy(bytes32 salt) private returns (address vault) {
         FactoryStorage storage $ = _factory();
         address owner = msg.sender;
         require($.bySalt[owner][salt] == address(0), VaultExists($.bySalt[owner][salt]));

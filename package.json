@@ -99,7 +99,10 @@
     "risk:prices-install-job": "zsh scripts/risk/prices/install-job.sh",
     "risk:prices-freeze-fixtures": "tsx scripts/risk/prices/freeze-fixtures.ts && biome format --write fixtures/risk/prices",
     "risk-evm:collect": "tsx scripts/risk-evm/collect.ts",
-    "risk-evm:import": "tsx scripts/risk-evm/import.ts"
+    "risk-evm:import": "tsx scripts/risk-evm/import.ts",
+    "risk-evm:universe": "tsx scripts/risk-evm/universe.ts",
+    "risk-evm:discover": "tsx scripts/risk-evm/discover.ts",
+    "risk-evm:pareto": "tsx scripts/risk-evm/pareto.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
@@ -111,6 +114,7 @@
     "@types/node": "^22.15.0",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.45.3",
+    "fast-check": "^4.10.2",
     "happy-dom": "20.14.5",
     "litesvm": "1.5.0",
     "tsx": "^4.23.15",

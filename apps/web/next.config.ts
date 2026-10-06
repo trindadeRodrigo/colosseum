@@ -9,7 +9,7 @@ if (existsSync(rootEnv)) process.loadEnvFile(rootEnv);
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  transpilePackages: ['@colosseum/schemas'],
+  transpilePackages: ['@colosseum/schemas', '@colosseum/sdk'],
 };
 
 // A development-only route is a file named `page.dev.tsx`: a route under `next dev`, a plain file in

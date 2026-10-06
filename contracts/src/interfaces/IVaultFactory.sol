@@ -16,13 +16,14 @@ interface IVaultFactory is IVaultConfig {
     event VaultCreated(address indexed vault, address indexed owner, bytes32 indexed planId);
 
     error VaultExists(address vault);
-    /// Auto-follow is switched on by the vault's own `setAutoFollow`, which arrives with the keeper path.
-    error AutoFollowUnavailable();
+    /// A create that trades was sent after the deadline its owner signed.
+    error DeadlinePassed(uint64 deadline, uint64 now);
     /// `launch()` while the beacon is not the admin's, or is being handed to someone.
     error BeaconNotTheAdmins(address beaconOwner, address pendingBeaconOwner);
 
     /// Creates the caller's vault for the plan `salt`. With `indexId` set, `targets` must be empty and the
-    /// vault copies the shared portfolio's active version, which must be `expectedVersion`.
+    /// vault copies the shared portfolio's active version, which must be `expectedVersion`. With
+    /// `autoFollow` the keeper may trade it toward its targets from the start.
     function createVault(
         bytes32 salt,
         Weight[] calldata targets,
@@ -33,6 +34,7 @@ interface IVaultFactory is IVaultConfig {
 
     /// The same, then pulls `cashAmount` of the cash token from the caller into the vault and runs `swaps`
     /// as the owner's first trades. The caller approves the vault's address, `vaultOf(caller, salt)`, before.
+    /// Refused after `deadline` (unix seconds): a signed trade that was not sent in time is not sent late.
     function createVaultAndBuy(
         bytes32 salt,
         Weight[] calldata targets,
@@ -40,7 +42,8 @@ interface IVaultFactory is IVaultConfig {
         uint32 expectedVersion,
         bool autoFollow,
         uint256 cashAmount,
-        Swap[] calldata swaps
+        Swap[] calldata swaps,
+        uint64 deadline
     ) external returns (address vault);
 
     /// The vault `owner` has, or would get, for the plan `salt`. Known before it exists.

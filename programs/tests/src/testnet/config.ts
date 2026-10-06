@@ -28,13 +28,21 @@ type TokenFile = {
   session?: 0 | 1;
   /** Token-2022 stock set only: the multiplier the mint starts with. */
   multiplier?: number;
+  /** A Token-2022 token's extension set, in the real mint's order: the stock tokens' (the default)
+   * or PAXG's (`paxgExtensions` in programs/tests/src/tokens.ts). */
+  extensions?: 'stock' | 'paxg';
+  /** The real token's name, where its symbol does not say it: "Test <name> (test network, no value)". */
+  realName?: string;
+  /** `scope-indexes` when `priceIndex` and `twapIndex` are the real token's entries in Scope. */
+  indexSource?: 'scope-indexes';
   maxWeightBps?: number;
   spreadBps?: number;
   /** What the exchange's reserve is filled to, in dollars at the first price. */
   reserveUsd?: string;
   initialPrice: SourcedPrice;
-  /** The price range that switches the keeper on for the token; null leaves it off. */
-  keeper: { minUsd: string; maxUsd: string } | null;
+  /** The token's price range, which switches the keeper on for it unless `on` is false (a token
+   * the vault does not rebalance, as gate UNIVERSE keeps a stock with no oracle); null: no range. */
+  keeper: { minUsd: string; maxUsd: string; on?: boolean } | null;
 };
 
 type ConfigFile = {
@@ -54,8 +62,8 @@ export type TokenPlan = {
   name: string;
   kind: 'stock' | 'gold' | 'dollar_yield' | 'cash';
   tokenProgram: 'token' | 'token-2022';
-  /** True for the stock token's extension set, in the order the real mint has it. */
-  stockExtensions: boolean;
+  /** The Token-2022 extension set, in the order the real mint has it; null on the classic program. */
+  extensionSet: 'stock' | 'paxg' | null;
   decimals: number;
   multiplier: number;
   priceIndex: number;
@@ -68,8 +76,10 @@ export type TokenPlan = {
   /** Raw units the exchange's reserve is filled to. */
   reserveRaw: bigint;
   initialPrice: SourcedPrice;
-  /** In millionths of a dollar for one whole token, as the asset list holds it; null: keeper off. */
+  /** In millionths of a dollar for one whole token, as the asset list holds it; null: no range. */
   range: { minPrice: bigint; maxPrice: bigint } | null;
+  /** The keeper's switch: on only with a range, and only when the config does not say off. */
+  keeperOn: boolean;
 };
 
 export type SetupPlan = {
@@ -145,7 +155,7 @@ export function planOf(file: ConfigFile): SetupPlan {
     name: `Test ${file.cash.modelOf} (test network, no value)`,
     kind: 'cash',
     tokenProgram: 'token',
-    stockExtensions: false,
+    extensionSet: null,
     decimals: file.cash.decimals,
     multiplier: 1,
     priceIndex: 0,
@@ -157,6 +167,7 @@ export function planOf(file: ConfigFile): SetupPlan {
     reserveRaw: scaled(file.cash.reserve, file.cash.decimals),
     initialPrice: { usd: '1', source: 'cash counts as one dollar', fetchedAt: '', method: 'none' },
     range: null,
+    keeperOn: false,
   };
 
   const tokens = file.tokens.map((token): TokenPlan => {
@@ -165,6 +176,12 @@ export function planOf(file: ConfigFile): SetupPlan {
     const stock = token.kind === 'stock';
     if (stock && !real)
       fail(`${token.modelOf} has no entry in fixtures/solana-vault/scope-indexes.json`);
+    // A token the index table lists takes its entries from it; a config that says otherwise is wrong.
+    for (const key of ['priceIndex', 'twapIndex', 'decimals'] as const)
+      if (real && token[key] !== undefined && token[key] !== real[key])
+        fail(
+          `${token.id}: ${key} ${token[key]} is not the ${real[key]} fixtures/solana-vault/scope-indexes.json gives ${token.modelOf}`,
+        );
     const priceIndex = real?.priceIndex ?? token.priceIndex;
     const twapIndex = real?.twapIndex ?? token.twapIndex;
     const decimals = real?.decimals ?? token.decimals;
@@ -175,6 +192,8 @@ export function planOf(file: ConfigFile): SetupPlan {
     if (price === 0n) fail(`${token.id} has no first price`);
     for (const key of ['source', 'fetchedAt', 'method'] as const)
       if (!token.initialPrice[key]) fail(`${token.id}: initialPrice.${key} is empty`);
+    if (token.keeper?.on !== undefined && typeof token.keeper.on !== 'boolean')
+      fail(`${token.id}: keeper.on is true or false`);
     const range = token.keeper && {
       minPrice: scaled(token.keeper.minUsd, 6),
       maxPrice: scaled(token.keeper.maxUsd, 6),
@@ -188,15 +207,15 @@ export function planOf(file: ConfigFile): SetupPlan {
       id: token.id,
       modelOf: token.modelOf,
       symbol: `t${token.modelOf}`,
-      name: `Test ${token.modelOf} (test network, no value)`,
+      name: `Test ${token.realName ?? token.modelOf} (test network, no value)`,
       kind: token.kind,
       tokenProgram,
-      stockExtensions: tokenProgram === 'token-2022',
+      extensionSet: tokenProgram === 'token-2022' ? (token.extensions ?? 'stock') : null,
       decimals,
       multiplier: token.multiplier ?? 1,
       priceIndex,
       twapIndex,
-      indexSource: real ? 'scope-indexes' : 'test-network',
+      indexSource: real ? 'scope-indexes' : (token.indexSource ?? 'test-network'),
       session: token.session ?? (stock ? 1 : 0),
       maxWeightBps: token.maxWeightBps ?? file.defaults.maxWeightBps,
       spreadBps: token.spreadBps ?? file.defaults.spreadBps,
@@ -204,6 +223,7 @@ export function planOf(file: ConfigFile): SetupPlan {
       reserveRaw: (reserveUsd * 10n ** BigInt(decimals)) / price,
       initialPrice: token.initialPrice,
       range,
+      keeperOn: range !== null && token.keeper?.on !== false,
     };
   });
 
