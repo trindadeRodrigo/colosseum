@@ -10,7 +10,7 @@ import { keepOrder, recallOrder } from './order-record';
 import { outcomeView, refusalKind, stepOf } from './order-view';
 import { recallPlan, rememberPlan } from './plan-store';
 import { targetsOfPlan } from './plan-terms';
-import { chainReady, deploymentsFor, networkFor } from './readiness';
+import { chainReady, deploymentsFor, explorerUrlFor, networkFor } from './readiness';
 import {
   LEG_CREATE,
   LEG_SWAP,
@@ -128,6 +128,15 @@ describe('which chains can be signed on', () => {
     // on the mock both are the mock's
     expect(networkFor('robinhood', true)).toBe('mock');
     expect(deploymentsFor('robinhood', true)?.robinhood?.family).toBe('mock');
+  });
+
+  it('links a transaction on Robinhood Chain to the test network’s explorer, never mainnet’s', () => {
+    const link = explorerUrlFor('robinhood', '0xab', false);
+    expect(link).toBe('https://explorer.testnet.chain.robinhood.com/tx/0xab');
+    expect(new URL(link ?? '').origin).not.toBe('https://explorer.chain.robinhood.com');
+    // the mock's transactions are no network's: no link
+    expect(explorerUrlFor('robinhood', '0xab', true)).toBeNull();
+    expect(explorerUrlFor('robinhood', null, false)).toBeNull();
   });
 
   it('signs nothing on mainnet, which has no deployment file', () => {

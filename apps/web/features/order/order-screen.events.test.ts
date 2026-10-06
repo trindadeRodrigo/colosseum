@@ -131,7 +131,7 @@ describe('the review', () => {
     expect(steps[0]).toContain(en.order.kind.create_vault);
     // in whole units, with the symbols the test network's deploy recorded
     expect(steps[0]).toContain('10 tUSDC');
-    expect(steps[1]).toContain(en.order.review.spend('6 tUSDC', 'spyx'));
+    expect(steps[1]).toContain(en.order.review.spend('6 tUSDC', 'tSPYx'));
     expect(steps[1]).toContain(en.order.review.atLeastWhole('0.0099 tSPYx'));
     expect(steps[1]).toContain(en.order.review.under('1%'));
     expect(label(primary(host))).toBe(en.order.signAndBuy('$10'));
@@ -183,13 +183,15 @@ describe('the review', () => {
     await click(primary(host));
     await settle();
     expect(status(host)).toBe(en.order.outcome.done('Solana'));
+    // the links are built from this app's own chain table: devnet's explorer, whatever the API sent
     const links = [
-      ...host.querySelectorAll('[data-ui="order-step"] a[href^="https://explorer.example/"]'),
+      ...host.querySelectorAll('[data-ui="order-step"] a[href^="https://solscan.io/"]'),
     ];
     expect(links.map((a) => a.getAttribute('href'))).toEqual([
-      'https://explorer.example/tx/sig0?cluster=devnet',
-      'https://explorer.example/tx/sig1?cluster=devnet',
+      'https://solscan.io/tx/sig0?cluster=devnet',
+      'https://solscan.io/tx/sig1?cluster=devnet',
     ]);
+    expect(host.querySelector('a[href^="https://explorer.example/"]')).toBeNull();
     // and his activity lines, beside the disclaimer: one per step that reached the chain, each with
     // its link
     const activity = find(host, '[data-ui="activity-panel"]');
@@ -197,7 +199,7 @@ describe('the review', () => {
     expect(lines).toHaveLength(2);
     for (const line of lines) {
       expect(line.getAttribute('data-status')).toBe('confirmed');
-      expect(line.querySelector('a[href^="https://explorer.example/"]')).not.toBeNull();
+      expect(line.querySelector('a[href^="https://solscan.io/tx/"]')).not.toBeNull();
     }
     expect(find(activity, '[data-ui="disclaimer"]').textContent).toContain(DISCLAIMER.en);
     expect(host.querySelector('[data-variant="primary"]')).toBeNull();
@@ -248,7 +250,7 @@ describe('an order that does not move what the person asked for', () => {
     const host = await screen();
     const steps = [...host.querySelectorAll('[data-ui="order-step"]')].map((s) => s.textContent);
     expect(steps[0]).toContain('10 tUSDC');
-    expect(steps[1]).toContain(en.order.review.spend('6 tUSDC', 'spyx'));
+    expect(steps[1]).toContain(en.order.review.spend('6 tUSDC', 'tSPYx'));
     expect(steps[1]).toContain(en.order.review.atLeastWhole('0.0099 tSPYx'));
     expect(host.querySelector('[data-ui="stat"]')?.textContent).toContain('10 tUSDC');
     expect(label(primary(host))).toBe(en.order.signAndBuy('$10'));
@@ -445,7 +447,7 @@ describe('a buy on Robinhood Chain', () => {
     expect(steps[0]).toContain('10 tUSDG');
     expect(steps[1]).toContain(en.order.kind.create_vault);
     expect(steps[1]).toContain('10 tUSDG');
-    expect(steps[1]).toContain(en.order.review.spend('6 tUSDG', 'tspy'));
+    expect(steps[1]).toContain(en.order.review.spend('6 tUSDG', 'tSPY'));
     expect(label(primary(host))).toBe(en.order.signAndBuy('$10'));
     expect(host.textContent).toContain(en.shell.testNetwork);
     expect(host.querySelector('[role="alert"]')).toBeNull();
@@ -455,7 +457,18 @@ describe('a buy on Robinhood Chain', () => {
   it('hands the executor the order as shown and the test network’s deployment, Robinhood Chain in it', async () => {
     api(orderOn('robinhood'), 'robinhood');
     seed(recordOf('robinhood'));
-    run.answer = async () => ({ status: 'done', order: doneOrder('robinhood') });
+    // an API that names mainnet's explorer for each step: the links are the test network's all the same
+    const done = doneOrder('robinhood');
+    run.answer = async () => ({
+      status: 'done',
+      order: {
+        ...done,
+        legs: done.legs.map((l) => ({
+          ...l,
+          explorerUrl: `https://explorer.chain.robinhood.com/tx/${l.txId}`,
+        })),
+      },
+    });
     const host = await screen();
     await click(primary(host));
     await settle();
@@ -480,6 +493,7 @@ describe('a buy on Robinhood Chain', () => {
       ),
     ];
     expect(links).toHaveLength(2);
+    expect(host.querySelector('a[href^="https://explorer.chain.robinhood.com/"]')).toBeNull();
   });
 });
 

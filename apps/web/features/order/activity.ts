@@ -2,6 +2,7 @@ import type { ExecutionStatus, LegStatus, OrderDetail } from '@colosseum/schemas
 import type { Execution } from '../../components/ui/ExecutionList';
 import type { Dictionary } from '../../i18n';
 import { assetName } from './amounts';
+import { explorerUrlFor } from './readiness';
 
 // What was done on chain, as his guide writes it (guidelines.html, "Disclaimer and activity"): one
 // line per step that reached the chain, with what it was, where it stands, when, and its explorer link.
@@ -15,7 +16,13 @@ const STATUS: Partial<Record<LegStatus, ExecutionStatus>> = {
 };
 
 /** The steps of an order that have a transaction, newest first. */
-export function activityOf(order: OrderDetail, t: Dictionary, explorer: string): Execution[] {
+export function activityOf(
+  order: OrderDetail,
+  t: Dictionary,
+  explorer: string,
+  /** The chain runs on the mock: its transactions have no link. */
+  mock: boolean,
+): Execution[] {
   return order.legs
     .filter((leg) => leg.txId !== null && STATUS[leg.status] !== undefined)
     .map((leg) => {
@@ -34,7 +41,7 @@ export function activityOf(order: OrderDetail, t: Dictionary, explorer: string):
         error: leg.error?.message ?? null,
         at: last?.builtAt ?? order.createdAt,
         signature: leg.txId,
-        explorerUrl: leg.explorerUrl,
+        explorerUrl: explorerUrlFor(leg.chain, leg.txId, mock),
         explorer,
         provenance: leg.provenance,
       };

@@ -64,12 +64,14 @@ function api(o: {
   order?: () => unknown;
   /** Answers GET /v1/funding: the wallet has what the buy needs. */
   funded?: boolean;
+  /** The person's chain; Solana unless said. */
+  chain?: Person['chain'];
 }) {
   const calls: Call[] = [];
   portStore.setApi(async (path, init) => {
     const method = init?.method ?? 'GET';
     calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-    if (path === '/v1/me') return json(person);
+    if (path === '/v1/me') return json({ ...person, chain: o.chain ?? person.chain });
     if (path.startsWith('/v1/shelf'))
       return json({ families: o.family ? [o.family] : [], disclaimer: 'd' });
     if (path.startsWith(`/v1/indexes/${SLUG}/versions`))
@@ -370,6 +372,22 @@ describe('the publish form', () => {
     expect(problemsOf(form('Three', 'write to me@mail.com'), 'solana')).toEqual(['copy']);
     expect(problemsOf(form('Three', 'plain\u202etext'), 'solana')).toEqual(['copy']);
     expect(problemsOf(form('Three', 'two lines\nare fine'), 'solana')).toEqual([]);
+  });
+
+  it('is not offered on Robinhood Chain, where the guard signs no publish yet (AGT-4)', async () => {
+    const calls = api({ family: null, chain: 'robinhood' });
+    const shelf = await show(createElement(ShelfScreen));
+    expect(calls.some((c) => c.path === '/v1/shelf?chain=robinhood')).toBe(true);
+    expect(shelf.querySelector('a[href="/publish"]')).toBeNull();
+  });
+
+  it('says on Robinhood Chain that publishing is Solana only, with no form', async () => {
+    const calls = api({ family: null, chain: 'robinhood' });
+    const host = await show(createElement(PublishScreen));
+    expect(host.textContent).toContain(en.shared.publish.problems.chain);
+    expect(host.querySelector('input')).toBeNull();
+    expect(button(host, en.shared.publish.review)).toBeUndefined();
+    expect(calls.some((c) => c.path === '/v1/orders')).toBe(false);
   });
 
   it('refuses an address that is another creator’s', async () => {
