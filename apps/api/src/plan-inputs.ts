@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { assets as assetsTable, riskPools, yieldObservations } from '@colosseum/db';
 import { chainFamily, type YieldObservation } from '@colosseum/schemas';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
@@ -6,7 +8,9 @@ import {
   asSandbox,
   exitTwins,
   type RegistryAsset,
+  shelfTiers,
   standIns,
+  tierTwins,
   twinSource,
   twinSymbols,
 } from './model-exits';
@@ -22,6 +26,15 @@ import type { PlanInputs } from './orders/personalize';
 //
 // Outside the /v1 route table: it reads the risk layer's calendar from a file and its switch from the
 // environment, which no file the /v1 routes reach may do (apps/api/src/orders/orders.test.ts).
+
+const ROOT = process.env.REPO_ROOT ?? join(import.meta.dirname, '..', '..', '..');
+/**
+ * The mainnet tokens' tiers: the launch shelf (a proposal, Oct 1), the one place that gives syrupUSDC
+ * and jlUSDC a tier. A stand-in whose model Bearing does not measure takes its model's from it.
+ */
+const SHELF_FILE = 'docs/vault/research/open-questions/launch-shelf.seed.json';
+const SHELF_AT = '2026-10-01T14:00:00.000Z';
+const SHELF = shelfTiers(JSON.parse(readFileSync(join(ROOT, SHELF_FILE), 'utf8')));
 
 export const BEARING_SOURCE = `Bearing: sell-side depth measured on chain (risk_depth_curves, ${RISK_METHOD_VERSION})`;
 
@@ -64,6 +77,17 @@ export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets }) => {
     assets.map((a) => ({ id: a.id, mint: twinOf.get(a.id) ?? a.address })),
   );
   const read = twins.filter((t) => loaded?.covers(t.id));
+  const tiers = tierTwins(
+    tokens.filter((t) => !loaded?.covers(t.id)),
+    SHELF,
+  ).map((t) => ({
+    assetId: t.id,
+    tier: t.tier,
+    source: `tier ${t.tier} of ${t.twinSymbol} on mainnet (${SHELF_FILE}), applied to the test-network token ${t.symbol}`,
+    method: 'the launch shelf tier of the token it models; its exit is not measured',
+    fetchedAt: SHELF_AT,
+    provenance: 'sandbox' as const,
+  }));
   const provider = loaded && read.length ? asSandbox(loaded) : loaded;
   const source = read.length ? twinSource(BEARING_SOURCE, read) : BEARING_SOURCE;
   const idOf = new Map(assets.map((a) => [a.address, a.id]));
@@ -121,5 +145,6 @@ export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets }) => {
   return {
     ...(provider ? { liquidity: { provider, source } } : {}),
     ...(yields.length ? { yields } : {}),
+    ...(tiers.length ? { tiers } : {}),
   };
 };

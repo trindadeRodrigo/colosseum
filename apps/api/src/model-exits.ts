@@ -1,4 +1,4 @@
-import type { BasketAsset, LiquidityProvider } from '@colosseum/schemas';
+import type { AssetTier, BasketAsset, LiquidityProvider } from '@colosseum/schemas';
 
 // A test-network token stands in for the mainnet token it models (model-yields.ts carries over its
 // yield). Bearing measures mainnet pools only, so nothing is ever stored under a test token's address,
@@ -6,7 +6,9 @@ import type { BasketAsset, LiquidityProvider } from '@colosseum/schemas';
 // $20,000 plan mostly cash. Here a stand-in reads the sell depth of its model's mainnet token instead,
 // found by the model's symbol in Bearing's registry (risk_pools), and the whole provider is labelled
 // `sandbox` with a source that names whose depth it is and that it is applied to test tokens. A
-// stand-in whose model Bearing does not measure keeps its tier's ceiling, and the plan says so.
+// stand-in whose model Bearing does not measure (the dollar-yield stand-ins: non-stock depth is not
+// collected yet) takes the tier its model has on the mainnet launch shelf instead of the test
+// network's blanket C, and the plan says whose tier it is; with neither it keeps C, and says so.
 
 /** A row of Bearing's registry: the asset a pool trades, under the registry's spelling. */
 export type RegistryAsset = { assetSymbol: string; assetMint: string; tvlUsd: number | null };
@@ -75,4 +77,45 @@ export function asSandbox<P extends LiquidityProvider>(provider: P): P {
       return e && { ...e, provenance: 'sandbox' };
     },
   };
+}
+
+/** A mainnet token's tier on the launch shelf: what a leg of it may hold where nothing is measured. */
+export type ShelfTier = { chain: 'solana' | 'evm'; symbol: string; tier: AssetTier };
+
+/** A stand-in with no measured twin, and the tier of its model on the mainnet shelf. */
+export type TierTwin = { id: string; symbol: string; twinSymbol: string; tier: AssetTier };
+
+/**
+ * The tier each stand-in reads where Bearing measures nothing for its model: the model's tier on the
+ * mainnet launch shelf, by the same symbols its depth is looked for under. A stand-in whose model the
+ * shelf does not list keeps its own tier (C on a test network).
+ */
+export function tierTwins(tokens: BasketAsset[], shelf: ShelfTier[]): TierTwin[] {
+  return tokens.flatMap((t) => {
+    const fam = family(t.address);
+    const names = twinSymbols(t).map((s) => s.toLowerCase());
+    const hit = shelf.find((s) => s.chain === fam && names.includes(s.symbol.toLowerCase()));
+    return hit && hit.tier !== t.tier
+      ? [{ id: t.id, symbol: t.symbol, twinSymbol: hit.symbol, tier: hit.tier }]
+      : [];
+  });
+}
+
+/** The shelf's tier rows, by family of chains (the seed lists Robinhood Chain and Base under EVM). */
+export function shelfTiers(seed: {
+  assets: Record<string, Array<{ symbol: string; tier?: string }>>;
+}): ShelfTier[] {
+  return Object.entries(seed.assets).flatMap(([chain, rows]) =>
+    rows.flatMap((r) =>
+      r.tier === 'A' || r.tier === 'B' || r.tier === 'C'
+        ? [
+            {
+              chain: chain === 'solana' ? ('solana' as const) : ('evm' as const),
+              symbol: r.symbol,
+              tier: r.tier,
+            },
+          ]
+        : [],
+    ),
+  );
 }

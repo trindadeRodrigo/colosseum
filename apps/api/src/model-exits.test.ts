@@ -6,7 +6,20 @@ import { type AssetCurves, createLiquidityProvider, defaultRegimeParams } from '
 import type { BasketAsset } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
 import { DEPLOYMENTS_DIR } from './deployments';
-import { asSandbox, exitTwins, type RegistryAsset, standIns, twinSource } from './model-exits';
+import { YieldObservation } from '@colosseum/schemas';
+import { z } from 'zod';
+import {
+  asSandbox,
+  exitTwins,
+  type RegistryAsset,
+  shelfTiers,
+  standIns,
+  tierTwins,
+  twinSource,
+} from './model-exits';
+import { modelledTokens, modelYields } from './model-yields';
+import { tiersSaid, withTiers } from './orders/personalize';
+import readings from './testing/fixtures/model-readings.json';
 
 // The devnet shelf's stand-ins read the sell depth of the mainnet tokens they model. The plan that
 // prompted it: grow $20,000 over 63 months at high risk on Solana came out 85% cash, because every
@@ -151,5 +164,87 @@ describe('a plan to grow $20,000 on devnet', () => {
     expect(
       p.entry('solana:spyx', { tau: 0.01, windowDays: 7, legAmountUsd: 10_000 })?.provenance,
     ).toBe('sandbox');
+  });
+});
+
+// The plan of the report, made as the server makes it: the stand-ins read their twins' depth, those
+// with no measured twin take their model's tier on the mainnet launch shelf, the dollar-yield ones
+// their models' yields; SPY and QQQ are index funds (the record's `etf`).
+const seed = JSON.parse(
+  readFileSync(
+    join(DEPLOYMENTS_DIR, '..', 'docs/vault/research/open-questions/launch-shelf.seed.json'),
+    'utf8',
+  ),
+);
+const READINGS = z
+  .array(z.object({ symbol: z.string(), reading: YieldObservation }))
+  .parse(readings);
+
+describe('the plan to grow $20,000 over 63 months at high risk on devnet, as the server makes it', () => {
+  const tokens = standIns(shelf);
+  const twins = exitTwins(tokens, registry);
+  const provider = asSandbox(providerFor(twins.map((t) => t.id)));
+  const tiers = tierTwins(
+    tokens.filter((t) => !provider.covers(t.id)),
+    shelfTiers(seed),
+  ).map((t) => ({
+    assetId: t.id,
+    tier: t.tier,
+    source: `tier ${t.tier} of ${t.twinSymbol} on mainnet, applied to the test-network token ${t.symbol}`,
+    method: 'launch shelf tier',
+    fetchedAt: '2026-10-01T14:00:00.000Z',
+    provenance: 'sandbox' as const,
+  }));
+  const assets = withTiers(shelf, tiers);
+  const plan = compose(
+    sheet,
+    { version: 'devnet', assets, families: [] },
+    {
+      now: '2026-10-06T12:00:00.000Z',
+      liquidity: provider,
+      liquiditySource: twinSource('Bearing', twins),
+      yields: modelYields(modelledTokens(assets, []), READINGS),
+    },
+  );
+  const weight = (id: string) => plan.lines.find((l) => l.assetId === id)?.weightBps ?? 0;
+
+  it('holds SPY as an index fund, past the tier ceiling and past one stock’s cap', () => {
+    expect(assets.find((a) => a.id === 'solana:spyx')?.cls).toBe('etf');
+    // the plan of the report held it at 7.5% (tier C); one stock's cap would stop it at 35%
+    expect(weight('solana:spyx')).toBeGreaterThan(3500);
+    expect(rulesOn(plan, 'solana:spyx')).not.toContain('TIER_CEILING');
+    expect(rulesOn(plan, 'solana:spyx')).not.toContain('SINGLE_STOCK_CAP');
+  });
+
+  it('gives the dollar-yield stand-ins their models’ tier A: $50,000 a line, not tier C’s $1,500', () => {
+    expect(tiers.map((t) => [t.assetId, t.tier])).toEqual(
+      expect.arrayContaining([
+        ['solana:jlusdc', 'A'],
+        ['solana:syrupusdc', 'A'],
+      ]),
+    );
+    const yieldLine = plan.lines.find((l) => l.assetId === 'solana:syrupusdc');
+    const ceiling = yieldLine?.reasons.find((r) => r.rule === 'TIER_CEILING');
+    expect(ceiling?.params.maxUsd).toBe(50_000);
+    // the sleeve the plan asks for (5% at high risk) is held whole, not cut to the ceiling
+    expect(weight('solana:syrupusdc')).toBe(500);
+  });
+
+  it('keeps cash well under half, every figure labelled sandbox, and says whose tier a line holds', () => {
+    // the plan of the report held 85% in cash
+    expect(weight('solana:usdc')).toBeLessThan(5000);
+    for (const o of plan.observations) expect(o.provenance, `${o.kind} ${o.id}`).toBe('sandbox');
+    const said = tiersSaid(
+      { lines: plan.lines, flags: plan.flags, observations: plan.observations } as never,
+      tiers,
+    );
+    const held = tiers.filter((t) => weight(t.assetId) > 0);
+    expect(held.length).toBeGreaterThan(0);
+    for (const t of held) {
+      expect(said.flags).toContain(`tier_from_model:${t.assetId}`);
+      const o = said.observations.find((x) => x.id === `tier ${t.assetId}`);
+      expect(o?.provenance).toBe('sandbox');
+      expect(o?.source).toContain('on mainnet, applied to the test-network token');
+    }
   });
 });

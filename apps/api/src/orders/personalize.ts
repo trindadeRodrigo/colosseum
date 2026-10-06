@@ -8,6 +8,7 @@ import {
   type PersonalSheet,
 } from '@colosseum/engine/personal';
 import {
+  type AssetTier,
   type BasketAsset,
   BasketProposal,
   type ChainId,
@@ -16,6 +17,7 @@ import {
   type ObservationRef,
   type RiskRollUp,
   type Shelf,
+  type Sourced,
   type YieldObservation,
 } from '@colosseum/schemas';
 import type { ChainRegistry } from './chains';
@@ -35,6 +37,11 @@ import { Refusal, refusing } from './errors';
 export type PlanInputs = (q: { db: Db; chain: ChainId; assets: BasketAsset[] }) => Promise<{
   liquidity?: { provider: LiquidityProvider; source: string };
   yields?: YieldObservation[];
+  /**
+   * A tier that stands in for a token's own where nothing is measured (a test-network token takes its
+   * model's, model-exits.ts), with where it comes from: the line's fallback says it, labelled sandbox.
+   */
+  tiers?: Array<{ assetId: string; tier: AssetTier } & Sourced>;
 }>;
 
 export type PersonalizeContext = {
@@ -47,6 +54,36 @@ export type PersonalizeContext = {
   /** ISO time: the plan is made at it, and the goal's date counts from it. */
   now: string;
 };
+
+type Tiers = Awaited<ReturnType<PlanInputs>>['tiers'];
+
+/** The shelf with each tier the plan inputs stand in for a token's own. */
+export function withTiers(assets: BasketAsset[], tiers: Tiers): BasketAsset[] {
+  const tierOf = new Map((tiers ?? []).map((t) => [t.assetId, t.tier]));
+  return assets.map((a) => {
+    const tier = tierOf.get(a.id);
+    return tier ? { ...a, tier } : a;
+  });
+}
+
+/** A line held to a tier that is not its token's own says whose tier it is: a flag and its source. */
+export function tiersSaid(proposal: BasketProposal, tiers: Tiers): BasketProposal {
+  const held = new Set(proposal.lines.map((l) => l.assetId));
+  const borrowed = (tiers ?? []).filter((t) => held.has(t.assetId));
+  if (!borrowed.length) return proposal;
+  return {
+    ...proposal,
+    flags: [...proposal.flags, ...borrowed.map((t) => `tier_from_model:${t.assetId}`)],
+    observations: [
+      ...proposal.observations,
+      ...borrowed.map(({ assetId, tier: _tier, ...src }) => ({
+        id: `tier ${assetId}`,
+        kind: 'liquidity' as const,
+        ...src,
+      })),
+    ],
+  };
+}
 
 /**
  * What the shelf of a chain holds, as a version: the same tokens and the same shared portfolios give
@@ -122,10 +159,11 @@ export async function personalize(
     );
   // Refuses a chain that is off before anything is read.
   const entry = ctx.chains.get(chain);
-  const assets = await refusing(() => entry.adapter.listAssets());
+  const listed = await refusing(() => entry.adapter.listAssets());
   const families = await ctx.loadFamilies(chain);
+  const figures = await ctx.inputs(chain, listed);
+  const assets = withTiers(listed, figures.tiers);
   const shelf: Shelf = { version: shelfVersionOf(chain, assets, families), assets, families };
-  const figures = await ctx.inputs(chain, assets);
   let plan: PersonalProposal;
   try {
     plan = compose(sheet, shelf, {
@@ -153,7 +191,7 @@ export async function personalize(
       });
     throw e;
   }
-  const proposal = sharedProposal(plan);
+  const proposal = tiersSaid(sharedProposal(plan), figures.tiers);
   return {
     proposal,
     rollUp: rollUp(
