@@ -10,6 +10,8 @@ import { ask, type EvmRpc } from './rpc';
 /** The gas limit is what the node estimates plus a fifth. */
 const GAS_HEADROOM_NUM = 6n;
 const GAS_HEADROOM_DEN = 5n;
+/** The fee stated is the gas limit at twice the node's gas price. */
+const FEE_HEADROOM = 2n;
 /** keccak256("Transfer(address,address,uint256)"). */
 const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 
@@ -48,7 +50,7 @@ type SimulatedCall = {
 /**
  * Runs the call as `signer` against the latest block with `eth_simulateV1`, its token transfers traced,
  * and refuses with the contract's own error if it reverts. Then states a gas limit (the node's estimate
- * plus a fifth), the fee at the node's current price for that gas, and the nonce.
+ * plus a fifth), the fee for that gas at twice the node's price, and the nonce.
  */
 export async function compose(a: {
   rpc: EvmRpc;
@@ -80,9 +82,9 @@ export async function compose(a: {
   if (!call) throw new ChainError('Unavailable', 'the node answered no simulation of the call');
   if (call.status !== '0x1') throw revertToChainError(call.returnData ?? call.error?.data);
 
-  const [estimate, fees, nonce] = await Promise.all([
+  const [estimate, gasPrice, nonce] = await Promise.all([
     ask('eth_estimateGas', () => rpc.estimateGas({ account: signer, to, data })),
-    ask('the fee', () => rpc.estimateFeesPerGas()),
+    ask('eth_gasPrice', () => rpc.getGasPrice()),
     a.nonce !== undefined
       ? Promise.resolve(a.nonce)
       : ask('eth_getTransactionCount', () =>
@@ -90,7 +92,9 @@ export async function compose(a: {
         ),
   ]);
   const gas = (estimate * GAS_HEADROOM_NUM + GAS_HEADROOM_DEN - 1n) / GAS_HEADROOM_DEN;
-  const maxFeePerGas = fees.maxFeePerGas ?? fees.gasPrice ?? 0n;
+  // The node's price, doubled: a base fee can double in a few blocks. No tip: the chains this runs on
+  // (Arbitrum Orbit) suggest none.
+  const maxFeePerGas = gasPrice * FEE_HEADROOM;
   return {
     to,
     data,

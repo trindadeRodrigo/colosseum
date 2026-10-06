@@ -87,10 +87,15 @@ export type TestnetWorld = {
 };
 
 async function startAnvil(forkUrl: string, port: number): Promise<ChildProcess> {
-  const child = spawn('anvil', ['--fork-url', forkUrl, '--port', String(port), '--silent'], {
-    stdio: ['ignore', 'ignore', 'pipe'],
-    env: { ...process.env, FOUNDRY_DISABLE_NIGHTLY_WARNING: '1' },
-  });
+  const child = spawn(
+    'anvil',
+    // No suggested priority fee, as the network itself suggests none: fees are the network's.
+    ['--fork-url', forkUrl, '--port', String(port), '--no-priority-fee', '--silent'],
+    {
+      stdio: ['ignore', 'ignore', 'pipe'],
+      env: { ...process.env, FOUNDRY_DISABLE_NIGHTLY_WARNING: '1' },
+    },
+  );
   let said = '';
   child.stderr?.on('data', (chunk: Buffer) => {
     said = (said + chunk.toString()).slice(-2_000);
@@ -184,7 +189,7 @@ export async function buildTestnetWorld(forkUrl: string, port: number): Promise<
     };
     /** Signs as anvil's account, with the nonce and gas the build states, as an embedded wallet does. */
     const sign = async (tx: BuiltTx) => {
-      const fees = await client.estimateFeesPerGas();
+      const price = await client.getGasPrice();
       return (await client.request({
         method: 'eth_signTransaction' as never,
         params: [
@@ -195,7 +200,7 @@ export async function buildTestnetWorld(forkUrl: string, port: number): Promise<
             value: '0x0',
             nonce: `0x${(tx.evm?.nonce ?? 0).toString(16)}`,
             gas: `0x${(tx.evm?.gas ?? 21_000).toString(16)}`,
-            maxFeePerGas: `0x${(fees.maxFeePerGas ?? 1n).toString(16)}`,
+            maxFeePerGas: `0x${(2n * price).toString(16)}`,
             maxPriorityFeePerGas: '0x0',
             chainId: `0x${TESTNET_RECORD.evmChainId.toString(16)}`,
           },
