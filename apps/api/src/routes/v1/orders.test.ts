@@ -1494,12 +1494,17 @@ describe('refusals', () => {
     );
     expect(res.statusCode).toBe(503);
     expect(res.json()).toMatchObject(refusal);
-    // Their portfolio and their funding are on that chain too, and answer the same.
-    for (const url of ['/v1/portfolio', '/v1/funding']) {
-      const read = await get(rh, url, off.app);
-      expect([url, read.statusCode]).toEqual([url, 503]);
-      expect(read.json()).toMatchObject(refusal);
-    }
+    // Their funding is on that chain too, and answers the same.
+    const funding = await get(rh, '/v1/funding', off.app);
+    expect(funding.statusCode).toBe(503);
+    expect(funding.json()).toMatchObject(refusal);
+    // Their portfolio has no other chain to read: 503, saying which chain could not be and why.
+    const portfolio503 = await get(rh, '/v1/portfolio', off.app);
+    expect(portfolio503.statusCode).toBe(503);
+    expect(portfolio503.json()).toMatchObject({
+      ...refusal,
+      error: `none of your chains could be read: ${refusal.error}`,
+    });
     // A person on the chain that is on still buys on that server, and reads their portfolio.
     const solanaOnly = await order(sol, { amountUsd: 600 }, off.app);
     expect(solanaOnly.legs.every((l) => l.chain === 'solana')).toBe(true);

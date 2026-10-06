@@ -379,11 +379,13 @@ export const en = {
   portfolio: {
     /** A chain of the person's that could not be read this time; the others are shown all the same. */
     chainOut: (chain: string) => `${chain} is unavailable right now.`,
+    /** A chain of the person's that this server has switched off: asking again will not help. */
+    chainOff: (chain: string) => `${chain} is switched off on our server for now.`,
     /** The person's current chain, which no wallet of this sign-in signs on. */
     notHeld: (chain: string) => `${chain} isn’t held in this sign-in.`,
     title: (vaults: number): string =>
       vaults > 1 ? 'What your vaults hold.' : 'What your vault holds.',
-    lead: 'Read from the chain your plan lives on, each time you open this page. Nothing here signs or moves anything.',
+    lead: 'Read from each chain your plans live on, each time you open this page. Nothing here signs or moves anything.',
     chain: 'Chain',
     reading: 'Reading your vault…',
     signedOut:

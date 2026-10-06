@@ -171,7 +171,11 @@ export function MonitorScreen() {
                 <ul key="chains-out" data-ui="chains-out" className="flex flex-col gap-1.5">
                   {state.outcome.unavailable.map((u) => (
                     <li key={u.chain} data-chain={u.chain}>
-                      <Status status="watch">{words.chainOut(nameOf(u.chain))}</Status>
+                      <Status status="watch">
+                        {u.retryable
+                          ? words.chainOut(nameOf(u.chain))
+                          : words.chainOff(nameOf(u.chain))}
+                      </Status>
                     </li>
                   ))}
                   {state.outcome.current === 'not-held' && chain && (
@@ -180,18 +184,30 @@ export function MonitorScreen() {
                     </li>
                   )}
                 </ul>,
+                ...(state.outcome.unavailable.some((u) => u.retryable)
+                  ? [<div key="again">{readAgain}</div>]
+                  : []),
               ]
             : []),
-          vaults.length === 0
+          // "No vault on <chain> yet" is said only of a chain that was read, and only when every chain
+          // of theirs was: a chain that could not be read may hold one.
+          vaults.length === 0 &&
+          state.outcome.current === 'read' &&
+          state.outcome.unavailable.length === 0
             ? say(
                 words.empty(chainName),
                 <Link href="/goal" className={link}>
                   {words.startGoal}
                 </Link>,
               )
-            : grouped
-              ? [<AcrossChains key="across" totals={held.map(totalOf)} />, ...held.map(chainGroup)]
-              : held.flatMap((entry) => entry.vaults.map((vault) => vaultBlock(entry, vault))),
+            : vaults.length === 0
+              ? null
+              : grouped
+                ? [
+                    <AcrossChains key="across" totals={held.map(totalOf)} />,
+                    ...held.map(chainGroup),
+                  ]
+                : held.flatMap((entry) => entry.vaults.map((vault) => vaultBlock(entry, vault))),
         ];
         break;
       case 'unavailable':

@@ -716,6 +716,48 @@ describe('the chain of each vault', () => {
     );
   });
 
+  it('never says there is no vault on a chain it could not read, nor while another chain is out', async () => {
+    const out = (chain: 'solana' | 'robinhood', retryable: boolean) => ({
+      chain,
+      name: chain === 'solana' ? 'Solana' : 'Robinhood Chain',
+      code: 'CHAIN_UNAVAILABLE',
+      error: 'x',
+      retryable,
+    });
+    for (const answer of [
+      // the current chain could not be read, and no vault was read anywhere
+      { ...portfolioOf(robinhoodChain([])), unavailable: [out('solana', true)] },
+      // the current chain is not held, and nothing was read
+      { ...portfolioOf(robinhoodChain([])), unavailable: [] },
+      // the current chain was read empty, but another could not be read
+      { ...portfolioOf(chainOf([])), unavailable: [out('robinhood', false)] },
+    ]) {
+      api({ person: onSolana, portfolio: () => json(answer) });
+      signIn();
+      const host = await screen();
+      expect(host.textContent).not.toContain(en.portfolio.empty('Solana'));
+      expect(host.querySelector('[data-ui="chains-out"]')).not.toBeNull();
+      await unmountAll();
+    }
+    // a chain switched off here is said so, and not offered a read again
+    api({
+      person: onSolana,
+      portfolio: () =>
+        json({ ...portfolioOf(chainOf([])), unavailable: [out('robinhood', false)] }),
+    });
+    signIn();
+    const host = await screen();
+    expect(find(host, '[data-ui="chains-out"] [data-chain="robinhood"]').textContent).toBe(
+      en.portfolio.chainOff('Robinhood Chain'),
+    );
+    expect(host.textContent).not.toContain(en.portfolio.again);
+    // and when every chain was read and holds none, it is said
+    await unmountAll();
+    api({ person: onSolana, portfolio: () => json(portfolioOf(chainOf([]))) });
+    signIn();
+    expect((await screen()).textContent).toContain(en.portfolio.empty('Solana'));
+  });
+
   it('says the current chain is not held in this sign-in when the answer has none of it', async () => {
     api({ person: onSolana, portfolio: () => json(portfolioOf(robinhoodChain())) });
     signIn();

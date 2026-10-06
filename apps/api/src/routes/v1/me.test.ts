@@ -11,6 +11,7 @@ import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ChainRegistry } from '../../orders/chains';
+import { UNSAID_CHAIN_ERROR } from '../../orders/errors';
 import { personChain } from '../../orders/person';
 import { orderFlow } from '../../testing/flow';
 import {
@@ -473,6 +474,46 @@ describe('GET /v1/portfolio: each chain read on its own', () => {
       expect(none.body).toContain('Solana could not be read just now');
     } finally {
       for (const spy of failing) spy.mockRestore();
+    }
+  });
+});
+
+describe('a node URL in a chain error', () => {
+  /** What viem throws when a node does not answer: its message names the node's URL, key and all. */
+  const URL_WITH_KEY = 'https://rpc.example.invalid/v2/KEY-abc123';
+  const viemStyle = () => {
+    const raw = new Error(`HTTP request failed.\n\nURL: ${URL_WITH_KEY}\nRequest body: {}`);
+    const error = new ChainError('Unknown', raw.message);
+    error.cause = raw;
+    return error;
+  };
+
+  it('reaches no answer: not the portfolio, not the funding of an order', async () => {
+    const who = await picked('solana');
+    const spies = [
+      vi.spyOn(registry.get('robinhood').adapter, 'getVaults').mockRejectedValue(viemStyle()),
+      vi.spyOn(registry.get('solana').adapter, 'funding').mockRejectedValue(viemStyle()),
+    ];
+    try {
+      const portfolio = await get(who, '/v1/portfolio');
+      expect(portfolio.statusCode, portfolio.body).toBe(200);
+      expect(portfolio.body).not.toContain('rpc.example');
+      expect(PortfolioResponse.parse(portfolio.json()).unavailable).toEqual([
+        expect.objectContaining({ chain: 'robinhood', error: UNSAID_CHAIN_ERROR }),
+      ]);
+      // and with no chain read at all, the 503 says no more
+      spies.push(
+        vi.spyOn(registry.get('solana').adapter, 'getVaults').mockRejectedValue(viemStyle()),
+      );
+      const none = await get(who, '/v1/portfolio');
+      expect(none.statusCode).toBe(503);
+      expect(none.body).not.toContain('rpc.example');
+      const funding = await get(who, '/v1/funding');
+      expect(funding.statusCode).toBe(500);
+      expect(funding.body).not.toContain('rpc.example');
+      expect(funding.json()).toMatchObject({ error: UNSAID_CHAIN_ERROR });
+    } finally {
+      for (const spy of spies) spy.mockRestore();
     }
   });
 });
