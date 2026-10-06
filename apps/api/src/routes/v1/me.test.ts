@@ -1,11 +1,18 @@
 import { type Db, users } from '@colosseum/db';
-import { FundingResponse, OrderError, PersonResponse, PortfolioResponse } from '@colosseum/schemas';
+import {
+  ChainError,
+  FundingResponse,
+  OrderDetail,
+  OrderError,
+  PersonResponse,
+  PortfolioResponse,
+} from '@colosseum/schemas';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ChainRegistry } from '../../orders/chains';
-import { Refusal } from '../../orders/errors';
-import { pickChain } from '../../orders/person';
+import { UNSAID_CHAIN_ERROR } from '../../orders/errors';
+import { personChain } from '../../orders/person';
 import { orderFlow } from '../../testing/flow';
 import {
   type HomeChain,
@@ -20,9 +27,10 @@ import {
   testIssuer,
 } from '../../testing/harness';
 
-// API-2: the chain a person's plans live on, and what their wallet is missing there.
-// - CHAIN-PICK: someone who makes a wallet in the app picks the chain once, and it is stored on the
-//   user. Someone who connected an outside wallet has the chain of that wallet's family.
+// API-2: the person's current chain, and what their wallet is missing there.
+// - CHAIN-SWITCH: the current chain is where new plans are made. Someone who connected an outside
+//   wallet starts on the chain of that wallet's family; someone who made a wallet in the app picks it.
+//   Either may switch to a chain a wallet of theirs signs on. Each plan stays on its own chain.
 // - GET /v1/funding: the dollar token and native gas the wallet is missing on that chain, from the
 //   adapter's reads, every figure labelled.
 
@@ -75,15 +83,21 @@ async function picked(chain: HomeChain): Promise<Person> {
   return { ...who, chain };
 }
 
-describe('the chain a person’s plans live on (gates ONE-CHAIN, CHAIN-PICK)', () => {
-  it('is the chain of the outside wallet a person connected, with nothing to pick', async () => {
+describe('the current chain, where new plans are made (gates ONE-CHAIN, CHAIN-SWITCH)', () => {
+  const vaultsOf = async (who: Pick<Person, 'headers'>) => {
+    const res = await get(who as Person, '/v1/portfolio');
+    expect(res.statusCode, res.body).toBe(200);
+    return PortfolioResponse.parse(res.json()).chains.map((c) => [c.chain, c.vaults.length]);
+  };
+
+  it('starts on the chain of the outside wallet a person connected', async () => {
     const [sol, rh] = [await someone('solana'), await someone('robinhood')];
     expect(await me(sol)).toEqual({
       userId: sol.sub,
       wallets: [{ family: 'solana', address: sol.solana, kind: 'external' }],
       chain: 'solana',
       chainSource: 'wallet',
-      chainOptions: [],
+      chainOptions: ['solana'],
     });
     // An EVM wallet means Robinhood Chain while Base is not deployed. The address is in its one form.
     expect(await me(rh)).toEqual({
@@ -91,45 +105,67 @@ describe('the chain a person’s plans live on (gates ONE-CHAIN, CHAIN-PICK)', (
       wallets: [{ family: 'evm', address: rh.evm, kind: 'external' }],
       chain: 'robinhood',
       chainSource: 'wallet',
-      chainOptions: [],
+      chainOptions: ['robinhood'],
     });
     // It is stored the first time the wallet names it, with no pick time: it came from the wallet.
     expect(await storedPick(sol)).toMatchObject({ chainId: 'solana', chainPickedAt: null });
     expect(await storedPick(rh)).toMatchObject({ chainId: 'robinhood', chainPickedAt: null });
   });
 
-  it('stands once a wallet has named it, whatever wallets are linked later', async () => {
-    // A person signs in with an outside Solana wallet and buys.
+  it('stands whatever wallets are linked later, until the person switches', async () => {
+    // A person signs in with an outside Solana wallet, which names their chain, and buys.
     const sol = await someone('solana');
+    expect(await me(sol)).toMatchObject({ chain: 'solana', chainSource: 'wallet' });
     await fund(sol);
     expect((await settleAll(sol, await order(sol, { amountUsd: 100 }))).status).toBe('done');
-    const vaultsOf = async (who: Pick<Person, 'headers'>) => {
-      const res = await get(who as Person, '/v1/portfolio');
-      expect(res.statusCode, res.body).toBe(200);
-      return PortfolioResponse.parse(res.json()).chains.map((c) => [c.chain, c.vaults.length]);
-    };
     expect(await vaultsOf(sol)).toEqual([['solana', 1]]);
 
     // Later their identity token lists an outside EVM wallet as well. The wallets alone would name no
-    // single chain now; the chain they have stands, and there is nothing to pick.
+    // single chain now; the chain they have stands, and Robinhood Chain is one they may switch to.
     const later = {
       headers: await signIn(issuer, sol.sub, [
         { family: 'solana', address: sol.solana, client: 'phantom' },
-        { family: 'evm', address: sol.evm, client: 'metamask' },
+        { family: 'evm', address: sol.evm, client: 'phantom' },
       ]),
     };
     expect(await me(later)).toMatchObject({
       chain: 'solana',
       chainSource: 'wallet',
-      chainOptions: [],
+      chainOptions: ['solana', 'robinhood'],
     });
-    const other = await pick(later, 'robinhood');
-    expect([other.statusCode, other.json().error]).toEqual([
-      409,
-      'your plans live on Solana, the chain of the wallet you connected',
+    // Signing in with the EVM wallet alone does not move them either.
+    const evmOnly = {
+      headers: await signIn(issuer, sol.sub, [
+        { family: 'evm', address: sol.evm, client: 'metamask' },
+      ]),
+    };
+    expect(await me(evmOnly)).toMatchObject({
+      chain: 'solana',
+      chainSource: 'wallet',
+      chainOptions: ['robinhood'],
+    });
+    expect(await storedPick(sol)).toMatchObject({ chainId: 'solana', chainPickedAt: null });
+
+    // A wallet that signs on both families switches to Robinhood Chain.
+    const before = Date.now();
+    const switched = await pick(later, 'robinhood');
+    expect([switched.statusCode, PersonResponse.parse(switched.json())]).toEqual([
+      200,
+      expect.objectContaining({
+        chain: 'robinhood',
+        chainSource: 'picked',
+        chainOptions: ['solana', 'robinhood'],
+      }),
     ]);
-    // Their vault is still theirs to see, and the plan still theirs to add to.
-    expect(await vaultsOf(later)).toEqual([['solana', 1]]);
+    const row = await storedPick(sol);
+    expect(row?.chainId).toBe('robinhood');
+    expect(row?.chainPickedAt?.getTime()).toBeGreaterThanOrEqual(before - 1000);
+    // Their Solana vault is still theirs to see, beside the chain they are on now.
+    expect(await vaultsOf(later)).toEqual([
+      ['solana', 1],
+      ['robinhood', 0],
+    ]);
+    // And the Solana plan is still bought on Solana.
     const again = await post(later as Person, '/v1/orders', {
       type: 'buy',
       owner: { solana: sol.solana },
@@ -137,15 +173,9 @@ describe('the chain a person’s plans live on (gates ONE-CHAIN, CHAIN-PICK)', (
       proposalId: plans.solana,
     });
     expect(again.statusCode, again.body).toBe(200);
-    // Signing in with the EVM wallet alone does not move them either.
-    const evmOnly = {
-      headers: await signIn(issuer, sol.sub, [
-        { family: 'evm', address: sol.evm, client: 'metamask' },
-      ]),
-    };
-    expect(await me(evmOnly)).toMatchObject({ chain: 'solana', chainSource: 'wallet' });
-    expect(await me(sol)).toMatchObject({ chain: 'solana', chainSource: 'wallet' });
-    expect(await storedPick(sol)).toMatchObject({ chainId: 'solana', chainPickedAt: null });
+    expect([...new Set(OrderDetail.parse(again.json()).legs.map((l) => l.chain))]).toEqual([
+      'solana',
+    ]);
   });
 
   it('is nothing yet for a person who made their wallets in the app, until they pick', async () => {
@@ -155,26 +185,33 @@ describe('the chain a person’s plans live on (gates ONE-CHAIN, CHAIN-PICK)', (
       chainSource: null,
       chainOptions: ['solana', 'robinhood'],
     });
-    // Until then nothing that needs the chain goes on, and the answer says what to do.
+    // Until then nothing that is made on the current chain goes on, and the answer says what to do.
     const refusal = {
-      error: 'pick the chain your plans live on first',
-      fix: 'Pick Solana or Robinhood Chain once, with PUT /v1/me/chain.',
+      error: 'pick the chain for your new plans first',
+      fix: 'Pick Solana or Robinhood Chain with PUT /v1/me/chain. You can switch later.',
       details: { retryable: false },
     };
+    const funding = await get(who, '/v1/funding');
+    expect([funding.statusCode, OrderError.parse(funding.json())]).toEqual([409, refusal]);
+    // What needs no current chain goes on: the portfolio lists every chain they hold a wallet for, and
+    // a stored plan is bought on its own chain.
+    expect(await vaultsOf(who)).toEqual([
+      ['solana', 0],
+      ['robinhood', 0],
+    ]);
     const buy = await post(who, '/v1/orders', {
       type: 'buy',
       owner: who.owner,
       amountUsd: 1000,
-      proposalId: plans.solana,
+      proposalId: plans.robinhood,
     });
-    expect([buy.statusCode, OrderError.parse(buy.json())]).toEqual([409, refusal]);
-    for (const url of ['/v1/portfolio', '/v1/funding']) {
-      const res = await get(who, url);
-      expect([url, res.statusCode, res.json()]).toEqual([url, 409, refusal]);
-    }
+    expect(buy.statusCode, buy.body).toBe(200);
+    expect([...new Set(OrderDetail.parse(buy.json()).legs.map((l) => l.chain))]).toEqual([
+      'robinhood',
+    ]);
   });
 
-  it('is picked once, stored on the user, and never changes', async () => {
+  it('is picked, stored on the user, and switched when the person asks', async () => {
     const who = await someone('passkey');
     const before = Date.now();
     const res = await pick(who, 'robinhood');
@@ -183,7 +220,7 @@ describe('the chain a person’s plans live on (gates ONE-CHAIN, CHAIN-PICK)', (
       userId: who.sub,
       chain: 'robinhood',
       chainSource: 'picked',
-      chainOptions: [],
+      chainOptions: ['solana', 'robinhood'],
     };
     expect(PersonResponse.parse(res.json())).toMatchObject(answer);
     expect(await me(who)).toMatchObject(answer);
@@ -195,34 +232,37 @@ describe('the chain a person’s plans live on (gates ONE-CHAIN, CHAIN-PICK)', (
     const again = await pick(who, 'robinhood');
     expect([again.statusCode, again.json()]).toEqual([200, res.json()]);
     expect((await storedPick(who))?.chainPickedAt).toEqual(row?.chainPickedAt);
-    // Another chain is refused, and the pick stands.
+    // Another chain is a switch: stored, with the time of the switch.
     const other = await pick(who, 'solana');
-    expect(other.statusCode).toBe(409);
-    expect(other.json()).toEqual({
-      error: 'the chain is picked once, and it is Robinhood Chain',
-      details: { retryable: false },
-    });
-    expect((await me(who)).chain).toBe('robinhood');
+    expect([other.statusCode, other.json()]).toEqual([200, { ...res.json(), chain: 'solana' }]);
+    expect((await me(who)).chain).toBe('solana');
+    const switched = await storedPick(who);
+    expect(switched?.chainId).toBe('solana');
+    expect(switched?.chainPickedAt?.getTime()).toBeGreaterThanOrEqual(
+      row?.chainPickedAt?.getTime() ?? 0,
+    );
+    // And back.
+    expect((await pick(who, 'robinhood')).json().chain).toBe('robinhood');
     expect((await storedPick(who))?.chainId).toBe('robinhood');
   });
 
-  it('of two picks at the same moment, one stands', async () => {
+  it('of two switches at the same moment, the row holds one and the person reads it', async () => {
     for (let i = 0; i < 8; i++) {
       const who = await someone('passkey');
       const both = await Promise.all([pick(who, 'solana'), pick(who, 'robinhood')]);
-      expect(both.map((r) => r.statusCode).sort()).toEqual([200, 409]);
-      const won = both.find((r) => r.statusCode === 200)?.json().chain;
-      expect((await me(who)).chain).toBe(won);
-      expect((await storedPick(who))?.chainId).toBe(won);
+      expect(both.map((r) => r.statusCode)).toEqual([200, 200]);
+      const stored = (await storedPick(who))?.chainId;
+      expect(['solana', 'robinhood']).toContain(stored);
+      expect((await me(who)).chain).toBe(stored);
     }
   });
 
-  it('a pick that read the user a moment too early changes nothing: the first one stands', async () => {
-    const who = await someone('passkey');
-    expect((await pick(who, 'solana')).statusCode).toBe(200);
+  it('a chain an outside wallet names never undoes a pick, even read a moment too early', async () => {
+    const who = await picked('robinhood');
     const row = await storedPick(who);
-    // A second pick whose look at the user was taken before the first one was stored: it sees no
-    // chain, goes on to write, and the write is refused by the row itself.
+    // The person signs in with an outside Solana wallet, and the look at the user is taken as if
+    // before the pick was stored: it sees no chain, so the wallet names Solana and it is written.
+    // The row refuses that write, and the answer is what the row holds.
     let stale = true;
     const lagging = new Proxy(data.db, {
       get(target, prop, receiver) {
@@ -234,26 +274,19 @@ describe('the chain a person’s plans live on (gates ONE-CHAIN, CHAIN-PICK)', (
     const principal = {
       kind: 'user' as const,
       userId: who.sub,
-      wallets: [
-        { family: 'solana' as const, address: who.solana, kind: 'embedded' as const },
-        { family: 'evm' as const, address: who.evm, kind: 'embedded' as const },
-      ],
+      wallets: [{ family: 'solana' as const, address: who.solana, kind: 'external' as const }],
       ip: '',
     };
-    const late = await pickChain(lagging, registry, principal, 'robinhood', new Date()).catch(
-      (e: unknown) => e,
-    );
+    expect(await personChain(lagging, principal)).toEqual({
+      chain: 'robinhood',
+      chainSource: 'picked',
+      chainOptions: ['solana'],
+    });
     expect(stale).toBe(false);
-    expect(late).toBeInstanceOf(Refusal);
-    expect([(late as Refusal).status, (late as Refusal).message]).toEqual([
-      409,
-      'the chain is picked once, and it is Solana',
-    ]);
     expect(await storedPick(who)).toEqual(row);
-    expect((await me(who)).chain).toBe('solana');
   });
 
-  it('takes only a chain the person holds a wallet for and this server runs', async () => {
+  it('takes only a chain this server offers and runs, and one a wallet of the person signs on', async () => {
     const who = await someone('passkey');
     // Base is not offered: an EVM wallet means Robinhood Chain.
     const base = await pick(who, 'base');
@@ -263,14 +296,23 @@ describe('the chain a person’s plans live on (gates ONE-CHAIN, CHAIN-PICK)', (
     ]);
     for (const body of [{ chain: 'ethereum' }, {}, { chain: 'solana', also: 'this' }])
       expect((await put(who, '/v1/me/chain', body)).statusCode).toBe(400);
-    // A wallet made in the app of one family only: that family's chain is all there is to pick.
+    // A wallet made in the app of one family only: no wallet of theirs signs on the other chain.
     const sub = `did:privy:test-one-family-${who.sub}`;
     const one = data.track({ ...who, sub });
     const only = {
       headers: await signIn(issuer, sub, [{ family: 'evm', address: who.evm, client: 'privy' }]),
     };
     expect(await me(only)).toMatchObject({ chain: null, chainOptions: ['robinhood'] });
-    expect((await pick(only, 'solana')).statusCode).toBe(422);
+    const solana = await pick(only, 'solana');
+    expect([solana.statusCode, OrderError.parse(solana.json())]).toEqual([
+      409,
+      {
+        error: 'no wallet you signed in with signs on Solana',
+        code: 'NO_WALLET_FOR_CHAIN',
+        fix: 'Sign in with a wallet that signs on Solana, or with a passkey.',
+        details: { retryable: false },
+      },
+    ]);
     expect(await storedPick(one)).toBeNull();
     // A chain that is switched off here cannot be picked, and nothing is stored.
     const off = await testApp({
@@ -283,6 +325,9 @@ describe('the chain a person’s plans live on (gates ONE-CHAIN, CHAIN-PICK)', (
     expect(refused.json().code).toBe('CHAIN_UNAVAILABLE');
     expect(await storedPick(who)).toBeNull();
     expect((await pick(who, 'solana', off.app)).statusCode).toBe(200);
+    // Nor switched to.
+    expect((await pick(who, 'robinhood', off.app)).statusCode).toBe(503);
+    expect((await storedPick(who))?.chainId).toBe('solana');
     await off.app.close();
     // Nobody signed in with a wallet: nothing to pick.
     const nobody = { headers: await signIn(issuer, `did:privy:test-none-${who.sub}`, []) };
@@ -294,30 +339,41 @@ describe('the chain a person’s plans live on (gates ONE-CHAIN, CHAIN-PICK)', (
     ]);
   });
 
-  it('has nothing to pick for a person whose chain is that of their outside wallet', async () => {
-    const sol = await someone('solana');
-    const same = await pick(sol, 'solana');
-    expect(same.statusCode).toBe(200);
-    expect(PersonResponse.parse(same.json())).toMatchObject({
-      chain: 'solana',
-      chainSource: 'wallet',
-    });
-    const other = await pick(sol, 'robinhood');
-    expect([other.statusCode, other.json().error]).toEqual([
-      409,
-      'your plans live on Solana, the chain of the wallet you connected',
-    ]);
-    // What is stored is the wallet's chain, with no pick time: the refused pick wrote nothing.
-    expect(await storedPick(sol)).toMatchObject({ chainId: 'solana', chainPickedAt: null });
+  it('keeps an outside wallet of one family on its chain: an EVM wallet alone cannot sign on Solana', async () => {
+    for (const [kind, own, other, otherName] of [
+      ['solana', 'solana', 'robinhood', 'Robinhood Chain'],
+      ['robinhood', 'robinhood', 'solana', 'Solana'],
+    ] as const) {
+      const who = await someone(kind);
+      const same = await pick(who, own);
+      expect(same.statusCode).toBe(200);
+      expect(PersonResponse.parse(same.json())).toMatchObject({
+        chain: own,
+        chainSource: 'wallet',
+        chainOptions: [own],
+      });
+      const refused = await pick(who, other);
+      expect([refused.statusCode, refused.json()]).toEqual([
+        409,
+        {
+          error: `no wallet you signed in with signs on ${otherName}`,
+          code: 'NO_WALLET_FOR_CHAIN',
+          fix: `Sign in with a wallet that signs on ${otherName}, or with a passkey.`,
+          details: { retryable: false },
+        },
+      ]);
+      // What is stored is the wallet's chain, with no pick time: the refused switch wrote nothing.
+      expect(await storedPick(who)).toMatchObject({ chainId: own, chainPickedAt: null });
+    }
   });
 
-  it('asks for a pick when the wallets connected name no single chain', async () => {
+  it('asks for a pick when the wallets connected name no single chain, and lets them switch', async () => {
     const who = await someone('passkey');
     const sub = `did:privy:test-two-outside-${who.sub}`;
     const two = data.track({ ...who, sub });
     const headers = await signIn(issuer, sub, [
       { family: 'solana', address: who.solana, client: 'phantom' },
-      { family: 'evm', address: who.evm, client: 'metamask' },
+      { family: 'evm', address: who.evm, client: 'phantom' },
     ]);
     expect(await me({ headers })).toMatchObject({
       chain: null,
@@ -325,6 +381,8 @@ describe('the chain a person’s plans live on (gates ONE-CHAIN, CHAIN-PICK)', (
     });
     expect((await pick({ headers }, 'solana')).statusCode).toBe(200);
     expect((await storedPick(two))?.chainId).toBe('solana');
+    expect((await pick({ headers }, 'robinhood')).statusCode).toBe(200);
+    expect((await storedPick(two))?.chainId).toBe('robinhood');
     // An outside wallet beside wallets made in the app: the outside one names the chain.
     const mixedSub = `did:privy:test-mixed-${who.sub}`;
     data.track({ ...who, sub: mixedSub });
@@ -336,39 +394,127 @@ describe('the chain a person’s plans live on (gates ONE-CHAIN, CHAIN-PICK)', (
     expect(await me({ headers: mixed })).toMatchObject({
       chain: 'robinhood',
       chainSource: 'wallet',
+      chainOptions: ['solana', 'robinhood'],
     });
   });
 
-  it('is where the person’s orders, portfolio and funding are, and stays there', async () => {
+  it('buys each plan on its own chain, whatever the current chain is', async () => {
     const who = await picked('robinhood');
     await fund(who);
     const placed = await order(who);
     expect(placed.summary).toBe('Buy $1,000.00 of your plan on Robinhood Chain');
     expect([...new Set(placed.legs.map((l) => l.chain))]).toEqual(['robinhood']);
     expect((await settleAll(who, placed)).status).toBe('done');
+    expect(await vaultsOf(who)).toEqual([
+      ['solana', 0],
+      ['robinhood', 1],
+    ]);
     const portfolio = PortfolioResponse.parse((await get(who, '/v1/portfolio')).json());
-    expect(portfolio.chains.map((c) => [c.chain, c.vaults.length])).toEqual([['robinhood', 1]]);
-    expect(portfolio.chains[0]?.vaults[0]?.owner).toBe(who.evm);
-    // A plan made for the other chain is not theirs to buy, though they hold a wallet there.
-    const elsewhere = await post(who, '/v1/orders', {
-      type: 'buy',
-      owner: who.owner,
-      amountUsd: 1000,
-      proposalId: plans.solana,
-    });
-    expect(elsewhere.statusCode).toBe(422);
+    expect(portfolio.chains[1]?.vaults[0]?.owner).toBe(who.evm);
 
-    // The same person signs in again, now with an outside Solana wallet beside the wallets made in
-    // the app. The pick stands: the plan lives where it was put.
-    const later = {
-      headers: await signIn(issuer, who.sub, [
-        { family: 'solana', address: who.solana, client: 'phantom' },
-        { family: 'evm', address: who.evm, client: 'privy' },
-      ]),
-    };
-    expect(await me(later)).toMatchObject({ chain: 'robinhood', chainSource: 'picked' });
-    const still = PortfolioResponse.parse((await get(later as Person, '/v1/portfolio')).json());
-    expect(still.chains.map((c) => [c.chain, c.vaults.length])).toEqual([['robinhood', 1]]);
+    // The person switches to Solana. The Robinhood plan is still bought on Robinhood Chain, from
+    // the EVM wallet, and its vault is still listed.
+    expect((await pick(who, 'solana')).statusCode).toBe(200);
+    const more = await order(who, { amountUsd: 100 });
+    expect(more.summary).toBe('Buy $100.00 of your plan on Robinhood Chain');
+    expect([...new Set(more.legs.map((l) => l.chain))]).toEqual(['robinhood']);
+    expect(more.owner).toEqual(who.owner);
+    expect(await vaultsOf(who)).toEqual([
+      ['solana', 0],
+      ['robinhood', 1],
+    ]);
+    // A plan made for Solana is bought there, and its funding is read there.
+    const onSolana = { ...who, chain: 'solana' as const };
+    await fund(onSolana);
+    const sol = await order(onSolana);
+    expect([...new Set(sol.legs.map((l) => l.chain))]).toEqual(['solana']);
+    expect((await settleAll(onSolana, sol)).status).toBe('done');
+    expect(await vaultsOf(who)).toEqual([
+      ['solana', 1],
+      ['robinhood', 1],
+    ]);
+  });
+});
+
+describe('GET /v1/portfolio: each chain read on its own', () => {
+  it('answers the chains it can read when one cannot be read, and 503 only when none can', async () => {
+    const who = await picked('solana');
+    const failing = [
+      vi
+        .spyOn(registry.get('robinhood').adapter, 'getVaults')
+        .mockRejectedValue(new ChainError('Unavailable', 'the node did not answer', true)),
+    ];
+    try {
+      const res = await get(who, '/v1/portfolio');
+      expect(res.statusCode, res.body).toBe(200);
+      const body = PortfolioResponse.parse(res.json());
+      expect(body.chains.map((c) => c.chain)).toEqual(['solana']);
+      expect(body.unavailable).toEqual([
+        {
+          chain: 'robinhood',
+          name: 'Robinhood Chain',
+          code: 'CHAIN_UNAVAILABLE',
+          error: 'the node did not answer',
+          retryable: true,
+        },
+      ]);
+      // A failure of ours is said without its text, and is worth asking again.
+      failing.push(
+        vi
+          .spyOn(registry.get('solana').adapter, 'getVaults')
+          .mockRejectedValue(new Error('a bug with a secret in it')),
+      );
+      const none = await get(who, '/v1/portfolio');
+      expect(none.statusCode).toBe(503);
+      expect(none.json()).toMatchObject({
+        code: 'CHAIN_UNAVAILABLE',
+        details: { retryable: true },
+      });
+      expect(none.body).not.toContain('a bug');
+      expect(none.body).toContain('Solana could not be read just now');
+    } finally {
+      for (const spy of failing) spy.mockRestore();
+    }
+  });
+});
+
+describe('a node URL in a chain error', () => {
+  /** What viem throws when a node does not answer: its message names the node's URL, key and all. */
+  const URL_WITH_KEY = 'https://rpc.example.invalid/v2/KEY-abc123';
+  const viemStyle = () => {
+    const raw = new Error(`HTTP request failed.\n\nURL: ${URL_WITH_KEY}\nRequest body: {}`);
+    const error = new ChainError('Unknown', raw.message);
+    error.cause = raw;
+    return error;
+  };
+
+  it('reaches no answer: not the portfolio, not the funding of an order', async () => {
+    const who = await picked('solana');
+    const spies = [
+      vi.spyOn(registry.get('robinhood').adapter, 'getVaults').mockRejectedValue(viemStyle()),
+      vi.spyOn(registry.get('solana').adapter, 'funding').mockRejectedValue(viemStyle()),
+    ];
+    try {
+      const portfolio = await get(who, '/v1/portfolio');
+      expect(portfolio.statusCode, portfolio.body).toBe(200);
+      expect(portfolio.body).not.toContain('rpc.example');
+      expect(PortfolioResponse.parse(portfolio.json()).unavailable).toEqual([
+        expect.objectContaining({ chain: 'robinhood', error: UNSAID_CHAIN_ERROR }),
+      ]);
+      // and with no chain read at all, the 503 says no more
+      spies.push(
+        vi.spyOn(registry.get('solana').adapter, 'getVaults').mockRejectedValue(viemStyle()),
+      );
+      const none = await get(who, '/v1/portfolio');
+      expect(none.statusCode).toBe(503);
+      expect(none.body).not.toContain('rpc.example');
+      const funding = await get(who, '/v1/funding');
+      expect(funding.statusCode).toBe(500);
+      expect(funding.body).not.toContain('rpc.example');
+      expect(funding.json()).toMatchObject({ error: UNSAID_CHAIN_ERROR });
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
   });
 });
 
@@ -452,6 +598,27 @@ describe('GET /v1/funding: what the wallet is missing on its chain', () => {
     }
   });
 
+  it('asks about the wallet that holds plans on the plan’s own family, not the current chain’s', async () => {
+    // Wallets made in the app on both families, and an outside EVM wallet; Solana was picked, so the
+    // current chain names no outside wallet. A plan on Robinhood Chain is bought from the outside one.
+    const who = await someone('passkey');
+    const outsideEvm = who.evm.replace(/.$/, who.evm.endsWith('0') ? '1' : '0');
+    const sub = `did:privy:test-family-${who.sub}`;
+    data.track({ ...who, sub });
+    const headers = await signIn(issuer, sub, [
+      { family: 'solana', address: who.solana, client: 'privy' },
+      { family: 'evm', address: who.evm, client: 'privy' },
+      { family: 'evm', address: outsideEvm, client: 'metamask' },
+    ]);
+    const mixed = { ...who, sub, headers } as Person;
+    expect((await pick(mixed, 'solana')).statusCode).toBe(200);
+    const onRobinhood = (await funding(mixed, buyOf('robinhood'))).body;
+    expect(onRobinhood.chain).toBe('robinhood');
+    expect(onRobinhood.wallet.toLowerCase()).toBe(outsideEvm.toLowerCase());
+    // on the current chain's family the picked chain still means the app's wallet
+    expect((await funding(mixed, buyOf('solana'))).body.wallet).toBe(who.solana);
+  });
+
   it('counts what is short of the need, and the steps of a second buy into the vault that is there', async () => {
     const who = await someone('solana');
     await fund(who, undefined, 250);
@@ -520,10 +687,11 @@ describe('GET /v1/funding: what the wallet is missing on its chain', () => {
       chain: 'robinhood',
       wallet: robin.evm,
     });
-    // A plan made for another chain is refused, as a buy of it would be.
-    const elsewhere = await get(who, `/v1/funding${buyOf('robinhood')}`);
-    expect(elsewhere.statusCode).toBe(422);
-    expect(elsewhere.json().error).toMatch(/made for Robinhood Chain/);
+    // A plan made for another chain is read on that chain, as a buy of it would be (CHAIN-SWITCH).
+    expect((await funding(who, buyOf('robinhood'))).body).toMatchObject({
+      chain: 'robinhood',
+      wallet: who.evm,
+    });
   });
 
   it('reads the wallet the query names when it is one of the person’s, the one an order will name', async () => {

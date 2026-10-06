@@ -41,9 +41,10 @@ describe('EmbedShell (embed-shell.md)', () => {
       expect(classes(el).join(' ')).not.toMatch(/text-(display|h1|h2|h3)\b/);
   });
 
-  it('keeps what survives: pins, the hatch with the word, the disclaimer in full, explorer links', () => {
+  it('keeps what survives: pins, the hatch with its named glyph, the disclaimer in full, explorer links', () => {
     expect(all(shell, ui('pin')).length).toBeGreaterThan(0);
-    expect(all(shell, ui('mock-plate')).length).toBeGreaterThan(0);
+    expect(all(shell, ui('sample-glyph')).length).toBeGreaterThan(0);
+    expect(text(shell)).not.toContain('MOCK');
     expect(text(one(shell, ui('disclaimer')))).toBe(DISCLAIMER.en);
     expect(all(shell, ui('explorer-link')).length).toBeGreaterThan(0);
   });
@@ -69,10 +70,10 @@ describe('EmbedShell (embed-shell.md)', () => {
     expect(classes(beside.parent as never)).toContain('@min-[560px]:grid-cols-2');
   });
 
-  it('drops the hatch but keeps the word MOCK when the partner’s muted colour is too faint', () => {
+  it('drops the hatch but keeps the quiet line when the partner’s muted colour is too faint', () => {
     const faint = one(render(embed.faint), ui('embed-shell'));
     expect(faint.attrs.style).toContain('--tf-hatch:transparent');
-    expect(all(faint, ui('mock-plate')).length).toBeGreaterThan(0);
+    expect(text(one(faint, ui('sample-note')))).toBe('Sample figures');
     expect(shell.attrs.style).toBeUndefined();
   });
 

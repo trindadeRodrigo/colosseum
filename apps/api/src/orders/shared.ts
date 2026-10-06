@@ -20,6 +20,7 @@ import { holds } from '../plugins/auth';
 import { assertBuilds, type ChainEntry, type ChainRegistry } from './chains';
 import { Refusal } from './errors';
 import { hasVersion, type StoredFamily, syncVersions, userIdOf, writePublished } from './families';
+import { HOME_CHAIN } from './person';
 
 // Shared portfolios as orders (DESIGN-VAULT section 6, gate SHARED-FULL): a creator publishes one, a
 // person follows one. The API plans and builds; the creator's own form says what is published, and the
@@ -197,7 +198,6 @@ export type SharedContext = {
   principal: Principal;
   chains: ChainRegistry;
   db: Db;
-  homeChain(): Promise<ChainId>;
   bySlug(slug: string): Promise<StoredFamily | null>;
   byNameKey(key: string): Promise<StoredFamily | null>;
 };
@@ -321,10 +321,7 @@ export async function followedOn(
   const entry = ctx.chains.get(chain);
   const stored = family.recipes.find((r) => r.chain === chain);
   if (!stored)
-    throw new Refusal(
-      422,
-      `this shared portfolio is not published on ${entry.config.name}, where your plans live`,
-    );
+    throw new Refusal(422, `this shared portfolio is not published on ${entry.config.name}`);
   const onchain = await readRecipe(entry, stored.onchainId);
   if (!onchain)
     throw new Refusal(409, `this shared portfolio is not on ${entry.config.name} any more`);
@@ -353,12 +350,12 @@ export async function planFollow(
   steps: SharedStep[];
   needsConsent: ('auto_follow_on' | 'new_asset')[];
 }> {
-  const chain = await ctx.homeChain();
+  // The vault's own chain, named by its address, whatever the person's current chain is (CHAIN-SWITCH).
+  const family = (['solana', 'evm'] as const).find((f) => isAddressOf(f, req.vault));
+  if (!family) throw new Refusal(422, 'that is not a vault address');
+  const chain = HOME_CHAIN[family];
   const entry = ctx.chains.get(chain);
   assertBuilds(entry);
-  const family = chainFamily(chain);
-  if (!isAddressOf(family, req.vault))
-    throw new Refusal(422, `that vault is not on ${entry.config.name}, where your plans live`);
   const vault = await entry.adapter.getVault(req.vault);
   const mine = ctx.principal.wallets.some((w) => w.family === family && w.address === vault?.owner);
   if (!vault || !mine) throw new Refusal(404, 'no vault of yours at that address');
