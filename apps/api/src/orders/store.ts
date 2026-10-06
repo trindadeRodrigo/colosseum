@@ -191,8 +191,11 @@ export async function loadProposal(db: Db, id: string): Promise<BasketProposal |
  * it has; a plan identical to one another person stored at the same moment is not shared with them:
  * the answer says to try again, which makes a plan at another time.
  */
+/** The database, or a transaction on it. */
+type Executor = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
+
 export async function insertProposal(
-  db: Db,
+  db: Executor,
   proposal: BasketProposal,
   privyId: string | null,
 ): Promise<string> {

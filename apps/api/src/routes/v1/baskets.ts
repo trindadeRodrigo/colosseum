@@ -64,11 +64,15 @@ export function registerBasketRoutes(scope: FastifyInstance, deps: OrderDeps, in
         now: deps.now().toISOString(),
       });
       const owner = principal.userId ?? null;
-      const id = await insertProposal(deps.db, made.proposal, owner);
-      // Each candidate is a plan of its own, stored so a buy can name it.
-      const candidates = [];
-      for (const c of made.candidates)
-        candidates.push({ ...c, id: await insertProposal(deps.db, c.proposal, owner) });
+      // The plan and each candidate, stored so a buy can name it: all of them or none. A candidate
+      // that is the same plan (Carry is the plan the table makes) has the same inputs and one row.
+      const { id, candidates } = await deps.db.transaction(async (tx) => {
+        const id = await insertProposal(tx, made.proposal, owner);
+        const candidates = [];
+        for (const c of made.candidates)
+          candidates.push({ ...c, id: await insertProposal(tx, c.proposal, owner) });
+        return { id, candidates };
+      });
       return {
         id,
         proposal: made.proposal,

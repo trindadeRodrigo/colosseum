@@ -41,6 +41,11 @@ export type ScheduleInputs = {
   months: number;
   liquidity: LiquidityProvider | undefined;
   tau: number;
+  /**
+   * The cost a sale is counted at where nothing is measured. Left out: `tau`. Cover reads capacity at
+   * a tighter `tau`, and must not count an unmeasured sale as cheaper for it.
+   */
+  unmeasuredCost?: number;
   /** The most dollars a token with nothing measured may sell in a window: its tier ceiling. */
   ceilingUsdOf: (asset: BasketAsset) => number;
   atPar?: boolean;
@@ -73,6 +78,7 @@ type Held = {
 
 export function scheduleOf(input: ScheduleInputs): PersonalSchedule {
   const { liquidity, tau, rate } = input;
+  const unmeasured = input.unmeasuredCost ?? tau;
   const held: Held[] = [];
   for (const l of input.lines) {
     const asset = input.byId.get(l.assetId);
@@ -116,9 +122,9 @@ export function scheduleOf(input: ScheduleInputs): PersonalSchedule {
   );
   const costOf = (h: Held, usd: number): number => {
     if (input.atPar || h.asset.cls === 'cash') return 0;
-    if (!h.measured || !liquidity) return tau;
+    if (!h.measured || !liquidity) return unmeasured;
     const cost = liquidity.exitCost(h.asset.id, usd, EXIT_WINDOW_DAYS);
-    return cost === null ? tau : Math.min(Math.max(0, cost), 1);
+    return cost === null ? unmeasured : Math.min(Math.max(0, cost), 1);
   };
 
   const { stress } = input;

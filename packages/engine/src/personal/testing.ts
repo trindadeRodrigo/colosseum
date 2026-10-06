@@ -34,7 +34,7 @@ import {
   SLEEVES,
   type Sleeve,
 } from './types';
-import { tableFor } from './world';
+import { monthAfter, tableFor } from './world';
 
 // Builders for the tests of this folder. Not exported from the engine: every row is a fixture.
 // The shelf is the launch shelf of docs/vault/research/open-questions/launch-shelf.seed.json, turned
@@ -1319,9 +1319,13 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
       card.creditBasisBps === creditBps,
       `the scorecard says ${card.creditBasisBps} bps of credit, the lines ${creditBps}`,
     );
+    const foreign =
+      goalCurrency !== 'USD' ||
+      (s.obligations ?? []).some((o) => o.currency !== 'USD' && o.month >= monthAfter(ctx.now, 0));
+    // Open FX wherever something is owed in another currency than dollars (C19).
     say(
-      (card.openFxUsd === undefined) === (goalCurrency === 'USD'),
-      'open FX on the scorecard of a goal in dollars, or none for one that is not',
+      (card.openFxUsd === undefined) === !foreign,
+      'open FX on the scorecard with nothing owed in another currency, or none with something',
     );
     say(
       JSON.stringify(card.base) === JSON.stringify(plan.status?.base ?? null),

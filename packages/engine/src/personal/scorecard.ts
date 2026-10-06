@@ -78,14 +78,23 @@ export function scorecardOf(
         .map((l) => l.weightBps),
     ),
   };
-  // Open FX: what is owed in the goal's currency beyond what its matching leg holds. None for dollars.
-  if (w.currency !== 'USD') {
-    const owed = sum(w.withdrawals.filter((x) => x.currency === w.currency).map((x) => x.cents));
-    const matching = w.matchingOf(w.currency);
-    const held = sum(
-      lines.filter((l) => l.assetId === matching?.id).map((l) => toCents(l.amountUsd)),
+  // Open FX: for each currency other than dollars, what is owed in it beyond what its matching leg
+  // holds. Present for a goal not in dollars, and for one in dollars with a withdrawal in another
+  // currency; left out otherwise (C19).
+  const currencies = new Set(w.withdrawals.map((x) => x.currency).filter((c) => c !== 'USD'));
+  if (w.currency !== 'USD') currencies.add(w.currency);
+  if (currencies.size > 0)
+    card.openFxUsd = toUsd(
+      sum(
+        [...currencies].map((cur) => {
+          const owed = sum(w.withdrawals.filter((x) => x.currency === cur).map((x) => x.cents));
+          const matching = w.matchingOf(cur);
+          const held = sum(
+            lines.filter((l) => l.assetId === matching?.id).map((l) => toCents(l.amountUsd)),
+          );
+          return Math.max(0, owed - held);
+        }),
+      ),
     );
-    card.openFxUsd = toUsd(Math.max(0, owed - held));
-  }
   return card;
 }

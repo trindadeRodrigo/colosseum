@@ -40,6 +40,11 @@ export type World = {
   P: PersonalParameters;
   /** The candidate this plan is made as (gate THREE-PLANS), or null for the plain plan. */
   candidate: CandidateId | null;
+  /**
+   * The cost a sale is counted at where nothing is measured: the person's table's `tau`, never a
+   * candidate's tighter one (a lower assumed cost would be less cautious, not more).
+   */
+  unmeasuredCost: number;
   shelf: Shelf;
   now: string;
   /** The amount, in cents. */
@@ -377,6 +382,7 @@ export function buildWorld(
     lang,
     P,
     candidate,
+    unmeasuredCost: Math.max(P.tau, parsedParams.data.tau),
     shelf,
     now: context.now,
     amount,

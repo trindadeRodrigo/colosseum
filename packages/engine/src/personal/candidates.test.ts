@@ -19,7 +19,7 @@ import type {
   PersonalSheet,
   Scorecard,
 } from './types';
-import { monthAfter } from './world';
+import { buildWorld, monthAfter } from './world';
 
 // Slice 3 of docs/vault/PROMPT-BUILD-SOLVER.md: the three candidates (gate THREE-PLANS, C10), their
 // scorecard (C11) and the ways to close a gap in the status (C12). The comparison below is written
@@ -157,6 +157,14 @@ describe('three candidates from one goal (C10)', () => {
     expect(carry).toEqual(compose(s, launch, ctx));
   });
 
+  it("reads Cover's capacity at its tighter cost, but never counts an unmeasured sale as cheaper", () => {
+    const s = sheet({ goal: 'income', amountUsd: 50_000 });
+    const cover = buildWorld(s, launch, ctx, 'cover');
+    expect(cover.P.tau).toBe(PERSONAL_PARAMS.candidates.cover.tau);
+    expect(cover.unmeasuredCost).toBe(PERSONAL_PARAMS.tau);
+    expect(buildWorld(s, launch, ctx).unmeasuredCost).toBe(PERSONAL_PARAMS.tau);
+  });
+
   it('shows fewer when two come out as one choice, and says why', () => {
     const answer = run(sheet({ goal: 'grow', risk: 'high', amountUsd: 10_000 }));
     expect(answer.shown.length).toBeLessThan(3);
@@ -173,7 +181,7 @@ describe('three candidates from one goal (C10)', () => {
 });
 
 describe('the scorecard (C11)', () => {
-  it('has open FX only for a goal not in dollars (C19)', () => {
+  it('has open FX only where something is owed in another currency than dollars (C19)', () => {
     const c = fixtureContext({ fx: [usdBrl(5.5)] });
     const shelf = withReais();
     const dollars = run(sheet({ goal: 'income', obligations: monthly(500, 12) }), shelf, c);
@@ -183,6 +191,20 @@ describe('the scorecard (C11)', () => {
       c,
     );
     for (const { plan } of dollars.shown) expect(plan.scorecard?.openFxUsd).toBeUndefined();
+    // A dollar goal that owes reais is open to the rate on what its reais leg does not hold.
+    const owesReais = run(
+      sheet({ goal: 'income', amountUsd: 20_000, obligations: monthly(2750, 12, 'BRL') }),
+      shelf,
+      c,
+    );
+    for (const { plan } of owesReais.shown) {
+      const brl = plan.lines.find((l) => l.assetId === 'solana:brlx')?.amountUsd ?? 0;
+      const owed = Math.ceil((2750 / 5.5) * 100) * 12;
+      expect(plan.scorecard?.openFxUsd).toBeCloseTo(
+        Math.max(0, owed - Math.round(brl * 100)) / 100,
+        2,
+      );
+    }
     for (const { plan } of reais.shown) expect(plan.scorecard?.openFxUsd).toBeGreaterThanOrEqual(0);
   });
 

@@ -503,6 +503,7 @@ function build(
         ),
         liquidity: w.liquidity,
         tau: P.tau,
+        unmeasuredCost: w.unmeasuredCost,
         ceilingUsdOf: (a) => toUsd(w.ceilingOf(a)),
         isCredit: (a) => w.isCredit(a),
       };

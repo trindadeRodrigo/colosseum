@@ -239,8 +239,11 @@ describe('POST /v1/baskets/personalize', () => {
     expect(res.body).not.toMatch(/"(selected|recommended|isDefault|default)"/);
     // No odds, no percentile, no chance.
     expect(res.body).not.toMatch(/probab|percentil|\bchances?\b|\bodds\b|likel(y|ihood)/i);
+    // Each candidate its own stored plan; Carry, the plan the table makes, shares the plan's row.
     const ids = answer.candidates.map((c) => c.id);
-    expect(new Set([answer.id, ...ids]).size).toBe(ids.length + 1);
+    expect(new Set(ids).size).toBe(ids.length);
+    const carry = answer.candidates.find((c) => c.candidate === 'carry');
+    if (carry) expect(carry.id).toBe(answer.id);
     for (const c of answer.candidates) {
       expect(c.proposal.sheet).toEqual(asked);
       expect(await loadProposal(data.db, c.id)).toEqual(c.proposal);

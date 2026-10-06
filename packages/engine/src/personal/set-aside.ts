@@ -183,9 +183,9 @@ export function checkCoverage(w: World, book: Book, sa: SetAside, safe: Map<stri
         movable: Math.max(0, l.cents - (safe.get(l.asset.id) ?? 0)),
         perWindow: measured ?? w.ceilingOf(l.asset),
         costOf: (cents: number) => {
-          if (measured === null || !liquidity) return P.tau;
+          if (measured === null || !liquidity) return w.unmeasuredCost;
           const cost = liquidity.exitCost(l.asset.id, toUsd(cents), EXIT_WINDOW_DAYS);
-          return cost === null ? P.tau : Math.min(Math.max(0, cost), 1);
+          return cost === null ? w.unmeasuredCost : Math.min(Math.max(0, cost), 1);
         },
         pool: pool ? { id: pool.pool, perWindow: toCents(pool.capacityUsd) } : null,
       };
