@@ -2,6 +2,7 @@
 import type { BasketSheet } from '@colosseum/schemas';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CHAIN_NAMES } from '../../components/ui/ChainBadge';
 import {
   click,
   find,
@@ -879,5 +880,41 @@ describe('the goal screen and the rest of the product', () => {
     await click(buildButton(host));
     await settle();
     check();
+  });
+});
+
+describe.each(['solana', 'robinhood'] as const)('the chain of a goal on %s', (chain) => {
+  const person: Person = {
+    ...onSolana,
+    wallets: chain === 'solana' ? PHANTOM : EMBEDDED,
+    chain,
+    chainSource: chain === 'solana' ? 'wallet' : 'picked',
+  };
+  const badged = (el: Element | null) =>
+    [...(el?.querySelectorAll('[data-ui="chain-badge"]') ?? [])].map((b) => [
+      b.getAttribute('data-chain'),
+      b.textContent,
+    ]);
+
+  it('is badged on the sheet, on the goal’s card, and on the plan it built', async () => {
+    api({
+      person,
+      plan: (body) =>
+        json({ id: 'plan-1', proposal: proposalFor((body as { sheet: never }).sheet, 'mock') }),
+    });
+    portStore.set(signedInPort(person.wallets));
+    const host = await screen();
+    await read(host);
+    await fill(host);
+    const named = [[chain, CHAIN_NAMES[chain]]];
+    expect(badged(host.querySelector('[data-ui="sheet-facts"]'))).toEqual(named);
+    expect(badged(host.querySelector('[data-ui="goal-card"]'))).toEqual(named);
+    await click(buildButton(host));
+    await settle();
+    const done = [...host.querySelectorAll('[data-ui="card"]')].find((card) =>
+      card.textContent?.includes(en.goal.built.done.title),
+    );
+    expect(badged(done ?? null)).toEqual(named);
+    if (chain === 'robinhood') expect(host.textContent).not.toMatch(/usdc/i);
   });
 });

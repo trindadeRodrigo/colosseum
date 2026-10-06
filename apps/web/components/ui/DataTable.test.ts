@@ -142,10 +142,11 @@ describe('ExecutionList and ExplorerLink (data-table.md)', () => {
     expect((unknown as { attrs: Record<string, string> }).attrs['data-status']).toBe('settled');
   });
 
-  it('links the transaction as "Tx", the signature cut in the middle, with a name that says where it goes', () => {
+  it('links the transaction as "Tx", the signature cut in the middle, then the explorer it opens', () => {
     const link = one(confirmed as never, ui('explorer-link'));
     expect(link.tag).toBe('a');
-    expect(text(link)).toBe('Tx4kZ9…mX2p');
+    expect(text(link)).toBe('Tx4kZ9…mX2pthe sample explorer');
+    expect(text(one(link, ui('explorer-name')))).toBe('the sample explorer');
     expect(link.attrs).toMatchObject({ target: '_blank', rel: 'noopener' });
     expect(link.attrs['aria-label']).toBe('View transaction 4kZ9…mX2p on the sample explorer');
     expect(classes(link)).toEqual(

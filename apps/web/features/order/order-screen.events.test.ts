@@ -11,6 +11,7 @@ import {
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buttonClass } from '../../components/ui/button-class';
+import { CHAIN_NAMES } from '../../components/ui/ChainBadge';
 import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
@@ -524,5 +525,41 @@ describe('a chain that is not ready', () => {
     expect(find(host, '[role="alert"]').textContent).toBe(
       en.order.outcome.notRunnable['no-deployment']('Base'),
     );
+  });
+});
+
+describe.each([
+  ['solana', 'Solscan'],
+  ['robinhood', 'Robinhood explorer'],
+] as const)('the chain of an order on %s', (chain, explorer) => {
+  it('is badged over the review and its steps, and a Robinhood order never says USDC', async () => {
+    api(orderOn(chain), chain);
+    seed(recordOf(chain));
+    const host = await screen();
+    const badges = [...host.querySelectorAll('[data-ui="chain-badge"]')];
+    expect(badges.map((b) => b.getAttribute('data-chain'))).toEqual([chain, chain]);
+    expect(badges.map((b) => b.textContent)).toEqual([CHAIN_NAMES[chain], CHAIN_NAMES[chain]]);
+    // one over the page, one in the head of its steps
+    expect(find(host, 'header [data-ui="chain-badge"]')).toBeTruthy();
+    expect(find(host, '[data-ui="card-header"] [data-ui="chain-badge"]')).toBeTruthy();
+    if (chain === 'robinhood') expect(host.textContent).not.toMatch(/usdc/i);
+  });
+
+  it('names the explorer beside each step’s link, and badges each line of the activity', async () => {
+    api(orderOn(chain), chain);
+    seed(recordOf(chain));
+    run.answer = async () => ({ status: 'done', order: doneOrder(chain) });
+    const host = await screen();
+    await click(primary(host));
+    await settle();
+    const names = [...host.querySelectorAll('[data-ui="explorer-name"]')].map((n) => n.textContent);
+    // a link per step, and a line per step in the activity
+    expect(names).toHaveLength(4);
+    expect(new Set(names)).toEqual(new Set([explorer]));
+    const lines = [...host.querySelectorAll('[data-ui="execution-list"] li')];
+    expect(lines).toHaveLength(2);
+    for (const line of lines)
+      expect(line.querySelector('[data-ui="chain-badge"]')?.getAttribute('data-chain')).toBe(chain);
+    if (chain === 'robinhood') expect(host.textContent).not.toMatch(/usdc/i);
   });
 });

@@ -99,3 +99,53 @@ export function labelled(provenance: Provenance): PortfolioChain {
     prices: base.prices.map((p) => ({ ...p, provenance })),
   };
 }
+
+export const RH_VAULT = '0x5fbdb2315678afecb367f032d93f642f64180aa3';
+/** The tests' person's EVM wallet (features/wallet/test/fake-port.ts). */
+const RH_OWNER = '0x204faca1764b154221e35c0d20abb3c525710498';
+
+/**
+ * A vault on Robinhood Chain, on the mock: its cash is the mock's `robinhood:usdc`, which the chain
+ * calls tUSDG. Nothing about it may read USDC.
+ */
+export function robinhoodVault(over: Partial<Vault> = {}): Vault {
+  return vault({
+    chain: 'robinhood',
+    address: RH_VAULT,
+    owner: RH_OWNER,
+    keeper: '0x2222222222222222222222222222222222222222',
+    cash: { asset: 'robinhood:usdc', raw: '20000000', multiplier: '1', display: '20' },
+    positions: [
+      {
+        asset: 'robinhood:tspy',
+        raw: '10000000000000000',
+        multiplier: '1',
+        display: '0.01',
+        targetBps: 5000,
+        lastKeeperAt: null,
+        valueUsd: '6.5',
+        weightBps: 2453,
+        driftBps: -2547,
+      },
+    ],
+    valueUsd: '26.5',
+    provenance: 'mock',
+    ...over,
+  });
+}
+
+export function robinhoodChain(vaults: Vault[] = [robinhoodVault()]): PortfolioChain {
+  return {
+    chain: 'robinhood',
+    name: 'Robinhood Chain',
+    mode: 'mock',
+    provenance: 'mock',
+    vaults,
+    prices: [price('robinhood:tspy', '650', { provenance: 'mock', source: 'MOCK price' })],
+  };
+}
+
+/** The body of a 200 with an entry per chain. */
+export function portfolioOf(...chains: PortfolioChain[]): PortfolioResponse {
+  return PortfolioResponse.parse({ chains, disclaimer: 'from the constant' });
+}
