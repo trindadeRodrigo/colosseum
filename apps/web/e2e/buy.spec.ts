@@ -81,6 +81,11 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
   const words = page.locator('#updates [data-ui="closing-words"]');
   await words.scrollIntoViewIfNeeded();
   await expect(page.locator('#updates canvas[data-ui="closing-canvas"]')).toHaveCount(1);
+  // CI's browser has no GPU: the plan drawn flat, its ten coins, and the line under it
+  await expect(page.locator('#updates [data-ui="coins-still"] [data-part="coin"]')).toHaveCount(10);
+  await expect(page.locator('#updates [data-ui="closing-plan-line"]')).toContainText(
+    en.landing.closing.coins.line,
+  );
   await expect(words.getByRole('heading', { level: 2 })).toHaveText(en.landing.closing.title);
   for (const theme of ['light', 'dark'] as const) {
     await page.evaluate((t) => {
