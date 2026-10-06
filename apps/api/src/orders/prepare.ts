@@ -562,6 +562,7 @@ export async function prepareOrder(req: IntentRequest, ctx: PrepareContext): Pro
         plan.steps,
         [],
         plan.entry.provenance,
+        plan.warnings,
       ),
       request: req,
     };
@@ -583,6 +584,7 @@ function sharedOrder(
   }[],
   needsConsent: Order['needsConsent'],
   provenance?: Leg['provenance'],
+  warnings: Order['warnings'] = [],
 ): Order {
   const id = randomUUID();
   const seqs = new Map<ChainId, number>();
@@ -618,7 +620,7 @@ function sharedOrder(
     // Written by the server: no word of the creator's text is in it.
     summary: type === 'publish' ? `${summary} on ${names}` : summary,
     legs,
-    warnings: [],
+    warnings,
     needsConsent,
     fees: [],
     preparedBy: ctx.principal.kind === 'service' ? 'mcp' : 'app',

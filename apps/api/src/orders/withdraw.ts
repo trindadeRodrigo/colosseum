@@ -27,6 +27,12 @@ export type WithdrawRequest = Extract<IntentRequest, { type: 'withdraw' }>;
 export const SELL_TO_CASH_NOT_OFFERED =
   'Selling to cash before withdrawing isn’t offered yet; you can withdraw the tokens themselves';
 
+/** On a withdrawal of part of a vault that has auto-follow on. */
+export const AUTO_FOLLOW_ON = {
+  code: 'AUTO_FOLLOW_ON',
+  text: 'Auto-follow is on for this vault. After this withdrawal the keeper may trade what stays back toward your plan’s weights: it may buy again a token you took out. Switch auto-follow off first if you don’t want that.',
+} as const;
+
 type Context = { principal: Principal; chains: ChainRegistry };
 
 /** The one vault of the order, on its own chain, held to being the signed-in person's. */
@@ -131,7 +137,13 @@ export type WithdrawStep = {
 export async function planWithdraw(
   req: WithdrawRequest,
   ctx: Context,
-): Promise<{ entry: ChainEntry; owner: Address; vault: Address; steps: WithdrawStep[] }> {
+): Promise<{
+  entry: ChainEntry;
+  owner: Address;
+  vault: Address;
+  steps: WithdrawStep[];
+  warnings: { code: string; text: string }[];
+}> {
   const { entry, family, vault } = await ownVault(req, ctx);
   const name = namer(await entry.adapter.listAssets());
   const all = held(req, holdingsOf(vault), name);
@@ -150,6 +162,9 @@ export async function planWithdraw(
     owner: vault.owner,
     vault: vault.address,
     steps: family === 'solana' ? all.map((w) => [w]).map(step) : [step(all)],
+    // Something stays in a vault the keeper trades: it is traded back toward the plan's weights
+    // (tests/keeper/withdrawal.test.ts). Said before the person signs.
+    warnings: vault.autoFollow && req.withdrawals ? [AUTO_FOLLOW_ON] : [],
   };
 }
 
@@ -187,9 +202,14 @@ export async function buildWithdraw(
   // Everything, on a chain that takes it in one call: the vault's own sweep, which one frozen token
   // cannot hold up. Otherwise the tokens the step names.
   const everything = !request.withdrawals && entry.config.family === 'evm';
+  const amounts = leg.withdrawals.flatMap((w) =>
+    w.amountRaw === null ? [] : [[w.asset, w.amountRaw] as const],
+  );
   const txs = await entry.adapter.buildWithdrawInKind({
     vault: vault.address,
     ...(everything ? {} : { assets: leg.withdrawals.map((w) => w.asset) }),
+    // Some of a token where the step names an amount; the adapter refuses more than is there.
+    ...(amounts.length ? { amounts: Object.fromEntries(amounts) } : {}),
     ...(nonce === undefined ? {} : { nonce }),
   });
   const [tx, ...rest] = txs;

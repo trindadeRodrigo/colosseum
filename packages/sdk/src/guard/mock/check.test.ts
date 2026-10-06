@@ -215,6 +215,18 @@ async function build(chain: ChainId): Promise<World> {
       ['publish'],
     );
   }
+  // Part of a token: the amount the person reviewed, in the bytes.
+  const [part] = await adapter.buildWithdrawInKind({
+    vault,
+    assets: [`${chain}:gold`],
+    amounts: { [`${chain}:gold`]: '7' },
+  });
+  if (!part) throw new Error('the mock built no partial withdrawal');
+  await keep(
+    'withdraw_part',
+    { ...base, kind: 'withdraw', withdrawals: [{ asset: `${chain}:gold`, amountRaw: '7' }] },
+    part,
+  );
   const [withdraw] = await adapter.buildWithdrawInKind({ vault, assets: [`${chain}:gold`] });
   if (!withdraw) throw new Error('the mock built no withdrawal');
   await keep(
@@ -495,6 +507,33 @@ const negatives: Negative[] = [
   lie('solana', 'withdraw', 'vault', "a withdrawal from another person's vault", (m, w) => {
     m.op.a.vault = mockVaultAddress('solana', w.stranger, BASKET);
   }),
+  lie('solana', 'withdraw', 'amount', 'part of the token where the step takes all of it', (m) => {
+    m.op.a.amounts = { 'solana:gold': '1' };
+  }),
+  lie('solana', 'withdraw_part', 'amount', 'a larger withdrawal than the step names', (m) => {
+    m.op.a.amounts = { 'solana:gold': '8' };
+  }),
+  lie('solana', 'withdraw_part', 'amount', 'all of the token where the step names part', (m) => {
+    delete m.op.a.amounts;
+  }),
+  lie(
+    'solana',
+    'withdraw_part',
+    'asset',
+    'an amount for a token the bytes do not withdraw',
+    (m) => {
+      m.op.a.amounts = { 'solana:gold': '7', 'solana:spy': '1' };
+    },
+  ),
+  lie(
+    'robinhood',
+    'withdraw_part',
+    'vault',
+    "part of a token from another person's vault",
+    (m, w) => {
+      m.op.a.vault = mockVaultAddress('robinhood', w.stranger, BASKET);
+    },
+  ),
   {
     name: 'solana: the switch turned on with no consent handed over',
     check: 'consent',

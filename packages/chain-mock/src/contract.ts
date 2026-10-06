@@ -1359,6 +1359,60 @@ group('state after a transaction lands', {
       }
     },
 
+  'a withdrawal of an amount takes that much and no more: part of a token, exactly what is left, never a unit over':
+    async (c) => {
+      // The token the vault holds most of: the fixture's vault may keep no cash.
+      const start = await vaultAt(c, c.f.vault);
+      const most = [start.cash, ...start.positions].reduce((a, b) =>
+        BigInt(b.raw) > BigInt(a.raw) ? b : a,
+      );
+      const cash = most.asset;
+      const held = BigInt(most.raw);
+      expect(held).toBeGreaterThan(2n);
+      const of = (v: Awaited<ReturnType<typeof vaultAt>>, asset: string) =>
+        BigInt([v.cash, ...v.positions].find((h) => h.asset === asset)?.raw ?? '0');
+      const part = held / 3n;
+      const before = await walletRaw(c, c.f.owner, cash);
+      const some = (raw: bigint) =>
+        c.a.buildWithdrawInKind({
+          vault: c.f.vault,
+          assets: [cash],
+          amounts: { [cash]: raw.toString() },
+        });
+
+      // one unit more than the vault holds: refused, and nothing is built
+      await refuses(some(held + 1n), 'BadInput');
+      // an amount for a token the withdrawal does not name, and an amount of nothing
+      await refuses(
+        c.a.buildWithdrawInKind({ vault: c.f.vault, assets: [], amounts: { [cash]: '1' } }),
+        'BadInput',
+      );
+      await refuses(some(0n), 'BadInput');
+
+      // part of it: that much leaves, the rest stays, the other tokens are untouched
+      const rest = (v: Awaited<ReturnType<typeof vaultAt>>) =>
+        [v.cash, ...v.positions].filter((h) => h.asset !== cash).map((h) => h.raw);
+      const others = rest(start);
+      const [first, ...more] = await some(part);
+      expect(more).toEqual([]);
+      if (!first) throw new Error('no withdrawal was built');
+      checkTx(c, first, 'withdraw', c.f.owner);
+      expect(delta(first, 'vault', cash)).toBe(-part);
+      expect(delta(first, 'wallet', cash)).toBe(part);
+      await land(c, first);
+      const mid = await vaultAt(c, c.f.vault);
+      expect(of(mid, cash)).toBe(held - part);
+      expect(rest(mid)).toEqual(others);
+      expect((await walletRaw(c, c.f.owner, cash)) - before).toBe(part);
+
+      // one unit more than is left now is refused; exactly the rest is built, and would empty it
+      await refuses(some(held - part + 1n), 'BadInput');
+      const [last] = await some(held - part);
+      if (!last) throw new Error('no withdrawal was built');
+      expect(delta(last, 'vault', cash)).toBe(-(held - part));
+      expect(await c.a.getWalletHoldings(c.f.stranger)).toEqual([]);
+    },
+
   'a withdrawal hands every token to the owner, and to nobody else': async (c) => {
     const before = await vaultAt(c, c.f.vault);
     const holdings = [before.cash, ...before.positions].filter((h) => BigInt(h.raw) > 0n);

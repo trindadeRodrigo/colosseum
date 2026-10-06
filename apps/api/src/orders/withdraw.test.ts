@@ -208,6 +208,82 @@ describe.each(CHAINS)('a withdrawal on %s', (chain) => {
     expect(no.status).toBe(404);
   });
 
+  it('takes part of the cash: that much leaves for the owner, the rest and the other tokens stay', async () => {
+    const before = await holds(w, w.owner, w.cash);
+    const spy = await inVault(w, w.spy);
+    const request: WithdrawRequest = {
+      ...everything(w),
+      withdrawals: [{ asset: w.cash, amountRaw: usd(250) }],
+    };
+    const plan = await planWithdraw(request, { principal: w.me, chains: w.chains });
+    expect(plan.steps).toHaveLength(1);
+    expect(plan.steps[0]?.withdrawals).toEqual([
+      { asset: w.cash, amountRaw: usd(250), heldRaw: usd(600) },
+    ]);
+    expect(plan.steps[0]?.description).toContain('250 ');
+    const step = plan.steps[0];
+    if (!step) throw new Error('no step');
+    await w.entry.mock?.send(
+      await buildWithdraw(request, legOf(step), w.entry, w.owner, undefined),
+    );
+    expect(await inVault(w, w.cash)).toBe(BigInt(usd(350)));
+    expect(await inVault(w, w.spy)).toBe(spy);
+    expect((await holds(w, w.owner, w.cash)) - before).toBe(BigInt(usd(250)));
+    expect(await holds(w, w.stranger, w.spy)).toBe(0n);
+  });
+
+  it('takes exactly the balance, and refuses one unit over it, and an amount of nothing', async () => {
+    const ctx = { principal: w.me, chains: w.chains };
+    const of = (raw: string): WithdrawRequest => ({
+      ...everything(w),
+      withdrawals: [{ asset: w.cash, amountRaw: raw }],
+    });
+    const over = await refusal(planWithdraw(of((BigInt(usd(600)) + 1n).toString()), ctx));
+    expect(over.status).toBe(409);
+    expect(over.body().error).toMatch(/^the vault holds 600 .*less than the 600\.000001 /);
+    expect((await refusal(planWithdraw(of('0'), ctx))).status).toBe(422);
+    // nothing left the vault for either
+    expect(await inVault(w, w.cash)).toBe(BigInt(usd(600)));
+
+    const exact = of(usd(600));
+    const plan = await planWithdraw(exact, ctx);
+    const step = plan.steps[0];
+    if (!step) throw new Error('no step');
+    await w.entry.mock?.send(await buildWithdraw(exact, legOf(step), w.entry, w.owner, undefined));
+    expect(await inVault(w, w.cash)).toBe(0n);
+    expect(await inVault(w, w.spy)).toBeGreaterThan(0n);
+  });
+
+  it('builds nothing for an amount the vault no longer holds when the step is built', async () => {
+    const ctx = { principal: w.me, chains: w.chains };
+    const of = (dollars: number): WithdrawRequest => ({
+      ...everything(w),
+      withdrawals: [{ asset: w.cash, amountRaw: usd(dollars) }],
+    });
+    // Two orders planned against the same $600: $500, and $200. Together they are more than is there.
+    const [large, small] = await Promise.all([
+      planWithdraw(of(500), ctx),
+      planWithdraw(of(200), ctx),
+    ]);
+    const [a, b] = [large.steps[0], small.steps[0]];
+    if (!a || !b) throw new Error('no step');
+    await w.entry.mock?.send(await buildWithdraw(of(200), legOf(b), w.entry, w.owner, undefined));
+    const late = await refusal(buildWithdraw(of(500), legOf(a), w.entry, w.owner, undefined));
+    expect(late.status).toBe(409);
+    expect(late.body().error).toMatch(/now holds 400 .*less than the 500 .*nothing was built/);
+    expect(await inVault(w, w.cash)).toBe(BigInt(usd(400)));
+  });
+
+  it('says, on a vault with auto-follow on, that the keeper trades what stays; not for everything', async () => {
+    await w.entry.mock?.send(
+      await w.entry.adapter.buildSetAutoFollow({ vault: w.vault, on: true }),
+    );
+    const ctx = { principal: w.me, chains: w.chains };
+    const part = await planWithdraw({ ...everything(w), withdrawals: [{ asset: w.spy }] }, ctx);
+    expect(part.warnings.map((x) => x.code)).toEqual(['AUTO_FOLLOW_ON']);
+    expect((await planWithdraw(everything(w), ctx)).warnings).toEqual([]);
+  });
+
   it('two withdrawals racing: the first empties the vault, the second builds nothing and says so', async () => {
     const request = everything(w);
     const ctx = { principal: w.me, chains: w.chains };

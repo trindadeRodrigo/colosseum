@@ -97,6 +97,35 @@ describe.each(CHAINS)('POST /v1/orders, a withdrawal on %s', (chain) => {
       expect((await held(a, chain, t.asset)) - (before[i] ?? 0n)).toBe(BigInt(t.raw));
   });
 
+  it('takes part of the cash, exactly as asked, and refuses a unit more than the vault holds', async () => {
+    const a = await someone(chain);
+    await openVault(a);
+    // a plan that is all invested keeps no cash: put some in, as a second buy's deposit does
+    const vault = await vaultOf(a, chain);
+    const most = [vault.cash, ...vault.positions].reduce((x, y) =>
+      BigInt(y.raw) > BigInt(x.raw) ? y : x,
+    );
+    const part = (BigInt(most.raw) / 2n).toString();
+    const before = await held(a, chain, most.asset);
+    const over = await withdraw(a, vault.address, {
+      withdrawals: [{ asset: most.asset, amountRaw: (BigInt(most.raw) + 1n).toString() }],
+    });
+    expect(over.statusCode).toBe(409);
+    const res = await withdraw(a, vault.address, {
+      withdrawals: [{ asset: most.asset, amountRaw: part }],
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const order = OrderDetail.parse(res.json());
+    expect(order.legs.map((l) => l.withdrawals)).toEqual([
+      [{ asset: most.asset, amountRaw: part, heldRaw: most.raw }],
+    ]);
+    await settleAll(a, order);
+    const after = await vaultOf(a, chain);
+    const left = [after.cash, ...after.positions].find((h) => h.asset === most.asset);
+    expect(BigInt(left?.raw ?? '0')).toBe(BigInt(most.raw) - BigInt(part));
+    expect((await held(a, chain, most.asset)) - before).toBe(BigInt(part));
+  });
+
   it('needs a sign-in, and answers a stranger as it answers a vault that is not there', async () => {
     const a = await someone(chain);
     const b = await someone(chain);

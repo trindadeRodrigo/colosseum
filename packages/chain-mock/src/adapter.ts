@@ -123,7 +123,10 @@ type Op =
   | { kind: 'set_targets'; a: SetTargetsArgs }
   | { kind: 'accept_version'; a: AcceptVersionArgs }
   | { kind: 'set_auto_follow'; a: SetAutoFollowArgs }
-  | { kind: 'withdraw'; a: { vault: Address; assets: AssetId[] } }
+  | {
+      kind: 'withdraw';
+      a: { vault: Address; assets: AssetId[]; amounts?: Record<AssetId, string> };
+    }
   | { kind: 'publish'; a: PublishRecipeArgs }
   | { kind: 'adopt_version'; a: { vault: Address } }
   | { kind: 'keeper_leg'; a: { vault: Address; trade: Trade } };
@@ -533,7 +536,11 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
         const v = vaultOf(s, op.a.vault);
         const w = walletOf(s, v.owner);
         for (const id of op.a.assets) {
-          const raw = balance(v, asset(id).id);
+          const has = balance(v, asset(id).id);
+          // Some of it where an amount is named, never more than is there; all of it otherwise.
+          const named = op.a.amounts?.[id];
+          const raw = named === undefined ? has : BigInt(named);
+          if (raw > has) refuse('BadInput', `the vault holds ${has} of ${id}, less than ${raw}`);
           move(v, id, -raw);
           w.set(id, (w.get(id) ?? 0n) + raw);
         }
@@ -1085,12 +1092,24 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
         for (const id of args.assets ?? []) asset(id);
         const held = [cash, ...v.positions.keys()].filter((id) => balance(v, id) > 0n);
         const wanted = args.assets ? held.filter((id) => args.assets?.includes(id)) : held;
+        for (const [id, raw] of Object.entries(args.amounts ?? {}))
+          if (BigInt(raw) > balance(v, id))
+            refuse('BadInput', `the vault holds ${balance(v, id)} of ${id}, less than ${raw}`);
+        const amountsOf = (ids: AssetId[]) => {
+          const named = ids.flatMap((id) =>
+            args.amounts?.[id] === undefined ? [] : [[id, args.amounts[id]] as const],
+          );
+          return named.length ? { amounts: Object.fromEntries(named) } : {};
+        };
         // Solana withdraws one mint per call; EVM takes everything in one.
         const groups =
           family === 'solana' ? wanted.map((id) => [id]) : wanted.length ? [wanted] : [];
         // On EVM the one transaction takes the nonce; Solana, which makes several, has none.
         return groups.map((ids) =>
-          ownerTx({ kind: 'withdraw', a: { vault: args.vault, assets: ids } }, args.nonce),
+          ownerTx(
+            { kind: 'withdraw', a: { vault: args.vault, assets: ids, ...amountsOf(ids) } },
+            args.nonce,
+          ),
         );
       }),
     buildPublishRecipe: (a) =>
