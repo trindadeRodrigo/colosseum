@@ -23,6 +23,7 @@ import {
 import { ApiRefusal, basketIdOfPlan, deploymentsOf, type OrderApi } from '@colosseum/sdk';
 import { apiDouble } from '../../packages/sdk/test/api-double';
 import { type MockWorld, tampered } from '../../packages/sdk/test/mock';
+import { riskAnswer } from './stub-risk';
 
 // The API the end-to-end spec of the web app runs against (apps/web/e2e): a stub over HTTP, on the
 // mock chain. It answers the routes the goal, plan, buy and order screens call, in their shared shapes.
@@ -36,7 +37,8 @@ import { type MockWorld, tampered } from '../../packages/sdk/test/mock';
 // Three routes of its own, for the spec: POST /__stub/reset forgets everything, GET /__stub/reports
 // lists the steps the web reported as signed, and POST
 // /__stub/tamper makes the next swap it builds carry a lower minimum than the order states, as a
-// server that lies would. MOCK throughout: every figure says so.
+// server that lies would. MOCK throughout: every figure says so. The /risk routes are the one
+// exception: they answer from Rodrigo's recording of the risk API (stub-risk.ts), measured and old.
 
 const PORT = Number(process.env.STUB_API_PORT ?? 3901);
 const ORIGIN = process.env.WEB_ORIGIN ?? 'http://localhost:3100';
@@ -432,6 +434,10 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     return send(res, 200, { ok: true });
   }
   if (path === '/__stub/reports') return send(res, 200, reports);
+  if (path.startsWith('/risk/') && method === 'GET') {
+    const answer = riskAnswer(`${path}${url.search}`);
+    return send(res, answer.status, answer.body);
+  }
   if (path === '/__stub/tamper' && method === 'POST') {
     tamperNext = true;
     return send(res, 200, { ok: true });

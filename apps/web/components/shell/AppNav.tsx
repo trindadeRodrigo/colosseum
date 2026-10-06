@@ -19,8 +19,8 @@ import { Mark } from './Mark';
 //
 //   Invest      the goal and its plan (/goal)
 //   Portfolio   the person's vaults (/monitor), for someone signed in
-//   Resources   how Bearing measures (/risk/methodology), the one methodology page the app has
-//   Analytics   Bearing (/risk)
+//   Resources   how Bearing measures (/analytics/methodology), the one methodology page the app has
+//   Analytics   Bearing's analytics (/analytics/stocks), current on every page under /analytics
 //   the wallet  "Sign in"; then the short address of the plan's chain and "Sign out"
 //
 //   Products    the shelf of shared portfolios (/shelf), and a portfolio's page under it
@@ -37,8 +37,9 @@ const ROUTES = [
   { href: '/shelf', key: 'products', also: ['/indexes', '/publish'] },
   { href: '/goal', key: 'invest', also: ['/plan', '/orders'] },
   { href: '/monitor', key: 'portfolio', signedIn: true },
-  { href: '/risk/methodology', key: 'resources' },
-  { href: '/risk', key: 'analytics' },
+  { href: '/analytics/methodology', key: 'resources' },
+  // Bearing's analytics: every page of the section is under it
+  { href: '/analytics/stocks', key: 'analytics', also: ['/analytics'] },
 ] as const;
 
 /** The page a link stands for is the one in view: its own path, or one under it that it leads to. */
@@ -52,6 +53,7 @@ export function AppNav() {
   const port = useWalletPort();
   const account = useAccountControl();
   const signedIn = port.status !== 'signed-out' && port.userId !== null;
+  const exact = ROUTES.some((route) => route.href === pathname);
   return (
     <CompactNav
       symbol={<Mark size={24} />}
@@ -64,7 +66,8 @@ export function AppNav() {
       links={ROUTES.filter((route) => !('signedIn' in route) || signedIn).map((route) => ({
         label: t.shell[route.key],
         href: route.href,
-        current: isCurrent(pathname, route) && 'page',
+        // the link whose own page this is wins: Resources on the methodology, not Analytics too
+        current: (exact ? pathname === route.href : isCurrent(pathname, route)) && 'page',
       }))}
       action={account.action}
       sheetHead={account.sheetHead}

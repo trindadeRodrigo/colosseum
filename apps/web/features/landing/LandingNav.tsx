@@ -28,8 +28,8 @@ export function LandingNav() {
       links={[
         { label: t.products, href: '#showcase' },
         { label: t.invest, href: '#simulate' },
-        { label: t.resources, href: '/risk/methodology' },
-        { label: t.analytics, href: '/risk' },
+        { label: t.resources, href: '/analytics/methodology' },
+        { label: t.analytics, href: '/analytics/stocks' },
       ]}
       cta={{ label: t.cta, href: '/sign-in?next=/goal' }}
       stage={{ compactAt: STEP_IDS[2], releaseAbove: STEP_IDS[1] }}

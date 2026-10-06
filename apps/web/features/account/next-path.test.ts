@@ -82,6 +82,9 @@ describe('the routes sign-in knows', () => {
       .map((file) => file.replace(/^app\/\(app\)/, '').replace(/\/page\.tsx$/, '') || '/')
       .sort();
     expect(pages).toEqual([
+      '/analytics',
+      '/analytics/[page]',
+      '/analytics/methodology',
       '/goal',
       '/indexes/[slug]',
       '/indexes/[slug]/buy',

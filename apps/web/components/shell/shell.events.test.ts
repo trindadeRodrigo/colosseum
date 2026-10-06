@@ -76,14 +76,29 @@ describe('the frame', () => {
     expect(links(host).map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
       [en.products, '/shelf'],
       [en.invest, '/goal'],
-      [en.resources, '/risk/methodology'],
-      [en.analytics, '/risk'],
+      [en.resources, '/analytics/methodology'],
+      [en.analytics, '/analytics/stocks'],
     ]);
     // the page a person is on is said, not only shown; the plan and the order are under Invest
     expect(links(host).map((a) => a.getAttribute('aria-current'))).toEqual([
       null,
       'page',
       null,
+      null,
+    ]);
+    // every page of Bearing's analytics is under Analytics; its methodology is Resources
+    location.pathname = '/analytics/lending';
+    expect(links(await shell()).map((a) => a.getAttribute('aria-current'))).toEqual([
+      null,
+      null,
+      null,
+      'page',
+    ]);
+    location.pathname = '/analytics/methodology';
+    expect(links(await shell()).map((a) => a.getAttribute('aria-current'))).toEqual([
+      null,
+      null,
+      'page',
       null,
     ]);
     location.pathname = '/plan/abc';
@@ -118,8 +133,8 @@ describe('the frame', () => {
       '/shelf',
       '/goal',
       '/monitor',
-      '/risk/methodology',
-      '/risk',
+      '/analytics/methodology',
+      '/analytics/stocks',
     ]);
     expect(find(signedIn, `button[aria-label="${en.menu}"]`).getAttribute('aria-expanded')).toBe(
       'false',

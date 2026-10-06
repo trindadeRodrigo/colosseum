@@ -144,6 +144,23 @@
   --tf-heat-3: #8a6c4b;
   --tf-heat-4: #5a3a1e;
   --tf-heat-5: #1a1714;
+  /* Bearing charts (Rodrigo's Analytics 2.0, analytics2.css, raised for contrast 2026-10-03): wood only
+     plus the status pigments. Two series, the pie's five slices, covered and not covered, the grid,
+     and the four paths of the simulation's flow */
+  --tf-bearing-s1: #342515;
+  --tf-bearing-s2: #9d7751;
+  --tf-bearing-p1: #20150a;
+  --tf-bearing-p2: #bc946d;
+  --tf-bearing-p3: #63482e;
+  --tf-bearing-p4: #deb48c;
+  --tf-bearing-po: #7a6d5f;
+  --tf-bearing-cv: #2f4a2a;
+  --tf-bearing-un: #e58aa0;
+  --tf-bearing-grid: #cdbfab;
+  --tf-bearing-f1: #342515;
+  --tf-bearing-f2: #7a5a3a;
+  --tf-bearing-f3: #9d7751;
+  --tf-bearing-f4: #6e655b;
 }
 
 .dark {
@@ -169,6 +186,20 @@
   --tf-heat-3: #8a6c4b;
   --tf-heat-4: #c9ae86;
   --tf-heat-5: #f2e6d3;
+  --tf-bearing-s1: #f3d8c4;
+  --tf-bearing-s2: #9d7751;
+  --tf-bearing-p1: #f3d8c4;
+  --tf-bearing-p2: #9d7751;
+  --tf-bearing-p3: #deb48c;
+  --tf-bearing-p4: #63482e;
+  --tf-bearing-po: #aa9e92;
+  --tf-bearing-cv: #7fa37a;
+  --tf-bearing-un: #c2455f;
+  --tf-bearing-grid: #4a4037;
+  --tf-bearing-f1: #f3d8c4;
+  --tf-bearing-f2: #c9ae86;
+  --tf-bearing-f3: #9d7751;
+  --tf-bearing-f4: #a49a8e;
 }
 
 :root {
@@ -292,6 +323,20 @@
     --tf-heat-3: #8a6c4b;
     --tf-heat-4: #c9ae86;
     --tf-heat-5: #f2e6d3;
+    --tf-bearing-s1: #f3d8c4;
+    --tf-bearing-s2: #9d7751;
+    --tf-bearing-p1: #f3d8c4;
+    --tf-bearing-p2: #9d7751;
+    --tf-bearing-p3: #deb48c;
+    --tf-bearing-p4: #63482e;
+    --tf-bearing-po: #aa9e92;
+    --tf-bearing-cv: #7fa37a;
+    --tf-bearing-un: #c2455f;
+    --tf-bearing-grid: #4a4037;
+    --tf-bearing-f1: #f3d8c4;
+    --tf-bearing-f2: #c9ae86;
+    --tf-bearing-f3: #9d7751;
+    --tf-bearing-f4: #a49a8e;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -361,6 +406,20 @@
   --color-heat-3: var(--tf-heat-3);
   --color-heat-4: var(--tf-heat-4);
   --color-heat-5: var(--tf-heat-5);
+  --color-bearing-s1: var(--tf-bearing-s1);
+  --color-bearing-s2: var(--tf-bearing-s2);
+  --color-bearing-p1: var(--tf-bearing-p1);
+  --color-bearing-p2: var(--tf-bearing-p2);
+  --color-bearing-p3: var(--tf-bearing-p3);
+  --color-bearing-p4: var(--tf-bearing-p4);
+  --color-bearing-po: var(--tf-bearing-po);
+  --color-bearing-cv: var(--tf-bearing-cv);
+  --color-bearing-un: var(--tf-bearing-un);
+  --color-bearing-grid: var(--tf-bearing-grid);
+  --color-bearing-f1: var(--tf-bearing-f1);
+  --color-bearing-f2: var(--tf-bearing-f2);
+  --color-bearing-f3: var(--tf-bearing-f3);
+  --color-bearing-f4: var(--tf-bearing-f4);
 
   /* shape: 0 or 2px. A stray rounded-full or rounded-xl comes out square */
   --radius-none: 0px;
