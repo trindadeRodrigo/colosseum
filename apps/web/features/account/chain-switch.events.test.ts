@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { createElement } from 'react';
+import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, press, settle, unmountAll } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
@@ -216,6 +216,11 @@ describe('signed in', () => {
         en.chain.failure.noWallet('Robinhood Chain'),
       ],
       [json({ error: 'slow down' }, 429), en.shell.slowDown],
+      [
+        json({ error: 'Robinhood Chain is not a chain you can pick' }, 422),
+        en.chain.failure.notOffered,
+      ],
+      [json({ error: 'sign in first' }, 401), en.chain.failure.signedOut],
     ] as const) {
       api(passkey('solana'), () => answer.clone());
       portStore.set(signedInPort(EMBEDDED));
@@ -230,5 +235,56 @@ describe('signed in', () => {
       expect(shown(host)).toBe('solana');
       await unmountAll();
     }
+  });
+
+  it('sends one switch for two presses in one go', async () => {
+    let answer: (res: Response) => void = () => {};
+    const server = api(
+      passkey('solana'),
+      () => new Promise<Response>((r) => (answer = r)) as never,
+    );
+    portStore.set(signedInPort(EMBEDDED));
+    const host = await view();
+    await settle();
+    await click(toggle(host));
+    const robinhood = option(host, 'robinhood');
+    robinhood.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    robinhood.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await settle();
+    expect(server.puts).toEqual(['robinhood']);
+    answer(json({ ...passkey('robinhood') }));
+    await settle();
+    expect(shown(host)).toBe('robinhood');
+  });
+
+  it('closes when focus leaves it', async () => {
+    api(passkey('solana'));
+    portStore.set(signedInPort(EMBEDDED));
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    try {
+      const host = await view();
+      await settle();
+      toggle(host).focus();
+      await click(toggle(host));
+      option(host, 'robinhood').focus();
+      expect(host.querySelector('[data-ui="chain-switch-panel"]')).not.toBeNull();
+      await act(async () => outside.focus());
+      expect(host.querySelector('[data-ui="chain-switch-panel"]')).toBeNull();
+    } finally {
+      outside.remove();
+    }
+  });
+
+  it('offers the chains the API lists for the person, over what the wallets alone would say', async () => {
+    const server = api({ ...passkey('robinhood'), chainOptions: ['robinhood'] });
+    portStore.set(signedInPort(EMBEDDED));
+    const host = await view();
+    await settle();
+    await click(toggle(host));
+    expect(option(host, 'solana').getAttribute('aria-disabled')).toBe('true');
+    await click(option(host, 'solana'));
+    await settle();
+    expect(server.puts).toEqual([]);
   });
 });

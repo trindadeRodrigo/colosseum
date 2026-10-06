@@ -149,6 +149,8 @@ export const pt: Dictionary = {
     },
     unknown: {
       off: 'Todas as redes em que suas carteiras assinam estão indisponíveis no nosso servidor por enquanto. Nada foi perdido: volte mais tarde.',
+      refused:
+        'Nosso servidor não aceitou uma rede para as carteiras com que você entrou, então ainda não consigo montar para você. Saia e entre de novo.',
       body: 'Ainda não sei dizer em qual rede seu plano fica: nosso servidor não respondeu. Não há nada de errado com a sua carteira.',
       retry: 'Perguntar de novo',
       asking: 'Perguntando…',
@@ -812,7 +814,10 @@ export const pt: Dictionary = {
       lead: (chain: string) =>
         `Uma lista de ativos e pesos que quem a criou publicou na ${chain}. Segui-la quer dizer que um cofre seu assume esses pesos; uma versão nova entra em vigor depois de um prazo, e você a vê antes disso.`,
       notHere: (chain: string) =>
-        `Este portfólio não está publicado na ${chain}, onde ficam seus planos, então não dá para segui-lo com a sua carteira.`,
+        `Este portfólio não está publicado na ${chain}, sua rede atual, então não dá para segui-lo daqui.`,
+      elsewhere: (chain: string) =>
+        `Você tem um cofre na ${chain} que segue este portfólio. Troque para a ${chain} para atualizá-lo lá.`,
+      switchTo: (chain: string) => `Trocar para a ${chain}`,
       recipe: (chain: string) => `Na ${chain}`,
       inEffect: 'Em vigor',
       since: (when: string) => `desde ${when}`,

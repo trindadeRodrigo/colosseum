@@ -51,8 +51,12 @@ export type Account =
    */
   | { status: 'ready'; chain: ChainId; source: 'picked' | 'wallet'; options: ChainId[] };
 
-/** `off`: every chain a wallet of theirs signs on is switched off on our server, so none can be started on. */
-export type Unknown = 'unreachable' | 'signed_out' | 'no_identity' | 'busy' | 'off';
+/**
+ * `off`: every chain a wallet of theirs signs on is switched off on our server, so none can be started
+ * on. `refused`: the server would not start them on the chain asked for (409 `NO_WALLET_FOR_CHAIN`,
+ * 422): it does not take that chain for these wallets.
+ */
+export type Unknown = 'unreachable' | 'signed_out' | 'no_identity' | 'busy' | 'off' | 'refused';
 
 export type AccountValue = {
   account: Account;
@@ -80,11 +84,11 @@ const AccountContext = createContext<AccountValue | null>(null);
 type Read = { key: string; person: Person | null; why?: Unknown };
 
 /** Why the API did not say who is signed in, as far as a person can do something about it. */
-const whyNot = (e: unknown): Unknown =>
-  e instanceof PersonError &&
-  (e.kind === 'signed_out' || e.kind === 'no_identity' || e.kind === 'busy')
-    ? e.kind
-    : 'unreachable';
+const whyNot = (e: unknown): Unknown => {
+  if (!(e instanceof PersonError)) return 'unreachable';
+  if (e.kind === 'signed_out' || e.kind === 'no_identity' || e.kind === 'busy') return e.kind;
+  return e.kind === 'no_wallet' || e.kind === 'not_offered' ? 'refused' : 'unreachable';
+};
 
 export function AccountProvider({ children }: { children: ReactNode }) {
   const port = useWalletPort();
@@ -202,14 +206,16 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     const person = read.person;
     if (!person) return { status: 'unknown', why: read.why ?? 'unreachable' };
     if (person.chain) {
-      // The chains a wallet of theirs signs on, from the wallets the API read, as the API works them
-      // out: an API from before CHAIN-SWITCH lists none once there is a chain.
+      // The chains a wallet of theirs signs on, as the API says (`chainOptions`); worked out from the
+      // wallets it read when it lists none, as an API from before CHAIN-SWITCH does once there is a chain.
       const held = new Set(person.wallets.map((w) => HOME_CHAIN[w.family]));
       return {
         status: 'ready',
         chain: person.chain,
         source: person.chainSource ?? 'picked',
-        options: ChainId.options.filter((c) => held.has(c)),
+        options: person.chainOptions.length
+          ? person.chainOptions
+          : ChainId.options.filter((c) => held.has(c)),
       };
     }
     if (person.chainOptions.length === 0) return { status: 'no-wallet' };

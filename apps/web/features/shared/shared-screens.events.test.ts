@@ -72,6 +72,11 @@ function api(o: {
     const method = init?.method ?? 'GET';
     calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
     if (path === '/v1/me') return json({ ...person, chain: o.chain ?? person.chain });
+    if (path === '/v1/me/chain' && method === 'PUT') {
+      const { chain } = JSON.parse(String(init?.body));
+      o.chain = chain;
+      return json({ ...person, chain });
+    }
     if (path.startsWith('/v1/shelf'))
       return json({ families: o.family ? [o.family] : [], disclaimer: 'd' });
     if (path.startsWith(`/v1/indexes/${SLUG}/versions`))
@@ -293,6 +298,37 @@ describe('a portfolio’s page (gate GOLD-ONE-TAP)', () => {
     const host = await show(createElement(FamilyScreen, { slug: SLUG }));
     expect(host.textContent).toContain(en.shared.family.notHere('Solana'));
     expect(host.textContent).not.toContain(en.shared.family.buy);
+  });
+
+  it('says a vault on another chain follows it, and switches there to update it (CHAIN-SWITCH)', async () => {
+    const calls = api({
+      chain: 'robinhood',
+      family: familyOf(FAMILY_ID),
+      vaults: [vaultOf({ address: MY_VAULT })],
+    });
+    portStore.set(signedInPort(EMBEDDED, { userId: USER }));
+    const host = await show(createElement(FamilyScreen, { slug: SLUG }));
+    // on Robinhood Chain, where the portfolio is not published; the Solana vault follows it
+    expect(host.textContent).toContain(en.shared.family.notHere('Robinhood Chain'));
+    const note = find(host, '[data-ui="vaults-elsewhere"]');
+    expect(note.textContent).toContain(en.shared.family.elsewhere('Solana'));
+    await click(button(note, en.shared.family.switchTo('Solana')) as HTMLElement);
+    for (let i = 0; i < 4; i += 1) await settle(50);
+    expect(calls.filter((c) => c.path === '/v1/me/chain')).toEqual([
+      { method: 'PUT', path: '/v1/me/chain', body: { chain: 'solana' } },
+    ]);
+    // on Solana now: the vault is in the page's own panel, and the note is gone
+    expect(host.querySelector('[data-ui="vaults-elsewhere"]')).toBeNull();
+  });
+
+  it('says nothing of a vault on another chain that follows something else', async () => {
+    api({
+      chain: 'robinhood',
+      family: familyOf(FAMILY_ID),
+      vaults: [vaultOf({ address: MY_VAULT, recipeOnchainId: 'another' })],
+    });
+    const host = await show(createElement(FamilyScreen, { slug: SLUG }));
+    expect(host.querySelector('[data-ui="vaults-elsewhere"]')).toBeNull();
   });
 });
 

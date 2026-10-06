@@ -137,7 +137,9 @@ export function SignInScreen({ next = AFTER_SIGN_IN, onDone, titleId }: SignInSc
             ? t.shell.slowDown
             : account.why === 'off'
               ? t.chain.unknown.off
-              : t.chain.unknown.body;
+              : account.why === 'refused'
+                ? t.chain.unknown.refused
+                : t.chain.unknown.body;
   const readySentence =
     account.status !== 'ready' ? '' : t.chain.is[account.source](chainName(account.chain));
   const noWalletSentence = owed === 'failed' ? t.signIn.failure.walletNotMade : t.chain.noWallet;
@@ -224,8 +226,8 @@ export function SignInScreen({ next = AFTER_SIGN_IN, onDone, titleId }: SignInSc
           <Card as="section">
             <CardBody className="flex flex-col items-start gap-4">
               <p className="max-w-(--tf-measure-body) text-body">{unknownSentence}</p>
-              {/* Asking again does not help a sign-in the server no longer knows: the way on is out. */}
-              {account.why === 'signed_out' ? (
+              {/* Asking again does not help a sign-in the server no longer knows, or a chain it refused: the way on is out. */}
+              {account.why === 'signed_out' || account.why === 'refused' ? (
                 <Button
                   variant="primary"
                   busy={leaving}

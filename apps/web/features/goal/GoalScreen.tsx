@@ -227,7 +227,9 @@ export function GoalScreen() {
           ? t.chain.unknown.noIdentity
           : account.why === 'off'
             ? t.chain.unknown.off
-            : t.shell.slowDown;
+            : account.why === 'refused'
+              ? t.chain.unknown.refused
+              : t.shell.slowDown;
   const chainFact: SheetFact =
     account.status === 'ready'
       ? {

@@ -177,6 +177,9 @@ export const en = {
     unknown: {
       /** Every chain a wallet of theirs signs on is switched off on our server. */
       off: 'Every chain your wallets sign on is switched off on our server for now. Nothing is lost: come back later.',
+      /** The API would not start them on the chain asked for (409, 422). */
+      refused:
+        'Our server didn’t take a chain for the wallets you signed in with, so I can’t build for you yet. Sign out, then sign in again.',
       body: 'I can’t tell yet which chain your plan lives on: our server didn’t answer. Nothing is wrong with your wallet.',
       retry: 'Ask again',
       asking: 'Asking…',
@@ -864,7 +867,11 @@ export const en = {
       lead: (chain: string) =>
         `A list of assets and weights its creator published on ${chain}. Following it means a vault of yours takes its weights; a new version takes effect after a delay, and you see it before it does.`,
       notHere: (chain: string) =>
-        `This portfolio isn’t published on ${chain}, where your plans live, so it can’t be followed from your wallet.`,
+        `This portfolio isn’t published on ${chain}, your current chain, so it can’t be followed from here.`,
+      /** A vault of the person's on another chain follows it: it is updated on that chain. */
+      elsewhere: (chain: string) =>
+        `You have a vault on ${chain} that follows this portfolio. Switch to ${chain} to update it there.`,
+      switchTo: (chain: string) => `Switch to ${chain}`,
       recipe: (chain: string) => `On ${chain}`,
       inEffect: 'In effect',
       since: (when: string) => `since ${when}`,

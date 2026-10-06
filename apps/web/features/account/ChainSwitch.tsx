@@ -2,6 +2,7 @@
 import type { ChainId } from '@colosseum/schemas';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import type { Dictionary } from '../../i18n';
 import { useT } from '../../i18n/I18nProvider';
 import { useWalletPort } from '../wallet/WalletProvider';
 import { useAccount } from './AccountProvider';
@@ -15,22 +16,36 @@ import { PersonError } from './person';
 // wallet of theirs signs on (an EVM wallet alone, on Solana) or one our server has switched off stays
 // in the list, not chosen, with the reason under it.
 
+/** Why a switch to `name` was not stored, as a sentence. */
+export function switchFailure(t: Dictionary, e: unknown, name: string): string {
+  const kind = e instanceof PersonError ? e.kind : 'unreachable';
+  if (kind === 'no_wallet') return t.chain.failure.noWallet(name);
+  if (kind === 'not_offered') return t.chain.failure.notOffered;
+  if (kind === 'signed_out') return t.chain.failure.signedOut;
+  if (kind === 'no_identity') return t.chain.failure.noIdentity;
+  if (kind === 'busy') return t.shell.slowDown;
+  return t.chain.failure.unreachable;
+}
+
 export function ChainSwitch() {
   const t = useT();
   const port = useWalletPort();
   const { account, chain, choose } = useAccount();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<ChainId | null>(null);
+  // Held at once, not at the next render: two presses in one task send one switch.
+  const sending = useRef(false);
   const [problem, setProblem] = useState('');
   const [said, setSaid] = useState('');
   const button = useRef<HTMLButtonElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const panelId = useId();
 
-  // Closed by Escape, which gives focus back to the button, and by a press anywhere else.
+  // Closed by Escape, which gives focus back to the button, and by a press or focus anywhere else.
   useEffect(() => {
     if (!open) return;
-    const away = (event: PointerEvent) => {
+    // A press, or focus, anywhere else closes it.
+    const away = (event: Event) => {
       if (!root.current?.contains(event.target as Node)) setOpen(false);
     };
     const key = (event: KeyboardEvent) => {
@@ -39,9 +54,11 @@ export function ChainSwitch() {
       button.current?.focus();
     };
     document.addEventListener('pointerdown', away);
+    document.addEventListener('focusin', away);
     document.addEventListener('keydown', key);
     return () => {
       document.removeEventListener('pointerdown', away);
+      document.removeEventListener('focusin', away);
       document.removeEventListener('keydown', key);
     };
   }, [open]);
@@ -58,23 +75,14 @@ export function ChainSwitch() {
     return null;
   };
 
-  const failure = (e: unknown, name: string): string => {
-    const kind = e instanceof PersonError ? e.kind : 'unreachable';
-    if (kind === 'no_wallet') return t.chain.failure.noWallet(name);
-    if (kind === 'not_offered') return t.chain.failure.notOffered;
-    if (kind === 'signed_out') return t.chain.failure.signedOut;
-    if (kind === 'no_identity') return t.chain.failure.noIdentity;
-    if (kind === 'busy') return t.shell.slowDown;
-    return t.chain.failure.unreachable;
-  };
-
   async function pick(next: ChainId) {
-    if (busy) return;
+    if (sending.current) return;
     if (next === chain) {
       setOpen(false);
       button.current?.focus();
       return;
     }
+    sending.current = true;
     setBusy(next);
     setProblem('');
     try {
@@ -83,8 +91,9 @@ export function ChainSwitch() {
       setSaid(t.chain.switch.done(nameOf(next)));
       button.current?.focus();
     } catch (e) {
-      setProblem(failure(e, nameOf(next)));
+      setProblem(switchFailure(t, e, nameOf(next)));
     } finally {
+      sending.current = false;
       setBusy(null);
     }
   }

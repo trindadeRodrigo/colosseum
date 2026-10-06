@@ -300,6 +300,9 @@ describe('when the chain they start on cannot be stored', () => {
       [401, 'sign in first', en.chain.unknown.signedOut],
       [401, 'sign in first: no identity token was sent', en.chain.unknown.noIdentity],
       [429, 'slow down', en.shell.slowDown],
+      // the server does not take that chain for these wallets: not that it did not answer
+      [409, 'no wallet you signed in with signs on Solana', en.chain.unknown.refused],
+      [422, 'Solana is not a chain you can pick', en.chain.unknown.refused],
     ] as const) {
       const server = api(made());
       server.force((path) => (path === '/v1/me/chain' ? json({ error }, status) : null));
