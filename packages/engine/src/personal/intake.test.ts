@@ -112,10 +112,19 @@ describe('the checks after the model, on the evaluation set (C14)', () => {
     }
     const swapped = adversarial.income_swapped as { goal: string; reply: unknown };
     const result = run(swapped.goal, { reply: swapped.reply });
-    expect(result.flags).toContain('same_figure_twice');
-    expect(result.questions.map((q) => q.field)).toEqual(
-      expect.arrayContaining(['amountUsd', 'incomeTargetUsdMonthly']),
+    // $250 is written as a rate a month: it is the income, never the sum put in.
+    expect(result.flags).toContain('wrong_role:amountUsd');
+    expect(result.draft.amountUsd).toBeNull();
+    // The two figures swapped: each is written, in the other role, and neither is taken.
+    const base = replies['en-income-two-amounts'] as Record<string, unknown>;
+    const crossed = run('en-income-two-amounts', {
+      reply: { ...base, amountUsd: 250, incomeTargetUsdMonthly: 40_000 },
+    });
+    expect(crossed.flags).toEqual(
+      expect.arrayContaining(['wrong_role:amountUsd', 'wrong_role:incomeTargetUsdMonthly']),
     );
+    expect(crossed.draft).toMatchObject({ amountUsd: null, incomeTargetUsdMonthly: null });
+    expect(result.questions.map((q) => q.field)).toContain('amountUsd');
   });
 
   it('drops what the text does not hold, and asks about it', () => {
@@ -202,6 +211,79 @@ describe('the checks after the model, on the evaluation set (C14)', () => {
   });
 });
 
+describe('the review of Oct 5: what the model gives that the text does not support is asked', () => {
+  it('a country, a goal or a risk with no word for it in the text is the suggestion, not the reading', () => {
+    const cases: [string, string, string, unknown][] = [
+      ['country_not_in_text', 'country', 'no_cue:country', 'BR'],
+      ['goal_without_cue', 'goal', 'no_cue:goal', 'protect'],
+      ['risk_without_cue', 'risk', 'no_cue:risk', 'high'],
+    ];
+    for (const [name, field, flag, value] of cases) {
+      const { goal, reply } = adversarial[name] as { goal: string; reply: unknown };
+      const result = run(goal, { reply, answers: field === 'country' ? {} : { country: 'US' } });
+      expect(result.flags, name).toContain(flag);
+      const q = result.questions.find((x) => x.field === field);
+      expect(q, name).toMatchObject({ read: value });
+      expect(result.sheet, name).toBeNull();
+    }
+    // Where the text says it, it is taken: "I live in Brazil", "Moro no Brasil".
+    for (const id of ['en-protect-country-no-stocks', 'pt-protect-country-no-stocks'])
+      expect(run(id).flags, id).not.toContain('no_cue:country');
+  });
+
+  it('an amount in euros, pounds or another currency never passes as dollars', () => {
+    for (const text of [
+      'Grow 3k€ for 2 years',
+      'Grow 3.000 € for 2 years',
+      'Grow EUR 3,000 for 2 years',
+      'Grow 3,000 in euros for 2 years',
+      'Grow £3,000 for 2 years',
+      'Grow C$ 3,000 for 2 years',
+      'Crescer 3 mil pesos por 2 anos',
+    ])
+      expect(amountInText(text, 3000), text).toBe('other_currency');
+    expect(amountInText('Grow 3,000 for 2 years', 3000)).toBe('dollars');
+    expect(amountInText('Grow US$ 3,000, not 3,000 €', 3000)).toBe('dollars');
+    const euro = runIntake({
+      text: 'Grow 3k€ over 2 years, high risk.',
+      nowMonth: NOW,
+      reply: { goal: 'grow', amountUsd: 3000, horizonMonths: 24, risk: 'high', language: 'en' },
+      homeChain: 'solana',
+      portfolios,
+    });
+    expect(euro.draft.amountUsd).toBeNull();
+    expect(euro.questions.find((q) => q.field === 'amountUsd')?.text).toBe(
+      'You wrote 3,000 EUR. How much is that in dollars, the currency the plan is funded in?',
+    );
+  });
+
+  it('binds each amount to its role', () => {
+    const text = 'From $40,000 I want $250 a month of income for 10 years.';
+    expect(amountInText(text, 40_000, 'amount')).toBe('dollars');
+    expect(amountInText(text, 250, 'income')).toBe('dollars');
+    expect(amountInText(text, 250, 'amount')).toBe('wrong_role');
+    expect(amountInText(text, 40_000, 'income')).toBe('wrong_role');
+    expect(amountInText('A monthly income of $300 from $80,000', 300, 'income')).toBe('dollars');
+  });
+
+  it('a duration is a time frame only where the text says it as one, never an age', () => {
+    expect(horizonsIn('I am 35 years old and want to grow $5,000 over 10 years', NOW)).toEqual([
+      120,
+    ]);
+    expect(horizonsIn('Tenho 35 anos de idade', NOW)).toEqual([]);
+    expect(horizonsIn('My 2 kids, 5 years apart', NOW)).toEqual([]);
+    const aged = runIntake({
+      text: 'I am 35 years old and want to grow $5,000, high risk.',
+      nowMonth: NOW,
+      reply: { goal: 'grow', amountUsd: 5000, horizonMonths: 420, risk: 'high', language: 'en' },
+      homeChain: 'solana',
+      portfolios,
+    });
+    expect(aged.flags).toContain('not_in_text:horizonMonths');
+    expect(aged.draft.horizonMonths).toBeNull();
+  });
+});
+
 describe('questions', () => {
   it('asks one question per field, from its template, in the person language, in a fixed order', () => {
     for (const g of goals)
@@ -285,8 +367,16 @@ describe('the model off (C17)', () => {
     for (const g of goals) {
       const result = run(g.id, { reply: null });
       expect(result.method).toBe('rules');
-      expect(result.draft, g.id).toEqual(draftFromRules(g.text, NOW).draft);
-      expect(result.flags, g.id).toEqual([]);
+      const rules = draftFromRules(g.text, NOW).draft;
+      expect(result.draft, g.id).toEqual(rules);
+      // Every field the rules parser read is put to the person once, its reading the start.
+      const read = (['goal', 'horizonMonths', 'risk'] as const).filter((f) => rules[f] !== null);
+      expect(result.flags, g.id).toEqual(read.map((f) => `from_rules:${f}`));
+      for (const f of read)
+        expect(
+          result.questions.find((q) => q.field === f),
+          `${g.id} ${f}`,
+        ).toMatchObject({ read: rules[f] });
       // Nothing the rules parser cannot read is guessed: it reads no amount, so the amount is asked.
       expect(
         result.questions.map((q) => q.field),

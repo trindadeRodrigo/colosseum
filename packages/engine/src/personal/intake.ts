@@ -8,7 +8,16 @@ import {
 } from '@colosseum/schemas';
 import { z } from 'zod';
 import { draftFromRules } from './draft';
-import { amountInText, currenciesIn, horizonsIn, mentionsIn, refusalsIn } from './intake-text';
+import {
+  amountInText,
+  countryNamed,
+  currenciesIn,
+  goalCuesIn,
+  horizonsIn,
+  mentionsIn,
+  refusalsIn,
+  riskCuesIn,
+} from './intake-text';
 import { readBack } from './readback';
 import { QUESTION_TEMPLATES, type QuestionId, render } from './templates';
 import { HoldableClass, PersonalLimits, PersonalSheet } from './types';
@@ -211,6 +220,13 @@ export function runIntake(input: IntakeInput): IntakeResult {
 
   if (input.reply === null) {
     Object.assign(draft, rules);
+    // The rules parser misreads ("for 5 years" as 61 months, "no stocks" as high risk): with no model
+    // to check it against, every field it read is put to the person once, its reading the start.
+    for (const field of ['goal', 'horizonMonths', 'risk'] as const)
+      if (rules[field] !== null) {
+        flags.push(`from_rules:${field}`);
+        unclear.add(field);
+      }
   } else {
     const read = readReply(input.reply);
     flags.push(...read.flags);
@@ -224,14 +240,26 @@ export function runIntake(input: IntakeInput): IntakeResult {
     for (const field of ['amountUsd', 'incomeTargetUsdMonthly'] as const) {
       const value = r[field];
       if (value === null) continue;
-      const where = amountInText(text, value);
+      // Each figure in its role: the sum put in is never a rate a month, the income always is.
+      const where = amountInText(text, value, field === 'amountUsd' ? 'amount' : 'income');
       if (where === 'dollars') draft[field] = value;
       else {
-        flags.push(where === 'absent' ? `not_in_text:${field}` : `other_currency:${field}`);
+        flags.push(
+          where === 'absent'
+            ? `not_in_text:${field}`
+            : where === 'wrong_role'
+              ? `wrong_role:${field}`
+              : `other_currency:${field}`,
+        );
         unclear.add(field);
         if (where === 'other_currency' && field === 'amountUsd') {
           const m = mentionsIn(text).find(
-            (x) => x.kind === 'amount' && x.currency && Math.abs(x.value - value) < 1,
+            (x) =>
+              x.kind === 'amount' &&
+              x.currency &&
+              x.currency !== 'USD' &&
+              x.currency !== 'XXX' &&
+              Math.abs(x.value - value) < 1,
           );
           if (m?.currency) otherCurrency = { amount: m.value, currency: m.currency };
         }
@@ -297,6 +325,21 @@ export function runIntake(input: IntakeInput): IntakeResult {
     for (const field of r.unclear ?? [])
       if ((QUESTION_FIELDS as readonly string[]).includes(field))
         unclear.add(field as QuestionField);
+
+    // A goal, a risk or a country the text has no word for is the model's suggestion, not a reading:
+    // it is kept as the form's start and asked.
+    if (draft.goal !== null && !goalCuesIn(text).includes(draft.goal)) {
+      flags.push('no_cue:goal');
+      unclear.add('goal');
+    }
+    if (draft.risk !== null && !riskCuesIn(text).includes(draft.risk)) {
+      flags.push('no_cue:risk');
+      unclear.add('risk');
+    }
+    if (draft.country !== null && !countryNamed(text, draft.country)) {
+      flags.push('no_cue:country');
+      unclear.add('country');
+    }
 
     // Where the two readers both read a field and differ, the field is unclear.
     for (const field of COMPARED) {

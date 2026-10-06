@@ -93,7 +93,7 @@ export function registerIntakeRoute(
           }))
         : [];
       const read: { reply: unknown; why?: string } = model
-        ? await model.read(text, nowMonth, language)
+        ? await model.read(text, nowMonth, language, principal.userId ?? principal.ip)
         : { reply: null, why: 'model_not_configured' };
       const result = runIntake({
         text,

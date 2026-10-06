@@ -37,6 +37,12 @@ const recorded = fixture('intake-replies.json') as { replies: Record<string, unk
 const replyByText = new Map(evalSet.goals.map((g) => [g.text, recorded.replies[g.id]]));
 const goal = (id: string) => evalSet.goals.find((g) => g.id === id) as (typeof evalSet.goals)[0];
 
+/** The recorded replies, by text, as a raw call. */
+const callOf = (): ReadCall => async (text) => {
+  const reply = replyByText.get(text);
+  return reply === undefined ? { reply: null, why: 'model_error' } : { reply };
+};
+
 /** A replay of the recorded replies, by text; `calls` counts what reached it. */
 function replay(): { model: IntakeModel; calls: () => number } {
   let calls = 0;
@@ -187,13 +193,27 @@ describe('POST /v1/baskets/intake', () => {
       provenance: null,
       why: 'model_not_configured',
     });
-    expect(body.questions.map((q) => q.field)).toEqual(['amountUsd', 'horizonMonths', 'country']);
+    // What the rules parser read (the goal and the risk) is put to the person once, with its reading.
+    expect(body.questions.map((q) => q.field)).toEqual([
+      'goal',
+      'amountUsd',
+      'horizonMonths',
+      'risk',
+      'country',
+    ]);
+    expect(body.questions.find((q) => q.field === 'risk')?.read).toBe('high');
     const done = await post(
       who,
       PATH,
       {
         text: goal('en-grow-10y-high').text,
-        answers: { amountUsd: 20_000, horizonMonths: 120, country: 'US' },
+        answers: {
+          goal: 'grow',
+          amountUsd: 20_000,
+          horizonMonths: 120,
+          risk: 'high',
+          country: 'US',
+        },
       },
       off,
     );
@@ -221,6 +241,37 @@ describe('POST /v1/baskets/intake', () => {
       } finally {
         await own.close();
       }
+    }
+  });
+
+  it('one person cannot spend the day for everyone: past their own budget they get the rules parser', async () => {
+    const { app: own } = await testApp({
+      issuer: issuer.issuer,
+      db: data.db,
+      now,
+      intakeModel: budgetedModel(callOf(), {
+        provenance: 'mock',
+        dailyCalls: 100,
+        dailyCallsPerPerson: 1,
+        now,
+      }),
+    });
+    try {
+      const [a, b] = [await someone('solana'), await someone('solana')];
+      const first = goal('en-grow-10y-high').text;
+      const second = goal('en-protect-18m-low').text;
+      const readerOf = async (who: typeof a, text: string) =>
+        IntakeResponse.parse((await post(who, PATH, { text }, own)).json()).reader;
+      expect(await readerOf(a, first)).toMatchObject({ method: 'model' });
+      expect(await readerOf(a, second)).toMatchObject({
+        method: 'rules',
+        why: 'model_person_budget_spent',
+      });
+      // A reply already read costs nothing; another person still has their own budget.
+      expect(await readerOf(a, first)).toMatchObject({ method: 'model' });
+      expect(await readerOf(b, second)).toMatchObject({ method: 'model' });
+    } finally {
+      await own.close();
     }
   });
 

@@ -8,7 +8,8 @@ import type { EnvLike, Language } from '@colosseum/schemas';
 // pure code (`runIntake` in @colosseum/engine/personal), and the questions and the read-back come from
 // templates. Shared portfolio names never reach it.
 //
-// The call has a 6-second timeout and no retry, a daily budget of calls, and a cache by text: the same
+// The call has a 6-second timeout and no retry, a daily budget of calls for everyone and one per
+// person, and a cache by text: the same
 // goal is read once, so it gives one sheet however often it is sent. With no key, past the budget, on a
 // timeout or on any error, it answers null and the intake falls back to the rules parser. It never
 // throws to the route.
@@ -17,6 +18,11 @@ export const INTAKE_MODEL_ID = 'claude-haiku-4-5';
 export const INTAKE_TIMEOUT_MS = 6_000;
 /** Calls a day, by default. At about $0.002 a read (DESIGN-VAULT section 7) this is about $2 a day. */
 export const INTAKE_DAILY_CALLS = 1_000;
+/**
+ * Calls a day for one person, by default, on top of the budget above: one account sending varied
+ * text cannot spend the day's budget for everyone.
+ */
+export const INTAKE_DAILY_CALLS_PER_PERSON = 30;
 const CACHE_SIZE = 5_000;
 
 /** What the model is asked for: the goal's fields as written, every one nullable. */
@@ -94,11 +100,15 @@ export type IntakeModel = {
   id: string;
   /** `live` for Anthropic's API; `mock` for a replay (labelled so in every answer). */
   provenance: 'live' | 'mock';
-  /** The reply as it came, or null with why there is none. Never throws. */
+  /**
+   * The reply as it came, or null with why there is none. Never throws. `who` is the person asking,
+   * whose own daily budget the call counts against.
+   */
   read(
     text: string,
     nowMonth: string,
-    language?: Language,
+    language: Language | undefined,
+    who: string,
   ): Promise<{ reply: unknown } | { reply: null; why: string }>;
 };
 
@@ -156,9 +166,11 @@ const keyOf = (text: string, nowMonth: string, language?: Language) =>
     .digest('hex');
 
 /**
- * A model with the daily budget and the cache around a call. A reply is kept by its text, so the same
- * goal gives one sheet; a failed call is not kept, so it is tried again next time. `now` dates the
- * budget's day (UTC).
+ * A model with the daily budgets and the cache around a call. A reply is kept by its text, so the same
+ * goal gives one sheet. A failed call is not kept, so it is tried again next time: after a failure a
+ * later turn may get a model reply, and the draft can change then (the answer's `reader` says which
+ * read it each time). A call counts against the day's budget for everyone and against the asking
+ * person's own (by `who`); a reply from the cache counts against neither. `now` dates the day (UTC).
  */
 export function budgetedModel(
   call: ReadCall,
@@ -166,27 +178,34 @@ export function budgetedModel(
     id?: string;
     provenance?: 'live' | 'mock';
     dailyCalls?: number;
+    dailyCallsPerPerson?: number;
     now?: () => Date;
   } = {},
 ): IntakeModel {
   const dailyCalls = opts.dailyCalls ?? INTAKE_DAILY_CALLS;
+  const perPerson = opts.dailyCallsPerPerson ?? INTAKE_DAILY_CALLS_PER_PERSON;
   const now = opts.now ?? (() => new Date());
   const cache = new Map<string, unknown>();
   let day = '';
   let used = 0;
+  const usedBy = new Map<string, number>();
   return {
     id: opts.id ?? INTAKE_MODEL_ID,
     provenance: opts.provenance ?? 'live',
-    async read(text, nowMonth, language) {
+    async read(text, nowMonth, language, who) {
       const key = keyOf(text, nowMonth, language);
       if (cache.has(key)) return { reply: cache.get(key) };
       const today = now().toISOString().slice(0, 10);
       if (today !== day) {
         day = today;
         used = 0;
+        usedBy.clear();
       }
+      const mine = usedBy.get(who) ?? 0;
+      if (mine >= perPerson) return { reply: null, why: 'model_person_budget_spent' };
       if (used >= dailyCalls) return { reply: null, why: 'model_budget_spent' };
       used += 1;
+      usedBy.set(who, mine + 1);
       const answer = await call(text, nowMonth, language);
       if (answer.reply !== null) {
         if (cache.size >= CACHE_SIZE) cache.delete(cache.keys().next().value as string);
@@ -198,16 +217,23 @@ export function budgetedModel(
 }
 
 /**
- * The model the server runs with: Anthropic's, when `ANTHROPIC_API_KEY` is set, with the budget from
- * `INTAKE_MODEL_DAILY_CALLS`. Null when no key is set: the intake reads with the rules parser alone.
+ * The model the server runs with: Anthropic's, when `ANTHROPIC_API_KEY` is set, with the budgets from
+ * `INTAKE_MODEL_DAILY_CALLS` (everyone) and `INTAKE_MODEL_DAILY_CALLS_PER_PERSON` (one person). Null when no key is set: the intake reads with the rules parser alone.
  */
 export function intakeModelFromEnv(env: EnvLike, now?: () => Date): IntakeModel | null {
   // As written: keys are case-sensitive.
   const key = env.ANTHROPIC_API_KEY?.trim();
   if (!key) return null;
-  const budget = Number(env.INTAKE_MODEL_DAILY_CALLS ?? INTAKE_DAILY_CALLS);
+  const count = (value: string | undefined, fallback: number) => {
+    const n = Number(value ?? fallback);
+    return Number.isInteger(n) && n >= 0 ? n : fallback;
+  };
   return budgetedModel(anthropicCall(key), {
-    dailyCalls: Number.isInteger(budget) && budget >= 0 ? budget : INTAKE_DAILY_CALLS,
+    dailyCalls: count(env.INTAKE_MODEL_DAILY_CALLS, INTAKE_DAILY_CALLS),
+    dailyCallsPerPerson: count(
+      env.INTAKE_MODEL_DAILY_CALLS_PER_PERSON,
+      INTAKE_DAILY_CALLS_PER_PERSON,
+    ),
     now,
   });
 }

@@ -404,6 +404,60 @@
     "not_an_object": {
       "goal": "en-grow-10y-high",
       "reply": "I could not read this goal."
+    },
+    "country_not_in_text": {
+      "goal": "en-grow-10y-high",
+      "reply": {
+        "goal": "grow",
+        "amountUsd": 20000,
+        "incomeTargetUsdMonthly": null,
+        "horizonMonths": 120,
+        "risk": "high",
+        "currency": "USD",
+        "country": "BR",
+        "chain": null,
+        "portfolios": [],
+        "language": "en",
+        "noCredit": false,
+        "cannotHold": [],
+        "unclear": []
+      }
+    },
+    "goal_without_cue": {
+      "goal": "en-grow-10y-high",
+      "reply": {
+        "goal": "protect",
+        "amountUsd": 20000,
+        "incomeTargetUsdMonthly": null,
+        "horizonMonths": 120,
+        "risk": "high",
+        "currency": "USD",
+        "country": null,
+        "chain": null,
+        "portfolios": [],
+        "language": "en",
+        "noCredit": false,
+        "cannotHold": [],
+        "unclear": []
+      }
+    },
+    "risk_without_cue": {
+      "goal": "en-grow-by-2031-theme-chain",
+      "reply": {
+        "goal": "grow",
+        "amountUsd": 5000,
+        "incomeTargetUsdMonthly": null,
+        "horizonMonths": 51,
+        "risk": "high",
+        "currency": "USD",
+        "country": null,
+        "chain": "solana",
+        "portfolios": ["The Seven"],
+        "language": "en",
+        "noCredit": false,
+        "cannotHold": [],
+        "unclear": []
+      }
     }
   }
 }
