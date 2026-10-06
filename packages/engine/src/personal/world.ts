@@ -13,9 +13,9 @@ import {
 import { z } from 'zod';
 import { pickPrimaryYield } from '../risk/index';
 import { CREDIT_LEG_TYPES, legTypesOf } from './leg-types';
+import { riskOfWorld } from './mix';
 import { BPS, byName, ceilCents, floorCents, shareOf, toCents, toUsd } from './money';
 import { PERSONAL_PARAMS } from './params';
-import { riskOfWorld } from './mix';
 import { eligibleForGoal, sleeveOfClass } from './registry';
 import { reason } from './templates';
 import {

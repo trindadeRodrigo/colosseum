@@ -183,8 +183,8 @@ export class Book {
           : w.creditBudget.fromMix
             ? 'CREDIT_BUDGET_MIX'
             : w.creditBudget.stated
-            ? 'CREDIT_BUDGET'
-            : 'CREDIT_BUDGET_UNSAID',
+              ? 'CREDIT_BUDGET'
+              : 'CREDIT_BUDGET_UNSAID',
         { capBps: w.creditBudget.bps },
         w.lang,
       );

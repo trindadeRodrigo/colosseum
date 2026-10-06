@@ -841,10 +841,7 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
       const planCap = Math.floor((amount * coverBps) / 10_000);
       say(plan.candidate === 'cover', `"${r.text}" said of a plan that is not Cover`);
       // Compared in basis points, as the engine does: on a small plan both can be zero cents.
-      say(
-        coverBps < theirCreditBps,
-        `"${r.text}" but the person's own limit is no higher`,
-      );
+      say(coverBps < theirCreditBps, `"${r.text}" but the person's own limit is no higher`);
       say(
         r.rule === 'CREDIT_NONE_PLAN' ? credit === 0 : Math.abs(credit - planCap) <= 1,
         `"${r.text}" but credit holds ${credit / 100}`,
