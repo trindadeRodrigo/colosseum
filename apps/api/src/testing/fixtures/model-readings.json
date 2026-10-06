@@ -24,5 +24,18 @@
       "fetchedAt": "2026-10-05T12:00:00.000Z",
       "provenance": "live"
     }
+  },
+  {
+    "symbol": "SGOV",
+    "reading": {
+      "assetId": "robinhood:sgov",
+      "quotedYield": 0.036,
+      "haircutYield": 0.032,
+      "haircutRule": "test fixture: stands in for a stored reading of SGOV",
+      "source": "apps/api/src/testing/fixtures/model-readings.json",
+      "method": "fixture_written_by_hand_for_tests",
+      "fetchedAt": "2026-10-05T12:00:00.000Z",
+      "provenance": "live"
+    }
   }
 ]

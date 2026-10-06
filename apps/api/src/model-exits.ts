@@ -107,7 +107,7 @@ export function asSandbox<P extends LiquidityProvider>(provider: P): P {
 }
 
 /** A mainnet token's tier on the launch shelf: what a leg of it may hold where nothing is measured. */
-export type ShelfTier = { chain: string; symbol: string; tier: AssetTier };
+export type ShelfTier = { chain: string; symbol: string; tier: AssetTier; issuer?: string };
 
 /** A stand-in with no measured twin, and the tier of its model on the mainnet shelf. */
 export type TierTwin = { id: string; symbol: string; twinSymbol: string; tier: AssetTier };
@@ -134,11 +134,41 @@ export function tierTwins(tokens: BasketAsset[], shelf: ShelfTier[]): TierTwin[]
 
 /** The launch shelf's tiers as `fixtures/risk/launch-shelf-tiers.json` keeps them, by chain. */
 export function shelfTiers(file: {
-  rows: Array<{ chain: string; symbol: string; tier: string }>;
+  rows: Array<{ chain: string; symbol: string; tier: string; issuer?: string }>;
 }): ShelfTier[] {
   return file.rows.flatMap((r) =>
     r.tier === 'A' || r.tier === 'B' || r.tier === 'C'
-      ? [{ chain: r.chain, symbol: r.symbol, tier: r.tier }]
+      ? [
+          {
+            chain: r.chain,
+            symbol: r.symbol,
+            tier: r.tier,
+            ...(r.issuer ? { issuer: r.issuer } : {}),
+          },
+        ]
       : [],
   );
+}
+
+/** A stand-in and the issuer of the mainnet token it models. */
+export type IssuerTwin = { id: string; symbol: string; twinSymbol: string; issuer: string };
+
+/**
+ * The issuer each stand-in is counted under: its model's on the mainnet shelf, in place of the test
+ * network's one name for every token, under which the cap on one issuer held all of a plan's dollar
+ * yield and gold to half together. A stand-in whose model the shelf names no issuer for keeps its own.
+ */
+export function issuerTwins(tokens: BasketAsset[], shelf: ShelfTier[]): IssuerTwin[] {
+  return tokens.flatMap((t) => {
+    for (const name of twinSymbols(t)) {
+      const hit = shelf.find(
+        (s) => s.chain === t.chain && s.symbol.toLowerCase() === name.toLowerCase(),
+      );
+      if (hit)
+        return hit.issuer && hit.issuer !== t.issuer
+          ? [{ id: t.id, symbol: t.symbol, twinSymbol: hit.symbol, issuer: hit.issuer }]
+          : [];
+    }
+    return [];
+  });
 }

@@ -7,6 +7,7 @@ import { loadLiquidityProvider, RISK_METHOD_VERSION } from './liquidity';
 import {
   asSandbox,
   exitTwins,
+  issuerTwins,
   type RegistryAsset,
   shelfTiers,
   standIns,
@@ -43,7 +44,7 @@ const readJson = <T>(file: string): T | null => {
 type TierFile = {
   source: string;
   fetchedAt: string;
-  rows: Array<{ chain: string; symbol: string; tier: string }>;
+  rows: Array<{ chain: string; symbol: string; tier: string; issuer?: string }>;
 };
 const TIER_FILE = readJson<TierFile>('fixtures/risk/launch-shelf-tiers.json');
 const SHELF = TIER_FILE ? shelfTiers(TIER_FILE) : [];
@@ -129,6 +130,11 @@ export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets, provena
     fetchedAt: TIER_FILE?.fetchedAt ?? '',
     provenance: 'sandbox' as const,
   }));
+  const issuers = issuerTwins(tokens, SHELF).map((t) => ({
+    assetId: t.id,
+    issuer: t.issuer,
+    of: t.twinSymbol,
+  }));
   const provider = loaded && read.length ? asSandbox(loaded) : loaded;
   const source = read.length ? twinSource(BEARING_SOURCE, read) : BEARING_SOURCE;
   const idOf = new Map(assets.map((a) => [a.address, a.id]));
@@ -187,5 +193,6 @@ export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets, provena
     ...(provider ? { liquidity: { provider, source } } : {}),
     ...(yields.length ? { yields } : {}),
     ...(tiers.length ? { tiers } : {}),
+    ...(issuers.length ? { issuers } : {}),
   };
 };
