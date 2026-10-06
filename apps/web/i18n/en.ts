@@ -1180,6 +1180,37 @@ export const en = {
     },
     foot: 'The plans, rates and odds on this page are MOCK sample data. None of them is live.',
   },
+
+  /** The partner embed (embed-shell.md): his words, in the partner's face. */
+  embed: {
+    label: 'Plan by tenonfi',
+    eyebrow: 'Your goal, read by tenonfi',
+    title: 'What does your money need to do?',
+    lead: 'Say it in a sentence. I read it into limits; the plan is built in tenonfi, on a wallet of your own.',
+    box: 'Your goal',
+    placeholder: '$10,000 for five years, medium risk',
+    read: 'Read my goal',
+    reading: 'Reading your goal…',
+    unread: 'Your goal, as read',
+    limits: 'How I read it',
+    notFound: 'not found: you set it in tenonfi',
+    build: 'Build this plan in tenonfi',
+    buildNote:
+      'Opens tenonfi in a new tab, where you sign in with a wallet of your own. Nothing is signed here.',
+    readFailure: 'I couldn’t read that just now. Your text is still here. Try again.',
+    tooShort: 'That’s too short for me to read. Try an amount and a time frame.',
+    poweredBy: 'Powered by',
+    loading: 'Loading plan…',
+    unavailable: 'This plan isn’t available.',
+    showSchedule: 'Show schedule',
+    vault: {
+      title: (chain: string) => `Your vault on ${chain}`,
+      lead: 'What it holds now, read from the chain.',
+      value: 'Value',
+      parts: 'Its parts',
+      see: 'See it in tenonfi',
+    },
+  },
 };
 
 export type Dictionary = typeof en;

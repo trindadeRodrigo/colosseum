@@ -9,8 +9,7 @@ import { cn } from './cn';
 // host owns the landmarks. The receding is done in CSS (`tf-embed` in globals.css): the primitives
 // placed inside read the partner's variables without knowing they are in an embed.
 //
-// The spec's routing change (a bare root layout for /embed, with no Nav and no wallet) belongs to the
-// screens slot; until then the embed route still inherits both.
+// The bare root it is placed in (no bar, no wallet, no font of ours) is `app/(embed)/layout.tsx`.
 
 export type EmbedShellLabels = {
   loading: string;

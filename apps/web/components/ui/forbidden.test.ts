@@ -29,7 +29,6 @@ const LEGACY: Record<string, readonly Kind[]> = {
   // Rodrigo's pages and components: Tailwind's cool greys, blue links, 4px corners, chart colours,
   // and two uppercase labels
   'app/(structurer)/layout.tsx': ['hue'],
-  'app/(structurer)/embed/[id]/layout.tsx': ['hue', 'radius', 'case'],
   'components/PlanView.tsx': ['hue'],
   'components/Provenance.tsx': ['radius', 'case'],
   'components/ScheduleChart.tsx': ['hue'],
@@ -39,7 +38,7 @@ const LEGACY: Record<string, readonly Kind[]> = {
 
 /** The product's own routes and what they are built from: none of it may ever be on the list above. */
 const PRODUCT =
-  /^(app\/\((app|marketing)\)|components\/shell|features\/(account|goal|portfolio|landing|order)|i18n)\//;
+  /^(app\/\((app|marketing|embed)\)|components\/shell|features\/(account|goal|portfolio|landing|order|embed)|i18n)\//;
 
 /**
  * The stylesheet of @solana/wallet-adapter-react-ui, which the layout of the pages not yet rebuilt
@@ -289,16 +288,13 @@ describe('the forbidden things', () => {
       expect(blamed.filter((b) => !base(b) && !legacy(b) && !centred(b)).map(say)).toEqual([]);
     });
 
-    it('sets uppercase on the MOCK plate and nowhere else but two legacy labels', () => {
+    it('sets uppercase on the MOCK plate and nowhere else but one legacy label', () => {
       const upper: string[] = [];
       root.walkDecls('text-transform', (decl) => {
         if (/uppercase/.test(decl.value)) upper.push((decl.parent as postcss.Rule).selector);
       });
       expect(upper.sort()).toEqual(['.tf-mock-plate', '.uppercase']);
-      expect(users('uppercase').sort()).toEqual([
-        'app/(structurer)/embed/[id]/layout.tsx',
-        'components/Provenance.tsx',
-      ]);
+      expect(users('uppercase').sort()).toEqual(['components/Provenance.tsx']);
     });
 
     it('centres text only where a spec allows it, and every such place still does', () => {
