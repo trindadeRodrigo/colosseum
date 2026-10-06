@@ -1,5 +1,6 @@
 import { ChainId } from '@colosseum/schemas';
 import { z } from 'zod';
+import { isMatchedSlug, MATCHED_PREFIX } from './market-filter';
 import { PersonalInputError } from './types';
 
 // A theme list (gate THEMES): which tokens count for a theme on one chain. The team curates it, a
@@ -16,7 +17,13 @@ const Words = z.object({ en: z.string().min(1), pt: z.string().min(1) });
  */
 export const ThemeList = z
   .object({
-    slug: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/),
+    // A slug that starts with `matched-` names a filter (gate THEME-MATCHED): never a curated list.
+    slug: z
+      .string()
+      .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/)
+      .refine((slug) => !isMatchedSlug(slug), {
+        message: `a curated list never takes a slug that starts with ${MATCHED_PREFIX}`,
+      }),
     name: Words,
     chain: ChainId,
     version: z.number().int().positive(),

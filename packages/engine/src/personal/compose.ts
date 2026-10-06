@@ -20,6 +20,7 @@ import {
   tokensOf,
   unitsOf,
 } from './exposure';
+import { isMatchedList, type MatchedList } from './matched-theme';
 import { BPS, byName, ceilCents, shareOf, shareOfUp, split, sum, toCents, toUsd } from './money';
 import { packageUp } from './packaging';
 import { Book, once, type Removed, type Sized, type Unit } from './placement';
@@ -28,7 +29,7 @@ import { scorecardOf } from './scorecard';
 import { checkCoverage, placeSetAside, setAsideOf } from './set-aside';
 import { statusOf } from './status';
 import { reason, text } from './templates';
-import { claimHoldings, namesOf, placeThemeSleeve } from './theme-sleeve';
+import { claimHoldings, fillingList, namesOf, placeThemeSleeve } from './theme-sleeve';
 import {
   type CandidateId,
   type ComposeContext,
@@ -291,8 +292,8 @@ function build(
   // their names keep room for them (gate THEME-FIRST), as much as the names that can be held and
   // sold can take, and no more than the theme's share.
   for (const t of sleeves.themes) {
-    const list = w.themeListOf(t.slug);
-    if (!list || list.status !== 'confirmed') continue;
+    const list = fillingList(w, t.slug);
+    if (!list) continue;
     const byIssuer = new Map<string, number>();
     for (const n of namesOf(w, list).found) {
       const most = Math.min(
@@ -499,7 +500,17 @@ function build(
   // what is left. The lines its stocks need are kept for them. What no name of a theme takes is held
   // in dollar yield, then cash, and the sleeve records where.
   book.reserved.clear();
-  const members = new Set(w.themeLists.flatMap((t) => t.members.map((m) => m.symbol)));
+  // The names of the curated lists and of the matched themes the sheet asks for.
+  const matchedLists = byName(
+    sleeves.themes.flatMap((t): MatchedList[] => {
+      const list = w.themeListOf(t.slug);
+      return list && isMatchedList(list) ? [list] : [];
+    }),
+    (list) => list.slug,
+  );
+  const members = new Set(
+    [...w.themeLists, ...matchedLists].flatMap((t) => t.members.map((m) => m.symbol)),
+  );
   const goalTokens = new Set(
     growthUnits
       .filter((u) => u.cents > 0)
@@ -608,9 +619,16 @@ function build(
             : x.kind === 'theme'
               ? [...(themed.get(x.theme) ?? [])].map(([assetId, cents]) => ({ assetId, cents }))
               : [];
+        // A theme filled by a filter says so, with what it was matched by: never as a curated one.
+        const list = x.kind === 'theme' ? w.themeListOf(x.theme) : null;
+        const matched =
+          list && isMatchedList(list)
+            ? { by: list.matched.by, value: list.matched.value ?? list.matched.key }
+            : null;
         return {
           kind: x.kind,
           ...(x.kind === 'theme' ? { theme: x.theme } : {}),
+          ...(matched ? { matched } : {}),
           shareBps: x.shareBps,
           amountUsd: toUsd(
             x.kind === 'safe_yield'
@@ -791,6 +809,10 @@ function build(
     fx: w.given.fx.length > 0 ? w.given.fx : undefined,
     // The theme lists the plan's theme sleeves read, the same way.
     themes: usedLists.length > 0 ? usedLists : undefined,
+    // And the matched themes: what each filter matched, and the version of the attributes read. The
+    // attributes are pinned by what was matched from them, not whole, so a plan with no matched
+    // theme hashes as it did with none given.
+    matched: matchedLists.length > 0 ? matchedLists : undefined,
     liquidity: liquidity
       ? {
           method: liquidity.methodVersion,

@@ -13,10 +13,12 @@ import {
 import { z } from 'zod';
 import { pickPrimaryYield } from '../risk/index';
 import { CREDIT_LEG_TYPES, legTypesOf } from './leg-types';
+import { type MatchedList, matchedListOf, type SleeveList } from './matched-theme';
 import { riskOfWorld } from './mix';
 import { BPS, byName, ceilCents, floorCents, shareOf, toCents, toUsd } from './money';
 import { PERSONAL_PARAMS } from './params';
 import { eligibleForGoal, sleeveOfClass } from './registry';
+import { StockAttributesFile } from './stock-attributes';
 import { reason } from './templates';
 import { ThemeList } from './theme-list';
 import {
@@ -127,9 +129,13 @@ export type World = {
   ceilingWhy(asset: BasketAsset): Reason;
   /** The token's measured exit capacity at `tau`, in dollars, or null where nothing is measured. */
   measuredUsdOf(asset: BasketAsset): number | null;
-  /** The curated theme list of this slug on the person's chain (gate THEMES), or null when none is given. */
-  themeListOf(slug: string): ThemeList | null;
-  /** The theme lists given for the person's chain, by slug: what the hash of the inputs pins. */
+  /**
+   * What a theme sleeve of this slug is filled from on the person's chain: the curated list of that
+   * slug (gate THEMES); for a slug that names a filter, the stocks it matches in the attributes given
+   * (gate THEME-MATCHED), which may be none. Null when there is neither.
+   */
+  themeListOf(slug: string): SleeveList | null;
+  /** The curated theme lists given for the person's chain, by slug: what the hash of the inputs pins. */
   themeLists: ThemeList[];
   /**
    * What a line of this token says about where its limit came from: that it is a tier and not a
@@ -264,6 +270,18 @@ export function buildWorld(
     throw new PersonalInputError('InvalidContext', [
       { path: 'themes', message: 'a theme has two lists on one chain' },
     ]);
+  // The stock attributes: validated as a whole. A matched theme sleeve reads them on the chain.
+  const givenStocks = context.stocks ?? null;
+  const parsedStocks = givenStocks === null ? null : StockAttributesFile.safeParse(givenStocks);
+  if (parsedStocks && !parsedStocks.success)
+    throw new PersonalInputError(
+      'InvalidContext',
+      issues(parsedStocks.error).map((i) => ({
+        ...i,
+        path: i.path ? `stocks.${i.path}` : 'stocks',
+      })),
+    );
+  const stocks = parsedStocks?.data ?? null;
   const parsedFx = z.array(FxRead).safeParse(context.fx ?? []);
   if (!parsedFx.success) throw new PersonalInputError('InvalidContext', issues(parsedFx.error));
   // In one order, each once; of two readings for one pair the latest counts, then the lowest value.
@@ -301,6 +319,14 @@ export function buildWorld(
       { path: 'assets', message: `the shelf lists no cash token on ${chain}` },
     ]);
   const tokens = listed.filter((a) => a.chain === chain && a.cls !== 'cash');
+  // A plan lives on one chain, and so do the attributes it reads: another chain's are refused.
+  if (stocks && stocks.chain !== chain)
+    throw new PersonalInputError('InvalidContext', [
+      {
+        path: 'stocks.chain',
+        message: `the stock attributes are of ${stocks.chain}, and the plan is on ${chain}`,
+      },
+    ]);
   const currency = sheet.currency ?? 'USD';
 
   const amount = toCents(sheet.amountUsd);
@@ -393,6 +419,12 @@ export function buildWorld(
     parsedThemes.data.filter((t) => t.chain === chain),
     (t) => t.slug,
   ).map((t) => ({ ...t, members: byName(t.members, (m) => m.symbol) }));
+  // A matched list is made once for a slug, from the attributes: pure code picks its stocks.
+  const matchedLists = new Map<string, MatchedList | null>();
+  const matchedOf = (slug: string): MatchedList | null => {
+    if (!matchedLists.has(slug)) matchedLists.set(slug, matchedListOf(slug, stocks));
+    return matchedLists.get(slug) ?? null;
+  };
   const nowMonth = monthAfter(context.now, 0);
   const world: World = {
     sheet,
@@ -495,7 +527,7 @@ export function buildWorld(
     ceilingWhy: (a) => ceiling(a).why,
     ceilingNotes: (a) => ceiling(a).notes,
     measuredUsdOf: (a) => ceiling(a).measuredUsd,
-    themeListOf: (slug) => themeLists.find((t) => t.slug === slug) ?? null,
+    themeListOf: (slug) => themeLists.find((t) => t.slug === slug) ?? matchedOf(slug),
     themeLists,
   };
 

@@ -16,6 +16,8 @@ import {
 } from '@colosseum/schemas';
 import { z } from 'zod';
 import { LegType } from './leg-types';
+import type { MarketFilterBy } from './market-filter';
+import type { StockAttributesFile } from './stock-attributes';
 import type { ThemeList } from './theme-list';
 
 // The types of the personalization engine that packages/schemas does not hold yet. Each is marked
@@ -261,6 +263,13 @@ export type ComposeContext = {
    * A theme sleeve reads the list of its slug on the person's chain; with none, it holds no name.
    */
   themes?: ThemeList[];
+  /**
+   * The sourced attributes of the stocks tracked on the person's chain (gate THEME-MATCHED), as
+   * `content/stocks/<chain>.json` holds them. A theme sleeve whose slug names a filter
+   * (`matched-<by>-<key>`) holds the stocks whose attributes carry its value; with none given, it
+   * matches nothing. The attributes of another chain are refused.
+   */
+  stocks?: StockAttributesFile;
 };
 
 /**
@@ -307,6 +316,11 @@ export type PersonalProposal = Omit<BasketProposal, 'sheet' | 'observations' | '
     kind: PlanSleeve['kind'];
     /** A theme sleeve's slug. */
     theme?: string;
+    /**
+     * On a theme sleeve filled by a filter (gate THEME-MATCHED), never from a curated list: what it
+     * was matched by, and the value as the attributes write it (its key, where no stock carries it).
+     */
+    matched?: { by: MarketFilterBy; value: string };
     shareBps: number;
     amountUsd: number;
     holds: { assetId: string; amountUsd: number }[];

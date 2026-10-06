@@ -23,6 +23,7 @@ import aiOnSolana from '../../../../content/themes/solana/ai.json';
 import seedFile from '../../../../docs/vault/research/open-questions/launch-shelf.seed.json';
 import yieldRows from './fixtures/yields.json';
 import { LEG_TYPES } from './leg-types';
+import { attributeKey, filterOfSlug, type MarketFilterBy } from './market-filter';
 import { growthRoomBps, growthTokens, RISKS } from './mix';
 import { PERSONAL_PARAMS } from './params';
 import { eligibleForGoal, sleeveOfClass } from './registry';
@@ -1193,14 +1194,113 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
   // sleeve in rate legs and cash only, never more of a token than its line holds.
   const lineUsd = new Map(plan.lines.map((l) => [l.assetId, cents(l.amountUsd)]));
   const splitSaid = allReasons(plan).filter((r) => r.rule.startsWith('SPLIT_'));
-  // A theme's sentence is said only of a theme the sheet asks for, at its share.
-  for (const r of allReasons(plan))
+  // What a theme sleeve is filled from, read here apart from the engine. A curated list (gate THEMES)
+  // is the one given for the chain, once confirmed. A matched theme (gate THEME-MATCHED) is the rows
+  // of the attributes that carry, for what the slug names, a value with the slug's key; it holds
+  // names only where the shelf lists one of those stocks on the chain.
+  const lists = (ctx.themes ?? []).filter((t) => t.chain === s.chains[0]);
+  const attrs = ctx.stocks?.chain === s.chains[0] ? ctx.stocks : undefined;
+  const writtenBy = (row: StockAttributes, by: MarketFilterBy): string[] =>
+    (by === 'keyword'
+      ? row.keywords
+      : [by === 'sector' ? row.sector : by === 'industry' ? row.industry : row.subIndustry]
+    ).flatMap((value) => (value === null ? [] : [value]));
+  const nameable = (symbol: string) =>
+    shelf.assets.some(
+      (a) =>
+        a.chain === s.chains[0] &&
+        a.symbol === symbol &&
+        a.cls !== 'cash' &&
+        a.cls !== 'dollar_yield',
+    );
+  const matchedOf = (slug: string) => {
+    const filter = filterOfSlug(slug);
+    if (!filter) return null;
+    const carried = (row: StockAttributes) =>
+      writtenBy(row, filter.by).find((value) => attributeKey(value) === filter.key);
+    const rows = (attrs?.stocks ?? [])
+      .filter((row) => carried(row) !== undefined)
+      .sort((a, b) => (a.symbol < b.symbol ? -1 : a.symbol > b.symbol ? 1 : 0));
+    return {
+      ...filter,
+      symbols: rows.map((row) => row.symbol),
+      // As the first matching stock by symbol writes it; the key where none carries it.
+      name: (rows[0] && carried(rows[0])) ?? filter.key,
+      fills: rows.some((row) => nameable(row.symbol)),
+    };
+  };
+  /** Whether a reason names this filter: what it reads, and a value with its key. */
+  const saysFilter = (r: Reason, filter: { by: string; key: string }) =>
+    r.params.by === filter.by && attributeKey(String(r.params.value)) === filter.key;
+  const themeSleeves = (s.sleeves ?? []).flatMap((x) => (x.kind === 'theme' ? [x] : []));
+  // A theme's sentence is said only of a theme the sheet asks for, at its share: a curated theme's of
+  // a curated list and its names, a matched one's of the filter it names and the stocks that filter
+  // matches, from the attributes given. Neither is ever said as the other.
+  for (const r of allReasons(plan)) {
     if (r.rule === 'THEME_SLEEVE')
       say(
-        (s.sleeves ?? []).some(
-          (x) => x.kind === 'theme' && x.shareBps === Number(r.params.shareBps),
+        themeSleeves.some(
+          (x) => !filterOfSlug(x.theme) && x.shareBps === Number(r.params.shareBps),
         ),
         `"${r.text}" said of a plan with no such theme sleeve`,
+      );
+    if (r.rule === 'THEME_MEMBER')
+      say(
+        themeSleeves.some(
+          (x) =>
+            !filterOfSlug(x.theme) &&
+            lists.some(
+              (t) =>
+                t.slug === x.theme &&
+                t.status === 'confirmed' &&
+                t.members.some((m) => m.symbol === r.params.asset),
+            ),
+        ),
+        `"${r.text}" said of a name no curated theme of the sheet lists`,
+      );
+    if (r.rule === 'THEME_MATCHED_SLEEVE')
+      say(
+        themeSleeves.some((x) => {
+          const matched = matchedOf(x.theme);
+          return (
+            matched !== null && saysFilter(r, matched) && x.shareBps === Number(r.params.shareBps)
+          );
+        }),
+        `"${r.text}" said of a plan with no such matched theme sleeve`,
+      );
+    if (r.rule === 'THEME_MATCHED_MEMBER') {
+      say(
+        themeSleeves.some((x) => {
+          const matched = matchedOf(x.theme);
+          return (
+            matched !== null &&
+            saysFilter(r, matched) &&
+            matched.symbols.includes(String(r.params.asset))
+          );
+        }),
+        `"${r.text}" said of a name no filter of the sheet matches`,
+      );
+      say(
+        r.params.version === attrs?.version && r.params.readOn === attrs?.readOn,
+        `"${r.text}" but the attributes given are version ${attrs?.version}, read ${attrs?.readOn}`,
+      );
+    }
+    // "No stock for it on the chain" is said of a matched theme of the sheet, by its name, and only
+    // where the shelf lists none of the stocks its filter matches.
+    if (r.rule === 'THEME_NO_MATCH' || r.rule === 'OVERFLOW_THEME_NO_MATCH')
+      say(
+        themeSleeves.some((x) => {
+          const matched = matchedOf(x.theme);
+          return matched !== null && !matched.fills && r.params.theme === matched.name;
+        }),
+        `"${r.text}" said of a plan with no matched theme that matches nothing`,
+      );
+  }
+  for (const flag of plan.flags)
+    if (flag.startsWith('theme_no_match:'))
+      say(
+        themeSleeves.some((x) => flag === `theme_no_match:${x.theme}`),
+        `${flag} names no theme sleeve of the sheet`,
       );
   if (!s.sleeves) {
     say(plan.split === undefined, 'a split on a plan whose sheet has none');
@@ -1244,12 +1344,43 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
     // A theme sleeve (gates SLEEVES, THEMES): it holds names of its list on the chain, dollar yield
     // and cash, never more of a token than its line; its names in equal parts, unless the line says
     // which limit holds one to less; each name's line says the theme and why the name is on it.
-    const lists = (ctx.themes ?? []).filter((t) => t.chain === s.chains[0]);
-
+    // A matched theme (gate THEME-MATCHED) is held to the same, its names being the stocks its filter
+    // matches: each name's line says it is matched, by what, and from which attributes.
     for (const x of plan.split ?? []) {
       if (x.kind !== 'theme') continue;
-      const list = lists.find((t) => t.slug === x.theme && t.status === 'confirmed');
-      const members = new Set(list?.members.map((m) => m.symbol) ?? []);
+      const matched = matchedOf(x.theme ?? '');
+      const list = matched
+        ? undefined
+        : lists.find((t) => t.slug === x.theme && t.status === 'confirmed');
+      const members = new Set(
+        matched
+          ? matched.fills
+            ? matched.symbols
+            : []
+          : (list?.members.map((m) => m.symbol) ?? []),
+      );
+      // The split says a theme is matched, and by what, exactly when its slug names a filter.
+      say(
+        matched
+          ? x.matched?.by === matched.by && attributeKey(x.matched.value) === matched.key
+          : x.matched === undefined,
+        `the theme ${x.theme} is ${matched ? 'not labelled as matched' : 'labelled as matched'} on the split`,
+      );
+      if (matched) {
+        // A filter that matches no stock the chain lists: flagged, and said by the theme's slug.
+        const none = cents(x.amountUsd) > 0 && !matched.fills;
+        say(
+          plan.flags.includes(`theme_no_match:${x.theme}`) === none,
+          `the theme ${x.theme}: the no-match flag is ${none ? 'missing' : 'misplaced'}`,
+        );
+        if (none)
+          say(
+            plan.removed.some(
+              (r) => r.ref === x.theme && r.reasons.some((q) => q.rule === 'THEME_NO_MATCH'),
+            ),
+            `the theme ${x.theme} matches no stock the chain lists, and the plan does not say so`,
+          );
+      }
       say(
         sum(x.holds.map((h) => cents(h.amountUsd))) === cents(x.amountUsd),
         `the theme ${x.theme} holds more or less than its dollars`,
@@ -1261,7 +1392,7 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
         const member = a !== undefined && members.has(a.symbol) && a.cls !== 'dollar_yield';
         say(
           member || a?.cls === 'cash' || a?.cls === 'dollar_yield',
-          `the theme ${x.theme} holds ${h.assetId}, which is not on its list`,
+          `the theme ${x.theme} holds ${h.assetId}, which ${matched ? 'its filter does not match' : 'is not on its list'}`,
         );
         say(
           cents(h.amountUsd) <= (lineUsd.get(h.assetId) ?? 0) + slack,
@@ -1270,13 +1401,26 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
         if (a && member) named.push({ a, cents: cents(h.amountUsd) });
       }
       const top = Math.max(0, ...named.map((n) => n.cents));
-      const name = list?.name[s.language];
+      const name = matched ? matched.name : list?.name[s.language];
       for (const { a, cents: held } of named) {
         const reasons = plan.lines.find((l) => l.assetId === a.id)?.reasons ?? [];
         say(
-          reasons.some((r) => r.rule === 'THEME_SLEEVE' && r.params.theme === name) &&
-            reasons.some((r) => r.rule === 'THEME_MEMBER' && r.params.asset === a.symbol),
-          `${a.id} is held for the theme ${x.theme} and its line does not say so`,
+          matched
+            ? reasons.some(
+                (r) =>
+                  r.rule === 'THEME_MATCHED_SLEEVE' &&
+                  saysFilter(r, matched) &&
+                  Number(r.params.shareBps) === x.shareBps,
+              ) &&
+                reasons.some(
+                  (r) =>
+                    r.rule === 'THEME_MATCHED_MEMBER' &&
+                    r.params.asset === a.symbol &&
+                    saysFilter(r, matched),
+                )
+            : reasons.some((r) => r.rule === 'THEME_SLEEVE' && r.params.theme === name) &&
+                reasons.some((r) => r.rule === 'THEME_MEMBER' && r.params.asset === a.symbol),
+          `${a.id} is held for the theme ${x.theme} and its line does not say ${matched ? 'it is matched, and by what' : 'so'}`,
         );
         const limited = reasons.some(
           (r) =>
