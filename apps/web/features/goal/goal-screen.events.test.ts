@@ -205,6 +205,62 @@ describe('the goal screen, before anything is read', () => {
     expect(sheet(host)).toBeNull();
   });
 
+  it('reads every example back as it says, in each language, without asking the reader', async () => {
+    // what each chip says, field by field: the goal, the amount, the time frame, the risk, the income
+    const said = [
+      { goal: 'grow', amount: '2000', horizon: '120', risk: 'high', income: '' },
+      { goal: 'protect', amount: '50000', horizon: '18', risk: 'low', income: '' },
+      { goal: 'income', amount: '80000', horizon: '', risk: '', income: '300' },
+    ];
+    for (const lang of ['en', 'pt'] as const) {
+      const words = dictionary(lang);
+      expect(words.goal.examples.list).toHaveLength(said.length);
+      for (const [i, example] of words.goal.examples.list.entries()) {
+        const server = api({});
+        const host = await screen(lang);
+        await click(
+          [...host.querySelectorAll('button')].find(
+            (b) => b.textContent === example,
+          ) as HTMLElement,
+        );
+        await press(box(host), 'Enter');
+        await settle();
+        const want = said[i] as (typeof said)[number];
+        expect(
+          {
+            goal: find<HTMLSelectElement>(host, `#${FIELD_ID.goal}`).value,
+            amount: input(host, 'amount').value.replace(/\D/g, ''),
+            horizon: input(host, 'horizon').value,
+            risk: find<HTMLSelectElement>(host, `#${FIELD_ID.risk}`).value,
+            // the income field is there for a goal of income only
+            income: host.querySelector<HTMLInputElement>(`#${FIELD_ID.income}`)?.value ?? '',
+          },
+          `${lang}: ${example}`,
+        ).toEqual(want);
+        // the page's own example: the reader made for reais is not asked, and does not say so
+        expect(server.to('/goals')).toEqual([]);
+        expect(find(host, '#limits').textContent).toContain(words.goal.examples.source);
+        expect(host.textContent).not.toContain(words.goal.readerMissed('').slice(0, 20));
+        await unmountAll();
+        window.sessionStorage.clear();
+      }
+    }
+  });
+
+  it('reads an example the person changed like any other text', async () => {
+    const server = api({});
+    const host = await screen();
+    await click(
+      [...host.querySelectorAll('button')].find(
+        (b) => b.textContent === en.goal.examples.list[1],
+      ) as HTMLElement,
+    );
+    await type(box(host), `${en.goal.examples.list[1]} and some cash`);
+    await press(box(host), 'Enter');
+    await settle();
+    expect(server.to('/goals')).toHaveLength(1);
+  });
+
   it('does not send an empty box', async () => {
     const server = api({});
     const host = await screen();
@@ -592,8 +648,9 @@ describe('the chain on the sheet', () => {
     expect(find(facts, 'dt').textContent).toBe(en.goal.chain.label);
     expect(facts.textContent).toContain('Solana');
     expect(facts.textContent).toContain(en.goal.chain.note);
-    // a test network: the plate, and the words
-    expect(facts.querySelectorAll('.tf-mock-plate')).toHaveLength(1);
+    // a test network: the named glyph, and the words
+    expect(facts.querySelectorAll('[data-ui="sample-glyph"]')).toHaveLength(1);
+    expect(facts.textContent).not.toContain('MOCK');
     expect(facts.textContent).toContain(en.shell.testNetwork);
     // no control sets it
     expect(facts.querySelectorAll('input, select, textarea')).toHaveLength(0);
@@ -655,36 +712,37 @@ describe('what comes back from “Build my plan”', () => {
     expect(host.querySelectorAll('.tf-hatch, .tf-mock-plate')).toHaveLength(0);
   });
 
-  it('marks a plan built on anything that is not live with the hatch and the word MOCK', async () => {
+  it('marks a plan built on anything that is not live with the hatch and a quiet line', async () => {
     const { host } = await built(
       (body) =>
         json({ id: 'plan-1', proposal: proposalFor((body as { sheet: never }).sheet, 'mock') }),
       'live',
     );
     expect(host.textContent).toContain(en.goal.built.done.title);
-    expect(host.querySelectorAll('.tf-mock-plate')).toHaveLength(1);
+    expect(host.querySelectorAll('[data-ui="sample-note"]')).toHaveLength(1);
+    expect(host.textContent).not.toContain('MOCK');
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
 
-  it('draws a plan that names no figure as not live: the plate, never a bare card', async () => {
+  it('draws a plan that names no figure as not live: the line, never a bare card', async () => {
     const { host } = await built((body) => {
       const proposal = proposalFor((body as { sheet: never }).sheet, 'live');
       return json({ id: 'plan-1', proposal: { ...proposal, observations: [] } });
     }, 'live');
     expect(host.textContent).toContain(en.goal.built.done.title);
-    expect(host.querySelectorAll('.tf-mock-plate')).toHaveLength(1);
-    expect(host.querySelector('[data-ui="mock-note"]')).toBeNull();
+    expect(find(host, '[data-ui="sample-note"]').textContent).toBe(en.shell.mockAnnounce);
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
 
-  it('marks a plan from a test network with the plate and the words "test network"', async () => {
+  it('marks a plan from a test network with the line and the words "test network"', async () => {
     const { host } = await built(
       (body) =>
         json({ id: 'plan-1', proposal: proposalFor((body as { sheet: never }).sheet, 'sandbox') }),
       'live',
     );
-    expect(host.querySelectorAll('.tf-mock-plate')).toHaveLength(1);
-    expect(find(host, '[data-ui="mock-note"]').textContent).toBe(en.shell.testNetwork);
+    expect(find(host, '[data-ui="sample-note"]').textContent).toBe(
+      `${en.shell.mockAnnounce} · ${en.shell.testNetwork}`,
+    );
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
 

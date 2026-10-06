@@ -2,37 +2,31 @@ import { describe, expect, it } from 'vitest';
 import { mockPlate } from './test/cases';
 import { all, classes, hasClass, one, render, text, ui } from './test/html';
 
-describe('MockPlate (mock-plate.md)', () => {
-  it('always carries the word MOCK', () => {
-    expect(text(render(mockPlate.quiet))).toBe('MOCK');
-    expect(text(render(mockPlate.plate))).toContain('MOCK');
-    expect(text(render(mockPlate.frame))).toContain('MOCK');
+describe('MockPlate (mock-plate.md, as MOCK-QUIET changed it)', () => {
+  it('never writes the word MOCK: a small hatched glyph with a name for screen readers', () => {
+    for (const node of [mockPlate.plate, mockPlate.quiet, mockPlate.frame, mockPlate.reworded]) {
+      expect(text(render(node))).not.toContain('MOCK');
+      expect(all(render(node), (el) => hasClass(el, 'tf-mock-plate'))).toHaveLength(0);
+    }
+    const glyph = one(render(mockPlate.plate), ui('sample-glyph'));
+    expect(hasClass(glyph, 'tf-hatch')).toBe(true);
+    expect(glyph.attrs.role).toBe('img');
+    expect(glyph.attrs['aria-label']).toBe('sample figure');
   });
 
-  it('is never a plate without its hatch band, whatever it is handed', () => {
-    // `bare` in test/cases.tsx asks for the plate alone: a type error, and the band is drawn anyway.
-    for (const node of [mockPlate.plate, mockPlate.quiet, mockPlate.bare, mockPlate.reworded]) {
-      const plate = one(render(node), ui('mock-plate'));
-      expect(all(plate, ui('hatch-band'))).toHaveLength(1);
-      expect(all(plate, (el) => hasClass(el, 'tf-mock-plate'))).toHaveLength(1);
+  it('is a glyph whatever it is handed, and says nothing else', () => {
+    // `bare` and `reworded` in test/cases.tsx are type errors; forced through, the glyph is drawn
+    for (const node of [mockPlate.bare, mockPlate.reworded]) {
+      const glyph = one(render(node), ui('sample-glyph'));
+      expect(hasClass(glyph, 'tf-hatch')).toBe(true);
+      expect(text(render(node))).not.toContain('LIVE');
     }
   });
 
-  it('cannot be made to say anything else', () => {
-    // `reworded` in test/cases.tsx is a type error, and the props are ignored if forced through.
-    expect(text(render(mockPlate.reworded))).toBe('MOCK: sample data, not live');
-    expect(text(render(mockPlate.reworded))).not.toContain('LIVE');
-  });
-
-  it('puts the word on a solid plate beside the hatch, never on it', () => {
-    const badge = render(mockPlate.plate);
-    const hatch = one(badge, (el) => hasClass(el, 'tf-hatch'), 'hatch');
-    expect(text(hatch)).toBe('');
-    expect(hatch.attrs['aria-hidden']).toBe('true');
-    expect(classes(hatch)).toContain('w-1.5'); // a 6px band
-    const plate = one(badge, (el) => hasClass(el, 'tf-mock-plate'), 'plate');
-    expect(all(hatch, () => true)).toHaveLength(0);
-    expect(hasClass(plate, 'tf-hatch')).toBe(false);
+  it('puts no text on the hatch', () => {
+    const glyph = one(render(mockPlate.plate), ui('sample-glyph'));
+    expect(text(glyph)).toBe('');
+    expect(all(glyph, () => true)).toHaveLength(0);
   });
 
   it('is not interactive', () => {
@@ -40,10 +34,12 @@ describe('MockPlate (mock-plate.md)', () => {
       expect(all(render(node), (el) => el.tag === 'button' || el.tag === 'a')).toHaveLength(0);
   });
 
-  it('tells a screen reader once per panel that the data is a sample', () => {
-    expect(text(render(mockPlate.plate))).toBe('MOCK: sample data, not live');
-    expect(all(render(mockPlate.frame), (el) => hasClass(el, 'sr-only'))).toHaveLength(1);
-    expect(all(render(mockPlate.quiet), (el) => hasClass(el, 'sr-only'))).toHaveLength(0);
+  it('names the glyph once per panel, and says a panel is sample in one quiet line', () => {
+    expect(one(render(mockPlate.quiet), ui('sample-glyph')).attrs['aria-hidden']).toBe('true');
+    const note = one(render(mockPlate.frame), ui('sample-note'));
+    expect(text(note)).toBe('Sample figures');
+    expect(classes(note)).toContain('text-muted-foreground');
+    expect(classes(note).join(' ')).not.toMatch(/border|bg-/);
   });
 
   it('frames a mocked panel: hatch in an 8px margin, everything on a solid surface inside', () => {

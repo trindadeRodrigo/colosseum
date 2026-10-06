@@ -12,7 +12,14 @@ const WEB = join(HERE, '..', '..');
 const KB = 1024;
 const BUDGET = { assets: 40 * KB, still: 10 * KB };
 
-const SCENE = ['joint-scene.ts', 'joint-ink.ts', 'joint-geometry.ts', 'joint-pose.ts'];
+const SCENE = [
+  'joint-scene.ts',
+  'joint-ink.ts',
+  'joint-geometry.ts',
+  'joint-pose.ts',
+  'coins-scene.ts',
+  'coins.ts',
+];
 
 describe('what the 3D joint fetches', () => {
   it('imports three and its line and geometry helpers, its own files, and nothing that could fetch', () => {
@@ -66,5 +73,27 @@ describe('what the 3D joint fetches', () => {
       'app/(marketing)/dev/joint/page.dev.tsx',
     ]);
     expect(readFileSync(join(HERE, 'JointStage.tsx'), 'utf8')).toContain("import('./joint-scene')");
+  });
+
+  it('loads the closing’s coins on demand too: no file imports their scene as a value', () => {
+    const found: string[] = [];
+    for (const top of ['app', 'features', 'components']) {
+      const walk = (dir: string) => {
+        for (const name of readdirSync(dir)) {
+          if (name === 'node_modules' || name.startsWith('.')) continue;
+          const path = join(dir, name);
+          if (statSync(path).isDirectory()) walk(path);
+          else if (/\.(tsx?|mjs)$/.test(name) && !/\.test\.tsx?$/.test(name)) {
+            const text = readFileSync(path, 'utf8');
+            if (/^import\s+(?!type\b)[^;]*from\s+'[^']*coins-scene'/m.test(text)) found.push(path);
+          }
+        }
+      };
+      walk(join(WEB, top));
+    }
+    expect(found).toEqual([]);
+    expect(readFileSync(join(HERE, 'ClosingCoins.tsx'), 'utf8')).toContain(
+      "import('./coins-scene')",
+    );
   });
 });

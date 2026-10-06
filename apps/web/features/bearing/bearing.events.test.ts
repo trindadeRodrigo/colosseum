@@ -66,6 +66,31 @@ describe('the commodities page on the recording', () => {
     expect(kpis).toContain('weekend');
   });
 
+  it('pins every figure a chart’s readout names, as the figures beside it are (rule 1)', async () => {
+    const host = await mount(onSnapshot(createElement(DexPage, { page: 'commodities' })));
+    await settle(host, (h) => h.querySelector('[data-ui="bearing-kpis"]') != null && !busy(h));
+    const readouts = [...host.querySelectorAll('[data-ui="chart-readout"]')];
+    expect(readouts.length).toBeGreaterThan(0);
+    for (const readout of readouts) {
+      const figures = [...readout.querySelectorAll('[data-ui="figure"]')];
+      expect(figures.length, readout.textContent ?? '').toBeGreaterThan(0);
+      for (const f of figures) {
+        expect(f.querySelector('[data-ui="pin"]')).not.toBeNull();
+        // the recording is old: its pins say so, with the age
+        expect(f.getAttribute('data-state')).toBe('stale');
+      }
+    }
+  });
+
+  it('makes each ticker in the table a 24px target (WCAG 2.5.8)', async () => {
+    const host = await mount(onSnapshot(createElement(DexPage, { page: 'commodities' })));
+    await settle(host, (h) => h.querySelector('[data-ui="bearing-kpis"]') != null && !busy(h));
+    const tickers = [...host.querySelectorAll('a[href^="/analytics/simulation?asset="]')];
+    expect(tickers.length).toBeGreaterThan(0);
+    for (const a of tickers)
+      expect(a.className.split(' ')).toEqual(expect.arrayContaining(['min-h-6', 'min-w-6']));
+  });
+
   it('the asset filter narrows every block, and None says nothing is selected', async () => {
     const host = await mount(onSnapshot(createElement(DexPage, { page: 'commodities' })));
     await settle(host, (h) => h.querySelector('[data-ui="bearing-kpis"]') != null && !busy(h));

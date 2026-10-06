@@ -11,7 +11,6 @@ import {
 } from 'react';
 import { cn } from './cn';
 import { Icon } from './Icon';
-import { MockWord } from './internal/mock-parts';
 import {
   kindWords,
   PIN_CLOSE_MS,
@@ -295,7 +294,6 @@ export function ProvenancePin({
           {stale}
         </span>
       )}
-      {state === 'mock' && <MockWord className="ml-1.5" />}
       {open && (
         <Popover ref={panel} id={popover} name={dialog ? text.provenance : null} place={place}>
           <button
@@ -317,7 +315,7 @@ export function ProvenancePin({
           </span>
           {detail && <span>{detail}</span>}
           {stale && <span className="text-muted-foreground">{stale}</span>}
-          {kind && <span className="text-muted-foreground">MOCK · {kind}</span>}
+          {kind && <span className="text-muted-foreground">{kind}</span>}
           {docs && (
             <a
               href={docs.href}

@@ -2,7 +2,7 @@ import { getAddress } from 'viem';
 import { describe, expect, it, vi } from 'vitest';
 import { base64Decode } from './bytes';
 import { toWalletError, type WalletPortError } from './errors';
-import { foundWallets, readAnnouncement, watchEvmWallets } from './found-wallets';
+import { foundWallets, onePerName, readAnnouncement, watchEvmWallets } from './found-wallets';
 import { createWalletPort, idleDriver } from './port';
 import {
   clientType,
@@ -12,7 +12,7 @@ import {
   signInWithSolanaWallet,
   walletAlreadyThere,
 } from './sign-in-flows';
-import { type SignInAttempt, signInFailure } from './sign-in-view';
+import { offersNewPasskey, type SignInAttempt, signInFailure, walletChoices } from './sign-in-view';
 import { buildConfigForTest } from './test/api-config';
 import { chains, failure } from './test/fixtures';
 import { createTestDriver, TEST_WALLETS } from './test/test-driver';
@@ -330,6 +330,94 @@ describe('the wallets a passkey sign-in owes a person', () => {
     expect(walletAlreadyThere({ privyErrorCode: 'embedded_wallet_already_exists' })).toBe(true);
     for (const other of [new Error('Failed to connect to wallet proxy'), null, 'already', {}])
       expect(walletAlreadyThere(other)).toBe(false);
+  });
+});
+
+describe('the wallets as the sign-in screen offers them', () => {
+  const ICON = 'data:image/png;base64,iVBORw0KGgo=';
+  const provider = { request: async () => null };
+
+  it('keeps a wallet’s own icon when it is an image inline, and nothing else', () => {
+    const read = (icon: unknown) =>
+      readAnnouncement({ info: { rdns: 'app.phantom', name: 'Phantom', icon }, provider })?.icon;
+    expect(read(ICON)).toBe(ICON);
+    expect(read('data:image/svg+xml;base64,PHN2Zy8+')).toBe('data:image/svg+xml;base64,PHN2Zy8+');
+    for (const bad of ['https://evil.example/i.png', 'javascript:alert(1)', 'data:text/html,x', 7])
+      expect(read(bad)).toBeUndefined();
+    expect(foundWallets([{ name: 'Backpack', icon: ICON }], [])[0]?.icon).toBe(ICON);
+  });
+
+  it('offers one entry per wallet, with the family of each way in, and no chain in its name', () => {
+    const choices = walletChoices(
+      foundWallets(
+        [{ name: 'Phantom', icon: ICON }, { name: 'Solflare' }],
+        [
+          { rdns: 'app.phantom', name: 'Phantom', provider },
+          { rdns: 'io.metamask', name: 'MetaMask', provider },
+        ],
+      ),
+    );
+    expect(choices.map((c) => [c.name, c.ids])).toEqual([
+      ['MetaMask', { evm: 'evm:io.metamask' }],
+      ['Phantom', { solana: 'solana:Phantom', evm: 'evm:app.phantom' }],
+      ['Solflare', { solana: 'solana:Solflare' }],
+    ]);
+    expect(choices.find((c) => c.name === 'Phantom')?.icon).toBe(ICON);
+  });
+
+  it('joins only the wallets known to sign on both, by id, and never by a name an announcer chose', () => {
+    const FAKE = 'data:image/png;base64,ZmFrZQ==';
+    const choices = walletChoices(
+      foundWallets(
+        [{ name: 'Phantom', icon: ICON }],
+        [
+          // an EVM wallet that calls itself "Phantom", announcing before the real one
+          { rdns: 'com.fake', name: 'Phantom', provider, icon: FAKE },
+          { rdns: 'app.phantom', name: 'Phantom', provider },
+          { rdns: 'io.other', name: 'Phantom', provider },
+        ],
+      ),
+    );
+    expect(choices.map((c) => [c.name, c.ids])).toEqual([
+      ['Phantom', { evm: 'evm:com.fake' }],
+      ['Phantom', { evm: 'evm:io.other' }],
+      ['Phantom', { solana: 'solana:Phantom', evm: 'evm:app.phantom' }],
+    ]);
+    // the real one keeps its own icon; the fake keeps its own, and lends it to nobody
+    expect(choices.find((c) => c.ids.solana)?.icon).toBe(ICON);
+    expect(choices.find((c) => c.ids.evm === 'evm:com.fake')?.icon).toBe(FAKE);
+    expect(choices.find((c) => c.ids.evm === 'evm:io.other')?.icon).toBeUndefined();
+    // with the real EVM side absent, the fake does not take its slot
+    const alone = walletChoices(
+      foundWallets([{ name: 'Phantom' }], [{ rdns: 'com.fake', name: 'Phantom', provider }]),
+    );
+    expect(alone.find((c) => c.ids.solana)?.ids).toEqual({ solana: 'solana:Phantom' });
+  });
+
+  it('lists one Solana wallet per name: a second one called "Phantom" is not listed or used', () => {
+    const real = { name: 'Phantom', icon: ICON };
+    const fake = { name: 'Phantom ', icon: 'data:image/png;base64,ZmFrZQ==' };
+    const kept = onePerName([real, { name: 'Backpack' }, fake, { name: '' }]);
+    expect(kept).toEqual([real, { name: 'Backpack' }]);
+    // the one kept is the first to register, object and all: it is the one a choice signs with
+    expect(kept[0]).toBe(real);
+    expect(foundWallets(kept, []).map((w) => [w.id, w.icon])).toEqual([
+      ['solana:Backpack', undefined],
+      ['solana:Phantom', ICON],
+    ]);
+  });
+
+  it('never makes a passkey on a failed use, and offers one wherever one can be made', () => {
+    for (const key of [
+      'passkeyNotUsed',
+      'passkeyUnknown',
+      'passkeyNotRegistered',
+      'tooMany',
+      'other',
+    ] as const)
+      expect(offersNewPasskey(key), key).toBe(true);
+    for (const key of ['passkeyOff', 'passkeyUnsupported'] as const)
+      expect(offersNewPasskey(key), key).toBe(false);
   });
 });
 

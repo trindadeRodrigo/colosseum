@@ -11,6 +11,7 @@ import { Composer } from '../../components/ui/Composer';
 import { ConstraintSheet, type SheetFact } from '../../components/ui/ConstraintSheet';
 import { cn } from '../../components/ui/cn';
 import { GoalCard } from '../../components/ui/GoalCard';
+import { PAGE_TITLE } from '../../components/ui/heading';
 import { Skeleton, SkeletonText } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { dictionary, LOCALE } from '../../i18n';
@@ -21,6 +22,7 @@ import { rememberPlan } from '../order/plan-store';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { type BuildOutcome, buildPlan, planProvenance } from './build-plan';
 import { GOAL_DRAFT, GOAL_HANDOFF } from './draft';
+import { exampleDraft } from './examples';
 import { GOAL_TEXT, type ReadFailure, ReadGoalError, readGoal } from './read-goal';
 import {
   checkSheet,
@@ -149,6 +151,24 @@ export function GoalScreen() {
     setReading(true);
     setReadFailure(null);
     forget();
+    // One of this page's own examples, sent as it is: its limits are known here (examples.ts).
+    const known = exampleDraft(typed, t.goal.examples.list, lang);
+    if (known) {
+      const fields = fieldsOfDraft(known, lang);
+      setSheet({
+        goalText: typed.trim(),
+        source: {
+          method: t.goal.examples.source,
+          fetchedAt: new Date().toISOString(),
+          provenance: 'live',
+        },
+        firstReader: false,
+        read: fields,
+        fields,
+      });
+      setReading(false);
+      return;
+    }
     try {
       const reading = await readGoal(apiFetch, typed, lang);
       const fields = fieldsOfDraft(reading.draft, lang);
@@ -213,7 +233,7 @@ export function GoalScreen() {
   const chainName = chain ? (network?.name ?? t.chain.names[chain]) : '';
   // Our server has the person's chain switched off: nothing can be built there for now.
   const chainOff = network?.on === false;
-  const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.mockAnnounce };
+  const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.sampleFigure };
   const link = buttonClass({ variant: 'link' });
   // Why the API did not say which chain: it did not answer, it no longer knows this sign-in, it was
   // sent no identity token, or it asked for fewer requests. Each is a different thing for the person
@@ -360,9 +380,7 @@ export function GoalScreen() {
         ) : (
           <header className="flex flex-col gap-3 lg:col-span-5">
             {/* Beside the box the question is set a step smaller, so it holds two lines, as his is. */}
-            <h1 className="max-w-(--tf-measure-display) font-display text-h2 font-normal">
-              {t.goal.title}
-            </h1>
+            <h1 className={PAGE_TITLE}>{t.goal.title}</h1>
             <p className="max-w-(--tf-measure-body) text-body text-muted-foreground">
               {t.goal.lead}
             </p>
@@ -442,7 +460,7 @@ export function GoalScreen() {
           otherIssues={blocked}
           onChange={change}
           onBuild={buildFrom}
-          labels={{ ...t.goal.sheet, mockAnnounce: t.shell.mockAnnounce }}
+          labels={{ ...t.goal.sheet, mockAnnounce: t.shell.sampleFigure }}
         />
       ) : reading ? (
         <ConstraintSheet<BasketSheet>
@@ -453,7 +471,7 @@ export function GoalScreen() {
           valid={null}
           onChange={change}
           onBuild={buildFrom}
-          labels={{ ...t.goal.sheet, mockAnnounce: t.shell.mockAnnounce }}
+          labels={{ ...t.goal.sheet, mockAnnounce: t.shell.sampleFigure }}
         />
       ) : null}
 

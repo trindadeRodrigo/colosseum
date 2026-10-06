@@ -267,6 +267,21 @@ describe('tokens: globals.css says what working-brand.yml says', () => {
         expect(normal(embed), name).toContain(normal(`--tf-${name}: ${value}`));
     });
 
+    it('the embed takes the partner’s face, or the system’s, never ours (rule 7)', () => {
+      let embed = '';
+      css.walkAtRules('utility', (rule) => {
+        if (rule.params === 'tf-embed') embed = rule.toString();
+      });
+      expect(normal(embed)).toContain(
+        normal('font-family: var(--embed-font, var(--tf-embed-system-font))'),
+      );
+      expect(normal(embed)).toMatch(/--tf-embed-system-font:\s*system-ui/);
+      expect(embed).not.toMatch(/--font-(sans|display|mono|condensed)|Plex|Newsreader/);
+      // and every type class inside it falls back the same way
+      const whole = css.toString();
+      expect(whole).not.toContain('var(--embed-font, inherit)');
+    });
+
     it('the measures', () => {
       const measure = scalars(['tokens', 'typography', 'measure']);
       expect(light.get('--tf-measure-body')).toBe(measure.body);
