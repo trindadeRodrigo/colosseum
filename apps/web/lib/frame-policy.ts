@@ -16,7 +16,7 @@ export function partnerOrigins(value: string | undefined): string[] {
   return (value ?? '').split(/\s+/).filter((origin) => ORIGIN.test(origin));
 }
 
-export function frameHeaders(env: { EMBED_FRAME_ANCESTORS?: string }): FrameRule[] {
+export function frameHeaders(env: Record<string, string | undefined>): FrameRule[] {
   const partners = partnerOrigins(env.EMBED_FRAME_ANCESTORS);
   return [
     {

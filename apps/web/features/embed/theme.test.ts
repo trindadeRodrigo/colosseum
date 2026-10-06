@@ -12,6 +12,7 @@ describe('the partner’s skin', () => {
       muted: 'oklch(55% 0 0)',
       accent: '#123',
       radius: '14px',
+      button: 'pill',
       font: 'Inter, system-ui, sans-serif',
       scheme: 'dark',
     });
@@ -21,12 +22,14 @@ describe('the partner’s skin', () => {
       muted: 'oklch(55% 0 0)',
       accent: '#123',
       radius: '14px',
+      button: '999px',
       font: 'Inter, system-ui, sans-serif',
       scheme: 'dark',
     });
     expect(themeStyle(theme)).toMatchObject({
       '--embed-fg': '#1E1E1E',
       '--embed-radius': '14px',
+      '--embed-button-radius': '999px',
       '--embed-font': 'Inter, system-ui, sans-serif',
       colorScheme: 'dark',
     });
@@ -39,6 +42,7 @@ describe('the partner’s skin', () => {
       muted: 'var(--secret)',
       accent: 'expression(alert(1))',
       radius: '14px; color: red',
+      button: '9999px',
       font: 'x;}body{display:none',
       scheme: 'sepia',
     });

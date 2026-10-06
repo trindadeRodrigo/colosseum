@@ -11,6 +11,11 @@ if (existsSync(rootEnv)) process.loadEnvFile(rootEnv);
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   transpilePackages: ['@colosseum/schemas', '@colosseum/sdk'],
+  // Only the partner embed may be framed, and only by the partners a deployment names
+  // (lib/frame-policy.ts).
+  async headers() {
+    return frameHeaders(process.env);
+  },
   // The /risk pages became Bearing's analytics (/analytics); their addresses still lead there.
   async redirects() {
     return [

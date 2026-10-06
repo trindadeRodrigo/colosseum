@@ -12,8 +12,14 @@ const SKINS: { name: string; query: string; ground: string }[] = [
   {
     name: 'Sample partner (guidelines.html §08)',
     query:
-      'scheme=light&fg=%231E1E1E&bg=%23FFFFFF&muted=%236A6A6A&border=%23E4E4E4&accent=%231E1E1E&radius=14px&font=system-ui',
+      'scheme=light&fg=%231E1E1E&bg=%23FFFFFF&muted=%236A6A6A&border=%23E4E4E4&accent=%231E1E1E&radius=14px&button=pill&font=system-ui',
     ground: '#F2F2F2',
+  },
+  {
+    name: 'Sample partner, dark (guidelines.html §08)',
+    query:
+      'scheme=dark&fg=%23EEEEEE&bg=%2317171A&muted=%23A0A0A0&border=%232C2C30&accent=%23EEEEEE&radius=14px&button=pill&font=system-ui',
+    ground: '#0F0F11',
   },
 ];
 

@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react';
 // The partner's skin (embed-shell.md; token-mapping.md section 8): the colours, face and radius the
 // host app hands the embed. The embed is a page in a frame, and a frame does not inherit its host's
 // CSS, so the host names them in the frame's address (`?fg=…&bg=…`). Each value is taken only in a
-// form that can be nothing but what it says: a colour, a length, a list of font names. Anything else
+// form that can be nothing but what it says: a colour, a length (or `pill`), a list of font names. Anything else
 // is dropped, and the system's own colours stand in (`Canvas`, `CanvasText`, `GrayText`).
 
 export type PartnerTheme = {
@@ -15,6 +15,8 @@ export type PartnerTheme = {
   font?: string;
   mono?: string;
   radius?: string;
+  /** The radius of the partner's buttons, when rounder than their boxes; `pill` for a pill. */
+  button?: string;
   /** The host's colour scheme, for the system colours when it sets none of its own. */
   scheme?: 'light' | 'dark';
 };
@@ -39,6 +41,9 @@ export function partnerTheme(params: Record<string, string | string[] | undefine
   }
   const radius = one(params.radius);
   if (radius && LENGTH.test(radius)) theme.radius = radius;
+  const button = one(params.button);
+  if (button === 'pill') theme.button = '999px';
+  else if (button && LENGTH.test(button)) theme.button = button;
   const scheme = one(params.scheme);
   if (scheme === 'light' || scheme === 'dark') theme.scheme = scheme;
   return theme;
@@ -55,6 +60,7 @@ export function themeStyle(theme: PartnerTheme): CSSProperties {
   if (theme.font) vars['--embed-font'] = theme.font;
   if (theme.mono) vars['--embed-mono'] = theme.mono;
   if (theme.radius) vars['--embed-radius'] = theme.radius;
+  if (theme.button) vars['--embed-button-radius'] = theme.button;
   if (theme.scheme) vars.colorScheme = theme.scheme;
   return vars as CSSProperties;
 }

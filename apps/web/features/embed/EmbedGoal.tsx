@@ -22,9 +22,9 @@ import { useHostHeight } from './host-height';
 /** A field of the partner's: their border, radius and ground, the focus ring in their accent. */
 const FIELD =
   'w-full border border-input bg-background px-[0.75em] py-[0.5em] text-[length:var(--tf-e-body)] text-foreground rounded-[var(--radius)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring';
-/** The partner's button: their accent, their radius, full width as the guide draws it. */
+/** The partner's button: their accent, their button's radius, full width as the guide draws it. */
 export const PARTNER_BUTTON =
-  'inline-flex min-h-11 w-full items-center justify-center bg-primary px-[1em] text-primary-foreground font-semibold rounded-[var(--radius)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60';
+  'inline-flex min-h-11 w-full items-center justify-center bg-primary px-[1em] text-primary-foreground font-semibold rounded-[var(--tf-embed-button-radius)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60';
 
 const call = (path: string, init?: RequestInit) =>
   fetch(apiUrl(API, path), { cache: 'no-store', ...init, redirect: 'error' });
