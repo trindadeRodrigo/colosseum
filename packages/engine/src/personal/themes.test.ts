@@ -428,12 +428,12 @@ describe('what the person already holds counts in the theme sleeve, as in the go
     const texts = allReasons(plan).map((r) => r.text);
     // The theme counts of the $9,000 up to its level, $833.33; the goal counts the rest.
     expect(texts).toContain(
-      'No NVDA in AI: $833 of what you already hold of it counts here, as much as each of its other names holds.',
+      'No NVDA in AI: of the $9,000 of it you hold, $833 counts here, as much as each of its other names holds.',
     );
     const others = [...namesHeld(plan).values()];
     expect(every(others.reduce((n, x) => n + x, 0))).toBe(every(5000));
     expect(texts).toContain(
-      'A larger share here: you already hold $833 of NVDA, so this plan buys less of it.',
+      'A larger share here: of the $9,000 of NVDA you hold, $833 counts here, so this part buys less of it.',
     );
   });
 
@@ -569,7 +569,14 @@ describe('the review of #72, second round', () => {
     ].filter(
       (r) =>
         r.params.asset === 'NVDA' &&
-        ['THEME_HELD', 'THEME_HELD_NONE', 'ALREADY_HELD', 'ALREADY_HELD_NONE'].includes(r.rule),
+        [
+          'THEME_HELD',
+          'THEME_HELD_NONE',
+          'ALREADY_HELD',
+          'ALREADY_HELD_NONE',
+          'ALREADY_HELD_PART',
+          'ALREADY_HELD_NONE_PART',
+        ].includes(r.rule),
     );
     const once = new Map(said.map((r) => [r.rule.startsWith('THEME') ? 'theme' : 'goal', r]));
     const total = [...once.values()].reduce((n, r) => n + every(Number(r.params.heldUsd)), 0);
@@ -633,5 +640,71 @@ describe('a plan all in a theme, with a withdrawal it cannot pay', () => {
     expect(plan.flags).toContain('coverage_short');
     const cash = plan.lines.find((l) => l.assetId === 'solana:usdc');
     expect(cash?.reasons.map((r) => r.rule)).toContain('COVERAGE_SHORT');
+  });
+});
+
+describe('a holding sentence quotes what the person holds, whichever sleeve counts it', () => {
+  it.each([
+    [3000, '$3,000'],
+    [1000, '$1,000'],
+  ])(
+    'NVDA %i held, goal following The Seven and the AI theme: every sentence says %s',
+    (usd, says) => {
+      const s = themed({
+        risk: 'high',
+        themes: ['the-seven'],
+        rules: { useHoldings: true, glide: true },
+      });
+      const plan = run(s, ctxWith({ holdings: [{ underlying: 'NVDA', valueUsd: usd }] }));
+      const about = allReasons(plan).filter(
+        (r) => r.params.asset === 'NVDA' && /HELD/.test(r.rule),
+      );
+      expect(about.length).toBeGreaterThan(0);
+      for (const r of about) expect(r.text, r.rule).toContain(says);
+      // The goal's sentence says both: the whole, and what it counts after the theme.
+      expect(about.some((r) => r.rule.endsWith('_PART'))).toBe(true);
+    },
+  );
+});
+
+describe('the set-aside is never a cent short in a small split plan (found by the property test)', () => {
+  it('$10, a goal sleeve of 13.65% owing $1: no short flag, on every candidate', () => {
+    const params: PersonalParameters = {
+      ...PERSONAL_PARAMS,
+      version: 'generated',
+      sleeves: {
+        ...PERSONAL_PARAMS.sleeves,
+        'grow:low': { growthBps: 3206, dollarYieldBps: 0, goldBps: 0 },
+      },
+      capPerStockBps: { low: 0, medium: 0, high: 0 },
+      capPerIssuerBps: { low: 0, medium: 0, high: 0 },
+      tierCeilingUsd: { A: 0, B: 0, C: 0 },
+      shareOfDepth: 0.01,
+      minLineBps: 0,
+      minLineUsd: 0,
+      maxLinesPerChain: 1,
+      glideFloor: [],
+      cashFloor: [],
+      holdingMinBps: 0,
+    };
+    const c = ctxWith({ params, yields: [], liquidity: fixtureLiquidity({}, 0) });
+    const s = sheet({
+      amountUsd: 10,
+      horizonMonths: 1,
+      risk: 'low',
+      chains: ['robinhood'],
+      rules: { useHoldings: false, glide: false },
+      obligations: [{ month: '2026-10', amount: 1, currency: 'USD' }],
+      sleeves: [
+        { kind: 'goal', shareBps: 1365 },
+        { kind: 'safe_yield', shareBps: 4090 },
+        { kind: 'theme', shareBps: 909, theme: 'no-such-theme' },
+        { kind: 'theme', shareBps: 3636, theme: 'ai' },
+      ],
+    });
+    for (const { id, plan } of candidates(s, shelf, c).shown) {
+      expect(violations(plan, shelf, c), id).toEqual([]);
+      expect(plan.flags, id).not.toContain('set_aside_short');
+    }
   });
 });

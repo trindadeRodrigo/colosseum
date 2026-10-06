@@ -300,6 +300,25 @@ export function unitsOf(
   }));
 }
 
+/**
+ * A sentence about what the person holds of an underlying. It always says the whole holding, as
+ * `w.held` has it; where a theme counted part of it first (gate THEME-FIRST) and `counted` is the
+ * rest, it says both: "of the $3,000 you hold, $2,167 counts here".
+ */
+export function heldReason(
+  w: World,
+  rule: 'ALREADY_HELD' | 'ALREADY_HELD_NONE' | 'MORE_BECAUSE_HELD',
+  asset: string,
+  counted: number,
+): Reason {
+  const whole = w.held.get(asset) ?? counted;
+  if (whole <= counted) return reason(rule, { asset, heldUsd: toUsd(whole) }, w.lang);
+  return reason(`${rule}_PART`, { asset, totalUsd: toUsd(whole), heldUsd: toUsd(counted) }, w.lang);
+}
+
+/** What the goal sleeve counts of the person's holdings: all of them, or what the themes left. */
+export type GoalHeld = { byName: Map<string, number>; total: number };
+
 /** Cents that no unit took, with the name they were meant for and what kept them out. */
 export type Unbought = { names: string[]; cents: number; cause: Reason };
 
@@ -316,13 +335,14 @@ export function adjustForHoldings(
   units: Unit[],
   fixed: Sized[],
   removed: Removed[],
+  goalHeld: GoalHeld = { byName: w.held, total: w.heldTotal },
 ): Unbought[] {
-  if (w.heldTotal <= 0) return [];
+  if (goalHeld.total <= 0) return [];
   const all: Sized[] = [...units, ...fixed];
   const free = sum(all.map((u) => u.cents));
   if (free <= 0) return [];
-  const wealth = BigInt(w.amount + w.heldTotal);
-  const heldOf = (at: number) => w.held.get(units[at]?.name ?? '') ?? 0;
+  const wealth = BigInt(w.amount + goalHeld.total);
+  const heldOf = (at: number) => goalHeld.byName.get(units[at]?.name ?? '') ?? 0;
   const buys = all.map((u, at) => {
     const buy = BigInt(u.cents) * wealth - BigInt(heldOf(at)) * BigInt(w.amount);
     return buy > 0n ? buy : 0n;
@@ -336,13 +356,12 @@ export function adjustForHoldings(
     const held = heldOf(at);
     const now = scaled[at] ?? 0;
     if (u.cents <= 0 || held <= 0 || now >= u.cents) return;
-    const values = { asset: u.name, heldUsd: toUsd(held) };
-    larger.push(reason('MORE_BECAUSE_HELD', values, w.lang));
+    larger.push(heldReason(w, 'MORE_BECAUSE_HELD', u.name, held));
     if (now <= 0) {
-      const why = reason('ALREADY_HELD_NONE', values, w.lang);
+      const why = heldReason(w, 'ALREADY_HELD_NONE', u.name, held);
       none.set(u, why);
       removed.push({ ref: u.name, reasons: [why] });
-    } else u.reasons.push(reason('ALREADY_HELD', values, w.lang));
+    } else u.reasons.push(heldReason(w, 'ALREADY_HELD', u.name, held));
   });
   // When the person holds enough of everything, nothing is bought, and no unit grew: each unit's
   // cents are handed back, with the holding that kept them out.

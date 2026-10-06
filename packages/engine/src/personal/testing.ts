@@ -589,6 +589,15 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
     if (!ok) wrong.push(what);
   };
   const byId = new Map(shelf.assets.map((a) => [a.id, a]));
+  /** What the person holds of an underlying, in cents, where the plan reads holdings. */
+  const heldOfUnderlying = (u: string) =>
+    plan.sheet.rules.useHoldings
+      ? sum(
+          (given.holdings ?? [])
+            .filter((h) => (h.underlying ?? (h.asset ? byId.get(h.asset)?.underlying : '')) === u)
+            .map((h) => cents(h.valueUsd)),
+        )
+      : 0;
   const portfolios = shelf.families.map((f) => f.meta.name);
   const s = plan.sheet;
   const amount = cents(s.amountUsd);
@@ -886,6 +895,25 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
       `${name} holds ${held / 100}, over the single-stock cap of ${stockCap / 100}`,
     );
 
+  // What a sentence says the person holds is their whole holding of it, whichever sleeve counts it:
+  // "you hold" quotes the whole; a part a sleeve counts is said beside it, and is no more.
+  for (const r of allReasons(plan)) {
+    const asset = String(r.params.asset ?? '');
+    if (
+      ['ALREADY_HELD', 'ALREADY_HELD_NONE', 'MORE_BECAUSE_HELD', 'OVERFLOW_HELD'].includes(r.rule)
+    )
+      say(
+        cents(Number(r.params.heldUsd)) === heldOfUnderlying(asset),
+        `"${r.text}" but the person holds ${heldOfUnderlying(asset) / 100} of ${asset}`,
+      );
+    if (r.rule.endsWith('_PART') || r.rule === 'THEME_HELD' || r.rule === 'THEME_HELD_NONE')
+      say(
+        cents(Number(r.params.totalUsd)) === heldOfUnderlying(asset) &&
+          cents(Number(r.params.heldUsd)) <= cents(Number(r.params.totalUsd)),
+        `"${r.text}" but the person holds ${heldOfUnderlying(asset) / 100} of ${asset}`,
+      );
+  }
+
   // The person's split (gate SLEEVES): each sleeve's share and dollars as asked, and the safe-yield
   // sleeve in rate legs and cash only, never more of a token than its line holds.
   const lineUsd = new Map(plan.lines.map((l) => [l.assetId, cents(l.amountUsd)]));
@@ -942,15 +970,7 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
     // and cash, never more of a token than its line; its names in equal parts, unless the line says
     // which limit holds one to less; each name's line says the theme and why the name is on it.
     const lists = (ctx.themes ?? []).filter((t) => t.chain === s.chains[0]);
-    /** What the person holds of an underlying, in cents, where the plan reads holdings. */
-    const heldOfUnderlying = (u: string) =>
-      s.rules.useHoldings
-        ? sum(
-            (ctx.holdings ?? [])
-              .filter((h) => (h.underlying ?? (h.asset ? byId.get(h.asset)?.underlying : '')) === u)
-              .map((h) => cents(h.valueUsd)),
-          )
-        : 0;
+
     for (const x of plan.split ?? []) {
       if (x.kind !== 'theme') continue;
       const list = lists.find((t) => t.slug === x.theme && t.status === 'confirmed');

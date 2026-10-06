@@ -82,13 +82,34 @@ export const REASON_TEMPLATES = {
   ),
   THEME_HELD: rule(
     ['holdings', 'themes'],
-    'Less {asset} in {theme}: {heldUsd|usd} of what you already hold of it counts here, so the theme buys it only up to the total of each of its other names.',
-    'Menos {asset} em {theme}: {heldUsd|usd} do que você já tem desse ativo conta aqui, então o tema compra só até o total de cada um dos outros nomes.',
+    'Less {asset} in {theme}: of the {totalUsd|usd} of it you hold, {heldUsd|usd} counts here, so the theme buys it only up to the total of each of its other names.',
+    'Menos {asset} em {theme}: dos {totalUsd|usd} que você tem desse ativo, {heldUsd|usd} contam aqui, então o tema compra só até o total de cada um dos outros nomes.',
   ),
   THEME_HELD_NONE: rule(
     ['holdings', 'themes'],
-    'No {asset} in {theme}: {heldUsd|usd} of what you already hold of it counts here, as much as each of its other names holds.',
-    'Sem {asset} em {theme}: {heldUsd|usd} do que você já tem desse ativo conta aqui, tanto quanto cada um dos outros nomes.',
+    'No {asset} in {theme}: of the {totalUsd|usd} of it you hold, {heldUsd|usd} counts here, as much as each of its other names holds.',
+    'Sem {asset} em {theme}: dos {totalUsd|usd} que você tem desse ativo, {heldUsd|usd} contam aqui, tanto quanto cada um dos outros nomes.',
+  ),
+  // What the person holds, where a theme counted part of it first (gate THEME-FIRST).
+  ALREADY_HELD_PART: rule(
+    ['holdings', 'themes'],
+    'Less {asset}: of the {totalUsd|usd} of it you hold, {heldUsd|usd} counts here; a theme you asked for counts the rest.',
+    'Menos {asset}: dos {totalUsd|usd} que você tem desse ativo, {heldUsd|usd} contam aqui; um tema que você pediu conta o resto.',
+  ),
+  ALREADY_HELD_NONE_PART: rule(
+    ['holdings', 'themes'],
+    'No {asset}: of the {totalUsd|usd} of it you hold, {heldUsd|usd} counts here; a theme you asked for counts the rest.',
+    'Sem {asset}: dos {totalUsd|usd} que você tem desse ativo, {heldUsd|usd} contam aqui; um tema que você pediu conta o resto.',
+  ),
+  MORE_BECAUSE_HELD_PART: rule(
+    ['holdings', 'themes'],
+    'A larger share here: of the {totalUsd|usd} of {asset} you hold, {heldUsd|usd} counts here, so this part buys less of it.',
+    'Uma parcela maior aqui: dos {totalUsd|usd} de {asset} que você tem, {heldUsd|usd} contam aqui, então esta parte compra menos desse ativo.',
+  ),
+  OVERFLOW_HELD_PART: rule(
+    ['holdings', 'themes'],
+    '{usd|usd} this plan does not put in {assets|list} is held in dollar yield or cash instead: of the {totalUsd|usd} of it you hold, {heldUsd|usd} counts here.',
+    '{usd|usd} que este plano não coloca em {assets|list} fica em rendimento em dólar ou caixa: dos {totalUsd|usd} que você tem desse ativo, {heldUsd|usd} contam aqui.',
   ),
   ISSUER_CAP_THEME: rule(
     ['risk', 'sleeves', 'themes'],
