@@ -20,7 +20,6 @@ import { reason } from './templates';
 import {
   type ComposeContext,
   HeldPosition,
-  isCountryCode,
   PersonalInputError,
   type PersonalObservation,
   PersonalParameters,
@@ -176,12 +175,6 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
   const parsedSheet = PersonalSheet.safeParse(sheetIn);
   if (!parsedSheet.success) throw new PersonalInputError('InvalidSheet', issues(parsedSheet.error));
   const sheet = parsedSheet.data;
-  // A country no person lives in ("ZZ", an unknown place) would let every asset through the
-  // country check: it is refused, never treated as allowed (Oct 6).
-  if (!isCountryCode(sheet.country))
-    throw new PersonalInputError('InvalidSheet', [
-      { path: 'country', message: `${sheet.country} is not a country: say where the person lives` },
-    ]);
   // A theme sleeve needs the curated lists of slice 4; it is refused until then, never ignored.
   if (sheet.sleeves?.some((x) => x.kind === 'theme'))
     throw new PersonalInputError('InvalidSheet', [

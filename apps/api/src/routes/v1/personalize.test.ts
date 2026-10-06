@@ -320,17 +320,15 @@ describe('POST /v1/baskets/personalize', () => {
     expect(await plansOf(picked.sub)).toEqual([]);
   });
 
-  it('refuses a country that is no country ("ZZ"), with the fix, and stores nothing (Oct 6)', async () => {
+  // Gate COUNTRY-REMOVED (Rodrigo, Oct 6): this test held that ZZ, QQ, EU, SU and UK were refused
+  // with 422. The plan reads no country: a sheet with none, or any two capitals, is answered.
+  it('answers a sheet with no country, or any two capitals, with a plan', async () => {
     const who = await someone('solana');
-    for (const country of ['ZZ', 'QQ', 'EU', 'SU', 'UK']) {
-      // Each passes the shared schema's two capitals: the refusal is the route's own check.
-      const res = await post(who, PATH, { sheet: sheet({ country }) });
-      expect(res.statusCode, res.body).toBe(422);
-      const body = OrderError.parse(res.json());
-      expect(body.error).toBe(`no plan can be made from this sheet: ${country} is not a country`);
-      expect(body.fix).toMatch(/two-letter ISO code of the country the person lives in/);
+    const { country: _, ...none } = sheet();
+    for (const body of [none, sheet({ country: 'ZZ' }), sheet({ country: 'UK' })]) {
+      const res = await post(who, PATH, { sheet: body });
+      expect(res.statusCode, res.body).toBe(200);
     }
-    expect(await plansOf(who.sub)).toEqual([]);
   });
 
   it('answers 409 to a person with no chain yet, and 401 to nobody', async () => {

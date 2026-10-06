@@ -130,13 +130,13 @@ describe('POST /v1/baskets/intake', () => {
     const first = IntakeResponse.parse((await post(who, PATH, { text })).json());
     expect(first.sheet).toBeNull();
     expect(first.readBack).toBeNull();
-    expect(first.questions.map((q) => q.field)).toEqual(['goal', 'amountUsd', 'risk', 'country']);
+    expect(first.questions.map((q) => q.field)).toEqual(['goal', 'amountUsd', 'risk']);
     expect(first.questions[1]?.text).toBe(
       'Você escreveu 3.000 BRL. Quanto é isso em dólares, a moeda em que o plano é aplicado?',
     );
     expect(first.flags).toContain('other_currency:amountUsd');
 
-    const answers = { goal: 'protect', amountUsd: 550, risk: 'low', country: 'BR' };
+    const answers = { goal: 'protect', amountUsd: 550, risk: 'low' };
     const res = await post(who, PATH, { text, answers });
     expect(res.statusCode, res.body).toBe(200);
     const second = IntakeResponse.parse(res.json());
@@ -180,7 +180,7 @@ describe('POST /v1/baskets/intake', () => {
       const text = goal('en-grow-10y-high').text;
       const bodies = new Set<string>();
       for (let i = 0; i < 10; i += 1) {
-        const res = await post(who, PATH, { text, answers: { country: 'US' } }, own);
+        const res = await post(who, PATH, { text }, own);
         expect(res.statusCode, res.body).toBe(200);
         bodies.add(res.body);
       }
@@ -210,7 +210,6 @@ describe('POST /v1/baskets/intake', () => {
       'amountUsd',
       'horizonMonths',
       'risk',
-      'country',
     ]);
     expect(body.questions.find((q) => q.field === 'risk')?.read).toBe('high');
     const done = await post(
@@ -223,7 +222,6 @@ describe('POST /v1/baskets/intake', () => {
           amountUsd: 20_000,
           horizonMonths: 120,
           risk: 'high',
-          country: 'US',
         },
       },
       off,
@@ -296,23 +294,16 @@ describe('POST /v1/baskets/intake', () => {
     };
     const first = await turn(1);
     expect(first.reader.provenance).toBe('mock');
-    expect(first.questions.map((q) => q.field)).toEqual([
-      'goal',
-      'sleeves',
-      'horizonMonths',
-      'country',
-    ]);
+    expect(first.questions.map((q) => q.field)).toEqual(['goal', 'sleeves', 'horizonMonths']);
     expect(first.flags).toContain('split_mismatch');
-    // The second message answers the first three in words; only the country is left.
-    expect((await turn(2)).questions.map((q) => q.field)).toEqual(['country']);
-    const second = await turn(3);
+    // The second message answers all three in words; no country is asked (gate COUNTRY-REMOVED).
+    const second = await turn(2);
     expect(second.questions).toEqual([]);
     expect(second.sheet).toMatchObject({
       goal: 'grow',
       amountUsd: 2000,
       risk: 'high',
       horizonOpen: true,
-      country: 'BR',
       rules: { useHoldings: true, glide: false },
       sleeves: [
         { kind: 'safe_yield', shareBps: 7000 },
@@ -334,7 +325,6 @@ describe('POST /v1/baskets/intake', () => {
     const who = await someone('passkey');
     const res = await post(who, PATH, {
       text: goal('en-grow-10y-high').text,
-      answers: { country: 'US' },
     });
     expect(res.statusCode, res.body).toBe(200);
     const body = IntakeResponse.parse(res.json());

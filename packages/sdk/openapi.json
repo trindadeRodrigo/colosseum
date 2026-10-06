@@ -26,7 +26,7 @@
       "post": {
         "summary": "Read a goal into a sheet, ask what it leaves open, and say back what was understood",
         "tags": ["plans"],
-        "description": "The guided intake. Send the text of a goal, and on later turns the same text with the person's later messages in `followUps` (their own words, read again with the text by the same reader and checks) or `answers` (by field, from a form). A model reads the text into a draft of the sheet; it never sets weights, picks assets or states a figure, and every value it gives is checked in code: an amount must be written in the text in its role (the income as a rate a month, the sum put in never as one) and in dollars (an amount in another currency is asked in dollars), a time frame must be written as one (not an age), a shared portfolio must be on the shelf of the person's chain, a refusal (\"no stocks\", \"sem crédito\") must be written, a goal, a risk or a country the text has no word for is asked with the model's value as the start, a time to get the money out (\"can take up to 3 months to get out\") is never the time frame, a goal with no date (\"no hard cap\") is built with no date and said back so, a split (\"70% safe, 30% to risk\") must be written and add up to the whole, and a field the rules parser reads differently is flagged and asked. The glide is off unless the text asks for it or names a date the money is needed by. The country is always asked when the text does not name one, with its reason, and a code that is no country (\"ZZ\") is never taken. With no model (none configured, down, out of the daily budget for everyone or for this person), the rules parser fills the draft, every field it read is asked once, and the same questions are asked; `reader` says which read it; a failed call is not cached, so a later turn may be read by the model and the draft can change. `questions` holds one question per field still open or unclear, in the person's language, from fixed templates. Once none is left, `sheet` is the validated sheet on the chain of the person's wallet and `readBack` says it back sentence by sentence, from templates, never from the model. Nothing is built or stored: the person's confirm sends `sheet` to `POST /v1/baskets/personalize`. The plan that follows is not advice: see its `disclaimer`.",
+        "description": "The guided intake. Send the text of a goal, and on later turns the same text with the person's later messages in `followUps` (their own words, read again with the text by the same reader and checks) or `answers` (by field, from a form). A model reads the text into a draft of the sheet; it never sets weights, picks assets or states a figure, and every value it gives is checked in code: an amount must be written in the text in its role (the income as a rate a month, the sum put in never as one) and in dollars (an amount in another currency is asked in dollars), a time frame must be written as one (not an age), a shared portfolio must be on the shelf of the person's chain, a refusal (\"no stocks\", \"sem crédito\") must be written, a goal or a risk the text has no word for is asked with the model's value as the start, a time to get the money out (\"can take up to 3 months to get out\") is never the time frame, a goal with no date (\"no hard cap\") is built with no date and said back so, a split (\"70% safe, 30% to risk\") must be written and add up to the whole, and a field the rules parser reads differently is flagged and asked. The glide is off unless the text asks for it or names a date the money is needed by. The country is neither asked nor read (gate COUNTRY-REMOVED). With no model (none configured, down, out of the daily budget for everyone or for this person), the rules parser fills the draft, every field it read is asked once, and the same questions are asked; `reader` says which read it; a failed call is not cached, so a later turn may be read by the model and the draft can change. `questions` holds one question per field still open or unclear, in the person's language, from fixed templates. Once none is left, `sheet` is the validated sheet on the chain of the person's wallet and `readBack` says it back sentence by sentence, from templates, never from the model. Nothing is built or stored: the person's confirm sends `sheet` to `POST /v1/baskets/personalize`. The plan that follows is not advice: see its `disclaimer`.",
         "requestBody": {
           "required": true,
           "content": {
@@ -76,10 +76,6 @@
                       "risk": {
                         "type": "string",
                         "enum": ["low", "medium", "high"]
-                      },
-                      "country": {
-                        "type": "string",
-                        "pattern": "^[A-Z]{2}$"
                       },
                       "currency": {
                         "type": "string",
@@ -569,7 +565,6 @@
                         "horizonMonths",
                         "risk",
                         "themes",
-                        "country",
                         "chains",
                         "incomeTargetUsdMonthly",
                         "rules",
@@ -639,7 +634,6 @@
                               "incomeTargetUsdMonthly",
                               "horizonMonths",
                               "risk",
-                              "country",
                               "currency",
                               "themes",
                               "chains"
@@ -957,7 +951,6 @@
                             "horizonMonths",
                             "risk",
                             "themes",
-                            "country",
                             "chains",
                             "rules",
                             "language"
@@ -1366,7 +1359,6 @@
                       "horizonMonths",
                       "risk",
                       "themes",
-                      "country",
                       "chains",
                       "rules",
                       "language"
@@ -1568,7 +1560,6 @@
                             "horizonMonths",
                             "risk",
                             "themes",
-                            "country",
                             "chains",
                             "rules",
                             "language"

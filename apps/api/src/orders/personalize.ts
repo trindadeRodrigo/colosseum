@@ -3,7 +3,6 @@ import { rollUp } from '@colosseum/basket';
 import type { Db } from '@colosseum/db';
 import {
   compose,
-  isCountryCode,
   PersonalInputError,
   type PersonalProposal,
   type PersonalSheet,
@@ -102,16 +101,6 @@ export async function personalize(
   sheet: PersonalSheet,
   ctx: PersonalizeContext,
 ): Promise<{ proposal: BasketProposal; rollUp: RiskRollUp }> {
-  // The schema takes any two capitals. A code that is no country ("ZZ", an unknown place) would let
-  // every asset through the country check, so it is refused before anything is read (Oct 6).
-  if (!isCountryCode(sheet.country))
-    throw new Refusal(
-      422,
-      `no plan can be made from this sheet: ${sheet.country} is not a country`,
-      {
-        fix: 'Send the two-letter ISO code of the country the person lives in, such as BR or PT. The intake asks it.',
-      },
-    );
   const chain = await ctx.homeChain();
   const asked = sheet.chains[0];
   if (sheet.chains.length !== 1 || asked !== chain)

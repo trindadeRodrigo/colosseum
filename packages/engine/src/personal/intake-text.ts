@@ -1,4 +1,3 @@
-import { WORDS } from './templates';
 import type { HoldableClass } from './types';
 
 // What a goal sentence says in so many words, read by code (gate GUIDED-INTAKE, the checks after the
@@ -451,46 +450,4 @@ export function looseRiskWordsIn(text: string, risk: 'low' | 'medium' | 'high'):
   if (RISK_CUES[risk].test(text) || !loose) return null;
   // The last one written: on a later turn, the person's own answer.
   return looseMatches(loose, text).at(-1) ?? null;
-}
-
-const plain = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
-const NEGATED_BEFORE =
-  /(?<![\p{L}])(?:not|no longer|never|left|moved (?:away )?from|nao|sai d[oae]s?|deixei|ex)(?:\s+\S+){0,3}\s*$/u;
-const DEMONYMS: Record<string, string[]> = {
-  BR: ['brazilian', 'brasileir'],
-  US: ['american', 'americano', 'americana'],
-  PT: ['portuguese', 'portugues'],
-  AR: ['argentin'],
-  MX: ['mexican', 'mexicano', 'mexicana'],
-  GB: ['british', 'britanic', 'england', 'inglaterra'],
-};
-const WHOLE_WORD_ALIASES: Record<string, string[]> = {
-  GB: ['uk', 'u\\.k\\.', 'britain', 'great britain', 'gra-bretanha', 'gra bretanha'],
-};
-/**
- * Whether the text names the country `code`: its name in either language as the templates write it
- * ("Brazil", "Brasil"), or a word for its people ("brazilian", "brasileira").
- */
-export function countryNamed(text: string, code: string): boolean {
-  const said = plain(text);
-  const names = (['en', 'pt'] as const)
-    .map((lang) => WORDS[lang].inCountry[code])
-    .filter((x): x is string => x !== undefined)
-    .map((phrase) => plain(phrase).replace(/^(in the|in|nos|nas|no|na|em)\s+/, ''));
-  const words = [...names, ...(DEMONYMS[code] ?? [])];
-  // Whole-word aliases: "the UK", "Britain" name GB ("uk" is not the start of "ukraine").
-  const aliased = (WHOLE_WORD_ALIASES[code] ?? []).some((a) =>
-    [...said.matchAll(new RegExp(`(?<![\\p{L}])${a}(?![\\p{L}])`, 'gu'))].some(
-      (m) => !NEGATED_BEFORE.test(said.slice(0, m.index ?? 0)),
-    ),
-  );
-  if (aliased) return true;
-  // A country named only under a negation ("not in Brazil anymore", "saí do Brasil") is not its cue.
-  return words.some((w) =>
-    [
-      ...said.matchAll(
-        new RegExp(`(?<![\\p{L}])${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'gu'),
-      ),
-    ].some((m) => !NEGATED_BEFORE.test(said.slice(0, m.index ?? 0))),
-  );
 }
