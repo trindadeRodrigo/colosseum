@@ -296,7 +296,7 @@ describe('the monitor, when there is nothing to read or the API cannot say', () 
     expect(host.querySelector('[data-ui="disclaimer"]')).toBeNull();
   });
 
-  it('leads a person with no chain yet to where it is chosen, and asks the API nothing', async () => {
+  it('says it cannot tell the chain when the one a person starts on is not stored, and reads nothing', async () => {
     const server = api({
       person: {
         ...onSolana,
@@ -308,8 +308,9 @@ describe('the monitor, when there is nothing to read or the API cannot say', () 
     });
     signIn(EMBEDDED);
     const host = await screen();
-    expect(text(host)).toContain(en.portfolio.noChain);
-    expect(find(host, 'a').getAttribute('href')).toBe('/sign-in?next=/monitor');
+    // the double has no PUT /v1/me/chain: the chain they start on (CHAIN-SWITCH) is not stored
+    expect(text(host)).toContain(en.chain.unknown.body);
+    expect(text(host)).toContain(en.chain.unknown.retry);
     expect(server.to(PORTFOLIO_PATH)).toEqual([]);
   });
 

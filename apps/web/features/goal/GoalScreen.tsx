@@ -269,7 +269,11 @@ export function GoalScreen() {
         ? t.chain.unknown.signedOut
         : account.why === 'no_identity'
           ? t.chain.unknown.noIdentity
-          : t.shell.slowDown;
+          : account.why === 'off'
+            ? t.chain.unknown.off
+            : account.why === 'refused'
+              ? t.chain.unknown.refused
+              : t.shell.slowDown;
   const chainFact: SheetFact =
     account.status === 'ready'
       ? {
@@ -317,7 +321,6 @@ export function GoalScreen() {
   // What stands between valid limits and a plan, besides the fields: who is asking, and on which chain.
   const blocked = [
     ...(account.status === 'signed-out' ? [t.goal.blocked.signedOut] : []),
-    ...(account.status === 'needs-chain' ? [t.goal.blocked.chainNotChosen] : []),
     ...(account.status === 'no-wallet' ? [t.chain.noWallet] : []),
     ...(account.status === 'unknown'
       ? [account.why === 'unreachable' ? t.goal.blocked.chainUnknown : unknownWhy]
@@ -325,10 +328,7 @@ export function GoalScreen() {
     ...(chainOff ? [t.goal.blocked.chainOff(chainName)] : []),
     ...(build.kind === 'signed-out' ? [t.goal.blocked.signInAgain] : []),
     ...(build.kind === 'no-identity' ? [t.goal.blocked.noIdentity] : []),
-    // Said once: the account says the same when it has read that no chain is chosen.
-    ...(build.kind === 'no-chain' && account.status !== 'needs-chain'
-      ? [t.goal.blocked.chainNotChosen]
-      : []),
+    ...(build.kind === 'no-chain' ? [t.goal.blocked.chainNotChosen] : []),
     ...(build.kind === 'refused' ? [t.goal.blocked.refused] : []),
     ...(build.kind === 'currency' ? [t.goal.blocked.currency] : []),
   ];
