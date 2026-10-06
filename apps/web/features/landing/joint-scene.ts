@@ -10,7 +10,7 @@ import {
 } from 'three';
 import { MM, pinGeometry, postGeometry, railGeometry } from './joint-geometry';
 import { type Ink, InkPiece } from './joint-ink';
-import { DRAW, poseAt } from './joint-pose';
+import { DRAW, type Pose, poseAt } from './joint-pose';
 
 // The pinned through-tenon of his hero (joint-stage.md), drawn as a joiner's drawing in his ink (gate
 // JOINT-3D): the post, the rail whose tenon goes through it, and the pin that locks it, each filled
@@ -45,6 +45,15 @@ export type SceneOptions = {
   light?: boolean;
   /** The joint alone, whole in a square frame: how the stills of the fallbacks are made. */
   still?: boolean;
+  /**
+   * Another stage for the same drawing (the closing, closing-pose.ts): its own pose for a progress,
+   * which may move the post too, its bearing, and where the joint stands for a frame of w × h.
+   */
+  stage?: {
+    pose: (p: number) => Pose & { post?: number };
+    bearing: { x: number; y: number };
+    place: (w: number, h: number) => { x: number; y: number; z: number; scale: number };
+  };
 };
 
 /** Read by the build's budget check (scripts/check-build.mjs, STAGE_MARKERS). */
@@ -101,8 +110,9 @@ export function createJointScene(
   camera.position.copy(CAMERA);
   camera.lookAt(0, 0, 0);
 
+  const bearing = options.stage?.bearing ?? BEARING;
   const assembly = new Group();
-  assembly.rotation.set(BEARING.x, BEARING.y, 0);
+  assembly.rotation.set(bearing.x, bearing.y, 0);
   scene.add(assembly);
   const post = new InkPiece(postGeometry());
   const rail = new InkPiece(railGeometry());
@@ -113,12 +123,13 @@ export function createJointScene(
   const railOrigin = -MM.post.w / 2;
   const pinOrigin = railOrigin + (MM.slot.x0 + MM.slot.x1) / 2;
   const place = (p: number) => {
-    const pose = poseAt(p);
+    const pose: Pose & { post?: number } = options.stage ? options.stage.pose(p) : poseAt(p);
+    post.object.position.set(0, pose.post ?? 0, 0);
     rail.object.position.set(railOrigin - pose.rail, 0, 0);
     // the pin waits above the place its slot will come to, and goes in once the rail is all but home
     // (the last of the draw is the pin's)
     pin.object.position.set(pinOrigin - Math.min(pose.rail, DRAW), pose.pin, 0);
-    assembly.rotation.y = BEARING.y + pose.turn;
+    assembly.rotation.y = bearing.y + pose.turn;
     assembly.updateMatrixWorld(true);
     for (const piece of pieces) piece.update(camera.position);
   };
@@ -139,7 +150,13 @@ export function createJointScene(
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
     if (w === 0 || h === 0) return;
-    const at = options.still ? PLACE.still : w < 820 ? PLACE.narrow : PLACE.wide;
+    const at = options.stage
+      ? options.stage.place(w, h)
+      : options.still
+        ? PLACE.still
+        : w < 820
+          ? PLACE.narrow
+          : PLACE.wide;
     // the pixel ratio again: a zoom or another monitor changes it, and the line weights with it
     renderer.setPixelRatio(ratio());
     renderer.setSize(w, h, false);
