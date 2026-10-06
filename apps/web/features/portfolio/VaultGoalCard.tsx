@@ -3,6 +3,7 @@ import { GoalCard } from '../../components/ui/GoalCard';
 import { type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { dollars as whole } from '../goal/sheet';
+import { goalLine } from '../order/plain';
 import { recallPlan } from '../order/plan-store';
 import { useWalletPort } from '../wallet/WalletProvider';
 import { dollars } from './figures';
@@ -63,27 +64,32 @@ export function VaultGoalCard({
   const due = monthYear(lang, dueOf(goal));
   const plan = recallPlan(record.proposalId, port.userId);
   const builtFor = verdict && putIn === sheet.amountUsd ? verdict : null;
+  const asked = sheet.incomeTargetUsdMonthly;
   return (
     <GoalCard
-      sentence={t.goal.card.sentence[sheet.goal](
-        whole(sheet.amountUsd, lang),
-        t.goal.card.months(sheet.horizonMonths),
-      )}
+      sentence={goalLine(sheet, t, whole(sheet.amountUsd, lang), (usd) => whole(usd, lang))}
       status={
         // The engine gives no status for a vault. The one word it gave is the income plan's verdict
         // when the plan was built, for the plan's amount: it is said, as that, only when what went in
         // is that amount.
         builtFor
-          ? {
-              kind: builtFor.met ? 'on-track' : 'off-track',
-              word: builtFor.met ? words.builtMet : words.builtShort,
-              date: due,
-            }
+          ? builtFor.met
+            ? { kind: 'on-track', word: words.builtMet, date: due }
+            : asked !== undefined
+              ? // in figures: what it paid a month of what was asked, which says the gap too
+                {
+                  kind: 'off-track',
+                  word: words.builtPaid(
+                    whole(Math.max(0, asked - builtFor.gapUsdMonthly), lang),
+                    whole(asked, lang),
+                  ),
+                }
+              : { kind: 'off-track', word: words.builtShort, date: due }
           : null
       }
       noStatus={{ sentence: words.noStatus, date: due }}
       reason={
-        builtFor && !builtFor.met
+        builtFor && !builtFor.met && asked === undefined
           ? t.plan.verdict.gap(whole(builtFor.gapUsdMonthly, lang))
           : undefined
       }

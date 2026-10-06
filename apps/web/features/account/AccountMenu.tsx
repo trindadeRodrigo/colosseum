@@ -1,6 +1,7 @@
 'use client';
 import { type ChainId, chainFamily } from '@colosseum/schemas';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
+import { CopyButton } from '../../components/ui/CopyButton';
 import { shorten } from '../../components/ui/format';
 import { Icon } from '../../components/ui/Icon';
 import { MockPlate } from '../../components/ui/MockPlate';
@@ -11,9 +12,9 @@ import { useAccount } from './AccountProvider';
 import { ChainOptions, usePopover } from './ChainSwitch';
 
 // The bar's account control for someone signed in (Thom, Oct 6): one compact button with the current
-// chain and the short address, opening what was spread along the bar: the chain switch, the address
-// with "Copy address" and its page on the explorer, and "Sign out" as a plain last item. The same
-// block heads the phone's sheet. It is a disclosure, not a menu of commands: the chains in it are
+// chain and the short address, opening what was spread along the bar: the chain switch, the short
+// address with a copy icon beside it, its page on the explorer, and "Sign out" as a plain last item.
+// The same block heads the phone's sheet. It is a disclosure, not a menu of commands: the chains in it are
 // toggle buttons with their reasons, as in the switcher someone signed out gets. Square, like the
 // rest: a hairline and 2px corners (STYLE.md).
 
@@ -41,31 +42,11 @@ export function AccountBlock({
   const t = useT();
   const port = useWalletPort();
   const { account } = useAccount();
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (timer.current) clearTimeout(timer.current);
-    },
-    [],
-  );
   const chain = account.status === 'ready' ? account.chain : null;
   // Only the wallet of the current chain: the one a new plan is built with.
   const wallet = chain ? port.active(chainFamily(chain)) : null;
   const explorer =
     chain && wallet ? explorerAddressUrlFor(chain, wallet.address, onMock(port, chain)) : null;
-
-  async function copy() {
-    if (!wallet) return;
-    try {
-      await navigator.clipboard.writeText(wallet.address);
-    } catch {
-      return; // no clipboard here: say nothing rather than claim a copy
-    }
-    setCopied(true);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setCopied(false), 1500);
-  }
 
   return (
     <div data-ui="account-block" className={className}>
@@ -76,16 +57,23 @@ export function AccountBlock({
             <span>{t.shell.address}</span>
             {port.test && <MockPlate labels={{ figure: t.shell.sampleFigure }} />}
           </p>
-          <p data-ui="account-address" className="px-2 font-mono text-source break-all">
-            {wallet.address}
+          {/* The short address with its copy beside it; the whole one is what is copied, what a
+              screen reader hears and what the pointer shows. */}
+          <p className="flex min-h-10 items-center gap-1 px-2">
+            <span
+              data-ui="account-address"
+              title={wallet.address}
+              className="font-mono text-source"
+            >
+              <span aria-hidden="true">{shorten(wallet.address)}</span>
+              <span className="sr-only">{wallet.address}</span>
+            </span>
+            <CopyButton
+              value={wallet.address}
+              title={`${t.shell.copyAddress}: ${wallet.address}`}
+              labels={{ copy: t.shell.copyAddress, copied: t.shell.copied }}
+            />
           </p>
-          <button type="button" data-ui="copy-address" onClick={copy} className={ITEM}>
-            <span>{copied ? t.shell.copied : t.shell.copyAddress}</span>
-            <Icon name={copied ? 'Check' : 'Copy'} size={16} />
-          </button>
-          <span role="status" data-ui="copy-said" className="sr-only">
-            {copied ? t.shell.copied : ''}
-          </span>
           {explorer && chain && (
             <a
               href={explorer}

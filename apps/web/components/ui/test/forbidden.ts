@@ -68,9 +68,15 @@ export const FALLBACKS = [
   'menlo',
   'consolas',
   'monospace',
-  // the metric-matched fallbacks next/font generates beside each face
+  // the metric-matched fallbacks beside each face (globals.css; next/font made them until the faces
+  // moved to committed files)
   'ibm plex sans fallback',
   'ibm plex mono fallback',
+  // the first name in the variable next/font/local writes for each face: the name of its export in
+  // app/fonts.ts, which is no face (each face keeps its own name, and follows it in the variable)
+  'plexsans',
+  'plexmono',
+  'plexsansgreek',
 ];
 const ALLOWED_FAMILIES = new Set([...FACES, ...FALLBACKS]);
 
