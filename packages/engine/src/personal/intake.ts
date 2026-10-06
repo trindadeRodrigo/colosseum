@@ -1,0 +1,449 @@
+import {
+  BasketSheet,
+  type BasketSheetDraft,
+  type ChainId,
+  GoalCurrency,
+  Language,
+  PlanSleeves,
+} from '@colosseum/schemas';
+import { z } from 'zod';
+import { draftFromRules } from './draft';
+import { amountInText, currenciesIn, horizonsIn, mentionsIn, refusalsIn } from './intake-text';
+import { readBack } from './readback';
+import { QUESTION_TEMPLATES, type QuestionId, render } from './templates';
+import { HoldableClass, PersonalLimits, PersonalSheet } from './types';
+
+// The guided intake (gate GUIDED-INTAKE; DESIGN-VAULT section 7). A model reads the person's goal into
+// a draft of the sheet and says which fields it could not read. Everything after that is here, in pure
+// code: each value is validated on its own and dropped to null when it fails; an amount and a time
+// frame must be written in the text; a shared portfolio must be on the shelf; a refusal must be
+// written; any field where the model and the rules parser disagree is flagged and asked about. The
+// questions come from fixed templates, one per field, and the read-back the person confirms is drawn
+// from the validated sheet. The engine runs only on the sheet the person confirms.
+//
+// With no model (none configured, down, out of budget) the rules parser fills the draft and the same
+// questions are asked. Nothing fails.
+
+/** The fields the intake can ask about, in the order it asks. */
+export const QUESTION_FIELDS = [
+  'goal',
+  'amountUsd',
+  'incomeTargetUsdMonthly',
+  'horizonMonths',
+  'risk',
+  'country',
+  'currency',
+  'themes',
+  'chains',
+] as const;
+export type QuestionField = (typeof QUESTION_FIELDS)[number];
+
+/**
+ * LOCAL TYPE. The person's answers to the questions, field by field, each held to the sheet's own
+ * schema. An answer is the person's entry on the form: it is not checked against the text.
+ */
+export const IntakeAnswers = z
+  .object({
+    goal: BasketSheet.shape.goal,
+    amountUsd: BasketSheet.shape.amountUsd,
+    incomeTargetUsdMonthly: z.number().positive(),
+    horizonMonths: BasketSheet.shape.horizonMonths,
+    risk: BasketSheet.shape.risk,
+    country: BasketSheet.shape.country,
+    currency: GoalCurrency,
+    themes: BasketSheet.shape.themes,
+    language: Language,
+    rules: BasketSheet.shape.rules,
+    obligations: BasketSheet.shape.obligations.unwrap(),
+    sleeves: PlanSleeves,
+    restoreSplit: z.boolean(),
+    limits: PersonalLimits,
+  })
+  .partial()
+  .strict();
+export type IntakeAnswers = z.infer<typeof IntakeAnswers>;
+
+/** LOCAL TYPE. A question: the field, the template it comes from, its text, and what was read. */
+export const IntakeQuestion = z.object({
+  field: z.enum(QUESTION_FIELDS),
+  template: z.string(),
+  text: z.string(),
+  /** The choices, for a field that has a fixed set. */
+  options: z.array(z.string()).optional(),
+  /** What the text was read as, when it was read and is unclear: the form starts from it. */
+  read: z.union([z.string(), z.number(), z.array(z.string())]).optional(),
+});
+export type IntakeQuestion = z.infer<typeof IntakeQuestion>;
+
+const Value = z.union([z.string(), z.number(), z.array(z.string()), z.null()]);
+
+/** LOCAL TYPE. A field the model and the rules parser read differently. */
+export const Disagreement = z.object({ field: z.string(), model: Value, rules: Value });
+export type Disagreement = z.infer<typeof Disagreement>;
+
+/** LOCAL TYPE. The limits the text states, as read: a draft of `PersonalLimits`. */
+export const LimitsDraft = z.object({
+  creditTolerance: z.literal('none').nullable(),
+  cannotHoldClasses: z.array(HoldableClass).nullable(),
+});
+export type LimitsDraft = z.infer<typeof LimitsDraft>;
+
+/** A shared portfolio on the person's chain, by its slug and name. The model never sees this list. */
+export type ShelfPortfolio = { slug: string; name: string };
+
+export type IntakeInput = {
+  text: string;
+  /** YYYY-MM: the month a time frame like "by 2031" is counted from. No clock is read here. */
+  nowMonth: string;
+  /** The language the page is in, when the text does not settle it. */
+  language?: Language;
+  /** What the model answered, as it came; null when no model answered. */
+  reply: unknown | null;
+  answers?: IntakeAnswers;
+  /** The chain of the person's wallet (gate ONE-CHAIN); null while they have not picked one. */
+  homeChain: ChainId | null;
+  portfolios: ShelfPortfolio[];
+};
+
+export type IntakeResult = {
+  method: 'model' | 'rules';
+  language: Language;
+  /** What the text says, after the checks. Every field null that it does not say or that failed. */
+  draft: BasketSheetDraft;
+  limits: LimitsDraft;
+  questions: IntakeQuestion[];
+  /** Why a value was dropped or doubted, by code: `amount_not_in_text`, `disagrees_with_rules:risk`. */
+  flags: string[];
+  disagreements: Disagreement[];
+  /** The sheet, once nothing is left to ask and it validates. The person confirms it. */
+  sheet: PersonalSheet | null;
+  /** The read-back of `sheet`, sentence by sentence, from templates. */
+  readBack: string[] | null;
+};
+
+// The model's reply, field by field. Each is read on its own, so one bad field costs only itself.
+const REPLY_FIELDS = {
+  goal: BasketSheet.shape.goal,
+  amountUsd: BasketSheet.shape.amountUsd,
+  incomeTargetUsdMonthly: z.number().positive(),
+  horizonMonths: BasketSheet.shape.horizonMonths,
+  risk: BasketSheet.shape.risk,
+  currency: GoalCurrency,
+  country: BasketSheet.shape.country,
+  chain: z.enum(['solana', 'base', 'robinhood']),
+  portfolios: BasketSheet.shape.themes,
+  language: Language,
+  noCredit: z.boolean(),
+  cannotHold: z.array(HoldableClass),
+  unclear: z.array(z.string()),
+} as const;
+type ReplyField = keyof typeof REPLY_FIELDS;
+type Reply = { [K in ReplyField]: z.infer<(typeof REPLY_FIELDS)[K]> | null };
+
+/** The model's reply as values: a field that does not validate is null, and flagged. */
+export function readReply(raw: unknown): { reply: Reply; flags: string[] } {
+  const flags: string[] = [];
+  const obj = raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
+  if (!obj) flags.push('model_unreadable');
+  const reply = {} as Record<ReplyField, unknown>;
+  for (const key of Object.keys(REPLY_FIELDS) as ReplyField[]) {
+    const value = obj ? (obj as Record<string, unknown>)[key] : null;
+    if (value === null || value === undefined) {
+      reply[key] = null;
+      continue;
+    }
+    const parsed = REPLY_FIELDS[key].safeParse(value);
+    reply[key] = parsed.success ? parsed.data : null;
+    if (!parsed.success) flags.push(`model_invalid:${key}`);
+  }
+  return { reply: reply as Reply, flags };
+}
+
+/** "The Seven", "the seven" and "the-seven" all name the slug `the-seven`. */
+const slugOf = (name: string) =>
+  name
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+
+function portfolioSlug(name: string, shelf: ShelfPortfolio[]): string | null {
+  const wanted = slugOf(name);
+  const hit = shelf.find((p) => p.slug === name || slugOf(p.name) === wanted || p.slug === wanted);
+  return hit?.slug ?? null;
+}
+
+const EMPTY_DRAFT: BasketSheetDraft = {
+  basketType: null,
+  goal: null,
+  amountUsd: null,
+  horizonMonths: null,
+  risk: null,
+  themes: null,
+  country: null,
+  chains: null,
+  incomeTargetUsdMonthly: null,
+  rules: null,
+  language: null,
+  currency: null,
+  obligations: null,
+  sleeves: null,
+  restoreSplit: null,
+};
+
+// The fields both readers read, compared field by field.
+const COMPARED = ['goal', 'horizonMonths', 'risk', 'language'] as const;
+
+/** The draft, the questions, and the sheet with its read-back once nothing is left to ask. */
+export function runIntake(input: IntakeInput): IntakeResult {
+  const { text, nowMonth, portfolios } = input;
+  const answers = input.answers ?? {};
+  const flags: string[] = [];
+  const unclear = new Set<QuestionField>();
+  const rules = draftFromRules(text, nowMonth, input.language).draft;
+  const draft: BasketSheetDraft = { ...EMPTY_DRAFT };
+  const limits: LimitsDraft = { creditTolerance: null, cannotHoldClasses: null };
+  // A value the text holds in another currency than dollars, to name in the question.
+  let otherCurrency: { amount: number; currency: string } | null = null;
+  const disagreements: Disagreement[] = [];
+  const method = input.reply === null ? 'rules' : 'model';
+
+  if (input.reply === null) {
+    Object.assign(draft, rules);
+  } else {
+    const read = readReply(input.reply);
+    flags.push(...read.flags);
+    const r = read.reply;
+    draft.goal = r.goal;
+    draft.risk = r.risk;
+    draft.country = r.country;
+    draft.language = r.language;
+
+    // An amount must be written in the text, in dollars or with no currency beside it.
+    for (const field of ['amountUsd', 'incomeTargetUsdMonthly'] as const) {
+      const value = r[field];
+      if (value === null) continue;
+      const where = amountInText(text, value);
+      if (where === 'dollars') draft[field] = value;
+      else {
+        flags.push(where === 'absent' ? `not_in_text:${field}` : `other_currency:${field}`);
+        unclear.add(field);
+        if (where === 'other_currency' && field === 'amountUsd') {
+          const m = mentionsIn(text).find(
+            (x) => x.kind === 'amount' && x.currency && Math.abs(x.value - value) < 1,
+          );
+          if (m?.currency) otherCurrency = { amount: m.value, currency: m.currency };
+        }
+      }
+    }
+    // The model may give one figure as both the amount and the income.
+    if (
+      draft.amountUsd !== null &&
+      draft.amountUsd === draft.incomeTargetUsdMonthly &&
+      mentionsIn(text).filter((m) => m.kind === 'amount' && m.value === draft.amountUsd).length < 2
+    ) {
+      flags.push('same_figure_twice');
+      unclear.add('amountUsd');
+      unclear.add('incomeTargetUsdMonthly');
+    }
+    // A time frame must be written in the text.
+    if (r.horizonMonths !== null) {
+      if (horizonsIn(text, nowMonth).includes(r.horizonMonths))
+        draft.horizonMonths = r.horizonMonths;
+      else {
+        flags.push('not_in_text:horizonMonths');
+        unclear.add('horizonMonths');
+      }
+    }
+    // A currency other than dollars must be written beside an amount.
+    if (r.currency !== null) {
+      const written = currenciesIn(text);
+      if (r.currency === 'USD' ? written.every((c) => c === 'USD') : written.includes(r.currency))
+        draft.currency = r.currency;
+      else {
+        flags.push('not_in_text:currency');
+        unclear.add('currency');
+      }
+    }
+    // A shared portfolio must be on the shelf of the person's chain.
+    if (r.portfolios !== null && r.portfolios.length > 0) {
+      const slugs = r.portfolios.map((name) => portfolioSlug(name, portfolios));
+      const found = [...new Set(slugs.filter((s): s is string => s !== null))];
+      if (found.length < slugs.length) {
+        flags.push('not_on_shelf:themes');
+        unclear.add('themes');
+      }
+      draft.themes = found.length > 0 ? found : null;
+    }
+    // The chain is the wallet's. One named in the text is kept in the draft, and a different one is said.
+    if (r.chain !== null) {
+      draft.chains = [r.chain];
+      if (input.homeChain && r.chain !== input.homeChain) flags.push(`other_chain:${r.chain}`);
+    }
+    // A refusal must be written: "no stocks", "sem ações", "no credit".
+    const written = refusalsIn(text);
+    if (r.cannotHold !== null && r.cannotHold.length > 0) {
+      const kept = r.cannotHold.filter((cls) => written.classes.includes(cls));
+      for (const cls of r.cannotHold)
+        if (!written.classes.includes(cls)) flags.push(`not_in_text:cannotHold:${cls}`);
+      limits.cannotHoldClasses = kept.length > 0 ? [...new Set(kept)].sort() : null;
+    }
+    if (r.noCredit === true) {
+      if (written.noCredit) limits.creditTolerance = 'none';
+      else flags.push('not_in_text:noCredit');
+    }
+    // What the model itself says it could not read.
+    for (const field of r.unclear ?? [])
+      if ((QUESTION_FIELDS as readonly string[]).includes(field))
+        unclear.add(field as QuestionField);
+
+    // Where the two readers both read a field and differ, the field is unclear.
+    for (const field of COMPARED) {
+      const model = draft[field];
+      const other = rules[field];
+      if (model !== null && other !== null && model !== other) {
+        disagreements.push({ field, model, rules: other });
+        flags.push(`disagrees_with_rules:${field}`);
+        if (field !== 'language') unclear.add(field);
+      }
+    }
+  }
+
+  const language: Language =
+    answers.language ?? draft.language ?? input.language ?? rules.language ?? 'en';
+
+  // The values the sheet would take: the person's answers over what was read.
+  const value = {
+    goal: answers.goal ?? draft.goal,
+    amountUsd: answers.amountUsd ?? draft.amountUsd,
+    incomeTargetUsdMonthly: answers.incomeTargetUsdMonthly ?? draft.incomeTargetUsdMonthly,
+    horizonMonths: answers.horizonMonths ?? draft.horizonMonths,
+    risk: answers.risk ?? draft.risk,
+    country: answers.country ?? draft.country,
+    currency: answers.currency ?? draft.currency,
+    themes: answers.themes ?? draft.themes,
+  };
+  // An answer naming a portfolio is held to the shelf too.
+  if (answers.themes) {
+    const off = answers.themes.filter((slug) => !portfolios.some((p) => p.slug === slug));
+    if (off.length > 0) {
+      flags.push('answer_not_on_shelf:themes');
+      value.themes = null;
+    }
+  }
+
+  const needed = (field: QuestionField): boolean => {
+    if (field in answers && field !== 'chains' && !(field === 'themes' && value.themes === null))
+      return false;
+    switch (field) {
+      case 'goal':
+      case 'amountUsd':
+      case 'horizonMonths':
+      case 'risk':
+      case 'country':
+        return value[field] === null || unclear.has(field);
+      case 'incomeTargetUsdMonthly':
+        return value.goal === 'income' && (value[field] === null || unclear.has(field));
+      case 'currency':
+        return unclear.has(field);
+      case 'themes':
+        return unclear.has(field) || (answers.themes !== undefined && value.themes === null);
+      case 'chains':
+        return input.homeChain === null;
+    }
+  };
+
+  const questions: IntakeQuestion[] = QUESTION_FIELDS.filter(needed).map((field) =>
+    question(field, language, field === 'amountUsd' ? otherCurrency : null, readOf(field, value)),
+  );
+
+  let sheet: PersonalSheet | null = null;
+  if (questions.length === 0 && input.homeChain) {
+    const limitsOut = answers.limits ?? limitsOf(limits);
+    const candidate = {
+      basketType: 'standard' as const,
+      goal: value.goal,
+      amountUsd: value.amountUsd,
+      horizonMonths: value.horizonMonths,
+      risk: value.risk,
+      themes: value.themes ?? [],
+      country: value.country,
+      chains: [input.homeChain],
+      ...(value.goal === 'income' && value.incomeTargetUsdMonthly !== null
+        ? { incomeTargetUsdMonthly: value.incomeTargetUsdMonthly }
+        : {}),
+      // Both rules start on, as the form starts them.
+      rules: answers.rules ?? { useHoldings: true, glide: true },
+      language,
+      ...(value.currency !== null ? { currency: value.currency } : {}),
+      ...(answers.obligations ? { obligations: answers.obligations } : {}),
+      ...(answers.sleeves ? { sleeves: answers.sleeves } : {}),
+      ...(answers.restoreSplit !== undefined ? { restoreSplit: answers.restoreSplit } : {}),
+      ...(limitsOut ? { limits: limitsOut } : {}),
+    };
+    const parsed = PersonalSheet.safeParse(candidate);
+    if (parsed.success) sheet = parsed.data;
+    else
+      for (const issue of parsed.error.issues) {
+        const field = String(issue.path[0]);
+        flags.push(`sheet_invalid:${field}`);
+        if ((QUESTION_FIELDS as readonly string[]).includes(field)) {
+          const f = field as QuestionField;
+          if (!questions.some((q) => q.field === f))
+            questions.push(question(f, language, null, readOf(f, value)));
+        }
+      }
+  }
+
+  return {
+    method,
+    language,
+    draft,
+    limits,
+    questions,
+    flags,
+    disagreements,
+    sheet,
+    readBack: sheet ? readBack(sheet, portfolios) : null,
+  };
+}
+
+function limitsOf(read: LimitsDraft): PersonalLimits | null {
+  const out: PersonalLimits = {};
+  if (read.creditTolerance) out.creditTolerance = read.creditTolerance;
+  if (read.cannotHoldClasses) out.cannotHold = { classes: read.cannotHoldClasses };
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+type Values = Record<
+  Exclude<QuestionField, 'chains'>,
+  string | number | string[] | null | undefined
+>;
+function readOf(field: QuestionField, value: Values): IntakeQuestion['read'] {
+  if (field === 'chains') return undefined;
+  const v = value[field];
+  return v === null || v === undefined ? undefined : v;
+}
+
+const OPTIONS: Partial<Record<QuestionField, string[]>> = {
+  goal: [...BasketSheet.shape.goal.options],
+  risk: [...BasketSheet.shape.risk.options],
+};
+
+function question(
+  field: QuestionField,
+  language: Language,
+  other: { amount: number; currency: string } | null,
+  read: IntakeQuestion['read'],
+): IntakeQuestion {
+  const template: QuestionId = field === 'amountUsd' && other ? 'amountOtherCurrency' : field;
+  const params = template === 'amountOtherCurrency' && other ? { ...other } : {};
+  return {
+    field,
+    template,
+    text: render(QUESTION_TEMPLATES[template][language], params, language),
+    ...(OPTIONS[field] ? { options: OPTIONS[field] } : {}),
+    ...(read !== undefined ? { read } : {}),
+  };
+}

@@ -692,3 +692,179 @@ export function reason(id: RuleId, params: Record<string, Value>, lang: Language
 export function text(id: TextId, params: Record<string, Value>, lang: Language): string {
   return render(TEXT_TEMPLATES[id][lang], params, lang);
 }
+
+// ---------------------------------------------------------------------------------------------------
+// The guided intake (gate GUIDED-INTAKE, ENG-3 slice 4). Kept in a block of its own.
+//
+// The questions the intake asks, one per field the text leaves open or unclear, and the read-back the
+// person confirms. A model chooses none of these words: it says which fields it could not read, and
+// code picks the question; the read-back is drawn from the validated sheet. Rodrigo owns the wording.
+
+/** One question per field of the sheet the person may be asked about. */
+export const QUESTION_TEMPLATES = {
+  goal: {
+    en: 'What is this money for: to grow it, to earn an income from it, or to protect it?',
+    pt: 'Para que é este dinheiro: fazer crescer, ter uma renda ou proteger?',
+  },
+  amountUsd: {
+    en: 'How much do you put in, in dollars?',
+    pt: 'Quanto você aplica, em dólares?',
+  },
+  amountOtherCurrency: {
+    en: 'You wrote {amount|amount} {currency}. How much is that in dollars, the currency the plan is funded in?',
+    pt: 'Você escreveu {amount|amount} {currency}. Quanto é isso em dólares, a moeda em que o plano é aplicado?',
+  },
+  horizonMonths: {
+    en: 'In how many months do you need this money?',
+    pt: 'Em quantos meses você precisa deste dinheiro?',
+  },
+  risk: {
+    en: 'How much risk can you take: low, medium or high?',
+    pt: 'Quanto risco você aceita: baixo, médio ou alto?',
+  },
+  incomeTargetUsdMonthly: {
+    en: 'How much income a month, in dollars, do you aim for?',
+    pt: 'Quanto de renda por mês, em dólares, você busca?',
+  },
+  country: {
+    en: 'In which country do you live?',
+    pt: 'Em que país você mora?',
+  },
+  themes: {
+    en: 'Which shared portfolio, if any, do you want to start from?',
+    pt: 'De qual portfólio compartilhado você quer partir, se de algum?',
+  },
+  currency: {
+    en: 'In which currency do you count this goal?',
+    pt: 'Em que moeda você conta este objetivo?',
+  },
+  chains: {
+    en: 'Pick the chain your plans live on first: a plan is made on the chain of your wallet.',
+    pt: 'Escolha antes a rede em que seus planos ficam: um plano é feito na rede da sua carteira.',
+  },
+} as const satisfies Record<string, Text>;
+export type QuestionId = keyof typeof QUESTION_TEMPLATES;
+
+/** The sentences of the read-back, each filled from the validated sheet and nothing else. */
+export const READBACK_TEMPLATES = {
+  GOAL: {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
+    en: 'You set {goal|goal} with ${amount|amount} over {months|months}, at {risk|risk}.',
+    pt: 'Você definiu {goal|goal} com US$ {amount|amount} em {months|months}, com {risk|risk}.',
+  },
+  INCOME: {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
+    en: 'You aim for ${income|amount} a month of income.',
+    pt: 'Você busca US$ {income|amount} por mês de renda.',
+  },
+  CURRENCY: {
+    en: 'The goal is counted in {currency}.',
+    pt: 'O objetivo é contado em {currency}.',
+  },
+  THEMES: {
+    en: 'The plan starts from {themes|list}.',
+    pt: 'O plano parte de {themes|list}.',
+  },
+  COUNTRY: {
+    en: 'You live {country|inCountry}.',
+    pt: 'Você mora {country|inCountry}.',
+  },
+  CHAIN: {
+    en: 'The plan lives on {chain|chain}, the chain of your wallet.',
+    pt: 'O plano fica na rede {chain|chain}, a rede da sua carteira.',
+  },
+  HOLDINGS_ON: {
+    en: 'Tokens you already hold count toward the plan.',
+    pt: 'Os tokens que você já tem contam para o plano.',
+  },
+  HOLDINGS_OFF: {
+    en: 'Tokens you already hold are not counted.',
+    pt: 'Os tokens que você já tem não são contados.',
+  },
+  GLIDE_ON: {
+    en: 'As the date nears, more of the plan is kept in dollar yield and cash.',
+    pt: 'Conforme a data se aproxima, mais do plano fica em rendimento em dólar e caixa.',
+  },
+  GLIDE_OFF: {
+    en: 'The share kept in dollar yield and cash does not change as the date nears.',
+    pt: 'A parcela em rendimento em dólar e caixa não muda conforme a data se aproxima.',
+  },
+  NO_CREDIT: {
+    en: 'No tokens that lend to borrowers or trade a spread.',
+    pt: 'Nenhum token que empresta a tomadores ou opera um spread.',
+  },
+  CANNOT_HOLD: {
+    en: 'You left out {classes|list}.',
+    pt: 'Você deixou de fora {classes|list}.',
+  },
+  MUST_KEEP: {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
+    en: 'At least ${amount|amount} stays out of stocks, crypto and gold.',
+    pt: 'Pelo menos US$ {amount|amount} fica fora de ações, cripto e ouro.',
+  },
+  MAY_NEED: {
+    en: 'You may need the money in {months|months}.',
+    pt: 'Você pode precisar do dinheiro em {months|months}.',
+  },
+  CANNOT_HOLD_NAMES: {
+    en: 'You left out {names|list}.',
+    pt: 'Você deixou de fora {names|list}.',
+  },
+  CREDIT_LIMITED: {
+    en: 'Only a limited share in tokens that lend to borrowers or trade a spread.',
+    pt: 'Só uma parcela limitada em tokens que emprestam a tomadores ou operam um spread.',
+  },
+  CREDIT_ACCEPT: {
+    en: 'You accept tokens that lend to borrowers or trade a spread.',
+    pt: 'Você aceita tokens que emprestam a tomadores ou operam um spread.',
+  },
+  OBLIGATION: {
+    en: 'A withdrawal of {amount|amount} {currency} in {month|month}.',
+    pt: 'Um saque de {amount|amount} {currency} em {month|month}.',
+  },
+  SLEEVE_GOAL: {
+    en: '{share|pct} of the plan for the goal.',
+    pt: '{share|pct} do plano para o objetivo.',
+  },
+  SLEEVE_SAFE_YIELD: {
+    en: '{share|pct} of the plan for dollar yield from a rate alone.',
+    pt: '{share|pct} do plano para rendimento em dólar só de taxa.',
+  },
+  SLEEVE_THEME: {
+    en: '{share|pct} of the plan for the theme {theme}.',
+    pt: '{share|pct} do plano para o tema {theme}.',
+  },
+  RESTORE_ON: {
+    en: 'A part of the plan that has grown is brought back to its share.',
+    pt: 'Uma parte do plano que cresceu é trazida de volta à sua parcela.',
+  },
+  RESTORE_OFF: {
+    en: 'A part of the plan that has grown is left as it grew.',
+    pt: 'Uma parte do plano que cresceu fica como cresceu.',
+  },
+  CONFIRM: {
+    en: 'If this is right, confirm it and the plan is made from it.',
+    pt: 'Se estiver certo, confirme e o plano é feito a partir disso.',
+  },
+} as const satisfies Record<string, Text>;
+export type ReadBackId = keyof typeof READBACK_TEMPLATES;
+
+/** The classes a person can leave out, as the read-back writes them. */
+export const CLASS_WORDS: Record<Language, Record<string, string>> = {
+  en: {
+    stock: 'stocks',
+    etf: 'funds',
+    gold: 'gold',
+    commodity: 'commodities',
+    dollar_yield: 'dollar yield',
+    crypto: 'crypto',
+  },
+  pt: {
+    stock: 'ações',
+    etf: 'fundos',
+    gold: 'ouro',
+    commodity: 'commodities',
+    dollar_yield: 'rendimento em dólar',
+    crypto: 'cripto',
+  },
+};
