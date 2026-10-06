@@ -5,6 +5,16 @@
 export { candidates } from './candidates';
 export { compose, composeAs, PERSONAL_ENGINE_VERSION, riskForMix } from './compose';
 export { draftFromRules } from './draft';
+export {
+  attributeVocabularyOf,
+  type FilterRead,
+  filterMatchOf,
+  type MatchedList,
+  matchedListOf,
+  matchStocks,
+  type SleeveList,
+  shelfLabelsOf,
+} from './matched-theme';
 export { growthRoomBps, RISKS } from './mix';
 export { PERSONAL_PARAMS, PERSONAL_PARAMS_STATUS } from './params';
 export { eligibleForGoal, profileOfGoal, registryRowOf, sleeveOfClass } from './registry';

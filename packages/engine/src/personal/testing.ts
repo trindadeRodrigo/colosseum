@@ -26,6 +26,12 @@ import { LEG_TYPES } from './leg-types';
 import { growthRoomBps, growthTokens, RISKS } from './mix';
 import { PERSONAL_PARAMS } from './params';
 import { eligibleForGoal, sleeveOfClass } from './registry';
+import {
+  parseStockAttributes,
+  STOCK_FACTS,
+  type StockAttributes,
+  type StockAttributesFile,
+} from './stock-attributes';
 import { INPUT_NAMES, REASON_TEMPLATES } from './templates';
 import { parseThemeList, type ThemeList } from './theme-list';
 import {
@@ -284,6 +290,185 @@ export function fixtureLiquidity(
 /** The Solana AI list as `content/themes/solana/ai.json` holds it (gate THEME-AI-SOLANA). */
 export function aiList(): ThemeList {
   return parseThemeList(aiOnSolana, 'content/themes/solana/ai.json');
+}
+
+type FixtureStock = Pick<
+  StockAttributes,
+  | 'underlying'
+  | 'kind'
+  | 'company'
+  | 'headquarters'
+  | 'sector'
+  | 'industry'
+  | 'subIndustry'
+  | 'keywords'
+  | 'tracks'
+>;
+const company = (
+  underlying: string,
+  name: string,
+  [sector, industry, subIndustry]: [string, string, string],
+  keywords: string[],
+  over: Partial<FixtureStock> = {},
+): FixtureStock => ({
+  underlying,
+  kind: 'common',
+  company: name,
+  headquarters: 'United States',
+  sector,
+  industry,
+  subIndustry,
+  keywords,
+  tracks: null,
+  ...over,
+});
+const fund = (
+  underlying: string,
+  name: string,
+  tracks: string,
+  keywords: string[],
+): FixtureStock => ({
+  underlying,
+  kind: 'fund',
+  company: name,
+  headquarters: null,
+  sector: null,
+  industry: null,
+  subIndustry: null,
+  keywords,
+  tracks,
+});
+const TECH = 'Information Technology';
+const HARDWARE = 'Technology Hardware, Storage & Peripherals';
+const MEDIA = 'Interactive Media & Services';
+/**
+ * MOCK: a few stocks by the ticker of the underlying, written for the tests. No source was read for
+ * any of it. TSM writes two values another way than NVDA does ("and" for "&", capitals), which a
+ * filter holds equal; LMT and LLY are on no chain's launch shelf.
+ */
+const FIXTURE_STOCKS: FixtureStock[] = [
+  company(
+    'NVDA',
+    'NVIDIA Corporation',
+    [TECH, 'Semiconductors & Semiconductor Equipment', 'Semiconductors'],
+    ['gpus', 'ai chips', 'data centers'],
+  ),
+  company(
+    'TSM',
+    'Taiwan Semiconductor Manufacturing Company Limited',
+    [TECH, 'Semiconductors and Semiconductor Equipment', 'Semiconductors'],
+    ['chip foundry', 'AI chips', 'wafers'],
+    { kind: 'adr', headquarters: 'Taiwan' },
+  ),
+  company(
+    'MSFT',
+    'Microsoft Corporation',
+    [TECH, 'Software', 'Systems Software'],
+    ['cloud', 'operating systems', 'ai assistants'],
+  ),
+  company(
+    'AAPL',
+    'Apple Inc.',
+    [TECH, HARDWARE, HARDWARE],
+    ['smartphones', 'wearables', 'app stores'],
+  ),
+  company(
+    'GOOGL',
+    'Alphabet Inc.',
+    ['Communication Services', MEDIA, MEDIA],
+    ['search', 'cloud', 'online ads'],
+  ),
+  company(
+    'META',
+    'Meta Platforms, Inc.',
+    ['Communication Services', MEDIA, MEDIA],
+    ['social networks', 'online ads', 'virtual reality'],
+  ),
+  company(
+    'AMZN',
+    'Amazon.com, Inc.',
+    ['Consumer Discretionary', 'Broadline Retail', 'Broadline Retail'],
+    ['e-commerce', 'cloud', 'logistics'],
+  ),
+  company(
+    'TSLA',
+    'Tesla, Inc.',
+    ['Consumer Discretionary', 'Automobiles', 'Automobile Manufacturers'],
+    ['electric vehicles', 'batteries', 'self-driving'],
+  ),
+  company(
+    'COIN',
+    'Coinbase Global, Inc.',
+    ['Financials', 'Capital Markets', 'Financial Exchanges & Data'],
+    ['crypto exchange', 'custody', 'stablecoins'],
+  ),
+  company(
+    'HOOD',
+    'Robinhood Markets, Inc.',
+    ['Financials', 'Capital Markets', 'Investment Banking & Brokerage'],
+    ['retail brokerage', 'crypto trading', 'options'],
+  ),
+  company(
+    'LMT',
+    'Lockheed Martin Corporation',
+    ['Industrials', 'Aerospace & Defense', 'Aerospace & Defense'],
+    ['fighter jets', 'missiles', 'space systems'],
+  ),
+  company(
+    'LLY',
+    'Eli Lilly and Company',
+    ['Health Care', 'Pharmaceuticals', 'Pharmaceuticals'],
+    ['glp-1', 'diabetes', 'oncology'],
+  ),
+  fund('QQQ', 'Invesco QQQ Trust', 'the Nasdaq-100 index', [
+    'nasdaq-100',
+    'large companies',
+    'index fund',
+  ]),
+  fund('SPY', 'SPDR S&P 500 ETF Trust', 'the S&P 500 index', [
+    's&p 500',
+    'large companies',
+    'index fund',
+  ]),
+  fund('GLD', 'SPDR Gold Shares', 'the price of gold', ['gold', 'bullion', 'precious metals']),
+];
+/** How the launch shelf writes a stock token's symbol on each chain: NVDAx, NVDAc, NVDA. */
+const SYMBOL_END: Record<ChainId, string> = { solana: 'x', base: 'c', robinhood: '' };
+
+/**
+ * MOCK: the stock attributes of one chain (gate THEME-MATCHED), for the tests only. Every row is a
+ * fixture and says so: its source is no source, and `unverified` names every field. A row's symbol
+ * is the one the launch shelf would list it under on the chain, whether or not it lists it.
+ */
+export function fixtureStocks(chain: ChainId = 'solana'): StockAttributesFile {
+  const onShelf = new Set(
+    (SEED.assets[chain] ?? []).flatMap((a) => (listed(chain, a) ? [a.symbol] : [])),
+  );
+  return parseStockAttributes(
+    {
+      chain,
+      version: 3,
+      readOn: '2026-10-06',
+      note: 'MOCK: a test fixture of packages/engine/src/personal/testing.ts, not a reading',
+      stocks: FIXTURE_STOCKS.map((stock) => {
+        const symbol = `${stock.underlying}${SYMBOL_END[chain]}`;
+        return {
+          symbol,
+          ...stock,
+          sets: onShelf.has(symbol) ? ['universe', 'shelf'] : ['universe'],
+          sources: [
+            {
+              url: 'https://example.com/fixture',
+              title: 'MOCK: no source was read for this test fixture',
+              readOn: '2026-10-06',
+            },
+          ],
+          unverified: [...STOCK_FACTS],
+        };
+      }),
+    },
+    'fixtureStocks',
+  );
 }
 
 /** A context with the fixture yields and the fixture liquidity, at a fixed time. */
