@@ -29,21 +29,16 @@ const LEGACY: Record<string, readonly Kind[]> = {
   // Rodrigo's pages and components: Tailwind's cool greys, blue links, 4px corners, chart colours,
   // and two uppercase labels
   'app/(structurer)/layout.tsx': ['hue'],
-  'app/(structurer)/embed/[id]/layout.tsx': ['hue', 'radius', 'case'],
-  'app/(structurer)/risk/page.tsx': ['hue'],
-  'app/(structurer)/risk/[asset]/page.tsx': ['hue'],
-  'app/(structurer)/risk/methodology/page.tsx': ['hue'],
   'components/PlanView.tsx': ['hue'],
   'components/Provenance.tsx': ['radius', 'case'],
   'components/ScheduleChart.tsx': ['hue'],
-  'components/risk/CostCurveChart.tsx': ['hue'],
-  'components/risk/HourOfWeekHeatmap.tsx': ['hue'],
   // the wallet check, a development page (WAL-1), plain until it takes the primitives
   'features/wallet/dev/DevWallet.tsx': ['hue'],
 };
 
 /** The product's own routes and what they are built from: none of it may ever be on the list above. */
-const PRODUCT = /^(app\/\(app\)|components\/shell|features\/(account|goal|portfolio)|i18n)\//;
+const PRODUCT =
+  /^(app\/\((app|marketing|embed)\)|components\/shell|features\/(account|goal|portfolio|landing|order|embed)|i18n)\//;
 
 /**
  * The stylesheet of @solana/wallet-adapter-react-ui, which the layout of the pages not yet rebuilt
@@ -245,7 +240,7 @@ describe('the forbidden things', () => {
       expect(files).toContain('app/globals.css');
       expect(files).toContain('components/ui/Button.tsx');
       expect(files).toContain('app/(structurer)/plans/[id]/page.tsx');
-      expect(files).toContain('app/(app)/page.tsx');
+      expect(files).toContain('app/(marketing)/page.tsx');
       expect(files).toContain('app/(app)/monitor/page.tsx');
       expect(files).toContain('components/shell/AppNav.tsx');
       expect(files.some(notScanned)).toBe(false);
@@ -293,16 +288,13 @@ describe('the forbidden things', () => {
       expect(blamed.filter((b) => !base(b) && !legacy(b) && !centred(b)).map(say)).toEqual([]);
     });
 
-    it('sets uppercase on the MOCK plate and nowhere else but two legacy labels', () => {
+    it('sets uppercase on the MOCK plate and nowhere else but one legacy label', () => {
       const upper: string[] = [];
       root.walkDecls('text-transform', (decl) => {
         if (/uppercase/.test(decl.value)) upper.push((decl.parent as postcss.Rule).selector);
       });
       expect(upper.sort()).toEqual(['.tf-mock-plate', '.uppercase']);
-      expect(users('uppercase').sort()).toEqual([
-        'app/(structurer)/embed/[id]/layout.tsx',
-        'components/Provenance.tsx',
-      ]);
+      expect(users('uppercase').sort()).toEqual(['components/Provenance.tsx']);
     });
 
     it('centres text only where a spec allows it, and every such place still does', () => {
@@ -346,8 +338,9 @@ describe('the forbidden things', () => {
         'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
       );
       expect(users(SYSTEM_FACES.utility)).toEqual([SYSTEM_FACES.usedBy]);
-      // and the base class of the design system goes on one <body>: the product's
+      // and the base class of the design system goes on the product's <body> and the landing's
       expect(users('tf-app').filter((file) => !file.startsWith('app/(app)/dev/'))).toEqual([
+        'app/(marketing)/layout.tsx',
         'components/shell/AppDocument.tsx',
       ]);
     });

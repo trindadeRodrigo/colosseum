@@ -1,5 +1,7 @@
 import {
+  BasketCard,
   type BasketLine,
+  BasketSheet,
   ChainId as Chain,
   type ChainId,
   ConsentKind as Consent,
@@ -8,12 +10,16 @@ import {
   OrderDetail as Order,
   type OrderDetail,
   type TRUST_STATUS,
+  Verdict,
 } from '@colosseum/schemas';
+import { readTerms, type SharedTerms } from '../shared/terms';
 
 // What this browser keeps about an order, so the order screen survives a reload and a second tab:
 //
 //   placed     the plan it buys, as the plan screen showed it: its id and its lines, which the vault's
-//              targets are worked out from. Written when the order is made.
+//              targets are worked out from. Written when the order is made. For an order about a
+//              shared portfolio (a buy that follows one, a follow, a publish: WEB-4) the terms its
+//              screen showed take the plan's place (features/shared/terms.ts).
 //   approved   the order exactly as the review screen showed it when the person pressed the button,
 //              with the consents they ticked. From then on it is what every run of the order is handed:
 //              it is never read again from the API to decide what a step may do.
@@ -28,15 +34,58 @@ export type ApprovedOrder = {
   at: string;
 };
 
+/**
+ * The goal the plan was built for, as the plan screen had it when the order was placed: the limits,
+ * the plan's card and, for an income goal, the engine's verdict. The portfolio's goal card is drawn
+ * from it (features/portfolio). Records kept before it was written have none.
+ */
+export type PlacedGoal = {
+  sheet: BasketSheet;
+  card: BasketCard;
+  verdict: Verdict | null;
+  /** When the order was placed, as an ISO instant: the goal's date counts from it. */
+  placedAt: string;
+};
+
 export type OrderRecord = {
   orderId: string;
   userId: string;
+  /** The plan a buy buys. Empty for an order about a shared portfolio. */
   proposalId: string;
   chain: ChainId;
+  /** The amount typed for a buy. Zero for a follow or a publish, which deposit nothing. */
   amountUsd: number;
   lines: BasketLine[];
+  /** For an order about a shared portfolio: what its screen showed. */
+  terms?: SharedTerms;
   approved: ApprovedOrder | null;
+  goal?: PlacedGoal | null;
+  /**
+   * The plan was made from a link (gate `AGENT-LINK`): its vault's number takes this record's person
+   * too (`basketIdOfLinkedPlan`), so the link alone does not lead to the vault.
+   */
+  linked?: true;
 };
+
+function readGoal(value: unknown): PlacedGoal | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const g = value as Record<string, unknown>;
+  const sheet = BasketSheet.safeParse(g.sheet);
+  const card = BasketCard.safeParse(g.card);
+  const verdict = g.verdict == null ? null : Verdict.safeParse(g.verdict);
+  if (!sheet.success || !card.success || verdict?.success === false || !text(g.placedAt))
+    return null;
+  return {
+    sheet: sheet.data,
+    card: card.data,
+    verdict: verdict?.success ? verdict.data : null,
+    placedAt: g.placedAt,
+  };
+}
+
+/** True when the order deposits cash: a buy of a plan or of a shared portfolio. */
+export const isBuy = (record: Pick<OrderRecord, 'terms'>): boolean =>
+  !record.terms || record.terms.kind === 'family';
 
 const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
 
@@ -46,14 +95,19 @@ function readRecord(value: unknown): OrderRecord | null {
   const r = value as Record<string, unknown>;
   const chain = Chain.safeParse(r.chain);
   const lines = Line.array().safeParse(r.lines);
+  const terms = r.terms === undefined ? undefined : readTerms(r.terms);
+  if (terms === null) return null;
+  // A buy names its plan and an amount, or its portfolio and an amount; a follow and a publish neither.
+  const buy = !terms || terms.kind === 'family';
   if (
     !text(r.orderId) ||
     !text(r.userId) ||
-    !text(r.proposalId) ||
+    (!terms && !text(r.proposalId)) ||
+    typeof r.proposalId !== 'string' ||
     !chain.success ||
     !lines.success ||
     typeof r.amountUsd !== 'number' ||
-    !(r.amountUsd > 0)
+    (buy ? !(r.amountUsd > 0) : r.amountUsd !== 0)
   )
     return null;
   let approved: ApprovedOrder | null = null;
@@ -74,7 +128,10 @@ function readRecord(value: unknown): OrderRecord | null {
     chain: chain.data,
     amountUsd: r.amountUsd,
     lines: lines.data,
+    ...(terms ? { terms } : {}),
     approved,
+    goal: readGoal(r.goal),
+    ...(r.linked === true ? { linked: true as const } : {}),
   };
 }
 
@@ -104,6 +161,24 @@ export function recallOrder(orderId: string, userId: string | null): OrderRecord
   } catch {
     return null;
   }
+}
+
+/** Every order this person placed in this browser, newest first. */
+export function recallOrders(userId: string | null): OrderRecord[] {
+  if (!userId) return [];
+  const found: OrderRecord[] = [];
+  try {
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (!key?.startsWith('tf-order:')) continue;
+      const record = recallOrder(key.slice('tf-order:'.length), userId);
+      if (record) found.push(record);
+    }
+  } catch {
+    return [];
+  }
+  const at = (r: OrderRecord) => r.goal?.placedAt ?? r.approved?.at ?? '';
+  return found.sort((a, b) => at(b).localeCompare(at(a)));
 }
 
 // The trust notice (TRUST_STATUS), accepted once per person and version of its text, before the first

@@ -71,18 +71,51 @@ describe('the rules parser on the evaluation set, as it is today', () => {
   it('gets 0 of the 12 goals wholly right: what it misses, goal by goal', () => {
     const missed = Object.fromEntries(goals.map((g) => [g.id, misses(g)]));
     expect(missed).toEqual({
-      'en-grow-10y-high': ['amountUsd', 'horizonMonths'],
-      'en-protect-18m-low': ['goal', 'amountUsd'],
-      'en-income-300-month': ['amountUsd', 'horizonMonths', 'risk', 'incomeTargetUsdMonthly'],
-      'en-grow-by-2031-theme-chain': ['amountUsd', 'risk', 'themes', 'chains'],
-      'en-protect-country-no-stocks': ['goal', 'amountUsd', 'horizonMonths', 'risk', 'country'],
-      'en-grow-6m-conservative': ['amountUsd', 'horizonMonths'],
-      'pt-grow-10y-high': ['amountUsd', 'risk'],
-      'pt-protect-18m-low': ['goal', 'amountUsd', 'risk'],
-      'pt-income-300-month': ['amountUsd', 'horizonMonths', 'risk', 'incomeTargetUsdMonthly'],
-      'pt-grow-by-2031-theme-chain': ['amountUsd', 'risk', 'themes', 'chains', 'language'],
-      'pt-protect-country-no-stocks': ['goal', 'amountUsd', 'horizonMonths', 'risk', 'country'],
-      'pt-grow-6m-conservative': ['amountUsd', 'horizonMonths'],
+      'en-grow-10y-high': ['amountUsd', 'horizonMonths', 'currency'],
+      'en-protect-18m-low': ['goal', 'amountUsd', 'currency'],
+      'en-income-300-month': [
+        'amountUsd',
+        'horizonMonths',
+        'risk',
+        'incomeTargetUsdMonthly',
+        'currency',
+      ],
+      'en-grow-by-2031-theme-chain': ['amountUsd', 'risk', 'themes', 'chains', 'currency'],
+      'en-protect-country-no-stocks': [
+        'goal',
+        'amountUsd',
+        'horizonMonths',
+        'risk',
+        'country',
+        'currency',
+      ],
+      'en-grow-6m-conservative': ['amountUsd', 'horizonMonths', 'currency'],
+      'pt-grow-10y-high': ['amountUsd', 'risk', 'currency'],
+      'pt-protect-18m-low': ['goal', 'amountUsd', 'risk', 'currency'],
+      'pt-income-300-month': [
+        'amountUsd',
+        'horizonMonths',
+        'risk',
+        'incomeTargetUsdMonthly',
+        'currency',
+      ],
+      'pt-grow-by-2031-theme-chain': [
+        'amountUsd',
+        'risk',
+        'themes',
+        'chains',
+        'language',
+        'currency',
+      ],
+      'pt-protect-country-no-stocks': [
+        'goal',
+        'amountUsd',
+        'horizonMonths',
+        'risk',
+        'country',
+        'currency',
+      ],
+      'pt-grow-6m-conservative': ['amountUsd', 'horizonMonths', 'currency'],
     });
     expect(Object.values(missed).filter((fields) => fields.length === 0)).toHaveLength(0);
   });
@@ -103,6 +136,13 @@ describe('the rules parser on the evaluation set, as it is today', () => {
       incomeTargetUsdMonthly: 10,
       rules: 12,
       language: 11,
+      // The rules parser reads every amount as reais and says nothing of the goal's currency; the model
+      // is to read it (GUIDED-INTAKE). It says nothing of withdrawals, sleeves or the restore choice,
+      // and none of the twelve does either.
+      currency: 0,
+      obligations: 12,
+      sleeves: 12,
+      restoreSplit: 12,
     });
   });
 });

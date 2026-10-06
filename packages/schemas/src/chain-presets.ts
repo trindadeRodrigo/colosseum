@@ -23,6 +23,8 @@ export const SCOPE_MAINNET = {
 } as const;
 /** Universal Router 2.1.2 on Robinhood Chain (DESIGN-VAULT section 5), lower-cased. */
 const ROBINHOOD_UNIVERSAL_ROUTER = '0x204faca1764b154221e35c0d20abb3c525710498';
+/** The same router on Robinhood Chain's test network (46630), deployed by TNET-2, lower-cased. */
+const ROBINHOOD_TESTNET_UNIVERSAL_ROUTER = '0xd290cfe0738e1ab9cea9dc138bbec024dc3bd127';
 
 const solanaMainnet: ChainPreset = {
   networkName: 'mainnet-beta',
@@ -51,7 +53,7 @@ const baseMainnet: ChainPreset = {
 /**
  * Test networks have no Jupiter, no Universal Router 2.1.2 and no price feeds
  * (docs/vault/research/test-networks.md): their router and price source are ours, and stay null here
- * until a deploy sets them.
+ * until a deploy sets them. Robinhood Chain's test network has its router since TNET-2.
  * `local` is a copy of mainnet on the developer's machine, as the two rigs under spikes/ run: mainnet's
  * addresses, no explorer, and never labelled live. An EVM copy runs under a chain id of its own
  * (`anvil --chain-id`), never mainnet's: a transaction signed for mainnet's id is good on mainnet.
@@ -83,7 +85,8 @@ export const CHAIN_PRESETS: ChainPresets = {
         networkName: 'Robinhood Chain testnet',
         evmChainId: 46630,
         explorerTx: 'https://explorer.testnet.chain.robinhood.com/tx/{txId}',
-        router: null,
+        // Universal Router 2.1.2 as TNET-2 deployed it (deployments/robinhood-testnet.json).
+        router: ROBINHOOD_TESTNET_UNIVERSAL_ROUTER,
         priceSource: { kind: 'chainlink', address: null },
       },
       local: {

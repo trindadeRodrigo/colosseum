@@ -100,12 +100,23 @@ describe('the committed OpenAPI document (packages/sdk/openapi.json)', () => {
         // Every route is counted, so every route can refuse: a 429 has the one refusal shape.
         expect(Object.keys(responses), name).toContain('default');
       }
-    // The routes anybody may call, by name: a route opened by mistake fails here.
-    expect(open).toEqual(['GET /v1/config']);
+    // The routes anybody may call, by name: a route opened by mistake fails here. The shelf and a
+    // shared portfolio's page are the same for everyone (DESIGN-VAULT section 10). A plan proposed from
+    // a link is made and read back with no sign-in (AGT-2, section 12).
+    expect(open).toEqual([
+      'POST /v1/baskets/propose',
+      'GET /v1/baskets/{id}',
+      'GET /v1/config',
+      'GET /v1/indexes/{slug}',
+      'GET /v1/indexes/{slug}/versions',
+      'GET /v1/shelf',
+      'GET /v1/vaults/{chain}/{address}',
+    ]);
     // The routes that ask a chain for quotes, and the one that runs the engine on a chain's shelf,
     // are the ones with the tighter budget.
     expect(classes.build).toEqual([
       'POST /v1/baskets/personalize',
+      'POST /v1/baskets/propose',
       'POST /v1/orders',
       'POST /v1/orders/{id}/legs/{legId}/build',
     ]);

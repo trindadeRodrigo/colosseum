@@ -6,6 +6,7 @@ import {
   fixtureContext,
   launchShelf,
   newReasonsNaming,
+  roomyYield,
   sheet,
   sleeveBps,
   violations,
@@ -17,8 +18,13 @@ import type { ComposeContext, PersonalProposal, PersonalSheet } from './types';
 // names it.
 
 const shelf = launchShelf();
+// Each input against the sleeves of the starting table, with dollar yield free of its own limits:
+// these tests are about what each input moves. The limits on dollar yield are in fill.test.ts.
+const roomy = (over: Partial<ComposeContext> = {}) =>
+  fixtureContext({ params: roomyYield(), ...over });
+
 const BASE = sheet({ themes: ['the-seven'] }); // grow $10,000 over ten years at medium risk, on Solana
-const base = compose(BASE, shelf, fixtureContext());
+const base = compose(BASE, shelf, roomy());
 
 /** The plan with one thing changed, held to every rule a plan must keep. */
 function changed(
@@ -26,7 +32,7 @@ function changed(
   context: Partial<ComposeContext> = {},
   onShelf = shelf,
 ): PersonalProposal {
-  const ctx = fixtureContext(context);
+  const ctx = roomy(context);
   const plan = compose({ ...BASE, ...over }, onShelf, ctx);
   expect(violations(plan, onShelf, ctx)).toEqual([]);
   return plan;
@@ -42,7 +48,7 @@ function movedBecauseOf(input: string, plan: PersonalProposal): string[] {
 
 describe('each input alone moves the plan and says so', () => {
   it('the base plan is in order', () => {
-    expect(violations(base, shelf, fixtureContext())).toEqual([]);
+    expect(violations(base, shelf, roomy())).toEqual([]);
     // 80% in stocks by the table; one issuer may hold 70% at medium risk, and on Solana every stock
     // token and the gold token share one. The rest is held in dollar yield.
     expect(sleeveBps(base, shelf, 'growth')).toBe(6500);
@@ -115,7 +121,7 @@ describe('each input alone moves the plan and says so', () => {
     const off = compose(
       { ...BASE, rules: { useHoldings: false, glide: true } },
       shelf,
-      fixtureContext({ holdings: [{ underlying: 'NVDA', valueUsd: 4_000 }] }),
+      roomy({ holdings: [{ underlying: 'NVDA', valueUsd: 4_000 }] }),
     );
     expect(distanceBps(base, off)).toBe(0);
   });
@@ -125,7 +131,7 @@ describe('each input alone moves the plan and says so', () => {
     const blocked = editShelf(shelf, (a) =>
       a.chain === 'solana' && a.cls === 'stock' ? { ...a, blockedCountries: ['XX'] } : a,
     );
-    const here = compose(BASE, blocked, fixtureContext());
+    const here = compose(BASE, blocked, roomy());
     expect(distanceBps(base, here)).toBe(0);
     const plan = changed({ country: 'XX' }, {}, blocked);
     expect(movedBecauseOf('country', plan)).toEqual(['NOT_IN_COUNTRY']);
@@ -188,8 +194,8 @@ describe('what does not move the plan', () => {
 
   it('an income target adds a verdict to an income plan, and leaves the lines alone', () => {
     const income = { ...BASE, goal: 'income' as const, themes: [] };
-    const without = compose(income, shelf, fixtureContext());
-    const withTarget = compose({ ...income, incomeTargetUsdMonthly: 20 }, shelf, fixtureContext());
+    const without = compose(income, shelf, roomy());
+    const withTarget = compose({ ...income, incomeTargetUsdMonthly: 20 }, shelf, roomy());
     expect(without.verdict).toBeUndefined();
     expect(withTarget.verdict).toEqual({ met: true, gapUsdMonthly: 0, ways: [] });
     expect(distanceBps(without, withTarget)).toBe(0);
@@ -198,12 +204,8 @@ describe('what does not move the plan', () => {
   it('the glide rule, switched off, takes the date out of the sleeves', () => {
     // At high risk one issuer may hold the whole plan, so the sleeves are as the table sizes them.
     const near = { ...BASE, risk: 'high' as const, horizonMonths: 6 };
-    const on = compose(near, shelf, fixtureContext());
-    const off = compose(
-      { ...near, rules: { useHoldings: true, glide: false } },
-      shelf,
-      fixtureContext(),
-    );
+    const on = compose(near, shelf, roomy());
+    const off = compose({ ...near, rules: { useHoldings: true, glide: false } }, shelf, roomy());
     expect(sleeveBps(on, shelf, 'dollarYield')).toBe(8000);
     expect(sleeveBps(on, shelf, 'cash')).toBe(1000);
     expect(sleeveBps(off, shelf, 'dollarYield')).toBe(500);
