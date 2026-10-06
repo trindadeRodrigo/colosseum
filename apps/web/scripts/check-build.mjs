@@ -2,6 +2,7 @@
 // Runs after `next build` (see "build" in package.json). The build fails if the output holds anything
 // that exists for development only: the throwaway wallet, the dev page, any route under /dev, or any
 // file of a development-only folder (DEV_ONLY below) in what a route was built from.
+// It holds the landing's 3D joint to its budget (STAGE_BUDGET).
 // It also looks for one string every build ships and one file every route is built from, so a change
 // in where Next writes its output makes this check fail instead of pass on nothing.
 // Last, it runs the design system's test of the built stylesheet and fonts, which a plain test run
@@ -11,6 +12,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 
 /** Strings that must not be in a production build. Each is a constant in the file named. */
 export const FORBIDDEN = {
@@ -19,6 +21,13 @@ export const FORBIDDEN = {
 };
 /** A string every build must contain: features/wallet/marker.ts (WALLET_MARKER). */
 export const REQUIRED = 'wallet-port:shipped';
+
+/**
+ * The landing's 3D joint (joint-stage.md: "stage JS (three + scene) ≤ 180 KB gzip"): the browser
+ * chunks that carry three.js or the scene, by strings each keeps when minified.
+ */
+export const STAGE_BUDGET = 180 * 1024;
+export const STAGE_MARKERS = ['WebGLRenderer', '/landing/wood/'];
 
 /** What `next dev` and the build cache write. Neither is served by `next start`. */
 const SKIP = new Set(['dev', 'cache', 'diagnostics', 'types']);
@@ -127,6 +136,17 @@ export function checkBuild(out) {
   for (const route of routes(out))
     if (/^\/dev(\/|$)/.test(address(route)))
       problems.push(`the build has a development route: ${route}`);
+  let stage = 0;
+  for (const path of files(out)) {
+    if (!relative(out, path).startsWith('static/chunks/') || !path.endsWith('.js')) continue;
+    const bytes = readFileSync(path);
+    const text = bytes.toString('latin1');
+    if (STAGE_MARKERS.some((marker) => text.includes(marker))) stage += gzipSync(bytes).length;
+  }
+  if (stage > STAGE_BUDGET)
+    problems.push(
+      `the 3D joint's chunks are ${stage} bytes gzipped, over the ${STAGE_BUDGET} of joint-stage.md`,
+    );
   if (!shipped)
     problems.push(
       `"${REQUIRED}" was not found: the check is not reading the build output, so it proves nothing`,

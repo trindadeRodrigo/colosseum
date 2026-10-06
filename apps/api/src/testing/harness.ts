@@ -302,7 +302,24 @@ export async function testDb() {
       await publish(components);
       return { slug, publish };
     },
+    /** Remembers a shared portfolio a test published through the API, so its rows go at the end. */
+    trackFamily(familyId: string) {
+      families.push(familyId);
+    },
     async cleanUp() {
+      // Before the people: a family a test published names its creator's user row.
+      if (families.length) {
+        const mine = await db
+          .select({ id: recipes.id })
+          .from(recipes)
+          .where(inArray(recipes.familyId, families));
+        const recipeIds = mine.map((r) => r.id);
+        if (recipeIds.length) {
+          await db.delete(recipeVersions).where(inArray(recipeVersions.recipeId, recipeIds));
+          await db.delete(recipes).where(inArray(recipes.id, recipeIds));
+        }
+        await db.delete(indexFamilies).where(inArray(indexFamilies.familyId, families));
+      }
       if (owners.length) {
         const mine = await db
           .select({ id: orders.id })
@@ -335,18 +352,6 @@ export async function testDb() {
         await db.delete(users).where(inArray(users.privyId, people));
       }
       if (plans.length) await db.delete(proposals).where(inArray(proposals.id, plans));
-      if (families.length) {
-        const mine = await db
-          .select({ id: recipes.id })
-          .from(recipes)
-          .where(inArray(recipes.familyId, families));
-        const recipeIds = mine.map((r) => r.id);
-        if (recipeIds.length) {
-          await db.delete(recipeVersions).where(inArray(recipeVersions.recipeId, recipeIds));
-          await db.delete(recipes).where(inArray(recipes.id, recipeIds));
-        }
-        await db.delete(indexFamilies).where(inArray(indexFamilies.familyId, families));
-      }
       await client.end();
     },
   };

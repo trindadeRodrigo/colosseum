@@ -3,13 +3,16 @@ import {
   type BasketProposal,
   BasketSheet,
   Bps,
+  type FxObservation,
   type LiquidityProvider,
   type ObservationRef,
   PersonalParams,
+  type PlanSleeve,
   type Verdict,
   type YieldObservation,
 } from '@colosseum/schemas';
 import { z } from 'zod';
+import { LegType } from './leg-types';
 
 // The types of the personalization engine that packages/schemas does not hold yet. Each is marked
 // LOCAL TYPE and listed in DESIGN-VAULT 3.6: it moves to packages/schemas when the frame takes it.
@@ -34,6 +37,11 @@ export const PersonalLimits = z.object({
   mustKeepUsd: z.number().nonnegative().optional(),
   /** Months until they may need the money, when that is sooner than the goal's date. */
   mayNeedInMonths: BasketSheet.shape.horizonMonths.optional(),
+  /**
+   * How much credit risk they accept: the most of the plan in credit and basis legs (gate SOLVER-PARAMS,
+   * the old solver's budget). Left out: the table's default, until the guided intake asks.
+   */
+  creditTolerance: z.enum(['none', 'limited', 'accept']).optional(),
   /** What they cannot hold: whole classes, tickers of the underlying ('TSLA'), or single tokens. */
   cannotHold: z
     .object({
@@ -110,6 +118,28 @@ export const PersonalParameters = PersonalParams.extend({
     growth: z.string().min(1),
     gold: z.array(z.string().min(1)).min(1),
   }),
+  /** Yields after haircut within this of a band's top count as equal (a fraction: 0.005 is half a point). */
+  yieldBand: z.number().nonnegative().max(1),
+  /**
+   * The most of the plan in one dollar-yield token: by its symbol where the table names it, otherwise
+   * by its leg types (the smallest of them). Lowered to the token's exit ceiling where that is smaller.
+   */
+  capPerAssetBps: z.object({
+    bySymbol: z.record(z.string(), Bps),
+    byLegType: z.record(LegType, Bps),
+  }),
+  /** The most of the plan with one issuer, for dollar yield, gold and cash. Stocks keep `capPerIssuerBps`. */
+  issuerCapBps: Bps,
+  /** The most of the plan in credit and basis legs, by the person's credit tolerance. */
+  creditShareBps: z.record(z.enum(['none', 'limited', 'accept']), Bps),
+  /** The credit tolerance of a person who has not said. */
+  defaultCreditTolerance: z.enum(['none', 'limited', 'accept']),
+  /** Months of withdrawals set aside (slice 2). */
+  setAsideMonths: z.number().int().nonnegative(),
+  /** Drift inside a sleeve at which a rebalance is proposed, in basis points (slice 4). */
+  driftBandBps: Bps,
+  /** Days another asset must stay ahead by more than the band before the safe-yield sleeve switches (slice 4). */
+  switchDays: z.number().int().positive(),
 });
 export type PersonalParameters = z.infer<typeof PersonalParameters>;
 
@@ -125,6 +155,11 @@ export type ComposeContext = {
   holdings?: HeldPosition[];
   /** Yield observations, keyed by the shelf's asset id (`solana:syrupusdc`). */
   yields?: YieldObservation[];
+  /**
+   * FX readings, pair `USD<currency>` (units of the currency for one dollar), each with its source,
+   * time and method. Needed only to count a withdrawal that is not in dollars; never guessed.
+   */
+  fx?: FxObservation[];
   /** Measured exit capacity and cost, keyed by the shelf's asset id. */
   liquidity?: LiquidityProvider;
   /**
@@ -135,6 +170,23 @@ export type ComposeContext = {
   /** The parameter table. Left out: `PERSONAL_PARAMS`, the starting table. */
   params?: PersonalParameters;
 };
+
+/**
+ * LOCAL TYPE. A liquidity provider that knows which tokens sell into one pool, and what that pool
+ * takes in one window at `tau` for all of them together. `LiquidityProvider` has per-token figures
+ * only, and two tokens on one pool cannot each sell their own capacity at once. The coverage check
+ * reads this where the provider has it; a provider without it is read token by token.
+ */
+export type PooledLiquidityProvider = LiquidityProvider & {
+  poolOf(
+    assetId: string,
+    tau: number,
+    windowDays: number,
+  ): { pool: string; capacityUsd: number } | null;
+};
+
+export const reportsPools = (p: LiquidityProvider): p is PooledLiquidityProvider =>
+  typeof (p as Partial<PooledLiquidityProvider>).poolOf === 'function';
 
 /**
  * LOCAL TYPE. A figure the plan was shaped by: `ObservationRef` of packages/schemas, where the source
@@ -154,8 +206,39 @@ export type PersonalObservation = Omit<ObservationRef, 'source' | 'fetchedAt'> &
 export type PersonalProposal = Omit<BasketProposal, 'sheet' | 'observations' | 'verdict'> & {
   sheet: PersonalSheet;
   sleeves: { sleeve: Sleeve; weightBps: number; amountUsd: number }[];
+  /**
+   * Present when the person split the plan (gate SLEEVES): each of their sleeves, its share and its
+   * dollars, and for the safe-yield sleeve what it holds by token (cash included), before the lines
+   * are rounded to whole basis points. The goal sleeve is the rest of every line.
+   */
+  split?: {
+    kind: PlanSleeve['kind'];
+    shareBps: number;
+    amountUsd: number;
+    holds: { assetId: string; amountUsd: number }[];
+  }[];
   observations: PersonalObservation[];
   verdict?: PersonalVerdict;
+  /** Present when the sheet has withdrawals: the plan month by month, in the goal's currency. */
+  schedule?: PersonalSchedule;
+};
+
+/**
+ * LOCAL TYPE. The plan month by month in the goal's currency (slice 2): what is withdrawn, what is
+ * left, and whether the month's withdrawal was paid. Dollar yield accrues at its yield after
+ * haircut; stocks, crypto, gold and cash accrue nothing. A token is sold at its measured exit cost,
+ * no more of it in a month than one window's capacity; where nothing is measured, at `tau` and its
+ * tier ceiling, flagged. `atPar` is the same draw with every cost at zero, for comparison.
+ */
+export type PersonalSchedule = {
+  currency: string;
+  /** Units of the goal's currency per dollar, held for the whole schedule; 1 for dollars. */
+  rate: number;
+  rows: { month: string; withdrawal: number; balance: number; paid: boolean }[];
+  monthsPaid: number;
+  monthsWithWithdrawal: number;
+  /** What was owed and not paid, in the goal's currency. */
+  shortfall: number;
 };
 
 /**

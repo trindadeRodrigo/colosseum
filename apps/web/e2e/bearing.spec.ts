@@ -63,10 +63,12 @@ test.describe('Bearing analytics on the recorded risk API', () => {
   for (const id of PAGES)
     test(`${id}: stale figures with their pins, axe, no sideways scroll`, async ({ page }) => {
       await open(page, `/analytics/${id}`);
-      await expect(page.getByRole('link', { name: 'Analytics' })).toHaveAttribute(
-        'aria-current',
-        'page',
-      );
+      // the bar's Analytics link is current (on a phone it is in the sheet under the menu button)
+      await expect(
+        page
+          .locator('[data-ui="compact-nav"] a[href="/analytics/stocks"][aria-current="page"]')
+          .first(),
+      ).toBeAttached();
       await expect(page.locator('#bearing-nav [aria-current="page"]')).toContainText(
         id[0]?.toUpperCase() + id.slice(1),
       );

@@ -36,8 +36,23 @@ export type ApiDouble = {
   buy(amountUsd: number): Promise<OrderDetail>;
   /** The address of the plan's vault once it is open. */
   vault(): Promise<string | undefined>;
+  /**
+   * Any other order: its steps, and how each is built. What POST /v1/orders answers for a publish, a
+   * buy of a shared portfolio or a follow, for a stub that plans those itself.
+   */
+  place(o: Placed): Promise<OrderDetail>;
   /** Every call the API took, in order. */
   calls: string[];
+};
+
+export type Placed = {
+  type: OrderDetail['type'];
+  summary: string;
+  depositRaw?: string;
+  needsConsent: OrderDetail['needsConsent'];
+  steps: Pick<Leg, 'kind' | 'description' | 'trades' | 'cashRaw'>[];
+  /** Builds a step of this order: one transaction, as the adapter builds it. */
+  build(leg: Leg, nonce: number | undefined): Promise<BuiltTx>;
 };
 
 export function apiDouble(
@@ -53,6 +68,7 @@ export function apiDouble(
     { asset: `${chain}:gold`, weightBps: 1500 },
   ];
   const orders = new Map<string, OrderDetail>();
+  const builders = new Map<string, Placed['build']>();
   const calls: string[] = [];
   const now = () => adapter.mock.now();
   const family = chainFamily(chain);
@@ -138,6 +154,8 @@ export function apiDouble(
     leg: Leg,
     nonce: number | undefined,
   ): Promise<BuiltTx> {
+    const own = builders.get(order.id);
+    if (own) return own(leg, nonce);
     const cashRaw = order.depositRaw ?? '0';
     const shared = nonce === undefined ? {} : { nonce };
     const trades = leg.trades.length ? leg.trades : undefined;
@@ -335,6 +353,66 @@ export function apiDouble(
     },
   };
 
+  /** The legs of steps, each trade with its quote and its minimum, as apps/api plans them. */
+  async function legsOf(id: string, steps: Placed['steps']): Promise<Leg[]> {
+    const legs: Leg[] = [];
+    for (const [seq, step] of steps.entries()) {
+      const expected: Leg['expected'] = [];
+      for (const trade of step.trades) {
+        const quote = await adapter.quote(trade, owner);
+        expected.push({
+          inRaw: trade.amountInRaw,
+          outRaw: quote.outRaw,
+          minOutRaw: lessBps(BigInt(quote.outRaw), slippageBps).toString(),
+          costBps: quote.costBps,
+        });
+      }
+      legs.push({
+        id: randomUUID(),
+        orderId: id,
+        chain,
+        seq,
+        ...step,
+        signer: 'owner',
+        expected,
+        status: 'planned',
+        attempt: 0,
+        txId: null,
+        explorerUrl: null,
+        validUntil: null,
+        error: null,
+        trigger: 'manual',
+        provenance: 'mock',
+      });
+    }
+    return legs;
+  }
+
+  async function place(p: Placed): Promise<OrderDetail> {
+    const id = randomUUID();
+    const order: OrderDetail = {
+      id,
+      type: p.type,
+      owner: { [family]: owner },
+      summary: p.summary,
+      ...(p.depositRaw ? { depositRaw: p.depositRaw } : {}),
+      legs: await legsOf(id, p.steps),
+      warnings: [],
+      needsConsent: p.needsConsent,
+      fees: [],
+      preparedBy: 'app',
+      status: 'open',
+      approvalUrl: `/orders/${id}`,
+      expiresAt: now() + (o.openSeconds ?? 15 * 60),
+      createdAt: new Date(now() * 1000).toISOString(),
+      disclaimer: 'a test order',
+      attempts: [],
+    };
+    orders.set(id, order);
+    builders.set(id, p.build);
+    return structuredClone(order);
+  }
+
   /** The steps of a buy on this chain, as `planBuy` of apps/api lays them out. */
   async function buy(amountUsd: number): Promise<OrderDetail> {
     const id = randomUUID();
@@ -420,5 +498,5 @@ export function apiDouble(
     return structuredClone(order);
   }
 
-  return { api, plan: { basketId, targets, autoFollow: false }, buy, vault: vaultOf, calls };
+  return { api, plan: { basketId, targets, autoFollow: false }, buy, vault: vaultOf, place, calls };
 }

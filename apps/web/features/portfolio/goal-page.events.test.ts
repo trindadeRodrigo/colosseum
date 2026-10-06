@@ -1,9 +1,7 @@
 // @vitest-environment happy-dom
-import { redirect } from 'next/navigation';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import GoalPage from '../../app/(app)/goal/page';
-import HomePage from '../../app/(app)/page';
 import { find, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
@@ -16,15 +14,12 @@ import { PORTFOLIO_PATH } from './portfolio';
 import { chainOf, portfolioBody, SECOND_VAULT, vault } from './test/portfolio';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
-vi.mock('next/navigation', async () => ({
-  ...(await import('../wallet/test/mock-next')),
-  redirect: vi.fn(),
-}));
+vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
 vi.mock('next/link', () => import('../wallet/test/mock-next'));
 
-// Home: the goal comes first, as his home screen and the design ask (DESIGN-VAULT section 11). Under
-// it, for a person who already holds a vault, one line on where their money is and the way to the
-// monitor; for anyone else, the goal alone. /goal leads to it.
+// The product's first screen (`/goal`): the goal comes first (DESIGN-VAULT section 11). Under it, for a
+// person who already holds a vault, one line on where their money is and the way to the monitor; for
+// anyone else, the goal alone. A visitor at `/` gets his landing page (features/landing).
 
 const en = dictionary('en');
 const onSolana: Person = {
@@ -47,7 +42,7 @@ function api(person: Person | null, portfolio: () => Response = () => json(portf
 }
 
 const home = async (lang: Lang = 'en') => {
-  const host = await mount(withAccount(lang, createElement(HomePage)));
+  const host = await mount(withAccount(lang, createElement(GoalPage)));
   await settle();
   return host;
 };
@@ -128,9 +123,4 @@ describe('home', () => {
     expect(host.textContent?.replace(/\s/g, ' ')).toContain('US$ 1.040,00');
     expect(host.textContent).toContain(pt.portfolio.summary.see);
   });
-});
-
-it('/goal leads home', () => {
-  GoalPage();
-  expect(redirect).toHaveBeenCalledWith('/');
 });

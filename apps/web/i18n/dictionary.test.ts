@@ -150,7 +150,7 @@ describe('the words of the product, in each language', () => {
     expect(en.goal.card.edit).toBe('Edit limits');
     expect(pt.goal.sheet.build).toBe('Montar meu plano');
     expect(pt.goal.card.edit).toBe('Editar limites');
-    expect(pt.shell.goal).toBe('Objetivo');
+    expect(pt.goal.composer.label).toBe('Seu objetivo');
   });
 
   it('says "Sign in" on the button (gate SIGN-IN-LABEL)', () => {

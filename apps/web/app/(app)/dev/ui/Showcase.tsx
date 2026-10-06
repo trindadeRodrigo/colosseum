@@ -195,7 +195,7 @@ const ICONS: IconName[] = ['ArrowUp', 'ArrowUpRight', 'Check', 'ChevronDown', 'C
 
 const NAV_LINKS = [
   { label: 'Products', href: '#products' },
-  { label: 'Invest', href: '#invest', current: true },
+  { label: 'Invest', href: '#invest', current: 'true' as const },
   { label: 'Resources', href: '#resources' },
 ];
 

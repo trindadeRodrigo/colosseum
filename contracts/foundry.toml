@@ -29,11 +29,15 @@ via_ir = true
 bytecode_hash = "none"
 cbor_metadata = false
 # The entry-point tests read the built ABIs, the registry tests read the shared limit vectors, the deploy
-# script reads its per-network config, and one test holds the committed ABIs to the build.
+# script reads its per-network config, and one test holds the committed ABIs to the build. The test network
+# kit reads its config, Universal Router's creation code and the PoolManager fixture, and writes its record.
 fs_permissions = [
   { access = "read", path = "./out" },
   { access = "read", path = "../fixtures/creator-limits" },
   { access = "read", path = "./script/config" },
+  { access = "read", path = "./script/testnet" },
+  { access = "read-write", path = "./script/testnet/deployed" },
+  { access = "read", path = "./test/fixtures" },
   { access = "read", path = "../idl/evm" },
 ]
 

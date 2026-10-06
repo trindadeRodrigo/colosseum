@@ -1,5 +1,10 @@
 import type { ChainId } from '@colosseum/schemas';
-import { type DeploymentNetwork, deploymentsOf, type GuardDeployments } from '@colosseum/sdk';
+import {
+  basketIdOfPlan,
+  type DeploymentNetwork,
+  deploymentsOf,
+  type GuardDeployments,
+} from '@colosseum/sdk';
 import { publicWalletEnv, walletChains } from '../wallet/chains';
 
 // Whether a chain can be bought on from this app: it needs a deployment committed for its network in
@@ -59,3 +64,9 @@ export const onMock = (
 /** True when an order on this chain can be signed from this app. */
 export const chainReady = (chain: ChainId, mock: boolean): boolean =>
   deploymentsFor(chain, mock) !== null;
+
+/**
+ * The vault a plan was bought into, by its number on chain: the API's own rule, from the SDK
+ * (`basketIdOfPlan`). The portfolio joins a vault to the goal of its plan with it.
+ */
+export const basketOfPlan = (proposalId: string): string => basketIdOfPlan(proposalId);

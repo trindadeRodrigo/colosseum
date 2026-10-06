@@ -163,6 +163,46 @@ describe('the plan screen', () => {
     expect(next?.getAttribute('href')).toBe(`/plan/${PLAN_ID}/buy`);
   });
 
+  it('draws his chart from the plan’s own range, pinned to its yield, and none from a range with no source', async () => {
+    api();
+    rememberPlan(planOn());
+    const sourced = await plan();
+    const chart = find(sourced, '[data-ui="plan-chart"]');
+    // $40,000 for 36 months at 1% to 2% a year: $41,200 to $42,400, and nothing else worked out
+    expect(chart.querySelector('svg')?.getAttribute('aria-label')).toBe(
+      en.plan.chart.label(36, '1%', '2%'),
+    );
+    const pin = find(chart, '[data-ui="figure"]');
+    expect(pin.textContent).toContain('$41,200 – $42,400');
+    expect(pin.getAttribute('data-state')).toBe('mock');
+    expect(chart.textContent).toContain(en.plan.chart.note);
+    await unmountAll();
+    // an income plan pays its yield out each month: no balance to draw, what it pays in all instead
+    const income = planOn();
+    income.proposal.card = { ...income.proposal.card, cashFlow: 'monthly' };
+    rememberPlan(income);
+    const paid = find(await plan(), '[data-ui="plan-chart"]');
+    expect(paid.getAttribute('data-kind')).toBe('paid');
+    expect(paid.querySelector('svg[role="img"]')).toBeNull();
+    expect(find(paid, '[data-ui="figure"]').textContent).toContain('$1,200 – $2,400');
+    await unmountAll();
+    for (const change of [
+      (p: ReturnType<typeof planOn>) => {
+        p.proposal.flags = ['yield_not_read'];
+      },
+      (p: ReturnType<typeof planOn>) => {
+        p.proposal.observations = p.proposal.observations.filter((o) => o.kind !== 'yield');
+      },
+    ]) {
+      const stored = planOn();
+      change(stored);
+      rememberPlan(stored);
+      const host = await plan();
+      expect(host.querySelector('[data-ui="plan-chart"]')).toBeNull();
+      await unmountAll();
+    }
+  });
+
   it('shows the risk roll-up as the API sent it, and a table when the plan has more than four parts', async () => {
     api();
     const base = planOn();
@@ -293,6 +333,10 @@ describe('the buy screen', () => {
       amountUsd: 10,
       approved: null,
     });
+    // and the goal the plan was built for, which the portfolio's goal card is drawn from
+    expect(kept?.goal?.sheet).toEqual(planOn().proposal.sheet);
+    expect(kept?.goal?.card).toEqual(planOn().proposal.card);
+    expect(Number.isNaN(Date.parse(kept?.goal?.placedAt ?? ''))).toBe(false);
     expect(kept?.lines).toEqual(planOn().proposal.lines);
     expect(trustAccepted(USER, TRUST_STATUS.textVersion)).toBe(true);
   });

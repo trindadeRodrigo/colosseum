@@ -587,7 +587,7 @@ export const sheet = {
 
 const LINKS = [
   { label: 'Products', href: '#products' },
-  { label: 'Invest', href: '#invest', current: true },
+  { label: 'Invest', href: '#invest', current: 'true' as const },
   { label: 'Resources', href: '#resources' },
 ];
 const MARK = <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" />;

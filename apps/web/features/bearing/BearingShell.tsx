@@ -17,7 +17,8 @@ import { etLabel, regimeAt } from './time';
 // The frame of Bearing's analytics (Rodrigo's Analytics 2.0): a retractable side menu beside the page,
 // 220px open and a 56px rail closed, a bar with a drawer under 900px; the head with the page's one
 // line and the banner that says whether the figures are live or stale; the disclaimer under the page.
-// The menu remembers whether it was closed, on this browser only.
+// The menu remembers whether it was closed, on this browser only. It stays in view under the app's
+// fixed bar (AppNav, his compact bar), as his sat under his.
 
 const SIDE_KEY = 'tf-an2-side';
 const NARROW = '(max-width: 899px)';
@@ -71,7 +72,7 @@ export function BearingShell({ children }: { children: ReactNode }) {
     >
       <aside
         aria-label={t.menu.region}
-        className="z-20 border-b border-border bg-card px-4 py-2 min-[900px]:sticky min-[900px]:top-4 min-[900px]:max-h-[calc(100dvh-32px)] min-[900px]:self-start min-[900px]:overflow-auto min-[900px]:border-r min-[900px]:border-b-0 min-[900px]:px-2 min-[900px]:py-3"
+        className="z-20 border-b border-border bg-card px-4 py-2 min-[900px]:sticky min-[900px]:top-[calc(env(safe-area-inset-top,0px)+80px)] min-[900px]:max-h-[calc(100dvh-96px)] min-[900px]:self-start min-[900px]:overflow-auto min-[900px]:border-r min-[900px]:border-b-0 min-[900px]:px-2 min-[900px]:py-3"
       >
         <button
           type="button"

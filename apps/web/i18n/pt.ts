@@ -11,9 +11,13 @@ export const pt: Dictionary = {
     skip: 'Pular para o conteúdo',
     nav: 'Principal',
     home: 'tenonfi, seu objetivo',
-    goal: 'Objetivo',
+    menu: 'Menu',
+    invest: 'Investir',
     portfolio: 'Portfólio',
+    products: 'Produtos',
+    resources: 'Recursos',
     analytics: 'Análises',
+    shelf: 'Prateleira',
     signIn: 'Entrar',
     signOut: 'Sair',
     signingOut: 'Saindo…',
@@ -307,6 +311,23 @@ export const pt: Dictionary = {
     },
   },
 
+  activity: {
+    notAdvice: 'Aviso legal',
+    title: 'O que foi feito',
+    status: {
+      built: 'montada',
+      signed: 'assinada',
+      sent: 'enviada',
+      confirmed: 'confirmada',
+      failed: 'falhou',
+    },
+    unknownStatus: 'situação desconhecida',
+    notRetried: '(não repetida)',
+    signature: 'id da transação',
+    noneYet: 'Nada desta ordem chegou à rede ainda.',
+    noneVault:
+      'Nada que este navegador fez para os seus cofres chegou à rede. Operações feitas em outro lugar, ou pelo agente, ainda não aparecem aqui.',
+  },
   pin: {
     sourceFor: 'Fonte de {value}',
     staleSuffix: ', desatualizado, {age}',
@@ -367,6 +388,12 @@ export const pt: Dictionary = {
       off: 'Desativado',
       lossUsed: 'Perdas do agente, últimos 7 dias',
       holdings: 'Posições',
+      chips: { label: 'O cofre', address: 'endereço', version: 'versão', follow: 'seguir' },
+      parts: 'As partes, por peso',
+      planTitle: (parts: number) =>
+        parts === 1 ? 'Seu plano · 1 parte' : `Seu plano · ${parts} partes`,
+      tooMany: 'Mais partes do que uma barra mostra: cada uma está na tabela abaixo.',
+      target: (share: string) => `alvo ${share}`,
       onlyCash: 'Só caixa por enquanto: nada foi comprado para este cofre ainda.',
       columns: {
         asset: 'Ativo',
@@ -388,6 +415,18 @@ export const pt: Dictionary = {
       observed: (when: string) => `Lido da rede em ${when}.`,
       valueMethod: 'posições lidas do cofre, vezes seus preços; caixa a um dólar',
       positionMethod: (method: string) => `${method}; vezes a quantidade que o cofre guarda`,
+    },
+    goalCard: {
+      builtMet: 'No caminho quando o plano foi montado',
+      builtShort: 'Abaixo da renda quando o plano foi montado',
+      noStatus: 'Ainda sem situação: o motor não dá uma para um cofre',
+      unknown: (chain: string) => `Seu cofre na ${chain}.`,
+      notJoined:
+        'Não sei para qual objetivo este cofre foi comprado: a compra foi feita em outro navegador, ou antes de este guardar objetivos. O que ele guarda está abaixo.',
+      putIn: (amount: string) => `você colocou ${amount}`,
+      seePlan: 'Ver seu plano',
+      seeOrder: 'Ver a ordem',
+      startGoal: 'Comece pelo seu objetivo',
     },
     summary: {
       title: 'Seu portfólio',
@@ -428,6 +467,17 @@ export const pt: Dictionary = {
       estimate: 'estimativa',
     },
     legs: { afterHaircut: 'após desconto', quoted: 'cotado {rate}' },
+    chart: {
+      label: (months: number, low: string, high: string) =>
+        `O que o rendimento em dólar projeta em ${months} meses: de ${low} a ${high} ao ano.`,
+      after: (months: number) => `Depois de ${months} meses`,
+      paid: (months: number) => `Pago ao longo de ${months} meses, ao todo`,
+      projected: 'projetado',
+      low: 'ponta baixa',
+      high: 'ponta alta',
+      note: 'Só o que o rendimento em dólar paga é projetado. Os preços de ações e ouro não são, e podem cair.',
+      table: 'A projeção',
+    },
     exitPlan: 'Plano de saída',
     costPrefix: 'custo',
     foot: { sandbox: 'rede de teste, não real', mock: 'dados de exemplo, não reais' },
@@ -560,6 +610,229 @@ export const pt: Dictionary = {
     },
   },
 
+  shared: {
+    meta: {
+      shelf: 'Portfólios compartilhados',
+      family: 'Portfólio compartilhado',
+      familyDescription: 'Uma lista de ativos e pesos que quem a criou publicou numa rede.',
+      publish: 'Publicar um portfólio',
+      publishDescription: 'Publique sua lista de ativos e pesos para outras pessoas seguirem.',
+      vault: 'Cofre',
+    },
+    shelf: {
+      title: 'Portfólios que as pessoas compartilharam.',
+      lead: (chain: string) =>
+        `Cada um é uma lista de ativos e pesos que quem o criou publicou numa rede. Estes são os da ${chain}, onde ficam seus planos.`,
+      leadAll:
+        'Cada um é uma lista de ativos e pesos que quem o criou publicou numa rede. Entre para ver os da sua rede.',
+      loading: 'Lendo os portfólios compartilhados…',
+      empty: (chain: string) => `Nenhum portfólio foi compartilhado na ${chain} ainda.`,
+      emptyAll: 'Nenhum portfólio foi compartilhado ainda.',
+      publish: 'Publicar um portfólio',
+      card: {
+        by: (creator: string) => `por ${creator}`,
+        platform: 'Da tenonfi',
+        version: (n: number) => `versão ${n}`,
+        waiting: (n: number) => `versão ${n} aguarda`,
+        open: (name: string) => `Abrir ${name}`,
+        on: (chains: string) => `na ${chains}`,
+      },
+      failure: {
+        unreachable:
+          'Não consegui ler os portfólios compartilhados: nosso servidor não respondeu. Tente de novo.',
+        unreadable:
+          'Nosso servidor respondeu com algo que não consegui ler, então não vou mostrar.',
+        retry: 'Ler de novo',
+      },
+    },
+    text: {
+      unverified:
+        'O nome e a descrição não batem com o que quem criou publicou na rede, então não posso garantir que sejam dele.',
+      pending:
+        'O nome e a descrição são os da versão que aguarda. A versão em vigor foi publicada com outras palavras.',
+      creator: 'Criado por',
+      notChecked:
+        'O nome e a descrição não foram conferidos com o que quem criou publicou na rede.',
+    },
+    family: {
+      loading: 'Lendo este portfólio…',
+      missing: 'Não encontro um portfólio compartilhado com esse nome.',
+      backToShelf: 'Voltar aos portfólios compartilhados',
+      lead: (chain: string) =>
+        `Uma lista de ativos e pesos que quem a criou publicou na ${chain}. Segui-la quer dizer que um cofre seu assume esses pesos; uma versão nova entra em vigor depois de um prazo, e você a vê antes disso.`,
+      notHere: (chain: string) =>
+        `Este portfólio não está publicado na ${chain}, onde ficam seus planos, então não dá para segui-lo com a sua carteira.`,
+      recipe: (chain: string) => `Na ${chain}`,
+      inEffect: 'Em vigor',
+      since: (when: string) => `desde ${when}`,
+      waits: (n: number, when: string) => `A versão ${n} entra em vigor em ${when}`,
+      waitsLead:
+        'Ela foi publicada e ainda não está em vigor. Um cofre que segue este portfólio só passa para ela quando estiver.',
+      versionN: (n: number) => `Versão ${n}`,
+      versions: 'Todas as versões',
+      columns: { version: 'Versão', status: 'Situação', effective: 'Em vigor a partir de' },
+      status: {
+        active: 'Em vigor',
+        pending: 'Aguardando',
+        superseded: 'Substituída',
+        cancelled: 'Retirada',
+      },
+      buy: 'Comprar e seguir este portfólio',
+      signIn: 'Entre para seguir',
+      chainNotReady: (chain: string) =>
+        `A ${chain} ainda não está pronta para seguir portfólios: os cofres dela não estão implantados nesta rede.`,
+      tampered: (chain: string) =>
+        `Não consegui verificar este portfólio na ${chain}, então não vou oferecer comprá-lo nem segui-lo: ele pode ter sido adulterado. Tente mais tarde.`,
+      missingOnChain: (chain: string) =>
+        `A ${chain} não tem esse portfólio: li a rede, e o registro não o tem. Não dá para segui-lo.`,
+      unlisted:
+        'A versão na rede tem um token que este app não lista, então não vou oferecer seguir.',
+      notListed: 'um token que este app não lista',
+      foreign:
+        'Este portfólio não foi publicado por este app, então não consigo conferir o identificador dele pelo nome, e seguir ainda não é oferecido aqui.',
+    },
+    check: {
+      reading: 'Lendo da rede…',
+      read: (chain: string) =>
+        `Lido da ${chain} por este app, não do nosso servidor: a versão e os pesos mostrados são os da rede.`,
+      differs: (chain: string) =>
+        `A resposta do nosso servidor difere do que a ${chain} tem. Mostro a versão e os pesos da rede, e seguir fica preso a eles.`,
+      unverified: {
+        mock: 'Rede MOCK: não há rede para ler, então estas são palavras do nosso servidor, não conferidas.',
+        'no-node': (chain: string) =>
+          `Não conferido na ${chain}: este app não tem um nó próprio para ler. Estas são palavras do nosso servidor.`,
+        'no-deployment': (chain: string) =>
+          `Não conferido na ${chain}: este app não tem registro dos tokens nesta rede. Estas são palavras do nosso servidor.`,
+        'family-id':
+          'Não conferido na rede: este portfólio não foi publicado por este app, então o identificador dele vem do nosso servidor. Estas são palavras do nosso servidor.',
+      },
+      failed: (chain: string) =>
+        `Não consegui verificar este portfólio na ${chain}: o nó de onde este app lê não respondeu, ou o que nosso servidor indicou não é o portfólio que a rede tem. Ele pode ter sido adulterado, então não vou oferecer segui-lo.`,
+      missing: (chain: string) =>
+        `Li a ${chain}, e ela não tem este portfólio: o que aparece é só a palavra do nosso servidor.`,
+      verified: 'Lido da rede',
+      notChecked: 'Não conferido na rede',
+    },
+    offer: {
+      title: 'Seguir automático',
+      offered:
+        'Oferecido: com o seguir automático ativado, nosso operador rebalanceia um cofre que segue este portfólio quando uma versão nova entra em vigor, dentro dos limites do cofre.',
+      noOracle: (assets: string, chain: string) =>
+        `Não oferecido: este portfólio tem ${assets}, que não tem oráculo de preço na ${chain}, então nosso operador não consegue rebalanceá-lo. Se você segui-lo, peço que rebalanceie, com um toque, quando ele mudar.`,
+      switchedOff: (chain: string) =>
+        `Ainda não oferecido na ${chain}: nosso operador não roda lá. Se você segui-lo, peço que rebalanceie, com um toque, quando ele mudar.`,
+    },
+    buy: {
+      title: 'Comprar e seguir',
+      lead: (chain: string) =>
+        `Um cofre seu na ${chain} segue este portfólio, na versão mostrada, com o seguir automático desativado. Nada é comprado até você revisar cada passo e assinar.`,
+      amountHint: 'Em dólares, a partir de US$ 10.',
+      review: (amount: string) => `Revisar a compra de ${amount}`,
+      blocked: {
+        terms: 'Não consegui ler este portfólio, então ainda não há o que seguir.',
+        missing: 'A rede não tem este portfólio, então não dá para segui-lo.',
+        unlisted: 'Este portfólio tem um token que este app não lista.',
+      },
+    },
+    vaults: {
+      title: 'Seus cofres',
+      none: 'Você ainda não tem um cofre nesta rede. Compre este portfólio para abrir um que o segue.',
+      following: 'Segue este portfólio',
+      notFollowing: 'Segue outra coisa',
+      followWith: 'Seguir com este cofre',
+      followNote:
+        'Seu cofre assume os pesos deste portfólio. Nada é negociado nesse passo: você rebalanceia depois, ou o operador faz isso com o seguir automático ativado.',
+      autoOn: 'Ativar o seguir automático',
+      autoOff: 'Desativar o seguir automático',
+      autoIs: (on: boolean): string =>
+        on ? 'O seguir automático está ativado.' : 'O seguir automático está desativado.',
+      oneTap:
+        'Este portfólio não é rebalanceado automaticamente. Quando ele mudar, peço aqui que você aceite a versão nova e rebalanceie.',
+      address: (address: string) => `Cofre ${address}`,
+      open: 'Abrir o cofre',
+      failure: 'Não consegui ler seus cofres: nosso servidor não respondeu. Tente de novo.',
+    },
+    prompt: {
+      title: 'Este portfólio mudou',
+      waits: (n: number, when: string) =>
+        `A versão ${n} entra em vigor em ${when}. Você pode aceitá-la então; até lá, seu cofre fica com a versão que tem.`,
+      inEffect: (n: number) =>
+        `A versão ${n} está em vigor, e seu cofre ainda tem uma anterior. Aceite-a para assumir os pesos dela e depois rebalanceie.`,
+      newAssets: (assets: string) => `Ela inclui ${assets}, que seu cofre ainda não tem.`,
+      accept: (n: number) => `Aceitar a versão ${n}`,
+    },
+    publish: {
+      title: 'Publicar um portfólio.',
+      lead: (chain: string) =>
+        `Sua lista de ativos e pesos, com um nome, na ${chain}. Qualquer pessoa pode vê-la e segui-la. Você assina com a sua carteira: confiro a transação com este formulário antes de pedir à carteira.`,
+      signIn: 'Entre para publicar um portfólio.',
+      about: 'Nome e descrição',
+      name: 'Nome',
+      nameHint: 'Letras, números e pontuação simples, até 280 caracteres.',
+      slug: 'Endereço na prateleira',
+      slugHint: 'Letras minúsculas, números e hífens. Não muda depois de publicado.',
+      copy: 'Descrição',
+      copyHint: 'Até 280 caracteres, sem link.',
+      familyId: 'O identificador dele, calculado a partir do endereço',
+      assets: 'Ativos e pesos',
+      assetsHint: 'De 3 a 12 ativos, cada um de 2% a 50%, em passos de 0,5%, somando 100%.',
+      asset: 'Ativo',
+      weight: 'Peso, em %',
+      add: 'Incluir um ativo',
+      remove: (asset: string) => `Tirar ${asset}`,
+      total: (sum: string) => `Total: ${sum}`,
+      update: (n: number) =>
+        `Você já publicou este portfólio. Esta é a versão ${n}: ela entra em vigor depois do prazo de publicação, e uma versão muda no máximo 20% do portfólio.`,
+      first: 'Esta é a versão 1: ela entra em vigor assim que chegar à rede.',
+      theirs: 'Este endereço é de um portfólio de outra pessoa. Escolha outro.',
+      review: 'Revisar a publicação',
+      reviewing: 'Criando a ordem…',
+      problems: {
+        name: 'Um nome precisa de letras, números e pontuação simples, sem espaço nas pontas e sem link ou endereço web.',
+        slug: 'Um endereço precisa de letras minúsculas, números e hífens.',
+        copy: 'Uma descrição tem no máximo 280 caracteres, sem link ou endereço web e sem caracteres ocultos.',
+        count: 'Um portfólio tem de 3 a 12 ativos.',
+        weight: 'Cada peso vai de 2% a 50%, em passos de 0,5%.',
+        sum: 'Os pesos somam 100%.',
+        twice: 'Um ativo aparece uma vez só.',
+        chain: 'Por enquanto, publicar só funciona na Solana.',
+      },
+      failure: {
+        said: (error: string) => `Nosso servidor recusou: ${error}.`,
+        unreachable: 'Não consegui criar a ordem: nosso servidor não respondeu. Tente de novo.',
+        unreadable:
+          'Nosso servidor respondeu com uma ordem que não consegui ler, então não vou mostrar.',
+        signedOut: 'Sua sessão expirou. Entre de novo, e o formulário fica guardado.',
+        noStore:
+          'Este navegador não guarda nada entre as páginas, então não vou criar a ordem: um passo poderia ser assinado duas vezes.',
+      },
+    },
+    vault: {
+      title: 'Um cofre, como a rede o tem',
+      lead: (chain: string) =>
+        `Lido da ${chain} para esta página. Qualquer pessoa pode ver um cofre: o que ele tem é público na rede.`,
+      loading: 'Lendo o cofre…',
+      missing: 'Não há cofre neste endereço.',
+      owner: 'Dono',
+      follows: 'Segue',
+      followsNothing: 'Nada: quem é dono define os pesos',
+      version: (n: number) => `versão ${n}`,
+      autoFollow: 'Seguir automático',
+      value: 'Valor',
+      cash: 'Dinheiro',
+      columns: {
+        asset: 'Ativo',
+        held: 'Quantidade',
+        price: 'Preço',
+        weight: 'Peso',
+        target: 'Alvo',
+        drift: 'Desvio',
+      },
+      on: 'Ativado',
+      off: 'Desativado',
+    },
+  },
+
   order: {
     title: 'Sua ordem',
     loading: 'Lendo sua ordem…',
@@ -603,6 +876,34 @@ export const pt: Dictionary = {
         'Esta ordem não deposita o valor que você pediu, então não vou oferecer a assinatura. Nada foi assinado. Crie uma nova ordem e avise a gente se acontecer de novo.',
       steps:
         'Um passo desta ordem move outro valor em dinheiro que não o do depósito, então não vou oferecer a assinatura. Nada foi assinado. Crie uma nova ordem e avise a gente se acontecer de novo.',
+      trades:
+        'Esta ordem gasta seu depósito com outros pesos que não os do portfólio que você revisou, então não vou oferecer a assinatura. Nada foi assinado. Crie uma nova ordem.',
+      shape:
+        'Esta ordem tem passos que o portfólio que você revisou não pede, então não vou oferecer a assinatura. Nada foi assinado. Crie uma nova ordem.',
+    },
+    shared: {
+      publishTitle: 'O que você publica',
+      followTitle: 'O que você segue',
+      name: 'Nome',
+      slug: 'Endereço na prateleira',
+      copy: 'Descrição',
+      noCopy: 'Sem descrição.',
+      version: 'Versão',
+      first: 'Versão 1, em vigor assim que chegar à rede',
+      next: (n: number) => `Versão ${n}, em vigor depois do prazo de publicação`,
+      versionN: (n: number) => `Versão ${n}`,
+      familyId: 'Identificador',
+      onchain: 'Na rede',
+      vault: 'Seu cofre',
+      autoFollow: 'Seguir automático',
+      on: 'Ativado',
+      off: 'Desativado',
+      weights: 'Ativos e pesos',
+      publishNote:
+        'Sua carteira só é chamada para assinar uma transação que publique exatamente este nome, esta descrição e estes pesos, com este identificador.',
+      signPublish: 'Assinar e publicar',
+      signFollow: 'Assinar e seguir',
+      resume: 'Continuar',
     },
     signAndBuy: (amount: string) => `Assinar e comprar ${amount}`,
     resume: (amount: string) => `Continuar a compra de ${amount}`,
@@ -708,5 +1009,183 @@ export const pt: Dictionary = {
       crashed: 'Algo parou a ordem antes do fim. O que foi assinado fica guardado. Tente de novo.',
       newOrder: 'Criar uma nova ordem',
     },
+  },
+  landing: {
+    title: 'Objetivos, cortados sob medida',
+    description:
+      'Diga o que o seu dinheiro precisa fazer. A tenonfi monta o portfólio que leva até lá e mostra como.',
+    nav: {
+      home: 'tenonfi, início',
+      main: 'Principal',
+      menu: 'Menu',
+      skip: 'Pular para o conteúdo',
+      products: 'Produtos',
+      invest: 'Investir',
+      resources: 'Recursos',
+      analytics: 'Análises',
+      cta: 'Entrar',
+    },
+    stage: {
+      label: 'Como a tenonfi encaixa',
+      title:
+        'Nenhum produto serve para todo mundo. Então fazemos as peças\u00a0— e os seus objetivos decidem como elas se encaixam.',
+      taglineStrong: 'Sob medida. Cada encaixe à vista.',
+      tagline:
+        'Diga o que o seu dinheiro precisa fazer. A tenonfi monta o portfólio que leva até lá e mostra como.',
+      cue: 'Role para ver o encaixe',
+      drawing:
+        'O plano, cortado sob medida, atravessa o objetivo e assenta; o pino entra por último.',
+      steps: [
+        {
+          n: '01 · As peças',
+          title: 'Nós cortamos as peças.',
+          body: 'Rendimento em dólar, títulos do Tesouro americano, crédito, caixa: cada um medido pelo que paga de verdade depois do risco, e pela rapidez com que volta a ser dólar.',
+        },
+        {
+          n: '02 · O encaixe',
+          title: 'O seu objetivo decide como elas se encaixam.',
+          body: 'Um valor, uma data, o dinheiro que você precisa poder alcançar. O plano é cortado nesses limites e em nenhum outro.',
+        },
+        {
+          n: '03 · O pino',
+          title: 'Cada encaixe fica à vista.',
+          body: 'Cada número traz a sua fonte. Cada portfólio tem um plano de saída antes de o agente investir.',
+        },
+      ],
+    },
+    show: {
+      label: 'Dois objetivos, dois cortes',
+      eyebrow: 'Dois objetivos, dois cortes',
+      title: 'As mesmas peças. Pessoas diferentes. Encaixes diferentes.',
+      lead: 'Como fica um plano quando ele parte de uma vida, não de uma lista de produtos. Planos de exemplo: todo número abaixo é ilustrativo.',
+      photoCaption: 'foto provisória · gerada',
+      sample: 'taxas de exemplo, não reais',
+      estimate: 'estimativa',
+      sampleUnit: 'exemplo',
+      perMonth: '/ mês',
+      chips: 'Os limites',
+      legs: 'Como as peças se encaixam',
+      chartTable: 'O gráfico em tabela',
+      month: 'Mês',
+      balance: 'Saldo',
+      exitPlan: 'Plano de saída antes de investir',
+      trip: {
+        label: 'Exemplo: uma viagem em 2029',
+        alt: 'Uma mulher com uma mochila pequena caminha por uma trilha à beira de um penhasco, no fim da tarde.',
+        who: (cash: string) => `Mariana · 31 · recebe em ${cash}`,
+        quote:
+          'Quero uma reserva que eu possa acessar a qualquer dia e que me pague US$ 1.000 por mês durante uma viagem de três meses em 2029.',
+        title: 'Reserva da viagem · jan–mar 2029',
+        sub: 'Risco baixo · acessível em 1 dia · renda, então sem ações',
+        chips: [
+          'alvo: US$ 1.000/mês × 3',
+          'prazo: 27 meses',
+          'liquidez: 1 dia',
+          'risco de crédito: nenhum',
+        ],
+        kpis: {
+          save: 'você guarda',
+          for: 'por',
+          earned: 'ganho a mais',
+          odds: 'chance de chegar lá',
+        },
+        months: (n: number) => `${n} meses`,
+        chart:
+          'Saldo mensal por parte, crescendo até janeiro de 2029 e depois pagando US$ 1.000 por mês durante três meses.',
+        payout: 'viagem: US$ 1.000/mês × 3 →',
+        legs: [
+          {
+            name: (cash: string) => `Reserva em caixa (${cash})`,
+            why: 'paga primeiro os meses da viagem',
+          },
+          {
+            name: () => 'Títulos do Tesouro tokenizados',
+            why: 'rendimento em dólar, resgate no dia seguinte',
+          },
+          { name: () => 'Empréstimo em dólar', why: 'taxa variável, saque imediato' },
+        ],
+        exit: 'o saldo inteiro fica acessível em até um dia; os meses da viagem saem primeiro da reserva em caixa.',
+        exitNote: 'Com fonte real depois que você conectar.',
+      },
+      growth: {
+        label: 'Exemplo: um objetivo de crescimento com mais risco',
+        alt: 'Um escalador com uma corda no ombro está de pé numa crista de granito acima das nuvens, ao nascer do sol.',
+        who: 'Diego · 38 · nativo de cripto',
+        quote:
+          'Transformar US$ 20.000 em US$ 35.000 até 2031 para uma temporada nas montanhas. Aguento uma queda de 25% no caminho.',
+        title: 'Temporada nas montanhas · até dez 2031',
+        sub: 'Risco mais alto · crescimento · ações permitidas · saídas medidas pela Bearing',
+        chips: [
+          'início: US$ 20.000',
+          'alvo: US$ 35.000',
+          'queda máxima: 25%',
+          'risco de crédito: aceito',
+        ],
+        kpis: {
+          add: 'você aporta',
+          base: 'cenário base',
+          odds: 'chance de US$ 35 mil',
+          drop: 'queda tolerada',
+        },
+        maxUnit: 'máx.',
+        chart:
+          'Saldo projetado até 2031, com um caminho base e uma faixa do cenário fraco ao forte, contra o alvo de US$ 35.000.',
+        goalLine: 'alvo US$ 35 mil',
+        weak: 'cenário fraco',
+        legs: [
+          { name: () => 'Títulos do Tesouro tokenizados', why: 'lastro e a primeira saída' },
+          {
+            name: () => 'Crédito privado',
+            why: 'rendimento maior, saída mais lenta (risco de crédito aceito)',
+          },
+          {
+            name: (stocks: string) => `Ações tokenizadas (${stocks})`,
+            why: 'crescimento, no tamanho que a Bearing mede para vender',
+          },
+          { name: () => 'Ouro tokenizado', why: 'diversifica, sem rendimento' },
+        ],
+        exit: 'as ações têm o tamanho que a Bearing mede que dá para vender na hora mais rasa da semana.',
+        exitNote: 'No fim de semana, sair é mais lento e custa mais.',
+        oddsNote: 'As chances são estimativas.',
+      },
+    },
+    sim: {
+      label: 'Teste o seu objetivo',
+      eyebrow: 'Teste · sem carteira',
+      title: 'Diga o que o seu dinheiro precisa fazer.',
+      lead: 'Descreva um objetivo com as suas palavras. Você vê como ele é lido e como as peças se encaixariam, antes de conectar qualquer coisa.',
+      examples: [
+        'US$ 40.000 até junho de 2028, dinheiro em até 7 dias',
+        'US$ 3.000 por mês a partir de 2028',
+        'Fazer US$ 25.000 crescerem em 3 anos, aceito risco de crédito',
+      ],
+      opening: 'Abrindo o seu objetivo…',
+    },
+    closing: {
+      label: 'Acompanhe',
+      eyebrow: 'Acompanhe',
+      title: 'Construído peça por peça. Veja tomar forma.',
+      lede: 'Novidades do produto a cada peça cortada, e uma carta curta sobre objetivos, liquidez e o que os ativos tokenizados pagam de verdade. Sem hype, sem palpite de preço.',
+      photoAlt:
+        'Vigas de madeira deslocadas, empilhadas e encaixadas, emolduram a vista de uma floresta por janelas altas.',
+      photoCaption: 'vigas empilhadas e deslocadas · foto de referência',
+      email: 'E-mail',
+      subscribe: 'Inscrever',
+      subscribing: 'Inscrevendo…',
+      group: 'O que receber',
+      updates: 'Novidades do produto',
+      newsletter: 'Carta',
+      status: {
+        rest: 'As inscrições ainda não abriram: nada do que você digitar aqui é enviado ou guardado.',
+        'invalid-email': 'Esse e-mail parece incompleto. Confira o @ e o domínio.',
+        'no-option': 'Escolha pelo menos um: novidades do produto ou a carta.',
+        submitting: 'Inscrevendo…',
+        success:
+          'Nada foi enviado: as inscrições ainda não abriram, e o seu e-mail não foi guardado.',
+        already: 'Você já está na lista.',
+        error: 'Não conseguimos guardar isso agora. Tente de novo em um minuto.',
+      },
+    },
+    foot: 'Os planos, taxas e chances desta página são dados de exemplo MOCK. Nenhum deles é real.',
   },
 };

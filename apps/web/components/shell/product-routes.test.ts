@@ -81,7 +81,11 @@ function reach(roots: readonly string[]): { files: Set<string>; packages: Map<st
 const isRoute = (file: string) =>
   /^app\/(.+\/)?(page|layout|route|template|loading|error|not-found|default)\.[jt]sx?$/.test(file);
 const routes = shipped.filter(isRoute);
-const product = routes.filter((file) => file.startsWith('app/(app)/'));
+// His landing page (app/(marketing)) is held to the same rules as the product: it ships to the same
+// people, and must reach no wallet library and no signing member either.
+const product = routes.filter(
+  (file) => file.startsWith('app/(app)/') || file.startsWith('app/(marketing)/'),
+);
 const older = routes.filter((file) => file.startsWith('app/(structurer)/'));
 
 describe('the routes of the app', () => {
@@ -92,13 +96,19 @@ describe('the routes of the app', () => {
       'app/(app)/analytics/methodology/page.tsx',
       'app/(app)/analytics/page.tsx',
       'app/(app)/goal/page.tsx',
+      'app/(app)/indexes/[slug]/buy/page.tsx',
+      'app/(app)/indexes/[slug]/page.tsx',
       'app/(app)/layout.tsx',
       'app/(app)/monitor/page.tsx',
       'app/(app)/orders/[id]/page.tsx',
-      'app/(app)/page.tsx',
       'app/(app)/plan/[id]/buy/page.tsx',
       'app/(app)/plan/[id]/page.tsx',
+      'app/(app)/publish/page.tsx',
+      'app/(app)/shelf/page.tsx',
       'app/(app)/sign-in/page.tsx',
+      'app/(app)/vaults/[chain]/[address]/page.tsx',
+      'app/(marketing)/layout.tsx',
+      'app/(marketing)/page.tsx',
     ]);
     expect(older.sort()).toEqual([
       // an address no route answers: 404 inside this group's layout, as before there were two
@@ -301,7 +311,14 @@ describe('rule 3: no screen can reach a key', () => {
    * The files that import packages/sdk: the runner, which calls `execute`; readiness.ts, which reads
    * the committed deployments. (order-view.ts takes the runner's answer types from run-order.ts.)
    */
-  const SDK_FILES = [RUNNER, 'features/order/readiness.ts'];
+  const SDK_FILES = [
+    RUNNER,
+    'features/order/readiness.ts',
+    // this app's own node per chain, for the reads it makes itself (WEB-4)
+    'features/order/chain-node.ts',
+    // a shared portfolio read from that node, and a family's id worked out from its slug (WEB-4)
+    'features/shared/chain-recipe.ts',
+  ];
   const SDK = '@colosseum/sdk';
 
   /**
@@ -315,6 +332,9 @@ describe('rule 3: no screen can reach a key', () => {
     'next/link',
     'next/navigation',
     'react',
+    // the landing's 3D joint (features/landing/joint-scene.ts): a renderer, with no network, storage or
+    // wallet of its own; loaded only by the landing page, after its first paint
+    'three',
   ];
 
   /**
@@ -540,7 +560,9 @@ describe('rule 3: no screen can reach a key', () => {
     for (const dep of [
       'api: createOrderApi(apiFetch)',
       'deployments,',
-      'plan: { basketId: basketIdOfPlan(',
+      // a plan's terms, or a shared portfolio's (planTermsOf, WEB-4)
+      'plan: plan ?? {',
+      'basketId: basketIdOfPlan(input.plan.proposalId)',
       'consents: input.consents',
       'signed: localSigned',
       'chainRead: chainReadFor(',
