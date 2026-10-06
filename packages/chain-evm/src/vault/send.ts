@@ -69,6 +69,9 @@ const hashOfCall = (c: Omit<SignedCall, 'nonce'>) =>
     data: c.data,
   });
 
+/** A transaction's id: the Keccak-256 of its signed bytes. */
+export const txIdOf = (signedTx: string): string => keccak256(signedTx.toLowerCase() as Hex);
+
 export function createEvmProbe(options: { config: ChainConfig; rpc: EvmRpc }): TxProbe {
   const { config, rpc } = options;
   const chainId = config.evmChainId;
@@ -109,7 +112,11 @@ export function createEvmProbe(options: { config: ChainConfig; rpc: EvmRpc }): T
           }),
         );
       } catch (e) {
-        if (isRevert(e)) throw revertToChainError(revertDataOf(e));
+        if (isRevert(e)) {
+          // Nothing was sent: the bytes never left this process.
+          const refused = revertToChainError(revertDataOf(e));
+          throw new ChainError(refused.code, refused.message, refused.retryable, { unsent: true });
+        }
         throw e;
       }
       try {
