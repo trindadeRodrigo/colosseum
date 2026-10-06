@@ -47,8 +47,8 @@ export function MonitorScreen() {
   const chain = state.kind === 'reading' || state.kind === 'answered' ? state.chain : null;
   const network = chain ? port.network(chain) : null;
   const chainName = chain ? (network?.name ?? t.chain.names[chain]) : '';
-  const chains =
-    state.kind === 'answered' && state.outcome.kind === 'read' ? state.outcome.chains : [];
+  const outcome = state.kind === 'answered' && state.outcome.kind === 'read' ? state.outcome : null;
+  const chains = outcome?.chains ?? [];
   const vaults = chains.flatMap((entry) => entry.vaults);
   // The chains the person holds a vault on. On one, the page is that chain's; on more, it is grouped.
   const held = chains.filter((entry) => entry.vaults.length > 0);
@@ -164,7 +164,24 @@ export function MonitorScreen() {
   else {
     switch (state.outcome.kind) {
       case 'read':
-        body =
+        body = [
+          // Each chain that could not be read says so; the ones that were read are shown all the same.
+          ...(state.outcome.unavailable.length > 0 || state.outcome.current === 'not-held'
+            ? [
+                <ul key="chains-out" data-ui="chains-out" className="flex flex-col gap-1.5">
+                  {state.outcome.unavailable.map((u) => (
+                    <li key={u.chain} data-chain={u.chain}>
+                      <Status status="watch">{words.chainOut(nameOf(u.chain))}</Status>
+                    </li>
+                  ))}
+                  {state.outcome.current === 'not-held' && chain && (
+                    <li data-chain={chain}>
+                      <Status status="watch">{words.notHeld(nameOf(chain))}</Status>
+                    </li>
+                  )}
+                </ul>,
+              ]
+            : []),
           vaults.length === 0
             ? say(
                 words.empty(chainName),
@@ -174,7 +191,8 @@ export function MonitorScreen() {
               )
             : grouped
               ? [<AcrossChains key="across" totals={held.map(totalOf)} />, ...held.map(chainGroup)]
-              : held.flatMap((entry) => entry.vaults.map((vault) => vaultBlock(entry, vault)));
+              : held.flatMap((entry) => entry.vaults.map((vault) => vaultBlock(entry, vault))),
+        ];
         break;
       case 'unavailable':
         body = say(

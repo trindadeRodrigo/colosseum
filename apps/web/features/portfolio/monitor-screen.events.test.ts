@@ -688,6 +688,44 @@ describe('the chain of each vault', () => {
     expect(host.querySelector('header [data-ui="chain-badge"]')).toBeNull();
   });
 
+  it('shows the chain that was read when another is unavailable, and says which, in English and Portuguese', async () => {
+    const out = {
+      chain: 'solana',
+      name: 'Solana',
+      code: 'CHAIN_UNAVAILABLE',
+      error: 'the node did not answer',
+      retryable: true,
+    };
+    for (const lang of ['en', 'pt'] as const) {
+      api({
+        person: onSolana,
+        portfolio: () => json({ ...portfolioOf(robinhoodChain()), unavailable: [out] }),
+      });
+      signIn();
+      const host = await screen(lang);
+      // the Robinhood vault is shown, not a sentence that the portfolio could not be read
+      expect(host.querySelectorAll('[data-ui="vault"]')).toHaveLength(1);
+      expect(host.textContent).not.toContain(dictionary(lang).portfolio.unreadable);
+      expect(find(host, '[data-ui="chains-out"] [data-chain="solana"]').textContent).toBe(
+        dictionary(lang).portfolio.chainOut('Solana'),
+      );
+      await unmountAll();
+    }
+    expect(en.portfolio.chainOut('Robinhood Chain')).toBe(
+      'Robinhood Chain is unavailable right now.',
+    );
+  });
+
+  it('says the current chain is not held in this sign-in when the answer has none of it', async () => {
+    api({ person: onSolana, portfolio: () => json(portfolioOf(robinhoodChain())) });
+    signIn();
+    const host = await screen();
+    expect(host.querySelectorAll('[data-ui="vault"]')).toHaveLength(1);
+    expect(find(host, '[data-ui="chains-out"] [data-chain="solana"]').textContent).toBe(
+      en.portfolio.notHeld('Solana'),
+    );
+  });
+
   it('groups in Portuguese too, with the label that says it adds the chains up', async () => {
     api({ person: onSolana, portfolio: () => json(portfolioOf(chainOf(), robinhoodChain())) });
     signIn();

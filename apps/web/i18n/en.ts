@@ -377,6 +377,10 @@ export const en = {
 
   /** The monitor (/monitor), and the line about it on the home page. */
   portfolio: {
+    /** A chain of the person's that could not be read this time; the others are shown all the same. */
+    chainOut: (chain: string) => `${chain} is unavailable right now.`,
+    /** The person's current chain, which no wallet of this sign-in signs on. */
+    notHeld: (chain: string) => `${chain} isn’t held in this sign-in.`,
     title: (vaults: number): string =>
       vaults > 1 ? 'What your vaults hold.' : 'What your vault holds.',
     lead: 'Read from the chain your plan lives on, each time you open this page. Nothing here signs or moves anything.',

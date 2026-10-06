@@ -1293,6 +1293,13 @@ export type GetPortfolioResponse = {
       market: 'open' | 'closed' | 'unknown';
     }[];
   }[];
+  unavailable: {
+    chain: 'solana' | 'base' | 'robinhood';
+    name: string;
+    code: string;
+    error: string;
+    retryable: boolean;
+  }[];
   disclaimer: string;
 };
 

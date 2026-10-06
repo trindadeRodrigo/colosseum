@@ -1,5 +1,6 @@
 import { type Db, users } from '@colosseum/db';
 import {
+  ChainError,
   FundingResponse,
   OrderDetail,
   OrderError,
@@ -434,6 +435,48 @@ describe('the current chain, where new plans are made (gates ONE-CHAIN, CHAIN-SW
   });
 });
 
+describe('GET /v1/portfolio: each chain read on its own', () => {
+  it('answers the chains it can read when one cannot be read, and 503 only when none can', async () => {
+    const who = await picked('solana');
+    const failing = [
+      vi
+        .spyOn(registry.get('robinhood').adapter, 'getVaults')
+        .mockRejectedValue(new ChainError('Unavailable', 'the node did not answer', true)),
+    ];
+    try {
+      const res = await get(who, '/v1/portfolio');
+      expect(res.statusCode, res.body).toBe(200);
+      const body = PortfolioResponse.parse(res.json());
+      expect(body.chains.map((c) => c.chain)).toEqual(['solana']);
+      expect(body.unavailable).toEqual([
+        {
+          chain: 'robinhood',
+          name: 'Robinhood Chain',
+          code: 'CHAIN_UNAVAILABLE',
+          error: 'the node did not answer',
+          retryable: true,
+        },
+      ]);
+      // A failure of ours is said without its text, and is worth asking again.
+      failing.push(
+        vi
+          .spyOn(registry.get('solana').adapter, 'getVaults')
+          .mockRejectedValue(new Error('a bug with a secret in it')),
+      );
+      const none = await get(who, '/v1/portfolio');
+      expect(none.statusCode).toBe(503);
+      expect(none.json()).toMatchObject({
+        code: 'CHAIN_UNAVAILABLE',
+        details: { retryable: true },
+      });
+      expect(none.body).not.toContain('a bug');
+      expect(none.body).toContain('Solana could not be read just now');
+    } finally {
+      for (const spy of failing) spy.mockRestore();
+    }
+  });
+});
+
 describe('GET /v1/funding: what the wallet is missing on its chain', () => {
   const funding = async (who: Person, query = '', on?: FastifyInstance) => {
     const res = await get(who, `/v1/funding${query}`, on);
@@ -512,6 +555,27 @@ describe('GET /v1/funding: what the wallet is missing on its chain', () => {
       expect(funded.gas.missingRaw).toBe('0');
       expect(BigInt(funded.gas.haveRaw)).toBeGreaterThan(BigInt(want.gas));
     }
+  });
+
+  it('asks about the wallet that holds plans on the plan’s own family, not the current chain’s', async () => {
+    // Wallets made in the app on both families, and an outside EVM wallet; Solana was picked, so the
+    // current chain names no outside wallet. A plan on Robinhood Chain is bought from the outside one.
+    const who = await someone('passkey');
+    const outsideEvm = who.evm.replace(/.$/, who.evm.endsWith('0') ? '1' : '0');
+    const sub = `did:privy:test-family-${who.sub}`;
+    data.track({ ...who, sub });
+    const headers = await signIn(issuer, sub, [
+      { family: 'solana', address: who.solana, client: 'privy' },
+      { family: 'evm', address: who.evm, client: 'privy' },
+      { family: 'evm', address: outsideEvm, client: 'metamask' },
+    ]);
+    const mixed = { ...who, sub, headers } as Person;
+    expect((await pick(mixed, 'solana')).statusCode).toBe(200);
+    const onRobinhood = (await funding(mixed, buyOf('robinhood'))).body;
+    expect(onRobinhood.chain).toBe('robinhood');
+    expect(onRobinhood.wallet.toLowerCase()).toBe(outsideEvm.toLowerCase());
+    // on the current chain's family the picked chain still means the app's wallet
+    expect((await funding(mixed, buyOf('solana'))).body.wallet).toBe(who.solana);
   });
 
   it('counts what is short of the need, and the steps of a second buy into the vault that is there', async () => {

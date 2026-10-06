@@ -2,6 +2,7 @@ import {
   type Address,
   type Chain,
   type ChainId,
+  chainFamily,
   type FundingNeed,
   FundingQuery,
   FundingResponse,
@@ -99,7 +100,14 @@ export function registerFundingRoute(scope: FastifyInstance, deps: OrderDeps) {
       const chain = plan ? await planChain(deps, proposalId) : await homeChain(deps.db, principal);
       const entry = deps.chains.get(chain);
       const { family } = entry.config;
-      const outside = (await personChain(deps.db, principal)).chainSource === 'wallet';
+      // Which of the person's wallets of this family holds their plans. On the family of their current
+      // chain, the outside wallet when it named that chain, the app's when the chain was picked. On the
+      // other family (a plan bought there after a switch), the outside wallet when they have one.
+      const person = await personChain(deps.db, principal);
+      const outside =
+        person.chain !== null && chainFamily(person.chain) === family
+          ? person.chainSource === 'wallet'
+          : principal.wallets.some((w) => w.family === family && w.kind === 'external');
       const wallet = walletOf(principal, family, outside, req.query.wallet);
 
       let need: FundingNeed = { cashRaw: '0', legs: 0, newVault: false, newAccounts: 0 };
