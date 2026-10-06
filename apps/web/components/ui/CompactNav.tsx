@@ -176,7 +176,7 @@ export function CompactNav({
         data-ui="compact-nav-bar"
         className={cn(
           'fixed top-[calc(env(safe-area-inset-top,0px)+12px)] left-1/2 z-30 flex -translate-x-1/2 items-center justify-between gap-6 rounded-md border py-2',
-          'transition-[max-width,padding,background-color,border-color] duration-[480ms] ease-seat motion-reduce:transition-none',
+          'transition-[max-width,padding] duration-[480ms] ease-seat motion-reduce:transition-none',
           compact
             ? 'w-max max-w-[min(860px,calc(100%-32px))] border-border bg-card pr-2 pl-[18px]'
             : 'w-[calc(100%-2*clamp(16px,4vw,56px))] max-w-page border-transparent bg-transparent px-0',

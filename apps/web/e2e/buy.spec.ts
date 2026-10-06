@@ -30,7 +30,7 @@ async function check(page: Page, name: string) {
       html.classList.add(t);
     }, theme);
     // Colours ease from one theme to the other: axe reads them once they have.
-    await page.waitForTimeout(600);
+    await page.waitForTimeout(1000);
     const result = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
       .analyze();
