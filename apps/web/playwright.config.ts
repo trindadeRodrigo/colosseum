@@ -5,8 +5,10 @@ import { defineConfig, devices } from '@playwright/test';
 // front of a stub of the API on the mock chain (tests/e2e/stub-api.ts). `pnpm --filter @colosseum/web
 // e2e`; CI runs it in its own job. Nothing here reaches a real chain or a real sign-in.
 
-const WEB = 3100;
-const API = 3901;
+// Two checkouts on one machine each run their own: E2E_WEB_PORT and E2E_API_PORT move them, so a
+// server another checkout left up is never taken for this one's.
+const WEB = Number(process.env.E2E_WEB_PORT ?? 3100);
+const API = Number(process.env.E2E_API_PORT ?? 3901);
 
 export default defineConfig({
   testDir: './e2e',

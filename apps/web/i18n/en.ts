@@ -15,8 +15,10 @@ export const en = {
     menu: 'Menu',
     invest: 'Invest',
     portfolio: 'Portfolio',
+    products: 'Products',
     resources: 'Resources',
     analytics: 'Analytics',
+    shelf: 'Shelf',
     signIn: 'Sign in',
     signOut: 'Sign out',
     signingOut: 'Signing out…',
@@ -340,7 +342,7 @@ export const en = {
     signature: 'transaction id',
     noneYet: 'Nothing has reached the chain from this order yet.',
     noneVault:
-      'Nothing this browser placed has reached the chain for this vault. Trades made elsewhere, or by the keeper, are not listed here yet.',
+      'Nothing this browser placed for your vaults has reached the chain. Trades made elsewhere, or by the keeper, are not listed here yet.',
   },
   /** The words a provenance pin says, in the language of the view. */
   pin: {
@@ -439,9 +441,9 @@ export const en = {
     },
     /** The goal card of a vault (guidelines.html, "Goal card and plan"), from the goal its plan was built for. */
     goalCard: {
-      onTrack: 'On track',
-      offTrack: 'Off track',
-      noStatus: 'No status yet: the engine gives one for income goals only',
+      builtMet: 'On track when the plan was built',
+      builtShort: 'Short of its income when the plan was built',
+      noStatus: 'No status yet: the engine gives none for a vault',
       unknown: (chain: string) => `Your vault on ${chain}.`,
       notJoined:
         'I can’t tell which goal this vault was bought for: it was bought in another browser, or before this one kept goals. What it holds is below.',
@@ -495,6 +497,8 @@ export const en = {
       label: (months: number, low: string, high: string) =>
         `What the dollar yield projects over ${months} months: from ${low} to ${high} a year.`,
       after: (months: number) => `After ${months} months`,
+      /** An income plan: what its yield pays out over the term, in all. */
+      paid: (months: number) => `Paid out over ${months} months, in all`,
       projected: 'projected',
       low: 'low end',
       high: 'high end',
@@ -628,6 +632,225 @@ export const en = {
     },
   },
 
+  shared: {
+    meta: {
+      shelf: 'Shared portfolios',
+      family: 'Shared portfolio',
+      familyDescription: 'A list of assets and weights its creator published on a chain.',
+      publish: 'Publish a portfolio',
+      publishDescription: 'Publish your list of assets and weights for others to follow.',
+      vault: 'Vault',
+    },
+    shelf: {
+      title: 'Portfolios people have shared.',
+      lead: (chain: string) =>
+        `Each is a list of assets and weights its creator published on a chain. These are the ones on ${chain}, where your plans live.`,
+      leadAll:
+        'Each is a list of assets and weights its creator published on a chain. Sign in to see the ones on your chain.',
+      loading: 'Reading the shared portfolios…',
+      empty: (chain: string) => `No portfolio is shared on ${chain} yet.`,
+      emptyAll: 'No portfolio is shared yet.',
+      publish: 'Publish a portfolio',
+      card: {
+        by: (creator: string) => `by ${creator}`,
+        platform: 'From tenonfi',
+        version: (n: number) => `version ${n}`,
+        waiting: (n: number) => `version ${n} waits`,
+        open: (name: string) => `Open ${name}`,
+        on: (chains: string) => `on ${chains}`,
+      },
+      failure: {
+        unreachable: 'I couldn’t read the shared portfolios: our server didn’t answer. Try again.',
+        unreadable: 'Our server answered with something I couldn’t read, so I’m not showing it.',
+        retry: 'Read them again',
+      },
+    },
+    text: {
+      unverified:
+        'The name and description don’t match what the creator published on the chain, so I can’t vouch for them.',
+      pending:
+        'The name and description are those of the version that waits. The version in effect was published with other words.',
+      creator: 'Created by',
+      notChecked:
+        'The name and description aren’t checked against what the creator published on the chain.',
+    },
+    family: {
+      loading: 'Reading this portfolio…',
+      missing: 'I can’t find a shared portfolio with that name.',
+      backToShelf: 'Back to the shared portfolios',
+      lead: (chain: string) =>
+        `A list of assets and weights its creator published on ${chain}. Following it means a vault of yours takes its weights; a new version takes effect after a delay, and you see it before it does.`,
+      notHere: (chain: string) =>
+        `This portfolio isn’t published on ${chain}, where your plans live, so it can’t be followed from your wallet.`,
+      recipe: (chain: string) => `On ${chain}`,
+      inEffect: 'In effect',
+      since: (when: string) => `since ${when}`,
+      waits: (n: number, when: string) => `Version ${n} takes effect on ${when}`,
+      waitsLead:
+        'It was published and isn’t in effect yet. A vault that follows this portfolio moves to it only once it is.',
+      versionN: (n: number) => `Version ${n}`,
+      versions: 'Every version',
+      columns: { version: 'Version', status: 'Status', effective: 'In effect from' },
+      status: {
+        active: 'In effect',
+        pending: 'Waiting',
+        superseded: 'Replaced',
+        cancelled: 'Taken back',
+      },
+      buy: 'Buy and follow this portfolio',
+      signIn: 'Sign in to follow',
+      chainNotReady: (chain: string) =>
+        `${chain} isn’t ready for following yet: its vaults aren’t deployed on this network.`,
+      tampered: (chain: string) =>
+        `I couldn’t verify this portfolio on ${chain}, so I won’t offer to buy or follow it: it may have been tampered with. Try again later.`,
+      missingOnChain: (chain: string) =>
+        `${chain} has no such portfolio: I read the chain, and the registry doesn’t hold it. It can’t be followed.`,
+      unlisted:
+        'The chain’s version holds a token this app doesn’t list, so I won’t offer to follow it.',
+      notListed: 'a token this app doesn’t list',
+      foreign:
+        'This portfolio wasn’t published through this app, so I can’t check its id against its name, and following it isn’t offered here yet.',
+    },
+    check: {
+      reading: 'Reading it from the chain…',
+      read: (chain: string) =>
+        `Read from ${chain} by this app, not from our server: the version and weights shown are the chain’s.`,
+      differs: (chain: string) =>
+        `Our server’s answer differs from what ${chain} holds. I show the chain’s version and weights, and a follow is held to them.`,
+      unverified: {
+        mock: 'MOCK chain: there is no chain to read, so these are our server’s words, not checked.',
+        'no-node': (chain: string) =>
+          `Not checked against ${chain}: this app has no node of its own to read it from. These are our server’s words.`,
+        'no-deployment': (chain: string) =>
+          `Not checked against ${chain}: this app has no record of the tokens on this network. These are our server’s words.`,
+        'family-id':
+          'Not checked against the chain: this portfolio wasn’t published through this app, so its id comes from our server. These are our server’s words.',
+      },
+      failed: (chain: string) =>
+        `I couldn’t verify this portfolio on ${chain}: the node this app reads from didn’t answer, or what our server named isn’t the portfolio the chain holds. It may have been tampered with, so I won’t offer to follow it.`,
+      missing: (chain: string) =>
+        `I read ${chain}, and it holds no such portfolio: what’s shown is only our server’s word.`,
+      verified: 'Read from the chain',
+      notChecked: 'Not checked against the chain',
+    },
+    offer: {
+      title: 'Auto-follow',
+      offered:
+        'Offered: with auto-follow on, our keeper rebalances a vault that follows this portfolio when a new version takes effect, within the vault’s limits.',
+      noOracle: (assets: string, chain: string) =>
+        `Not offered: this portfolio holds ${assets}, which has no price oracle on ${chain}, so our keeper can’t rebalance it. If you follow it, I ask you to rebalance, in one tap, when it changes.`,
+      switchedOff: (chain: string) =>
+        `Not offered on ${chain} yet: our keeper doesn’t run there. If you follow it, I ask you to rebalance, in one tap, when it changes.`,
+    },
+    buy: {
+      title: 'Buy and follow',
+      lead: (chain: string) =>
+        `A vault of yours on ${chain} follows this portfolio, at the version shown, with auto-follow off. Nothing is bought until you review every step and sign it.`,
+      amountHint: 'In dollars, at least $10.',
+      review: (amount: string) => `Review the buy of ${amount}`,
+      blocked: {
+        terms: 'I couldn’t read this portfolio, so there is nothing to follow yet.',
+        missing: 'The chain doesn’t hold this portfolio, so it can’t be followed.',
+        unlisted: 'This portfolio holds a token this app doesn’t list.',
+      },
+    },
+    vaults: {
+      title: 'Your vaults',
+      none: 'You have no vault on this chain yet. Buy this portfolio to open one that follows it.',
+      following: 'Follows this portfolio',
+      notFollowing: 'Follows something else',
+      followWith: 'Follow with this vault',
+      followNote:
+        'Your vault takes this portfolio’s weights. Nothing is traded in that step: you rebalance after, or the keeper does with auto-follow on.',
+      autoOn: 'Switch auto-follow on',
+      autoOff: 'Switch auto-follow off',
+      autoIs: (on: boolean): string => (on ? 'Auto-follow is on.' : 'Auto-follow is off.'),
+      oneTap:
+        'This portfolio isn’t rebalanced for you. When it changes, I ask you here to accept the new version and rebalance.',
+      address: (address: string) => `Vault ${address}`,
+      open: 'Open the vault',
+      failure: 'I couldn’t read your vaults: our server didn’t answer. Try again.',
+    },
+    prompt: {
+      title: 'This portfolio changed',
+      waits: (n: number, when: string) =>
+        `Version ${n} takes effect on ${when}. You can accept it then; until it does, your vault keeps the version it has.`,
+      inEffect: (n: number) =>
+        `Version ${n} is in effect, and your vault still holds an earlier one. Accept it to take its weights, then rebalance.`,
+      newAssets: (assets: string) => `It adds ${assets}, which your vault doesn’t hold yet.`,
+      accept: (n: number) => `Accept version ${n}`,
+    },
+    publish: {
+      title: 'Publish a portfolio.',
+      lead: (chain: string) =>
+        `Your list of assets and weights, under a name, on ${chain}. Anyone can see it and follow it. You sign it with your wallet: I check the transaction against this form before your wallet is asked.`,
+      signIn: 'Sign in to publish a portfolio.',
+      about: 'Its name and description',
+      name: 'Name',
+      nameHint: 'Plain letters, digits and punctuation, up to 280 characters.',
+      slug: 'Address on the shelf',
+      slugHint: 'Lower-case letters, digits and dashes. It can’t change once published.',
+      copy: 'Description',
+      copyHint: 'Up to 280 characters, with no link.',
+      familyId: 'Its id, worked out from the address',
+      assets: 'Assets and weights',
+      assetsHint: '3 to 12 assets, each from 2% to 50%, in steps of 0.5%, adding up to 100%.',
+      asset: 'Asset',
+      weight: 'Weight, in %',
+      add: 'Add an asset',
+      remove: (asset: string) => `Remove ${asset}`,
+      total: (sum: string) => `Total: ${sum}`,
+      update: (n: number) =>
+        `You published this portfolio before. This is version ${n}: it takes effect after the publish delay, and a version moves at most 20% of the portfolio.`,
+      first: 'This is version 1: it takes effect as soon as it lands.',
+      theirs: 'This address belongs to another creator’s portfolio. Choose another.',
+      review: 'Review the publish',
+      reviewing: 'Making the order…',
+      problems: {
+        name: 'A name needs plain letters, digits and punctuation, with no space at either end and no link or web address.',
+        slug: 'An address needs lower-case letters, digits and dashes.',
+        copy: 'A description is at most 280 characters, with no link or web address and no hidden characters.',
+        count: 'A portfolio holds 3 to 12 assets.',
+        weight: 'Each weight is from 2% to 50%, in steps of 0.5%.',
+        sum: 'The weights add up to 100%.',
+        twice: 'An asset appears once.',
+        chain: 'Publishing is built on Solana only for now.',
+      },
+      failure: {
+        said: (error: string) => `Our server said no: ${error}.`,
+        unreachable: 'I couldn’t make the order: our server didn’t answer. Try again.',
+        unreadable: 'Our server answered with an order I couldn’t read, so I’m not showing it.',
+        signedOut: 'Your sign-in ended. Sign in again, and your form is kept.',
+        noStore:
+          'This browser keeps nothing between pages, so I won’t make the order: a step could be signed twice.',
+      },
+    },
+    vault: {
+      title: 'A vault, as its chain holds it',
+      lead: (chain: string) =>
+        `Read from ${chain} for this page. Anyone can see a vault: what it holds is public on its chain.`,
+      loading: 'Reading the vault…',
+      missing: 'There is no vault at this address.',
+      owner: 'Owner',
+      follows: 'Follows',
+      followsNothing: 'Nothing: the owner sets its weights',
+      version: (n: number) => `version ${n}`,
+      autoFollow: 'Auto-follow',
+      value: 'Value',
+      cash: 'Cash',
+      columns: {
+        asset: 'Asset',
+        held: 'Held',
+        price: 'Price',
+        weight: 'Weight',
+        target: 'Target',
+        drift: 'Drift',
+      },
+      on: 'On',
+      off: 'Off',
+    },
+  },
+
   order: {
     title: 'Your order',
     loading: 'Reading your order…',
@@ -670,6 +893,34 @@ export const en = {
         'This order doesn’t deposit the amount you asked for, so I won’t offer to sign it. Nothing was signed. Make a new order, and tell us if it happens again.',
       steps:
         'A step of this order moves another amount of cash than its deposit, so I won’t offer to sign it. Nothing was signed. Make a new order, and tell us if it happens again.',
+      trades:
+        'This order spends your deposit on other weights than the portfolio you reviewed, so I won’t offer to sign it. Nothing was signed. Make a new order.',
+      shape:
+        'This order has steps the portfolio you reviewed doesn’t call for, so I won’t offer to sign it. Nothing was signed. Make a new order.',
+    },
+    shared: {
+      publishTitle: 'What you publish',
+      followTitle: 'What you follow',
+      name: 'Name',
+      slug: 'Address on the shelf',
+      copy: 'Description',
+      noCopy: 'No description.',
+      version: 'Version',
+      first: 'Version 1, in effect as soon as it lands',
+      next: (n: number) => `Version ${n}, in effect after the publish delay`,
+      versionN: (n: number) => `Version ${n}`,
+      familyId: 'Id',
+      onchain: 'On the chain',
+      vault: 'Your vault',
+      autoFollow: 'Auto-follow',
+      on: 'On',
+      off: 'Off',
+      weights: 'Assets and weights',
+      publishNote:
+        'Your wallet is asked to sign only a transaction that publishes exactly this name, description and these weights, under this id.',
+      signPublish: 'Sign and publish',
+      signFollow: 'Sign and follow',
+      resume: 'Continue',
     },
     signAndBuy: (amount: string) => `Sign and buy ${amount}`,
     resume: (amount: string) => `Continue the buy of ${amount}`,

@@ -40,6 +40,13 @@ const CONFIG = 'src/VaultConfig.sol';
 const FACTORY = 'src/VaultFactory.sol';
 const REGISTRY = 'src/IndexRegistry.sol';
 const BEACON = 'src/VaultBeacon.sol';
+const TEST_TOKEN = 'testnet/TestToken.sol';
+const TEST_STOCK = 'testnet/TestStockToken.sol';
+const TEST_FEED = 'testnet/TestPriceFeed.sol';
+const TEST_SEQUENCER = 'testnet/StubSequencerFeed.sol';
+const TEST_MARKET = 'testnet/TestMarket.sol';
+const KIT = 'script/testnet/TestnetKit.s.sol';
+const COPIER = 'script/testnet/CopyPrices.s.sol';
 
 const WITHDRAW =
   'function withdraw(address token, uint256 amount) external onlyOwner nonReentrant {';
@@ -2346,6 +2353,429 @@ const RULES = [
     ...admin('function setPriceDevBps(uint16 bps)'),
     expect: 'test_setPriceDevBps_revertsForNonAdmin',
   },
+  // ---- the test network's own contracts (TNET-1)
+  {
+    id: 'testnet-token-mint-role',
+    file: TEST_TOKEN,
+    find: 'function mint(address to, uint256 amount) external onlyRole(MINTER_ROLE) {',
+    replace: 'function mint(address to, uint256 amount) external {',
+    expect: 'test_cash_hasItsDecimals_andOnlyAMinterMints',
+  },
+  {
+    id: 'testnet-token-burn-role',
+    file: TEST_TOKEN,
+    find: 'function burn(address from, uint256 amount) external onlyRole(MINTER_ROLE) {',
+    replace: 'function burn(address from, uint256 amount) external {',
+    expect: 'test_cash_onlyAMinterBurns',
+  },
+  {
+    id: 'testnet-stock-pause-role',
+    file: TEST_STOCK,
+    find: 'function pause() external onlyRole(ISSUER_ROLE) {',
+    replace: 'function pause() external {',
+    expect: 'test_stock_onlyTheIssuerPausesAndSetsTheMultiplier',
+  },
+  {
+    id: 'testnet-stock-unpause-role',
+    file: TEST_STOCK,
+    find: 'function unpause() external onlyRole(ISSUER_ROLE) {',
+    replace: 'function unpause() external {',
+    expect: 'test_stock_onlyTheIssuerPausesAndSetsTheMultiplier',
+  },
+  {
+    id: 'testnet-stock-multiplier-now-role',
+    file: TEST_STOCK,
+    find: 'function updateMultiplier(uint256 newMultiplier) external onlyRole(ISSUER_ROLE) {',
+    replace: 'function updateMultiplier(uint256 newMultiplier) external {',
+    expect: 'test_stock_onlyTheIssuerPausesAndSetsTheMultiplier',
+  },
+  {
+    id: 'testnet-stock-multiplier-later-role',
+    file: TEST_STOCK,
+    find: 'function updateMultiplier(uint256 newMultiplier, uint256 effectiveAt_) external onlyRole(ISSUER_ROLE) {',
+    replace: 'function updateMultiplier(uint256 newMultiplier, uint256 effectiveAt_) external {',
+    expect: 'test_stock_onlyTheIssuerPausesAndSetsTheMultiplier',
+  },
+  {
+    id: 'testnet-stock-paused-moves-nothing',
+    file: TEST_STOCK,
+    find: 'require(!_paused, TokenPaused());',
+    replace: '',
+    expect: 'test_stock_paused_movesNothing',
+  },
+  {
+    id: 'testnet-stock-paused-vault-skips',
+    file: TEST_STOCK,
+    find: 'require(!_paused, TokenPaused());',
+    replace: '',
+    expect: 'test_issuerPause_stopsTheKeeper_andTheOwnerTakesTheRest',
+  },
+  {
+    id: 'testnet-stock-multiplier-at-its-time',
+    file: TEST_STOCK,
+    find: 'return block.timestamp >= _effectiveAt ? _newMultiplier : _multiplier;',
+    replace: 'return _newMultiplier;',
+    expect: 'test_stock_aScheduledMultiplier_takesEffectAtItsTime',
+  },
+  {
+    id: 'testnet-stock-multiplier-from-current',
+    file: TEST_STOCK,
+    find: 'uint256 current = uiMultiplier();',
+    replace: 'uint256 current = _newMultiplier;',
+    expect: 'test_stock_aSecondScheduleReplacesTheFirst',
+  },
+  {
+    id: 'testnet-stock-multiplier-not-zero',
+    file: TEST_STOCK,
+    find: 'require(newMultiplier != 0, ZeroMultiplier());',
+    replace: '',
+    expect: 'test_stock_aMultiplierOfZero_orInThePast_isRefused',
+  },
+  {
+    id: 'testnet-stock-multiplier-not-past',
+    file: TEST_STOCK,
+    find: 'require(effectiveAt_ >= block.timestamp, EffectiveInThePast(effectiveAt_, block.timestamp));',
+    replace: '',
+    expect: 'test_stock_aMultiplierOfZero_orInThePast_isRefused',
+  },
+  {
+    id: 'testnet-stock-schedule-read-by-vault',
+    file: TEST_STOCK,
+    find: '_effectiveAt = effectiveAt_;',
+    replace: '',
+    expect: 'test_multiplierWindow_aroundTheTestTokensChange',
+  },
+  {
+    id: 'testnet-feed-writer',
+    file: TEST_FEED,
+    find: 'require(msg.sender == writer || msg.sender == owner(), NotWriter(msg.sender));',
+    replace: '',
+    expect: 'test_feed_onlyTheWriterOrTheOwnerWrites',
+  },
+  {
+    id: 'testnet-feed-setWriter-owner',
+    file: TEST_FEED,
+    find: 'function setWriter(address writer_) external onlyOwner {',
+    replace: 'function setWriter(address writer_) external {',
+    expect: 'test_feed_theOwnerReplacesTheWriter',
+  },
+  {
+    id: 'testnet-feed-positive',
+    file: TEST_FEED,
+    find: 'require(answer > 0, AnswerNotPositive(answer));',
+    replace: '',
+    expect: 'test_feed_anAnswerOfZeroOrBelow_isRefused',
+  },
+  {
+    id: 'testnet-feed-newer',
+    file: TEST_FEED,
+    find: 'require(updatedAt > latest, NotNewer(updatedAt, latest));',
+    replace: '',
+    expect: 'test_feed_aTimeNotNewer_isRefused',
+  },
+  {
+    id: 'testnet-feed-ahead',
+    file: TEST_FEED,
+    find: 'require(updatedAt <= block.timestamp + MAX_AHEAD, StampedAhead(updatedAt, block.timestamp));',
+    replace: '',
+    expect: 'test_feed_aTimeTooFarAhead_isRefused',
+  },
+  {
+    id: 'testnet-feed-no-data',
+    file: TEST_FEED,
+    find: 'require(r.updatedAt != 0, NoDataPresent());',
+    replace: '',
+    expect: 'test_feed_beforeTheFirstRound_reverts',
+  },
+  {
+    id: 'testnet-feed-stamp-read-by-vault',
+    file: TEST_FEED,
+    find: 'return (roundId, r.answer, r.updatedAt, r.updatedAt, roundId);',
+    replace: 'return (roundId, r.answer, r.updatedAt, block.timestamp, roundId);',
+    expect: 'test_keeper_aStalePrice_isRefused',
+  },
+  {
+    id: 'testnet-sequencer-owner',
+    file: TEST_SEQUENCER,
+    find: 'function setDown(bool down_) external onlyOwner {',
+    replace: 'function setDown(bool down_) external {',
+    expect: 'test_sequencer_onlyTheOwnerFlipsIt',
+  },
+  {
+    id: 'testnet-sequencer-not-ahead',
+    file: TEST_SEQUENCER,
+    find: 'require(since <= block.timestamp, ChangedInTheFuture(since, block.timestamp));',
+    replace: '',
+    expect: 'test_sequencer_aTimeAhead_isRefused',
+  },
+  {
+    id: 'testnet-sequencer-time-of-change',
+    file: TEST_SEQUENCER,
+    find: '        changedAt = uint64(block.timestamp);\n',
+    replace: '',
+    expect: 'test_sequencerStub_justUp_thenAnHourLater_thenDown',
+  },
+  {
+    id: 'testnet-market-recentre-who',
+    file: TEST_MARKET,
+    find: 'require(msg.sender == operator || msg.sender == owner(), NotOperator(msg.sender));',
+    replace: '',
+    expect: 'test_market_onlyTheOwnerOrTheWriterRecentres',
+  },
+  {
+    id: 'testnet-market-open-owner',
+    file: TEST_MARKET,
+    find: 'function open(address token) external onlyOwner {',
+    replace: 'function open(address token) external {',
+    expect: 'test_market_onlyTheOwnerOpensSeedsAndSetsFeeds',
+  },
+  {
+    id: 'testnet-market-seed-owner',
+    file: TEST_MARKET,
+    find: 'function seed(address token, uint256 cashPerSide) external onlyOwner returns (uint128 liquidity) {',
+    replace:
+      'function seed(address token, uint256 cashPerSide) external returns (uint128 liquidity) {',
+    expect: 'test_market_onlyTheOwnerOpensSeedsAndSetsFeeds',
+  },
+  {
+    id: 'testnet-market-setFeed-owner',
+    file: TEST_MARKET,
+    find: 'function setFeed(address token, address feed) external onlyOwner {',
+    replace: 'function setFeed(address token, address feed) external {',
+    expect: 'test_market_onlyTheOwnerOpensSeedsAndSetsFeeds',
+  },
+  {
+    id: 'testnet-market-setOperator-owner',
+    file: TEST_MARKET,
+    find: 'function setOperator(address operator_) external onlyOwner {',
+    replace: 'function setOperator(address operator_) external {',
+    expect: 'test_market_onlyTheOwnerOpensSeedsAndSetsFeeds',
+  },
+  {
+    id: 'testnet-market-callback-pool-manager',
+    file: TEST_MARKET,
+    find: 'require(msg.sender == address(poolManager), NotPoolManager(msg.sender));',
+    replace: '',
+    expect: 'test_market_onlyThePoolManagerCallsBack',
+  },
+  {
+    id: 'testnet-market-open-elsewhere',
+    file: TEST_MARKET,
+    find: 'require(poolLiquidity(token) == 0, PoolOpenElsewhere(token, current, target));',
+    replace: '',
+    expect: 'test_market_aPoolWithLiquidityAwayFromItsPrice_isRefused',
+  },
+  {
+    id: 'testnet-market-leaves-a-pool-at-its-price',
+    file: TEST_MARKET,
+    find: 'if (_apartBps(current, target) <= driftBps) return false;',
+    replace: '',
+    expect: 'test_market_recentresToTheTestPrice',
+  },
+  {
+    id: 'testnet-market-burns-what-it-takes',
+    file: TEST_MARKET,
+    find: 'ITestTokenSupply(currency).burn(address(this), uint256(uint128(amount)));',
+    replace: '',
+    expect: 'test_market_holdsNothing',
+  },
+  {
+    id: 'testnet-market-no-feed',
+    file: TEST_MARKET,
+    find: 'require(feed != address(0), NoFeed(token));',
+    replace: '',
+    expect: 'test_market_aTokenWithoutAFeed_hasNoPrice',
+  },
+  {
+    id: 'testnet-market-pair-side',
+    file: TEST_MARKET,
+    find: 'token < cash ? (uint256(answer) * cashUnit, one * tokenUnit)',
+    replace: 'true ? (uint256(answer) * cashUnit, one * tokenUnit)',
+    expect: 'test_kit_eachPoolOpensAtItsTestPrice',
+  },
+  {
+    id: 'testnet-market-recentre-follows-the-copy',
+    file: TEST_MARKET,
+    find: 'return false;\n        poolManager.unlock(abi.encode(ACTION_SWAP, token, uint256(target)));',
+    replace: 'return false;',
+    expect: 'test_vault_aPoolFarFromItsTestPrice_isRefusedForTheKeeper',
+  },
+  {
+    id: 'testnet-kit-chain',
+    file: KIT,
+    find: 'require(cfg.chainId == block.chainid, WrongChain(cfg.chainId, block.chainid));',
+    replace: '',
+    expect: 'test_kit_refusesTheDeployerAsWriter_andNoWriter',
+  },
+  {
+    id: 'testnet-kit-writer-not-deployer',
+    file: KIT,
+    find: 'require(cfg.priceWriter != deployer, WriterIsDeployer(cfg.priceWriter));',
+    replace: '',
+    expect: 'test_kit_refusesTheDeployerAsWriter_andNoWriter',
+  },
+  {
+    id: 'testnet-kit-rerun-finds-each-contract',
+    file: KIT,
+    find: 'if (addr.code.length != 0) return addr;',
+    replace: '',
+    expect: 'test_kit_deploysEverything_andASecondRunSendsNothing',
+  },
+  {
+    id: 'testnet-kit-rerun-seeds-nothing',
+    file: KIT,
+    find: 'if (market.poolLiquidity(l.token) == 0) {',
+    replace: 'if (true) {',
+    expect: 'test_kit_deploysEverything_andASecondRunSendsNothing',
+  },
+  {
+    id: 'testnet-kit-rerun-writes-no-round',
+    file: KIT,
+    find: 'if (feed.latestRound() == 0) {',
+    replace: 'if (true) {',
+    expect: 'test_kit_deploysEverything_andASecondRunSendsNothing',
+  },
+  {
+    id: 'testnet-copier-newer-price-only',
+    file: COPIER,
+    find: 'bool newerPrice = reading.updatedAt > heldPriceAt;',
+    replace: 'bool newerPrice = true;',
+    expect: 'test_copier_writesWhatIsNewer_andASecondRoundNothing',
+  },
+  {
+    id: 'testnet-copier-average-only-while-it-moves',
+    file: COPIER,
+    find: 'reading.averageAt >= heldAverageAt + AVERAGE_EVERY && reading.average != heldAverage',
+    replace: 'reading.averageAt >= heldAverageAt + AVERAGE_EVERY',
+    expect: 'test_copier_theAverageAtMostEveryFiveMinutes_andOnlyWhileItMoves',
+  },
+  {
+    id: 'testnet-copier-average-every-five-minutes',
+    file: COPIER,
+    find: 'reading.averageAt >= heldAverageAt + AVERAGE_EVERY && reading.average != heldAverage',
+    replace: 'reading.average != heldAverage',
+    expect: 'test_copier_theAverageAtMostEveryFiveMinutes_andOnlyWhileItMoves',
+  },
+  {
+    id: 'testnet-copier-jump',
+    file: COPIER,
+    find: 'if (move * 10_000 > before * allowed) {',
+    replace: 'if (false) {',
+    expect: 'test_copier_aJump_isRefused_andWidensWithTheGap',
+  },
+  {
+    id: 'testnet-copier-jump-cap',
+    file: COPIER,
+    find: 'if (allowed > MAX_GAP_JUMP_BPS) allowed = MAX_GAP_JUMP_BPS;',
+    replace: '',
+    expect: 'test_copier_aJump_isRefused_andWidensWithTheGap',
+  },
+  {
+    id: 'testnet-copier-range',
+    file: COPIER,
+    find: 'if (max != 0 && (v < min || v > max)) {',
+    replace: 'if (false) {',
+    expect: 'test_copier_outsideTheVaultsRange_isRefused',
+  },
+  {
+    id: 'testnet-copier-ahead',
+    file: COPIER,
+    find: 'if (stamp > block.timestamp + MAX_AHEAD) {',
+    replace: 'if (false) {',
+    expect: 'test_copier_aValueNotAboveZeroOrStampedAhead_isRefused',
+  },
+  {
+    id: 'testnet-copier-positive',
+    file: COPIER,
+    find: 'if (value <= 0) return string.concat(what, " is not above zero");',
+    replace: '',
+    expect: 'test_copier_aValueNotAboveZeroOrStampedAhead_isRefused',
+  },
+  {
+    id: 'testnet-copier-source-description',
+    file: COPIER,
+    find: 'if (keccak256(bytes(said)) != keccak256(bytes(a.sourceDescription))) {',
+    replace: 'if (false) {',
+    expect: 'test_copier_aSourceThatSaysItIsAnotherFeed_isRefused',
+  },
+  {
+    id: 'testnet-copier-average-by-time',
+    file: COPIER,
+    find: 'sum += uint256(answer) * (upTo - from);',
+    replace: 'sum += uint256(answer) * 1800;',
+    expect: 'test_copier_averageWeighsEachRoundByTheTimeItHeld',
+  },
+  {
+    id: 'testnet-copier-average-hour',
+    file: COPIER,
+    find: 'uint256 from = updatedAt > start ? updatedAt : start;',
+    replace: 'uint256 from = updatedAt;',
+    expect: 'test_copier_averageStopsAtTheHour',
+  },
+  {
+    id: 'testnet-copier-deploy-key',
+    file: COPIER,
+    find: 'require(signer != r.admin, DeployKey(signer));',
+    replace: '',
+    expect: 'test_copier_signsOnlyAsThePriceWriter',
+  },
+  {
+    id: 'testnet-copier-writer',
+    file: COPIER,
+    find: 'require(signer == r.priceWriter, NotTheWriter(signer, r.priceWriter));',
+    replace: '',
+    expect: 'test_copier_signsOnlyAsThePriceWriter',
+  },
+  {
+    id: 'testnet-copier-recentre-only-off',
+    file: COPIER,
+    find: 'if (drift <= market.driftBps()) continue;',
+    replace: '',
+    expect: 'test_copier_recentresThePools',
+  },
+  {
+    id: 'testnet-copier-refused-writes-nothing',
+    file: COPIER,
+    find: '_refuse(result, a.symbol, why);\n                continue;',
+    replace: '_refuse(result, a.symbol, why);',
+    expect: 'test_copier_aJump_isRefused_andWidensWithTheGap',
+  },
+  {
+    id: 'testnet-market-open-moves-an-empty-pool',
+    file: TEST_MARKET,
+    find: 'require(poolLiquidity(token) == 0, PoolOpenElsewhere(token, current, target));\n        poolManager.unlock(abi.encode(ACTION_SWAP, token, uint256(target)));',
+    replace: 'require(poolLiquidity(token) == 0, PoolOpenElsewhere(token, current, target));',
+    expect: 'test_market_anEmptyPoolOpenedElsewhere_isMovedToItsTestPrice',
+  },
+  {
+    id: 'testnet-kit-no-mainnet',
+    file: KIT,
+    find: 'require(block.chainid != 4663 && block.chainid != 8453, MainnetRefused(block.chainid));',
+    replace: '',
+    expect: 'test_kit_refusesAMainnet',
+  },
+  {
+    id: 'testnet-copier-no-mainnet',
+    file: COPIER,
+    find: 'require(block.chainid != 4663 && block.chainid != 8453, MainnetRefused(block.chainid));',
+    replace: '',
+    expect: 'test_copier_refusesToWriteOnAMainnet',
+  },
+  {
+    id: 'testnet-copier-source-is-mainnet',
+    file: COPIER,
+    find: 'require(chainId == 4663, SourceNotMainnet(chainId));',
+    replace: '',
+    expect: 'test_copier_readsOnlyFromRobinhoodMainnet',
+  },
+  {
+    id: 'testnet-copier-one-feed-refuses-one-token',
+    file: COPIER,
+    find: '(ok, ret) = address(feed).staticcall(abi.encodeCall(IAggregator.latestRoundData, ()));\n        if (!ok || ret.length < 160) {',
+    replace:
+      '(ok, ret) = address(feed).staticcall(abi.encodeCall(IAggregator.latestRoundData, ()));\n        if (false) {',
+    expect: 'test_copier_aFeedThatDoesNotAnswer_refusesOnlyItsToken',
+  },
 ];
 
 // Fewer fuzz and invariant runs than the default: a removed rule fails on the first runs or not at all.
@@ -2439,7 +2869,7 @@ function makeCopy(n, warm) {
   const project = join(dir, 'contracts');
   mkdirSync(project, { recursive: true });
   // In a kept copy the sources are replaced, so a rule left out by a run that was killed is put back.
-  for (const name of ['src', 'test', 'script', 'foundry.toml']) {
+  for (const name of ['src', 'testnet', 'test', 'script', 'foundry.toml']) {
     rmSync(join(project, name), { recursive: true, force: true });
     cpSync(join(root, name), join(project, name), { recursive: true });
   }

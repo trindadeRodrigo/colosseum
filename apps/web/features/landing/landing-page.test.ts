@@ -33,3 +33,18 @@ describe('the landing page', () => {
     expect(sent.to).toHaveBeenCalledWith('/goal');
   });
 });
+
+describe('the landing’s ground', () => {
+  it('is dark with no choice, and follows the system once “System” is chosen', async () => {
+    const { landingTheme } = await import('./theme');
+    const { THEME_COOKIE } = await import('../../i18n');
+    jar.values.clear();
+    expect(await landingTheme()).toBe('dark');
+    jar.values.set(THEME_COOKIE, 'auto');
+    expect(await landingTheme()).toBe('auto');
+    jar.values.set(THEME_COOKIE, 'light');
+    expect(await landingTheme()).toBe('light');
+    jar.values.set(THEME_COOKIE, 'nonsense');
+    expect(await landingTheme()).toBe('dark');
+  });
+});

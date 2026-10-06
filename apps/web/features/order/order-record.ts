@@ -12,11 +12,14 @@ import {
   type TRUST_STATUS,
   Verdict,
 } from '@colosseum/schemas';
+import { readTerms, type SharedTerms } from '../shared/terms';
 
 // What this browser keeps about an order, so the order screen survives a reload and a second tab:
 //
 //   placed     the plan it buys, as the plan screen showed it: its id and its lines, which the vault's
-//              targets are worked out from. Written when the order is made.
+//              targets are worked out from. Written when the order is made. For an order about a
+//              shared portfolio (a buy that follows one, a follow, a publish: WEB-4) the terms its
+//              screen showed take the plan's place (features/shared/terms.ts).
 //   approved   the order exactly as the review screen showed it when the person pressed the button,
 //              with the consents they ticked. From then on it is what every run of the order is handed:
 //              it is never read again from the API to decide what a step may do.
@@ -47,10 +50,14 @@ export type PlacedGoal = {
 export type OrderRecord = {
   orderId: string;
   userId: string;
+  /** The plan a buy buys. Empty for an order about a shared portfolio. */
   proposalId: string;
   chain: ChainId;
+  /** The amount typed for a buy. Zero for a follow or a publish, which deposit nothing. */
   amountUsd: number;
   lines: BasketLine[];
+  /** For an order about a shared portfolio: what its screen showed. */
+  terms?: SharedTerms;
   approved: ApprovedOrder | null;
   goal?: PlacedGoal | null;
 };
@@ -71,6 +78,10 @@ function readGoal(value: unknown): PlacedGoal | null {
   };
 }
 
+/** True when the order deposits cash: a buy of a plan or of a shared portfolio. */
+export const isBuy = (record: Pick<OrderRecord, 'terms'>): boolean =>
+  !record.terms || record.terms.kind === 'family';
+
 const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
 
 /** A record as it was written, or null when any part of it does not read. */
@@ -79,14 +90,19 @@ function readRecord(value: unknown): OrderRecord | null {
   const r = value as Record<string, unknown>;
   const chain = Chain.safeParse(r.chain);
   const lines = Line.array().safeParse(r.lines);
+  const terms = r.terms === undefined ? undefined : readTerms(r.terms);
+  if (terms === null) return null;
+  // A buy names its plan and an amount, or its portfolio and an amount; a follow and a publish neither.
+  const buy = !terms || terms.kind === 'family';
   if (
     !text(r.orderId) ||
     !text(r.userId) ||
-    !text(r.proposalId) ||
+    (!terms && !text(r.proposalId)) ||
+    typeof r.proposalId !== 'string' ||
     !chain.success ||
     !lines.success ||
     typeof r.amountUsd !== 'number' ||
-    !(r.amountUsd > 0)
+    (buy ? !(r.amountUsd > 0) : r.amountUsd !== 0)
   )
     return null;
   let approved: ApprovedOrder | null = null;
@@ -107,6 +123,7 @@ function readRecord(value: unknown): OrderRecord | null {
     chain: chain.data,
     amountUsd: r.amountUsd,
     lines: lines.data,
+    ...(terms ? { terms } : {}),
     approved,
     goal: readGoal(r.goal),
   };

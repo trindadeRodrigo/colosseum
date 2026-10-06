@@ -25,8 +25,11 @@ import { COMPACT_NAV_LABELS, type CompactNavLabels } from './labels';
 export type NavLink = {
   label: string;
   href: string;
-  /** The section in view. */
-  current?: boolean;
+  /**
+   * The link to where the person is: `page` for a page of the app, `true` for a section of a page in
+   * view (compact-nav.md, link current).
+   */
+  current?: 'page' | 'true' | false;
 };
 
 export type { CompactNavLabels } from './labels';
@@ -111,26 +114,32 @@ export function CompactNav({
     if (controlled !== undefined || compactAt === undefined || releaseAbove === undefined) return;
     const step = document.getElementById(compactAt);
     const before = document.getElementById(releaseAbove);
-    if (!step || !before || typeof IntersectionObserver === 'undefined') {
+    if (!step || !before) {
       setSeen(true);
       return;
     }
-    // The line sits 60% of the way down the viewport. The bar compacts once the top of step 03 is
-    // above it, and opens again only when the top of step 02 is back below it.
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const line = entry.rootBounds?.bottom ?? window.innerHeight * 0.6;
-          const above = entry.boundingClientRect.top < line;
-          if (entry.target === step && above) setSeen(true);
-          if (entry.target === before && !above) setSeen(false);
-        }
-      },
-      { rootMargin: '0px 0px -40% 0px' },
-    );
-    observer.observe(step);
-    observer.observe(before);
-    return () => observer.disconnect();
+    // The line sits 60% of the way down the viewport (compact-nav.md). The bar is compact once the top
+    // of step 03 is above it, and opens again only when the top of step 02 is back below it. It is
+    // decided from where the steps are now, on every scroll, so a jump past step 03 (End, a link to a
+    // section, a reload half way down) finds the bar compact too.
+    let frame = 0;
+    const decide = () => {
+      frame = 0;
+      const line = window.innerHeight * 0.6;
+      if (step.getBoundingClientRect().top < line) setSeen(true);
+      else if (before.getBoundingClientRect().top >= line) setSeen(false);
+    };
+    const schedule = () => {
+      if (frame === 0) frame = requestAnimationFrame(decide);
+    };
+    decide();
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    return () => {
+      if (frame !== 0) cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+    };
   }, [controlled, compactAt, releaseAbove]);
 
   useEffect(() => {
@@ -211,7 +220,7 @@ export function CompactNav({
             <A
               key={link.href}
               href={link.href}
-              aria-current={link.current ? 'true' : undefined}
+              aria-current={link.current || undefined}
               className={cn(LINK, 'max-[819px]:hidden')}
             >
               {link.label}
@@ -249,7 +258,7 @@ export function CompactNav({
             key={link.href}
             ref={index === 0 ? firstLink : undefined}
             href={link.href}
-            aria-current={link.current ? 'true' : undefined}
+            aria-current={link.current || undefined}
             onClick={() => setOpen(false)}
             className={LINK}
           >

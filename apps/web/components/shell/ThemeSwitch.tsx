@@ -12,7 +12,17 @@ import { remember } from './remember';
 
 const CHOICES: readonly ThemeChoice[] = ['auto', 'light', 'dark'];
 
-export function ThemeSwitch({ initial }: { initial: ThemeChoice }) {
+export function ThemeSwitch({
+  initial,
+  keepSystem = false,
+}: {
+  initial: ThemeChoice;
+  /**
+   * Stores "System" as a choice of its own, for a page whose default is not the system (the landing
+   * is dark unless the visitor chose): with nothing stored, that page would be dark again.
+   */
+  keepSystem?: boolean;
+}) {
   const t = useT();
   const [choice, setChoice] = useState(initial);
 
@@ -21,7 +31,7 @@ export function ThemeSwitch({ initial }: { initial: ThemeChoice }) {
     const root = document.documentElement;
     root.classList.remove(...Object.values(THEME_CLASS));
     root.classList.add(THEME_CLASS[next]);
-    remember(THEME_COOKIE, next === 'auto' ? null : next);
+    remember(THEME_COOKIE, next === 'auto' && !keepSystem ? null : next);
   }
 
   return (

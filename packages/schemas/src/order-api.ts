@@ -82,3 +82,22 @@ export const PortfolioResponse = z.object({
   disclaimer: z.string(),
 });
 export type PortfolioResponse = z.infer<typeof PortfolioResponse>;
+
+/** The path of GET /v1/vaults/{chain}/{address}: any vault, read from its chain. */
+export const VaultRouteParams = z.object({ chain: ChainId, address: z.string().min(1).max(64) });
+export type VaultRouteParams = z.infer<typeof VaultRouteParams>;
+
+/**
+ * GET /v1/vaults/{chain}/{address}: one vault as its chain has it, for anybody (DESIGN-VAULT section
+ * 11, the public vault page). The same figures as the portfolio's, read for this answer.
+ */
+export const VaultResponse = z.object({
+  chain: ChainId,
+  name: z.string(),
+  mode: ChainMode,
+  provenance: Provenance,
+  vault: VaultView.extend({ provenance: Provenance }),
+  prices: z.array(Price),
+  disclaimer: z.string(),
+});
+export type VaultResponse = z.infer<typeof VaultResponse>;

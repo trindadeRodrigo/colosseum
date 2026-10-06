@@ -74,15 +74,30 @@ describe('the frame', () => {
     const links = (root: HTMLElement) => [...find(root, 'nav').querySelectorAll(':scope > a')];
     // a visitor: no portfolio to show
     expect(links(host).map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      [en.products, '/shelf'],
       [en.invest, '/goal'],
       [en.resources, '/risk/methodology'],
       [en.analytics, '/risk'],
     ]);
     // the page a person is on is said, not only shown; the plan and the order are under Invest
-    expect(links(host).map((a) => a.getAttribute('aria-current'))).toEqual(['true', null, null]);
+    expect(links(host).map((a) => a.getAttribute('aria-current'))).toEqual([
+      null,
+      'page',
+      null,
+      null,
+    ]);
     location.pathname = '/plan/abc';
     expect(links(await shell()).map((a) => a.getAttribute('aria-current'))).toEqual([
-      'true',
+      null,
+      'page',
+      null,
+      null,
+    ]);
+    // a shared portfolio's page is under Products, the shelf
+    location.pathname = '/indexes/some-portfolio';
+    expect(links(await shell()).map((a) => a.getAttribute('aria-current'))).toEqual([
+      'page',
+      null,
       null,
       null,
     ]);
@@ -91,14 +106,16 @@ describe('the frame', () => {
     location.pathname = '/monitor';
     const signedIn = await shell();
     expect(links(signedIn).map((a) => [a.textContent, a.getAttribute('aria-current')])).toEqual([
+      [en.products, null],
       [en.invest, null],
-      [en.portfolio, 'true'],
+      [en.portfolio, 'page'],
       [en.resources, null],
       [en.analytics, null],
     ]);
     // on a phone the same links are in the sheet under the menu button
     const sheet = find(signedIn, '[data-ui="compact-nav-sheet"]');
     expect([...sheet.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual([
+      '/shelf',
       '/goal',
       '/monitor',
       '/risk/methodology',
@@ -324,7 +341,7 @@ describe('English or Portuguese', () => {
     const host = await shell('pt');
     expect(find(host, 'a[href="#content"]').textContent).toBe(pt.skip);
     expect([...find(host, 'nav').querySelectorAll(':scope > a')].map((a) => a.textContent)).toEqual(
-      [pt.invest, pt.resources, pt.analytics],
+      [pt.products, pt.invest, pt.resources, pt.analytics],
     );
     expect(find(host, 'header a[href="/sign-in"]').textContent).toBe(pt.signIn);
     expect(host.textContent).not.toMatch(/!/);

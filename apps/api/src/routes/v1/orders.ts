@@ -12,9 +12,11 @@ import {
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { Refusal } from '../../orders/errors';
+import { familyByNameKey, familyBySlug } from '../../orders/families';
 import { buildLeg, cancelLeg, type OrderDeps, refreshOrder, reportLeg } from '../../orders/legs';
 import { homeChain } from '../../orders/person';
-import { prepareIntent } from '../../orders/prepare';
+import { prepareOrder } from '../../orders/prepare';
+import { recordPublished } from '../../orders/shared';
 import {
   insertOrder,
   loadFamilies,
@@ -64,6 +66,29 @@ export async function ownOrder(
   return stored;
 }
 
+/**
+ * A publish order whose step has confirmed: its family and recipe are written as the chain has them
+ * (orders/shared.ts). Done on the read and on the report, the two routes a step settles through.
+ */
+async function published(
+  deps: OrderDeps,
+  req: FastifyRequest,
+  stored: StoredOrder,
+): Promise<StoredOrder> {
+  const { order, request } = stored;
+  if (
+    request.type === 'publish' &&
+    order.legs.some((l) => l.kind === 'publish' && l.status === 'confirmed')
+  )
+    await recordPublished(
+      { db: deps.db, chains: deps.chains, principal: signedIn(req) },
+      order,
+      request,
+      (message) => req.log.warn(message),
+    );
+  return stored;
+}
+
 // The Order schema's own checks (every leg is the order's, on a chain its owner has an address for)
 // run here, since the response schema is the plain object.
 const detail = (stored: StoredOrder): OrderDetail => ({
@@ -89,16 +114,22 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
       },
     },
     async (req) => {
-      const order = await prepareIntent(req.body, {
+      const { order, request } = await prepareOrder(req.body, {
         principal: signedIn(req),
         chains: deps.chains,
         loadProposal: (id) => loadProposal(deps.db, id),
         homeChain: () => homeChain(deps.db, signedIn(req)),
         loadFamilies: (chain) => loadFamilies(deps.db, chain),
+        shared: {
+          db: deps.db,
+          bySlug: (slug) => familyBySlug(deps.db, slug),
+          byNameKey: (key) => familyByNameKey(deps.db, key),
+        },
         now: deps.now().toISOString(),
       });
-      await insertOrder(deps.db, Order.parse(order), req.body);
-      return detail({ order, request: req.body, attempts: [] });
+      // Stored as the order holds to it: a follow's version, a publish's family id.
+      await insertOrder(deps.db, Order.parse(order), request);
+      return detail({ order, request, attempts: [] });
     },
   );
 
@@ -115,7 +146,14 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
         response: { 200: OrderDetail, default: OrderError },
       },
     },
-    async (req) => detail(await refreshOrder(deps, await ownOrder(deps, req, req.params.id))),
+    async (req) =>
+      detail(
+        await published(
+          deps,
+          req,
+          await refreshOrder(deps, await ownOrder(deps, req, req.params.id)),
+        ),
+      ),
   );
 
   f.post(
@@ -150,7 +188,16 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
     },
     async (req) =>
       detail(
-        await reportLeg(deps, await ownOrder(deps, req, req.params.id), req.params.legId, req.body),
+        await published(
+          deps,
+          req,
+          await reportLeg(
+            deps,
+            await ownOrder(deps, req, req.params.id),
+            req.params.legId,
+            req.body,
+          ),
+        ),
       ),
   );
 

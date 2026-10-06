@@ -31,7 +31,7 @@ export function Landing({ lang, theme }: { lang: Lang; theme: ThemeChoice }) {
           <p className="font-mono text-[12px] text-muted-foreground">tenonfi · {t.foot}</p>
           <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
             <LanguageSwitch />
-            <ThemeSwitch initial={theme} />
+            <ThemeSwitch initial={theme} keepSystem />
           </div>
         </div>
       </footer>

@@ -177,6 +177,15 @@ describe('the plan screen', () => {
     expect(pin.getAttribute('data-state')).toBe('mock');
     expect(chart.textContent).toContain(en.plan.chart.note);
     await unmountAll();
+    // an income plan pays its yield out each month: no balance to draw, what it pays in all instead
+    const income = planOn();
+    income.proposal.card = { ...income.proposal.card, cashFlow: 'monthly' };
+    rememberPlan(income);
+    const paid = find(await plan(), '[data-ui="plan-chart"]');
+    expect(paid.getAttribute('data-kind')).toBe('paid');
+    expect(paid.querySelector('svg[role="img"]')).toBeNull();
+    expect(find(paid, '[data-ui="figure"]').textContent).toContain('$1,200 – $2,400');
+    await unmountAll();
     for (const change of [
       (p: ReturnType<typeof planOn>) => {
         p.proposal.flags = ['yield_not_read'];

@@ -94,5 +94,5 @@ Same container and button; `<input type="email">` instead of a textarea; fixed o
 | Round the composer container and its send button, nothing else | Round chips, the panel around the composer, the constraint-sheet fields, or other buttons "to match" |
 | Keep the 1px member border so the box is seen | Use a shadow, glow or blur to lift it |
 | Put the focus ring on the container | Ring the borderless textarea inside it |
-| Use `ArrowUp` (add it to the icon registry) | Use `Sparkles`, `Wand` or `Send` paper-plane: the LLM only parses |
+| Use `ArrowUp` (add it to the icon registry) | Use `Sparkles`, `Wand` or `Send` paper-plane: the LLM reads and asks, it does not decide |
 | Keep the typed text after an error | Clear the box or blame the person ("invalid input") |

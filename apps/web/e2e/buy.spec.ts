@@ -10,7 +10,7 @@ import { dictionary } from '../i18n';
 // light and in dark, and for no sideways scroll.
 
 const en = dictionary('en');
-const STUB = 'http://localhost:3901';
+const STUB = `http://localhost:${process.env.E2E_API_PORT ?? 3901}`;
 /** Screenshots are taken only for a run that names a folder for them (SCREENSHOTS_DIR). */
 const SHOTS = process.env.SCREENSHOTS_DIR;
 const shot = (name: string) => `${SHOTS}/${name}.png`;
@@ -23,14 +23,17 @@ const REFERENCE = new URL('../../../.design/branding/working-brand/patterns/', i
  * screenshot of each theme at 375 px and at 1280 px to set beside the guide's.
  */
 async function check(page: Page, name: string) {
+  // Colours ease from one theme to the other: with easing off, axe reads the theme it was given.
+  await page.addStyleTag({
+    content: '*,*::before,*::after{transition:none!important;animation:none!important}',
+  });
   for (const theme of ['light', 'dark'] as const) {
     await page.evaluate((t) => {
       const html = document.documentElement;
       html.classList.remove('light', 'dark', 'tf-auto');
       html.classList.add(t);
     }, theme);
-    // Colours ease from one theme to the other: axe reads them once they have.
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(100);
     const result = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
       .analyze();
@@ -63,6 +66,13 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.landing.stage.title);
   await expect(page.locator('article[data-ui="showcase-case"]')).toHaveCount(2);
+  // a jump to the end of the page, over the stage, finds his bar compact, with its action
+  await page.keyboard.press('End');
+  await expect(page.locator('[data-ui="compact-nav"]')).toHaveAttribute('data-compact', 'true');
+  await expect(
+    page.locator('[data-ui="compact-nav"]').getByRole('link', { name: en.landing.nav.cta }),
+  ).toBeVisible();
+  await page.keyboard.press('Home');
   await check(page, 'landing');
   const box = page.locator('#simulate textarea');
   await box.fill('Grow $2,000 for ten years, high risk');

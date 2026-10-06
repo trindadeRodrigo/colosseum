@@ -14,7 +14,7 @@ import { usePortfolio } from './use-portfolio';
 import { useVaultHistory } from './use-vault-history';
 import { VaultGoalCard } from './VaultGoalCard';
 import { PlanParts, VaultPanel } from './VaultPanel';
-import { goalOfVault } from './vault-goal';
+import { goalOfVault, putInto } from './vault-goal';
 
 // The monitor (/monitor): the person's vaults on the one chain their plan lives on, read from the API
 // each time the page opens (GET /v1/portfolio). One serif line, then the chain, then a panel per vault,
@@ -113,6 +113,7 @@ export function MonitorScreen() {
                       chain={outcome.chain}
                       vault={vault}
                       joined={goalOfVault(vault, history.records)}
+                      putIn={putInto(vault, history.records, history.deposited)}
                     />
                     <PlanParts vault={vault} />
                   </div>

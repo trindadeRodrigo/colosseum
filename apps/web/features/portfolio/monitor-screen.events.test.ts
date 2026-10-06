@@ -10,7 +10,7 @@ import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
 import { keepOrder, type OrderRecord } from '../order/order-record';
 import { basketOfPlan } from '../order/readiness';
-import { doneOrder, ORDER_ID, PLAN_ID, planOn, recordOf } from '../order/test/fixtures';
+import { doneOrder, ORDER_ID, orderOn, PLAN_ID, planOn, recordOf } from '../order/test/fixtures';
 import { EMBEDDED, fakePort, json, PHANTOM, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
 import { MonitorScreen } from './MonitorScreen';
@@ -468,10 +468,15 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     return json(portfolioBody(chainOf([vault({ basketId: basketOfPlan(PLAN_ID) })])));
   };
 
-  it('opens with the goal its plan was built for, its date, its value against what was put in, and no made-up status', async () => {
-    api({ person: onSolana, portfolio: () => bought() });
+  /** The order, as the API says it stands: signed and confirmed, or not signed yet. */
+  const orders = (done: boolean) => (path: string) =>
+    path === `/v1/orders/${ORDER_ID}` ? json(done ? doneOrder() : orderOn()) : null;
+
+  it('opens with the goal its plan was built for, its date, its value, and no made-up status', async () => {
+    api({ person: onSolana, portfolio: () => bought(), more: orders(true) });
     signIn();
     const host = await screen();
+    await settle();
     const card = find(host, '[data-ui="goal-card"]');
     expect(find(card, 'h3').textContent).toBe('Grow $40,000 over 36 months.');
     // a growth goal has no status from the engine: the card says so, with the goal's date
@@ -480,6 +485,7 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
       `${en.portfolio.goalCard.noStatus} · October 2029`,
     );
     expect(find(card, '[data-ui="figure"]').textContent).toContain('$1,040.00');
+    // what went in: the order whose deposit is confirmed on chain
     expect(card.textContent).toContain(
       `${en.portfolio.goalCard.putIn('$40,000')} · up to $40,000 within a day`,
     );
@@ -496,26 +502,48 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
 
-  it('says the engine’s verdict for an income goal, in a word, a shape and a colour', async () => {
-    const plan = planOn();
-    api({
-      person: onSolana,
-      portfolio: () =>
-        bought({
-          goal: {
-            sheet: { ...plan.proposal.sheet, goal: 'income' },
-            card: plan.proposal.card,
-            verdict: { met: true, gapUsdMonthly: 0, ways: [] },
-            placedAt: '2026-10-01T00:00:00Z',
-          },
-        }),
-    });
+  it('counts nothing as put in from an order kept but not confirmed on chain', async () => {
+    api({ person: onSolana, portfolio: () => bought(), more: orders(false) });
     signIn();
     const host = await screen();
+    await settle();
+    const card = find(host, '[data-ui="goal-card"]');
+    expect(card.textContent).not.toContain(en.portfolio.goalCard.putIn('$40,000'));
+    expect(card.textContent).toContain('up to $40,000 within a day');
+  });
+
+  const income = (amountUsd: number) => {
+    const plan = planOn();
+    return bought({
+      amountUsd,
+      goal: {
+        sheet: { ...plan.proposal.sheet, goal: 'income' },
+        card: plan.proposal.card,
+        verdict: { met: true, gapUsdMonthly: 0, ways: [] },
+        placedAt: '2026-10-01T00:00:00Z',
+      },
+    });
+  };
+
+  it('says an income plan’s verdict only as the verdict when it was built, and only for its own amount', async () => {
+    api({ person: onSolana, portfolio: () => income(40_000), more: orders(true) });
+    signIn();
+    const host = await screen();
+    await settle();
     const status = find(find(host, '[data-ui="goal-card"]'), '[data-ui="status"]');
     expect(status.getAttribute('data-status')).toBe('on-track');
-    expect(status.textContent).toBe(`${en.portfolio.goalCard.onTrack} · October 2029`);
+    expect(status.textContent).toBe(`${en.portfolio.goalCard.builtMet} · October 2029`);
     expect(status.querySelector('svg')).not.toBeNull();
+  });
+
+  it('says no status when what went in is not the amount the plan was built for', async () => {
+    api({ person: onSolana, portfolio: () => income(50), more: orders(true) });
+    signIn();
+    const host = await screen();
+    await settle();
+    const card = find(host, '[data-ui="goal-card"]');
+    expect(card.querySelector('[data-ui="status"]')).toBeNull();
+    expect(card.textContent).toContain(en.portfolio.goalCard.noStatus);
   });
 
   it('shows what is known of a vault this browser cannot join to a goal, and invents no target', async () => {

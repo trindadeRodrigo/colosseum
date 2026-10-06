@@ -55,6 +55,24 @@ export function PlanChart({
     TOP + (H - TOP - BOTTOM) - ((v - min) / (max - min)) * (H - TOP - BOTTOM);
   const grid = [amountUsd, (amountUsd + high) / 2, high];
 
+  // An income plan pays its yield out each month, so its balance does not grow: there is no balance
+  // to draw. What it pays over the term is said instead, on the same pin.
+  if (card.cashFlow === 'monthly')
+    return (
+      <figure data-ui="plan-chart" data-kind="paid" className="m-0 flex flex-col gap-2">
+        <figcaption className="flex flex-wrap items-baseline gap-x-2 text-body-sm">
+          <span className="text-muted-foreground">{words.paid(months)}:</span>
+          <ProvenancePin
+            value={`${money(low - amountUsd)} – ${money(high - amountUsd)}`}
+            obs={yieldObs}
+            labels={t.pin}
+          />
+          <span className="text-caption text-muted-foreground">{words.projected}</span>
+        </figcaption>
+        <p className="text-caption text-muted-foreground">{words.note}</p>
+      </figure>
+    );
+
   return (
     <figure data-ui="plan-chart" className="m-0 flex flex-col gap-2">
       <section
