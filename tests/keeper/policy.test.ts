@@ -42,4 +42,25 @@ describe("the keeper's choice of trade", () => {
       'solana:qqqx: Cooldown',
     ]);
   });
+
+  it('never buys an asset taken off the list, sells it, and lets the next trade have its turn', () => {
+    const ctx = context(
+      position('robinhood:tmeta', { listed: false } as Partial<KeeperPosition>),
+      position('robinhood:tspy', { listed: true } as Partial<KeeperPosition>),
+    );
+    const sell = (asset: string): Trade => ({ sell: asset, buy: cash, amountInRaw: '1000000' });
+    const { trade, skipped } = nextTrade(
+      [buy('robinhood:tmeta'), buy('robinhood:tspy')],
+      ctx,
+      cash,
+      always,
+    );
+    expect(trade?.buy).toBe('robinhood:tspy');
+    expect(skipped).toEqual([
+      'robinhood:tmeta: taken off the list, so it is sold and never bought',
+    ]);
+    expect(nextTrade([sell('robinhood:tmeta')], ctx, cash, always).trade?.sell).toBe(
+      'robinhood:tmeta',
+    );
+  });
 });

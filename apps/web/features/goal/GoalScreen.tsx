@@ -2,18 +2,21 @@
 import type { BasketSheet } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useEffect, useId, useRef, useState } from 'react';
+import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
+import { ChainBadge } from '../../components/ui/ChainBadge';
 import { Composer } from '../../components/ui/Composer';
 import { ConstraintSheet, type SheetFact } from '../../components/ui/ConstraintSheet';
 import { cn } from '../../components/ui/cn';
 import { GoalCard } from '../../components/ui/GoalCard';
+import { Skeleton, SkeletonText } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
-import { ChainName } from '../account/ChainName';
+import { ChainBadgeMarked } from '../account/ChainName';
 import { rememberChoice, rememberPlan } from '../order/plan-store';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { type BuildOutcome, buildPlan, planProvenance } from './build-plan';
@@ -250,7 +253,11 @@ export function GoalScreen() {
       ? {
           label: t.goal.chain.label,
           value: (
-            <ChainName name={chainName} provenance={network?.provenance ?? 'mock'} labels={marks} />
+            <ChainBadgeMarked
+              chain={account.chain}
+              provenance={network?.provenance ?? 'mock'}
+              labels={marks}
+            />
           ),
           note: t.goal.chain.note,
         }
@@ -301,6 +308,7 @@ export function GoalScreen() {
       ? [t.goal.blocked.chainNotChosen]
       : []),
     ...(build.kind === 'refused' ? [t.goal.blocked.refused] : []),
+    ...(build.kind === 'currency' ? [t.goal.blocked.currency] : []),
   ];
 
   const readSentence =
@@ -376,6 +384,7 @@ export function GoalScreen() {
             sentence={goalSentence(sheet.fields, t, lang) ?? t.goal.card.unfinished}
             note={fits ? t.goal.card.draftSet : t.goal.card.draftOpen}
             action={{ label: t.goal.card.edit, href: `#${LIMITS}` }}
+            chain={chain ?? undefined}
           />
         ) : (
           <header className="flex flex-col gap-3 lg:col-span-5">
@@ -478,6 +487,23 @@ export function GoalScreen() {
       ) : null}
 
       <div aria-live="polite" className="flex flex-col gap-4">
+        {/* While the plan is built: the card it comes in, in its own shape, and the wait in words. The
+            hosted API may be waking; after a minute the wait gives up and asks to build again. */}
+        {solving && (
+          <Card as="section" aria-label={t.goal.sheet.building}>
+            <CardWait
+              label={t.goal.sheet.building}
+              skeleton={
+                <span aria-hidden="true" className="flex flex-col gap-3">
+                  <Skeleton className="h-6 w-1/2" />
+                  <SkeletonText lines={2} />
+                  <Skeleton className="h-4 w-32" />
+                </span>
+              }
+              onRetry={forget}
+            />
+          </Card>
+        )}
         {build.kind === 'unavailable' && (
           <Card as="section" aria-labelledby={outcomeId}>
             <CardHeader title={t.goal.built.unavailable.title} level={2} id={outcomeId} />
@@ -498,7 +524,12 @@ export function GoalScreen() {
               note: planLabel === 'sandbox' ? t.shell.testNetwork : undefined,
             }}
           >
-            <CardHeader title={t.goal.built.done.title} level={2} id={outcomeId} />
+            <CardHeader
+              title={t.goal.built.done.title}
+              level={2}
+              id={outcomeId}
+              meta={planChain ? <ChainBadge chain={planChain} /> : undefined}
+            />
             <CardBody>
               <p className="max-w-(--tf-measure-body) text-body">
                 {t.goal.built.done.body(plans.length, planChainName)}

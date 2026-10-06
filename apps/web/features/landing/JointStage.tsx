@@ -25,6 +25,14 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 /** The scene's module, fetched only when it is wanted and never with the page (a seam for its test). */
 export const sceneModule = { load: () => import('./joint-scene') };
 
+/** Under this width the joint stands above the copy (hero-3d.html, its 820px rule). */
+const PHONE = 820;
+/**
+ * On a phone, how far down the screen a line of copy's middle must be to be shown: the joint takes
+ * the top third (at most 28% of the screen at 360 to 430 wide), and the copy is shown below it.
+ */
+export const LOW_LINE = 0.42;
+
 /** The progress past which the stills show the joint seated: the pin goes in from here. */
 const SEATED = 0.86;
 
@@ -41,6 +49,9 @@ export function JointStage() {
   /** Whether the reader has reached step 03: the stills cross over to the seated one there. */
   const [seated, setSeated] = useState(false);
   const [on, setOn] = useState<number | null>(null);
+  /** On a phone: whether the hero's copy is still in the lower part of the screen, under the joint. */
+  const [heroLow, setHeroLow] = useState(true);
+  const heroCopy = useRef<HTMLDivElement>(null);
   /** What the pinned layer shows: nothing yet, the 3D scene, or the stills of its drawing. */
   const [mode, setMode] = useState<'pending' | '3d' | 'still'>('pending');
 
@@ -57,13 +68,19 @@ export function JointStage() {
         setSeated(p >= SEATED);
         scene.current?.setProgress(p);
       }
+      // On a phone the joint stands at the top and the copy at the foot (hero-3d.html, its 820px
+      // rule): a line of copy is shown only while it is low enough to stay clear of the joint, and
+      // fades as it rises toward it.
+      const low = window.innerWidth < PHONE ? LOW_LINE : 0.15;
       const middle = STEP_IDS.findIndex((id) => {
-        const r = document.getElementById(id)?.getBoundingClientRect();
+        const r = document.getElementById(id)?.querySelector('[data-on]')?.getBoundingClientRect();
         if (!r) return false;
         const mid = r.top + r.height / 2;
-        return mid > vh * 0.15 && mid < vh * 0.85;
+        return mid > vh * low && mid < vh * 0.85;
       });
       setOn(middle < 0 ? null : middle);
+      const hero = heroCopy.current?.getBoundingClientRect();
+      setHeroLow(!hero || hero.top + hero.height / 2 > vh * low);
     };
     const schedule = () => {
       if (frame === 0) frame = requestAnimationFrame(read);
@@ -186,7 +203,17 @@ export function JointStage() {
       <div className="relative z-[1] mx-auto w-full max-w-page px-[clamp(16px,4vw,56px)]">
         <div className="flex min-h-svh items-center max-[819px]:items-end max-[819px]:pb-[10vh] motion-reduce:min-h-0 motion-reduce:items-start motion-reduce:py-28">
           <div className="grid w-full items-center gap-10 min-[820px]:grid-cols-[minmax(0,560px)_1fr]">
-            <div className="max-w-[560px] min-w-0 pt-18 max-[819px]:-mx-[clamp(16px,4vw,56px)] max-[819px]:bg-background max-[819px]:px-[clamp(16px,4vw,56px)] max-[819px]:py-6 max-[819px]:pt-10 motion-reduce:pt-0">
+            <div
+              ref={heroCopy}
+              data-low={heroLow}
+              data-under-bar
+              className={cn(
+                'max-w-[560px] min-w-0 pt-18 max-[819px]:-mx-[clamp(16px,4vw,56px)] max-[819px]:bg-background max-[819px]:px-[clamp(16px,4vw,56px)] max-[819px]:py-6 max-[819px]:pt-10 motion-reduce:pt-0',
+                // on a phone, gone before its plate can rise into the joint
+                'transition-opacity duration-[480ms] ease-seat motion-reduce:transition-none',
+                !heroLow && 'max-[819px]:opacity-0 motion-reduce:opacity-100',
+              )}
+            >
               <h1 className="font-display text-[clamp(2.4rem,1.6rem+2.6vw,4rem)]/[1.12] font-normal tracking-[-0.015em] [overflow-wrap:break-word]">
                 {t.title}
               </h1>
@@ -217,9 +244,12 @@ export function JointStage() {
           >
             <div
               data-on={on === i}
+              data-under-bar
               className={cn(
-                'max-w-[420px] transition-[color,transform] duration-[480ms] ease-seat motion-reduce:transition-none max-[819px]:-mx-[clamp(16px,4vw,56px)] max-[819px]:bg-background max-[819px]:px-[clamp(16px,4vw,56px)] max-[819px]:py-6',
-                on === i ? 'translate-y-0' : 'translate-y-3 motion-reduce:translate-y-0',
+                'max-w-[420px] transition-[color,transform,opacity] duration-[480ms] ease-seat motion-reduce:transition-none max-[819px]:-mx-[clamp(16px,4vw,56px)] max-[819px]:bg-background max-[819px]:px-[clamp(16px,4vw,56px)] max-[819px]:py-6',
+                on === i
+                  ? 'translate-y-0'
+                  : 'translate-y-3 motion-reduce:translate-y-0 max-[819px]:opacity-0 motion-reduce:opacity-100',
               )}
             >
               <p className="font-mono text-[12px] font-medium tracking-[0.04em] text-primary">
@@ -250,7 +280,7 @@ export function JointStage() {
  * on the processor, a frame in seconds, and holds up every page of the browser while it does: there
  * the stills stand in, as they do with no WebGL at all.
  */
-function hasWebGL(): boolean {
+export function hasWebGL(): boolean {
   try {
     const probe = document.createElement('canvas');
     const gl = probe.getContext('webgl2') ?? probe.getContext('webgl');

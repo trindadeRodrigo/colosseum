@@ -10,7 +10,7 @@ export const pt: Dictionary = {
   shell: {
     skip: 'Pular para o conteúdo',
     nav: 'Principal',
-    home: 'tenonfi, seu objetivo',
+    home: 'tenonfi, início',
     menu: 'Menu',
     invest: 'Investir',
     portfolio: 'Portfólio',
@@ -32,6 +32,11 @@ export const pt: Dictionary = {
     testNetwork: 'rede de teste',
     slowDown: 'Nosso servidor pediu para eu ir mais devagar. Espere um minuto e tente de novo.',
     mockAnnounce: ': dados de exemplo, não são reais',
+    wait: {
+      slow: 'Acordando o serviço de dados: da primeira vez isso pode levar até um minuto.',
+      over: 'Nosso servidor não respondeu a tempo, então nada aparece aqui ainda.',
+      retry: 'Tentar de novo',
+    },
   },
 
   signIn: {
@@ -104,6 +109,7 @@ export const pt: Dictionary = {
 
   chain: {
     names: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
+    explorers: { solana: 'Solscan', robinhood: 'explorador da Robinhood', base: 'Basescan' },
     pick: {
       title: 'Escolha a rede onde seu plano vai ficar',
       asked: {
@@ -274,6 +280,8 @@ export const pt: Dictionary = {
       chainUnknown:
         'Ainda não sei em qual rede seu plano fica, então não consigo montar para ela. Pergunte de novo, acima.',
       refused: 'Nosso servidor não aceitou esses limites. Confira cada campo e tente de novo.',
+      currency:
+        'Os planos são em dólares por enquanto: o valor e cada saque. Informe-os em dólares e monte de novo.',
       signInAgain:
         'Nosso servidor não reconhece mais o seu login, então o plano não foi montado. Saia e entre de novo.',
       noIdentity:
@@ -380,6 +388,15 @@ export const pt: Dictionary = {
     empty: (chain: string) =>
       `Você ainda não tem cofre na ${chain}. Um cofre é criado quando você compra seu primeiro plano.`,
     startGoal: 'Comece pelo seu objetivo',
+    group: {
+      worth: (vaults: number, chain: string) =>
+        vaults > 1 ? `Seus ${vaults} cofres na ${chain} valem` : `Seu cofre na ${chain} vale`,
+      method: (vaults: number, chain: string) =>
+        `seus ${vaults} cofres na ${chain}, cada um avaliado como mostrado, somados`,
+      across: (chains: number) =>
+        chains === 2 ? 'Nas duas redes, juntas' : `Nas ${chains} redes, juntas`,
+      acrossMethod: (chains: number) => `os totais das ${chains} redes acima, somados`,
+    },
     vault: {
       title: 'Seu cofre',
       address: 'Endereço do cofre',
@@ -434,6 +451,7 @@ export const pt: Dictionary = {
       title: 'Seu portfólio',
       worth: (chain: string) => `Seu cofre na ${chain} vale`,
       many: (vaults: number, chain: string) => `Você tem ${vaults} cofres na ${chain}.`,
+      manyChains: (vaults: number, chains: string) => `Você tem ${vaults} cofres, na ${chains}.`,
       see: 'Ver seu portfólio',
     },
   },
@@ -791,7 +809,7 @@ export const pt: Dictionary = {
         version: (n: number) => `versão ${n}`,
         waiting: (n: number) => `versão ${n} aguarda`,
         open: (name: string) => `Abrir ${name}`,
-        on: (chains: string) => `na ${chains}`,
+        on: 'na',
       },
       failure: {
         unreachable:
@@ -1097,7 +1115,6 @@ export const pt: Dictionary = {
       waiting: 'Aguardando…',
       settled: 'Concluído',
     },
-    explorer: 'explorador',
     signature: 'assinatura',
     notRetried: '(sem nova tentativa)',
     link: {
@@ -1147,6 +1164,8 @@ export const pt: Dictionary = {
       lookAgain: 'Olhar de novo',
       error:
         'Nosso servidor recusou ou não respondeu, então a ordem parou. O que foi assinado fica guardado. Tente de novo.',
+      planGone:
+        'O plano desta ordem não está mais guardado: um plano vindo de um link que ninguém compra é apagado depois de alguns dias. A ordem parou, e o que foi assinado fica guardado. Monte o plano de novo a partir do seu objetivo.',
       tryAgain: 'Tentar de novo',
       elsewhere:
         'Esta ordem está rodando em outra aba deste navegador. Acompanhe por lá; nada foi feito aqui.',
@@ -1160,7 +1179,7 @@ export const pt: Dictionary = {
         'no-lock':
           'Este navegador não consegue manter uma ordem em uma só aba, então não vou assinar aqui. Abra a página num navegador atual.',
         'plan-mismatch':
-          'O plano guardado para esta ordem é de outra rede, então nada foi assinado. Crie uma nova ordem.',
+          'O plano guardado para esta ordem não confere com ela (outra rede ou outro cofre), então nada foi assinado. Crie uma nova ordem.',
       },
       crashed: 'Algo parou a ordem antes do fim. O que foi assinado fica guardado. Tente de novo.',
       newOrder: 'Criar uma nova ordem',
@@ -1180,6 +1199,7 @@ export const pt: Dictionary = {
       resources: 'Recursos',
       analytics: 'Análises',
       cta: 'Entrar',
+      openApp: 'Abrir o app',
     },
     stage: {
       label: 'Como a tenonfi encaixa',

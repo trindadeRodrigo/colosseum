@@ -95,6 +95,7 @@ function toOrder(r: OrderRow, legRows: LegRow[]): Order {
     },
     summary: r.summary,
     ...(deposit ? { depositRaw: deposit } : {}),
+    ...(r.basketId ? { basketId: r.basketId } : {}),
     legs: legRows
       .map(toLeg)
       .sort((a, b) => chainOrder(a.chain) - chainOrder(b.chain) || a.seq - b.seq),
@@ -120,6 +121,7 @@ export async function insertOrder(db: Db, order: Order, request: IntentRequest):
       ownerEvm: order.owner.evm ?? null,
       summary: order.summary,
       request,
+      basketId: order.basketId ?? null,
       warnings: order.warnings,
       needsConsent: order.needsConsent,
       fees: order.fees,
@@ -191,7 +193,7 @@ export async function countLinkedSince(db: Db, since: Date): Promise<number> {
   const [row] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(proposals)
-    .where(and(eq(proposals.fromLink, true), gte(proposals.createdAt, since)));
+    .where(and(sql`${proposals.fromLink}`, gte(proposals.createdAt, since)));
   return row?.n ?? 0;
 }
 
@@ -204,7 +206,8 @@ export async function forgetUnboughtLinked(db: Db, before: Date): Promise<number
     .delete(proposals)
     .where(
       and(
-        eq(proposals.fromLink, true),
+        // Written as the column itself, not `= $1`, so the planner can always use the partial index.
+        sql`${proposals.fromLink}`,
         lt(proposals.createdAt, before),
         sql`not exists (select 1 from ${orders} where ${orders.request}->>'proposalId' = ${proposals.id}::text)`,
         sql`not exists (select 1 from ${baskets} where ${baskets.proposalId} = ${proposals.id})`,
@@ -212,6 +215,15 @@ export async function forgetUnboughtLinked(db: Db, before: Date): Promise<number
     )
     .returning({ id: proposals.id });
   return gone.length;
+}
+
+/** True when a plan with this id is stored, without reading it. */
+export async function proposalExists(db: Db, id: string): Promise<boolean> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return false;
+  const rows = await db.execute(
+    sql`select 1 from ${proposals} where ${proposals.id} = ${id} limit 1`,
+  );
+  return rows.length > 0;
 }
 
 /** True when the plan with this id was made from a link (`from_link`, gate `AGENT-LINK`). */

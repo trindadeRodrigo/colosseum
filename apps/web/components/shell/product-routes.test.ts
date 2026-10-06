@@ -96,21 +96,28 @@ const older = routes.filter((file) => file.startsWith('app/(structurer)/'));
 describe('the routes of the app', () => {
   it('are the product’s, under one layout, and the pages not yet rebuilt, under theirs', () => {
     expect(product.sort()).toEqual([
+      'app/(app)/analytics/[page]/loading.tsx',
       'app/(app)/analytics/[page]/page.tsx',
       'app/(app)/analytics/layout.tsx',
       'app/(app)/analytics/methodology/page.tsx',
       'app/(app)/analytics/page.tsx',
       'app/(app)/goal/page.tsx',
+      'app/(app)/indexes/[slug]/buy/loading.tsx',
       'app/(app)/indexes/[slug]/buy/page.tsx',
+      'app/(app)/indexes/[slug]/loading.tsx',
       'app/(app)/indexes/[slug]/page.tsx',
       'app/(app)/layout.tsx',
       'app/(app)/monitor/page.tsx',
+      'app/(app)/orders/[id]/loading.tsx',
       'app/(app)/orders/[id]/page.tsx',
+      'app/(app)/plan/[id]/buy/loading.tsx',
       'app/(app)/plan/[id]/buy/page.tsx',
+      'app/(app)/plan/[id]/loading.tsx',
       'app/(app)/plan/[id]/page.tsx',
       'app/(app)/publish/page.tsx',
       'app/(app)/shelf/page.tsx',
       'app/(app)/sign-in/page.tsx',
+      'app/(app)/vaults/[chain]/[address]/loading.tsx',
       'app/(app)/vaults/[chain]/[address]/page.tsx',
       'app/(embed)/embed/[chain]/[address]/page.tsx',
       'app/(embed)/embed/page.tsx',
@@ -605,8 +612,9 @@ describe('rule 3: no screen can reach a key', () => {
       'deployments,',
       // a plan's terms, or a shared portfolio's (planTermsOf, WEB-4)
       'plan: plan ?? {',
-      // a plan's number, the buyer's own for a plan made from a link (gate AGENT-LINK)
-      'basketId: basketOfPlan(input.plan.proposalId, input.plan.buyer ?? null)',
+      // a plan's number: the order's, held to one this app works out (gate AGENT-LINK)
+      'const basketId = input.terms ? null : planNumberOf(order.basketId, input.plan);',
+      "basketId: basketId ?? '',",
       'consents: input.consents',
       'signed: localSigned',
       'chainRead: chainReadFor(',

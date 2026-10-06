@@ -17,6 +17,7 @@ import {
 } from '../../components/ui/chart';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { dictionary, type Lang, LOCALE } from '../../i18n';
+import { useLitPart } from './CaseParts';
 import { GROWTH, SAMPLE, TRIP } from './sample';
 
 // The two charts of his showcase (goal-showcase-case.md, part 5), drawn as SVG from the sample series:
@@ -154,7 +155,10 @@ export function TripChart({
     label: parts[i] ?? '',
     color: `var(--chart-${leg.chart})`,
   }));
-  const [focus, setFocus] = useState<string | null>(null);
+  const [own, setFocus] = useState<string | null>(null);
+  // the part lit on the card (a layer of the plan's joint, a row of its parts) lights its bars too
+  const { lit } = useLitPart();
+  const focus = own ?? (lit === null ? null : `part-${lit}`);
   const cursor = useChartCursor(TRIP.balances.length, (x, w) =>
     nearestIndex(
       (x / (w || 1)) * W,

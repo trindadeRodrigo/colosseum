@@ -171,6 +171,16 @@ export const OrderBase = z.object({
    * for an order that deposits nothing.
    */
   depositRaw: RawAmount.optional(),
+  /**
+   * For a buy: the vault's number on chain, which the vault's address is derived from. A plan's, a
+   * shared portfolio's, or, for a plan made from a link, the buyer's own (gate `AGENT-LINK`). Stored
+   * with the order when it is made, so a step is built for it whatever happens to the plan after. A
+   * client holds it to a number it works out itself. Absent on orders made before it was stored.
+   */
+  basketId: z
+    .string()
+    .regex(/^\d{1,20}$/)
+    .optional(),
   legs: z.array(Leg),
   warnings: z.array(z.object({ code: z.string(), text: z.string() })),
   /** Granted only on the approval page. */
@@ -319,6 +329,10 @@ export const OrderErrorCode = z.enum([
   'US_PERSON',
   'RATE_LIMITED',
   'CHAIN_UNAVAILABLE',
+  /** The plan an order buys is no longer stored: one made from a link nobody bought goes after days. */
+  'PLAN_GONE',
+  /** A plan's goal or a withdrawal in another currency than US dollars (gate USD-ONLY). */
+  'CURRENCY_UNSUPPORTED',
 ]);
 export type OrderErrorCode = z.infer<typeof OrderErrorCode>;
 
@@ -328,7 +342,7 @@ export type OrderErrorCode = z.infer<typeof OrderErrorCode>;
  * a client can tell "try again" from "change something first".
  */
 export const OrderError = ApiError.extend({
-  /** One of the ten order codes, where one fits. Absent for a refusal that is none of them. */
+  /** One of the order codes, where one fits. Absent for a refusal that is none of them. */
   code: OrderErrorCode.optional(),
   /** What the person can do about it, in a sentence. */
   fix: z.string().optional(),

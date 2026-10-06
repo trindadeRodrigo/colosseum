@@ -26,8 +26,8 @@ import {
   Fig,
   Kpi,
   Kpis,
-  Loading,
   MultiSelect,
+  PageWait,
   Pie,
   Reason,
   SrcLine,
@@ -43,8 +43,23 @@ export function StablePage() {
   const { base, lending } = useBearing();
   const b = useAnswer(() => base(), [base]);
   const all = useAnswer(() => lending(), [lending]);
-  const reading = useWords().stable.reading;
-  if (!b || !all) return <Loading>{reading}</Loading>;
+  const words = useWords();
+  const reading = words.stable.reading;
+  if (!b || !all) {
+    const k = words.stable.kpi;
+    return (
+      <PageWait
+        label={reading}
+        kpis={[
+          { label: k.supplied },
+          { label: k.borrowed },
+          { label: k.available, note: k.availableNote },
+          { label: k.lent },
+          { label: k.reserves, note: k.reservesNote },
+        ]}
+      />
+    );
+  }
   if (!b.lendList.ok)
     return (
       <p className="mt-6">
