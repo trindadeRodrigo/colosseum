@@ -34,9 +34,12 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   await page.getByLabel(en.goal.fields.amount, { exact: true }).fill('40');
   await page.getByLabel(en.goal.fields.country, { exact: true }).selectOption('BR');
   await page.getByRole('button', { name: en.goal.sheet.build }).click();
-  await page.getByRole('link', { name: en.goal.built.done.see }).click();
+  await page.getByRole('link', { name: en.goal.built.done.see(3) }).click();
   await expect(page).toHaveURL(/\/plan\/[^/]+$/);
-  await page.getByRole('link', { name: en.plan.buy }).click();
+  await page.getByRole('radio', { name: en.plan.choice.names.carry }).check();
+  await page
+    .getByRole('link', { name: en.plan.choice.picker.buy(en.plan.choice.names.carry) })
+    .click();
 
   await expect(page).toHaveURL(/\/plan\/[^/]+\/buy$/);
   await page.getByRole('button', { name: en.buy.funding.mockFund }).click();

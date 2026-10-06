@@ -1,15 +1,21 @@
-import { BasketProposal, type BasketSheet, RiskRollUp } from '@colosseum/schemas';
+import {
+  type BasketProposal,
+  type BasketSheet,
+  PlanCandidate,
+  PlanCandidateId,
+  PlanCandidateNotShown,
+} from '@colosseum/schemas';
 import { type ApiFetch, signInRefusal } from '../account/person';
 
-// "Build my plan": one call, with the shapes of DESIGN-VAULT section 3.6. The route is not in the API
-// yet (it comes with the engine, in the next API slot), so this is written to the shape it needs and
-// tested against a double:
+// "Build my plan": one call, with the shapes of DESIGN-VAULT section 3.6 and section 7:
 //
 //   POST /v1/baskets/personalize
 //   body    { sheet: BasketSheet }
-//   200     { id: string, proposal: BasketProposal, rollUp?: RiskRollUp }   the stored plan's id, the
-//                              plan, and the risk roll-up when the server sends one (shown as sent,
-//                              never worked out here; one that does not parse is left out)
+//   200     { candidates: PlanCandidate[], candidatesNotShown: PlanCandidateNotShown[], … }
+//                              the plans of the goal made three ways inside the same limits (gate
+//                              THREE-PLANS), each stored with its own id, which a buy names; and the
+//                              ones not shown, each with why. The answer's top-level `proposal` and
+//                              `id` are the agents' (Thom, Oct 6): the web reads only the candidates
 //   401/403 the server does not know who is asking, or does not let them: sign in again. A 401 that
 //           says no identity token was sent is the sign-in service's: wait and try again
 //   409     the server has no chain for this person yet: the chain is chosen first
@@ -17,14 +23,19 @@ import { type ApiFetch, signInRefusal } from '../account/person';
 //   4xx     { error, code? }   the server refused the sheet; with code 'GOAL_NOT_ACHIEVABLE' (the
 //                              order codes of 3.3) the sheet is fine and no plan fits it
 //
-// Until the route exists the API answers 404, and the screen says so: nothing is shown in its place.
+// A route that is not there answers 404, and the screen says so: nothing is shown in its place.
 // The argument is a `BasketSheet`, the type a validator returns, so a draft that did not validate
 // cannot be sent.
 
 export const PERSONALIZE_PATH = '/v1/baskets/personalize';
 
 export type BuildOutcome =
-  | { kind: 'built'; id: string; proposal: BasketProposal; rollUp: RiskRollUp | null }
+  | {
+      kind: 'built';
+      /** At most one of each, in the fixed order Cover, Spread, Carry; none picked. */
+      candidates: PlanCandidate[];
+      notShown: PlanCandidateNotShown[];
+    }
   /** The route is not there: the API has nothing that builds a plan yet. */
   | { kind: 'unavailable' }
   /** The server does not know this sign-in any more (401), or does not let it build (403). */
@@ -41,8 +52,6 @@ export type BuildOutcome =
   | { kind: 'unreachable' }
   /** An answer that is not a plan in the frozen shape. It is not shown. */
   | { kind: 'unreadable' };
-
-const text = (value: unknown) => (typeof value === 'string' && value.trim() ? value : undefined);
 
 /**
  * How a built plan is labelled. Live only when every figure it stands on is live. A plan that names
@@ -90,16 +99,24 @@ export async function buildPlan(apiFetch: ApiFetch, sheet: BasketSheet): Promise
     return { kind: 'refused' };
   }
   if (!res.ok) return { kind: 'unreachable' };
-  const proposal = BasketProposal.safeParse(answer.proposal);
-  const id = text(answer.id);
-  if (!proposal.success || !id) return { kind: 'unreadable' };
-  // A plan for another goal, amount or chain is not the answer to what was asked: it is not shown.
-  if (!answers(sheet, proposal.data.sheet)) return { kind: 'unreadable' };
-  const rollUp = RiskRollUp.safeParse(answer.rollUp);
+  const candidates = PlanCandidate.array().min(1).max(3).safeParse(answer.candidates);
+  const notShown = PlanCandidateNotShown.array().safeParse(answer.candidatesNotShown ?? []);
+  if (!candidates.success || !notShown.success) return { kind: 'unreadable' };
+  const names = candidates.data.map((c) => c.candidate);
+  const ids = candidates.data.map((c) => c.id);
+  // Each candidate once, each its own stored plan, and every one the answer to what was asked: a plan
+  // for another goal, amount or chain is not shown.
+  if (new Set(names).size !== names.length || new Set(ids).size !== ids.length)
+    return { kind: 'unreadable' };
+  if (!candidates.data.every((c) => answers(sheet, c.proposal.sheet)))
+    return { kind: 'unreadable' };
+  // The fixed order, whatever order they came in: none is first because the server put it first.
+  const order = PlanCandidateId.options;
   return {
     kind: 'built',
-    id,
-    proposal: proposal.data,
-    rollUp: rollUp.success ? rollUp.data : null,
+    candidates: [...candidates.data].sort(
+      (a, b) => order.indexOf(a.candidate) - order.indexOf(b.candidate),
+    ),
+    notShown: notShown.data,
   };
 }

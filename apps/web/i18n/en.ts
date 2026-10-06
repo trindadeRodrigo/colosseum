@@ -319,10 +319,12 @@ export const en = {
         'Our server answered with a plan I couldn’t read, so I’m not showing it. Your limits are unchanged. Try again.',
       done: {
         title: 'Your plan is built.',
-        /** "Part" is the brand's word for a leg of a plan, as a person reads it. */
-        body: (parts: number, chain: string) =>
-          `It has ${parts === 1 ? '1 part' : `${parts} parts`} on ${chain}. Nothing was bought.`,
-        see: 'See your plan',
+        /** The candidates of gate THREE-PLANS: plans of one goal, each made a different way. */
+        body: (plans: number, chain: string) =>
+          plans === 1
+            ? `One plan, on ${chain}. Nothing was bought.`
+            : `${plans} plans from the same limits, on ${chain}, each made a different way. Nothing was bought.`,
+        see: (plans: number): string => (plans === 1 ? 'See your plan' : 'Compare your plans'),
       },
     },
   },
@@ -463,6 +465,72 @@ export const en = {
 
   plan: {
     title: 'Your plan',
+    /**
+     * The candidates of one goal side by side (gate THREE-PLANS, CANDIDATE-NAMES): always in the order
+     * Cover, Spread, Carry, none picked and none marked. The aims are section 2.4 of the method note.
+     */
+    choice: {
+      title: 'Your plans',
+      lead: (plans: number, chain: string) =>
+        plans === 1
+          ? `One plan from your limits, on ${chain}. Nothing is bought until you choose it, review every step and sign it.`
+          : `${plans} plans from the same limits, on ${chain}, each made a different way. None is picked for you: compare them and choose one. Nothing is bought until you review every step and sign it.`,
+      names: { cover: 'Cover', spread: 'Spread', carry: 'Carry' },
+      aims: {
+        cover: 'Sets the most aside for your withdrawals, and sells at the lowest measured cost.',
+        spread: 'Spreads the money across the most issuers your limits allow.',
+        carry: 'Holds the most yield observed inside your limits.',
+      },
+      see: (name: string) => `All of ${name}`,
+      picker: {
+        legend: 'Choose a plan',
+        buy: (name: string) => `Buy ${name}`,
+        none: 'Choose a plan to buy it.',
+      },
+      score: {
+        title: 'How it compares',
+        covered: 'Months of withdrawals set aside',
+        paidNow: 'Months paid at the rates observed',
+        paidUnder: (stress: string) => `Months paid if ${stress}`,
+        of: (paid: number, all: number) => `${paid} of ${all}`,
+        short: (amount: string) => `${amount} short`,
+        carry: 'Yield observed, a year',
+        exit: 'Cost to sell it all at your size',
+        exitNone: 'not measured',
+        measured: (share: string) => `${share} of it measured`,
+        issuer: 'Largest issuer',
+        issuers: (n: number) => (n === 1 ? '1 issuer' : `${n} issuers`),
+        credit: 'In credit and basis',
+        fx: 'Owed in another currency, not held in it',
+      },
+      stress: {
+        yields_fall: (fall: string) => `yields fall by ${fall}`,
+        credit_gate: (months: number) => `credit can’t be sold for ${months} months`,
+        equity_fall: (fall: string) => `stocks, crypto and gold fall by ${fall}`,
+        fx_goal_up: (currency: string, move: string, months: number) =>
+          `the ${currency} gains ${move} on the dollar over ${months} months`,
+        fx_goal_down: (currency: string, move: string, months: number) =>
+          `the ${currency} loses ${move} on the dollar over ${months} months`,
+        other: 'a named stress applies',
+      },
+      status: {
+        title: 'Your withdrawals',
+        met: 'Pays every withdrawal, at the rates observed and under each stress.',
+        notMet: 'Does not pay every withdrawal under each stress.',
+        observedOn: (date: string) => `Rates observed on ${date}.`,
+        needed: (needed: string, observed: string) =>
+          `Needs ${needed} a year on its dollar yield, and ${observed} is observed.`,
+        neededNone: (observed: string) =>
+          `Needs no yield to pay them, and ${observed} is observed.`,
+        neededOut: (observed: string) =>
+          `No yield up to 100% a year pays every month, and ${observed} is observed.`,
+        ways: 'What would close the gap',
+      },
+      notShown: {
+        title: 'Not shown',
+        lead: 'Made from the same limits, and left out, with the reason.',
+      },
+    },
     signedOut: 'Sign in to see this plan. A plan is one person’s, on the chain of their wallet.',
     fromLink:
       'This plan came from a link: our engine made it from the limits the link carried, which someone else may have set. Check the goal, the amount and the limits above before you buy.',

@@ -226,12 +226,16 @@ describe('the words of the product, in each language', () => {
     ]);
   });
 
-  it('calls a part of a plan a part, and says nothing was bought', () => {
+  it('counts the plans a goal built, says each was made a different way, and that nothing was bought', () => {
     expect(en.goal.built.done.body(3, 'Solana')).toBe(
-      'It has 3 parts on Solana. Nothing was bought.',
+      '3 plans from the same limits, on Solana, each made a different way. Nothing was bought.',
     );
-    expect(en.goal.built.done.body(1, 'Solana')).toContain('1 part on');
-    expect(pt.goal.built.done.body(3, 'Solana')).toContain('3 partes');
+    expect(en.goal.built.done.body(1, 'Solana')).toBe('One plan, on Solana. Nothing was bought.');
+    expect(pt.goal.built.done.body(3, 'Solana')).toContain('3 planos');
+    expect([en.goal.built.done.see(1), en.goal.built.done.see(3)]).toEqual([
+      'See your plan',
+      'Compare your plans',
+    ]);
     for (const d of [en, pt])
       expect(d.goal.built.done.body(2, 'Solana')).not.toMatch(
         /\blines?\b|linhas?|comes next|vem a seguir/,

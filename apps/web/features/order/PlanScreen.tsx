@@ -1,10 +1,5 @@
 'use client';
-import {
-  type BasketLine,
-  DISCLAIMER_SHORT,
-  type ObservationRef,
-  type RiskRollUp,
-} from '@colosseum/schemas';
+import { type BasketLine, DISCLAIMER_SHORT, type RiskRollUp } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useId } from 'react';
 import { Button } from '../../components/ui/Button';
@@ -21,6 +16,8 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 import { planProvenance } from '../goal/build-plan';
 import { dollars } from '../goal/sheet';
 import { assetName, formatBps } from './amounts';
+import { ChoiceView } from './ChoiceView';
+import { observed } from './observed';
 import { PlanChart } from './PlanChart';
 import { PlanGate } from './PlanGate';
 import { usePlan } from './use-plan';
@@ -31,14 +28,6 @@ import { usePlan } from './use-plan';
 // so it is on this one once. A plan built on anything that is not live carries the MOCK plate,
 // with "test network" on a test network. "Buy this plan" leads to the buy screen; on a chain with no
 // deployment committed for its network it is off, and says why.
-
-/** The first observation of a kind, as a pin takes it. Null when the plan names none: the pin shows a dash. */
-const observed = (observations: readonly ObservationRef[], kind: ObservationRef['kind']) => {
-  const o = observations.find((x) => x.kind === kind);
-  return o
-    ? { source: o.source, fetchedAt: o.fetchedAt, method: o.method, provenance: o.provenance }
-    : null;
-};
 
 const percent = (value: number, lang: Lang) =>
   new Intl.NumberFormat(LOCALE[lang], {
@@ -56,6 +45,22 @@ export function PlanScreen({ id }: { id: string }) {
   const reasonId = useId();
   const here = `/plan/${encodeURIComponent(id)}`;
   if (state.kind !== 'ready') return <PlanGate state={state} next={here} />;
+  // The candidates of one goal, side by side, for the person to pick from (gate THREE-PLANS).
+  if (state.choice)
+    return (
+      <ChoiceView
+        plans={state.choice.plans}
+        notShown={state.choice.notShown}
+        chain={state.chain}
+        blocked={
+          state.off
+            ? t.plan.chainOff(t.chain.names[state.chain])
+            : state.buyable
+              ? null
+              : t.plan.chainNotReady(t.chain.names[state.chain])
+        }
+      />
+    );
 
   const { plan, chain } = state;
   const { proposal } = plan;

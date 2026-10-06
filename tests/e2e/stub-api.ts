@@ -65,6 +65,25 @@ const GAS_FAUCET = CHAIN === 'robinhood' ? '1000000000000000000' : '1000000000';
 const ownerIn = (o: unknown): string =>
   ((o ?? {}) as { solana?: string; evm?: string })[CHAIN === 'robinhood' ? 'evm' : 'solana'] ?? '';
 const PLAN_ID = '3c1f9a7e-5b2d-4c8e-9f0a-1b2c3d4e5f60';
+/**
+ * The candidates "Build my plan" answers (gate THREE-PLANS), each stored under its own id. Carry is the
+ * plan the table makes, so it has the plan's id, as the API has it; the vault the spec buys is Carry's.
+ */
+const CANDIDATE_IDS = {
+  cover: '7a2c4e6f-8b1d-4f3a-9c5e-0d2f4a6b8c01',
+  spread: '9e1b3d5f-7a2c-4e6b-8d0f-1a3c5e7b9d02',
+  carry: PLAN_ID,
+} as const;
+/** What each is compared on: a goal with no withdrawals, on a mock shelf nothing measures. */
+const SCORECARD = {
+  monthsCovered: null,
+  base: null,
+  stresses: [],
+  carryObservedBps: 0,
+  exit: { costBps: null, measuredShareBps: 0 },
+  concentration: { byIssuer: [], byClass: [], largestIssuerBps: 0, issuers: 0 },
+  creditBasisBps: 0,
+};
 /** The plan's weights on the mock shelf; the rest is cash. */
 const WEIGHTS: Target[] = [
   { asset: `${CHAIN}:spy`, weightBps: 5000 },
@@ -512,7 +531,21 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   }
   if (path === '/v1/baskets/personalize' && method === 'POST') {
     const body = (await read(req)) as { sheet: BasketSheet };
-    return send(res, 200, { id: PLAN_ID, proposal: proposal(body.sheet) });
+    const plan = proposal(body.sheet);
+    const candidates = Object.entries(CANDIDATE_IDS).map(([candidate, id]) => ({
+      candidate,
+      id,
+      proposal: plan,
+      rollUp: ROLL_UP,
+      scorecard: SCORECARD,
+    }));
+    return send(res, 200, {
+      id: PLAN_ID,
+      proposal: plan,
+      rollUp: ROLL_UP,
+      candidates,
+      candidatesNotShown: [],
+    });
   }
   if (path === '/v1/mock/fund' && method === 'POST') {
     const body = (await read(req)) as { cashUsd: number };

@@ -304,9 +304,11 @@ export const pt: Dictionary = {
         'Nosso servidor respondeu com um plano que não consegui ler, então não vou mostrar. Seus limites continuam como estão. Tente de novo.',
       done: {
         title: 'Seu plano está montado.',
-        body: (parts: number, chain: string) =>
-          `Ele tem ${parts === 1 ? '1 parte' : `${parts} partes`} na ${chain}. Nada foi comprado.`,
-        see: 'Ver seu plano',
+        body: (plans: number, chain: string) =>
+          plans === 1
+            ? `Um plano, na ${chain}. Nada foi comprado.`
+            : `${plans} planos dos mesmos limites, na ${chain}, cada um feito de um jeito. Nada foi comprado.`,
+        see: (plans: number) => (plans === 1 ? 'Ver seu plano' : 'Comparar seus planos'),
       },
     },
   },
@@ -438,6 +440,68 @@ export const pt: Dictionary = {
 
   plan: {
     title: 'Seu plano',
+    choice: {
+      title: 'Seus planos',
+      lead: (plans: number, chain: string) =>
+        plans === 1
+          ? `Um plano dos seus limites, na ${chain}. Nada é comprado até você escolher, revisar cada passo e assinar.`
+          : `${plans} planos dos mesmos limites, na ${chain}, cada um feito de um jeito. Nenhum vem escolhido: compare e escolha um. Nada é comprado até você revisar cada passo e assinar.`,
+      names: { cover: 'Cobertura', spread: 'Diversificação', carry: 'Rendimento' },
+      aims: {
+        cover: 'Separa o máximo para os seus saques, e vende ao menor custo medido.',
+        spread: 'Espalha o dinheiro pelo maior número de emissores que os seus limites permitem.',
+        carry: 'Tem o maior rendimento observado dentro dos seus limites.',
+      },
+      see: (name: string) => `Tudo de ${name}`,
+      picker: {
+        legend: 'Escolha um plano',
+        buy: (name: string) => `Comprar ${name}`,
+        none: 'Escolha um plano para comprá-lo.',
+      },
+      score: {
+        title: 'Como ele se compara',
+        covered: 'Meses de saques separados',
+        paidNow: 'Meses pagos às taxas observadas',
+        paidUnder: (stress: string) => `Meses pagos se ${stress}`,
+        of: (paid: number, all: number) => `${paid} de ${all}`,
+        short: (amount: string) => `faltam ${amount}`,
+        carry: 'Rendimento observado, ao ano',
+        exit: 'Custo de vender tudo no seu tamanho',
+        exitNone: 'não medido',
+        measured: (share: string) => `${share} dele medido`,
+        issuer: 'Maior emissor',
+        issuers: (n: number) => (n === 1 ? '1 emissor' : `${n} emissores`),
+        credit: 'Em crédito e base',
+        fx: 'Devido em outra moeda, sem ter nela',
+      },
+      stress: {
+        yields_fall: (fall: string) => `os rendimentos caírem ${fall}`,
+        credit_gate: (months: number) => `o crédito não puder ser vendido por ${months} meses`,
+        equity_fall: (fall: string) => `ações, cripto e ouro caírem ${fall}`,
+        fx_goal_up: (currency: string, move: string, months: number) =>
+          `o ${currency} subir ${move} sobre o dólar em ${months} meses`,
+        fx_goal_down: (currency: string, move: string, months: number) =>
+          `o ${currency} cair ${move} sobre o dólar em ${months} meses`,
+        other: 'um cenário de estresse se aplicar',
+      },
+      status: {
+        title: 'Seus saques',
+        met: 'Paga todos os saques, às taxas observadas e em cada cenário de estresse.',
+        notMet: 'Não paga todos os saques em cada cenário de estresse.',
+        observedOn: (date: string) => `Taxas observadas em ${date}.`,
+        needed: (needed: string, observed: string) =>
+          `Precisa de ${needed} ao ano no rendimento em dólar, e ${observed} é o observado.`,
+        neededNone: (observed: string) =>
+          `Não precisa de rendimento para pagá-los, e ${observed} é o observado.`,
+        neededOut: (observed: string) =>
+          `Nenhum rendimento até 100% ao ano paga todos os meses, e ${observed} é o observado.`,
+        ways: 'O que fecharia a diferença',
+      },
+      notShown: {
+        title: 'Não aparecem',
+        lead: 'Feitos dos mesmos limites, e deixados de fora, com o motivo.',
+      },
+    },
     signedOut: 'Entre para ver este plano. Um plano é de uma pessoa, na rede da carteira dela.',
     fromLink:
       'Este plano veio de um link: nosso motor o montou com os limites que o link trazia, que outra pessoa pode ter definido. Confira o objetivo, o valor e os limites acima antes de comprar.',

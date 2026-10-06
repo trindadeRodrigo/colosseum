@@ -23,7 +23,7 @@ import { PERSONALIZE_PATH } from './build-plan';
 import { GOAL_HANDOFF } from './draft';
 import { GoalScreen } from './GoalScreen';
 import { FIELD_ID } from './sheet';
-import { proposalFor, READ_IN_DOLLARS, READ_IN_REAIS } from './test/plan';
+import { builtFor, CANDIDATE_IDS, READ_IN_DOLLARS, READ_IN_REAIS } from './test/plan';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -516,10 +516,7 @@ describe('an answer that arrives late', () => {
     await click(buildButton(host));
     await settle();
     expect(sent).toHaveLength(1);
-    const built = () =>
-      answer(
-        json({ id: 'plan-1', proposal: proposalFor((sent[0] as { sheet: BasketSheet }).sheet) }),
-      );
+    const built = () => answer(json(builtFor((sent[0] as { sheet: BasketSheet }).sheet)));
     return { host, server, built };
   }
 
@@ -643,21 +640,30 @@ describe('what comes back from “Build my plan”', () => {
     expect(find(host, `#${FIELD_ID.horizon}-hint`).textContent).toContain(en.goal.sheet.edited);
   });
 
-  it('says a plan is built when the route answers one, with how many lines and where, and nothing bought', async () => {
+  it('says the plans are built when the route answers them, how many and where, nothing bought, and leads to them', async () => {
     const { host } = await built(
-      (body) =>
-        json({ id: 'plan-1', proposal: proposalFor((body as { sheet: never }).sheet, 'live') }),
+      (body) => json(builtFor((body as { sheet: never }).sheet, 'live')),
       'live',
     );
     expect(host.textContent).toContain(en.goal.built.done.title);
-    expect(host.textContent).toContain(en.goal.built.done.body(2, 'Solana'));
+    expect(host.textContent).toContain(en.goal.built.done.body(3, 'Solana'));
     expect(host.querySelectorAll('.tf-hatch, .tf-mock-plate')).toHaveLength(0);
+    // the link leads to the choice this tab kept, and each candidate is kept under its own id
+    const link = find<HTMLAnchorElement>(host, 'a[href^="/plan/"]');
+    expect(link.textContent).toBe(en.goal.built.done.see(3));
+    const key = decodeURIComponent(link.getAttribute('href')?.slice('/plan/'.length) ?? '');
+    const choice = JSON.parse(window.sessionStorage.getItem(`tf-choice:${key}`) ?? 'null');
+    expect(choice.ids).toEqual([CANDIDATE_IDS.cover, CANDIDATE_IDS.spread, CANDIDATE_IDS.carry]);
+    for (const id of Object.values(CANDIDATE_IDS))
+      expect(JSON.parse(window.sessionStorage.getItem(`tf-plan:${id}`) ?? 'null')).toMatchObject({
+        id,
+        candidate: { scorecard: { carryObservedBps: 410 } },
+      });
   });
 
   it('marks a plan built on anything that is not live with the hatch and the word MOCK', async () => {
     const { host } = await built(
-      (body) =>
-        json({ id: 'plan-1', proposal: proposalFor((body as { sheet: never }).sheet, 'mock') }),
+      (body) => json(builtFor((body as { sheet: never }).sheet, 'mock')),
       'live',
     );
     expect(host.textContent).toContain(en.goal.built.done.title);
@@ -667,8 +673,14 @@ describe('what comes back from “Build my plan”', () => {
 
   it('draws a plan that names no figure as not live: the plate, never a bare card', async () => {
     const { host } = await built((body) => {
-      const proposal = proposalFor((body as { sheet: never }).sheet, 'live');
-      return json({ id: 'plan-1', proposal: { ...proposal, observations: [] } });
+      const answer = builtFor((body as { sheet: never }).sheet, 'live');
+      return json({
+        ...answer,
+        candidates: answer.candidates.map((c) => ({
+          ...c,
+          proposal: { ...c.proposal, observations: [] },
+        })),
+      });
     }, 'live');
     expect(host.textContent).toContain(en.goal.built.done.title);
     expect(host.querySelectorAll('.tf-mock-plate')).toHaveLength(1);
@@ -678,8 +690,7 @@ describe('what comes back from “Build my plan”', () => {
 
   it('marks a plan from a test network with the plate and the words "test network"', async () => {
     const { host } = await built(
-      (body) =>
-        json({ id: 'plan-1', proposal: proposalFor((body as { sheet: never }).sheet, 'sandbox') }),
+      (body) => json(builtFor((body as { sheet: never }).sheet, 'sandbox')),
       'live',
     );
     expect(host.querySelectorAll('.tf-mock-plate')).toHaveLength(1);
@@ -690,7 +701,7 @@ describe('what comes back from “Build my plan”', () => {
   it('shows no plan that is for another chain than the one asked for', async () => {
     const { host } = await built((body) => {
       const sheet = (body as { sheet: BasketSheet }).sheet;
-      return json({ id: 'plan-1', proposal: proposalFor({ ...sheet, chains: ['robinhood'] }) });
+      return json(builtFor({ ...sheet, chains: ['robinhood'] }));
     });
     expect(find(host, '[role="alert"]').textContent).toBe(en.goal.built.unreadable);
     expect(host.textContent).not.toContain(en.goal.built.done.title);
@@ -698,7 +709,12 @@ describe('what comes back from “Build my plan”', () => {
   });
 
   it('does not show an answer that is not a plan in the frozen shape', async () => {
-    const { host } = await built(() => json({ id: 'plan-1', proposal: { lines: [] } }));
+    const { host } = await built((body) =>
+      json({
+        ...builtFor((body as { sheet: never }).sheet),
+        candidates: [{ candidate: 'carry', proposal: { lines: [] } }],
+      }),
+    );
     expect(find(host, '[role="alert"]').textContent).toBe(en.goal.built.unreadable);
     expect(host.textContent).not.toContain(en.goal.built.done.title);
   });

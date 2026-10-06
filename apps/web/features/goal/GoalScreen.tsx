@@ -14,7 +14,7 @@ import { dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { ChainName } from '../account/ChainName';
-import { rememberPlan } from '../order/plan-store';
+import { rememberChoice, rememberPlan } from '../order/plan-store';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { type BuildOutcome, buildPlan, planProvenance } from './build-plan';
 import { GOAL_DRAFT, GOAL_HANDOFF } from './draft';
@@ -40,7 +40,12 @@ const LIMITS = 'limits';
 const STORE = GOAL_DRAFT;
 const SIGN_IN = '/sign-in?next=/goal';
 
-type Build = { kind: 'idle' } | { kind: 'solving' } | BuildOutcome;
+type Build =
+  | { kind: 'idle' }
+  | { kind: 'solving' }
+  | Exclude<BuildOutcome, { kind: 'built' }>
+  /** The candidates, kept in the tab under `key`, which the plan screen opens on. */
+  | (Extract<BuildOutcome, { kind: 'built' }> & { key: string });
 
 export function GoalScreen() {
   const t = useT();
@@ -187,15 +192,32 @@ export function GoalScreen() {
     setBuild({ kind: 'solving' });
     const outcome = await buildPlan(apiFetch, valid);
     if (wanted.current !== mine) return;
-    // The plan screen reads the plan from the tab: the API has no route that reads one back.
-    if (outcome.kind === 'built' && port.userId)
-      rememberPlan({
-        id: outcome.id,
-        userId: port.userId,
-        proposal: outcome.proposal,
-        rollUp: outcome.rollUp,
-      });
-    setBuild(outcome);
+    // The plan screen reads the plans from the tab: the API has no route that reads one back. Each
+    // candidate is kept under its own id, which a buy names, and the choice of them under a key.
+    if (outcome.kind === 'built') {
+      const key = crypto.randomUUID();
+      if (port.userId) {
+        for (const c of outcome.candidates)
+          rememberPlan({
+            id: c.id,
+            userId: port.userId,
+            proposal: c.proposal,
+            rollUp: c.rollUp,
+            candidate: {
+              name: c.candidate,
+              scorecard: c.scorecard,
+              ...(c.status ? { status: c.status } : {}),
+            },
+          });
+        rememberChoice({
+          key,
+          userId: port.userId,
+          ids: outcome.candidates.map((c) => c.id),
+          notShown: outcome.notShown,
+        });
+      }
+      setBuild({ ...outcome, key });
+    } else setBuild(outcome);
     // The server has no chain for this person, whatever this page had read: it is asked again.
     if (outcome.kind === 'no-chain') retry();
   }
@@ -299,7 +321,9 @@ export function GoalScreen() {
         : null;
 
   // A built plan is named by its own chain and labelled by its own figures, not by this page's.
-  const plan = build.kind === 'built' ? build.proposal : null;
+  // The candidates share the goal's limits and chain; any of them not live makes the card say so.
+  const plans = build.kind === 'built' ? build.candidates.map((c) => c.proposal) : [];
+  const plan = plans[0] ?? null;
   // The first reader was made for goals in reais: the note names what it left empty, for the person
   // to fill in.
   const missed = sheet ? notFound(sheet.fields, sheet.read).map((key) => t.goal.fields[key]) : [];
@@ -309,7 +333,12 @@ export function GoalScreen() {
           new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(missed),
         )
       : t.goal.readerNote;
-  const planLabel = plan ? planProvenance(plan) : 'live';
+  const labels = plans.map(planProvenance);
+  const planLabel = labels.includes('mock')
+    ? 'mock'
+    : labels.includes('sandbox')
+      ? 'sandbox'
+      : 'live';
   const planChain = plan?.sheet.chains[0];
   const planChainName = planChain
     ? (port.network(planChain)?.name ?? t.chain.names[planChain])
@@ -472,14 +501,14 @@ export function GoalScreen() {
             <CardHeader title={t.goal.built.done.title} level={2} id={outcomeId} />
             <CardBody>
               <p className="max-w-(--tf-measure-body) text-body">
-                {t.goal.built.done.body(plan.lines.length, planChainName)}
+                {t.goal.built.done.body(plans.length, planChainName)}
               </p>
               {build.kind === 'built' && (
                 <Link
-                  href={`/plan/${encodeURIComponent(build.id)}`}
+                  href={`/plan/${encodeURIComponent(build.key)}`}
                   className={buttonClass({ variant: 'link' })}
                 >
-                  {t.goal.built.done.see}
+                  {t.goal.built.done.see(plans.length)}
                 </Link>
               )}
             </CardBody>

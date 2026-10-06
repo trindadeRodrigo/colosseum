@@ -59,6 +59,6 @@ The engine has no country rule: `blockOf` ignores `blockedCountries` and `sheet.
 - **Thom:**
   - read slice 2's two schema commits, merged without his approval;
   - approve the shared types of slice 3 (`ebdbb13`: `PlanCandidate`, `PlanScorecard`, `PlanStatus`, additive);
-  - the web: show `candidates` side by side, none pre-selected (gate `THREE-PLANS`), instead of the one `proposal`; and whether the top-level `proposal` (the table's plan, the same as Carry) leaves the answer then. Until the web moves it is shown as the one plan even where the rule hides Carry (the reviewer's first finding, Oct 5);
+  - the web: show `candidates` side by side, none pre-selected (gate `THREE-PLANS`), instead of the one `proposal`. Done on `web/candidates` (WEB-CANDIDATES); the top-level `proposal` stays for agents only (gate `PROPOSAL-FOR-AGENTS`, Thom, Oct 6);
   - decide whether the mock app gets yield readings for Robinhood Chain (`apps/api/src/testing/fixtures/mock-yields.json` has Solana's only, so a Robinhood plan on the mock holds no dollar yield).
 - **The API reads no FX readings yet:** a withdrawal in another currency answers 422 with the fix. Wiring a source of FX readings is open.

@@ -131,3 +131,64 @@ export function proposalFor(sheet: BasketSheet, provenance: Provenance = 'mock')
     disclaimer: 'the disclaimer',
   });
 }
+
+/** The candidates' ids in the doubles: Carry has the plan's id, as the API stores it. */
+export const CANDIDATE_IDS = {
+  cover: '1c0a7e3b-5d2f-4a6b-8c9d-0e1f2a3b4c5d',
+  spread: '2d1b8f4c-6e3a-4b7c-9d0e-1f2a3b4c5d6e',
+  carry: '3e2c9a5d-7f4b-4c8d-8e1f-2a3b4c5d6e7f',
+} as const;
+
+/** What a candidate is compared on, with nothing measured: a goal with no withdrawals. */
+export const SCORECARD = {
+  monthsCovered: null,
+  base: null,
+  stresses: [],
+  carryObservedBps: 410,
+  exit: { costBps: null, measuredShareBps: 0 },
+  concentration: {
+    byIssuer: [
+      { key: 'one', bps: 6000 },
+      { key: 'two', bps: 4000 },
+    ],
+    byClass: [{ key: 'dollar-yield', bps: 10_000 }],
+    largestIssuerBps: 6000,
+    issuers: 2,
+  },
+  creditBasisBps: 0,
+};
+
+export const ROLL_UP = {
+  byIssuer: [{ key: 'one', bps: 6000 }],
+  byChain: [{ key: 'solana', bps: 10_000 }],
+  byClass: [{ key: 'stock', bps: 6000 }],
+  flags: [],
+  exit: { quotedBps: null, quotedAt: null, measuredWorstBps: 42, measuredShareBps: 6000 },
+};
+
+/**
+ * What POST /v1/baskets/personalize answers for a sheet (DESIGN-VAULT section 7): the table's plan for
+ * agents, and the candidates the web reads, each named and stored under its own id.
+ */
+export function builtFor(
+  sheet: BasketSheet,
+  provenance: Provenance = 'mock',
+  names: readonly ('cover' | 'spread' | 'carry')[] = ['cover', 'spread', 'carry'],
+) {
+  const proposal = proposalFor(sheet, provenance);
+  return {
+    id: CANDIDATE_IDS.carry,
+    proposal,
+    rollUp: ROLL_UP,
+    candidates: names.map((candidate) => ({
+      candidate,
+      id: CANDIDATE_IDS[candidate],
+      proposal,
+      rollUp: ROLL_UP,
+      scorecard: SCORECARD,
+    })),
+    candidatesNotShown: (['cover', 'spread', 'carry'] as const)
+      .filter((c) => !names.includes(c))
+      .map((candidate) => ({ candidate, why: `${candidate} holds the same as another.` })),
+  };
+}

@@ -135,12 +135,23 @@ async function toReview(page: Page) {
   await page.getByLabel(en.goal.fields.amount, { exact: true }).fill('40');
   await page.getByLabel(en.goal.fields.country, { exact: true }).selectOption('BR');
   await page.getByRole('button', { name: en.goal.sheet.build }).click();
-  await page.getByRole('link', { name: en.goal.built.done.see }).click();
+  await page.getByRole('link', { name: en.goal.built.done.see(3) }).click();
 
+  // The candidates side by side, none picked: the buy is off until the person chooses one.
   await expect(page).toHaveURL(/\/plan\/[^/]+$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.plan.choice.title);
+  await expect(page.getByRole('radio', { checked: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: en.plan.buy })).toBeDisabled();
+  await check(page, 'plans');
+  // One plan in full, from its card, then back to choose.
+  await page.getByRole('link', { name: en.plan.choice.see(en.plan.choice.names.carry) }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Grow $40 over 36 months.');
   await check(page, 'plan');
-  await page.getByRole('link', { name: en.plan.buy }).click();
+  await page.goBack();
+  await page.getByRole('radio', { name: en.plan.choice.names.carry }).check();
+  await page
+    .getByRole('link', { name: en.plan.choice.picker.buy(en.plan.choice.names.carry) })
+    .click();
 
   await expect(page).toHaveURL(/\/plan\/[^/]+\/buy$/);
   await page.getByRole('button', { name: en.buy.funding.mockFund }).click();

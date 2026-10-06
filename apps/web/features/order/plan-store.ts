@@ -1,4 +1,11 @@
-import { BasketProposal, RiskRollUp } from '@colosseum/schemas';
+import {
+  BasketProposal,
+  PlanCandidateId,
+  PlanCandidateNotShown,
+  PlanScorecard,
+  PlanStatus,
+  RiskRollUp,
+} from '@colosseum/schemas';
 
 // The plan a goal built, kept for the plan screen and the buy screen. The API has no route that reads
 // a stored plan back by its id, so the plan is what "Build my plan" answered, kept in the tab under its
@@ -18,9 +25,25 @@ export type StoredPlan = {
    * read back from the API by its id, and said so on the plan screen.
    */
   fromLink?: boolean;
+  /** The plan is one of the candidates of a goal (gate THREE-PLANS): which, and what it is compared on. */
+  candidate?: { name: PlanCandidateId; scorecard: PlanScorecard; status?: PlanStatus };
+};
+
+/**
+ * The candidates one "Build my plan" answered, kept under a key of this tab's making: the plan screen
+ * shows them side by side and the person picks one. Each candidate is kept as a plan under its own id,
+ * which is what a buy names.
+ */
+export type StoredChoice = {
+  key: string;
+  userId: string;
+  /** The candidates' ids, in the fixed order Cover, Spread, Carry. */
+  ids: string[];
+  notShown: PlanCandidateNotShown[];
 };
 
 const KEY = (id: string) => `tf-plan:${id}`;
+const CHOICE = (key: string) => `tf-choice:${key}`;
 
 export function rememberPlan(plan: StoredPlan): void {
   try {
@@ -52,7 +75,54 @@ export function recallPlan(id: string, userId: string | null): StoredPlan | null
       proposal: proposal.data,
       rollUp: rollUp?.success ? rollUp.data : null,
       ...(read.fromLink === true ? { fromLink: true } : {}),
+      ...(read.candidate ? candidateOf(read.candidate) : {}),
     };
+  } catch {
+    return null;
+  }
+}
+
+/** A kept candidate's name and figures, when they still parse; nothing otherwise. */
+function candidateOf(read: NonNullable<StoredPlan['candidate']>): Pick<StoredPlan, 'candidate'> {
+  const name = PlanCandidateId.safeParse(read.name);
+  const scorecard = PlanScorecard.safeParse(read.scorecard);
+  const status = read.status === undefined ? null : PlanStatus.safeParse(read.status);
+  if (!name.success || !scorecard.success || (status && !status.success)) return {};
+  return {
+    candidate: {
+      name: name.data,
+      scorecard: scorecard.data,
+      ...(status?.success ? { status: status.data } : {}),
+    },
+  };
+}
+
+export function rememberChoice(choice: StoredChoice): void {
+  try {
+    window.sessionStorage.setItem(CHOICE(choice.key), JSON.stringify(choice));
+  } catch {
+    // No storage: the plan screen then asks for the plans to be built again.
+  }
+}
+
+/**
+ * The candidates kept under this key, each as its plan, if this person built them in this tab and
+ * every one still parses. Null otherwise: a choice is shown whole or not at all.
+ */
+export function recallChoice(
+  key: string,
+  userId: string | null,
+): { plans: StoredPlan[]; notShown: PlanCandidateNotShown[] } | null {
+  if (!userId) return null;
+  try {
+    const raw = window.sessionStorage.getItem(CHOICE(key));
+    if (!raw) return null;
+    const read = JSON.parse(raw) as Partial<StoredChoice>;
+    if (read.key !== key || read.userId !== userId || !Array.isArray(read.ids)) return null;
+    const plans = read.ids.map((id) => recallPlan(String(id), userId));
+    if (plans.length === 0 || plans.some((p) => !p?.candidate)) return null;
+    const notShown = PlanCandidateNotShown.array().safeParse(read.notShown ?? []);
+    return { plans: plans as StoredPlan[], notShown: notShown.success ? notShown.data : [] };
   } catch {
     return null;
   }
