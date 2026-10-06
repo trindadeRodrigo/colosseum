@@ -8,6 +8,7 @@
       "!**/.next",
       "!contracts/out",
       "!contracts/cache",
+      "!contracts/broadcast",
       "!**/migrations/meta",
       "!data",
       "!secrets",

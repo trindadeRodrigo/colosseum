@@ -9,6 +9,7 @@ import {
   LIQUIDITY_SOURCE,
   launchShelf,
   NOW,
+  roomyYield,
   sheet,
   violations,
 } from './testing';
@@ -175,7 +176,8 @@ describe('a figure that shaped the plan is on the plan', () => {
   });
 
   it('lists the yield of every dollar-yield token that was ranked, held or not', () => {
-    const plan = compose(sheet(), shelf, ctx);
+    // Dollar yield free of its caps, so syrupUSDC takes it all and jlUSDC is ranked and not held.
+    const plan = compose(sheet(), shelf, fixtureContext({ params: roomyYield() }));
     expect(plan.lines.some((l) => l.assetId === 'solana:jlusdc')).toBe(false);
     expect(plan.observations.filter((o) => o.kind === 'yield').map((o) => o.id)).toEqual([
       'solana:jlusdc',
@@ -224,9 +226,10 @@ describe('the date sentence is true of the plan it is on', () => {
   it.each([
     ['Robinhood Chain, $1,000 in 6 months', { chains: ['robinhood'], amountUsd: 1_000 }, 8000],
     [
-      'Robinhood Chain, The Seven in 24 months',
-      { chains: ['robinhood'], themes: ['the-seven'], horizonMonths: 24 },
-      4000,
+      // At 12 months: at 24 the floor (40%) equals SGOV's cap, and dollar yield alone meets it.
+      'Robinhood Chain, The Seven in 12 months',
+      { chains: ['robinhood'], themes: ['the-seven'], horizonMonths: 12 },
+      6000,
     ],
     ['Solana, $200,000 in 6 months', { chains: ['solana'], amountUsd: 200_000 }, 8000],
     ['Base, in 6 months', { chains: ['base'] }, 8000],
@@ -250,16 +253,21 @@ describe('the date sentence is true of the plan it is on', () => {
   it('reads the same in both languages, on the dollar-yield line and on the cash line', () => {
     const person = { chains: ['robinhood' as const], horizonMonths: 6, amountUsd: 1_000 };
     const en = compose(sheet(person), shelf, ctx);
+    // SGOV is held to 40%, its cap as a rate leg (gate SOLVER-PARAMS); the rest of the floor is cash.
     expect(en.lines.map((l) => [l.assetId, l.weightBps])).toEqual([
-      ['robinhood:sgov', 7000],
-      ['robinhood:usdg', 3000],
+      ['robinhood:spy', 500],
+      ['robinhood:sgov', 4000],
+      ['robinhood:gld', 500],
+      ['robinhood:usdg', 5000],
     ]);
-    for (const l of en.lines)
+    const kept = (lines: typeof en.lines) =>
+      lines.filter((l) => l.assetId === 'robinhood:sgov' || l.assetId === 'robinhood:usdg');
+    for (const l of kept(en.lines))
       expect(l.reasons.map((r) => r.text)).toContain(
         'At least 80% is kept out of stocks, crypto and gold, in dollar yield or cash: you need this money in 6 months, by April 2027.',
       );
     const pt = compose(sheet({ ...person, language: 'pt' }), shelf, ctx);
-    for (const l of pt.lines)
+    for (const l of kept(pt.lines))
       expect(l.reasons.map((r) => r.text)).toContain(
         'Pelo menos 80% fica fora de ações, cripto e ouro, em rendimento em dólar ou caixa: você precisa deste dinheiro em 6 meses, até abril de 2027.',
       );
@@ -307,7 +315,8 @@ describe('what compose is handed is checked before it is used', () => {
     // A second observation of the same token, as good as the first (same method and time), higher.
     const higher = { ...jl, quotedYield: 0.09, haircutYield: 0.08 };
     const plans = [[...ys, higher], [higher, ...ys], [...ys].reverse().concat(higher, higher)].map(
-      (yields) => compose(sheet(), shelf, fixtureContext({ yields })),
+      // Dollar yield free of its caps, so the higher-ranked token takes it all.
+      (yields) => compose(sheet(), shelf, fixtureContext({ yields, params: roomyYield() })),
     );
     expect(plans[1]).toEqual(plans[0]);
     expect(plans[2]).toEqual(plans[0]);
@@ -368,8 +377,9 @@ describe('what the person already holds', () => {
   it('holding more than the plan would buy: nothing of it is bought, and its money is held in dollar yield, with why', () => {
     // A table with half in stocks and half in gold, and a person who cannot hold gold and already
     // has $20,000 of the S&P 500. The target for stocks is half of $30,000, less than they hold.
+    // Dollar yield free of its caps: this is about where the money goes, not how much one token takes.
     const table = {
-      ...PERSONAL_PARAMS,
+      ...roomyYield(),
       sleeves: {
         ...PERSONAL_PARAMS.sleeves,
         'grow:high': { growthBps: 5000, dollarYieldBps: 0, goldBps: 5000 },
@@ -423,6 +433,9 @@ describe('an income goal: what the verdict says is so', () => {
     incomeTargetUsdMonthly: 300,
   });
   const yields = new Map(fixtureYields().map((y) => [y.assetId, y.haircutYield]));
+  // The verdict's arithmetic, on a plan whose dollar yield is free of its caps: $50,000 and $30,000
+  // in the two tokens, as their tiers allow. The capped plan is in solver.test.ts.
+  const ctx = fixtureContext({ params: roomyYield() });
   const monthly = (plan: PersonalProposal) =>
     plan.lines.reduce((n, l) => n + l.amountUsd * (yields.get(l.assetId) ?? 0), 0) / 12;
 
@@ -665,6 +678,7 @@ describe('the words', () => {
       'Para um objetivo de crescimento, com risco médio, a parcela inicial de rendimento em dólar é 15%.',
       'Escolhido pelo rendimento após o deságio, entre os tokens de rendimento em dólar que você pode ter na Solana.',
       'US$ 1.500 que iria para SPY fica em rendimento em dólar ou caixa: no máximo 70% do plano fica com um só emissor, com risco médio, e Backed (xStocks) está nesse limite.',
+      'No máximo 25% do plano em tokens que emprestam a tomadores ou operam uma diferença de taxas: você não disse quanto risco de crédito aceita, e este é o limite até dizer. Esses tokens juntos estão nesse limite.',
       'syrupUSDC comporta no máximo US$ 50.000: o custo de vender ainda não está medido, então o limite é o da faixa dele na lista de ativos.',
     ]);
   });
@@ -695,15 +709,16 @@ describe('the card', () => {
   const bruno = sheet({ goal: 'protect', amountUsd: 50_000, horizonMonths: 18, risk: 'low' });
 
   it('gives a range: after haircut at the low end, as quoted at the high end, and they differ', () => {
-    // $25,000 and $15,000 in the two dollar-yield tokens of a $50,000 plan.
+    // $12,500 and $25,000 in the two dollar-yield tokens of a $50,000 plan: syrupUSDC at the credit
+    // budget (a quarter), jlUSDC at the issuer cap (half).
     const { expectedReturn } = compose(bruno, shelf, ctx).card;
     const ys = new Map(fixtureYields().map((y) => [y.assetId, y]));
     const part = (pick: 'haircutYield' | 'quotedYield') =>
-      (25_000 * (ys.get('solana:syrupusdc')?.[pick] ?? 0) +
-        15_000 * (ys.get('solana:jlusdc')?.[pick] ?? 0)) /
+      (12_500 * (ys.get('solana:syrupusdc')?.[pick] ?? 0) +
+        25_000 * (ys.get('solana:jlusdc')?.[pick] ?? 0)) /
       500;
-    expect(expectedReturn.lowPct).toBe(3.27);
-    expect(expectedReturn.highPct).toBe(3.84);
+    expect(expectedReturn.lowPct).toBe(2.72);
+    expect(expectedReturn.highPct).toBe(3.37);
     expect(expectedReturn.lowPct).toBeCloseTo(part('haircutYield'), 2);
     expect(expectedReturn.highPct).toBeCloseTo(part('quotedYield'), 2);
     expect(expectedReturn.highPct).toBeGreaterThan(expectedReturn.lowPct);
