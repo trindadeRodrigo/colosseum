@@ -85,13 +85,22 @@ const SLOT = { halfX: 3.1, halfZ: 2.1 };
 const PIN = { halfX: 3, halfZ: 2, half: 24 };
 const shoulder = -POST.half;
 
-export function ClosingDrawing({ label, className }: { label: string; className?: string }) {
+export function ClosingDrawing({
+  label,
+  className,
+  still = false,
+}: {
+  label: string;
+  className?: string;
+  /** Assembled and still: the closing's stand-in where its 3D scene does not run (Closing3D.tsx). */
+  still?: boolean;
+}) {
   const ref = useRef<SVGSVGElement>(null);
   // apart until it comes into view; still (and drawn assembled by CSS) with reduced motion
-  const [state, setState] = useState<'apart' | 'in' | 'still'>('apart');
+  const [state, setState] = useState<'apart' | 'in' | 'still'>(still ? 'still' : 'apart');
   useEffect(() => {
     const el = ref.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return;
+    if (still || !el || typeof IntersectionObserver === 'undefined') return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       setState('still');
       return;
@@ -106,7 +115,7 @@ export function ClosingDrawing({ label, className }: { label: string; className?
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [still]);
   const apart = state === 'apart';
   const move = 'transition-[translate] duration-[1200ms] ease-seat motion-reduce:transition-none';
   // the rail moves along x, which the drawing shows going right and down

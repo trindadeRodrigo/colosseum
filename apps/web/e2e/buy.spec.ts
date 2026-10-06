@@ -77,6 +77,28 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
   ).toBeVisible();
   await page.keyboard.press('Home');
   await check(page, 'landing');
+  // the closing: its heading over the joint's canvas, readable (CLOSING-INK, Oct 6)
+  const words = page.locator('#updates [data-ui="closing-words"]');
+  await words.scrollIntoViewIfNeeded();
+  await expect(page.locator('#updates canvas[data-ui="closing-canvas"]')).toHaveCount(1);
+  await expect(words.getByRole('heading', { level: 2 })).toHaveText(en.landing.closing.title);
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate((t) => {
+      const html = document.documentElement;
+      html.classList.remove('light', 'dark', 'tf-auto');
+      html.classList.add(t);
+    }, theme);
+    await page.waitForTimeout(100);
+    const read = await new AxeBuilder({ page })
+      .include('#updates [data-ui="closing-words"]')
+      .withRules(['color-contrast'])
+      .analyze();
+    expect(
+      read.violations.map((v) => v.id),
+      theme,
+    ).toEqual([]);
+  }
+  await page.keyboard.press('Home');
   const box = page.locator('#simulate textarea');
   await box.fill('Grow $2,000 for ten years, high risk');
   await box.press('Enter');
@@ -155,6 +177,25 @@ test('the plan drawn as a joint answers a mouse and a finger, and lights its par
   await card.locator('blockquote').tap();
   await expect(gold).toHaveAttribute('data-lit', 'false');
   await phone.close();
+});
+
+test('signed in, the logo leads to the landing, and its bar leads back into the app', async ({
+  page,
+}) => {
+  await page.request.post(`${STUB}/__stub/reset`);
+  await page.goto('/sign-in');
+  await page.getByRole('button', { name: en.signIn.passkey.continue }).click();
+  await expect(page).toHaveURL(/\/goal$/);
+  await page.getByRole('link', { name: en.shell.home }).click();
+  // the landing, not a redirect back to the goal
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.landing.stage.title);
+  await page.keyboard.press('End');
+  const bar = page.locator('[data-ui="compact-nav"]');
+  await expect(bar).toHaveAttribute('data-compact', 'true');
+  await expect(bar.getByRole('link', { name: en.landing.nav.cta })).toHaveCount(0);
+  await bar.getByRole('link', { name: en.landing.nav.openApp }).click();
+  await expect(page).toHaveURL(/\/goal$/);
 });
 
 async function toReview(page: Page) {

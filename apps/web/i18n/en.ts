@@ -11,7 +11,7 @@ export const en = {
   shell: {
     skip: 'Skip to content',
     nav: 'Main',
-    home: 'tenonfi, your goal',
+    home: 'tenonfi home',
     menu: 'Menu',
     invest: 'Invest',
     portfolio: 'Portfolio',
@@ -35,17 +35,26 @@ export const en = {
     /** When the server answers that it is being asked too often. */
     slowDown: 'Our server asked me to slow down. Wait a minute, then try again.',
     mockAnnounce: ': sample data, not live',
+    /** A wait for data (components/ui/Skeleton.tsx). */
+    wait: {
+      slow: 'Waking the data service: this can take up to a minute the first time.',
+      over: 'Our server didn’t answer in time, so nothing is shown here yet.',
+      retry: 'Try again',
+    },
   },
 
   signIn: {
     title: 'Sign in with a wallet that is yours.',
     lead: 'Your plan sits in a vault only you can withdraw from, so it needs a wallet you own. Create one with a passkey, or connect one you already use.',
     loading: 'Loading sign-in…',
+    /** The landing's sign-in panel did not load. */
+    notLoaded: 'Sign-in didn’t load here.',
+    openPage: 'Open the sign-in page',
     /** The button that closes the sign-in dialog. */
     close: 'Close sign-in',
     passkey: {
       title: 'Passkey',
-      body: 'No seed phrase to write down. I use the passkey this device keeps for this site, or make one if it has none. A wallet is made for you that only that passkey opens.',
+      body: 'No seed phrase to write down. I use the passkey this device keeps for this site. A wallet is made for you that only that passkey opens.',
       /** One button: signs in with a passkey this device has, or makes one. */
       continue: 'Continue with a passkey',
       /** After the prompt to use one was closed: makes one, and with it a new account. */
@@ -1081,6 +1090,8 @@ export const en = {
       resources: 'Resources',
       analytics: 'Analytics',
       cta: 'Sign in',
+      /** In place of "Sign in" for a person signed in on this browser. */
+      openApp: 'Open the app',
     },
     stage: {
       label: 'How tenonfi fits',

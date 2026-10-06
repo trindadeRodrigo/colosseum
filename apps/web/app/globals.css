@@ -27,6 +27,12 @@
 @source not inline("{italic,font-thin,font-extralight,font-light,text-justify}");
 
 @custom-variant dark (&:where(.dark, .dark *));
+/* The landing closing's wide layout, the joint beside its heading (features/landing/closing-pose.ts, isNarrow). */
+@custom-variant closing-wide {
+  @media (min-width: 960px) and (min-aspect-ratio: 23 / 20) {
+    @slot;
+  }
+}
 
 /* ---------------------------------------------------------------------------------------------------
  * A. Semantic variables. OKLCH as in working-brand.theme.json; the comment is the .yml name and hex.
@@ -548,6 +554,43 @@
   }
   to {
     opacity: 1;
+  }
+}
+
+/* The loader (STYLE.md, "the lattice assembles"): a 3x3 lattice whose horizontals slide in on x, then
+ * whose verticals drop on y, 240ms each with a 60ms stagger, then a 400ms hold, over and over while a
+ * wait lasts. Under reduced motion it is the still lattice. */
+.tf-lattice-assemble .tf-lattice-h {
+  animation: lattice-h 1240ms var(--tf-ease-seat) calc(var(--i) * 60ms) infinite both;
+}
+.tf-lattice-assemble .tf-lattice-v {
+  animation: lattice-v 1240ms var(--tf-ease-seat) calc(420ms + var(--i) * 60ms) infinite both;
+}
+
+@keyframes lattice-h {
+  0% {
+    transform: translateX(-100%);
+  }
+  19%,
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes lattice-v {
+  0% {
+    transform: translateY(-100%);
+  }
+  19%,
+  100% {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tf-lattice-assemble .tf-lattice-h,
+  .tf-lattice-assemble .tf-lattice-v {
+    animation: none;
   }
 }
 

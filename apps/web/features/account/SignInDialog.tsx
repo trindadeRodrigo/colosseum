@@ -98,7 +98,11 @@ export function SignInDialogBody({
   }, [onClose, next, pathname, router]);
   return (
     <>
-      <SignInScreen titleId={titleId} onDone={done} />
+      <SignInScreen
+        titleId={titleId}
+        onDone={done}
+        next={next === null ? pathname : nextPath(next)}
+      />
       {/* On the panel's column, so its left edge is the title's and the cards'. */}
       <div className="mx-auto w-full max-w-[860px]">
         <Disclaimer lang={lang} label={t.shell.disclaimer} />

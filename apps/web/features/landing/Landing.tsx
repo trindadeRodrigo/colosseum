@@ -13,17 +13,26 @@ import { Simulate } from './Simulate';
 // chose light (token-mapping.md: marketing is dark by default). Every figure on it is MOCK, and the
 // foot says so in words too.
 
-export function Landing({ lang, theme }: { lang: Lang; theme: ThemeChoice }) {
+export function Landing({
+  lang,
+  theme,
+  signedIn = false,
+}: {
+  lang: Lang;
+  theme: ThemeChoice;
+  /** Signed in on this browser: the bar leads back into the app, and nothing asks to sign in. */
+  signedIn?: boolean;
+}) {
   const t = dictionary(lang).landing;
   return (
     <>
-      <LandingNav />
+      <LandingNav signedIn={signedIn} />
       {/* "Sign in" opens the sign-in dialog over the landing, loaded on the first press. */}
       <LandingSignIn />
       <main id="content" tabIndex={-1} className="outline-none">
         <JointStage />
         <Showcase lang={lang} />
-        <Simulate />
+        <Simulate signedIn={signedIn} />
         <Closing />
       </main>
       <footer

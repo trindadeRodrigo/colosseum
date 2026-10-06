@@ -38,15 +38,20 @@ for (const size of SIZES)
         await expect(page).toHaveURL(/\/goal$/);
 
         const panel = await box(page, '[role="dialog"]');
+        // The scrim covers the window but for the scrollbar's room, which the locked page keeps
+        // (`scrollbar-gutter: stable`): a browser with a classic scrollbar, as CI's, keeps 15px of it.
+        const scrim = await box(page, '[data-ui="sign-in-dialog"]');
+        expect(Math.round(scrim.x)).toBe(0);
+        expect(size.width - scrim.width).toBeLessThan(20);
         if (size.width < 640) {
           // a sheet the size of the window
-          expect(Math.round(panel.x)).toBe(0);
-          expect(Math.round(panel.width)).toBe(size.width);
+          expect(Math.round(panel.x)).toBe(Math.round(scrim.x));
+          expect(Math.round(panel.width)).toBe(Math.round(scrim.width));
           expect(Math.round(panel.height)).toBe(size.height);
         } else {
           // a box centred over the scrim
-          expect(Math.abs(panel.x + panel.width / 2 - size.width / 2)).toBeLessThan(2);
-          expect(panel.width).toBeLessThan(size.width);
+          expect(Math.abs(panel.x + panel.width / 2 - (scrim.x + scrim.width / 2))).toBeLessThan(2);
+          expect(panel.width).toBeLessThan(scrim.width);
         }
 
         const edges = {

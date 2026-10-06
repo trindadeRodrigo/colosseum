@@ -2,6 +2,7 @@
 import type { BasketSheet } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useEffect, useId, useRef, useState } from 'react';
+import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
@@ -10,6 +11,7 @@ import { Composer } from '../../components/ui/Composer';
 import { ConstraintSheet, type SheetFact } from '../../components/ui/ConstraintSheet';
 import { cn } from '../../components/ui/cn';
 import { GoalCard } from '../../components/ui/GoalCard';
+import { Skeleton, SkeletonText } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -454,6 +456,23 @@ export function GoalScreen() {
       ) : null}
 
       <div aria-live="polite" className="flex flex-col gap-4">
+        {/* While the plan is built: the card it comes in, in its own shape, and the wait in words. The
+            hosted API may be waking; after a minute the wait gives up and asks to build again. */}
+        {solving && (
+          <Card as="section" aria-label={t.goal.sheet.building}>
+            <CardWait
+              label={t.goal.sheet.building}
+              skeleton={
+                <span aria-hidden="true" className="flex flex-col gap-3">
+                  <Skeleton className="h-6 w-1/2" />
+                  <SkeletonText lines={2} />
+                  <Skeleton className="h-4 w-32" />
+                </span>
+              }
+              onRetry={forget}
+            />
+          </Card>
+        )}
         {build.kind === 'unavailable' && (
           <Card as="section" aria-labelledby={outcomeId}>
             <CardHeader title={t.goal.built.unavailable.title} level={2} id={outcomeId} />

@@ -35,6 +35,7 @@ import {
   type AnnouncedWallet,
   evmWalletId,
   foundWallets,
+  onePerName,
   solanaWalletId,
   watchEvmWallets,
 } from './found-wallets';
@@ -194,9 +195,13 @@ function PrivyDriver({
   // wallet standard's registry, which Privy's hook reads. Privy's own embedded wallet is not one.
   const [announced, setAnnounced] = useState<AnnouncedWallet[]>([]);
   useEffect(() => watchEvmWallets(window, setAnnounced), []);
-  const outside = (
-    standard.wallets as readonly (StandardSolanaWallet & { isPrivyWallet?: boolean })[]
-  ).filter((wallet) => !wallet.isPrivyWallet && inBrowser(wallet) && canSignIn(wallet));
+  // One wallet per name: the name is the standard's only handle on a wallet, so a second wallet with
+  // a name already listed is neither listed nor signed with (found-wallets.ts, `onePerName`).
+  const outside = onePerName(
+    (standard.wallets as readonly (StandardSolanaWallet & { isPrivyWallet?: boolean })[]).filter(
+      (wallet) => !wallet.isPrivyWallet && inBrowser(wallet) && canSignIn(wallet),
+    ),
+  );
   const found = foundWallets(outside, announced);
 
   // The accounts are the person's linked wallets that are connected in this browser, in Privy's order

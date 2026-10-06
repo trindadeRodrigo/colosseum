@@ -9,7 +9,7 @@ import { capFact } from './dex';
 import { FlowChart } from './Flow';
 import type { Fact } from './fact';
 import { REGIMES } from './format';
-import { Card, Count, Fig, Kpi, Kpis, Loading, Reason, useFmt, useWords } from './parts';
+import { Card, Count, Fig, Kpi, Kpis, Loading, PageWait, Reason, useFmt, useWords } from './parts';
 import { chunksFor, parseAmount, type SimPath, simPaths } from './sim';
 import { etLabel, regimeAt } from './time';
 import type { RecovBody, SheetBody, SplitBody } from './types';
@@ -21,8 +21,22 @@ import type { RecovBody, SheetBody, SplitBody } from './types';
 export function SimPage() {
   const { base } = useBearing();
   const b = useAnswer(() => base(), [base]);
-  const reading = useWords().sim.reading;
-  if (!b) return <Loading>{reading}</Loading>;
+  const words = useWords();
+  const reading = words.sim.reading;
+  if (!b) {
+    const k = words.sim.kpi;
+    return (
+      <PageWait
+        label={reading}
+        kpis={[
+          { label: k.sale, note: k.saleNote('TSLAx') },
+          { label: k.now, note: 'Sat 00:00 ET' },
+          { label: k.capacity, note: k.capacityNote },
+        ]}
+        filters={0}
+      />
+    );
+  }
   if (!b.assets.ok)
     return (
       <p className="mt-6">

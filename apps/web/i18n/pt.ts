@@ -10,7 +10,7 @@ export const pt: Dictionary = {
   shell: {
     skip: 'Pular para o conteúdo',
     nav: 'Principal',
-    home: 'tenonfi, seu objetivo',
+    home: 'tenonfi, início',
     menu: 'Menu',
     invest: 'Investir',
     portfolio: 'Portfólio',
@@ -32,16 +32,23 @@ export const pt: Dictionary = {
     testNetwork: 'rede de teste',
     slowDown: 'Nosso servidor pediu para eu ir mais devagar. Espere um minuto e tente de novo.',
     mockAnnounce: ': dados de exemplo, não são reais',
+    wait: {
+      slow: 'Acordando o serviço de dados: da primeira vez isso pode levar até um minuto.',
+      over: 'Nosso servidor não respondeu a tempo, então nada aparece aqui ainda.',
+      retry: 'Tentar de novo',
+    },
   },
 
   signIn: {
     title: 'Entre com uma carteira que é sua.',
     lead: 'Seu plano fica em um cofre de onde só você pode sacar, então ele precisa de uma carteira que seja sua. Crie uma com uma chave de acesso ou conecte uma que você já usa.',
     loading: 'Carregando o login…',
+    notLoaded: 'O login não carregou aqui.',
+    openPage: 'Abrir a página de login',
     close: 'Fechar o login',
     passkey: {
       title: 'Chave de acesso',
-      body: 'Você não precisa anotar frase de recuperação. Eu uso a chave de acesso que este aparelho guarda para este site, ou crio uma se não houver. A carteira que criamos para você só abre com essa chave.',
+      body: 'Você não precisa anotar frase de recuperação. Eu uso a chave de acesso que este aparelho guarda para este site. A carteira que criamos para você só abre com essa chave.',
       continue: 'Continuar com uma chave de acesso',
       createNew: 'Criar uma chave de acesso nova',
       waiting: 'Aguardando sua chave de acesso…',
@@ -1043,6 +1050,7 @@ export const pt: Dictionary = {
       resources: 'Recursos',
       analytics: 'Análises',
       cta: 'Entrar',
+      openApp: 'Abrir o app',
     },
     stage: {
       label: 'Como a tenonfi encaixa',
