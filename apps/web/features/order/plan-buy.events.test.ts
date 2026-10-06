@@ -168,7 +168,7 @@ describe('the plan screen', () => {
     );
     // the disclaimer is the shell's foot, once per page: the screen does not repeat it
     expect(host.textContent).not.toContain(DISCLAIMER.en);
-    expect(host.textContent).toContain(DISCLAIMER_SHORT);
+    expect(host.textContent).toContain(DISCLAIMER_SHORT.en);
     // "test network" is said once on the plan's card, in its quiet line
     const pane = [...host.querySelectorAll('[data-ui="card"]')].find((c) =>
       c.textContent?.includes(en.plan.title),
@@ -258,6 +258,16 @@ describe('the plan screen', () => {
     );
     expect(find(chart, 'g[data-series="high"]').getAttribute('opacity')).toBe('0.25');
     expect(find(chart, 'g[data-series="low"]').getAttribute('opacity')).toBe('1');
+  });
+
+  it('says its short disclaimer line in the reader’s language (binding rule 3)', async () => {
+    api();
+    rememberPlan(planOn());
+    const pt = await mount(withAccount('pt', createElement(PlanScreen, { id: PLAN_ID })));
+    await settle();
+    await settle();
+    expect(pt.textContent).toContain(DISCLAIMER_SHORT.pt);
+    expect(pt.textContent).not.toContain(DISCLAIMER_SHORT.en);
   });
 
   it('draws his chart from the plan’s own range, pinned to its yield, and none from a range with no source', async () => {

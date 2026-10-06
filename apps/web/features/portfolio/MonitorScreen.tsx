@@ -6,6 +6,7 @@ import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardEmpty } from '../../components/ui/Card';
+import { PAGE_TITLE } from '../../components/ui/heading';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { SkeletonSummary } from '../../components/ui/Skeleton';
 import { Status } from '../../components/ui/StatusMark';
@@ -262,13 +263,7 @@ export function MonitorScreen() {
       <header className="flex flex-col gap-3">
         {/* The serif answers once per screen: with goal cards below, their sentences are it, and the
             page heading is the sans face (goal-card.md). */}
-        <h1
-          className={
-            vaults.length > 0
-              ? 'font-sans text-h2 font-semibold'
-              : 'max-w-(--tf-measure-display) font-display text-display font-normal'
-          }
-        >
+        <h1 className={vaults.length > 0 ? 'font-sans text-h2 font-semibold' : PAGE_TITLE}>
           {words.title(vaults.length)}
         </h1>
         <p className="max-w-(--tf-measure-body) text-body-lg text-foreground">{words.lead}</p>

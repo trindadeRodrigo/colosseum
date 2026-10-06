@@ -86,7 +86,7 @@ test('an agent makes a plan through the MCP server, and the person buys it from 
 
   // The person opens the link: signed out, the app asks them to sign in and brings them back to it.
   await page.goto(`/sign-in?next=${encodeURIComponent(link.pathname)}`);
-  await page.getByRole('button', { name: en.signIn.passkey.create }).click();
+  await page.getByRole('button', { name: en.signIn.passkey.continue }).click();
   await page.getByRole('button', { name: 'Solana' }).click();
   await page.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
   await expect(page).toHaveURL(new RegExp(`${link.pathname}$`));

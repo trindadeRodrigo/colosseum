@@ -8,6 +8,7 @@ import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/Card';
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
+import { PAGE_TITLE } from '../../components/ui/heading';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { pinSourceOfPrice } from '../../components/ui/price-source';
 import { SkeletonSummary } from '../../components/ui/Skeleton';
@@ -60,7 +61,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
   if (load.kind !== 'read')
     return (
       <section aria-labelledby={titleId} className="flex flex-col items-start gap-4">
-        <h1 id={titleId} className="font-sans text-h2 font-semibold">
+        <h1 id={titleId} className={PAGE_TITLE}>
           {load.kind === 'no-plan' || load.kind === 'refused' ? v.missing : v.title}
         </h1>
         {load.kind !== 'no-plan' && load.kind !== 'refused' && (
@@ -88,7 +89,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
     <div data-ui="vault-screen" className="flex flex-col gap-8">
       <header className="flex flex-col items-start gap-3">
         <ChainBadge chain={read.chain} />
-        <h1 id={titleId} className="max-w-(--tf-measure-display) font-display text-h1 font-normal">
+        <h1 id={titleId} className={PAGE_TITLE}>
           {v.title}
         </h1>
         <p className="max-w-(--tf-measure-body) text-body-lg">{v.lead(read.name)}</p>

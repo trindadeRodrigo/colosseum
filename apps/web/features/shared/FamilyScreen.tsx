@@ -17,6 +17,7 @@ import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { DataTable } from '../../components/ui/DataTable';
 import { utcMinute } from '../../components/ui/ExecutionList';
+import { PAGE_TITLE } from '../../components/ui/heading';
 import { MAX_LEGS, PlanLegs } from '../../components/ui/PlanLegs';
 import { SkeletonPlan, SkeletonRows } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
@@ -137,7 +138,7 @@ export function FamilyScreen({ slug }: { slug: string }) {
   if (load.kind !== 'read')
     return (
       <section aria-labelledby={titleId} className="flex flex-col items-start gap-4">
-        <h1 id={titleId} className="font-sans text-h2 font-semibold">
+        <h1 id={titleId} className={PAGE_TITLE}>
           {load.kind === 'no-plan' ? t.shared.family.missing : t.shared.shelf.title}
         </h1>
         {load.kind !== 'no-plan' && (
@@ -168,10 +169,7 @@ export function FamilyScreen({ slug }: { slug: string }) {
   return (
     <div data-ui="family-screen" className="flex flex-col gap-8">
       <header className="flex flex-col gap-3">
-        <h1
-          id={titleId}
-          className="max-w-(--tf-measure-display) font-display text-h1 font-normal [overflow-wrap:anywhere]"
-        >
+        <h1 id={titleId} className={`${PAGE_TITLE} [overflow-wrap:anywhere]`}>
           {family.name}
         </h1>
         {family.copy && (

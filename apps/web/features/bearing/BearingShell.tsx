@@ -136,7 +136,7 @@ export function BearingShell({ children }: { children: ReactNode }) {
               aria-current={current === METHODOLOGY ? 'page' : undefined}
               onClick={followed}
               className={cn(
-                'underline decoration-1 underline-offset-[3px] hover:decoration-2',
+                'inline-flex min-h-6 items-center underline decoration-1 underline-offset-[3px] hover:decoration-2',
                 FOCUS,
               )}
             >

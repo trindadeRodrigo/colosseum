@@ -23,10 +23,14 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   page,
 }) => {
   await page.request.post(`${STUB}/__stub/reset`);
-  await page.goto('/sign-in');
-  await page.getByRole('button', { name: en.signIn.passkey.create }).click();
-  await page.getByRole('button', { name: NAME }).click();
-  await page.getByRole('button', { name: en.chain.pick.confirm(NAME) }).click();
+  // the bar's "Sign in" opens the sign-in dialog over the goal (SIGN-IN-FLOW)
+  await page.goto('/goal');
+  await page.locator('header a[href="/sign-in"]').click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
+  await dialog.getByRole('button', { name: NAME }).click();
+  await dialog.getByRole('button', { name: en.chain.pick.confirm(NAME) }).click();
+  await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/goal$/);
 
   const goal = page.getByRole('textbox', { name: en.goal.composer.label, exact: true });

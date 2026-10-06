@@ -10,6 +10,8 @@ import {
   useWidth,
 } from './chart';
 import { fullDate, nice, tagWidth, timeTicks } from './chart-scale';
+import { ProvenancePin } from './ProvenancePin';
+import type { PinLabels, PinSource } from './provenance';
 
 export type { ChartSeriesClass } from './chart';
 
@@ -67,6 +69,13 @@ export type TimeChartProps = {
   aria: string;
   /** The source line under the chart, with its pin. */
   src?: ReactNode;
+  /**
+   * Where the plotted figures come from: each figure the readout names carries this pin, as the
+   * headline beside it does (STYLE.md rule 1: no pin, no number).
+   */
+  pin?: PinSource;
+  /** The pin's words, in the view's language. */
+  pinLabels?: PinLabels;
   /** In place of the plot when there are no points. */
   empty?: ReactNode;
   /** The chart's own words: the range tabs, the readout. */
@@ -314,7 +323,15 @@ export function TimeChart(props: TimeChartProps) {
         className="flex min-h-5 flex-wrap gap-x-4 gap-y-0.5 font-mono text-b-meta/5 text-muted-foreground"
       >
         {readT != null && (
-          <Readout t={readT} panes={panes} hourly={hourly} text={text} locale={props.locale} />
+          <Readout
+            t={readT}
+            panes={panes}
+            hourly={hourly}
+            text={text}
+            locale={props.locale}
+            pin={props.pin}
+            pinLabels={props.pinLabels}
+          />
         )}
       </div>
       <div
@@ -589,12 +606,16 @@ function Readout({
   hourly,
   text,
   locale,
+  pin,
+  pinLabels,
 }: {
   t: number;
   panes: readonly TimePane[];
   hourly: boolean;
   text: ChartLabels;
   locale?: string;
+  pin?: PinSource;
+  pinLabels?: PinLabels;
 }) {
   return (
     <>
@@ -611,9 +632,18 @@ function Readout({
                 style={{ background: SERIES_VAR[s.cls] }}
               />
               {s.label}{' '}
-              <b className="font-medium text-foreground">
-                {q.v == null ? text.noValue : (q.show ?? p.fmt(q.v))}
-              </b>
+              {q.v != null && pin ? (
+                <ProvenancePin
+                  value={q.show ?? p.fmt(q.v)}
+                  obs={pin}
+                  labels={pinLabels}
+                  className="font-medium text-foreground"
+                />
+              ) : (
+                <b className="font-medium text-foreground">
+                  {q.v == null ? text.noValue : (q.show ?? p.fmt(q.v))}
+                </b>
+              )}
               {q.dashed ? ` ${text.fewSamples}` : ''}
             </span>
           );

@@ -192,7 +192,7 @@ test('signed in, the logo leads to the landing, and its bar leads back into the 
 }) => {
   await page.request.post(`${STUB}/__stub/reset`);
   await page.goto('/sign-in');
-  await page.getByRole('button', { name: en.signIn.passkey.create }).click();
+  await page.getByRole('button', { name: en.signIn.passkey.continue }).click();
   await page.getByRole('button', { name: 'Solana' }).click();
   await page.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
   await expect(page).toHaveURL(/\/goal$/);
@@ -212,11 +212,14 @@ test('signed in, the logo leads to the landing, and its bar leads back into the 
 async function toBuy(page: Page, o: { fund?: 'mock' | 'test' } = {}) {
   await page.request.post(`${STUB}/__stub/reset`);
   if (o.fund === 'test') await page.request.post(`${STUB}/__stub/test-network`);
-  await page.goto('/sign-in');
-  await page.getByRole('button', { name: en.signIn.passkey.create }).click();
-  await page.getByRole('button', { name: 'Solana' }).click();
-  await page.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
-  // sign-in leads to the goal; `/` is his landing page for a visitor (WEB-2b)
+  // the bar's "Sign in" opens the sign-in dialog over the goal (SIGN-IN-FLOW); the person stays there
+  await page.goto('/goal');
+  await page.locator('header a[href="/sign-in"]').click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
+  await dialog.getByRole('button', { name: 'Solana' }).click();
+  await dialog.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
+  await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/goal$/);
   await check(page, 'home');
 

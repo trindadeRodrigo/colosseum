@@ -50,22 +50,40 @@ export const en = {
     title: 'Sign in with a wallet that is yours.',
     lead: 'Your plan sits in a vault only you can withdraw from, so it needs a wallet you own. Create one with a passkey, or connect one you already use.',
     loading: 'Loading sign-in…',
+    /** The landing's sign-in panel did not load. */
+    notLoaded: 'Sign-in didn’t load here.',
+    openPage: 'Open the sign-in page',
+    /** The button that closes the sign-in dialog. */
+    close: 'Close sign-in',
     passkey: {
       title: 'Passkey',
-      body: 'No seed phrase to write down. Your device keeps the passkey, and a wallet is made for you that only it opens.',
-      create: 'Create a passkey',
-      use: 'Use a passkey I already have',
+      body: 'No seed phrase to write down. I use the passkey this device keeps for this site. A wallet is made for you that only that passkey opens.',
+      /** One button: signs in with a passkey this device has, or makes one. */
+      continue: 'Continue with a passkey',
+      /** After the prompt to use one was closed: makes one, and with it a new account. */
+      createNew: 'Create a new passkey',
       waiting: 'Waiting for your passkey…',
       making: 'Making your wallet…',
     },
     wallet: {
       title: 'Wallet',
       body: 'Connect a wallet you already use. Your plan lives on its chain: Solana for a Solana wallet, Robinhood Chain for an Ethereum wallet.',
+      /** Opens the list of wallets found in this browser. */
+      connect: 'Connect a wallet',
       /** The name of the list of wallets found in this browser. */
       found: 'Wallets found in this browser',
-      family: { solana: 'Solana', evm: 'Ethereum' },
       waiting: 'Waiting for your wallet…',
-      none: 'No wallet was found in this browser. Install one, open this page inside your wallet’s own browser, or use a passkey.',
+      none: 'No wallet was found in this browser. Install one, or open this page inside your wallet’s own browser. Or continue with a passkey: it needs nothing installed.',
+      /** A wallet that signs on both families: the chain is asked before it signs. */
+      both: (wallet: string) =>
+        `${wallet} works on Solana and on Robinhood Chain. Choose the chain your plan lives on: it can’t be changed later.`,
+      /** After `both`: someone who signed in before chooses again what they chose then. */
+      before: 'Signed in before? Choose the chain you chose then.',
+      /** A wallet every chain of which is switched off on our server. */
+      off: (wallet: string) =>
+        `${wallet} works only on chains switched off on our server for now, so it can’t be used to sign in. Use another wallet, or a passkey.`,
+      /** The name of the group of the two chains to choose from. */
+      chains: 'The chain of your plan',
     },
     off: {
       api: 'Sign-in is off for the moment: our server isn’t answering. I ask again every few seconds, and this page updates by itself.',
@@ -79,8 +97,9 @@ export const en = {
         'Passkeys aren’t switched on for this app yet, so none can be created or used here. Connect a wallet instead, or come back later.',
       passkeyNotCreated:
         'The passkey wasn’t created: the prompt was closed or ran out of time. Nothing was saved. Try again when you’re ready.',
+      /** The prompt to use a passkey was closed: nothing is made unless the person asks (SIGN-IN-FLOW). */
       passkeyNotUsed:
-        'No passkey was used: the prompt was closed or ran out of time. If you have no passkey for this site yet, create one.',
+        'No passkey was used. If you made one on another device, use that device or choose “use a phone” in the prompt. New here? Create a passkey: it opens a new account with a new, empty wallet.',
       passkeyUnknown: 'I don’t know that passkey. Create a new one, or connect a wallet.',
       /** Privy's `passkey_not_registered`: the passkey picked was made for another site or app. */
       passkeyNotRegistered: 'That passkey isn’t registered here. Pick another, or create one.',
@@ -205,6 +224,8 @@ export const en = {
         'Protect $50,000 for 18 months, low risk',
         '$80,000 for $300 a month of income',
       ],
+      /** The sheet's source line, for an example sent as it is: its limits are the app's own. */
+      source: 'this example’s own limits',
     },
     readFailure: {
       unreachable:
@@ -365,6 +386,16 @@ export const en = {
     mockSuffix: ', sample figure',
     stale: 'stale',
     ageUnknown: 'age unknown',
+    /**
+     * The age said in full in the pin's accessible name: `{n}` the count, `{unit}` its word. Words, not
+     * a function: a server component hands these to the pin, and a function cannot cross to the client.
+     */
+    age: {
+      said: '{n} {unit} old',
+      minute: ['minute', 'minutes'],
+      hour: ['hour', 'hours'],
+      day: ['day', 'days'],
+    },
     missing: 'no source yet',
     provenance: 'Provenance',
     copy: 'Copy source',
