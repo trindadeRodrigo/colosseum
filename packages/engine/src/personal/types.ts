@@ -53,12 +53,23 @@ export const PersonalLimits = z.object({
 });
 export type PersonalLimits = z.infer<typeof PersonalLimits>;
 
+// The codes ISO 3166 leaves to users (AA, QM to QZ, XA to XZ but Kosovo's XK, ZZ for an unknown
+// place) and the groups that are no country (EU, EZ, UN): never where a person lives.
+const NOT_A_COUNTRY = /^(?:AA|EU|EZ|UN|Q[M-Z]|X[A-JL-Z]|ZZ)$/;
+const REGIONS = new Intl.DisplayNames(['en'], { type: 'region', fallback: 'none' });
 /**
- * The country of a sheet whose person was not asked, because no asset on their chain's shelf is
- * blocked anywhere (Oct 6). ZZ is the code ISO 3166 leaves for an unknown place: no asset blocks it,
- * and the read-back does not say it.
+ * Whether `code` names a country a person can live in (Oct 6). The sheet's regex takes any two
+ * capitals; an unknown place ("ZZ") or a code no country has would let every asset through the
+ * country check, so the engine and the route refuse it.
  */
-export const COUNTRY_NOT_ASKED = 'ZZ';
+export function isCountryCode(code: string): boolean {
+  if (!/^[A-Z]{2}$/.test(code) || NOT_A_COUNTRY.test(code)) return false;
+  try {
+    return REGIONS.of(code) !== undefined;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * LOCAL TYPE. `BasketSheet` with the person's limits. This is what `compose` validates and runs on.
@@ -66,15 +77,9 @@ export const COUNTRY_NOT_ASKED = 'ZZ';
  * A plan lives on one chain: the chain of the wallet the person signed in with (decided on
  * 2026-10-03). `chains` keeps the list shape of the shared type and must name exactly one.
  */
-export const PersonalSheet = BasketSheet.extend({
-  limits: PersonalLimits.optional(),
-  /**
-   * The person gave no date for the goal ("no hard cap", "open-ended"; gate GLIDE-OPT-IN, Oct 6).
-   * `horizonMonths` then holds `openEndedHorizonMonths` of the parameter table, a starting value and
-   * not the person's, the read-back says "no date set", and the glide is off: it has no date to near.
-   */
-  horizonOpen: z.boolean().optional(),
-})
+// `horizonOpen` (shared, Oct 6): `horizonMonths` then holds `openEndedHorizonMonths` of the parameter
+// table, a starting value and not the person's; no date is shown or made from it, and the glide is off.
+export const PersonalSheet = BasketSheet.extend({ limits: PersonalLimits.optional() })
   .refine((s) => !(s.horizonOpen && s.rules.glide), {
     message: 'a goal with no date has no glide: it has no date to near',
     path: ['rules', 'glide'],

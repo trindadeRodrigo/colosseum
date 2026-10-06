@@ -20,7 +20,9 @@ type Goal = {
   expectLimits: Record<string, unknown>;
 };
 const goals = evalSet.goals as Goal[];
-const FIELDS = Object.keys(BasketSheetDraft.shape);
+// `horizonOpen` (Oct 6) is optional on the draft and left out when the text gives no word for it: no
+// goal of the set says it has no date, so the set's drafts do not hold it.
+const FIELDS = Object.keys(BasketSheetDraft.shape).filter((key) => key !== 'horizonOpen');
 
 /** The fields of the draft that the rules parser did not read as the set expects. */
 function misses(goal: Goal): string[] {

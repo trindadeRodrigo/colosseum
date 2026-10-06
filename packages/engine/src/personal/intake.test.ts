@@ -588,7 +588,7 @@ describe('the first chat of Oct 6, replayed (MOCK replies)', () => {
     expect(first.flags).toContain('max_yield_asked');
     // The country is asked with its reason.
     expect(first.questions.find((q) => q.field === 'country')?.text).toBe(
-      "Some assets aren't offered in every country. Where do you live?",
+      "Some assets aren't offered in every country, and some can't be offered to people in certain countries. Where do you live?",
     );
   });
 
@@ -657,18 +657,144 @@ describe('the first chat of Oct 6, replayed (MOCK replies)', () => {
     expect(off.questions.map((q) => q.field)).toContain('sleeves');
   });
 
-  it('asks no country where no asset on the shelf is blocked anywhere, and says none', () => {
-    const none = runIntake({
-      text: conversationText(chat.messages[0] ?? '', chat.messages.slice(1, 2)),
-      nowMonth: NOW,
-      reply: chat.replies[1],
+  it('always asks the country when none is given, and never takes ZZ or any default (Oct 6)', () => {
+    const second = turn(2);
+    expect(second.sheet).toBeNull();
+    expect(second.questions.map((q) => q.field)).toEqual(['country']);
+    // An answer, or a model reading, that is no country is asked again; nothing fills one in.
+    const text = conversationText(chat.messages[0] ?? '', chat.messages.slice(1, 2));
+    const base = { text, nowMonth: NOW, homeChain: 'solana' as const, portfolios };
+    const answered = runIntake({ ...base, reply: chat.replies[1], answers: { country: 'ZZ' } });
+    expect(answered.flags).toContain('not_a_country:answer');
+    expect(answered.questions.map((q) => q.field)).toEqual(['country']);
+    expect(answered.sheet).toBeNull();
+    const read = runIntake({
+      ...base,
+      reply: { ...(chat.replies[1] as object), country: 'ZZ' },
+    });
+    expect(read.questions.map((q) => q.field)).toEqual(['country']);
+    expect(runIntake({ ...base, reply: null }).questions.map((q) => q.field)).toContain('country');
+  });
+});
+
+describe('the review of Oct 6', () => {
+  const NOW_MONTH = NOW;
+  const read = (text: string, reply: Record<string, unknown> | null) =>
+    runIntake({
+      text,
+      nowMonth: NOW_MONTH,
+      reply,
       homeChain: 'solana',
       portfolios,
-      countryMatters: false,
+      answers: { country: 'BR' },
     });
-    expect(none.questions).toEqual([]);
-    expect(none.sheet?.country).toBe('ZZ');
-    expect((none.readBack ?? []).join(' ')).not.toMatch(/You live/);
+
+  it('a loose risk word under a negation, or a bare "crazy", is no cue for high', () => {
+    for (const text of [
+      "Grow $5,000 over 5 years, but don't go crazy.",
+      'Grow $5,000 over 5 years, nothing crazy.',
+      "Grow $5,000 over 5 years. I'm not crazy about crypto.",
+      'Quero crescer US$ 5.000 em 5 anos, mas não pode arriscar tudo.',
+    ])
+      expect(riskCuesIn(text), text).not.toContain('high');
+    for (const text of ['for the rest we can go crazy', 'the rest can go wild', 'pode arriscar'])
+      expect(riskCuesIn(text), text).toContain('high');
+    const calm = read("Grow $5,000 over 5 years, but don't go crazy.", {
+      goal: 'grow',
+      amountUsd: 5000,
+      horizonMonths: 60,
+      risk: 'high',
+    });
+    expect(calm.flags).toContain('no_cue:risk');
+    expect(calm.questions.map((q) => q.field)).toContain('risk');
+  });
+
+  it('a written date beats "no rush", in English and Portuguese', () => {
+    for (const [text, months] of [
+      ['No rush, but I need $5,000 to grow by 2030, high risk.', 39],
+      ['Sem pressa, mas preciso até 2030: fazer US$ 5.000 crescer, risco alto.', 39],
+    ] as const) {
+      const both = read(text, {
+        goal: 'grow',
+        amountUsd: 5000,
+        horizonMonths: months,
+        risk: 'high',
+        openEnded: true,
+      });
+      expect(both.flags, text).toContain('date_in_text:openEnded');
+      expect(both.sheet?.horizonOpen, text).toBeUndefined();
+      expect(both.sheet?.horizonMonths, text).toBe(months);
+      expect(both.sheet?.rules.glide, text).toBe(true);
+      // A model that took "no rush" alone and missed the date: the date is asked, never left open.
+      const missed = read(text, { goal: 'grow', amountUsd: 5000, risk: 'high', openEnded: true });
+      expect(missed.sheet, text).toBeNull();
+      expect(
+        missed.questions.map((q) => q.field),
+        text,
+      ).toContain('horizonMonths');
+      // With no model, the same.
+      expect(read(text, null).sheet?.horizonOpen ?? false, text).toBe(false);
+    }
+  });
+
+  it('"up to N years" after "for" or "invest" is a time frame; "take up to N to get out" is an exit time', () => {
+    expect(horizonsIn('I want to invest for up to 5 years', NOW_MONTH)).toEqual([60]);
+    expect(horizonsIn('the rest can take up to 3 months to get out', NOW_MONTH)).toEqual([]);
+    expect(exitTimesIn('the rest can take up to 3 months to get out').map((e) => e.months)).toEqual(
+      [3],
+    );
+    expect(exitTimesIn('I want to invest for up to 5 years')).toEqual([]);
+  });
+
+  it('a percent of the money outside the split is asked, never dropped', () => {
+    const r = read('Grow $5,000 over 5 years, high risk: 70/30 safe and growth, but 50% in AI.', {
+      goal: 'grow',
+      amountUsd: 5000,
+      horizonMonths: 60,
+      risk: 'high',
+      sleeves: [
+        { kind: 'safe_yield', sharePct: 70 },
+        { kind: 'goal', sharePct: 30 },
+      ],
+    });
+    expect(r.flags).toContain('split_percent_unplaced');
+    expect(r.draft.sleeves).toBeNull();
+    expect(r.questions.filter((q) => q.field === 'sleeves')).toHaveLength(1);
+    // A fall or a yield written as a percent is no share of the money.
+    const fall = read(
+      'Grow $5,000 over 5 years, high risk, 70% safe and 30% to grow; I can take a 20% fall.',
+      {
+        goal: 'grow',
+        amountUsd: 5000,
+        horizonMonths: 60,
+        risk: 'high',
+        sleeves: [
+          { kind: 'safe_yield', sharePct: 70 },
+          { kind: 'goal', sharePct: 30 },
+        ],
+      },
+    );
+    expect(fall.flags).not.toContain('split_percent_unplaced');
+    expect(fall.sheet?.sleeves).toHaveLength(2);
+  });
+
+  it('with a part kept safe, the risk is still compared with the rules parser, against the risky part', () => {
+    const text = 'Grow $5,000 over 5 years: 70% safe, 30% high risk.';
+    const reply = {
+      goal: 'grow',
+      amountUsd: 5000,
+      horizonMonths: 60,
+      risk: 'low',
+      sleeves: [
+        { kind: 'safe_yield', sharePct: 70 },
+        { kind: 'goal', sharePct: 30 },
+      ],
+    };
+    // The rules parser reads "high risk"; the model's low for the risky part is flagged and asked.
+    expect(draftFromRules(text, NOW_MONTH).draft.risk).toBe('high');
+    const r = read(text, reply);
+    expect(r.flags).toContain('disagrees_with_rules:risk');
+    expect(r.questions.find((q) => q.field === 'risk')?.template).toBe('riskGoalPart');
   });
 });
 

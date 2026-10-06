@@ -740,10 +740,10 @@ export const QUESTION_TEMPLATES = {
     en: 'How much income a month, in dollars, do you aim for?',
     pt: 'Quanto de renda por mês, em dólares, você busca?',
   },
-  // Asked only when an asset on the shelf is not offered somewhere (Oct 6): the reason is said with it.
+  // Always asked when not given, with its reason (Oct 6).
   country: {
-    en: "Some assets aren't offered in every country. Where do you live?",
-    pt: 'Alguns ativos não são oferecidos em todos os países. Onde você mora?',
+    en: "Some assets aren't offered in every country, and some can't be offered to people in certain countries. Where do you live?",
+    pt: 'Alguns ativos não são oferecidos em todos os países, e alguns não podem ser oferecidos a quem mora em certos países. Onde você mora?',
   },
   themes: {
     en: 'Which shared portfolio, if any, do you want to start from?',

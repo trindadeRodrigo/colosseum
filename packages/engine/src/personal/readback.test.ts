@@ -7,7 +7,7 @@ import { readNumber } from './intake-text';
 import { readBack } from './readback';
 import { CLASS_WORDS, placeholdersOf, READBACK_TEMPLATES, render, WORDS } from './templates';
 import { launchShelf } from './testing';
-import { COUNTRY_NOT_ASKED, type PersonalSheet } from './types';
+import type { PersonalSheet } from './types';
 
 // C18: the read-back the person confirms holds no number and no name that the sheet does not. It is
 // drawn from the validated sheet by templates, so this holds the templates and the code that fills
@@ -158,8 +158,8 @@ function sheets(): PersonalSheet[] {
   out.push(full, { ...full, language: 'pt' }, { ...full, limits: { creditTolerance: 'limited' } });
   out.push({ ...full, limits: { creditTolerance: 'accept' }, language: 'pt' });
   out.push({ ...full, restoreSplit: false });
-  // A goal with no date, and a person not asked for a country (Oct 6).
-  out.push({ ...full, horizonOpen: true, country: COUNTRY_NOT_ASKED });
+  // A goal with no date (Oct 6).
+  out.push({ ...full, horizonOpen: true });
   return [
     ...out,
     ...out.map((s) => ({ ...s, language: s.language === 'en' ? 'pt' : 'en' }) as PersonalSheet),
@@ -198,7 +198,6 @@ describe('the read-back (C18)', () => {
     const said = readBack(open, portfolios);
     expect(said[0]).toMatch(/with no date set/);
     expect(said.join(' ')).not.toMatch(new RegExp(`\\b${open.horizonMonths} months`));
-    expect(said.join(' ')).not.toMatch(/You live/);
     const pt = readBack({ ...open, language: 'pt' }, portfolios);
     expect(pt[0]).toMatch(/sem data definida/);
   });

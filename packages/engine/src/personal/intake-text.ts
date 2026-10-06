@@ -118,7 +118,7 @@ const PER_MONTH_BEFORE = /(?:monthly|mensal|por m[eê]s)\s+(?:income|renda)?\s*(
 // and "the next", "the coming", "próximos", "até" ("for the next 15 years", "em até 3 anos"), and no
 // age after.
 const TIME_FRAME_BEFORE =
-  /(?:^|[\s,(])(?:for|over|in|within|during|after|next|coming|em|por|durante|dentro de|daqui a|depois de|pr[oó]ximos?|em at[eé])\s*$/iu;
+  /(?:^|[\s,(])(?:for|over|in|within|during|after|next|coming|em|por|durante|dentro de|daqui a|depois de|pr[oó]ximos?|em at[eé]|(?:for|over|within|invest\p{L}*)\s+up to|(?:por|durante|investir)\s+at[eé])\s*$/iu;
 const AGE_AFTER = /^\s*(?:old|of age|de idade)\b/iu;
 const inTimeFrame = (text: string, at: number, end: number) =>
   TIME_FRAME_BEFORE.test(text.slice(0, at)) && !AGE_AFTER.test(text.slice(end));
@@ -127,7 +127,7 @@ const inTimeFrame = (text: string, at: number, end: number) =>
 // months to get out", "I may need it in 3 months", "posso precisar em 3 meses", "resgatar em até 3
 // meses". Read in the words just before and just after the duration.
 const EXIT_BEFORE =
-  /(?:may|might|could|can)\s+need\b[^.;!?]{0,25}$|\b(?:take|takes|wait)\s+(?:up to|at most|no more than)?\s*$|\bup to\s*$|(?:posso|pode ser que eu|talvez eu?)\s+precis\p{L}*[^.;!?]{0,25}$|(?:sacar|resgatar|tirar|retirar)\p{L}*[^.;!?]{0,15}$/iu;
+  /(?:may|might|could|can)\s+need\b[^.;!?]{0,25}$|\b(?:take|takes|wait)\s+(?:up to|at most|no more than)?\s*$|(?:posso|pode ser que eu|talvez eu?)\s+precis\p{L}*[^.;!?]{0,25}$|(?:sacar|resgatar|tirar|retirar)\p{L}*[^.;!?]{0,15}$/iu;
 const EXIT_AFTER =
   /^\s*(?:\S+\s+){0,2}?(?:to\s+(?:get\s+(?:it\s+|the money\s+)?out|exit|withdraw|cash out|sell|sell out|take (?:it )?out)|para\s+(?:sair|sacar|resgatar|tirar|retirar|vender))\b/iu;
 const exitAround = (text: string, at: number, end: number) =>
@@ -316,6 +316,9 @@ export function glideAskedIn(text: string, nowMonth: string): boolean {
 
 // The person's split of the plan in so many words (gate SLEEVES): "70-30", "70/30", "70% and 30%".
 const PAIR = /(?<!\d)(\d{1,2})\s*(?:%\s*)?(?:-|\/|x|e|and|to)\s*(\d{1,2})\s*%?(?!\d)/giu;
+// What follows a percent that is no share of the money: a fall, a loss, a yield, a rate.
+const NOT_A_SHARE =
+  /^\s*(?:\p{L}+\s+){0,1}?(?:fall|drop|drops|loss|losses|down|dip|crash|yield|return|returns|apy|apr|interest|rate|a year|per year|annual|queda|perda|rendimento|retorno|juros|taxa|ao ano|por ano)(?![\p{L}])/iu;
 const HALF =
   /(?<![\p{L}])(?:the other half|other half|a outra metade|outra metade|half|metade)(?![\p{L}])/iu;
 /**
@@ -328,6 +331,8 @@ export function splitIn(text: string): {
   percents: number[];
   /** Whether "half" or "metade" is written. */
   half: boolean;
+  /** The percents written as shares of the money: not a fall, a loss or a yield ("a 20% fall"). */
+  ofMoney: number[];
   mismatch: { pct: number } | null;
 } {
   const whole = 100;
@@ -337,8 +342,10 @@ export function splitIn(text: string): {
     const b = Number(m[2]);
     if (a + b === whole) pairs.push([a, b]);
   }
-  const percents = mentionsIn(text)
-    .filter((m) => m.kind === 'percent')
+  const percentMentions = mentionsIn(text).filter((m) => m.kind === 'percent');
+  const percents = percentMentions.map((m) => m.value);
+  const ofMoney = percentMentions
+    .filter((m) => !NOT_A_SHARE.test(text.slice(m.end)))
     .map((m) => m.value);
   const half = whole / 2;
   const halfWritten = HALF.test(text);
@@ -346,6 +353,7 @@ export function splitIn(text: string): {
   return {
     pairs,
     percents,
+    ofMoney,
     half: halfWritten,
     mismatch: off !== undefined ? { pct: off } : null,
   };
@@ -414,15 +422,25 @@ const LOOSE_RISK_CUES: Record<'low' | 'medium' | 'high', RegExp | null> = {
     String.raw`as safe as possible|t[aã]o seguro quanto poss[ií]vel|o mais seguro poss[ií]vel`,
   ),
   medium: null,
+  // Phrases, never a bare word: "crazy" alone is "I'm not crazy about crypto" as often as not.
   high: cue(
-    String.raw`go crazy|going crazy|crazy|yolo|all in|risk it|highest (?:possible )?(?:yield|return)|as much risk as possible|maximum risk|max risk|arriscar tudo|pode arriscar|loucura|chutar o balde|risco m[aá]ximo`,
+    String.raw`go crazy|going crazy|go wild|yolo|all in|risk it all|highest (?:possible )?(?:yield|return)|as much risk as possible|maximum risk|max risk|arriscar tudo|pode arriscar|chutar o balde|risco m[aá]ximo`,
   ),
 };
+// A loose cue under a negation is no cue: "don't go crazy", "não pode arriscar".
+const LOOSE_NEGATED =
+  /(?<![\p{L}])(?:not|no|never|nothing|don'?t|do not|doesn'?t|won'?t|can'?t|cannot|n[aã]o|nunca|nada|sem)(?:\s+\S+){0,2}\s*$/iu;
+/** The loose cue's matches that are not under a negation, as written. */
+const looseMatches = (pattern: RegExp, text: string): string[] =>
+  [...text.matchAll(new RegExp(pattern.source, 'giu'))]
+    .filter((m) => !LOOSE_NEGATED.test(text.slice(0, m.index ?? 0)))
+    .map((m) => m[0]);
 /** The risks the text has a word for, plain or loose. */
 export const riskCuesIn = (text: string) =>
-  (Object.keys(RISK_CUES) as (keyof typeof RISK_CUES)[]).filter(
-    (r) => RISK_CUES[r].test(text) || LOOSE_RISK_CUES[r]?.test(text) === true,
-  );
+  (Object.keys(RISK_CUES) as (keyof typeof RISK_CUES)[]).filter((r) => {
+    const loose = LOOSE_RISK_CUES[r];
+    return RISK_CUES[r].test(text) || (loose !== null && looseMatches(loose, text).length > 0);
+  });
 /**
  * The loose words a risk was read from, as written, when the text has no plain word for it: "go
  * crazy" for high. Null when a plain word says it ("high risk", "risco alto") or none does.
@@ -431,8 +449,7 @@ export function looseRiskWordsIn(text: string, risk: 'low' | 'medium' | 'high'):
   const loose = LOOSE_RISK_CUES[risk];
   if (RISK_CUES[risk].test(text) || !loose) return null;
   // The last one written: on a later turn, the person's own answer.
-  const all = [...text.matchAll(new RegExp(loose.source, 'giu'))];
-  return all.at(-1)?.[0] ?? null;
+  return looseMatches(loose, text).at(-1) ?? null;
 }
 
 const plain = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();

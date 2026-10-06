@@ -113,7 +113,7 @@ export function sizeSleeves(w: World, setAside = 0): SleevePlan {
   };
 
   // The date: a floor on dollar yield that rises as it nears. The person can switch this off.
-  if (sheet.rules.glide) {
+  if (sheet.rules.glide && !sheet.horizonOpen && w.goalMonth !== null) {
     const floor = ofGoal(
       floorAt(P.glideFloor, sheet.horizonMonths, (step) => step.dollarYieldBps),
       true,
@@ -131,7 +131,7 @@ export function sizeSleeves(w: World, setAside = 0): SleevePlan {
 
   // How soon the money may be needed: a floor on cash. The sooner of the date and what they said.
   const said = sheet.limits?.mayNeedInMonths;
-  const dated = sheet.rules.glide ? sheet.horizonMonths : undefined;
+  const dated = sheet.rules.glide && !sheet.horizonOpen ? sheet.horizonMonths : undefined;
   const soonest: { months: number; rule: RuleId } | null =
     said !== undefined && (dated === undefined || said <= dated)
       ? { months: said, rule: 'CASH_MAY_NEED' }
