@@ -2,13 +2,13 @@
 import { useState } from 'react';
 import { SubscribeBlock, type SubscribeStatus } from '../../components/ui/SubscribeBlock';
 import { useT } from '../../i18n/I18nProvider';
-import { Closing3D } from './Closing3D';
+import { ClosingCoins } from './ClosingCoins';
 
 // "Built piece by piece." (subscribe-block.md): the closing section and its email field. Sign-ups are
 // not open: there is no route that takes an address, so nothing typed here is sent or kept, and the
 // block says so before and after. The checks of the address are the block's own. Its picture is the
-// hero's joint in 3D, coming together behind the heading as the reader scrolls (Closing3D, gate
-// CLOSING-INK), with no frame; the field sits under it, centred.
+// assets a plan is made of, as coins that gather into one plan beside the heading as the reader scrolls
+// (ClosingCoins, gate CLOSING-COINS), with no frame; the field sits under it, centred.
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -26,7 +26,7 @@ export function Closing() {
           eyebrow={t.eyebrow}
           heading={t.title}
           lede={t.lede}
-          stage={(head) => <Closing3D label={t.drawingAlt}>{head}</Closing3D>}
+          stage={(head) => <ClosingCoins label={t.drawingAlt}>{head}</ClosingCoins>}
           options={[
             { id: 'updates', label: t.updates },
             { id: 'newsletter', label: t.newsletter },

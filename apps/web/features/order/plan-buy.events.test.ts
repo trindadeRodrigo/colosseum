@@ -126,6 +126,8 @@ const buy = async () => {
   await settle();
   return host;
 };
+/** The buy's one button that makes the order: in its last step, "Review and sign". */
+const SIGN = '[data-step="review"] [data-variant="primary"]';
 const label = (el: Element) =>
   el.querySelector('.grid > span:not([aria-hidden])')?.textContent ?? el.textContent;
 const primaryLink = (host: HTMLElement) =>
@@ -151,10 +153,13 @@ describe('the plan screen', () => {
     const chips = find(host, `ul[aria-label="${en.plan.chips.label}"]`).textContent;
     expect(chips).toContain('amount: $40,000');
     expect(chips).toContain('chain: Solana');
-    expect(host.querySelectorAll('[data-ui="stat"]')).toHaveLength(4);
+    // the bad fall is a sentence, not a bare figure with "estimate" beside it
+    expect(host.querySelectorAll('[data-ui="stat"]')).toHaveLength(3);
+    expect(find(host, '[data-ui="plan-bad-fall"]').textContent).toMatch(/^In a bad fall: /);
+    // each asset by its name, never its id
     const legs = find(host, '[data-ui="plan-legs"]').textContent;
-    expect(legs).toContain('spyx');
-    expect(legs).not.toContain('solana:');
+    expect(legs).toContain('SPYx');
+    expect(legs).not.toMatch(/solana:|spyx/);
     expect(legs).toContain('Gold steadies the plan.');
     // the projected range carries its pin, and the exit cost its own
     expect(host.querySelectorAll('[data-ui="pin"]').length).toBeGreaterThanOrEqual(2);
@@ -349,7 +354,7 @@ describe('the plan screen', () => {
     await type(find<HTMLInputElement>(bought, 'input[inputmode="decimal"]'), '10');
     await settle(350);
     await click(find(bought, '[data-ui="trust-notice"] input[type="checkbox"]'));
-    await click(find(bought, '[data-variant="primary"]'));
+    await click(find(bought, SIGN));
     await settle();
     expect(server.to('/v1/orders').map((c) => c.body)).toEqual([
       { type: 'buy', owner: { solana: SOLANA }, amountUsd: 10, proposalId: PLAN_ID },
@@ -406,7 +411,7 @@ describe('the buy screen', () => {
     expect(host.textContent).toContain(en.buy.funding.short('Solana'));
     // in whole units, with the units the test network's deployment committed
     expect(host.textContent).toContain('40,000 tUSDC');
-    const button = find(host, '[data-variant="primary"]');
+    const button = find(host, SIGN);
     expect(label(button)).toBe(en.buy.review('$40,000'));
     expect(button.getAttribute('aria-disabled')).toBe('true');
     expect(host.textContent).toContain(en.buy.blocked.funding);
@@ -438,11 +443,11 @@ describe('the buy screen', () => {
     expect(notice.textContent).toContain(en.trust.unaudited);
     expect(notice.textContent).toContain(en.trust.admin(TRUST_STATUS.admin.solana as string));
     expect(notice.textContent).toContain(en.trust.keeper('0.75%', '1%'));
-    const button = find(host, '[data-variant="primary"]');
+    const button = find(host, SIGN);
     expect(button.getAttribute('aria-disabled')).toBe('true');
     expect(host.textContent).toContain(en.buy.blocked.trust);
     await click(find(notice, 'input[type="checkbox"]'));
-    expect(find(host, '[data-variant="primary"]').getAttribute('aria-disabled')).toBeNull();
+    expect(find(host, SIGN).getAttribute('aria-disabled')).toBeNull();
   });
 
   it('makes the order, keeps the plan beside it and the acceptance, then goes to its review', async () => {
@@ -452,7 +457,7 @@ describe('the buy screen', () => {
     await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
     await settle(350);
     await click(find(host, '[data-ui="trust-notice"] input[type="checkbox"]'));
-    await click(find(host, '[data-variant="primary"]'));
+    await click(find(host, SIGN));
     await settle();
     expect(server.to('/v1/orders').map((c) => c.body)).toEqual([
       { type: 'buy', owner: { solana: SOLANA }, amountUsd: 10, proposalId: PLAN_ID },
@@ -479,10 +484,11 @@ describe('the buy screen', () => {
     rememberPlan(planOn());
     const host = await buy();
     expect(host.textContent).not.toMatch(/MOCK/);
-    const lines = [...host.querySelectorAll('[data-ui="sample-note"]')].map((l) => l.textContent);
-    expect(lines.length).toBeGreaterThan(0);
-    for (const line of lines)
-      expect(line).toBe(`${en.shell.mockAnnounce} · ${en.shell.testNetwork}`);
+    // The buy card's own line (gate BUY-STEPS): a test network's figures are real reads, not samples.
+    const lines = [...host.querySelectorAll('[data-ui="data-note"], [data-ui="sample-note"]')].map(
+      (l) => l.textContent,
+    );
+    expect(lines).toEqual([en.buy.steps.note.testNetwork('Solana')]);
   });
 
   it('on Robinhood Chain: reads the funding in tUSDG and ETH, and makes the order for the EVM wallet', async () => {
@@ -513,7 +519,7 @@ describe('the buy screen', () => {
     expect(host.textContent).toContain(en.buy.funding.short('Robinhood Chain'));
     expect(host.textContent).toContain('40,000 tUSDG');
     expect(host.textContent).toContain('ETH');
-    expect(find(host, '[data-variant="primary"]').getAttribute('aria-disabled')).toBe('true');
+    expect(find(host, SIGN).getAttribute('aria-disabled')).toBe('true');
 
     await unmountAll();
     const funded = api({
@@ -536,7 +542,7 @@ describe('the buy screen', () => {
     expect(find(ready, '[data-ui="trust-notice"]').textContent).toContain(
       en.trust.admin(TRUST_STATUS.admin.robinhood as string),
     );
-    await click(find(ready, '[data-variant="primary"]'));
+    await click(find(ready, SIGN));
     await settle();
     expect(funded.to('/v1/orders').map((c) => c.body)).toEqual([
       { type: 'buy', owner: { evm: EVM }, amountUsd: 10, proposalId: PLAN_ID },
@@ -553,7 +559,7 @@ describe('the buy screen', () => {
     );
     const host = await buy();
     expect(host.textContent).toContain(en.trust.accepted);
-    await click(find(host, '[data-variant="primary"]'));
+    await click(find(host, SIGN));
     await settle();
     expect(find(host, '[role="alert"]').textContent).toBe(en.buy.failure.VERSION_CHANGED);
     expect(router.push).not.toHaveBeenCalled();

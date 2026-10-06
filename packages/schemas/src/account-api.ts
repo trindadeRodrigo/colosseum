@@ -101,5 +101,61 @@ export const FundingResponse = z.object({
   newVault: z.boolean(),
   /** True when nothing is missing. */
   ok: z.boolean(),
+  /**
+   * True when this server can send the missing test tokens and gas itself (POST /v1/testnet/fund): a
+   * test network only, with a faucet key configured for the chain. Left out or false: it cannot.
+   */
+  testFunds: z.boolean().optional(),
 });
 export type FundingResponse = z.infer<typeof FundingResponse>;
+
+/**
+ * POST /v1/testnet/fund: send the signed-in wallet what it is missing for this buy, on a test network
+ * only. The same buy as GET /v1/funding names: the server works out what is missing itself, and sends
+ * that with a small margin, never an amount the request states.
+ */
+export const TestFundsRequest = z
+  .strictObject({
+    wallet: Address.optional(),
+    amountUsd: z
+      .number()
+      .positive()
+      .max(ORDER_LIMITS.maxAmountUsd, 'one order buys at most $1,000,000'),
+    proposalId: z.uuid().optional(),
+    family: FundingQuery.shape.family,
+  })
+  .refine((q) => (q.proposalId === undefined) !== (q.family === undefined), {
+    message: 'send proposalId or family, one of them',
+  });
+export type TestFundsRequest = z.infer<typeof TestFundsRequest>;
+
+/**
+ * What POST /v1/testnet/fund answers, with 409, when its float cannot cover a send: the faucet is a
+ * wallet holding test tokens, and a person tops it up. `error` tells these from the other 409 (nothing
+ * missing) and the gas from the test dollars.
+ */
+export const TEST_FUNDS_LOW = {
+  gas: 'test gas is low; ask the team',
+  cash: 'test funds are low; ask the team',
+} as const;
+
+/** One token sent by the test faucet, in raw units. */
+export const TestFundsSent = z.object({
+  symbol: z.string().min(1),
+  decimals: z.number().int().nonnegative(),
+  raw: RawAmount,
+});
+
+/** What POST /v1/testnet/fund sent: test tokens on a test network, never anything of value. */
+export const TestFundsResponse = z.object({
+  chain: ChainId,
+  provenance: z.literal('sandbox'),
+  wallet: Address,
+  cash: TestFundsSent,
+  gas: TestFundsSent,
+  /** The test network's transaction ids, in the order they were sent. */
+  txIds: z.array(z.string().min(1)),
+  /** How many more times this person may ask today. */
+  left: z.number().int().nonnegative(),
+});
+export type TestFundsResponse = z.infer<typeof TestFundsResponse>;
