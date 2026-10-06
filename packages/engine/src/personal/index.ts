@@ -6,6 +6,18 @@ export { candidates } from './candidates';
 export { compose, composeAs, PERSONAL_ENGINE_VERSION, riskForMix } from './compose';
 export { draftFromRules } from './draft';
 export {
+  attributeKey,
+  type FilterMatch,
+  filterOfSlug,
+  isMatchedSlug,
+  MARKET_FILTER_BY,
+  MATCHED_PREFIX,
+  MarketFilter,
+  type MarketFilterBy,
+  matchedSlug,
+  type ShelfLabel,
+} from './market-filter';
+export {
   attributeVocabularyOf,
   type FilterRead,
   filterMatchOf,

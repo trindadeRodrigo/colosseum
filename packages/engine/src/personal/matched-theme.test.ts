@@ -138,6 +138,40 @@ describe('the filter: pure code selects the stocks', () => {
     expect(symbols({ by: 'keyword', value: 'index fund' })).toEqual(['QQQx', 'SPYx']);
   });
 
+  it('matches a preferred stock by keyword only: its row carries its issuer’s classification', () => {
+    const common = rows.find((row) => row.kind === 'common');
+    if (!common || common.sector === null || common.industry === null || !common.subIndustry)
+      throw new Error('the fixture has no common stock');
+    // The same company's preferred stock: every fact the same, under its own symbol.
+    const preferred = {
+      ...common,
+      symbol: 'PREFx',
+      underlying: 'PREF',
+      kind: 'preferred' as const,
+    };
+    const both = [...rows, preferred];
+    const found = (filter: MarketFilter) => matchStocks(filter, both).map((row) => row.symbol);
+    for (const [by, value] of [
+      ['sector', common.sector],
+      ['industry', common.industry],
+      ['sub_industry', common.subIndustry],
+    ] as const) {
+      expect(found({ by, value }), by).toContain(common.symbol);
+      expect(found({ by, value }), by).not.toContain('PREFx');
+    }
+    const keyword = common.keywords[0] as string;
+    expect(found({ by: 'keyword', value: keyword })).toEqual(
+      expect.arrayContaining([common.symbol, 'PREFx']),
+    );
+    // And it adds no value of its own to what a model is shown.
+    const file = { ...stocks, stocks: [preferred] };
+    expect(attributeVocabularyOf(file)).toMatchObject({
+      sectors: [],
+      industries: [],
+      subIndustries: [],
+    });
+  });
+
   it('gives the same stocks whatever order the rows and their keywords come in', () => {
     const vocabulary = attributeVocabularyOf(stocks);
     const filters: MarketFilter[] = [

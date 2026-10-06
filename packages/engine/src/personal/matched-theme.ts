@@ -29,10 +29,13 @@ const keyOf = (filter: FilterRead): string =>
 
 /**
  * What a row writes for one attribute. A fund has no sector, industry or sub-industry of its own, so
- * it is matched by keyword only.
+ * it is matched by keyword only. So is a preferred stock: its row carries its issuer's
+ * classification, and a person who names a sector asks for its companies, not for a share that pays
+ * a set dividend.
  */
 function writtenBy(row: StockAttributes, by: MarketFilterBy): string[] {
   if (by === 'keyword') return row.keywords;
+  if (row.kind === 'preferred') return [];
   const value = by === 'sector' ? row.sector : by === 'industry' ? row.industry : row.subIndustry;
   return value === null ? [] : [value];
 }
