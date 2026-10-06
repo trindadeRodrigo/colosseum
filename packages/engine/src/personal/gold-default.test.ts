@@ -52,9 +52,10 @@ describe('the gold a plan starts from (gate GOLD-PAXG)', () => {
   });
 
   it('is GLD on Robinhood Chain, which does not list PAXG, and nothing says PAXG is missing', () => {
-    // At high risk: Robinhood issues GLD and SGOV, and at medium risk one issuer holds at most 70%.
+    // Robinhood issues GLD and SGOV, and one issuer holds at most 50% of dollar yield, gold and cash
+    // (gate SOLVER-CAPS, ENG-3 slice 1): SGOV takes its 40%, and GLD the 10% left.
     const made = protect({ chains: ['robinhood'], risk: 'high' });
-    expect(goldOf(made).map((l) => [l.assetId, l.weightBps])).toEqual([['robinhood:gld', 2500]]);
+    expect(goldOf(made).map((l) => [l.assetId, l.weightBps])).toEqual([['robinhood:gld', 1000]]);
     expect(made.removed).toEqual([]);
   });
 

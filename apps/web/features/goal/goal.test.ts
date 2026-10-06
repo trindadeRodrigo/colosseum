@@ -48,6 +48,11 @@ describe('the first reader’s answer, as a draft of this product’s limits', (
       incomeTargetUsdMonthly: null,
       rules: null,
       language: 'pt',
+      // Added to the draft on Oct 5 (ENG-3 slice 2); the first reader says nothing of them.
+      currency: null,
+      obligations: null,
+      sleeves: null,
+      restoreSplit: null,
     });
   });
 

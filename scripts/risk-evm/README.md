@@ -144,6 +144,40 @@ Known limits:
 - A price is one pool's mid at one block. It values a pool; it is not the price a trade gets, and it is never mixed with an oracle (gate `ORACLE-VS-DEX`).
 - A pool of two stocks is filed under one. Whether it also counts for the other is decided where such pools are routed.
 
+## The cut
+
+`pnpm risk-evm:pareto` (PLAN-UNIVERSE RU.3, method `evm-cut-0.1`) applies the 80% rule (`trackedSet` of `packages/risk`) to the newest discovery file. It reads that one file and calls nothing.
+
+```sh
+pnpm risk-evm:pareto                       # the newest discovery file, 80% and $1,000
+pnpm risk-evm:pareto --discovery <file>    # another file
+pnpm risk-evm:pareto --share 0.8 --min-pool-usd 1000
+pnpm risk-evm:pareto --allow-gaps          # a file in which DexScreener failed for a token
+pnpm risk-evm:pareto --allow-old           # a file more than a day old
+```
+
+It writes `data/risk-evm/cut-<chain>-<stamp>.json` (the stamp is the discovery file's) and prints the same in words. A cut by another share or floor is written beside it with the rule in its name (`…-share0.9-min1000.json`), so the rule's own file is never replaced by it. It refuses a discovery file more than 24 hours old, and one in which a token carries `dexscreener_failed_other_venues_not_listed`; with `--allow-gaps` the file is used and the token is named in the output.
+
+What the file holds, and what it does not decide:
+
+- **The mapping.** One row per pool: `address` is the pool id, `asset` the address of the stock the pool is filed under, `tvlUsd` as discovery measured it. A TVL that was not measured stays `null`: it is left out of the ranking and the total and counted (`counts.unmeasured`, by reason), never zero.
+- **`shares`**: pools and stocks at 80, 90, 95 and 99%. **`tracked`**: the stocks of the 80% cut, each with its pools in the cut, every ranked pool, how many the vault reaches, and its pools left out as dust or as unmeasured. **`cut`** and **`pools`**: the rows themselves.
+- **`unpricedTokens`**: the stocks with no dollar pool of $1,000. Their pools have no TVL and cannot enter the cut. Whether a thinner pool may price a stock is not decided.
+- **`unrankedHoldingStock`**: rows with no TVL whose stock side alone is $1,000 or more, by stock, venue and reason. Not ranked.
+- **`withoutV4`**: the same rule with the v4 rows taken out, because a v4 TVL is a band sum and a v3 TVL is the balances. Printed in full only when the two name different stocks.
+- **`twoStockPools`**: the pools of two stocks that touch a tracked stock. The rule counts such a pool for the stock it is filed under (token0) only; whether it counts for both is not decided.
+- **`vsCollector`**: the tracked stocks against the tokens of `config.ts`, and for each collected token that is not tracked, why and at what share it would enter.
+
+### The run of 2026-10-05 (on `discovery-robinhood-20261005T1947.json`)
+
+- 728 pools ranked ($90.9M). 80%: 93 pools, **30 stocks**, 427 ranked pools of those stocks ($84.0M), 274 of them reachable. 90%: 154 pools, 48 stocks. 95%: 225 and 67. 99%: 440 and 89.
+- The 30: AAPL AMC AMD AMZN COIN COST CRCL DELL DJT GLD GME GOOGL HIMS INTC LLY META MSFT MSTR MU NVDA PLTR QQQ RDDT SGOV SLV SNDK SPCX SPY TSLA USO. Against the collector's 21: 20 are in both; AMC, COST, DJT, GME, HIMS, LLY, PLTR, QQQ, RDDT and SPCX are tracked and not collected; TSM is collected and not tracked (its largest pool is rank 102; any cut above 82.0% names it).
+- The 93 pools of the cut: 42 Uniswap v3 ($36.8M) and 41 hookless v4 ($29.2M), all reachable; 8 hooked v4 ($6.0M) and 2 on another venue ($0.8M), not reachable.
+- Without the v4 pools (298 pools, $47.6M) the cut names 29 stocks: IBM and NFLX enter; AMD, PLTR and SNDK leave.
+- 19 of the 93 are pools of SPY against another stock ($9.3M), all filed under SPY. If such a pool also counted for its other side, TSM would be named too.
+- 994 rows with no TVL hold $1,000 or more on the stock side, $5.0M of stock tokens in all, 796 of them under tracked stocks ($4.4M); 944 are v4 pools.
+- 96 tokens have no price. DexScreener was at its cap of 30 pairs for 21 tokens, all of them tracked, so pools on other venues may be missing for those.
+
 ## Files
 
 | File | What it is |
@@ -163,8 +197,9 @@ Known limits:
 | `discovery.ts` | Creation events, the merge of the sources, reach, filing, the money in a pool. No I/O |
 | `multicall.ts`, `replay.ts` | Many reads in one `eth_call`; recorded answers given back to a test |
 | `record-discovery-fixture.ts` | Re-records `fixtures/risk-evm/robinhood-discovery.json.gz` from the chain |
+| `pareto.ts`, `cut.ts` | The command for the cut; the rule applied to a discovery file and what it reports. `cut.ts` has no I/O |
 
-After editing `ClQuoter.sol`, run `pnpm exec tsx scripts/risk-evm/build-quoter.ts`; a test fails while the JSON is stale. The tests are in `tests/risk-evm.test.ts`. They replay `fixtures/risk-evm/robinhood-nvda-quotes.json` and the endpoint errors in `fixtures/risk-evm/rpc-errors.json`; none calls the network. The token list and the discovery are tested in `tests/risk-evm-universe.test.ts`, which replays one recorded pass for two tokens (`fixtures/risk-evm/robinhood-discovery.json.gz`).
+After editing `ClQuoter.sol`, run `pnpm exec tsx scripts/risk-evm/build-quoter.ts`; a test fails while the JSON is stale. The tests are in `tests/risk-evm.test.ts`. They replay `fixtures/risk-evm/robinhood-nvda-quotes.json` and the endpoint errors in `fixtures/risk-evm/rpc-errors.json`; none calls the network. The token list and the discovery are tested in `tests/risk-evm-universe.test.ts`, which replays one recorded pass for two tokens (`fixtures/risk-evm/robinhood-discovery.json.gz`). The cut is tested in `tests/risk-evm-cut.test.ts`, on the discovery of Oct 5 frozen to what the cut reads (`fixtures/risk/universe/robinhood-discovery-20261005T1947.json.gz`, made by `pnpm risk:freeze-universe-fixture <discovery.json> --chain robinhood`).
 
 ## What Rodrigo's side needs before the API can serve these curves (RISK-1)
 

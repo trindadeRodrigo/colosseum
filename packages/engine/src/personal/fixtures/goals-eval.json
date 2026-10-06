@@ -16,7 +16,11 @@
         "chains": null,
         "incomeTargetUsdMonthly": null,
         "rules": null,
-        "language": "en"
+        "language": "en",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
       }
     },
     {
@@ -33,7 +37,11 @@
         "chains": null,
         "incomeTargetUsdMonthly": null,
         "rules": null,
-        "language": "en"
+        "language": "en",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
       }
     },
     {
@@ -50,7 +58,11 @@
         "chains": null,
         "incomeTargetUsdMonthly": 300,
         "rules": null,
-        "language": "en"
+        "language": "en",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
       }
     },
     {
@@ -67,7 +79,11 @@
         "chains": ["solana"],
         "incomeTargetUsdMonthly": null,
         "rules": null,
-        "language": "en"
+        "language": "en",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
       }
     },
     {
@@ -84,7 +100,11 @@
         "chains": null,
         "incomeTargetUsdMonthly": null,
         "rules": null,
-        "language": "en"
+        "language": "en",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
       }
     },
     {
@@ -101,7 +121,11 @@
         "chains": null,
         "incomeTargetUsdMonthly": null,
         "rules": null,
-        "language": "en"
+        "language": "en",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
       }
     },
     {
@@ -118,7 +142,11 @@
         "chains": null,
         "incomeTargetUsdMonthly": null,
         "rules": null,
-        "language": "pt"
+        "language": "pt",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
       }
     },
     {
@@ -135,7 +163,11 @@
         "chains": null,
         "incomeTargetUsdMonthly": null,
         "rules": null,
-        "language": "pt"
+        "language": "pt",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
       }
     },
     {
@@ -152,7 +184,11 @@
         "chains": null,
         "incomeTargetUsdMonthly": 300,
         "rules": null,
-        "language": "pt"
+        "language": "pt",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
       }
     },
     {
@@ -169,7 +205,11 @@
         "chains": ["solana"],
         "incomeTargetUsdMonthly": null,
         "rules": null,
-        "language": "pt"
+        "language": "pt",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
       }
     },
     {
@@ -186,7 +226,11 @@
         "chains": null,
         "incomeTargetUsdMonthly": null,
         "rules": null,
-        "language": "pt"
+        "language": "pt",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
       }
     },
     {
@@ -203,7 +247,11 @@
         "chains": null,
         "incomeTargetUsdMonthly": null,
         "rules": null,
-        "language": "pt"
+        "language": "pt",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
       }
     }
   ]

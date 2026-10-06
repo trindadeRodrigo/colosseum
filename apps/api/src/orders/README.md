@@ -4,8 +4,10 @@ The order layer behind `/v1/orders` (DESIGN-VAULT 3.3). It plans the legs of an 
 
 | File | What it holds |
 |---|---|
-| `prepare.ts` | `planBuy` and `prepareIntent`: a buy of a stored plan becomes legs on one chain. The targets a plan opens into (`targetsOf`), the trades of a deposit (`tradesFor`), the policy numbers (`ORDER_POLICY`) |
+| `prepare.ts` | `planBuy` and `prepareOrder`: a buy of a stored plan or of a shared portfolio becomes legs on one chain, and a follow or a publish becomes its steps. The targets a plan opens into (`targetsOf`), the trades of a deposit (`tradesFor`), the policy numbers (`ORDER_POLICY`) |
 | `personalize.ts` | `personalize`: a sheet made into a plan by the engine's `compose` on the person's chain, from that chain's shelf, answered in the shared `BasketProposal` shape. Behind `POST /v1/baskets/personalize` (`routes/v1/baskets.ts`), which stores it (`insertProposal`) for a buy to name. The figures come from `V1Deps.planInputs`: the server's is `bearingPlanInputs` in `src/plan-inputs.ts`, outside the `/v1` reach because it reads a file and the environment |
+| `shared.ts` | Shared portfolios as orders (API-3): `planPublish` (the creator's text, another creator's slug, a look-alike name, the creator limits), `followedOn` (a portfolio on the person's chain, at the version the order holds to), `planFollow` (accept and the auto-follow switch), `autoFollowOffer` (gate GOLD-ONE-TAP), and `recordPublished`, which writes a family once its publish has confirmed with the order's text |
+| `families.ts` | The shared-portfolio tables: a family by slug or folded name, the shelf, the family and recipe written after a publish, and the versions as the chain says (`syncVersions`) |
 | `person.ts` | The chain a person's plans live on: the one stored on the user, at a pick or the first time an outside wallet named it |
 | `legs.ts` | Build, report, cancel, and the read that tracks sent legs again. `attemptFor`: which attempt a transaction is |
 | `store.ts` | The tables, through Drizzle. Every writer locks the leg row first, then its attempts; an EVM build takes a lock on (chain, wallet) before that |
@@ -18,6 +20,12 @@ The order layer behind `/v1/orders` (DESIGN-VAULT 3.3). It plans the legs of an 
 - The person's chain is stored once and stands: at a pick, or the first time an outside wallet names it. A wallet of the other family linked later does not move it.
 - A buy deposits the whole amount. The order says it once (`depositRaw`): that is the figure to show and to add up. The approval and the step that deposits both repeat it (`cashRaw`), so on a chain that needs an approval the legs add up to twice the deposit. The trades spend the invested share: the deposit times the sum of the targets over 10,000, rounded down. The rest stays in the vault as cash. A plan with no target is all cash.
 - A shared portfolio a plan holds as one line is opened into its assets before the vault sees it. If it has changed since the plan was made, or since the order was made, the answer is `VERSION_CHANGED`.
+
+## Shared portfolios (API-3)
+
+- A publish order has one `publish` step per chain and asks for the consent `publish`. Solana only: a recipe on an EVM chain answers 501 until EVM-3. A new portfolio's id is `familyIdOf(slug)`, so the form works out the id it shows; the request is stored with that id. The family is written once the step has confirmed, and only if the chain holds a version with the hash of the order's text.
+- A buy with `family` opens a vault that follows the version in effect on the person's chain, then buys each asset; a follow points a vault the person has at a portfolio and switches auto-follow. Both are stored with the version they hold to, and a step is refused with `VERSION_CHANGED` once another is in effect. Auto-follow on is refused where the portfolio holds an asset with no oracle (gate GOLD-ONE-TAP), when the order is made and when the switch is built.
+- `GET /v1/shelf`, `GET /v1/indexes/{slug}` and `GET /v1/indexes/{slug}/versions` answer anybody. The shelf reads the store only; the page and the versions read each recipe from its chain and write what they read.
 
 ## The rules a leg follows
 
@@ -37,8 +45,8 @@ The order layer behind `/v1/orders` (DESIGN-VAULT 3.3). It plans the legs of an 
 - Solana in `live` or `readonly` runs on `createSolanaVaultAdapter` with the chain's config, the server's RPC and the network's asset list, and every figure and step is labelled `sandbox`: the network has to be `testnet` or `local`. `readonly` builds nothing (the adapter refuses with `NotSupported`, after the route's own `CHAIN_UNAVAILABLE`).
 - A buy on Solana is a `create_vault` that carries the whole deposit, then one `swap` per asset: Solana carries no trade in a create (`tradesInCreate` false) and one trade per transaction. Each step is built when it is asked for, from the chain as it is then, so a swap's minimum is the one in its bytes at that moment (`preview.minimums`), as the leg's `expected` then says.
 - The portfolio asks prices only for the assets the chain's list has. A token a vault holds that the list does not have (a shared portfolio's author can name one) shows as `solana:mint-<hex>`, with no value and no weight, and does not stop the read.
-- A buy creates its vault with auto-follow off, which is right: with it on, the keeper could trade the deposit's cash before the person's own buys land. The `follow` intent (API-3) must create with auto-follow off too, and switch it on with its own step after the buys.
-- A creator's publish, update or cancel of a shared portfolio is built (`buildPublishRecipe`, `buildCancelPending`, both `publish` steps), but the guard signs no `publish` kind: it cannot go through the passkey wallet's executor. An outside wallet signs it, or the guard gains the kind (API-3).
+- A buy creates its vault with auto-follow off, which is right: with it on, the keeper could trade the deposit's cash before the person's own buys land. A buy of a shared portfolio does the same (API-3); auto-follow goes on with a `follow` order afterwards, as a step of its own.
+- A creator's publish or update of a shared portfolio is built as a `publish` step (`buildPublishRecipe`), and the guard signs it since AGT-4, held to the family id and the text the creator's form shows. `buildCancelPending` is built by the adapter and signed by the guard, but no intent asks for it yet.
 - `relay` sends with the node's preflight. A swap whose price moved past its minimum after the build is refused there and is not sent: its attempt stays `built` until the blockhash runs out, about a minute, and only then can the step be built again with a fresh quote. The web says so while it waits.
 - Checked end to end on a local validator: a person's buy of three assets, four steps, each built by `POST .../build`, signed in the test with a key made for the run, reported with `signedTx`, relayed by the API and settled by the read that tracks it, and the portfolio read back from the chain with the three positions (`tests/solana-vault/validator.test.ts`, `SOLANA_LOCAL_VALIDATOR=1`).
 

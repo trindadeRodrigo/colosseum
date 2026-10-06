@@ -61,8 +61,25 @@ describe('the parameter table', () => {
       expect(['starting', 'set'], key).toContain(mark.status);
       expect(mark.from.length, key).toBeGreaterThan(10);
     }
-    // Today nothing is set: Rodrigo tunes the table, and flips a mark when he does.
-    expect(Object.values(PERSONAL_PARAMS_STATUS).every((m) => m.status === 'starting')).toBe(true);
+    // Set: only the numbers Rodrigo decided in gate SOLVER-PARAMS on Oct 5. The rest he still tunes.
+    const set = Object.entries(PERSONAL_PARAMS_STATUS)
+      .filter(([, m]) => m.status === 'set')
+      .map(([k]) => k)
+      .sort();
+    expect(set).toEqual([
+      'capPerAssetBps',
+      'creditShareBps',
+      'defaultCreditTolerance',
+      'driftBandBps',
+      'issuerCapBps',
+      'setAsideMonths',
+      'switchDays',
+      'yieldBand',
+    ]);
+    for (const k of set)
+      expect(PERSONAL_PARAMS_STATUS[k as keyof typeof PERSONAL_PARAMS_STATUS].from).toMatch(
+        /Oct 5/,
+      );
     expect(PERSONAL_PARAMS.version).toMatch(/starting/);
   });
 });
