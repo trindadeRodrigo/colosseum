@@ -25,6 +25,10 @@ export const pt: Dictionary = {
     signOutFailed:
       'Não consegui encerrar sua sessão: o serviço de login não respondeu. Tente de novo.',
     account: 'Sua carteira',
+    address: 'Endereço',
+    copyAddress: 'Copiar endereço',
+    copied: 'Copiado',
+    viewOn: (explorer: string) => `Ver no ${explorer}`,
     disclaimer: 'Aviso legal',
     appearance: 'Aparência',
     themes: { auto: 'Sistema', light: 'Claro', dark: 'Escuro' },
@@ -119,6 +123,7 @@ export const pt: Dictionary = {
 
   chain: {
     names: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
+    short: { solana: 'Solana', robinhood: 'Robinhood', base: 'Base' },
     explorers: { solana: 'Solscan', robinhood: 'explorador da Robinhood', base: 'Basescan' },
     switch: {
       current: (chain: string) => `Rede: ${chain}`,

@@ -43,7 +43,11 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/goal$/);
-  await expect(switcher).toHaveAttribute('aria-label', en.chain.switch.current(NAME));
+  // signed in, the bar's one account control is on the chain the switcher was on
+  await expect(page.locator('header [data-ui="account-menu-button"]')).toHaveAttribute(
+    'data-chain',
+    'robinhood',
+  );
 
   const goal = page.getByRole('textbox', { name: en.goal.composer.label, exact: true });
   await goal.fill('Grow $40 for three years, medium risk');
