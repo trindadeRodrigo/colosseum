@@ -4,11 +4,12 @@ import { Disclaimer } from '../../components/ui/Disclaimer';
 import { MockPlate } from '../../components/ui/MockPlate';
 import { PinGlyph, ProvenancePin } from '../../components/ui/ProvenancePin';
 import { dictionary, type Lang, LOCALE } from '../../i18n';
+import { CaseDrawing } from './CaseDrawing';
 import { GrowthChart, TripChart } from './ShowcaseChart';
 import { GROWTH, SAMPLE, type SampleLeg, TICKERS, TRIP } from './sample';
 
 // "Same pieces. Different people. Different fit." (goal-showcase-case.md): two sample people, each
-// with the goal in their own words under their photo, and the plan cut for it beside them: the limits
+// with the goal in their own words under a drawing of their place, and the plan cut for it beside them: the limits
 // as chips, four figures, the chart, the parts and the exit plan. Everything in a case is MOCK, and
 // says so with the plate in its head and the hatched pin on every figure that stands on a rate. The
 // full disclaimer sits once under the section.
@@ -103,7 +104,7 @@ function Legs({
 function Case({
   lang,
   words,
-  photo,
+  place,
   chips,
   kpis,
   chart,
@@ -115,7 +116,7 @@ function Case({
 }: {
   lang: Lang;
   words: { label: string; alt: string; who: string; quote: string; title: string; sub: string };
-  photo: { src: string; width: number; height: number };
+  place: 'coast' | 'ridge';
   chips: readonly string[];
   kpis: Kpi[];
   chart: ReactNode;
@@ -134,21 +135,12 @@ function Case({
       className="grid overflow-hidden rounded-md border border-border bg-card min-[980px]:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]"
     >
       <div className="flex flex-col border-border max-[979px]:border-b min-[980px]:border-r">
-        <figure className="m-0 flex flex-1 flex-col">
-          {/* biome-ignore lint/performance/noImgElement: his placeholder photographs are 200px wide; the image service would only scale them up */}
-          <img
-            src={photo.src}
-            alt={words.alt}
-            width={photo.width}
-            height={photo.height}
-            loading="lazy"
-            className="block min-h-[280px] w-full flex-1 object-cover min-[980px]:min-h-[300px]"
-          />
-          <figcaption className="px-5 pt-2 font-mono text-[11px] text-muted-foreground">
-            {t.photoCaption}
-          </figcaption>
-        </figure>
-        {/* The goal in the person's own words, on a solid plate under the photo, never on it. */}
+        <CaseDrawing
+          place={place}
+          label={words.alt}
+          className="min-h-[280px] w-full flex-1 min-[980px]:min-h-[300px]"
+        />
+        {/* The goal in the person's own words, on a solid plate under the drawing, never on it. */}
         <div className="flex flex-col gap-2 px-5 pt-3 pb-5">
           <p className="font-mono text-[12px] text-primary">{words.who}</p>
           <blockquote className="m-0 font-display text-[clamp(1.15rem,1rem+0.6vw,1.45rem)]/[1.35] font-normal">
@@ -217,7 +209,7 @@ export function Showcase({ lang }: { lang: Lang }) {
           <Case
             lang={lang}
             words={{ ...t.trip, who: t.trip.who(TICKERS.cash) }}
-            photo={TRIP.photo}
+            place="coast"
             chips={t.trip.chips}
             kpis={[
               { label: t.trip.kpis.save, value: pin(TRIP.saveUsd), unit: t.perMonth },
@@ -241,7 +233,7 @@ export function Showcase({ lang }: { lang: Lang }) {
           <Case
             lang={lang}
             words={t.growth}
-            photo={GROWTH.photo}
+            place="ridge"
             chips={t.growth.chips}
             kpis={[
               { label: t.growth.kpis.add, value: money(GROWTH.addUsd), unit: t.perMonth },

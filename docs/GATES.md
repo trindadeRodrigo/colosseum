@@ -108,6 +108,14 @@ A rule built with API-3 that a founder still has to settle. Until then the defau
 |---|---|---|---|
 | **FAMILY-ID** — a shared portfolio's id | OPEN (Rodrigo: should the seeded launch portfolios take `familyIdOf(slug)` too?) | A portfolio published through the app has the id `familyIdOf(slug)`, the SHA-256 of `family:<slug>`: the API assigns it by that rule, and the publish form and a follower's screen work it out themselves instead of taking the server's word. A seeded family keeps the id it was given, and a follower's screen shows it as not checked against the chain, since the link from its slug to its id is then the server's word | API-3 (PR #56): `familyIdOf` in `packages/basket`, repeated in `packages/sdk`, held together by `tests/meta-hash.test.ts`. The registry's account is per creator and family id, so two creators with one slug never share a portfolio onchain; the server keeps one family per slug, the first recorded. `DESIGN-VAULT.md` section 3.1 ("Ids") and section 6 ("The routes, as built") say it |
 
+## Decided on 2026-10-06 (Thom)
+
+The landing's pictures, drawn in the brand's ink.
+
+| Gate | Status | Decision | Facts |
+|---|---|---|---|
+| **SHOWCASE-INK** — the showcase cases' pictures | DECIDED | The two sample cases show an ink drawing of the person's place, never a photograph and never a person, in the hero joint's style (`JOINT-3D`): Mariana's coastline with a dashed route to a flag at the trip's end, Diego's ridge above the cloud with the summit marked and held level like his goal line. Inline SVG in the page's tokens, the same slot as the photo, no caption | The photos were low-resolution generated previews captioned "placeholder photo · generated"; Thom asked for drawings in the hero's line on Oct 6. The two closing photos are not part of this (DES-2) |
+
 ## Decided on 2026-10-05 (Rodrigo)
 
 Which stocks and pools the liquidity and risk layer tracks, on Solana and Robinhood Chain. Either founder can reopen it.

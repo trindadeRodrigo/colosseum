@@ -140,6 +140,26 @@ describe('the showcase', () => {
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
 
+  it('draws each person’s place in ink, not a photograph, and names what it shows', async () => {
+    browser();
+    const host = await landing();
+    const cases = [...host.querySelectorAll('article[data-ui="showcase-case"]')];
+    const drawings = cases.map((c) => c.querySelector('svg[data-ui="case-drawing"]'));
+    expect(drawings.map((d) => d?.getAttribute('data-place'))).toEqual(['coast', 'ridge']);
+    expect(drawings.map((d) => d?.getAttribute('aria-label'))).toEqual([
+      en.landing.show.trip.alt,
+      en.landing.show.growth.alt,
+    ]);
+    // no photograph, and no caption saying one was there
+    for (const c of cases) expect(c.querySelector('img, figcaption')).toBeNull();
+    expect(host.textContent).not.toContain('placeholder photo');
+    // the route to the trip's end, and the summit held level as the goal line is
+    expect(drawings[0]?.querySelector('[data-part="route"]')).not.toBeNull();
+    expect(drawings[0]?.querySelector('[data-part="mark"]')).not.toBeNull();
+    expect(drawings[1]?.querySelector('[data-part="goal"]')).not.toBeNull();
+    expect(drawings[1]?.querySelector('[data-part="mark"]')).not.toBeNull();
+  });
+
   it('keeps stock tokens out of the income case (PROTECT-NO-STOCKS) and names them in the growth case', async () => {
     browser();
     const host = await landing();
