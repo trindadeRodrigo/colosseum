@@ -28,7 +28,7 @@ import { scorecardOf } from './scorecard';
 import { checkCoverage, placeSetAside, setAsideOf } from './set-aside';
 import { statusOf } from './status';
 import { reason, text } from './templates';
-import { placeThemeSleeve } from './theme-sleeve';
+import { claimHoldings, namesOf, placeThemeSleeve } from './theme-sleeve';
 import {
   type CandidateId,
   type ComposeContext,
@@ -92,7 +92,17 @@ function largestScaleThatMeets(step: number, meets: (bps: number) => boolean): n
  * does not (`ways: false`). A run that asks only whether an income target is met needs no schedule
  * (`status: false`). `candidate` is the candidate the plan is made as, or null.
  */
-type Run = { ways: boolean; status: boolean; candidate: CandidateId | null };
+type Run = {
+  ways: boolean;
+  status: boolean;
+  candidate: CandidateId | null;
+  /**
+   * The lines kept for the goal's stocks while the themes are placed. Left out, one for each goal
+   * stock that needs a new line; a run that kept a line its stock then did not use runs again with
+   * fewer, so the theme gets it.
+   */
+  keepLines?: number;
+};
 
 /** JSON with every object's keys in order, so the same value always gives the same text. */
 function canonical(value: unknown): string {
@@ -266,17 +276,31 @@ function build(
   ]);
   /** Each theme sleeve's cents, by slug. */
   const themeCents = new Map(sleeves.themes.map((t, i) => [t.slug, themeSplit[i] ?? 0]));
+  // A holding counts once: the themes first, the goal what is left (gate THEME-FIRST).
+  const claimed = claimHoldings(
+    w,
+    sleeves.themes.map((t) => ({ slug: t.slug, cents: themeCents.get(t.slug) ?? 0 })),
+  );
   const book = new Book(w);
   // A shared portfolio the goal follows is placed before the themes: until they are, the issuers of
-  // their names keep room for them (gate THEME-FIRST).
+  // their names keep room for them (gate THEME-FIRST), as much as the names that can be held and
+  // sold can take, and no more than the theme's share.
   for (const t of sleeves.themes) {
     const list = w.themeListOf(t.slug);
     if (!list || list.status !== 'confirmed') continue;
-    const issuers = new Set(
-      w.tokens.filter((a) => list.members.some((m) => m.symbol === a.symbol)).map((a) => a.issuer),
-    );
-    for (const issuer of issuers)
-      book.reserved.set(issuer, (book.reserved.get(issuer) ?? 0) + (themeCents.get(t.slug) ?? 0));
+    const byIssuer = new Map<string, number>();
+    for (const n of namesOf(w, list).found) {
+      const most = Math.min(
+        w.ceilingOf(n.asset),
+        n.asset.cls === 'stock' || n.asset.cls === 'crypto' ? w.stockCap : w.ceilingOf(n.asset),
+      );
+      byIssuer.set(n.asset.issuer, (byIssuer.get(n.asset.issuer) ?? 0) + most);
+    }
+    for (const [issuer, most] of byIssuer)
+      book.reserved.set(
+        issuer,
+        (book.reserved.get(issuer) ?? 0) + Math.min(most, themeCents.get(t.slug) ?? 0),
+      );
   }
   const themes = resolveThemes(w, book.removed);
 
@@ -454,7 +478,7 @@ function build(
   // in dollar yield, then cash, and the sleeve records where.
   book.reserved.clear();
   const members = new Set(w.themeLists.flatMap((t) => t.members.map((m) => m.symbol)));
-  const goalLines = new Set(
+  const goalTokens = new Set(
     growthUnits
       .filter((u) => u.cents > 0)
       .flatMap((u) =>
@@ -464,32 +488,57 @@ function build(
       )
       .filter((a) => !book.lines.has(a.id) && !members.has(a.symbol))
       .map((a) => a.id),
-  ).size;
+  );
+  const goalLines = Math.min(goalTokens.size, run.keepLines ?? goalTokens.size);
   const themed = new Map<string, Map<string, number>>();
+  /** What no name of each theme took: held in dollar yield, then cash, after the goal's stocks. */
+  const themeWaiting = new Map<string, Sized>();
+  let themesShort = false;
   for (const t of byName(sleeves.themes, (x) => x.slug)) {
-    const holds = placeThemeSleeve(
+    const { holds, short } = placeThemeSleeve(
       w,
       book,
       t.slug,
       t.shareBps,
       themeCents.get(t.slug) ?? 0,
       goalLines,
+      claimed.get(t.slug),
     );
-    const spilled = book.overflow();
-    if (spilled.cents > 0) {
-      const lineCents = () => new Map([...book.lines].map(([id, l]) => [id, l.cents]));
-      const before = { lines: lineCents(), cash: book.cash.cents };
-      intoYield(spilled);
-      for (const [id, now] of lineCents()) {
-        const took = now - (before.lines.get(id) ?? 0);
-        if (took > 0) holds.set(id, (holds.get(id) ?? 0) + took);
-      }
-      const stayed = book.cash.cents - before.cash;
-      if (stayed > 0) holds.set(w.cash.id, stayed);
-    }
+    themesShort ||= short;
+    themeWaiting.set(t.slug, book.overflow());
     themed.set(t.slug, holds);
+    // Where an issuer's cap then stops the goal's stocks, the reason names this theme.
+    const name = w.themeListOf(t.slug)?.name[lang];
+    if (name)
+      for (const id of holds.keys()) {
+        const asset = w.byId.get(id);
+        if (asset && w.sleeveOf(asset) === 'growth')
+          book.themeFirst.set(asset.issuer, [
+            ...new Set([...(book.themeFirst.get(asset.issuer) ?? []), name]),
+          ]);
+      }
   }
   book.placeTogether(growthUnits, (unit) => tokensOf(w, unit.name, 'growth'));
+  // A line kept for a goal stock that took no money goes to the themes: the plan is made again
+  // keeping only the lines the goal's stocks used.
+  const usedLines = [...goalTokens].filter((id) => (book.lines.get(id)?.cents ?? 0) > 0).length;
+  if (themesShort && usedLines < goalLines)
+    return build(sheetIn, shelf, context, { ...run, keepLines: usedLines });
+  // What no name of a theme took is held in dollar yield, then cash, now that the goal's stocks have
+  // their lines, and the sleeve records where.
+  for (const [slug, spilled] of themeWaiting) {
+    if (spilled.cents <= 0) continue;
+    const holds = themed.get(slug) ?? new Map<string, number>();
+    const lineCents = () => new Map([...book.lines].map(([id, l]) => [id, l.cents]));
+    const before = { lines: lineCents(), cash: book.cash.cents };
+    intoYield(spilled);
+    for (const [id, now] of lineCents()) {
+      const took = now - (before.lines.get(id) ?? 0);
+      if (took > 0) holds.set(id, (holds.get(id) ?? 0) + took);
+    }
+    const stayed = book.cash.cents - before.cash;
+    if (stayed > 0) holds.set(w.cash.id, (holds.get(w.cash.id) ?? 0) + stayed);
+  }
   // What stocks, crypto and gold could not take is held in dollar yield, then in cash.
   const rest = book.overflow();
   intoYield({

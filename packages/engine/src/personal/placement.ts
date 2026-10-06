@@ -52,6 +52,7 @@ const OVERFLOW_FOR: Partial<Record<string, RuleId>> = {
   EXIT_CEILING: 'OVERFLOW_CEILING',
   TIER_CEILING: 'OVERFLOW_CEILING',
   ISSUER_CAP: 'OVERFLOW_ISSUER',
+  ISSUER_CAP_THEME: 'OVERFLOW_ISSUER_THEME',
   ISSUER_CAP_PLAN: 'OVERFLOW_ISSUER_PLAN',
   MAX_LINES: 'OVERFLOW_MAX_LINES',
   BELOW_MINIMUM: 'OVERFLOW_TOO_SMALL',
@@ -61,6 +62,7 @@ const OVERFLOW_FOR: Partial<Record<string, RuleId>> = {
   NOT_IN_COUNTRY: 'OVERFLOW_NOT_IN_COUNTRY',
   SINGLE_STOCK_CAP: 'OVERFLOW_STOCK_CAP',
   ALREADY_HELD_NONE: 'OVERFLOW_HELD',
+  THEME_HELD_NONE: 'OVERFLOW_HELD',
   THEME_NO_LIST: 'OVERFLOW_THEME_NO_LIST',
   THEME_NOT_CONFIRMED: 'OVERFLOW_THEME_NOT_CONFIRMED',
 };
@@ -89,6 +91,11 @@ export class Book {
    * before them (gate THEME-FIRST): counted against stocks and crypto as if it were placed.
    */
   readonly reserved = new Map<string, number>();
+  /**
+   * The themes that hold names of an issuer, by issuer, once they are placed: where that issuer's cap
+   * then stops the goal's stocks, the reason says the theme came first (gate THEME-FIRST).
+   */
+  readonly themeFirst = new Map<string, string[]>();
 
   /** What is already with this token's issuer, as the cap for its sleeve counts it. */
   private usedOf(asset: BasketAsset): number {
@@ -129,7 +136,20 @@ export class Book {
 
   /** Why an issuer takes no more: the most of a plan one issuer may hold, at the person's risk. */
   private issuerWhy(asset: BasketAsset): Reason {
-    return this.w.issuerWhy(asset);
+    const { w } = this;
+    const themes = this.themeFirst.get(asset.issuer);
+    if (themes && themes.length > 0 && w.sleeveOf(asset) === 'growth')
+      return reason(
+        'ISSUER_CAP_THEME',
+        {
+          capBps: w.P.capPerIssuerBps[w.sheet.risk] ?? 0,
+          risk: w.sheet.risk,
+          issuer: asset.issuer,
+          themes: themes.join(','),
+        },
+        w.lang,
+      );
+    return w.issuerWhy(asset);
   }
 
   /** The reason a token gets no line of its own when the plan is full, or null when it may. */
@@ -595,11 +615,21 @@ export class Book {
       );
     }
 
+    /** Each issuer's room before this sleeve is placed. */
+    const roomBefore = new Map(able.map((u) => [u, this.issuerRoom(tokenOf(u))]));
     const over: { unit: Unit; cents: number }[] = [];
     for (const u of able) {
       const token = tokenOf(u);
       const small = tooSmall.get(u);
-      const out = small ?? (noLine.has(u) ? this.noLineLeft(token) : null);
+      // A unit with no line whose issuer has no room either is out for the issuer: a line would not
+      // have held it.
+      const out =
+        small ??
+        (noLine.has(u)
+          ? (roomBefore.get(u) ?? 0) <= 0
+            ? this.issuerWhy(token)
+            : this.noLineLeft(token)
+          : null);
       if (out) {
         this.removed.push({ ref: u.name, reasons: [out] });
         this.spill([u.name], u.cents, out);

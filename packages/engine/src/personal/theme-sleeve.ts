@@ -2,6 +2,7 @@ import type { BasketAsset, Reason } from '@colosseum/schemas';
 import { byName, split, sum, toUsd } from './money';
 import type { Book, Removed } from './placement';
 import { reason } from './templates';
+import type { ThemeList } from './theme-list';
 import type { World } from './world';
 
 // A theme sleeve (gates SLEEVES and THEMES): a share of the plan held in equal parts of the names on
@@ -28,43 +29,133 @@ type Name = {
   asset: BasketAsset;
   member: { symbol: string; reason: { en: string; pt: string } };
   measured: number | null;
-  /** Its part of the sleeve, before caps: equal, less where the person already holds it. */
-  weight: number;
+  /** What the person already holds of it that this theme counts (holdings count once: THEME-FIRST). */
+  held: number;
 };
 
 /**
  * Equal parts of `total`, each up to its cap: where a part stops at its cap, what it leaves is shared
- * equally by the others. What none can take is left over. Whole cents; a remainder cent goes to the
- * earlier part, so the order given decides only that cent. With `weights`, parts in those
- * proportions instead of equal (what the person already holds makes them unequal).
+ * equally by the others. What none can take is left over. With `offsets` (what the person already
+ * holds of each), the parts are filled to one level counting the offset, so a held name takes that
+ * much less. Whole cents: the level is the highest whole cent the total reaches, and what is left
+ * goes a cent each to the earlier parts that can take one, so the order decides only that cent.
  */
-export function equalCapped(
+export function fillToLevel(
   total: number,
   caps: readonly number[],
-  weights: readonly number[] = caps.map(() => 1),
-): number[] {
-  const out = caps.map(() => 0);
-  let left = Math.max(0, total);
-  let open = caps.map((_, i) => i).filter((i) => (caps[i] ?? 0) > 0 && (weights[i] ?? 0) > 0);
-  while (left > 0 && open.length > 0) {
-    const shares = split(
-      left,
-      open.map((i) => weights[i] ?? 0),
-    );
-    const full = open.filter((i, k) => (shares[k] ?? 0) >= (caps[i] ?? 0) - (out[i] ?? 0));
-    if (full.length === 0) {
-      open.forEach((i, k) => {
-        out[i] = (out[i] ?? 0) + (shares[k] ?? 0);
-      });
-      return out;
-    }
-    for (const i of full) {
-      left -= (caps[i] ?? 0) - (out[i] ?? 0);
-      out[i] = caps[i] ?? 0;
-    }
-    open = open.filter((i) => !full.includes(i));
+  offsets: readonly number[] = caps.map(() => 0),
+): { out: number[]; level: number } {
+  const cap = (i: number) => Math.max(0, caps[i] ?? 0);
+  const off = (i: number) => Math.max(0, offsets[i] ?? 0);
+  const at = (level: number) => caps.map((_, i) => Math.min(cap(i), Math.max(0, level - off(i))));
+  const want = Math.max(0, total);
+  const most = caps.reduce((n, _, i) => n + cap(i), 0);
+  if (most <= want) return { out: caps.map((_, i) => cap(i)), level: Number.POSITIVE_INFINITY };
+  let lo = 0;
+  let hi = Math.max(0, ...caps.map((_, i) => off(i))) + want + 1;
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (sum(at(mid)) <= want) lo = mid;
+    else hi = mid;
   }
-  return out;
+  const out = at(lo);
+  let left = want - sum(out);
+  for (let i = 0; i < out.length && left > 0; i += 1)
+    if ((out[i] ?? 0) < cap(i) && lo + 1 - off(i) > 0) {
+      out[i] = (out[i] ?? 0) + 1;
+      left -= 1;
+    }
+  return { out, level: lo };
+}
+
+/** `fillToLevel`'s parts alone. */
+export const equalCapped = (
+  total: number,
+  caps: readonly number[],
+  offsets?: readonly number[],
+): number[] => fillToLevel(total, caps, offsets).out;
+
+type Found = Omit<Name, 'held'>;
+type Out = { ref: string; why: Reason[]; cause: Reason };
+
+/**
+ * The names of a list the plan can hold on the person's chain: the token the chain lists under each
+ * symbol (not a dollar-yield or cash token; two under one symbol are tried by id, and the first the
+ * person can hold is the name's), that the person can hold and whose exit ceiling takes a line of the
+ * least size. The others, with why.
+ */
+export function namesOf(w: World, list: ThemeList): { found: Found[]; outs: Out[] } {
+  const { lang } = w;
+  const theme = list.name[lang];
+  const found: Found[] = [];
+  const outs: Out[] = [];
+  for (const member of byName(list.members, (m) => m.symbol)) {
+    const tokens = byName(
+      w.tokens.filter((a) => a.symbol === member.symbol && w.sleeveOf(a) !== 'dollarYield'),
+      (a) => a.id,
+    );
+    const asset = tokens.find((a) => w.blockOf(a) === null);
+    if (!asset) {
+      const first = tokens[0];
+      const why =
+        (first && w.blockOf(first)) ??
+        reason('NOT_ON_CHAIN', { asset: member.symbol, chain: w.chain }, lang);
+      outs.push({ ref: member.symbol, why: [why], cause: why });
+      continue;
+    }
+    if (w.ceilingOf(asset) < w.minLine) {
+      const thin = reason(
+        'THEME_TOO_THIN',
+        { asset: member.symbol, theme, minUsd: toUsd(w.minLine) },
+        lang,
+      );
+      outs.push({
+        ref: member.symbol,
+        why: [thin, w.ceilingWhy(asset)],
+        cause: w.ceilingWhy(asset),
+      });
+      continue;
+    }
+    found.push({ asset, member, measured: w.measuredUsdOf(asset) });
+  }
+  return { found, outs };
+}
+
+/**
+ * A holding counts once in the plan (DESIGN-VAULT section 7), theme first (gate THEME-FIRST): each
+ * theme sleeve, in the order of the slugs, counts of what is held of each of its names up to the level
+ * its equal parts reach, and the goal sleeve counts what is left. Takes it off `w.held` and
+ * `w.heldTotal`, and returns what each theme counts, by slug and underlying.
+ */
+export function claimHoldings(
+  w: World,
+  themes: { slug: string; cents: number }[],
+): Map<string, Map<string, number>> {
+  const claimed = new Map<string, Map<string, number>>();
+  for (const t of byName(themes, (x) => x.slug)) {
+    const list = w.themeListOf(t.slug);
+    const mine = new Map<string, number>();
+    claimed.set(t.slug, mine);
+    if (!list || list.status !== 'confirmed' || t.cents <= 0 || w.held.size === 0) continue;
+    const { found } = namesOf(w, list);
+    const offsets = found.map((n) => w.held.get(n.asset.underlying) ?? 0);
+    const { level } = fillToLevel(
+      t.cents,
+      found.map(() => t.cents),
+      offsets,
+    );
+    found.forEach((n, i) => {
+      const take = Math.min(offsets[i] ?? 0, level);
+      if (take <= 0) return;
+      const u = n.asset.underlying;
+      mine.set(u, (mine.get(u) ?? 0) + take);
+      const left = (w.held.get(u) ?? 0) - take;
+      if (left > 0) w.held.set(u, left);
+      else w.held.delete(u);
+      w.heldTotal -= take;
+    });
+  }
+  return claimed;
 }
 
 const capped = (a: BasketAsset) => a.cls === 'stock' || a.cls === 'crypto';
@@ -90,10 +181,11 @@ export function placeThemeSleeve(
   shareBps: number,
   cents: number,
   reserve = 0,
-): Map<string, number> {
+  claimed: Map<string, number> = new Map(),
+): { holds: Map<string, number>; short: boolean } {
   const { lang, P } = w;
   const held = new Map<string, number>();
-  if (cents <= 0) return held;
+  if (cents <= 0) return { holds: held, short: false };
   const list = w.themeListOf(slug);
   if (!list || list.status !== 'confirmed') {
     const theme = list ? list.name[lang] : slug;
@@ -105,7 +197,7 @@ export function placeThemeSleeve(
     w.flags.add(`theme_${list ? 'not_confirmed' : 'no_list'}:${slug}`);
     book.removed.push({ ref: slug, reasons: [why] });
     book.spill([theme], cents, why);
-    return held;
+    return { holds: held, short: false };
   }
   const theme = list.name[lang];
   const out: Removed[] = [];
@@ -117,56 +209,31 @@ export function placeThemeSleeve(
   };
 
   // ---- Eligible: on the chain, holdable, and able to take a line at this size.
-  const found: Omit<Name, 'weight'>[] = [];
-  for (const member of byName(list.members, (m) => m.symbol)) {
-    // A theme holds stocks, crypto and gold: a dollar-yield or cash token is not one of its names.
-    // Two tokens under one symbol are tried by id: the first the person can hold is the name's.
-    const tokens = byName(
-      w.tokens.filter((a) => a.symbol === member.symbol && w.sleeveOf(a) !== 'dollarYield'),
-      (a) => a.id,
-    );
-    const asset = tokens.find((a) => w.blockOf(a) === null);
-    if (!asset) {
-      const first = tokens[0];
-      const why =
-        (first && w.blockOf(first)) ??
-        reason('NOT_ON_CHAIN', { asset: member.symbol, chain: w.chain }, lang);
-      leave(member.symbol, [why], why);
-      continue;
-    }
-    if (w.ceilingOf(asset) < w.minLine) {
-      const thin = reason(
-        'THEME_TOO_THIN',
-        { asset: member.symbol, theme, minUsd: toUsd(w.minLine) },
-        lang,
-      );
-      leave(member.symbol, [thin, w.ceilingWhy(asset)], w.ceilingWhy(asset));
-      continue;
-    }
-    found.push({ asset, member, measured: w.measuredUsdOf(asset) });
-  }
+  const named = namesOf(w, list);
+  for (const o of named.outs) leave(o.ref, o.why, o.cause);
 
-  // ---- What the person already holds (DESIGN-VAULT section 7, as for the goal sleeve): each name's
-  // target is its equal part of the sleeve grown by the plan's amount plus what is held, less what
-  // is held of it. A name held in full takes nothing; the others take more for it.
-  const base = Math.floor((cents * (w.amount + w.heldTotal)) / w.amount);
-  const heldOf = (n: Omit<Name, 'weight'>) => w.held.get(n.asset.underlying) ?? 0;
-  const touched = found.some((n) => heldOf(n) > 0);
+  // ---- What the person already holds, as this theme counts it (`claimHoldings`): each name is filled
+  // to one level counting its holding. A name held to that level or more takes nothing; the others
+  // take more for it.
+  const level = fillToLevel(
+    cents,
+    named.found.map(() => cents),
+    named.found.map((n) => claimed.get(n.asset.underlying) ?? 0),
+  ).level;
   const able: Name[] = [];
   const heldSaid: Reason[] = [];
   const cut = new Map<string, Reason>();
-  for (const n of found) {
-    const h = heldOf(n);
-    const weight = touched ? base - found.length * h : 1;
+  for (const n of named.found) {
+    const h = claimed.get(n.asset.underlying) ?? 0;
     const values = { asset: n.asset.underlying, heldUsd: toUsd(h) };
     if (h > 0) heldSaid.push(reason('MORE_BECAUSE_HELD', values, lang));
-    if (weight <= 0) {
-      const why = reason('ALREADY_HELD_NONE', values, lang);
+    if (h > 0 && h >= level) {
+      const why = reason('THEME_HELD_NONE', { ...values, theme }, lang);
       leave(n.member.symbol, [why], why);
       continue;
     }
-    if (h > 0) cut.set(n.asset.id, reason('ALREADY_HELD', values, lang));
-    able.push({ ...n, weight });
+    if (h > 0) cut.set(n.asset.id, reason('THEME_HELD', { ...values, theme }, lang));
+    able.push({ ...n, held: h });
   }
   const ranked = easiestFirst(w, able);
 
@@ -225,7 +292,7 @@ export function placeThemeSleeve(
     // down together and held there while the others share again. The room is read per name: the cap
     // on stocks and crypto counts every sleeve of an issuer, the plan's cap only gold and the rest,
     // so an issuer with names of both kinds is two limits.
-    const weights = chosen.map((n) => n.weight);
+    const offsets = chosen.map((n) => n.held);
     const limitsOn = chosen.flatMap((n) => {
       const growth = w.sleeveOf(n.asset) === 'growth';
       return [
@@ -246,7 +313,7 @@ export function placeThemeSleeve(
     const byKey = new Map(byName(limitsOn, (c) => c.key).map((c) => [c.key, c]));
     const fixed = new Set<string>();
     for (;;) {
-      takes = equalCapped(cents, limits, weights);
+      takes = equalCapped(cents, limits, offsets);
       let scaled = false;
       for (const [key, c] of byKey) {
         if (fixed.has(key)) continue;
@@ -343,5 +410,5 @@ export function placeThemeSleeve(
     book.spill(names, left, cause);
   }
   if (held.size === 0) w.flags.add(`theme_empty:${slug}`);
-  return held;
+  return { holds: held, short: noLine.length > 0 };
 }
