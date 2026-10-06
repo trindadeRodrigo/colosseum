@@ -140,6 +140,13 @@ export const PersonalParameters = PersonalParams.extend({
   driftBandBps: Bps,
   /** Days another asset must stay ahead by more than the band before the safe-yield sleeve switches (slice 4). */
   switchDays: z.number().int().positive(),
+  /** The named stresses of the status (slice 3): how far yields fall, how long a credit leg is gated, how far the goal's currency moves and over how many months. */
+  stress: z.object({
+    yieldsFallBps: Bps,
+    creditGateMonths: z.number().int().nonnegative(),
+    fxMoveBps: Bps,
+    fxMoveMonths: z.number().int().positive(),
+  }),
 });
 export type PersonalParameters = z.infer<typeof PersonalParameters>;
 
@@ -221,6 +228,30 @@ export type PersonalProposal = Omit<BasketProposal, 'sheet' | 'observations' | '
   verdict?: PersonalVerdict;
   /** Present when the sheet has withdrawals: the plan month by month, in the goal's currency. */
   schedule?: PersonalSchedule;
+  /** Present with the schedule: months paid now and under each stress, and the carry needed (slice 3). */
+  status?: PersonalStatus;
+};
+
+/**
+ * LOCAL TYPE. The status of a plan with withdrawals (slice 3): no odds and no projected return.
+ * Months paid at the rates observed on `observedOn`, the same under each named stress that applies,
+ * and the carry the withdrawals need (a flat yearly rate on dollar yield) beside the carry observed.
+ * Carry needed is null when no rate up to 100% pays every month. `met`: every month paid in the base
+ * case and under every stress.
+ */
+export type PersonalStatus = {
+  observedOn: string | null;
+  base: { monthsPaid: number; monthsWithWithdrawal: number; shortfall: number };
+  stresses: {
+    id: string;
+    params: Record<string, number>;
+    monthsPaid: number;
+    monthsWithWithdrawal: number;
+    shortfall: number;
+  }[];
+  carryObservedBps: number;
+  carryNeededBps: number | null;
+  met: boolean;
 };
 
 /**

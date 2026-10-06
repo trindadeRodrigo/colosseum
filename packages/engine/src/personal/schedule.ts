@@ -18,6 +18,17 @@ import { monthAfter, type Withdrawal } from './world';
 // `atPar` runs the same draw with every cost at zero. With a cost, a leg is sold for less and more of
 // it goes, so a month paid with costs is paid at par too: months paid never rise against the par draw.
 
+/**
+ * A named stress (slice 3, the status): what the schedule is run under besides the rates observed.
+ * `flat_carry` is not a stress: every dollar-yield leg accrues at one rate, for the carry a goal needs.
+ */
+export type Stress =
+  | { id: 'yields_fall'; fallBps: number }
+  | { id: 'credit_gate'; months: number }
+  | { id: 'equity_fall'; fallBps: number }
+  | { id: 'fx_goal_up' | 'fx_goal_down'; moveBps: number; months: number }
+  | { id: 'flat_carry'; yearly: number };
+
 export type ScheduleInputs = {
   lines: { assetId: string; amountUsd: number }[];
   byId: Map<string, BasketAsset>;
@@ -33,9 +44,13 @@ export type ScheduleInputs = {
   /** The most dollars a token with nothing measured may sell in a window: its tier ceiling. */
   ceilingUsdOf: (asset: BasketAsset) => number;
   atPar?: boolean;
+  /** Whether a token is a credit or basis leg: what a credit gate stops. */
+  isCredit?: (asset: BasketAsset) => boolean;
+  stress?: Stress;
 };
 
 const MONTHS_IN_A_YEAR = 12;
+const BPS = 10_000;
 const CENTS = 100;
 const round = (x: number) => Math.round(x * CENTS) / CENTS;
 /** Nothing left to pay: under half a cent. */
@@ -48,6 +63,8 @@ type Kind = (typeof DRAW)[number];
 type Held = {
   asset: BasketAsset;
   usd: number;
+  /** For a matching leg in the goal's currency: its value in that currency, which an FX move does not touch. */
+  native: number | null;
   kind: Kind;
   /** What it may sell in one window, in dollars; Infinity for cash. */
   perWindow: number;
@@ -70,6 +87,10 @@ export function scheduleOf(input: ScheduleInputs): PersonalSchedule {
     held.push({
       asset,
       usd: l.amountUsd,
+      native:
+        isCash && asset.currency === input.currency && input.currency !== 'USD'
+          ? l.amountUsd * rate
+          : null,
       kind: isCash
         ? (asset.currency ?? 'USD') === 'USD'
           ? 'cash'
@@ -100,41 +121,74 @@ export function scheduleOf(input: ScheduleInputs): PersonalSchedule {
     return cost === null ? tau : Math.min(Math.max(0, cost), 1);
   };
 
-  const owedIn = new Map<string, number>();
-  for (const x of input.withdrawals)
-    owedIn.set(x.month, (owedIn.get(x.month) ?? 0) + x.cents / CENTS);
+  const { stress } = input;
+  // The goal's currency against the dollar, month by month: as read, or moving under an FX stress to
+  // its full move over its months. "Up" is the goal's currency worth more: fewer units per dollar.
+  const fxMoves = stress?.id === 'fx_goal_up' || stress?.id === 'fx_goal_down';
+  const rateAt = (m: number) => {
+    if (!fxMoves || input.currency === 'USD') return rate;
+    const done = Math.min(1, (m + 1) / Math.max(1, stress.months));
+    const sign = stress.id === 'fx_goal_up' ? -1 : 1;
+    return rate * (1 + (sign * stress.moveBps * done) / BPS);
+  };
+  const yieldOf = (h: Held): number => {
+    if (stress?.id === 'flat_carry') return stress.yearly;
+    const read = input.yields.get(h.asset.id)?.haircutYield ?? 0;
+    return stress?.id === 'yields_fall' ? read * (1 - stress.fallBps / BPS) : read;
+  };
+  const gated = (h: Held, m: number) =>
+    stress?.id === 'credit_gate' && m < stress.months && (input.isCredit?.(h.asset) ?? false);
+  if (stress?.id === 'equity_fall')
+    for (const h of order) if (h.kind === 'rest') h.usd *= 1 - stress.fallBps / BPS;
+
+  /** What a month's withdrawals come to in dollars at that month's rate. */
+  const owedAt = (month: string, r: number) =>
+    input.withdrawals
+      .filter((x) => x.month === month)
+      .reduce(
+        (n, x) =>
+          n +
+          (fxMoves && x.currency === input.currency && x.currency !== 'USD'
+            ? x.amount / r
+            : x.cents / CENTS),
+        0,
+      );
 
   const rows: PersonalSchedule['rows'] = [];
   let monthsPaid = 0;
   let monthsWithWithdrawal = 0;
-  let shortfallUsd = 0;
+  /** In the goal's currency, at each month's rate. */
+  let shortfall = 0;
   for (let m = 0; m < input.months; m += 1) {
     const month = monthAfter(input.nowMonth, m);
-    for (const h of order)
-      if (h.kind === 'dollarYield')
-        h.usd *= 1 + (input.yields.get(h.asset.id)?.haircutYield ?? 0) / MONTHS_IN_A_YEAR;
-    const owed = owedIn.get(month) ?? 0;
+    const r = rateAt(m);
+    for (const h of order) {
+      if (h.native !== null) h.usd = h.native / r;
+      if (h.kind === 'dollarYield' && !gated(h, m)) h.usd *= 1 + yieldOf(h) / MONTHS_IN_A_YEAR;
+    }
+    const owed = owedAt(month, r);
     let need = owed;
     for (const h of order) {
       if (settled(need)) break;
-      if (h.usd <= 0) continue;
+      if (h.usd <= 0 || gated(h, m)) continue;
       // Sold gross so that, after the cost, it pays what is left; no more than a window allows.
       const cost = costOf(h, Math.min(h.usd, h.perWindow, need));
       const gross = Math.min(h.usd, h.perWindow, need / (1 - cost));
       h.usd -= gross;
       need -= gross * (1 - cost);
+      if (h.native !== null) h.native = h.usd * r;
     }
     const paid = settled(need);
     if (owed > 0) {
       monthsWithWithdrawal += 1;
       if (paid) monthsPaid += 1;
-      else shortfallUsd += need;
+      else shortfall += need * r;
     }
     const balance = order.reduce((n, h) => n + h.usd, 0);
     rows.push({
       month,
-      withdrawal: round(owed * rate),
-      balance: round(balance * rate),
+      withdrawal: round(owed * r),
+      balance: round(balance * r),
       paid,
     });
   }
@@ -144,6 +198,6 @@ export function scheduleOf(input: ScheduleInputs): PersonalSchedule {
     rows,
     monthsPaid,
     monthsWithWithdrawal,
-    shortfall: round(shortfallUsd * rate),
+    shortfall: round(shortfall),
   };
 }

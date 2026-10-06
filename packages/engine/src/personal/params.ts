@@ -94,6 +94,9 @@ export const PERSONAL_PARAMS: PersonalParameters = {
   driftBandBps: 500,
   // Tuned by C2's perturbation test, on the safe-yield sleeve's switches.
   switchDays: 7,
+  // The named stresses of the status (slice 3, C12): the old engine's STRESS_PARAMS. Stocks, crypto and
+  // gold fall by `fallBps`. Tuned by C8 (credit) and by the replay of section 2.2 (yields, FX).
+  stress: { yieldsFallBps: 5000, creditGateMonths: 6, fxMoveBps: 2000, fxMoveMonths: 12 },
 };
 
 /** `changed` is a change made since the prototype that Rodrigo has not read yet: he clears it. */
@@ -168,6 +171,10 @@ export const PERSONAL_PARAMS_STATUS: Record<Exclude<keyof PersonalParameters, 'v
   defaultCreditTolerance: {
     status: 'set',
     from: 'Rodrigo, Oct 5: limited, the old parser default, until the guided intake asks.',
+  },
+  stress: {
+    status: 'starting',
+    from: 'The old engine (packages/engine/src/schedule, STRESS_PARAMS): yields fall by half, a credit leg gated for 6 months, the goal currency 20% up or down over 12 months. For Rodrigo: a parameter outside the SOLVER-PARAMS table.',
   },
   setAsideMonths: {
     status: 'set',

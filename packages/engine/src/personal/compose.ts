@@ -23,14 +23,16 @@ import {
 import { byName, ceilCents, split, sum, toUsd } from './money';
 import { packageUp } from './packaging';
 import { Book, once, type Removed, type Sized, type Unit } from './placement';
-import { scheduleOf } from './schedule';
+import { type ScheduleInputs, scheduleOf } from './schedule';
 import { checkCoverage, placeSetAside, setAsideOf } from './set-aside';
+import { statusOf } from './status';
 import { reason, text } from './templates';
 import {
   type ComposeContext,
   type PersonalProposal,
   type PersonalSchedule,
   type PersonalSheet,
+  type PersonalStatus,
   type PersonalVerdict,
   reportsPools,
   SLEEVES,
@@ -451,6 +453,7 @@ function build(
   // The schedule, in the goal's currency, when there are withdrawals. It needs the rate for a goal
   // not in dollars; with none, there is no schedule, and the plan says so.
   let schedule: PersonalSchedule | undefined;
+  let status: PersonalStatus | undefined;
   const lastWithdrawal = w.withdrawals.at(-1);
   if (withWays && lastWithdrawal) {
     const rate = w.currency === 'USD' ? 1 : (w.fxOf(w.currency)?.value ?? null);
@@ -459,7 +462,7 @@ function build(
       const [y0 = 0, m0 = 1] = w.nowMonth.split('-').map(Number);
       const [y1 = 0, m1 = 1] = lastWithdrawal.month.split('-').map(Number);
       const toLast = (y1 - y0) * MONTHS_IN_A_YEAR + (m1 - m0) + 1;
-      schedule = scheduleOf({
+      const inputs: ScheduleInputs = {
         lines,
         byId: w.byId,
         yields: w.yields,
@@ -474,8 +477,16 @@ function build(
         liquidity: w.liquidity,
         tau: P.tau,
         ceilingUsdOf: (a) => toUsd(w.ceilingOf(a)),
-      });
+        isCredit: (a) => w.isCredit(a),
+      };
+      schedule = scheduleOf(inputs);
       if (schedule.monthsPaid < schedule.monthsWithWithdrawal) w.flags.add('schedule_unpaid');
+      // The date of the rates: the latest yield reading the plan counts.
+      const read = [...w.observations.values()]
+        .filter((o) => o.kind === 'yield' && o.fetchedAt !== null)
+        .map((o) => String(o.fetchedAt).slice(0, 10))
+        .sort();
+      status = statusOf(inputs, P, sheet.amountUsd, read.at(-1) ?? null);
     }
   }
 
@@ -604,6 +615,7 @@ function build(
     sleeves: held,
     ...(asSplit ? { split: asSplit } : {}),
     ...(schedule ? { schedule } : {}),
+    ...(status ? { status } : {}),
   };
 }
 
