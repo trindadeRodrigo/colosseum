@@ -2,20 +2,11 @@
 import { chainFamily, type SharedFamily, TRUST_STATUS } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-<<<<<<< HEAD
-import { useEffect, useId, useRef, useState } from 'react';
-import { CardWait } from '../../components/shell/Wait';
-import { Button } from '../../components/ui/Button';
-import { buttonClass } from '../../components/ui/button-class';
-import { Card, CardBody } from '../../components/ui/Card';
-import { Field, Input } from '../../components/ui/Field';
-import { SkeletonPlan } from '../../components/ui/Skeleton';
-import { StatusMark } from '../../components/ui/StatusMark';
-=======
 import { useEffect, useRef, useState } from 'react';
+import { CardWait } from '../../components/shell/Wait';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card, CardLoading } from '../../components/ui/Card';
->>>>>>> c1d1acf (BUY-STEPS: the buy as four steps, with test funds on a test network)
+import { Card } from '../../components/ui/Card';
+import { SkeletonPlan } from '../../components/ui/Skeleton';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { dollars, parseNumber } from '../goal/sheet';
 import { BuySteps, MAX_USD, MIN_USD } from '../order/BuySteps';

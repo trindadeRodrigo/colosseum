@@ -13,9 +13,9 @@ import type { FundingOutcome, TestFundsOutcome } from './order-api';
 import type { TokenUnits, unitsFor } from './units';
 
 // The funds step of a buy: what the wallet needs on the plan's chain in one line, the way to fill it
-// (test funds from our server on a test network, MOCK cash on the mock, or the address to send to),
+// (test funds from our server on a test network, sample cash on the mock, or the address to send to),
 // and the table of each balance with where it was read, behind a disclosure. The card it sits in
-// carries the MOCK or test-network plate once, for every figure here.
+// says once, in a quiet line, that every figure here is a sample or the test network's.
 
 export type Funding = { kind: 'idle' } | { kind: 'reading' } | FundingOutcome;
 

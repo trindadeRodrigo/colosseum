@@ -232,18 +232,27 @@ describe('the steps', () => {
     expect(head(host, 'funds').textContent).not.toContain(en.buy.steps.done);
   });
 
-  it('carries the test network’s plate once, on the card, and none on a figure', async () => {
+  it('says once, in a quiet line on the card, that its figures are the test network’s, and never MOCK', async () => {
     api({ funded: false });
     const host = await buy();
     const card = find(host, 'section[data-ui="card"]');
-    expect(
-      card.querySelectorAll('[data-ui="mock-plate"], [data-ui="mock-word"]').length,
-    ).toBeLessThanOrEqual(1);
-    expect(find(card, '[data-ui="mock-note"]').textContent).toBe(
-      en.buy.steps.testNetwork('Solana'),
+    expect(find(card, '[data-ui="data-note"]').textContent).toBe(
+      en.buy.steps.note.testNetwork('Solana'),
     );
     expect(host.querySelectorAll('section[data-ui="card"]')).toHaveLength(1);
+    expect(host.querySelectorAll('[data-ui="mock-plate"], [data-ui="hatch-band"]')).toHaveLength(0);
+    expect(host.textContent).not.toMatch(/MOCK/);
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
+  });
+
+  it('on the mock: says the figures are samples, and its funding button says so in words', async () => {
+    portStore.set(signedInPort(EMBEDDED, { userId: USER }, 'mock'));
+    api({ funded: false, provenance: 'mock' });
+    const host = await buy();
+    expect(find(host, '[data-ui="data-note"]').textContent).toBe(en.buy.steps.note.sample);
+    await click(next(host, 'amount'));
+    expect(button(host, en.buy.funding.mockFund)).toBeDefined();
+    expect(host.textContent).not.toMatch(/MOCK/);
   });
 });
 

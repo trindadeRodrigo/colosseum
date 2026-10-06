@@ -18,8 +18,8 @@ import { unitsFor } from './units';
 // A buy as four steps on one card, one open at a time (Thom, Oct 6): the amount, the funds the wallet
 // needs on the plan's chain, what the person trusts, and the review that leads to signing. Above them,
 // where the person is: each step's number and name, filled once it is done. Every step can be opened
-// again from its heading; "Continue" opens the next one and moves the focus to it. The card carries the
-// MOCK plate, or the test network's, once for every figure in it. The plan's buy and a shared
+// again from its heading; "Continue" opens the next one and moves the focus to it. Figures that are not
+// live are said once, in a quiet line at the top of the card, and never with a plate on a figure. The plan's buy and a shared
 // portfolio's share it; what is checked before an order is made stays theirs (`order.blocked`).
 
 export const MIN_USD = 10;
@@ -248,17 +248,19 @@ export function BuySteps({
   };
 
   return (
-    <Card
-      as="section"
-      aria-label={t.buy.steps.label}
-      mock={labelled}
-      mockLabels={{
-        announce: t.shell.mockAnnounce,
-        note: provenance === 'sandbox' ? t.buy.steps.testNetwork(chainName) : undefined,
-      }}
-      className="max-w-3xl"
-    >
+    <Card as="section" aria-label={t.buy.steps.label} className="max-w-3xl">
       <div data-ui="buy-steps">
+        {labelled && (
+          // One quiet line for every figure on the card, never a plate on a figure (Thom, Oct 6).
+          <p
+            data-ui="data-note"
+            className="px-6 pt-5 text-caption text-muted-foreground [overflow-wrap:anywhere]"
+          >
+            {provenance === 'sandbox'
+              ? t.buy.steps.note.testNetwork(chainName)
+              : t.buy.steps.note.sample}
+          </p>
+        )}
         <ol
           data-ui="buy-progress"
           aria-label={t.buy.steps.label}

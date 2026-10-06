@@ -295,9 +295,11 @@ test('the buy’s steps by keyboard, in Portuguese, at 375 and 1440 px', async (
   await expect(funds).toHaveAttribute('aria-expanded', 'true');
   await expect(funds).toBeFocused();
   await expect(page.getByRole('button', { name: pt.buy.funding.testFunds })).toBeVisible();
-  await expect(page.locator('[data-ui="mock-note"]')).toHaveText(
-    pt.buy.steps.testNetwork('Solana'),
+  await expect(page.locator('[data-ui="data-note"]')).toHaveText(
+    pt.buy.steps.note.testNetwork('Solana'),
   );
+  // no MOCK word anywhere on the buy screen: the card's one line says what the figures are
+  await expect(page.locator('main')).not.toContainText('MOCK');
   await check(page, 'buy-pt');
   // the full notice is one Tab and Enter away in the trust step
   await page.getByRole('button', { name: new RegExp(`^${pt.buy.steps.names.trust}`) }).click();

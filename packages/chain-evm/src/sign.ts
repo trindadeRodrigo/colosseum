@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { BuiltTx } from '@colosseum/schemas';
 import { type Abi, encodeFunctionData, type Hex, keccak256, type PublicClient } from 'viem';
-import { type PrivateKeyAccount, privateKeyToAccount } from 'viem/accounts';
+import { generatePrivateKey, type PrivateKeyAccount, privateKeyToAccount } from 'viem/accounts';
 
 // The one place an EVM key becomes a signer (DESIGN-VAULT section 2, rule 5), behind
 // '@colosseum/chain-evm/server'. Only apps/keeper and scripts/ import it. Neither a key's path nor
@@ -17,6 +17,15 @@ export function loadEvmKey(path: string): PrivateKeyAccount {
   }
   if (!/^0x[0-9a-fA-F]{64}$/.test(text)) throw new Error('the key file does not hold one EVM key');
   return privateKeyToAccount(text as Hex);
+}
+
+/**
+ * A fresh EVM key for a test-network wallet, with its address: for a file outside every checkout
+ * (scripts/testnet/faucet-keys.ts). The caller writes the key and prints only the address.
+ */
+export function newEvmKey(): { key: Hex; address: string } {
+  const key = generatePrivateKey();
+  return { key, address: privateKeyToAccount(key).address };
 }
 
 /**

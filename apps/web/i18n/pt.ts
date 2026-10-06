@@ -593,7 +593,10 @@ export const pt: Dictionary = {
       trust: { accepted: 'Aceito', open: 'Ainda não aceito' },
       reviewLead: (amount: string, chain: string) =>
         `Você está comprando ${amount} do seu plano em ${chain}. Em seguida você revisa cada passo e assina cada um na sua carteira.`,
-      testNetwork: (chain: string) => `Em ${chain}, rede de teste`,
+      note: {
+        sample: 'Valores de exemplo · não são reais',
+        testNetwork: (chain: string) => `Valores de exemplo · rede de teste · ${chain}`,
+      },
     },
     funding: {
       title: 'O que sua carteira precisa',
@@ -629,7 +632,7 @@ export const pt: Dictionary = {
       newVault:
         'Esta compra abre o seu cofre para este plano, o que custa um pouco mais de taxa na primeira vez.',
       readAgain: 'Ler minha carteira de novo',
-      mockFund: 'Adicionar dinheiro e taxas MOCK',
+      mockFund: 'Adicionar dinheiro e taxas de exemplo',
       mockFunding: 'Adicionando…',
       failure: {
         unreachable: 'Não consegui ler sua carteira: nosso servidor não respondeu. Tente de novo.',

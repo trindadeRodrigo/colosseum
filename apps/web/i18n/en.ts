@@ -631,7 +631,11 @@ export const en = {
       trust: { accepted: 'Accepted', open: 'Not accepted yet' },
       reviewLead: (amount: string, chain: string) =>
         `You’re buying ${amount} of your plan on ${chain}. Next you review every step, then sign each one in your wallet.`,
-      testNetwork: (chain: string) => `On ${chain}, test network`,
+      /** The one line over the card when its figures are not live. */
+      note: {
+        sample: 'Sample figures · not live',
+        testNetwork: (chain: string) => `Sample figures · test network · ${chain}`,
+      },
     },
     funding: {
       title: 'What your wallet needs',
@@ -668,7 +672,7 @@ export const en = {
       newVault:
         'This buy opens your vault for this plan, which costs a little more in fees the first time.',
       readAgain: 'Read my wallet again',
-      mockFund: 'Add MOCK cash and fees',
+      mockFund: 'Add sample cash and fees',
       mockFunding: 'Adding…',
       failure: {
         unreachable: 'I couldn’t read your wallet: our server didn’t answer. Try again.',
