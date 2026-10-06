@@ -58,6 +58,7 @@ export function AppNav() {
       homeHref="/"
       contentId="content"
       compact
+      linkAs={Link}
       links={ROUTES.filter((route) => !('signedIn' in route) || signedIn).map((route) => ({
         label: t.shell[route.key],
         href: route.href,

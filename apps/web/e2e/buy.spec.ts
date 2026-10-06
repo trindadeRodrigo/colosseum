@@ -50,6 +50,12 @@ async function check(page: Page, name: string) {
   }
 }
 
+/** Follows a link of the product's bar, as a phone does: the menu button, then the link in its sheet. */
+async function go(page: Page, name: string) {
+  await page.getByRole('button', { name: en.shell.menu }).click();
+  await page.locator('[data-ui="compact-nav-sheet"]').getByRole('link', { name }).click();
+}
+
 /** From a signed-out page to the buy screen of a plan, with the wallet funded and the notice ticked. */
 test('his landing page: the hero, the two sample cases, the typing box that hands a goal on', async ({
   page,
@@ -116,12 +122,18 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
   await check(page, 'done');
 
   // The monitor reads the vault the buy opened, with a pin on its value, under the MOCK plate.
-  await page.getByRole('navigation').getByRole('link', { name: en.shell.portfolio }).click();
+  // at 375 px his bar keeps its links in the sheet under the menu button
+  await go(page, en.shell.portfolio);
   await expect(page).toHaveURL(/\/monitor$/);
   const vault = page.locator('section[data-ui="card"]').filter({
     has: page.getByRole('heading', { name: en.portfolio.vault.title }),
   });
   await expect(vault).toHaveCount(1);
+  // his goal card, joined to the goal the plan was built for, and what reached the chain, with links
+  await expect(page.locator('[data-ui="goal-card"] h3')).toHaveText('Grow $40 over 36 months.');
+  await expect(
+    page.locator('[data-ui="activity-panel"] [data-ui="execution-list"] li a[href]'),
+  ).toHaveCount(4);
   await expect(vault.locator('[data-ui="vault-value"] [data-ui="figure"]')).toHaveCount(1);
   await expect(vault.locator('[data-ui="mock-plate"]').first()).toBeVisible();
   await check(page, 'monitor');
@@ -129,7 +141,7 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
   await expect(page.locator('main [data-ui="disclaimer"]')).toBeVisible();
   await expect(page.locator('[data-ui="disclaimer"]:visible')).toHaveCount(1);
   // and home says where the money is, under the goal
-  await page.getByRole('navigation').getByRole('link', { name: en.shell.invest }).click();
+  await go(page, en.shell.invest);
   await expect(page.getByRole('link', { name: en.portfolio.summary.see })).toBeVisible();
   // a page with no disclaimer of its own keeps the foot's
   await expect(page.locator('footer [data-ui="disclaimer"]')).toBeVisible();

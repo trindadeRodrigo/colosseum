@@ -1,5 +1,14 @@
 'use client';
-import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
+import {
+  type AnchorHTMLAttributes,
+  type ComponentType,
+  type ReactNode,
+  type Ref,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react';
 import { Button } from './Button';
 import { buttonClass } from './button-class';
 import { cn } from './cn';
@@ -51,6 +60,13 @@ export type CompactNavProps = {
    * a page with no stage, or a stage in its still form.
    */
   stage?: { compactAt: string; releaseAbove: string };
+  /**
+   * What draws a link: a plain anchor by default, or the router's link (`next/link`) where the bar
+   * leads between pages of one app, so a page change keeps what the app holds in memory.
+   */
+  linkAs?: ComponentType<
+    AnchorHTMLAttributes<HTMLAnchorElement> & { href: string; ref?: Ref<HTMLAnchorElement> }
+  >;
   /** Sets the state from outside and switches the observer off. */
   compact?: boolean;
   labels?: Partial<CompactNavLabels>;
@@ -76,6 +92,7 @@ export function CompactNav({
   contentId,
   stage,
   compact: controlled,
+  linkAs: A = 'a' as unknown as NonNullable<CompactNavProps['linkAs']>,
   labels,
   className,
 }: CompactNavProps) {
@@ -165,7 +182,7 @@ export function CompactNav({
             : 'w-[calc(100%-2*clamp(16px,4vw,56px))] max-w-page border-transparent bg-transparent px-0',
         )}
       >
-        <a
+        <A
           href={homeHref}
           aria-label={homeLabel}
           className={cn('flex shrink-0 items-center gap-2.5 text-foreground', FOCUS)}
@@ -179,7 +196,7 @@ export function CompactNav({
           >
             {wordmark}
           </span>
-        </a>
+        </A>
         <nav
           aria-label={text.main}
           className={cn(
@@ -191,14 +208,14 @@ export function CompactNav({
           )}
         >
           {links.map((link) => (
-            <a
+            <A
               key={link.href}
               href={link.href}
               aria-current={link.current ? 'true' : undefined}
               className={cn(LINK, 'max-[819px]:hidden')}
             >
               {link.label}
-            </a>
+            </A>
           ))}
           <button
             ref={menu}
@@ -228,7 +245,7 @@ export function CompactNav({
       >
         {sheetHead && <div className="border-b border-border px-3 pt-1 pb-3">{sheetHead}</div>}
         {links.map((link, index) => (
-          <a
+          <A
             key={link.href}
             ref={index === 0 ? firstLink : undefined}
             href={link.href}
@@ -237,7 +254,7 @@ export function CompactNav({
             className={LINK}
           >
             {link.label}
-          </a>
+          </A>
         ))}
       </div>
     </header>
