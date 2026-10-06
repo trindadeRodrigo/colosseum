@@ -22,6 +22,8 @@ import { buildRiskApp } from './app';
 // with provenance 'fixture' and tier X (never listed), and removed afterwards.
 const MINT = 'FIXTUREfactsMint1111111111111111111111111111';
 const POOL = 'FIXTUREfactsPool1111111111111111111111111111';
+/** A second pool of the asset with no risk_pools row: its venue and quote come from its own flow rows (RU.14). */
+const POOL2 = 'FIXTUREfactsPool2222222222222222222222222222';
 const SYMBOL = 'FIXTUREFACTS';
 const syn = JSON.parse(readFileSync('fixtures/risk/curves-synthetic.json', 'utf8')).spyx as Record<
   Regime,
@@ -90,6 +92,37 @@ beforeAll(async () => {
         dataFrom: new Date(g.from),
         dataTo: new Date(g.to),
         methodVersion: FLOW_METHOD_VERSION,
+        source: 'fixture flow rows',
+        method: 'fixture',
+        fetchedAt: new Date(),
+        provenance: 'fixture' as const,
+      })),
+    )
+    .onConflictDoNothing();
+  await db
+    .insert(riskPoolFlow)
+    .values(
+      flowRows.map((g) => ({
+        pool: POOL2,
+        assetMint: MINT,
+        assetSymbol: SYMBOL,
+        regime: g.regime,
+        window: g.window,
+        // an empty pool: the asset's sums stay the first pool's
+        swaps: 0,
+        sellSwaps: 0,
+        buySwaps: 0,
+        unpricedSwaps: 0,
+        sellUsd: 0,
+        buyUsd: 0,
+        hours: 0,
+        medianDepthSellUsd: null,
+        dataFrom: new Date(g.from),
+        dataTo: new Date(g.to),
+        methodVersion: FLOW_METHOD_VERSION,
+        venue: 'uniswap-v4',
+        quoteSymbol: 'USDG',
+        quoteMint: '0x5fc5360d0400a0fd4f2af552add042d716f1d168',
         source: 'fixture flow rows',
         method: 'fixture',
         fetchedAt: new Date(),
@@ -235,8 +268,10 @@ describe('GET /risk/facts/assets/:id', () => {
       regime: 'weekend',
       detail: '3 priced swaps (0 unpriced), 8 needed',
     });
-    expect(flow?.byPool).toHaveLength(1);
+    // the first pool's venue and quote come from risk_pools, the second's from its own rows (no risk_pools row)
+    expect(flow?.byPool).toHaveLength(2);
     expect(flow?.byPool[0]).toMatchObject({ pool: POOL, venue: 'fixture', quote: 'fixture' });
+    expect(flow?.byPool[1]).toMatchObject({ pool: POOL2, venue: 'uniswap-v4', quote: 'USDG' });
     expect(flow?.holders.top10Share).toMatchObject({ value: null, reason: 'not_collected' });
     await app.close();
   });

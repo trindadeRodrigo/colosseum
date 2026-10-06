@@ -590,6 +590,10 @@ export const riskPoolFlow = pgTable(
     dataFrom: ts('data_from').notNull(),
     dataTo: ts('data_to').notNull(),
     methodVersion: text('method_version').notNull(),
+    /** The pool's venue and quote as the import knew them (PLAN-UNIVERSE RU.14: an EVM pool has no risk_pools row). */
+    venue: text('venue'),
+    quoteSymbol: text('quote_symbol'),
+    quoteMint: text('quote_mint'),
     ...provenanceCols,
   },
   (t) => [

@@ -52,6 +52,9 @@ const fx = JSON.parse(
 ) as Fixture;
 const robinhood = CHAINS.find((c) => c.id === 'robinhood') as ChainConfig;
 const dollar = robinhood.dollar.address.toLowerCase();
+// the recording predates `venue` on a pool; the cut names it by the kind
+for (const p of fx.pools as Array<Partial<HistoryPool>>)
+  p.venue ??= p.kind === 'v4' ? 'uniswap-v4' : 'uniswap-v3';
 const P = defaultRegimeParams(
   JSON.parse(readFileSync('fixtures/risk/us-market-holidays.json', 'utf8')),
 );
@@ -406,6 +409,7 @@ describe('prices by the hour and the quote in dollars', () => {
     kind: 'cl',
     asset,
     symbol: asset === A ? 'AAA' : 'BBB',
+    venue: 'uniswap-v3',
     other,
     otherSymbol: other === dollar ? 'USDG' : other === ETH ? 'native' : other === B ? 'BBB' : null,
     otherIsStock: other === B,
@@ -747,6 +751,7 @@ describe('the recording end to end', () => {
           kind: 'v4',
           asset: `0x${'f2'.repeat(20)}`,
           symbol: 'FIXEVM',
+          venue: 'uniswap-v4',
           other: dollar,
           otherSymbol: 'USDG',
           otherIsStock: false,
