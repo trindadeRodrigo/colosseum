@@ -14,3 +14,12 @@ export function basketIdOfPlan(proposalId: string): string {
   const hash = sha256(utf8Encode(`plan:${proposalId.toLowerCase()}`));
   return BigInt(`0x${hexEncode(hash.slice(0, 8))}`).toString();
 }
+
+/**
+ * The id of a new shared portfolio, from its slug: the first publish of a family uses it. It is the
+ * API's own rule (`familyIdOf` in packages/basket), repeated here so the publish form works out the id
+ * it shows instead of taking the server's word; tests/meta-hash.test.ts holds the two together.
+ */
+export function familyIdOf(slug: string): string {
+  return hexEncode(sha256(utf8Encode(`family:${slug}`)));
+}

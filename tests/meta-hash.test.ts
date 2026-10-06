@@ -1,6 +1,6 @@
-import { randomBytes } from 'node:crypto';
-import { metaHash } from '@colosseum/basket';
-import { familyTextHash } from '@colosseum/sdk';
+import { createHash, randomBytes } from 'node:crypto';
+import { familyIdOf, metaHash } from '@colosseum/basket';
+import { familyTextHash, familyIdOf as sdkFamilyIdOf } from '@colosseum/sdk';
 import { describe, expect, it } from 'vitest';
 
 // The guard (packages/sdk) works out a shared portfolio's text hash itself, from the text the creator
@@ -40,5 +40,15 @@ describe("the guard's text hash and packages/basket's", () => {
       };
       expect(familyTextHash(text), JSON.stringify(text)).toBe(metaHash(text));
     }
+  });
+});
+
+describe("the id of a new shared portfolio, the form's and the server's", () => {
+  it('is the same rule on both sides, and SHA-256 of family:<slug>', () => {
+    for (const slug of ['a', 'gold-and-dollars', 'x9-y8', `s${'0'.repeat(60)}`]) {
+      expect(sdkFamilyIdOf(slug)).toBe(familyIdOf(slug));
+      expect(familyIdOf(slug)).toBe(createHash('sha256').update(`family:${slug}`).digest('hex'));
+    }
+    expect(familyIdOf('a')).not.toBe(familyIdOf('b'));
   });
 });
