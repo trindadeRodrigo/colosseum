@@ -22,7 +22,7 @@ There is no feature freeze (`NO-FREEZE`). Build as much as you can, in the order
 
 - The engine is deterministic: the same inputs give the same plan, byte for byte. The model never sets a weight, picks an asset or states a figure.
 - Rules and a banded fill. No linear program in the new engine (`SOLVER`).
-- The old `solve()`, its parser, registry and `ConstraintSheet` stay as they are, and `tests/engine-baseline.test.ts` stays green. The new engine lives in `packages/engine/src/personal/`, which Thom's ENG-2 port on `eng/personal` already holds: the slices build on it, reuse what it covers (note section 4.3) and change what the decisions of Oct 5 change (decided by Rodrigo on Oct 5, after this prompt was first written). Ledger row ENG-2 is this work.
+- The old `solve()`, its parser, registry and `ConstraintSheet` stay as they are, and `tests/engine-baseline.test.ts` stays green. The new engine lives in `packages/engine/src/personal/`, which Thom's ENG-2 port on `eng/personal` already holds: the slices build on it, reuse what it covers (note section 4.3) and change what the decisions of Oct 5 change (decided by Rodrigo on Oct 5, after this prompt was first written). Ledger row ENG-3 is this work; ENG-2 is Thom's port.
 - A plan lives on one chain (`ONE-CHAIN`). What an asset may weigh comes from Bearing's measured exit numbers; a tier stands in only where nothing is measured, labelled as a fallback (`EXIT-SOURCE`). Stocks never sit in an income or protect goal (`PROTECT-NO-STOCKS`).
 - Every yield, price, FX and exit figure carries `source`, `fetched_at` and `method`; nothing mocked or from a test network is shown as live. No yield number in code: the numbers below are policy parameters and live in the parameter table, never in logic.
 - No odds and no percentage chance of reaching a goal. ENG-1's "odds estimate" stays open for Rodrigo; do not build it.
@@ -35,8 +35,8 @@ Put them in one versioned table (`PersonalParams` or beside it), each with a com
 | Name | Value |
 |---|---|
 | Yield band | 0.5 percentage points |
-| Cap per asset | today's registry caps (Kamino 60%, syrupUSDC 40%, USDY 40%), lowered to `shareOfDepth` × measured exit capacity ÷ plan size where that is smaller; `shareOfDepth` 0.25, `tau` 1% |
-| Issuer cap | 50% of the plan |
+| Cap per asset | today's registry caps (Kamino 60%, syrupUSDC 40%, USDY 40%), lowered to `shareOfDepth` × measured exit capacity ÷ plan size where that is smaller; `shareOfDepth` 0.25, `tau` 1%. A token the table does not name takes its leg type's figure (`SOLVER-CAPS`) |
+| Issuer cap | 50% of the plan, for dollar yield, gold and cash (`SOLVER-CAPS`) |
 | Months of withdrawals set aside | 6 |
 | Drift band | 5 percentage points |
 | Safe-yield switch | another asset ahead by more than the band for 7 days |
@@ -139,7 +139,7 @@ Run at most two implementation agents at once, in their own worktrees, and never
 
 ### How each slice lands
 
-`/start-work` (branch `engine/<slice>` from `staging` once `eng/personal` is merged there; until then from `eng/personal`, and the pull request says it stacks on it), `/verify`, `/review-pr` by an agent that did not write it, `/open-pr`. Update ENG-2 in `docs/vault/STATE-VAULT.md` with the evidence of each slice, and DESIGN §3.6 and §7 where the code now differs from what they say.
+`/start-work` (branch `engine/<slice>` from `staging` once `eng/personal` is merged there; until then from `eng/personal`, and the pull request says it stacks on it), `/verify`, `/review-pr` by an agent that did not write it, `/open-pr`. Update ENG-3 in `docs/vault/STATE-VAULT.md` with the evidence of each slice, and DESIGN §3.6 and §7 where the code now differs from what they say.
 
 Stop and ask Rodrigo only for:
 - a product choice the documents do not settle;

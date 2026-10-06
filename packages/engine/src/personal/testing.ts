@@ -18,6 +18,7 @@ import {
 import { z } from 'zod';
 import seedFile from '../../../../docs/vault/research/open-questions/launch-shelf.seed.json';
 import yieldRows from './fixtures/yields.json';
+import { LEG_TYPES } from './leg-types';
 import { PERSONAL_PARAMS } from './params';
 import { eligibleForGoal, sleeveOfClass } from './registry';
 import { INPUT_NAMES, REASON_TEMPLATES } from './templates';
@@ -375,6 +376,32 @@ export function ceilingUsd(asset: BasketAsset, ctx: ComposeContext): number {
 }
 
 /**
+ * The most of the plan one dollar-yield token may hold, in basis points (gate SOLVER-PARAMS): its
+ * symbol's row, otherwise the smallest of its leg types' rows. Null for a token with no leg type.
+ */
+export function yieldCapBps(asset: BasketAsset, table: PersonalParameters): number | null {
+  const row = LEG_TYPES[asset.symbol];
+  if (!row) return null;
+  return (
+    table.capPerAssetBps.bySymbol[asset.symbol] ??
+    Math.min(...row.types.map((t) => table.capPerAssetBps.byLegType[t] ?? 10_000))
+  );
+}
+
+/** A table whose dollar-yield limits never bind: for the tests of the sleeves, not of the fill. */
+export function roomyYield(table: PersonalParameters = PERSONAL_PARAMS): PersonalParameters {
+  return {
+    ...table,
+    capPerAssetBps: {
+      bySymbol: {},
+      byLegType: { rate: 10_000, credit: 10_000, basis: 10_000, market_deposit: 10_000 },
+    },
+    issuerCapBps: 10_000,
+    creditShareBps: { none: 0, limited: 10_000, accept: 10_000 },
+  };
+}
+
+/**
  * What the sleeves of a plan should be, worked out here from the table's numbers alone. It shares no
  * code with the engine, so a test that compares the two holds the engine to the table, not to itself.
  *
@@ -555,6 +582,20 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
       cents(l.amountUsd) <= Math.floor(ceilingUsd(a, ctx) * 100),
       `${a.id} holds ${l.amountUsd}, over its ceiling of ${ceilingUsd(a, ctx)}`,
     );
+    // A dollar-yield token: within its cap in the plan, and only with a leg type and a yield read.
+    if (a.cls === 'dollar_yield') {
+      const capBps = yieldCapBps(a, P);
+      say(capBps !== null, `${a.id} has no leg type and is held`);
+      if (capBps !== null)
+        say(
+          cents(l.amountUsd) <= Math.floor((amount * capBps) / 10_000),
+          `${a.id} holds ${l.amountUsd}, over its cap of ${capBps} bps`,
+        );
+      say(
+        (ctx.yields ?? []).some((y) => y.assetId === a.id),
+        `${a.id} is held with no yield read`,
+      );
+    }
     // A ceiling that came from a tier, not a measurement, is said on the line and flagged; one that
     // was measured is not called a tier. A measurement that leaves out a time of the week says so.
     const fromTier = measuredCapacityUsd(a, ctx) === null;
@@ -610,12 +651,73 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
     }
     return out;
   };
+  // Stocks and crypto by risk; dollar yield and gold by the plan's issuer cap (Rodrigo, Oct 5).
   const issuerCap = Math.floor((amount * (P.capPerIssuerBps[s.risk] ?? 0)) / 10_000);
-  for (const [issuer, held] of total((a) => a.issuer))
+  const planIssuerCap = Math.floor((amount * P.issuerCapBps) / 10_000);
+  for (const [issuer, held] of total((a) => (sleeveOfClass(a.cls) === 'growth' ? a.issuer : null)))
     say(
       held <= issuerCap,
       `${issuer} holds ${held / 100}, over the issuer cap of ${issuerCap / 100}`,
     );
+  for (const [issuer, held] of total((a) => (sleeveOfClass(a.cls) === 'growth' ? null : a.issuer)))
+    say(
+      held <= planIssuerCap,
+      `${issuer} holds ${held / 100} of dollar yield and gold, over ${planIssuerCap / 100}`,
+    );
+  // The credit budget: credit and basis legs together.
+  const tolerance = s.limits?.creditTolerance ?? P.defaultCreditTolerance;
+  const creditCap = Math.floor((amount * (P.creditShareBps[tolerance] ?? 0)) / 10_000);
+  const credit = sum(
+    lines
+      .filter((l) =>
+        (LEG_TYPES[l.a.symbol]?.types ?? []).some((t) => t === 'credit' || t === 'basis'),
+      )
+      .map((l) => l.cents),
+  );
+  say(credit <= creditCap, `credit and basis legs hold ${credit / 100}, over ${creditCap / 100}`);
+
+  // The sentences of the banded fill are true of the plan they are on.
+  const nonGrowthOf = (issuer: string) =>
+    sum(
+      lines
+        .filter((l) => l.a.issuer === issuer && sleeveOfClass(l.a.cls) !== 'growth')
+        .map((l) => l.cents),
+    );
+  const bySymbol = new Map(lines.map((l) => [l.a.symbol, l]));
+  const ys = new Map((ctx.yields ?? []).map((y) => [y.assetId, y.haircutYield]));
+  for (const r of allReasons(plan)) {
+    if (r.rule === 'CREDIT_BUDGET' || r.rule === 'CREDIT_BUDGET_UNSAID') {
+      say(Math.abs(credit - creditCap) <= 1, `"${r.text}" but credit holds ${credit / 100}`);
+      say(
+        (r.rule === 'CREDIT_BUDGET') === (s.limits?.creditTolerance !== undefined),
+        `"${r.text}" said of a tolerance that was ${s.limits?.creditTolerance ? '' : 'not '}stated`,
+      );
+    }
+    if (r.rule === 'CREDIT_NONE') {
+      say(credit === 0, `"${r.text}" but credit holds ${credit / 100}`);
+      say(s.limits?.creditTolerance === 'none', `"${r.text}" said to someone who did not say so`);
+    }
+    if (r.rule === 'ASSET_CAP') {
+      const held = bySymbol.get(String(r.params.asset));
+      say(
+        Math.abs((held?.cents ?? 0) - Math.floor((amount * Number(r.params.capBps)) / 10_000)) <= 1,
+        `"${r.text}" but the line holds ${held ? held.cents / 100 : 'nothing'}`,
+      );
+    }
+    if (r.rule === 'SHARED_IN_BAND') {
+      const named = String(r.params.assets).split(',');
+      const held = named.map((n) => bySymbol.get(n));
+      say(
+        held.every((h) => h !== undefined),
+        `"${r.text}" names a token the plan does not hold`,
+      );
+      const rates = held.map((h) => (h ? (ys.get(h.a.id) ?? Number.NaN) : Number.NaN));
+      say(
+        Math.max(...rates) - Math.min(...rates) <= P.yieldBand + 1e-12,
+        `"${r.text}" but the yields are ${rates.join(', ')}`,
+      );
+    }
+  }
   const stockCap = Math.floor((amount * (P.capPerStockBps[s.risk] ?? 0)) / 10_000);
   for (const [name, held] of total((a) =>
     a.cls === 'stock' || a.cls === 'crypto' ? a.underlying : null,
@@ -773,6 +875,14 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
       );
     if (r.rule === 'ISSUER_CAP' || r.rule === 'OVERFLOW_ISSUER') {
       const with_ = total((a) => a.issuer).get(String(r.params.issuer)) ?? 0;
+      say(
+        with_ >= share(r.params.capBps) - Math.max(leastLine, share(3)),
+        `"${r.text}", and it holds ${with_ / 100}`,
+      );
+    }
+    // The plan's issuer cap counts dollar yield, gold and cash only (gate SOLVER-CAPS).
+    if (r.rule === 'ISSUER_CAP_PLAN' || r.rule === 'OVERFLOW_ISSUER_PLAN') {
+      const with_ = nonGrowthOf(String(r.params.issuer));
       say(
         with_ >= share(r.params.capBps) - Math.max(leastLine, share(3)),
         `"${r.text}", and it holds ${with_ / 100}`,

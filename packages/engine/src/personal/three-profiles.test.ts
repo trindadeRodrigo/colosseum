@@ -139,9 +139,13 @@ describe('three people, three goals, three plans', () => {
     expect(sleeveBps(ana, shelf, 'growth')).toBe(9500);
     // A plan to protect holds no stocks: dollar yield and gold.
     expect(sleeveBps(bruno, shelf, 'growth')).toBe(0);
-    expect(sleeveBps(bruno, shelf, 'dollarYield')).toBe(8000);
+    // Dollar yield on Solana is held to the plan's caps (gate SOLVER-PARAMS): jlUSDC to half the plan
+    // (one issuer), syrupUSDC to a quarter (the credit budget). What neither takes stays in cash.
+    expect(sleeveBps(bruno, shelf, 'dollarYield')).toBe(7500);
     expect(sleeveBps(bruno, shelf, 'gold')).toBe(2000);
-    expect(sleeveBps(carla, shelf, 'dollarYield')).toBe(10_000);
+    expect(sleeveBps(bruno, shelf, 'cash')).toBe(500);
+    expect(sleeveBps(carla, shelf, 'dollarYield')).toBe(7500);
+    expect(sleeveBps(carla, shelf, 'cash')).toBe(2500);
   });
 
   it('Ana follows the shared portfolio she chose, whole, in one recipe on her chain', () => {
@@ -167,13 +171,19 @@ describe('three people, three goals, three plans', () => {
     expect(line(bruno, 'solana:gldx')?.reasons.map((r) => r.text)).toContain(
       'GLDx fica limitado a US$ 10.000: acima disso, vender custaria caro demais.',
     );
-    // Half the plan with one issuer at most, at low risk: the dollar yield is split over two, and the
-    // second takes the $2,500 that gold could not.
-    expect(line(bruno, 'solana:syrupusdc')).toMatchObject({ weightBps: 5000 });
-    expect(line(bruno, 'solana:jlusdc')).toMatchObject({ weightBps: 3000 });
-    expect(bruno.lines).toHaveLength(3);
-    expect(line(bruno, 'solana:jlusdc')?.reasons.map((r) => r.text)).toContain(
+    // syrupUSDC pays more after haircut, but it lends to borrowers: a quarter of the plan at most, at
+    // the credit risk he did not state. jlUSDC takes half, the most with one issuer. The $2,500 gold
+    // could not take finds no room in dollar yield and stays in cash, and the cash line says why.
+    expect(line(bruno, 'solana:syrupusdc')).toMatchObject({ weightBps: 2500 });
+    expect(line(bruno, 'solana:jlusdc')).toMatchObject({ weightBps: 5000 });
+    expect(line(bruno, 'solana:usdc')).toMatchObject({ weightBps: 500 });
+    expect(bruno.lines).toHaveLength(4);
+    expect(line(bruno, 'solana:usdc')?.reasons.map((r) => r.text)).toContain(
       'US$ 2.500 que iria para GLD fica em rendimento em dólar ou caixa: GLDx comporta no máximo US$ 10.000.',
+    );
+    expect(line(bruno, 'solana:jlusdc')?.reasons.map((r) => r.rule)).toContain('ISSUER_CAP_PLAN');
+    expect(line(bruno, 'solana:syrupusdc')?.reasons.map((r) => r.rule)).toContain(
+      'CREDIT_BUDGET_UNSAID',
     );
     // He holds Nvidia already; this plan holds none, so there is nothing to cut.
     expect(bruno.lines.some((l) => l.assetId.includes('nvda'))).toBe(false);

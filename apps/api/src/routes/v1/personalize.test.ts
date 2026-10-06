@@ -5,6 +5,7 @@ import {
   type ChainId,
   OrderError,
   type RegimeLiquidityProvider,
+  YieldObservation,
 } from '@colosseum/schemas';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -12,6 +13,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ChainRegistry } from '../../orders/chains';
 import type { PlanInputs } from '../../orders/personalize';
 import { loadProposal } from '../../orders/store';
+import { bearingPlanInputs } from '../../plan-inputs';
+import mockYields from '../../testing/fixtures/mock-yields.json';
 import { orderFlow } from '../../testing/flow';
 import {
   type PersonKind,
@@ -39,7 +42,19 @@ beforeAll(async () => {
   issuer = await testIssuer('personalize');
   data = await testDb();
   undo.push(() => data.cleanUp());
-  ({ app, registry } = await testApp({ issuer: issuer.issuer, db: data.db }));
+  // The mock chain's dollar-yield token has no stored reading, and the engine never counts a missing
+  // yield as zero: the test hands it one, from a fixture labelled mock.
+  const withMockYield: PlanInputs = async (q) => ({
+    ...(await bearingPlanInputs(q)),
+    yields: YieldObservation.array()
+      .parse(mockYields)
+      .filter((y) => q.assets.some((a) => a.id === y.assetId)),
+  });
+  ({ app, registry } = await testApp({
+    issuer: issuer.issuer,
+    db: data.db,
+    planInputs: withMockYield,
+  }));
   undo.push(() => app.close());
 });
 afterAll(async () => {
@@ -85,14 +100,15 @@ describe('POST /v1/baskets/personalize', () => {
     const res = await post(who, PATH, { sheet: asked });
     expect(res.statusCode, res.body).toBe(200);
     const { id, proposal, rollUp } = PersonalizeResponse.parse(res.json());
-    // The roll-up beside it, from the same shelf and time: one issuer and one chain on the mock, half
-    // cash, and no exit measured or quoted: null, never zero.
+    // The roll-up beside it, from the same shelf and time: one issuer and one chain on the mock, the
+    // lines below by class, and no exit measured or quoted: null, never zero.
     expect(rollUp).toEqual({
       byIssuer: [{ key: 'mock', bps: 10_000 }],
       byChain: [{ key: 'solana', bps: 10_000 }],
       byClass: [
         { key: 'cash', bps: 5000 },
-        { key: 'dollar_yield', bps: 5000 },
+        { key: 'dollar_yield', bps: 4000 },
+        { key: 'gold', bps: 1000 },
       ],
       flags: ['exit_not_measured', 'exit_quote_missing', 'issuer_concentration'],
       exit: { quotedBps: null, quotedAt: null, measuredWorstBps: null, measuredShareBps: 0 },
@@ -107,10 +123,12 @@ describe('POST /v1/baskets/personalize', () => {
       expect(['stock', 'etf', 'crypto']).not.toContain(cls.get(line.assetId));
       expect(line.reasons.length).toBeGreaterThan(0);
     }
-    // The mock's one issuer holds at most half at low risk: dollar yield fills it, so the gold share
-    // (PAXG, gate GOLD-PAXG) is held in cash with the rest.
+    // The mock's yield token is a rate leg: 40% of the plan at most (gate SOLVER-PARAMS). Its one
+    // issuer holds at most 50% of dollar yield, gold and cash (gate SOLVER-CAPS), so gold (PAXG, gate
+    // GOLD-PAXG) takes the 10% left, and the rest stays in cash.
     expect(proposal.lines.map((l) => [l.assetId, l.weightBps])).toEqual([
-      ['solana:yield', 5000],
+      ['solana:yield', 4000],
+      ['solana:gold', 1000],
       ['solana:usdc', 5000],
     ]);
     expect(proposal.recipes.map((r) => [r.chain, r.amountUsd])).toEqual([['solana', 50_000]]);
@@ -139,30 +157,36 @@ describe('POST /v1/baskets/personalize', () => {
     expect(new Set(bought.legs.map((l) => l.chain))).toEqual(new Set(['solana']));
     const buys = bought.legs.flatMap((l) => l.trades.map((t) => t.buy));
     expect(buys.length).toBeGreaterThan(0);
-    expect(buys).toEqual(['solana:yield']);
-    // Half the deposit is bought; the cash share stays in the vault.
+    expect(buys).toEqual(['solana:yield', 'solana:gold']);
+    // 40% of the deposit buys dollar yield and 10% gold; the cash share stays in the vault.
     expect(bought.depositRaw).toBe(String(50_000 * 10 ** 6));
     expect(bought.legs.flatMap((l) => l.trades.map((t) => t.amountInRaw))).toEqual([
-      String(25_000 * 10 ** 6),
+      String(20_000 * 10 ** 6),
+      String(5_000 * 10 ** 6),
     ]);
   });
 
   it('holds PAXG for gold on Solana and GLD on Robinhood Chain when nothing chosen fills it (gate GOLD-PAXG)', async () => {
-    for (const [kind, chain, gold] of [
-      ['solana', 'solana', 'PAXG'],
-      ['robinhood', 'robinhood', 'GLD'],
+    for (const [kind, chain, gold, bps] of [
+      ['solana', 'solana', 'PAXG', 1000],
+      ['robinhood', 'robinhood', 'GLD', 2500],
     ] as const) {
       const who = await someone(kind);
-      // At high risk the mock's one issuer may hold the whole plan.
+      // The mock's one issuer holds at most 50% of dollar yield, gold and cash at any risk (gate
+      // SOLVER-CAPS). On Solana the yield token has a reading and takes its 40%, so gold takes the
+      // 10% left; on Robinhood Chain it has none and is left out, so gold keeps its 25%.
       const res = await post(who, PATH, { sheet: sheet({ chains: [chain], risk: 'high' }) });
       expect(res.statusCode, res.body).toBe(200);
       const { proposal } = PersonalizeResponse.parse(res.json());
       const line = proposal.lines.find((l) => l.assetId === `${chain}:gold`);
-      expect(line?.weightBps, chain).toBe(2500);
+      expect(line?.weightBps, chain).toBe(bps);
       expect(line?.reasons.map((r) => r.text)).toContain(
         `${gold}: where a goal to protect starts when you choose no shared portfolio.`,
       );
-      expect(proposal.removed).toEqual([]);
+      // What is left out is said: on Robinhood Chain, the yield token with no reading.
+      expect(proposal.removed.map((r) => [r.ref, r.reasons.map((x) => x.rule)])).toEqual(
+        chain === 'robinhood' ? [['mYIELD', ['NO_YIELD']]] : [],
+      );
     }
   });
 
@@ -327,9 +351,15 @@ describe('what a line may weigh comes from the measured exit (gate EXIT-SOURCE)'
   };
 
   it('holds a line to its measured share, names the source, and keeps the tier for the rest, labelled', async () => {
-    const inputs: PlanInputs = async ({ chain }) =>
+    const inputs: PlanInputs = async ({ chain, assets }) =>
       chain === 'solana'
-        ? { liquidity: { provider: measured(20_000), source: 'Bearing test curves' } }
+        ? {
+            liquidity: { provider: measured(20_000), source: 'Bearing test curves' },
+            // The mock's yield token needs a reading to be held at all (ENG-3 slice 1).
+            yields: YieldObservation.array()
+              .parse(mockYields)
+              .filter((y) => assets.some((a) => a.id === y.assetId)),
+          }
         : {};
     const own = await testApp({ issuer: issuer.issuer, db: data.db, planInputs: inputs });
     undo.push(() => own.app.close());
@@ -341,13 +371,15 @@ describe('what a line may weigh comes from the measured exit (gate EXIT-SOURCE)'
     expect(proposal.lines.find((l) => l.assetId === 'solana:spy')?.amountUsd).toBe(5_000);
     expect(proposal.flags).not.toContain('ceiling_from_tier:solana:spy');
     expect(proposal.flags).toContain('ceiling_from_tier:solana:yield');
-    // The roll-up reads the same measurement: $5,000 of SPY costs $5 to sell, over the $20,000 of SPY
-    // and cash it covers (cash costs nothing to leave), 2.5 bps on 40% of the plan.
+    // The roll-up reads the same measurement: $5,000 of SPY costs $5 to sell, over the $27,500 of SPY
+    // and cash it covers (cash costs nothing to leave; the yield token, a rate leg held to 40%, and
+    // the 5% of gold, within the issuer's 50% of dollar yield, gold and cash, are the unmeasured
+    // rest), 1.82 bps on 55% of the plan.
     expect(rollUp.exit).toEqual({
       quotedBps: null,
       quotedAt: null,
-      measuredWorstBps: 2.5,
-      measuredShareBps: 4000,
+      measuredWorstBps: 1.82,
+      measuredShareBps: 5500,
     });
     expect(rollUp.flags).toContain('exit_partly_measured');
     expect(proposal.observations).toEqual(
