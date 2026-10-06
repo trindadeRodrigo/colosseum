@@ -34,6 +34,11 @@ export type SubscribeBlockProps = {
   photo?: { src: string; alt: string; caption: string };
   /** A drawing in place of the photograph, in the same frame: it names itself, so it has no caption. */
   art?: ReactNode;
+  /**
+   * A stage for the line, the heading and the lede, in place of the frame: the page draws around them
+   * (the landing's closing sets them over its 3D joint). The field stays below, centred.
+   */
+  stage?: (head: ReactNode) => ReactNode;
   options: readonly SubscribeOption[];
   status?: SubscribeStatus;
   /** Called with what was typed and the ids of the ticked options. */
@@ -53,6 +58,7 @@ export function SubscribeBlock({
   lede,
   photo,
   art,
+  stage,
   options,
   status = 'rest',
   onSubmit,
@@ -93,14 +99,18 @@ export function SubscribeBlock({
       aria-labelledby={headingId}
       className={cn('flex flex-col items-center text-center', className)}
     >
-      <p className="font-mono text-[0.75rem]/4 text-primary">{eyebrow}</p>
-      <h2
-        id={headingId}
-        className="mt-3 max-w-[20ch] font-display text-h2 font-normal text-balance [font-variation-settings:'opsz'_36]"
-      >
-        {heading}
-      </h2>
-      <p className="mt-4 max-w-[52ch] text-body text-muted-foreground">{lede}</p>
+      {(stage ?? ((head: ReactNode) => head))(
+        <>
+          <p className="font-mono text-[0.75rem]/4 text-primary">{eyebrow}</p>
+          <h2
+            id={headingId}
+            className="mt-3 max-w-[20ch] font-display text-h2 font-normal text-balance [font-variation-settings:'opsz'_36]"
+          >
+            {heading}
+          </h2>
+          <p className="mt-4 max-w-[52ch] text-body text-muted-foreground">{lede}</p>
+        </>,
+      )}
 
       {art && !photo && (
         <div
