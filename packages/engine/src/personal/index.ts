@@ -2,7 +2,8 @@
 // to measure. `compose` is the one entry; everything else here is what a caller needs to feed it and
 // to read what it returns.
 
-export { compose, PERSONAL_ENGINE_VERSION } from './compose';
+export { candidates } from './candidates';
+export { compose, composeAs, PERSONAL_ENGINE_VERSION } from './compose';
 export { draftFromRules } from './draft';
 export { PERSONAL_PARAMS, PERSONAL_PARAMS_STATUS } from './params';
 export { eligibleForGoal, profileOfGoal, registryRowOf, sleeveOfClass } from './registry';

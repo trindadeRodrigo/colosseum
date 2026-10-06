@@ -147,6 +147,24 @@ export const PersonalParameters = PersonalParams.extend({
     fxMoveBps: Bps,
     fxMoveMonths: z.number().int().positive(),
   }),
+  /** A way to scale the withdrawals down is tried in steps of this many basis points of each amount. */
+  wayScaleStepBps: Bps.refine((n) => n > 0, 'a step must be more than zero'),
+  /**
+   * The three candidates (slice 3, gate THREE-PLANS): what each changes in this table, always toward
+   * the cautious side of the person's limits, never past them. Carry is the table as it is.
+   * `distinctBps`: two candidates closer than this (half the sum of absolute weight differences) are
+   * one choice, and the later in the fixed order is not shown.
+   */
+  candidates: z.object({
+    cover: z.object({
+      setAsideMonths: z.number().int().nonnegative(),
+      creditShareBps: Bps,
+      tau: z.number().positive().max(1),
+      shareOfDepth: z.number().positive().max(1),
+    }),
+    spread: z.object({ yieldBand: z.number().nonnegative().max(1), issuerCapBps: Bps }),
+    distinctBps: Bps,
+  }),
 });
 export type PersonalParameters = z.infer<typeof PersonalParameters>;
 
@@ -230,6 +248,53 @@ export type PersonalProposal = Omit<BasketProposal, 'sheet' | 'observations' | '
   schedule?: PersonalSchedule;
   /** Present with the schedule: months paid now and under each stress, and the carry needed (slice 3). */
   status?: PersonalStatus;
+  /** Present on a plan made as one of the three candidates (`candidates`): which one, and what to compare it on. */
+  candidate?: CandidateId;
+  scorecard?: Scorecard;
+};
+
+/** The three candidates of gate THREE-PLANS, in their fixed order. None is marked or selected. */
+export const CANDIDATES = ['cover', 'spread', 'carry'] as const;
+export type CandidateId = (typeof CANDIDATES)[number];
+
+/**
+ * LOCAL TYPE. What a candidate is compared on (C11; section 2.4 of the research note). Every figure
+ * comes from the plan and the figures it was made with. Two items of the note are not here: yield
+ * confidence and primary redemption need data the shelf does not carry yet.
+ */
+export type Scorecard = {
+  /**
+   * Months of withdrawals that cash and the matching legs pay at par, from this month on, in order;
+   * null with no withdrawals to come.
+   */
+  monthsCovered: number | null;
+  /** Months paid at the rates observed, and under each named stress (the status); null with none. */
+  base: { monthsPaid: number; monthsWithWithdrawal: number; shortfall: number } | null;
+  stresses: { id: string; monthsPaid: number; shortfall: number }[];
+  /** The dollar-yield lines at their yield after haircut, over the whole plan. */
+  carryObservedBps: number;
+  /** Measured exit cost at the person's size, worst regime (`rollUp`), and the share measured. */
+  exit: { costBps: number | null; measuredShareBps: number };
+  /** By issuer and by class (`rollUp`), the largest issuer's share and how many issuers. */
+  concentration: {
+    byIssuer: { key: string; bps: number }[];
+    byClass: { key: string; bps: number }[];
+    largestIssuerBps: number;
+    issuers: number;
+  };
+  /** The share of the plan in credit and basis legs. */
+  creditBasisBps: number;
+  /**
+   * For a goal not in dollars: dollars of withdrawals in the goal's currency beyond what its matching
+   * leg holds. Left out for a goal in dollars (C19).
+   */
+  openFxUsd?: number;
+};
+
+/** LOCAL TYPE. The candidates shown, in the fixed order, and the ones not shown with why. */
+export type PersonalCandidates = {
+  shown: { id: CandidateId; plan: PersonalProposal }[];
+  notShown: { id: CandidateId; why: string }[];
 };
 
 /**
@@ -252,6 +317,14 @@ export type PersonalStatus = {
   carryObservedBps: number;
   carryNeededBps: number | null;
   met: boolean;
+  /**
+   * Each way to close a gap, found by running the engine again with one input changed and the others
+   * fixed; listed only if the plan it gives is met. A later start and a monthly contribution have no
+   * field on the sheet, so they are not tried.
+   */
+  ways: { change: string; closesGap: true }[];
+  /** That no larger amount gives a plan that is met: beside the ways, not among them. */
+  noAmountCloses?: string;
 };
 
 /**

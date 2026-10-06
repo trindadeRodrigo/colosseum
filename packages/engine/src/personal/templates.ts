@@ -11,7 +11,7 @@ import type { Language, Reason } from '@colosseum/schemas';
 //   pct     basis points as a percentage      14.32%          14,32%
 //   month   a YYYY-MM month                   April 2028      abril de 2028
 //   months  a count of months                 18 months       18 meses
-//   goal, risk, sleeve, chain                 the word for it, from WORDS
+//   goal, risk, sleeve, chain, candidate      the word for it, from WORDS
 //   inCountry                                 in Brazil       no Brasil
 //   regimes  times of the week, by their codes   at the weekend and on US holidays
 //   list     names joined by commas            AAPL, MSFT and NVDA   AAPL, MSFT e NVDA
@@ -269,6 +269,11 @@ export const REASON_TEMPLATES = {
     'Yields after haircut that differ by {bandBps|pct} or less count as equal, so {assets|list} share this part equally, each up to its limit.',
     'Rendimentos após o deságio que diferem em {bandBps|pct} ou menos contam como iguais, então {assets|list} dividem esta parte igualmente, cada um até o seu limite.',
   ),
+  SHARED_EVENLY: rule(
+    ['chain'],
+    'This plan spreads its dollar yield evenly instead of by yield: {assets|list} share this part equally, each up to its limit.',
+    'Este plano distribui o rendimento em dólar por igual, e não pelo rendimento: {assets|list} dividem esta parte igualmente, cada um até o seu limite.',
+  ),
   ASSET_CAP: rule(
     ['amount'],
     '{asset} takes at most {capBps|pct} of the plan, {maxUsd|usd}: the limit for one token of its kind.',
@@ -288,6 +293,16 @@ export const REASON_TEMPLATES = {
     ['credit'],
     '{asset} is left out: it lends to borrowers or trades a spread, and you accept no credit risk.',
     '{asset} fica de fora: ele empresta a tomadores ou opera uma diferença de taxas, e você não aceita risco de crédito.',
+  ),
+  CREDIT_BUDGET_PLAN: rule(
+    ['credit'],
+    'This plan holds no more than {capBps|pct} in tokens that lend to borrowers or trade a spread, less than the credit risk you accept: those tokens together are at that limit.',
+    'Este plano guarda no máximo {capBps|pct} em tokens que emprestam a tomadores ou operam uma diferença de taxas, menos do que o risco de crédito que você aceita: esses tokens juntos estão nesse limite.',
+  ),
+  CREDIT_NONE_PLAN: rule(
+    ['credit'],
+    '{asset} is left out: it lends to borrowers or trades a spread, and this plan holds none of those, whatever the credit risk you accept.',
+    '{asset} fica de fora: ele empresta a tomadores ou opera uma diferença de taxas, e este plano não guarda nenhum desses, qualquer que seja o risco de crédito que você aceita.',
   ),
   CREDIT_BUDGET_UNSAID: rule(
     [],
@@ -452,6 +467,30 @@ export const TEXT_TEMPLATES = {
     en: 'You can aim for {toUsd|usd} a month instead of {fromUsd|usd}.',
     pt: 'Você pode mirar {toUsd|usd} por mês em vez de {fromUsd|usd}.',
   },
+  STATUS_NO_AMOUNT_CLOSES: {
+    en: 'No larger amount pays every withdrawal, at the rates observed and under every stress, with what you can hold.',
+    pt: 'Nenhum valor maior paga todos os saques, às taxas observadas e em cada cenário de estresse, com o que você pode ter.',
+  },
+  WAY_WITHDRAW_LESS: {
+    en: 'You can withdraw {scaleBps|pct} of each amount you set.',
+    pt: 'Você pode sacar {scaleBps|pct} de cada valor que definiu.',
+  },
+  CANDIDATE_SAME: {
+    en: '{plan|candidate} is not shown: it differs from {other|candidate} by {distanceBps|pct} of the plan, under {distinctBps|pct}, so the two are one choice.',
+    pt: '{plan|candidate} não aparece: ele difere de {other|candidate} em {distanceBps|pct} do plano, menos de {distinctBps|pct}, então os dois são uma só escolha.',
+  },
+  CANDIDATE_IDENTICAL: {
+    en: '{plan|candidate} is not shown: it holds the same as {other|candidate}.',
+    pt: '{plan|candidate} não aparece: ele guarda o mesmo que {other|candidate}.',
+  },
+  CANDIDATE_DOMINATED: {
+    en: '{plan|candidate} is not shown: {other|candidate} is as good on every line of the comparison, and better on one.',
+    pt: '{plan|candidate} não aparece: {other|candidate} é tão bom em todas as linhas da comparação, e melhor em uma.',
+  },
+  CANDIDATE_NO_LEAD: {
+    en: '{plan|candidate} is not shown: it is ahead of the others on no line of the comparison.',
+    pt: '{plan|candidate} não aparece: ele não fica à frente dos outros em nenhuma linha da comparação.',
+  },
   NO_AMOUNT_CLOSES: {
     en: 'No larger amount closes the gap with the dollar-yield tokens you can hold.',
     pt: 'Nenhum valor maior fecha a diferença com os tokens de rendimento em dólar que você pode ter.',
@@ -461,7 +500,7 @@ export const TEXT_TEMPLATES = {
 export type TextId = keyof typeof TEXT_TEMPLATES;
 
 type Words = Record<
-  'goal' | 'risk' | 'sleeve' | 'chain' | 'inCountry' | 'regime',
+  'goal' | 'risk' | 'sleeve' | 'chain' | 'inCountry' | 'regime' | 'candidate',
   Record<string, string>
 > & { and: string };
 
@@ -476,6 +515,8 @@ export const WORDS: Record<Language, Words> = {
       cash: 'cash',
     },
     chain: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
+    // The working names of the three candidates (gate THREE-PLANS): product words are a brand decision.
+    candidate: { cover: 'Cover', spread: 'Spread', carry: 'Carry' },
     // The times of the week the risk layer measures apart, in the order they are written.
     regime: {
       us_market_hours: 'in US market hours',
@@ -526,6 +567,7 @@ export const WORDS: Record<Language, Words> = {
       cash: 'caixa',
     },
     chain: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
+    candidate: { cover: 'Cobertura', spread: 'Diversificação', carry: 'Rendimento' },
     regime: {
       us_market_hours: 'no horário do mercado dos EUA',
       us_offhours_weekday: 'em dias úteis fora do horário do mercado dos EUA',
@@ -656,6 +698,7 @@ const FORMATS: Record<string, (value: Value, lang: Language, key: string) => str
   risk: (value, lang) => WORDS[lang].risk[String(value)] ?? String(value),
   sleeve: (value, lang) => WORDS[lang].sleeve[String(value)] ?? String(value),
   chain: (value, lang) => WORDS[lang].chain[String(value)] ?? String(value),
+  candidate: (value, lang) => WORDS[lang].candidate[String(value)] ?? String(value),
 };
 
 const PLACEHOLDER = /\{(\w+)(?:\|(\w+))?\}/g;

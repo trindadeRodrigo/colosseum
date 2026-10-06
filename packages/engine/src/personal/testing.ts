@@ -32,6 +32,7 @@ import {
   SLEEVES,
   type Sleeve,
 } from './types';
+import { tableFor } from './world';
 
 // Builders for the tests of this folder. Not exported from the engine: every row is a fixture.
 // The shelf is the launch shelf of docs/vault/research/open-questions/launch-shelf.seed.json, turned
@@ -569,8 +570,11 @@ const LEFT_OUT = [
  * ceilings and caps, nothing the person cannot hold, a reason on every line, sums that add up.
  * Returns what is wrong, in words. An empty list is a plan in order.
  */
-export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeContext): string[] {
-  const P = ctx.params ?? PERSONAL_PARAMS;
+export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeContext): string[] {
+  // A candidate is held to its own table: the person's, moved toward its aim (gate THREE-PLANS).
+  const base = given.params ?? PERSONAL_PARAMS;
+  const P = tableFor(base, plan.candidate ?? null);
+  const ctx: ComposeContext = { ...given, params: P };
   const wrong: string[] = [];
   const say = (ok: boolean, what: string) => {
     if (!ok) wrong.push(what);
@@ -732,9 +736,20 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
     const a = byId.get(l.assetId);
     return a && a.cls !== 'cash' ? [{ a, cents: cents(l.amountUsd) }] : [];
   });
+  // A matching leg is a cash token in another currency, with an issuer of its own: it counts against
+  // the issuer cap as the plan's cash in dollars does not.
+  const issued = [
+    ...lines,
+    ...plan.lines.flatMap((l) => {
+      const a = byId.get(l.assetId);
+      return a && a.cls === 'cash' && (a.currency ?? 'USD') !== 'USD'
+        ? [{ a, cents: cents(l.amountUsd) }]
+        : [];
+    }),
+  ];
   const total = (key: (a: BasketAsset) => string | null) => {
     const out = new Map<string, number>();
-    for (const l of lines) {
+    for (const l of issued) {
       const k = key(l.a);
       if (k !== null) out.set(k, (out.get(k) ?? 0) + l.cents);
     }
@@ -768,7 +783,7 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
   // The sentences of the banded fill are true of the plan they are on.
   const nonGrowthOf = (issuer: string) =>
     sum(
-      lines
+      issued
         .filter((l) => l.a.issuer === issuer && sleeveOfClass(l.a.cls) !== 'growth')
         .map((l) => l.cents),
     );
@@ -799,6 +814,25 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
     if (r.rule === 'CREDIT_NONE') {
       say(credit === 0, `"${r.text}" but credit holds ${credit / 100}`);
       say(s.limits?.creditTolerance === 'none', `"${r.text}" said to someone who did not say so`);
+    }
+    // A candidate's own credit limit is said only by Cover, below the person's, and holds.
+    if (r.rule === 'CREDIT_NONE_PLAN' || r.rule === 'CREDIT_BUDGET_PLAN') {
+      const planCap = Math.floor((amount * P.candidates.cover.creditShareBps) / 10_000);
+      say(plan.candidate === 'cover', `"${r.text}" said of a plan that is not Cover`);
+      say(planCap < creditCap, `"${r.text}" but the person's own limit is no higher`);
+      say(
+        r.rule === 'CREDIT_NONE_PLAN' ? credit === 0 : Math.abs(credit - planCap) <= 1,
+        `"${r.text}" but credit holds ${credit / 100}`,
+      );
+    }
+    if (r.rule === 'SHARED_EVENLY') {
+      say(plan.candidate === 'spread', `"${r.text}" said of a plan that is not Spread`);
+      say(
+        String(r.params.assets)
+          .split(',')
+          .every((n) => bySymbol.has(n)),
+        `"${r.text}" names a token the plan does not hold`,
+      );
     }
     if (r.rule === 'ASSET_CAP') {
       const held = bySymbol.get(String(r.params.asset));
@@ -1244,5 +1278,48 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
     plan.card.expectedReturn.lowPct <= plan.card.expectedReturn.highPct + 1e-9,
     'the card: low over high',
   );
+  // The status: a way is listed only while the plan is not met, and each says it closes the gap.
+  if (plan.status) {
+    say(!plan.status.met || plan.status.ways.length === 0, 'a plan that is met lists ways');
+    say(
+      plan.status.met || plan.status.ways.length > 0 || plan.status.noAmountCloses !== undefined,
+      'a plan that is not met lists no way and does not say why',
+    );
+  }
+  // A candidate carries its scorecard, read from its own lines and status.
+  say(
+    (plan.candidate === undefined) === (plan.scorecard === undefined),
+    'a scorecard without a candidate, or the other way',
+  );
+  const card = plan.scorecard;
+  if (card) {
+    const creditBps = sum(
+      plan.lines
+        .filter((l) => {
+          const a = byId.get(l.assetId);
+          return (
+            a !== undefined &&
+            (LEG_TYPES[a.symbol]?.types ?? []).some((t) => t === 'credit' || t === 'basis')
+          );
+        })
+        .map((l) => l.weightBps),
+    );
+    say(
+      card.creditBasisBps === creditBps,
+      `the scorecard says ${card.creditBasisBps} bps of credit, the lines ${creditBps}`,
+    );
+    say(
+      (card.openFxUsd === undefined) === (goalCurrency === 'USD'),
+      'open FX on the scorecard of a goal in dollars, or none for one that is not',
+    );
+    say(
+      JSON.stringify(card.base) === JSON.stringify(plan.status?.base ?? null),
+      'the scorecard and the status count other months',
+    );
+    say(
+      card.concentration.largestIssuerBps === (card.concentration.byIssuer[0]?.bps ?? 0),
+      'the largest issuer is not the first',
+    );
+  }
   return wrong;
 }

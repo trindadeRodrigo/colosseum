@@ -7,7 +7,7 @@ import type { PersonalParameters } from './types';
 // The rules in ./rules.test.ts hold whatever these numbers are.
 
 export const PERSONAL_PARAMS: PersonalParameters = {
-  version: 'personal-0.2-starting-solver-params',
+  version: 'personal-0.3-starting-candidates',
 
   // Sleeve sizes by goal and risk, in basis points of the plan. What a row leaves out of 10,000 is cash.
   sleeves: {
@@ -97,6 +97,20 @@ export const PERSONAL_PARAMS: PersonalParameters = {
   // The named stresses of the status (slice 3, C12): the old engine's STRESS_PARAMS. Stocks, crypto and
   // gold fall by `fallBps`. Tuned by C8 (credit) and by the replay of section 2.2 (yields, FX).
   stress: { yieldsFallBps: 5000, creditGateMonths: 6, fxMoveBps: 2000, fxMoveMonths: 12 },
+  // A way to close a gap by withdrawing less is tried in whole percents of each amount.
+  wayScaleStepBps: 100,
+  // The three candidates (gate THREE-PLANS, slice 3). Tuned by C10 and C11: on the grid of goals, no
+  // candidate is dominated on the scorecard and each wins at least one line of it.
+  candidates: {
+    // Cover: a year of withdrawals set aside, no credit or basis leg, exit read at half the cost and
+    // half the share of depth.
+    cover: { setAsideMonths: 12, creditShareBps: 0, tau: 0.005, shareOfDepth: 0.125 },
+    // Spread: every dollar-yield token in one band (filled equally within its caps), one issuer at
+    // most 30% of the plan.
+    spread: { yieldBand: 1, issuerCapBps: 3000 },
+    // The prompt's 10 points: closer than this, two candidates are one choice.
+    distinctBps: 1000,
+  },
 };
 
 /** `changed` is a change made since the prototype that Rodrigo has not read yet: he clears it. */
@@ -175,6 +189,14 @@ export const PERSONAL_PARAMS_STATUS: Record<Exclude<keyof PersonalParameters, 'v
   stress: {
     status: 'starting',
     from: 'The old engine (packages/engine/src/schedule, STRESS_PARAMS): yields fall by half, a credit leg gated for 6 months, the goal currency 20% up or down over 12 months. For Rodrigo: a parameter outside the SOLVER-PARAMS table.',
+  },
+  wayScaleStepBps: {
+    status: 'starting',
+    from: 'New in slice 3: a way to withdraw less names a whole percent of each amount. For Rodrigo: a parameter outside the SOLVER-PARAMS table.',
+  },
+  candidates: {
+    status: 'starting',
+    from: 'New in slice 3, gate THREE-PLANS; the moves are section 2.4 of the research note (Cover: 12 months set aside, credit 0, tau and shareOfDepth tighter; Spread: equal fill, tighter issuer cap), the sizes are not in any document. Cover halves tau (0.5%) and shareOfDepth (0.125); Spread caps one issuer at 30%; distinct from 1,000 bps (the prompt). For Rodrigo: parameters outside the SOLVER-PARAMS table.',
   },
   setAsideMonths: {
     status: 'set',

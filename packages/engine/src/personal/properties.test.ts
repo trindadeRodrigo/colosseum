@@ -2,7 +2,7 @@ import type { ChainId, Shelf } from '@colosseum/schemas';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { sizeSleeves } from './exposure';
-import { compose } from './index';
+import { candidates, compose } from './index';
 import { PERSONAL_PARAMS } from './params';
 import {
   editShelf,
@@ -272,6 +272,31 @@ describe.each(CHAINS)('for any valid sheet, on %s alone', (chain) => {
           expect(violations(plan, shelf, context)).toEqual([]);
         }),
         { numRuns: RUNS * 2 },
+      );
+    },
+    PATIENCE,
+  );
+
+  it(
+    "each candidate keeps the same rules, inside the person's limits, and comes in the fixed order",
+    () => {
+      fc.assert(
+        fc.property(anyone, world, (sheet, raw) => {
+          const { shelf, context } = made(raw);
+          const answer = candidates(sheet, shelf, context);
+          expect(answer.shown.length).toBeGreaterThan(0);
+          expect([...answer.shown, ...answer.notShown].map((c) => c.id).sort()).toEqual([
+            'carry',
+            'cover',
+            'spread',
+          ]);
+          const order = answer.shown.map((c) => c.id);
+          expect(order).toEqual(
+            ['cover', 'spread', 'carry'].filter((id) => order.some((o) => o === id)),
+          );
+          for (const { plan } of answer.shown) expect(violations(plan, shelf, context)).toEqual([]);
+        }),
+        { numRuns: RUNS },
       );
     },
     PATIENCE,

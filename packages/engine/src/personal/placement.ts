@@ -179,7 +179,11 @@ export class Book {
     const issuerKey = (a: BasketAsset) => `issuer:${a.issuer}`;
     const creditWhy = (a: BasketAsset) =>
       reason(
-        w.creditBudget.stated ? 'CREDIT_BUDGET' : 'CREDIT_BUDGET_UNSAID',
+        w.creditBudget.byPlan
+          ? 'CREDIT_BUDGET_PLAN'
+          : w.creditBudget.stated
+            ? 'CREDIT_BUDGET'
+            : 'CREDIT_BUDGET_UNSAID',
         { capBps: w.creditBudget.bps },
         w.lang,
       );
@@ -188,9 +192,11 @@ export class Book {
       if (a.cap.cents - held(a.asset) <= 0) return a.cap.why;
       if (w.issuerCapOf(a.asset) - this.usedOf(a.asset) <= 0) return this.issuerWhy(a.asset);
       if (w.isCredit(a.asset) && w.creditBudget.cents - this.creditUsed <= 0)
-        return w.creditBudget.bps === 0 && w.creditBudget.stated
-          ? reason('CREDIT_NONE', { asset: a.asset.symbol }, w.lang)
-          : creditWhy(a.asset);
+        return w.creditBudget.bps === 0 && w.creditBudget.byPlan
+          ? reason('CREDIT_NONE_PLAN', { asset: a.asset.symbol }, w.lang)
+          : w.creditBudget.bps === 0 && w.creditBudget.stated
+            ? reason('CREDIT_NONE', { asset: a.asset.symbol }, w.lang)
+            : creditWhy(a.asset);
       return null;
     };
     // A token with no room takes no line, and the limit that stops it is said.
@@ -198,7 +204,7 @@ export class Book {
       const stop = full(a);
       if (!stop) return true;
       why.push(stop);
-      if (stop.rule === 'CREDIT_NONE') leave(a.asset, stop);
+      if (stop.rule === 'CREDIT_NONE' || stop.rule === 'CREDIT_NONE_PLAN') leave(a.asset, stop);
       return false;
     });
     const dropped = new Set<string>();
@@ -266,22 +272,25 @@ export class Book {
       const takers = live.filter((a) => (result.take.get(a.id) ?? 0) > 0);
       for (const band of result.bands) {
         const inBand = takers.filter((a) => band.includes(a.id));
+        const assets = inBand.map((a) => a.asset.symbol).join(',');
+        // Spread puts every token in one band: the plan shares evenly by choice, not by yield.
         const shared =
           inBand.length > 1
             ? [
-                reason(
-                  'SHARED_IN_BAND',
-                  {
-                    bandBps: Math.round(w.P.yieldBand * BPS_OF_ONE),
-                    assets: inBand.map((a) => a.asset.symbol).join(','),
-                  },
-                  w.lang,
-                ),
+                w.candidate === 'spread'
+                  ? reason('SHARED_EVENLY', { assets }, w.lang)
+                  : reason(
+                      'SHARED_IN_BAND',
+                      { bandBps: Math.round(w.P.yieldBand * BPS_OF_ONE), assets },
+                      w.lang,
+                    ),
               ]
             : [];
         for (const a of inBand) {
           const bound = whyBound(a);
-          const reasons = [...unit.reasons, byYield, ...shared, ...(bound ? [bound] : [])];
+          // Shared evenly, a token is not there by its yield: that reason is left off.
+          const ranks = w.candidate === 'spread' && shared.length > 0 ? [] : [byYield];
+          const reasons = [...unit.reasons, ...ranks, ...shared, ...(bound ? [bound] : [])];
           this.put(a.asset, result.take.get(a.id) ?? 0, reasons);
         }
       }

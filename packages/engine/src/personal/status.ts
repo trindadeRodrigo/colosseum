@@ -44,13 +44,16 @@ const paysAll = (c: { monthsPaid: number; monthsWithWithdrawal: number }) =>
 
 /**
  * The status, from the same inputs as the schedule. `observedOn` is the date of the latest yield
- * reading the plan counts, or null when it counts none.
+ * reading the plan counts, or null when it counts none. The ways to close a gap need the engine run
+ * again, so `compose` adds them. A run that only asks whether a plan is met skips the carry needed
+ * (`carry: false`), which it does not read.
  */
 export function statusOf(
   input: ScheduleInputs,
   P: PersonalParameters,
   amountUsd: number,
   observedOn: string | null,
+  { carry: withCarry = true }: { carry?: boolean } = {},
 ): PersonalStatus {
   const base = counted(input);
   const stresses = stressesFor(input, P).map((stress) => {
@@ -67,7 +70,8 @@ export function statusOf(
   // paid. Zero when the withdrawals are paid with no yield; null when no rate up to 100% pays them.
   const at = (yearly: number) => paysAll(counted(input, { id: 'flat_carry', yearly }));
   let needed: number | null = null;
-  if (at(0)) needed = 0;
+  if (!withCarry) needed = null;
+  else if (at(0)) needed = 0;
   else if (at(1)) {
     let low = 0;
     let high = 1;
@@ -85,5 +89,6 @@ export function statusOf(
     carryObservedBps: amountUsd > 0 ? Math.floor((carry / amountUsd) * BPS) : 0,
     carryNeededBps: needed,
     met: paysAll(base) && stresses.every(paysAll),
+    ways: [],
   };
 }

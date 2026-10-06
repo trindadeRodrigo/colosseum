@@ -20,14 +20,16 @@ import {
   tokensOf,
   unitsOf,
 } from './exposure';
-import { byName, ceilCents, split, sum, toUsd } from './money';
+import { BPS, byName, ceilCents, shareOf, split, sum, toCents, toUsd } from './money';
 import { packageUp } from './packaging';
 import { Book, once, type Removed, type Sized, type Unit } from './placement';
 import { type ScheduleInputs, scheduleOf } from './schedule';
+import { scorecardOf } from './scorecard';
 import { checkCoverage, placeSetAside, setAsideOf } from './set-aside';
 import { statusOf } from './status';
 import { reason, text } from './templates';
 import {
+  type CandidateId,
   type ComposeContext,
   type PersonalProposal,
   type PersonalSchedule,
@@ -66,6 +68,30 @@ function smallestThatMeets(
   }
   return high * step;
 }
+
+/**
+ * The largest share of each withdrawal, in whole steps of basis points under the whole, for which
+ * `meets` holds; null when none does. The whole is taken not to meet (the caller asks because it does
+ * not); the answer is one that was tried and met.
+ */
+function largestScaleThatMeets(step: number, meets: (bps: number) => boolean): number | null {
+  // Less to withdraw never pays fewer months, so halve the range: `low` meets (or is nothing), `high` does not.
+  let low = 0;
+  let high = Math.ceil(BPS / step);
+  while (high - low > 1) {
+    const middle = Math.floor((low + high) / 2);
+    if (meets(middle * step)) low = middle;
+    else high = middle;
+  }
+  return low > 0 ? low * step : null;
+}
+
+/**
+ * How far a run goes. The plan a person sees tries the ways to close a gap; each way is a run that
+ * does not (`ways: false`). A run that asks only whether an income target is met needs no schedule
+ * (`status: false`). `candidate` is the candidate the plan is made as, or null.
+ */
+type Run = { ways: boolean; status: boolean; candidate: CandidateId | null };
 
 /** JSON with every object's keys in order, so the same value always gives the same text. */
 function canonical(value: unknown): string {
@@ -217,9 +243,10 @@ function build(
   sheetIn: PersonalSheet,
   shelf: Shelf,
   context: ComposeContext,
-  withWays: boolean,
+  run: Run,
 ): PersonalProposal {
-  const w = buildWorld(sheetIn, shelf, context);
+  const withWays = run.ways;
+  const w = buildWorld(sheetIn, shelf, context, run.candidate);
   const { sheet, P, lang } = w;
 
   // ---- Exposure: how big each sleeve is. What the next withdrawals need comes off the goal first.
@@ -455,7 +482,7 @@ function build(
   let schedule: PersonalSchedule | undefined;
   let status: PersonalStatus | undefined;
   const lastWithdrawal = w.withdrawals.at(-1);
-  if (withWays && lastWithdrawal) {
+  if (run.status && lastWithdrawal) {
     const rate = w.currency === 'USD' ? 1 : (w.fxOf(w.currency)?.value ?? null);
     if (rate === null) w.flags.add(`schedule_no_fx:${w.currency}`);
     else {
@@ -486,8 +513,41 @@ function build(
         .filter((o) => o.kind === 'yield' && o.fetchedAt !== null)
         .map((o) => String(o.fetchedAt).slice(0, 10))
         .sort();
-      status = statusOf(inputs, P, sheet.amountUsd, read.at(-1) ?? null);
+      status = statusOf(inputs, P, sheet.amountUsd, read.at(-1) ?? null, { carry: withWays });
     }
+  }
+
+  // A status not met: the ways to close the gap, each tried by running the engine again with one
+  // input changed and the rest fixed, as this plan was made (the same candidate). Listed only if the
+  // plan it gives is met. A later start and a monthly contribution have no field on the sheet.
+  if (status && !status.met && withWays) {
+    const met = (s: PersonalSheet) =>
+      build(s, shelf, context, { ways: false, status: true, candidate: run.candidate }).status
+        ?.met === true;
+    const enough = smallestThatMeets(sheet.amountUsd, P.wayStepUsd, (amountUsd) =>
+      met({ ...sheet, amountUsd }),
+    );
+    if (enough === null) {
+      status.noAmountCloses = text('STATUS_NO_AMOUNT_CLOSES', {}, lang);
+      w.flags.add('status_no_amount_closes');
+    } else
+      status.ways.push({
+        change: text('WAY_AMOUNT', { addUsd: enough - sheet.amountUsd, toUsd: enough }, lang),
+        closesGap: true,
+      });
+    // Each withdrawal scaled by one share, in whole cents of its currency; one scaled to nothing goes.
+    const scaled = (bps: number) =>
+      (sheet.obligations ?? [])
+        .map((o) => ({ ...o, amount: toUsd(shareOf(toCents(o.amount), bps)) }))
+        .filter((o) => o.amount > 0);
+    const scale = largestScaleThatMeets(P.wayScaleStepBps, (bps) =>
+      met({ ...sheet, obligations: scaled(bps) }),
+    );
+    if (scale !== null)
+      status.ways.push({
+        change: text('WAY_WITHDRAW_LESS', { scaleBps: scale }, lang),
+        closesGap: true,
+      });
   }
 
   // Income goals: whether the target is met at today's yields after haircut, and the ways to close a
@@ -504,7 +564,11 @@ function build(
       verdict = { met: short <= 0, gapUsdMonthly: toUsd(short), ways: [] };
       if (short > 0 && withWays) {
         const meets = (amountUsd: number) =>
-          build({ ...sheet, amountUsd }, shelf, context, false).verdict?.met === true;
+          build({ ...sheet, amountUsd }, shelf, context, {
+            ways: false,
+            status: false,
+            candidate: run.candidate,
+          }).verdict?.met === true;
         const enough = smallestThatMeets(sheet.amountUsd, P.wayStepUsd, meets);
         if (enough === null) {
           // Not a way to close the gap, so not among the ways: said apart, and flagged.
@@ -616,6 +680,9 @@ function build(
     ...(asSplit ? { split: asSplit } : {}),
     ...(schedule ? { schedule } : {}),
     ...(status ? { status } : {}),
+    ...(run.candidate !== null && withWays
+      ? { candidate: run.candidate, scorecard: scorecardOf(w, lines, status ?? null) }
+      : {}),
   };
 }
 
@@ -633,5 +700,18 @@ export function compose(
   shelf: Shelf,
   context: ComposeContext,
 ): PersonalProposal {
-  return build(sheet, shelf, context, true);
+  return build(sheet, shelf, context, { ways: true, status: true, candidate: null });
+}
+
+/**
+ * One plan made as a candidate of gate THREE-PLANS (`candidates` in ./candidates.ts makes all three):
+ * the same engine, with the candidate's table, and its scorecard.
+ */
+export function composeAs(
+  candidate: CandidateId,
+  sheet: PersonalSheet,
+  shelf: Shelf,
+  context: ComposeContext,
+): PersonalProposal {
+  return build(sheet, shelf, context, { ways: true, status: true, candidate });
 }

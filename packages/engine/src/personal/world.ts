@@ -18,6 +18,7 @@ import { PERSONAL_PARAMS } from './params';
 import { eligibleForGoal, sleeveOfClass } from './registry';
 import { reason } from './templates';
 import {
+  type CandidateId,
   type ComposeContext,
   HeldPosition,
   PersonalInputError,
@@ -37,6 +38,8 @@ export type World = {
   sheet: PersonalSheet;
   lang: Language;
   P: PersonalParameters;
+  /** The candidate this plan is made as (gate THREE-PLANS), or null for the plain plan. */
+  candidate: CandidateId | null;
   shelf: Shelf;
   now: string;
   /** The amount, in cents. */
@@ -97,8 +100,11 @@ export type World = {
   isCredit(asset: BasketAsset): boolean;
   /** Whether a dollar-yield token is a rate leg and nothing else: what a safe-yield sleeve holds. */
   isRateOnly(asset: BasketAsset): boolean;
-  /** The most cents in credit and basis legs, by the person's credit tolerance, and its share. */
-  creditBudget: { cents: number; bps: number; stated: boolean };
+  /**
+   * The most cents in credit and basis legs, by the person's credit tolerance, and its share. `byPlan`
+   * when a candidate holds less than the person allows: the limit is the plan's, not theirs.
+   */
+  creditBudget: { cents: number; bps: number; stated: boolean; byPlan: boolean };
   flags: Set<string>;
   /** Every figure the plan was shaped by, whether or not its token ends up in the plan. */
   observations: Map<string, PersonalObservation>;
@@ -170,8 +176,41 @@ export function monthAfter(iso: string, months: number): string {
   return `${String(y).padStart(year.length, '0')}-${String(m).padStart(month.length, '0')}`;
 }
 
+/**
+ * The table a candidate is made with (gate THREE-PLANS): Cover sets more aside and reads exits more
+ * cautiously, Spread fills dollar yield equally under a tighter issuer cap; each number moves only
+ * toward its aim, never past the table. Carry, and the plain plan, take the table as it is. The
+ * credit share of Cover is not here: it bounds the person's budget in `buildWorld`, so the plan says
+ * whose limit it is.
+ */
+export function tableFor(P: PersonalParameters, candidate: CandidateId | null): PersonalParameters {
+  if (candidate === 'cover') {
+    const c = P.candidates.cover;
+    return {
+      ...P,
+      setAsideMonths: Math.max(P.setAsideMonths, c.setAsideMonths),
+      tau: Math.min(P.tau, c.tau),
+      shareOfDepth: Math.min(P.shareOfDepth, c.shareOfDepth),
+    };
+  }
+  if (candidate === 'spread') {
+    const c = P.candidates.spread;
+    return {
+      ...P,
+      yieldBand: Math.max(P.yieldBand, c.yieldBand),
+      issuerCapBps: Math.min(P.issuerCapBps, c.issuerCapBps),
+    };
+  }
+  return P;
+}
+
 /** Validates everything `compose` is handed, and throws `PersonalInputError` on what it cannot use. */
-export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: ComposeContext): World {
+export function buildWorld(
+  sheetIn: PersonalSheet,
+  shelf: Shelf,
+  context: ComposeContext,
+  candidate: CandidateId | null = null,
+): World {
   const parsedSheet = PersonalSheet.safeParse(sheetIn);
   if (!parsedSheet.success) throw new PersonalInputError('InvalidSheet', issues(parsedSheet.error));
   const sheet = parsedSheet.data;
@@ -184,7 +223,7 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
   const parsedParams = PersonalParameters.safeParse(context.params ?? PERSONAL_PARAMS);
   if (!parsedParams.success)
     throw new PersonalInputError('InvalidParams', issues(parsedParams.error));
-  const P = parsedParams.data;
+  const P = tableFor(parsedParams.data, candidate);
   const row = P.sleeves[`${sheet.goal}:${sheet.risk}`];
   const capStock = P.capPerStockBps[sheet.risk];
   const capIssuer = P.capPerIssuerBps[sheet.risk];
@@ -336,6 +375,7 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
     sheet,
     lang,
     P,
+    candidate,
     shelf,
     now: context.now,
     amount,
@@ -409,11 +449,14 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
     },
     creditBudget: (() => {
       const tolerance = sheet.limits?.creditTolerance ?? P.defaultCreditTolerance;
-      const bps = P.creditShareBps[tolerance] ?? 0;
+      const theirs = P.creditShareBps[tolerance] ?? 0;
+      const plans = candidate === 'cover' ? P.candidates.cover.creditShareBps : theirs;
+      const bps = Math.min(theirs, plans);
       return {
         cents: shareOf(amount, bps),
         bps,
         stated: sheet.limits?.creditTolerance !== undefined,
+        byPlan: plans < theirs,
       };
     })(),
     flags,
