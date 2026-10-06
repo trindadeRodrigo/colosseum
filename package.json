@@ -25,6 +25,7 @@
     "db:migrate": "pnpm --filter @colosseum/db migrate",
     "plan:demo": "tsx scripts/plan-demo.ts",
     "plan:try": "tsx scripts/try/main.ts",
+    "plan:compare": "tsx scripts/try/compare.ts",
     "execute:demo": "tsx scripts/execute-demo.ts",
     "verify:all": "tsx scripts/verify/run-all.ts",
     "depth:snapshot": "node scripts/depth-snapshot.mjs",

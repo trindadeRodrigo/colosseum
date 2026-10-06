@@ -98,6 +98,7 @@ function goalJson(run: GoalRun, mode: DataMode) {
         }
       : null,
     sources: run.sources,
+    shelfLeftOut: run.heldOut,
   };
 }
 
@@ -107,10 +108,13 @@ export function toJson(runs: GoalRun[], meta: ReportMeta) {
     tool: 'plan-playground',
     file: meta.file,
     data: meta.mode,
+    shelf: meta.mode === 'fixtures' ? (meta.shelf ?? 'launch') : null,
     now: meta.now,
     plate:
       meta.mode === 'fixtures'
-        ? 'MOCK: every figure comes from the engine fixtures, written by hand for tests. None is live.'
+        ? meta.shelf === 'extended'
+          ? 'MOCK: every figure comes from the engine fixtures, written by hand for tests or claimed on a date in the research notes. None is live.'
+          : 'MOCK: every figure comes from the engine fixtures, written by hand for tests. None is live.'
         : 'Figures from the local database; each keeps its own plate.',
     disclaimer: DISCLAIMER,
     goals: runs.map((r) => goalJson(r, meta.mode)),

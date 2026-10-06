@@ -40,7 +40,9 @@ The goal, if given: $ARGUMENTS
 
 ### 1. Start
 
-Make a new file for this chat in the person's own folder: `try/mine/chat-<UTC time, YYYYMMDDTHHMMSSZ>.md`. Never edit another file in `try/mine/`. Ask for the goal in their own words, in English or Portuguese, in one or two lines, with one example of what helps (what the money is for, how much, any date).
+Make a new file for this chat in the person's own folder: `try/mine/chat-<UTC time, YYYYMMDDTHHMMSSZ>.md`. Never edit another file in `try/mine/`.
+
+**The shelf.** Every run of this chat uses the extended shelf by default: add `--shelf extended` after the file name in every command below. It adds the fixed-income tokens under test (rate tokens such as USDY on Solana, USDG yield on Robinhood Chain), so a part kept safe can hold a rate token rather than sit in cash. Say it once, with the test-data line. If the person says "use the launch shelf", drop the flag for the rest of the chat; "use the extended shelf" puts it back. The JSON's top-level `shelf` says which one a run used; never mix the two in one answer, and a change of shelf changes no answer and needs no new read-back. Ask for the goal in their own words, in English or Portuguese, in one or two lines, with one example of what helps (what the money is for, how much, any date).
 
 ### 2. Read the conversation as the product's reader does
 
@@ -73,7 +75,7 @@ A `yaml answers` block (keys in `try/README.md`, "Answering questions") only for
 ### 4. Run
 
 ```
-env -u ANTHROPIC_API_KEY pnpm -s plan:try try/mine/chat-<time>.md --json --no-open
+env -u ANTHROPIC_API_KEY pnpm -s plan:try try/mine/chat-<time>.md --shelf extended --json --no-open
 ```
 
 Read the JSON from stdout, for the goal the person is on:
@@ -89,10 +91,11 @@ When `sheetWhole` is true, say back what you understood in a few short lines, dr
 
 After they confirm:
 
-1. Run once without `--json` for the HTML report, and keep the path from the `Report:` line: `env -u ANTHROPIC_API_KEY pnpm -s plan:try try/mine/chat-<time>.md --no-open`.
+1. Run once without `--json` for the HTML report, and keep the path from the `Report:` line: `env -u ANTHROPIC_API_KEY pnpm -s plan:try try/mine/chat-<time>.md --shelf extended --no-open`.
 2. One sentence on the approach in their terms. Then, for each candidate in `candidates[]`, in order, under its `name`:
    - a compact table: asset (`symbol`), share (`weightBps` / 100, as a percent), dollars (`amountUsd`), and a role in plain words, one short line, merged from that line's `reasons` (never quoted): "growth: an S&P 500 stock token", "the safe 70%: cash, since no token on Solana pays a rate alone yet".
    - **What this means for your $X** (the amount), from the card and scorecard only, each figure as given (a goal with no date has `card.termMonths` null: say "no date set", never a number of months or a date): the yearly yield range of the dollar-yield part (`card.expectedReturn.lowPct` to `highPct`, a share of the whole plan; stocks, crypto and gold assume none), the loss in a 20% fall (`lossInFallUsd`), months paid and under each stress where there are withdrawals (`scorecard.base`, `scorecard.stresses`, `status`), and the exit cost (`scorecard.exit.costBps`, "not measured" when null, with the share measured). For an income goal, the target a month, what the plan pays, met or short, and the ways to close a gap.
+   - Tokens the shelf lists and no plan holds yet (`shelfLeftOut[]`) are engine detail: mention them only if the person asks why a token is not in the plan, from its `reason`, in plain words.
 3. One line on how the candidates differ, by trade-off only (more cash and less yield, spread across more issuers, and so on), never which is better. If only one is shown, say why the others are not, in one plain line, from `notShown[].why` ("the other two settings came out the same as this one").
 4. Where the plan differs from what they asked, one sentence each (a safe part held in cash, a max-yield part built as growth).
 5. Once: "These figures are test data, not live prices." Then the disclaimer, verbatim, in their language. Then the report path, for the detail.

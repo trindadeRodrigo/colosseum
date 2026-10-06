@@ -1,12 +1,14 @@
 import { EXIT_WINDOW_DAYS, flattenReport, metaHash, sha256Hex } from '@colosseum/basket';
 import {
-  type BasketAsset,
+  BasketAsset,
+  BasketAssetBase,
   BasketProposal,
   type ChainId,
   chainFamily,
   DISCLAIMER,
   type FactRegime,
   type FxObservation,
+  isAddressOf,
   normalizeAddress,
   PlanScorecard,
   PlanStatus,
@@ -21,7 +23,10 @@ import {
 import { z } from 'zod';
 import aiOnSolana from '../../../../content/themes/solana/ai.json';
 import seedFile from '../../../../docs/vault/research/open-questions/launch-shelf.seed.json';
+import robinhoodYieldShelf from './fixtures/shelves/robinhood-yield.json';
+import solanaYieldShelf from './fixtures/shelves/solana-yield.json';
 import yieldRows from './fixtures/yields.json';
+import extendedYieldRows from './fixtures/yields-extended.json';
 import { LEG_TYPES } from './leg-types';
 import { PERSONAL_PARAMS } from './params';
 import { eligibleForGoal, sleeveOfClass } from './registry';
@@ -197,6 +202,109 @@ export function launchShelf(): Shelf {
   return { version: 'launch-shelf-2026-10-01-fixture', assets, families };
 }
 
+// The extended shelf: the launch shelf plus the fixed-income tokens screened in
+// docs/vault/research/yield-shelf/ (Rodrigo, Oct 6), for testing only. The launch shelf is not
+// changed: the tests that pin plans to it read `launchShelf()` as before. One file per chain under
+// fixtures/shelves/, each row a `BasketAsset` with the verdict of the research note and where it was
+// read. A row with `heldOut` is listed and is in no plan: it is not in the `Shelf` the engine takes,
+// and the reason is the row's own (a bond in reais is not a cash leg yet; a token with a maturity the
+// schedule does not model). Nothing here is a live figure.
+
+const ExtendedRow = z
+  .object({
+    asset: BasketAssetBase.strict(),
+    verdict: z.enum(['add', 'add_with_caution', 'hold']),
+    /** Where the row was read: the research note and its section. */
+    source: z.string().min(1),
+    /** The facts of the row the research could not verify, in its words. */
+    unverified: z.array(z.string().min(1)).default([]),
+    /** Why the token is in no plan yet. Left out: the token is on the shelf the engine takes. */
+    heldOut: z.string().min(1).optional(),
+    /** The day a token with a maturity redeems at par, YYYY-MM-DD. The engine models none yet. */
+    maturity: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+  })
+  .strict();
+export type ExtendedRow = z.infer<typeof ExtendedRow>;
+
+const ExtendedShelfFile = z
+  .object({
+    chain: z.enum(['solana', 'robinhood']),
+    note: z.string().min(1),
+    readAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    rows: z.array(ExtendedRow),
+  })
+  .strict();
+const EXTENDED_FILES: unknown[] = [solanaYieldShelf, robinhoodYieldShelf];
+
+/**
+ * The rows of one file of the extended shelf. A row is of the file's chain; one the research put on
+ * hold says why it is in no plan; and a row a plan may hold is a whole `BasketAsset`. A row held out
+ * need only be a `BasketAssetBase`: the shared type refuses a token that is not cash and is counted
+ * in a currency of its own, which is what a local-currency bond is until that type changes.
+ */
+export function readExtendedFile(file: unknown): { chain: ChainId; rows: ExtendedRow[] } {
+  const read = ExtendedShelfFile.parse(file);
+  const seen = new Set<string>();
+  for (const row of read.rows) {
+    if (row.asset.chain !== read.chain)
+      throw new Error(`extended shelf: ${row.asset.id} is in the file of ${read.chain}`);
+    if (row.verdict === 'hold' && !row.heldOut)
+      throw new Error(`extended shelf: ${row.asset.id} is on hold and gives no reason`);
+    if (row.asset.provenance !== 'fixture')
+      throw new Error(`extended shelf: ${row.asset.id} is not marked a fixture`);
+    // What the shared type's own rules ask of every row, held out or not: an id and an address of
+    // the row's chain.
+    if (!row.asset.id.startsWith(`${read.chain}:`))
+      throw new Error(`extended shelf: the id ${row.asset.id} is not of ${read.chain}`);
+    if (!isAddressOf(chainFamily(read.chain), row.asset.address))
+      throw new Error(`extended shelf: the address of ${row.asset.id} is not of ${read.chain}`);
+    if (seen.has(row.asset.id)) throw new Error(`extended shelf: ${row.asset.id} is listed twice`);
+    seen.add(row.asset.id);
+    if (row.heldOut) continue;
+    // A row a plan may hold: the whole shared type, in dollar yield, with no maturity, which the
+    // schedule does not model.
+    BasketAsset.parse(row.asset);
+    if (row.asset.cls !== 'dollar_yield')
+      throw new Error(`extended shelf: ${row.asset.id} is not a dollar-yield token`);
+    if (row.maturity)
+      throw new Error(`extended shelf: ${row.asset.id} has a maturity and is not held out`);
+  }
+  return read;
+}
+
+/** Every row of the extended shelf's files, as written: the tokens in plans and the ones held out. */
+export function extendedRows(chain?: ChainId): ExtendedRow[] {
+  return EXTENDED_FILES.map(readExtendedFile)
+    .filter((file) => chain === undefined || file.chain === chain)
+    .flatMap((file) => file.rows);
+}
+
+/** The rows listed and left out of every plan, each with its reason. */
+export const extendedHeldOut = (chain?: ChainId): ExtendedRow[] =>
+  extendedRows(chain).filter((row) => row.heldOut !== undefined);
+
+/** The launch shelf with the extended rows a plan may hold added to it. A row held out is not in it. */
+export function extendedShelf(): Shelf {
+  const launch = launchShelf();
+  const taken = new Set(launch.assets.map((a) => a.id));
+  const added = extendedRows()
+    .filter((row) => row.heldOut === undefined)
+    .map((row) => {
+      const asset = BasketAsset.parse(row.asset);
+      if (taken.has(asset.id)) throw new Error(`extended shelf: ${asset.id} is listed twice`);
+      taken.add(asset.id);
+      return asset;
+    });
+  return {
+    version: 'extended-shelf-2026-10-06-fixture',
+    assets: [...launch.assets, ...added],
+    families: launch.families,
+  };
+}
+
 /** The same shelf with some tokens changed: `edit` gets a copy of each and returns what to use. */
 export function editShelf(shelf: Shelf, edit: (asset: BasketAsset) => BasketAsset): Shelf {
   return { ...shelf, assets: shelf.assets.map((a) => edit({ ...a })) };
@@ -214,6 +322,23 @@ export const LIQUIDITY_SOURCE =
  */
 export function fixtureYields(): YieldObservation[] {
   return z.array(YieldObservation).parse(yieldRows);
+}
+
+/**
+ * The fixture yields with those of the extended shelf (fixtures/yields-extended.json): the dated
+ * figures of the research notes, each with its source. Claims read at a point in time, not readings
+ * of a feed, so every one is a fixture and is plated MOCK wherever shown.
+ */
+export function extendedYields(): YieldObservation[] {
+  const file = z
+    .object({
+      solana: z.array(YieldObservation),
+      what: z.string().min(1),
+      robinhood: z.array(YieldObservation),
+    })
+    .strict()
+    .parse(extendedYieldRows);
+  return [...fixtureYields(), ...file.solana, ...file.robinhood];
 }
 
 const REGIMES: FactRegime[] = ['us_market_hours', 'us_offhours_weekday', 'weekend', 'us_holiday'];
@@ -294,6 +419,27 @@ export function fixtureContext(over: Partial<ComposeContext> = {}): ComposeConte
     liquiditySource: LIQUIDITY_SOURCE,
     ...over,
   };
+}
+
+/** The fixture context with the yields of the extended shelf added. */
+export function extendedContext(over: Partial<ComposeContext> = {}): ComposeContext {
+  return fixtureContext({ yields: extendedYields(), ...over });
+}
+
+/**
+ * The grid of goals two shelves are compared on, on one chain: each goal at each risk and four
+ * sizes, 36 sheets. The sizes straddle the tier ceilings, so a thin token shows as one.
+ */
+export function shelfGrid(chain: ChainId): PersonalSheet[] {
+  const goals = ['grow', 'income', 'protect'] as const;
+  const risks = ['low', 'medium', 'high'] as const;
+  return goals.flatMap((goal) =>
+    risks.flatMap((risk) =>
+      [1000, 10_000, 50_000, 250_000].map((amountUsd) =>
+        sheet({ goal, risk, amountUsd, chains: [chain] }),
+      ),
+    ),
+  );
 }
 
 /** A sheet for a person on Solana: a plan lives on one chain, the one the person signed in with. */

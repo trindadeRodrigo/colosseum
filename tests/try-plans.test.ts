@@ -2,7 +2,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DISCLAIMER } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
-import { launchShelf } from '../packages/engine/src/personal/testing';
+import {
+  extendedHeldOut,
+  extendedShelf,
+  launchShelf,
+} from '../packages/engine/src/personal/testing';
+import { cashBps, compareGoals, compareMarkdown, parseCompareArgs } from '../scripts/try/compare';
 import { fixturesSource } from '../scripts/try/data';
 import { toJson } from '../scripts/try/json';
 import { parseArgs } from '../scripts/try/main';
@@ -152,6 +157,7 @@ describe('the prompt file', () => {
     expect(parseArgs(['f.md'], clock)).toEqual({
       file: 'f.md',
       data: 'fixtures',
+      shelf: 'launch',
       now: NOW,
       open: true,
       json: false,
@@ -162,10 +168,20 @@ describe('the prompt file', () => {
     ).toEqual({
       file: 'f.md',
       data: 'db',
+      shelf: 'launch',
       now: new Date('2026-01-02T00:00:00Z'),
       open: false,
       json: false,
     });
+    expect(parseArgs(['f.md', '--shelf', 'extended'], clock).shelf).toBe('extended');
+    expect(parseArgs(['f.md', '--shelf', 'launch', '--data', 'fixtures'], clock).shelf).toBe(
+      'launch',
+    );
+    expect(() => parseArgs(['f.md', '--shelf', 'wide'], clock)).toThrow(/launch or extended/);
+    // The database mode lists the mock chain's tokens, so a fixture shelf cannot be asked for there.
+    expect(() => parseArgs(['f.md', '--shelf', 'extended', '--data', 'db'], clock)).toThrow(
+      /--data fixtures/,
+    );
     expect(() => parseArgs(['f.md', '--data', 'live'], clock)).toThrow(/fixtures or db/);
     expect(() => parseArgs(['f.md', '--now', 'tomorrow'], clock)).toThrow(/ISO time/);
     expect(() => parseArgs([], clock)).toThrow(/usage/);
@@ -429,4 +445,152 @@ describe('a run of examples.md on the fixtures, the model off', () => {
     const income = a.goals.find((g) => g.candidates.some((c) => c.verdict !== null));
     expect(income?.candidates[0]?.income?.targetUsd).toBeGreaterThan(0);
   });
+});
+
+describe('the extended shelf, with --shelf extended', () => {
+  const run = async (shelf: 'launch' | 'extended'): Promise<GoalRun[]> => {
+    const goals = parsePromptFile(readFileSync(EXAMPLES, 'utf8'), 'examples.md');
+    const data = fixturesSource(shelf);
+    const runs: GoalRun[] = [];
+    for (const goal of goals) runs.push(await runGoal(goal, { data, model: null, now: NOW }));
+    return runs;
+  };
+  const meta = (shelf: 'launch' | 'extended') => ({
+    file: 'examples.md',
+    mode: 'fixtures' as const,
+    shelf,
+    now: NOW.toISOString(),
+  });
+
+  it("lists the chain's tokens of the extended shelf, and says which shelf and what it leaves out", async () => {
+    for (const chain of ['solana', 'robinhood'] as const) {
+      const [launch, extended] = [
+        await fixturesSource('launch').forChain(chain),
+        await fixturesSource('extended').forChain(chain),
+      ];
+      expect((await fixturesSource().forChain(chain)).shelf).toEqual(launch.shelf);
+      expect(extended.shelf.assets.map((a) => a.id)).toEqual(
+        extendedShelf()
+          .assets.filter((a) => a.chain === chain)
+          .map((a) => a.id),
+      );
+      expect(extended.sources[0]).toContain('the extended shelf');
+      expect(extended.sources[0]).toContain(`docs/vault/research/yield-shelf/${chain}.md`);
+      expect(launch.sources[0]).toContain('the launch shelf');
+      expect(launch.heldOut).toEqual([]);
+      expect(extended.heldOut).toEqual(
+        extendedHeldOut(chain).map((row) => ({ symbol: row.asset.symbol, reason: row.heldOut })),
+      );
+    }
+  });
+
+  it('runs the examples, every figure plated MOCK, and the page and the JSON name the shelf', async () => {
+    const runs = await run('extended');
+    const page = renderReport(runs, meta('extended'));
+    expect(page).toContain('shelf: extended');
+    expect(page).toContain('the extended shelf');
+    expect(page).toContain('<span class="plate">MOCK</span>');
+    expect(page).not.toMatch(/<script|<link|https?:\/\//);
+    expect(renderReport(await run('launch'), meta('launch'))).toContain('shelf: launch');
+    const json = toJson(runs, meta('extended'));
+    expect(json.shelf).toBe('extended');
+    expect(json.plate).toMatch(/^MOCK/);
+    expect(
+      toJson(runs, { file: 'examples.md', mode: 'db', now: NOW.toISOString() }).shelf,
+    ).toBeNull();
+    for (const [i, g] of json.goals.entries()) {
+      expect(g.shelfLeftOut).toEqual(runs[i]?.heldOut);
+      for (const c of g.candidates) {
+        expect(c.plate).toBe('MOCK');
+        expect(c.observations.every((o) => o.plate === 'MOCK')).toBe(true);
+      }
+    }
+    // A token left out of every plan is in no line, and the page says why.
+    for (const r of runs) {
+      const out = new Set(r.heldOut.map((h) => h.symbol));
+      for (const c of r.made?.shown ?? [])
+        for (const l of c.plan.lines) expect(out.has(r.symbols[l.assetId] ?? '')).toBe(false);
+      // As the page writes it: the reason with its HTML escaped.
+      const esc = (t: string) =>
+        t
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      for (const h of r.heldOut) expect(page).toContain(esc(h.reason));
+    }
+  });
+});
+
+describe('the two shelves side by side, with pnpm plan:compare', () => {
+  const YIELD_GOALS = join(__dirname, '../try/prompts/yield-shelf.md');
+  const files = [
+    { name: 'examples.md', source: readFileSync(EXAMPLES, 'utf8') },
+    { name: 'yield-shelf.md', source: readFileSync(YIELD_GOALS, 'utf8') },
+  ];
+
+  it('reads its command line: the files, one chain, the time', () => {
+    const clock = () => NOW;
+    expect(parseCompareArgs(['a.md', 'b.md', '--chain', 'robinhood'], clock)).toEqual({
+      files: ['a.md', 'b.md'],
+      chain: 'robinhood',
+      now: NOW,
+    });
+    expect(() => parseCompareArgs(['a.md'], clock)).toThrow(/usage/);
+    expect(() => parseCompareArgs(['a.md', '--chain', 'mars'], clock)).toThrow(/--chain is one of/);
+    // Base has one shelf: the extended shelf adds nothing there.
+    expect(() => parseCompareArgs(['a.md', '--chain', 'base'], clock)).toThrow(/--chain is one of/);
+    expect(() => parseCompareArgs(['a.md', '--chain', 'solana', '--wide'], clock)).toThrow(
+      /unknown option/,
+    );
+  });
+
+  it('the six goals written for the extended shelf are whole: each yields candidates on its chain', async () => {
+    const goals = parsePromptFile(files[1]?.source ?? '', 'yield-shelf.md');
+    expect(goals).toHaveLength(6);
+    expect(goals.filter((g) => g.chain === 'robinhood')).toHaveLength(1);
+    for (const shelf of ['launch', 'extended'] as const)
+      for (const goal of goals) {
+        const r = await runGoal(goal, { data: fixturesSource(shelf), model: null, now: NOW });
+        expect(r.open, `${shelf}: ${goal.title}`).toEqual([]);
+        expect(r.error, `${shelf}: ${goal.title}`).toBeNull();
+        expect(r.made?.shown.length, `${shelf}: ${goal.title}`).toBeGreaterThan(0);
+      }
+  });
+
+  it.each(['solana', 'robinhood'] as const)(
+    'on %s, runs every goal on that chain on both shelves and gives the same text each time',
+    async (chain) => {
+      const [a, b] = [await compareGoals(files, chain, NOW), await compareGoals(files, chain, NOW)];
+      const text = compareMarkdown(a, chain, NOW.toISOString());
+      expect(text).toBe(compareMarkdown(b, chain, NOW.toISOString()));
+      expect(text).toContain('Every figure is MOCK');
+      // The count at the foot is over the goals that have a plan: the vague goal has none on either
+      // shelf and is counted neither as changed nor as unchanged.
+      const weights = (r: GoalRun) =>
+        JSON.stringify([
+          r.plain?.lines.map((l) => [l.assetId, l.weightBps]),
+          r.made?.shown.map((c) => [c.id, c.plan.lines.map((l) => [l.assetId, l.weightBps])]),
+        ]);
+      const planned = a.filter((g) => g.launch.run.made || g.extended.run.made);
+      const unchanged = planned.filter((g) => weights(g.launch.run) === weights(g.extended.run));
+      expect(planned.length).toBe(a.length - 1);
+      expect(text).toContain(
+        `Goals with a plan on either shelf: ${planned.length} of ${a.length}. Of those, no line changed in ${unchanged.length}.`,
+      );
+      expect(text).not.toMatch(/https?:\/\//);
+      for (const g of a) {
+        expect(g.launch.run.goal.chain).toBe(chain);
+        expect(g.extended.run.goal.chain).toBe(chain);
+        expect(text).toContain(`#### ${g.title}`);
+        // The cash share is the chain's cash token and nothing else.
+        const plan = g.extended.run.plain;
+        if (plan) {
+          const cash = plan.lines.filter((l) => g.extended.cls[l.assetId] === 'cash');
+          expect(cashBps(plan, g.extended.cls)).toBe(cash.reduce((n, l) => n + l.weightBps, 0));
+          expect(cash.length).toBeLessThanOrEqual(1);
+        }
+      }
+    },
+  );
 });
