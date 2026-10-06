@@ -942,6 +942,38 @@
                                 }
                               },
                               "additionalProperties": false
+                            },
+                            "mix": {
+                              "type": "object",
+                              "properties": {
+                                "growthBps": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 10000
+                                },
+                                "dollarYieldBps": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 10000
+                                },
+                                "goldBps": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 10000
+                                },
+                                "cashBps": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 10000
+                                },
+                                "creditBps": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 10000
+                                }
+                              },
+                              "required": ["growthBps", "dollarYieldBps", "goldBps", "cashBps"],
+                              "additionalProperties": false
                             }
                           },
                           "required": [
@@ -1350,6 +1382,37 @@
                             }
                           }
                         }
+                      },
+                      "mix": {
+                        "type": "object",
+                        "properties": {
+                          "growthBps": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 10000
+                          },
+                          "dollarYieldBps": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 10000
+                          },
+                          "goldBps": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 10000
+                          },
+                          "cashBps": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 10000
+                          },
+                          "creditBps": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 10000
+                          }
+                        },
+                        "required": ["growthBps", "dollarYieldBps", "goldBps", "cashBps"]
                       }
                     },
                     "required": [
