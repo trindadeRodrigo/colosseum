@@ -70,6 +70,34 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
 }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.landing.stage.title);
+  // the three faces are the app's own files (app/fonts.ts): loaded, named as before with their
+  // fallbacks, and what the heading is actually set in
+  const faces = await page.evaluate(async () => {
+    await document.fonts.ready;
+    const family = (el: Element | null) => (el ? getComputedStyle(el).fontFamily : '');
+    const width = (font: string) => {
+      const ctx = document.createElement('canvas').getContext('2d');
+      if (!ctx) return 0;
+      ctx.font = font;
+      return ctx.measureText('No product fits everyone').width;
+    };
+    return {
+      heading: family(document.querySelector('h1')),
+      body: family(document.body),
+      loaded: ['400 16px newsreader', '500 16px plexSans'].map((f) => document.fonts.check(f)),
+      fromGoogle: performance
+        .getEntriesByType('resource')
+        .filter((r) => /fonts\.(googleapis|gstatic)\.com/.test(r.name)).length,
+      serif: width('400 100px newsreader'),
+      fallback: width('400 100px "Times New Roman"'),
+    };
+  });
+  expect(faces.heading).toMatch(/^"?newsreader"?, "?Newsreader Fallback"?/);
+  expect(faces.body).toMatch(/^"?plexSans"?, "?IBM Plex Sans Fallback"?/);
+  expect(faces.loaded).toEqual([true, true]);
+  expect(faces.fromGoogle).toBe(0);
+  // set in Newsreader itself, not its fallback: the two measure differently
+  expect(Math.abs(faces.serif - faces.fallback)).toBeGreaterThan(1);
   await expect(page.locator('article[data-ui="showcase-case"]')).toHaveCount(2);
   // a jump to the end of the page, over the stage, finds his bar compact, with its action
   await page.keyboard.press('End');
