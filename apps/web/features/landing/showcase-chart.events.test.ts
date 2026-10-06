@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { createElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { SERIES_FADE } from '../../components/ui/chart';
 import { find, fire, mount, press, unmountAll } from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
@@ -103,7 +104,7 @@ describe('the trip chart', () => {
   it('follows a finger that taps and drags, and keeps the month where it lifts', async () => {
     const host = await trip();
     const plot = plotOf(host);
-    expect(plot.style.touchAction).toBe('pan-y');
+    expect(plot.style.touchAction).toBe('pan-y pinch-zoom');
     // a finger that only passes over the plot (a scroll) moves nothing
     await fire(plot, pointer('pointermove', tripBar(3), 'touch'));
     expect(readout(host).textContent).toBe(en.landing.show.readout.hint);
@@ -117,6 +118,28 @@ describe('the trip chart', () => {
     // lifted: a later pass does not drag it
     await fire(plot, pointer('pointermove', tripBar(9), 'touch'));
     expect(readout(host).textContent).toContain('Apr 2027');
+  });
+
+  it('lets go when the browser takes a touch over to scroll the page', async () => {
+    const host = await trip();
+    const plot = plotOf(host);
+    await fire(plot, pointer('pointerdown', tripBar(5), 'touch'));
+    expect(readout(host).textContent).toContain('Mar 2027');
+    await fire(plot, pointer('pointercancel', tripBar(5), 'touch'));
+    expect(readout(host).textContent).toBe(en.landing.show.readout.hint);
+    expect(host.querySelectorAll('[data-ui="chart-cross"]')).toHaveLength(0);
+    // and a later pass does not drag it back
+    await fire(plot, pointer('pointermove', tripBar(9), 'touch'));
+    expect(readout(host).textContent).toBe(en.landing.show.readout.hint);
+  });
+
+  it('takes the crosshair away when focus leaves the plot', async () => {
+    const host = await trip();
+    const plot = plotOf(host);
+    await press(plot, 'End');
+    expect(readout(host).textContent).toContain('Mar 2029');
+    await fire(plot, new FocusEvent('focusout', { bubbles: true }));
+    expect(readout(host).textContent).toBe(en.landing.show.readout.hint);
   });
 
   it('is one tab stop the arrow keys step month by month, Home and End to the ends, Escape away', async () => {
@@ -187,4 +210,28 @@ describe('the mountain chart', () => {
     expect(find(host, 'g[data-series="range"]').getAttribute('opacity')).toBe('1');
     expect(find(host, 'g[data-series="goal"]').getAttribute('opacity')).toBe('0.25');
   });
+});
+
+describe('both charts', () => {
+  it('fade a series only where the reader allows motion', async () => {
+    expect(SERIES_FADE.split(' ').every((c) => c.startsWith('motion-safe:'))).toBe(true);
+    const host = await trip();
+    const bars = [...host.querySelectorAll('rect[data-series]')];
+    expect(bars.length).toBeGreaterThan(0);
+    for (const bar of bars) expect(bar.getAttribute('class')).toBe(SERIES_FADE);
+  });
+
+  for (const lang of ['en', 'pt'] as const)
+    it(`leave room on the left for every value on the axis, in ${lang === 'en' ? 'English' : 'Portuguese'}`, async () => {
+      for (const host of [await trip(lang), await growth(lang)]) {
+        const ticks = [...host.querySelectorAll('svg text[text-anchor="end"]')];
+        expect(ticks.length).toBeGreaterThan(2);
+        for (const tick of ticks) {
+          const end = Number(tick.getAttribute('x'));
+          // set in mono at 10px, 0.6 em a character, ending at x
+          const start = end - (tick.textContent ?? '').length * 6;
+          expect(start, tick.textContent ?? '').toBeGreaterThanOrEqual(0);
+        }
+      }
+    });
 });
