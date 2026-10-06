@@ -36,6 +36,7 @@ import {
   Pie,
   Reason,
   SrcLine,
+  useChartPin,
   useFmt,
   useWords,
 } from './parts';
@@ -215,6 +216,7 @@ function LendBody(p: {
   sel: { assets: string[] | null; pools: string[] | null };
   setSel: (s: Partial<{ assets: string[] | null; pools: string[] | null }>) => void;
 }) {
+  const chartPin = useChartPin();
   const fm = useFmt();
   const { clock, ui } = useBearing();
   const wds = useWords();
@@ -270,6 +272,7 @@ function LendBody(p: {
       : none('not_collected');
     chart = (
       <TimeChart
+        {...chartPin(cf)}
         title={t.covered.title(tw)}
         labels={wds.chart}
         locale={fm.locale}
@@ -322,6 +325,7 @@ function LendBody(p: {
     const tf = seriesFact(sup, src, 'supplied summed over the selected pools');
     chart = (
       <TimeChart
+        {...chartPin(tf)}
         title={t.supplied.title}
         labels={wds.chart}
         locale={fm.locale}
@@ -390,7 +394,7 @@ function LendBody(p: {
             target="_blank"
             rel="noopener"
             aria-label={t.table.explorer(poolName(row.meta, t.market))}
-            className="font-mono text-source font-normal underline decoration-1 underline-offset-[3px] hover:decoration-2"
+            className="inline-flex min-h-6 items-center font-mono text-source font-normal underline decoration-1 underline-offset-[3px] hover:decoration-2"
           >
             {short(row.meta.account)} ↗
           </a>
@@ -595,6 +599,7 @@ export function AvailChart({
   range: number;
   setRange: (r: number) => void;
 }) {
+  const chartPin = useChartPin();
   const fm = useFmt();
   const { clock } = useBearing();
   const all = useWords();
@@ -602,6 +607,7 @@ export function AvailChart({
   const a = availability(rows, clock.now || Date.now(), all.lending.supplied.partial, fm.usd1);
   return (
     <TimeChart
+      {...chartPin(a.fact)}
       title={t.title}
       labels={all.chart}
       locale={fm.locale}

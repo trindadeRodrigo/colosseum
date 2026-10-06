@@ -9,6 +9,7 @@ import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/C
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { CopyButton } from '../../components/ui/CopyButton';
 import { ExplorerLink } from '../../components/ui/ExplorerLink';
+import { PAGE_TITLE } from '../../components/ui/heading';
 import { SkeletonSummary } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { type Dictionary, LOCALE } from '../../i18n';
@@ -179,7 +180,7 @@ export function OrderScreen({ id }: { id: string }) {
             : t.order.failure.unreachable;
     return (
       <section aria-labelledby={titleId} className="flex flex-col items-start gap-4">
-        <h1 id={titleId} className="font-sans text-h2 font-semibold">
+        <h1 id={titleId} className={PAGE_TITLE}>
           {t.order.title}
         </h1>
         <p className="max-w-(--tf-measure-body) text-body">{body}</p>
@@ -259,7 +260,7 @@ export function OrderScreen({ id }: { id: string }) {
     <div data-ui="order-screen" className="flex flex-col gap-8">
       <header className="flex flex-col items-start gap-3">
         <ChainBadge chain={chain} />
-        <h1 id={titleId} className="max-w-(--tf-measure-display) font-display text-h1 font-normal">
+        <h1 id={titleId} className={PAGE_TITLE}>
           {record.approved ? t.order.title : t.order.review.title}
         </h1>
         {!record.approved && (
@@ -461,7 +462,7 @@ function Notice({
   const id = useId();
   return (
     <section aria-labelledby={id} className="flex flex-col items-start gap-4">
-      <h1 id={id} className="font-sans text-h2 font-semibold">
+      <h1 id={id} className={PAGE_TITLE}>
         {title}
       </h1>
       <p className="max-w-(--tf-measure-body) text-body">{body}</p>
