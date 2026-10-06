@@ -1093,6 +1093,47 @@ describe('a stated mix and a named market (gate EXPLICIT-MIX)', () => {
       expect(marketShareIn(t, marketsIn(t)[0]?.at ?? 0), t).toBeNull();
   });
 
+  it('reads a sum as Portuguese writes it, and the second sum of a sentence', () => {
+    const shares = (t: string) => marketsIn(t).map((m) => marketShareIn(t, m.at));
+    // "US$ 2.000": a mark, a space, and a point for the thousands, which ends no sentence.
+    expect(shares('Quero investir US$ 2.000 em big techs por 5 anos')).toEqual([
+      { kind: 'amount', value: 2000 },
+    ]);
+    expect(shares('investir 2 mil dólares em IA')).toEqual([{ kind: 'amount', value: 2000 }]);
+    expect(shares('Tenho US$ 2.000. Quero investir em big techs')).toEqual([{ kind: 'whole' }]);
+    // The second sum of a sentence is the second market's.
+    expect(shares('put $500 in big tech and $300 in AI')).toEqual([
+      { kind: 'amount', value: 500 },
+      { kind: 'amount', value: 300 },
+    ]);
+    // Through the intake: both sums are held, in one mix, and nothing is asked.
+    const two = intake(
+      'I want to grow $2,000 over 5 years. Put $500 in big tech and $300 in the S&P 500',
+      reply({
+        goal: 'grow',
+        amountUsd: 2000,
+        horizonMonths: 60,
+        markets: ['big_tech', 'us_market'],
+      }),
+    );
+    expect(two.questions).toEqual([]);
+    expect(two.mix).toEqual({ growthBps: 4000, dollarYieldBps: 0, goldBps: 0, cashBps: 6000 });
+    expect(two.sheet?.themes).toEqual(['the-seven', 'the-500']);
+    const pt = intake(
+      'Quero investir US$ 2.000 em big techs por 5 anos',
+      reply({
+        goal: 'grow',
+        amountUsd: 2000,
+        horizonMonths: 60,
+        language: 'pt',
+        markets: ['big_tech'],
+      }),
+    );
+    expect(pt.questions).toEqual([]);
+    expect(pt.mix?.growthBps).toBe(10_000);
+    expect(pt.sheet?.themes).toEqual(['the-seven']);
+  });
+
   it('a market with no share said asks how much of the money, once, and never the risk', () => {
     const r = reply({ goal: 'grow', amountUsd: 2000, horizonMonths: 60, markets: ['ai'] });
     const text = 'I want to grow $2,000 over 5 years. I like AI';

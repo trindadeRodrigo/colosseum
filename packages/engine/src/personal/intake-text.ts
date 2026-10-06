@@ -610,6 +610,19 @@ export const MARKET_NEAREST: Record<Market, readonly string[]> = {
   us_market: ['the-500', 'the-seven'],
 };
 
+/**
+ * The sentence written up to `at`: from the last sentence break or line break. A mark inside a
+ * number is no break ("US$ 2.000", "$1,500.50").
+ */
+function sentenceBefore(text: string, at: number): string {
+  return (
+    text
+      .slice(0, at)
+      .split(/[.;!?](?=\s)|\n/)
+      .at(-1) ?? ''
+  );
+}
+
 // How much of the money goes to a market, in the words just before it (gate EXPLICIT-MIX): "invest in
 // big tech", "all of it in AI", "put it in US stocks" is the whole; "put $1,000 in AI" is that sum.
 // "I like AI", "I'm interested in big tech" say no share: it is asked.
@@ -619,8 +632,13 @@ const WHOLE_BEFORE = new RegExp(
   String.raw`(?<![\p{L}])(?:${PUT}(?:\s+(?:it|all|all of it|everything|my money|the money|this|that|tudo|isso|o dinheiro|meu dinheiro))?|(?:all|everything)(?:\s+of\s+(?:it|my money|the money))?|tudo)\s+${INTO}$`,
   'iu',
 );
+// A sum after the verb, or a later sum of the same sentence: "put $500 in AI and $300 in chips". The
+// sum as a person writes it, with a space after its mark and its words after it: "US$ 2.000", "2 mil
+// dólares".
+const SUM_LEAD = String.raw`(?:${PUT}\s+|${PUT}(?![\p{L}])[^\n]*?(?:,\s*(?:(?:and|plus|e|mais)\s+)?|\s(?:and|plus|e|mais)\s+))`;
+const SUM = String.raw`(?:(?:us\$|u\$s|usd|\$)\s+)?\S+(?:\s+(?:k|mil|thousand))?(?:\s+(?:de\s+)?(?:dollars|d[oó]lares|bucks|usd))?`;
 const AMOUNT_BEFORE = new RegExp(
-  String.raw`(?<![\p{L}])${PUT}\s+(?:the\s+|my\s+|os\s+|meus\s+)?(?<amt>\S+(?:\s+(?:k|mil|thousand|dollars|d[oó]lares|bucks))?)\s+${INTO}$`,
+  String.raw`(?<![\p{L}])${SUM_LEAD}(?:the\s+|my\s+|os\s+|meus\s+)?(?<amt>${SUM})\s+${INTO}$`,
   'iu',
 );
 /** The share of the money the text gives a market written at `at`: the whole, a sum, or none said. */
@@ -628,12 +646,8 @@ export function marketShareIn(
   text: string,
   at: number,
 ): { kind: 'whole' } | { kind: 'amount'; value: number } | null {
-  // The clause the market is written in.
-  const before =
-    text
-      .slice(0, at)
-      .split(/[.;!?\n]/)
-      .at(-1) ?? '';
+  // The sentence the market is written in.
+  const before = sentenceBefore(text, at);
   const amount = AMOUNT_BEFORE.exec(before);
   if (amount) {
     const m = mentionsIn(amount.groups?.amt ?? '').find((x) => x.kind === 'amount' && !x.perMonth);
