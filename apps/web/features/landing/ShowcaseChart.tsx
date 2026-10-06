@@ -36,7 +36,8 @@ const W_DEFAULT = 640;
 const H = 220;
 const TOP = 14;
 const BOTTOM = 26;
-const MONO = { fontFamily: 'var(--font-mono)', fontSize: 10 } as const;
+/** The charts' type: the mono face at 12px, the least the landing sets (the design pass, Oct 6). */
+const MONO = { fontFamily: 'var(--font-mono)', fontSize: 12 } as const;
 
 const monthName = (lang: Lang, ym: string) =>
   new Intl.DateTimeFormat(LOCALE[lang], {
@@ -143,6 +144,7 @@ export function TripChart({
   const left = axisLeft(
     grid.map((g) => thousands(lang, g)),
     44,
+    MONO.fontSize,
   );
   const right = 10;
   const width = W - left - right;
@@ -291,6 +293,7 @@ export function GrowthChart({
   const left = axisLeft(
     grid.map((g) => thousands(lang, g)),
     48,
+    MONO.fontSize,
   );
   const right = 10;
   const width = W - left - right;

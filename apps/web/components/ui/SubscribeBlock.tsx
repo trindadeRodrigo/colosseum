@@ -96,7 +96,7 @@ export function SubscribeBlock({
       <p className="font-mono text-[0.75rem]/4 text-primary">{eyebrow}</p>
       <h2
         id={headingId}
-        className="mt-3 max-w-[20ch] font-display text-h2 font-normal text-balance [font-variation-settings:'opsz'_36]"
+        className="mt-3 max-w-[20ch] font-display text-h2 leading-[round(1.25em,4px)] font-normal text-balance [font-variation-settings:'opsz'_36]"
       >
         {heading}
       </h2>
