@@ -453,6 +453,17 @@ export const pt: Dictionary = {
         carry: 'Tem o maior rendimento observado dentro dos seus limites.',
       },
       see: (name: string) => `Tudo de ${name}`,
+      sample: { sandbox: 'Números de exemplo · rede de teste', mock: 'Números de exemplo' },
+      headline: {
+        holds: 'O que ele tem',
+        parts: (n: number) => (n === 1 ? '1 parte' : `${n} partes`),
+        paid: 'Meses pagos',
+        worst: 'Pior caso',
+        worstMonths: (stress: string, paid: number, all: number) =>
+          `Se ${stress}, ${paid} de ${all} meses são pagos.`,
+        fall: (amount: string) => `Numa queda forte, cerca de ${amount} perdidos.`,
+        noFall: 'Numa queda forte, cerca de US$ 0 perdidos: nada aqui é ação, cripto ou ouro.',
+      },
       picker: {
         legend: 'Escolha um plano',
         buy: (name: string) => `Comprar ${name}`,

@@ -482,6 +482,19 @@ export const en = {
         carry: 'Holds the most yield observed inside your limits.',
       },
       see: (name: string) => `All of ${name}`,
+      /** Said once, quietly, on a candidate not live: no plate on the card. */
+      sample: { sandbox: 'Sample figures · test network', mock: 'Sample figures' },
+      /** The two or three figures a card leads with; the rest is in its Details. */
+      headline: {
+        holds: 'What it holds',
+        parts: (n: number) => (n === 1 ? '1 part' : `${n} parts`),
+        paid: 'Months paid',
+        worst: 'Worst case',
+        worstMonths: (stress: string, paid: number, all: number) =>
+          `If ${stress}, ${paid} of ${all} months are paid.`,
+        fall: (amount: string) => `In a bad fall, about ${amount} lost.`,
+        noFall: 'In a bad fall, about $0 lost: nothing here is stocks, crypto or gold.',
+      },
       picker: {
         legend: 'Choose a plan',
         buy: (name: string) => `Buy ${name}`,
