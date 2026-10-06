@@ -43,6 +43,9 @@ export type OracleRow = {
   provenance: 'live';
 };
 
+/** The last second a Date can hold. */
+const MAX_SECONDS = 8_640_000_000_000;
+
 /** One read per feed. */
 export const oracleCalls = (feeds: ListedFeed[]): Call[] =>
   feeds.map((f) => ({ target: f.address, callData: `0x${SEL.latestRoundData}` }));
@@ -63,7 +66,9 @@ export function oracleRows(r: OracleRowsInput): OracleRow[] {
     throw new Error(`oracleRows: ${r.tokens.length} feeds, ${r.replies.length} answers`);
   const blockSeconds = Math.floor(r.blockTime.getTime() / 1000);
   return r.tokens.map(({ token, feed }, i): OracleRow => {
-    const round = decodeRound(r.replies[i] as Reply);
+    const decoded = decodeRound(r.replies[i] as Reply);
+    // a time no calendar holds is no answer: it costs this feed its row's figures, not the run its rows
+    const round = decoded && decoded.updatedAt <= MAX_SECONDS ? decoded : null;
     const reason: OracleNoReadReason | null = !round
       ? 'no_answer_from_the_feed'
       : BigInt(round.answer) <= 0n

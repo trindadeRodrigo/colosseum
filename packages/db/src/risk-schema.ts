@@ -378,7 +378,7 @@ export const riskLendingPositions = pgTable(
 
 /**
  * Price observations of the oracle standard (PLAN-RISK Step 11): one price of one asset from one price source at
- * one time. `price_source` is pool_mid | kamino_scope | jupiter_lend_oracle | external:<name>; `source` names the
+ * one time. `price_source` is pool_mid | kamino_scope | jupiter_lend_oracle | chainlink | external:<name>; `source` names the
  * data source, as on every table. `price` is per whole token in `quote` (`usd`, or the mint a lending oracle quotes
  * in). `live` is false while a stock oracle held a placeholder price, and `failed_checks` names the venue's own
  * checks a price failed: both are still the venue's price, never a valuation.

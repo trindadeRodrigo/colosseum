@@ -250,15 +250,15 @@ A list run also reads the Chainlink feed of every tracked stock that has one (PL
 
 - **A row** is one feed at one block: `asset`, `assetMint`, `feed` (the proxy), `fetchedAt` and `slot` (the block's), `roundId`, `answer` (as read, an integer in the feed's decimals), `price` (the same with its point), `decimals`, `updatedAt` (the feed's own time for the answer), `ageSeconds` (the block's time less `updatedAt`), and `source`, `method`, `methodVersion`, `provenance`. A feed that does not answer, or answers zero or less, is a row with `price: null` and a `reason` (`no_answer_from_the_feed`, `answer_not_positive`), never a zero.
 - **Kept apart (gate `ORACLE-VS-DEX`).** The answer is written as read. It is not compared with, corrected by or blended into a pool price, no multiplier is applied, and nothing is refused for age. The asset row and the pool rows do not depend on it: a refused oracle read costs the run only these rows (`oracle_read_failed` in the log, `oracleError` in the run's summary).
-- **The same block.** The feeds are read at the block the run pins first, which is the block of the asset rows. A token the run measures again on a fresh block (its block's state was gone) keeps the oracle row of the first block; both rows carry their own `slot`.
-- **A stock with no oracle** (`oracle: null` in the list) is not asked and has no row. A retry within the hour reads the feeds of the tokens it retries, at its own block.
+- **The same block.** The feeds are read at the block the run pins first, which is the block of the asset rows. A token the run measures again on a fresh block keeps the oracle row of the first block, and so does every token when the run had to take a fresh block before its first pool (its block grew older than two minutes, or its state was gone); each row carries its own `slot`, so the two can always be told apart.
+- **A stock with no oracle** (`oracle: null` in the list) is not asked and has no row. A retry within the hour reads the feeds of the tokens it retries, at its own block, so a retried token has one oracle row per attempt; all are kept. A refused oracle read is not tried again: that hour has pool rows and no oracle rows.
 - **The import.** `pnpm risk-evm:import` loads the rows that carry a price into `risk_price_observations`: `chain` as the row says (`robinhood`), `price_source` `chainlink`, `mint` the token address as the collector writes it, `ref` the proxy, `observed_at` and `slot` the block's, `source_ts` the feed's `updatedAt`, `quote` `usd`. The table's key leaves an existing row as it is, so a second import inserts nothing. No migration.
 
 ### The run of 2026-10-06 (block 81,211,551, 00:31 UTC, off session, by hand into a temporary folder)
 
 - 24 feeds asked in one call, 24 answered; 24 rows. The six stocks with no feed have none.
 - Ages at the block: 1 minute to 10.6 hours, 4.6 hours at the median (the US session had closed 4.5 hours before). GLD's answer was 9.2 hours old.
-- With the feeds the run was 288 RPC calls in 52 requests, 30 seconds: one call more than without.
+- With the feeds the run was 288 RPC calls in 52 requests, 30 seconds. The feeds are one call of those; the rest moves with the pools, run to run.
 
 ## Files
 

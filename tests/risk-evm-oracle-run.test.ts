@@ -190,6 +190,17 @@ describe('oracle rows, by hand', () => {
     });
     expect(rows[2]).toMatchObject({ price: null, answer: null, reason: 'answer_not_positive' });
     expect(rows[2]?.ageSeconds).toBe(30);
+    // a time past any calendar is no answer for that feed, and the others keep theirs
+    const odd = oracleRows({
+      chain: 'robinhood',
+      tokens: [token('AAA', 'a1'), token('BBB', 'b2')],
+      replies: [round(24028000000n, at - 600), round(1n, 10 ** 13)],
+      blockTime,
+      blockNumber: 9,
+      source: 'by hand',
+    });
+    expect(odd[0]?.price).toBe('240.28000000');
+    expect(odd[1]).toMatchObject({ price: null, reason: 'no_answer_from_the_feed' });
     expect(() =>
       oracleRows({
         chain: 'robinhood',
