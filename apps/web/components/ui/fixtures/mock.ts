@@ -284,3 +284,18 @@ export const SHEET_CAPITAL = {
   kind: 'amount' as const,
   value: '1.000',
 };
+
+/**
+ * Made-up depth by hour of week for the heatmap tile: dollars sellable at ≤ 2%, deeper in US market
+ * hours, thin at the weekend, and a few hours with no sample (Sunday night, Monday 04:00).
+ */
+export const HEAT_CELLS: Array<{ day: number; hour: number; value: number; samples: number }> = [];
+for (let day = 0; day < 7; day++)
+  for (let hour = 0; hour < 24; hour++) {
+    if ((day === 6 && hour >= 20) || (day === 0 && hour === 4)) continue;
+    const market = day < 5 && hour >= 14 && hour < 21;
+    const weekend = day >= 5;
+    const value =
+      (market ? 2_000_000 : weekend ? 400_000 : 900_000) + ((day * 24 + hour) % 7) * 60_000;
+    HEAT_CELLS.push({ day, hour, value, samples: 12 + ((day + hour) % 9) });
+  }

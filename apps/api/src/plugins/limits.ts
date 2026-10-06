@@ -1,5 +1,5 @@
 import type { OrderError } from '@colosseum/schemas';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { underV1 } from './paths';
 
 // Rate limits for /v1 (DESIGN-VAULT section 10). The numbers are here and nowhere else. They are kept
@@ -45,6 +45,11 @@ declare module 'fastify' {
   interface FastifyContextConfig {
     /** The rate-limit class of a /v1 route (`LIMITS.class`). */
     limit?: LimitClass;
+    /**
+     * The class one request counts against, where it is not the route's: a read that plans an order
+     * when its query asks it to counts as a builder then. Read before the handler runs, from the query.
+     */
+    limitOf?: (req: FastifyRequest) => LimitClass;
   }
 }
 
@@ -100,7 +105,8 @@ export function registerLimits(
     const taken = [
       counter.take(who, person ? limits.caller.signedIn : limits.caller.anonymous, at),
     ];
-    const cls = req.routeOptions.config.limit;
+    const { limit, limitOf } = req.routeOptions.config;
+    const cls = limitOf?.(req) ?? limit;
     const own = cls ? limits.class[cls] : null;
     if (cls && own !== null) taken.push(counter.take(`${cls}:${who}`, own, at));
 

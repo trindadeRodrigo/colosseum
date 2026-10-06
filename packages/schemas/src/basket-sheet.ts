@@ -21,13 +21,16 @@ export const Obligation = z.object({
 });
 export type Obligation = z.infer<typeof Obligation>;
 
+/** A theme: a shared portfolio's slug, which is at most 64 characters (the slug rule of the routes). */
+export const ThemeSlug = z.string().min(1).max(64);
+
 /**
  * A share of the plan with its own strategy (gate SLEEVES, Oct 5): a goal with dates, a theme from a
  * curated list, or the safest liquid yield. `shareBps` is of the whole plan.
  */
 export const PlanSleeve = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('goal'), shareBps: Bps.min(1) }),
-  z.object({ kind: z.literal('theme'), shareBps: Bps.min(1), theme: z.string().min(1) }),
+  z.object({ kind: z.literal('theme'), shareBps: Bps.min(1), theme: ThemeSlug }),
   z.object({ kind: z.literal('safe_yield'), shareBps: Bps.min(1) }),
 ]);
 export type PlanSleeve = z.infer<typeof PlanSleeve>;
@@ -61,7 +64,7 @@ export const BasketSheet = z.object({
   horizonMonths: z.number().int().min(1).max(480),
   risk: z.enum(['low', 'medium', 'high']),
   /** Family slugs. */
-  themes: z.array(z.string().min(1)).max(3),
+  themes: z.array(ThemeSlug).max(3),
   /**
    * ISO two-letter, self-declared. Optional and unused in planning (gate COUNTRY-REMOVED, Rodrigo,
    * Oct 6): no plan is shaped by it. Kept so stored sheets that carry one still parse.

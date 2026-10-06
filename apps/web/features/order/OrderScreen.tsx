@@ -12,13 +12,16 @@ import { type Dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { dollars } from '../goal/sheet';
+import { SharedReview } from '../shared/SharedReview';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
+import { ActivityPanel } from './ActivityPanel';
+import { activityOf } from './activity';
 import { assetName, formatBps, formatRaw, shortfallBps } from './amounts';
 import { type CallFailure, readOrder } from './order-api';
-import { checkDeposit } from './order-check';
-import { keepOrder, type OrderRecord, recallOrder } from './order-record';
+import { checkDeposit, checkFamilyBuy, type DepositCheck, sharedShapeOk } from './order-check';
+import { isBuy, keepOrder, type OrderRecord, recallOrder } from './order-record';
 import { legsInOrder, type NextStep, type OutcomeView, outcomeView, stepOf } from './order-view';
-import { chainReady, onMock } from './readiness';
+import { chainReady, explorerUrlFor, onMock } from './readiness';
 import { type RunOutcome, useOrderRunner } from './run-order';
 import { type ChainUnits, unitsFor } from './units';
 
@@ -30,6 +33,23 @@ import { type ChainUnits, unitsFor } from './units';
 // link of each landed step.
 
 type Load = { kind: 'loading' } | { kind: 'read'; order: OrderDetail } | { kind: CallFailure };
+
+/** Why an order is not offered for signing, or that it may be, with what it deposits. */
+type Check = DepositCheck | { ok: false; why: 'trades' | 'shape' };
+
+/**
+ * Before an order is offered for signing (order-check.ts): a buy of a plan deposits what was typed; a
+ * buy of a shared portfolio does too, and spends it on the weights its screen read; a follow and a
+ * publish move nothing and have only the steps their terms call for.
+ */
+function checkOf(order: OrderDetail, record: OrderRecord, units: ChainUnits | null): Check {
+  const terms = record.terms;
+  if (!terms) return checkDeposit(order, record.amountUsd, units);
+  if (terms.kind === 'family') return checkFamilyBuy(order, record.amountUsd, units, terms.targets);
+  return sharedShapeOk(order, terms)
+    ? { ok: true, depositRaw: 0n, decimals: 0 }
+    : { ok: false, why: 'shape' };
+}
 type Phase = { legId: string; phase: string } | null;
 
 export function OrderScreen({ id }: { id: string }) {
@@ -84,11 +104,7 @@ export function OrderScreen({ id }: { id: string }) {
       let approved = record.approved;
       // Never run an order that does not deposit what the person typed (order-check.ts).
       const order = approved?.order ?? (load.kind === 'read' ? load.order : null);
-      if (
-        !order ||
-        !checkDeposit(order, record.amountUsd, unitsFor(record.chain, onMock(port, record.chain)))
-          .ok
-      )
+      if (!order || !checkOf(order, record, unitsFor(record.chain, onMock(port, record.chain))).ok)
         return;
       if (!approved) {
         if (load.kind !== 'read') return;
@@ -105,7 +121,12 @@ export function OrderScreen({ id }: { id: string }) {
       setOutcome(null);
       const answer = await run({
         order: approved.order,
-        plan: { proposalId: record.proposalId, lines: record.lines },
+        plan: {
+          proposalId: record.proposalId,
+          lines: record.lines,
+          buyer: record.linked ? record.userId : null,
+        },
+        ...(record.terms ? { terms: record.terms } : {}),
         consents: approved.consents,
         ...(again ? { approvedAgain: again } : {}),
         onEvent: (event) => {
@@ -166,7 +187,12 @@ export function OrderScreen({ id }: { id: string }) {
   }
   if (!record)
     return (
-      <Notice title={t.order.title} body={t.order.elsewhere} href="/" label={t.plan.backToGoal} />
+      <Notice
+        title={t.order.title}
+        body={t.order.elsewhere}
+        href="/goal"
+        label={t.plan.backToGoal}
+      />
     );
 
   const shown = record.approved?.order ?? load.order;
@@ -175,7 +201,8 @@ export function OrderScreen({ id }: { id: string }) {
   // Every amount on this screen is the order's own, read with units this repository committed, and the
   // order is offered for signing only when it deposits what the person typed (order-check.ts).
   const units = unitsFor(chain, onMock(port, chain));
-  const check = checkDeposit(shown, record.amountUsd, units);
+  const check = checkOf(shown, record, units);
+  const buying = isBuy(record);
   const amount = check.ok
     ? dollars(Number(check.depositRaw) / 10 ** check.decimals, lang)
     : dollars(record.amountUsd, lang);
@@ -192,7 +219,14 @@ export function OrderScreen({ id }: { id: string }) {
   const needed = shown.needsConsent;
   const consentMissing = !record.approved && needed.some((kind) => !consents.includes(kind));
   const current = phase ? stepOf(shown, phase.legId) : 1;
-  const newOrder = `/plan/${encodeURIComponent(record.proposalId)}/buy`;
+  const terms = record.terms;
+  const newOrder = !terms
+    ? `/plan/${encodeURIComponent(record.proposalId)}/buy`
+    : terms.kind === 'family'
+      ? `/indexes/${encodeURIComponent(terms.slug)}/buy`
+      : terms.kind === 'follow'
+        ? `/indexes/${encodeURIComponent(terms.slug)}`
+        : '/publish';
   const testNetwork = shown.legs[0]?.provenance === 'sandbox';
 
   // The one primary button of the view: sign, carry on, approve a step again, or nothing.
@@ -205,9 +239,17 @@ export function OrderScreen({ id }: { id: string }) {
         ? t.order.outcome.lookAgain
         : next.kind === 'run' && view
           ? t.order.outcome.tryAgain
-          : record.approved
-            ? t.order.resume(amount)
-            : t.order.signAndBuy(amount);
+          : terms?.kind === 'publish'
+            ? record.approved
+              ? t.order.shared.resume
+              : t.order.shared.signPublish
+            : terms?.kind === 'follow'
+              ? record.approved
+                ? t.order.shared.resume
+                : t.order.shared.signFollow
+              : record.approved
+                ? t.order.resume(amount)
+                : t.order.signAndBuy(amount);
 
   return (
     <div data-ui="order-screen" className="flex flex-col gap-8">
@@ -232,7 +274,7 @@ export function OrderScreen({ id }: { id: string }) {
         <CardHeader title={t.order.stepsTitle} level={2} meta={t.chain.names[chain]} />
         <CardBody className="flex flex-col gap-4">
           <StatRow>
-            <Stat label={t.order.review.deposit}>{depositShown}</Stat>
+            {buying && <Stat label={t.order.review.deposit}>{depositShown}</Stat>}
             <Stat label={t.order.review.steps}>{legs.length}</Stat>
             {!record.approved && (
               <Stat label={t.order.review.expires} className="max-[620px]:col-span-2">
@@ -257,6 +299,7 @@ export function OrderScreen({ id }: { id: string }) {
                   phase={phase?.legId === leg.id ? phase.phase : null}
                   units={units}
                   explorer={`${t.chain.names[chain]} ${t.order.explorer}`}
+                  mock={onMock(port, chain)}
                   t={t}
                   locale={LOCALE[lang]}
                 />
@@ -265,6 +308,8 @@ export function OrderScreen({ id }: { id: string }) {
           </ol>
         </CardBody>
       </Card>
+
+      {terms && <SharedReview terms={terms} chain={chain} />}
 
       {shown.warnings.length > 0 && (
         <section aria-label={t.order.review.warnings} className="flex flex-col gap-2">
@@ -386,6 +431,18 @@ export function OrderScreen({ id }: { id: string }) {
           </Link>
         )}
       </div>
+
+      {/* His "Disclaimer and activity": what reached the chain, line by line with its link, beside the
+          disclaimer. */}
+      <ActivityPanel
+        executions={activityOf(
+          now,
+          t,
+          `${t.chain.names[chain]} ${t.order.explorer}`,
+          onMock(port, chain),
+        )}
+        empty={t.activity.noneYet}
+      />
     </div>
   );
 }
@@ -423,12 +480,15 @@ function Step({
   phase,
   units,
   explorer,
+  mock,
   t,
   locale,
 }: {
   n: number;
   /** The explorer's name, for the link's accessible name. */
   explorer: string;
+  /** The chain runs on the mock: its transactions are no network's, and link to the mock's own address. */
+  mock: boolean;
   /** As the review showed it: what it may do. */
   leg: Leg;
   /** As the API last said: where it stands. */
@@ -446,6 +506,8 @@ function Step({
     return u && figure !== null ? `${figure} ${u.symbol}` : null;
   };
   const spend = (raw: string) => (units ? whole(raw, units.cash) : null) ?? raw;
+  /** A token by the symbol this repository committed for it, or its id on the chain where none is. */
+  const symbol = (asset: string) => units?.tokens[asset]?.symbol ?? assetName(asset);
   const status = phase
     ? t.order.phase[phase as keyof Dictionary['order']['phase']]
     : t.order.status[now.status];
@@ -467,7 +529,7 @@ function Step({
           <span className="ml-auto inline-flex items-center gap-2">
             <ExplorerLink
               signature={now.txId}
-              href={now.explorerUrl}
+              href={explorerUrlFor(leg.chain, now.txId, mock)}
               explorer={explorer}
               labels={t.order.link}
             />
@@ -482,7 +544,7 @@ function Step({
             const under = expected ? shortfallBps(expected.outRaw, expected.minOutRaw) : null;
             return (
               <li key={`${trade.sell}>${trade.buy}:${trade.amountInRaw}`} className="tabular-nums">
-                {t.order.review.spend(spend(trade.amountInRaw), assetName(trade.buy))}
+                {t.order.review.spend(spend(trade.amountInRaw), symbol(trade.buy))}
                 {expected && (
                   <>
                     {' · '}

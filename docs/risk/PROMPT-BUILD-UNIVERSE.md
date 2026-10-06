@@ -4,18 +4,18 @@
 
 ---
 
-## Where this stands (2026-10-05)
+## Where this stands (2026-10-06)
 
-RU.1, RU.2 and RU.3 are done. RU.1: `trackedSet` in `packages/risk/src/universe.ts`, checked on the frozen Solana registry. RU.2: `pnpm risk-evm:universe` and `pnpm risk-evm:discover` write the Robinhood token list and one row per pool (`scripts/risk-evm/README.md`, "The token list and every pool"); their files are under `data/risk-evm/` on the founder's machine and are not committed. RU.3: `pnpm risk-evm:pareto` writes the cut from the discovery file (`scripts/risk-evm/README.md`, "The cut"): 30 tracked stocks at 80%, `data/risk-evm/cut-robinhood-<stamp>.json`, not committed. The next item is RU.5. The plan, this prompt, gate `UNIVERSE` and ledger row RISK-5 were written on branch `docs/universe-plan`; the status of every item is in section 6 of the plan.
+RU.1 to RU.7 and RU.10 are done. RU.1: `trackedSet` in `packages/risk/src/universe.ts`, checked on the frozen Solana registry. RU.2: `pnpm risk-evm:universe` and `pnpm risk-evm:discover` write the Robinhood token list and one row per pool (`scripts/risk-evm/README.md`, "The token list and every pool"); their files are under `data/risk-evm/` on the founder's machine and are not committed. RU.3: `pnpm risk-evm:pareto` writes the cut from the discovery file (`scripts/risk-evm/README.md`, "The cut"): 30 tracked stocks at 80%, `data/risk-evm/cut-robinhood-<stamp>.json`, not committed. RU.5: `pnpm risk-evm:oracles` writes the oracle map from the cut and Chainlink's directory (`scripts/risk-evm/README.md`, "The oracle map"): 24 of the 30 have a confirmed feed, `data/risk-evm/oracles-robinhood-<stamp>.json`, not committed. RU.4 (with RU.10): `pnpm risk:universe <chain>` writes the asset list of each chain from those files (`scripts/risk/universe/README.md`): `scripts/risk/universe/robinhood.json` (30 rows, 24 with a feed) and `solana.json` (18 rows, 10 with a Scope oracle), both committed; the schema is `AssetList` in `packages/schemas/src/universe.ts`. RU.6: `pnpm risk-evm:collect --list` collects the list's 30 stocks and writes one `evmq-pools-0.1` row per reachable pool to `data/risk-evm/pools/<day>.jsonl` (`scripts/risk-evm/README.md`, "A run on the asset list"); without `--list` a run is as it was. RU.7: the same list run reads every tracked feed at its block into `data/risk-evm/oracle/<day>.jsonl` (method `evmo-0.1`), and `pnpm risk-evm:import` loads those rows into `risk_price_observations` (`price_source` `chainlink`); the import has not met a database yet. RU.8 is in progress: its code is merged or in review (`pnpm risk:compute` keeps an EVM curve's symbol and `evmq-0.1`, the readers take each address under its own version, `pnpm db:seed` writes the 30 Robinhood rows, which offer nothing to a plan: gate `EVM-ROWS`); `pnpm db:seed`, the first `pnpm risk-evm:import`, `pnpm risk:compute` and the loop wait for the founder's word, and two installed jobs still run code built before it (`PLAN-UNIVERSE.md`, Discovered, 2026-10-06 (RU.8)). The next item is RU.9. The plan, this prompt, gate `UNIVERSE` and ledger row RISK-5 were written on branch `docs/universe-plan`; the status of every item is in section 6 of the plan.
 
 What already exists and is reused, not rebuilt:
 
 - Solana: the pool registry and collectors (`scripts/risk/build-registry.ts`, `retier.ts`, `pool-pareto.ts`, `scripts/risk/collector/`), the router (`routeTrade` in `packages/risk`), the split snapshot (`scripts/risk/split-snapshot.ts`), the price tables (`risk_price_observations`, `risk_reference_prices`) and the fact sheets (`packages/risk/src/facts/`).
 - Robinhood Chain: Thom's hourly depth collector (`scripts/risk-evm/`, slot REVM-1), with its tests in `tests/risk-evm.test.ts`.
 
-Decided: the Robinhood loop and its database run locally on the founder's machine (DU5); a dedicated machine or cloud infrastructure may come later. Waiting on a person: starting that loop (RU.8), and installing RU.12's job.
+Decided: the Robinhood loop and its database run locally on the founder's machine (DU5); a dedicated machine or cloud infrastructure may come later. Waiting on a person: the database runs and the loop of RU.8, rebuilding the refresh and price bundles, and installing RU.12's job.
 
-## U-B — Item execution (run once per item; replace `{N}` with 1–13)
+## U-B — Item execution (run once per item; replace `{N}` with 1–14)
 
 Execute item **RU.{N}** of `docs/risk/PLAN-UNIVERSE.md`.
 
@@ -28,6 +28,7 @@ Before you write code:
 3. Read the code the item extends, as files, not summaries:
    - RU.1, RU.3: `scripts/risk/pool-pareto.ts`, `scripts/risk/retier.ts`, `packages/risk/src/index.ts`.
    - RU.2, RU.5, RU.6, RU.7: all of `scripts/risk-evm/` (the README first), `tests/risk-evm.test.ts`, `fixtures/risk-evm/`.
+   - RU.6, RU.7, RU.8 also: `scripts/risk/universe/README.md`, `robinhood.json` and `packages/schemas/src/universe.ts` (the list they read).
    - RU.4: `packages/schemas/src/basket-asset.ts`, `fixtures/solana-vault/scope-indexes.json`, `scripts/seed-assets.ts`.
    - RU.8: `scripts/risk/compute.ts`, `apps/api/src/liquidity.ts`, the last section of `scripts/risk-evm/README.md`.
    - RU.9: `packages/risk/src/facts/`, `packages/risk/src/prices/`, `packages/db/src/risk-schema.ts`.

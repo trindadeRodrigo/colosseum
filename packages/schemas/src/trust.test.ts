@@ -9,7 +9,22 @@ const devnet = JSON.parse(
   readFileSync(new URL('../../../deployments/solana-devnet.json', import.meta.url), 'utf8'),
 ) as { roles: { admin: string }; params: { toleranceBps: number; lossCapBps: number } };
 
+const robinhood = JSON.parse(
+  readFileSync(new URL('../../../deployments/robinhood-testnet.json', import.meta.url), 'utf8'),
+) as { roles: { admin: string } };
+const robinhoodConfig = JSON.parse(
+  readFileSync(new URL('../../../contracts/script/config/46630.json', import.meta.url), 'utf8'),
+) as { params: { toleranceBps: number; lossCapBps: number } };
+
 describe('TRUST_STATUS', () => {
+  it('names the admin of the Robinhood Chain deployment and the keeper’s limits there, as its deploy set them', () => {
+    expect(TRUST_STATUS.admin.robinhood).toBe(robinhood.roles.admin);
+    expect(TRUST_STATUS.keeper.robinhood).toEqual({
+      toleranceBps: robinhoodConfig.params.toleranceBps,
+      weeklyLossCapBps: robinhoodConfig.params.lossCapBps,
+    });
+  });
+
   it('names the admin of the Solana deployment, as its deploy recorded it', () => {
     expect(TRUST_STATUS.admin.solana).toBe(devnet.roles.admin);
   });

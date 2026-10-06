@@ -9,7 +9,7 @@ import {
   type ZodTypeProvider,
 } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { DEPLOYMENTS_DIR, solanaDeployment } from './deployments';
+import { DEPLOYMENTS_DIR, evmDeployment, solanaDeployment } from './deployments';
 import { V1_SECURITY_SCHEMES, v1Transform } from './openapi';
 import { bearingPlanInputs } from './plan-inputs';
 import { corsAllowlist, corsByPath } from './plugins/cors';
@@ -29,7 +29,8 @@ import { registerV1Routes, type V1Deps } from './routes/v1';
 /**
  * `deps.v1` replaces what the /v1 routes run on, and `deps.env` the environment the flags are read
  * from. A test passes them; the server passes nothing. `deps.deployments` is the folder of the
- * deploys' records (`deployments/solana-<network>.json`), which give a real chain its addresses: the
+ * deploys' records (`deployments/solana-<network>.json`, `deployments/robinhood-<network>.json`), which
+ * give a real chain its addresses: the
  * repo's own for the server, none for a test that passes its own environment unless it names one.
  */
 export async function buildApp(
@@ -39,12 +40,17 @@ export async function buildApp(
     deps.deployments === undefined ? (deps.env ? null : DEPLOYMENTS_DIR) : deps.deployments;
   // The record gives a real chain its addresses. A chain on the mock or off has none to take, and its
   // record is not read at all.
-  const real = ['live', 'readonly'].includes(parseFlags(deps.env ?? process.env).chainMode.solana);
+  const modes = parseFlags(deps.env ?? process.env).chainMode;
+  const real = (mode: string) => ['live', 'readonly'].includes(mode);
   const solana =
-    deployments && real
+    deployments && real(modes.solana)
       ? solanaDeployment(deps.env ?? process.env, undefined, deployments)
       : { env: deps.env ?? process.env, contracts: {}, record: null };
-  const env = solana.env;
+  const robinhood =
+    deployments && real(modes.robinhood)
+      ? evmDeployment('robinhood', solana.env, undefined, deployments)
+      : { env: solana.env, contracts: {}, record: null };
+  const env = robinhood.env;
   // Stops here on a flag it cannot read.
   const flags = parseFlags(env);
   const app = Fastify({
@@ -99,8 +105,9 @@ export async function buildApp(
   await registerRiskRoutes(app);
   await registerV1Routes(app, env, {
     ...deps.v1,
-    contracts: deps.v1?.contracts ?? solana.contracts,
+    contracts: deps.v1?.contracts ?? { ...solana.contracts, ...robinhood.contracts },
     solanaRecord: deps.v1?.solanaRecord ?? solana.record,
+    robinhoodRecord: deps.v1?.robinhoodRecord ?? robinhood.record,
     planInputs: deps.v1?.planInputs ?? bearingPlanInputs,
     inScope,
   });

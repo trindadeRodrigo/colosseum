@@ -193,7 +193,7 @@ describe('a person who creates a wallet in the app', () => {
     expect(host.textContent).not.toContain('0x20…0498');
     // a person who arrived signed in is not moved on by the page: they asked to see it
     expect(router.replace).not.toHaveBeenCalled();
-    expect(button(host, en.signIn.done.next).getAttribute('href')).toBe('/');
+    expect(button(host, en.signIn.done.next).getAttribute('href')).toBe('/goal');
   });
 
   it('cannot confirm before choosing, and is told why', async () => {
@@ -362,7 +362,7 @@ describe('when the choice cannot be stored', () => {
     // only the wallet of the chain the plan lives on, and the way on is the person's to take
     expect(host.textContent).toContain(EVM);
     expect(host.textContent).not.toContain(SOLANA);
-    expect(button(host, en.signIn.done.next).getAttribute('href')).toBe('/');
+    expect(button(host, en.signIn.done.next).getAttribute('href')).toBe('/goal');
   });
 
   it('does not move that person on by itself: they read why their choice was not kept', async () => {
