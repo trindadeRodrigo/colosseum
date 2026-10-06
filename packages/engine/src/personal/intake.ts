@@ -345,7 +345,14 @@ export function runIntake(input: IntakeInput): IntakeResult {
     for (const field of COMPARED) {
       const model = draft[field];
       const other = rules[field];
-      if (model !== null && other !== null && model !== other) {
+      // The rules parser counts "for 10 years" as 121 months: one month apart is the same time frame
+      // here, in this check only.
+      const near =
+        field === 'horizonMonths' &&
+        typeof model === 'number' &&
+        typeof other === 'number' &&
+        Math.abs(model - other) <= 1;
+      if (model !== null && other !== null && model !== other && !near) {
         disagreements.push({ field, model, rules: other });
         flags.push(`disagrees_with_rules:${field}`);
         if (field !== 'language') unclear.add(field);

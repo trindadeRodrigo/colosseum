@@ -11,7 +11,15 @@ import {
   runIntake,
   type ShelfPortfolio,
 } from './intake';
-import { amountInText, horizonsIn, mentionsIn, refusalsIn } from './intake-text';
+import {
+  amountInText,
+  countryNamed,
+  goalCuesIn,
+  horizonsIn,
+  mentionsIn,
+  refusalsIn,
+  riskCuesIn,
+} from './intake-text';
 import { QUESTION_TEMPLATES, render } from './templates';
 import { launchShelf } from './testing';
 import { PersonalSheet } from './types';
@@ -193,8 +201,13 @@ describe('the checks after the model, on the evaluation set (C14)', () => {
       const r = run(g.id);
       const rules = draftFromRules(g.text, NOW).draft;
       for (const field of ['goal', 'horizonMonths', 'risk'] as const) {
-        const differ =
-          r.draft[field] !== null && rules[field] !== null && r.draft[field] !== rules[field];
+        const [a, b] = [r.draft[field], rules[field]];
+        // One month apart is the same time frame (the rules parser counts "for 5 years" as 61).
+        const near =
+          field === 'horizonMonths' && typeof a === 'number' && typeof b === 'number'
+            ? Math.abs(a - b) <= 1
+            : false;
+        const differ = a !== null && b !== null && a !== b && !near;
         expect(r.flags.includes(`disagrees_with_rules:${field}`), `${g.id} ${field}`).toBe(differ);
         if (differ)
           expect(
@@ -281,6 +294,54 @@ describe('the review of Oct 5: what the model gives that the text does not suppo
     });
     expect(aged.flags).toContain('not_in_text:horizonMonths');
     expect(aged.draft.horizonMonths).toBeNull();
+  });
+});
+
+describe('the re-review of Oct 5', () => {
+  it('a country named only under a negation is no cue for it', () => {
+    expect(countryNamed('Not in Brazil anymore, I moved to Portugal', 'BR')).toBe(false);
+    expect(countryNamed('Not in Brazil anymore, I moved to Portugal', 'PT')).toBe(true);
+    expect(countryNamed('I no longer live in Brazil', 'BR')).toBe(false);
+    expect(countryNamed('Não moro mais no Brasil', 'BR')).toBe(false);
+    expect(countryNamed('Saí do Brasil em 2024', 'BR')).toBe(false);
+    expect(countryNamed('Moro no Brasil', 'BR')).toBe(true);
+    expect(countryNamed('I left Chile and now live in Brazil', 'BR')).toBe(true);
+    const moved = runIntake({
+      text: 'Not in Brazil anymore, I moved to Portugal. Grow $5,000 over 2 years, high risk.',
+      nowMonth: NOW,
+      reply: { goal: 'grow', amountUsd: 5000, horizonMonths: 24, risk: 'high', country: 'BR' },
+      homeChain: 'solana',
+      portfolios,
+    });
+    expect(moved.flags).toContain('no_cue:country');
+    expect(moved.questions.find((q) => q.field === 'country')).toMatchObject({ read: 'BR' });
+  });
+
+  it('cues match whole words only: "highly" is not high, "lowest" not low, "keeper" not keep', () => {
+    expect(riskCuesIn('I am highly motivated')).toEqual([]);
+    expect(riskCuesIn('the lowest fees, a medium-sized sum')).toEqual(['medium']);
+    expect(riskCuesIn('risco alto')).toEqual(['high']);
+    expect(goalCuesIn('a goalkeeper with an incomer')).toEqual([]);
+    expect(goalCuesIn('Grow it')).toEqual(['grow']);
+    const highly = runIntake({
+      text: 'I am highly motivated to grow $5,000 over 2 years.',
+      nowMonth: NOW,
+      reply: { goal: 'grow', amountUsd: 5000, horizonMonths: 24, risk: 'high' },
+      homeChain: 'solana',
+      portfolios,
+    });
+    expect(highly.flags).toContain('no_cue:risk');
+  });
+
+  it('a time frame one month from the rules parser is the same one: no disagreement is flagged', () => {
+    // The rules parser reads "for 5 years" as 61 months; the model's 60 is the same time frame.
+    const rules = draftFromRules(goalOf('en-income-300-month').text, NOW).draft;
+    expect(rules.horizonMonths).toBe(61);
+    const result = run('en-income-300-month');
+    expect(result.draft.horizonMonths).toBe(60);
+    expect(result.flags).not.toContain('disagrees_with_rules:horizonMonths');
+    expect(result.disagreements.map((d) => d.field)).not.toContain('horizonMonths');
+    expect(result.questions.map((q) => q.field)).not.toContain('horizonMonths');
   });
 });
 

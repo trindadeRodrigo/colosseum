@@ -261,17 +261,27 @@ export function refusalsIn(text: string): { classes: HoldableClass[]; noCredit: 
 
 // Words that say a goal or a risk. The model's reading of either is taken only where the text holds
 // one of its words; otherwise it is a suggestion the person confirms.
+// Whole words only: "highly" is not "high", "lowest" not "low". A stem ends in `\p{L}*`.
+const cue = (words: string) => new RegExp(`(?<![\\p{L}])(?:${words})(?![\\p{L}])`, 'iu');
 const GOAL_CUES: Record<'grow' | 'income' | 'protect', RegExp> = {
-  grow: /\b(grow\w*|growth|crescer|crescimento|multiplic\w*|invest\w*|aplicar|put\b.*\bto work|build (?:up|wealth)|rentabiliz\w*)/iu,
-  income:
-    /\b(income|renda|dividend\w*|monthly|mensa\w*|a month|per month|por m[eê]s|ao m[eê]s|pay me|me pague)/iu,
-  protect:
-    /\b(protect\w*|proteg\w*|prote[cç][aã]o|safe\w*|segur\w*|keep\b|guard\w*|preserv\w*|reserv\w*|park\b)/iu,
+  grow: cue(
+    String.raw`grow|grows|growing|growth|crescer|crescimento|multiplic\p{L}*|invest|investing|investir|aplicar|put\b.*\bto work|build (?:up|wealth)|rentabiliz\p{L}*`,
+  ),
+  income: cue(
+    String.raw`income|renda|dividends?|monthly|mensal|mensais|mensalmente|a month|per month|por m[eê]s|ao m[eê]s|pay me|me pague`,
+  ),
+  protect: cue(
+    String.raw`protect|protecting|protection|proteger|prote[cç][aã]o|safe|safely|safety|seguro|segura|seguran[cç]a|keep|guard|guardar|preserve|preservar|reserve|reserva|park`,
+  ),
 };
 const RISK_CUES: Record<'low' | 'medium' | 'high', RegExp> = {
-  low: /\b(low|conservative|conservador\w*|cautious|cautel\w*|baix\w*|safe\w*|segur\w*|no stocks|sem a[cç][oõ]es|little risk|pouco risco)/iu,
-  medium: /\b(medium|moderate\w*|moderad\w*|m[eé]dio|balanced|equilibrad\w*)/iu,
-  high: /\b(high|aggressive|agressiv\w*|alt[oa]\b|bold|ousad\w*|a lot of risk|muito risco)/iu,
+  low: cue(
+    String.raw`low|conservative|conservador|conservadora|conservadoramente|cautious|cautelos[oa]|baix[oa]|safe|safely|seguro|segura|seguran[cç]a|no stocks|sem a[cç][oõ]es|little risk|pouco risco`,
+  ),
+  medium: cue(String.raw`medium|moderate|moderately|moderad[oa]|m[eé]dio|balanced|equilibrad[oa]`),
+  high: cue(
+    String.raw`high|aggressive|aggressively|agressiv[oa]|alt[oa]|bold|ousad[oa]|a lot of risk|muito risco`,
+  ),
 };
 /** The goals the text has a word for. */
 export const goalCuesIn = (text: string) =>
@@ -281,6 +291,8 @@ export const riskCuesIn = (text: string) =>
   (Object.keys(RISK_CUES) as (keyof typeof RISK_CUES)[]).filter((r) => RISK_CUES[r].test(text));
 
 const plain = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+const NEGATED_BEFORE =
+  /(?<![\p{L}])(?:not|no longer|never|left|moved (?:away )?from|nao|sai d[oae]s?|deixei|ex)(?:\s+\S+){0,3}\s*$/u;
 const DEMONYMS: Record<string, string[]> = {
   BR: ['brazilian', 'brasileir'],
   US: ['american', 'americano', 'americana'],
@@ -300,7 +312,12 @@ export function countryNamed(text: string, code: string): boolean {
     .filter((x): x is string => x !== undefined)
     .map((phrase) => plain(phrase).replace(/^(in the|in|nos|nas|no|na|em)\s+/, ''));
   const words = [...names, ...(DEMONYMS[code] ?? [])];
+  // A country named only under a negation ("not in Brazil anymore", "saí do Brasil") is not its cue.
   return words.some((w) =>
-    new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'u').test(said),
+    [
+      ...said.matchAll(
+        new RegExp(`(?<![\\p{L}])${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'gu'),
+      ),
+    ].some((m) => !NEGATED_BEFORE.test(said.slice(0, m.index ?? 0))),
   );
 }
