@@ -42,6 +42,18 @@ export const ROBINHOOD_TESTNET_POOLS: V4Pools = {
   hooks: ZERO,
 };
 
+/**
+ * Robinhood Chain mainnet, for a local copy of it: the NVDA and USDG pool the vault's fork test trades
+ * in (contracts/test/fork/RobinhoodForkSwap.t.sol), fee 100 and tick spacing 1, no hooks. Other tokens'
+ * pools on mainnet may sit at other fees; a trade in one of them is refused as `BadTrade` by the quote.
+ */
+export const ROBINHOOD_MAINNET_POOLS: V4Pools = {
+  quoter: '0x8dc178efb8111bb0973dd9d722ebeff267c98f94',
+  fee: 100,
+  tickSpacing: 1,
+  hooks: ZERO,
+};
+
 const QUOTER_ABI = parseAbi([
   'struct PoolKey { address currency0; address currency1; uint24 fee; int24 tickSpacing; address hooks; }',
   'struct QuoteExactSingleParams { PoolKey poolKey; bool zeroForOne; uint128 exactAmount; bytes hookData; }',

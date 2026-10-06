@@ -1,5 +1,5 @@
 import { adapterContract, type ContractFixture } from '@colosseum/chain-mock/contract';
-import { isStalePrice } from '@colosseum/schemas';
+import { type Address, parseAbi } from 'viem';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import {
   ACCOUNTS,
@@ -7,6 +7,7 @@ import {
   DEPOSIT_RAW,
   id,
   STRANGER,
+  TESTNET_RECORD,
   type TestnetWorld,
 } from './testnet-world';
 
@@ -64,9 +65,22 @@ describe.skipIf(!FORK_URL)('on a copy of Robinhood Chain test network', () => {
     async (): Promise<ContractFixture> => {
       const w = await startTestnet();
       // The test network's prices are copied in by its price writer; one it has not copied for longer
-      // than the vault accepts is stale on the copy too, and the reads are held to saying so.
-      const ids = (await w.adapter.listAssets()).map((a) => a.id);
-      const stale = (await w.adapter.getPrices(ids)).find((p) => isStalePrice(p));
+      // than the vault accepts is stale on the copy too, and the reads are held to saying so. Which
+      // one is read here from the feeds and the record, not from the adapter under test.
+      const now = (await w.client.getBlock()).timestamp;
+      const ages = await Promise.all(
+        TESTNET_RECORD.assets.map(async (a) => {
+          const [, , , updatedAt] = (await w.client.readContract({
+            address: a.feed as Address,
+            abi: parseAbi([
+              'function latestRoundData() view returns (uint80, int256, uint256, uint256, uint80)',
+            ]),
+            functionName: 'latestRoundData',
+          })) as readonly [bigint, bigint, bigint, bigint, bigint];
+          return { asset: a.id, stale: now - updatedAt > BigInt(a.maxAge) };
+        }),
+      );
+      const stale = ages.find((a) => a.stale);
       return {
         ...(stale ? { stalePriced: stale.asset } : {}),
         adapter: w.adapter,

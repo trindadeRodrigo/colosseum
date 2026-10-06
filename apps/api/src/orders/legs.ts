@@ -412,7 +412,9 @@ async function settleLanding(
  * to sign a second transaction for a step whose first may go through. If that transaction has landed
  * and nobody reported it, the leg settles on it here.
  * - Solana: an attempt can land until the chain is past its `validUntil`. Only time closes it.
- * - EVM: there is no expiry. The attempt stays open until it is reported or the person cancels it.
+ * - EVM: a call that trades carries a deadline (`validUntil`); past it with the nonce still free, `fate`
+ *   says `gone`. A call that does not trade has none, and stays open until it is reported or the person
+ *   cancels it.
  *
  * Answers the nonce the next build must share. On an EVM chain a cancelled attempt can still be sent
  * by the wallet that signed it, so the rebuild is given its nonce: at most one of the two can land.

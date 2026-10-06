@@ -180,7 +180,10 @@ export interface KeeperBuilder {
 export const AttemptRef = z.object({
   messageHash: z.string().min(1),
   signer: Address,
-  /** As the build gave it: a block height on Solana, null on EVM. */
+  /**
+   * As the build gave it: a block height on Solana; on EVM a trade's deadline in unix seconds, and null
+   * for a call that does not trade.
+   */
   validUntil: z.string().nullable(),
   /**
    * EVM: the nonce of record. It is the one the build stated (`evm.nonce`), or the one in the signed or

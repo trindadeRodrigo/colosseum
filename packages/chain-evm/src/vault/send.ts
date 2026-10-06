@@ -22,8 +22,8 @@ import { ask, type EvmRpc, isRevert } from './rpc';
 // was built. It holds no key. An attempt on EVM is the pair (message hash, nonce): two builds of one
 // call share the hash, and only one transaction can take a nonce.
 
-/** How far back `fate` looks for the transaction that took an attempt's nonce: on Robinhood Chain's test network about two minutes. */
-export const FATE_SCAN_BLOCKS = 600;
+/** The first step back from the head when `fate` looks for the block that took a nonce; it doubles. */
+export const FATE_FIRST_STEP = 64n;
 
 const HASH = /^0x[0-9a-f]{64}$/;
 
@@ -148,58 +148,68 @@ export function createEvmProbe(options: { config: ChainConfig; rpc: EvmRpc }): T
 
     async fate(attempt: AttemptRef): Promise<AttemptFate> {
       if (attempt.nonce === null) return { state: 'open' };
+      const nonce = attempt.nonce;
       const signer = attempt.signer as Hex;
-      const [used, head] = await Promise.all([
+      // One block for both reads: the head first, then the nonce at that very block. Behind a pool of
+      // nodes, a nonce read at `latest` from one and a head from another could say `gone` for a
+      // transaction the second already holds.
+      const head = await ask('eth_getBlockByNumber', () => rpc.getBlock({ blockTag: 'latest' }));
+      if (head.number === null) return { state: 'open' };
+      const top = head.number;
+      const countAt = (blockNumber: bigint) =>
         ask('eth_getTransactionCount', () =>
-          rpc.getTransactionCount({ address: signer, blockTag: 'latest' }),
-        ),
-        ask('eth_getBlockByNumber', () => rpc.getBlock({ blockTag: 'latest' })),
-      ]);
-      if (used <= attempt.nonce) {
+          rpc.getTransactionCount({ address: signer, blockNumber }),
+        );
+      if ((await countAt(top)) <= nonce) {
         // The nonce is still free. A trade signed with a deadline cannot land past it.
         const deadline = attempt.validUntil === null ? null : BigInt(attempt.validUntil);
         return deadline !== null && head.timestamp > deadline
           ? { state: 'gone' }
           : { state: 'open' };
       }
-      // The nonce is taken. The transaction that took it is looked for in the latest blocks; past them
-      // this cannot tell, and says open: never gone for a call that may have landed.
-      const last = head.number ?? 0n;
-      const first =
-        last - BigInt(FATE_SCAN_BLOCKS) + 1n > 0n ? last - BigInt(FATE_SCAN_BLOCKS) + 1n : 0n;
-      // Newest first, fifty blocks to a batch.
-      for (let top = last; top >= first; top -= 50n) {
-        const numbers: bigint[] = [];
-        for (let n = top; n > top - 50n && n >= first; n -= 1n) numbers.push(n);
-        const blocks = await Promise.all(
-          numbers.map((blockNumber) =>
-            ask('eth_getBlockByNumber', () =>
-              rpc.getBlock({ blockNumber, includeTransactions: true }),
-            ),
-          ),
-        );
-        for (const block of blocks) {
-          const found = block.transactions.find(
-            (tx) =>
-              typeof tx !== 'string' &&
-              tx.from.toLowerCase() === signer.toLowerCase() &&
-              tx.nonce === attempt.nonce,
-          );
-          if (!found || typeof found === 'string') continue;
-          if (!found.to || found.chainId === undefined) return { state: 'gone' };
-          const hash = hashOfCall({
-            from: found.from.toLowerCase(),
-            to: found.to.toLowerCase(),
-            value: found.value,
-            data: found.input,
-            chainId: found.chainId,
-          });
-          return hash === attempt.messageHash
-            ? { state: 'landed', txId: found.hash }
-            : { state: 'gone' };
+      // The nonce is taken: the block that took it is the first whose count is past it. It is found by
+      // doubling a step back from the head until the count is not past it, then halving between the
+      // two. A node that no longer holds the state of a height it is asked for cannot tell: open,
+      // never gone for a call that may have landed.
+      try {
+        let high = top;
+        let low = top;
+        for (let step = FATE_FIRST_STEP; ; step *= 2n) {
+          low = top > step ? top - step : 0n;
+          if ((await countAt(low)) <= nonce) break;
+          high = low;
+          if (low === 0n) return { state: 'open' };
         }
+        while (high - low > 1n) {
+          const mid = (low + high) / 2n;
+          if ((await countAt(mid)) > nonce) high = mid;
+          else low = mid;
+        }
+        const block = await ask('eth_getBlockByNumber', () =>
+          rpc.getBlock({ blockNumber: high, includeTransactions: true }),
+        );
+        const found = block.transactions.find(
+          (tx) =>
+            typeof tx !== 'string' &&
+            tx.from.toLowerCase() === signer.toLowerCase() &&
+            tx.nonce === nonce,
+        );
+        if (!found || typeof found === 'string') return { state: 'open' };
+        if (!found.to || found.chainId === undefined) return { state: 'gone' };
+        const hash = hashOfCall({
+          from: found.from.toLowerCase(),
+          to: found.to.toLowerCase(),
+          value: found.value,
+          data: found.input,
+          chainId: found.chainId,
+        });
+        return hash === attempt.messageHash
+          ? { state: 'landed', txId: found.hash }
+          : { state: 'gone' };
+      } catch (e) {
+        if (e instanceof ChainError && e.code === 'Unavailable') return { state: 'open' };
+        throw e;
       }
-      return { state: 'open' };
     },
 
     async nonceOf(seen) {
