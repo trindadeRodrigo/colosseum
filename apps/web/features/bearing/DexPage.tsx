@@ -8,6 +8,8 @@ import { Sparkline, sparkable } from '../../components/ui/Sparkline';
 import { type ChartRange, Segmented, TimeChart } from '../../components/ui/TimeChart';
 import type { BearingDictionary } from '../../i18n/bearing';
 import { type Base, useAnswer, useBearing } from './BearingProvider';
+import { ChainsSide } from './ChainsSide';
+import { type BearingChain, onChain } from './chain';
 import { R } from './data';
 import {
   COMMODITIES,
@@ -34,6 +36,7 @@ import {
   Kpis,
   Loading,
   MultiSelect,
+  OnChain,
   PageWait,
   Pie,
   Reason,
@@ -72,7 +75,7 @@ export function usePageState(page: string) {
 export const picked = (set: readonly string[] | null, id: string) => !set || set.includes(id);
 
 export function DexPage({ page }: { page: 'stocks' | 'commodities' }) {
-  const { base, dex } = useBearing();
+  const { base, dex, chain } = useBearing();
   const b = useAnswer(() => base(), [base]);
   const ids = b?.assets.ok ? dexIds(b.assets.body, page) : null;
   const key = ids?.join(',');
@@ -94,9 +97,10 @@ export function DexPage({ page }: { page: 'stocks' | 'commodities' }) {
     setAsked(null);
     if (!symbol) return;
     const home = COMMODITIES.includes(symbol) ? 'commodities' : 'stocks';
-    if (home !== page) router.replace(`/analytics/${home}?asset=${encodeURIComponent(symbol)}`);
+    if (home !== page)
+      router.replace(onChain(`/analytics/${home}?asset=${encodeURIComponent(symbol)}`, chain));
     else state.setSel({ assets: [symbol], pools: null });
-  }, [asked, b, page, router, state]);
+  }, [asked, b, page, router, state, chain]);
 
   const k = t.dex.kpi;
   if (!b || (b.assets.ok && !dd))
@@ -135,7 +139,7 @@ function DexView({
   dd: Record<string, DexAsset>;
 }) {
   const fm = useFmt();
-  const { clock } = useBearing();
+  const { clock, chain } = useBearing();
   const all = useWords();
   const t = all.dex;
   const { sel, setSel, metric: m, setMetric, range, setRange } = usePageState(page);
@@ -263,7 +267,7 @@ function DexView({
             captionHidden
             rows={selIds}
             rowKey={(id) => id}
-            columns={assetColumns(body, byId, dd, pools, sel.pools != null, t.table, fm)}
+            columns={assetColumns(body, byId, dd, pools, sel.pools != null, t.table, fm, chain)}
           />
         ) : (
           <p>
@@ -274,6 +278,7 @@ function DexView({
       <p className="mt-3 max-w-[88ch] font-mono text-b-meta text-muted-foreground">
         method {body.methodVersion} · τ = 1.00% · {body.honesty.join(' ')}
       </p>
+      {page === 'stocks' && <ChainsSide />}
     </>
   );
 }
@@ -286,6 +291,7 @@ function assetColumns(
   poolsChosen: boolean,
   t: BearingDictionary['dex']['table'],
   fm: Fmt,
+  chain: BearingChain,
 ): Column<string>[] {
   const cap = (r: keyof typeof t.capacity): Column<string> => ({
     key: r,
@@ -299,12 +305,15 @@ function assetColumns(
       header: t.asset,
       rowHeader: true,
       cell: (id) => (
-        <Link
-          href={`/analytics/simulation?asset=${encodeURIComponent(id)}`}
-          className="font-semibold underline decoration-1 underline-offset-[3px] hover:decoration-2"
-        >
-          {id}
-        </Link>
+        <span className="inline-flex flex-wrap items-baseline gap-x-2">
+          <Link
+            href={onChain(`/analytics/simulation?asset=${encodeURIComponent(id)}`, chain)}
+            className="font-semibold underline decoration-1 underline-offset-[3px] hover:decoration-2"
+          >
+            {id}
+          </Link>
+          <OnChain />
+        </span>
       ),
     },
     {

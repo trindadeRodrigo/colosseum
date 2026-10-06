@@ -32,6 +32,8 @@ import {
   Kpis,
   Loading,
   MultiSelect,
+  NotOnChain,
+  OnChain,
   PageWait,
   Pie,
   Reason,
@@ -47,7 +49,13 @@ import type { AssetsBody, HistBody } from './types';
 // box (0.1% to 10%, default 1%) sets it for the whole page: counters, chart and table re-read the
 // capacity at that tolerance.
 
+/** Lending pools are Solana's: on another chain the page says it is not collected there. */
 export function LendingPage() {
+  const { chain } = useBearing();
+  return chain === 'solana' ? <LendingOnSolana /> : <NotOnChain />;
+}
+
+function LendingOnSolana() {
   const t = useWords();
   const { base, lending, reader, ui } = useBearing();
   const tol = ui.tol;
@@ -382,8 +390,9 @@ function LendBody(p: {
       rowHeader: true,
       cell: ({ row }) => (
         <>
-          <span className="block font-normal whitespace-nowrap">
+          <span className="flex flex-wrap items-baseline gap-x-2 font-normal whitespace-nowrap">
             {poolName(row.meta, t.market)}
+            <OnChain />
           </span>
           <a
             href={`https://solscan.io/account/${row.meta.account}`}

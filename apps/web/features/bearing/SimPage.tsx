@@ -4,12 +4,25 @@ import { Button } from '../../components/ui/Button';
 import { type Column, DataTable } from '../../components/ui/DataTable';
 import { Status } from '../../components/ui/StatusMark';
 import { type Base, useAnswer, useBearing } from './BearingProvider';
+import { readKey } from './chain';
 import { R, type Res } from './data';
 import { capFact } from './dex';
 import { FlowChart } from './Flow';
 import type { Fact } from './fact';
 import { REGIMES } from './format';
-import { Card, Count, Fig, Kpi, Kpis, Loading, PageWait, Reason, useFmt, useWords } from './parts';
+import {
+  Card,
+  Count,
+  Fig,
+  Kpi,
+  Kpis,
+  Loading,
+  OnChain,
+  PageWait,
+  Reason,
+  useFmt,
+  useWords,
+} from './parts';
 import { chunksFor, parseAmount, type SimPath, simPaths } from './sim';
 import { etLabel, regimeAt } from './time';
 import type { RecovBody, SheetBody, SplitBody } from './types';
@@ -144,16 +157,18 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
   const a = body?.assets.find((x) => x.symbol === id);
   const cap = body ? capFact(a, r, body) : null;
   const chunks = cap ? chunksFor(n, cap) : 0;
+  // read by the symbol on Solana and by the address on Robinhood Chain (chain.ts)
+  const key = readKey(a, id);
   const rs = useAnswer(
     () =>
       Promise.all([
-        reader.get<SheetBody>(R.sheet(id, n)),
-        reader.get<RecovBody>(R.recov(id, n)),
-        chunks ? reader.get<SheetBody>(R.sheet(id, n / chunks)) : Promise.resolve(null),
-        reader.get<SplitBody>(R.split(id, n)),
-        chunks ? reader.get<SplitBody>(R.split(id, n / chunks)) : Promise.resolve(null),
+        reader.get<SheetBody>(R.sheet(key, n)),
+        reader.get<RecovBody>(R.recov(key, n)),
+        chunks ? reader.get<SheetBody>(R.sheet(key, n / chunks)) : Promise.resolve(null),
+        reader.get<SplitBody>(R.split(key, n)),
+        chunks ? reader.get<SplitBody>(R.split(key, n / chunks)) : Promise.resolve(null),
       ]),
-    [id, n, chunks, reader],
+    [key, n, chunks, reader],
   );
   if (!rs || !body || !cap) return <Loading>{t.pricing(fm.usd(n), id)}</Loading>;
   const [s, recov, sc, fNow, fSplit] = rs as [
@@ -200,6 +215,7 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
         <span className="inline-flex items-center gap-1.5">
           {p === best && <Status status="on-track">{t.best}</Status>}
           <b className="font-semibold whitespace-nowrap">{p.name}</b>
+          <OnChain />
         </span>
       ),
     },
@@ -249,7 +265,10 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
       rowHeader: true,
       cell: (g) => (
         <>
-          {words.regimes[g as keyof typeof words.regimes] ?? g}
+          <span className="inline-flex flex-wrap items-baseline gap-x-2">
+            {words.regimes[g as keyof typeof words.regimes] ?? g}
+            <OnChain />
+          </span>
           {g === r && (
             <span className="block font-mono text-b-meta font-normal text-muted-foreground">
               {t.now}
