@@ -193,8 +193,6 @@ test('signed in, the logo leads to the landing, and its bar leads back into the 
   await page.request.post(`${STUB}/__stub/reset`);
   await page.goto('/sign-in');
   await page.getByRole('button', { name: en.signIn.passkey.continue }).click();
-  await page.getByRole('button', { name: 'Solana' }).click();
-  await page.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
   await expect(page).toHaveURL(/\/goal$/);
   await page.getByRole('link', { name: en.shell.home }).click();
   // the landing, not a redirect back to the goal
@@ -217,8 +215,6 @@ async function toBuy(page: Page, o: { fund?: 'mock' | 'test' } = {}) {
   await page.locator('header a[href="/sign-in"]').click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
-  await dialog.getByRole('button', { name: 'Solana' }).click();
-  await dialog.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/goal$/);
   await check(page, 'home');

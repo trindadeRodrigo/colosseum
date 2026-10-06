@@ -141,51 +141,45 @@ export const en = {
     names: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
     /** The explorer each chain's transaction links open, named beside the link. */
     explorers: { solana: 'Solscan', robinhood: 'Robinhood explorer', base: 'Basescan' },
-    pick: {
-      title: 'Choose the chain your plan lives on',
-      /** Why this person is asked: they made their wallet here, or connected wallets of both kinds. */
-      asked: {
-        made: 'You made your wallet here, so you choose its chain, once.',
-        connected:
-          'You connected wallets on two chains, so you choose which one your plan lives on, once.',
-      },
-      body: 'Your deposit, your vault and every trade of your plan stay on that chain. Each chain has its own shelf of assets, and a plan is built only from the shelf of its chain: it is never split across two.',
-      warning: 'This can’t be changed later.',
-      group: 'The chain of your plan',
-      /** Under a choice: the address the plan will use there. */
-      address: (address: string) => `Your wallet there: ${address}`,
-      confirm: (chain: string) => `My plan lives on ${chain}`,
-      confirmNone: 'Choose a chain',
-      saving: 'Saving your choice…',
-      why: 'Choose a chain to continue.',
-      /** A chain the person holds a wallet for, and our server has switched off: it is not offered. */
-      off: (chain: string) =>
-        `${chain} is switched off on our server for now, so it can’t be chosen.`,
-      noneOn: 'No chain can be chosen right now. Nothing is lost: come back later.',
-      /** The throwaway wallet of development: nothing is stored on the server. */
-      mock: 'The throwaway wallet has no account on our server, so this choice is kept in this tab only.',
+    /** The bar's chain switcher (gate CHAIN-SWITCH). */
+    switch: {
+      /** The button's name: what it is, and the chain it shows. */
+      current: (chain: string) => `Chain: ${chain}`,
+      group: 'Choose a chain',
+      /** Signed in: what a switch changes, and what it doesn't. */
+      plansStay:
+        'New plans are built on the chain you choose. Plans you already have stay on their own chain.',
+      /** Signed out: what the chain changes. */
+      browsing: 'Shows the shared portfolios of that chain.',
+      noWallet: (chain: string) => `The wallet you signed in with doesn’t sign on ${chain}.`,
+      off: (chain: string) => `${chain} is switched off on our server for now.`,
+      saving: 'Switching…',
+      done: (chain: string) => `You’re on ${chain} now.`,
     },
     is: {
-      picked: (chain: string) => `Your plan lives on ${chain}. You chose that, and it stands.`,
+      picked: (chain: string) =>
+        `New plans are built on ${chain}. You can switch chain from the bar at the top.`,
       wallet: (chain: string) =>
-        `Your plan lives on ${chain}, the chain of the wallet you connected.`,
+        `New plans are built on ${chain}, the chain of the wallet you connected.`,
     },
+    /** Why a switch was not saved. */
     failure: {
-      /** Another device or tab chose first. `stored` is where the plan lives, `tried` what was just chosen. */
-      taken: (stored: string, tried: string) =>
-        `Your plan already lives on ${stored}: that was chosen before, on another device or in another tab, and it can’t be changed. ${tried} was not saved.`,
-      /** The same, when the server has not said yet which chain it was. */
-      takenUnknown: (tried: string) =>
-        `${tried} was not saved: a chain was chosen for your plan before, on another device or in another tab, and it can’t be changed.`,
-      notOffered: 'That chain can’t be chosen with this wallet. Choose the other one.',
+      noWallet: (chain: string) =>
+        `I couldn’t switch: the wallet you signed in with doesn’t sign on ${chain}.`,
+      notOffered: 'That chain can’t be chosen here.',
       unreachable:
-        'I couldn’t save that: our server didn’t answer. Your choice isn’t stored yet. Try again.',
-      signedOut: 'Your sign-in ran out before the choice was saved. Sign in again, then choose.',
+        'I couldn’t switch: our server didn’t answer. You’re still on the same chain. Try again.',
+      signedOut: 'Your sign-in ran out before the switch was saved. Sign in again, then switch.',
       /** The API answered 401 because the identity token was not sent: the sign-in service didn't give one. */
       noIdentity:
-        'I couldn’t save that: the sign-in service didn’t give me the part of your sign-in that lists your wallets, so our server can’t check them. Your choice isn’t stored yet. Wait a minute, then try again.',
+        'I couldn’t switch: the sign-in service didn’t give me the part of your sign-in that lists your wallets, so our server can’t check them. Wait a minute, then try again.',
     },
     unknown: {
+      /** Every chain a wallet of theirs signs on is switched off on our server. */
+      off: 'Every chain your wallets sign on is switched off on our server for now. Nothing is lost: come back later.',
+      /** The API would not start them on the chain asked for (409, 422). */
+      refused:
+        'Our server didn’t take a chain for the wallets you signed in with, so I can’t build for you yet. Sign out, then sign in again.',
       body: 'I can’t tell yet which chain your plan lives on: our server didn’t answer. Nothing is wrong with your wallet.',
       retry: 'Ask again',
       asking: 'Asking…',
@@ -227,6 +221,8 @@ export const en = {
       /** The sheet's source line, for an example sent as it is: its limits are the app's own. */
       source: 'this example’s own limits',
     },
+    /** Beside the reader on the sheet's source line, when the words of the goal filled what it left empty. */
+    filledFromWords: 'filled from your words',
     readFailure: {
       unreachable:
         'I couldn’t reach our server to read that. Your text is still here. Try again in a moment.',
@@ -276,6 +272,9 @@ export const en = {
       income: 'What you need each month. Leave it empty if you have no figure.',
       horizon: 'From 1 to 480.',
       country: 'You state it. It decides which assets you may hold.',
+      /** The country's hint while it is the one this browser's language names, unchanged. */
+      countryFromBrowser:
+        'Taken from this browser’s language. Change it if you live elsewhere: it decides which assets you may hold.',
       holdings: 'The plan fills gaps and avoids doubling up.',
       amount: 'What this plan starts with, from $10 to $1,000,000.',
       /** Before the hint of a field the reader left empty. */
@@ -307,15 +306,15 @@ export const en = {
     },
     chain: {
       label: 'Chain',
-      note: 'The chain of your wallet. The plan, its vault and every trade stay there.',
+      note: 'The chain you’re on. The plan, its vault and every trade stay there, even if you switch later.',
       unset: 'Not set',
-      unsetNote: 'A plan is built for the chain of your wallet.',
+      unsetNote: 'A plan is built on the chain you’re on.',
       choose: 'Choose the chain',
       unknown: 'Not known yet',
     },
     blocked: {
       signedOut: 'Sign in to build: a plan is built for the chain of your wallet.',
-      chainNotChosen: 'Choose the chain your plan lives on first.',
+      chainNotChosen: 'Choose a chain from the bar at the top first.',
       chainUnknown:
         'I can’t tell yet which chain your plan lives on, so I can’t build for it. Ask again, above.',
       refused: 'Our server didn’t accept these limits. Check each field, then try again.',
@@ -537,8 +536,12 @@ export const en = {
       body: 'A plan is kept in the browser tab that built it, and this one isn’t here. Build it again from your goal: your limits are kept.',
     },
     backToGoal: 'Back to your goal',
-    otherChain: (plan: string, yours: string) =>
-      `This plan was made for ${plan}, and your plans live on ${yours}. Build it again from your goal.`,
+    /** A plan on a chain no wallet of the person's signs on. */
+    unsignable: (plan: string) =>
+      `This plan is on ${plan}, and the wallet you signed in with doesn’t sign there. Sign in with a wallet that does, or build a plan from your goal.`,
+    /** A plan made before a plan lived on one chain. */
+    split:
+      'This plan is spread over two chains, and a plan lives on one. Build it again from your goal.',
     lead: (chain: string) =>
       `Built for ${chain}, from your limits. Nothing is bought until you review every step and sign it.`,
     holds: 'What it holds',
@@ -881,7 +884,11 @@ export const en = {
       lead: (chain: string) =>
         `A list of assets and weights its creator published on ${chain}. Following it means a vault of yours takes its weights; a new version takes effect after a delay, and you see it before it does.`,
       notHere: (chain: string) =>
-        `This portfolio isn’t published on ${chain}, where your plans live, so it can’t be followed from your wallet.`,
+        `This portfolio isn’t published on ${chain}, your current chain, so it can’t be followed from here.`,
+      /** A vault of the person's on another chain follows it: it is updated on that chain. */
+      elsewhere: (chain: string) =>
+        `You have a vault on ${chain} that follows this portfolio. Switch to ${chain} to update it there.`,
+      switchTo: (chain: string) => `Switch to ${chain}`,
       recipe: (chain: string) => `On ${chain}`,
       inEffect: 'In effect',
       since: (when: string) => `since ${when}`,

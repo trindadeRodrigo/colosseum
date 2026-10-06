@@ -1,12 +1,12 @@
 import { type Chain, ChainId, PersonResponse, type WalletAccount } from '@colosseum/schemas';
 
-// Who is signed in, and the one chain their plan lives on (gates ONE-CHAIN and CHAIN-PICK). The API
-// decides and stores it: GET /v1/me and PUT /v1/me/chain (API-2). Their shape is the shared
-// `PersonResponse` (packages/schemas/src/account-api.ts):
+// Who is signed in, and their current chain: where a new plan is made (gates ONE-CHAIN and
+// CHAIN-SWITCH). The API decides and stores it: GET /v1/me and PUT /v1/me/chain (API-2). Their shape is
+// the shared `PersonResponse` (packages/schemas/src/account-api.ts):
 //   wallets       the wallets of the verified sign-in, as the API read them
 //   chain         null until there is one: the person made their wallet here and has not chosen yet
-//   chainSource   `wallet`: the chain of the outside wallet they connected. `picked`: they chose, once
-//   chainOptions  what may be chosen. Empty once there is a chain
+//   chainSource   `wallet`: the chain of the outside wallet they connected. `picked`: they chose
+//   chainOptions  the chains a wallet of theirs signs on, which they may switch to
 
 /** The answer of GET /v1/me and of PUT /v1/me/chain. */
 export type Person = PersonResponse;
@@ -26,15 +26,16 @@ export type ApiFetch = (path: string, init?: RequestInit) => Promise<Response>;
  * - `signed_out`: the API does not know who is asking (401): the sign-in ran out.
  * - `no_identity`: the API was sent no identity token (401), even after the wallet was asked for a new
  *   one: the sign-in service did not give one. Asking again later may work.
- * - `taken`: the chain was set before and is another one (409). It never changes.
- * - `not_offered`: this person cannot choose that chain (422).
+ * - `no_wallet`: no wallet of this person signs on that chain (409 `NO_WALLET_FOR_CHAIN`): an EVM wallet
+ *   alone cannot sign on Solana.
+ * - `not_offered`: this server does not offer that chain (422).
  * - `busy`: the API asked for fewer requests (429).
  */
 export type PersonFailure =
   | 'unreachable'
   | 'signed_out'
   | 'no_identity'
-  | 'taken'
+  | 'no_wallet'
   | 'not_offered'
   | 'busy';
 
@@ -49,7 +50,7 @@ export class PersonError extends Error {
 
 const KIND_OF_STATUS: Record<number, PersonFailure> = {
   401: 'signed_out',
-  409: 'taken',
+  409: 'no_wallet',
   422: 'not_offered',
   429: 'busy',
 };
@@ -87,10 +88,7 @@ async function ask(apiFetch: ApiFetch, path: string, init?: RequestInit): Promis
 /** GET /v1/me. */
 export const fetchPerson = (apiFetch: ApiFetch): Promise<Person> => ask(apiFetch, '/v1/me');
 
-/**
- * PUT /v1/me/chain. The API stores it once: the same chain again answers as before, another one is
- * refused (`taken`).
- */
+/** PUT /v1/me/chain: picks or switches the current chain. Plans already made stay on theirs. */
 export const storeChain = (apiFetch: ApiFetch, chain: ChainId): Promise<Person> =>
   ask(apiFetch, '/v1/me/chain', {
     method: 'PUT',
@@ -107,7 +105,8 @@ export const HOME_CHAIN: Record<Chain, ChainId> = { solana: 'solana', evm: 'robi
 /**
  * The person as the API would describe them, worked out here, for the throwaway wallet of development
  * only: it has no account on the API. An outside wallet names the chain of its family; a wallet made
- * in the app needs a choice, which `picked` holds for as long as the page is open.
+ * in the app needs a choice, which `picked` holds for as long as the page is open. A choice the wallet
+ * cannot sign on is not taken, as the API would refuse it.
  */
 export function localPerson(
   userId: string,
@@ -115,24 +114,13 @@ export function localPerson(
   picked: ChainId | null,
 ): Person {
   const mine = [...wallets];
-  if (picked)
-    return { userId, wallets: mine, chain: picked, chainSource: 'picked', chainOptions: [] };
+  const held = new Set(mine.map((w) => HOME_CHAIN[w.family]));
+  const chainOptions = ChainId.options.filter((chain) => held.has(chain));
+  if (picked && held.has(picked))
+    return { userId, wallets: mine, chain: picked, chainSource: 'picked', chainOptions };
   const outside = new Set(mine.filter((w) => w.kind === 'external').map((w) => w.family));
   const [only] = outside;
   if (outside.size === 1 && only)
-    return {
-      userId,
-      wallets: mine,
-      chain: HOME_CHAIN[only],
-      chainSource: 'wallet',
-      chainOptions: [],
-    };
-  const held = new Set(mine.map((w) => HOME_CHAIN[w.family]));
-  return {
-    userId,
-    wallets: mine,
-    chain: null,
-    chainSource: null,
-    chainOptions: ChainId.options.filter((chain) => held.has(chain)),
-  };
+    return { userId, wallets: mine, chain: HOME_CHAIN[only], chainSource: 'wallet', chainOptions };
+  return { userId, wallets: mine, chain: null, chainSource: null, chainOptions };
 }

@@ -122,9 +122,9 @@ test('the bar keeps its height: signed out, on /sign-in, and signed in', async (
   await expect(page.locator('header [data-ui="sign-in-here"]')).toBeVisible();
   expect(await height()).toBe(out);
   await page.getByRole('button', { name: /Continue with a passkey/ }).click();
-  await page.getByRole('button', { name: 'Solana' }).click();
-  await page.getByRole('button', { name: /My plan lives on Solana/ }).click();
+  // no chain is asked (CHAIN-SWITCH): the bar shows the switcher and the account
   await expect(page.locator('header [data-ui="account"]')).toBeVisible();
+  await expect(page.locator('header [data-ui="chain-switch"]')).toBeVisible();
   expect(await height()).toBe(out);
 });
 

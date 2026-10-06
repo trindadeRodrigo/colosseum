@@ -12,17 +12,52 @@ export type CapCell = {
   to: string | null;
 };
 export type AssetRow = {
+  /** Robinhood Chain's rows: `robinhood:<sym>`. */
+  id?: string;
   assetMint: string;
   symbol: string;
-  poolTvlUsd: number;
-  pools: number;
+  /** The chain the row is read for; an API from before chains leaves it out (Solana). */
+  chain?: 'solana' | 'robinhood';
+  /** Null on Robinhood Chain, whose pools are not in the registry; `poolsNullReason` says so. */
+  poolTvlUsd: number | null;
+  pools: number | null;
+  poolsNullReason?: string;
   capacityAtTau: Partial<Record<string, CapCell>>;
+  provenance?: string;
 };
 export type AssetsBody = {
   methodVersion: string;
   tau: number;
+  chain?: 'solana' | 'robinhood';
   honesty: string[];
   assets: AssetRow[];
+};
+
+/** A figure of `GET /risk/chains`: sourced, or null with the reason it is not collected. */
+export type ChainFigure = {
+  value: number | null;
+  nullReason?: string;
+  source?: string;
+  method?: string;
+  methodVersion?: string;
+  fetchedAt?: string | null;
+  provenance?: string;
+  regime?: string;
+  measuredAssets?: number;
+  assets?: number;
+  pools?: number;
+};
+export type ChainsBody = {
+  tau: number;
+  regime: string;
+  at: string;
+  chains: Array<{
+    chain: 'solana' | 'robinhood';
+    assetsTracked: ChainFigure;
+    poolTvlUsd: ChainFigure;
+    exitCapacityUsd: ChainFigure;
+    volume24hUsd: ChainFigure;
+  }>;
 };
 
 export type Pool = {
@@ -35,7 +70,7 @@ export type Pool = {
   discoveryVolume24hUsd?: number | null;
   fetchedAt: string;
 };
-export type PoolsBody = { pools: Pool[] };
+export type PoolsBody = { pools: Pool[]; nullReason?: string };
 export type RecordedBody = { pools: Array<{ address: string }> };
 
 export type Exit = {
@@ -70,6 +105,7 @@ export type Series<P> = {
   source: string;
   method: string;
   methodVersion: string;
+  provenance?: string;
 };
 export type HistBody = Series<HistPoint>;
 

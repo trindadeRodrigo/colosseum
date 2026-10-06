@@ -14,7 +14,8 @@ import type {
 // The stocks and commodities pages, worked out from the API's answers (analytics2.js, dexRender).
 // Every derived figure is a fact whose method names its parts and its formula.
 
-export const COMMODITIES = ['GLDx'];
+// Gold: the xStock on Solana, the stock token on Robinhood Chain.
+export const COMMODITIES = ['GLDx', 'GLD'];
 export const HOUR = 3600e3;
 export const DAY = 864e5;
 export const hourOf = (t: string | number) => Math.floor(new Date(t).getTime() / HOUR) * HOUR;
@@ -39,6 +40,7 @@ export function capFact(a: AssetRow | undefined, r: string, body: AssetsBody): F
     regime: r,
     method: `largest sale at cost ≤ τ = ${pct(body.tau)} on the fitted sell curve`,
     methodVersion: body.methodVersion,
+    provenance: a?.provenance,
   });
 }
 
@@ -78,7 +80,7 @@ export function dexVolume(pools: readonly Pool[]): Fact {
 export function assetVol(d: DexAsset | undefined): Fact {
   if (!d) return none('not_collected');
   const own = vol24(d.sheet);
-  return has(own) ? own : dexVolume(poolsOf(d));
+  return has(own) || !poolsOf(d).length ? own : dexVolume(poolsOf(d));
 }
 
 export const dexIds = (body: AssetsBody, page: 'stocks' | 'commodities') =>
@@ -140,7 +142,8 @@ export function dexCounters(
     },
   );
   // Bearing's own measure where it is collected; DexScreener's, named as such, where it is not.
-  const vol = has(flow) ? flow : dexVolume(pools);
+  // With no pool to sum (Robinhood Chain's are not in the registry), the missing figure keeps its reason.
+  const vol = has(flow) || !pools.length ? flow : dexVolume(pools);
   let lpW = 0;
   let lpS = 0;
   let lpT: string | null | undefined = null;
@@ -221,6 +224,7 @@ export function capacitySeries(
           fetchedAt: last,
           method: `${src.method}; summed over the selected assets per UTC hour`,
           methodVersion: src.methodVersion,
+          provenance: src.provenance,
           quality: lastP.ns < n || lastP.lb ? 'lower_bound' : 'measured',
         })
       : none('not_collected');

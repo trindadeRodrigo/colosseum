@@ -85,6 +85,9 @@ describe('the embed’s goal', () => {
     expect(calls.map((c) => [c.method, new URL(c.url).pathname])).toEqual([['POST', '/goals']]);
     const limits = find(host, `section[aria-label="${en.embed.limits}"]`);
     expect(limits.querySelectorAll('dl > div')).toHaveLength(4);
+    // what the reader made for reais leaves, the goal's own words fill: the dollars and the months
+    expect(limits.textContent).toContain('$40,000');
+    expect(limits.textContent).not.toContain(en.embed.notFound);
     const out = find<HTMLAnchorElement>(limits, 'a');
     expect(out.textContent).toBe(en.embed.build);
     expect(out.getAttribute('target')).toBe('_blank');

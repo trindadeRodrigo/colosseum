@@ -9,8 +9,14 @@ import {
   type Regime,
 } from '@colosseum/risk';
 import type { Asset, RegimeLiquidityProvider } from '@colosseum/schemas';
-import { and, desc, eq, inArray } from 'drizzle-orm';
-import { CURVE_METHOD_VERSIONS, curveVersionOf, RISK_METHOD_VERSION } from './curve-version';
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import {
+  CURVE_METHOD_VERSIONS,
+  curveKey,
+  curveVersionOf,
+  EVM_METHOD_VERSION,
+  RISK_METHOD_VERSION,
+} from './curve-version';
 
 const ROOT = process.env.REPO_ROOT ?? join(import.meta.dirname, '..', '..', '..');
 
@@ -30,14 +36,24 @@ export async function loadLiquidityProvider(
   assets: Pick<Asset, 'id' | 'mint'>[],
 ): Promise<RegimeLiquidityProvider | undefined> {
   if (process.env.RISK_LIQUIDITY === 'off') return undefined;
-  const byMint = new Map(assets.filter((a) => a.mint).map((a) => [a.mint as string, a.id]));
+  // Keyed by `curveKey`: an EVM address in lower case, since the shelf and the collector do not spell
+  // it alike (PLAN-UNIVERSE RU.8); a Solana address as it is, base58 being case-sensitive.
+  const byMint = new Map(
+    assets.filter((a) => a.mint).map((a) => [curveKey(a.mint as string), a.id]),
+  );
   if (byMint.size === 0) return undefined;
+  const keys = [...byMint.keys()];
+  const evm = keys.filter((k) => curveVersionOf(k) === EVM_METHOD_VERSION);
+  const solana = keys.filter((k) => curveVersionOf(k) !== EVM_METHOD_VERSION);
   const rows = await db
     .select()
     .from(riskDepthCurves)
     .where(
       and(
-        inArray(riskDepthCurves.assetMint, [...byMint.keys()]),
+        or(
+          solana.length ? inArray(riskDepthCurves.assetMint, solana) : undefined,
+          evm.length ? inArray(sql`lower(${riskDepthCurves.assetMint})`, evm) : undefined,
+        ),
         inArray(riskDepthCurves.side, ['sell', 'buy']),
         inArray(riskDepthCurves.methodVersion, CURVE_METHOD_VERSIONS),
       ),
@@ -47,7 +63,7 @@ export async function loadLiquidityProvider(
   const curves = new Map<string, AssetCurves>();
   const buyCurves = new Map<string, AssetCurves>();
   for (const r of rows) {
-    const id = byMint.get(r.assetMint);
+    const id = byMint.get(curveKey(r.assetMint));
     if (!id) continue;
     const side = r.side === 'sell' ? curves : buyCurves;
     const a = side.get(id) ?? { assetId: id, byRegime: {} };
