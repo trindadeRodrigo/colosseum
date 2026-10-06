@@ -307,6 +307,8 @@ export const pt: Dictionary = {
         income: (amount: string, months: string) => `Gerar renda com ${amount} por ${months}.`,
         protect: (amount: string, months: string) => `Proteger ${amount} por ${months}.`,
       },
+      sentenceIncome: (income: string, amount: string, months: string) =>
+        `Gerar ${income} por mês com ${amount} por ${months}.`,
       months: (n: number) => (n === 1 ? '1 mês' : `${n} meses`),
       unfinished: 'Seu objetivo, como foi lido até aqui.',
       draftOpen: 'Rascunho: termine os limites',
@@ -457,6 +459,8 @@ export const pt: Dictionary = {
     goalCard: {
       builtMet: 'No caminho quando o plano foi montado',
       builtShort: 'Abaixo da renda quando o plano foi montado',
+      builtPaid: (paid: string, asked: string) =>
+        `Quando este plano foi montado, ele pagava ${paid} por mês dos ${asked} que você pediu.`,
       noStatus: 'Ainda sem situação: o motor não dá uma para um cofre',
       unknown: (chain: string) => `Seu cofre na ${chain}.`,
       notJoined:
@@ -508,6 +512,7 @@ export const pt: Dictionary = {
         `Numa queda forte: você perderia cerca de ${amount}, uma estimativa.`,
     },
     details: 'Detalhes',
+    leftOut: 'Ficou de fora deste plano',
     kinds: {
       stock: 'Ações',
       etf: 'Fundos',

@@ -151,9 +151,61 @@ export const bySize = (lines: readonly BasketLine[]) =>
   [...lines].sort((a, b) => b.amountUsd - a.amountUsd || a.assetId.localeCompare(b.assetId));
 
 /**
+ * The rules that say what stopped a holding where it is, most telling first: the person's credit
+ * limit, the cap on one token or one issuer, what selling would cost. One of these on a line is why it
+ * holds what it holds; the sleeve's starting share ("starting share of dollar yield is 100%") is not,
+ * once a cap has cut it.
+ */
+const BINDING = [
+  'CREDIT_BUDGET',
+  'CREDIT_BUDGET_UNSAID',
+  'ASSET_CAP',
+  'ISSUER_CAP_PLAN',
+  'ISSUER_CAP',
+  'SINGLE_STOCK_CAP',
+  'EXIT_CEILING',
+  'TIER_CEILING',
+];
+/** On cash: why money that was meant for something else stayed. */
+const BINDING_CASH = [
+  'UNPLACED',
+  'NO_DOLLAR_YIELD',
+  'YIELD_TOO_SMALL',
+  'SET_ASIDE_CASH',
+  'COVERAGE_CASH',
+  'CASH_MAY_NEED',
+];
+/** Where a line starts from, not what decided it: said only when nothing else is. */
+const STARTING = new Set(['SLEEVE', 'SLEEVE_DEFAULT', 'SLEEVE_FILLED', 'CASH_NEAR_DATE', 'GLIDE']);
+
+/**
+ * The reason that decided a line: the cap or limit that binds it, in the engine's own sentence. With
+ * none of those, its first reason that is not only where it started; with none of those either, its
+ * first. Undefined for a line the engine gave no reason.
+ */
+export function bindingReason(line: BasketLine) {
+  const order = isCashId(line.assetId) ? [...BINDING_CASH, ...BINDING] : BINDING;
+  for (const rule of order) {
+    const found = line.reasons.find((r) => r.rule === rule || r.rule.startsWith(`${rule}_`));
+    if (found) return found;
+  }
+  const overflow = line.reasons.find((r) => r.rule.startsWith('OVERFLOW_'));
+  return overflow ?? line.reasons.find((r) => !STARTING.has(r.rule)) ?? line.reasons[0];
+}
+
+/** A line's reasons with the one that decided it first, each once. */
+export const reasonsOf = (line: BasketLine): string[] => {
+  const first = bindingReason(line);
+  return [...new Set([...(first ? [first.text] : []), ...line.reasons.map((r) => r.text)])];
+};
+
+/**
  * A plan in one sentence, from its lines: what goes where, largest first (three at most, then how many
- * more), and the largest holding's own reason. "$200 for 2 months, high risk, on Solana: $150 stays in
- * Cash (USDC) and $50 goes to syrupUSDC (Maple)." No rate: a plan carries none per line.
+ * more), then why the largest holding holds what it does and why cash holds the rest, each the reason
+ * that decided it (`bindingReason`), never the share a part only started from. "$80,000 for 12 months,
+ * low risk, on Solana: $60,000 stays in Cash (USDC) and $20,000 goes to syrupUSDC (Maple). No more than
+ * 25% of the plan in tokens that lend to borrowers… $60,000 stays in cash: no token you can hold has
+ * room for it at this size." No rate: a plan carries none per line.
  */
 export function planSummary(
   proposal: Pick<BasketProposal, 'sheet' | 'lines'>,
@@ -173,7 +225,10 @@ export function planSummary(
       ),
     );
   if (lines.length > 3) parts.push(t.plan.summary.more(lines.length - 3));
-  const why = lines.find((l) => !isCashId(l.assetId))?.reasons[0]?.text;
+  const holding = lines.find((l) => !isCashId(l.assetId));
+  const cash = lines.find((l) => isCashId(l.assetId));
+  // Cash explains itself only by what kept money there, not by where it started.
+  const cashWhy = cash?.reasons.find((r) => BINDING_CASH.includes(r.rule))?.text;
   const head = t.plan.summary.head(
     dollars(sheet.amountUsd, lang),
     t.goal.card.months(sheet.horizonMonths),
@@ -181,5 +236,33 @@ export function planSummary(
     chainName,
   );
   const list = new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(parts);
-  return [`${head} ${list}.`, why].filter(Boolean).join(' ');
+  const whys = [holding ? bindingReason(holding)?.text : undefined, cashWhy];
+  return [`${head} ${list}.`, ...new Set(whys)].filter(Boolean).join(' ');
 }
+
+/**
+ * The goal in one line, as the page's heading says it. An income goal with an amount a month says it
+ * ("Earn $300 a month from $80,000 for 12 months."), so what the plan pays of it makes sense below.
+ */
+export function goalLine(
+  sheet: Pick<
+    BasketProposal['sheet'],
+    'goal' | 'amountUsd' | 'horizonMonths' | 'incomeTargetUsdMonthly'
+  >,
+  t: Pick<Dictionary, 'goal'>,
+  amount: string,
+  income: (usd: number) => string,
+): string {
+  const months = t.goal.card.months(sheet.horizonMonths);
+  return sheet.goal === 'income' && sheet.incomeTargetUsdMonthly !== undefined
+    ? t.goal.card.sentenceIncome(income(sheet.incomeTargetUsdMonthly), amount, months)
+    : t.goal.card.sentence[sheet.goal](amount, months);
+}
+
+/**
+ * What the engine left out of a plan, each in its own sentence ("jlUSDC is left out: there is no
+ * yield reading for it…"), each once. The sentences are the engine's, in the plan's language.
+ */
+export const leftOut = (proposal: Pick<BasketProposal, 'removed'>): string[] => [
+  ...new Set(proposal.removed.flatMap((r) => r.reasons.map((reason) => reason.text))),
+];
