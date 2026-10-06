@@ -1,4 +1,4 @@
-import { dictionary } from '../../../../i18n';
+import { bearingDictionary } from '../../../../i18n/bearing';
 import { readPreferences } from '../../../../i18n/server';
 
 // How Bearing measures (method risk-0.3): what is measured, what a number means and what it is not.
@@ -6,7 +6,7 @@ import { readPreferences } from '../../../../i18n/server';
 // words are in the dictionary (`bearing.methodology`), in both languages.
 
 export async function generateMetadata() {
-  const t = dictionary((await readPreferences()).lang).bearing;
+  const t = bearingDictionary((await readPreferences()).lang);
   return {
     title: `${t.pages.methodology.label} · ${t.head}`,
     description: t.pages.methodology.lede,
@@ -14,7 +14,7 @@ export async function generateMetadata() {
 }
 
 export default async function Methodology() {
-  const t = dictionary((await readPreferences()).lang).bearing.methodology;
+  const t = bearingDictionary((await readPreferences()).lang).methodology;
   return (
     <article className="mt-6 max-w-[72ch] text-body-sm">
       <h2 className="mt-8 mb-2 text-b-section font-semibold">{t.measured}</h2>

@@ -1,4 +1,4 @@
-import { type Dictionary, dictionary } from '../../i18n';
+import { type BearingDictionary, bearingDictionary } from '../../i18n/bearing';
 import type { Res } from './data';
 import { type Fact, mk, none } from './fact';
 import { EN_FMT, type Fmt, type Regime, usd } from './format';
@@ -43,12 +43,12 @@ export function simPaths(o: {
   chunkSheet: Res<SheetBody> | null;
   recov: Res<RecovBody>;
   /** The page's words, in the person's language. English when not given. */
-  words?: Dictionary['bearing'];
+  words?: BearingDictionary;
   /** The figures in the person's locale; en-US when not given. */
   fmt?: Fmt;
 }) {
   const { id, n, at, r, sheet, chunks } = o;
-  const b = o.words ?? dictionary('en').bearing;
+  const b = o.words ?? bearingDictionary('en');
   const fm = o.fmt ?? EN_FMT;
   const w = b.sim.paths;
   const rw = b.regimes[r];

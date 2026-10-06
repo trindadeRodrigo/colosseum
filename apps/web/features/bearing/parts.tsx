@@ -2,11 +2,11 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { cn } from '../../components/ui/cn';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
-import { LOCALE } from '../../i18n';
+import { type BearingDictionary, bearingDictionary } from '../../i18n/bearing';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useBearing } from './BearingProvider';
 import { cleanSource, type Fact, factDetail, pinSource } from './fact';
-import { type Fmt, fmtFor, iso, reasonW } from './format';
+import { EN_FMT, type Fmt, fmtFor, iso, reasonW } from './format';
 
 // The pieces every Bearing page is built from (Rodrigo's Analytics 2.0): a figure with its pin, the
 // reason in place of a missing one, the row of counters, the asset and pool filters, the pie of value
@@ -15,20 +15,14 @@ import { type Fmt, fmtFor, iso, reasonW } from './format';
 
 /** Why a figure is missing, in words. */
 /** The page's words, in the person's language. */
-export function useWords() {
-  return useT().bearing;
+export function useWords(): BearingDictionary {
+  return bearingDictionary(useLang());
 }
 
-const FMT = new Map<string, Fmt>();
-/** The page's figures and dates in the person's locale: en-US as Rodrigo wrote them, pt-BR for Brazil. */
+/** The page's figures and dates in the reader's language: as Rodrigo wrote them in English. */
 export function useFmt(): Fmt {
-  const locale = LOCALE[useLang()] === 'pt-BR' ? 'pt-BR' : 'en-US';
-  let f = FMT.get(locale);
-  if (!f) {
-    f = fmtFor(locale);
-    FMT.set(locale, f);
-  }
-  return f;
+  const lang = useLang();
+  return lang === 'en' ? EN_FMT : fmtFor(lang);
 }
 
 /** A reason code in the person's language; one the dictionary does not know, as the API wrote it. */
@@ -63,6 +57,7 @@ export function Fig({
 }) {
   const { clock } = useBearing();
   const all = useT();
+  const words = useWords();
   if (!f) return <Reason code="not_served" />;
   if (f.value == null) return <Reason code={f.reason} detail={f.detail} />;
   if (!f.source && !f.method) return <Reason code="not_served" />;
@@ -78,7 +73,7 @@ export function Fig({
       />
       {f.quality === 'assumption' && (
         <span className="ml-1 font-sans text-caption font-normal text-muted-foreground">
-          {all.bearing.flow.assumption}
+          {words.flow.assumption}
         </span>
       )}
     </span>
@@ -257,6 +252,7 @@ export const SMALL_BTN =
 export function SrcLine({ f, what }: { f: Fact | null | undefined; what: string }) {
   const { clock } = useBearing();
   const all = useT();
+  const words = useWords();
   if (!f || f.value == null) return null;
   return (
     <p
@@ -265,7 +261,7 @@ export function SrcLine({ f, what }: { f: Fact | null | undefined; what: string 
     >
       {cleanSource(f.source ?? '')} · {iso(f.fetchedAt)}{' '}
       <ProvenancePin
-        value={all.bearing.chart.sourceOf(what)}
+        value={words.chart.sourceOf(what)}
         obs={pinSource(f, clock)}
         detail={factDetail(f)}
         labels={all.pin}

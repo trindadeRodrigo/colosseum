@@ -1,5 +1,6 @@
 import { DISCLAIMER } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
+import { bearingDictionary } from './bearing';
 import {
   DEFAULT_LANG,
   dictionary,
@@ -35,6 +36,12 @@ function sentences(node: unknown, path = ''): Leaf[] {
   return [];
 }
 
+/** A language's whole dictionary: the product's, and Bearing's, which ships on its own pages only. */
+const everything = (lang: (typeof LANGS)[number]) => ({
+  ...dictionary(lang),
+  bearing: bearingDictionary(lang),
+});
+
 const paths = (node: unknown) => [...new Set(sentences(node).map((leaf) => leaf.path))].sort();
 
 /** voice-and-tone.md, "Banned words and phrases", and the two words the design bans from templates. */
@@ -54,17 +61,36 @@ const BEARING_NAMES = new Set(
 );
 /**
  * Bearing's labels that are not sentences: a chart's note under its title, an accessible name, the
- * "how" of a path, a tooltip, and the start of the verdict that the page completes. They are
- * Rodrigo's fragments, kept as he wrote them.
+ * "how" of a path, a tooltip, and the start of the verdict that the page completes. Rodrigo's
+ * fragments, kept as he wrote them. Each is named: a new one has to be added here on purpose.
  */
-const BEARING_FRAGMENTS =
-  /^bearing\.(.*\.(aria|note|how|toleranceTitle|jupiter|jupiterAvailable)$|sim\.verdict\.best$|flow\.tips\.)/;
+const BEARING_FRAGMENTS = new Set([
+  'bearing.dex.capacity.aria',
+  'bearing.dex.capacity.note',
+  'bearing.dex.liquidity.aria',
+  'bearing.dex.liquidity.note',
+  'bearing.flow.aria',
+  'bearing.flow.tips.issuerPays',
+  'bearing.flow.tips.legCost',
+  'bearing.flow.tips.sol',
+  'bearing.heat.aria',
+  'bearing.lending.avail.jupiter',
+  'bearing.lending.avail.note',
+  'bearing.lending.covered.aria',
+  'bearing.lending.supplied.note',
+  'bearing.lending.table.jupiterAvailable',
+  'bearing.lending.toleranceTitle',
+  'bearing.sim.paths.open.how',
+  'bearing.sim.paths.split.how',
+  'bearing.sim.verdict.best',
+  'bearing.stable.supplied.note',
+]);
 
 describe.each(LANGS)('the dictionary in %s', (lang) => {
-  const all = sentences(dictionary(lang));
+  const all = sentences(everything(lang));
 
   it('has every sentence the English one has, and no other', () => {
-    expect(paths(dictionary(lang))).toEqual(paths(dictionary('en')));
+    expect(paths(everything(lang))).toEqual(paths(everything('en')));
     expect(all.length).toBeGreaterThan(150);
     for (const { path, text } of all) expect(text.trim(), path).not.toBe('');
   });
@@ -107,7 +133,7 @@ describe.each(LANGS)('the dictionary in %s', (lang) => {
         (text.split(' ').length > 12 || /\. \p{L}/u.test(text)) &&
         !/[·…]/.test(text) &&
         !text.startsWith(':') &&
-        !BEARING_FRAGMENTS.test(path) &&
+        !BEARING_FRAGMENTS.has(path) &&
         !/^goal\.(examples|composer\.placeholder)/.test(path),
     );
     expect(full.length).toBeGreaterThan(50);
@@ -117,7 +143,7 @@ describe.each(LANGS)('the dictionary in %s', (lang) => {
 
 describe('the words of the product, in each language', () => {
   const en = dictionary('en');
-  const pt = dictionary('pt');
+  const pt = everything('pt');
 
   it('says goal, limits and plan in English, and objetivo, limites and plano in Portuguese', () => {
     expect(en.goal.sheet.build).toBe('Build my plan');

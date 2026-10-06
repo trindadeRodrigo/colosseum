@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { isStale, newestReading } from './BearingProvider';
 import { R, type Res } from './data';
-import { capacitySeries, capFact, type DexAsset, dexCounters, dexIds, poolsOf } from './dex';
+import { capacitySeries, capFact, type DexAsset, dexCounters, dexIds, poolsOf, vol24 } from './dex';
 import { mk, none, pinSource, STALE_AFTER_MS, sumFact } from './fact';
 import { pct, usd, usd1 } from './format';
 import {
@@ -118,7 +118,34 @@ describe('a figure and its staleness', () => {
       provenance: 'live',
       staleAgeSec: 3 * 3600,
     });
-    expect(pinSource(f, { now, stale: false }).staleAgeSec).toBeNull();
+    // its own reading is three hours old: stale with its age, though the page is live
+    expect(pinSource(f, { now, stale: false }).staleAgeSec).toBe(3 * 3600);
+    // on a stale page, a reading of half an hour ago is stale too, with its own age
+    const fresh = mk(1, { source: 's', fetchedAt: '2026-10-03T14:30:00Z', method: 'm' });
+    expect(pinSource(fresh, { now, stale: true }).staleAgeSec).toBe(1800);
+    // a reading of an hour ago, on a live page, is live
+    expect(
+      pinSource(f, { now: Date.parse('2026-10-03T13:00:00Z'), stale: false }).staleAgeSec,
+    ).toBeNull();
+  });
+
+  it('a figure read long ago is stale on a live page: SPYx’s volume 24 h, 52 hours old in his recording', () => {
+    const sheet = ok(answer<SheetBody>(R.sheet('SPYx', 100_000)));
+    const vol = vol24({ ok: true, status: 200, body: sheet, reason: null });
+    expect(vol.fetchedAt).toBe('2026-10-01T12:02:31.000Z');
+    // the page is live: the newest depth curve ends at 15:07, ten minutes ago
+    const now = Date.parse('2026-10-03T15:17:00Z');
+    expect(isStale(newestReading({ ok: true, status: 200, body: assets, reason: null }), now)).toBe(
+      false,
+    );
+    const pin = pinSource(vol, { now, stale: false });
+    expect(pin.staleAgeSec).not.toBeNull();
+    expect(Math.round((pin.staleAgeSec as number) / 3600)).toBe(51);
+    // the capacity read at the same moment is live
+    const tsla = assets.assets.find((a) => a.symbol === 'SPYx');
+    expect(
+      pinSource(capFact(tsla, 'weekend', assets), { now, stale: false }).staleAgeSec,
+    ).toBeNull();
   });
 
   it('a measured figure is live, never MOCK; a figure the API marks otherwise keeps its mark', () => {
@@ -210,6 +237,16 @@ describe('the lending page, weekend, 1% tolerance (CHECKS.md 9 and 10)', () => {
     expect(usd1(f.collF.value as number)).toBe('$37.6M');
     expect(f.covF.quality).toBe('lower_bound');
     expect(pct(f.lossPF.value as number)).toBe('38.13%');
+  });
+
+  it('the tolerance moves the covered share: 3.77% at 0.5%, 8.88% at 2% (CHECKS.md section 10)', () => {
+    const at = (tau: number) => {
+      const body = ok(answer<AssetsBody>(R.assets(tau)));
+      return covFacts(groupBy(rows.map((row) => coverage(row, body, null, r))), r, body).covF;
+    };
+    expect(pct(at(0.005).value as number)).toBe('3.77%');
+    expect(pct(at(0.01).value as number)).toBe('6.82%');
+    expect(pct(at(0.02).value as number)).toBe('8.88%');
   });
 
   it('Sentora xStocks Market · PYUSD alone: (79.3K + 418K + 1.01M) ÷ 2.875M = 52.57%', async () => {

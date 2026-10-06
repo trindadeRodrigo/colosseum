@@ -1,4 +1,6 @@
 import { shorten } from '../../components/ui/format';
+import { type Lang, LOCALE } from '../../i18n';
+import { utc } from '../portfolio/figures';
 
 // How Bearing writes its figures (Rodrigo's Analytics 2.0, assets/analytics.js): two decimals on a
 // percentage, a true minus (U+2212), dollars compact above a thousand, in the reader's locale. Words for the reasons a
@@ -6,7 +8,10 @@ import { shorten } from '../../components/ui/format';
 
 const NF = new Map<string, Intl.NumberFormat>();
 /** A number format for a locale, made once. */
-export function nf(options: Intl.NumberFormatOptions, locale = 'en-US'): Intl.NumberFormat {
+export function nf(
+  options: Intl.NumberFormatOptions,
+  locale: string = LOCALE.en,
+): Intl.NumberFormat {
   const key = `${locale}|${JSON.stringify(options)}`;
   let format = NF.get(key);
   if (!format) {
@@ -18,37 +23,26 @@ export function nf(options: Intl.NumberFormatOptions, locale = 'en-US'): Intl.Nu
 
 export const minus = (s: string) => s.replace(/-/g, '−');
 
-const DF = new Map<string, Intl.DateTimeFormat>();
-function df(locale: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
-  const key = `${locale}|${JSON.stringify(options)}`;
-  let format = DF.get(key);
-  if (!format) {
-    format = new Intl.DateTimeFormat(locale, { timeZone: 'UTC', ...options });
-    DF.set(key, format);
-  }
-  return format;
-}
-
 /**
- * The figures and the dates of the page in a locale: en-US is Rodrigo's ($1.2M, 6.82%, 2026-10-03
- * 15:00 UTC), pt-BR is Brazil's (US$ 1,2 mi, 6,82%, 03/10/2026 15:00 UTC). A pin's popover keeps the
- * ISO time in both: it cites the API.
+ * The figures and the dates of the page in the reader's language, through the app's own locale table
+ * (`LOCALE`) and its date format (`utc`, features/portfolio/figures.ts). English is Rodrigo's form
+ * exactly ($2.6M, 6.82%, 2026-10-03 15:07 UTC); Portuguese is Brazil's (US$ 2,6 mi, 6,82%,
+ * 3 de out. de 2026, 15:07 UTC). A pin's popover keeps the ISO time in both: it cites the API.
  */
-export function fmtFor(locale = 'en-US') {
+export function fmtFor(lang: Lang) {
+  const locale = LOCALE[lang];
   const n = (o: Intl.NumberFormatOptions) => nf(o, locale);
-  const en = locale.startsWith('en');
+  const en = lang === 'en';
   const pct = (v: number) =>
-    `${minus(n({ minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v * 100))}%`;
-  const pct0 = (v: number) => `${minus(n({ maximumFractionDigits: 0 }).format(v * 100))}%`;
+    minus(n({ style: 'percent', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v));
+  const pct0 = (v: number) => minus(n({ style: 'percent', maximumFractionDigits: 0 }).format(v));
   const usd = (v: number): string => {
     const a = Math.abs(v);
-    if (a === 0)
-      return minus(n({ style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(0));
-    if (a < 1)
+    if (a > 0 && a < 1)
       return minus(
         n({ style: 'currency', currency: 'USD', maximumSignificantDigits: 2 }).format(v),
       );
-    if (a < 100)
+    if (a > 0 && a < 100)
       return minus(
         n({
           style: 'currency',
@@ -75,27 +69,25 @@ export function fmtFor(locale = 'en-US') {
   /** A capacity of 0 is measured: not even the smallest size measured ($100) sells within the tolerance. */
   const capW = (v: number) => (v === 0 ? `< ${usd(100)}` : usd1(v));
   const num = (v: number, digits = 0) => minus(n({ maximumFractionDigits: digits }).format(v));
-  /** A time to the minute, in UTC: `2026-10-03 15:00 UTC`, `03/10/2026 15:00 UTC`. */
+  /** A time to the minute, in UTC: `2026-10-03 15:07 UTC`, `3 de out. de 2026, 15:07 UTC`. */
   const minute = (t: string | number) =>
-    en
-      ? `${new Date(t).toISOString().slice(0, 16).replace('T', ' ')} UTC`
-      : `${df(locale, { dateStyle: 'short', timeStyle: 'short' }).format(new Date(t))} UTC`;
-  /** A time to the second, in UTC. */
+    en ? `${new Date(t).toISOString().slice(0, 16).replace('T', ' ')} UTC` : utc(lang, String(t));
+  /** A time to the second, in UTC: his banner's `2026-10-03 15:07:00 UTC`. */
   const second = (t: string | number) =>
-    en
-      ? `${new Date(t).toISOString().slice(0, 19).replace('T', ' ')} UTC`
-      : `${df(locale, { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(t))} UTC`;
-  /** A day: `2026-10-03`, `03/10/2026`. */
+    en ? `${new Date(t).toISOString().slice(0, 19).replace('T', ' ')} UTC` : utc(lang, String(t));
+  /** A day: `2026-10-03`, `3 de out. de 2026`. */
   const day = (t: string | number) =>
     en
       ? new Date(t).toISOString().slice(0, 10)
-      : df(locale, { dateStyle: 'short' }).format(new Date(t));
+      : new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(
+          new Date(t),
+        );
   return { locale, pct, pct0, usd, usd1, capW, num, minute, second, day };
 }
 export type Fmt = ReturnType<typeof fmtFor>;
 
-/** Rodrigo's formats, en-US: the methods in a pin's popover are written with these. */
-export const EN_FMT = fmtFor('en-US');
+/** Rodrigo's formats, English: the methods in a pin's popover are written with these. */
+export const EN_FMT = fmtFor('en');
 export const { pct, pct0, usd, usd1, capW, num } = EN_FMT;
 
 /** `2026-10-03T15:58:40Z`, or the words when there is no time. */

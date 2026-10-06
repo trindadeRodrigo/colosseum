@@ -30,6 +30,8 @@ import type {
 // simulated). It lives in the section's layout, so it outlives a page.
 
 export const TAU = 0.01;
+/** How often an open page looks at its clock again. */
+export const TICK_MS = 60_000;
 
 export type Base = {
   assets: Res<AssetsBody>;
@@ -110,15 +112,21 @@ export function BearingProvider({
     tol: TAU,
     sim: { asset: 'TSLAx', size: 100_000 },
   });
+  // A new generation drops every read kept so far: the API came back after it did not answer.
+  const [gen, setGen] = useState(0);
+  const modeRef = useRef<Mode>('loading');
+  const newestRef = useRef<string | null>(null);
   const memo = useRef<{
     base?: Promise<Base>;
     lend?: Promise<LendRow[]>;
     dex: Map<string, Promise<DexAsset>>;
+    generation?: number;
   }>({
     dex: new Map(),
   });
 
   const api = useMemo(() => {
+    memo.current = { dex: new Map(), generation: gen };
     const base = () => {
       memo.current.base ??= Promise.all([
         reader.get<AssetsBody>(R.assets(TAU)),
@@ -171,26 +179,49 @@ export function BearingProvider({
       return memo.current.lend;
     };
     return { base, dex, lending };
-  }, [reader]);
+  }, [reader, gen]);
 
   useEffect(() => {
     let live = true;
+    const say = (m: Mode) => {
+      modeRef.current = m;
+      setMode(m);
+    };
     reader.probe().then(async (up) => {
       if (!live) return;
       if (!up) {
-        setMode('none');
+        say('none');
         return;
       }
       const b = await api.base();
       if (!live) return;
       const at = fixedNow ?? Date.now();
       const last = newestReading(b.assets);
+      newestRef.current = last;
       setNow(at);
       setNewest(last);
-      setMode(isStale(last, at) ? 'stale' : 'live');
+      say(isStale(last, at) ? 'stale' : 'live');
     });
+    // Every minute: an open page turns stale when its readings age past the limit, and a page whose
+    // API did not answer asks again, and reads everything afresh when it does.
+    const tick =
+      fixedNow == null
+        ? setInterval(() => {
+            if (modeRef.current === 'none') {
+              reader.probe().then((up) => {
+                if (live && up) setGen((g) => g + 1);
+              });
+              return;
+            }
+            if (modeRef.current === 'loading') return;
+            const at = Date.now();
+            setNow(at);
+            say(isStale(newestRef.current, at) ? 'stale' : 'live');
+          }, TICK_MS)
+        : undefined;
     return () => {
       live = false;
+      if (tick) clearInterval(tick);
     };
   }, [reader, api, fixedNow]);
 

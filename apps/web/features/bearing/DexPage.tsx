@@ -6,7 +6,7 @@ import { type Column, DataTable } from '../../components/ui/DataTable';
 import { DistChart } from '../../components/ui/DistChart';
 import { Sparkline, sparkable } from '../../components/ui/Sparkline';
 import { type ChartRange, Segmented, TimeChart } from '../../components/ui/TimeChart';
-import type { Dictionary } from '../../i18n';
+import type { BearingDictionary } from '../../i18n/bearing';
 import { type Base, useAnswer, useBearing } from './BearingProvider';
 import { R } from './data';
 import {
@@ -270,7 +270,7 @@ function assetColumns(
   dd: Record<string, DexAsset>,
   pools: readonly Pool[],
   poolsChosen: boolean,
-  t: Dictionary['bearing']['dex']['table'],
+  t: BearingDictionary['dex']['table'],
   fm: Fmt,
 ): Column<string>[] {
   const cap = (r: keyof typeof t.capacity): Column<string> => ({

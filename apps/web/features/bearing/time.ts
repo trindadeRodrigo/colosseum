@@ -2,7 +2,7 @@ import { nf, type Regime } from './format';
 
 // The time of week now, by the API's rule (packages/risk/src/time.ts), worked out in the browser so a
 // page can say which regime a figure "now" belongs to. The web may not import packages/risk
-// (tests/boundaries.test.ts), so the calendar is copied here; time.test.ts fails when it no longer
+// (tests/boundaries.test.ts), so the calendar is copied here; bearing.test.ts fails when it no longer
 // matches fixtures/risk/us-market-holidays.json, the file the API reads.
 
 export const CAL = {

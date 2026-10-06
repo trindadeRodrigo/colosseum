@@ -21,6 +21,10 @@ export type Res<T = unknown> =
 const notServed = (status: number, body: unknown) =>
   status === 404 && /^Route /.test(String((body as { message?: string } | null)?.message ?? ''));
 
+/** How long one probe of the API waits, and how many it makes before saying the API did not answer. */
+const PROBE_MS = 3000;
+const PROBE_TRIES = 3;
+
 export type Reader = {
   get: <T>(path: string) => Promise<Res<T>>;
   /** True when the API answered its methodology route: the one probe for "is it there". */
@@ -44,16 +48,30 @@ export function makeReader(base: string = RISK_API, fetcher: typeof fetch = fetc
                 reason: notServed(r.status, body) ? 'not_served' : 'api_error',
               };
         })
-        .catch((): Res => ({ ok: false, status: 0, body: null, reason: 'api_error' }));
+        .catch((): Res => ({ ok: false, status: 0, body: null, reason: 'api_error' }))
+        .then((r) => {
+          // An answer is kept; a failure (no answer, or the server's own error) is not, so the next
+          // read asks again.
+          if (!r.ok && (r.status === 0 || r.status >= 500)) cache.delete(path);
+          return r;
+        });
       cache.set(path, p);
     }
     return p as Promise<Res<T>>;
   };
-  const probe = () =>
+  const once = () =>
     Promise.race([
       get(R.methodology()).then((r) => r.ok),
-      new Promise<boolean>((done) => setTimeout(() => done(false), 3000)),
+      new Promise<boolean>((done) => setTimeout(() => done(false), PROBE_MS)),
     ]);
+  // A slow first answer is not "the API is down": three tries, a second apart.
+  const probe = async () => {
+    for (let i = 0; i < PROBE_TRIES; i++) {
+      if (await once()) return true;
+      if (i < PROBE_TRIES - 1) await new Promise((done) => setTimeout(done, 1000));
+    }
+    return false;
+  };
   return { get, probe };
 }
 

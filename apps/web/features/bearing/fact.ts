@@ -94,8 +94,10 @@ export function sumFact(
 
 /**
  * Whether the view is stale, and the clock it reads ages against. The risk API states no staleness of
- * its own, so the view states it (DESIGN-VAULT, "Bearing analytics"): when the collectors' newest reading is older than
- * STALE_AFTER_MS every figure is stale, each with its own age, as Rodrigo's snapshot shows them.
+ * its own, so the view states it (DESIGN-VAULT, "Bearing analytics"): when the collectors' newest
+ * reading is older than STALE_AFTER_MS every figure is stale, each with its own age, as Rodrigo's
+ * snapshot shows them. A figure whose own reading is older than that is stale too, whatever the
+ * rest of the page is: stale is never shown as live (STYLE.md rule 2).
  */
 export type Clock = { now: number; stale: boolean };
 export const STALE_AFTER_MS = 2 * 3600e3;
@@ -109,7 +111,7 @@ export function pinSource(f: Fact, clock: Clock): PinSource {
     fetchedAt,
     method: [f.method, f.methodVersion].filter(Boolean).join(' · '),
     provenance: (f.provenance ?? 'live') as Provenance,
-    staleAgeSec: clock.stale ? age : null,
+    staleAgeSec: age != null && (clock.stale || age * 1000 > STALE_AFTER_MS) ? age : null,
   };
 }
 

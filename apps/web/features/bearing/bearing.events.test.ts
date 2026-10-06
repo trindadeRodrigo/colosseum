@@ -5,7 +5,8 @@ import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TimeChart } from '../../components/ui/TimeChart';
 import { click, find, mount, press, unmountAll } from '../../components/ui/test/dom';
-import { BearingProvider } from './BearingProvider';
+import { BearingProvider, TICK_MS } from './BearingProvider';
+import { Banner } from './BearingShell';
 import { DexPage } from './DexPage';
 import { mk, none } from './fact';
 import { LendingPage } from './LendingPage';
@@ -270,5 +271,69 @@ describe('the language of the person', () => {
       'Capacity is the largest sale that costs at most 1%, by time of week. Exit capacity is that figure hour by hour.',
     );
     expect(host.textContent).toContain(DISCLAIMER.en);
+  });
+});
+
+describe('the banner: live, stale with time, or the API down', () => {
+  const banner = (h: HTMLElement) => find(h, '[data-ui="bearing-banner"]');
+  const settled = (h: HTMLElement) => banner(h).getAttribute('data-mode') !== 'loading';
+
+  it('says live from the collectors, with the newest reading’s time, when it is recent', async () => {
+    const host = await mount(
+      createElement(BearingProvider, {
+        reader: snapshotReader(),
+        now: Date.parse('2026-10-03T15:17:00Z'),
+        children: createElement(Banner),
+      } as never),
+    );
+    await settle(host, settled);
+    expect(banner(host).getAttribute('data-mode')).toBe('live');
+    expect(banner(host).textContent).toContain('Live from the collectors, as of 15:07 UTC.');
+    expect(banner(host).textContent).toContain('now: weekend');
+  });
+
+  it('says the API did not answer, and makes up nothing in its place', async () => {
+    const down = {
+      get: async () => ({ ok: false as const, status: 0, body: null, reason: 'api_error' }),
+      probe: async () => false,
+    };
+    const host = await mount(
+      createElement(BearingProvider, {
+        reader: down,
+        now: Date.parse('2026-10-03T15:17:00Z'),
+        children: [
+          createElement(Banner, { key: 'b' }),
+          createElement(DexPage, { key: 'p', page: 'stocks' }),
+        ],
+      } as never),
+    );
+    await settle(host, (h) => settled(h) && !busy(h));
+    expect(banner(host).getAttribute('data-mode')).toBe('none');
+    expect(banner(host).textContent).toContain('did not answer');
+    expect(host.textContent).toContain('the API returned no answer');
+    expect(host.querySelectorAll('[data-ui="figure"]')).toHaveLength(0);
+  });
+
+  it('turns stale while it is open, once its newest reading ages past two hours', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    try {
+      vi.setSystemTime(Date.parse('2026-10-03T16:57:00Z')); // 1 h 50 min after the newest reading
+      const host = await mount(
+        createElement(BearingProvider, {
+          reader: snapshotReader(),
+          children: createElement(Banner),
+        } as never),
+      );
+      await settle(host, settled);
+      expect(banner(host).getAttribute('data-mode')).toBe('live');
+      vi.setSystemTime(Date.parse('2026-10-03T17:17:00Z'));
+      await act(async () => {
+        vi.advanceTimersByTime(TICK_MS);
+      });
+      expect(banner(host).getAttribute('data-mode')).toBe('stale');
+      expect(banner(host).textContent).toContain('Every figure is stale');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

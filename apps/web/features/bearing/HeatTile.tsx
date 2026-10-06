@@ -40,7 +40,7 @@ export function HeatTile({ asset }: { asset: AssetRow }) {
   for (const r of REGIMES) at = maxT(at, asset.capacityAtTau[r]?.to ?? null);
   const n = h.notionalUsd ?? HEAT_SIZE;
   const meta = {
-    source: 'risk_asset_snapshots (GET /risk/assets/:id/heatmap)',
+    source: 'risk_pool_snapshots (GET /risk/assets/:id/heatmap)',
     fetchedAt: at,
     method: `median of the best single-pool sell cost per snapshot in that ET hour at ${fm.usd(n)}; the route gives no measurement time, so the time is the asset’s newest capacity reading`,
     methodVersion: 'risk-0.3',

@@ -36,7 +36,7 @@ describe('the language of Bearing', () => {
   });
 
   it('no file sets a language or a locale of its own, but those that choose the reader’s', () => {
-    // format.ts names the two locales it knows; parts.tsx picks the reader's; sim.ts falls back to
+    // format.ts holds the formats; parts.tsx picks the reader's; sim.ts falls back to
     // English for a caller that hands no words, which the pages never do; time.ts reads the New York
     // clock's parts to find the time of week, and shows none of them.
     const choosers = [
@@ -62,8 +62,8 @@ describe('the language of Bearing', () => {
 });
 
 describe('the figures and dates in the reader’s locale', () => {
-  const en = fmtFor('en-US');
-  const pt = fmtFor('pt-BR');
+  const en = fmtFor('en');
+  const pt = fmtFor('pt');
 
   it('writes Rodrigo’s figures as he does in English', () => {
     expect(en.pct(0.0682)).toBe('6.82%');
@@ -75,12 +75,12 @@ describe('the figures and dates in the reader’s locale', () => {
     expect(en.day('2026-10-03T15:07:00Z')).toBe('2026-10-03');
   });
 
-  it('writes them as Brazil does in Portuguese: comma decimals, US$, day first', () => {
+  it('writes them as the app’s Portuguese screens do: pt-BR, comma decimals, US$, the app’s date', () => {
     const plain = (s: string) => s.replace(/ /g, ' ');
     expect(pt.pct(0.0682)).toBe('6,82%');
     expect(plain(pt.usd1(184_100))).toBe('US$ 184,1 mil');
     expect(plain(pt.usd(100_000))).toBe('US$ 100.000');
-    expect(plain(pt.minute('2026-10-03T15:07:00Z'))).toBe('03/10/2026, 15:07 UTC');
-    expect(pt.day('2026-10-03T15:07:00Z')).toBe('03/10/2026');
+    expect(plain(pt.minute('2026-10-03T15:07:00Z'))).toBe('3 de out. de 2026, 15:07 UTC');
+    expect(plain(pt.day('2026-10-03T15:07:00Z'))).toBe('3 de out. de 2026');
   });
 });
