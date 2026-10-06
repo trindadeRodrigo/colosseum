@@ -1,4 +1,5 @@
 import { adapterContract, type ContractFixture } from '@colosseum/chain-mock/contract';
+import { isStalePrice } from '@colosseum/schemas';
 import { afterAll, describe, vi } from 'vitest';
 import {
   ACCOUNTS,
@@ -38,7 +39,12 @@ describe.skipIf(!FORK_URL)('on a copy of Robinhood Chain test network', () => {
     'robinhood adapter, copy of the test network',
     async (): Promise<ContractFixture> => {
       const w = await startTestnet();
+      // The test network's prices are copied in by its price writer; one it has not copied for longer
+      // than the vault accepts is stale on the copy too, and the reads are held to saying so.
+      const ids = (await w.adapter.listAssets()).map((a) => a.id);
+      const stale = (await w.adapter.getPrices(ids)).find((p) => isStalePrice(p));
       return {
+        ...(stale ? { stalePriced: stale.asset } : {}),
         adapter: w.adapter,
         provenance: 'sandbox',
         notBefore,
