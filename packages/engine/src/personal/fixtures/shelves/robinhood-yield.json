@@ -2,5 +2,149 @@
   "chain": "robinhood",
   "note": "docs/vault/research/yield-shelf/robinhood.md",
   "readAt": "2026-10-06",
-  "rows": []
+  "rows": [
+    {
+      "asset": {
+        "id": "robinhood:steakusdg",
+        "chain": "robinhood",
+        "address": "0xbeeff033f34c046626b8d0a041844c5d1a5409dd",
+        "symbol": "steakUSDG",
+        "decimals": 18,
+        "cls": "dollar_yield",
+        "underlying": "steakUSDG",
+        "issuer": "Steakhouse (Morpho)",
+        "tier": "C",
+        "priceKind": "none",
+        "priceRef": "",
+        "session": "always",
+        "autoFollowEligible": false,
+        "maxWeightBps": 5000,
+        "blockedCountries": [],
+        "sheet": "steakusdg",
+        "provenance": "fixture"
+      },
+      "verdict": "add_with_caution",
+      "source": "docs/vault/research/yield-shelf/robinhood.md, section 3, steakUSDG",
+      "unverified": [
+        "geo-blocks",
+        "verified source code: the explorer refused, so restrictions were tested on chain",
+        "a market route: there is none, the exit is redemption from the vault, which the plan's vault cannot do yet",
+        "that the leg type says all of it: its borrowers post basis and credit tokens as collateral"
+      ]
+    },
+    {
+      "asset": {
+        "id": "robinhood:syrupusdg",
+        "chain": "robinhood",
+        "address": "0x40858070814a57fdf33a613ae84fe0a8b4a874f7",
+        "symbol": "syrupUSDG",
+        "decimals": 6,
+        "cls": "dollar_yield",
+        "underlying": "syrupUSDG",
+        "issuer": "Maple",
+        "tier": "A",
+        "priceKind": "none",
+        "priceRef": "",
+        "session": "always",
+        "autoFollowEligible": false,
+        "maxWeightBps": 5000,
+        "blockedCountries": [],
+        "sheet": "syrupusdg",
+        "provenance": "fixture"
+      },
+      "verdict": "add_with_caution",
+      "source": "docs/vault/research/yield-shelf/robinhood.md, section 3, syrupUSDG",
+      "unverified": [
+        "the yield: the input list's figure only",
+        "geo-blocks",
+        "the bridge route and withdrawal timing",
+        "whether the pool price equals the net asset value"
+      ]
+    },
+    {
+      "asset": {
+        "id": "robinhood:spusdg",
+        "chain": "robinhood",
+        "address": "0xde770c84fe66e063336b31737cfe9790f18c4087",
+        "symbol": "spUSDG",
+        "decimals": 6,
+        "cls": "dollar_yield",
+        "underlying": "spUSDG",
+        "issuer": "Spark",
+        "tier": "C",
+        "priceKind": "none",
+        "priceRef": "",
+        "session": "always",
+        "autoFollowEligible": false,
+        "maxWeightBps": 5000,
+        "blockedCountries": [],
+        "sheet": "spusdg",
+        "provenance": "fixture"
+      },
+      "verdict": "hold",
+      "source": "docs/vault/research/yield-shelf/robinhood.md, section 3, spUSDG",
+      "unverified": [
+        "geo-blocks",
+        "what funds the rate and who may take the assets",
+        "a market route: there is none, the exit is redemption from the vault, which the plan's vault cannot do yet"
+      ],
+      "heldOut": "on hold: what funds its rate is not verified, so its leg type is not settled, and a person decides it"
+    },
+    {
+      "asset": {
+        "id": "robinhood:pt-usdg-25mar2027",
+        "chain": "robinhood",
+        "address": "0x6982e39521a070a3c40782548bfbed6dc8f566ef",
+        "symbol": "PT-USDG-25MAR2027",
+        "decimals": 6,
+        "cls": "dollar_yield",
+        "underlying": "PT-USDG-25MAR2027",
+        "issuer": "Pendle",
+        "tier": "B",
+        "priceKind": "none",
+        "priceRef": "",
+        "session": "always",
+        "autoFollowEligible": false,
+        "maxWeightBps": 5000,
+        "blockedCountries": [],
+        "sheet": "pt-usdg-25mar2027",
+        "provenance": "fixture"
+      },
+      "verdict": "add_with_caution",
+      "source": "docs/vault/research/yield-shelf/robinhood.md, section 3, PT-USDG-25MAR2027",
+      "unverified": [
+        "verified source code, audits and incidents",
+        "geo-blocks",
+        "who pays the reward behind the rate and whether it can stop",
+        "whether the plan's vault may trade through the market's router"
+      ],
+      "heldOut": "a token with a maturity (25 March 2027): the schedule models none yet",
+      "maturity": "2027-03-25"
+    },
+    {
+      "asset": {
+        "id": "robinhood:rusdg",
+        "chain": "robinhood",
+        "address": "0xf04c58853d54f2445989108c29087f1a61c034cb",
+        "symbol": "rUSDG",
+        "decimals": 18,
+        "cls": "dollar_yield",
+        "underlying": "rUSDG",
+        "issuer": "Mellow",
+        "tier": "C",
+        "priceKind": "none",
+        "priceRef": "",
+        "session": "always",
+        "autoFollowEligible": false,
+        "maxWeightBps": 5000,
+        "blockedCountries": [],
+        "sheet": "rusdg",
+        "provenance": "fixture"
+      },
+      "verdict": "hold",
+      "source": "docs/vault/research/yield-shelf/robinhood.md, section 3, rUSDG",
+      "unverified": ["positions, leverage cap, fees and yield", "geo-blocks"],
+      "heldOut": "on hold: a capped carry strategy whose positions and cap are not published, with a redemption queue of 2 to 3 days"
+    }
+  ]
 }

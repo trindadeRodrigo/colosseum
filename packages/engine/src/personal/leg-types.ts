@@ -81,6 +81,20 @@ export const LEG_TYPES: Record<string, LegTypeRow> = {
       'iShares 0-3 Month Treasury Bond ETF as a Robinhood Chain stock token, docs/vault/research/open-questions/launch-shelf.md',
     readAt: '2026-10-01',
   },
+  // The extended shelf on Robinhood Chain (docs/vault/research/yield-shelf/robinhood.md, Oct 6): test
+  // tokens only.
+  steakUSDG: {
+    types: ['market_deposit'],
+    source:
+      'A curated vault that lends USDG in four lending markets: a withdrawal waits when all is lent. Its borrowers post basis and credit tokens, which this type does not say, as read in docs/vault/research/yield-shelf/robinhood.md, section 3',
+    readAt: '2026-10-06',
+  },
+  syrupUSDG: {
+    types: ['credit', 'basis'],
+    source:
+      'The USDG form of syrupUSDC, typed as it is: loans to institutions, and disclosures that allow basis trades, as read in docs/vault/research/yield-shelf/robinhood.md, section 3',
+    readAt: '2026-10-06',
+  },
   // MOCK: the stand-in dollar-yield token of the mock chain (packages/chain-mock), so a plan built on
   // the mock has a dollar-yield line. Typed as a rate leg, the strictest kind with no credit in it.
   mYIELD: {
