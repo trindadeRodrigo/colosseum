@@ -170,7 +170,7 @@ export function coinsAt(p: number, w: number, h: number): CoinAt[] {
       x: lx + (hx - lx) * t,
       y: ly + (hy - ly) * t,
       r: looseR * l.depth + (homeR - looseR * l.depth) * t,
-      tilt: (1 - t) * (l.turn + p * 1.2 * Math.sign(l.turn)),
+      tilt: (1 - t) * (l.turn + p * 1.2 * (l.turn < 0 ? -1 : 1)),
       home: t,
     };
   });
