@@ -439,6 +439,8 @@ export const pt: Dictionary = {
   plan: {
     title: 'Seu plano',
     signedOut: 'Entre para ver este plano. Um plano é de uma pessoa, na rede da carteira dela.',
+    fromLink:
+      'Este plano veio de um link: nosso motor o montou com os limites que o link trazia, que outra pessoa pode ter definido. Confira o objetivo, o valor e os limites acima antes de comprar.',
     missing: {
       title: 'Não tenho este plano nesta aba.',
       body: 'Um plano fica guardado na aba do navegador que o montou, e este não está aqui. Monte de novo a partir do seu objetivo: seus limites continuam guardados.',
