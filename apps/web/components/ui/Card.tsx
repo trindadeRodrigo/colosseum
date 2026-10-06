@@ -199,7 +199,7 @@ export function Stat({ label, children, density = 'default', className }: StatPr
       data-ui="stat"
       className={cn('min-w-0', density === 'dense' ? 'p-4' : 'px-4 py-3', className)}
     >
-      <dt className="text-caption text-muted-foreground">{label}</dt>
+      <dt className="font-sans text-caption font-medium text-muted-foreground">{label}</dt>
       <dd
         className={cn(
           'font-mono font-medium tabular-nums',

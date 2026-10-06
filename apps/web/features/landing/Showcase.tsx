@@ -47,11 +47,12 @@ function Kpis({ items }: { items: Kpi[] }) {
             i < 2 ? 'max-[619px]:border-b max-[619px]:border-border' : '',
           ].join(' ')}
         >
-          <dt className="font-mono text-[12px]/4 text-muted-foreground">{kpi.label}</dt>
+          {/* the stat cell of card.md: the label in the sans, 500, 12.5px; the figure mono, 500, 18px */}
+          <dt className="font-sans text-caption font-medium text-muted-foreground">{kpi.label}</dt>
           {/* A figure with its pin and MOCK plate is one unbreakable line (ProvenancePin). In a cell
               narrower than 12rem (all four, at every width this page has today) the plate goes
               under the figure; the figure and its pin stay together. */}
-          <dd className="mt-0.5 text-[1.125rem]/7 font-medium tabular-nums @max-[12rem]:[&_[data-ui=figure]_[data-ui=mock-plate]]:ml-0 @max-[12rem]:[&_[data-ui=figure]_[data-ui=mock-plate]]:flex @max-[12rem]:[&_[data-ui=figure]_[data-ui=mock-plate]]:w-fit">
+          <dd className="mt-0.5 font-mono text-[1.125rem]/7 font-medium tabular-nums @max-[12rem]:[&_[data-ui=figure]_[data-ui=mock-plate]]:ml-0 @max-[12rem]:[&_[data-ui=figure]_[data-ui=mock-plate]]:flex @max-[12rem]:[&_[data-ui=figure]_[data-ui=mock-plate]]:w-fit">
             {kpi.value}
             {kpi.unit && (
               // a unit such as "Dec 2031" is never broken across lines
