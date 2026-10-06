@@ -53,6 +53,36 @@ export const PersonalLimits = z.object({
 });
 export type PersonalLimits = z.infer<typeof PersonalLimits>;
 
+const MixBps = z.number().int().min(0).max(10_000);
+
+/**
+ * LOCAL TYPE. What the person said they want held (gate EXPLICIT-MIX, Rodrigo, Oct 6): "all in
+ * stocks", "70% stocks and 30% cash", "only credit". In basis points of the whole plan, adding up to
+ * 10,000. It replaces the table row for the goal and the risk, and the limits follow it: the plan
+ * takes the lowest risk whose caps admit it (`riskForMix`), so risk is never asked.
+ */
+export const PersonalMix = z
+  .object({
+    /** Stocks and crypto. */
+    growthBps: MixBps,
+    dollarYieldBps: MixBps,
+    goldBps: MixBps,
+    cashBps: MixBps,
+    /**
+     * Of the dollar yield, the most of the plan in credit and basis legs, when the person said so
+     * ("only credit", "only high yield"). It is their credit budget, and those legs fill first.
+     */
+    creditBps: MixBps.optional(),
+  })
+  .refine((m) => m.growthBps + m.dollarYieldBps + m.goldBps + m.cashBps === 10_000, {
+    message: 'a mix adds up to 100%',
+  })
+  .refine((m) => (m.creditBps ?? 0) <= m.dollarYieldBps, {
+    message: 'credit is part of dollar yield: it cannot be more than the dollar yield of the mix',
+    path: ['creditBps'],
+  });
+export type PersonalMix = z.infer<typeof PersonalMix>;
+
 /**
  * LOCAL TYPE. `BasketSheet` with the person's limits. This is what `compose` validates and runs on.
  *
@@ -61,7 +91,10 @@ export type PersonalLimits = z.infer<typeof PersonalLimits>;
  */
 // `horizonOpen` (shared, Oct 6): `horizonMonths` then holds `openEndedHorizonMonths` of the parameter
 // table, a starting value and not the person's; no date is shown or made from it, and the glide is off.
-export const PersonalSheet = BasketSheet.extend({ limits: PersonalLimits.optional() })
+export const PersonalSheet = BasketSheet.extend({
+  limits: PersonalLimits.optional(),
+  mix: PersonalMix.optional(),
+})
   .refine((s) => !(s.horizonOpen && s.rules.glide), {
     message: 'a goal with no date has no glide: it has no date to near',
     path: ['rules', 'glide'],
@@ -73,6 +106,17 @@ export const PersonalSheet = BasketSheet.extend({ limits: PersonalLimits.optiona
   .refine((s) => s.chains.length === 1, {
     message: 'a plan lives on one chain: name exactly one',
     path: ['chains'],
+  })
+  // Gate PROTECT-NO-STOCKS holds over a mix: a plan for income or to protect holds no stocks, so a
+  // mix with stocks in it is a conflict the intake asks about, never a plan.
+  .refine((s) => !s.mix || s.goal === 'grow' || s.mix.growthBps === 0, {
+    message:
+      'a plan for income or to protect holds no stocks or crypto: ask whether the goal is to grow, or the mix holds none',
+    path: ['mix', 'growthBps'],
+  })
+  .refine((s) => !s.mix || !s.sleeves, {
+    message: 'a mix is of the whole plan: it cannot be set with a split',
+    path: ['mix'],
   });
 export type PersonalSheet = z.infer<typeof PersonalSheet>;
 
@@ -141,7 +185,7 @@ export const PersonalParameters = PersonalParams.extend({
   }),
   /** The most of the plan with one issuer, for dollar yield, gold and cash. Stocks keep `capPerIssuerBps`. */
   issuerCapBps: Bps,
-  /** The most of the plan in credit and basis legs, by the person's credit tolerance. */
+  /** The most of the plan in credit and basis legs, by the person's credit tolerance (a mix's credit share replaces it). */
   creditShareBps: z.record(z.enum(['none', 'limited', 'accept']), Bps),
   /** The credit tolerance of a person who has not said. */
   defaultCreditTolerance: z.enum(['none', 'limited', 'accept']),
