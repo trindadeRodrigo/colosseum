@@ -291,7 +291,7 @@
         "unclear": []
       }
     },
-    "portfolio_not_on_shelf": {
+    "portfolio_not_in_text": {
       "goal": "en-grow-by-2031-theme-chain",
       "reply": {
         "goal": "grow",
@@ -302,6 +302,23 @@
         "currency": "USD",
         "chain": "solana",
         "portfolios": ["Moon Rockets"],
+        "language": "en",
+        "noCredit": false,
+        "cannotHold": [],
+        "unclear": []
+      }
+    },
+    "portfolio_not_on_shelf": {
+      "goal": "en-grow-by-2031-theme-chain",
+      "reply": {
+        "goal": "grow",
+        "amountUsd": 5000,
+        "incomeTargetUsdMonthly": null,
+        "horizonMonths": 51,
+        "risk": null,
+        "currency": "USD",
+        "chain": "solana",
+        "portfolios": ["The Seven"],
         "language": "en",
         "noCredit": false,
         "cannotHold": [],
@@ -416,7 +433,7 @@
     }
   },
   "narratives": {
-    "about": "MOCK. Goals that name a market, an industry or a trend (gates THEMES and THEME-MATCHED), each with a reply written by hand in the shape the intake asks the model for: `markets` by id for a narrative the fixed word lists hold, `marketFilter` (an attribute, a value and the person's own words) for one they do not. Not recorded from a live model.",
+    "about": "MOCK. Goals that name a market, an industry or a trend (gates THEMES and THEME-MATCHED), each with a reply written by hand in the shape the intake asks the model for: `markets` by id for a narrative the fixed word lists hold, `marketFilter` (an attribute, a value and the person's own words) for one they do not. Not recorded from a live model. \"Farmacêuticas\" is a fixed word since the health care narrative (Oct 6): its case keeps the filter a model might still name, which the fixed list now covers.",
     "cases": {
       "obesity-drugs": {
         "text": "I have $2,000 to invest in obesity drugs for 5 years",
@@ -524,6 +541,33 @@
             "by": "industry",
             "value": "pharmaceuticals",
             "words": "farmacêuticas"
+          }
+        }
+      },
+      "insurers-in-portuguese": {
+        "text": "Quero investir US$ 2.000 em seguradoras por 5 anos",
+        "reply": {
+          "goal": "grow",
+          "amountUsd": 2000,
+          "incomeTargetUsdMonthly": null,
+          "horizonMonths": 60,
+          "risk": null,
+          "currency": "USD",
+          "chain": null,
+          "portfolios": [],
+          "language": "pt",
+          "noCredit": false,
+          "cannotHold": [],
+          "unclear": [],
+          "openEnded": false,
+          "mayNeedInMonths": null,
+          "sleeves": null,
+          "markets": [],
+          "mix": null,
+          "marketFilter": {
+            "by": "industry",
+            "value": "insurance",
+            "words": "seguradoras"
           }
         }
       },
@@ -685,6 +729,153 @@
             "cashPct": 0,
             "creditPct": null
           }
+        }
+      ]
+    },
+    "share-in-words-pair": {
+      "about": "MOCK. A share of the money said in words on a later turn (\"70-30\"), in answer to \"How much of the $2,000 for big tech?\" (gate EXPLICIT-MIX, the review of Oct 6). The reply of turn 2 is written by hand as a model reads the two messages with no question between them: it cannot tell what the pair splits, so it names no mix and says the split is unclear. Not recorded from a live model.",
+      "messages": ["I have 2k that I want to grow over 5 years. I like big tech", "70-30"],
+      "replies": [
+        {
+          "goal": "grow",
+          "amountUsd": 2000,
+          "incomeTargetUsdMonthly": null,
+          "horizonMonths": 60,
+          "risk": null,
+          "currency": null,
+          "chain": null,
+          "portfolios": [],
+          "language": "en",
+          "noCredit": false,
+          "cannotHold": [],
+          "unclear": [],
+          "openEnded": false,
+          "mayNeedInMonths": null,
+          "sleeves": null,
+          "markets": ["big_tech"],
+          "mix": null,
+          "marketFilter": null
+        },
+        {
+          "goal": "grow",
+          "amountUsd": 2000,
+          "incomeTargetUsdMonthly": null,
+          "horizonMonths": 60,
+          "risk": null,
+          "currency": null,
+          "chain": null,
+          "portfolios": [],
+          "language": "en",
+          "noCredit": false,
+          "cannotHold": [],
+          "unclear": ["sleeves"],
+          "openEnded": false,
+          "mayNeedInMonths": null,
+          "sleeves": null,
+          "markets": ["big_tech"],
+          "mix": null,
+          "marketFilter": null
+        }
+      ]
+    },
+    "share-in-words-half": {
+      "about": "MOCK. The same conversation answered \"half\": the model reads no mix and no split from it. Not recorded from a live model.",
+      "messages": ["I have 2k that I want to grow over 5 years. I like big tech", "half"],
+      "replies": [
+        {
+          "goal": "grow",
+          "amountUsd": 2000,
+          "incomeTargetUsdMonthly": null,
+          "horizonMonths": 60,
+          "risk": null,
+          "currency": null,
+          "chain": null,
+          "portfolios": [],
+          "language": "en",
+          "noCredit": false,
+          "cannotHold": [],
+          "unclear": [],
+          "openEnded": false,
+          "mayNeedInMonths": null,
+          "sleeves": null,
+          "markets": ["big_tech"],
+          "mix": null,
+          "marketFilter": null
+        },
+        {
+          "goal": "grow",
+          "amountUsd": 2000,
+          "incomeTargetUsdMonthly": null,
+          "horizonMonths": 60,
+          "risk": null,
+          "currency": null,
+          "chain": null,
+          "portfolios": [],
+          "language": "en",
+          "noCredit": false,
+          "cannotHold": [],
+          "unclear": [],
+          "openEnded": false,
+          "mayNeedInMonths": null,
+          "sleeves": null,
+          "markets": ["big_tech"],
+          "mix": null,
+          "marketFilter": null
+        }
+      ]
+    },
+    "share-in-words-mix": {
+      "about": "MOCK. The same conversation answered \"all of it in stocks\": the model reads the mix. Not recorded from a live model.",
+      "messages": [
+        "I have 2k that I want to grow over 5 years. I like big tech",
+        "all of it in stocks"
+      ],
+      "replies": [
+        {
+          "goal": "grow",
+          "amountUsd": 2000,
+          "incomeTargetUsdMonthly": null,
+          "horizonMonths": 60,
+          "risk": null,
+          "currency": null,
+          "chain": null,
+          "portfolios": [],
+          "language": "en",
+          "noCredit": false,
+          "cannotHold": [],
+          "unclear": [],
+          "openEnded": false,
+          "mayNeedInMonths": null,
+          "sleeves": null,
+          "markets": ["big_tech"],
+          "mix": null,
+          "marketFilter": null
+        },
+        {
+          "goal": "grow",
+          "amountUsd": 2000,
+          "incomeTargetUsdMonthly": null,
+          "horizonMonths": 60,
+          "risk": null,
+          "currency": null,
+          "chain": null,
+          "portfolios": [],
+          "language": "en",
+          "noCredit": false,
+          "cannotHold": [],
+          "unclear": [],
+          "openEnded": false,
+          "mayNeedInMonths": null,
+          "sleeves": null,
+          "markets": ["big_tech"],
+          "mix": {
+            "growthPct": 100,
+            "dollarYieldPct": 0,
+            "goldPct": 0,
+            "cashPct": 0,
+            "creditPct": null
+          },
+          "marketFilter": null
         }
       ]
     }

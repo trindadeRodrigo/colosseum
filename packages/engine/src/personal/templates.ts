@@ -625,6 +625,11 @@ const FORMATS: Record<string, (value: Value, lang: Language, key: string) => str
     const unit = lang === 'pt' ? (count === 1 ? 'mês' : 'meses') : count === 1 ? 'month' : 'months';
     return `${count} ${unit}`;
   },
+  years: (value, lang, key) => {
+    const count = number(value, key);
+    const unit = lang === 'pt' ? (count === 1 ? 'ano' : 'anos') : count === 1 ? 'year' : 'years';
+    return `${count} ${unit}`;
+  },
   // Codes joined by commas, written in the order of the list above: "a, b and c".
   regimes: (value, lang, key) => {
     const given = String(value).split(',');
@@ -733,8 +738,10 @@ export const QUESTION_TEMPLATES = {
     en: 'You wrote {pct}% and the other half, which come to more than the whole. Which split do you mean: {pct}% and {rest}%, or half and half?',
     pt: 'Você escreveu {pct}% e a outra metade, o que passa do total. Qual divisão você quer: {pct}% e {rest}%, ou metade e metade?',
   },
-  // A market named with no share of the money said ("I like AI"), gate EXPLICIT-MIX: asked once, in
-  // place of the risk.
+  // What is held, asked once in place of the risk (gate EXPLICIT-MIX): a holding the person may mean
+  // and the text does not state ("Should I put all of it in stocks?", or a mix the model reads that the
+  // text's words cannot confirm) and, by the two after it, a market named with no share of the money
+  // said ("I like big tech").
   mix: {
     en: 'How do you want the money held: how much in stocks and crypto, and how much in cash?',
     pt: 'Como você quer o dinheiro: quanto em ações e cripto, e quanto em caixa?',
@@ -767,12 +774,24 @@ export const QUESTION_TEMPLATES = {
 } as const satisfies Record<string, Text>;
 export type QuestionId = keyof typeof QUESTION_TEMPLATES;
 
+/**
+ * How long the goal runs, as the read-back's first sentence says it (Oct 6): the way the person said
+ * it. In months, unless they said years ("about 5 years") or a date ("by 2031"). The figure is always
+ * the sheet's: its months, those months as whole years, or the month they end in.
+ */
+export const TERM_SAID = {
+  months: { en: 'over {months|months}', pt: 'em {months|months}' },
+  years: { en: 'over {years|years}', pt: 'em {years|years}' },
+  date: { en: 'by {month|month}', pt: 'até {month|month}' },
+} as const satisfies Record<string, Text>;
+
 /** The sentences of the read-back, each filled from the validated sheet and nothing else. */
 export const READBACK_TEMPLATES = {
+  // `term` is `TERM_SAID`, filled.
   GOAL: {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
-    en: 'You set {goal|goal} with ${amount|amount} over {months|months}, at {risk|risk}.',
-    pt: 'Você definiu {goal|goal} com US$ {amount|amount} em {months|months}, com {risk|risk}.',
+    en: 'You set {goal|goal} with ${amount|amount} {term}, at {risk|risk}.',
+    pt: 'Você definiu {goal|goal} com US$ {amount|amount} {term}, com {risk|risk}.',
   },
   // A goal with no date (gate GLIDE-OPT-IN, Oct 6): the months the plan is built over are not said.
   GOAL_OPEN: {
@@ -783,8 +802,8 @@ export const READBACK_TEMPLATES = {
   // With a stated mix (gate EXPLICIT-MIX) the risk is the mix's, said once as an assumption: not here.
   GOAL_MIX: {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
-    en: 'You set {goal|goal} with ${amount|amount} over {months|months}.',
-    pt: 'Você definiu {goal|goal} com US$ {amount|amount} em {months|months}.',
+    en: 'You set {goal|goal} with ${amount|amount} {term}.',
+    pt: 'Você definiu {goal|goal} com US$ {amount|amount} {term}.',
   },
   GOAL_OPEN_MIX: {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
@@ -940,6 +959,12 @@ export const ASSUMPTION_TEMPLATES = {
   MIX_LIMITS: {
     en: 'To hold “{words}”, the plan uses the limits for {risk|risk}.',
     pt: 'Para manter “{words}”, o plano usa os limites de {risk|risk}.',
+  },
+  // The same line where the person also said a risk and the limits the mix needs are another's: their
+  // answer, and the limits the plan uses to hold what they asked. Never changed in silence.
+  MIX_LIMITS_OTHER_RISK: {
+    en: 'You said {said|risk}, but to hold “{words}” the plan uses the limits for {risk|risk}.',
+    pt: 'Você disse {said|risk}, mas para manter “{words}” o plano usa os limites de {risk|risk}.',
   },
   MIX_DROPPED: {
     en: 'A plan for {goal|goal} holds no stocks or crypto, so “{words}” is not held.',

@@ -29,16 +29,25 @@ export {
   MARKET_IDS,
   type Market,
   type MarketMention,
+  type MarketShare,
+  type MixSaid,
   marketMentionsIn,
   marketShareIn,
   marketsIn,
   mentionsIn,
   mixIn,
+  mixSaidIn,
   NARRATIVES,
   type Narrative,
   openEndedIn,
   otherLanguageIn,
   refusalsIn,
+  type ShareSaid,
+  type Stance,
+  shareSaidIn,
+  stanceOf,
+  type TimeFrame,
+  timeFramesIn,
 } from './intake-text';
 // The market filter (gate THEME-MATCHED): the one contract between the intake, which names a filter,
 // and the theme sleeve, which fills it. A caller of the intake hands in its labels and its matches in
@@ -55,8 +64,8 @@ export {
   matchedSlug,
   type ShelfLabel,
 } from './market-filter';
-export { PERSONAL_PARAMS, PERSONAL_PARAMS_STATUS } from './params';
-export { matchedName, readBack, type ThemeNames } from './readback';
+export { INTAKE_LIMITS, PERSONAL_PARAMS, PERSONAL_PARAMS_STATUS } from './params';
+export { matchedName, readBack, type TermSaid, type ThemeNames } from './readback';
 export { eligibleForGoal, profileOfGoal, registryRowOf, sleeveOfClass } from './registry';
 export {
   ASSUMPTION_TEMPLATES,
@@ -68,6 +77,7 @@ export {
   READBACK_TEMPLATES,
   REASON_TEMPLATES,
   type RuleId,
+  TERM_SAID,
   TEXT_TEMPLATES,
 } from './templates';
 export * from './types';

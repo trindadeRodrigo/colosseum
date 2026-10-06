@@ -5,6 +5,8 @@ import {
   conversationText,
   type IntakeAnswers,
   type IntakeInput,
+  readReply,
+  riskForMixEstimate,
   runIntake,
   type ShelfPortfolio,
 } from './intake';
@@ -14,6 +16,8 @@ import {
   marketMentionsIn,
   marketShareIn,
   marketsIn,
+  mixIn,
+  mixSaidIn,
   NARRATIVES,
   phraseIn,
 } from './intake-text';
@@ -26,11 +30,12 @@ import {
   matchedSlug,
   type ShelfLabel,
 } from './market-filter';
+import { INTAKE_LIMITS } from './params';
 import { launchShelf } from './testing';
 import { PersonalSheet } from './types';
 
-// A market, an industry or a trend the person names to invest in (gates EXPLICIT-MIX, THEMES and
-// THEME-MATCHED): what the intake reads it to, and what the sheet then holds. The model's replies are
+// A market, an industry or a trend the person names to invest in (gates EXPLICIT-MIX, THEMES,
+// THEME-MATCHED and THEME-NONE-YET): what the intake reads it to, and what the sheet then holds. The model's replies are
 // MOCK, written by hand in the shape the API asks the model for. The curated labels and what the
 // stocks' sourced attributes carry are MOCK too: the label files and the attribute files live with
 // the theme sleeve, and the intake takes both through its input. No test reaches a network.
@@ -61,10 +66,14 @@ const LABELS: ShelfLabel[] = [
   label('space', 'Space', 'Espaço', 'confirmed', 0),
 ];
 // What the stocks' attributes carry, by `attributeKey`, and how many of those stocks the shelf lists.
+// A keyword is written as the attribute files write it, in small letters.
 const ATTRIBUTES: Record<string, FilterMatch> = {
+  'sector:health-care': { value: 'Health Care', listed: 3 },
   'industry:aerospace-defense': { value: 'Aerospace & Defense', listed: 4 },
   'industry:software': { value: 'Software', listed: 5 },
   'industry:pharmaceuticals': { value: 'Pharmaceuticals', listed: 2 },
+  'industry:insurance': { value: 'Insurance', listed: 2 },
+  'keyword:cloud': { value: 'cloud', listed: 5 },
   'keyword:glp-1': { value: 'GLP-1', listed: 2 },
   // Carried by stocks the shelf does not list on this chain.
   'sub_industry:automobile-manufacturers': { value: 'Automobile Manufacturers', listed: 0 },
@@ -155,6 +164,8 @@ describe('the words of a narrative, read by code', () => {
     broad_market: ['index funds', 'fundos de índice'],
     retail_favourites: ['meme stocks', 'ações meme'],
     defense: ['defense stocks', 'setor de defesa'],
+    health_care: ['health care stocks', 'setor de saúde'],
+    social_media: ['social media stocks', 'empresas de redes sociais'],
   };
 
   it('has words in English and Portuguese for each, and reads each to its id alone', () => {
@@ -170,49 +181,57 @@ describe('the words of a narrative, read by code', () => {
     }
   });
 
-  it('reads each to the portfolio, label, filter and nearest offers of the table', () => {
+  // The table as the stock data of Oct 6 sets it: the filters of each narrative, in the order they are
+  // tried. A keyword serves where GICS would mislead (a stablecoin issuer is filed under Software).
+  it('reads each to the portfolio, label, filters in order and nearest offers of the table', () => {
     const row = (id: Market) => {
       const n = NARRATIVES[id];
-      return [
-        n.portfolio,
-        n.label,
-        n.filter ? `${n.filter.by}: ${n.filter.value}` : null,
-        n.nearest,
-      ];
+      return [n.portfolio, n.label, n.filters.map((f) => `${f.by}: ${f.value}`), n.nearest];
     };
     expect(Object.fromEntries(MARKET_IDS.map((id) => [id, row(id)]))).toEqual({
-      big_tech: ['the-seven', 'big-tech', null, ['the-seven', 'ai', 'the-500']],
-      us_market: ['the-500', 'broad-market', null, ['the-500', 'the-seven']],
-      ai: [null, 'ai', null, ['the-seven', 'the-500']],
+      big_tech: ['the-seven', 'big-tech', [], ['the-seven', 'ai', 'the-500']],
+      us_market: ['the-500', 'broad-market', [], ['the-500', 'the-seven']],
+      ai: [null, 'ai', [], ['the-seven', 'the-500']],
       semiconductors: [
         null,
         'semiconductors',
-        'industry: Semiconductors & Semiconductor Equipment',
+        ['industry: Semiconductors & Semiconductor Equipment'],
         ['sand-to-server', 'ai', 'the-seven'],
       ],
-      ai_infrastructure: [null, 'ai-infrastructure', null, ['ai', 'semiconductors', 'the-seven']],
-      crypto_economy: [null, 'crypto-economy', null, ['crypto-in-a-suit']],
-      fintech: [null, 'fintech', null, ['crypto-economy', 'crypto-in-a-suit']],
-      space: [null, 'space', null, []],
-      quantum: [null, 'quantum-computing', null, ['ai', 'semiconductors']],
+      ai_infrastructure: [
+        null,
+        'ai-infrastructure',
+        ['keyword: data centers'],
+        ['ai', 'semiconductors', 'the-seven'],
+      ],
+      crypto_economy: [null, 'crypto-economy', [], ['crypto-in-a-suit']],
+      fintech: [null, 'fintech', [], ['crypto-economy', 'crypto-in-a-suit']],
+      space: [null, 'space', ['keyword: launch services'], []],
+      quantum: [
+        null,
+        'quantum-computing',
+        ['keyword: quantum computers'],
+        ['ai', 'semiconductors'],
+      ],
       ev_autonomy: [
         null,
         'ev-autonomy',
-        'sub_industry: Automobile Manufacturers',
+        ['keyword: electric vehicles', 'sub_industry: Automobile Manufacturers'],
         ['ai', 'the-seven'],
       ],
-      cloud_software: [null, 'cloud-software', 'industry: Software', ['the-seven', 'ai']],
-      emerging_markets: [null, 'emerging-markets-asia', null, []],
-      commodities: [null, 'commodities', null, ['storm-cellar']],
-      broad_market: [null, 'broad-market', null, ['the-500']],
-      retail_favourites: [null, 'retail-favourites', null, []],
-      defense: [null, 'defense', 'industry: Aerospace & Defense', []],
+      cloud_software: [null, 'cloud-software', ['keyword: cloud'], ['the-seven', 'ai']],
+      emerging_markets: [null, 'emerging-markets-asia', ['keyword: emerging markets'], []],
+      commodities: [null, 'commodities', [], ['storm-cellar']],
+      broad_market: [null, 'broad-market', ['keyword: index fund'], ['the-500']],
+      retail_favourites: [null, 'retail-favourites', [], []],
+      defense: [null, 'defense', ['industry: Aerospace & Defense', 'keyword: defense'], []],
+      health_care: [null, 'health-care', ['sector: Health Care'], []],
+      social_media: [null, 'social-media', ['keyword: social media'], []],
     });
-    // Every filter of the table makes a slug a theme sleeve can take.
-    for (const id of MARKET_IDS) {
-      const filter = NARRATIVES[id].filter;
-      if (filter) expect(matchedSlug(filter), id).toMatch(/^matched-/);
-    }
+    // Every filter of the table makes a slug a theme sleeve can take, and no two the same slug.
+    const slugs = MARKET_IDS.flatMap((id) => NARRATIVES[id].filters.map((f) => matchedSlug(f)));
+    for (const slug of slugs) expect(slug).toMatch(/^matched-/);
+    expect(new Set(slugs).size).toBe(slugs.length);
   });
 
   it('keeps the longer reading where two share words', () => {
@@ -252,6 +271,13 @@ describe('the words of a narrative, read by code', () => {
       'ai, não sei',
       'only blue chips and blue-chip stocks',
       'a quantum leap for my savings',
+      // Health care and social media are everywhere: alone, they are read only where money goes in.
+      'I need money for health care next year',
+      'My health care costs are high',
+      'Preciso do dinheiro para a saúde da minha mãe',
+      'I saw it on social media',
+      'I read about it in social media posts',
+      'Vi nas redes sociais que a bolsa caiu',
     ])
       expect(marketsIn(text), text).toEqual([]);
     // Where the sentence is about investing in them, they are read.
@@ -260,6 +286,24 @@ describe('the words of a narrative, read by code', () => {
     expect(first('put it all in defense')).toBe('defense');
     expect(first('tudo na defesa')).toBe('defense');
     expect(first('I like crypto stocks')).toBe('crypto_economy');
+    for (const text of [
+      'invest in health care',
+      'put 30% in healthcare',
+      'I like health stocks',
+      'all of it in pharma',
+      'pharmaceuticals',
+      'investir em saúde',
+      'quero farmacêuticas',
+    ])
+      expect(first(text), text).toBe('health_care');
+    for (const text of [
+      'invest in social media',
+      'put half of it in social networks',
+      'I like social media stocks',
+      'investir em redes sociais',
+      'tudo em redes sociais',
+    ])
+      expect(first(text), text).toBe('social_media');
     // Through the intake: no narrative, and no question about one.
     const result = intake(
       'I want to grow $2,000 over 5 years. I need more space to think about the risk, and my best defense is patience.',
@@ -450,7 +494,7 @@ describe('a narrative reads to a shared portfolio, a curated label, a filter, or
       reply({ markets: ['defense'] }),
     );
     const slug = 'matched-industry-aerospace-defense';
-    expect(matchedSlug(NARRATIVES.defense.filter as MarketFilter)).toBe(slug);
+    expect(matchedSlug(NARRATIVES.defense.filters[0] as MarketFilter)).toBe(slug);
     expect(result.narratives).toEqual([
       {
         id: 'defense',
@@ -472,41 +516,212 @@ describe('a narrative reads to a shared portfolio, a curated label, a filter, or
       '100% of the plan for names matched by industry: Aerospace & Defense.',
     );
     expect((result.readBack ?? []).join(' ')).not.toMatch(/the theme/);
-    // No label at all, and a filter that matches.
+    // No label at all, and a filter that matches: a keyword, as the attributes write it.
     const cloud = intake(
       'Invest $2,000 in software for 5 years',
       reply({ markets: ['cloud_software'] }),
     );
     expect(cloud.narratives[0]).toMatchObject({
       kind: 'matched',
-      slug: 'matched-industry-software',
-      name: 'names matched by industry: Software',
+      slug: 'matched-keyword-cloud',
+      filter: { by: 'keyword', value: 'cloud' },
+      name: 'names matched by keyword: cloud',
     });
     expect(cloud.flags.filter((f) => f.startsWith('label_'))).toEqual([]);
   });
 
+  it('the filters of a narrative are tried in the order written: the first that matches a listed stock fills the sleeve', () => {
+    const listed =
+      (...keys: string[]) =>
+      (filter: MarketFilter): FilterMatch | null =>
+        keys.includes(`${filter.by}:${attributeKey(filter.value)}`)
+          ? { value: filter.value, listed: 2 }
+          : null;
+    const ev = (keys: string[]) =>
+      intake(
+        'Invest $2,000 in electric vehicles for 5 years',
+        reply({ markets: ['ev_autonomy'] }),
+        {
+          matchOf: listed(...keys),
+        },
+      );
+    const KEYWORD = 'keyword:electric-vehicles';
+    const SUB = 'sub_industry:automobile-manufacturers';
+    // Both match: the first of the table, the keyword.
+    const both = ev([KEYWORD, SUB]);
+    expect(both.narratives[0]).toMatchObject({
+      kind: 'matched',
+      slug: 'matched-keyword-electric-vehicles',
+      filter: { by: 'keyword', value: 'electric vehicles' },
+    });
+    expect(both.sheet?.sleeves).toEqual([theme('matched-keyword-electric-vehicles')]);
+    // The first matches nothing listed: the second fills the sleeve, and is the one said.
+    const second = ev([SUB]);
+    expect(second.narratives[0]).toMatchObject({
+      kind: 'matched',
+      slug: 'matched-subindustry-automobile-manufacturers',
+      filter: { by: 'sub_industry', value: 'Automobile Manufacturers' },
+      name: 'names matched by sub-industry: Automobile Manufacturers',
+    });
+    expect(second.sheet?.sleeves).toEqual([theme('matched-subindustry-automobile-manufacturers')]);
+    expect(second.flags).not.toContain('filter_no_match:ev_autonomy');
+    expect(second.assumptions.join(' ')).toMatch(
+      /matched by sub-industry: Automobile Manufacturers/,
+    );
+    expect(JSON.stringify(second)).not.toMatch(/electric-vehicles/);
+    // None matches: nothing is held, and that is said.
+    const none = ev([]);
+    expect(none.narratives[0]).toMatchObject({ kind: 'none', slug: null, filter: null });
+    expect(none.flags).toContain('filter_no_match:ev_autonomy');
+    // Defense, where the industry lists nothing here and the keyword does.
+    const defense = intake(
+      'Invest $2,000 in defense stocks for 5 years',
+      reply({ markets: ['defense'] }),
+      { matchOf: listed('keyword:defense') },
+    );
+    expect(defense.narratives[0]).toMatchObject({
+      kind: 'matched',
+      slug: 'matched-keyword-defense',
+      name: 'names matched by keyword: defense',
+    });
+    // A match that lists no stock on the chain is no match: the next filter is tried.
+    const unlisted = intake(
+      'Invest $2,000 in defense stocks for 5 years',
+      reply({ markets: ['defense'] }),
+      {
+        matchOf: (filter) =>
+          filter.by === 'industry'
+            ? { value: 'Aerospace & Defense', listed: 0 }
+            : { value: 'defense', listed: 1 },
+      },
+    );
+    expect(unlisted.narratives[0]?.slug).toBe('matched-keyword-defense');
+    // A curated label that is usable still comes before any filter.
+    const curated = intake(
+      'Invest $2,000 in defense stocks for 5 years',
+      reply({ markets: ['defense'] }),
+      { labels: [label('defense', 'Defense', 'Defesa', 'confirmed', 3)] },
+    );
+    expect(curated.narratives[0]).toMatchObject({ kind: 'label', slug: 'defense' });
+  });
+
+  it('health care and social media (Oct 6): their label, then their filter, or nothing', () => {
+    // Health care: no label on this shelf, and the sector matches.
+    const pharma = intake(
+      'Invest $2,000 in pharma for 5 years',
+      reply({ markets: ['health_care'] }),
+    );
+    expect(pharma.narratives).toEqual([
+      {
+        id: 'health_care',
+        words: 'pharma',
+        kind: 'matched',
+        slug: 'matched-sector-health-care',
+        filter: { by: 'sector', value: 'Health Care' },
+        name: 'names matched by sector: Health Care',
+      },
+    ]);
+    expect(pharma.questions).toEqual([]);
+    expect(pharma.sheet?.sleeves).toEqual([theme('matched-sector-health-care')]);
+    expect(pharma.readBack).toContain('100% of the plan for names matched by sector: Health Care.');
+    const saude = intake(
+      'Quero investir US$ 2.000 em saúde por 5 anos',
+      reply({ language: 'pt', markets: ['health_care'] }),
+    );
+    expect(saude.narratives[0]).toMatchObject({
+      words: 'saúde',
+      slug: 'matched-sector-health-care',
+      name: 'nomes filtrados por setor: Health Care',
+    });
+    // With its label confirmed and listed, the label holds it.
+    const curated = intake(
+      'Invest $2,000 in health care stocks for 5 years',
+      reply({ markets: ['health_care'] }),
+      { labels: [label('health-care', 'Health Care', 'Saúde', 'confirmed', 4)] },
+    );
+    expect(curated.narratives[0]).toMatchObject({
+      kind: 'label',
+      slug: 'health-care',
+      name: 'Health Care',
+    });
+    expect(curated.sheet?.sleeves).toEqual([theme('health-care')]);
+    // Social media: no label, and no stock that carries the keyword here. Nothing near is offered.
+    const social = intake(
+      'Invest $2,000 in social media stocks for 5 years',
+      reply({ markets: ['social_media'] }),
+    );
+    expect(social.narratives).toEqual([
+      {
+        id: 'social_media',
+        words: 'social media stocks',
+        kind: 'none',
+        slug: null,
+        filter: null,
+        name: null,
+      },
+    ]);
+    expect(social.assumptions).toEqual([
+      'There is no stock for “social media stocks” on Solana at the moment. We will be adding more soon.',
+    ]);
+    const matched = intake(
+      'Quero investir US$ 2.000 em redes sociais por 5 anos',
+      reply({ language: 'pt', markets: ['social_media'] }),
+      { matchOf: () => ({ value: 'social media', listed: 3 }) },
+    );
+    expect(matched.narratives[0]).toMatchObject({
+      words: 'redes sociais',
+      kind: 'matched',
+      slug: 'matched-keyword-social-media',
+      name: 'nomes filtrados por palavra-chave: social media',
+    });
+    expect(matched.sheet?.sleeves).toEqual([theme('matched-keyword-social-media')]);
+  });
+
   it('or nothing: said in the one sentence, with the nearest the shelf has where it has one', () => {
-    // Space: its label lists nothing on this chain, it has no filter, and nothing is near.
-    const space = intake('Invest $2,000 in space for 5 years', reply({ markets: ['space'] }));
+    // Space: its label lists nothing on this chain, its filter matches no stock, and nothing is near.
+    const text = 'Invest $2,000 in space for 5 years';
+    const space = intake(text, reply({ markets: ['space'] }));
     expect(space.narratives).toEqual([
       { id: 'space', words: 'space', kind: 'none', slug: null, filter: null, name: null },
     ]);
     expect(space.flags).toEqual(
-      expect.arrayContaining(['label_not_listed:space', 'market_not_on_shelf:space']),
+      expect.arrayContaining([
+        'label_not_listed:space',
+        'filter_no_match:space',
+        'market_not_on_shelf:space',
+      ]),
     );
-    expect(space.assumptions).toContain(
+    expect(space.assumptions).toEqual([
       'There is no stock for “space” on Solana at the moment. We will be adding more soon.',
+    ]);
+    // Nothing is held for it (gate THEME-NONE-YET, Oct 6): no mix, no sleeve, no share asked, and no
+    // line about limits. The rest goes on as if it had not been named: the risk is asked.
+    expect(fields(space)).toEqual(['risk']);
+    expect(space.mix).toBeNull();
+    expect(space.draft.sleeves).toBeNull();
+    expect(space.draft.themes).toBeNull();
+    expect(space.flags.filter((f) => /^mix_|^sleeves_|^risk_from|share_unclear/.test(f))).toEqual(
+      [],
     );
-    expect(space.readBack).toContain(
+    const answered = intake(text, reply({ markets: ['space'] }), { answers: { risk: 'low' } });
+    expect(answered.questions).toEqual([]);
+    expect(answered.sheet).toMatchObject({ risk: 'low', themes: [] });
+    expect(answered.sheet?.sleeves).toBeUndefined();
+    expect(answered.sheet?.mix).toBeUndefined();
+    expect(answered.readBack).toEqual([
+      'You set a goal to grow with $2,000 over 5 years, at low risk.',
+      'The plan lives on Solana, the chain of your wallet.',
+      'Tokens you already hold count toward the plan.',
       'There is no stock for “space” on Solana at the moment. We will be adding more soon.',
-    );
-    // What the plan does with the money is what it did for a market the shelf had nothing for.
-    expect(space.questions).toEqual([]);
-    expect(space.sheet?.sleeves).toBeUndefined();
-    expect(space.sheet?.themes).toEqual([]);
-    expect(space.sheet?.mix?.growthBps).toBe(WHOLE);
+      'Nothing moves toward cash as the date nears unless you ask for it.',
+      'If this is right, confirm it and the plan is made from it.',
+    ]);
+    // The sheet is the one the same goal gives with the narrative not named.
+    const plain = intake('Invest $2,000 for 5 years', reply(), { answers: { risk: 'low' } });
+    expect(answered.sheet).toEqual(plain.sheet);
 
-    // Quantum: a proposed label and no filter; the nearest is the AI label, by its name.
+    // Quantum: a proposed label and a filter that matches nothing; the nearest is the AI label, by
+    // its name.
     const quantum = intake(
       'Invest $2,000 in quantum computing for 5 years',
       reply({ markets: ['quantum'] }),
@@ -554,6 +769,53 @@ describe('a narrative reads to a shared portfolio, a curated label, a filter, or
     );
   });
 
+  it('a part word inside the words of a narrative names the narrative, not a mix: "all of it in crypto stocks"', () => {
+    // "Crypto", "stocks", "ações" and "bolsa" are parts of a mix on their own. Inside a narrative's
+    // words the longer reading is the one read, so the share is the narrative's.
+    for (const text of [
+      'All of it in crypto stocks',
+      'everything in bitcoin miners',
+      'tudo em ações americanas',
+      'tudo na bolsa americana',
+      '70% in crypto stocks and 30% cash',
+      'crypto stocks only',
+      'half crypto stocks, half cash',
+      'all in emerging markets equities',
+    ])
+      expect(mixSaidIn(text), text).toBeNull();
+    for (const text of [
+      'all of it in crypto',
+      'everything in bitcoin',
+      'tudo em ações',
+      'tudo na bolsa',
+      'stocks only',
+      'all in equities',
+    ])
+      expect(mixIn(text)?.mix.growthBps, text).toBe(WHOLE);
+    // Where the chain has nothing for the crypto economy, nothing is held for it (THEME-NONE-YET):
+    // the words do not come back as a plan all in stocks and crypto.
+    const none = intake(
+      'I want to grow $2,000 over 5 years. All of it in crypto stocks.',
+      reply({ markets: ['crypto_economy'] }),
+    );
+    expect(none.narratives.map((n) => [n.id, n.kind])).toEqual([['crypto_economy', 'none']]);
+    expect(none.mix).toBeNull();
+    expect(none.draft.sleeves).toBeNull();
+    expect(fields(none)).toEqual(['risk']);
+    expect(none.assumptions.join(' ')).toMatch(/There is no stock for “crypto stocks” on Solana/);
+    // Where the shelf has it, the share is the narrative's and it is held as before.
+    const us = intake(
+      'Quero investir US$ 2.000 por 5 anos, tudo em ações americanas',
+      reply({ language: 'pt', markets: ['us_market'] }),
+    );
+    expect(us.questions).toEqual([]);
+    expect(us.flags).toContain('mix_from_market');
+    expect(us.sheet).toMatchObject({ themes: ['the-500'], mix: { growthBps: WHOLE } });
+    expect(us.assumptions).toContain(
+      'Para manter “ações americanas”, o plano usa os limites de risco alto.',
+    );
+  });
+
   it('a label holds a narrative only when it is confirmed and lists a stock on the chain', () => {
     const kindWith = (status: ShelfLabel['status'], listed: number) =>
       intake('Invest $2,000 in AI for 5 years', reply({ markets: ['ai'] }), {
@@ -589,11 +851,12 @@ describe('a narrative reads to a shared portfolio, a curated label, a filter, or
   });
 
   it('the same text gives the same answer whatever the order of the labels', () => {
-    const texts = [
-      'Invest $2,000 in semiconductors for 5 years',
-      'I want to grow $2,000 over 5 years. Put $500 in semiconductors and $300 in AI',
-      'Invest $2,000 in quantum computing for 5 years',
-      'Invest $2,000 in defense stocks for 5 years',
+    const texts: [string, IntakeAnswers][] = [
+      ['Invest $2,000 in semiconductors for 5 years', {}],
+      ['I want to grow $2,000 over 5 years. Put $500 in semiconductors and $300 in AI', {}],
+      // Nothing on the chain for it: the risk is asked as for any goal, and answered here.
+      ['Invest $2,000 in quantum computing for 5 years', { risk: 'medium' }],
+      ['Invest $2,000 in defense stocks for 5 years', {}],
     ];
     const orders = [
       LABELS,
@@ -601,11 +864,108 @@ describe('a narrative reads to a shared portfolio, a curated label, a filter, or
       [...LABELS.slice(3), ...LABELS.slice(0, 3)],
       [...LABELS].sort((a, b) => a.name.pt.localeCompare(b.name.pt)),
     ];
-    for (const text of texts) {
-      const answers = orders.map((labels) => JSON.stringify(intake(text, reply(), { labels })));
-      expect(new Set(answers).size, text).toBe(1);
-      expect(JSON.parse(answers[0] as string).sheet, text).not.toBeNull();
+    for (const [text, answers] of texts) {
+      const said = orders.map((labels) =>
+        JSON.stringify(intake(text, reply(), { labels, answers })),
+      );
+      expect(new Set(said).size, text).toBe(1);
+      expect(JSON.parse(said[0] as string).sheet, text).not.toBeNull();
     }
+  });
+
+  // Gate THEME-NONE-YET (Rodrigo, Oct 6): what the chain has nothing for is said, and nothing more.
+  it('a narrative the chain has nothing for is never held and never asked its share, however its share is said', () => {
+    const none = (words: string) =>
+      `There is no stock for “${words}” on Solana at the moment. We will be adding more soon.`;
+    const NONE = none('space');
+    const ALL_STOCKS = {
+      growthPct: 100,
+      dollarYieldPct: 0,
+      goldPct: 0,
+      cashPct: 0,
+      creditPct: null,
+    };
+    // With a model that reads no mix, with no model, and, where the text gives the narrative a
+    // share, with a model that reads that share as a mix: the share is the narrative's, so that mix
+    // is no second holding and is not asked either.
+    for (const [said, words, shared] of [
+      ['Invest in space.', 'space', true],
+      ['All of it in space.', 'space', true],
+      ['Put $500 in space.', 'space', true],
+      ['Put 30% in space.', 'space', true],
+      ['Half in space.', 'space', true],
+      ['I like space stocks.', 'space stocks', false],
+    ] as const)
+      for (const r of [
+        reply({ markets: ['space'] }),
+        null,
+        ...(shared ? [reply({ markets: ['space'], mix: ALL_STOCKS })] : []),
+      ]) {
+        const text = `I want to grow $2,000 over 5 years. ${said}`;
+        const where = `${said} ${r === null ? 'rules' : JSON.stringify(r.mix)}`;
+        const result = intake(
+          text,
+          r,
+          r === null ? { answers: { goal: 'grow', horizonMonths: 60 } } : {},
+        );
+        expect(
+          result.narratives.map((n) => n.kind),
+          where,
+        ).toEqual(['none']);
+        expect(result.mix, where).toBeNull();
+        expect(result.draft.sleeves, where).toBeNull();
+        expect(result.assumptions, where).toEqual([none(words)]);
+        const asked = fields(result);
+        expect(asked, where).not.toContain('mix');
+        expect(asked, where).not.toContain('sleeves');
+        expect(asked, where).toContain('risk');
+        expect(
+          result.flags.filter((f) =>
+            /mix_from|sleeves_from|risk_from_|share_unclear|mix_asked/.test(f),
+          ),
+          where,
+        ).toEqual([]);
+      }
+    // The three first markets too: big tech and the US market where the shelf has neither their
+    // portfolio nor their label, and AI with no label.
+    for (const [words, id] of [
+      ['big tech', 'big_tech'],
+      ['US stocks', 'us_market'],
+      ['AI', 'ai'],
+    ] as const) {
+      const result = intake(`Invest $2,000 in ${words} for 5 years`, reply({ markets: [id] }), {
+        portfolios: [],
+        labels: [],
+      });
+      expect(
+        result.narratives.map((n) => [n.id, n.kind]),
+        words,
+      ).toEqual([[id, 'none']]);
+      expect(fields(result), words).toEqual(['risk']);
+      expect(result.mix, words).toBeNull();
+      expect(result.assumptions, words).toEqual([
+        `There is no stock for “${words}” on Solana at the moment. We will be adding more soon.`,
+      ]);
+    }
+    // A mix the person states of the whole money is theirs all the same, with the sentence beside it.
+    const stated = intake(
+      'I want to grow $2,000 over 5 years. I like space stocks. All of it in stocks.',
+      reply({ markets: ['space'], mix: ALL_STOCKS }),
+    );
+    expect(stated.questions).toEqual([]);
+    expect(stated.sheet?.mix?.growthBps).toBe(WHOLE);
+    expect(stated.assumptions).toEqual([
+      'To hold “All of it in stocks”, the plan uses the limits for high risk.',
+      none('space stocks'),
+      'Nothing moves toward cash as the date nears unless you ask for it.',
+    ]);
+    // On a goal of income or to protect it is said too, and nothing else changes.
+    const income = intake(
+      'I want $50 a month of income from $10,000 for 5 years, all of it in space',
+      reply({ goal: 'income', amountUsd: 10_000, incomeTargetUsdMonthly: 50, markets: ['space'] }),
+    );
+    expect(fields(income)).toEqual(['risk']);
+    expect(income.assumptions).toEqual([NONE]);
   });
 });
 
@@ -719,25 +1079,63 @@ describe('a market the lists have no word for, named by the model as a filter (M
   });
 
   it('in Portuguese: the value as the attributes write it, the words as the person wrote them', () => {
-    const { text, reply: r } = recordedCase('pharma-in-portuguese');
+    const { text, reply: r } = recordedCase('insurers-in-portuguese');
     const result = intake(text, r);
     expect(result.narratives).toEqual([
       {
         id: null,
-        words: 'farmacêuticas',
+        words: 'seguradoras',
         kind: 'matched',
-        slug: 'matched-industry-pharmaceuticals',
-        filter: { by: 'industry', value: 'Pharmaceuticals' },
-        name: 'nomes filtrados por indústria: Pharmaceuticals',
+        slug: 'matched-industry-insurance',
+        filter: { by: 'industry', value: 'Insurance' },
+        name: 'nomes filtrados por indústria: Insurance',
       },
     ]);
-    expect(result.sheet?.sleeves).toEqual([theme('matched-industry-pharmaceuticals')]);
+    expect(result.sheet?.sleeves).toEqual([theme('matched-industry-insurance')]);
     expect(result.assumptions).toContain(
-      'Nenhuma lista com curadoria cobre “farmacêuticas” na Solana, então o plano fica com os nomes filtrados por indústria: Pharmaceuticals. Filtrados pelos atributos de cada um, que têm fonte; não é um tema com curadoria.',
+      'Nenhuma lista com curadoria cobre “seguradoras” na Solana, então o plano fica com os nomes filtrados por indústria: Insurance. Filtrados pelos atributos de cada um, que têm fonte; não é um tema com curadoria.',
     );
     expect(result.readBack).toContain(
-      '100% do plano para nomes filtrados por indústria: Pharmaceuticals.',
+      '100% do plano para nomes filtrados por indústria: Insurance.',
     );
+  });
+
+  it('"farmacêuticas" is a fixed word since Oct 6: the health care narrative reads it, and a filter the model still names for it is dropped', () => {
+    const { text, reply: r } = recordedCase('pharma-in-portuguese');
+    const result = intake(text, r);
+    expect(result.flags).toContain('market_covers:marketFilter');
+    expect(result.narratives).toEqual([
+      {
+        id: 'health_care',
+        words: 'farmacêuticas',
+        kind: 'matched',
+        slug: 'matched-sector-health-care',
+        filter: { by: 'sector', value: 'Health Care' },
+        name: 'nomes filtrados por setor: Health Care',
+      },
+    ]);
+    expect(result.sheet?.sleeves).toEqual([theme('matched-sector-health-care')]);
+    // The model's own filter is said nowhere, though stocks carry it.
+    expect(JSON.stringify(result)).not.toMatch(/[Pp]harmaceuticals/);
+  });
+
+  it('bounds the value and the words a model may send for a filter', () => {
+    const text = 'Invest $2,000 in obesity drugs for 5 years';
+    const filter = (value: string, words: string) => ({ by: 'keyword', value, words });
+    const at = (n: number) => 'x'.repeat(n);
+    expect(INTAKE_LIMITS).toMatchObject({ filterValueChars: 80, filterWordsChars: 100 });
+    // At the bound a value is read; one character more and the field is dropped, and flagged.
+    expect(readReply({ marketFilter: filter(at(80), 'obesity drugs') }).flags).toEqual([]);
+    expect(readReply({ marketFilter: filter('GLP-1', at(100)) }).flags).toEqual([]);
+    for (const marketFilter of [filter(at(81), 'obesity drugs'), filter('GLP-1', at(101))]) {
+      expect(readReply({ marketFilter }).flags).toEqual(['model_invalid:marketFilter']);
+      const result = intake(text, reply({ marketFilter }));
+      expect(result.flags).toContain('model_invalid:marketFilter');
+      expect(result.narratives).toEqual([]);
+      expect(fields(result)).toEqual(['risk']);
+    }
+    // A value of spaces around a long word is measured as the word it is.
+    expect(readReply({ marketFilter: filter(`  ${at(80)}  `, 'obesity drugs') }).flags).toEqual([]);
   });
 
   it('with no model, only the fixed words are read', () => {
@@ -813,7 +1211,8 @@ describe('the share of a theme, and the risk', () => {
     ]);
     // The goal line says no risk, and no sentence gives the risk to a part that seeks the goal.
     const said = result.readBack ?? [];
-    expect(said[0]).toBe('You set a goal to grow with $2,000 over 60 months.');
+    // The time frame is said as the person said it: "for 5 years".
+    expect(said[0]).toBe('You set a goal to grow with $2,000 over 5 years.');
     expect(said.filter((s) => /risk/.test(s))).toEqual([
       'To hold “semiconductors”, the plan uses the limits for high risk.',
     ]);
@@ -1000,14 +1399,59 @@ describe('the share of a theme, and the risk', () => {
     expect(answered.sheet?.sleeves).toEqual([theme('semiconductors', 1000), safe(9000)]);
   });
 
-  it('a risk the person gave as an answer is theirs, and no limits line is said', () => {
-    const result = intake(
-      'Invest $2,000 in semiconductors for 5 years',
-      reply({ markets: ['semiconductors'] }),
-      { answers: { risk: 'medium' } },
+  // The review of Oct 6, finding 4: the limits follow what is held, and a risk the person gave is
+  // never replaced in silence. The sheet takes the risk the engine will use, and one line says both.
+  it('a risk the person answered beside a theme: the sheet takes the risk the themes need, and one line says both', () => {
+    const text = 'Invest $2,000 in semiconductors for 5 years';
+    const result = intake(text, reply({ markets: ['semiconductors'] }), {
+      answers: { risk: 'medium' },
+    });
+    expect(result.questions).toEqual([]);
+    expect(result.sheet?.risk).toBe('high');
+    expect(result.flags).toEqual(
+      expect.arrayContaining(['risk_from_themes', 'risk_said_not_used:medium']),
     );
-    expect(result.sheet?.risk).toBe('medium');
-    expect(result.assumptions.filter((s) => /limits for/.test(s))).toEqual([]);
+    expect(result.assumptions.filter((s) => /limits for/.test(s))).toEqual([
+      'You said medium risk, but to hold “semiconductors” the plan uses the limits for high risk.',
+    ]);
+    expect((result.readBack ?? []).filter((s) => /risk/.test(s))).toEqual([
+      'You said medium risk, but to hold “semiconductors” the plan uses the limits for high risk.',
+    ]);
+    // An answer that is the risk the themes need changes nothing, and the plain line is said.
+    const same = intake(text, reply({ markets: ['semiconductors'] }), {
+      answers: { risk: 'high' },
+    });
+    expect(same.sheet?.risk).toBe('high');
+    expect(same.flags.filter((f) => f.startsWith('risk_said_not_used'))).toEqual([]);
+    expect(same.assumptions.filter((s) => /limits for/.test(s))).toEqual([
+      'To hold “semiconductors”, the plan uses the limits for high risk.',
+    ]);
+    // A risk written in the text, read by the model, is the person's word too.
+    const written = intake(
+      'Invest $2,000 in semiconductors for 5 years, at low risk',
+      reply({ markets: ['semiconductors'], risk: 'low' }),
+    );
+    expect(written.sheet?.risk).toBe('high');
+    expect(written.assumptions).toContain(
+      'You said low risk, but to hold “semiconductors” the plan uses the limits for high risk.',
+    );
+    // An answered split held in themes, with an answered risk beside it.
+    const split = intake('I want to grow $2,000 over 5 years', reply(), {
+      answers: { sleeves: [theme('ai', 6000), safe(4000)], risk: 'low' },
+    });
+    expect(split.sheet?.risk).toBe('medium');
+    expect(split.assumptions).toContain(
+      'You said low risk, but to hold “AI” the plan uses the limits for medium risk.',
+    );
+    // In Portuguese.
+    const pt = intake(
+      'Quero investir US$ 2.000 em semicondutores por 5 anos',
+      reply({ language: 'pt', markets: ['semiconductors'] }),
+      { answers: { risk: 'low' } },
+    );
+    expect(pt.assumptions).toContain(
+      'Você disse risco baixo, mas para manter “semicondutores” o plano usa os limites de risco alto.',
+    );
   });
 
   it('the same goal sent 10 times gives one sheet', () => {
@@ -1303,7 +1747,7 @@ describe('an answer that carries a theme sleeve is held to the shelf', () => {
     const done = intake(text, reply(), { answers: { sleeves, risk: 'medium' } });
     expect(done.sheet?.sleeves).toEqual(sleeves);
     expect(done.readBack?.[0]).toBe(
-      'You set a goal to grow with $2,000 over 60 months, at medium risk.',
+      'You set a goal to grow with $2,000 over 5 years, at medium risk.',
     );
   });
 });
@@ -1365,7 +1809,7 @@ describe('the read-back and the assumptions, in English and Portuguese', () => {
       { id: 'ai', words: 'IA', kind: 'label', slug: 'ai', filter: null, name: 'IA' },
     ]);
     expect(result.readBack).toEqual([
-      'Você definiu um objetivo de crescimento com US$ 2.000 em 60 meses.',
+      'Você definiu um objetivo de crescimento com US$ 2.000 em 5 anos.',
       'O plano fica na rede Solana, a rede da sua carteira.',
       'Os tokens que você já tem contam para o plano.',
       '100% do plano para o tema IA.',
@@ -1376,7 +1820,7 @@ describe('the read-back and the assumptions, in English and Portuguese', () => {
     ]);
     const en = intake('Invest $2,000 in AI for 5 years', reply({ markets: ['ai'] }));
     expect(en.readBack).toEqual([
-      'You set a goal to grow with $2,000 over 60 months.',
+      'You set a goal to grow with $2,000 over 5 years.',
       'The plan lives on Solana, the chain of your wallet.',
       'Tokens you already hold count toward the plan.',
       '100% of the plan for the theme AI.',
@@ -1493,6 +1937,8 @@ describe('whatever the text, the shelf and the answers', () => {
     'defense stocks',
     'setor de defesa',
     'obesity drugs',
+    'pharma',
+    'social media stocks',
     'The Seven',
     'Chips & Agents',
   ];
@@ -1506,12 +1952,18 @@ describe('whatever the text, the shelf and the answers', () => {
     (n) => `Put $900 in ${n} and $300 in AI.`,
     (n) => `I work in ${n}.`,
     (n) => `Quero investir em ${n}.`,
+    (n) => `Half in ${n}.`,
+    (n) => `Should I invest in ${n}?`,
+    (n) => `I already hold ${n} through my pension.`,
   ];
   const more = [
     '',
     'All of it in stocks.',
     '70% stocks and 30% cash.',
     '70% safe and 30% to risk.',
+    "I wouldn't put all of it in stocks.",
+    'Should I put all of it in stocks?',
+    'Stocks only.',
   ];
   const mixes = [
     { growthBps: 5000, dollarYieldBps: 0, goldBps: 0, cashBps: 5000 },
@@ -1519,7 +1971,7 @@ describe('whatever the text, the shelf and the answers', () => {
     { growthBps: WHOLE, dollarYieldBps: 0, goldBps: 0, cashBps: 0 },
   ];
 
-  it('never throws, never holds what the shelf has not, never a mix with sleeves, never asks the risk with a share', () => {
+  it('never throws, never holds what the shelf has not, never a mix with sleeves, never asks the risk with a share, never holds or asks what the chain has nothing for', () => {
     let state = 20_261_006;
     const next = () => {
       state = (state * 1_103_515_245 + 12_345) % 2_147_483_648;
@@ -1528,6 +1980,8 @@ describe('whatever the text, the shelf and the answers', () => {
     const pick = <T>(from: readonly T[]): T => from[Math.floor(next() * from.length)] as T;
     let sheets = 0;
     let themed = 0;
+    let noneOnly = 0;
+    let otherRisk = 0;
     for (let run = 0; run < 400; run += 1) {
       const opener = pick(openers);
       const words = [pick(named), pick(named)].slice(0, Math.floor(next() * 3));
@@ -1620,6 +2074,29 @@ describe('whatever the text, the shelf and the answers', () => {
         const asked = fields(result);
         expect(new Set(asked).size, where).toBe(asked.length);
         expect(asked.includes('risk') && asked.includes('mix'), where).toBe(false);
+        // A share is asked only of a narrative the chain holds something for, and where every
+        // narrative named has nothing there, none of them makes a mix or a sleeve (THEME-NONE-YET).
+        const share = result.questions.find((q) => q.field === 'mix' && q.template !== 'mix');
+        if (share)
+          expect(
+            result.narratives.some((n) => n.kind !== 'none' && share.text.includes(n.words)),
+            where,
+          ).toBe(true);
+        if (result.narratives.length > 0 && result.narratives.every((n) => n.kind === 'none')) {
+          noneOnly += 1;
+          expect(
+            result.flags.filter((f) =>
+              /^mix_from_market$|^sleeves_from_market$|share_unclear/.test(f),
+            ),
+            where,
+          ).toEqual([]);
+        }
+        // The model's mix is never held: a mix is the text's own words, or the person's answer.
+        if (result.mix && !('mix' in answers))
+          expect(
+            result.flags.some((f) => f === 'mix_from_market') || /stocks|cash/i.test(text),
+            where,
+          ).toBe(true);
         const sheet = result.sheet;
         if (sheet) {
           sheets += 1;
@@ -1629,6 +2106,23 @@ describe('whatever the text, the shelf and the answers', () => {
           const held = (sheet.sleeves ?? []).flatMap((s) => (s.kind === 'theme' ? [s.theme] : []));
           if (held.length > 0) themed += 1;
           for (const slug of held) expect(usable(slug), where).toBe(true);
+          // With a mix, or a plan held in themes, the sheet's risk is the one the limits need, and a
+          // risk the person answered that is another is said in the read-back, never dropped.
+          const inThemes = held.length > 0 && !sheet.sleeves?.some((s) => s.kind === 'goal');
+          const growthBps = sheet.mix
+            ? sheet.mix.growthBps
+            : inThemes
+              ? (sheet.sleeves ?? []).reduce((n, s) => (s.kind === 'theme' ? n + s.shareBps : n), 0)
+              : null;
+          if (growthBps !== null) {
+            expect(sheet.risk, where).toBe(riskForMixEstimate({ growthBps }));
+            const limits = (result.readBack ?? []).filter((s) => /limits for|limites de/.test(s));
+            expect(limits, where).toHaveLength(1);
+            if (answers.risk !== undefined && answers.risk !== sheet.risk) {
+              otherRisk += 1;
+              expect(limits[0], where).toMatch(/^You said |^Você disse /);
+            }
+          }
           // A theme the text names is never held on a goal of income or to protect.
           if (sheet.goal !== 'grow' && answers.sleeves === undefined)
             expect(held, where).toEqual([]);
@@ -1669,8 +2163,11 @@ describe('whatever the text, the shelf and the answers', () => {
         expect(JSON.stringify(answers), where).not.toBe(before);
       }
     }
-    // The run reaches sheets, and sheets that hold a theme: the checks above were not idle.
+    // The run reaches sheets, sheets that hold a theme, narratives the chain has nothing for, and a
+    // risk answered beside limits of another: the checks above were not idle.
     expect(sheets).toBeGreaterThan(100);
     expect(themed).toBeGreaterThan(20);
+    expect(noneOnly).toBeGreaterThan(20);
+    expect(otherRisk).toBeGreaterThan(0);
   });
 });

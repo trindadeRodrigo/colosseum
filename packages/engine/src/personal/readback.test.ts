@@ -5,16 +5,26 @@ import recorded from './fixtures/intake-replies.json';
 import { runIntake, type ShelfPortfolio } from './intake';
 import { readNumber } from './intake-text';
 import { filterOfSlug } from './market-filter';
-import { readBack, type ThemeNames } from './readback';
-import { CLASS_WORDS, placeholdersOf, READBACK_TEMPLATES, render, WORDS } from './templates';
+import { readBack, type TermSaid, type ThemeNames } from './readback';
+import {
+  CLASS_WORDS,
+  placeholdersOf,
+  READBACK_TEMPLATES,
+  render,
+  TERM_SAID,
+  WORDS,
+} from './templates';
 import { launchShelf } from './testing';
 import type { PersonalSheet } from './types';
+import { monthAfter } from './world';
 
 // C18: the read-back the person confirms holds no number and no name that the sheet does not. It is
 // drawn from the validated sheet by templates, so this holds the templates and the code that fills
 // them. The check is the one of portfolio-method.md section 2.6, items 1 to 3: every numeral maps to a
 // value of the sheet once the locale is undone, and every name is a value of the sheet or words of the
 // templates themselves. The last test plants the errors the check is for and sees each one caught.
+// The time frame is the sheet's months said the way the person said them (Oct 6): as months, as those
+// months in whole years, or as the month they end in, counted from the month handed in.
 
 const portfolios: ShelfPortfolio[] = launchShelf().families.map((f) => ({
   slug: f.meta.slug,
@@ -42,9 +52,17 @@ const themeSaidBy = (slug: string, lang: Language): string =>
       portfolios.find((p) => p.slug === slug)?.name ??
       slug);
 
+/** The month a sheet's time frame ends in, counted from the month a term said as a date hands in. */
+const endOf = (sheet: PersonalSheet, term?: TermSaid): string | null =>
+  term?.said === 'date' ? monthAfter(term.from, sheet.horizonMonths) : null;
+
 /** The numbers a sheet holds, as a read-back may write them. */
-function numbersOf(sheet: PersonalSheet): Set<number> {
+function numbersOf(sheet: PersonalSheet, term?: TermSaid): Set<number> {
   const out = new Set<number>([sheet.amountUsd, sheet.horizonMonths]);
+  // The same months, said as the person said them: in whole years, or as the year they end in.
+  if (term?.said === 'years' && sheet.horizonMonths % 12 === 0) out.add(sheet.horizonMonths / 12);
+  const end = endOf(sheet, term);
+  if (end) out.add(Number(end.slice(0, 4)));
   if (sheet.incomeTargetUsdMonthly !== undefined) out.add(sheet.incomeTargetUsdMonthly);
   if (sheet.limits?.mustKeepUsd !== undefined) out.add(sheet.limits.mustKeepUsd);
   if (sheet.limits?.mayNeedInMonths !== undefined) out.add(sheet.limits.mayNeedInMonths);
@@ -77,8 +95,10 @@ function numbersOf(sheet: PersonalSheet): Set<number> {
 }
 
 /** The names a sheet holds, in the words a read-back writes them in. */
-function namesOf(sheet: PersonalSheet, lang: Language): Set<string> {
+function namesOf(sheet: PersonalSheet, lang: Language, term?: TermSaid): Set<string> {
+  const end = endOf(sheet, term);
   const words = [
+    ...(end ? [render('{m|month}', { m: end }, lang)] : []),
     ...sheet.chains.map((c) => WORDS[lang].chain[c] ?? c),
     sheet.currency ?? '',
     ...sheet.themes.map((slug) => portfolios.find((p) => p.slug === slug)?.name ?? slug),
@@ -108,10 +128,10 @@ const templateWords = (lang: Language) =>
   );
 
 /** What in a read-back the sheet does not hold: numbers, names. Empty when it holds no such thing. */
-function unsupported(sentences: string[], sheet: PersonalSheet): string[] {
+function unsupported(sentences: string[], sheet: PersonalSheet, term?: TermSaid): string[] {
   const lang = sheet.language;
-  const numbers = numbersOf(sheet);
-  const names = namesOf(sheet, lang);
+  const numbers = numbersOf(sheet, term);
+  const names = namesOf(sheet, lang, term);
   const fixed = templateWords(lang);
   const out: string[] = [];
   for (const sentence of sentences) {
@@ -268,6 +288,95 @@ describe('the read-back (C18)', () => {
     }
   });
 
+  // How the person said the time frame (Oct 6): "about 5 years" is not said back as "over 60 months".
+  const TERMS: TermSaid[] = [
+    { said: 'months' },
+    { said: 'years' },
+    { said: 'date', from: evalSet.nowMonth },
+  ];
+
+  it('says the time frame the way the person said it: in months, in whole years, or as the month it ends in', () => {
+    const sheet = all.find((s) => s.obligations && s.language === 'en') as PersonalSheet;
+    expect(sheet.horizonMonths).toBe(60);
+    const first = (s: PersonalSheet, term?: TermSaid) => readBack(s, portfolios, THEMES, term)[0];
+    expect(first(sheet)).toBe('You set a goal of income with $80,000 over 60 months, at low risk.');
+    expect(first(sheet, { said: 'months' })).toBe(first(sheet));
+    expect(first(sheet, { said: 'years' })).toBe(
+      'You set a goal of income with $80,000 over 5 years, at low risk.',
+    );
+    expect(first(sheet, { said: 'date', from: '2026-10' })).toBe(
+      'You set a goal of income with $80,000 by October 2031, at low risk.',
+    );
+    const pt = { ...sheet, language: 'pt' } as PersonalSheet;
+    expect(first(pt)).toBe(
+      'Você definiu um objetivo de renda com US$ 80.000 em 60 meses, com risco baixo.',
+    );
+    expect(first(pt, { said: 'years' })).toBe(
+      'Você definiu um objetivo de renda com US$ 80.000 em 5 anos, com risco baixo.',
+    );
+    expect(first(pt, { said: 'date', from: '2026-10' })).toBe(
+      'Você definiu um objetivo de renda com US$ 80.000 até outubro de 2031, com risco baixo.',
+    );
+    // One year is one year, and a date counts across the turn of a year.
+    const year = { ...sheet, horizonMonths: 12 };
+    expect(first(year, { said: 'years' })).toMatch(/ over 1 year, /);
+    expect(first({ ...year, language: 'pt' }, { said: 'years' })).toMatch(/ em 1 ano, /);
+    expect(first({ ...sheet, horizonMonths: 51 }, { said: 'date', from: '2026-10' })).toMatch(
+      / by January 2031, /,
+    );
+    // The figure is the sheet's whatever is handed in: months that are not whole years are said in
+    // months, and so is a date with no month to count from.
+    expect(first({ ...sheet, horizonMonths: 30 }, { said: 'years' })).toMatch(/ over 30 months, /);
+    for (const from of ['soon', '2026', '2026-13', '2026-10-05', ''])
+      expect(first(sheet, { said: 'date', from }), from).toBe(first(sheet));
+    // With a mix the line still names no risk, and a goal with no date names no time frame at all.
+    const mixed = all.find((s) => s.mix && !s.horizonOpen && s.language === 'en') as PersonalSheet;
+    expect(first(mixed, { said: 'years' })).toBe(
+      'You set a goal to grow with $80,000 over 5 years.',
+    );
+    const open = all.find((s) => s.horizonOpen && s.language === 'en') as PersonalSheet;
+    for (const term of TERMS) expect(first(open, term)).toBe(first(open));
+    // Only the first sentence changes.
+    for (const term of TERMS)
+      expect(readBack(sheet, portfolios, THEMES, term).slice(1)).toEqual(
+        readBack(sheet, portfolios, THEMES).slice(1),
+      );
+  });
+
+  it('holds no number and no name that the sheet does not, however the time frame is said', () => {
+    for (const sheet of all)
+      for (const term of TERMS) {
+        const sentences = readBack(sheet, portfolios, THEMES, term);
+        const where = JSON.stringify({ term, sheet });
+        expect(unsupported(sentences, sheet, term), where).toEqual([]);
+        expect(sentences.join(' '), where).not.toMatch(/[{}]|undefined|NaN|null/);
+      }
+    // Self-check: another count of years, another year and another month are each caught.
+    const sheet = all.find((s) => s.obligations && s.language === 'en') as PersonalSheet;
+    const years: TermSaid = { said: 'years' };
+    const date: TermSaid = { said: 'date', from: '2026-10' };
+    const inYears = readBack(sheet, portfolios, THEMES, years);
+    const asDate = readBack(sheet, portfolios, THEMES, date);
+    expect(inYears[0]).toMatch(/over 5 years/);
+    expect(asDate[0]).toMatch(/by October 2031/);
+    const wrongYears = inYears.map((s) => s.replace('over 5 years', 'over 6 years'));
+    expect(unsupported(wrongYears, sheet, years).length).toBeGreaterThan(0);
+    for (const [from, to] of [
+      ['October 2031', 'October 2032'],
+      ['October 2031', 'November 2031'],
+    ] as const)
+      expect(
+        unsupported(
+          asDate.map((s) => s.replace(from, to)),
+          sheet,
+          date,
+        ).length,
+        to,
+      ).toBeGreaterThan(0);
+    // Years said of a sheet read in months is a number the sheet does not hold that way.
+    expect(unsupported(inYears, sheet).length).toBeGreaterThan(0);
+  });
+
   it('says "no date set" for a goal with no date, never the months it is built over (Oct 6)', () => {
     const open = all.find((s) => s.horizonOpen && s.language === 'en') as PersonalSheet;
     const said = readBack(open, portfolios, THEMES);
@@ -409,9 +518,23 @@ describe('the read-back (C18)', () => {
         'names',
         'risk',
         'share',
+        // How long the goal runs: `TERM_SAID`, filled from the sheet's months.
+        'term',
         'theme',
         'themes',
       ].sort(),
     );
+    // What `term` itself takes: the sheet's months, those months in years, or the month they end in.
+    expect(
+      Object.fromEntries(
+        Object.entries(TERM_SAID).map(([said, t]) => [said, placeholdersOf(t.en)]),
+      ),
+    ).toEqual({
+      months: [{ key: 'months', format: 'months' }],
+      years: [{ key: 'years', format: 'years' }],
+      date: [{ key: 'month', format: 'month' }],
+    });
+    for (const t of Object.values(TERM_SAID))
+      expect(placeholdersOf(t.pt)).toEqual(placeholdersOf(t.en));
   });
 });

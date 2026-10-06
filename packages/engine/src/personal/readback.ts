@@ -8,15 +8,18 @@ import {
   READBACK_TEMPLATES,
   type ReadBackId,
   render,
+  TERM_SAID,
 } from './templates';
 import type { PersonalSheet } from './types';
+import { monthAfter } from './world';
 
 // The read-back (gate GUIDED-INTAKE): what the intake understood, said back to the person before the
 // engine runs. It is drawn from the validated sheet by templates, in the sheet's language, and never
 // written by a model, so what the person confirms is what the engine will use. Every number and name
 // in it is a value of the sheet, or the name handed in for a slug the sheet holds: a shared
 // portfolio's, a curated label's, or the value a matched theme was matched by (`readback.test.ts`
-// holds that, C18).
+// holds that, C18). The time frame is the sheet's months, said the way the person said it: as months,
+// as those months in whole years, or as the month they end in.
 
 type Value = string | number;
 
@@ -31,18 +34,30 @@ export type ThemeNames = {
   matched?: Readonly<Record<string, string>>;
 };
 
+/**
+ * How the person said the time frame (Oct 6), so the read-back says it back the same way: in months,
+ * in years ("about 5 years"), or as a date ("by 2031"). The figure is the sheet's whatever is handed
+ * in: its months, those months in years where they are whole years, or, for a date, the month they
+ * end in counted from `from` (YYYY-MM), the month the intake counted them from.
+ */
+export type TermSaid = { said: 'months' | 'years' } | { said: 'date'; from: string };
+
+const MONTHS_IN_A_YEAR = 12;
+
 /** What a theme filled by a filter is said as: "names matched by industry: Aerospace & Defense". */
 export const matchedName = (by: MarketFilterBy, value: string, lang: Language): string =>
   render(MATCHED_NAME[lang], { by: FILTER_BY_WORDS[lang][by], value }, lang);
 
 /**
  * The read-back of a sheet, sentence by sentence. `portfolios` names the shared portfolios the sheet
- * holds by slug, and `themes` its theme sleeves.
+ * holds by slug, and `themes` its theme sleeves. `term` is how the person said the time frame; left
+ * out, it is said in months.
  */
 export function readBack(
   sheet: PersonalSheet,
   portfolios: ShelfPortfolio[],
   themes: ThemeNames = {},
+  term?: TermSaid,
 ): string[] {
   const lang = sheet.language;
   const say = (id: ReadBackId, params: Record<string, Value> = {}) =>
@@ -52,6 +67,16 @@ export function readBack(
   const themeOf = (slug: string) =>
     themes.labels?.find((l) => l.slug === slug)?.name[lang] || nameOf(slug);
   const out: string[] = [];
+  // The sheet's months, the way the person said them. Anything that cannot be said that way from the
+  // sheet (months that are not whole years, a month to count from that is no month) is said in months.
+  const termSaid = (): string => {
+    const months = sheet.horizonMonths;
+    if (term?.said === 'years' && months % MONTHS_IN_A_YEAR === 0)
+      return render(TERM_SAID.years[lang], { years: months / MONTHS_IN_A_YEAR }, lang);
+    if (term?.said === 'date' && /^\d{4}-(?:0[1-9]|1[0-2])$/.test(term.from))
+      return render(TERM_SAID.date[lang], { month: monthAfter(term.from, months) }, lang);
+    return render(TERM_SAID.months[lang], { months }, lang);
+  };
 
   // A goal with no date is said as one: the months it is built over are a parameter, not the person's.
   // With a stated mix the risk is the mix's, said once in the assumptions (gate EXPLICIT-MIX). The
@@ -67,15 +92,11 @@ export function readBack(
         ? say('GOAL_OPEN_MIX', { goal: sheet.goal, amount: sheet.amountUsd })
         : say('GOAL_OPEN', { goal: sheet.goal, amount: sheet.amountUsd, risk: sheet.risk })
       : mixed
-        ? say('GOAL_MIX', {
-            goal: sheet.goal,
-            amount: sheet.amountUsd,
-            months: sheet.horizonMonths,
-          })
+        ? say('GOAL_MIX', { goal: sheet.goal, amount: sheet.amountUsd, term: termSaid() })
         : say('GOAL', {
             goal: sheet.goal,
             amount: sheet.amountUsd,
-            months: sheet.horizonMonths,
+            term: termSaid(),
             risk: sheet.risk,
           }),
   );

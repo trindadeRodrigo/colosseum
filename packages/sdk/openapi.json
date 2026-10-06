@@ -703,6 +703,38 @@
                                 "items": {
                                   "type": "string"
                                 }
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "growthBps": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "dollarYieldBps": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "goldBps": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "cashBps": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "creditBps": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  }
+                                },
+                                "required": ["growthBps", "dollarYieldBps", "goldBps", "cashBps"],
+                                "additionalProperties": false
                               }
                             ]
                           }
@@ -1116,7 +1148,9 @@
                                   "commodities",
                                   "broad_market",
                                   "retail_favourites",
-                                  "defense"
+                                  "defense",
+                                  "health_care",
+                                  "social_media"
                                 ]
                               },
                               {
@@ -1145,8 +1179,7 @@
                                   },
                                   "value": {
                                     "type": "string",
-                                    "minLength": 1,
-                                    "maxLength": 80
+                                    "minLength": 1
                                   }
                                 },
                                 "required": ["by", "value"],
