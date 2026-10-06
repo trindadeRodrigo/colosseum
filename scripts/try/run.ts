@@ -7,6 +7,7 @@ import {
   PersonalInputError,
   type PersonalProposal,
   type QuestionField,
+  riskForMix,
   runIntake,
 } from '@colosseum/engine/personal';
 import { currencyOf, type Language } from '@colosseum/schemas';
@@ -23,6 +24,7 @@ export const ANSWER_KEY: Record<QuestionField, string> = {
   goal: 'goal',
   amountUsd: 'amount',
   sleeves: 'sleeves',
+  mix: 'mix',
   incomeTargetUsdMonthly: 'income',
   horizonMonths: 'horizon',
   risk: 'risk',
@@ -86,6 +88,25 @@ export async function runGoal(goal: PromptGoal, opts: RunOptions): Promise<GoalR
     answers: goal.answers,
     homeChain: goal.chain,
     portfolios: data.portfolios,
+    // The read-back names the limits the engine will take for a stated mix: its own rule, on this
+    // chain's shelf and the portfolios read (gate EXPLICIT-MIX).
+    riskOfMix: (mix, themes) =>
+      riskForMix(
+        {
+          basketType: 'standard',
+          goal: 'grow',
+          amountUsd: 10_000,
+          horizonMonths: 120,
+          risk: 'low',
+          themes,
+          chains: [goal.chain],
+          rules: { useHoldings: false, glide: false },
+          language: 'en',
+          mix,
+        },
+        data.shelf,
+        { ...data.context, now: nowIso },
+      ),
   });
   const pasted = goal.reply !== undefined && read.reply !== null;
   const byModel = read.reply !== null && opts.model !== null && !pasted;

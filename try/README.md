@@ -45,7 +45,8 @@ writes them as answers, runs again and says what changed. The skill is
 ## Writing a goal
 
 One goal per `## heading`. Under the heading, write the goal exactly as a person would type it, in
-English or Portuguese. Anything before the first `##` is notes and is not read, and neither are HTML
+any language (the checks after the reader know English and Portuguese words; in another language a
+value they cannot confirm is asked, not taken). Anything before the first `##` is notes and is not read, and neither are HTML
 comments (`<!-- ... -->`).
 
 ````markdown
@@ -91,6 +92,7 @@ add under `answers`, and a block you can copy. Add the answers and run it again.
 | `withdrawals` | a monthly amount over a run of months: `{ monthly: 300, from: 2026-11, months: 24, currency: BRL }` (one, or a list) |
 | `obligations` | dated withdrawals one by one: `- { month: 2030-02, amount: 20000, currency: BRL }` |
 | `sleeves` | the split of the plan in percent: `{ goal: 50, ai: 50 }`. `goal` and `safe_yield` are sleeves; any other name is a theme list in `content/themes/<chain>/` |
+| `mix` | what the person wants held, in percent of the whole plan (gate `EXPLICIT-MIX`): `{ stocks: 100 }`, `{ stocks: 70, cash: 30 }`, `{ dollarYield: 100, credit: 100 }`; parts left out are 0, `credit` is the part of dollar yield in credit and basis tokens. With a mix, risk is never asked: the plan takes the lowest risk whose caps admit it. `none` for no mix |
 | `restoreSplit` | `true` to bring the sleeves back to their split when they drift |
 | `limits` | the person's limits: `mustKeepUsd`, `mayNeedInMonths`, `creditTolerance` (`none`, `limited`, `accept`), `cannotHold: { classes: [stock, etf], underlyings: [TSLA] }` |
 | `rules` | `{ useHoldings: true, glide: true }`. Holdings count unless said; the glide is off unless the text asks for it or names a date the money is needed by (gate `GLIDE-OPT-IN`) |

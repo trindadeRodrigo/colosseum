@@ -18,6 +18,7 @@ export {
   QUESTION_FIELDS,
   type QuestionField,
   readReply,
+  riskForMixEstimate,
   runIntake,
   type ShelfPortfolio,
 } from './intake';
@@ -25,8 +26,13 @@ export {
   amountInText,
   exitTimesIn,
   horizonsIn,
+  MARKET_SLUG,
+  type Market,
+  marketsIn,
   mentionsIn,
+  mixIn,
   openEndedIn,
+  otherLanguageIn,
   refusalsIn,
 } from './intake-text';
 export { growthRoomBps, RISKS } from './mix';

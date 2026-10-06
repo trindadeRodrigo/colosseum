@@ -67,6 +67,7 @@ const ALIASES: Record<string, keyof IntakeAnswers> = {
   restoreSplit: 'restoreSplit',
   limits: 'limits',
   horizonOpen: 'horizonOpen',
+  mix: 'mix',
 };
 /** Keys read here and not passed to the intake as they are. */
 // `country` is still accepted, so older files run, and read by nothing (gate COUNTRY-REMOVED, Oct 6).
@@ -136,6 +137,27 @@ function expandWithdrawals(value: unknown, currency: string, at: string, problem
       });
   }
   return out;
+}
+
+/**
+ * `mix` as a map of percentages (gate EXPLICIT-MIX): `stocks`, `dollarYield`, `gold`, `cash`, and
+ * `credit` within dollar yield. A part left out is 0. `null` or `none` is no mix. Any other shape is
+ * passed as written, for the intake's schema to judge.
+ */
+function mixOf(value: unknown): unknown {
+  if (value === null || value === 'none') return null;
+  if (typeof value !== 'object' || Array.isArray(value)) return value;
+  const v = value as Record<string, unknown>;
+  const known = ['stocks', 'dollarYield', 'gold', 'cash', 'credit'];
+  if (!Object.keys(v).every((k) => known.includes(k))) return value;
+  const bps = (k: string) => Math.round(Number(v[k] ?? 0) * 100);
+  return {
+    growthBps: bps('stocks'),
+    dollarYieldBps: bps('dollarYield'),
+    goldBps: bps('gold'),
+    cashBps: bps('cash'),
+    ...(v.credit !== undefined ? { creditBps: bps('credit') } : {}),
+  };
 }
 
 /** `sleeves` as a list (the sheet's own shape) or a map of percentages: goal, safe_yield, a theme. */
@@ -305,7 +327,14 @@ export function parsePromptFile(source: string, file = 'prompt file'): PromptGoa
       const field = ALIASES[k];
       if (!field) continue;
       if (field in out) problems.push(`${where}: \`${k}\` answers ${field} a second time`);
-      out[field] = field === 'horizonMonths' ? monthsOf(v) : field === 'sleeves' ? sleevesOf(v) : v;
+      out[field] =
+        field === 'horizonMonths'
+          ? monthsOf(v)
+          : field === 'sleeves'
+            ? sleevesOf(v)
+            : field === 'mix'
+              ? mixOf(v)
+              : v;
     }
     if (typeof out.currency === 'string') out.currency = out.currency.toUpperCase();
     if (raw.withdrawals !== undefined) {

@@ -45,6 +45,8 @@ export const INTAKE_REPLY_SCHEMA = {
     'openEnded',
     'mayNeedInMonths',
     'sleeves',
+    'markets',
+    'mix',
   ],
   properties: {
     goal: { anyOf: [{ type: 'string', enum: ['grow', 'income', 'protect'] }, { type: 'null' }] },
@@ -57,7 +59,8 @@ export const INTAKE_REPLY_SCHEMA = {
       anyOf: [{ type: 'string', enum: ['solana', 'base', 'robinhood'] }, { type: 'null' }],
     },
     portfolios: { type: 'array', items: { type: 'string' } },
-    language: { anyOf: [{ type: 'string', enum: ['en', 'pt'] }, { type: 'null' }] },
+    // Any language: an ISO 639-1 code (en, pt, es, fr). The intake answers en or pt, and en for others.
+    language: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     noCredit: { type: 'boolean' },
     cannotHold: {
       type: 'array',
@@ -101,13 +104,36 @@ export const INTAKE_REPLY_SCHEMA = {
         { type: 'null' },
       ],
     },
+    markets: {
+      type: 'array',
+      items: { type: 'string', enum: ['big_tech', 'us_market', 'ai'] },
+    },
+    mix: {
+      anyOf: [
+        {
+          type: 'object',
+          additionalProperties: false,
+          required: ['growthPct', 'dollarYieldPct', 'goldPct', 'cashPct', 'creditPct'],
+          properties: {
+            growthPct: { type: 'integer' },
+            dollarYieldPct: { type: 'integer' },
+            goldPct: { type: 'integer' },
+            cashPct: { type: 'integer' },
+            creditPct: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
+          },
+        },
+        { type: 'null' },
+      ],
+    },
   },
 } as const;
 
 const SYSTEM = [
-  "You read one person's financial goal, written in English or Portuguese, into fields. You are a reader, not an adviser.",
+  "You read one person's financial goal into fields. The text may be in any language (English, Portuguese, Spanish, French or another): read it as written, and never translate a value. You are a reader, not an adviser.",
   'Fill a field only with what the text says. When the text does not say it, give null. Never guess, never pick a value for the person, never suggest anything.',
-  'goal: grow (make the money grow), income (earn a monthly income from it) or protect (keep it safe). risk: low, medium or high, only as the person says it ("conservative" is low, "aggressive" is high).',
+  'goal: grow (make the money grow), income (earn a monthly income from it) or protect (keep it safe). risk: low, medium or high, only as the person says it ("conservative" is low, "aggressive" is high). A mix is not a risk: "all in stocks" gives risk null.',
+  'mix: only when the person states what they want held, of the whole money: "all of it in stocks" (growthPct 100), "70% stocks and 30% cash" (growthPct 70, cashPct 30), "only credit" or "only high yield" (dollarYieldPct 100, creditPct 100), "all in gold" (goldPct 100), "tudo em ações". growthPct is stocks and crypto; dollarYieldPct is dollar yield, including credit and bonds; creditPct is the part of dollarYieldPct in credit or high yield, else null. The four add up to 100, each as written. A market or a trend ("big tech", "AI") is not a mix. Nothing stated to hold: null.',
+  'markets: markets or trends the person names to invest in: big_tech ("big tech", "Magnificent 7", "US tech giants"), us_market ("the S&P", "the US market", "US stocks"), ai ("AI", "artificial intelligence"). None: an empty list. Do not name a portfolio for them.',
   'amountUsd: the money the person puts in, as written, only when it is in dollars or has no currency; a sum in another currency is null and its currency goes in currency. incomeTargetUsdMonthly: the income a month the person wants, in dollars. Do not convert currencies.',
   'horizonMonths: the time frame of the goal in months (years times 12; "by YEAR" counts to January of that year from the current month given). A time to get the money out is not a time frame: "can take up to 3 months to get out", "I may need it in 3 months" go in mayNeedInMonths when they cover the whole plan, and nowhere when they cover one part; never in horizonMonths.',
   'openEnded: true only when the person says the goal has no date ("no hard cap", "no deadline", "open-ended", "sem prazo"); then horizonMonths is null.',
@@ -116,7 +142,7 @@ const SYSTEM = [
   "The text may hold several messages: the goal, then the person's answers to questions. Read them together; a later message corrects an earlier one.",
   'currency: the ISO code of the currency the goal is counted in (USD, BRL, EUR), only when written. chain: a blockchain the person names.',
   'portfolios: the names of shared portfolios the person names ("starting from The Seven"), as written. noCredit: true only if the person rules out credit or lending. cannotHold: classes the person rules out ("no stocks", "sem ações").',
-  'language: the language the text is written in. unclear: every field the text mentions in a way you cannot read with confidence.',
+  'language: the ISO 639-1 code of the language the text is written in (en, pt, es, fr). unclear: every field the text mentions in a way you cannot read with confidence.',
 ].join('\n');
 
 /** What the intake reads with: a model, or nothing. Tests hand in a replay of recorded replies. */

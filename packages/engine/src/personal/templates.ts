@@ -939,6 +939,12 @@ export const QUESTION_TEMPLATES = {
     en: 'What is this money for: to grow it, to earn an income from it, or to protect it?',
     pt: 'Para que é este dinheiro: fazer crescer, ter uma renda ou proteger?',
   },
+  // A mix with stocks on a goal of income or to protect (gates EXPLICIT-MIX, PROTECT-NO-STOCKS): asked
+  // once, as the one choice that changes the plan.
+  goalMixConflict: {
+    en: 'You set {goal|goal} and wrote “{words}”, but a plan for income or to protect holds no stocks or crypto. Do you mean a goal to grow, or the plan with no stocks?',
+    pt: 'Você definiu {goal|goal} e escreveu “{words}”, mas um plano de renda ou de proteção não tem ações nem cripto. Você quer um objetivo de crescimento, ou o plano sem ações?',
+  },
   amountUsd: {
     en: 'How much do you put in, in dollars?',
     pt: 'Quanto você aplica, em dólares?',
@@ -968,6 +974,21 @@ export const QUESTION_TEMPLATES = {
   sleevesMismatch: {
     en: 'You wrote {pct}% and the other half, which come to more than the whole. Which split do you mean: {pct}% and {rest}%, or half and half?',
     pt: 'Você escreveu {pct}% e a outra metade, o que passa do total. Qual divisão você quer: {pct}% e {rest}%, ou metade e metade?',
+  },
+  // A market named with no share of the money said ("I like AI"), gate EXPLICIT-MIX: asked once, in
+  // place of the risk.
+  mix: {
+    en: 'How do you want the money held: how much in stocks and crypto, and how much in cash?',
+    pt: 'Como você quer o dinheiro: quanto em ações e cripto, e quanto em caixa?',
+  },
+  marketShare: {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
+    en: 'How much of the ${amount|amount} for {market}?',
+    pt: 'Quanto dos US$ {amount|amount} para {market}?',
+  },
+  marketShareNoAmount: {
+    en: 'How much of the money for {market}?',
+    pt: 'Quanto do dinheiro para {market}?',
   },
   incomeTargetUsdMonthly: {
     en: 'How much income a month, in dollars, do you aim for?',
@@ -1076,6 +1097,27 @@ export const READBACK_TEMPLATES = {
     en: 'The {risk|risk} is for the part that seeks the goal. The part kept safe holds dollar yield from a rate alone, or cash, whatever the risk.',
     pt: 'O {risk|risk} vale para a parte que busca o objetivo. A parte guardada fica em rendimento em dólar só de taxa, ou em caixa, qualquer que seja o risco.',
   },
+  // What the person said to hold (gate EXPLICIT-MIX), part by part, of the whole plan.
+  MIX_GROWTH: {
+    en: '{share|pct} of the plan in stocks and crypto.',
+    pt: '{share|pct} do plano em ações e cripto.',
+  },
+  MIX_DOLLAR_YIELD: {
+    en: '{share|pct} of the plan in dollar yield.',
+    pt: '{share|pct} do plano em rendimento em dólar.',
+  },
+  MIX_CREDIT: {
+    en: 'Of the dollar yield, up to {share|pct} of the plan in tokens that lend to borrowers or trade a spread.',
+    pt: 'Do rendimento em dólar, até {share|pct} do plano em tokens que emprestam a tomadores ou operam um spread.',
+  },
+  MIX_GOLD: {
+    en: '{share|pct} of the plan in gold.',
+    pt: '{share|pct} do plano em ouro.',
+  },
+  MIX_CASH: {
+    en: '{share|pct} of the plan in cash.',
+    pt: '{share|pct} do plano em caixa.',
+  },
   SLEEVE_THEME: {
     en: '{share|pct} of the plan for the theme {theme}.',
     pt: '{share|pct} do plano para o tema {theme}.',
@@ -1119,6 +1161,24 @@ export const ASSUMPTION_TEMPLATES = {
   GLIDE_OFFER: {
     en: 'Nothing moves toward cash as the date nears unless you ask for it.',
     pt: 'Nada vai para caixa conforme a data se aproxima, a menos que você peça.',
+  },
+  // The risk a mix needs, said once (gate EXPLICIT-MIX): the person is never asked it.
+  MIX_LIMITS: {
+    en: 'To hold “{words}”, the plan uses the limits for {risk|risk}.',
+    pt: 'Para manter “{words}”, o plano usa os limites de {risk|risk}.',
+  },
+  MIX_DROPPED: {
+    en: 'A plan for {goal|goal} holds no stocks or crypto, so “{words}” is not held.',
+    pt: 'Um plano com {goal|goal} não tem ações nem cripto, então “{words}” não é mantido.',
+  },
+  // A market the shelf has no shared portfolio for: said in one line, never guessed.
+  MARKET_NONE: {
+    en: 'No shared portfolio on your chain holds “{words}” yet, so the plan does not start from one.',
+    pt: 'Nenhum portfólio compartilhado na sua rede cobre “{words}” ainda, então o plano não parte de um.',
+  },
+  MARKET_NEAREST: {
+    en: 'No shared portfolio on your chain holds “{words}” yet; the nearest is {nearest}, which you can choose.',
+    pt: 'Nenhum portfólio compartilhado na sua rede cobre “{words}” ainda; o mais próximo é {nearest}, que você pode escolher.',
   },
   MAX_YIELD_LATER: {
     en: 'A part that seeks the highest yield is not built yet, so the part that seeks the goal is built as a goal to grow.',

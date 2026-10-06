@@ -31,6 +31,17 @@ function numbersOf(sheet: PersonalSheet): Set<number> {
     out.add(Number(o.month.slice(0, 4)));
   }
   for (const s of sheet.sleeves ?? []) out.add(s.shareBps / 100);
+  // What the person said to hold (gate EXPLICIT-MIX), as percents of the plan.
+  const mix = sheet.mix;
+  if (mix)
+    for (const bps of [
+      mix.growthBps,
+      mix.dollarYieldBps,
+      mix.goldBps,
+      mix.cashBps,
+      mix.creditBps ?? 0,
+    ])
+      out.add(bps / 100);
   // A shared portfolio's name may hold a number ("The 500"): it is the name of a slug the sheet holds.
   const named = [
     ...sheet.themes,
@@ -159,6 +170,14 @@ function sheets(): PersonalSheet[] {
   out.push({ ...full, restoreSplit: false });
   // A goal with no date (Oct 6).
   out.push({ ...full, horizonOpen: true });
+  // A mix the person stated (gate EXPLICIT-MIX), with every part and a credit share.
+  const { sleeves: _sleeves, restoreSplit: _restore, ...noSplit } = full;
+  out.push({
+    ...noSplit,
+    goal: 'grow',
+    risk: 'medium',
+    mix: { growthBps: 4000, dollarYieldBps: 3000, goldBps: 2000, cashBps: 1000, creditBps: 1500 },
+  });
   return [
     ...out,
     ...out.map((s) => ({ ...s, language: s.language === 'en' ? 'pt' : 'en' }) as PersonalSheet),
