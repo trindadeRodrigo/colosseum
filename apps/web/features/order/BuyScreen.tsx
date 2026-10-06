@@ -8,6 +8,7 @@ import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
 import { utcMinute } from '../../components/ui/ExecutionList';
 import { Field, Input } from '../../components/ui/Field';
+import { PAGE_TITLE } from '../../components/ui/heading';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -182,9 +183,7 @@ export function BuyScreen({ id }: { id: string }) {
     <div data-ui="buy-screen" className="flex flex-col gap-8">
       <header className="flex flex-col items-start gap-3">
         <ChainBadge chain={chain} />
-        <h1 className="max-w-(--tf-measure-display) font-display text-h1 font-normal">
-          {t.buy.title}
-        </h1>
+        <h1 className={PAGE_TITLE}>{t.buy.title}</h1>
         <p className="max-w-(--tf-measure-body) text-body-lg">{t.buy.lead(chainName)}</p>
       </header>
 

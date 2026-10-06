@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader, CardLoading } from '../../components/ui/Card';
 import { Field, Input, Select, Textarea } from '../../components/ui/Field';
+import { PAGE_TITLE } from '../../components/ui/heading';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -165,7 +166,7 @@ export function PublishScreen() {
   if (person.kind !== 'ready' || !chain)
     return (
       <section className="flex flex-col items-start gap-4">
-        <h1 className="font-sans text-h2 font-semibold">{p.title}</h1>
+        <h1 className={PAGE_TITLE}>{p.title}</h1>
         <p className="max-w-(--tf-measure-body) text-body">
           {person.kind === 'no-chain' ? t.goal.blocked.chainNotChosen : p.signIn}
         </p>
@@ -177,7 +178,7 @@ export function PublishScreen() {
   if (!person.publishable)
     return (
       <section className="flex flex-col items-start gap-4">
-        <h1 className="font-sans text-h2 font-semibold">{p.title}</h1>
+        <h1 className={PAGE_TITLE}>{p.title}</h1>
         <p className="max-w-(--tf-measure-body) text-body">{p.problems.chain}</p>
       </section>
     );
@@ -269,7 +270,7 @@ export function PublishScreen() {
   return (
     <div data-ui="publish-screen" className="flex flex-col gap-8">
       <header className="flex flex-col gap-3">
-        <h1 className="max-w-(--tf-measure-display) font-display text-h1 font-normal">{p.title}</h1>
+        <h1 className={PAGE_TITLE}>{p.title}</h1>
         <p className="max-w-(--tf-measure-body) text-body-lg">{p.lead(chainName)}</p>
       </header>
 

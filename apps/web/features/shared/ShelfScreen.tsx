@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardEmpty, CardHeader, CardLoading } from '../../components/ui/Card';
 import { ChainBadges } from '../../components/ui/ChainBadge';
+import { PAGE_TITLE } from '../../components/ui/heading';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -56,7 +57,7 @@ export function ShelfScreen() {
   return (
     <div data-ui="shelf-screen" className="flex flex-col gap-8">
       <header className="flex flex-col gap-3">
-        <h1 id={titleId} className="max-w-(--tf-measure-display) font-display text-h1 font-normal">
+        <h1 id={titleId} className={PAGE_TITLE}>
           {t.shared.shelf.title}
         </h1>
         <p className="max-w-(--tf-measure-body) text-body-lg">

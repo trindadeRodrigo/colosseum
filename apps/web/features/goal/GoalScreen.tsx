@@ -10,6 +10,7 @@ import { Composer } from '../../components/ui/Composer';
 import { ConstraintSheet, type SheetFact } from '../../components/ui/ConstraintSheet';
 import { cn } from '../../components/ui/cn';
 import { GoalCard } from '../../components/ui/GoalCard';
+import { PAGE_TITLE } from '../../components/ui/heading';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -377,9 +378,7 @@ export function GoalScreen() {
         ) : (
           <header className="flex flex-col gap-3 lg:col-span-5">
             {/* Beside the box the question is set a step smaller, so it holds two lines, as his is. */}
-            <h1 className="max-w-(--tf-measure-display) font-display text-h2 font-normal">
-              {t.goal.title}
-            </h1>
+            <h1 className={PAGE_TITLE}>{t.goal.title}</h1>
             <p className="max-w-(--tf-measure-body) text-body text-muted-foreground">
               {t.goal.lead}
             </p>

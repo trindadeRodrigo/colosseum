@@ -13,6 +13,7 @@ import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/C
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
 import { ExitPlanLine } from '../../components/ui/ExitPlanLine';
+import { PAGE_TITLE } from '../../components/ui/heading';
 import { MAX_LEGS, PlanLegs } from '../../components/ui/PlanLegs';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import type { PinSource } from '../../components/ui/provenance';
@@ -89,10 +90,7 @@ export function PlanScreen({ id }: { id: string }) {
     <div data-ui="plan-screen" className="flex flex-col gap-8">
       <header className="flex flex-col items-start gap-3">
         <ChainBadge chain={chain} />
-        <h1
-          id={headingId}
-          className="max-w-(--tf-measure-display) font-display text-h1 font-normal"
-        >
+        <h1 id={headingId} className={PAGE_TITLE}>
           {t.goal.card.sentence[sheet.goal](
             dollars(sheet.amountUsd, lang),
             t.goal.card.months(sheet.horizonMonths),

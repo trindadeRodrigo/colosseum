@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardLoading } from '../../components/ui/Card';
 import { Field, Input } from '../../components/ui/Field';
+import { PAGE_TITLE } from '../../components/ui/heading';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { dollars, parseNumber } from '../goal/sheet';
@@ -105,7 +106,7 @@ export function FamilyBuyScreen({ slug }: { slug: string }) {
   if (person.kind !== 'ready' || family === 'failed' || !family || !recipe || !chain)
     return (
       <section className="flex flex-col items-start gap-4">
-        <h1 className="font-sans text-h2 font-semibold">{t.shared.buy.title}</h1>
+        <h1 className={PAGE_TITLE}>{t.shared.buy.title}</h1>
         <p className="max-w-(--tf-measure-body) text-body">
           {person.kind === 'signed-out'
             ? t.plan.signedOut
@@ -218,9 +219,7 @@ export function FamilyBuyScreen({ slug }: { slug: string }) {
   return (
     <div data-ui="family-buy-screen" className="flex flex-col gap-8">
       <header className="flex flex-col gap-3">
-        <h1 className="max-w-(--tf-measure-display) font-display text-h1 font-normal">
-          {t.shared.buy.title}
-        </h1>
+        <h1 className={PAGE_TITLE}>{t.shared.buy.title}</h1>
         <p className="max-w-(--tf-measure-body) text-body font-medium [overflow-wrap:anywhere]">
           {family.name}
         </p>
