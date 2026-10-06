@@ -298,6 +298,32 @@ describe('the limits admit the mix as placement places it (review of Oct 6, find
     expect(rules(plan)).not.toContain('OVERFLOW_ISSUER');
   });
 
+  it('goes one risk up where what the person holds moves the plan toward one name', () => {
+    // 70% in The Seven is 10% a name: the limits of medium risk (20% in one stock, 70% with one
+    // issuer). Holding six of the seven, the plan buys the seventh alone, 25% of it: over medium's
+    // cap on one stock, and within the 35% of high risk. The cap that binds here is the one on a
+    // single stock, kept out before anything is placed; the issuer's is the case above.
+    const s = sheet({
+      themes: ['the-seven'],
+      rules: noGlide,
+      mix: mix({ growthBps: 7000, cashBps: 3000 }),
+    });
+    expect(run(s).sheet.risk).toBe('medium');
+    const holding = fixtureContext({
+      holdings: ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA'].map((underlying) => ({
+        underlying,
+        valueUsd: 20_000,
+      })),
+    });
+    const plan = run(s, holding);
+    expect(plan.sheet.risk).toBe('high');
+    expect(riskForMix(s, shelf, holding)).toBe('high');
+    expect(plan.lines.map((l) => l.assetId)).toEqual(['solana:nvdax', 'solana:usdc']);
+    expect(sleeveBps(plan, shelf, 'growth')).toBeGreaterThan(2000);
+    expect(rules(plan)).not.toContain('OVERFLOW_STOCK_CAP');
+    expect(rules(plan)).toContain('MORE_BECAUSE_HELD');
+  });
+
   it('the three candidates take the limits of the plan, and Carry is the plan', () => {
     const s = sheet({
       chains: ['robinhood'],
