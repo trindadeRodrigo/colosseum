@@ -4,10 +4,12 @@
 // policy and no X-Frame-Options; every other address answers `frame-ancestors 'none'` and DENY,
 // the ones Next's header rules match without regard to case (`/Embed`) and the ones under /embed
 // that are not the embed (`/embed/x`) above all, since they fall to a page with a wallet button.
+// While the build is up it also asks for the icons (check-icons.mjs).
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { iconProblems } from './check-icons.mjs';
 
 /** [address, who may frame it] */
 export const CASES = [
@@ -66,6 +68,8 @@ async function main() {
         const answer = await fetch(base + path, { redirect: 'manual' });
         problems.push(...judge(path, want, answer.headers));
       }
+    // the same build, while it is up: the icons (check-icons.mjs)
+    if (up) problems.push(...(await iconProblems(base)));
   } finally {
     server.kill();
   }
@@ -77,5 +81,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   if (problems.length) {
     console.error(`Frame check failed:\n${problems.map((p) => `  - ${p}`).join('\n')}`);
     process.exitCode = 1;
-  } else console.log(`Frame check: ${CASES.length} addresses framed as they should be.`);
+  } else
+    console.log(
+      `Frame check: ${CASES.length} addresses framed as they should be; the icons answer and the heads link them.`,
+    );
 }
