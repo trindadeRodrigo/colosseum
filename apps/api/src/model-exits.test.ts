@@ -4,10 +4,10 @@ import { deploymentAssets, SolanaDeploymentRecord } from '@colosseum/chain-solan
 import { compose, type PersonalSheet } from '@colosseum/engine';
 import { type AssetCurves, createLiquidityProvider, defaultRegimeParams } from '@colosseum/risk';
 import type { BasketAsset } from '@colosseum/schemas';
-import { describe, expect, it } from 'vitest';
-import { DEPLOYMENTS_DIR } from './deployments';
 import { YieldObservation } from '@colosseum/schemas';
+import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { DEPLOYMENTS_DIR } from './deployments';
 import {
   asSandbox,
   exitTwins,
