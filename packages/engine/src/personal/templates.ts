@@ -304,11 +304,6 @@ export const REASON_TEMPLATES = {
     '{asset} is left out: you said you cannot hold it.',
     '{asset} fica de fora: você disse que não pode ter esse ativo.',
   ),
-  NOT_IN_COUNTRY: rule(
-    ['country'],
-    '{asset} is left out: it is not offered {country|inCountry}.',
-    '{asset} fica de fora: não é oferecido {country|inCountry}.',
-  ),
   NOT_ON_CHAIN: rule(
     ['chain'],
     '{asset} is left out: {chain|chain} does not list it.',
@@ -455,11 +450,6 @@ export const REASON_TEMPLATES = {
     '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: the asset list does not allow it in a plan for {goal|goal}.',
     '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: a lista de ativos não permite esse ativo em um plano para {goal|goal}.',
   ),
-  OVERFLOW_NOT_IN_COUNTRY: rule(
-    ['country'],
-    '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: it is not offered {country|inCountry}.',
-    '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: não é oferecido {country|inCountry}.',
-  ),
   OVERFLOW_ISSUER_THEME: rule(
     ['risk', 'sleeves', 'themes'],
     '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: no more than {capBps|pct} of the plan is with one issuer at {risk|risk}, {issuer} is at that limit, and the theme {themes|list} you asked for holds its share of it first.',
@@ -597,7 +587,7 @@ export const WORDS: Record<Language, Words> = {
       cash: 'cash',
     },
     chain: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
-    // The working names of the three candidates (gate THREE-PLANS): product words are a brand decision.
+    // The names of the three candidates (gates THREE-PLANS, CANDIDATE-NAMES, Rodrigo, Oct 6).
     candidate: { cover: 'Cover', spread: 'Spread', carry: 'Carry' },
     // The times of the week the risk layer measures apart, in the order they are written.
     regime: {

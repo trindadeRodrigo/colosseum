@@ -383,7 +383,9 @@ describe('the limits, checked against the shared schema', () => {
     expect(wrong({ amount: '1,000,001' }).errors).toEqual({ amount: 'amountHigh' });
     expect(wrong({ goal: '' }).errors).toEqual({ goal: 'goal' });
     expect(wrong({ risk: '' }).errors).toEqual({ risk: 'risk' });
-    expect(wrong({ country: '' }).errors).toEqual({ country: 'country' });
+    // Gate COUNTRY-REMOVED (Oct 6): an empty country is no error; it was `{ country: 'country' }`.
+    expect(wrong({ country: '' })).toMatchObject({ errors: {} });
+    expect(wrong({ country: '' }).sheet?.country).toBeUndefined();
     for (const horizon of ['', '0', '481', '12.5', 'three years'])
       expect(wrong({ horizon }).errors, horizon).toEqual({ horizon: 'horizon' });
     expect(wrong({ goal: '', amount: '', horizon: '', risk: '', country: '' }).errors).toEqual({
@@ -391,7 +393,6 @@ describe('the limits, checked against the shared schema', () => {
       amount: 'amountEmpty',
       horizon: 'horizon',
       risk: 'risk',
-      country: 'country',
     });
   });
 

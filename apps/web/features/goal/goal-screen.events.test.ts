@@ -285,7 +285,8 @@ describe('“Build my plan”', () => {
     portStore.set(signedInPort(PHANTOM));
     const host = await screen();
     await read(host);
-    // the reader left the amount, the time frame and the country empty
+    // the reader left the amount, the time frame and the country empty; the country is optional
+    // since gate COUNTRY-REMOVED (Oct 6), so it is not listed
     expect(buildButton(host).getAttribute('aria-disabled')).toBe('true');
     await click(buildButton(host));
     await click(buildButton(host));
@@ -296,15 +297,14 @@ describe('“Build my plan”', () => {
     const items = [...(summary(host)?.querySelectorAll('li') ?? [])].map((li) => li.textContent);
     expect(items).toEqual([
       `${en.goal.fields.horizon}: ${en.goal.errors.horizon} ${en.goal.sheet.goToField}`,
-      `${en.goal.fields.country}: ${en.goal.errors.country} ${en.goal.sheet.goToField}`,
       `${en.goal.fields.amount}: ${en.goal.errors.amountEmpty} ${en.goal.sheet.goToField}`,
     ]);
     // right after a reading, what the reader left empty is missing: it has not failed to fit
     expect(summary(host)?.textContent).toContain(
-      '3 things are still missing. Fill them in to build the plan.',
+      '2 things are still missing. Fill them in to build the plan.',
     );
     expect(summary(host)?.textContent).not.toContain('fit yet');
-    expect(host.textContent).toContain('Fill in the 3 fields above to continue.');
+    expect(host.textContent).toContain('Fill in the 2 fields above to continue.');
     expect(input(host, 'amount').getAttribute('aria-invalid')).toBe('true');
     // one field fixed is not all of them
     await type(input(host, 'amount'), '40,000');
