@@ -596,6 +596,7 @@ export type GetFundingResponse = {
   steps: number;
   newVault: boolean;
   ok: boolean;
+  testFunds?: boolean;
 };
 
 /** GET /v1/indexes/{slug}: params. A shared portfolio, its recipes read from their chains */
@@ -695,7 +696,7 @@ export type GetIndexesBySlugVersionsResponse = {
   }[];
 };
 
-/** GET /v1/me: response. The signed-in person: their wallets, and the chain their plans live on */
+/** GET /v1/me: response. The signed-in person: their wallets, and the chain their new plans are made on */
 export type GetMeResponse = {
   userId: string;
   wallets: {
@@ -708,12 +709,12 @@ export type GetMeResponse = {
   chainOptions: ('solana' | 'base' | 'robinhood')[];
 };
 
-/** PUT /v1/me/chain: body. Pick the chain your plans live on. Once */
+/** PUT /v1/me/chain: body. Pick or switch the chain your new plans are made on */
 export type PutMeChainBody = {
   chain: 'solana' | 'base' | 'robinhood';
 };
 
-/** PUT /v1/me/chain: response. Pick the chain your plans live on. Once */
+/** PUT /v1/me/chain: response. Pick or switch the chain your new plans are made on */
 export type PutMeChainResponse = {
   userId: string;
   wallets: {
@@ -1230,7 +1231,7 @@ export type PostOrdersByIdLegsByLegIdReportResponse = {
   }[];
 };
 
-/** GET /v1/portfolio: response. The signed-in person's vaults on their chain, with holdings, prices and drift */
+/** GET /v1/portfolio: response. The signed-in person's vaults on every chain, with holdings, prices and drift */
 export type GetPortfolioResponse = {
   chains: {
     chain: 'solana' | 'base' | 'robinhood';
@@ -1293,6 +1294,13 @@ export type GetPortfolioResponse = {
       market: 'open' | 'closed' | 'unknown';
     }[];
   }[];
+  unavailable: {
+    chain: 'solana' | 'base' | 'robinhood';
+    name: string;
+    code: string;
+    error: string;
+    retryable: boolean;
+  }[];
   disclaimer: string;
 };
 
@@ -1353,6 +1361,33 @@ export type GetShelfResponse = {
     }[];
   }[];
   disclaimer: string;
+};
+
+/** POST /v1/testnet/fund: body. Test network only: send the signed-in wallet the test tokens and gas a buy is missing */
+export type PostTestnetFundBody = {
+  wallet?: string | string;
+  amountUsd: number;
+  proposalId?: string;
+  family?: string;
+};
+
+/** POST /v1/testnet/fund: response. Test network only: send the signed-in wallet the test tokens and gas a buy is missing */
+export type PostTestnetFundResponse = {
+  chain: 'solana' | 'base' | 'robinhood';
+  provenance: 'sandbox';
+  wallet: string | string;
+  cash: {
+    symbol: string;
+    decimals: number;
+    raw: string;
+  };
+  gas: {
+    symbol: string;
+    decimals: number;
+    raw: string;
+  };
+  txIds: string[];
+  left: number;
 };
 
 /** GET /v1/vaults/{chain}/{address}: params. One vault, read from its chain, for anybody */
@@ -1467,6 +1502,7 @@ export interface ApiRoutes {
   };
   'GET /v1/portfolio': { response: GetPortfolioResponse };
   'GET /v1/shelf': { query: GetShelfQuery; response: GetShelfResponse };
+  'POST /v1/testnet/fund': { body: PostTestnetFundBody; response: PostTestnetFundResponse };
   'GET /v1/vaults/{chain}/{address}': {
     params: GetVaultsByChainByAddressParams;
     response: GetVaultsByChainByAddressResponse;

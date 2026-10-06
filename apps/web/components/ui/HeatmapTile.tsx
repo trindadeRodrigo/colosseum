@@ -22,7 +22,7 @@ export type { HeatCell } from './heatmap';
 //
 // A cell with no sample is the ground colour with an en dash, never hatched: the hatch means MOCK or
 // stale only. A stale tile gets the hatch band on its left edge and the "stale · 9 h" plate; a MOCK
-// tile the band and the MOCK plate. The grid is one tab stop: the arrow keys, Home and End move
+// tile the band and the sample glyph. The grid is one tab stop: the arrow keys, Home and End move
 // through the hours, and the hour in focus or under the pointer is read out under the grid with its
 // pinned figure. "View as table" shows the same hours as a table of days, which can be ordered by
 // depth.

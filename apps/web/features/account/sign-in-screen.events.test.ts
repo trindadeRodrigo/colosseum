@@ -99,6 +99,11 @@ const button = (host: HTMLElement, label: string) => {
   if (found.length !== 1) throw new Error(`expected one "${label}", found ${found.length}`);
   return found[0] as HTMLElement;
 };
+/** Connects a wallet as a person does: "Connect a wallet", then the wallet in the list. */
+const connectWith = async (host: HTMLElement, name: string) => {
+  await click(button(host, en.signIn.wallet.connect));
+  await click(button(host, name));
+};
 const asks = (host: HTMLElement) => host.textContent?.includes(en.chain.pick.title) ?? false;
 const state = (host: HTMLElement) =>
   find(host, '[data-ui="sign-in-screen"]').getAttribute('data-account');
@@ -124,9 +129,10 @@ describe('a person who creates a wallet in the app', () => {
     const host = await screen('en', '/goal');
     expect(asks(host)).toBe(false);
 
-    await click(button(host, en.signIn.passkey.create));
+    await click(button(host, en.signIn.passkey.continue));
     await settle();
-    expect(signIn).toHaveBeenCalledWith('passkey', { create: true });
+    // one button: a passkey this device has, or one made here (SIGN-IN-FLOW)
+    expect(signIn).toHaveBeenCalledWith('passkey');
     expect(asks(host)).toBe(true);
     // what the choice means, and that it stands
     expect(host.textContent).toContain(`${en.chain.pick.asked.made} ${en.chain.pick.body}`);
@@ -248,7 +254,7 @@ describe('a person who connects an outside wallet', () => {
     portStore.set(fakePort({ found: FOUND, signIn }));
     const host = await screen('en', '/goal');
     const seen: boolean[] = [asks(host)];
-    await click(button(host, name));
+    await connectWith(host, name);
     seen.push(asks(host));
     await settle();
     seen.push(asks(host));
@@ -370,7 +376,7 @@ describe('when the choice cannot be stored', () => {
     const signIn = signsInAs(EMBEDDED);
     portStore.set(fakePort({ found: FOUND, signIn }));
     const host = await screen('en', '/goal');
-    await click(button(host, en.signIn.passkey.create));
+    await click(button(host, en.signIn.passkey.continue));
     await settle();
     await click(button(host, 'Solana'));
     server.store(made({ chain: 'robinhood', chainSource: 'picked', chainOptions: [] }));
@@ -666,7 +672,7 @@ describe('the goal a person typed, kept in the tab', () => {
     api(connected());
     portStore.set(fakePort({ found: FOUND, signIn: signsInAs(PHANTOM) }));
     const host = await screen('en', '/goal');
-    await click(button(host, 'Phantom'));
+    await connectWith(host, 'Phantom');
     await settle();
     expect(state(host)).toBe('ready');
     expect(window.sessionStorage.getItem('tf-goal')).toBe(DRAFT);
@@ -690,7 +696,7 @@ describe('the screen itself', () => {
     });
     portStore.set(fakePort({ found: FOUND, signIn }));
     const host = await screen();
-    await click(button(host, en.signIn.passkey.create));
+    await click(button(host, en.signIn.passkey.continue));
     await settle();
     expect(find(host, '[data-ui="lattice-status"]').textContent).toBe(en.signIn.passkey.making);
     portStore.set(signedInPort(EMBEDDED));
@@ -703,7 +709,7 @@ describe('the screen itself', () => {
     const signIn = signsInAs(PHANTOM);
     portStore.set(fakePort({ found: FOUND, signIn }));
     const host = await screen('en', '/goal');
-    await click(button(host, 'Phantom'));
+    await connectWith(host, 'Phantom');
     await settle();
     expect(router.replace.mock.calls).toEqual([['/goal']]);
   });
@@ -724,7 +730,7 @@ describe('where focus goes, and what a screen reader is told, when the screen ch
     api(made());
     portStore.set(fakePort({ found: FOUND, signIn: signsInAs(EMBEDDED) }));
     const host = await screen('en', '/goal');
-    await pressing(button(host, en.signIn.passkey.create));
+    await pressing(button(host, en.signIn.passkey.continue));
     expect(asks(host)).toBe(true);
     // the button that was pressed is gone: focus is on what took its place, not on the page
     expect(document.activeElement).toBe(stage(host));
@@ -742,7 +748,7 @@ describe('where focus goes, and what a screen reader is told, when the screen ch
     });
     portStore.set(fakePort({ found: FOUND, signIn }));
     const host = await screen();
-    await pressing(button(host, en.signIn.passkey.create));
+    await pressing(button(host, en.signIn.passkey.continue));
     expect(document.activeElement).toBe(heading(host));
     expect(heading(host).textContent).toBe(en.signIn.done.title);
     expect(said(host)).toBe(`${en.signIn.done.title} ${en.signIn.passkey.making}`);
@@ -823,7 +829,7 @@ describe('where focus goes, and what a screen reader is told, when the screen ch
 });
 
 describe('the throwaway wallet of development', () => {
-  it('keeps its choice in the page, stores nothing on the API, and says MOCK with its hatch', async () => {
+  it('keeps its choice in the page, stores nothing on the API, and says sample with its hatch', async () => {
     const server = api(made());
     portStore.set(signedInPort(EMBEDDED, { test: true }, 'mock'));
     const host = await screen();
@@ -831,31 +837,34 @@ describe('the throwaway wallet of development', () => {
     expect(asks(host)).toBe(true);
     expect(host.textContent).toContain(en.chain.pick.mock);
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
-    expect(host.querySelectorAll('.tf-mock-plate')).toHaveLength(1);
+    expect(host.querySelectorAll('[data-ui="sample-note"]')).toHaveLength(1);
+    expect(host.textContent).not.toContain('MOCK');
     await click(button(host, 'Solana'));
     await click(button(host, en.chain.pick.confirm('Solana')));
     await settle();
     expect(state(host)).toBe('ready');
     expect(server.calls).toEqual([]);
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
-    expect(host.querySelectorAll('.tf-mock-plate').length).toBeGreaterThan(0);
+    expect(host.querySelectorAll('[data-ui="sample-note"]').length).toBeGreaterThan(0);
   });
 
-  it('says the words a screen reader hears after MOCK in Portuguese on a Portuguese page', async () => {
+  it('says that it is sample in Portuguese on a Portuguese page', async () => {
     api(made());
     portStore.set(signedInPort(EMBEDDED, { test: true }, 'mock'));
     const pt = dictionary('pt');
     const host = await screen('pt');
     await settle();
     // the pick
-    expect(find(host, '.tf-mock-plate').textContent).toBe(`MOCK${pt.shell.mockAnnounce}`);
+    expect(find(host, '[data-ui="sample-note"]').textContent).toBe(pt.shell.mockAnnounce);
     await click(button(host, 'Solana'));
     await click(button(host, pt.chain.pick.confirm('Solana')));
     await settle();
     // and the card that says where the plan lives
-    for (const plate of host.querySelectorAll('.tf-mock-plate'))
-      expect(plate.textContent).toBe(`MOCK${pt.shell.mockAnnounce}`);
-    expect(host.textContent).not.toContain('sample data');
+    for (const line of host.querySelectorAll('[data-ui="sample-note"]'))
+      expect(line.textContent?.startsWith(pt.shell.mockAnnounce)).toBe(true);
+    for (const glyph of host.querySelectorAll('[data-ui="sample-glyph"][aria-label]'))
+      expect(glyph.getAttribute('aria-label')).toBe(pt.shell.sampleFigure);
+    expect(host.textContent).not.toContain('Sample figures');
   });
 
   it('marks a chain on a test network, and one the API runs on the mock, beside its name', async () => {
@@ -869,7 +878,8 @@ describe('the throwaway wallet of development', () => {
       await settle();
       const name = find(host, '[data-ui="chain-name"]');
       expect(name.textContent).toContain('Solana');
-      expect(name.querySelectorAll('.tf-mock-plate')).toHaveLength(1);
+      expect(name.querySelectorAll('[data-ui="sample-glyph"]')).toHaveLength(1);
+      expect(name.textContent).not.toContain('MOCK');
       expect(name.textContent?.includes(en.shell.testNetwork)).toBe(words);
       expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
       await unmountAll();

@@ -30,8 +30,8 @@ export type Execution = {
   /** The chain it was done on, as a badge after the verb. */
   chain?: ChainId;
   /**
-   * Anything but `live` carries the hatch and the MOCK plate. A transaction on a test network
-   * (`sandbox`) also says "test network" after the plate: a row has no popover to say it in.
+   * Anything but `live` carries the hatch and the sample glyph. A transaction on a test network
+   * (`sandbox`) also says "test network" after the glyph: a row has no popover to say it in.
    */
   provenance: Provenance;
 };
@@ -40,7 +40,7 @@ export type ExecutionListLabels = {
   status: Record<ExecutionStatus, string>;
   /** For a status this build does not know. It is said, never left blank. */
   unknownStatus: string;
-  /** After the plate of a transaction on a test network (CLAUDE.md: the same plate, with these words). */
+  /** After the glyph of a transaction on a test network (CLAUDE.md: the same mark, with these words). */
   testNetwork: string;
   notRetried: string;
   signature: string;

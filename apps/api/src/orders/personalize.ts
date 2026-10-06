@@ -22,7 +22,7 @@ import type { ChainRegistry } from './chains';
 import { Refusal, refusing } from './errors';
 
 // DESIGN-VAULT 3.6 and section 7: a person's goal and limits, turned into a plan made to measure by the
-// engine's `compose`, on the one chain their plans live on (gates ONE-CHAIN, CHAIN-PICK). The engine
+// engine's `compose`, on the person's current chain (gates ONE-CHAIN, CHAIN-SWITCH). The engine
 // is pure: this file hands it the shelf of that chain, the time and the figures, and turns what it
 // answers into the shared `BasketProposal` that is stored and that the order layer buys.
 
@@ -39,7 +39,7 @@ export type PlanInputs = (q: { db: Db; chain: ChainId; assets: BasketAsset[] }) 
 
 export type PersonalizeContext = {
   chains: ChainRegistry;
-  /** The chain the person's plans live on. Refuses when there is none yet. */
+  /** The person's current chain, where a new plan is made (CHAIN-SWITCH). Refuses when there is none yet. */
   homeChain(): Promise<ChainId>;
   /** The shared portfolios that have a recipe on `chain`, each with that recipe as it is in effect. */
   loadFamilies(chain: ChainId): Promise<Shelf['families']>;
@@ -117,8 +117,10 @@ export async function personalize(
   if (sheet.chains.length !== 1 || asked !== chain)
     throw new Refusal(
       422,
-      `your plans live on ${ctx.chains.name(chain)}, and this sheet names ${sheet.chains.map((c) => ctx.chains.name(c)).join(' and ')}`,
-      { fix: `Make the plan for ${ctx.chains.name(chain)}: send chains ["${chain}"].` },
+      `your current chain is ${ctx.chains.name(chain)}, and this sheet names ${sheet.chains.map((c) => ctx.chains.name(c)).join(' and ')}`,
+      {
+        fix: `Make the plan for ${ctx.chains.name(chain)}: send chains ["${chain}"], or switch the current chain with PUT /v1/me/chain.`,
+      },
     );
   // Refuses a chain that is off before anything is read.
   const entry = ctx.chains.get(chain);

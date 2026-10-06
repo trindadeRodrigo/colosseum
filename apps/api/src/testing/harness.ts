@@ -26,6 +26,7 @@ import {
 import { inArray, or } from 'drizzle-orm';
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { buildApp } from '../app';
+import type { TestFundsSender } from '../faucet/test-funds';
 import { type ChainRegistry, createChainRegistry } from '../orders/chains';
 import type { PlanInputs } from '../orders/personalize';
 import { IDENTITY_TOKEN_HEADER, type TokenIssuer } from '../plugins/auth';
@@ -65,9 +66,10 @@ export async function testIssuer(name: string): Promise<TestIssuer> {
 }
 
 /**
- * How a test person signed in, which is what decides their chain (gates ONE-CHAIN, CHAIN-PICK):
- * - `solana`: connected an outside Solana wallet. Their plans live on Solana.
- * - `robinhood`: connected an outside EVM wallet. Their plans live on Robinhood Chain.
+ * How a test person signed in, which is what decides the chain they start on (gates ONE-CHAIN,
+ * CHAIN-SWITCH):
+ * - `solana`: connected an outside Solana wallet. They are on Solana.
+ * - `robinhood`: connected an outside EVM wallet. They are on Robinhood Chain.
  * - `passkey`: made their wallets in the app, one of each family. No chain until they pick one.
  */
 export type PersonKind = 'solana' | 'robinhood' | 'passkey';
@@ -381,6 +383,8 @@ export async function testApp(a: {
   wrap?: (registry: ChainRegistry) => ChainRegistry;
   /** The figures a plan is made with. Default: the server's reader of the stored ones. */
   planInputs?: PlanInputs;
+  /** The test faucet's senders (POST /v1/testnet/fund). Default: none. */
+  testFunds?: TestFundsSender[];
 }) {
   const env = a.env ?? {};
   const registry = createChainRegistry(parseFlags(env), parseChainConfigs(env), {
@@ -397,6 +401,7 @@ export async function testApp(a: {
       limits: a.limits ?? ROOMY,
       ...(a.linkedPlans ? { linkedPlans: a.linkedPlans } : {}),
       ...(a.planInputs ? { planInputs: a.planInputs } : {}),
+      ...(a.testFunds ? { testFunds: a.testFunds } : {}),
     },
   });
   return { app, registry };

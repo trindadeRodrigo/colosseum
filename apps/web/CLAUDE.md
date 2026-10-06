@@ -7,7 +7,7 @@
 `.design/branding/working-brand/patterns/STYLE.md` is binding, with the component specs in `patterns/components/`. A screen that breaks one of these is wrong, however good it looks:
 
 1. A provenance pin after every yield, price and FX figure. No pin, no number.
-2. MOCK is never shown as live: the hatch and the word MOCK, together, with the text on a solid plate.
+2. MOCK is never shown as live: the hatch, with one quiet line per card ("Sample figures · test network") and a hatched glyph or pin named "sample figure" on a figure; no boxed word MOCK (gate `MOCK-QUIET`). Text never sits on the hatch. The buy card's line on a test network reads "Test network · <chain> · not live" (gate `BUY-STEPS`).
 3. The disclaimer renders from the one `DISCLAIMER` constant, unedited, at body size.
 4. No Japanese words or clichés in the product.
 5. Nothing that looks like Teiten.

@@ -52,7 +52,7 @@ import { SubscribeBlock, type SubscribeStatus } from '../../../../components/ui/
 
 // The showcase of the design system: every primitive in every state, light beside dark, with the name
 // of its spec. Development only (see page.dev.tsx). Everything on it is made up, and every panel says
-// so with the MOCK plate; the live and stale pins are specimens of a state, not of data.
+// so as sample (a hatched pin, a quiet line); the live and stale pins are specimens of a state, not of data.
 
 const noop = () => {};
 const SPECS = '.design/branding/working-brand/patterns/components';
@@ -196,7 +196,7 @@ const ICONS: IconName[] = ['ArrowUp', 'ArrowUpRight', 'Check', 'ChevronDown', 'C
 const NAV_LINKS = [
   { label: 'Products', href: '#products' },
   { label: 'Invest', href: '#invest', current: 'true' as const },
-  { label: 'Resources', href: '#resources' },
+  { label: 'Analytics', href: '#analytics' },
 ];
 
 /** An example partner: neutral colours, their own face, their own radius. Not ours. */
@@ -519,7 +519,7 @@ export function Showcase() {
             <CardHeader title="Trip fund" meta="March 2029" />
           </Card>
         </Specimen>
-        <Specimen state="MOCK: band on the edge, plate at the top right">
+        <Specimen state="sample: band on the edge, one quiet line at the foot">
           <Card mock>
             <CardHeader title="Sample plan" meta="as of 14:02 UTC" />
             <CardBody>
@@ -573,17 +573,17 @@ export function Showcase() {
             <ProvenancePin value={FIGURE.rate} obs={STALE_SPECIMEN} />
           </p>
         </Specimen>
-        <Specimen state="MOCK: hatched, no pin, the plate">
+        <Specimen state="sample: the hatched pin, named for a screen reader">
           <p className="text-h4 font-medium">
             <ProvenancePin value={FIGURE.rate} obs={MOCK_OBS} />
           </p>
         </Specimen>
-        <Specimen state="a test network (sandbox): MOCK">
+        <Specimen state="a test network (sandbox): sample">
           <p className="text-h4 font-medium">
             <ProvenancePin value="$1.0412" obs={SANDBOX_OBS} />
           </p>
         </Specimen>
-        <Specimen state="a fixture: MOCK">
+        <Specimen state="a fixture: sample">
           <p className="text-body">
             <ProvenancePin value="5.4012 BRL/USD" obs={FIXTURE_OBS} />
           </p>
@@ -628,15 +628,15 @@ export function Showcase() {
 
       <Section
         spec="mock-plate.md"
-        title="MOCK plate"
-        note="The hatch and the word, together, every time. Text never sits on the hatch."
+        title="Sample mark"
+        note="Sample is never shown as live, and never by a boxed word: a hatched glyph named for a screen reader, and one quiet line per card. Text never sits on the hatch."
       >
         <Specimen state="inline: after a figure and its hatched pin">
           <p className="text-h4 font-medium">
             <ProvenancePin value={FIGURE.rate} obs={MOCK_OBS} />
           </p>
         </Specimen>
-        <Specimen state="badge: the band and the plate, for a pane header or a source line">
+        <Specimen state="glyph: for a pane header, a source line or a chain name">
           <MockPlate announce={false} />
         </Specimen>
         <Specimen state="stale plate: a stale panel or tile">
@@ -795,7 +795,7 @@ export function Showcase() {
         title="Plan legs"
         note="At most four legs in the bar: a fifth is refused as an engine error. Hover a label, or Tab to its pin, to mark its segment."
       >
-        <Specimen state="four legs: live, stale, no yield, MOCK" wide>
+        <Specimen state="four legs: live, stale, no yield, sample" wide>
           <PlanLegs legs={LEGS} profile="income" />
         </Specimen>
         <Specimen state="hero (24px), plan-lock: legs seat, then pins drop" wide>
@@ -1044,12 +1044,13 @@ export function Showcase() {
             <ExitPlanLine tiers={[EXIT_FIRST, { text: 'the rest within 7 days', mock: true }]} />
           </EmbedShell>
         </Specimen>
-        <Specimen state="the partner’s muted colour is too faint: no hatch, MOCK stays">
+        <Specimen state="the partner’s muted colour is too faint: no hatch, the quiet line stays">
           <EmbedShell
             label="Plan by tenonfi"
             title="Trip fund"
             credit={{ name: 'tenonfi', href: '#embed-shell-md' }}
             suppressHatch
+            sample={{ line: 'Sample figures' }}
           >
             <ExitPlanLine tiers={[EXIT_FIRST, { text: 'the rest within 7 days', mock: true }]} />
           </EmbedShell>
@@ -1092,7 +1093,7 @@ export function Showcase() {
       <Section
         spec="bearing-heatmap-tile.md"
         title="Bearing heatmap tile"
-        note="Hours with no sample are the ground with an en dash, never hatched: the hatch means MOCK or stale. The grid is one tab stop; the arrow keys move through the hours."
+        note="Hours with no sample are the ground with an en dash, never hatched: the hatch means sample or stale. The grid is one tab stop; the arrow keys move through the hours."
       >
         <Specimen state="live" wide>
           <HeatSample obs={LIVE_SPECIMEN} state={{ kind: 'live' }} />
@@ -1100,7 +1101,7 @@ export function Showcase() {
         <Specimen state="stale: band and plate, the pin hollow" wide>
           <HeatSample obs={STALE_SPECIMEN} state={{ kind: 'stale', ageSec: 9 * 3600 }} />
         </Specimen>
-        <Specimen state="MOCK: band and plate, the pin hatched" wide>
+        <Specimen state="sample: band and glyph, the pin hatched" wide>
           <HeatSample obs={MOCK_OBS} state={{ kind: 'mock' }} />
         </Specimen>
       </Section>
