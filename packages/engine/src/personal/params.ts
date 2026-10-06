@@ -33,6 +33,10 @@ export const PERSONAL_PARAMS: PersonalParameters = {
     { monthsLeft: 60, dollarYieldBps: 1000 },
   ],
 
+  // A goal with no date ("no hard cap", "open-ended") is built over this many months, with no glide
+  // (gate GLIDE-OPT-IN, Oct 6). The read-back says "no date set", never this number.
+  openEndedHorizonMonths: 120,
+
   // The least kept in cash when the money may be needed within `monthsLeft` months.
   cashFloor: [
     { monthsLeft: 3, cashBps: 2000 },
@@ -128,6 +132,10 @@ export const PERSONAL_PARAMS_STATUS: Record<Exclude<keyof PersonalParameters, 'v
       'Oct 3, gate PROTECT-NO-STOCKS: the protect rows lost their stock share (20%, 35%, 50%), moved to dollar yield. The three rows are now the same (75% dollar yield, 25% gold), so risk moves a plan to protect only through the cap per issuer.',
   },
   glideFloor: { status: 'starting', from: 'The prototype table, unchanged.' },
+  openEndedHorizonMonths: {
+    status: 'starting',
+    from: 'Gate GLIDE-OPT-IN (Rodrigo, Oct 6): ten years, the span the card and the dollar-yield range are read over when the person gives no date. With the glide off it moves no weight.',
+  },
   cashFloor: {
     status: 'starting',
     from: 'New here; the prototype held no cash. The top step is the cash ceiling of the structurer (cashMax, 20%).',

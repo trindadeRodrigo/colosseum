@@ -1,6 +1,6 @@
 import type { ShelfPortfolio } from './intake';
 import { CLASS_WORDS, READBACK_TEMPLATES, type ReadBackId, render } from './templates';
-import type { PersonalSheet } from './types';
+import { COUNTRY_NOT_ASKED, type PersonalSheet } from './types';
 
 // The read-back (gate GUIDED-INTAKE): what the intake understood, said back to the person before the
 // engine runs. It is drawn from the validated sheet by templates, in the sheet's language, and never
@@ -18,13 +18,16 @@ export function readBack(sheet: PersonalSheet, portfolios: ShelfPortfolio[]): st
   const nameOf = (slug: string) => portfolios.find((p) => p.slug === slug)?.name ?? slug;
   const out: string[] = [];
 
+  // A goal with no date is said as one: the months it is built over are a parameter, not the person's.
   out.push(
-    say('GOAL', {
-      goal: sheet.goal,
-      amount: sheet.amountUsd,
-      months: sheet.horizonMonths,
-      risk: sheet.risk,
-    }),
+    sheet.horizonOpen
+      ? say('GOAL_OPEN', { goal: sheet.goal, amount: sheet.amountUsd, risk: sheet.risk })
+      : say('GOAL', {
+          goal: sheet.goal,
+          amount: sheet.amountUsd,
+          months: sheet.horizonMonths,
+          risk: sheet.risk,
+        }),
   );
   if (sheet.goal === 'income' && sheet.incomeTargetUsdMonthly !== undefined)
     out.push(say('INCOME', { income: sheet.incomeTargetUsdMonthly }));
@@ -32,10 +35,12 @@ export function readBack(sheet: PersonalSheet, portfolios: ShelfPortfolio[]): st
     out.push(say('CURRENCY', { currency: sheet.currency }));
   if (sheet.themes.length > 0)
     out.push(say('THEMES', { themes: sheet.themes.map(nameOf).join(',') }));
-  out.push(say('COUNTRY', { country: sheet.country }));
+  // A country nobody was asked for (no asset on the shelf is blocked anywhere) is not said.
+  if (sheet.country !== COUNTRY_NOT_ASKED) out.push(say('COUNTRY', { country: sheet.country }));
   for (const chain of sheet.chains) out.push(say('CHAIN', { chain }));
   out.push(say(sheet.rules.useHoldings ? 'HOLDINGS_ON' : 'HOLDINGS_OFF'));
-  out.push(say(sheet.rules.glide ? 'GLIDE_ON' : 'GLIDE_OFF'));
+  // The glide is opt-in (gate GLIDE-OPT-IN, Oct 6): said only when it is on.
+  if (sheet.rules.glide) out.push(say('GLIDE_ON'));
 
   const limits = sheet.limits;
   if (limits?.mustKeepUsd !== undefined) out.push(say('MUST_KEEP', { amount: limits.mustKeepUsd }));
@@ -61,6 +66,9 @@ export function readBack(sheet: PersonalSheet, portfolios: ShelfPortfolio[]): st
     if (sleeve.kind === 'theme')
       out.push(say('SLEEVE_THEME', { share: sleeve.shareBps, theme: nameOf(sleeve.theme) }));
   }
+  // One risk for the plan: with a part kept safe, it is the risk of the rest, and that is said.
+  if (sheet.sleeves?.some((s) => s.kind === 'safe_yield') && sheet.sleeves.length > 1)
+    out.push(say('SLEEVE_RISK', { risk: sheet.risk }));
   if (sheet.sleeves) out.push(say(sheet.restoreSplit ? 'RESTORE_ON' : 'RESTORE_OFF'));
   out.push(say('CONFIRM'));
   return out;

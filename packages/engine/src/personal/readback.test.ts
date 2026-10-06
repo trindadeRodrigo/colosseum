@@ -7,7 +7,7 @@ import { readNumber } from './intake-text';
 import { readBack } from './readback';
 import { CLASS_WORDS, placeholdersOf, READBACK_TEMPLATES, render, WORDS } from './templates';
 import { launchShelf } from './testing';
-import type { PersonalSheet } from './types';
+import { COUNTRY_NOT_ASKED, type PersonalSheet } from './types';
 
 // C18: the read-back the person confirms holds no number and no name that the sheet does not. It is
 // drawn from the validated sheet by templates, so this holds the templates and the code that fills
@@ -158,6 +158,8 @@ function sheets(): PersonalSheet[] {
   out.push(full, { ...full, language: 'pt' }, { ...full, limits: { creditTolerance: 'limited' } });
   out.push({ ...full, limits: { creditTolerance: 'accept' }, language: 'pt' });
   out.push({ ...full, restoreSplit: false });
+  // A goal with no date, and a person not asked for a country (Oct 6).
+  out.push({ ...full, horizonOpen: true, country: COUNTRY_NOT_ASKED });
   return [
     ...out,
     ...out.map((s) => ({ ...s, language: s.language === 'en' ? 'pt' : 'en' }) as PersonalSheet),
@@ -189,6 +191,25 @@ describe('the read-back (C18)', () => {
       expect(unsupported(sentences, sheet), JSON.stringify(sheet)).toEqual([]);
       expect(sentences.join(' '), JSON.stringify(sheet)).not.toMatch(/[{}]|undefined|NaN|null/);
     }
+  });
+
+  it('says "no date set" for a goal with no date, never the months it is built over (Oct 6)', () => {
+    const open = all.find((s) => s.horizonOpen && s.language === 'en') as PersonalSheet;
+    const said = readBack(open, portfolios);
+    expect(said[0]).toMatch(/with no date set/);
+    expect(said.join(' ')).not.toMatch(new RegExp(`\\b${open.horizonMonths} months`));
+    expect(said.join(' ')).not.toMatch(/You live/);
+    const pt = readBack({ ...open, language: 'pt' }, portfolios);
+    expect(pt[0]).toMatch(/sem data definida/);
+  });
+
+  it('says the glide only when it is on, and the risk of the part not kept safe (Oct 6)', () => {
+    const full = all.find((s) => s.obligations && s.language === 'en') as PersonalSheet;
+    const off = readBack(full, portfolios).join(' ');
+    expect(off).not.toMatch(/date nears/);
+    expect(off).toMatch(/The low risk is for the part that seeks the goal/);
+    const on = readBack({ ...full, rules: { useHoldings: false, glide: true } }, portfolios);
+    expect(on.join(' ')).toMatch(/As the date nears/);
   });
 
   it('writes amounts with their cents, never rounded to a figure the sheet does not hold', () => {

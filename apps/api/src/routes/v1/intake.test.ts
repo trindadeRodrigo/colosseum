@@ -33,8 +33,19 @@ const evalSet = fixture('goals-eval.json') as {
   nowMonth: string;
   goals: { id: string; text: string; expect: Record<string, unknown> }[];
 };
-const recorded = fixture('intake-replies.json') as { replies: Record<string, unknown> };
-const replyByText = new Map(evalSet.goals.map((g) => [g.text, recorded.replies[g.id]]));
+const recorded = fixture('intake-replies.json') as {
+  replies: Record<string, unknown>;
+  conversations: Record<string, { messages: string[]; replies: unknown[] }>;
+};
+const chat = recorded.conversations['first-chat-oct6'] as {
+  messages: string[];
+  replies: unknown[];
+};
+// The conversation's replies, by the text each turn reads: the messages so far, joined as the route joins them.
+const replyByText = new Map<string, unknown>([
+  ...evalSet.goals.map((g): [string, unknown] => [g.text, recorded.replies[g.id]]),
+  ...chat.replies.map((r, i): [string, unknown] => [chat.messages.slice(0, i + 1).join('\n\n'), r]),
+]);
 const goal = (id: string) => evalSet.goals.find((g) => g.id === id) as (typeof evalSet.goals)[0];
 
 /** The recorded replies, by text, as a raw call. */
@@ -119,7 +130,8 @@ describe('POST /v1/baskets/intake', () => {
     const first = IntakeResponse.parse((await post(who, PATH, { text })).json());
     expect(first.sheet).toBeNull();
     expect(first.readBack).toBeNull();
-    expect(first.questions.map((q) => q.field)).toEqual(['goal', 'amountUsd', 'risk', 'country']);
+    // No asset on the mock chain's shelf is blocked anywhere, so the country is not asked (Oct 6).
+    expect(first.questions.map((q) => q.field)).toEqual(['goal', 'amountUsd', 'risk']);
     expect(first.questions[1]?.text).toBe(
       'Você escreveu 3.000 BRL. Quanto é isso em dólares, a moeda em que o plano é aplicado?',
     );
@@ -199,7 +211,6 @@ describe('POST /v1/baskets/intake', () => {
       'amountUsd',
       'horizonMonths',
       'risk',
-      'country',
     ]);
     expect(body.questions.find((q) => q.field === 'risk')?.read).toBe('high');
     const done = await post(
@@ -273,6 +284,44 @@ describe('POST /v1/baskets/intake', () => {
     } finally {
       await own.close();
     }
+  });
+
+  it("reads the follow-ups of the first chat of Oct 6 in the person's words, asking nothing twice", async () => {
+    const who = await someone('solana');
+    const [text = '', ...later] = chat.messages;
+    const turn = async (n: number) => {
+      const res = await post(who, PATH, { text, followUps: later.slice(0, n - 1) });
+      expect(res.statusCode, res.body).toBe(200);
+      return IntakeResponse.parse(res.json());
+    };
+    const first = await turn(1);
+    expect(first.reader.provenance).toBe('mock');
+    expect(first.questions.map((q) => q.field)).toEqual(['goal', 'sleeves', 'horizonMonths']);
+    expect(first.flags).toContain('split_mismatch');
+    // The second message answers all three in words; the mock shelf blocks no country, so none is asked.
+    const second = await turn(2);
+    expect(second.questions).toEqual([]);
+    expect(second.sheet).toMatchObject({
+      goal: 'grow',
+      amountUsd: 2000,
+      risk: 'high',
+      horizonOpen: true,
+      country: 'ZZ',
+      rules: { useHoldings: true, glide: false },
+      sleeves: [
+        { kind: 'safe_yield', shareBps: 7000 },
+        { kind: 'goal', shareBps: 3000 },
+      ],
+    });
+    expect(second.readBack?.[0]).toBe(
+      'You set a goal to grow with $2,000, with no date set, at high risk.',
+    );
+    expect(second.assumptions).toContain(
+      'I took “go crazy” as high risk for the 30% that seeks the goal.',
+    );
+    // The confirm makes the plan from it.
+    const plan = await post(who, '/v1/baskets/personalize', { sheet: second.sheet });
+    expect(plan.statusCode, plan.body).toBe(200);
   });
 
   it('a person with no chain yet is asked to pick one, and no sheet is made', async () => {

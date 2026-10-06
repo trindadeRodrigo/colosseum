@@ -57,12 +57,31 @@ export const PersonalLimits = z.object({
 export type PersonalLimits = z.infer<typeof PersonalLimits>;
 
 /**
+ * The country of a sheet whose person was not asked, because no asset on their chain's shelf is
+ * blocked anywhere (Oct 6). ZZ is the code ISO 3166 leaves for an unknown place: no asset blocks it,
+ * and the read-back does not say it.
+ */
+export const COUNTRY_NOT_ASKED = 'ZZ';
+
+/**
  * LOCAL TYPE. `BasketSheet` with the person's limits. This is what `compose` validates and runs on.
  *
  * A plan lives on one chain: the chain of the wallet the person signed in with (decided on
  * 2026-10-03). `chains` keeps the list shape of the shared type and must name exactly one.
  */
-export const PersonalSheet = BasketSheet.extend({ limits: PersonalLimits.optional() })
+export const PersonalSheet = BasketSheet.extend({
+  limits: PersonalLimits.optional(),
+  /**
+   * The person gave no date for the goal ("no hard cap", "open-ended"; gate GLIDE-OPT-IN, Oct 6).
+   * `horizonMonths` then holds `openEndedHorizonMonths` of the parameter table, a starting value and
+   * not the person's, the read-back says "no date set", and the glide is off: it has no date to near.
+   */
+  horizonOpen: z.boolean().optional(),
+})
+  .refine((s) => !(s.horizonOpen && s.rules.glide), {
+    message: 'a goal with no date has no glide: it has no date to near',
+    path: ['rules', 'glide'],
+  })
   .refine((s) => (s.limits?.mustKeepUsd ?? 0) <= s.amountUsd, {
     message: 'what must not be lost cannot be more than the amount',
     path: ['limits', 'mustKeepUsd'],
@@ -111,6 +130,11 @@ export type RiskLevel = z.infer<typeof RiskLevel>;
  * number the engine uses is in here; the table itself is `params.ts`.
  */
 export const PersonalParameters = PersonalParams.extend({
+  /**
+   * The time frame a goal with no date is built with (gate GLIDE-OPT-IN, Oct 6). Never said back as
+   * the person's: the read-back says "no date set". With no glide, it moves only what reads the date.
+   */
+  openEndedHorizonMonths: BasketSheet.shape.horizonMonths,
   /** Cash kept when the money may be needed within `monthsLeft` months. */
   cashFloor: z.array(z.object({ monthsLeft: Months, cashBps: Bps })),
   /** A line smaller than this many dollars is not held. */

@@ -12,15 +12,28 @@ import {
   amountInText,
   countryNamed,
   currenciesIn,
+  exitTimesIn,
+  glideAskedIn,
   goalCuesIn,
   horizonsIn,
+  looseRiskWordsIn,
+  maxYieldAskedIn,
   mentionsIn,
+  openEndedIn,
   refusalsIn,
   riskCuesIn,
+  splitIn,
 } from './intake-text';
+import { PERSONAL_PARAMS } from './params';
 import { readBack } from './readback';
-import { QUESTION_TEMPLATES, type QuestionId, render } from './templates';
-import { HoldableClass, PersonalLimits, PersonalSheet } from './types';
+import {
+  ASSUMPTION_TEMPLATES,
+  type AssumptionId,
+  QUESTION_TEMPLATES,
+  type QuestionId,
+  render,
+} from './templates';
+import { COUNTRY_NOT_ASKED, HoldableClass, PersonalLimits, PersonalSheet } from './types';
 
 // The guided intake (gate GUIDED-INTAKE; DESIGN-VAULT section 7). A model reads the person's goal into
 // a draft of the sheet and says which fields it could not read. Everything after that is here, in pure
@@ -37,6 +50,7 @@ import { HoldableClass, PersonalLimits, PersonalSheet } from './types';
 export const QUESTION_FIELDS = [
   'goal',
   'amountUsd',
+  'sleeves',
   'incomeTargetUsdMonthly',
   'horizonMonths',
   'risk',
@@ -67,6 +81,8 @@ export const IntakeAnswers = z
     sleeves: PlanSleeves,
     restoreSplit: z.boolean(),
     limits: PersonalLimits,
+    /** The person has no date for the goal (gate GLIDE-OPT-IN, Oct 6). */
+    horizonOpen: z.boolean(),
   })
   .partial()
   .strict();
@@ -94,6 +110,8 @@ export type Disagreement = z.infer<typeof Disagreement>;
 export const LimitsDraft = z.object({
   creditTolerance: z.literal('none').nullable(),
   cannotHoldClasses: z.array(HoldableClass).nullable(),
+  /** How soon the whole plan may be needed, when the text says so: a limit, never the time frame. */
+  mayNeedInMonths: BasketSheet.shape.horizonMonths.optional(),
 });
 export type LimitsDraft = z.infer<typeof LimitsDraft>;
 
@@ -112,6 +130,11 @@ export type IntakeInput = {
   /** The chain of the person's wallet (gate ONE-CHAIN); null while they have not picked one. */
   homeChain: ChainId | null;
   portfolios: ShelfPortfolio[];
+  /**
+   * Whether an asset on the chain's shelf is not offered somewhere: only then is the country asked
+   * (Oct 6). Left out: it is asked.
+   */
+  countryMatters?: boolean;
 };
 
 export type IntakeResult = {
@@ -126,9 +149,25 @@ export type IntakeResult = {
   disagreements: Disagreement[];
   /** The sheet, once nothing is left to ask and it validates. The person confirms it. */
   sheet: PersonalSheet | null;
-  /** The read-back of `sheet`, sentence by sentence, from templates. */
+  /**
+   * The read-back of `sheet`, sentence by sentence, from templates, with what was assumed said before
+   * the last sentence.
+   */
   readBack: string[] | null;
+  /** What was assumed from the person's words, from templates, so they can correct it (Oct 6). */
+  assumptions: string[];
 };
+
+/**
+ * The text the intake reads: the first message and every later one, in order (Oct 6). A follow-up in
+ * the person's own words ("I live in Brazil", "70-30") is read again with what came before, by the same
+ * reader and the same checks: an answer is never only a form field.
+ */
+export const conversationText = (text: string, followUps: readonly string[] = []): string =>
+  [text, ...followUps]
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .join('\n\n');
 
 // The model's reply, field by field. Each is read on its own, so one bad field costs only itself.
 const REPLY_FIELDS = {
@@ -145,6 +184,21 @@ const REPLY_FIELDS = {
   noCredit: z.boolean(),
   cannotHold: z.array(HoldableClass),
   unclear: z.array(z.string()),
+  openEnded: z.boolean(),
+  mayNeedInMonths: BasketSheet.shape.horizonMonths,
+  sleeves: z
+    .array(
+      z.object({
+        kind: z.enum(['goal', 'safe_yield']),
+        sharePct: z
+          .number()
+          .int()
+          .min(1)
+          .max(100 - 1),
+      }),
+    )
+    .min(2)
+    .max(2),
 } as const;
 type ReplyField = keyof typeof REPLY_FIELDS;
 type Reply = { [K in ReplyField]: z.infer<(typeof REPLY_FIELDS)[K]> | null };
@@ -217,6 +271,10 @@ export function runIntake(input: IntakeInput): IntakeResult {
   let otherCurrency: { amount: number; currency: string } | null = null;
   const disagreements: Disagreement[] = [];
   const method = input.reply === null ? 'rules' : 'model';
+  const split = splitIn(text);
+  const exits = exitTimesIn(text);
+  const openWords = openEndedIn(text);
+  let openEnded = false;
 
   if (input.reply === null) {
     Object.assign(draft, rules);
@@ -227,6 +285,10 @@ export function runIntake(input: IntakeInput): IntakeResult {
         flags.push(`from_rules:${field}`);
         unclear.add(field);
       }
+    // "No hard cap", "sem prazo": no date, read by code, the same with or without a model.
+    if (openWords !== null && rules.horizonMonths === null) openEnded = true;
+    // A split the rules parser cannot read ("70-30", "70%") is asked.
+    if (split.pairs.length > 0 || split.percents.length > 0) unclear.add('sleeves');
   } else {
     const read = readReply(input.reply);
     flags.push(...read.flags);
@@ -275,13 +337,42 @@ export function runIntake(input: IntakeInput): IntakeResult {
       unclear.add('amountUsd');
       unclear.add('incomeTargetUsdMonthly');
     }
-    // A time frame must be written in the text.
+    // A time frame must be written in the text, as one. A time to get the money out ("can take up to
+    // 3 months to get out") is a limit on liquidity, never the time frame: it is dropped, not asked.
+    const horizons = horizonsIn(text, nowMonth);
     if (r.horizonMonths !== null) {
-      if (horizonsIn(text, nowMonth).includes(r.horizonMonths))
-        draft.horizonMonths = r.horizonMonths;
+      if (horizons.includes(r.horizonMonths)) draft.horizonMonths = r.horizonMonths;
+      else if (exits.some((e) => e.months === r.horizonMonths)) flags.push('exit_time_not_horizon');
       else {
         flags.push('not_in_text:horizonMonths');
         unclear.add('horizonMonths');
+      }
+    }
+    // No date: taken only where the text says so ("no hard cap", "open-ended", "sem prazo").
+    if (r.openEnded === true) {
+      if (openWords !== null) openEnded = draft.horizonMonths === null;
+      else flags.push('no_cue:openEnded');
+    }
+    // How soon the whole plan may be needed: written as a time to get out, or as a time frame.
+    if (r.mayNeedInMonths !== null) {
+      if (exits.some((e) => e.months === r.mayNeedInMonths) || horizons.includes(r.mayNeedInMonths))
+        limits.mayNeedInMonths = r.mayNeedInMonths;
+      else flags.push('not_in_text:mayNeedInMonths');
+    }
+    // The person's split: each share written in the text, the two the whole. "Half and half" is
+    // written as halves.
+    if (r.sleeves !== null) {
+      const written = new Set([...split.percents, ...split.pairs.flat()]);
+      const whole = r.sleeves.reduce((n, x) => n + x.sharePct, 0) === 100;
+      const kinds = new Set(r.sleeves.map((x) => x.kind)).size === r.sleeves.length;
+      const each = r.sleeves.every(
+        (x) => written.has(x.sharePct) || (split.half && x.sharePct * 2 === 100),
+      );
+      if (whole && kinds && each)
+        draft.sleeves = r.sleeves.map((x) => ({ kind: x.kind, shareBps: x.sharePct * 100 }));
+      else {
+        flags.push('not_in_text:sleeves');
+        unclear.add('sleeves');
       }
     }
     // A currency other than dollars must be written beside an amount.
@@ -341,10 +432,19 @@ export function runIntake(input: IntakeInput): IntakeResult {
       unclear.add('country');
     }
 
-    // Where the two readers both read a field and differ, the field is unclear.
+    // Where the two readers both read a field and differ, the field is unclear. Two readings of the risk
+    // are not compared: the rules parser's "medium" where the text has no word for it (its default, not
+    // a reading), and any one where a part is kept safe (the text then says a risk per part; the plan's
+    // risk is the other part's).
+    const perPart = draft.sleeves?.some((x) => x.kind === 'safe_yield') === true;
     for (const field of COMPARED) {
       const model = draft[field];
       const other = rules[field];
+      if (
+        field === 'risk' &&
+        (perPart || (other === 'medium' && !riskCuesIn(text).includes('medium')))
+      )
+        continue;
       // The rules parser counts "for 10 years" as 121 months: one month apart is the same time frame
       // here, in this check only.
       const near =
@@ -360,20 +460,43 @@ export function runIntake(input: IntakeInput): IntakeResult {
     }
   }
 
+  // "70% ... and the other half" is more than the whole: the split is asked, never guessed.
+  let mismatch: { pct: number; rest: number } | null = null;
+  if (
+    draft.sleeves === null &&
+    split.mismatch &&
+    split.pairs.length === 0 &&
+    !('sleeves' in answers)
+  ) {
+    flags.push('split_mismatch');
+    unclear.add('sleeves');
+    mismatch = { pct: split.mismatch.pct, rest: 100 - split.mismatch.pct };
+  }
+  if (maxYieldAskedIn(text)) flags.push('max_yield_asked');
+
   const language: Language =
     answers.language ?? draft.language ?? input.language ?? rules.language ?? 'en';
+  const P = PERSONAL_PARAMS;
+  const countryMatters = input.countryMatters ?? true;
+  // No date: the person said so, in words or as an answer. A date given wins.
+  const horizonOpen =
+    answers.horizonOpen ??
+    (answers.horizonMonths !== undefined ? false : openEnded && draft.horizonMonths === null);
 
   // The values the sheet would take: the person's answers over what was read.
   const value = {
     goal: answers.goal ?? draft.goal,
     amountUsd: answers.amountUsd ?? draft.amountUsd,
     incomeTargetUsdMonthly: answers.incomeTargetUsdMonthly ?? draft.incomeTargetUsdMonthly,
-    horizonMonths: answers.horizonMonths ?? draft.horizonMonths,
+    horizonMonths:
+      answers.horizonMonths ?? (horizonOpen ? P.openEndedHorizonMonths : draft.horizonMonths),
     risk: answers.risk ?? draft.risk,
     country: answers.country ?? draft.country,
     currency: answers.currency ?? draft.currency,
     themes: answers.themes ?? draft.themes,
   };
+  const sleeves = answers.sleeves ?? draft.sleeves;
+  const keptSafe = sleeves?.some((x) => x.kind === 'safe_yield') === true && sleeves.length > 1;
   // An answer naming a portfolio is held to the shelf too.
   if (answers.themes) {
     const off = answers.themes.filter((slug) => !portfolios.some((p) => p.slug === slug));
@@ -389,10 +512,15 @@ export function runIntake(input: IntakeInput): IntakeResult {
     switch (field) {
       case 'goal':
       case 'amountUsd':
-      case 'horizonMonths':
       case 'risk':
-      case 'country':
         return value[field] === null || unclear.has(field);
+      case 'horizonMonths':
+        return !horizonOpen && (value[field] === null || unclear.has(field));
+      // Asked only where an asset is not offered somewhere: otherwise it changes nothing.
+      case 'country':
+        return countryMatters && (value[field] === null || unclear.has(field));
+      case 'sleeves':
+        return unclear.has(field);
       case 'incomeTargetUsdMonthly':
         return value.goal === 'income' && (value[field] === null || unclear.has(field));
       case 'currency':
@@ -404,8 +532,15 @@ export function runIntake(input: IntakeInput): IntakeResult {
     }
   };
 
+  const templateOf = (field: QuestionField): { id: QuestionId; params: Record<string, Value> } => {
+    if (field === 'amountUsd' && otherCurrency)
+      return { id: 'amountOtherCurrency', params: { ...otherCurrency } };
+    if (field === 'sleeves' && mismatch) return { id: 'sleevesMismatch', params: { ...mismatch } };
+    if (field === 'risk' && keptSafe) return { id: 'riskGoalPart', params: {} };
+    return { id: field, params: {} };
+  };
   const questions: IntakeQuestion[] = QUESTION_FIELDS.filter(needed).map((field) =>
-    question(field, language, field === 'amountUsd' ? otherCurrency : null, readOf(field, value)),
+    question(field, language, templateOf(field), readOf(field, value)),
   );
 
   let sheet: PersonalSheet | null = null;
@@ -416,19 +551,24 @@ export function runIntake(input: IntakeInput): IntakeResult {
       goal: value.goal,
       amountUsd: value.amountUsd,
       horizonMonths: value.horizonMonths,
+      ...(horizonOpen ? { horizonOpen: true } : {}),
       risk: value.risk,
       themes: value.themes ?? [],
-      country: value.country,
+      country: value.country ?? (countryMatters ? null : COUNTRY_NOT_ASKED),
       chains: [input.homeChain],
       ...(value.goal === 'income' && value.incomeTargetUsdMonthly !== null
         ? { incomeTargetUsdMonthly: value.incomeTargetUsdMonthly }
         : {}),
-      // Both rules start on, as the form starts them.
-      rules: answers.rules ?? { useHoldings: true, glide: true },
+      // Holdings count, as the form starts it. The glide is opt-in (gate GLIDE-OPT-IN, Oct 6): on only
+      // when the text asks to take less risk as time passes or names a date the money is needed by.
+      rules: answers.rules ?? {
+        useHoldings: true,
+        glide: !horizonOpen && glideAskedIn(text, nowMonth),
+      },
       language,
       ...(value.currency !== null ? { currency: value.currency } : {}),
       ...(answers.obligations ? { obligations: answers.obligations } : {}),
-      ...(answers.sleeves ? { sleeves: answers.sleeves } : {}),
+      ...(sleeves ? { sleeves } : {}),
       ...(answers.restoreSplit !== undefined ? { restoreSplit: answers.restoreSplit } : {}),
       ...(limitsOut ? { limits: limitsOut } : {}),
     };
@@ -441,11 +581,31 @@ export function runIntake(input: IntakeInput): IntakeResult {
         if ((QUESTION_FIELDS as readonly string[]).includes(field)) {
           const f = field as QuestionField;
           if (!questions.some((q) => q.field === f))
-            questions.push(question(f, language, null, readOf(f, value)));
+            questions.push(question(f, language, templateOf(f), readOf(f, value)));
         }
       }
   }
 
+  // What was assumed from the person's words, said so they can correct it.
+  const assumptions: string[] = [];
+  const assume = (id: AssumptionId, params: Record<string, Value> = {}) =>
+    assumptions.push(render(ASSUMPTION_TEMPLATES[id][language], params, language));
+  const loose =
+    answers.risk === undefined && value.risk !== null ? looseRiskWordsIn(text, value.risk) : null;
+  const goalPart = sleeves?.find((x) => x.kind === 'goal');
+  if (loose && value.risk !== null)
+    if (keptSafe && goalPart)
+      assume('RISK_WORDS_PART', { words: loose, risk: value.risk, share: goalPart.shareBps });
+    else assume('RISK_WORDS', { words: loose, risk: value.risk });
+  if (horizonOpen && openWords !== null && answers.horizonOpen === undefined)
+    assume('OPEN_ENDED', { words: openWords });
+  const exit = exits.find((e) => e.months !== limits.mayNeedInMonths);
+  if (exit) assume('EXIT_TIME', { words: exit.words });
+  if (flags.includes('max_yield_asked')) assume('MAX_YIELD_LATER');
+  if (sheet && !sheet.rules.glide && !horizonOpen && answers.rules === undefined)
+    assume('GLIDE_OFFER');
+
+  const said = sheet ? readBack(sheet, portfolios) : null;
   return {
     method,
     language,
@@ -455,23 +615,26 @@ export function runIntake(input: IntakeInput): IntakeResult {
     flags,
     disagreements,
     sheet,
-    readBack: sheet ? readBack(sheet, portfolios) : null,
+    readBack: said ? [...said.slice(0, -1), ...assumptions, ...said.slice(-1)] : null,
+    assumptions,
   };
 }
 
 function limitsOf(read: LimitsDraft): PersonalLimits | null {
   const out: PersonalLimits = {};
+  if (read.mayNeedInMonths !== undefined) out.mayNeedInMonths = read.mayNeedInMonths;
   if (read.creditTolerance) out.creditTolerance = read.creditTolerance;
   if (read.cannotHoldClasses) out.cannotHold = { classes: read.cannotHoldClasses };
   return Object.keys(out).length > 0 ? out : null;
 }
 
+type Value = string | number;
 type Values = Record<
-  Exclude<QuestionField, 'chains'>,
+  Exclude<QuestionField, 'chains' | 'sleeves'>,
   string | number | string[] | null | undefined
 >;
 function readOf(field: QuestionField, value: Values): IntakeQuestion['read'] {
-  if (field === 'chains') return undefined;
+  if (field === 'chains' || field === 'sleeves') return undefined;
   const v = value[field];
   return v === null || v === undefined ? undefined : v;
 }
@@ -484,15 +647,13 @@ const OPTIONS: Partial<Record<QuestionField, string[]>> = {
 function question(
   field: QuestionField,
   language: Language,
-  other: { amount: number; currency: string } | null,
+  template: { id: QuestionId; params: Record<string, Value> },
   read: IntakeQuestion['read'],
 ): IntakeQuestion {
-  const template: QuestionId = field === 'amountUsd' && other ? 'amountOtherCurrency' : field;
-  const params = template === 'amountOtherCurrency' && other ? { ...other } : {};
   return {
     field,
-    template,
-    text: render(QUESTION_TEMPLATES[template][language], params, language),
+    template: template.id,
+    text: render(QUESTION_TEMPLATES[template.id][language], template.params, language),
     ...(OPTIONS[field] ? { options: OPTIONS[field] } : {}),
     ...(read !== undefined ? { read } : {}),
   };

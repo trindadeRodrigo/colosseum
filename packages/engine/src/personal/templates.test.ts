@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  ASSUMPTION_TEMPLATES,
   CLASS_WORDS,
   INPUT_NAMES,
   placeholdersOf,
@@ -287,6 +288,7 @@ describe('intake templates', () => {
   const intake = [
     ...Object.entries(QUESTION_TEMPLATES).map(([id, t]) => ({ id, ...t })),
     ...Object.entries(READBACK_TEMPLATES).map(([id, t]) => ({ id, ...t })),
+    ...Object.entries(ASSUMPTION_TEMPLATES).map(([id, t]) => ({ id, ...t })),
   ];
 
   it('are plain sentences in both languages, with the same values, filled with no hole', () => {

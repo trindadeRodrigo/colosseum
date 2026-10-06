@@ -459,5 +459,116 @@
         "unclear": []
       }
     }
+  },
+  "conversations": {
+    "first-chat-oct6": {
+      "about": "MOCK. Rodrigo's first /plan-chat of Oct 6, message by message as he wrote them (the third trimmed to its answer), with a reply written by hand for each turn as the model would read the whole conversation so far. Not recorded from a live model.",
+      "messages": [
+        "I have 2k parked in USDC, I want to have 70% of it in a safe liquid investment , and the other half I want to risk in the highest yield config as possible",
+        "its 70-30, I want to grow it, i dont have a hard cap, just the 70% part I want it to be really liquid and the rest can take up to 3 months to get out. for the 70% as low as possiblem for the rest we can go crazy, why does it matter the country I live?",
+        "I live in Brazil"
+      ],
+      "replies": [
+        {
+          "goal": null,
+          "amountUsd": 2000,
+          "incomeTargetUsdMonthly": null,
+          "horizonMonths": null,
+          "risk": "high",
+          "currency": "USD",
+          "country": null,
+          "chain": null,
+          "portfolios": [],
+          "language": "en",
+          "noCredit": false,
+          "cannotHold": [],
+          "unclear": ["goal", "horizonMonths", "sleeves"],
+          "openEnded": false,
+          "mayNeedInMonths": null,
+          "sleeves": null
+        },
+        {
+          "goal": "grow",
+          "amountUsd": 2000,
+          "incomeTargetUsdMonthly": null,
+          "horizonMonths": null,
+          "risk": "high",
+          "currency": "USD",
+          "country": null,
+          "chain": null,
+          "portfolios": [],
+          "language": "en",
+          "noCredit": false,
+          "cannotHold": [],
+          "unclear": [],
+          "openEnded": true,
+          "mayNeedInMonths": null,
+          "sleeves": [
+            {
+              "kind": "safe_yield",
+              "sharePct": 70
+            },
+            {
+              "kind": "goal",
+              "sharePct": 30
+            }
+          ]
+        },
+        {
+          "goal": "grow",
+          "amountUsd": 2000,
+          "incomeTargetUsdMonthly": null,
+          "horizonMonths": null,
+          "risk": "high",
+          "currency": "USD",
+          "country": "BR",
+          "chain": null,
+          "portfolios": [],
+          "language": "en",
+          "noCredit": false,
+          "cannotHold": [],
+          "unclear": [],
+          "openEnded": true,
+          "mayNeedInMonths": null,
+          "sleeves": [
+            {
+              "kind": "safe_yield",
+              "sharePct": 70
+            },
+            {
+              "kind": "goal",
+              "sharePct": 30
+            }
+          ]
+        }
+      ],
+      "horizonFromExitTime": {
+        "goal": "grow",
+        "amountUsd": 2000,
+        "incomeTargetUsdMonthly": null,
+        "horizonMonths": 3,
+        "risk": "high",
+        "currency": "USD",
+        "country": null,
+        "chain": null,
+        "portfolios": [],
+        "language": "en",
+        "noCredit": false,
+        "cannotHold": [],
+        "unclear": [],
+        "openEnded": true,
+        "mayNeedInMonths": null,
+        "sleeves": [
+          {
+            "kind": "safe_yield",
+            "sharePct": 70
+          },
+          {
+            "kind": "goal",
+            "sharePct": 30
+          }
+        ]
+      }
+    }
   }
 }
