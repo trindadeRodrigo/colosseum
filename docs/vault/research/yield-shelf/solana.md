@@ -42,6 +42,8 @@ Tags: `[n]` checked that day against source n. `[ns]` or `[ns n]` only a search-
 | USX | Solstice | no yield | A | out | not a yield asset |
 | MEX | Etherfuse | none | none | out | 2: not a bond; what backs it was not found |
 
+The table has the 22 tokens screened and MEX, a seventh Etherfuse token the issuer's own list turned up.
+
 ## 2. The filters, and how the rows were made
 
 1. A vault can hold it: no allowlist and no KYC on a transfer to a program address.
@@ -123,7 +125,7 @@ Depth is the loss on a sale to USDC against a $100 sale, from the Jupiter quote 
 - **Redemption** Not applicable. Nearest on Solana: jlUSDS (`j14XLJZS…LWvh`), a Jupiter Lend deposit at 4.01% [5], which is `market_deposit`, not the Savings Rate.
 - **Geo-blocks** Not researched.
 - **Depth** None.
-- **Tier** None: there is nothing to sell, and no row.
+- - **Tier** None: there is nothing to sell, and no row.
 - **Yield** Savings Rate 3.60% on Ethereum, 2026-10-06 [9]. It applies to no Solana token found.
 - **Incidents** Not researched.
 - **Not verified** That no Solana sUSDS mint exists: absence from Jupiter is not proof; Sky's developer docs were not read.
@@ -196,7 +198,7 @@ Depth method: Jupiter quote, token to USDC, output per token at the size against
 
 - **Verdict.** Hold. Deciding filter: 5. It passes 1 to 4. What settles it: (a) Rodrigo's decision on a leg type for reinsurance; (b) the collateral make-up from OnRe's transparency dashboard, to rule out a basis asset or leverage inside.
 - **Issuer and backing.** OnRe, "a fully licensed, collateralized reinsurer and onchain asset manager"; ONyc combines "premium income with collateral returns" `[102]`. Legal entity and regulator not found on the pages read.
-- **Mechanism and leg types.** None of the four fits; `legTypes` is null. The return is underwriting premium less insured losses, plus the yield on the collateral `[102]`. Nearest type: credit, because a loss is written down across the pool through NAV `[own]`. The difference: the loss comes from insured events, not from a borrower's default. A new type ("underwriting") would need: a NAV write-down on loss events, a tail that is seasonal and not tied to rates, the share of the yield that is collateral return and what that collateral is, and the redemption queue `[own]`.
+- **Mechanism and leg types.** None of the four fits, and no leg type is recorded. The return is underwriting premium less insured losses, plus the yield on the collateral `[102]`. Nearest type: credit, because a loss is written down across the pool through NAV `[own]`. The difference: the loss comes from insured events, not from a borrower's default. A new type ("underwriting") would need: a NAV write-down on loss events, a tail that is seasonal and not tied to rates, the share of the yield that is collateral return and what that collateral is, and the redemption queue `[own]`.
 - **Address.** `5Y8NV33Vv7WbnLfq3zBcKSdYPrk7g2KoiQoe7M2tcxp5`, 9 decimals, SPL Token (Tokenkeg) `[rpc]`. Jupiter-verified, 8,977 holders `[api: Jupiter tokens]`. Supply 254.1M × $1.1516 ≈ $293M, against $288M TVL on DefiLlama `[rpc][113]`.
 - **Transfer restrictions.** Freeze authority `45Ynzauh…3jaJ5`; mint authority `AbpE5YLp…bMnNX`; no extensions `[rpc]`. No allowlist. The terms read have no clause on freezing or on program holders `[101]`.
 - **Redemption.** A holder without KYC sells on the DEX. Issuer redemption carries a 25 bps fee and settles in USDC or USDG, with no fixed holding period `[ns 102]`. Direct mint and redeem at size need KYC `[ns 102]`. Queue not verified.
@@ -241,7 +243,7 @@ Depth method: Jupiter quote, token to USDC, output per token at the size against
 
 - **Verdict.** Hold. Deciding filter: 5. What settles it: Perena's published backing, with the share that is delta-neutral and a statement on leverage.
 - **Issuer and backing.** Perena. USD* is described as backed by "delta-neutral positions, secured lending markets, and tokenized real-world assets", priced at the pool's net asset value `[ns 112]`. A separate junior token (USD*-J, about 17% of the structure) takes losses first `[ns 112]`. USD*-J is out by filter 5 `[own]`; this section is about USD* only.
-- **Mechanism and leg types.** None of the four alone; `legTypes` is null. It is a mix of basis, market deposit and rate, plus swap fees from the stablecoin pool, and the shares could not be read `[own]`. Nearest single type: market_deposit. To type it the engine needs the published share of each source, or a "stable-pool" type that covers swap-fee income and the depeg risk of each pool asset `[own]`.
+- **Mechanism and leg types.** None of the four alone, and no leg type is recorded. It is a mix of basis, market deposit and rate, plus swap fees from the stablecoin pool, and the shares could not be read `[own]`. Nearest single type: market_deposit. To type it the engine needs the published share of each source, or a "stable-pool" type that covers swap-fee income and the depeg risk of each pool asset `[own]`.
 - **Address.** `star9agSpjiFe3M49B3RniVU4CMBBEK3Qnaqn3RGiFM`, 6 decimals, SPL Token `[rpc]`. Jupiter-verified as "USD Star", 8,591 holders; supply 10.49M, about $11.5M `[api: Jupiter tokens][rpc]`.
 - **Transfer restrictions.** No freeze authority; mint authority `ECJGrTZ6…qyCjHT`; no extensions `[rpc]`.
 - **Redemption.** Burn in Perena's own program at any time: no lock, a 0.05% redemption fee, deposits free `[111]`.
@@ -262,16 +264,16 @@ Depth method: Jupiter quote, token to USDC, output per token at the size against
 - **Redemption.** Mint and redemption were paused after the Drift exploit `[ns 108]`. From 2026-07-02, for 180 days, a voluntary buy-back pays 0.20 USDC plus 80 Reflect Credits per USDC+, and the holder gives up claims against Drift `[ns 108]`.
 - **Geo-blocks.** Not read; not needed.
 - **Depth.** None. Jupiter answers `TOKEN_NOT_TRADABLE` `[api: Jupiter quote]`. One Meteora pool with $25 `[118]`. Jupiter's price is $0.21 `[api: Jupiter tokens]`.
-- **Tier.** C, no exit.
+- **Tier.** None: no exit, and no row.
 - **Yield.** None recorded.
 - **Incidents.** Drift was exploited on 2026-04-01 for about $285M `[ns 108]`. Reflect Money is the first of 11 affected protocols named on 2026-04-02 `[107]`.
 - **Not verified.** The share of backing lost. The mint on Reflect's own page.
 
 #### USX (Solstice)
 
-- **Verdict.** Hold, no deciding filter: it is a plain stablecoin with no yield, so it is not a shelf candidate by itself. It matters only as the exit leg of eUSX.
+- **Verdict.** Out, by none of the five filters: it is a plain stablecoin with no yield, so it is not a shelf candidate by itself. It matters only as the exit leg of eUSX.
 - **Issuer and backing.** Solstice. Verified institutions mint USX against USDC or USDT and redeem it for the same `[ns 105]`.
-- **Mechanism and leg types.** No yield leg; `legTypes` is null `[own]`.
+- **Mechanism and leg types.** No yield leg, and no leg type is recorded `[own]`.
 - **Address.** `6FrrzDk5mQARGc1TDYoyVnSyRdds1t4PbtohCD6p3tgG`, 6 decimals, SPL Token `[rpc]`. Jupiter-verified, 11,597 holders, supply 212.0M `[api: Jupiter tokens][rpc]`.
 - **Transfer restrictions.** One key, `Ze3CQhTM…qnto4`, is both mint and freeze authority; no extensions `[rpc]`.
 - **Redemption.** DEX sale. Issuer mint and redeem are KYC and institutional `[ns 105]`; $500K+ `[sheet]`.
