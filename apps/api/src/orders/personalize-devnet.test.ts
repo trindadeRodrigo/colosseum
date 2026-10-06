@@ -36,6 +36,11 @@ describe('gold on the devnet shelf', () => {
       { now: '2026-10-05T12:00:00.000Z' },
     );
     expect(plan.lines.find((l) => l.assetId === 'solana:paxg')?.weightBps).toBe(2500);
-    expect(plan.removed).toEqual([]);
+    // No yield reading is handed in, and a missing yield is never counted as zero (ENG-3 slice 1):
+    // the two dollar-yield stand-ins are left out, and the plan says why.
+    expect(plan.removed.map((r) => [r.ref, r.reasons.map((x) => x.rule)])).toEqual([
+      ['tjlUSDC', ['NO_YIELD']],
+      ['tsyrupUSDC', ['NO_YIELD']],
+    ]);
   });
 });

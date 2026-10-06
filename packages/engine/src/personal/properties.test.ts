@@ -11,6 +11,8 @@ import {
   fixtureYields,
   launchShelf,
   NOW,
+  roomyYield,
+  usdBrl,
   violations,
 } from './testing';
 import {
@@ -21,7 +23,7 @@ import {
   PersonalSheet,
   SLEEVES,
 } from './types';
-import { buildWorld } from './world';
+import { buildWorld, monthAfter } from './world';
 
 // Generated people, generated parameter tables, generated shelves. For any valid sheet the plan keeps
 // the vault's target rules and every ceiling and cap, holds nothing excluded or ineligible, and is
@@ -92,6 +94,42 @@ const personOn = (chain: ChainId): fc.Arbitrary<PersonalSheet> =>
       );
     });
 
+/** A dated withdrawal, from two months back to a year and more ahead, in dollars or reais. */
+const withdrawal = fc.record({
+  month: fc.integer({ min: -2, max: 14 }).map((m) => monthAfter(NOW, m)),
+  amount: fc.oneof(fc.integer({ min: 1, max: 200_000 }), fc.constantFrom(500, 3000, 25_000)),
+  currency: fc.constantFrom('USD', 'BRL'),
+});
+
+/**
+ * The same, and sometimes split (gate SLEEVES), in a currency, with withdrawals: a goal sleeve and a safe-yield sleeve, or the whole
+ * plan in one of them.
+ */
+const splitOn = (chain: ChainId): fc.Arbitrary<PersonalSheet> =>
+  fc
+    .tuple(
+      personOn(chain),
+      maybe(fc.integer({ min: 0, max: 10_000 })),
+      maybe(fc.constantFrom('USD', 'BRL')),
+      maybe(fc.array(withdrawal, { maxLength: 6 })),
+    )
+    .map(([sheet, safe, currency, obligations]) =>
+      PersonalSheet.parse(
+        filled({
+          ...sheet,
+          currency,
+          obligations,
+          sleeves:
+            safe === undefined
+              ? undefined
+              : [
+                  ...(safe < 10_000 ? [{ kind: 'goal' as const, shareBps: 10_000 - safe }] : []),
+                  ...(safe > 0 ? [{ kind: 'safe_yield' as const, shareBps: safe }] : []),
+                ],
+        }),
+      ),
+    );
+
 const sleeveRow = fc.tuple(bps, bps, bps).map(([growth, dollarYield, gold]) => {
   const growthBps = growth;
   const dollarYieldBps = Math.min(dollarYield, 10_000 - growthBps);
@@ -137,6 +175,15 @@ const table: fc.Arbitrary<PersonalParameters> = fc
       growth: fc.constantFrom('SPY', 'NVDA', 'JitoSOL', 'ZZZ'),
       gold: fc.shuffledSubarray(['PAXG', 'GLD', 'SLV', 'ZZZ'], { minLength: 1 }),
     }),
+    // The banded fill's numbers (gate SOLVER-PARAMS), any of them.
+    yieldBand: fc.double({ min: 0, max: 0.05, noNaN: true }),
+    capPerAssetBps: fc.record({
+      bySymbol: fc.record({ syrupUSDC: bps }, { requiredKeys: [] }),
+      byLegType: fc.record({ rate: bps, credit: bps, basis: bps, market_deposit: bps }),
+    }),
+    issuerCapBps: bps,
+    creditShareBps: fc.record({ none: bps, limited: bps, accept: bps }),
+    defaultCreditTolerance: fc.constantFrom('none' as const, 'limited' as const, 'accept' as const),
   })
   .map(({ rows, ...rest }) =>
     PersonalParameters.parse({
@@ -204,18 +251,22 @@ function made(raw: World): { shelf: Shelf; context: ComposeContext } {
         Object.fromEntries(raw.notMeasured.map(([id, gaps]) => [id, [...gaps]])),
       ),
       params: raw.params,
+      // Every world can convert reais: a withdrawal in reais needs the rate, and an unused one only
+      // changes the hash.
+      fx: [usdBrl()],
     },
   };
 }
 
 describe.each(CHAINS)('for any valid sheet, on %s alone', (chain) => {
   const person = personOn(chain);
+  const anyone = splitOn(chain);
 
   it(
     'the plan keeps the vault’s target rules, every ceiling and cap, and holds nothing ruled out',
     () => {
       fc.assert(
-        fc.property(person, world, (sheet, raw) => {
+        fc.property(anyone, world, (sheet, raw) => {
           const { shelf, context } = made(raw);
           const plan = compose(sheet, shelf, context);
           expect(violations(plan, shelf, context)).toEqual([]);
@@ -230,7 +281,7 @@ describe.each(CHAINS)('for any valid sheet, on %s alone', (chain) => {
     'the plan is the same every time, in whatever order the shelf is listed',
     () => {
       fc.assert(
-        fc.property(person, world, fc.integer({ min: 1, max: 50 }), (sheet, raw, seed) => {
+        fc.property(anyone, world, fc.integer({ min: 1, max: 50 }), (sheet, raw, seed) => {
           const { shelf, context } = made(raw);
           const plan = compose(sheet, shelf, context);
           expect(compose(sheet, shelf, context)).toEqual(plan);
@@ -351,7 +402,7 @@ describe.each(['solana', 'robinhood'] as const)('where there is room, on %s', (c
     })
     .map(({ rows, ...floors }) =>
       PersonalParameters.parse({
-        ...PERSONAL_PARAMS,
+        ...roomyYield(),
         ...floors,
         version: 'generated, with room',
         sleeves: Object.fromEntries(

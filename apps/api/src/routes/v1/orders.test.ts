@@ -1566,7 +1566,7 @@ describe('refusals', () => {
       [{ proposalId: undefined }, 400, /names the plan/],
       [{ proposalId: '4b1c0f0e-3f8e-4d0e-9d2b-0d7a3a6b1c2d' }, 404, /no plan/],
       [{ proposalId: plans.robinhood }, 422, /made for Robinhood Chain/],
-      [{ proposalId: undefined, family: 'core' }, 501, /not built yet/],
+      [{ proposalId: undefined, family: 'core' }, 404, /no shared portfolio with that slug/],
       [{ amountUsd: 0.0001 }, 422, /less than one cent/],
     ];
     for (const [change, status, error] of cases) {

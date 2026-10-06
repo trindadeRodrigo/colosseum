@@ -13,6 +13,7 @@ import {
   fixtureYields,
   launchShelf,
   NOW,
+  roomyYield,
   sheet,
   sleeveBps,
   violations,
@@ -221,6 +222,10 @@ describe.each(Object.entries(TABLES))('whatever the numbers: %s', (_name, table)
   });
 });
 
+// The sleeves of the starting table, held where the dollar-yield limits do not bind: these tests are
+// about how big each sleeve is. What the caps on dollar yield do is in fill.test.ts and solver.test.ts.
+const ROOMY = roomyYield(P);
+
 describe('the floors, on the starting table', () => {
   const sleevesOf = (made: PersonalProposal) =>
     Object.fromEntries(made.sleeves.map((x) => [x.sleeve, x.weightBps]));
@@ -229,7 +234,7 @@ describe('the floors, on the starting table', () => {
   // then reaches the gold. No row of the starting table does since a plan to protect lost its stocks
   // (gate PROTECT-NO-STOCKS): these are the rows a plan to protect had, given to a goal to grow.
   const MIXED: PersonalParameters = {
-    ...P,
+    ...ROOMY,
     sleeves: {
       ...P.sleeves,
       'grow:low': { growthBps: 2000, dollarYieldBps: 5500, goldBps: 2500 },
@@ -258,9 +263,9 @@ describe('the floors, on the starting table', () => {
 
   it('a plan to protect, on the starting table: the date and what must be kept take from its gold', () => {
     // 75% dollar yield and 25% gold. Six months out: 80% at least, then 10% in cash, both from gold.
-    const near = plan({ goal: 'protect', horizonMonths: 6 }, P);
+    const near = plan({ goal: 'protect', horizonMonths: 6 }, ROOMY);
     expect(sleevesOf(near)).toEqual({ growth: 0, dollarYield: 8000, gold: 1000, cash: 1000 });
-    const kept = plan({ goal: 'protect', limits: { mustKeepUsd: 9_000 } }, P);
+    const kept = plan({ goal: 'protect', limits: { mustKeepUsd: 9_000 } }, ROOMY);
     expect(sleevesOf(kept)).toEqual({ growth: 0, dollarYield: 9000, gold: 1000, cash: 0 });
   });
 });
@@ -269,8 +274,8 @@ describe('a near date, on the starting table', () => {
   it('holds strictly more cash and more in cash and dollar yield together', () => {
     for (const goal of ['grow', 'protect'] as const)
       for (const risk of RISKS) {
-        const near = plan({ goal, risk, horizonMonths: 6 }, P);
-        const far = plan({ goal, risk, horizonMonths: 120 }, P);
+        const near = plan({ goal, risk, horizonMonths: 6 }, ROOMY);
+        const far = plan({ goal, risk, horizonMonths: 120 }, ROOMY);
         const kept = (made: PersonalProposal) =>
           sleeveBps(made, shelf, 'cash') + sleeveBps(made, shelf, 'dollarYield');
         expect(sleeveBps(near, shelf, 'cash'), `${goal} ${risk}`).toBeGreaterThan(
@@ -278,14 +283,17 @@ describe('a near date, on the starting table', () => {
         );
         expect(kept(near), `${goal} ${risk}`).toBeGreaterThan(kept(far));
       }
-    const income = [6, 120].map((horizonMonths) => plan({ goal: 'income', horizonMonths }, P));
+    const income = [6, 120].map((horizonMonths) => plan({ goal: 'income', horizonMonths }, ROOMY));
     expect(sleeveBps(income[0] as PersonalProposal, shelf, 'cash')).toBe(1000);
     expect(sleeveBps(income[1] as PersonalProposal, shelf, 'cash')).toBe(0);
   });
 
   it('says the loss in a fall in the words of the line', () => {
     // $10,000 in gold, the one part of this plan with a price that can fall.
-    const made = plan({ goal: 'protect', amountUsd: 50_000, horizonMonths: 18, risk: 'low' }, P);
+    const made = plan(
+      { goal: 'protect', amountUsd: 50_000, horizonMonths: 18, risk: 'low' },
+      ROOMY,
+    );
     expect(made.lines.find((l) => l.assetId === 'solana:gldx')?.reasons.at(-1)?.text).toBe(
       'No return is assumed for this part of your plan. In a 20% fall it would lose $2,000.',
     );
