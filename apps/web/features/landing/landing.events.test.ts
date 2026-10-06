@@ -251,6 +251,13 @@ describe('the showcase', () => {
     browser({ reduce: true });
     host = await landing();
     expect(drawings().map((d) => d.getAttribute('data-state'))).toEqual(['still', 'still']);
+    await unmountAll();
+    vi.restoreAllMocks();
+    // already on screen when the page opens: it stands as it is, nothing hidden to come in
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({ top: 120 } as DOMRect);
+    browser();
+    host = await landing();
+    expect(drawings().map((d) => d.getAttribute('data-state'))).toEqual(['still', 'still']);
     vi.unstubAllGlobals();
   });
 

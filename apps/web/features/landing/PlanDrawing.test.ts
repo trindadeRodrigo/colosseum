@@ -2,8 +2,9 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { layersOf, PlanDrawing } from './PlanDrawing';
-import { GROWTH, TRIP } from './sample';
+import { dictionary } from '../../i18n';
+import { LABEL, labelRows, layersOf, nameLines, nameWidth, PlanDrawing } from './PlanDrawing';
+import { GROWTH, TICKERS, TRIP } from './sample';
 
 // The plan drawn as a joint (gate PLAN-JOINT): one layer per part, each as tall as its share, in the
 // part's legend colour, tenoned into the one below, in the hero's line weights and the page's tokens.
@@ -64,6 +65,52 @@ describe('the plan drawn as a joint', () => {
     );
     expect(widths).toEqual(new Set(['1.5', '0.85']));
     expect(svg.outerHTML).not.toMatch(/#[0-9a-f]{3,6}\b|rgb\(|hsl\(/i);
+  });
+
+  it('fits every part’s name inside the drawing, in both languages, wrapping where it must', () => {
+    for (const lang of ['en', 'pt'] as const) {
+      const show = dictionary(lang).landing.show;
+      const names = [
+        ...show.trip.legs.map((l) => l.name(TICKERS.cash)),
+        ...show.growth.legs.map((l) => l.name(TICKERS.stocks)),
+      ];
+      for (const name of names) {
+        const lines = nameLines(name);
+        expect(lines.length, name).toBeLessThanOrEqual(2);
+        for (const line of lines)
+          expect(LABEL.x + nameWidth(line), `${lang}: ${line}`).toBeLessThanOrEqual(480);
+      }
+    }
+    // and a name is at least 12 px on a 360 px card, where the drawing is set at 360/480 of its size
+    expect(LABEL.name * (360 / 480)).toBeGreaterThanOrEqual(12);
+  });
+
+  it('keeps every label inside the drawing, with thin parts at the foot or the head', () => {
+    for (const weights of [
+      [200, 200, 200, 9400],
+      [9400, 200, 200, 200],
+    ]) {
+      const layers = layersOf(
+        weights.map((w, i) => ({
+          leg: { weightBps: w, chart: (i + 1) as 1 | 2 | 3 | 4 },
+          name: 'Títulos do Tesouro tokenizados',
+        })),
+      );
+      const rows = labelRows(layers).sort((a, b) => a - b);
+      expect(rows[0]).toBeGreaterThanOrEqual(LABEL.share);
+      // the last block's two name lines end inside the foot
+      expect((rows[rows.length - 1] ?? 0) + 2 * LABEL.lead).toBeLessThanOrEqual(400);
+      for (let i = 1; i < rows.length; i++)
+        expect((rows[i] ?? 0) - (rows[i - 1] ?? 0)).toBeGreaterThanOrEqual(
+          LABEL.share + 2 * LABEL.lead,
+        );
+    }
+  });
+
+  it('is named once, by its label, with no title to say it twice', () => {
+    const svg = draw(parts(TRIP.legs, ['a', 'b', 'c']));
+    expect(svg.querySelector('title')).toBeNull();
+    expect(svg.getAttribute('aria-label')).toBeTruthy();
   });
 
   it('keeps its labels apart, however thin a part is', () => {

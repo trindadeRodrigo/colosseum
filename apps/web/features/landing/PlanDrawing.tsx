@@ -24,11 +24,32 @@ const COLOUR = {
 /** The post: its height, half its width, and the joints between its layers. */
 const POST = { h: 260, half: 40, reveal: 6, tenonHalf: 13, tenonIn: 18 } as const;
 /** Where the post's foot stands, and the column the labels hang in. */
-const FOOT = { x: 150, y: 330 } as const;
-const LABEL = { x: 300, gap: 34 } as const;
+const FOOT = { x: 118, y: 330 } as const;
+/**
+ * The label column: where it starts, its type sizes in viewBox units (a name at least 12 px on a
+ * 360 px wide card, where the drawing is drawn at three quarters of its size), and the room a line of
+ * mono type has before the drawing's edge. Plex Mono sets every character 0.6 em wide.
+ */
+export const LABEL = { x: 232, share: 19, name: 16.5, lead: 19, edge: 476 } as const;
+const MONO = 0.6;
 
 /** A label's name without its tickers in brackets, so it fits its column; the reader hears them all. */
 const short = (name: string) => name.replace(/\s*\([^)]*\)$/, '');
+
+/** A name broken into lines that fit the label column, at word breaks. */
+export function nameLines(name: string): string[] {
+  const room = Math.floor((LABEL.edge - LABEL.x) / (LABEL.name * MONO));
+  const lines: string[] = [];
+  for (const word of short(name).split(' ')) {
+    const last = lines[lines.length - 1];
+    if (last !== undefined && `${last} ${word}`.length <= room)
+      lines[lines.length - 1] = `${last} ${word}`;
+    else lines.push(word);
+  }
+  return lines;
+}
+/** How wide a line of the name is set, in viewBox units. */
+export const nameWidth = (line: string) => line.length * LABEL.name * MONO;
 
 const C30 = Math.cos(Math.PI / 6);
 /** Isometric: x runs right and down, z left and down, y up. */
@@ -56,15 +77,31 @@ export function layersOf(parts: readonly PlanPart[]): Layer[] {
   });
 }
 
-/** Label rows: at each layer's middle, pushed apart so no two are closer than the row gap. */
-function labelRows(layers: Layer[]): number[] {
+/**
+ * Label rows (the share's baseline): at each layer's middle, pushed apart so no two blocks touch, and
+ * kept inside the drawing: pushed down from the top, then, if the last runs off the foot, held there
+ * and the rest pushed up above it.
+ */
+export function labelRows(layers: Layer[]): number[] {
+  const lines = Math.max(1, ...layers.map((l) => nameLines(l.name).length));
+  const gap = LABEL.share + lines * LABEL.lead + 10;
+  const top = LABEL.share + 4;
+  const bottom = VIEW.h - lines * LABEL.lead - 6;
   const ys = layers.map((l) => at(POST.half, (l.y0 + l.y1) / 2, 0)[1]);
-  // from the top down, each at least a gap below the one above
-  const order = ys.map((y, i) => ({ y, i })).sort((a, b) => a.y - b.y);
+  const order = ys.map((y, i) => ({ y: Math.max(top, y), i })).sort((a, b) => a.y - b.y);
   for (let k = 1; k < order.length; k++) {
     const prev = order[k - 1];
     const cur = order[k];
-    if (prev && cur && cur.y - prev.y < LABEL.gap) cur.y = prev.y + LABEL.gap;
+    if (prev && cur && cur.y - prev.y < gap) cur.y = prev.y + gap;
+  }
+  const last = order[order.length - 1];
+  if (last && last.y > bottom) {
+    last.y = bottom;
+    for (let k = order.length - 2; k >= 0; k--) {
+      const cur = order[k];
+      const next = order[k + 1];
+      if (cur && next && next.y - cur.y < gap) cur.y = next.y - gap;
+    }
   }
   const out: number[] = [];
   for (const { y, i } of order) out[i] = y;
@@ -170,7 +207,6 @@ export function PlanDrawing({
       strokeLinejoin="round"
       className={cn('block bg-card text-foreground', className)}
     >
-      <title>{said}</title>
       {layers.map((layer, i) => {
         const [lx, ly] = at(POST.half, (layer.y0 + layer.y1) / 2, 0);
         const row = rows[i] ?? ly;
@@ -192,28 +228,33 @@ export function PlanDrawing({
           >
             <Piece layer={layer} first={i === 0} last={i === layers.length - 1} />
             <path
-              d={line([lx + 8, ly], [LABEL.x - 28, row], [LABEL.x - 8, row])}
+              d={line([lx + 8, ly], [LABEL.x - 22, row - 6], [LABEL.x - 6, row - 6])}
               strokeWidth={WEIGHT.edge}
               className="opacity-60"
             />
             <text
               x={LABEL.x}
-              y={row - 2}
+              y={row}
               stroke="none"
               className="fill-foreground font-mono"
-              fontSize={15}
+              fontSize={LABEL.share}
               fontWeight={500}
             >
               {layer.share}%
             </text>
             <text
+              data-part="name"
               x={LABEL.x}
-              y={row + 14}
+              y={row}
               stroke="none"
               className="fill-muted-foreground font-mono"
-              fontSize={12.5}
+              fontSize={LABEL.name}
             >
-              {short(layer.name)}
+              {nameLines(layer.name).map((text, k) => (
+                <tspan key={text} x={LABEL.x} dy={LABEL.lead}>
+                  {text}
+                </tspan>
+              ))}
             </text>
           </g>
         );
