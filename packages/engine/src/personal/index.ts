@@ -35,6 +35,28 @@ export {
   otherLanguageIn,
   refusalsIn,
 } from './intake-text';
+export {
+  attributeKey,
+  type FilterMatch,
+  filterOfSlug,
+  isMatchedSlug,
+  MARKET_FILTER_BY,
+  MATCHED_PREFIX,
+  MarketFilter,
+  type MarketFilterBy,
+  matchedSlug,
+  type ShelfLabel,
+} from './market-filter';
+export {
+  attributeVocabularyOf,
+  type FilterRead,
+  filterMatchOf,
+  type MatchedList,
+  matchedListOf,
+  matchStocks,
+  type SleeveList,
+  shelfLabelsOf,
+} from './matched-theme';
 export { growthRoomBps, RISKS } from './mix';
 export { PERSONAL_PARAMS, PERSONAL_PARAMS_STATUS } from './params';
 export { readBack } from './readback';
@@ -50,6 +72,7 @@ export {
   settleBook,
 } from './rebalance';
 export { eligibleForGoal, profileOfGoal, registryRowOf, sleeveOfClass } from './registry';
+export { parseStockAttributes, StockAttributes, StockAttributesFile } from './stock-attributes';
 export {
   ASSUMPTION_TEMPLATES,
   INPUT_NAMES,

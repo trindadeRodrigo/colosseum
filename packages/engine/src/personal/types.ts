@@ -9,12 +9,15 @@ import {
   PersonalParams,
   PlanCandidateId,
   type PlanScorecard,
+  type PlanSplitSleeve,
   type PlanStatus,
   type Verdict,
   type YieldObservation,
 } from '@colosseum/schemas';
 import { z } from 'zod';
 import { LegType } from './leg-types';
+import type { MarketFilterBy } from './market-filter';
+import type { StockAttributesFile } from './stock-attributes';
 import type { ThemeList } from './theme-list';
 
 // The types of the personalization engine that packages/schemas does not hold yet. Each is marked
@@ -273,6 +276,13 @@ export type ComposeContext = {
    * A theme sleeve reads the list of its slug on the person's chain; with none, it holds no name.
    */
   themes?: ThemeList[];
+  /**
+   * The sourced attributes of the stocks tracked on the person's chain (gate THEME-MATCHED), as
+   * `content/stocks/<chain>.json` holds them. A theme sleeve whose slug names a filter
+   * (`matched-<by>-<key>`) holds the stocks whose attributes carry its value; with none given, it
+   * matches nothing. The attributes of another chain are refused.
+   */
+  stocks?: StockAttributesFile;
 };
 
 /**
@@ -307,11 +317,21 @@ export type PersonalObservation = Omit<ObservationRef, 'source' | 'fetchedAt'> &
  * the plan holds them (the plan bar of the design system shows sleeves, with the tokens under it),
  * and whose observations may lack a source or a time.
  */
-export type PersonalProposal = Omit<BasketProposal, 'sheet' | 'observations' | 'verdict'> & {
+export type PersonalProposal = Omit<
+  BasketProposal,
+  'sheet' | 'observations' | 'verdict' | 'split'
+> & {
   sheet: PersonalSheet;
   sleeves: { sleeve: Sleeve; weightBps: number; amountUsd: number }[];
-  // `split` (the person's sleeves, gate SLEEVES) is the shared `BasketProposal.split` since ENG-3
-  // slice 4: each sleeve, its share and dollars, and what the safe-yield and theme sleeves hold.
+  /**
+   * `split` (the person's sleeves, gate SLEEVES) is the shared `BasketProposal.split` since ENG-3
+   * slice 4: each sleeve, its share and dollars, and what the safe-yield and theme sleeves hold. One
+   * field is LOCAL, the shared type having none for it: `matched`, on a theme sleeve filled by a
+   * filter (gate THEME-MATCHED), never from a curated list: what it was matched by, and the value as
+   * the attributes write it (its key, where no stock carries it). The API's answer drops it; the
+   * sleeve's slug, its lines and the flags say the same.
+   */
+  split?: (PlanSplitSleeve & { matched?: { by: MarketFilterBy; value: string } })[];
   observations: PersonalObservation[];
   verdict?: PersonalVerdict;
   /** Present when the sheet has withdrawals: the plan month by month, in the goal's currency. */

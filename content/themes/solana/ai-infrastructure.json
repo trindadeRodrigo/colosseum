@@ -1,0 +1,43 @@
+{
+  "slug": "ai-infrastructure",
+  "name": {
+    "en": "AI infrastructure",
+    "pt": "Infraestrutura de IA"
+  },
+  "chain": "solana",
+  "version": 1,
+  "curator": "Rodrigo",
+  "status": "proposed",
+  "decidedOn": "2026-10-06",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/solana.json; the membership is Rodrigo's to confirm (gate THEMES). Who makes or sells the computing AI runs on: chips, servers, AI clouds and the large clouds. Meta builds data centers for its own use and is left to the AI list. SpaceX was proposed by the research and left out as a side line.",
+  "members": [
+    {
+      "symbol": "NVDAx",
+      "reason": {
+        "en": "Nvidia sells the GPUs and networking that AI data centers are built on",
+        "pt": "a Nvidia vende as GPUs e os equipamentos de rede que formam os data centers de IA"
+      }
+    },
+    {
+      "symbol": "MSFTx",
+      "reason": {
+        "en": "Microsoft's Azure sells computing for AI workloads from its own data centers",
+        "pt": "a Azure, da Microsoft, vende computação para cargas de IA a partir de data centers próprios"
+      }
+    },
+    {
+      "symbol": "AMZNx",
+      "reason": {
+        "en": "Amazon's AWS sells on-demand computing, storage and AI services",
+        "pt": "a AWS, da Amazon, vende computação sob demanda, armazenamento e serviços de IA"
+      }
+    },
+    {
+      "symbol": "GOOGLx",
+      "reason": {
+        "en": "Google Cloud sells AI infrastructure, including Alphabet's own TPU chips",
+        "pt": "a Google Cloud vende infraestrutura de IA, incluindo os chips TPU da própria Alphabet"
+      }
+    }
+  ]
+}

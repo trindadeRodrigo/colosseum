@@ -1,13 +1,19 @@
 import type { BasketAsset, Reason } from '@colosseum/schemas';
 import { type GoalHeld, heldReason } from './exposure';
+import { isMatchedList, type SleeveList } from './matched-theme';
 import { byName, split, sum, toUsd } from './money';
 import type { Book, Removed } from './placement';
 import { reason } from './templates';
-import type { ThemeList } from './theme-list';
 import type { World } from './world';
 
 // A theme sleeve (gates SLEEVES and THEMES): a share of the plan held in equal parts of the names on
 // a curated list, on the person's chain.
+//
+// Or of the stocks a filter matches (gate THEME-MATCHED): a slug that names a filter is filled from
+// the sourced attributes of the chain's tracked stocks, by pure code, and held exactly as a curated
+// list is. Its lines say it is matched, by what, and from which version of the attributes; it has no
+// curator and needs no confirmation. Where the chain lists no stock that carries the value, the
+// sleeve holds no name and says so.
 //
 // Placed before the goal sleeve's stocks and crypto (gate THEME-FIRST): the theme keeps its share of
 // an issuer's room, and the goal's stocks take what is left.
@@ -79,22 +85,39 @@ export const equalCapped = (
 type Found = Omit<Name, 'held'>;
 type Out = { ref: string; why: Reason[]; cause: Reason };
 
+/** The tokens the chain lists under a symbol that a theme can name, by id: not a dollar-yield or cash token. */
+const tokensNamed = (w: World, symbol: string): BasketAsset[] =>
+  byName(
+    w.tokens.filter((a) => a.symbol === symbol && w.sleeveOf(a) !== 'dollarYield'),
+    (a) => a.id,
+  );
+
+/**
+ * The list that fills a theme sleeve, or null when the sleeve holds no name of its own. A curated
+ * list fills one once a person has confirmed it (gate THEMES). A matched list has no status, its
+ * membership being the sourced attributes': it fills one when the chain lists a stock of it (gate
+ * THEME-MATCHED).
+ */
+export function fillingList(w: World, slug: string): SleeveList | null {
+  const list = w.themeListOf(slug);
+  if (!list) return null;
+  if (!isMatchedList(list)) return list.status === 'confirmed' ? list : null;
+  return list.members.some((m) => tokensNamed(w, m.symbol).length > 0) ? list : null;
+}
+
 /**
  * The names of a list the plan can hold on the person's chain: the token the chain lists under each
  * symbol (not a dollar-yield or cash token; two under one symbol are tried by id, and the first the
  * person can hold is the name's), that the person can hold and whose exit ceiling takes a line of the
  * least size. The others, with why.
  */
-export function namesOf(w: World, list: ThemeList): { found: Found[]; outs: Out[] } {
+export function namesOf(w: World, list: SleeveList): { found: Found[]; outs: Out[] } {
   const { lang } = w;
   const theme = list.name[lang];
   const found: Found[] = [];
   const outs: Out[] = [];
   for (const member of byName(list.members, (m) => m.symbol)) {
-    const tokens = byName(
-      w.tokens.filter((a) => a.symbol === member.symbol && w.sleeveOf(a) !== 'dollarYield'),
-      (a) => a.id,
-    );
+    const tokens = tokensNamed(w, member.symbol);
     const asset = tokens.find((a) => w.blockOf(a) === null);
     if (!asset) {
       const first = tokens[0];
@@ -137,10 +160,10 @@ export function claimHoldings(
   const left = new Map(w.held);
   let total = w.heldTotal;
   for (const t of byName(themes, (x) => x.slug)) {
-    const list = w.themeListOf(t.slug);
+    const list = fillingList(w, t.slug);
     const mine = new Map<string, number>();
     claimed.set(t.slug, mine);
-    if (!list || list.status !== 'confirmed' || t.cents <= 0 || left.size === 0) continue;
+    if (!list || t.cents <= 0 || left.size === 0) continue;
     const { found } = namesOf(w, list);
     const offsets = found.map((n) => left.get(n.asset.underlying) ?? 0);
     const { level } = fillToLevel(
@@ -190,15 +213,22 @@ export function placeThemeSleeve(
   const { lang, P } = w;
   const held = new Map<string, number>();
   if (cents <= 0) return { holds: held, short: false };
-  const list = w.themeListOf(slug);
-  if (!list || list.status !== 'confirmed') {
-    const theme = list ? list.name[lang] : slug;
-    const why = reason(
-      list ? 'THEME_NOT_CONFIRMED' : 'THEME_NO_LIST',
-      { theme, chain: w.chain },
-      lang,
-    );
-    w.flags.add(`theme_${list ? 'not_confirmed' : 'no_list'}:${slug}`);
+  const list = fillingList(w, slug);
+  if (!list) {
+    // No list, a list not confirmed yet, a filter with no attributes to read, or one no stock of the
+    // chain matches: the sleeve holds no name, and its money is held in dollar yield, then cash, with
+    // the one of the four it is.
+    const known = w.themeListOf(slug);
+    const theme = known ? known.name[lang] : slug;
+    const [rule, flag] = !known
+      ? (['THEME_NO_LIST', 'no_list'] as const)
+      : !isMatchedList(known)
+        ? (['THEME_NOT_CONFIRMED', 'not_confirmed'] as const)
+        : known.attributes === null
+          ? (['THEME_NO_ATTRIBUTES', 'no_attributes'] as const)
+          : (['THEME_NO_MATCH', 'no_match'] as const);
+    const why = reason(rule, { theme, chain: w.chain }, lang);
+    w.flags.add(`theme_${flag}:${slug}`);
     book.removed.push({ ref: slug, reasons: [why] });
     book.spill([theme], cents, why);
     return { holds: held, short: false };
@@ -362,12 +392,36 @@ export function placeThemeSleeve(
   }
   book.removed.push(...out);
 
-  // ---- The lines.
+  // ---- The lines. A curated list says its version and who keeps it. A matched one says what it was
+  // matched by and from which attributes, and that it is not a curated theme: never the other's words.
   const placed = sum(takes);
   const top = Math.max(0, ...takes);
   const easiest =
     noLine.length > 0 ? [reason('THEME_EASIEST', { theme, count: chosen.length }, lang)] : [];
-  const said = reason('THEME_SLEEVE', { shareBps, theme, chain: w.chain }, lang);
+  const said = isMatchedList(list)
+    ? reason(
+        'THEME_MATCHED_SLEEVE',
+        { shareBps, by: list.matched.by, value: theme, chain: w.chain },
+        lang,
+      )
+    : reason('THEME_SLEEVE', { shareBps, theme, chain: w.chain }, lang);
+  const memberOf = (n: Name): Reason => {
+    const asset = n.asset.symbol;
+    const why = n.member.reason[lang];
+    if (!isMatchedList(list))
+      return reason(
+        'THEME_MEMBER',
+        { asset, theme, chain: w.chain, version: list.version, curator: list.curator, why },
+        lang,
+      );
+    const read = list.attributes;
+    if (!read) throw new Error(`the matched theme ${slug} holds a name with no attributes read`);
+    return reason(
+      'THEME_MATCHED_MEMBER',
+      { asset, by: list.matched.by, value: theme, version: read.version, readOn: read.readOn, why },
+      lang,
+    );
+  };
   let bound: Reason | null = null;
   chosen.forEach((n, i) => {
     const take = takes[i] ?? 0;
@@ -375,18 +429,7 @@ export function placeThemeSleeve(
     const atLimit = take >= (limits[i] ?? 0) && (take < top || placed < cents);
     if (atLimit && bound === null) bound = whys[i] ?? null;
     if (take <= 0) return;
-    const member = reason(
-      'THEME_MEMBER',
-      {
-        asset: n.asset.symbol,
-        theme,
-        chain: w.chain,
-        version: list.version,
-        curator: list.curator,
-        why: n.member.reason[lang],
-      },
-      lang,
-    );
+    const member = memberOf(n);
     const less = cut.get(n.asset.id);
     const more = less ? [less] : heldSaid;
     book.put(n.asset, take, [

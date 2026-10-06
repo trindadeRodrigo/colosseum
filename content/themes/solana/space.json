@@ -1,0 +1,22 @@
+{
+  "slug": "space",
+  "name": {
+    "en": "Space",
+    "pt": "Espaço"
+  },
+  "chain": "solana",
+  "version": 1,
+  "curator": "Rodrigo",
+  "status": "proposed",
+  "decidedOn": "2026-10-06",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/solana.json; the membership is Rodrigo's to confirm (gate THEMES). SpaceX is classified under telecommunications (Starlink is most of its revenue), so a filter by industry does not find it; this list does.",
+  "members": [
+    {
+      "symbol": "SPCXx",
+      "reason": {
+        "en": "SpaceX builds and launches Falcon rockets and operates the Starlink satellite network",
+        "pt": "a SpaceX constrói e lança os foguetes Falcon e opera a rede de satélites Starlink"
+      }
+    }
+  ]
+}

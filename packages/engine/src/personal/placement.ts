@@ -1,7 +1,7 @@
 import type { BasketAsset, Reason } from '@colosseum/schemas';
 import { bandedFill, rank } from './fill';
 import { largestFirst, split, sum, toUsd } from './money';
-import { type RuleId, reason } from './templates';
+import { asListed, type RuleId, reason } from './templates';
 import type { World } from './world';
 
 // Placement: which token carries each exposure, on the person's chain. A plan lives on one chain, so
@@ -65,6 +65,8 @@ const OVERFLOW_FOR: Partial<Record<string, RuleId>> = {
   ALREADY_HELD_NONE_PART: 'OVERFLOW_HELD_PART',
   THEME_NO_LIST: 'OVERFLOW_THEME_NO_LIST',
   THEME_NOT_CONFIRMED: 'OVERFLOW_THEME_NOT_CONFIRMED',
+  THEME_NO_MATCH: 'OVERFLOW_THEME_NO_MATCH',
+  THEME_NO_ATTRIBUTES: 'OVERFLOW_THEME_NO_ATTRIBUTES',
 };
 
 /** Basis points in one whole: a yield band of 0.005 is 50. */
@@ -145,7 +147,7 @@ export class Book {
           capBps: w.P.capPerIssuerBps[w.sheet.risk] ?? 0,
           risk: w.sheet.risk,
           issuer: asset.issuer,
-          themes: themes.join(','),
+          themes: themes.map(asListed).join(','),
         },
         w.lang,
       );
@@ -688,7 +690,7 @@ export class Book {
       reasons: entries.map(({ cents, names, cause }) => {
         const rule = OVERFLOW_FOR[cause.rule];
         if (!rule) throw new Error(`no sentence for money kept out by ${cause.rule}`);
-        const assets = [...names].sort().join(',');
+        const assets = [...names].map(asListed).sort().join(',');
         return reason(rule, { ...cause.params, usd: toUsd(cents), assets }, w.lang);
       }),
     };

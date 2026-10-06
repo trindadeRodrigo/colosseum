@@ -1,0 +1,64 @@
+{
+  "slug": "semiconductors",
+  "name": {
+    "en": "Semiconductors",
+    "pt": "Semicondutores"
+  },
+  "chain": "robinhood",
+  "version": 1,
+  "curator": "Rodrigo",
+  "status": "proposed",
+  "decidedOn": "2026-10-06",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/robinhood.json; the membership is Rodrigo's to confirm (gate THEMES). Sandisk is classified under technology hardware, not semiconductors; it is here because its filing calls it a semiconductor memory company. IonQ and Rigetti are classified under semiconductors and are left to the quantum computing list.",
+  "members": [
+    {
+      "symbol": "NVDA",
+      "reason": {
+        "en": "Nvidia designs GPUs and other processors for data centers, gaming PCs and vehicles",
+        "pt": "a Nvidia projeta GPUs e outros processadores para data centers, PCs de jogos e veículos"
+      }
+    },
+    {
+      "symbol": "AMD",
+      "reason": {
+        "en": "AMD designs CPUs, GPUs and AI accelerators, made for it by outside foundries",
+        "pt": "a AMD projeta CPUs, GPUs e aceleradores de IA, fabricados por fundições terceiras"
+      }
+    },
+    {
+      "symbol": "INTC",
+      "reason": {
+        "en": "Intel designs and manufactures CPUs and other chips, and makes chips for outside customers",
+        "pt": "a Intel projeta e fabrica CPUs e outros chips, e fabrica chips para clientes externos"
+      }
+    },
+    {
+      "symbol": "MU",
+      "reason": {
+        "en": "Micron makes DRAM and NAND memory chips",
+        "pt": "a Micron fabrica chips de memória DRAM e NAND"
+      }
+    },
+    {
+      "symbol": "TSM",
+      "reason": {
+        "en": "TSMC is a foundry: it manufactures the chips its customers design",
+        "pt": "a TSMC é uma fundição: fabrica os chips que seus clientes projetam"
+      }
+    },
+    {
+      "symbol": "ASML",
+      "reason": {
+        "en": "ASML makes the lithography systems chipmakers use to print chips",
+        "pt": "a ASML fabrica os sistemas de litografia que as fabricantes usam para imprimir chips"
+      }
+    },
+    {
+      "symbol": "SNDK",
+      "reason": {
+        "en": "Sandisk designs and manufactures NAND flash memory",
+        "pt": "a Sandisk projeta e fabrica memória flash NAND"
+      }
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { loadLiquidityProvider, RISK_METHOD_VERSION } from './liquidity';
 import { type ModelReading, modelledTokens, modelYields } from './model-yields';
 import type { PlanInputs } from './orders/personalize';
+import { loadStockAttributes } from './stock-attributes';
 import { loadThemeLists } from './theme-lists';
 
 // What the server hands `POST /v1/baskets/personalize` (gate EXIT-SOURCE): Bearing's measured sell
@@ -13,6 +14,10 @@ import { loadThemeLists } from './theme-lists';
 // no measurement under its address: its line takes its tier's ceiling and says so. A test-network token
 // that models a mainnet token takes that token's stored reading, labelled sandbox (model-yields.ts).
 //
+// And the sourced attributes of the stocks tracked on that chain (gate THEME-MATCHED,
+// `content/stocks/<chain>.json`), which a theme sleeve filled by a filter reads. A chain with no
+// such file hands none: a matched theme then holds no stock, and the plan says so.
+//
 // Outside the /v1 route table: it reads the risk layer's calendar from a file and its switch from the
 // environment, which no file the /v1 routes reach may do (apps/api/src/orders/orders.test.ts).
 
@@ -20,9 +25,11 @@ export const BEARING_SOURCE = `Bearing: sell-side depth measured on chain (risk_
 
 export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets }) => {
   const lists = loadThemeLists(chain);
-  const themes = lists.length ? { themes: lists } : {};
+  const stocks = loadStockAttributes(chain);
+  // What is read from `content/`: the theme lists and the stock attributes of the chain.
+  const content = { ...(lists.length ? { themes: lists } : {}), ...(stocks ? { stocks } : {}) };
   const addresses = assets.filter((a) => a.cls !== 'cash').map((a) => a.address);
-  if (!addresses.length) return themes;
+  if (!addresses.length) return content;
   const provider = await loadLiquidityProvider(
     db,
     assets.map((a) => ({ id: a.id, mint: a.address })),
@@ -82,6 +89,6 @@ export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets }) => {
   return {
     ...(provider ? { liquidity: { provider, source: BEARING_SOURCE } } : {}),
     ...(yields.length ? { yields } : {}),
-    ...themes,
+    ...content,
   };
 };

@@ -1,0 +1,99 @@
+{
+  "slug": "ai-infrastructure",
+  "name": {
+    "en": "AI infrastructure",
+    "pt": "Infraestrutura de IA"
+  },
+  "chain": "robinhood",
+  "version": 1,
+  "curator": "Rodrigo",
+  "status": "proposed",
+  "decidedOn": "2026-10-06",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/robinhood.json; the membership is Rodrigo's to confirm (gate THEMES). Who makes or sells the computing AI runs on: chips, servers, AI clouds and the large clouds. Meta builds data centers for its own use and is left to the AI list. Sandisk and SpaceX were proposed by the research and left out as side lines.",
+  "members": [
+    {
+      "symbol": "NVDA",
+      "reason": {
+        "en": "Nvidia sells the GPUs and networking that AI data centers are built on",
+        "pt": "a Nvidia vende as GPUs e os equipamentos de rede que formam os data centers de IA"
+      }
+    },
+    {
+      "symbol": "AMD",
+      "reason": {
+        "en": "AMD sells AI accelerators and server CPUs for cloud and AI data centers",
+        "pt": "a AMD vende aceleradores de IA e CPUs de servidor para data centers de nuvem e de IA"
+      }
+    },
+    {
+      "symbol": "INTC",
+      "reason": {
+        "en": "Intel sells server CPUs and AI accelerators for data centers",
+        "pt": "a Intel vende CPUs de servidor e aceleradores de IA para data centers"
+      }
+    },
+    {
+      "symbol": "MU",
+      "reason": {
+        "en": "Micron sells the memory, including high-bandwidth memory, used in servers that run AI",
+        "pt": "a Micron vende a memória, incluindo a de alta largura de banda, usada nos servidores que rodam IA"
+      }
+    },
+    {
+      "symbol": "TSM",
+      "reason": {
+        "en": "TSMC manufactures the leading-edge chips used for AI and high-performance computing",
+        "pt": "a TSMC fabrica os chips de ponta usados em IA e computação de alto desempenho"
+      }
+    },
+    {
+      "symbol": "DELL",
+      "reason": {
+        "en": "Dell sells AI-optimized servers, storage and networking for data centers",
+        "pt": "a Dell vende servidores otimizados para IA, armazenamento e redes para data centers"
+      }
+    },
+    {
+      "symbol": "CRWV",
+      "reason": {
+        "en": "CoreWeave rents out GPU computing in the data centers it operates",
+        "pt": "a CoreWeave aluga computação em GPU nos data centers que opera"
+      }
+    },
+    {
+      "symbol": "NBIS",
+      "reason": {
+        "en": "Nebius runs an AI cloud on its own data centers and GPU clusters",
+        "pt": "a Nebius opera uma nuvem de IA em data centers e clusters de GPU próprios"
+      }
+    },
+    {
+      "symbol": "ORCL",
+      "reason": {
+        "en": "Oracle Cloud Infrastructure sells data-center computing, including for AI",
+        "pt": "a Oracle Cloud Infrastructure vende computação em data centers, inclusive para IA"
+      }
+    },
+    {
+      "symbol": "MSFT",
+      "reason": {
+        "en": "Microsoft's Azure sells computing for AI workloads from its own data centers",
+        "pt": "a Azure, da Microsoft, vende computação para cargas de IA a partir de data centers próprios"
+      }
+    },
+    {
+      "symbol": "AMZN",
+      "reason": {
+        "en": "Amazon's AWS sells on-demand computing, storage and AI services",
+        "pt": "a AWS, da Amazon, vende computação sob demanda, armazenamento e serviços de IA"
+      }
+    },
+    {
+      "symbol": "GOOGL",
+      "reason": {
+        "en": "Google Cloud sells AI infrastructure, including Alphabet's own TPU chips",
+        "pt": "a Google Cloud vende infraestrutura de IA, incluindo os chips TPU da própria Alphabet"
+      }
+    }
+  ]
+}

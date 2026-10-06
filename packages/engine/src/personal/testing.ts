@@ -28,9 +28,16 @@ import solanaYieldShelf from './fixtures/shelves/solana-yield.json';
 import yieldRows from './fixtures/yields.json';
 import extendedYieldRows from './fixtures/yields-extended.json';
 import { LEG_TYPES } from './leg-types';
+import { attributeKey, filterOfSlug, type MarketFilterBy } from './market-filter';
 import { growthRoomBps, growthTokens, RISKS } from './mix';
 import { PERSONAL_PARAMS } from './params';
 import { eligibleForGoal, sleeveOfClass } from './registry';
+import {
+  parseStockAttributes,
+  STOCK_FACTS,
+  type StockAttributes,
+  type StockAttributesFile,
+} from './stock-attributes';
 import { INPUT_NAMES, REASON_TEMPLATES } from './templates';
 import { parseThemeList, type ThemeList } from './theme-list';
 import {
@@ -409,6 +416,195 @@ export function fixtureLiquidity(
 /** The Solana AI list as `content/themes/solana/ai.json` holds it (gate THEME-AI-SOLANA). */
 export function aiList(): ThemeList {
   return parseThemeList(aiOnSolana, 'content/themes/solana/ai.json');
+}
+
+type FixtureStock = Pick<
+  StockAttributes,
+  | 'underlying'
+  | 'kind'
+  | 'company'
+  | 'headquarters'
+  | 'sector'
+  | 'industry'
+  | 'subIndustry'
+  | 'keywords'
+  | 'tracks'
+>;
+const company = (
+  underlying: string,
+  name: string,
+  [sector, industry, subIndustry]: [string, string, string],
+  keywords: string[],
+  over: Partial<FixtureStock> = {},
+): FixtureStock => ({
+  underlying,
+  kind: 'common',
+  company: name,
+  headquarters: 'United States',
+  sector,
+  industry,
+  subIndustry,
+  keywords,
+  tracks: null,
+  ...over,
+});
+const fund = (
+  underlying: string,
+  name: string,
+  tracks: string,
+  keywords: string[],
+): FixtureStock => ({
+  underlying,
+  kind: 'fund',
+  company: name,
+  headquarters: null,
+  sector: null,
+  industry: null,
+  subIndustry: null,
+  keywords,
+  tracks,
+});
+const TECH = 'Information Technology';
+const HARDWARE = 'Technology Hardware, Storage & Peripherals';
+const MEDIA = 'Interactive Media & Services';
+/**
+ * MOCK: a few stocks by the ticker of the underlying, written for the tests. No source was read for
+ * any of it. TSM writes two values another way than NVDA does ("and" for "&", capitals), which a
+ * filter holds equal; LMT and LLY are on no chain's launch shelf. "glp-1", "gold" and "data centers"
+ * are each carried by one row alone, which a filter by keyword does not select.
+ */
+const FIXTURE_STOCKS: FixtureStock[] = [
+  company(
+    'NVDA',
+    'NVIDIA Corporation',
+    [TECH, 'Semiconductors & Semiconductor Equipment', 'Semiconductors'],
+    ['gpus', 'ai chips', 'data centers'],
+  ),
+  company(
+    'TSM',
+    'Taiwan Semiconductor Manufacturing Company Limited',
+    [TECH, 'Semiconductors and Semiconductor Equipment', 'Semiconductors'],
+    ['chip foundry', 'AI chips', 'wafers'],
+    { kind: 'adr', headquarters: 'Taiwan' },
+  ),
+  company(
+    'MSFT',
+    'Microsoft Corporation',
+    [TECH, 'Software', 'Systems Software'],
+    ['cloud', 'operating systems', 'ai assistants'],
+  ),
+  company(
+    'AAPL',
+    'Apple Inc.',
+    [TECH, HARDWARE, HARDWARE],
+    ['smartphones', 'wearables', 'app stores'],
+  ),
+  company(
+    'GOOGL',
+    'Alphabet Inc.',
+    ['Communication Services', MEDIA, MEDIA],
+    ['search', 'cloud', 'online ads'],
+  ),
+  company(
+    'META',
+    'Meta Platforms, Inc.',
+    ['Communication Services', MEDIA, MEDIA],
+    ['social networks', 'online ads', 'virtual reality'],
+  ),
+  company(
+    'AMZN',
+    'Amazon.com, Inc.',
+    ['Consumer Discretionary', 'Broadline Retail', 'Broadline Retail'],
+    ['e-commerce', 'cloud', 'logistics'],
+  ),
+  company(
+    'TSLA',
+    'Tesla, Inc.',
+    ['Consumer Discretionary', 'Automobiles', 'Automobile Manufacturers'],
+    ['electric vehicles', 'batteries', 'self-driving'],
+  ),
+  company(
+    'COIN',
+    'Coinbase Global, Inc.',
+    ['Financials', 'Capital Markets', 'Financial Exchanges & Data'],
+    ['crypto exchange', 'custody', 'stablecoins'],
+  ),
+  company(
+    'HOOD',
+    'Robinhood Markets, Inc.',
+    ['Financials', 'Capital Markets', 'Investment Banking & Brokerage'],
+    ['retail brokerage', 'crypto trading', 'options'],
+  ),
+  company(
+    'LMT',
+    'Lockheed Martin Corporation',
+    ['Industrials', 'Aerospace & Defense', 'Aerospace & Defense'],
+    ['fighter jets', 'missiles', 'space systems'],
+  ),
+  company(
+    'LLY',
+    'Eli Lilly and Company',
+    ['Health Care', 'Pharmaceuticals', 'Pharmaceuticals'],
+    ['glp-1', 'diabetes', 'oncology'],
+  ),
+  fund('QQQ', 'Invesco QQQ Trust', 'the Nasdaq-100 index', [
+    'nasdaq-100',
+    'large companies',
+    'index fund',
+  ]),
+  fund('SPY', 'SPDR S&P 500 ETF Trust', 'the S&P 500 index', [
+    's&p 500',
+    'large companies',
+    'index fund',
+  ]),
+  fund('GLD', 'SPDR Gold Shares', 'the price of gold', ['gold', 'bullion', 'precious metals']),
+  // A second fund of a metal, so that "bullion" and "precious metals" are carried by two rows: a
+  // keyword one row alone carries selects nothing. Solana's launch shelf does not list it.
+  fund('SLV', 'iShares Silver Trust', 'the price of silver', [
+    'silver',
+    'bullion',
+    'precious metals',
+  ]),
+];
+/** How the launch shelf writes a stock token's symbol on each chain: NVDAx, NVDAc, NVDA. */
+const SYMBOL_END: Record<ChainId, string> = { solana: 'x', base: 'c', robinhood: '' };
+
+/**
+ * MOCK: the stock attributes of one chain (gate THEME-MATCHED), for the tests only. Every row is a
+ * fixture and says so in the file's note and in its source, which is no source. `unverified` is
+ * empty all the same: a filter reads nothing of a field a row marks unverified, and these rows are
+ * here to be matched (a test that needs an unverified field marks it). A row's symbol is the one the
+ * launch shelf would list it under on the chain, whether or not it lists it.
+ */
+export function fixtureStocks(chain: ChainId = 'solana'): StockAttributesFile {
+  const onShelf = new Set(
+    (SEED.assets[chain] ?? []).flatMap((a) => (listed(chain, a) ? [a.symbol] : [])),
+  );
+  return parseStockAttributes(
+    {
+      chain,
+      version: 3,
+      readOn: '2026-10-06',
+      note: 'MOCK: a test fixture of packages/engine/src/personal/testing.ts, not a reading',
+      stocks: FIXTURE_STOCKS.map((stock) => {
+        const symbol = `${stock.underlying}${SYMBOL_END[chain]}`;
+        return {
+          symbol,
+          ...stock,
+          sets: onShelf.has(symbol) ? ['universe', 'shelf'] : ['universe'],
+          sources: [
+            {
+              url: 'https://example.com/fixture',
+              title: 'MOCK: no source was read for this test fixture',
+              readOn: '2026-10-06',
+            },
+          ],
+          unverified: [],
+        };
+      }),
+    },
+    'fixtureStocks',
+  );
 }
 
 /** A context with the fixture yields and the fixture liquidity, at a fixed time. */
@@ -1154,15 +1350,133 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
   // sleeve in rate legs and cash only, never more of a token than its line holds.
   const lineUsd = new Map(plan.lines.map((l) => [l.assetId, cents(l.amountUsd)]));
   const splitSaid = allReasons(plan).filter((r) => r.rule.startsWith('SPLIT_'));
-  // A theme's sentence is said only of a theme the sheet asks for, at its share.
-  for (const r of allReasons(plan))
+  // What a theme sleeve is filled from, read here apart from the engine. A curated list (gate THEMES)
+  // is the one given for the chain, once confirmed. A matched theme (gate THEME-MATCHED) is the rows
+  // of the attributes that carry, for what the slug names, a value with the slug's key; it holds
+  // names only where the shelf lists one of those stocks on the chain.
+  const lists = (ctx.themes ?? []).filter((t) => t.chain === s.chains[0]);
+  const attrs = ctx.stocks?.chain === s.chains[0] ? ctx.stocks : undefined;
+  // What a filter may read of a row, written out here and not taken from the engine: nothing of a
+  // field the row marks unverified; a fund (it has no classification) and a preferred stock (it
+  // carries its issuer's) by keyword only.
+  const fieldOf = { sector: 'sector', industry: 'industry', sub_industry: 'subIndustry' } as const;
+  const writtenBy = (row: StockAttributes, by: MarketFilterBy): string[] => {
+    if (by === 'keyword') return row.unverified.includes('keywords') ? [] : row.keywords;
+    if (row.unverified.includes(fieldOf[by]) || row.kind === 'preferred') return [];
+    const value = row[fieldOf[by]];
+    return value === null ? [] : [value];
+  };
+  const nameable = (symbol: string) =>
+    shelf.assets.some(
+      (a) =>
+        a.chain === s.chains[0] &&
+        a.symbol === symbol &&
+        a.cls !== 'cash' &&
+        a.cls !== 'dollar_yield',
+    );
+  const matchedOf = (slug: string) => {
+    const filter = filterOfSlug(slug);
+    if (!filter) return null;
+    const carried = (row: StockAttributes) =>
+      writtenBy(row, filter.by).find((value) => attributeKey(value) === filter.key);
+    const carriers = (attrs?.stocks ?? [])
+      .filter((row) => carried(row) !== undefined)
+      .sort((a, b) => (a.symbol < b.symbol ? -1 : a.symbol > b.symbol ? 1 : 0));
+    // A keyword one stock alone carries selects nothing: it would be that stock's name by another
+    // word. Two, written here as this check's own number: if the table's moves, this says so.
+    const rows = filter.by === 'keyword' && carriers.length < 2 ? [] : carriers;
+    return {
+      ...filter,
+      symbols: rows.map((row) => row.symbol),
+      // As the first matching stock by symbol writes it; the key's own words where none carries it.
+      name: (rows[0] && carried(rows[0])) ?? filter.key.replaceAll('-', ' '),
+      fills: rows.some((row) => nameable(row.symbol)),
+    };
+  };
+  /** Whether a reason names this filter: what it reads, and a value with its key. */
+  const saysFilter = (r: Reason, filter: { by: string; key: string }) =>
+    r.params.by === filter.by && attributeKey(String(r.params.value)) === filter.key;
+  const themeSleeves = (s.sleeves ?? []).flatMap((x) => (x.kind === 'theme' ? [x] : []));
+  // A theme's sentence is said only of a theme the sheet asks for, at its share: a curated theme's of
+  // a curated list and its names, a matched one's of the filter it names and the stocks that filter
+  // matches, from the attributes given. Neither is ever said as the other.
+  for (const r of allReasons(plan)) {
     if (r.rule === 'THEME_SLEEVE')
       say(
-        (s.sleeves ?? []).some(
-          (x) => x.kind === 'theme' && x.shareBps === Number(r.params.shareBps),
+        themeSleeves.some(
+          (x) => !filterOfSlug(x.theme) && x.shareBps === Number(r.params.shareBps),
         ),
         `"${r.text}" said of a plan with no such theme sleeve`,
       );
+    if (r.rule === 'THEME_MEMBER')
+      say(
+        themeSleeves.some(
+          (x) =>
+            !filterOfSlug(x.theme) &&
+            lists.some(
+              (t) =>
+                t.slug === x.theme &&
+                t.status === 'confirmed' &&
+                t.members.some((m) => m.symbol === r.params.asset),
+            ),
+        ),
+        `"${r.text}" said of a name no curated theme of the sheet lists`,
+      );
+    if (r.rule === 'THEME_MATCHED_SLEEVE')
+      say(
+        themeSleeves.some((x) => {
+          const matched = matchedOf(x.theme);
+          return (
+            matched !== null && saysFilter(r, matched) && x.shareBps === Number(r.params.shareBps)
+          );
+        }),
+        `"${r.text}" said of a plan with no such matched theme sleeve`,
+      );
+    if (r.rule === 'THEME_MATCHED_MEMBER') {
+      say(
+        themeSleeves.some((x) => {
+          const matched = matchedOf(x.theme);
+          return (
+            matched !== null &&
+            saysFilter(r, matched) &&
+            matched.symbols.includes(String(r.params.asset))
+          );
+        }),
+        `"${r.text}" said of a name no filter of the sheet matches`,
+      );
+      say(
+        r.params.version === attrs?.version && r.params.readOn === attrs?.readOn,
+        `"${r.text}" but the attributes given are version ${attrs?.version}, read ${attrs?.readOn}`,
+      );
+    }
+    // "No stock for it on the chain" is said of a matched theme of the sheet, by its name, and only
+    // where attributes were given and the shelf lists none of the stocks its filter matches. With no
+    // attributes given nothing is known to match or not, and the plan says that instead.
+    const empty = (given: boolean) =>
+      themeSleeves.some((x) => {
+        const matched = matchedOf(x.theme);
+        return (
+          matched !== null &&
+          !matched.fills &&
+          (attrs !== undefined) === given &&
+          r.params.theme === matched.name
+        );
+      });
+    if (r.rule === 'THEME_NO_MATCH' || r.rule === 'OVERFLOW_THEME_NO_MATCH')
+      say(empty(true), `"${r.text}" said of a plan with no matched theme that matches nothing`);
+    if (r.rule === 'THEME_NO_ATTRIBUTES' || r.rule === 'OVERFLOW_THEME_NO_ATTRIBUTES')
+      say(
+        empty(false),
+        `"${r.text}" said of a plan whose chain has attributes, or no matched theme`,
+      );
+  }
+  for (const flag of plan.flags)
+    for (const kind of ['theme_no_match:', 'theme_no_attributes:'])
+      if (flag.startsWith(kind))
+        say(
+          themeSleeves.some((x) => flag === `${kind}${x.theme}`),
+          `${flag} names no theme sleeve of the sheet`,
+        );
   if (!s.sleeves) {
     say(plan.split === undefined, 'a split on a plan whose sheet has none');
     say(splitSaid.length === 0, `"${splitSaid[0]?.text}" said of a plan with no split`);
@@ -1205,12 +1519,46 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
     // A theme sleeve (gates SLEEVES, THEMES): it holds names of its list on the chain, dollar yield
     // and cash, never more of a token than its line; its names in equal parts, unless the line says
     // which limit holds one to less; each name's line says the theme and why the name is on it.
-    const lists = (ctx.themes ?? []).filter((t) => t.chain === s.chains[0]);
-
+    // A matched theme (gate THEME-MATCHED) is held to the same, its names being the stocks its filter
+    // matches: each name's line says it is matched, by what, and from which attributes.
     for (const x of plan.split ?? []) {
       if (x.kind !== 'theme') continue;
-      const list = lists.find((t) => t.slug === x.theme && t.status === 'confirmed');
-      const members = new Set(list?.members.map((m) => m.symbol) ?? []);
+      const matched = matchedOf(x.theme ?? '');
+      const list = matched
+        ? undefined
+        : lists.find((t) => t.slug === x.theme && t.status === 'confirmed');
+      const members = new Set(
+        matched
+          ? matched.fills
+            ? matched.symbols
+            : []
+          : (list?.members.map((m) => m.symbol) ?? []),
+      );
+      // The split says a theme is matched, and by what, exactly when its slug names a filter.
+      say(
+        matched
+          ? x.matched?.by === matched.by && attributeKey(x.matched.value) === matched.key
+          : x.matched === undefined,
+        `the theme ${x.theme} is ${matched ? 'not labelled as matched' : 'labelled as matched'} on the split`,
+      );
+      if (matched) {
+        // A filter that matches no stock the chain lists, or that has no attributes to read: flagged
+        // as the one it is, and said by the theme's slug.
+        const none = cents(x.amountUsd) > 0 && !matched.fills;
+        const [flag, rule] = attrs
+          ? (['theme_no_match', 'THEME_NO_MATCH'] as const)
+          : (['theme_no_attributes', 'THEME_NO_ATTRIBUTES'] as const);
+        for (const each of ['theme_no_match', 'theme_no_attributes'])
+          say(
+            plan.flags.includes(`${each}:${x.theme}`) === (none && each === flag),
+            `the theme ${x.theme}: the flag ${each} is ${none && each === flag ? 'missing' : 'misplaced'}`,
+          );
+        if (none)
+          say(
+            plan.removed.some((r) => r.ref === x.theme && r.reasons.some((q) => q.rule === rule)),
+            `the theme ${x.theme} holds no stock, and the plan does not say why (${rule})`,
+          );
+      }
       say(
         sum(x.holds.map((h) => cents(h.amountUsd))) === cents(x.amountUsd),
         `the theme ${x.theme} holds more or less than its dollars`,
@@ -1222,7 +1570,7 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
         const member = a !== undefined && members.has(a.symbol) && a.cls !== 'dollar_yield';
         say(
           member || a?.cls === 'cash' || a?.cls === 'dollar_yield',
-          `the theme ${x.theme} holds ${h.assetId}, which is not on its list`,
+          `the theme ${x.theme} holds ${h.assetId}, which ${matched ? 'its filter does not match' : 'is not on its list'}`,
         );
         say(
           cents(h.amountUsd) <= (lineUsd.get(h.assetId) ?? 0) + slack,
@@ -1231,13 +1579,26 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
         if (a && member) named.push({ a, cents: cents(h.amountUsd) });
       }
       const top = Math.max(0, ...named.map((n) => n.cents));
-      const name = list?.name[s.language];
+      const name = matched ? matched.name : list?.name[s.language];
       for (const { a, cents: held } of named) {
         const reasons = plan.lines.find((l) => l.assetId === a.id)?.reasons ?? [];
         say(
-          reasons.some((r) => r.rule === 'THEME_SLEEVE' && r.params.theme === name) &&
-            reasons.some((r) => r.rule === 'THEME_MEMBER' && r.params.asset === a.symbol),
-          `${a.id} is held for the theme ${x.theme} and its line does not say so`,
+          matched
+            ? reasons.some(
+                (r) =>
+                  r.rule === 'THEME_MATCHED_SLEEVE' &&
+                  saysFilter(r, matched) &&
+                  Number(r.params.shareBps) === x.shareBps,
+              ) &&
+                reasons.some(
+                  (r) =>
+                    r.rule === 'THEME_MATCHED_MEMBER' &&
+                    r.params.asset === a.symbol &&
+                    saysFilter(r, matched),
+                )
+            : reasons.some((r) => r.rule === 'THEME_SLEEVE' && r.params.theme === name) &&
+                reasons.some((r) => r.rule === 'THEME_MEMBER' && r.params.asset === a.symbol),
+          `${a.id} is held for the theme ${x.theme} and its line does not say ${matched ? 'it is matched, and by what' : 'so'}`,
         );
         const limited = reasons.some(
           (r) =>

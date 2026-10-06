@@ -1,4 +1,5 @@
 import type { Language, Reason } from '@colosseum/schemas';
+import type { MarketFilterBy } from './market-filter';
 
 // The wording of the personalization engine: one template per rule, in English and Portuguese,
 // filled from the inputs. No model writes any of it. Rodrigo owns the wording, as he owns the
@@ -11,11 +12,12 @@ import type { Language, Reason } from '@colosseum/schemas';
 //   pct     basis points as a percentage      14.32%          14,32%
 //   month   a YYYY-MM month                   April 2028      abril de 2028
 //   months  a count of months                 18 months       18 meses
-//   goal, risk, sleeve, chain, candidate      the word for it, from WORDS
+//   goal, risk, sleeve, chain, candidate, by  the word for it, from WORDS
 //   part     one of the person's sleeves: goal, safe_yield, or theme:<slug>
 //   inCountry                                 in Brazil       no Brasil
 //   regimes  times of the week, by their codes   at the weekend and on US holidays
 //   list     names joined by commas            AAPL, MSFT and NVDA   AAPL, MSFT e NVDA
+//            (no space after the comma that joins: a comma inside a name is followed by one)
 
 /** The inputs a person gives. A reason names the ones that caused it. */
 export const INPUT_NAMES = [
@@ -147,6 +149,31 @@ export const REASON_TEMPLATES = {
     ['themes', 'chain'],
     'The theme {theme} holds no name: its list for {chain|chain} is proposed and not confirmed yet.',
     'O tema {theme} não tem nenhum nome: a lista dele na {chain|chain} foi proposta e ainda não foi confirmada.',
+  ),
+  // A matched theme (gate THEME-MATCHED): the sleeve holds the stocks whose sourced attributes carry
+  // the value a filter names. Every line says it is matched, and by what: never a curated theme.
+  THEME_MATCHED_SLEEVE: rule(
+    ['sleeves', 'themes', 'chain'],
+    'You set {shareBps|pct} of the plan for names matched by {by|by}: {value}. Matched from the sourced attributes of each, not a curated theme: equal shares of the ones you can hold on {chain|chain} and that can be sold at this size, each up to its limit.',
+    'Você destinou {shareBps|pct} do plano para nomes filtrados por {by|by}: {value}. Filtrados pelos atributos de cada um, que têm fonte, e não por um tema com curadoria: partes iguais dos que você pode ter na {chain|chain} e que podem ser vendidos neste tamanho, cada um até o seu limite.',
+  ),
+  THEME_MATCHED_MEMBER: rule(
+    ['themes', 'chain'],
+    '{asset} is matched by {by|by}: {value} (attributes version {version}, read {readOn}), not from a curated theme: {why}.',
+    '{asset} entra pelo filtro de {by|by}: {value} (atributos na versão {version}, lidos em {readOn}), e não por um tema com curadoria: {why}.',
+  ),
+  // The founder's wording of Oct 6, kept as written: the chain lists no stock that carries the value,
+  // so the sleeve holds no name.
+  THEME_NO_MATCH: rule(
+    ['themes', 'chain'],
+    'There is no stock for {theme} on {chain|chain} at the moment. We will be adding more soon.',
+    'No momento não há nenhuma ação para {theme} na {chain|chain}. Vamos incluir mais em breve.',
+  ),
+  // No attributes were given for the chain: nothing can be said to match or not.
+  THEME_NO_ATTRIBUTES: rule(
+    ['themes', 'chain'],
+    'Nothing is held for {theme}: the stocks of {chain|chain} have no sourced attributes to match by yet.',
+    'Nada fica em {theme}: as ações da {chain|chain} ainda não têm atributos com fonte para filtrar.',
   ),
   // A goal in a currency other than dollars.
   FX_OPEN: rule(
@@ -494,6 +521,16 @@ export const REASON_TEMPLATES = {
     '{usd|usd} meant for the theme {assets|list} is held in dollar yield or cash instead: its list for {chain|chain} is not confirmed yet.',
     '{usd|usd} que iria para o tema {assets|list} fica em rendimento em dólar ou caixa: a lista dele na {chain|chain} ainda não foi confirmada.',
   ),
+  OVERFLOW_THEME_NO_MATCH: rule(
+    ['themes', 'chain'],
+    '{usd|usd} meant for {theme} is held in dollar yield or cash instead: there is no stock for it on {chain|chain} at the moment.',
+    '{usd|usd} que iria para {theme} fica em rendimento em dólar ou caixa: no momento não há nenhuma ação para isso na {chain|chain}.',
+  ),
+  OVERFLOW_THEME_NO_ATTRIBUTES: rule(
+    ['themes', 'chain'],
+    '{usd|usd} meant for {theme} is held in dollar yield or cash instead: the stocks of {chain|chain} have no sourced attributes to match by yet.',
+    '{usd|usd} que iria para {theme} fica em rendimento em dólar ou caixa: as ações da {chain|chain} ainda não têm atributos com fonte para filtrar.',
+  ),
   OVERFLOW_HELD: rule(
     ['holdings'],
     '{usd|usd} this plan does not put in {assets|list} is held in dollar yield or cash instead: you already hold {heldUsd|usd} of it.',
@@ -674,7 +711,15 @@ export type TextId = keyof typeof TEXT_TEMPLATES;
 type Words = Record<
   'goal' | 'risk' | 'sleeve' | 'chain' | 'inCountry' | 'regime' | 'candidate' | 'part',
   Record<string, string>
-> & { and: string };
+> & {
+  /** What a market filter reads (gate THEME-MATCHED), by its name. */
+  by: Record<MarketFilterBy, string>;
+  /** A stock's own fact about it, which its value follows: "its industry is Aerospace & Defense". */
+  itsBy: Record<MarketFilterBy, string>;
+  /** The same for a fund matched by a keyword, which says what it holds or is: "a fund described as gold". */
+  fundIs: string;
+  and: string;
+};
 
 export const WORDS: Record<Language, Words> = {
   en: {
@@ -695,6 +740,20 @@ export const WORDS: Record<Language, Words> = {
       safe_yield: 'part of your plan in dollar yield from a rate alone',
       theme: 'part of your plan for the theme',
     },
+    // What a matched theme was matched by, and the fact of a stock that puts it there.
+    by: {
+      sector: 'sector',
+      industry: 'industry',
+      sub_industry: 'sub-industry',
+      keyword: 'keyword',
+    },
+    itsBy: {
+      sector: 'its sector is',
+      industry: 'its industry is',
+      sub_industry: 'its sub-industry is',
+      keyword: 'one of its business lines is',
+    },
+    fundIs: 'a fund described as',
     // The times of the week the risk layer measures apart, in the order they are written.
     regime: {
       us_market_hours: 'in US market hours',
@@ -751,6 +810,20 @@ export const WORDS: Record<Language, Words> = {
       safe_yield: 'parte do seu plano em rendimento em dólar só de taxa',
       theme: 'parte do seu plano para o tema',
     },
+    by: {
+      sector: 'setor',
+      industry: 'indústria',
+      sub_industry: 'subindústria',
+      keyword: 'palavra-chave',
+    },
+    // "Dela": of the company.
+    itsBy: {
+      sector: 'o setor dela é',
+      industry: 'a indústria dela é',
+      sub_industry: 'a subindústria dela é',
+      keyword: 'uma das linhas de negócio dela é',
+    },
+    fundIs: 'um fundo descrito como',
     regime: {
       us_market_hours: 'no horário do mercado dos EUA',
       us_offhours_weekday: 'em dias úteis fora do horário do mercado dos EUA',
@@ -829,6 +902,14 @@ const listed = (words: string[], lang: Language): string =>
     ? `${words.slice(0, -1).join(', ')} ${WORDS[lang].and} ${words.at(-1)}`
     : (words[0] ?? '');
 
+/**
+ * A name as a list of names holds it (the `list` format). A list is joined by commas with no space
+ * after them, so every comma inside a name is followed by one: "Technology Hardware, Storage &
+ * Peripherals" stays one name. A name written from free text (a theme's, an attribute's value)
+ * goes through this before it is put in a list.
+ */
+export const asListed = (name: string): string => name.replace(/,(?! )/g, ', ');
+
 const FORMATS: Record<string, (value: Value, lang: Language, key: string) => string> = {
   usd: (value, lang, key) => dollars(number(value, key), lang, false),
   // An amount in any currency, as the person gave it: digits in threes, cents only when there are.
@@ -870,13 +951,15 @@ const FORMATS: Record<string, (value: Value, lang: Language, key: string) => str
       lang,
     );
   },
-  // Names joined by commas, written as they came: "a, b and c".
+  // Names joined by commas, written as they came: "a, b and c". A comma followed by a space is part
+  // of a name (`asListed`), not a join.
   list: (value, lang, key) => {
-    const names = String(value).split(',');
+    const names = String(value).split(/,(?! )/);
     if (names.some((name) => name.trim() === ''))
       throw new Error(`template value ${key} must be a list of names`);
     return listed(names, lang);
   },
+  by: (value, lang) => (WORDS[lang].by as Record<string, string>)[String(value)] ?? String(value),
   goal: (value, lang) => WORDS[lang].goal[String(value)] ?? String(value),
   risk: (value, lang) => WORDS[lang].risk[String(value)] ?? String(value),
   sleeve: (value, lang) => WORDS[lang].sleeve[String(value)] ?? String(value),
