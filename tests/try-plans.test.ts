@@ -4,6 +4,7 @@ import { DISCLAIMER } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
 import { launchShelf } from '../packages/engine/src/personal/testing';
 import { fixturesSource } from '../scripts/try/data';
+import { toJson } from '../scripts/try/json';
 import { parseArgs } from '../scripts/try/main';
 import { monthsOf, PromptFileError, parsePromptFile } from '../scripts/try/prompt-file';
 import { incomeOf, incomeWords, renderReport, summary } from '../scripts/try/report';
@@ -153,7 +154,9 @@ describe('the prompt file', () => {
       data: 'fixtures',
       now: NOW,
       open: true,
+      json: false,
     });
+    expect(parseArgs(['f.md', '--json'], clock).json).toBe(true);
     expect(
       parseArgs(['f.md', '--data', 'db', '--now', '2026-01-02T00:00:00Z', '--no-open'], clock),
     ).toEqual({
@@ -161,6 +164,7 @@ describe('the prompt file', () => {
       data: 'db',
       now: new Date('2026-01-02T00:00:00Z'),
       open: false,
+      json: false,
     });
     expect(() => parseArgs(['f.md', '--data', 'live'], clock)).toThrow(/fixtures or db/);
     expect(() => parseArgs(['f.md', '--now', 'tomorrow'], clock)).toThrow(/ISO time/);
@@ -380,5 +384,49 @@ describe('a run of examples.md on the fixtures, the model off', () => {
     expect(a).toContain('Cover');
     expect(a).toContain('Cobertura');
     expect(a).toContain('Answer under <code>amount:</code>');
+  });
+
+  it('gives the same as one JSON document with --json: questions, read-back, candidates, plates, disclaimer', async () => {
+    const [runsA, runsB] = [await run(), await run()];
+    const [a, b] = [toJson(runsA, meta), toJson(runsB, meta)];
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+    expect(a.disclaimer).toEqual(DISCLAIMER);
+    expect(a.plate).toMatch(/^MOCK/);
+    expect(a.goals).toHaveLength(runsA.length);
+    // The vague goal: its questions, each with the key to answer under and the template's text.
+    const vague = a.goals.find((g) => !g.sheetWhole);
+    expect(vague?.candidates).toEqual([]);
+    expect(vague?.readBack).toBeNull();
+    const open = runsA.find((r) => r.goal.answersText === '')?.open ?? [];
+    expect(vague?.questions.map((q) => [q.key, q.text])).toEqual(open.map((q) => [q.key, q.text]));
+    expect(vague?.questions.find((q) => q.key === 'risk')?.options).toEqual([
+      'low',
+      'medium',
+      'high',
+    ]);
+    for (const [i, g] of a.goals.entries()) {
+      const r = runsA[i];
+      if (!r?.made) continue;
+      expect(g.readBack).toEqual(r.intake.readBack);
+      expect(g.candidates.map((c) => c.id)).toEqual(r.made.shown.map((c) => c.id));
+      expect(g.notShown.map((n) => [n.id, n.why])).toEqual(
+        r.made.notShown.map((n) => [n.id, n.why]),
+      );
+      for (const [j, c] of g.candidates.entries()) {
+        const plan = r.made.shown[j]?.plan;
+        expect(c.plate).toBe('MOCK');
+        expect(c.lines.map((l) => [l.assetId, l.weightBps, l.amountUsd])).toEqual(
+          plan?.lines.map((l) => [l.assetId, l.weightBps, l.amountUsd]),
+        );
+        expect(c.lines.every((l) => l.symbol.length > 0 && l.reasons.length > 0)).toBe(true);
+        expect(c.scorecard).toEqual(plan?.scorecard ?? null);
+        expect(c.status).toEqual(plan?.status ?? null);
+        expect(c.verdict).toEqual(plan?.verdict ?? null);
+        expect(c.observations.every((o) => o.plate === 'MOCK')).toBe(true);
+      }
+    }
+    // The income goal carries its verdict and ways.
+    const income = a.goals.find((g) => g.candidates.some((c) => c.verdict !== null));
+    expect(income?.candidates[0]?.income?.targetUsd).toBeGreaterThan(0);
   });
 });

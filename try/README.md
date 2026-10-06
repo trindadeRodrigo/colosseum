@@ -13,6 +13,31 @@ pnpm plan:try try/mine/my-goals.md --now 2026-10-06T12:00:00Z --no-open
 The page goes to `try/out/<file>-<time>.html`, and the terminal prints one line per goal. Put your own
 files in `try/mine/`: that folder and `try/out/` are not committed.
 
+With `--json` the command prints one JSON document to stdout instead (`scripts/try/json.ts`): per goal
+the reader, what was read, the flags and disagreements, the open questions with their answer keys, text
+and options, the read-back, each candidate shown (lines with symbol, share, dollars and reasons; the
+scorecard, the status, the income verdict and its ways), the candidates not shown with why, the plates
+and the disclaimer. No page is written and nothing opens.
+
+## Chat with it
+
+A Claude Code session can play the product: it asks for your goal, reads it as the API's reader does
+(the `SYSTEM` instructions in `apps/api/src/llm.ts`), asks the tool's questions, reads back the sheet for
+you to confirm, and then shows the engine's candidates, none ranked, every figure from the tool and
+plated MOCK. Start it in this checkout with the model you choose, then type `/plan-chat`:
+
+```sh
+cd ~/Documents/Colosseum-try
+claude --model sonnet
+> /plan-chat
+```
+
+Each chat writes its own file, `try/mine/chat-<time>.md`, with the model's reading pasted as a
+`json reply` block and your answers under `yaml answers`, so earlier chats stay and can be rerun. Ask
+for changes as you go ("make it 20 years", "add 50% AI", "I already hold $3k of NVDA"): the session
+writes them as answers, runs again and says what changed. The skill is
+`.claude/skills/plan-chat/SKILL.md`.
+
 ## Writing a goal
 
 One goal per `## heading`. Under the heading, write the goal exactly as a person would type it, in
