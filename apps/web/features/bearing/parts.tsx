@@ -1,12 +1,14 @@
 'use client';
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { Wait } from '../../components/shell/Wait';
+import { CHAIN_NAMES, ChainBadge } from '../../components/ui/ChainBadge';
 import { cn } from '../../components/ui/cn';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { Skeleton, SkeletonChart, SkeletonRows } from '../../components/ui/Skeleton';
 import { type BearingDictionary, bearingDictionary } from '../../i18n/bearing';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useBearing } from './BearingProvider';
+import type { BearingChain } from './chain';
 import { cleanSource, type Fact, factDetail, pinSource } from './fact';
 import { EN_FMT, type Fmt, fmtFor, iso, reasonW } from './format';
 
@@ -27,11 +29,38 @@ export function useFmt(): Fmt {
   return lang === 'en' ? EN_FMT : fmtFor(lang);
 }
 
-/** A reason code in the person's language; one the dictionary does not know, as the API wrote it. */
+/**
+ * A reason code in the person's language; one the dictionary does not know, as the API wrote it. On
+ * Robinhood Chain what is not collected says so by name.
+ */
 export function useReason() {
   const t = useWords();
+  const { chain } = useBearing();
   return (code?: string | null) =>
-    t.reasons[(code ?? 'not_served') as keyof typeof t.reasons] ?? reasonW(code);
+    code === 'not_collected' && chain !== 'solana'
+      ? t.chain.notCollectedOn(CHAIN_NAMES[chain])
+      : (t.reasons[(code ?? 'not_served') as keyof typeof t.reasons] ?? reasonW(code));
+}
+
+/** A page Bearing does not measure on the chain the person reads: said, with nothing in its place. */
+export function NotOnChain() {
+  const { chain } = useBearing();
+  const t = useWords();
+  return (
+    <p
+      role="status"
+      data-ui="bearing-not-on-chain"
+      className="mt-6 max-w-[72ch] border border-l-2 border-border border-l-primary px-3 py-2"
+    >
+      {t.chain.pageNotCollected(CHAIN_NAMES[chain])}
+    </p>
+  );
+}
+
+/** The chain the page reads, as a label beside a figure or a row. */
+export function OnChain({ className }: { className?: string }) {
+  const { chain } = useBearing();
+  return <ChainBadge chain={chain} className={className} />;
 }
 
 export function Reason({ code, detail }: { code?: string | null; detail?: string }) {
@@ -52,12 +81,16 @@ export function Fig({
   f,
   fmt,
   className,
+  chain: own,
 }: {
   f: Fact | null | undefined;
   fmt: (v: number) => string;
   className?: string;
+  /** The chain the figure is of, where it is not the page's (the chains side by side). */
+  chain?: BearingChain;
 }) {
-  const { clock } = useBearing();
+  const { clock, chain: page } = useBearing();
+  const chain = own ?? page;
   const all = useT();
   const words = useWords();
   if (!f) return <Reason code="not_served" />;
@@ -65,11 +98,11 @@ export function Fig({
   if (!f.source && !f.method) return <Reason code="not_served" />;
   const shown = `${f.quality === 'lower_bound' ? '≥ ' : ''}${fmt(f.value)}`;
   return (
-    <span data-ui="bearing-fig" className={cn('whitespace-nowrap', className)}>
+    <span data-ui="bearing-fig" data-chain={chain} className={cn('whitespace-nowrap', className)}>
       <ProvenancePin
         value={shown}
         obs={pinSource(f, clock)}
-        detail={factDetail(f)}
+        detail={[CHAIN_NAMES[chain], factDetail(f)].filter(Boolean).join(' · ')}
         labels={all.pin}
         className="font-mono font-medium"
       />
@@ -125,6 +158,8 @@ export function Kpi({
       {note != null && note !== '' && (
         <div className="mt-0.5 w-0 min-w-full text-b-meta text-muted-foreground">{note}</div>
       )}
+      {/* on a line of its own, so the counter is as tall whether its figure has come or not */}
+      <OnChain className="mt-1.5" />
     </div>
   );
 }
@@ -308,10 +343,13 @@ export function Card({
   children,
   className,
   id,
+  ofChain = true,
 }: {
   children: ReactNode;
   className?: string;
   id?: string;
+  /** False where the card holds more than one chain's figures, each row naming its own. */
+  ofChain?: boolean;
 }) {
   return (
     <div
@@ -319,6 +357,7 @@ export function Card({
       data-ui="bearing-card"
       className={cn('min-w-0 border border-border bg-card px-4 pt-4 pb-3', className)}
     >
+      {ofChain && <OnChain className="float-right ml-2" />}
       {children}
     </div>
   );

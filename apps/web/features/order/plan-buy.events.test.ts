@@ -19,7 +19,7 @@ import { parse } from '../../components/ui/test/html';
 import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
-import { EMBEDDED, EVM, json, SOLANA, signedInPort } from '../wallet/test/fake-port';
+import { EMBEDDED, EVM, json, METAMASK, SOLANA, signedInPort } from '../wallet/test/fake-port';
 import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { BuyScreen } from './BuyScreen';
@@ -77,6 +77,8 @@ const funding = (ok: boolean) => ({
 function api(
   o: {
     chain?: 'solana' | 'robinhood';
+    /** The wallets the API read: a wallet made here of each family, unless said. */
+    wallets?: Person['wallets'];
     funded?: boolean;
     order?: () => Response;
     /** Changes the funding answer before it is sent. */
@@ -88,7 +90,7 @@ function api(
   const calls: Call[] = [];
   const person: Person = {
     userId: USER,
-    wallets: EMBEDDED,
+    wallets: o.wallets ?? EMBEDDED,
     chain: o.chain ?? 'solana',
     chainSource: 'picked',
     chainOptions: [],
@@ -185,6 +187,25 @@ describe('the plan screen', () => {
     const next = primaryLink(host);
     expect(next?.textContent).toBe(en.plan.buy);
     expect(next?.getAttribute('href')).toBe(`/plan/${PLAN_ID}/buy`);
+  });
+
+  it('names every pin in the view’s language, the exit cost’s as well', async () => {
+    api();
+    rememberPlan(planOn());
+    const host = await mount(withAccount('pt', createElement(PlanScreen, { id: PLAN_ID })));
+    await settle();
+    await settle();
+    const pt = dictionary('pt').pin;
+    const names = [...host.querySelectorAll('[data-ui="pin"]')].map(
+      (pin) => pin.getAttribute('aria-label') ?? '',
+    );
+    expect(names.length).toBeGreaterThanOrEqual(2);
+    for (const name of names) expect(name.startsWith(pt.sourceFor.split('{value}')[0])).toBe(true);
+    // and the risk chip agrees with its word: "risco: médio", not the field's "média"
+    const chips = find(host, `ul[aria-label="${dictionary('pt').plan.chips.label}"]`).textContent;
+    expect(chips).toMatch(/risco: (baixo|médio|alto)/);
+    const exit = find(host, '[data-ui="exit-plan-line"] [data-ui="pin"]');
+    expect(exit.getAttribute('aria-label')).not.toContain(en.pin.sourceFor.split('{value}')[0]);
   });
 
   it('reads a month of the chart out under a crosshair: the keyboard, a mouse, a finger, and its legend', async () => {
@@ -390,11 +411,25 @@ describe('the plan screen', () => {
     expect((await plan()).querySelector('[data-ui="plan-from-link"]')).toBeNull();
   });
 
-  it('offers no buy of a plan made for another chain than the person’s', async () => {
-    api({ chain: 'robinhood' });
+  it('offers the buy of a plan on its own chain, whatever the current chain is (CHAIN-SWITCH)', async () => {
+    const server = api({ chain: 'robinhood' });
     rememberPlan(planOn('solana'));
     const host = await plan();
-    expect(host.textContent).toContain(en.plan.otherChain('Solana', 'Robinhood Chain'));
+    expect(primaryLink(host)?.getAttribute('href')).toBe(`/plan/${PLAN_ID}/buy`);
+    await unmountAll();
+    // the buy reads the Solana wallet, the plan's, not the EVM wallet of the current chain
+    await buy();
+    expect(server.to('/v1/funding').at(-1)?.path).toBe(
+      `/v1/funding?amountUsd=40000&proposalId=${PLAN_ID}&wallet=${SOLANA}`,
+    );
+  });
+
+  it('offers no buy of a plan on a chain no wallet of the person’s signs on', async () => {
+    portStore.set(signedInPort(METAMASK));
+    api({ chain: 'robinhood', wallets: METAMASK });
+    rememberPlan(planOn('solana'));
+    const host = await plan();
+    expect(host.textContent).toContain(en.plan.unsignable('Solana'));
     expect(primaryLink(host)).toBeUndefined();
   });
 

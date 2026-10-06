@@ -65,6 +65,7 @@ const BEARING_NAMES = new Set(
  * fragments, kept as he wrote them. Each is named: a new one has to be added here on purpose.
  */
 const BEARING_FRAGMENTS = new Set([
+  'bearing.chain.sideBySide.caption',
   'bearing.dex.capacity.aria',
   'bearing.dex.capacity.note',
   'bearing.dex.liquidity.aria',
@@ -182,7 +183,7 @@ describe('the words of the product, in each language', () => {
     expect(text).not.toMatch(word('ligad[oa]s?|desligad[oa]s?'));
     expect(pt.signIn.failure.passkeyOff).toContain('ativadas');
     expect(pt.chain.noWallet).toContain('vinculada');
-    expect(pt.chain.pick.off('Solana')).toContain('indisponível');
+    expect(pt.chain.switch.off('Solana')).toContain('indisponível');
     // one word for dollar yield, which is not income
     expect(text).not.toMatch(/renda em dólar/i);
     expect(pt.goal.fields.glide).toContain('rendimento em dólar');
@@ -254,16 +255,13 @@ describe('the words of the product, in each language', () => {
     expect(en.shell.testNetwork).toBe('test network');
   });
 
-  it('says what the chain choice means and that it stands, in both', () => {
-    for (const d of [en, pt]) {
-      expect(d.chain.pick.body.split('.').length).toBeGreaterThan(2);
-      expect(d.chain.pick.warning).toMatch(/can’t be changed later|não pode ser mudado depois/);
-      // why this person is asked, and that it is asked once, whichever way they came
-      for (const reason of [d.chain.pick.asked.made, d.chain.pick.asked.connected])
-        expect(reason).toMatch(/, once\.$|, uma única vez\.$/);
-    }
-    expect(en.chain.pick.body).toMatch(/never split across two/);
-    expect(pt.chain.pick.body).toMatch(/nunca é dividido entre duas/);
+  it('says what a chain switch changes and what it leaves, in both (CHAIN-SWITCH)', () => {
+    // new plans move; plans already made stay on their own chain
+    expect(en.chain.switch.plansStay).toMatch(/^New plans .* stay on their own chain\.$/);
+    expect(pt.chain.switch.plansStay).toMatch(/^Planos novos .* continuam na rede deles\.$/);
+    // nothing says the chain can't be changed any more
+    for (const d of [en, pt])
+      expect(JSON.stringify(d.chain)).not.toMatch(/can’t be changed|não pode ser mudad|once\b/);
   });
 });
 

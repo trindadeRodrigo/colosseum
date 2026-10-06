@@ -16,6 +16,7 @@ import {
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary, type Lang } from '../../i18n';
+import { ChainSwitch } from '../account/ChainSwitch';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
 import { EMBEDDED, fakePort, json, PHANTOM, signedInPort } from '../wallet/test/fake-port';
@@ -35,7 +36,10 @@ vi.mock('next/link', () => import('../wallet/test/mock-next'));
 // as `staging` answers it, GET /v1/me, and the route that builds a plan, which is not there yet.
 
 const en = dictionary('en');
-const GOAL = 'Grow $40,000 for an apartment by June 2028';
+// Words the reader here does not read either (pre-read.ts), so what the API's reader leaves empty stays
+// empty for the person; the words that do fill it are read in 'the words of a goal fill what the
+// reader leaves'.
+const GOAL = 'Grow forty thousand for an apartment by June 2028';
 
 type Call = { method: string; path: string; body?: unknown };
 
@@ -56,6 +60,11 @@ function api(options: {
     if (path === '/goals') return json(options.reading ?? READ_IN_DOLLARS);
     if (path === '/v1/me')
       return options.person ? json(options.person) : json({}, options.me ?? 503);
+    // a switch of the current chain (CHAIN-SWITCH)
+    if (path === '/v1/me/chain' && method === 'PUT' && options.person) {
+      options.person = { ...options.person, chain: body.chain, chainSource: 'picked' };
+      return json(options.person);
+    }
     // today's API: there is no route that builds a plan
     if (path === PERSONALIZE_PATH)
       return options.plan ? options.plan(body) : json({ error: 'Route not found' }, 404);
@@ -106,9 +115,18 @@ async function fill(host: HTMLElement) {
   await choose(host, 'country', 'BR');
 }
 
+/** The browser's languages, as navigator.languages says them. */
+function browserSays(languages: string[]) {
+  Object.defineProperty(window.navigator, 'languages', { value: languages, configurable: true });
+}
+
 beforeEach(() => {
   window.sessionStorage.clear();
+  // the chain this browser was last on (CHAIN-SWITCH): each test starts where nobody has chosen
+  window.localStorage.removeItem('tf-chain');
   portStore.set(fakePort());
+  // a language that names no country, so the country is the person's to state unless a test says
+  browserSays(['en']);
 });
 afterEach(unmountAll);
 
@@ -245,6 +263,73 @@ describe('the goal screen, before anything is read', () => {
         window.sessionStorage.clear();
       }
     }
+  });
+
+  it('fills what the reader leaves from the goal’s own words, and says so on the sheet', async () => {
+    // the reader made for reais answers "accumulation", "medium" and no amount or time frame
+    const cases = [
+      [
+        'en',
+        'Protect $50,000 for 18 months, low risk, please',
+        ['protect', '50000', '18', 'low', ''],
+      ],
+      ['en', 'Pay me $500 a month from $150,000', ['income', '150000', '', 'low', '500']],
+      [
+        'pt',
+        'Quero proteger US$ 50.000 por 18 meses, risco baixo',
+        ['protect', '50000', '18', 'low', ''],
+      ],
+      [
+        'pt',
+        'Fazer 20k dólares crescer em 2 anos, risco alto',
+        ['grow', '20000', '24', 'high', ''],
+      ],
+    ] as const;
+    for (const [lang, text, [goal, amount, horizon, risk, income]] of cases) {
+      const words = dictionary(lang);
+      const server = api(
+        goal === 'income'
+          ? {
+              reading: {
+                ...READ_IN_DOLLARS,
+                candidate: { ...READ_IN_DOLLARS.candidate, profile: 'income', riskBudget: 'low' },
+              },
+            }
+          : {},
+      );
+      const host = await screen(lang);
+      await read(host, text);
+      expect(server.to('/goals')).toHaveLength(1);
+      expect(
+        {
+          goal: find<HTMLSelectElement>(host, `#${FIELD_ID.goal}`).value,
+          amount: input(host, 'amount').value.replace(/\D/g, ''),
+          horizon: input(host, 'horizon').value,
+          risk: find<HTMLSelectElement>(host, `#${FIELD_ID.risk}`).value,
+          income: host.querySelector<HTMLInputElement>(`#${FIELD_ID.income}`)?.value ?? '',
+        },
+        `${lang}: ${text}`,
+      ).toEqual({ goal, amount, horizon, risk, income });
+      expect(find(host, '#limits').textContent).toContain(words.goal.filledFromWords);
+      await unmountAll();
+      window.sessionStorage.clear();
+    }
+  });
+
+  it('takes the country from the browser’s language when nothing says it, and says where it came from', async () => {
+    browserSays(['pt-BR', 'en']);
+    api({});
+    const host = await screen();
+    await read(host);
+    expect(find<HTMLSelectElement>(host, `#${FIELD_ID.country}`).value).toBe('BR');
+    const field = () =>
+      find(host, `#${FIELD_ID.country}`).closest('[data-ui="field"]')?.textContent;
+    expect(field()).toContain(en.goal.hints.countryFromBrowser);
+    expect(field()).not.toContain(en.goal.hints.notFound);
+    // once the person picks their own, the hint is the field's own again
+    await choose(host, 'country', 'PT');
+    expect(field()).toContain(en.goal.hints.country);
+    expect(field()).not.toContain(en.goal.hints.countryFromBrowser);
   });
 
   it('reads an example the person changed like any other text', async () => {
@@ -469,7 +554,7 @@ describe('“Build my plan”', () => {
     expect(find(facts, 'a').textContent).toBe(en.shell.signIn);
   });
 
-  it('does not build before the chain is chosen, and leads to where it is chosen', async () => {
+  it('starts a person with no chain yet on the chain they were looking at, and builds there', async () => {
     const server = api({
       person: {
         ...onSolana,
@@ -483,15 +568,15 @@ describe('“Build my plan”', () => {
     const host = await screen();
     await read(host);
     await fill(host);
-    expect(summary(host)?.textContent).toContain(en.goal.blocked.chainNotChosen);
-    await click(buildButton(host));
-    expect(server.to(PERSONALIZE_PATH)).toEqual([]);
-    const way = find(find(host, '[data-ui="sheet-facts"]'), 'a');
-    expect([way.textContent, way.getAttribute('href')]).toEqual([
-      en.goal.chain.choose,
-      '/sign-in?next=/goal',
+    // nobody is asked (CHAIN-SWITCH): Solana, where nobody has chosen, is stored
+    expect(server.to('/v1/me/chain')).toEqual([
+      { method: 'PUT', path: '/v1/me/chain', body: { chain: 'solana' } },
     ]);
-    // the choice is not offered here: it is asked in one place
+    expect(summary(host)?.textContent ?? '').not.toContain(en.goal.blocked.chainNotChosen);
+    await click(buildButton(host));
+    await settle();
+    const sent = server.to(PERSONALIZE_PATH).at(-1)?.body as { sheet: BasketSheet };
+    expect(sent.sheet.chains).toEqual(['solana']);
     expect(host.querySelector('[role="group"]')).toBeNull();
   });
 
@@ -639,6 +724,35 @@ describe('a chain our server has switched off', () => {
 });
 
 describe('the chain on the sheet', () => {
+  it('is the current chain: switched in the bar, the next plan is built on the new one', async () => {
+    const server = api({
+      person: { ...onSolana, wallets: EMBEDDED, chainSource: 'picked' },
+      plan: (body) =>
+        json({ id: 'plan-1', proposal: proposalFor((body as { sheet: BasketSheet }).sheet) }),
+    });
+    portStore.set(signedInPort(EMBEDDED));
+    const host = await mount(
+      withAccount('en', [
+        createElement(ChainSwitch, { key: 's' }),
+        createElement(GoalScreen, { key: 'g' }),
+      ]),
+    );
+    await settle();
+    await click(find(host, '[data-ui="chain-switch"] > button'));
+    await click(find(host, '[data-ui="chain-switch-panel"] button[data-chain="robinhood"]'));
+    await settle();
+    expect(server.to('/v1/me/chain')).toEqual([
+      { method: 'PUT', path: '/v1/me/chain', body: { chain: 'robinhood' } },
+    ]);
+    await read(host);
+    expect(find(host, '[data-ui="sheet-facts"]').textContent).toContain('Robinhood Chain');
+    await fill(host);
+    await click(buildButton(host));
+    await settle();
+    const sent = server.to(PERSONALIZE_PATH).at(-1)?.body as { sheet: BasketSheet };
+    expect(sent.sheet.chains).toEqual(['robinhood']);
+  });
+
   it('is stated, with what it is, and is not a field', async () => {
     api({ person: onSolana });
     portStore.set(signedInPort(PHANTOM));

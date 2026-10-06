@@ -46,14 +46,14 @@ function Kpis({ items }: { items: Kpi[] }) {
             i < 2 ? 'max-[619px]:border-b max-[619px]:border-border' : '',
           ].join(' ')}
         >
-          <dt className="font-mono text-[11px]/4 text-muted-foreground">{kpi.label}</dt>
+          <dt className="text-caption font-medium text-muted-foreground">{kpi.label}</dt>
           {/* A figure with its pin is one unbreakable line (ProvenancePin): a sample one's pin is
               hatched, and the case says once, at its foot, that its rates are sample (MOCK-QUIET). */}
-          <dd className="mt-0.5 text-[1.125rem]/7 font-medium tabular-nums">
+          <dd className="mt-0.5 font-mono text-[1.125rem]/7 font-medium tabular-nums">
             {kpi.value}
             {kpi.unit && (
               // a unit such as "Dec 2031" is never broken across lines
-              <small className="ml-1 font-mono text-[11px] font-normal whitespace-nowrap text-muted-foreground">
+              <small className="ml-1 font-mono text-[12px] font-normal whitespace-nowrap text-muted-foreground">
                 {kpi.unit}
               </small>
             )}
@@ -99,7 +99,7 @@ function Case({
           {/* The goal in the person's own words first, on a solid plate, then the plan it asks for. */}
           <div className="flex flex-col gap-2 px-5 pt-5 pb-1">
             <p className="font-mono text-[12px] text-primary">{words.who}</p>
-            <blockquote className="m-0 font-display text-[clamp(1.15rem,1rem+0.6vw,1.45rem)]/[1.35] font-normal">
+            <blockquote className="m-0 font-display text-[clamp(1.15rem,1rem+0.6vw,1.45rem)]/[round(1.35em,4px)] font-normal">
               “{words.quote}”
             </blockquote>
           </div>
@@ -113,8 +113,8 @@ function Case({
         <div className="flex min-w-0 flex-col gap-4 px-6 pt-5.5 pb-4.5">
           <div data-ui="case-head" className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h3 className="text-[1.125rem]/[1.3] font-medium">{words.title}</h3>
-              <p className="mt-0.5 text-[13px] text-muted-foreground">{words.sub}</p>
+              <h3 className="text-[1.125rem]/6 font-medium">{words.title}</h3>
+              <p className="mt-0.5 text-[13px]/5 text-muted-foreground">{words.sub}</p>
             </div>
           </div>
           <ul aria-label={t.chips} className="flex flex-wrap gap-1.5">
@@ -133,7 +133,7 @@ function Case({
           <p className="border-l-2 border-primary py-0.5 pl-2.5 text-[13px]/5">
             {t.exitPlan}: {exit} <span className="text-muted-foreground">{exitNote}</span>
           </p>
-          <div className="flex flex-wrap justify-between gap-3 border-t border-border pt-2.5 font-mono text-[11px] text-muted-foreground">
+          <div className="flex flex-wrap justify-between gap-3 border-t border-border pt-2.5 font-mono text-[12px]/5 text-muted-foreground">
             <span data-ui="sample-note" className="inline-flex items-center gap-1">
               {t.sample} <PinGlyph state="mock" />
             </span>
@@ -162,7 +162,7 @@ export function Showcase({ lang }: { lang: Lang }) {
           <p className="font-mono text-[12px] font-medium tracking-[0.06em] text-primary">
             {t.eyebrow}
           </p>
-          <h2 className="mt-2.5 mb-3 font-display [text-wrap:wrap] text-[clamp(2rem,1.4rem+2vw,3.2rem)]/[1.15] font-normal tracking-[-0.01em]">
+          <h2 className="mt-2.5 mb-3 font-display [text-wrap:wrap] text-[clamp(2rem,1.4rem+2vw,3.2rem)]/[round(1.15em,4px)] font-normal tracking-[-0.01em]">
             {t.title}
           </h2>
           <p className="max-w-[56ch] text-muted-foreground">{t.lead}</p>

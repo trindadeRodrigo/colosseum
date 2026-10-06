@@ -4,11 +4,13 @@
 // policy and no X-Frame-Options; every other address answers `frame-ancestors 'none'` and DENY,
 // the ones Next's header rules match without regard to case (`/Embed`) and the ones under /embed
 // that are not the embed (`/embed/x`) above all, since they fall to a page with a wallet button.
-// While the build is up it also asks for the icons (check-icons.mjs).
+// While the build is up it also asks for the icons (check-icons.mjs) and for the headers every address
+// answers (check-headers.mjs).
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { headerProblems } from './check-headers.mjs';
 import { iconProblems } from './check-icons.mjs';
 
 /** [address, who may frame it] */
@@ -70,6 +72,8 @@ async function main() {
       }
     // the same build, while it is up: the icons (check-icons.mjs)
     if (up) problems.push(...(await iconProblems(base)));
+    // and the headers every address answers (check-headers.mjs)
+    if (up) problems.push(...(await headerProblems(base)));
   } finally {
     server.kill();
   }
@@ -83,6 +87,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     process.exitCode = 1;
   } else
     console.log(
-      `Frame check: ${CASES.length} addresses framed as they should be; the icons answer and the heads link them.`,
+      `Frame check: ${CASES.length} addresses framed as they should be; the icons answer and the heads link them; every address answers the security headers.`,
     );
 }

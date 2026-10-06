@@ -23,6 +23,8 @@ import { SkeletonPlan, SkeletonRows } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
+import { useAccount } from '../account/AccountProvider';
+import { switchFailure } from '../account/ChainSwitch';
 import { assetTicker, formatBps } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
 import { keepOrder } from '../order/order-record';
@@ -187,6 +189,7 @@ export function FamilyScreen({ slug }: { slug: string }) {
       {recipes.map((recipe) => (
         <RecipeSection key={recipe.chain} family={family} recipe={recipe} person={person} />
       ))}
+      {person.kind === 'ready' && <VaultsElsewhere family={family} chain={person.chain} />}
       <VersionsPanel slug={family.slug} chain={chain} />
       <Link href="/shelf" className={`${buttonClass({ variant: 'link' })} self-start`}>
         {t.shared.family.backToShelf}
@@ -284,6 +287,7 @@ function RecipeSection({
                 mock: false,
               }))}
               labels={{ afterHaircut: t.plan.legs.afterHaircut, quoted: t.plan.legs.quoted }}
+              pinLabels={t.pin}
             />
           ) : (
             <WeightsTable
@@ -358,6 +362,68 @@ function RecipeSection({
 
       {person.kind === 'ready' && own && followed && !blocked && (
         <VaultsPanel family={family} recipe={recipe} followed={followed} person={person} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * The person's vaults on another chain than the current one that follow this portfolio. A vault is
+ * updated on its own chain (CHAIN-SWITCH), and this page signs on the current chain only, so it says
+ * which chain to switch to, with the switch.
+ */
+function VaultsElsewhere({ family, chain }: { family: SharedFamily; chain: ChainId }) {
+  const t = useT();
+  const f = t.shared.family;
+  const apiFetch = useApiFetch();
+  const { choose } = useAccount();
+  const [elsewhere, setElsewhere] = useState<ChainId[]>([]);
+  const [failed, setFailed] = useState('');
+  useEffect(() => {
+    let mine = true;
+    const recipeOn = new Map(family.recipes.map((r) => [r.chain, r.onchainId]));
+    readPortfolio(apiFetch).then((read) => {
+      if (!mine || read.kind !== 'read') return;
+      setElsewhere(
+        read.value.chains
+          .filter(
+            (entry) =>
+              entry.chain !== chain &&
+              entry.vaults.some(
+                (v) =>
+                  v.recipeOnchainId !== null && v.recipeOnchainId === recipeOn.get(entry.chain),
+              ),
+          )
+          .map((entry) => entry.chain),
+      );
+    });
+    return () => {
+      mine = false;
+    };
+  }, [apiFetch, chain, family]);
+  if (elsewhere.length === 0) return null;
+  return (
+    <div data-ui="vaults-elsewhere" className="flex flex-col items-start gap-2">
+      {elsewhere.map((other) => (
+        <p key={other} className="max-w-(--tf-measure-body) text-body">
+          {f.elsewhere(t.chain.names[other])}{' '}
+          <Button
+            variant="link"
+            onClick={() => {
+              setFailed('');
+              choose(other).catch((e: unknown) =>
+                setFailed(switchFailure(t, e, t.chain.names[other])),
+              );
+            }}
+          >
+            {f.switchTo(t.chain.names[other])}
+          </Button>
+        </p>
+      ))}
+      {failed && (
+        <p role="alert" className="text-body-sm text-destructive">
+          {failed}
+        </p>
       )}
     </div>
   );

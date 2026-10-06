@@ -122,9 +122,30 @@ test('the bar keeps its height: signed out, on /sign-in, and signed in', async (
   await expect(page.locator('header [data-ui="sign-in-here"]')).toBeVisible();
   expect(await height()).toBe(out);
   await page.getByRole('button', { name: /Continue with a passkey/ }).click();
-  await page.getByRole('button', { name: 'Solana' }).click();
-  await page.getByRole('button', { name: /My plan lives on Solana/ }).click();
+  // no chain is asked (CHAIN-SWITCH): the bar shows one account control, on the chain they start on
   await expect(page.locator('header [data-ui="account"]')).toBeVisible();
+  const control = page.locator('header [data-ui="account-menu-button"]');
+  await expect(control).toHaveAttribute('data-chain', 'solana');
+  await expect(page.locator('header [data-ui="chain-switch"]')).toHaveCount(0);
+  expect(await height()).toBe(out);
+
+  // its menu: the chains, the address, and "Sign out" as the last item; Escape closes it
+  await control.click();
+  const menu = page.locator('[data-ui="account-menu"]');
+  await expect(menu.getByRole('group')).toBeVisible();
+  await expect(menu.getByRole('button', { name: 'Copy address' })).toBeVisible();
+  await expect(menu.locator('button, a').last()).toHaveAttribute('data-ui', 'sign-out');
+  expect(await height()).toBe(out);
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await expect(control).toBeFocused();
+
+  // the phone's sheet opens with the same block, and "Sign out" there signs out
+  await page.getByRole('button', { name: 'Menu', exact: true }).click();
+  const block = page.locator('[data-ui="compact-nav-sheet"] [data-ui="account-block"]');
+  await expect(block.locator('[data-ui="account-address"]')).toBeVisible();
+  await block.locator('[data-ui="sign-out"]').click();
+  await expect(page.locator('header a[href="/sign-in"]')).toBeVisible();
   expect(await height()).toBe(out);
 });
 

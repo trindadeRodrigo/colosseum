@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import type { NextConfig } from 'next';
 import { PHASE_DEVELOPMENT_SERVER } from 'next/constants';
 import { frameHeaders } from './lib/frame-policy';
+import { securityHeaders } from './lib/security-headers';
 
 // The env file lives at the repo root; Next only reads its own directory. Existing variables win.
 const rootEnv = resolve(process.cwd(), '../../.env');
@@ -12,9 +13,9 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   transpilePackages: ['@colosseum/schemas', '@colosseum/sdk'],
   // Only the partner embed may be framed, and only by the partners a deployment names
-  // (lib/frame-policy.ts).
+  // (lib/frame-policy.ts); every address answers the headers of lib/security-headers.ts.
   async headers() {
-    return frameHeaders(process.env);
+    return [...frameHeaders(process.env), ...securityHeaders()];
   },
   // The /risk pages became Bearing's analytics (/analytics); their addresses still lead there.
   async redirects() {

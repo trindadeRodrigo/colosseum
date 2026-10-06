@@ -3,7 +3,17 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { isStale, newestReading } from './BearingProvider';
 import { R, type Res } from './data';
-import { capacitySeries, capFact, type DexAsset, dexCounters, dexIds, poolsOf, vol24 } from './dex';
+import {
+  assetVol,
+  capacitySeries,
+  capFact,
+  type DexAsset,
+  dexCounters,
+  dexIds,
+  dexVolume,
+  poolsOf,
+  vol24,
+} from './dex';
 import { mk, none, pinSource, STALE_AFTER_MS, sumFact } from './fact';
 import { pct, usd, usd1 } from './format';
 import {
@@ -24,6 +34,7 @@ import type {
   LendBody,
   LendHistBody,
   LendListBody,
+  Pool,
   PoolsBody,
   SheetBody,
 } from './types';
@@ -327,5 +338,59 @@ describe('the simulation (CHECKS.md 9: TSLAx $100k, weekend)', () => {
     expect(parseAmount('2.5m')).toBe(2_500_000);
     expect(parseAmount('12')).toBeNull();
     expect(parseAmount('lots')).toBeNull();
+  });
+});
+
+describe('DexScreener’s 24 h volume (gate VOLUME-DEXSCREENER)', () => {
+  const pool = (v: number | null | undefined, at: string): Pool => ({
+    address: `P${at}`,
+    venue: 'raydium_clmm',
+    assetSymbol: 'SPYx',
+    quoteSymbol: 'USDC',
+    tvlUsd: 1,
+    discoveryVolume24hUsd: v,
+    fetchedAt: at,
+  });
+
+  it('sums the pools under its own source, never Bearing’s, and a pool without it makes a lower bound', () => {
+    const f = dexVolume([pool(1_000, '2026-10-06T04:00:00Z'), pool(250, '2026-10-06T05:00:00Z')]);
+    expect(f.value).toBe(1_250);
+    expect(f.source).toBe('DexScreener · 24 h');
+    expect(f.method).toContain("not Bearing's swap history");
+    expect(f.fetchedAt).toBe('2026-10-06T05:00:00Z');
+    expect(f.quality).toBe('measured');
+    expect(
+      dexVolume([pool(1_000, '2026-10-06T04:00:00Z'), pool(null, '2026-10-06T04:00:00Z')]).quality,
+    ).toBe('lower_bound');
+    expect(dexVolume([pool(null, '2026-10-06T04:00:00Z')]).reason).toBe('not_collected');
+    expect(dexVolume([]).reason).toBe('nothing_selected');
+  });
+
+  it('stands only where Bearing’s swap history is not collected', () => {
+    const pools: Res<PoolsBody> = {
+      ok: true,
+      status: 200,
+      body: { pools: [pool(900, '2026-10-06T04:00:00Z')] },
+      reason: null,
+    };
+    const sheet = (byWindow: unknown[]) =>
+      ({
+        ok: true,
+        status: 200,
+        body: { costs: [], flow: { byWindow }, liquidityStability: {} },
+        reason: null,
+      }) as never;
+    const own = mk(42, {
+      source: 'risk_pool_flow',
+      method: 'swaps',
+      fetchedAt: '2026-10-06T00:00:00Z',
+    });
+    expect(
+      assetVol({ sheet: sheet([{ window: '24h', volumeUsd: own }]), hist: null as never, pools })
+        .source,
+    ).toBe('risk_pool_flow');
+    expect(assetVol({ sheet: sheet([]), hist: null as never, pools }).source).toBe(
+      'DexScreener · 24 h',
+    );
   });
 });

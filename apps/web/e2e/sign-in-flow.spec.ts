@@ -3,7 +3,8 @@ import { dictionary } from '../i18n';
 
 // Sign-in in two steps at most, in the dialog over the page (SIGN-IN-FLOW, Thom, Oct 6), on the
 // throwaway wallet of development:
-// "Continue with a passkey" signs in and asks the chain once, as CHAIN-PICK has it; "Connect a wallet"
+// "Continue with a passkey" signs in and asks nothing more: the person starts on the chain the bar
+// shows (CHAIN-SWITCH); "Connect a wallet"
 // lists the wallets found, one entry each, and a wallet that signs on both families asks which chain
 // before it signs. The throwaway wallet announces itself on both, as Phantom and Backpack do.
 
@@ -14,7 +15,7 @@ test.beforeEach(async ({ page }) => {
   await page.request.post(`${STUB}/__stub/reset`);
 });
 
-test('a passkey: one button, then the chain is asked once', async ({ page }) => {
+test('a passkey: one button, and no chain is asked', async ({ page }) => {
   await page.goto('/goal');
   await page.locator('header a[href="/sign-in"]').click();
   const dialog = page.getByRole('dialog');
@@ -24,7 +25,11 @@ test('a passkey: one button, then the chain is asked once', async ({ page }) => 
     0,
   );
   await passkey.click();
-  await expect(dialog.getByRole('heading', { name: en.chain.pick.title })).toBeVisible();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator('header [data-ui="account-menu-button"]')).toHaveAttribute(
+    'data-chain',
+    'solana',
+  );
 });
 
 test('a wallet: one button, its own list, and the chain asked for a wallet that does both', async ({

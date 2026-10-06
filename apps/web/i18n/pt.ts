@@ -25,6 +25,10 @@ export const pt: Dictionary = {
     signOutFailed:
       'Não consegui encerrar sua sessão: o serviço de login não respondeu. Tente de novo.',
     account: 'Sua carteira',
+    address: 'Endereço',
+    copyAddress: 'Copiar endereço',
+    copied: 'Copiado',
+    viewOn: (explorer: string) => `Ver no ${explorer}`,
     disclaimer: 'Aviso legal',
     appearance: 'Aparência',
     themes: { auto: 'Sistema', light: 'Claro', dark: 'Escuro' },
@@ -119,45 +123,39 @@ export const pt: Dictionary = {
 
   chain: {
     names: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
+    short: { solana: 'Solana', robinhood: 'Robinhood', base: 'Base' },
     explorers: { solana: 'Solscan', robinhood: 'explorador da Robinhood', base: 'Basescan' },
-    pick: {
-      title: 'Escolha a rede onde seu plano vai ficar',
-      asked: {
-        made: 'Você criou sua carteira aqui, então é você quem escolhe a rede dela, uma única vez.',
-        connected:
-          'Você conectou carteiras em duas redes, então é você quem escolhe em qual delas seu plano fica, uma única vez.',
-      },
-      body: 'Seu depósito, seu cofre e todas as operações do plano ficam nessa rede. Cada rede tem sua própria prateleira de ativos, e um plano é montado só com a prateleira da rede dele: nunca é dividido entre duas.',
-      warning: 'Isso não pode ser mudado depois.',
-      group: 'A rede do seu plano',
-      address: (address: string) => `Sua carteira lá: ${address}`,
-      confirm: (chain: string) => `Meu plano fica na ${chain}`,
-      confirmNone: 'Escolha uma rede',
-      saving: 'Salvando sua escolha…',
-      why: 'Escolha uma rede para continuar.',
-      off: (chain: string) =>
-        `${chain} está indisponível no nosso servidor por enquanto, então não pode ser escolhida.`,
-      noneOn: 'Nenhuma rede pode ser escolhida agora. Nada foi perdido: volte mais tarde.',
-      mock: 'A carteira descartável não tem conta no nosso servidor, então esta escolha fica só nesta aba.',
+    switch: {
+      current: (chain: string) => `Rede: ${chain}`,
+      group: 'Escolha uma rede',
+      plansStay:
+        'Planos novos são montados na rede que você escolher. Os planos que você já tem continuam na rede deles.',
+      browsing: 'Mostra os portfólios compartilhados dessa rede.',
+      noWallet: (chain: string) => `A carteira com que você entrou não assina na ${chain}.`,
+      off: (chain: string) => `${chain} está indisponível no nosso servidor por enquanto.`,
+      saving: 'Trocando…',
+      done: (chain: string) => `Agora você está na ${chain}.`,
     },
     is: {
-      picked: (chain: string) => `Seu plano fica na ${chain}. Você escolheu, e isso não muda.`,
+      picked: (chain: string) =>
+        `Planos novos são montados na ${chain}. Você pode trocar de rede pela barra no topo.`,
       wallet: (chain: string) =>
-        `Seu plano fica na ${chain}, a rede da carteira que você conectou.`,
+        `Planos novos são montados na ${chain}, a rede da carteira que você conectou.`,
     },
     failure: {
-      taken: (stored: string, tried: string) =>
-        `Seu plano já fica na ${stored}: isso foi escolhido antes, em outro aparelho ou em outra aba, e não pode ser mudado. ${tried} não foi salva.`,
-      takenUnknown: (tried: string) =>
-        `${tried} não foi salva: uma rede já tinha sido escolhida para o seu plano, em outro aparelho ou em outra aba, e isso não pode ser mudado.`,
-      notOffered: 'Essa rede não pode ser escolhida com esta carteira. Escolha a outra.',
+      noWallet: (chain: string) =>
+        `Não consegui trocar: a carteira com que você entrou não assina na ${chain}.`,
+      notOffered: 'Essa rede não pode ser escolhida aqui.',
       unreachable:
-        'Não consegui salvar: nosso servidor não respondeu. Sua escolha ainda não está guardada. Tente de novo.',
-      signedOut: 'Sua sessão expirou antes de a escolha ser salva. Entre de novo e escolha.',
+        'Não consegui trocar: nosso servidor não respondeu. Você continua na mesma rede. Tente de novo.',
+      signedOut: 'Sua sessão expirou antes de a troca ser salva. Entre de novo e troque.',
       noIdentity:
-        'Não consegui salvar: o serviço de login não me entregou a parte do seu login que lista suas carteiras, então nosso servidor não consegue conferi-las. Sua escolha ainda não está guardada. Espere um minuto e tente de novo.',
+        'Não consegui trocar: o serviço de login não me entregou a parte do seu login que lista suas carteiras, então nosso servidor não consegue conferi-las. Espere um minuto e tente de novo.',
     },
     unknown: {
+      off: 'Todas as redes em que suas carteiras assinam estão indisponíveis no nosso servidor por enquanto. Nada foi perdido: volte mais tarde.',
+      refused:
+        'Nosso servidor não aceitou uma rede para as carteiras com que você entrou, então ainda não consigo montar para você. Saia e entre de novo.',
       body: 'Ainda não sei dizer em qual rede seu plano fica: nosso servidor não respondeu. Não há nada de errado com a sua carteira.',
       retry: 'Perguntar de novo',
       asking: 'Perguntando…',
@@ -196,6 +194,7 @@ export const pt: Dictionary = {
       ],
       source: 'os limites do próprio exemplo',
     },
+    filledFromWords: 'preenchido a partir das suas palavras',
     readFailure: {
       unreachable:
         'Não consegui falar com nosso servidor para ler isso. Seu texto continua aqui. Tente de novo daqui a pouco.',
@@ -248,6 +247,8 @@ export const pt: Dictionary = {
       income: 'Quanto você precisa por mês. Deixe em branco se não tiver um número.',
       horizon: 'De 1 a 480.',
       country: 'É você quem declara. Define quais ativos você pode ter.',
+      countryFromBrowser:
+        'Tirado do idioma deste navegador. Mude se você mora em outro país: ele define quais ativos você pode ter.',
       holdings: 'O plano preenche lacunas e evita repetir o que você já tem.',
       amount: 'Com quanto o plano começa, de US$ 10 a US$ 1.000.000.',
       notFound: 'Não encontrei no seu objetivo: preencha.',
@@ -279,15 +280,15 @@ export const pt: Dictionary = {
     },
     chain: {
       label: 'Rede',
-      note: 'A rede da sua carteira. O plano, o cofre dele e todas as operações ficam nela.',
+      note: 'A rede em que você está. O plano, o cofre dele e todas as operações ficam nela, mesmo se você trocar depois.',
       unset: 'Não definida',
-      unsetNote: 'Um plano é montado para a rede da sua carteira.',
+      unsetNote: 'Um plano é montado na rede em que você está.',
       choose: 'Escolher a rede',
       unknown: 'Ainda não sei',
     },
     blocked: {
       signedOut: 'Entre para montar: um plano é montado para a rede da sua carteira.',
-      chainNotChosen: 'Escolha primeiro a rede onde seu plano vai ficar.',
+      chainNotChosen: 'Escolha primeiro uma rede na barra no topo.',
       chainUnknown:
         'Ainda não sei em qual rede seu plano fica, então não consigo montar para ela. Pergunte de novo, acima.',
       refused: 'Nosso servidor não aceitou esses limites. Confira cada campo e tente de novo.',
@@ -306,6 +307,8 @@ export const pt: Dictionary = {
         income: (amount: string, months: string) => `Gerar renda com ${amount} por ${months}.`,
         protect: (amount: string, months: string) => `Proteger ${amount} por ${months}.`,
       },
+      sentenceIncome: (income: string, amount: string, months: string) =>
+        `Gerar ${income} por mês com ${amount} por ${months}.`,
       months: (n: number) => (n === 1 ? '1 mês' : `${n} meses`),
       unfinished: 'Seu objetivo, como foi lido até aqui.',
       draftOpen: 'Rascunho: termine os limites',
@@ -418,6 +421,7 @@ export const pt: Dictionary = {
     vault: {
       title: 'Seu cofre',
       address: 'Endereço do cofre',
+      page: (address: string) => `Abrir a página do cofre ${address}`,
       value: 'Valor',
       cash: 'Caixa',
       autoFollow: 'Seguir automaticamente',
@@ -456,6 +460,8 @@ export const pt: Dictionary = {
     goalCard: {
       builtMet: 'No caminho quando o plano foi montado',
       builtShort: 'Abaixo da renda quando o plano foi montado',
+      builtPaid: (paid: string, asked: string) =>
+        `Quando este plano foi montado, ele pagava ${paid} por mês dos ${asked} que você pediu.`,
       noStatus: 'Ainda sem situação: o motor não dá uma para um cofre',
       unknown: (chain: string) => `Seu cofre na ${chain}.`,
       notJoined:
@@ -484,8 +490,10 @@ export const pt: Dictionary = {
       body: 'Um plano fica guardado na aba do navegador que o montou, e este não está aqui. Monte de novo a partir do seu objetivo: seus limites continuam guardados.',
     },
     backToGoal: 'Voltar ao seu objetivo',
-    otherChain: (plan: string, yours: string) =>
-      `Este plano foi feito para ${plan}, e seus planos ficam em ${yours}. Monte de novo a partir do seu objetivo.`,
+    unsignable: (plan: string) =>
+      `Este plano está na ${plan}, e a carteira com que você entrou não assina nela. Entre com uma carteira que assine, ou monte um plano a partir do seu objetivo.`,
+    split:
+      'Este plano está dividido entre duas redes, e um plano fica em uma só. Monte de novo a partir do seu objetivo.',
     lead: (chain: string) =>
       `Montado para ${chain}, a partir dos seus limites. Nada é comprado antes de você revisar cada passo e assinar.`,
     holds: 'O que ele tem',
@@ -505,6 +513,7 @@ export const pt: Dictionary = {
         `Numa queda forte: você perderia cerca de ${amount}, uma estimativa.`,
     },
     details: 'Detalhes',
+    leftOut: 'Ficou de fora deste plano',
     kinds: {
       stock: 'Ações',
       etf: 'Fundos',
@@ -573,6 +582,7 @@ export const pt: Dictionary = {
       amount: 'valor',
       horizon: 'prazo',
       risk: 'risco',
+      riskValue: { low: 'baixo', medium: 'médio', high: 'alto' },
       chain: 'rede',
     },
     kpi: {
@@ -794,6 +804,10 @@ export const pt: Dictionary = {
       empty: (chain: string) => `Nenhum portfólio foi compartilhado na ${chain} ainda.`,
       emptyAll: 'Nenhum portfólio foi compartilhado ainda.',
       publish: 'Publicar um portfólio',
+      publishSoon: (chain: string) =>
+        `Publicar um portfólio na ${chain} está a caminho. Por enquanto dá para publicar na Solana.`,
+      signedOut: (chain: string) =>
+        `Você saiu da conta. Esta ainda é a prateleira da ${chain}; entre para seguir um portfólio.`,
       card: {
         by: (creator: string) => `por ${creator}`,
         platform: 'Da tenonfi',
@@ -826,7 +840,10 @@ export const pt: Dictionary = {
       lead: (chain: string) =>
         `Uma lista de ativos e pesos que quem a criou publicou na ${chain}. Segui-la quer dizer que um cofre seu assume esses pesos; uma versão nova entra em vigor depois de um prazo, e você a vê antes disso.`,
       notHere: (chain: string) =>
-        `Este portfólio não está publicado na ${chain}, onde ficam seus planos, então não dá para segui-lo com a sua carteira.`,
+        `Este portfólio não está publicado na ${chain}, sua rede atual, então não dá para segui-lo daqui.`,
+      elsewhere: (chain: string) =>
+        `Você tem um cofre na ${chain} que segue este portfólio. Troque para a ${chain} para atualizá-lo lá.`,
+      switchTo: (chain: string) => `Trocar para a ${chain}`,
       recipe: (chain: string) => `Na ${chain}`,
       inEffect: 'Em vigor',
       since: (when: string) => `desde ${when}`,
@@ -866,6 +883,8 @@ export const pt: Dictionary = {
         mock: 'Rede de exemplo: não há rede para ler, então estas são palavras do nosso servidor, não conferidas.',
         'no-node': (chain: string) =>
           `Não conferido na ${chain}: este app não tem um nó próprio para ler. Estas são palavras do nosso servidor.`,
+        'no-reader': (chain: string) =>
+          `Não conferido na ${chain}: este app ainda não lê o registro da ${chain}. Estas são palavras do nosso servidor.`,
         'no-deployment': (chain: string) =>
           `Não conferido na ${chain}: este app não tem registro dos tokens nesta rede. Estas são palavras do nosso servidor.`,
         'family-id':
@@ -943,6 +962,8 @@ export const pt: Dictionary = {
       assetsHint: 'De 3 a 12 ativos, cada um de 2% a 50%, em passos de 0,5%, somando 100%.',
       asset: 'Ativo',
       weight: 'Peso, em %',
+      assetOf: (n: number) => `Ativo ${n}`,
+      weightOf: (n: number) => `Peso do ativo ${n} (%)`,
       add: 'Incluir um ativo',
       remove: (asset: string) => `Tirar ${asset}`,
       total: (sum: string) => `Total: ${sum}`,
@@ -978,6 +999,8 @@ export const pt: Dictionary = {
         `Lido da ${chain} para esta página. Qualquer pessoa pode ver um cofre: o que ele tem é público na rede.`,
       loading: 'Lendo o cofre…',
       missing: 'Não há cofre neste endereço.',
+      back: 'Voltar ao seu portfólio',
+      explorer: (explorer: string) => `Ver no ${explorer}`,
       owner: 'Dono',
       follows: 'Segue',
       followsNothing: 'Nada: quem é dono define os pesos',
