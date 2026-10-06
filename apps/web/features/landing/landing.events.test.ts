@@ -87,7 +87,7 @@ describe('the hero', () => {
     );
     // the stage is named, and what is drawn is not read out
     expect(find(host, '#stage').getAttribute('aria-label')).toBe(en.landing.stage.label);
-    expect(find(host, 'canvas').closest('[aria-hidden="true"]')).not.toBeNull();
+    expect(find(host, '#stage canvas').closest('[aria-hidden="true"]')).not.toBeNull();
   });
 
   it('offers Products, Invest and Analytics in its bar, and no Resources (Thom, Oct 6)', async () => {
@@ -109,7 +109,7 @@ describe('the hero', () => {
     const host = await landing();
     expect(scene.create).toHaveBeenCalledTimes(1);
     expect(scene.create).toHaveBeenCalledWith(
-      find(host, 'canvas'),
+      find(host, '#stage canvas'),
       expect.objectContaining({ onReady: expect.any(Function), light: expect.any(Boolean) }),
     );
     // the context that only asked whether WebGL is there is let go
@@ -118,9 +118,9 @@ describe('the hero', () => {
     expect(made.setProgress).toHaveBeenCalled();
     // nothing stands in while it loads, and the canvas shows once its first frame is drawn
     expect(host.querySelector('.sticky [data-ui="joint-still"]')).toBeNull();
-    expect(find(host, 'canvas').className).toContain('opacity-0');
+    expect(find(host, '#stage canvas').className).toContain('opacity-0');
     await act(async () => scene.create.mock.calls[0]?.[1]?.onReady?.());
-    expect(find(host, 'canvas').className).toContain('opacity-100');
+    expect(find(host, '#stage canvas').className).toContain('opacity-100');
   });
 
   it('draws no 3D at all with reduced motion: the still, seated, beside the copy', async () => {
@@ -580,46 +580,29 @@ describe('the closing', () => {
     expect(closing.textContent).toContain(en.landing.closing.status['invalid-email']);
   });
 
-  it('shows the joint drawn in ink, coming together, and no photograph (CLOSING-INK)', async () => {
+  it('sets the joint behind its heading, with no frame, the words on top (CLOSING-INK, Oct 6)', async () => {
     browser();
     const host = await landing();
     const closing = find(host, '#updates');
-    expect(closing.querySelector('img, figure, figcaption')).toBeNull();
-    const drawing = find(closing, 'svg[data-ui="closing-drawing"]');
-    expect(drawing.getAttribute('role')).toBe('img');
-    expect(drawing.getAttribute('aria-label')).toBe(en.landing.closing.drawingAlt);
-    // the three pieces, the guides that show how they meet, and nothing raster
-    for (const part of ['rail', 'post', 'nose', 'pin', 'guides'])
-      expect(drawing.querySelector(`[data-part="${part}"]`), part).not.toBeNull();
-    expect(drawing.querySelector('image, foreignObject')).toBeNull();
-    // happy-dom has no IntersectionObserver: the drawing stays exploded, the guides shown
-    expect(drawing.getAttribute('data-state')).toBe('apart');
+    expect(closing.querySelector('img, figure, figcaption, [data-ui="subscribe-art"]')).toBeNull();
+    const track = find(closing, '[data-ui="closing-track"]');
+    const canvas = find(track, 'canvas[data-ui="closing-canvas"]');
+    const words = find(track, '[data-ui="closing-words"]');
+    // the heading is in the words, which come after the drawing and stand above it
+    expect(words.querySelector('h2')?.textContent).toBe(en.landing.closing.title);
+    expect(canvas.className).toContain('z-0');
+    expect(canvas.className).toContain('pointer-events-none');
+    expect(words.className).toContain('z-10');
+    expect(canvas.compareDocumentPosition(words) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // a short hold: two screens of track, one of them sticky
+    expect(track.className).toContain('h-[200svh]');
+    expect(find(track, '.sticky').className).toContain('h-svh');
+    // the field is below the stage, outside it
+    expect(track.querySelector('input[type="email"]')).toBeNull();
+    expect(closing.querySelector('input[type="email"]')).not.toBeNull();
   });
 
-  it('stands assembled and still with reduced motion, by CSS before any script', async () => {
-    browser({ reduce: true });
-    vi.stubGlobal(
-      'IntersectionObserver',
-      class {
-        observe() {}
-        disconnect() {}
-      },
-    );
-    const host = await landing();
-    const drawing = find(host, 'svg[data-ui="closing-drawing"]');
-    expect(drawing.getAttribute('data-state')).toBe('still');
-    for (const part of ['rail', 'nose', 'pin']) {
-      const cls = find(drawing, `[data-part="${part}"]`).getAttribute('class') ?? '';
-      expect(cls, part).toContain('motion-reduce:!translate-none');
-      expect(cls, part).toContain('motion-reduce:transition-none');
-    }
-    expect(find(drawing, '[data-part="guides"]').getAttribute('class')).toContain(
-      'motion-reduce:opacity-0',
-    );
-    vi.unstubAllGlobals();
-  });
-
-  it('closes together once when it comes into view, where motion is welcome', async () => {
+  it('stands the ink drawing, assembled and still, where there is no WebGL', async () => {
     const seen: ((entries: { isIntersecting: boolean }[]) => void)[] = [];
     vi.stubGlobal(
       'IntersectionObserver',
@@ -631,18 +614,89 @@ describe('the closing', () => {
         disconnect() {}
       },
     );
-    browser();
+    browser({ webgl: false });
     const host = await landing();
-    const drawing = find(host, 'svg[data-ui="closing-drawing"]');
-    const rail = () =>
-      (find(drawing, '[data-part="rail"]') as unknown as SVGElement).style.translate;
-    expect(drawing.getAttribute('data-state')).toBe('apart');
-    expect(rail()).not.toBe('');
     await act(async () => {
       for (const cb of seen) cb([{ isIntersecting: true }]);
     });
-    expect(drawing.getAttribute('data-state')).toBe('in');
-    expect(rail()).toBe('');
+    await settle(10);
+    const track = find(host, '[data-ui="closing-track"]');
+    expect(track.getAttribute('data-mode')).toBe('still');
+    const drawing = find(track, 'svg[data-ui="closing-drawing"]');
+    expect(drawing.getAttribute('data-state')).toBe('still');
+    expect(drawing.getAttribute('aria-label')).toBe(en.landing.closing.drawingAlt);
+    for (const part of ['rail', 'post', 'nose', 'pin'])
+      expect(find(drawing, `[data-part="${part}"]`)).toBeTruthy();
+    // the canvas is not named while it draws nothing
+    expect(find(track, 'canvas').getAttribute('aria-hidden')).toBe('true');
+    const stages = scene.create.mock.calls.filter(([, o]) => (o as { stage?: unknown })?.stage);
+    expect(stages).toHaveLength(0);
+    vi.unstubAllGlobals();
+  });
+
+  it('holds nothing and moves nothing with reduced motion: the drawing, assembled', async () => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    browser({ reduce: true, webgl: true });
+    const host = await landing();
+    await settle(10);
+    const track = find(host, '[data-ui="closing-track"]');
+    expect(track.className).toContain('motion-reduce:h-svh');
+    expect(find(track, 'svg[data-ui="closing-drawing"]').getAttribute('data-state')).toBe('still');
+    const stages = scene.create.mock.calls.filter(([, o]) => (o as { stage?: unknown })?.stage);
+    expect(stages).toHaveLength(0);
+    vi.unstubAllGlobals();
+  });
+
+  it('makes one canvas only when the section comes near, and pauses it while it is away', async () => {
+    const observers: { cb: (e: { isIntersecting: boolean }[]) => void; els: Element[] }[] = [];
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        els: Element[] = [];
+        constructor(cb: (e: { isIntersecting: boolean }[]) => void) {
+          observers.push({ cb, els: this.els });
+        }
+        observe(el: Element) {
+          this.els.push(el);
+        }
+        disconnect() {}
+      },
+    );
+    browser({ webgl: true });
+    const host = await landing();
+    await settle(10);
+    const track = find(host, '[data-ui="closing-track"]');
+    const mine = observers.find((o) => o.els.includes(track));
+    expect(mine).toBeTruthy();
+    const closingScenes = () =>
+      scene.create.mock.calls
+        .map((call, i) => ({ options: call[1] as { stage?: unknown }, i }))
+        .filter(({ options }) => options?.stage);
+    // far away: nothing loaded
+    expect(closingScenes()).toHaveLength(0);
+    await act(async () => mine?.cb([{ isIntersecting: true }]));
+    await settle(10);
+    expect(closingScenes()).toHaveLength(1);
+    const made = scene.create.mock.results[closingScenes()[0]?.i ?? 0]?.value as {
+      setVisible: ReturnType<typeof vi.fn>;
+      setProgress: ReturnType<typeof vi.fn>;
+    };
+    expect(made.setProgress).toHaveBeenCalled();
+    // it is drawn on the closing's own canvas
+    expect(scene.create.mock.calls[closingScenes()[0]?.i ?? 0]?.[0]).toBe(find(track, 'canvas'));
+    // out of sight: paused; back: drawn again, and still only the one canvas
+    await act(async () => mine?.cb([{ isIntersecting: false }]));
+    expect(made.setVisible).toHaveBeenLastCalledWith(false);
+    await act(async () => mine?.cb([{ isIntersecting: true }]));
+    expect(made.setVisible).toHaveBeenLastCalledWith(true);
+    expect(closingScenes()).toHaveLength(1);
+    expect(track.querySelectorAll('canvas')).toHaveLength(1);
     vi.unstubAllGlobals();
   });
 });
