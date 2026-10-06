@@ -61,6 +61,9 @@ function TermChart({ amountUsd, card, yieldObs, months }: ChartProps & { months:
       currency: 'USD',
       maximumFractionDigits: 0,
     }).format(usd);
+  // a short plan's ends can round to the same dollars: then they are told to the cent
+  const cents = (usd: number) =>
+    new Intl.NumberFormat(LOCALE[lang], { style: 'currency', currency: 'USD' }).format(usd);
   const percent = (pct: number) =>
     new Intl.NumberFormat(LOCALE[lang], { style: 'percent', maximumFractionDigits: 2 }).format(
       pct / 100,
@@ -90,7 +93,32 @@ function TermChart({ amountUsd, card, yieldObs, months }: ChartProps & { months:
   const max = Math.max(high, amountUsd * 1.01) * 1.01;
   const y = (v: number) =>
     TOP + (H - TOP - BOTTOM) - ((v - min) / (max - min)) * (H - TOP - BOTTOM);
-  const grid = [amountUsd, (amountUsd + high) / 2, high];
+  // a tick per label: two values that round to the same dollars are one tick, not two stacked labels
+  const grid = [
+    ...new Map([amountUsd, (amountUsd + high) / 2, high].map((v) => [money(v), v])).values(),
+  ];
+
+  // A plan this short, or whose projection moves less than 1% of what goes in, would draw a flat line:
+  // one sentence says what it comes to instead, on the same pin.
+  if (card.cashFlow !== 'monthly' && (months < 6 || high - amountUsd < amountUsd * 0.01))
+    return (
+      <figure data-ui="plan-chart" data-kind="short" className="m-0 flex flex-col gap-2">
+        <figcaption className="flex flex-wrap items-baseline gap-x-2 text-body">
+          <span>{t.plan.short(t.goal.card.months(months))}</span>
+          <ProvenancePin
+            value={
+              money(low) === money(high)
+                ? t.plan.shortRange(cents(low), cents(high))
+                : t.plan.shortRange(money(low), money(high))
+            }
+            obs={yieldObs}
+            labels={t.pin}
+          />
+          <span className="text-caption text-muted-foreground">{words.projected}</span>
+        </figcaption>
+        <p className="text-caption text-muted-foreground">{words.note}</p>
+      </figure>
+    );
 
   // An income plan pays its yield out each month, so its balance does not grow: there is no balance
   // to draw. What it pays over the term is said instead, on the same pin.

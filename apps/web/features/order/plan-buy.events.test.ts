@@ -150,10 +150,13 @@ describe('the plan screen', () => {
     const chips = find(host, `ul[aria-label="${en.plan.chips.label}"]`).textContent;
     expect(chips).toContain('amount: $40,000');
     expect(chips).toContain('chain: Solana');
-    expect(host.querySelectorAll('[data-ui="stat"]')).toHaveLength(4);
+    // the bad fall is a sentence, not a bare figure with "estimate" beside it
+    expect(host.querySelectorAll('[data-ui="stat"]')).toHaveLength(3);
+    expect(find(host, '[data-ui="plan-bad-fall"]').textContent).toMatch(/^In a bad fall: /);
+    // each asset by its name, never its id
     const legs = find(host, '[data-ui="plan-legs"]').textContent;
-    expect(legs).toContain('spyx');
-    expect(legs).not.toContain('solana:');
+    expect(legs).toContain('SPYx');
+    expect(legs).not.toMatch(/solana:|spyx/);
     expect(legs).toContain('Gold steadies the plan.');
     // the projected range carries its pin, and the exit cost its own
     expect(host.querySelectorAll('[data-ui="pin"]').length).toBeGreaterThanOrEqual(2);

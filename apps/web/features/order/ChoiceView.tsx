@@ -17,8 +17,9 @@ import { type Dictionary, type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { planProvenance } from '../goal/build-plan';
 import { dollars } from '../goal/sheet';
-import { assetName, formatBps } from './amounts';
+import { formatBps } from './amounts';
 import { observed } from './observed';
+import { displayName, planSummary } from './plain';
 import type { StoredPlan } from './plan-store';
 
 // The plans one goal built, side by side (gate THREE-PLANS; DESIGN-VAULT section 7): always in the
@@ -71,7 +72,14 @@ export function ChoiceView({
 
       <div className={`grid items-start gap-6 ${columns}`}>
         {plans.map((plan) => (
-          <Candidate key={plan.id} plan={plan} name={nameOf(plan)} words={words} lang={lang} />
+          <Candidate
+            key={plan.id}
+            plan={plan}
+            name={nameOf(plan)}
+            words={words}
+            lang={lang}
+            chainName={t.chain.names[chain]}
+          />
         ))}
       </div>
 
@@ -148,11 +156,13 @@ function Candidate({
   name,
   words,
   lang,
+  chainName,
 }: {
   plan: StoredPlan;
   name: string;
   words: Words;
   lang: Lang;
+  chainName: string;
 }) {
   const t = useT();
   const titleId = useId();
@@ -164,56 +174,104 @@ function Candidate({
   const exitObs = observed(proposal.observations, 'liquidity');
   if (!candidate) return null;
   const { scorecard, status } = candidate;
+  const currency = currencyOf(proposal.sheet);
+  const held = proposal.lines.filter((l) => l.amountUsd > 0);
+  const nameOf = (assetId: string) => displayName(assetId, t.plan);
+  // The worst case in plain words: with withdrawals, the stress that pays the fewest months; with
+  // none, what a bad fall would cost.
+  const all = scorecard.base?.monthsWithWithdrawal ?? 0;
+  const worst = [...scorecard.stresses].sort((a, b) => a.monthsPaid - b.monthsPaid)[0];
+  const h = words.headline;
   return (
-    <Card
-      as="section"
-      aria-labelledby={titleId}
-      data-candidate={candidate.name}
-      mock={label !== 'live'}
-      mockLabels={{
-        announce: t.shell.mockAnnounce,
-        note: label === 'sandbox' ? t.shell.testNetwork : undefined,
-      }}
-    >
+    <Card as="section" aria-labelledby={titleId} data-candidate={candidate.name}>
       <CardHeader title={name} level={2} id={titleId} />
-      <CardBody className="clear-both flex flex-col gap-5">
-        <p className="text-body-sm text-muted-foreground">{words.aims[candidate.name]}</p>
-        {status && (
-          <Withdrawals
-            status={status}
-            words={words}
-            lang={lang}
-            currency={currencyOf(proposal.sheet)}
-            share={share}
-          />
+      <CardBody className="flex flex-col gap-4">
+        {/* A plan not live says so once, quietly, for the whole card (no plate on it). */}
+        {label !== 'live' && (
+          <p data-ui="sample-line" className="font-mono text-source text-muted-foreground">
+            {label === 'sandbox' ? words.sample.sandbox : words.sample.mock}
+          </p>
         )}
-        <Score
-          scorecard={scorecard}
-          status={status}
-          words={words}
-          lang={lang}
-          currency={currencyOf(proposal.sheet)}
-          share={share}
-          yieldObs={yieldObs}
-          exitObs={exitObs}
-          pinLabels={t.pin}
-        />
-        <div className="flex flex-col gap-2">
-          <h3 className="text-[0.8125rem]/5 font-medium">{t.plan.holds}</h3>
-          <ul className="flex flex-col text-body-sm">
-            {proposal.lines.map((line) => (
-              <li
-                key={`${line.assetId}:${line.viaIndex ?? ''}`}
-                className="flex justify-between gap-4 border-b border-border py-1.5 last:border-b-0"
-              >
-                <span className="min-w-0 break-words">{assetName(line.assetId)}</span>
-                <span className="tabular-nums">
-                  {share(line.weightBps)} · {dollars(line.amountUsd, lang)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <p data-ui="candidate-summary" className="text-body">
+          {planSummary(proposal, t, lang, chainName)}
+        </p>
+        <p className="text-body-sm text-muted-foreground">{words.aims[candidate.name]}</p>
+        <dl data-ui="candidate-headline" className="flex flex-col text-body-sm">
+          <div className="flex items-start justify-between gap-4 border-b border-border py-1.5">
+            <dt className="text-muted-foreground">{h.holds}</dt>
+            <dd className="text-right">{h.parts(held.length)}</dd>
+          </div>
+          {scorecard.base && (
+            <div className="flex items-start justify-between gap-4 border-b border-border py-1.5">
+              <dt className="text-muted-foreground">{h.paid}</dt>
+              <dd className="text-right tabular-nums">
+                <ProvenancePin
+                  value={words.score.of(scorecard.base.monthsPaid, all)}
+                  obs={yieldObs}
+                  labels={t.pin}
+                />
+              </dd>
+            </div>
+          )}
+          <div className="flex items-start justify-between gap-4 py-1.5">
+            <dt className="text-muted-foreground">{h.worst}</dt>
+            <dd className="text-right">
+              {worst && scorecard.base
+                ? h.worstMonths(
+                    stressWords(worst.id, status, words, currency, share),
+                    worst.monthsPaid,
+                    all,
+                  )
+                : proposal.card.expectedReturn.lossInFallUsd > 0
+                  ? h.fall(dollars(proposal.card.expectedReturn.lossInFallUsd, lang))
+                  : h.noFall}
+            </dd>
+          </div>
+        </dl>
+        {/* Everything it is compared on, closed until asked for. */}
+        <details data-ui="candidate-details" className="border-t border-border pt-3">
+          <summary className="cursor-pointer text-body-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+            {t.plan.details}
+          </summary>
+          <div className="mt-4 flex flex-col gap-5">
+            {status && (
+              <Withdrawals
+                status={status}
+                words={words}
+                lang={lang}
+                currency={currency}
+                share={share}
+              />
+            )}
+            <Score
+              scorecard={scorecard}
+              status={status}
+              words={words}
+              lang={lang}
+              currency={currency}
+              share={share}
+              yieldObs={yieldObs}
+              exitObs={exitObs}
+              pinLabels={t.pin}
+            />
+            <div className="flex flex-col gap-2">
+              <h3 className="text-[0.8125rem]/5 font-medium">{t.plan.holds}</h3>
+              <ul className="flex flex-col text-body-sm">
+                {held.map((line) => (
+                  <li
+                    key={`${line.assetId}:${line.viaIndex ?? ''}`}
+                    className="flex justify-between gap-4 border-b border-border py-1.5 last:border-b-0"
+                  >
+                    <span className="min-w-0 break-words">{nameOf(line.assetId)}</span>
+                    <span className="tabular-nums">
+                      {share(line.weightBps)} · {dollars(line.amountUsd, lang)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </details>
         <Link
           href={`/plan/${encodeURIComponent(plan.id)}`}
           className={buttonClass({ variant: 'link' })}

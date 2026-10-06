@@ -261,19 +261,15 @@ export function IntakeCard({
   const w = words.withdrawals;
   return (
     <div id={id} data-ui="intake" className="scroll-mt-6">
-      <Card
-        as="section"
-        aria-labelledby={titleId}
-        // A reply made up for a test is said to be one: the plate, as on any figure not live.
-        mock={reader.provenance === 'mock'}
-        mockLabels={{ announce: t.shell.mockAnnounce }}
-      >
+      <Card as="section" aria-labelledby={titleId}>
         <CardHeader title={words.title} level={2} id={titleId} />
         <CardBody className="clear-both flex flex-col gap-6">
           <p data-ui="intake-source" className="font-mono text-source text-muted-foreground">
             {reader.method === 'model' && reader.model
               ? words.readBy.model(reader.model)
               : words.readBy.rules}
+            {/* a reply made up for a test says so once, quietly, beside what read it: no plate */}
+            {reader.provenance === 'mock' && ` · ${words.sampleReply}`}
           </p>
           <div className="flex flex-col gap-1">
             <h3 className="text-caption text-muted-foreground">{words.said}</h3>

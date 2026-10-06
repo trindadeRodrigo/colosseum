@@ -283,7 +283,7 @@ describe('the intake: read, ask, answer', () => {
     expect(server.to(PERSONALIZE_PATH)).toEqual([]);
   });
 
-  it('says a reply made up for a test is one: the plate on the reading', async () => {
+  it('says a reply made up for a test is one, quietly, beside what read it', async () => {
     api({
       person: onSolana,
       intake: () => json(intakeAsking({ method: 'model', provenance: 'mock' })),
@@ -292,9 +292,10 @@ describe('the intake: read, ask, answer', () => {
     const host = await screen();
     await read(host);
     const card = intake(host) as HTMLElement;
-    expect(card.querySelectorAll('.tf-mock-plate')).toHaveLength(1);
+    // said once, quietly, beside what read it: no plate
+    expect(card.querySelectorAll('.tf-mock-plate, [data-ui="mock-plate"]')).toHaveLength(0);
     expect(find(card, '[data-ui="intake-source"]').textContent).toBe(
-      en.goal.intake.readBy.model('claude-haiku-4-5'),
+      `${en.goal.intake.readBy.model('claude-haiku-4-5')} · ${en.goal.intake.sampleReply}`,
     );
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
