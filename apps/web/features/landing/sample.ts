@@ -21,7 +21,6 @@ export const TICKERS = { cash: 'USDC', stocks: 'SPYx, QQQx' } as const;
 export type SampleLeg = { weightBps: number; chart: 1 | 2 | 3 | 4 };
 
 export const TRIP = {
-  photo: { src: '/landing/photo-trip.jpg', width: 200, height: 133 },
   legs: [
     { weightBps: 1500, chart: 1 },
     { weightBps: 5500, chart: 2 },
@@ -29,6 +28,8 @@ export const TRIP = {
   ] satisfies SampleLeg[],
   /** What the person puts in each month, in dollars. */
   saveUsd: 106,
+  /** What each of the three trip months pays out, in dollars. */
+  payoutUsd: 1000,
   months: 27,
   /** Dollars earned on top of what was put in, by the trip. */
   earnedUsd: 127,
@@ -45,7 +46,6 @@ export const TRIP = {
 } as const;
 
 export const GROWTH = {
-  photo: { src: '/landing/photo-ridge.jpg', width: 200, height: 133 },
   legs: [
     { weightBps: 2500, chart: 1 },
     { weightBps: 2000, chart: 2 },

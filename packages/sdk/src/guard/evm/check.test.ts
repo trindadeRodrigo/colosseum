@@ -28,10 +28,11 @@ import {
 } from '../../../test/evm';
 import vectors from '../../../test/fixtures/evm-vectors.json';
 import { withRules } from '../../../test/rules';
+import { deploymentsOf } from '../deployment';
 import { guardTransaction, isGuarded } from '../index';
 import type { GuardCheck } from '../refusal';
 import { runGuard } from '../run';
-import type { ApprovedStep, GuardInput } from '../types';
+import type { ApprovedStep, EvmDeployment, GuardInput, Loaded } from '../types';
 import { evmVaultAddress } from './addresses';
 
 vi.mock('../rules', () => import('../../../test/rules'));
@@ -216,6 +217,87 @@ describe('the guard on EVM: an honest call passes', () => {
         ),
       ),
     ).toBeNull();
+  });
+});
+
+describe('the guard on EVM: the committed test network entry of Robinhood Chain (46630)', () => {
+  // The bytes a buy on the web sends, built against packages/sdk/deployments/testnet.json as committed,
+  // with no copy of the chain: the approval of the deposit to the plan's vault, then the create that buys.
+  const rh = deploymentsOf('testnet').robinhood as Loaded<EvmDeployment>;
+  const token = (asset: string) => rh.assets[asset]?.token ?? '';
+  const vault = evmVaultAddress(rh, OWNER, BASKET_ID);
+  const deposit = '10000000';
+  const trade = {
+    sell: 'robinhood:tusdg',
+    buy: 'robinhood:tspy',
+    inRaw: '6000000',
+    minOutRaw: '9900000000000000',
+  };
+  const approve: Step<'approve'> = { ...base, kind: 'approve', amountRaw: deposit };
+  const create: Step<'create_vault'> = {
+    ...base,
+    kind: 'create_vault',
+    targets: [
+      { asset: 'robinhood:tspy', weightBps: 6000 },
+      { asset: 'robinhood:tgld', weightBps: 3500 },
+    ],
+    follow: null,
+    autoFollow: false,
+    depositRaw: deposit,
+    trades: [trade],
+  };
+  const createData = calls.createVaultAndBuy({
+    targets: create.targets
+      .map((t) => [token(t.asset), BigInt(t.weightBps)] as [string, bigint])
+      .sort(([a], [b]) => (a < b ? -1 : 1)),
+    cash: deposit,
+    swaps: [
+      swapOf(trade, {
+        router: rh.routers[0],
+        tokenIn: token(trade.sell),
+        tokenOut: token(trade.buy),
+      }),
+    ],
+  });
+  const given = (step: ApprovedStep, c: EvmCallOf): GuardInput => ({
+    step,
+    tx: evmTx(step, c),
+    deployment: rh,
+    consents: [],
+  });
+
+  it('is the record of the deploy: chain 46630, its factory, router and cash', () => {
+    expect(rh.evmChainId).toBe(46630);
+    expect(rh.factory).toBe('0xa3309dc51b41e55fcd48b12377025cd2ba4d21a4');
+    expect(rh.routers).toEqual(['0xd290cfe0738e1ab9cea9dc138bbec024dc3bd127']);
+    expect(rh.cash).toBe('robinhood:tusdg');
+    expect(token('robinhood:tusdg')).toBe('0xd3d6e7bf284d922651983468b75492be4f3f689a');
+  });
+
+  it('passes the approval of the deposit to the plan’s vault, and the create that buys', () => {
+    const cases: [ApprovedStep, EvmCallOf][] = [
+      [approve, { to: token('robinhood:tusdg'), data: calls.approve(vault, BigInt(deposit)) }],
+      [create, { to: rh.factory, data: createData }],
+    ];
+    for (const [step, c] of cases) {
+      expect(
+        refusalOf(() => guardTransaction(given(step, c)))?.message ?? null,
+        step.kind,
+      ).toBeNull();
+      expect(isGuarded(guardTransaction(given(step, c)))).toBe(true);
+    }
+  });
+
+  it('refuses the same calls aimed anywhere but the committed addresses', () => {
+    // a vault derived from another factory, a create sent to another factory, a mainnet chain id
+    const elsewhere: [ApprovedStep, EvmCallOf][] = [
+      [approve, { to: token('robinhood:tusdg'), data: calls.approve(VAULT, BigInt(deposit)) }],
+      [create, { to: FACTORY, data: createData }],
+      [create, { to: rh.factory, data: createData, chainId: 4663 }],
+    ];
+    expect(
+      elsewhere.map(([step, c]) => refusalOf(() => guardTransaction(given(step, c)))?.code),
+    ).toEqual(['spender', 'target', 'network']);
   });
 });
 

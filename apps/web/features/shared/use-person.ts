@@ -24,6 +24,8 @@ export type SharedPerson =
       signable: boolean;
       /** Our server has the chain switched off. */
       off: boolean;
+      /** A portfolio can be published from here: Solana only, until the guard signs an EVM publish (AGT-4). */
+      publishable: boolean;
     };
 
 export function useSharedPerson(): SharedPerson {
@@ -43,6 +45,7 @@ export function useSharedPerson(): SharedPerson {
     mock,
     signable: chainReady(chain, mock),
     off: port.network(chain)?.on === false,
+    publishable: chainFamily(chain) === 'solana',
   };
 }
 

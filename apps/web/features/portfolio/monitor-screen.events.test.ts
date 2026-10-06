@@ -569,8 +569,9 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     const activity = find(host, '[data-ui="activity-panel"]');
     const lines = [...activity.querySelectorAll('[data-ui="execution-list"] li')];
     expect(lines.length).toBe(doneOrder().legs.length);
+    // each link from this app's own chain table, devnet's explorer, whatever the API sent
     for (const line of lines)
-      expect(line.querySelector('a[href^="https://explorer.example/tx/"]')).not.toBeNull();
+      expect(line.querySelector('a[href^="https://solscan.io/tx/"]')).not.toBeNull();
     expect(find(activity, '[data-ui="disclaimer"] p[lang]').textContent).toBe(DISCLAIMER.en);
   });
 });

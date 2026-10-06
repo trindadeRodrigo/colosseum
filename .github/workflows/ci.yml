@@ -38,3 +38,6 @@ jobs:
       - run: pnpm --filter @colosseum/web exec playwright install --with-deps chromium
       - run: pnpm --filter @colosseum/web e2e
         env: { CI: '1' }
+      # The stub's mock as Robinhood Chain: an approval, then a create that buys (buy-robinhood.spec.ts).
+      - run: pnpm --filter @colosseum/web e2e e2e/buy-robinhood.spec.ts
+        env: { CI: '1', E2E_CHAIN: robinhood }

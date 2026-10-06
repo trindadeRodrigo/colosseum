@@ -81,11 +81,16 @@ function reach(roots: readonly string[]): { files: Set<string>; packages: Map<st
 const isRoute = (file: string) =>
   /^app\/(.+\/)?(page|layout|route|template|loading|error|not-found|default)\.[jt]sx?$/.test(file);
 const routes = shipped.filter(isRoute);
-// His landing page (app/(marketing)) is held to the same rules as the product: it ships to the same
-// people, and must reach no wallet library and no signing member either.
+// His landing page (app/(marketing)) and the partner embed (app/(embed)) are held to the same rules as
+// the product: they ship to the same people, and must reach no wallet library and no signing member
+// either.
 const product = routes.filter(
-  (file) => file.startsWith('app/(app)/') || file.startsWith('app/(marketing)/'),
+  (file) =>
+    file.startsWith('app/(app)/') ||
+    file.startsWith('app/(marketing)/') ||
+    file.startsWith('app/(embed)/'),
 );
+const embed = routes.filter((file) => file.startsWith('app/(embed)/'));
 const older = routes.filter((file) => file.startsWith('app/(structurer)/'));
 
 describe('the routes of the app', () => {
@@ -107,20 +112,53 @@ describe('the routes of the app', () => {
       'app/(app)/shelf/page.tsx',
       'app/(app)/sign-in/page.tsx',
       'app/(app)/vaults/[chain]/[address]/page.tsx',
+      'app/(embed)/embed/[chain]/[address]/page.tsx',
+      'app/(embed)/embed/page.tsx',
+      'app/(embed)/layout.tsx',
       'app/(marketing)/layout.tsx',
       'app/(marketing)/page.tsx',
     ]);
     expect(older.sort()).toEqual([
       // an address no route answers: 404 inside this group's layout, as before there were two
       'app/(structurer)/[...missing]/page.tsx',
-      'app/(structurer)/embed/[id]/layout.tsx',
-      'app/(structurer)/embed/[id]/page.tsx',
       'app/(structurer)/layout.tsx',
       'app/(structurer)/plans/[id]/page.tsx',
     ]);
     // every route is in one group or the other: there is no layout above the two
     expect(routes.filter((file) => !product.includes(file) && !older.includes(file))).toEqual([]);
     expect(files).not.toContain('app/layout.tsx');
+  });
+
+  it('give the partner embed a bare root that reaches no wallet, no bar and no font of ours', () => {
+    const built = reach(embed);
+    const reached = [...built.files];
+    // embed-shell.md: no Nav, no wallet, no providers, no brand faces
+    expect(reached.filter((file) => file.startsWith('features/wallet/'))).toEqual([
+      // the API's address check, a plain function
+      'features/wallet/api-url.ts',
+    ]);
+    for (const file of [
+      'components/shell/AppNav.tsx',
+      'components/shell/AppDocument.tsx',
+      'components/ui/CompactNav.tsx',
+      'features/account/AccountProvider.tsx',
+      'app/fonts.ts',
+      'app/fonts-mono.ts',
+    ])
+      expect(reached, file).not.toContain(file);
+    expect([...built.packages.keys()].sort()).toEqual([
+      '@colosseum/schemas',
+      'next/headers',
+      'next/navigation',
+      'react',
+    ]);
+  });
+
+  it('bites: the product’s own layout does reach the bar, the wallet and the faces', () => {
+    const theirs = [...reach(product.filter((f) => f === 'app/(app)/layout.tsx')).files];
+    expect(theirs).toContain('components/shell/AppNav.tsx');
+    expect(theirs).toContain('app/fonts.ts');
+    expect(theirs.some((file) => file.startsWith('features/wallet/'))).toBe(true);
   });
 });
 
@@ -333,8 +371,13 @@ describe('rule 3: no screen can reach a key', () => {
     'next/navigation',
     'react',
     // the landing's 3D joint (features/landing/joint-scene.ts): a renderer, with no network, storage or
-    // wallet of its own; loaded only by the landing page, after its first paint
+    // wallet of its own; loaded only by the landing page, after its first paint. Its drawing takes
+    // three's own line and geometry helpers, which are part of the same package.
     'three',
+    'three/examples/jsm/lines/LineMaterial.js',
+    'three/examples/jsm/lines/LineSegments2.js',
+    'three/examples/jsm/lines/LineSegmentsGeometry.js',
+    'three/examples/jsm/utils/BufferGeometryUtils.js',
   ];
 
   /**

@@ -32,7 +32,11 @@ export default defineConfig({
     {
       command: 'pnpm exec tsx ../../tests/e2e/stub-api.ts',
       url: `http://localhost:${API}/v1/config`,
-      env: { STUB_API_PORT: String(API), WEB_ORIGIN: `http://localhost:${WEB}` },
+      env: {
+        STUB_API_PORT: String(API),
+        WEB_ORIGIN: `http://localhost:${WEB}`,
+        STUB_CHAIN: process.env.E2E_CHAIN ?? 'solana',
+      },
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
     },

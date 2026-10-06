@@ -3,13 +3,22 @@ import { DISCLAIMER, DISCLAIMER_SHORT, TRUST_STATUS } from '@colosseum/schemas';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buttonClass } from '../../components/ui/button-class';
-import { click, find, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
+import {
+  click,
+  find,
+  fire,
+  mount,
+  press,
+  settle,
+  type,
+  unmountAll,
+} from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
-import { EMBEDDED, json, SOLANA, signedInPort } from '../wallet/test/fake-port';
+import { EMBEDDED, EVM, json, SOLANA, signedInPort } from '../wallet/test/fake-port';
 import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { BuyScreen } from './BuyScreen';
@@ -166,13 +175,86 @@ describe('the plan screen', () => {
     expect(next?.getAttribute('href')).toBe(`/plan/${PLAN_ID}/buy`);
   });
 
+  it('reads a month of the chart out under a crosshair: the keyboard, a mouse, a finger, and its legend', async () => {
+    api();
+    rememberPlan(planOn());
+    const chart = find(await plan(), '[data-ui="plan-chart"]');
+    const plot = find(chart, '[data-ui="case-plot"]');
+    const readout = () => find(chart, '[data-ui="chart-readout"]');
+    expect(plot.getAttribute('tabindex')).toBe('0');
+    expect(readout().getAttribute('aria-live')).toBe('polite');
+    expect(readout().textContent).toBe(en.plan.chart.hint);
+    // $40,000 for 36 months at 1% to 2% a year
+    await press(plot, 'End');
+    expect(readout().textContent).toContain(en.plan.chart.month(36));
+    expect(readout().textContent).toContain(`${en.plan.chart.high}$42,400`);
+    expect(readout().textContent).toContain(`${en.plan.chart.low}$41,200`);
+    // each figure on the plan's own yield pin, as the figure under the chart
+    const pins = [...readout().querySelectorAll('[data-ui="figure"]')];
+    const under = find(chart, 'figcaption [data-ui="figure"]');
+    expect(pins.map((p) => p.getAttribute('data-state'))).toEqual([
+      under.getAttribute('data-state'),
+      under.getAttribute('data-state'),
+    ]);
+    await press(plot, 'Home');
+    expect(readout().textContent).toContain(en.plan.chart.month(0));
+    await press(plot, 'ArrowRight');
+    expect(readout().textContent).toContain(`${en.plan.chart.month(1)}`);
+    await press(plot, 'Escape');
+    expect(readout().textContent).toBe(en.plan.chart.hint);
+    // a mouse half way along, 640 wide: month 18 of 36
+    plot.getBoundingClientRect = () =>
+      ({
+        left: 0,
+        top: 0,
+        width: 640,
+        height: 200,
+        right: 640,
+        bottom: 200,
+        x: 0,
+        y: 0,
+      }) as DOMRect;
+    const middle = 56 + (640 - 56 - 70) / 2;
+    await fire(
+      plot,
+      new PointerEvent('pointermove', {
+        clientX: middle,
+        clientY: 50,
+        pointerType: 'mouse',
+        bubbles: true,
+      }),
+    );
+    expect(readout().textContent).toContain(en.plan.chart.month(18));
+    expect(readout().textContent).toContain(`${en.plan.chart.high}$41,200`);
+    expect(readout().textContent).toContain(`${en.plan.chart.low}$40,600`);
+    // a finger taps
+    await fire(
+      plot,
+      new PointerEvent('pointerdown', {
+        clientX: 56,
+        clientY: 50,
+        pointerType: 'touch',
+        bubbles: true,
+      }),
+    );
+    expect(readout().textContent).toContain(en.plan.chart.month(0));
+    // the legend lights the line it names
+    const low = find(chart, '[data-ui="case-legend"] li[data-series="low"]');
+    await fire(
+      low,
+      new PointerEvent('pointerover', { bubbles: true, relatedTarget: document.body }),
+    );
+    expect(find(chart, 'g[data-series="high"]').getAttribute('opacity')).toBe('0.25');
+    expect(find(chart, 'g[data-series="low"]').getAttribute('opacity')).toBe('1');
+  });
+
   it('draws his chart from the plan’s own range, pinned to its yield, and none from a range with no source', async () => {
     api();
     rememberPlan(planOn());
     const sourced = await plan();
     const chart = find(sourced, '[data-ui="plan-chart"]');
     // $40,000 for 36 months at 1% to 2% a year: $41,200 to $42,400, and nothing else worked out
-    expect(chart.querySelector('svg')?.getAttribute('aria-label')).toBe(
+    expect(chart.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(
       en.plan.chart.label(36, '1%', '2%'),
     );
     const pin = find(chart, '[data-ui="figure"]');
@@ -186,7 +268,7 @@ describe('the plan screen', () => {
     rememberPlan(income);
     const paid = find(await plan(), '[data-ui="plan-chart"]');
     expect(paid.getAttribute('data-kind')).toBe('paid');
-    expect(paid.querySelector('svg[role="img"]')).toBeNull();
+    expect(paid.querySelector('[role="img"]')).toBeNull();
     expect(find(paid, '[data-ui="figure"]').textContent).toContain('$1,200 – $2,400');
     await unmountAll();
     for (const change of [
@@ -294,14 +376,14 @@ describe('the plan screen', () => {
     expect(primaryLink(host)).toBeUndefined();
   });
 
-  it('says plainly that Robinhood Chain is not ready, and offers no buy there', async () => {
+  it('offers the buy on Robinhood Chain, where its deployment is committed', async () => {
     api({ chain: 'robinhood' });
     rememberPlan(planOn('robinhood'));
     const host = await plan();
-    expect(primaryLink(host)).toBeUndefined();
-    const button = find(host, '[data-variant="primary"]');
-    expect(button.getAttribute('aria-disabled')).toBe('true');
-    expect(host.textContent).toContain(en.plan.chainNotReady('Robinhood Chain'));
+    expect(host.textContent).not.toContain(en.plan.chainNotReady('Robinhood Chain'));
+    const next = primaryLink(host);
+    expect(next?.textContent).toBe(en.plan.buy);
+    expect(next?.getAttribute('href')).toBe(`/plan/${PLAN_ID}/buy`);
   });
 });
 
@@ -383,6 +465,65 @@ describe('the buy screen', () => {
     expect(kept?.lines).toEqual(planOn().proposal.lines);
     expect(kept?.linked).toBeUndefined();
     expect(trustAccepted(USER, TRUST_STATUS.textVersion)).toBe(true);
+  });
+
+  it('on Robinhood Chain: reads the funding in tUSDG and ETH, and makes the order for the EVM wallet', async () => {
+    const server = api({
+      chain: 'robinhood',
+      funded: false,
+      say: (a) => ({
+        ...a,
+        chain: 'robinhood',
+        name: 'Robinhood Chain',
+        wallet: EVM,
+        cash: { ...a.cash, asset: 'robinhood:tusdg', symbol: 'tUSDG' },
+        gas: {
+          ...a.gas,
+          symbol: 'ETH',
+          decimals: 18,
+          haveRaw: '0',
+          needRaw: '24000000000000',
+          missingRaw: '24000000000000',
+        },
+      }),
+    });
+    rememberPlan(planOn('robinhood'));
+    const host = await buy();
+    expect(server.to('/v1/funding').at(-1)?.path).toBe(
+      `/v1/funding?amountUsd=40000&proposalId=${PLAN_ID}&wallet=${EVM}`,
+    );
+    expect(host.textContent).toContain(en.buy.funding.short('Robinhood Chain'));
+    expect(host.textContent).toContain('40,000 tUSDG');
+    expect(host.textContent).toContain('ETH');
+    expect(find(host, '[data-variant="primary"]').getAttribute('aria-disabled')).toBe('true');
+
+    await unmountAll();
+    const funded = api({
+      chain: 'robinhood',
+      order: () => json(orderOn('robinhood')),
+      say: (a) => ({
+        ...a,
+        chain: 'robinhood',
+        name: 'Robinhood Chain',
+        wallet: EVM,
+        cash: { ...a.cash, asset: 'robinhood:tusdg', symbol: 'tUSDG' },
+        gas: { ...a.gas, symbol: 'ETH', decimals: 18, needRaw: '24000000000000' },
+      }),
+    });
+    const ready = await buy();
+    await type(find<HTMLInputElement>(ready, 'input[inputmode="decimal"]'), '10');
+    await settle(350);
+    await click(find(ready, '[data-ui="trust-notice"] input[type="checkbox"]'));
+    // the trust notice names Robinhood Chain's admin and its keeper's limits
+    expect(find(ready, '[data-ui="trust-notice"]').textContent).toContain(
+      en.trust.admin(TRUST_STATUS.admin.robinhood as string),
+    );
+    await click(find(ready, '[data-variant="primary"]'));
+    await settle();
+    expect(funded.to('/v1/orders').map((c) => c.body)).toEqual([
+      { type: 'buy', owner: { evm: EVM }, amountUsd: 10, proposalId: PLAN_ID },
+    ]);
+    expect(router.push).toHaveBeenCalledWith(`/orders/${ORDER_ID}`);
   });
 
   it('says what the person can do when the order is refused, and goes nowhere', async () => {

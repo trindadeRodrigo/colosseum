@@ -506,6 +506,10 @@ export const en = {
       high: 'high end',
       note: 'Only what the dollar yield pays is projected. Prices of stocks and gold are not, and can fall.',
       table: 'The projection',
+      /** A month of the term, counted from the start, in the readout under the chart. */
+      month: (m: number) => (m === 1 ? 'month 1' : `month ${m}`),
+      hint: 'Point at the chart, tap it or use the arrow keys to read a month.',
+      series: 'What the chart draws',
     },
     exitPlan: 'Exit plan',
     costPrefix: 'cost',
@@ -1078,7 +1082,6 @@ export const en = {
       eyebrow: 'Two goals, two cuts',
       title: 'Same pieces. Different people. Different fit.',
       lead: 'What a plan looks like when it starts from a life, not a product list. Sample plans: every figure below is illustrative.',
-      photoCaption: 'placeholder photo · generated',
       sample: 'sample rates, not live',
       estimate: 'estimate',
       sampleUnit: 'sample',
@@ -1088,10 +1091,22 @@ export const en = {
       chartTable: 'The chart as a table',
       month: 'Month',
       balance: 'Balance',
+      /** The line under a chart that reads out the month under the crosshair. */
+      readout: {
+        hint: 'Point at the chart, tap it or use the arrow keys to read a month.',
+        series: 'What the chart draws',
+        putIn: 'put in',
+        paidOut: 'paid out',
+        base: 'base case',
+        range: 'weak to strong case',
+        weak: 'weak case',
+        strong: 'strong case',
+        goal: 'goal',
+      },
       exitPlan: 'Exit plan before investing',
       trip: {
         label: 'Example: a trip in 2029',
-        alt: 'A woman with a small backpack walks a coastal cliff trail at golden hour.',
+        alt: 'Mariana’s plan drawn as a joint, its parts stacked into one post, each as tall as its share.',
         who: (cash: string) => `Mariana · 31 · paid in ${cash}`,
         quote:
           'I want a savings plan I can reach any day, that pays me $1,000 a month during a three-month trip in 2029.',
@@ -1118,7 +1133,7 @@ export const en = {
       },
       growth: {
         label: 'Example: a growth goal with higher risk',
-        alt: 'A climber with a rope over his shoulder stands on a granite ridge above the clouds at sunrise.',
+        alt: 'Diego’s plan drawn as a joint, its parts stacked into one post, each as tall as its share.',
         who: 'Diego · 38 · crypto-native',
         quote:
           'Turn $20,000 into $35,000 by 2031 for a season in the mountains. I can live with a 25% drop along the way.',
@@ -1182,6 +1197,37 @@ export const en = {
       },
     },
     foot: 'The plans, rates and odds on this page are MOCK sample data. None of them is live.',
+  },
+
+  /** The partner embed (embed-shell.md): his words, in the partner's face. */
+  embed: {
+    label: 'Plan by tenonfi',
+    eyebrow: 'Your goal, read by tenonfi',
+    title: 'What does your money need to do?',
+    lead: 'Say it in a sentence. I read it into limits; the plan is built in tenonfi, on a wallet of your own.',
+    box: 'Your goal',
+    placeholder: '$10,000 for five years, medium risk',
+    read: 'Read my goal',
+    reading: 'Reading your goal…',
+    unread: 'Your goal, as read',
+    limits: 'How I read it',
+    notFound: 'not found: you set it in tenonfi',
+    build: 'Build this plan in tenonfi',
+    buildNote:
+      'Opens tenonfi in a new tab, where you sign in with a wallet of your own. Nothing is signed here.',
+    readFailure: 'I couldn’t read that just now. Your text is still here. Try again.',
+    tooShort: 'That’s too short for me to read. Try an amount and a time frame.',
+    poweredBy: 'Powered by',
+    loading: 'Loading plan…',
+    unavailable: 'This plan isn’t available.',
+    showSchedule: 'Show schedule',
+    vault: {
+      title: (chain: string) => `Your vault on ${chain}`,
+      lead: 'What it holds now, read from the chain.',
+      value: 'Value',
+      parts: 'Its parts',
+      see: 'See it in tenonfi',
+    },
   },
 };
 
