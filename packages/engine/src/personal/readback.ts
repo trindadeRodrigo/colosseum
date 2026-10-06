@@ -48,8 +48,9 @@ export function readBack(
   const say = (id: ReadBackId, params: Record<string, Value> = {}) =>
     render(READBACK_TEMPLATES[id][lang], params, lang);
   const nameOf = (slug: string) => portfolios.find((p) => p.slug === slug)?.name ?? slug;
+  // A label handed in with no name in this language is said as a slug with no label is: never a blank.
   const themeOf = (slug: string) =>
-    themes.labels?.find((l) => l.slug === slug)?.name[lang] ?? nameOf(slug);
+    themes.labels?.find((l) => l.slug === slug)?.name[lang] || nameOf(slug);
   const out: string[] = [];
 
   // A goal with no date is said as one: the months it is built over are a parameter, not the person's.
@@ -126,7 +127,7 @@ export function readBack(
         out.push(
           say('SLEEVE_MATCHED', {
             share: sleeve.shareBps,
-            matched: matchedName(filter.by, themes.matched?.[sleeve.theme] ?? filter.key, lang),
+            matched: matchedName(filter.by, themes.matched?.[sleeve.theme] || filter.key, lang),
           }),
         );
       else out.push(say('SLEEVE_THEME', { share: sleeve.shareBps, theme: themeOf(sleeve.theme) }));

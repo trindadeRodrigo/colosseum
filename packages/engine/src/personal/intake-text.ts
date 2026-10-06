@@ -789,12 +789,14 @@ export type MarketMention = {
 
 /**
  * Every place the text writes a narrative's words, in the order written. Where two readings share
- * words the longer is the one read ("AI infrastructure" is not also "AI"), and words inside one of the
- * names in `except` are not read: a shared portfolio's name ("Chips & Agents") names the portfolio.
- * Those are kept as `within`, so a caller can tell words that are not read from words not written.
+ * words the longer is the one read ("AI infrastructure" is not also "AI"), and words that are a part
+ * of one of the names in `except` are not read: "Chips" in a shared portfolio's name, "Chips &
+ * Agents", names the portfolio. A name that is no longer than the words leaves them read: a portfolio
+ * called "Big Tech" does not hide big tech. Words not read this way are kept as `within`, so a caller
+ * can tell them from words not written.
  */
 export function marketMentionsIn(text: string, except: readonly string[] = []): MarketMention[] {
-  const taken = except.flatMap((name) => phraseIn(text, name));
+  const names = except.flatMap((name) => phraseIn(text, name));
   const found = MARKETS.flatMap(([market, patterns], order) =>
     patterns.flatMap((pattern) =>
       [...text.matchAll(pattern)].map((m) => ({
@@ -806,10 +808,12 @@ export function marketMentionsIn(text: string, except: readonly string[] = []): 
       })),
     ),
   ).sort((a, b) => b.end - b.at - (a.end - a.at) || a.at - b.at || a.order - b.order);
-  const read: { at: number; end: number }[] = [...taken];
+  const read: { at: number; end: number }[] = [];
   const out: MarketMention[] = [];
   for (const { market, words, at, end } of found) {
-    const within = read.some((other) => other.at < end && at < other.end);
+    const within =
+      read.some((other) => other.at < end && at < other.end) ||
+      names.some((n) => n.at <= at && end <= n.end && n.end - n.at > end - at);
     if (!within) read.push({ at, end });
     out.push({ market, words, at, end, skipped: within ? 'within' : notAnAsk(text, at, end) });
   }

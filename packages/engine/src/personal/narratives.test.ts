@@ -309,6 +309,20 @@ describe('the words of a narrative, read by code', () => {
     );
     expect(offShelf.narratives).toEqual([]);
     expect(offShelf.flags).toContain('not_on_shelf:themes');
+    // A name that is the words themselves hides nothing: a portfolio called "Big Tech" is big tech
+    // still, and so is one whose name only shares a word with what is written.
+    expect(marketsIn('invest in Big Tech', ['Big Tech']).map((m) => m.market)).toEqual([
+      'big_tech',
+    ]);
+    expect(
+      marketsIn('invest in chip makers', ['Chips & Agents', 'Makers']).map((m) => m.market),
+    ).toEqual(['semiconductors']);
+    const named = intake('Invest $2,000 in semiconductors for 5 years', reply(), {
+      portfolios: [...portfolios, { slug: 'semis', name: 'Semiconductors' }],
+    });
+    expect(named.narratives.map((n) => [n.id, n.kind, n.slug])).toEqual([
+      ['semiconductors', 'label', 'semiconductors'],
+    ]);
   });
 
   it('finds words as written, case and spacing aside, as whole words', () => {
@@ -663,6 +677,20 @@ describe('a market the lists have no word for, named by the model as a filter (M
       ['semiconductors', 'label', 'semiconductors'],
     ]);
     expect(result.sheet?.sleeves).toEqual([theme('semiconductors')]);
+    // The same for the name of a shared portfolio: a filter never stands in for a portfolio the
+    // person named, whatever it would match.
+    const named = intake(
+      'Grow $2,000 over 5 years at high risk, starting from The Seven',
+      reply({
+        risk: 'high',
+        portfolios: ['The Seven'],
+        marketFilter: { by: 'industry', value: 'Software', words: 'The Seven' },
+      }),
+    );
+    expect(named.flags).toContain('market_covers:marketFilter');
+    expect(named.narratives).toEqual([]);
+    expect(named.sheet).toMatchObject({ themes: ['the-seven'] });
+    expect(named.sheet?.sleeves).toBeUndefined();
   });
 
   it('a filter under a negation is no ask', () => {
@@ -889,20 +917,65 @@ describe('the share of a theme, and the risk', () => {
     expect(withGold.sheet?.mix?.goldBps).toBe(2000);
   });
 
-  it('sums that come to more than the money, or one narrative with a share and one without: asked once', () => {
+  it('several themes whose shares are not all written: the split is asked once, never the risk', () => {
+    const SPLIT = {
+      field: 'sleeves',
+      template: 'sleeves',
+      text: 'How do you want to split the money: how much kept safe and easy to take out, and how much to seek a return?',
+    };
+    const r = reply({ markets: ['semiconductors', 'ai'] });
+    // Sums that come to more than the money.
     const over = intake(
       'I want to grow $2,000 over 5 years. Put $1,500 in semiconductors and $900 in AI',
-      reply({ markets: ['semiconductors', 'ai'] }),
+      r,
     );
-    expect(fields(over)).toEqual(['mix']);
+    expect(over.questions).toEqual([SPLIT]);
+    expect(over.flags).toContain('theme_shares_unclear');
     expect(over.sheet).toBeNull();
+    // One with the whole and one with no share.
     const half = intake(
       'I want to grow $2,000 over 5 years. Invest in semiconductors, and I like AI',
-      reply({ markets: ['semiconductors', 'ai'] }),
+      r,
     );
-    expect(half.questions).toEqual([
-      { field: 'mix', template: 'marketShare', text: 'How much of the $2,000 for AI?' },
+    expect(half.questions).toEqual([SPLIT]);
+    // None with a share. Only a split can say a share for each, so the split is what is asked: an
+    // answer of "how much in stocks" could not say whose it is.
+    const text = 'I want to grow $2,000 over 5 years. I like semiconductors and AI';
+    const none = intake(text, r);
+    expect(none.questions).toEqual([SPLIT]);
+    expect(none.narratives.map((n) => n.slug)).toEqual(['semiconductors', 'ai']);
+    // Answered on the form, as a split that names each theme.
+    const bySleeves = intake(text, r, {
+      answers: { sleeves: [theme('semiconductors', 3000), theme('ai', 3000), safe(4000)] },
+    });
+    expect(bySleeves.questions).toEqual([]);
+    expect(bySleeves.sheet?.sleeves).toEqual([
+      theme('semiconductors', 3000),
+      theme('ai', 3000),
+      safe(4000),
     ]);
+    expect(bySleeves.sheet?.risk).toBe('medium');
+    // Answered in the person's words, each with its sum.
+    const inWords = intake(
+      conversationText(text, ['put $600 in semiconductors and $400 in AI']),
+      r,
+    );
+    expect(inWords.questions).toEqual([]);
+    expect(inWords.sheet?.sleeves).toEqual([
+      theme('semiconductors', 3000),
+      theme('ai', 2000),
+      safe(5000),
+    ]);
+    // A mix sent for it cannot say whose share it is: it stays the mix entered, and the operator is
+    // told that neither theme is held.
+    const byMix = intake(text, r, {
+      answers: { mix: { growthBps: 5000, dollarYieldBps: 0, goldBps: 0, cashBps: 5000 } },
+    });
+    expect(byMix.flags).toEqual(
+      expect.arrayContaining(['theme_not_held:semiconductors', 'theme_not_held:ai']),
+    );
+    expect(byMix.sheet?.sleeves).toBeUndefined();
+    expect(byMix.sheet?.mix?.growthBps).toBe(5000);
   });
 
   it('a sum with no amount yet: the amount is asked, and neither the share nor the risk', () => {
@@ -940,7 +1013,7 @@ describe('the share of a theme, and the risk', () => {
 });
 
 describe('a mix and sleeves are never combined by guessing: asked once instead', () => {
-  it('a theme beside a shared portfolio the text also names: how much, once', () => {
+  it('a theme beside a shared portfolio the text also names: the split, once', () => {
     const result = intake(
       'Invest $2,000 in big tech and semiconductors for 5 years',
       reply({ markets: ['big_tech', 'semiconductors'] }),
@@ -949,13 +1022,19 @@ describe('a mix and sleeves are never combined by guessing: asked once instead',
       ['big_tech', 'portfolio'],
       ['semiconductors', 'label'],
     ]);
-    expect(result.questions).toEqual([
-      { field: 'mix', template: 'marketShare', text: 'How much of the $2,000 for semiconductors?' },
-    ]);
+    // Sums for both would not settle it either: a shared portfolio is where a plan starts from, a
+    // theme is a sleeve, and only the person's split says how the two sit together.
+    expect(fields(result)).toEqual(['sleeves']);
     expect(result.flags).toEqual(
-      expect.arrayContaining(['theme_beside_portfolio', 'market_share_unclear']),
+      expect.arrayContaining(['theme_beside_portfolio', 'theme_shares_unclear']),
     );
     expect(result.flags).not.toContain('mix_from_market');
+    expect(result.flags).not.toContain('market_share_unclear');
+    const sums = intake(
+      'I want to grow $2,000 over 5 years. Put $1,000 in big tech and $500 in semiconductors',
+      reply({ markets: ['big_tech', 'semiconductors'] }),
+    );
+    expect(fields(sums)).toEqual(['sleeves']);
     expect(result.draft.themes).toEqual(['the-seven']);
     expect(result.sheet).toBeNull();
     // The answer says the split: the theme its share, the rest for the goal, from The Seven.
@@ -1019,6 +1098,36 @@ describe('a mix and sleeves are never combined by guessing: asked once instead',
     expect(answered.questions).toEqual([]);
     expect(answered.sheet?.sleeves).toEqual([theme('semiconductors', 7000), safe(3000)]);
     expect(answered.sheet?.mix).toBeUndefined();
+    // Answered as a split that holds the theme: the split is what is held, and the mix the text
+    // states beside it is not applied.
+    const bySleeves = intake(text, reply({ markets: ['semiconductors'] }), {
+      answers: { sleeves: [theme('semiconductors', 7000), safe(3000)] },
+    });
+    expect(bySleeves.questions).toEqual([]);
+    expect(bySleeves.flags).toContain('mix_dropped_for_sleeves');
+    expect(bySleeves.sheet?.sleeves).toEqual([theme('semiconductors', 7000), safe(3000)]);
+    expect(bySleeves.sheet?.mix).toBeUndefined();
+    expect(bySleeves.mix).toBeNull();
+    // Two themes beside such a mix: only a split can say each share, so the split is asked.
+    const two = intake(
+      'Invest $2,000 in semiconductors and AI for 5 years, 70% stocks and 30% cash',
+      reply({ markets: ['semiconductors', 'ai'] }),
+    );
+    expect(fields(two)).toEqual(['sleeves']);
+    expect(two.flags).toEqual(expect.arrayContaining(['theme_beside_mix', 'theme_shares_unclear']));
+    expect(two.sheet).toBeNull();
+    const twoAnswered = intake(
+      'Invest $2,000 in semiconductors and AI for 5 years, 70% stocks and 30% cash',
+      reply({ markets: ['semiconductors', 'ai'] }),
+      { answers: { sleeves: [theme('semiconductors', 4000), theme('ai', 3000), safe(3000)] } },
+    );
+    expect(twoAnswered.questions).toEqual([]);
+    expect(twoAnswered.sheet?.sleeves).toEqual([
+      theme('semiconductors', 4000),
+      theme('ai', 3000),
+      safe(3000),
+    ]);
+    expect(twoAnswered.sheet?.mix).toBeUndefined();
   });
 
   it('a mix that says the same as the theme is no second mechanism: the sleeves are made', () => {

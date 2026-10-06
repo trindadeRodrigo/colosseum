@@ -326,6 +326,17 @@ describe('the read-back (C18)', () => {
         '25% of the plan for stocks matched by industry: aerospace-defense.',
       ]),
     );
+    // The same where a name handed in is blank: said by the slug, never as a hole.
+    const blank = {
+      labels: [{ slug: 'ai', name: { en: '', pt: '' } }],
+      matched: { 'matched-keyword-glp-1': '' },
+    };
+    expect(readBack(themed, portfolios, blank)).toEqual(
+      expect.arrayContaining([
+        '30% of the plan for the theme ai.',
+        '5% of the plan for stocks matched by business line: glp-1.',
+      ]),
+    );
   });
 
   it('with a plan held in themes says no risk of its own: its limits follow what it holds', () => {
