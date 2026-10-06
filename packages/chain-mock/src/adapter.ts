@@ -31,6 +31,7 @@ import {
   type Recipe,
   SetAutoFollowArgs,
   SetTargetsArgs,
+  statedMinimum,
   type Target,
   Trade,
   type TxPreview,
@@ -750,7 +751,11 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
       });
 
     const slippage = slippageOf(op);
-    const mins = run.outs.map((out) => lessBps(out, slippage));
+    // The least the order stated for each trade, where it stated them; the adapter's own otherwise.
+    const stated = 'minimums' in op.a ? op.a.minimums : undefined;
+    const mins = run.outs.map(
+      (out, i) => statedMinimum(stated, tradesOf(op), i, out) ?? lessBps(out, slippage),
+    );
     // On Solana a counter stands in for the blockhash, so two builds of one step are two messages. On
     // EVM the same call is the same bytes whenever it is built: what tells two transactions of it
     // apart is the nonce, which is no part of the call. The minimums are in the bytes on both.
@@ -762,7 +767,9 @@ export function createMockAdapter(options: MockOptions): MockAdapter {
         chain,
         seed,
         ...(family === 'evm' ? { signer, to } : { seq: buildSeq, signer }),
-        op,
+        // The stated minimums are what the builder was asked for, not a field of the operation: the
+        // bytes carry each trade's floor once, in `mins`, stated or worked out.
+        op: 'minimums' in op.a ? { ...op, a: { ...op.a, minimums: undefined } } : op,
         mins: carriesMinimums(op) ? mins.map(String) : [],
       }),
     );

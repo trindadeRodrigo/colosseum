@@ -704,6 +704,45 @@ group('builds', {
     expect(tightLeast).toBeGreaterThan(least);
   },
 
+  'writes the least an order stated for each trade, never one of its own, and refuses a price that moved under it':
+    async (c) => {
+      const { sell, buy, amountInRaw } = c.f.ownerTrade;
+      const half = { sell, buy, amountInRaw: (BigInt(amountInRaw) / 2n).toString() };
+      const trades = c.a.capabilities.maxTradesPerTx > 1 ? [half, half] : [c.f.ownerTrade];
+      // What the builder would set by itself, at the widest slippage a caller may ask: a floor every
+      // trade clears now.
+      const own = await c.a.buildOwnerSwap({ vault: c.f.vault, trades, slippageBps: 300 });
+      // An order made a while ago stated other figures: each a little under that floor, and not one
+      // any slippage of today's quote would give.
+      const stated = own.preview.minimums.map((m, i) =>
+        (BigInt(m.minOutRaw) - BigInt(7 + i)).toString(),
+      );
+      for (const slippageBps of [0, 100, 300]) {
+        const tx = await c.a.buildOwnerSwap({
+          vault: c.f.vault,
+          trades,
+          slippageBps,
+          minimums: stated,
+        });
+        expect(tx.preview.minimums.map((m) => m.minOutRaw)).toEqual(stated);
+        expect(tx.preview.minimums.map((m) => [m.sell, m.buy, m.inRaw])).toEqual(
+          trades.map((t) => [t.sell, t.buy, t.amountInRaw]),
+        );
+      }
+      // The price has moved under what the order accepts: nothing is built, and no other figure is.
+      const out = delta(own, 'vault', buy);
+      const tooMuch = stated.map((_, i) => (i === 0 ? (out * 2n).toString() : (stated[i] ?? '0')));
+      await refuses(
+        c.a.buildOwnerSwap({ vault: c.f.vault, trades, slippageBps: 100, minimums: tooMuch }),
+        'PriceMoved',
+      );
+      // One minimum for each trade, or none at all.
+      await refuses(
+        c.a.buildOwnerSwap({ vault: c.f.vault, trades, slippageBps: 100, minimums: [] }),
+        'BadInput',
+      );
+    },
+
   'previews a withdrawal as the tokens themselves going to the owner': async (c) => {
     const vault = await vaultAt(c, c.f.vault);
     const txs = await c.a.buildWithdrawInKind({ vault: c.f.vault });

@@ -267,6 +267,10 @@ export async function planBuy(
   // The owner in the body is a claim. It stands only where the verified tokens say the same.
   if (!holds(ctx.principal, req.owner))
     throw new Refusal(403, 'the owner in the request is not a wallet of the signed-in person');
+  if (req.continues !== undefined)
+    throw new Refusal(400, '`continues` is written by the server', {
+      fix: 'Finish a buy with POST /v1/orders/{id}/continue.',
+    });
   if (req.family !== undefined && req.proposalId !== undefined)
     throw new Refusal(400, 'a buy names a plan or a shared portfolio, not both');
   if (req.family !== undefined) return planFamilyBuy(req, req.family, ctx);

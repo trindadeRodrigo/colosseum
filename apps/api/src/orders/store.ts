@@ -96,6 +96,7 @@ function toOrder(r: OrderRow, legRows: LegRow[]): Order {
     summary: r.summary,
     ...(deposit ? { depositRaw: deposit } : {}),
     ...(r.basketId ? { basketId: r.basketId } : {}),
+    ...(r.request.type === 'buy' && r.request.continues ? { continues: r.request.continues } : {}),
     legs: legRows
       .map(toLeg)
       .sort((a, b) => chainOrder(a.chain) - chainOrder(b.chain) || a.seq - b.seq),
@@ -174,6 +175,18 @@ export async function loadOrder(db: Db, id: string): Promise<StoredOrder | null>
     request: row.request,
     attempts: attemptRows.flatMap((a) => (a.legId ? [toAttempt({ ...a, legId: a.legId })] : [])),
   };
+}
+
+/**
+ * The orders that finish this one (`continues`), newest first: at most a handful, since each is made
+ * only when the one before it stopped.
+ */
+export async function continuationsOf(db: Db, id: string): Promise<OrderRow[]> {
+  return db
+    .select()
+    .from(orders)
+    .where(sql`${orders.request}->>'continues' = ${id}`)
+    .orderBy(desc(orders.createdAt));
 }
 
 export async function loadProposal(db: Db, id: string): Promise<BasketProposal | null> {
