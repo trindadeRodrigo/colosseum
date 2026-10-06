@@ -180,7 +180,9 @@ export class Book {
       reason(
         w.creditBudget.byPlan
           ? 'CREDIT_BUDGET_PLAN'
-          : w.creditBudget.stated
+          : w.creditBudget.fromMix
+            ? 'CREDIT_BUDGET_MIX'
+            : w.creditBudget.stated
             ? 'CREDIT_BUDGET'
             : 'CREDIT_BUDGET_UNSAID',
         { capBps: w.creditBudget.bps },

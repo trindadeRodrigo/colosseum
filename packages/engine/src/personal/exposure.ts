@@ -63,39 +63,76 @@ export function sizeSleeves(w: World, setAside = 0): SleevePlan {
   const goalBps = sum(split.filter((x) => x.kind === 'goal').map((x) => x.shareBps));
   const safeYieldBps = sum(split.filter((x) => x.kind === 'safe_yield').map((x) => x.shareBps));
   // What is set aside for withdrawals comes off the goal sleeve first; the table shares the rest.
-  const setAsideBps = Math.min(goalBps, Math.max(0, setAside));
+  // With a mix (gate EXPLICIT-MIX), it comes out of the mix's dollar yield and cash, never out of
+  // the shares the person stated for stocks, crypto and gold.
+  const mix = sheet.mix;
+  const setAsideBps = mix
+    ? Math.min(mix.dollarYieldBps + mix.cashBps, Math.max(0, setAside))
+    : Math.min(goalBps, Math.max(0, setAside));
   const restBps = goalBps - setAsideBps;
   /** A share of the goal sleeve, as basis points of the whole plan: rounded down, or up for a floor. */
   const ofGoal = (bps: number, up = false) =>
     up ? Math.ceil((bps * restBps) / BPS) : Math.floor((bps * restBps) / BPS);
-  const row = P.sleeves[`${sheet.goal}:${sheet.risk}`] ?? {
-    growthBps: 0,
-    dollarYieldBps: 0,
-    goldBps: 0,
-  };
-  const growth = ofGoal(row.growthBps);
-  const dollarYield = ofGoal(row.dollarYieldBps);
-  const gold = ofGoal(row.goldBps);
-  const table: SleeveSizes = {
-    growth,
-    dollarYield,
-    gold,
-    cash: restBps - growth - dollarYield - gold,
-  };
+  let table: SleeveSizes;
+  if (mix) {
+    const fromYield = Math.min(mix.dollarYieldBps, setAsideBps);
+    table = {
+      growth: mix.growthBps,
+      dollarYield: mix.dollarYieldBps - fromYield,
+      gold: mix.goldBps,
+      cash: mix.cashBps - (setAsideBps - fromYield),
+    };
+  } else {
+    const row = P.sleeves[`${sheet.goal}:${sheet.risk}`] ?? {
+      growthBps: 0,
+      dollarYieldBps: 0,
+      goldBps: 0,
+    };
+    const growth = ofGoal(row.growthBps);
+    const dollarYield = ofGoal(row.dollarYieldBps);
+    const gold = ofGoal(row.goldBps);
+    table = { growth, dollarYield, gold, cash: restBps - growth - dollarYield - gold };
+  }
   const sized = { ...table };
   const reasons: SleevePlan['reasons'] = { growth: [], dollarYield: [], gold: [], cash: [] };
   const goalPart =
     goalBps < BPS ? [reason('SPLIT_GOAL', { shareBps: goalBps, goal: sheet.goal }, lang)] : [];
+  const asked: Record<Sleeve, number> = mix
+    ? {
+        growth: mix.growthBps,
+        dollarYield: mix.dollarYieldBps,
+        gold: mix.goldBps,
+        cash: mix.cashBps,
+      }
+    : table;
   for (const sleeve of SLEEVES)
     if (table[sleeve] > 0)
       reasons[sleeve].push(
         ...goalPart,
-        reason(
-          'SLEEVE',
-          { sleeveBps: table[sleeve], sleeve, goal: sheet.goal, risk: sheet.risk },
-          lang,
-        ),
+        mix
+          ? asked[sleeve] >= BPS
+            ? reason('MIX_ALL', { sleeve }, lang)
+            : reason('MIX', { sleeveBps: asked[sleeve], sleeve }, lang)
+          : reason(
+              'SLEEVE',
+              { sleeveBps: table[sleeve], sleeve, goal: sheet.goal, risk: sheet.risk },
+              lang,
+            ),
       );
+  // The limits that let the plan hold the mix's stocks and crypto, said once on that sleeve.
+  if (mix && table.growth > 0)
+    reasons.growth.push(
+      reason(
+        'MIX_LIMITS',
+        {
+          sleeveBps: mix.growthBps,
+          risk: sheet.risk,
+          stockCapBps: P.capPerStockBps[sheet.risk] ?? 0,
+          issuerCapBps: P.capPerIssuerBps[sheet.risk] ?? 0,
+        },
+        lang,
+      ),
+    );
 
   /** Moves up to `need` into one sleeve from the others, in turn. Returns the sleeves that gave. */
   const raise = (to: Sleeve, need: number, from: Sleeve[]): Sleeve[] => {

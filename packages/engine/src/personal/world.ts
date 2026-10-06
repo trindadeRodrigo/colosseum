@@ -15,6 +15,7 @@ import { pickPrimaryYield } from '../risk/index';
 import { CREDIT_LEG_TYPES, legTypesOf } from './leg-types';
 import { BPS, byName, ceilCents, floorCents, shareOf, toCents, toUsd } from './money';
 import { PERSONAL_PARAMS } from './params';
+import { riskOfWorld } from './mix';
 import { eligibleForGoal, sleeveOfClass } from './registry';
 import { reason } from './templates';
 import {
@@ -109,7 +110,7 @@ export type World = {
    * The most cents in credit and basis legs, by the person's credit tolerance, and its share. `byPlan`
    * when a candidate holds less than the person allows: the limit is the plan's, not theirs.
    */
-  creditBudget: { cents: number; bps: number; stated: boolean; byPlan: boolean };
+  creditBudget: { cents: number; bps: number; stated: boolean; byPlan: boolean; fromMix: boolean };
   flags: Set<string>;
   /** Every figure the plan was shaped by, whether or not its token ends up in the plan. */
   observations: Map<string, PersonalObservation>;
@@ -456,15 +457,18 @@ export function buildWorld(
     },
     creditBudget: (() => {
       const tolerance = sheet.limits?.creditTolerance ?? P.defaultCreditTolerance;
-      const theirs = P.creditShareBps[tolerance] ?? 0;
+      // A credit share the person stated in their mix is their budget (gate EXPLICIT-MIX).
+      const fromMix = sheet.mix?.creditBps !== undefined;
+      const theirs = sheet.mix?.creditBps ?? P.creditShareBps[tolerance] ?? 0;
       const plans =
         candidate === 'cover' ? shareOf(theirs, P.candidates.cover.creditOfLimitBps) : theirs;
       const bps = Math.min(theirs, plans);
       return {
         cents: shareOf(amount, bps),
         bps,
-        stated: sheet.limits?.creditTolerance !== undefined,
+        stated: fromMix || sheet.limits?.creditTolerance !== undefined,
         byPlan: plans < theirs,
+        fromMix,
       };
     })(),
     flags,
@@ -503,5 +507,12 @@ export function buildWorld(
         message: `a withdrawal in ${cur} needs an FX reading for USD${cur}`,
       })),
     );
+  // A stated mix sets the limits (gate EXPLICIT-MIX): the lowest risk whose caps admit it. The world
+  // is made again at that risk, so every cap, reason and check reads it; the plan's sheet says it.
+  if (sheet.mix) {
+    const risk = riskOfWorld(world);
+    if (risk !== sheet.risk) return buildWorld({ ...sheet, risk }, shelf, context, candidate);
+    flags.add(`limits_from_mix:${risk}`);
+  }
   return world;
 }

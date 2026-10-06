@@ -423,6 +423,17 @@ function build(
       w.flags.add(none ? 'safe_yield_no_rate_leg' : 'unplaced');
     }
   }
+  // A credit share the person stated ("only credit", gate EXPLICIT-MIX) fills credit and basis legs
+  // first, up to that share and their caps; the rest of dollar yield is ranked as always.
+  if ((sheet.mix?.creditBps ?? 0) > 0 && yieldUnit.cents > 0) {
+    ranked();
+    const first = Math.min(yieldUnit.cents, w.creditBudget.cents);
+    const { left } = book.fillBanded(
+      { cents: first, reasons: [...yieldUnit.reasons] },
+      yielders.filter((a) => w.isCredit(a)),
+    );
+    yieldUnit.cents -= first - left;
+  }
   intoYield(yieldUnit);
   book.placeTogether(goldUnits, (unit) => tokensOf(w, unit.name, 'gold'));
   book.placeTogether(growthUnits, (unit) => tokensOf(w, unit.name, 'growth'));
@@ -702,6 +713,18 @@ export function compose(
   context: ComposeContext,
 ): PersonalProposal {
   return build(sheet, shelf, context, { ways: true, status: true, candidate: null });
+}
+
+/**
+ * The risk whose limits a plan takes. With a stated mix (gate EXPLICIT-MIX), the lowest whose caps per
+ * stock and per issuer admit it, which the read-back states as an assumption; otherwise the sheet's.
+ */
+export function riskForMix(
+  sheet: PersonalSheet,
+  shelf: Shelf,
+  context: ComposeContext,
+): PersonalSheet['risk'] {
+  return buildWorld(sheet, shelf, context).sheet.risk;
 }
 
 /**

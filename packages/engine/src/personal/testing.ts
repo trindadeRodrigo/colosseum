@@ -22,6 +22,7 @@ import { z } from 'zod';
 import seedFile from '../../../../docs/vault/research/open-questions/launch-shelf.seed.json';
 import yieldRows from './fixtures/yields.json';
 import { LEG_TYPES } from './leg-types';
+import { growthRoomBps, growthTokens, RISKS } from './mix';
 import { PERSONAL_PARAMS } from './params';
 import { eligibleForGoal, sleeveOfClass } from './registry';
 import { INPUT_NAMES, REASON_TEMPLATES } from './templates';
@@ -34,7 +35,7 @@ import {
   SLEEVES,
   type Sleeve,
 } from './types';
-import { monthAfter, tableFor } from './world';
+import { buildWorld, monthAfter, tableFor } from './world';
 
 // Builders for the tests of this folder. Not exported from the engine: every row is a fixture.
 // The shelf is the launch shelf of docs/vault/research/open-questions/launch-shelf.seed.json, turned
@@ -493,7 +494,11 @@ export function expectedSleeves(
   sheetOf: PersonalSheet,
   table: PersonalParameters,
 ): Record<Sleeve, number> {
-  const row = table.sleeves[`${sheetOf.goal}:${sheetOf.risk}`];
+  // A stated mix (gate EXPLICIT-MIX) is the row, of the whole plan; the floors still apply.
+  const mix = sheetOf.mix;
+  const row = mix
+    ? { growthBps: mix.growthBps, dollarYieldBps: mix.dollarYieldBps, goldBps: mix.goldBps }
+    : table.sleeves[`${sheetOf.goal}:${sheetOf.risk}`];
   if (!row) throw new Error('no row');
   // With a split (gate SLEEVES), the goal sleeve's share scales the row and the date's floors; the
   // safe-yield share counts toward what must not be lost. The result is the goal sleeve only.
@@ -555,6 +560,17 @@ export function expectedSleeves(
       dollarYield += fromStocksThenGold(least - dollarYield - cash - safeBps);
   }
   return { growth, dollarYield, gold, cash };
+}
+
+/** The sleeve of a line's token: growth, dollar yield, gold or cash. */
+function sleeveOfAsset(byId: Map<string, BasketAsset>, l: { assetId: string }): Sleeve | null {
+  const a = byId.get(l.assetId);
+  return a ? sleeveOfClass(a.cls) : null;
+}
+
+/** The growth tokens the engine would fill a mix from, read through a world of the plan's sheet. */
+function mixGrowthTokens(plan: PersonalProposal, shelf: Shelf, ctx: ComposeContext): BasketAsset[] {
+  return growthTokens(buildWorld(plan.sheet, shelf, ctx));
 }
 
 /** The rules that say something was left out. */
@@ -762,9 +778,10 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
       held <= planIssuerCap,
       `${issuer} holds ${held / 100} of dollar yield and gold, over ${planIssuerCap / 100}`,
     );
-  // The credit budget: credit and basis legs together.
+  // The credit budget: credit and basis legs together. A mix's credit share is the person's budget.
   const tolerance = s.limits?.creditTolerance ?? P.defaultCreditTolerance;
-  const creditCap = Math.floor((amount * (P.creditShareBps[tolerance] ?? 0)) / 10_000);
+  const theirCreditBps = s.mix?.creditBps ?? P.creditShareBps[tolerance] ?? 0;
+  const creditCap = Math.floor((amount * theirCreditBps) / 10_000);
   const credit = sum(
     lines
       .filter((l) =>
@@ -798,12 +815,21 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
   const movedFromIssuer = (issuer: string) => movedOn((a) => a.issuer === issuer);
   const ys = new Map((ctx.yields ?? []).map((y) => [y.assetId, y.haircutYield]));
   for (const r of allReasons(plan)) {
-    if (r.rule === 'CREDIT_BUDGET' || r.rule === 'CREDIT_BUDGET_UNSAID') {
+    if (
+      r.rule === 'CREDIT_BUDGET' ||
+      r.rule === 'CREDIT_BUDGET_UNSAID' ||
+      r.rule === 'CREDIT_BUDGET_MIX'
+    ) {
       say(Math.abs(credit - creditCap) <= 1, `"${r.text}" but credit holds ${credit / 100}`);
       say(
-        (r.rule === 'CREDIT_BUDGET') === (s.limits?.creditTolerance !== undefined),
-        `"${r.text}" said of a tolerance that was ${s.limits?.creditTolerance ? '' : 'not '}stated`,
+        (r.rule === 'CREDIT_BUDGET_MIX') === (s.mix?.creditBps !== undefined),
+        `"${r.text}" said of a mix that ${s.mix?.creditBps !== undefined ? 'states' : 'does not state'} a credit share`,
       );
+      if (r.rule !== 'CREDIT_BUDGET_MIX')
+        say(
+          (r.rule === 'CREDIT_BUDGET') === (s.limits?.creditTolerance !== undefined),
+          `"${r.text}" said of a tolerance that was ${s.limits?.creditTolerance ? '' : 'not '}stated`,
+        );
     }
     if (r.rule === 'CREDIT_NONE') {
       say(credit === 0, `"${r.text}" but credit holds ${credit / 100}`);
@@ -811,14 +837,12 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
     }
     // A candidate's own credit limit is said only by Cover, below the person's, and holds.
     if (r.rule === 'CREDIT_NONE_PLAN' || r.rule === 'CREDIT_BUDGET_PLAN') {
-      const coverBps = Math.floor(
-        ((P.creditShareBps[tolerance] ?? 0) * P.candidates.cover.creditOfLimitBps) / 10_000,
-      );
+      const coverBps = Math.floor((theirCreditBps * P.candidates.cover.creditOfLimitBps) / 10_000);
       const planCap = Math.floor((amount * coverBps) / 10_000);
       say(plan.candidate === 'cover', `"${r.text}" said of a plan that is not Cover`);
       // Compared in basis points, as the engine does: on a small plan both can be zero cents.
       say(
-        coverBps < (P.creditShareBps[tolerance] ?? 0),
+        coverBps < theirCreditBps,
         `"${r.text}" but the person's own limit is no higher`,
       );
       say(
@@ -870,6 +894,79 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
       held <= stockCap,
       `${name} holds ${held / 100}, over the single-stock cap of ${stockCap / 100}`,
     );
+
+  // A stated mix (gate EXPLICIT-MIX). The limits are the lowest risk whose caps admit it, and the plan
+  // says so; the mix replaces the table, so no line says the table's row. Stocks, crypto and gold hold
+  // no more than asked; where they hold less, a line or a left-out entry says why.
+  const saidRules = new Set(allReasons(plan).map((r) => r.rule));
+  if (!s.mix) {
+    for (const rule of ['MIX', 'MIX_ALL', 'MIX_LIMITS', 'CREDIT_BUDGET_MIX'])
+      say(!saidRules.has(rule), `${rule} said of a plan with no mix`);
+    say(
+      !plan.flags.some((f) => f.startsWith('limits_from_mix:')),
+      'limits_from_mix on a plan with no mix',
+    );
+  } else {
+    const mix = s.mix;
+    say(s.goal === 'grow' || mix.growthBps === 0, `a mix with stocks in a plan for ${s.goal}`);
+    say(!saidRules.has('SLEEVE'), 'the table row is said of a plan with a mix');
+    say(
+      plan.flags.includes(`limits_from_mix:${s.risk}`),
+      `the plan does not say it takes the limits for ${s.risk} risk from the mix`,
+    );
+    const room = (r: typeof s.risk) =>
+      growthRoomBps(
+        mixGrowthTokens(plan, shelf, ctx).filter((a) => a.chain === s.chains[0]),
+        P,
+        r,
+      );
+    if (mix.growthBps > 0) {
+      say(
+        saidRules.has('MIX_LIMITS') || !plan.lines.some((l) => sleeveOfAsset(byId, l) === 'growth'),
+        'the plan holds stocks for a mix and does not say which limits it took',
+      );
+      // The lowest risk that admits it: one lower would not have.
+      const lower = RISKS.slice(0, RISKS.indexOf(s.risk));
+      for (const r of lower)
+        say(room(r) < mix.growthBps, `the mix fits ${r} risk, and the plan took ${s.risk}`);
+    } else say(s.risk === 'low', `a mix with no stocks takes low risk, not ${s.risk}`);
+    const heldOf = (sleeve: Sleeve) =>
+      sum(plan.lines.filter((l) => sleeveOfAsset(byId, l) === sleeve).map((l) => l.weightBps));
+    const slack = plan.lines.length;
+    const short = new Set([
+      'SINGLE_STOCK_CAP',
+      'ISSUER_CAP',
+      'ISSUER_CAP_PLAN',
+      'EXIT_CEILING',
+      'TIER_CEILING',
+      'GLIDE',
+      'CASH_MAY_NEED',
+      'CASH_NEAR_DATE',
+      'MUST_KEEP',
+      'EXCLUDED',
+      'NOT_ON_CHAIN',
+      'NOT_FOR_GOAL',
+      'MAX_LINES',
+      'BELOW_MINIMUM',
+      'ALREADY_HELD',
+      'ALREADY_HELD_NONE',
+      'COVERAGE_MOVED',
+      'COVERAGE_MOVED_UNCOUNTED',
+    ]);
+    const leftOut = plan.removed.flatMap((r) => r.reasons.map((x) => x.rule));
+    const whyLess = [...saidRules, ...leftOut].some((rule) => short.has(rule));
+    for (const [sleeve, asked] of [
+      ['growth', mix.growthBps],
+      ['gold', mix.goldBps],
+    ] as const) {
+      const held = heldOf(sleeve);
+      say(held <= asked + slack, `${sleeve} holds ${held} bps, over the ${asked} of the mix`);
+      say(
+        held >= asked - slack || whyLess,
+        `${sleeve} holds ${held} bps of the ${asked} asked, and no line says why`,
+      );
+    }
+  }
 
   // The person's split (gate SLEEVES): each sleeve's share and dollars as asked, and the safe-yield
   // sleeve in rate legs and cash only, never more of a token than its line holds.
