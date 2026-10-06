@@ -520,7 +520,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   if (path.startsWith('/v1/baskets/') && method === 'GET') {
     if (path !== `/v1/baskets/${PLAN_ID}` || !linked)
       return send(res, 404, { error: 'no plan made from a link has that id' });
-    return send(res, 200, { id: PLAN_ID, proposal: linked });
+    return send(res, 200, { id: PLAN_ID, proposal: linked, fromLink: true });
   }
   if (path === '/v1/baskets/personalize' && method === 'POST') {
     const body = (await read(req)) as { sheet: BasketSheet };
