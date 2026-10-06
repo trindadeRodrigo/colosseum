@@ -82,6 +82,9 @@ describe('the routes sign-in knows', () => {
       .sort();
     expect(pages).toEqual([
       '/',
+      '/analytics',
+      '/analytics/[page]',
+      '/analytics/methodology',
       '/goal',
       '/monitor',
       '/orders/[id]',

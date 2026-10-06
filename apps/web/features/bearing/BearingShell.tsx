@@ -106,7 +106,7 @@ export function BearingShell({ children }: { children: ReactNode }) {
                   <span
                     aria-hidden="true"
                     className={cn(
-                      'w-6 shrink-0 text-center font-mono text-caption',
+                      'w-6 shrink-0 pl-1 font-mono text-caption',
                       p.id === current ? 'text-foreground' : 'text-muted-foreground',
                     )}
                   >

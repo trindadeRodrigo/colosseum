@@ -9,6 +9,9 @@
  */
 export const APP_ROUTES: readonly string[] = [
   '/',
+  '/analytics',
+  '/analytics/[page]',
+  '/analytics/methodology',
   '/goal',
   '/monitor',
   '/orders/[id]',

@@ -87,6 +87,10 @@ const older = routes.filter((file) => file.startsWith('app/(structurer)/'));
 describe('the routes of the app', () => {
   it('are the product’s, under one layout, and the pages not yet rebuilt, under theirs', () => {
     expect(product.sort()).toEqual([
+      'app/(app)/analytics/[page]/page.tsx',
+      'app/(app)/analytics/layout.tsx',
+      'app/(app)/analytics/methodology/page.tsx',
+      'app/(app)/analytics/page.tsx',
       'app/(app)/goal/page.tsx',
       'app/(app)/layout.tsx',
       'app/(app)/monitor/page.tsx',
@@ -103,9 +107,6 @@ describe('the routes of the app', () => {
       'app/(structurer)/embed/[id]/page.tsx',
       'app/(structurer)/layout.tsx',
       'app/(structurer)/plans/[id]/page.tsx',
-      'app/(structurer)/risk/[asset]/page.tsx',
-      'app/(structurer)/risk/methodology/page.tsx',
-      'app/(structurer)/risk/page.tsx',
     ]);
     // every route is in one group or the other: there is no layout above the two
     expect(routes.filter((file) => !product.includes(file) && !older.includes(file))).toEqual([]);

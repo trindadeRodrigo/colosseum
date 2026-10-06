@@ -65,7 +65,8 @@ export const Count = ({ children }: { children: ReactNode }) => (
 
 /**
  * The row of counters under the filters, hairlines between them. A counter is never narrower than its
- * figure and its stale tag: when the row cannot hold them all, the last ones wrap to a second row.
+ * figure and its stale tag (its label and note wrap instead): when the row cannot hold them all, the
+ * last ones wrap to a second row.
  */
 export function Kpis({ children }: { children: ReactNode }) {
   return (
@@ -89,12 +90,14 @@ export function Kpi({
       data-ui="bearing-kpi"
       className="min-w-[min(100%,max-content)] flex-[1_1_0] bg-card px-4 py-3"
     >
-      <div className="font-condensed text-caption font-medium text-muted-foreground">{label}</div>
+      <div className="w-0 min-w-full font-condensed text-caption font-medium text-muted-foreground">
+        {label}
+      </div>
       <div className="mt-1 font-mono text-[1.3125rem]/7 font-medium whitespace-nowrap max-[480px]:text-[1.125rem] [&_[data-ui=bearing-reason]]:block [&_[data-ui=bearing-reason]]:font-sans [&_[data-ui=bearing-reason]]:whitespace-normal">
         {children}
       </div>
       {note != null && note !== '' && (
-        <div className="mt-0.5 text-b-meta text-muted-foreground">{note}</div>
+        <div className="mt-0.5 w-0 min-w-full text-b-meta text-muted-foreground">{note}</div>
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import { type ChartSeriesClass, SERIES_VAR } from './TimeChart';
+import { type ChartSeriesClass, SERIES_VAR } from './chart';
 
 // A sparkline for a table cell (analytics-charts.js, `spark`): 88 by 22, one line, no axis. It is a
 // picture of a trend beside figures that carry their own pins, so it is hidden from assistive tech.

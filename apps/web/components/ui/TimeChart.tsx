@@ -1,6 +1,10 @@
 'use client';
-import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react';
-import { DAY_MS, fullDate, HOUR_MS, nice, tagWidth, timeTicks } from './chart-scale';
+import { type KeyboardEvent, type ReactNode, useId, useState } from 'react';
+import { type ChartSeriesClass, SERIES_VAR, useWidth } from './chart';
+import { fullDate, nice, tagWidth, timeTicks } from './chart-scale';
+
+export type { ChartSeriesClass } from './chart';
+
 import { cn } from './cn';
 
 // The Bearing time chart (Rodrigo's assets/analytics-charts.js, `time`): a card head with the title,
@@ -12,7 +16,6 @@ import { cn } from './cn';
 // Wood only: two series at most (s1, s2), or covered and not covered (cv, un) with their words in the
 // legend and the readout. Solid is measured; a dashed segment is a point with too few samples.
 
-export type ChartSeriesClass = 's1' | 's2' | 'cv' | 'un';
 export type TimePoint = { t: number; v: number | null; show?: string | null; dashed?: boolean };
 export type TimeSeries = {
   type: 'area' | 'line';
@@ -61,36 +64,10 @@ export type TimeChartProps = {
   className?: string;
 };
 
-/** The colour of a series, by its class. */
-export const SERIES_VAR: Record<ChartSeriesClass, string> = {
-  s1: 'var(--tf-bearing-s1)',
-  s2: 'var(--tf-bearing-s2)',
-  cv: 'var(--tf-bearing-cv)',
-  un: 'var(--tf-bearing-un)',
-};
 const AREA_OPACITY: Record<ChartSeriesClass, number> = { s1: 0.5, s2: 0.5, cv: 1, un: 1 };
 
 const AX = 64;
 const XA = 22;
-
-/** The width of an element, kept current. Zero until it is measured. */
-export function useWidth<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  const [width, setWidth] = useState(0);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    setWidth(Math.round(el.clientWidth));
-    if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver((entries) => {
-      const w = Math.round(entries[0]?.contentRect.width ?? 0);
-      if (w) setWidth(w);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return [ref, width] as const;
-}
 
 /** An axis tag: a small solid plate with mono text (the crosshair and last-value labels). */
 export function Tag({
@@ -631,5 +608,3 @@ function Readout({ t, panes, hourly }: { t: number; panes: readonly TimePane[]; 
     </>
   );
 }
-
-export { DAY_MS, HOUR_MS };

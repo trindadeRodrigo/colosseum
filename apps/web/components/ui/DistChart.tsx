@@ -1,8 +1,9 @@
 'use client';
 import { type KeyboardEvent, type ReactNode, useState } from 'react';
+import { SERIES_VAR, useWidth } from './chart';
 import { nice } from './chart-scale';
 import { cn } from './cn';
-import { ChartHead, ChartLegend, SERIES_VAR, useWidth } from './TimeChart';
+import { ChartHead, ChartLegend } from './TimeChart';
 
 // The liquidity of a concentrated-liquidity pool by price band (analytics-charts.js, `dist`): bars by
 // price around the pool price, the asset above it and the quote below, a pool-price tag, and + and −
