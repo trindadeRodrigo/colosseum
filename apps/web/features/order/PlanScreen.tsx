@@ -20,6 +20,7 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 import { planProvenance } from '../goal/build-plan';
 import { dollars } from '../goal/sheet';
 import { assetName, formatBps } from './amounts';
+import { PlanChart } from './PlanChart';
 import { PlanGate } from './PlanGate';
 import { usePlan } from './use-plan';
 
@@ -155,6 +156,12 @@ export function PlanScreen({ id }: { id: string }) {
           <p className="text-body-sm text-muted-foreground">
             {t.plan.basis(card.expectedReturn.basis)}
           </p>
+          {/* The chart of his case: drawn only from a range that has a source. */}
+          {yieldObs !== null &&
+            !proposal.flags.includes('yield_not_read') &&
+            card.expectedReturn.highPct > 0 && (
+              <PlanChart amountUsd={sheet.amountUsd} card={card} yieldObs={yieldObs} />
+            )}
           <div className="flex flex-col gap-3">
             <h3 className="text-[0.8125rem]/5 font-medium">{t.plan.holds}</h3>
             {tableOnly ? (

@@ -1,5 +1,7 @@
 import {
+  BasketCard,
   type BasketLine,
+  BasketSheet,
   ChainId as Chain,
   type ChainId,
   ConsentKind as Consent,
@@ -8,6 +10,7 @@ import {
   OrderDetail as Order,
   type OrderDetail,
   type TRUST_STATUS,
+  Verdict,
 } from '@colosseum/schemas';
 import { readTerms, type SharedTerms } from '../shared/terms';
 
@@ -31,6 +34,19 @@ export type ApprovedOrder = {
   at: string;
 };
 
+/**
+ * The goal the plan was built for, as the plan screen had it when the order was placed: the limits,
+ * the plan's card and, for an income goal, the engine's verdict. The portfolio's goal card is drawn
+ * from it (features/portfolio). Records kept before it was written have none.
+ */
+export type PlacedGoal = {
+  sheet: BasketSheet;
+  card: BasketCard;
+  verdict: Verdict | null;
+  /** When the order was placed, as an ISO instant: the goal's date counts from it. */
+  placedAt: string;
+};
+
 export type OrderRecord = {
   orderId: string;
   userId: string;
@@ -43,7 +59,24 @@ export type OrderRecord = {
   /** For an order about a shared portfolio: what its screen showed. */
   terms?: SharedTerms;
   approved: ApprovedOrder | null;
+  goal?: PlacedGoal | null;
 };
+
+function readGoal(value: unknown): PlacedGoal | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const g = value as Record<string, unknown>;
+  const sheet = BasketSheet.safeParse(g.sheet);
+  const card = BasketCard.safeParse(g.card);
+  const verdict = g.verdict == null ? null : Verdict.safeParse(g.verdict);
+  if (!sheet.success || !card.success || verdict?.success === false || !text(g.placedAt))
+    return null;
+  return {
+    sheet: sheet.data,
+    card: card.data,
+    verdict: verdict?.success ? verdict.data : null,
+    placedAt: g.placedAt,
+  };
+}
 
 /** True when the order deposits cash: a buy of a plan or of a shared portfolio. */
 export const isBuy = (record: Pick<OrderRecord, 'terms'>): boolean =>
@@ -92,6 +125,7 @@ function readRecord(value: unknown): OrderRecord | null {
     lines: lines.data,
     ...(terms ? { terms } : {}),
     approved,
+    goal: readGoal(r.goal),
   };
 }
 
@@ -121,6 +155,24 @@ export function recallOrder(orderId: string, userId: string | null): OrderRecord
   } catch {
     return null;
   }
+}
+
+/** Every order this person placed in this browser, newest first. */
+export function recallOrders(userId: string | null): OrderRecord[] {
+  if (!userId) return [];
+  const found: OrderRecord[] = [];
+  try {
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (!key?.startsWith('tf-order:')) continue;
+      const record = recallOrder(key.slice('tf-order:'.length), userId);
+      if (record) found.push(record);
+    }
+  } catch {
+    return [];
+  }
+  const at = (r: OrderRecord) => r.goal?.placedAt ?? r.approved?.at ?? '';
+  return found.sort((a, b) => at(b).localeCompare(at(a)));
 }
 
 // The trust notice (TRUST_STATUS), accepted once per person and version of its text, before the first

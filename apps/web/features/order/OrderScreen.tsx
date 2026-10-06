@@ -14,6 +14,8 @@ import { useAccount } from '../account/AccountProvider';
 import { dollars } from '../goal/sheet';
 import { SharedReview } from '../shared/SharedReview';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
+import { ActivityPanel } from './ActivityPanel';
+import { activityOf } from './activity';
 import { assetName, formatBps, formatRaw, shortfallBps } from './amounts';
 import { type CallFailure, readOrder } from './order-api';
 import { checkDeposit, checkFamilyBuy, type DepositCheck, sharedShapeOk } from './order-check';
@@ -181,7 +183,12 @@ export function OrderScreen({ id }: { id: string }) {
   }
   if (!record)
     return (
-      <Notice title={t.order.title} body={t.order.elsewhere} href="/" label={t.plan.backToGoal} />
+      <Notice
+        title={t.order.title}
+        body={t.order.elsewhere}
+        href="/goal"
+        label={t.plan.backToGoal}
+      />
     );
 
   const shown = record.approved?.order ?? load.order;
@@ -419,6 +426,13 @@ export function OrderScreen({ id }: { id: string }) {
           </Link>
         )}
       </div>
+
+      {/* His "Disclaimer and activity": what reached the chain, line by line with its link, beside the
+          disclaimer. */}
+      <ActivityPanel
+        executions={activityOf(now, t, `${t.chain.names[chain]} ${t.order.explorer}`)}
+        empty={t.activity.noneYet}
+      />
     </div>
   );
 }

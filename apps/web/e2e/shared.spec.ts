@@ -11,7 +11,7 @@ import { dictionary } from '../i18n';
 // checked with axe at 375 px, in light and in dark, and for no sideways scroll.
 
 const en = dictionary('en');
-const STUB = 'http://localhost:3901';
+const STUB = `http://localhost:${process.env.E2E_API_PORT ?? 3901}`;
 const SHOTS = process.env.SCREENSHOTS_DIR;
 const shot = (name: string) => `${SHOTS}/${name}.png`;
 const WIDTHS = [375, 1280] as const;
@@ -51,14 +51,20 @@ async function signIn(page: Page) {
   await page.getByRole('button', { name: en.signIn.passkey.create }).click();
   await page.getByRole('button', { name: 'Solana' }).click();
   await page.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
-  await expect(page).toHaveURL(/:\d+\/$/);
+  // sign-in leads to the goal (WEB-2b)
+  await expect(page).toHaveURL(/\/goal$/);
 }
 
-/** The shelf, by the bar: the throwaway wallet lives in the page, so every move stays inside it. */
+/**
+ * The shelf, by the bar: the throwaway wallet lives in the page, so every move stays inside it. The
+ * bar is his compact bar, whose links are in the sheet under the menu button at 375 px; the shelf is
+ * his "Products".
+ */
 async function toShelf(page: Page) {
+  await page.getByRole('button', { name: en.shell.menu }).click();
   await page
-    .getByRole('navigation', { name: en.shell.nav })
-    .getByRole('link', { name: en.shell.shelf })
+    .locator('[data-ui="compact-nav-sheet"]')
+    .getByRole('link', { name: en.shell.products })
     .click();
   await expect(page).toHaveURL(/\/shelf$/);
 }

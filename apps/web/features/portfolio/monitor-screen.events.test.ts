@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { DISCLAIMER } from '@colosseum/schemas';
+import { DISCLAIMER, DISCLAIMER_SHORT } from '@colosseum/schemas';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
@@ -8,6 +8,9 @@ import { parse } from '../../components/ui/test/html';
 import { dictionary, type Lang } from '../../i18n';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
+import { keepOrder, type OrderRecord } from '../order/order-record';
+import { basketOfPlan } from '../order/readiness';
+import { doneOrder, ORDER_ID, orderOn, PLAN_ID, planOn, recordOf } from '../order/test/fixtures';
 import { EMBEDDED, fakePort, json, PHANTOM, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
 import { MonitorScreen } from './MonitorScreen';
@@ -33,10 +36,17 @@ const onSolana: Person = {
   chainOptions: [],
 };
 
-function api(options: { person?: Person; portfolio?: () => Response | Promise<Response> }) {
+function api(options: {
+  person?: Person;
+  portfolio?: () => Response | Promise<Response>;
+  /** Other routes the test answers: the orders, for the activity. */
+  more?: (path: string) => Response | null;
+}) {
   const calls: string[] = [];
   portStore.setApi(async (path) => {
     calls.push(path);
+    const other = options.more?.(path);
+    if (other) return other;
     if (path === '/v1/me') return options.person ? json(options.person) : json({}, 503);
     if (path === PORTFOLIO_PATH)
       return options.portfolio ? options.portfolio() : json(portfolioBody());
@@ -54,11 +64,14 @@ const signIn = (accounts = PHANTOM, provenance: 'sandbox' | 'live' | 'mock' = 's
   portStore.set(signedInPort(accounts, {}, provenance));
 const vaults = (host: HTMLElement) => host.querySelectorAll('[data-ui="card"] h2');
 const pins = (host: HTMLElement) => [...host.querySelectorAll('[data-ui="figure"]')];
+/** The vault's own panel: what it holds. */
+const panel = (host: HTMLElement) => find(host, '[data-ui="vault"] > [data-ui="card"]');
 const primary = (host: HTMLElement) => host.querySelector('[data-variant="primary"]');
 const text = (host: HTMLElement) => host.textContent ?? '';
 
 beforeEach(() => {
   window.sessionStorage.clear();
+  window.localStorage.clear();
   portStore.set(fakePort());
 });
 afterEach(unmountAll);
@@ -71,7 +84,10 @@ describe('the monitor, for a person with a vault on their chain', () => {
     expect(server.to(PORTFOLIO_PATH)).toHaveLength(1);
     expect(find(host, 'h1').textContent).toBe(en.portfolio.title(1));
     // the serif is spent once, on that line
+    // the serif is spent on the goal: in a list of goal cards the page heading is the sans face
+    // (goal-card.md), and each vault's card has its one serif sentence
     expect(host.querySelectorAll('.font-display')).toHaveLength(1);
+    expect(find(host, '.font-display').closest('[data-ui="goal-card"]')).not.toBeNull();
     expect(vaults(host)).toHaveLength(1);
     const words = en.portfolio.vault;
     expect(find(host, '[data-ui="card"] h2').textContent).toBe(words.title);
@@ -133,7 +149,7 @@ describe('the monitor, for a person with a vault on their chain', () => {
     api({ person: onSolana });
     signIn();
     const host = await screen();
-    const card = find(host, '[data-ui="card"]');
+    const card = panel(host);
     expect(card.querySelector('.tf-hatch')).not.toBeNull();
     expect(card.querySelector('[data-ui="mock-plate"]')?.textContent).toContain('MOCK');
     expect(find(card, '[data-ui="mock-note"]').textContent).toBe(en.shell.testNetwork);
@@ -157,7 +173,7 @@ describe('the monitor, for a person with a vault on their chain', () => {
     api({ person: onSolana, portfolio: () => json(portfolioBody(labelled('mock'))) });
     signIn(PHANTOM, 'mock');
     const mocked = await screen();
-    const card = find(mocked, '[data-ui="card"]');
+    const card = panel(mocked);
     expect(card.querySelector('[data-ui="mock-plate"]')).not.toBeNull();
     expect(card.querySelector('[data-ui="mock-note"]')).toBeNull();
     expect(hatchProblems(parse(mocked.innerHTML))).toEqual([]);
@@ -169,7 +185,7 @@ describe('the monitor, for a person with a vault on their chain', () => {
       signIn();
       const host = await screen(lang);
       const block = find(host, '[data-ui="disclaimer"]');
-      expect(block.textContent).toBe(DISCLAIMER[lang]);
+      expect(find(block, 'p[lang]').textContent).toBe(DISCLAIMER[lang]);
       // after the last vault
       const order = [...host.querySelectorAll('[data-ui="card"], [data-ui="disclaimer"]')];
       expect(order.at(-1)).toBe(block);
@@ -215,6 +231,23 @@ describe('the monitor, for a person with a vault on their chain', () => {
     expect(text(host)).toContain(en.portfolio.vault.pendingAssets('SPYX'));
     expect(text(host)).toContain(en.portfolio.vault.unpriced(1));
     expect(text(host)).toContain(en.portfolio.vault.noPrice);
+  });
+
+  it('draws its parts as his case does: a bar by weight, each part with its weight and target', async () => {
+    api({ person: onSolana });
+    signIn();
+    const host = await screen();
+    const parts = find(host, '[data-ui="vault-parts"]');
+    const items = [...parts.querySelectorAll('li')].map((li) => li.textContent);
+    expect(items).toEqual([
+      `USDY63.46%${en.portfolio.vault.target('60.00%')}`,
+      `PAXG12.50%${en.portfolio.vault.target('15.00%')}`,
+    ]);
+    // the chips state the vault's facts, and the foot has the short disclaimer
+    const chips = find(host, `ul[aria-label="${en.portfolio.vault.chips.label}"]`).textContent;
+    expect(chips).toContain('version: 1');
+    expect(chips).toContain('auto-follow: on');
+    expect(host.textContent).toContain(DISCLAIMER_SHORT);
   });
 
   it('says a vault of cash alone in words, with no empty table', async () => {
@@ -275,7 +308,10 @@ describe('the monitor, when there is nothing to read or the API cannot say', () 
     const host = await screen();
     expect(text(host)).toContain(en.portfolio.empty('Solana'));
     const link = find(host, 'a');
-    expect([link.textContent, link.getAttribute('href')]).toEqual([en.portfolio.startGoal, '/']);
+    expect([link.textContent, link.getAttribute('href')]).toEqual([
+      en.portfolio.startGoal,
+      '/goal',
+    ]);
     expect(host.querySelector('table')).toBeNull();
   });
 
@@ -412,6 +448,133 @@ describe('the throwaway wallet of development', () => {
   });
 });
 
+describe('each vault as his guide’s goal card, plan and activity', () => {
+  /** The vault of the order this browser placed, joined by the plan's number on chain. */
+  const bought = (over: Partial<OrderRecord> = {}) => {
+    const plan = planOn();
+    keepOrder(
+      recordOf('solana', {
+        userId: onSolana.userId,
+        amountUsd: 40_000,
+        goal: {
+          sheet: plan.proposal.sheet,
+          card: plan.proposal.card,
+          verdict: null,
+          placedAt: '2026-10-01T00:00:00Z',
+        },
+        ...over,
+      }),
+    );
+    return json(portfolioBody(chainOf([vault({ basketId: basketOfPlan(PLAN_ID) })])));
+  };
+
+  /** The order, as the API says it stands: signed and confirmed, or not signed yet. */
+  const orders = (done: boolean) => (path: string) =>
+    path === `/v1/orders/${ORDER_ID}` ? json(done ? doneOrder() : orderOn()) : null;
+
+  it('opens with the goal its plan was built for, its date, its value, and no made-up status', async () => {
+    api({ person: onSolana, portfolio: () => bought(), more: orders(true) });
+    signIn();
+    const host = await screen();
+    await settle();
+    const card = find(host, '[data-ui="goal-card"]');
+    expect(find(card, 'h3').textContent).toBe('Grow $40,000 over 36 months.');
+    // a growth goal has no status from the engine: the card says so, with the goal's date
+    expect(card.querySelector('[data-ui="status"]')).toBeNull();
+    expect(find(card, '[data-ui="goal-no-status"]').textContent).toBe(
+      `${en.portfolio.goalCard.noStatus} · October 2029`,
+    );
+    expect(find(card, '[data-ui="figure"]').textContent).toContain('$1,040.00');
+    // what went in: the order whose deposit is confirmed on chain
+    expect(card.textContent).toContain(
+      `${en.portfolio.goalCard.putIn('$40,000')} · up to $40,000 within a day`,
+    );
+    const link = find(card, 'a');
+    expect([link.textContent, link.getAttribute('href')]).toEqual([
+      en.portfolio.goalCard.seeOrder,
+      `/orders/${ORDER_ID}`,
+    ]);
+    // beside it, his plan: the parts by weight
+    const titles = [...host.querySelectorAll('[data-ui="vault"] section h3')].map(
+      (h) => h.textContent,
+    );
+    expect(titles).toContain(en.portfolio.vault.planTitle(2));
+    expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
+  });
+
+  it('counts nothing as put in from an order kept but not confirmed on chain', async () => {
+    api({ person: onSolana, portfolio: () => bought(), more: orders(false) });
+    signIn();
+    const host = await screen();
+    await settle();
+    const card = find(host, '[data-ui="goal-card"]');
+    expect(card.textContent).not.toContain(en.portfolio.goalCard.putIn('$40,000'));
+    expect(card.textContent).toContain('up to $40,000 within a day');
+  });
+
+  const income = (amountUsd: number) => {
+    const plan = planOn();
+    return bought({
+      amountUsd,
+      goal: {
+        sheet: { ...plan.proposal.sheet, goal: 'income' },
+        card: plan.proposal.card,
+        verdict: { met: true, gapUsdMonthly: 0, ways: [] },
+        placedAt: '2026-10-01T00:00:00Z',
+      },
+    });
+  };
+
+  it('says an income plan’s verdict only as the verdict when it was built, and only for its own amount', async () => {
+    api({ person: onSolana, portfolio: () => income(40_000), more: orders(true) });
+    signIn();
+    const host = await screen();
+    await settle();
+    const status = find(find(host, '[data-ui="goal-card"]'), '[data-ui="status"]');
+    expect(status.getAttribute('data-status')).toBe('on-track');
+    expect(status.textContent).toBe(`${en.portfolio.goalCard.builtMet} · October 2029`);
+    expect(status.querySelector('svg')).not.toBeNull();
+  });
+
+  it('says no status when what went in is not the amount the plan was built for', async () => {
+    api({ person: onSolana, portfolio: () => income(50), more: orders(true) });
+    signIn();
+    const host = await screen();
+    await settle();
+    const card = find(host, '[data-ui="goal-card"]');
+    expect(card.querySelector('[data-ui="status"]')).toBeNull();
+    expect(card.textContent).toContain(en.portfolio.goalCard.noStatus);
+  });
+
+  it('shows what is known of a vault this browser cannot join to a goal, and invents no target', async () => {
+    api({ person: onSolana });
+    signIn();
+    const host = await screen();
+    const card = find(host, '[data-ui="goal-card"]');
+    expect(find(card, 'h3').textContent).toBe(en.portfolio.goalCard.unknown('Solana'));
+    expect(card.textContent).toContain(en.portfolio.goalCard.notJoined);
+    expect(card.textContent).not.toMatch(/ of \$/);
+    expect(find(card, 'a').getAttribute('href')).toBe('/goal');
+  });
+
+  it('lists what reached the chain from the orders this browser placed, each line with its link, beside the disclaimer', async () => {
+    api({
+      person: onSolana,
+      portfolio: () => bought(),
+      more: (path) => (path === `/v1/orders/${ORDER_ID}` ? json(doneOrder()) : null),
+    });
+    signIn();
+    const host = await screen();
+    await settle();
+    const activity = find(host, '[data-ui="activity-panel"]');
+    const lines = [...activity.querySelectorAll('[data-ui="execution-list"] li')];
+    expect(lines.length).toBe(doneOrder().legs.length);
+    for (const line of lines)
+      expect(line.querySelector('a[href^="https://explorer.example/tx/"]')).not.toBeNull();
+    expect(find(activity, '[data-ui="disclaimer"] p[lang]').textContent).toBe(DISCLAIMER.en);
+  });
+});
+
 describe('the monitor in Portuguese', () => {
   it('says every word of the vault in Portuguese, and the figures the Brazilian way', async () => {
     const pt = dictionary('pt');
@@ -423,7 +586,7 @@ describe('the monitor in Portuguese', () => {
       expect(text(host)).toContain(label);
     expect(text(host).replace(/\s/g, ' ')).toContain('US$ 1.040,00');
     expect(text(host)).toContain('−2,50%');
-    expect(find(host, '[data-ui="mock-note"]').textContent).toBe(pt.shell.testNetwork);
+    expect(find(panel(host), '[data-ui="mock-note"]').textContent).toBe(pt.shell.testNetwork);
     for (const pin of pins(host))
       expect(pin.querySelector('button')?.getAttribute('aria-label')).toMatch(/^Fonte de /);
     expect(text(host)).not.toContain(en.portfolio.vault.title);

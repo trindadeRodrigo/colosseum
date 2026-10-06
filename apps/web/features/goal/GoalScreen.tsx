@@ -17,7 +17,7 @@ import { ChainName } from '../account/ChainName';
 import { rememberPlan } from '../order/plan-store';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { type BuildOutcome, buildPlan, planProvenance } from './build-plan';
-import { GOAL_DRAFT } from './draft';
+import { GOAL_DRAFT, GOAL_HANDOFF } from './draft';
 import { GOAL_TEXT, type ReadFailure, ReadGoalError, readGoal } from './read-goal';
 import {
   checkSheet,
@@ -38,7 +38,7 @@ import {
 /** Where the limits sit in the page: "Edit limits" leads here. */
 const LIMITS = 'limits';
 const STORE = GOAL_DRAFT;
-const SIGN_IN = '/sign-in?next=/';
+const SIGN_IN = '/sign-in?next=/goal';
 
 type Build = { kind: 'idle' } | { kind: 'solving' } | BuildOutcome;
 
@@ -66,6 +66,8 @@ export function GoalScreen() {
   // read back once, and only after that is anything written.
   const [restored, setRestored] = useState(false);
   const asked = useRef(false);
+  /** A goal the landing page handed over, to be read once the screen has opened. */
+  const handed = useRef<string | null>(null);
   useEffect(() => {
     if (asked.current) return;
     asked.current = true;
@@ -74,6 +76,12 @@ export function GoalScreen() {
       if (stored) {
         setText(stored.text);
         setSheet(stored.sheet);
+      }
+      const typed = window.sessionStorage.getItem(GOAL_HANDOFF);
+      window.sessionStorage.removeItem(GOAL_HANDOFF);
+      if (typed !== null && typed.trim() !== '' && typed.length <= GOAL_TEXT.max) {
+        handed.current = typed.trim();
+        setText(handed.current);
       }
     } catch {
       // No storage in this browser: the screen works without it.
@@ -141,6 +149,14 @@ export function GoalScreen() {
       setReading(false);
     }
   }
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: read once, when the screen has opened; `read` is this render's
+  useEffect(() => {
+    if (!restored || handed.current === null) return;
+    const typed = handed.current;
+    handed.current = null;
+    void read(typed);
+  }, [restored]);
 
   function change(fieldId: string, value: string) {
     const key = fieldOfId(fieldId);

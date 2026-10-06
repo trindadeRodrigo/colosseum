@@ -78,3 +78,62 @@ describe('CompactNav, the sheet of links on a phone (compact-nav.md)', () => {
     expect(document.activeElement).toBe(find(host, '#elsewhere'));
   });
 });
+
+describe('CompactNav over a stage (compact-nav.md, Trigger)', () => {
+  /** Two steps whose tops a test moves, as scrolling would. */
+  function steps() {
+    const tops = { s2: 2000, s3: 3000 };
+    for (const [id, key] of [
+      ['step-2', 's2'],
+      ['step-3', 's3'],
+    ] as const) {
+      const el = document.createElement('div');
+      el.id = id;
+      el.getBoundingClientRect = () => ({ top: tops[key] }) as DOMRect;
+      document.body.append(el);
+    }
+    return tops;
+  }
+  const scroll = async () => {
+    await fire(window, new Event('scroll'));
+    await new Promise((done) => requestAnimationFrame(() => done(null)));
+    await fire(window, new Event('scroll'));
+  };
+  const bar = (host: HTMLElement) => find(host, '[data-ui="compact-nav"]');
+
+  afterEach(() => {
+    for (const id of ['step-2', 'step-3']) document.getElementById(id)?.remove();
+  });
+
+  it('is compact after a jump past step 03, as End or a link to a section makes', async () => {
+    const tops = steps();
+    const { CompactNav } = await import('./CompactNav');
+    const { createElement } = await import('react');
+    const host = await mount(
+      createElement(CompactNav, {
+        symbol: null,
+        wordmark: 'tenonfi',
+        homeLabel: 'home',
+        links: [{ label: 'Invest', href: '#simulate' }],
+        cta: { label: 'Sign in', href: '/sign-in' },
+        contentId: 'content',
+        stage: { compactAt: 'step-3', releaseAbove: 'step-2' },
+      }),
+    );
+    expect(bar(host).getAttribute('data-compact')).toBe('false');
+    // straight to the end of the page: both steps far above the window
+    tops.s2 = -9000;
+    tops.s3 = -8000;
+    await scroll();
+    expect(bar(host).getAttribute('data-compact')).toBe('true');
+    // back between them: it stays compact until step 02 is below the line again
+    tops.s2 = 100;
+    tops.s3 = 900;
+    await scroll();
+    expect(bar(host).getAttribute('data-compact')).toBe('true');
+    tops.s2 = 5000;
+    tops.s3 = 6000;
+    await scroll();
+    expect(bar(host).getAttribute('data-compact')).toBe('false');
+  });
+});
