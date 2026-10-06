@@ -26,10 +26,10 @@ section.stage
 
 | Condition | Render |
 |---|---|
-| WebGL available, motion allowed | three.js scene (pinned version, self-hosted, not a CDN `<script>`), lazy-initialised after the first paint, faded in on its first frame; pixel ratio ≤ 2 (1.5 on phones and small GPUs); pause rendering when off-screen or tab hidden. The wood and the studio light are computed, nothing else is fetched (gate `JOINT-3D`) |
-| `prefers-reduced-motion: reduce` | **No scroll-linked motion.** The seated still of the same scene (black or paper, by theme) stands beside the copy. Steps scroll normally; no sticky |
-| No WebGL | Stills of the same scene in the pinned layer: apart for the hero and steps 01–02, seated from step 03 (crossfade). Copy fully readable |
-| JS off / low-power (`navigator.connection.saveData`) | Static 2D drawing (SVG, hinoki on black / hardwood on paper), apart then seated; nothing fetched for it. Copy fully readable |
+| WebGL available, motion allowed | three.js scene (pinned version, self-hosted, not a CDN `<script>`), lazy-initialised after the first paint, faded in on its first frame; pixel ratio ≤ 2 (1.5 on phones and small GPUs); pause rendering when off-screen or tab hidden. The joint is drawn as a joiner's drawing: fills in the ground colour, a heavier outline, hidden edges dashed (gate `JOINT-3D`) |
+| `prefers-reduced-motion: reduce` | **No scroll-linked motion.** The seated drawing, as an SVG still cut from the same scene, stands beside the copy. Steps scroll normally; no sticky |
+| No WebGL (or only a software one), or low-power (`navigator.connection.saveData`) | The same drawing as SVG stills in the pinned layer: apart for the hero and steps 01–02, seated from step 03 (crossfade). Copy fully readable |
+| JS off | The seated SVG still |
 | Print | the static drawing |
 
 ## Constraints applied

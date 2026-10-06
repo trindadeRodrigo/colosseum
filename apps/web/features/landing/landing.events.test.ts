@@ -98,7 +98,6 @@ describe('the hero', () => {
     const made = scene.create.mock.results[0]?.value as { setProgress: ReturnType<typeof vi.fn> };
     expect(made.setProgress).toHaveBeenCalled();
     // nothing stands in while it loads, and the canvas shows once its first frame is drawn
-    expect(host.querySelector('.sticky [data-ui="joint-drawing"]')).toBeNull();
     expect(host.querySelector('.sticky [data-ui="joint-still"]')).toBeNull();
     expect(find(host, 'canvas').className).toContain('opacity-0');
     await act(async () => scene.create.mock.calls[0]?.[1]?.onReady?.());
@@ -115,8 +114,8 @@ describe('the hero', () => {
     expect(still?.getAttribute('data-seated')).toBe('true');
     const frames = [...(still?.querySelectorAll('img') ?? [])];
     expect(frames.map((img) => img.getAttribute('src'))).toEqual([
-      '/landing/joint/joint-seated-dark.webp',
-      '/landing/joint/joint-seated-light.webp',
+      '/landing/joint/joint-seated-dark.svg',
+      '/landing/joint/joint-seated-light.svg',
     ]);
     // each frame says what the joint does; the theme shows one of them, so one is read
     for (const img of frames) expect(img.getAttribute('alt')).toBe(en.landing.stage.drawing);
@@ -132,7 +131,6 @@ describe('the hero', () => {
     expect(scene.create).not.toHaveBeenCalled();
     const stills = [...host.querySelectorAll('.sticky [data-ui="joint-still"]')];
     expect(stills.map((s) => s.getAttribute('data-seated'))).toEqual(['false', 'true']);
-    expect(host.querySelector('.sticky [data-ui="joint-drawing"]')).toBeNull();
   });
 
   it('shows the stills, and loads no scene, where WebGL is only a software rasteriser', async () => {
@@ -154,12 +152,15 @@ describe('the hero', () => {
     expect(host.querySelectorAll('.sticky [data-ui="joint-still"]')).toHaveLength(2);
   });
 
-  it('fetches nothing for the joint when the visitor saves data: the line drawing stands in', async () => {
+  it('loads no scene when the visitor saves data: the same drawing stands in as stills', async () => {
     browser({ webgl: true, saveData: true });
     const host = await landing();
     expect(scene.create).not.toHaveBeenCalled();
-    expect(host.querySelector('.sticky [data-ui="joint-drawing"]')).not.toBeNull();
-    expect(host.querySelector('.sticky [data-ui="joint-still"]')).toBeNull();
+    const stills = [...host.querySelectorAll('.sticky [data-ui="joint-still"]')];
+    expect(stills.map((s) => s.getAttribute('data-seated'))).toEqual(['false', 'true']);
+    // only the frame the theme shows is fetched, and only when it is shown
+    for (const img of host.querySelectorAll('.sticky img'))
+      expect(img.getAttribute('loading')).toBe('lazy');
   });
 });
 

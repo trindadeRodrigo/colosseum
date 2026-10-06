@@ -63,21 +63,24 @@ describe('the cut of the joint', () => {
     expect((MM.hole.d - MM.pin.d) / 2).toBeCloseTo(0.1);
   });
 
-  it('keeps the sizes of his prototype: post and rail 45 × 45, the tenon 24 high and 18 thick', () => {
-    expect(MM.post.w).toBe(45);
-    expect(MM.post.top - MM.post.bottom).toBe(210);
-    expect([MM.rail.w, MM.rail.h]).toEqual([45, 45]);
-    expect([MM.tenon.h, MM.tenon.w]).toEqual([24, 18]);
-    expect(MM.pin.d).toBe(9);
+  it('is the mark’s joint (logo-directions.md A): rail 12u high, tenon 8u, a third thick, 12u proud', () => {
+    const u = 5;
+    expect(MM.post.w).toBe(10 * u);
+    expect(MM.rail.h).toBe(12 * u);
+    expect(MM.tenon.h).toBe(8 * u);
+    // a shoulder above and below the tenon, and on both cheeks
+    expect((MM.rail.h - MM.tenon.h) / 2).toBe(2 * u);
+    expect(MM.tenon.w).toBe(MM.rail.w / 3);
+    expect(MM.tenon.len - MM.post.w).toBe(12 * u);
+    expect(MM.pin.d).toBe(MM.tenon.h / 2);
   });
 
-  it('drops the pin through the tenon where it stands proud of the post, with wood on every side', () => {
-    const fromPost = MM.pin.at - MM.post.w;
-    const fromEnd = MM.tenon.len - MM.pin.at;
-    expect(fromPost - MM.hole.d / 2).toBeGreaterThan(0);
-    expect(fromEnd - MM.hole.d / 2).toBeGreaterThan(0);
-    expect((MM.tenon.w - MM.hole.d) / 2).toBeGreaterThan(4);
-    // and it stands out above and below the tenon once it is home
-    expect(MM.pin.len).toBeGreaterThan(MM.tenon.h);
+  it('pins the tenon where it stands proud: 7u from the post, 5u from the end, wood all round', () => {
+    const u = 5;
+    expect(MM.pin.at - MM.post.w).toBe(7 * u);
+    expect(MM.tenon.len - MM.pin.at).toBe(5 * u);
+    expect((MM.tenon.h - MM.hole.d) / 2).toBeGreaterThan(9);
+    // it goes right through the tenon's thickness and stands out of both cheeks
+    expect(MM.pin.len).toBeGreaterThan(MM.tenon.w);
   });
 });

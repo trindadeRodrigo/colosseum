@@ -332,8 +332,13 @@ describe('rule 3: no screen can reach a key', () => {
     'next/navigation',
     'react',
     // the landing's 3D joint (features/landing/joint-scene.ts): a renderer, with no network, storage or
-    // wallet of its own; loaded only by the landing page, after its first paint
+    // wallet of its own; loaded only by the landing page, after its first paint. Its drawing takes
+    // three's own line and geometry helpers, which are part of the same package.
     'three',
+    'three/examples/jsm/lines/LineMaterial.js',
+    'three/examples/jsm/lines/LineSegments2.js',
+    'three/examples/jsm/lines/LineSegmentsGeometry.js',
+    'three/examples/jsm/utils/BufferGeometryUtils.js',
   ];
 
   /**

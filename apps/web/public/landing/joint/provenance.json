@@ -1,13 +1,13 @@
 {
   "kind": "render",
   "author": "tenonfi",
-  "licence": "our own; no third-party texture, scan or environment map is used",
-  "source_file": "apps/web/features/landing/joint-scene.ts (still framing), photographed by apps/web/scripts/joint-stills.mjs from /dev/joint",
-  "made_at": "2026-10-05",
+  "licence": "our own; no third-party texture, scan or font is used",
+  "source_file": "apps/web/features/landing/joint-scene.ts (still framing), drawn as SVG by apps/web/features/landing/dev/joint-svg.ts through apps/web/scripts/joint-stills.mjs",
+  "made_at": "2026-10-06",
   "files": [
-    "joint-apart-dark.webp",
-    "joint-apart-light.webp",
-    "joint-seated-dark.webp",
-    "joint-seated-light.webp"
+    "joint-apart-dark.svg",
+    "joint-apart-light.svg",
+    "joint-seated-dark.svg",
+    "joint-seated-light.svg"
   ]
 }

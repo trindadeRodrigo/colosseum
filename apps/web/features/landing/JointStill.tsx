@@ -1,9 +1,9 @@
 import { cn } from '../../components/ui/cn';
 
-// The joint as a still: frames of the same scene (joint-scene.ts, `still`), the pieces whole in the
-// frame, rendered once and served from this app (`public/landing/joint/`, made by
-// scripts/joint-stills.mjs). It stands where the 3D cannot run (no WebGL) or must not move (reduced
-// motion). The page's theme picks the black or the paper frame with CSS alone: `.dark`, or the
+// The joint as a still: the same drawing as the stage (joint-scene.ts, `still`), the pieces whole in
+// the frame, saved once as SVG and served from this app (`public/landing/joint/`, made by
+// scripts/joint-stills.mjs). It stands where the 3D cannot run (no WebGL), is not wanted (data saved,
+// no script) or must not move (reduced motion). The page's theme picks the black or the paper frame with CSS alone: `.dark`, or the
 // system's dark while the person has not chosen (`.tf-auto`). Both are lazy, so only the one shown
 // is fetched.
 
@@ -33,13 +33,13 @@ export function JointStill({
       className={cn('relative aspect-square', className)}
     >
       {(['dark', 'light'] as const).map((ground) => (
-        // biome-ignore lint/performance/noImgElement: two small frames of one size, one of them hidden by the theme; the image service would only add a hop
+        // biome-ignore lint/performance/noImgElement: two small drawings of one size, one of them hidden by the theme; the image service would only add a hop
         <img
           key={ground}
-          src={`${SRC}${state}-${ground}.webp`}
+          src={`${SRC}${state}-${ground}.svg`}
           alt={alt ?? ''}
-          width={960}
-          height={960}
+          width={480}
+          height={480}
           loading="lazy"
           decoding="async"
           className={cn('absolute inset-0 size-full', ground === 'dark' ? ON_DARK : ON_PAPER)}
