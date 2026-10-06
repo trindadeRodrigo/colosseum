@@ -10,7 +10,7 @@ export const pt: Dictionary = {
   shell: {
     skip: 'Pular para o conteúdo',
     nav: 'Principal',
-    home: 'tenonfi, seu objetivo',
+    home: 'tenonfi, início',
     menu: 'Menu',
     invest: 'Investir',
     portfolio: 'Portfólio',
@@ -32,6 +32,11 @@ export const pt: Dictionary = {
     testNetwork: 'rede de teste',
     slowDown: 'Nosso servidor pediu para eu ir mais devagar. Espere um minuto e tente de novo.',
     mockAnnounce: ': dados de exemplo, não são reais',
+    wait: {
+      slow: 'Acordando o serviço de dados: da primeira vez isso pode levar até um minuto.',
+      over: 'Nosso servidor não respondeu a tempo, então nada aparece aqui ainda.',
+      retry: 'Tentar de novo',
+    },
   },
 
   signIn: {
@@ -1043,6 +1048,7 @@ export const pt: Dictionary = {
       resources: 'Recursos',
       analytics: 'Análises',
       cta: 'Entrar',
+      openApp: 'Abrir o app',
     },
     stage: {
       label: 'Como a tenonfi encaixa',

@@ -2,13 +2,15 @@
 import { ChainId, type Price, type VaultResponse } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useEffect, useId, useState } from 'react';
+import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card, CardBody, CardHeader, CardLoading, Stat, StatRow } from '../../components/ui/Card';
+import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/Card';
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { pinSourceOfPrice } from '../../components/ui/price-source';
+import { SkeletonSummary } from '../../components/ui/Skeleton';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { dollars } from '../goal/sheet';
@@ -52,7 +54,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
   if (load.kind === 'loading')
     return (
       <Card>
-        <CardLoading label={v.loading} />
+        <CardWait label={v.loading} skeleton={<SkeletonSummary />} />
       </Card>
     );
   if (load.kind !== 'read')

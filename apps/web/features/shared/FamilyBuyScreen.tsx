@@ -3,10 +3,12 @@ import { chainFamily, type SharedFamily, TRUST_STATUS } from '@colosseum/schemas
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
+import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card, CardBody, CardLoading } from '../../components/ui/Card';
+import { Card, CardBody } from '../../components/ui/Card';
 import { Field, Input } from '../../components/ui/Field';
+import { SkeletonPlan } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { dollars, parseNumber } from '../goal/sheet';
@@ -99,7 +101,7 @@ export function FamilyBuyScreen({ slug }: { slug: string }) {
   if (person.kind === 'loading' || (person.kind === 'ready' && family === null))
     return (
       <Card>
-        <CardLoading label={t.shared.family.loading} />
+        <CardWait label={t.shared.family.loading} skeleton={<SkeletonPlan legs={3} />} />
       </Card>
     );
   if (person.kind !== 'ready' || family === 'failed' || !family || !recipe || !chain)
