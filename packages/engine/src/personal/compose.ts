@@ -267,6 +267,17 @@ function build(
   /** Each theme sleeve's cents, by slug. */
   const themeCents = new Map(sleeves.themes.map((t, i) => [t.slug, themeSplit[i] ?? 0]));
   const book = new Book(w);
+  // A shared portfolio the goal follows is placed before the themes: until they are, the issuers of
+  // their names keep room for them (gate THEME-FIRST).
+  for (const t of sleeves.themes) {
+    const list = w.themeListOf(t.slug);
+    if (!list || list.status !== 'confirmed') continue;
+    const issuers = new Set(
+      w.tokens.filter((a) => list.members.some((m) => m.symbol === a.symbol)).map((a) => a.issuer),
+    );
+    for (const issuer of issuers)
+      book.reserved.set(issuer, (book.reserved.get(issuer) ?? 0) + (themeCents.get(t.slug) ?? 0));
+  }
   const themes = resolveThemes(w, book.removed);
 
   // ---- Exposure: what is inside stocks and crypto. A shared portfolio that fits is held whole.
@@ -435,14 +446,35 @@ function build(
   }
   intoYield(yieldUnit);
   book.placeTogether(goldUnits, (unit) => tokensOf(w, unit.name, 'gold'));
-  book.placeTogether(growthUnits, (unit) => tokensOf(w, unit.name, 'growth'));
-  // What stocks, crypto and gold could not take is held in dollar yield, then in cash.
-  intoYield(book.overflow());
-  // ---- The theme sleeves (gates SLEEVES, THEMES), after the goal: they take the lines left. What
-  // no name of a theme takes is held in dollar yield, then cash, and the sleeve records where.
+  // What the goal could not hold so far waits, apart from the themes' own.
+  const goalWaiting = book.overflow();
+  // ---- The theme sleeves (gates SLEEVES, THEMES, THEME-FIRST), before the goal's stocks and crypto:
+  // the theme the person asked for keeps its share of an issuer's room, and the goal's stocks take
+  // what is left. The lines its stocks need are kept for them. What no name of a theme takes is held
+  // in dollar yield, then cash, and the sleeve records where.
+  book.reserved.clear();
+  const members = new Set(w.themeLists.flatMap((t) => t.members.map((m) => m.symbol)));
+  const goalLines = new Set(
+    growthUnits
+      .filter((u) => u.cents > 0)
+      .flatMap((u) =>
+        tokensOf(w, u.name, 'growth')
+          .filter((a) => w.blockOf(a) === null)
+          .slice(0, 1),
+      )
+      .filter((a) => !book.lines.has(a.id) && !members.has(a.symbol))
+      .map((a) => a.id),
+  ).size;
   const themed = new Map<string, Map<string, number>>();
   for (const t of byName(sleeves.themes, (x) => x.slug)) {
-    const holds = placeThemeSleeve(w, book, t.slug, t.shareBps, themeCents.get(t.slug) ?? 0);
+    const holds = placeThemeSleeve(
+      w,
+      book,
+      t.slug,
+      t.shareBps,
+      themeCents.get(t.slug) ?? 0,
+      goalLines,
+    );
     const spilled = book.overflow();
     if (spilled.cents > 0) {
       const lineCents = () => new Map([...book.lines].map(([id, l]) => [id, l.cents]));
@@ -457,6 +489,13 @@ function build(
     }
     themed.set(t.slug, holds);
   }
+  book.placeTogether(growthUnits, (unit) => tokensOf(w, unit.name, 'growth'));
+  // What stocks, crypto and gold could not take is held in dollar yield, then in cash.
+  const rest = book.overflow();
+  intoYield({
+    cents: goalWaiting.cents + rest.cents,
+    reasons: [...goalWaiting.reasons, ...rest.reasons],
+  });
   // One sentence for each reason money meant for dollar yield stays in cash, with the whole of it.
   for (const [rule, cents] of stays) {
     const usd = toUsd(cents);
@@ -655,6 +694,8 @@ function build(
   // holds, what the person holds, every yield given, every figure the liquidity provider has for
   // this chain's tokens and for these lines, and the parameter table.
   const paramsHash = hashOf(P);
+  // Only the lists the sheet's theme sleeves name: editing another list re-hashes no plan.
+  const usedLists = w.themeLists.filter((t) => sleeves.themes.some((x) => x.slug === t.slug));
   const liquidity = w.liquidity;
   const inputs = {
     engine: PERSONAL_ENGINE_VERSION,
@@ -677,8 +718,8 @@ function build(
     yields: w.given.yields,
     // Left out when none is given, so a plan with no FX reading hashes as it did before.
     fx: w.given.fx.length > 0 ? w.given.fx : undefined,
-    // The theme lists of the person's chain, the same way.
-    themes: w.themeLists.length > 0 ? w.themeLists : undefined,
+    // The theme lists the plan's theme sleeves read, the same way.
+    themes: usedLists.length > 0 ? usedLists : undefined,
     liquidity: liquidity
       ? {
           method: liquidity.methodVersion,

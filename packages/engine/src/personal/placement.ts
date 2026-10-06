@@ -84,11 +84,29 @@ export class Book {
   /** The same, counting dollar yield, gold and cash only: what the plan's issuer cap reads (Rodrigo, Oct 5). */
   private readonly withIssuerOutsideGrowth = new Map<string, number>();
 
+  /**
+   * Room held for the theme sleeves, by issuer, while the goal sleeve follows a shared portfolio
+   * before them (gate THEME-FIRST): counted against stocks and crypto as if it were placed.
+   */
+  readonly reserved = new Map<string, number>();
+
   /** What is already with this token's issuer, as the cap for its sleeve counts it. */
   private usedOf(asset: BasketAsset): number {
-    const counted =
-      this.w.sleeveOf(asset) === 'growth' ? this.withIssuer : this.withIssuerOutsideGrowth;
-    return counted.get(asset.issuer) ?? 0;
+    if (this.w.sleeveOf(asset) !== 'growth')
+      return this.withIssuerOutsideGrowth.get(asset.issuer) ?? 0;
+    return (this.withIssuer.get(asset.issuer) ?? 0) + (this.reserved.get(asset.issuer) ?? 0);
+  }
+
+  /** Cents held of an underlying in stocks and crypto, on every line. */
+  heldOfUnderlying(underlying: string): number {
+    let n = 0;
+    for (const l of this.lines.values())
+      if (
+        (l.asset.cls === 'stock' || l.asset.cls === 'crypto') &&
+        l.asset.underlying === underlying
+      )
+        n += l.cents;
+    return n;
   }
 
   constructor(private readonly w: World) {}
@@ -504,11 +522,32 @@ export class Book {
     const able = ordered.filter((u) => tokens.has(u));
     const tokenOf = (u: Unit) => tokens.get(u) as BasketAsset;
     const hasLine = (u: Unit) => this.lines.has(tokenOf(u).id);
+    const ceilingRoomOf = (u: Unit) =>
+      Math.max(0, w.ceilingOf(tokenOf(u)) - (this.lines.get(tokenOf(u).id)?.cents ?? 0));
+    // The cap on one stock counts what a theme sleeve placed before holds of it (gate THEME-FIRST).
+    const stockRoom = new Map(
+      able.map((u) => {
+        const t = tokenOf(u);
+        const capped = t.cls === 'stock' || t.cls === 'crypto';
+        return [
+          u,
+          capped
+            ? Math.max(0, w.stockCap - this.heldOfUnderlying(t.underlying))
+            : Number.POSITIVE_INFINITY,
+        ];
+      }),
+    );
     const askOf = (u: Unit) =>
-      Math.min(
-        u.cents,
-        Math.max(0, w.ceilingOf(tokenOf(u)) - (this.lines.get(tokenOf(u).id)?.cents ?? 0)),
+      Math.min(u.cents, ceilingRoomOf(u), stockRoom.get(u) ?? Number.POSITIVE_INFINITY);
+    const stockWhy = (u: Unit) =>
+      reason(
+        'SINGLE_STOCK_CAP',
+        { asset: u.name, capBps: w.P.capPerStockBps[w.sheet.risk] ?? 0, risk: w.sheet.risk },
+        w.lang,
       );
+    /** Whether the cap on one stock, not the token's ceiling, is what holds this unit under its cents. */
+    const byStockCap = (u: Unit) =>
+      (stockRoom.get(u) ?? Number.POSITIVE_INFINITY) < Math.min(u.cents, ceilingRoomOf(u));
 
     const tooSmall = new Map<Unit, Reason>();
     let noLine = new Set<Unit>();
@@ -549,7 +588,9 @@ export class Book {
         last.cents < w.minLine
           ? reason('BELOW_MINIMUM', { asset: last.name, usd: toUsd(last.cents) }, w.lang)
           : askOf(last) < w.minLine
-            ? w.ceilingWhy(token)
+            ? byStockCap(last)
+              ? stockWhy(last)
+              : w.ceilingWhy(token)
             : this.issuerWhy(token),
       );
     }
@@ -567,11 +608,14 @@ export class Book {
       const ask = askOf(u);
       const take = takes.get(u) ?? 0;
       const reasons = [...u.reasons];
-      if (ask < u.cents) reasons.push(w.ceilingWhy(token));
+      const stock = byStockCap(u);
+      if (ask < u.cents) reasons.push(stock ? stockWhy(u) : w.ceilingWhy(token));
       if (take < ask) reasons.push(this.issuerWhy(token));
       if (take > 0) this.put(token, take, reasons);
       this.spill([u.name], ask - take, this.issuerWhy(token));
-      if (u.cents > ask) over.push({ unit: u, cents: u.cents - ask });
+      // Over the cap on one stock: no other token of it may take it either.
+      if (stock) this.spill([u.name], u.cents - ask, stockWhy(u));
+      else if (u.cents > ask) over.push({ unit: u, cents: u.cents - ask });
     }
     // What is over a token's own ceiling may go to another token of the same underlying.
     for (const { unit, cents } of over) {

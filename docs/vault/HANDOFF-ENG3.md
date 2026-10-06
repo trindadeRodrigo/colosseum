@@ -52,7 +52,7 @@ Left before slice 3 merges: `/review-pr` by an agent that did not write it, Thom
   - the candidate overrides (`candidates` in `params.ts`: Cover 12 months, credit half the person's limit (set: gate `COVER-CREDIT`), tau 0.5%, shareOfDepth 0.125; Spread one band, issuer 30%; distinct from 1,000 bps), and `wayScaleStepBps` (1%);
   - the working names Cover, Spread, Carry (and Cobertura, Diversificação, Rendimento) in `WORDS.candidate`: a brand decision;
   - the 25% cash in Solana income plans;
-  - the theme sleeve's choices listed in its pull request (placed after the goal sleeve, so the goal's stocks use the issuer's room and the lines first; a theme in a plan to protect or for income is held in dollar yield and cash, not refused).
+  - the theme sleeve's open choices listed in PR #72 (a theme in a plan to protect or for income is held in dollar yield and cash, not refused; capped equal weights redistribute; measured names rank before tier names). Themes first is decided (`THEME-FIRST`).
 - **Thom:**
   - read slice 2's two schema commits, merged without his approval;
   - approve the shared types of slice 3 (`ebdbb13`: `PlanCandidate`, `PlanScorecard`, `PlanStatus`, additive);

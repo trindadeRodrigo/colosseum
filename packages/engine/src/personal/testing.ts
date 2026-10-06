@@ -979,6 +979,8 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
             ((r.rule === 'EXIT_CEILING' || r.rule === 'TIER_CEILING') &&
               r.params.asset === a.symbol) ||
             (r.rule === 'SINGLE_STOCK_CAP' && r.params.asset === a.underlying) ||
+            // What the person already holds of it is bought less (DESIGN-VAULT section 7).
+            (r.rule === 'ALREADY_HELD' && r.params.asset === a.underlying) ||
             ((r.rule === 'ISSUER_CAP' || r.rule === 'ISSUER_CAP_PLAN') &&
               r.params.issuer === a.issuer),
         );
