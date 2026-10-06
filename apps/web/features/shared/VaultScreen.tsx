@@ -13,6 +13,7 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 import { dollars } from '../goal/sheet';
 import { assetName, formatBps } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
+import { vaultValueSource } from '../portfolio/portfolio';
 import { useApiFetch } from '../wallet/WalletProvider';
 import { readVault } from './shared-api';
 
@@ -102,7 +103,19 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
         <CardHeader title={read.name} level={2} id={`${titleId}-pane`} />
         <CardBody className="flex flex-col gap-5">
           <StatRow>
-            <Stat label={v.value}>{dollars(Number(vault.valueUsd), lang)}</Stat>
+            <Stat label={v.value}>
+              {/* The value stands on the prices and the read of the vault: its pin says so
+                  (STYLE.md rule 1), as the monitor's does. */}
+              <ProvenancePin
+                value={dollars(Number(vault.valueUsd), lang)}
+                obs={vaultValueSource(
+                  { ...read, vaults: [vault] },
+                  vault,
+                  t.portfolio.vault.valueMethod,
+                )}
+                labels={t.pin}
+              />
+            </Stat>
             <Stat label={v.autoFollow}>{vault.autoFollow ? v.on : v.off}</Stat>
           </StatRow>
           <dl className="grid gap-x-6 gap-y-1 text-body-sm sm:grid-cols-[auto_1fr]">

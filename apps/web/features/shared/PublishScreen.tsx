@@ -29,7 +29,11 @@ import { useSharedPerson } from './use-person';
 
 export const LIMITS = { min: 3, max: 12, low: 200, high: 5000, step: 50, chars: 280 } as const;
 
-const LINK = /:\/\/|www\./i;
+// The server's rules for the creator's text (apps/api/src/orders/shared.ts), the same here so the
+// form says so before anything is sent: a link, a scheme or `www.` or a bare host (`evil.xyz/airdrop`),
+// an email address included; and a character a person cannot see or that turns text around.
+const LINK = /:\/\/|www\.|(?<!\w)[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?![\w-])/i;
+const HIDDEN = /\p{Cf}|(?!\n)\p{Cc}/u;
 const ASCII = /^[\x20-\x7e]+$/;
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -67,7 +71,8 @@ export function problemsOf(
   )
     out.push('name');
   if (!SLUG.test(form.slug) || form.slug.length > 64) out.push('slug');
-  if (form.copy.length > LIMITS.chars || LINK.test(form.copy)) out.push('copy');
+  if (form.copy.length > LIMITS.chars || LINK.test(form.copy) || HIDDEN.test(form.copy))
+    out.push('copy');
   if (form.rows.length < LIMITS.min || form.rows.length > LIMITS.max) out.push('count');
   if (
     form.rows.some(
@@ -85,6 +90,8 @@ type Existing =
   | { kind: 'reading' }
   | { kind: 'new' }
   | { kind: 'mine'; family: SharedFamily; next: number }
+  /** The person's own portfolio, whose id is not its slug's: not updated from here (gate FAMILY-ID). */
+  | { kind: 'foreign' }
   | { kind: 'theirs' };
 
 export function PublishScreen() {
@@ -133,6 +140,9 @@ export function PublishScreen() {
       if (read.kind !== 'read') return setExisting({ kind: 'new' });
       const recipe = read.value.family.recipes.find((r) => r.chain === chain);
       if (!recipe || recipe.creator !== owner) return setExisting({ kind: 'theirs' });
+      // An update is only of a portfolio whose id is its slug's: the id the guard holds the bytes to
+      // is the one this page works out, never the server's (gate FAMILY-ID).
+      if (read.value.family.familyId !== familyIdFor(slug)) return setExisting({ kind: 'foreign' });
       setExisting({
         kind: 'mine',
         family: read.value.family,
@@ -168,11 +178,13 @@ export function PublishScreen() {
   const read = list.map((r) => ({ asset: r.asset, bps: bpsOf(r.weight) }));
   const problems = problemsOf({ name, slug, copy, rows: read }, chain);
   const sum = read.reduce((n, r) => n + (r.bps ?? 0), 0);
-  const familyId = existing.kind === 'mine' ? existing.family.familyId : familyIdFor(slug || 'x');
+  // Always the page's own: an update is offered only where the stored id is this one.
+  const familyId = familyIdFor(slug || 'x');
   const chainName = t.chain.names[chain];
   const blocked = [
     ...problems.map((k) => p.problems[k]),
     ...(existing.kind === 'theirs' ? [p.theirs] : []),
+    ...(existing.kind === 'foreign' ? [t.shared.family.foreign] : []),
     ...(existing.kind === 'reading' ? [t.shared.check.reading] : []),
     ...(!person.signable || person.off ? [t.shared.family.chainNotReady(chainName)] : []),
     ...(!owner ? [t.buy.blocked.wallet] : []),

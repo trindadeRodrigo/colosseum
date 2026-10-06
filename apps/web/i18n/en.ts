@@ -616,6 +616,8 @@ export const en = {
       pending:
         'The name and description are those of the version that waits. The version in effect was published with other words.',
       creator: 'Created by',
+      notChecked:
+        'The name and description aren’t checked against what the creator published on the chain.',
     },
     family: {
       loading: 'Reading this portfolio…',
@@ -644,10 +646,13 @@ export const en = {
       signIn: 'Sign in to follow',
       chainNotReady: (chain: string) =>
         `${chain} isn’t ready for following yet: its vaults aren’t deployed on this network.`,
+      tampered: (chain: string) =>
+        `I couldn’t verify this portfolio on ${chain}, so I won’t offer to buy or follow it: it may have been tampered with. Try again later.`,
       missingOnChain: (chain: string) =>
         `${chain} has no such portfolio: I read the chain, and the registry doesn’t hold it. It can’t be followed.`,
       unlisted:
         'The chain’s version holds a token this app doesn’t list, so I won’t offer to follow it.',
+      notListed: 'a token this app doesn’t list',
       foreign:
         'This portfolio wasn’t published through this app, so I can’t check its id against its name, and following it isn’t offered here yet.',
     },
@@ -665,9 +670,11 @@ export const en = {
           `Not checked against ${chain}: this app has no record of the tokens on this network. These are our server’s words.`,
         'family-id':
           'Not checked against the chain: this portfolio wasn’t published through this app, so its id comes from our server. These are our server’s words.',
-        failed: (chain: string) =>
-          `Not checked against ${chain}: the node this app reads from didn’t answer. These are our server’s words.`,
       },
+      failed: (chain: string) =>
+        `I couldn’t verify this portfolio on ${chain}: the node this app reads from didn’t answer, or what our server named isn’t the portfolio the chain holds. It may have been tampered with, so I won’t offer to follow it.`,
+      missing: (chain: string) =>
+        `I read ${chain}, and it holds no such portfolio: what’s shown is only our server’s word.`,
       verified: 'Read from the chain',
       notChecked: 'Not checked against the chain',
     },
@@ -745,9 +752,9 @@ export const en = {
       review: 'Review the publish',
       reviewing: 'Making the order…',
       problems: {
-        name: 'A name needs plain letters, digits and punctuation, with no space at either end.',
+        name: 'A name needs plain letters, digits and punctuation, with no space at either end and no link or web address.',
         slug: 'An address needs lower-case letters, digits and dashes.',
-        copy: 'A description is at most 280 characters, with no link.',
+        copy: 'A description is at most 280 characters, with no link or web address and no hidden characters.',
         count: 'A portfolio holds 3 to 12 assets.',
         weight: 'Each weight is from 2% to 50%, in steps of 0.5%.',
         sum: 'The weights add up to 100%.',

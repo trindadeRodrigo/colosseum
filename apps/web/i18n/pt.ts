@@ -601,6 +601,8 @@ export const pt: Dictionary = {
       pending:
         'O nome e a descrição são os da versão que aguarda. A versão em vigor foi publicada com outras palavras.',
       creator: 'Criado por',
+      notChecked:
+        'O nome e a descrição não foram conferidos com o que quem criou publicou na rede.',
     },
     family: {
       loading: 'Lendo este portfólio…',
@@ -629,10 +631,13 @@ export const pt: Dictionary = {
       signIn: 'Entre para seguir',
       chainNotReady: (chain: string) =>
         `A ${chain} ainda não está pronta para seguir portfólios: os cofres dela não estão implantados nesta rede.`,
+      tampered: (chain: string) =>
+        `Não consegui verificar este portfólio na ${chain}, então não vou oferecer comprá-lo nem segui-lo: ele pode ter sido adulterado. Tente mais tarde.`,
       missingOnChain: (chain: string) =>
         `A ${chain} não tem esse portfólio: li a rede, e o registro não o tem. Não dá para segui-lo.`,
       unlisted:
         'A versão na rede tem um token que este app não lista, então não vou oferecer seguir.',
+      notListed: 'um token que este app não lista',
       foreign:
         'Este portfólio não foi publicado por este app, então não consigo conferir o identificador dele pelo nome, e seguir ainda não é oferecido aqui.',
     },
@@ -650,9 +655,11 @@ export const pt: Dictionary = {
           `Não conferido na ${chain}: este app não tem registro dos tokens nesta rede. Estas são palavras do nosso servidor.`,
         'family-id':
           'Não conferido na rede: este portfólio não foi publicado por este app, então o identificador dele vem do nosso servidor. Estas são palavras do nosso servidor.',
-        failed: (chain: string) =>
-          `Não conferido na ${chain}: o nó de onde este app lê não respondeu. Estas são palavras do nosso servidor.`,
       },
+      failed: (chain: string) =>
+        `Não consegui verificar este portfólio na ${chain}: o nó de onde este app lê não respondeu, ou o que nosso servidor indicou não é o portfólio que a rede tem. Ele pode ter sido adulterado, então não vou oferecer segui-lo.`,
+      missing: (chain: string) =>
+        `Li a ${chain}, e ela não tem este portfólio: o que aparece é só a palavra do nosso servidor.`,
       verified: 'Lido da rede',
       notChecked: 'Não conferido na rede',
     },
@@ -731,9 +738,9 @@ export const pt: Dictionary = {
       review: 'Revisar a publicação',
       reviewing: 'Criando a ordem…',
       problems: {
-        name: 'Um nome precisa de letras, números e pontuação simples, sem espaço nas pontas.',
+        name: 'Um nome precisa de letras, números e pontuação simples, sem espaço nas pontas e sem link ou endereço web.',
         slug: 'Um endereço precisa de letras minúsculas, números e hífens.',
-        copy: 'Uma descrição tem no máximo 280 caracteres, sem link.',
+        copy: 'Uma descrição tem no máximo 280 caracteres, sem link ou endereço web e sem caracteres ocultos.',
         count: 'Um portfólio tem de 3 a 12 ativos.',
         weight: 'Cada peso vai de 2% a 50%, em passos de 0,5%.',
         sum: 'Os pesos somam 100%.',

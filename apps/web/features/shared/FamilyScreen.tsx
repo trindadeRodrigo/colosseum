@@ -49,6 +49,8 @@ export type Followed = {
   source: 'chain' | 'api';
   /** The chain has no such portfolio: nothing is followed. */
   missing: boolean;
+  /** This app could have read the chain and could not: nothing is followed (`failed`). */
+  tampered: boolean;
   /** Read from the chain, the version holds a token this app does not list. */
   unlisted: boolean;
   /**
@@ -66,6 +68,17 @@ export function followedOf(recipe: SharedRecipe, check: ChainCheck): Followed | 
       targets: null,
       source: 'chain',
       missing: true,
+      tampered: false,
+      unlisted: false,
+      foreign: false,
+    };
+  if (check.state === 'failed')
+    return {
+      follow: { recipeOnchainId: recipe.onchainId, version: recipe.active.version },
+      targets: null,
+      source: 'chain',
+      missing: false,
+      tampered: true,
       unlisted: false,
       foreign: false,
     };
@@ -75,6 +88,7 @@ export function followedOf(recipe: SharedRecipe, check: ChainCheck): Followed | 
       targets: check.targets,
       source: 'chain',
       missing: false,
+      tampered: false,
       unlisted: check.targets === null,
       foreign: false,
     };
@@ -83,6 +97,7 @@ export function followedOf(recipe: SharedRecipe, check: ChainCheck): Followed | 
     targets: recipe.active.components,
     source: 'api',
     missing: false,
+    tampered: false,
     unlisted: false,
     foreign: check.state === 'unverified' && check.why === 'family-id',
   };
@@ -201,21 +216,26 @@ function RecipeSection({
   const reasonId = useId();
   const locale = LOCALE[lang];
   const read = check.state === 'read' ? check.recipe : null;
-  // What is shown is the chain's where it was read, our server's otherwise.
-  const active: { version: number; effectiveAt: number; components: Target[] } = read
+  // What is shown is the chain's where it was read, our server's otherwise. A line whose token this
+  // app does not list is shown by its mint, so nothing the version holds is left out of sight.
+  const lines = (components: { asset: string | null; mint: string; weightBps: number }[]): Line[] =>
+    components.map((c) =>
+      c.asset
+        ? { asset: c.asset, weightBps: c.weightBps }
+        : { asset: c.mint, weightBps: c.weightBps, mint: c.mint },
+    );
+  const active: { version: number; effectiveAt: number; components: Line[] } = read
     ? {
         version: read.active.version,
         effectiveAt: read.active.effectiveAt,
-        components: check.state === 'read' && check.targets ? check.targets : [],
+        components: lines(read.active.components),
       }
     : recipe.active;
   const pending = read
     ? read.pending && {
         version: read.pending.version,
         effectiveAt: read.pending.effectiveAt,
-        components: read.pending.components.flatMap((c) =>
-          c.asset ? [{ asset: c.asset, weightBps: c.weightBps }] : [],
-        ),
+        components: lines(read.pending.components),
       }
     : recipe.pending;
 
@@ -226,11 +246,13 @@ function RecipeSection({
         ? f.chainNotReady(chainName)
         : followed?.missing
           ? f.missingOnChain(chainName)
-          : followed?.unlisted
-            ? f.unlisted
-            : followed?.foreign
-              ? f.foreign
-              : null;
+          : followed?.tampered
+            ? f.tampered(chainName)
+            : followed?.unlisted
+              ? f.unlisted
+              : followed?.foreign
+                ? f.foreign
+                : null;
   return (
     <div className="flex flex-col gap-6">
       <Card
@@ -249,7 +271,9 @@ function RecipeSection({
           </p>
           {/* The plan pane's legs (plan-leg.md) where a version holds four assets or fewer; a table
               beyond, as the plan screen does. */}
-          {active.components.length > 0 && active.components.length <= MAX_LEGS ? (
+          {active.components.length > 0 &&
+          active.components.length <= MAX_LEGS &&
+          active.components.every((c) => !c.mint) ? (
             <PlanLegs
               legs={active.components.map((c) => ({
                 id: c.asset,
@@ -297,9 +321,7 @@ function RecipeSection({
               <span className="font-medium text-foreground">{t.shared.shelf.card.platform}</span>
             )}
           </p>
-          <TextMark
-            matches={read && check.state === 'read' ? check.textMatches : recipe.textMatches}
-          />
+          <TextMark matches={check.state === 'read' ? check.textMatches : 'unchecked'} />
           <SourceMark check={check} chain={recipe.chain} />
           <Offer recipe={recipe} />
         </CardBody>
@@ -341,18 +363,21 @@ function RecipeSection({
   );
 }
 
+/** A line of a version as shown: a listed asset, or the mint of a token this app does not list. */
+type Line = Target & { mint?: string };
+
 function WeightsTable({
   rows,
   locale,
   caption,
 }: {
-  rows: Target[];
+  rows: Line[];
   locale: string;
   caption: string;
 }) {
   const t = useT();
   return (
-    <DataTable<Target>
+    <DataTable<Line>
       caption={caption}
       captionHidden
       rows={rows}
@@ -362,7 +387,17 @@ function WeightsTable({
           key: 'asset',
           header: t.plan.columns.asset,
           rowHeader: true,
-          cell: (r) => assetName(r.asset).toUpperCase(),
+          cell: (r) =>
+            r.mint ? (
+              <span data-ui="unlisted-mint" className="flex flex-col">
+                <span className="font-mono text-source [overflow-wrap:anywhere]">{r.mint}</span>
+                <span className="text-body-sm text-muted-foreground">
+                  {t.shared.family.notListed}
+                </span>
+              </span>
+            ) : (
+              assetName(r.asset).toUpperCase()
+            ),
         },
         {
           key: 'share',
@@ -477,6 +512,12 @@ function VaultsPanel({
   }
 
   const offered = recipe.autoFollow.offered;
+  /**
+   * The switch an accept asks for: the vault's own, but never on into a portfolio that does not offer
+   * it (gate GOLD-ONE-TAP). A vault with auto-follow on then switches it off before it takes the
+   * version, as the API plans it.
+   */
+  const keep = (vault: VaultView) => vault.autoFollow && offered;
   return (
     <Card as="section" aria-labelledby={titleId}>
       <CardHeader title={v.title} level={2} id={titleId} />
@@ -521,8 +562,8 @@ function VaultsPanel({
                         vault={vault}
                         version={followed.follow.version}
                         behind={behind}
-                        busy={busy === `${vault.address}:${vault.autoFollow}:true`}
-                        onAccept={() => follow(vault, vault.autoFollow, true)}
+                        busy={busy === `${vault.address}:${keep(vault)}:true`}
+                        onAccept={() => follow(vault, keep(vault), true)}
                       />
                     )}
                     {follows && !offered && (
@@ -541,8 +582,8 @@ function VaultsPanel({
                       <>
                         <Button
                           variant="secondary"
-                          busy={busy === `${vault.address}:${vault.autoFollow}:true`}
-                          onClick={() => follow(vault, vault.autoFollow, true)}
+                          busy={busy === `${vault.address}:${keep(vault)}:true`}
+                          onClick={() => follow(vault, keep(vault), true)}
                         >
                           {v.followWith}
                         </Button>
@@ -671,12 +712,22 @@ function VersionsPanel({ slug, chain }: { slug: string; chain: ChainId | null })
 
 /**
  * Whether the name and description are the text the creator published: the hash of the text shown,
- * against the version the page reads (worked out here where the chain was read, the server's word
- * otherwise). The creator's words are never vouched for when neither version matches.
+ * worked out here, against the versions the page read from the chain. Where nothing was read the text
+ * is said not to be checked: the server's word on it is not repeated. The creator's words are never
+ * vouched for when neither version matches.
  */
-function TextMark({ matches }: { matches: 'active' | 'pending' | null }) {
+function TextMark({ matches }: { matches: 'active' | 'pending' | null | 'unchecked' }) {
   const t = useT();
   if (matches === 'active') return null;
+  if (matches === 'unchecked')
+    return (
+      <p
+        data-ui="text-unchecked"
+        className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground"
+      >
+        {t.shared.text.notChecked}
+      </p>
+    );
   return matches === 'pending' ? (
     <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
       {t.shared.text.pending}

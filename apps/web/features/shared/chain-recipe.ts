@@ -24,7 +24,10 @@ import { deploymentsFor } from '../order/readiness';
 //   no-deployment  no deployment is committed for the chain's network: no mints to read lines with
 //   family-id    the portfolio's id is not the one its slug gives: it was not published through the
 //                app, and the slug-to-id link is our server's word
-//   failed       the node did not answer, or answered with an account that is not the registry's
+//
+// Where it has a node and a deployment and still cannot read (the node did not answer, the account is
+// not the program's recipe of that creator and family, the server's creator is no address of the
+// chain), the read has `failed`: that blocks a follow, as a portfolio the chain does not hold does.
 
 export type ChainCheck =
   | { state: 'reading' }
@@ -43,7 +46,14 @@ export type ChainCheck =
     }
   /** The registry has no portfolio of this creator and family on the chain. */
   | { state: 'missing' }
-  | { state: 'unverified'; why: 'mock' | 'no-node' | 'no-deployment' | 'family-id' | 'failed' };
+  /**
+   * This app has a node and a deployment for the chain, and still could not read the portfolio: the
+   * node did not answer, or the account at the derived address is not the program's recipe of that
+   * creator and family, or the server named a creator that is no address of the chain. A server that
+   * lies can cause any of these, so nothing is offered: no buy and no follow, as for `missing`.
+   */
+  | { state: 'failed' }
+  | { state: 'unverified'; why: 'mock' | 'no-node' | 'no-deployment' | 'family-id' };
 
 const sameTargets = (a: readonly Target[], b: readonly Target[]) =>
   a.length === b.length &&
@@ -86,8 +96,10 @@ export function useChainRecipe(
       const deployment = deploymentsFor(chain, false)?.[chain];
       const node = chainNode(chain);
       if (!deployment) say({ state: 'unverified', why: 'no-deployment' });
-      else if (deployment.family !== 'solana' || !node || !creator)
+      else if (deployment.family !== 'solana' || !node)
         say({ state: 'unverified', why: 'no-node' });
+      // From here this app can read the chain: whatever stops the read stops the follow.
+      else if (!creator) say({ state: 'failed' });
       else {
         say({ state: 'reading' });
         readSolanaRecipe(node, deployment, { creator, familyId: familyIdOf(slug) }).then(
@@ -115,7 +127,7 @@ export function useChainRecipe(
                 !sameTargets(targets, api),
             });
           },
-          () => say({ state: 'unverified', why: 'failed' }),
+          () => say({ state: 'failed' }),
         );
       }
     }

@@ -25,21 +25,29 @@ export function SourceMark({
   const c = t.shared.check;
   const name = t.chain.names[chain];
   const read = check ? check.state === 'read' : source === 'chain';
-  const differs = check?.state === 'read' && check.differs;
+  // A read that failed where it could be made is an alarm, as a difference is.
+  const differs =
+    (check?.state === 'read' && check.differs) ||
+    check?.state === 'failed' ||
+    check?.state === 'missing';
   const sentence =
     check?.state === 'reading'
       ? c.reading
-      : differs
-        ? c.differs(name)
-        : read
-          ? c.read(name)
-          : check?.state === 'unverified'
-            ? check.why === 'mock' || check.why === 'family-id'
-              ? c.unverified[check.why]
-              : c.unverified[check.why](name)
-            : mock
-              ? c.unverified.mock
-              : c.unverified['no-node'](name);
+      : check?.state === 'failed'
+        ? c.failed(name)
+        : check?.state === 'missing'
+          ? c.missing(name)
+          : differs
+            ? c.differs(name)
+            : read
+              ? c.read(name)
+              : check?.state === 'unverified'
+                ? check.why === 'mock' || check.why === 'family-id'
+                  ? c.unverified[check.why]
+                  : c.unverified[check.why](name)
+                : mock
+                  ? c.unverified.mock
+                  : c.unverified['no-node'](name);
   return (
     <p
       data-ui="source-mark"

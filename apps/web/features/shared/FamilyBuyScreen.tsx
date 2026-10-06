@@ -135,6 +135,7 @@ export function FamilyBuyScreen({ slug }: { slug: string }) {
     ...(!person.signable || person.off ? [t.shared.family.chainNotReady(chainName)] : []),
     ...(!followed ? [t.shared.check.reading] : []),
     ...(followed?.missing ? [t.shared.buy.blocked.missing] : []),
+    ...(followed?.tampered ? [t.shared.family.tampered(chainName)] : []),
     ...(followed?.unlisted ? [t.shared.buy.blocked.unlisted] : []),
     ...(followed?.foreign ? [t.shared.family.foreign] : []),
     ...(!owner ? [t.buy.blocked.wallet] : []),

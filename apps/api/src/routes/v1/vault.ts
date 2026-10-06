@@ -15,8 +15,17 @@ import type { OrderDeps } from '../../orders/legs';
 
 // The public vault page's read (WEB-4, DESIGN-VAULT section 11): any vault, by its chain and address,
 // read from the chain for the answer, so a visitor with no funds sees real state. Nothing is written.
+//
+// Anybody may ask, so an answer is kept for a few seconds per address: a link opened by many, or a
+// page asked again and again, reads the chain once in that time and not once per request.
+
+/** How long an answer is kept, in milliseconds. */
+export const VAULT_KEPT_MS = 10_000;
+/** The most addresses kept at once: past it, the oldest answer goes first. */
+const VAULT_KEPT_MAX = 500;
 
 export function registerVaultRoute(scope: FastifyInstance, deps: OrderDeps) {
+  const kept = new Map<string, { at: number; answer: VaultResponse }>();
   scope.withTypeProvider<ZodTypeProvider>().get(
     '/v1/vaults/:chain/:address',
     {
@@ -35,7 +44,11 @@ export function registerVaultRoute(scope: FastifyInstance, deps: OrderDeps) {
       if (!isAddressOf(chainFamily(chain), address))
         throw new Refusal(400, `that is not an address of ${deps.chains.name(chain)}`);
       const entry = deps.chains.get(chain);
-      return refusing(async () => {
+      const key = `${chain}:${address}`;
+      const now = deps.now().getTime();
+      const hit = kept.get(key);
+      if (hit && now - hit.at < VAULT_KEPT_MS) return hit.answer;
+      const answer: VaultResponse = await refusing(async () => {
         let state: Awaited<ReturnType<typeof entry.adapter.getVault>>;
         try {
           state = await entry.adapter.getVault(address);
@@ -60,6 +73,12 @@ export function registerVaultRoute(scope: FastifyInstance, deps: OrderDeps) {
           disclaimer: DISCLAIMER.en,
         };
       });
+      kept.delete(key);
+      kept.set(key, { at: now, answer });
+      for (const [k, v] of kept)
+        if (kept.size > VAULT_KEPT_MAX || now - v.at >= VAULT_KEPT_MS) kept.delete(k);
+        else break;
+      return answer;
     },
   );
 }

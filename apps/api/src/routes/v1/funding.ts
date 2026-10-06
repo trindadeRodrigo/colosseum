@@ -63,7 +63,16 @@ export function registerFundingRoute(scope: FastifyInstance, deps: OrderDeps) {
   scope.withTypeProvider<ZodTypeProvider>().get(
     '/v1/funding',
     {
-      config: { auth: 'user', limit: 'standard' },
+      config: {
+        auth: 'user',
+        limit: 'standard',
+        // Asked about a shared portfolio's buy, it plans the order as a builder does: its quotes are
+        // asked of the chain, so it counts as one.
+        limitOf: (req) =>
+          (req.query as { family?: unknown } | undefined)?.family !== undefined
+            ? 'build'
+            : 'standard',
+      },
       schema: {
         tags: ['funding'],
         summary:

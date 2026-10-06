@@ -14,7 +14,7 @@ import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { FamilyBuyScreen } from './FamilyBuyScreen';
 import { FamilyScreen } from './FamilyScreen';
-import { PublishScreen } from './PublishScreen';
+import { PublishScreen, problemsOf } from './PublishScreen';
 import { ShelfScreen } from './ShelfScreen';
 import {
   FAMILY_ID,
@@ -29,9 +29,11 @@ import {
   SLUG,
   SOLANA,
   USER,
+  VAULT,
   vaultOf,
   WEIGHTS,
 } from './test/fixtures';
+import { VaultScreen } from './VaultScreen';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -201,6 +203,32 @@ describe('a portfolio’s page (gate GOLD-ONE-TAP)', () => {
     expect(router.push).toHaveBeenCalledWith(`/orders/${ORDER_ID}`);
   });
 
+  it('never asks to keep auto-follow on where the portfolio does not offer it', async () => {
+    // a vault that has the switch on, following a portfolio that now holds an asset with no oracle
+    const calls = api({
+      family: familyOf(FAMILY_ID, {
+        recipes: [
+          recipeOf({
+            autoFollow: { offered: false, reason: 'no_oracle', assets: ['solana:gldx'] },
+          }),
+        ],
+      }),
+      vaults: [vaultOf({ address: MY_VAULT, acceptedVersion: 1, autoFollow: true })],
+      order: () => followOrder(['accept_version']),
+    });
+    const host = await show(createElement(FamilyScreen, { slug: SLUG }));
+    const prompt = find(host, '[data-ui="follow-prompt"]');
+    await click(button(prompt, en.shared.prompt.accept(2)) as HTMLElement);
+    await settle(50);
+    expect(calls.find((c) => c.path === '/v1/orders')?.body).toMatchObject({
+      type: 'follow',
+      vault: MY_VAULT,
+      autoFollow: false,
+      version: 2,
+    });
+    expect(recallOrder(ORDER_ID, USER)?.terms).toMatchObject({ kind: 'follow', autoFollow: false });
+  });
+
   it('makes no order for a vault whose plan number is not its own', async () => {
     const calls = api({
       family: familyOf(FAMILY_ID),
@@ -306,6 +334,44 @@ describe('the publish form', () => {
     });
   });
 
+  it('does not update a portfolio of the person’s whose id is not its address’s (gate FAMILY-ID)', async () => {
+    const calls = api({
+      family: familyOf('ab'.repeat(32), { recipes: [recipeOf({ creator: SOLANA })] }),
+      order: () => publishOrder(),
+    });
+    const host = await show(createElement(PublishScreen));
+    const name = [...host.querySelectorAll('label')].find(
+      (l) => l.textContent === en.shared.publish.name,
+    );
+    await type(
+      find<HTMLInputElement>(host, `#${CSS.escape(name?.htmlFor ?? '')}`),
+      'Three of the largest',
+    );
+    await settle(400);
+    await settle(50);
+    expect(host.textContent).toContain(en.shared.family.foreign);
+    // the id shown is the address's own, not the stored one
+    expect(find(host, '[data-ui="family-id"]').textContent).toBe(FAMILY_ID);
+    await click(button(host, en.shared.publish.review) as HTMLElement);
+    await settle(50);
+    expect(calls.some((c) => c.path === '/v1/orders')).toBe(false);
+  });
+
+  it('refuses the text the server refuses: a bare web address, an email, a hidden character', () => {
+    const rows = [
+      { asset: 'solana:spyx', bps: 4000 },
+      { asset: 'solana:nvdax', bps: 3000 },
+      { asset: 'solana:tslax', bps: 3000 },
+    ];
+    const form = (name: string, copy: string) => ({ name, slug: 'x', copy, rows });
+    expect(problemsOf(form('Three of the largest', 'Three test tokens.'), 'solana')).toEqual([]);
+    expect(problemsOf(form('Go to evil.xyz', ''), 'solana')).toEqual(['name']);
+    expect(problemsOf(form('U.S. stocks', 'see evil.xyz/airdrop'), 'solana')).toEqual(['copy']);
+    expect(problemsOf(form('Three', 'write to me@mail.com'), 'solana')).toEqual(['copy']);
+    expect(problemsOf(form('Three', 'plain\u202etext'), 'solana')).toEqual(['copy']);
+    expect(problemsOf(form('Three', 'two lines\nare fine'), 'solana')).toEqual([]);
+  });
+
   it('refuses an address that is another creator’s', async () => {
     api({ family: familyOf(FAMILY_ID) });
     const host = await show(createElement(PublishScreen));
@@ -319,5 +385,34 @@ describe('the publish form', () => {
     await settle(400);
     await settle(50);
     expect(host.textContent).toContain(en.shared.publish.theirs);
+  });
+});
+
+describe('a vault’s public page', () => {
+  it('pins the vault’s value to the read and the prices it stands on', async () => {
+    portStore.setApi(async (path) => {
+      if (path === '/v1/me') return json(person);
+      if (path === `/v1/vaults/solana/${VAULT}`)
+        return json({
+          chain: 'solana',
+          name: 'Solana',
+          mode: 'live',
+          provenance: 'sandbox',
+          vault: { ...vaultOf({ valueUsd: '1234.5' }), provenance: 'sandbox' },
+          prices: [],
+          disclaimer: 'd',
+        });
+      return json({ error: 'not found' }, 404);
+    });
+    const host = await show(createElement(VaultScreen, { chain: 'solana', address: VAULT }));
+    const figure = [...host.querySelectorAll('[data-ui="figure"]')].find((f) =>
+      f.textContent?.includes('$1,234'),
+    );
+    const pin = figure?.querySelector<HTMLElement>('[data-ui="pin"]');
+    expect(pin).toBeTruthy();
+    await click(pin as HTMLElement);
+    // no priced holding: the value stands on the chain's read of the vault, at its time
+    const line = find(host, '[data-ui="pin-source"]').textContent ?? '';
+    for (const part of ['Solana', en.portfolio.vault.valueMethod]) expect(line).toContain(part);
   });
 });
