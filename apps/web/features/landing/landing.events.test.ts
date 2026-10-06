@@ -86,6 +86,20 @@ describe('the hero', () => {
     expect(find(host, 'canvas').closest('[aria-hidden="true"]')).not.toBeNull();
   });
 
+  it('offers Products, Invest and Analytics in its bar, and no Resources (Thom, Oct 6)', async () => {
+    browser();
+    const host = await landing();
+    const bar = find(host, '[data-ui="compact-nav"]');
+    expect([...bar.querySelectorAll('nav a')].map((a) => a.getAttribute('href'))).toEqual([
+      '#showcase',
+      '#simulate',
+      '/analytics/stocks',
+      // and the one action
+      '/sign-in?next=/goal',
+    ]);
+    expect(bar.textContent).not.toContain(en.landing.nav.resources);
+  });
+
   it('loads the 3D joint where WebGL runs and motion is allowed, and drives it by scrolling', async () => {
     browser({ webgl: true });
     const host = await landing();
