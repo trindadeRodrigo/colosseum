@@ -370,6 +370,41 @@ describe('self-check: the measure sees what it measures (review of Oct 6, findin
       'at medium risk no cap keeps stocks out of this plan, and it took high',
     );
   });
+
+  it('a class that holds less than asked needs a reason of its own: a note on another line is not one', () => {
+    // 10% moved from stocks to cash with no word. Every stock line still carries its tier note, and
+    // the cash line its own sentence: neither says why stocks hold less.
+    const plan = run(chips);
+    const moved = tampered(plan, (copy) => {
+      const stock = copy.lines.find((l) => l.assetId === 'base:nvdac');
+      const cash = copy.lines.find((l) => l.assetId === 'base:usdc');
+      if (!stock || !cash) throw new Error('no such line');
+      stock.weightBps -= 1000;
+      cash.weightBps += 1000;
+    });
+    expect(moved).toContain('growth holds 5000 bps of the 6000 asked, and no line of it says why');
+    expect(moved).toContain(
+      'cash holds 5000 bps, over the 4000 of the mix, and no line of it says why',
+    );
+    expect(allReasons(plan).some((r) => r.rule === 'TIER_CEILING')).toBe(true);
+  });
+
+  it('dollar yield and cash are measured too, each against its own share', () => {
+    const plan = run(sheet({ rules: noGlide, mix: mix({ dollarYieldBps: 5000, cashBps: 5000 }) }));
+    const swapped = tampered(plan, (copy) => {
+      const dollarYield = copy.lines.find((l) => l.assetId === 'solana:jlusdc');
+      const cash = copy.lines.find((l) => l.assetId === 'solana:usdc');
+      if (!dollarYield || !cash) throw new Error('no such line');
+      dollarYield.weightBps -= 1500;
+      cash.weightBps += 1500;
+    });
+    expect(swapped).toEqual(
+      expect.arrayContaining([
+        'dollarYield holds 3500 bps of the 5000 asked, and no line of it says why',
+        'cash holds 6500 bps, over the 5000 of the mix, and no line of it says why',
+      ]),
+    );
+  });
 });
 
 describe('properties: any mix', () => {
