@@ -1196,7 +1196,8 @@ export const en = {
     limits: 'How I read it',
     notFound: 'not found: you set it in tenonfi',
     build: 'Build this plan in tenonfi',
-    buildNote: 'Opens tenonfi in a new tab, where you sign in with a wallet of your own. Nothing is signed here.',
+    buildNote:
+      'Opens tenonfi in a new tab, where you sign in with a wallet of your own. Nothing is signed here.',
     readFailure: 'I couldn’t read that just now. Your text is still here. Try again.',
     tooShort: 'That’s too short for me to read. Try an amount and a time frame.',
     poweredBy: 'Powered by',

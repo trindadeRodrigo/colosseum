@@ -1202,7 +1202,8 @@ export const pt: Dictionary = {
     limits: 'Como eu li',
     notFound: 'não encontrado: você define na tenonfi',
     build: 'Montar este plano na tenonfi',
-    buildNote: 'Abre a tenonfi em uma nova aba, onde você entra com uma carteira sua. Nada é assinado aqui.',
+    buildNote:
+      'Abre a tenonfi em uma nova aba, onde você entra com uma carteira sua. Nada é assinado aqui.',
     readFailure: 'Não consegui ler isso agora. Seu texto continua aqui. Tente de novo.',
     tooShort: 'Isso é curto demais para eu ler. Tente um valor e um prazo.',
     poweredBy: 'Feito com',
