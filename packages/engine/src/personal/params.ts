@@ -1,6 +1,7 @@
 import type { PersonalParameters } from './types';
 
-// The parameter table of the personalization engine: every number it uses, and nothing else.
+// The parameter table of the personalization engine: every number it uses, and nothing else. (The one
+// limit at the foot of this file is the shape of a content file, kept out of the table.)
 //
 // These are starting values. Rodrigo owns the table (DESIGN-VAULT section 17, item 4): when he sets
 // a number he changes it here, flips its mark in PERSONAL_PARAMS_STATUS to 'set' and bumps `version`.
@@ -211,3 +212,10 @@ export const PERSONAL_PARAMS_STATUS: Record<Exclude<keyof PersonalParameters, 'v
     from: 'Gate SOLVER-PARAMS, Oct 5: the safe-yield sleeve switches only when another stays ahead for a week.',
   },
 };
+
+/**
+ * Not a number of the table, and so in no plan's hash: the shape of a content file. How many
+ * business-line keywords a row of `content/stocks/<chain>.json` carries (gate THEME-MATCHED). It is
+ * written here because the logic of this folder holds no number of its own (`params.test.ts`).
+ */
+export const STOCK_KEYWORDS = { least: 3, most: 8 } as const;
