@@ -12,6 +12,7 @@ export * from './facts/breakdown';
 export * from './facts/flow';
 export * from './facts/lending';
 export * from './facts/market';
+export * from './facts/oracle';
 export * from './facts/plan';
 export * from './facts/returns';
 export * from './facts/stability';

@@ -39,6 +39,7 @@ import type { AssetFacts, PlanFacts } from '@colosseum/schemas';
 import { and, desc, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 import { curveVersionOf, RISK_METHOD_VERSION } from './curve-version';
 import { capacityAtTau } from './history';
+import { loadOracleInput } from './oracle-facts';
 
 const ROOT = process.env.REPO_ROOT ?? join(import.meta.dirname, '..', '..', '..');
 const CURVE_METHOD_VERSION = RISK_METHOD_VERSION;
@@ -330,6 +331,7 @@ export async function loadAssetFacts(
       issuer: null,
       marketRisk: await loadMarketSeries(db, mint, now, params.marketRiskWindowDays),
       flow: await loadFlow(db, mint),
+      oracle: await loadOracleInput(db, mint, now),
     });
 
   const side = (s: 'sell' | 'buy'): AssetCurves | null => {
@@ -558,6 +560,7 @@ export async function loadAssetFacts(
     tracking: lendingCollateral ? tracking : [],
     issuer:
       xstocks && base.chain === 'solana' ? { ...xstocks, fetchedAt: issuers.fetchedAt } : null,
+    oracle: await loadOracleInput(db, mint, now),
   });
 }
 

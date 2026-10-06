@@ -23,6 +23,7 @@ import {
   volatilityAnnual,
   weekendGaps,
 } from './market';
+import { buildOracleFacts, type OracleFactsInput } from './oracle';
 import { breakEvenReturn, lossUsd, roundTripCost } from './returns';
 import { type DepthRecoveryRow, seriesVariation } from './stability';
 
@@ -107,6 +108,8 @@ export type AssetFactsInput = {
     | (RowMeta & { usd: number; fetchedAt: string; dataFrom: string; samples: number })
     | { reason: FactNullReason; detail?: string }
     | null;
+  /** The oracle a rebalance is checked against, for a stock on an asset list (RU.9); absent: no `oracle` block. */
+  oracle?: OracleFactsInput | null;
 };
 
 /** Policy inputs of the fact sheets (facts-0.1); each is shown on the sheet it shapes. */
@@ -475,6 +478,7 @@ export function buildAssetFacts(inp: AssetFactsInput): AssetFacts {
     },
     marketRisk: marketRiskFacts(inp),
     flow: flowFacts(inp.flow, inp.flowMinSwaps ?? defaultFactsParams().flowMinSwaps),
+    ...(inp.oracle ? { oracle: buildOracleFacts(inp.oracle) } : {}),
     coverage: {
       regimesMeasured: regimes.measured,
       regimesMissing: regimes.missing.map((m) => m.regime),
