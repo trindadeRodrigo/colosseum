@@ -45,6 +45,10 @@ Left before slice 3 merges: `/review-pr` by an agent that did not write it, Thom
 - Themes and the safe-yield switch: the proposed Solana AI list is **Rodrigo's to confirm** (`THEMES`).
 - Rebalancing per sleeve needs `split` in the shared `BasketProposal`: Thom.
 
+## Gate COUNTRY-REMOVED (Rodrigo, Oct 6)
+
+The engine has no country rule: `blockOf` ignores `blockedCountries` and `sheet.country`, `NOT_IN_COUNTRY` and its overflow sentence are gone, and `BasketSheet.country` is optional (`941e3580`, and the shared-type commit `158f4974` for Thom). Tests that held a blocked asset out now hold it in (`inputs.test.ts` "country", `said.test.ts`). Restrictions on who may hold an asset are for sign-up and the terms of service: open for the founders.
+
 ## Open items for people
 
 - **Rodrigo:**

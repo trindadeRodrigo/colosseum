@@ -531,7 +531,7 @@ type BasketSheet = { basketType: 'standard'; goal: 'grow' | 'income' | 'protect'
   amountUsd: number;             // 10 to 1,000,000
   horizonMonths: number;         // 1 to 480
   risk: 'low' | 'medium' | 'high'; themes: string[];   // up to 3 family slugs
-  country: string;               // ISO two-letter, self-declared
+  country?: string;              // ISO two-letter, self-declared; unused in planning (COUNTRY-REMOVED, Oct 6)
   chains: ChainId[]; incomeTargetUsdMonthly?: number;
   rules: { useHoldings: boolean; glide: boolean }; language: Language;
   // ENG-3 slice 2, Oct 5 (Thom approves): all optional; left out = dollars, no withdrawals, one goal sleeve
@@ -1020,7 +1020,7 @@ Three pure steps. **Exposure:** how big each sleeve is (stocks and crypto, dolla
 | Risk | Cap per single stock and per issuer, by risk, for stocks and crypto. Where an issuer's cap cuts a portfolio's stocks, each is cut in proportion to its weight. Dollar yield, gold and cash: one issuer at most 50% of the plan, counting those sleeves only (Rodrigo, Oct 5) | "No more than 70% of the plan with one issuer at medium risk" |
 | Dollar yield | The banded fill (gate `SOLVER`): ranked by yield after haircut; yields within 0.5 points count as equal and share evenly, each token up to its cap (by symbol or leg type, lowered to its exit ceiling), its issuer's and the credit budget (by the person's credit tolerance, `limited` when unsaid). A token with no yield reading or no leg type is left out with the reason. What none can take stays in cash. The fill is exact while the caps nest (token, issuer, plan; credit inside the plan); where one issuer holds both a credit and a non-credit token both limits can bind across each other and the fill can leave money a linear program would place (`fill.test.ts` pins the case; the launch shelf has none today) | "No more than 25% of the plan in tokens that lend to borrowers or trade a spread" |
 | Amount | Dollar ceiling per token = 0.25 × its measured exit capacity (gate `EXIT-SOURCE`). Where nothing is measured, the ceiling of its tier, said on the line and flagged. Overflow goes to dollar yield on the same chain, then to cash | "GLDx is limited to $10,000: beyond that, selling it would cost too much" |
-| Country | Blocked tokens are skipped; the rest of the sleeve takes their place | "TSLAx is left out: it is not offered in Brazil" |
+| Country | No rule since Oct 6 (gate `COUNTRY-REMOVED`, Rodrigo): the engine reads no country and ignores `blockedCountries`, which stays on the asset as information. Who may hold an asset is to be enforced at sign-up and in the terms of service | (none) |
 
 - A prototype over the launch shelf passes the handoff's test: three people, three plans, and each input alone moves the plan and adds a reason naming it. Its numbers are placeholders for Rodrigo.
 - The engine offers three candidate plans from one goal, each a different setting of the same engine inside the person's limits; the person chooses, and none is pre-selected (decided on Oct 5, gate `THREE-PLANS`). The rules that keep them distinct are in `docs/vault/research/portfolio-method.md` section 2.4. Built in slice 3 of ENG-3.
@@ -1543,7 +1543,7 @@ Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-L
 9. The design system is applied to `apps/web` from his specs at the start of the web stream (tokens, fonts, primitives, route groups), by whoever gets there first. His three screens are rebuilt and extended, not retired, and the embed stays.
 10. Open: who runs the Solana mainnet sessions (deploy, config, rehearsals). Rodrigo has already run mainnet transactions from his demo wallet.
 11. Later: one keeper workflow on `main` with a pinned commit and a restricted environment.
-12. For agents, a self-declared country is enough.
+12. For agents, a self-declared country is enough. Since Oct 6 the plan does not read one (gate `COUNTRY-REMOVED`).
 
 **From his design system** (read on Oct 1)
 
@@ -1576,7 +1576,7 @@ Never cut: in-kind withdrawal; tier 1 on any chain where auto-follow is on; `G-L
 24. External wallets get one review screen and then several wallet prompts. The demo uses a passkey wallet.
 25. Auto-follow on stocks trades only Mon to Fri 14:30 to 20:00 UTC, and never on a listed closed day.
 26. Who opens the accounts (Supabase, Render, Vercel, Helius, Alchemy, UptimeRobot, the second Jupiter organisation), whether Jupiter's terms allow a second organisation, and whether Vercel Hobby's non-commercial clause is acceptable.
-27. Who fills `blockedCountries` per asset. Until it is filled, the self-declared country skips no token.
+27. Who fills `blockedCountries` per asset: information only since Oct 6 (gate `COUNTRY-REMOVED`); the engine ignores it. Where legal restrictions on holders are enforced (sign-up, terms of service) is open for the founders.
 28. A warning above $1,000 per vault, since there is no cap. No agent-run portfolio at launch.
 29. A plan lives on one chain, the chain of the person's wallet: decided on Oct 3 (gate `ONE-CHAIN`). A person who creates a wallet in the app picks its chain at that moment: decided on Oct 3 (gate `CHAIN-PICK`). The sign-up asks once, Solana or Robinhood Chain, and the pick is built with the first screens (WEB-1). Assumed until Thom says otherwise: a person who signs in with a different wallet on another chain has a separate plan there. Still open: which chain an EVM wallet means once Base is deployed, since one address serves both EVM chains; and which chain a plan is built for when no wallet is known yet (the keyless plan routes, and an agent's `build_personal_basket`). Taken in the API (API-2), until somebody says otherwise: a stored pick stands when other wallets are linked later; a person with outside wallets of both families has no chain until they pick; and on an EVM chain a second order of the same wallet waits for the first one's open transaction rather than being built on the nonce after it.
 
