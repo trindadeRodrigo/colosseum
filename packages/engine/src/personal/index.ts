@@ -34,13 +34,30 @@ export {
   otherLanguageIn,
   refusalsIn,
 } from './intake-text';
+// The market filter (gate THEME-MATCHED): the one contract between the intake, which names a filter,
+// and the theme sleeve, which fills it. A caller of the intake hands in its labels and its matches in
+// these types.
+export {
+  attributeKey,
+  type FilterMatch,
+  filterOfSlug,
+  isMatchedSlug,
+  MARKET_FILTER_BY,
+  MATCHED_PREFIX,
+  MarketFilter,
+  type MarketFilterBy,
+  matchedSlug,
+  type ShelfLabel,
+} from './market-filter';
 export { PERSONAL_PARAMS, PERSONAL_PARAMS_STATUS } from './params';
-export { readBack } from './readback';
+export { matchedName, readBack, type ThemeNames } from './readback';
 export { eligibleForGoal, profileOfGoal, registryRowOf, sleeveOfClass } from './registry';
 export {
   ASSUMPTION_TEMPLATES,
+  FILTER_BY_WORDS,
   INPUT_NAMES,
   type InputName,
+  MATCHED_NAME,
   QUESTION_TEMPLATES,
   READBACK_TEMPLATES,
   REASON_TEMPLATES,

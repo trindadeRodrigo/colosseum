@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { MARKET_FILTER_BY } from './market-filter';
 import {
   ASSUMPTION_TEMPLATES,
   CLASS_WORDS,
+  FILTER_BY_WORDS,
   INPUT_NAMES,
+  MATCHED_NAME,
   placeholdersOf,
   QUESTION_TEMPLATES,
   READBACK_TEMPLATES,
@@ -283,6 +286,38 @@ describe('intake templates', () => {
         expect(filled, `${t.id}.${lang}`).not.toMatch(/[{}]|undefined|NaN|null/);
       }
     }
+  });
+
+  it('names a theme filled by a filter by what it was matched by, in both languages', () => {
+    expect(placeholdersOf(MATCHED_NAME.pt)).toEqual(placeholdersOf(MATCHED_NAME.en));
+    for (const lang of LANGUAGES) {
+      expect(Object.keys(FILTER_BY_WORDS[lang]).sort()).toEqual([...MARKET_FILTER_BY].sort());
+      for (const by of MARKET_FILTER_BY) {
+        const said = render(
+          MATCHED_NAME[lang],
+          { by: FILTER_BY_WORDS[lang][by], value: 'Aerospace & Defense' },
+          lang,
+        );
+        expect(said, `${by}.${lang}`).toMatch(/: Aerospace & Defense$/);
+        expect(said, `${by}.${lang}`).not.toMatch(/[{}]|undefined|NaN|null/);
+        // Never said as a curated theme.
+        expect(said, `${by}.${lang}`).not.toMatch(/theme|tema|curat|curad/i);
+        for (const pattern of [...BANNED[lang], ...BRAND_BANNED])
+          expect(said, `${by}.${lang} against ${pattern}`).not.toMatch(pattern);
+      }
+    }
+    expect(FILTER_BY_WORDS.en).toEqual({
+      sector: 'sector',
+      industry: 'industry',
+      sub_industry: 'sub-industry',
+      keyword: 'business line',
+    });
+    expect(FILTER_BY_WORDS.pt).toEqual({
+      sector: 'setor',
+      industry: 'indústria',
+      sub_industry: 'subindústria',
+      keyword: 'linha de negócio',
+    });
   });
 
   it('ban what reads as advice or a return promise', () => {

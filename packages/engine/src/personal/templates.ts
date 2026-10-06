@@ -1,4 +1,5 @@
 import type { Language, Reason } from '@colosseum/schemas';
+import type { MarketFilterBy } from './market-filter';
 
 // The wording of the personalization engine: one template per rule, in English and Portuguese,
 // filled from the inputs. No model writes any of it. Rodrigo owns the wording, as he owns the
@@ -890,6 +891,11 @@ export const READBACK_TEMPLATES = {
     en: '{share|pct} of the plan for the theme {theme}.',
     pt: '{share|pct} do plano para o tema {theme}.',
   },
+  // A theme sleeve filled by a filter (gate THEME-MATCHED): `matched` is `MATCHED_NAME`, filled.
+  SLEEVE_MATCHED: {
+    en: '{share|pct} of the plan for {matched}.',
+    pt: '{share|pct} do plano para {matched}.',
+  },
   RESTORE_ON: {
     en: 'A part of the plan that has grown is brought back to its share.',
     pt: 'Uma parte do plano que cresceu é trazida de volta à sua parcela.',
@@ -954,6 +960,32 @@ export const ASSUMPTION_TEMPLATES = {
   },
 } as const satisfies Record<string, Text>;
 export type AssumptionId = keyof typeof ASSUMPTION_TEMPLATES;
+
+/** What a filter reads (gate THEME-MATCHED), as the read-back and the assumptions write it. */
+export const FILTER_BY_WORDS: Record<Language, Record<MarketFilterBy, string>> = {
+  en: {
+    sector: 'sector',
+    industry: 'industry',
+    sub_industry: 'sub-industry',
+    keyword: 'business line',
+  },
+  pt: {
+    sector: 'setor',
+    industry: 'indústria',
+    sub_industry: 'subindústria',
+    keyword: 'linha de negócio',
+  },
+};
+
+/**
+ * How a theme sleeve filled by a filter is named, in the read-back and to a caller: by what it was
+ * matched by, never as a curated theme. `by` is a word of `FILTER_BY_WORDS`; `value` is the value as
+ * the stocks' attributes write it.
+ */
+export const MATCHED_NAME = {
+  en: 'stocks matched by {by}: {value}',
+  pt: 'ações que correspondem a {by}: {value}',
+} as const satisfies Text;
 
 /** The classes a person can leave out, as the read-back writes them. */
 export const CLASS_WORDS: Record<Language, Record<string, string>> = {
