@@ -32,6 +32,43 @@ export const LEG_TYPES: Record<string, LegTypeRow> = {
       'Ondo Finance, "USDY Basics" (docs.ondo.finance), as read in docs/vault/research/portfolio-method.md [63]',
     readAt: '2026-10-03',
   },
+  // The extended shelf on Solana (docs/vault/research/yield-shelf/solana.md, Oct 6): test tokens only.
+  wYLDS: {
+    types: ['rate'],
+    source:
+      'A wrapper of a registered certificate that pays an overnight rate less a spread; the issuer owes it, as read in docs/vault/research/yield-shelf/solana.md, section 3',
+    readAt: '2026-10-06',
+  },
+  kUSDC: {
+    types: ['market_deposit'],
+    source:
+      'The deposit token of the USDC reserve of a lending market: borrowers pay the interest, and a withdrawal waits when all is lent, as read in docs/vault/research/yield-shelf/solana.md, section 3',
+    readAt: '2026-10-06',
+  },
+  jlJupUSD: {
+    types: ['market_deposit'],
+    source:
+      'The deposit token of a lending market over JupUSD: borrowers pay the interest, as read in docs/vault/research/yield-shelf/solana.md, section 3',
+    readAt: '2026-10-06',
+  },
+  PST: {
+    types: ['credit'],
+    source:
+      'A share in loans to payment-financing businesses: their fees are the yield, as read in docs/vault/research/yield-shelf/solana.md, section 3',
+    readAt: '2026-10-06',
+  },
+  PRIME: {
+    types: ['credit'],
+    source:
+      'A share in warehouse lending against home-equity lines of credit, as read in docs/vault/research/yield-shelf/solana.md, section 3',
+    readAt: '2026-10-06',
+  },
+  AUTO: {
+    types: ['credit'],
+    source:
+      'A share in a pool of consumer auto loans, as read in docs/vault/research/yield-shelf/solana.md, section 3',
+    readAt: '2026-10-06',
+  },
   jlUSDC: {
     types: ['market_deposit'],
     source:
