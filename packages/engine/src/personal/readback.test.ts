@@ -301,8 +301,8 @@ describe('the read-back (C18)', () => {
       expect.arrayContaining([
         '30% of the plan for the theme AI.',
         '20% of the plan for the theme Semiconductors.',
-        '25% of the plan for stocks matched by industry: Aerospace & Defense.',
-        '5% of the plan for stocks matched by business line: GLP-1.',
+        '25% of the plan for names matched by industry: Aerospace & Defense.',
+        '5% of the plan for names matched by keyword: GLP-1.',
         '20% of the plan for dollar yield from a rate alone.',
       ]),
     );
@@ -310,20 +310,20 @@ describe('the read-back (C18)', () => {
       expect.arrayContaining([
         '30% do plano para o tema IA.',
         '20% do plano para o tema Semicondutores.',
-        '25% do plano para ações que correspondem a indústria: Aerospace & Defense.',
-        '5% do plano para ações que correspondem a linha de negócio: GLP-1.',
+        '25% do plano para nomes filtrados por indústria: Aerospace & Defense.',
+        '5% do plano para nomes filtrados por palavra-chave: GLP-1.',
         '20% do plano para rendimento em dólar só de taxa.',
       ]),
     );
     // A matched theme is never said as a curated one.
     expect(readBack(themed, portfolios, THEMES).join(' ')).not.toMatch(
-      /the theme (stocks|matched)/,
+      /the theme (names|stocks|matched)/,
     );
     // With no name handed in nothing is made up: the slug is said, and the key a filter matched by.
     expect(readBack(themed, portfolios)).toEqual(
       expect.arrayContaining([
         '30% of the plan for the theme ai.',
-        '25% of the plan for stocks matched by industry: aerospace-defense.',
+        '25% of the plan for names matched by industry: aerospace-defense.',
       ]),
     );
     // The same where a name handed in is blank: said by the slug, never as a hole.
@@ -334,7 +334,7 @@ describe('the read-back (C18)', () => {
     expect(readBack(themed, portfolios, blank)).toEqual(
       expect.arrayContaining([
         '30% of the plan for the theme ai.',
-        '5% of the plan for stocks matched by business line: glp-1.',
+        '5% of the plan for names matched by keyword: glp-1.',
       ]),
     );
   });

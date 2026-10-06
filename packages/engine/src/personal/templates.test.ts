@@ -299,8 +299,8 @@ describe('intake templates', () => {
       pt: 'No momento não há nenhuma ação para “{words}” na {chain|chain}, e vamos incluir mais em breve. O mais próximo hoje é {nearest}, que você pode escolher.',
     });
     expect(ASSUMPTION_TEMPLATES.MARKET_MATCHED).toEqual({
-      en: "No curated list covers “{words}” on {chain|chain}, so the plan holds the stocks matched by {by}: {value}. Matched from each stock's sourced attributes, not a curated theme.",
-      pt: 'Nenhuma lista com curadoria cobre “{words}” na {chain|chain}, então o plano fica com as ações que correspondem a {by}: {value}. Correspondência pelos atributos de cada ação, com fonte; não é um tema com curadoria.',
+      en: 'No curated list covers “{words}” on {chain|chain}, so the plan holds the names matched by {by}: {value}. Matched from the sourced attributes of each, not a curated theme.',
+      pt: 'Nenhuma lista com curadoria cobre “{words}” na {chain|chain}, então o plano fica com os nomes filtrados por {by}: {value}. Filtrados pelos atributos de cada um, que têm fonte; não é um tema com curadoria.',
     });
   });
 
@@ -326,13 +326,13 @@ describe('intake templates', () => {
       sector: 'sector',
       industry: 'industry',
       sub_industry: 'sub-industry',
-      keyword: 'business line',
+      keyword: 'keyword',
     });
     expect(FILTER_BY_WORDS.pt).toEqual({
       sector: 'setor',
       industry: 'indústria',
       sub_industry: 'subindústria',
-      keyword: 'linha de negócio',
+      keyword: 'palavra-chave',
     });
   });
 

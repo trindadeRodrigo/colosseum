@@ -956,11 +956,12 @@ export const ASSUMPTION_TEMPLATES = {
     en: 'There is no stock for “{words}” on {chain|chain} at the moment, and we will be adding more soon. The nearest today is {nearest}, which you can choose.',
     pt: 'No momento não há nenhuma ação para “{words}” na {chain|chain}, e vamos incluir mais em breve. O mais próximo hoje é {nearest}, que você pode escolher.',
   },
-  // No curated list for what the person named, and a filter over the stocks' sourced attributes that
-  // matches some (gate THEME-MATCHED): the plan holds those, said as matched, never as curated.
+  // No curated list for what the person named, and a filter over the sourced attributes that matches
+  // some (gate THEME-MATCHED): the plan holds those, said as matched, never as curated. "Names", not
+  // "stocks": a fund can be matched too, by a keyword.
   MARKET_MATCHED: {
-    en: "No curated list covers “{words}” on {chain|chain}, so the plan holds the stocks matched by {by}: {value}. Matched from each stock's sourced attributes, not a curated theme.",
-    pt: 'Nenhuma lista com curadoria cobre “{words}” na {chain|chain}, então o plano fica com as ações que correspondem a {by}: {value}. Correspondência pelos atributos de cada ação, com fonte; não é um tema com curadoria.',
+    en: 'No curated list covers “{words}” on {chain|chain}, so the plan holds the names matched by {by}: {value}. Matched from the sourced attributes of each, not a curated theme.',
+    pt: 'Nenhuma lista com curadoria cobre “{words}” na {chain|chain}, então o plano fica com os nomes filtrados por {by}: {value}. Filtrados pelos atributos de cada um, que têm fonte; não é um tema com curadoria.',
   },
   MAX_YIELD_LATER: {
     en: 'A part that seeks the highest yield is not built yet, so the part that seeks the goal is built as a goal to grow.',
@@ -975,24 +976,24 @@ export const FILTER_BY_WORDS: Record<Language, Record<MarketFilterBy, string>> =
     sector: 'sector',
     industry: 'industry',
     sub_industry: 'sub-industry',
-    keyword: 'business line',
+    keyword: 'keyword',
   },
   pt: {
     sector: 'setor',
     industry: 'indústria',
     sub_industry: 'subindústria',
-    keyword: 'linha de negócio',
+    keyword: 'palavra-chave',
   },
 };
 
 /**
  * How a theme sleeve filled by a filter is named, in the read-back and to a caller: by what it was
  * matched by, never as a curated theme. `by` is a word of `FILTER_BY_WORDS`; `value` is the value as
- * the stocks' attributes write it.
+ * the sourced attributes write it. "Names", as the theme sleeve says it: a fund can be matched too.
  */
 export const MATCHED_NAME = {
-  en: 'stocks matched by {by}: {value}',
-  pt: 'ações que correspondem a {by}: {value}',
+  en: 'names matched by {by}: {value}',
+  pt: 'nomes filtrados por {by}: {value}',
 } as const satisfies Text;
 
 /** The classes a person can leave out, as the read-back writes them. */

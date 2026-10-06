@@ -458,7 +458,7 @@ describe('a narrative reads to a shared portfolio, a curated label, a filter, or
         kind: 'matched',
         slug,
         filter: { by: 'industry', value: 'Aerospace & Defense' },
-        name: 'stocks matched by industry: Aerospace & Defense',
+        name: 'names matched by industry: Aerospace & Defense',
       },
     ]);
     // The label is there and holds nothing yet: the operator is told which.
@@ -466,10 +466,10 @@ describe('a narrative reads to a shared portfolio, a curated label, a filter, or
     expect(result.questions).toEqual([]);
     expect(result.sheet?.sleeves).toEqual([theme(slug)]);
     expect(result.assumptions).toContain(
-      "No curated list covers “defense stocks” on Solana, so the plan holds the stocks matched by industry: Aerospace & Defense. Matched from each stock's sourced attributes, not a curated theme.",
+      'No curated list covers “defense stocks” on Solana, so the plan holds the names matched by industry: Aerospace & Defense. Matched from the sourced attributes of each, not a curated theme.',
     );
     expect(result.readBack).toContain(
-      '100% of the plan for stocks matched by industry: Aerospace & Defense.',
+      '100% of the plan for names matched by industry: Aerospace & Defense.',
     );
     expect((result.readBack ?? []).join(' ')).not.toMatch(/the theme/);
     // No label at all, and a filter that matches.
@@ -480,7 +480,7 @@ describe('a narrative reads to a shared portfolio, a curated label, a filter, or
     expect(cloud.narratives[0]).toMatchObject({
       kind: 'matched',
       slug: 'matched-industry-software',
-      name: 'stocks matched by industry: Software',
+      name: 'names matched by industry: Software',
     });
     expect(cloud.flags.filter((f) => f.startsWith('label_'))).toEqual([]);
   });
@@ -620,18 +620,16 @@ describe('a market the lists have no word for, named by the model as a filter (M
         kind: 'matched',
         slug: 'matched-keyword-glp-1',
         filter: { by: 'keyword', value: 'GLP-1' },
-        name: 'stocks matched by business line: GLP-1',
+        name: 'names matched by keyword: GLP-1',
       },
     ]);
     expect(result.questions).toEqual([]);
     expect(result.sheet?.sleeves).toEqual([theme('matched-keyword-glp-1')]);
     expect(result.sheet?.risk).toBe('high');
     expect(result.assumptions).toContain(
-      "No curated list covers “obesity drugs” on Solana, so the plan holds the stocks matched by business line: GLP-1. Matched from each stock's sourced attributes, not a curated theme.",
+      'No curated list covers “obesity drugs” on Solana, so the plan holds the names matched by keyword: GLP-1. Matched from the sourced attributes of each, not a curated theme.',
     );
-    expect(result.readBack).toContain(
-      '100% of the plan for stocks matched by business line: GLP-1.',
-    );
+    expect(result.readBack).toContain('100% of the plan for names matched by keyword: GLP-1.');
   });
 
   it('words that are not written in the text: dropped, flagged, and nothing asked about it', () => {
@@ -730,15 +728,15 @@ describe('a market the lists have no word for, named by the model as a filter (M
         kind: 'matched',
         slug: 'matched-industry-pharmaceuticals',
         filter: { by: 'industry', value: 'Pharmaceuticals' },
-        name: 'ações que correspondem a indústria: Pharmaceuticals',
+        name: 'nomes filtrados por indústria: Pharmaceuticals',
       },
     ]);
     expect(result.sheet?.sleeves).toEqual([theme('matched-industry-pharmaceuticals')]);
     expect(result.assumptions).toContain(
-      'Nenhuma lista com curadoria cobre “farmacêuticas” na Solana, então o plano fica com as ações que correspondem a indústria: Pharmaceuticals. Correspondência pelos atributos de cada ação, com fonte; não é um tema com curadoria.',
+      'Nenhuma lista com curadoria cobre “farmacêuticas” na Solana, então o plano fica com os nomes filtrados por indústria: Pharmaceuticals. Filtrados pelos atributos de cada um, que têm fonte; não é um tema com curadoria.',
     );
     expect(result.readBack).toContain(
-      '100% do plano para ações que correspondem a indústria: Pharmaceuticals.',
+      '100% do plano para nomes filtrados por indústria: Pharmaceuticals.',
     );
   });
 
@@ -1267,10 +1265,10 @@ describe('an answer that carries a theme sleeve is held to the shelf', () => {
     expect(byFilter.questions).toEqual([]);
     expect(byFilter.sheet?.sleeves).toEqual([theme(slug)]);
     expect(byFilter.readBack).toContain(
-      '100% of the plan for stocks matched by industry: Aerospace & Defense.',
+      '100% of the plan for names matched by industry: Aerospace & Defense.',
     );
     expect(byFilter.assumptions).toContain(
-      'To hold “stocks matched by industry: Aerospace & Defense”, the plan uses the limits for high risk.',
+      'To hold “names matched by industry: Aerospace & Defense”, the plan uses the limits for high risk.',
     );
   });
 
@@ -1394,14 +1392,12 @@ describe('the read-back and the assumptions, in English and Portuguese', () => {
       'Quero investir US$ 2.000 no setor de defesa por 5 anos',
       pt({ markets: ['defense'] }),
     );
-    expect(result.narratives[0]?.name).toBe(
-      'ações que correspondem a indústria: Aerospace & Defense',
-    );
+    expect(result.narratives[0]?.name).toBe('nomes filtrados por indústria: Aerospace & Defense');
     expect(result.readBack).toEqual(
       expect.arrayContaining([
-        '100% do plano para ações que correspondem a indústria: Aerospace & Defense.',
+        '100% do plano para nomes filtrados por indústria: Aerospace & Defense.',
         'Para manter “setor de defesa”, o plano usa os limites de risco alto.',
-        'Nenhuma lista com curadoria cobre “setor de defesa” na Solana, então o plano fica com as ações que correspondem a indústria: Aerospace & Defense. Correspondência pelos atributos de cada ação, com fonte; não é um tema com curadoria.',
+        'Nenhuma lista com curadoria cobre “setor de defesa” na Solana, então o plano fica com os nomes filtrados por indústria: Aerospace & Defense. Filtrados pelos atributos de cada um, que têm fonte; não é um tema com curadoria.',
       ]),
     );
     expect((result.readBack ?? []).join(' ')).not.toMatch(/para o tema/);
@@ -1414,18 +1410,18 @@ describe('the read-back and the assumptions, in English and Portuguese', () => {
     expect(
       (['sector', 'industry', 'sub_industry', 'keyword'] as const).map((by) => words('en', by)),
     ).toEqual([
-      '100% of the plan for stocks matched by sector: Uranium.',
-      '100% of the plan for stocks matched by industry: Uranium.',
-      '100% of the plan for stocks matched by sub-industry: Uranium.',
-      '100% of the plan for stocks matched by business line: Uranium.',
+      '100% of the plan for names matched by sector: Uranium.',
+      '100% of the plan for names matched by industry: Uranium.',
+      '100% of the plan for names matched by sub-industry: Uranium.',
+      '100% of the plan for names matched by keyword: Uranium.',
     ]);
     expect(
       (['sector', 'industry', 'sub_industry', 'keyword'] as const).map((by) => words('pt', by)),
     ).toEqual([
-      '100% do plano para ações que correspondem a setor: Uranium.',
-      '100% do plano para ações que correspondem a indústria: Uranium.',
-      '100% do plano para ações que correspondem a subindústria: Uranium.',
-      '100% do plano para ações que correspondem a linha de negócio: Uranium.',
+      '100% do plano para nomes filtrados por setor: Uranium.',
+      '100% do plano para nomes filtrados por indústria: Uranium.',
+      '100% do plano para nomes filtrados por subindústria: Uranium.',
+      '100% do plano para nomes filtrados por palavra-chave: Uranium.',
     ]);
   });
 

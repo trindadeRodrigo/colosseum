@@ -31,7 +31,7 @@ export type ThemeNames = {
   matched?: Readonly<Record<string, string>>;
 };
 
-/** What a theme filled by a filter is said as: "stocks matched by industry: Aerospace & Defense". */
+/** What a theme filled by a filter is said as: "names matched by industry: Aerospace & Defense". */
 export const matchedName = (by: MarketFilterBy, value: string, lang: Language): string =>
   render(MATCHED_NAME[lang], { by: FILTER_BY_WORDS[lang][by], value }, lang);
 
