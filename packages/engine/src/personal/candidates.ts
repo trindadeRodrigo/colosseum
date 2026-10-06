@@ -91,6 +91,32 @@ export function distanceBps(a: PersonalProposal, b: PersonalProposal): number {
   return sum([...keys].map((k) => Math.abs((x.get(k) ?? 0) - (y.get(k) ?? 0)))) / 2;
 }
 
+/** The classes a mix states, as the plan's sleeves group them: dollar yield and cash count together. */
+const MIX_CLASSES = [
+  { sleeve: 'growth', of: ['growth'] },
+  { sleeve: 'gold', of: ['gold'] },
+  { sleeve: 'dollarYield', of: ['dollarYield', 'cash'] },
+] as const;
+
+/**
+ * Where a candidate holds another share of a class than the plan for the mix as it is: the first such
+ * class and the share it would hold, or null. Lines are rounded to whole basis points, so each line
+ * may move its class by one.
+ */
+export function mixBreak(
+  plan: PersonalProposal,
+  carry: PersonalProposal,
+): { sleeve: string; heldBps: number } | null {
+  const shareOf = (p: PersonalProposal, of: readonly string[]) =>
+    sum(p.sleeves.filter((x) => of.includes(x.sleeve)).map((x) => x.weightBps));
+  const slack = Math.max(plan.lines.length, carry.lines.length);
+  for (const c of MIX_CLASSES) {
+    const held = shareOf(plan, c.of);
+    if (Math.abs(held - shareOf(carry, c.of)) > slack) return { sleeve: c.sleeve, heldBps: held };
+  }
+  return null;
+}
+
 /**
  * The candidates for one goal: those shown, in the fixed order (Cover, Spread, Carry), each with its
  * scorecard on the plan, and those not shown with why. Pure, as `compose` is: the same arguments give
@@ -106,9 +132,25 @@ export function candidates(
   const lang = made[0]?.plan.sheet.language ?? sheet.language;
   const notShown: PersonalCandidates['notShown'] = [];
 
+  // A stated mix (gate EXPLICIT-MIX) is the person's, not a candidate's: Cover and Spread may change
+  // only what it leaves open (which tokens, the issuers, credit within dollar yield). One that would
+  // hold another share of stocks and crypto, of gold, or of dollar yield and cash together than Carry,
+  // the plan made for the mix as it is, is not made.
+  const carry = made.find((c) => c.id === 'carry');
+  const keeps = made.filter((c) => {
+    if (!carry || c === carry || !made[0]?.plan.sheet.mix) return true;
+    const broken = mixBreak(c.plan, carry.plan);
+    if (broken)
+      notShown.push({
+        id: c.id,
+        why: text('CANDIDATE_BREAKS_MIX', { plan: c.id, ...broken }, lang),
+      });
+    return broken === null;
+  });
+
   // One choice, not two: the earlier in the fixed order stays.
   let shown: typeof made = [];
-  for (const c of made) {
+  for (const c of keeps) {
     const near = shown.find((s) => distanceBps(s.plan, c.plan) < P.candidates.distinctBps);
     if (near) {
       const apart = distanceBps(near.plan, c.plan);
