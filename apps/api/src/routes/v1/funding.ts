@@ -1,6 +1,8 @@
 import {
   type Address,
   type Chain,
+  type ChainId,
+  chainFamily,
   type FundingNeed,
   FundingQuery,
   FundingResponse,
@@ -15,7 +17,7 @@ import { Refusal, refusing } from '../../orders/errors';
 import { familyByNameKey, familyBySlug } from '../../orders/families';
 import type { OrderDeps } from '../../orders/legs';
 import { homeChain, personChain } from '../../orders/person';
-import { planBuy } from '../../orders/prepare';
+import { planBuy, recipeOf } from '../../orders/prepare';
 import { isLinkedProposal, loadFamilies, loadProposal } from '../../orders/store';
 import { signedIn } from './orders';
 
@@ -61,6 +63,13 @@ function walletOf(
 const missing = (need: string, have: string) =>
   (BigInt(need) > BigInt(have) ? BigInt(need) - BigInt(have) : 0n).toString();
 
+/** The chain of a stored plan, which a buy of it is on (ONE-CHAIN, CHAIN-SWITCH). */
+async function planChain(deps: OrderDeps, id: string): Promise<ChainId> {
+  const proposal = await loadProposal(deps.db, id);
+  if (!proposal) throw new Refusal(404, 'no plan with that id');
+  return recipeOf(proposal).chain;
+}
+
 export function registerFundingRoute(
   scope: FastifyInstance,
   deps: OrderDeps,
@@ -84,7 +93,7 @@ export function registerFundingRoute(
         summary:
           'What the signed-in wallet is missing on its chain: the dollar token and native gas',
         description:
-          'For the one chain the person’s plans live on. With `amountUsd` and `proposalId` (a plan) or `family` (a shared portfolio’s slug), the need is that of a buy of that amount: the whole deposit in the chain’s dollar token, and the network fee of every step the order would have. With neither, the need is nothing and the answer is what the wallet holds. `missingRaw` is what to add. It reads one wallet, named in the answer: `wallet` when the query names one of the person’s on that chain, and otherwise the wallet their plans are held by (the outside wallet when that names the chain, the wallet made in the app when the chain was picked). An order may name any of the person’s wallets of that family as its owner: ask about the one the order will name. Every figure carries its source, its time and its method, and `provenance`: `mock` on the mock chain, `sandbox` on a test network.',
+          'On the chain of the plan that `proposalId` names, which a buy of it is on; otherwise on the person’s current chain (`GET /v1/me`). With `amountUsd` and `proposalId` (a plan) or `family` (a shared portfolio’s slug), the need is that of a buy of that amount: the whole deposit in the chain’s dollar token, and the network fee of every step the order would have. With neither, the need is nothing and the answer is what the wallet holds. `missingRaw` is what to add. It reads one wallet, named in the answer: `wallet` when the query names one of the person’s on that chain, and otherwise the wallet their plans are held by (the outside wallet when that names the chain, the wallet made in the app when the chain was picked). An order may name any of the person’s wallets of that family as its owner: ask about the one the order will name. Every figure carries its source, its time and its method, and `provenance`: `mock` on the mock chain, `sandbox` on a test network.',
         querystring: FundingQuery,
         response: { 200: FundingResponse, default: OrderError },
       },
@@ -98,23 +107,32 @@ export function registerFundingRoute(
 }
 
 /**
- * What the person's wallet holds and is missing on their chain for this buy (the query of GET
- * /v1/funding), with the chain's entry it was read on. The test faucet reads the same, so it sends
- * what this says is missing and nothing the request states.
+ * What the person's wallet holds and is missing for this buy (the query of GET /v1/funding), with the
+ * chain's entry it was read on. The test faucet reads the same, so it sends what this says is missing
+ * and nothing the request states.
  */
 export async function readFunding(
   deps: OrderDeps,
   principal: Principal,
   query: FundingQuery,
 ): Promise<{ entry: ChainEntry; read: FundingResponse }> {
-  const chain = await homeChain(deps.db, principal);
+  const { amountUsd, proposalId, family: slug } = query;
+  // A plan is bought on its own chain; anything else is asked about on the current chain.
+  const plan = amountUsd !== undefined && proposalId !== undefined;
+  const chain = plan ? await planChain(deps, proposalId) : await homeChain(deps.db, principal);
   const entry = deps.chains.get(chain);
   const { family } = entry.config;
-  const outside = (await personChain(deps.db, principal)).chainSource === 'wallet';
+  // Which of the person's wallets of this family holds their plans. On the family of their current
+  // chain, the outside wallet when it named that chain, the app's when the chain was picked. On the
+  // other family (a plan bought there after a switch), the outside wallet when they have one.
+  const person = await personChain(deps.db, principal);
+  const outside =
+    person.chain !== null && chainFamily(person.chain) === family
+      ? person.chainSource === 'wallet'
+      : principal.wallets.some((w) => w.family === family && w.kind === 'external');
   const wallet = walletOf(principal, family, outside, query.wallet);
 
   let need: FundingNeed = { cashRaw: '0', legs: 0, newVault: false, newAccounts: 0 };
-  const { amountUsd, proposalId, family: slug } = query;
   if (amountUsd !== undefined && (proposalId !== undefined || slug !== undefined))
     // Planned by the function an order is planned with, so the steps counted are the order's.
     need = (

@@ -66,9 +66,10 @@ export async function testIssuer(name: string): Promise<TestIssuer> {
 }
 
 /**
- * How a test person signed in, which is what decides their chain (gates ONE-CHAIN, CHAIN-PICK):
- * - `solana`: connected an outside Solana wallet. Their plans live on Solana.
- * - `robinhood`: connected an outside EVM wallet. Their plans live on Robinhood Chain.
+ * How a test person signed in, which is what decides the chain they start on (gates ONE-CHAIN,
+ * CHAIN-SWITCH):
+ * - `solana`: connected an outside Solana wallet. They are on Solana.
+ * - `robinhood`: connected an outside EVM wallet. They are on Robinhood Chain.
  * - `passkey`: made their wallets in the app, one of each family. No chain until they pick one.
  */
 export type PersonKind = 'solana' | 'robinhood' | 'passkey';

@@ -78,7 +78,30 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
     page.locator('[data-ui="compact-nav"]').getByRole('link', { name: en.landing.nav.cta }),
   ).toBeVisible();
   await page.keyboard.press('Home');
+  await expect(page.locator('main')).not.toContainText('MOCK');
   await check(page, 'landing');
+  // the closing: its heading over the joint's canvas, readable (CLOSING-INK, Oct 6)
+  const words = page.locator('#updates [data-ui="closing-words"]');
+  await words.scrollIntoViewIfNeeded();
+  await expect(page.locator('#updates canvas[data-ui="closing-canvas"]')).toHaveCount(1);
+  await expect(words.getByRole('heading', { level: 2 })).toHaveText(en.landing.closing.title);
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate((t) => {
+      const html = document.documentElement;
+      html.classList.remove('light', 'dark', 'tf-auto');
+      html.classList.add(t);
+    }, theme);
+    await page.waitForTimeout(100);
+    const read = await new AxeBuilder({ page })
+      .include('#updates [data-ui="closing-words"]')
+      .withRules(['color-contrast'])
+      .analyze();
+    expect(
+      read.violations.map((v) => v.id),
+      theme,
+    ).toEqual([]);
+  }
+  await page.keyboard.press('Home');
   const box = page.locator('#simulate textarea');
   await box.fill('Grow $2,000 for ten years, high risk');
   await box.press('Enter');
@@ -202,6 +225,7 @@ async function toBuy(page: Page, o: { fund?: 'mock' | 'test' } = {}) {
 
   await expect(page).toHaveURL(/\/plan\/[^/]+$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Grow $40 over 36 months.');
+  await expect(page.locator('main')).not.toContainText('MOCK');
   await check(page, 'plan');
   await page.getByRole('link', { name: en.plan.buy }).click();
 
@@ -214,6 +238,7 @@ async function toReview(page: Page, o: { fund?: 'mock' | 'test' } = {}) {
   await expect(page.getByLabel(en.buy.amount.label, { exact: true })).toHaveValue('40');
   await check(page, 'buy-amount');
   await throughBuySteps(page, { fund: o.fund ?? 'mock' });
+  await expect(page.locator('main')).not.toContainText('MOCK');
   await check(page, 'buy');
   await page.getByRole('button', { name: en.buy.review('$40') }).click();
 
@@ -238,7 +263,7 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
     await expect(steps.nth(i)).toHaveAttribute('data-status', 'confirmed');
   await check(page, 'done');
 
-  // The monitor reads the vault the buy opened, with a pin on its value, under the MOCK plate.
+  // The monitor reads the vault the buy opened, with a pin on its value, its card saying it is sample.
   // at 375 px his bar keeps its links in the sheet under the menu button
   await go(page, en.shell.portfolio);
   await expect(page).toHaveURL(/\/monitor$/);
@@ -252,7 +277,8 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
     page.locator('[data-ui="activity-panel"] [data-ui="execution-list"] li a[href]'),
   ).toHaveCount(4);
   await expect(vault.locator('[data-ui="vault-value"] [data-ui="figure"]')).toHaveCount(1);
-  await expect(vault.locator('[data-ui="mock-plate"]').first()).toBeVisible();
+  await expect(vault.locator('[data-ui="sample-note"]')).toBeVisible();
+  await expect(page.locator('main')).not.toContainText('MOCK');
   await expect(vault.locator('[data-ui="chain-badge"]')).toHaveText('Solana');
   await check(page, 'monitor');
   // the disclaimer is under the vault, once: the shell's foot does not repeat it

@@ -85,14 +85,14 @@ describe('ConstraintSheet: blocked by something that is not a field', () => {
 });
 
 describe('ConstraintSheet: the words it takes from the dictionary', () => {
-  it('says "edited" and the hidden words after MOCK in the language it is handed', () => {
+  it('says "edited" and the sample glyph’s name in the language it is handed', () => {
     const groups = sheetGroups(false).map((group) => ({
       ...group,
       fields: group.fields.map((field, i) => ({ ...field, edited: i === 0 })),
     }));
     const root = sheet({
       groups,
-      labels: { edited: 'editado', mockAnnounce: ': dados de exemplo, não são reais' },
+      labels: { edited: 'editado', mockAnnounce: 'número de exemplo' },
       source: {
         method: 'fixture',
         fetchedAt: '2026-10-04T12:00:00Z',
@@ -101,6 +101,7 @@ describe('ConstraintSheet: the words it takes from the dictionary', () => {
     });
     expect(text(root)).toContain('· editado');
     expect(text(root)).not.toMatch(/· edited/);
-    expect(text(one(root, ui('mock-plate')))).toBe('MOCK: dados de exemplo, não são reais');
+    expect(one(root, ui('sample-glyph')).attrs['aria-label']).toBe('número de exemplo');
+    expect(text(root)).not.toContain('MOCK');
   });
 });

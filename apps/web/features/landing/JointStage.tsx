@@ -280,7 +280,7 @@ export function JointStage() {
  * on the processor, a frame in seconds, and holds up every page of the browser while it does: there
  * the stills stand in, as they do with no WebGL at all.
  */
-function hasWebGL(): boolean {
+export function hasWebGL(): boolean {
   try {
     const probe = document.createElement('canvas');
     const gl = probe.getContext('webgl2') ?? probe.getContext('webgl');

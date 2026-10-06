@@ -166,12 +166,18 @@ describe('the plan screen', () => {
     // the disclaimer is the shell's foot, once per page: the screen does not repeat it
     expect(host.textContent).not.toContain(DISCLAIMER.en);
     expect(host.textContent).toContain(DISCLAIMER_SHORT);
-    expect(host.textContent).toContain(en.plan.foot.sandbox);
+    // "test network" is said once on the plan's card, in its quiet line
+    const pane = [...host.querySelectorAll('[data-ui="card"]')].find((c) =>
+      c.textContent?.includes(en.plan.title),
+    );
+    expect(pane?.textContent?.split(en.shell.testNetwork)).toHaveLength(2);
     // the API sent no risk roll-up, so there is no panel for one
     expect(host.textContent).not.toContain(en.plan.risk.title);
-    // a plan built on a test network: the plate, the hatch and the words
-    expect(host.textContent).toContain('MOCK');
-    expect(host.textContent).toContain(en.shell.testNetwork);
+    // a plan built on a test network: the hatch and one quiet line, never the word MOCK
+    expect(host.textContent).not.toContain('MOCK');
+    expect(host.querySelector('[data-ui="sample-note"]')?.textContent).toBe(
+      `${en.shell.mockAnnounce} · ${en.shell.testNetwork}`,
+    );
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
     const next = primaryLink(host);
     expect(next?.textContent).toBe(en.plan.buy);
@@ -468,6 +474,18 @@ describe('the buy screen', () => {
     expect(kept?.lines).toEqual(planOn().proposal.lines);
     expect(kept?.linked).toBeUndefined();
     expect(trustAccepted(USER, TRUST_STATUS.textVersion)).toBe(true);
+  });
+
+  it('says once on each card that its figures are from a test network, and never MOCK', async () => {
+    api({ funded: false });
+    rememberPlan(planOn());
+    const host = await buy();
+    expect(host.textContent).not.toMatch(/MOCK/);
+    // The buy card's own line (gate BUY-STEPS): a test network's figures are real reads, not samples.
+    const lines = [...host.querySelectorAll('[data-ui="data-note"], [data-ui="sample-note"]')].map(
+      (l) => l.textContent,
+    );
+    expect(lines).toEqual([en.buy.steps.note.testNetwork('Solana')]);
   });
 
   it('on Robinhood Chain: reads the funding in tUSDG and ETH, and makes the order for the EVM wallet', async () => {

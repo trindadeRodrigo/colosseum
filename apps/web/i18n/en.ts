@@ -34,7 +34,10 @@ export const en = {
     testNetwork: 'test network',
     /** When the server answers that it is being asked too often. */
     slowDown: 'Our server asked me to slow down. Wait a minute, then try again.',
-    mockAnnounce: ': sample data, not live',
+    /** A sample card's one quiet line (MOCK-QUIET). */
+    mockAnnounce: 'Sample figures',
+    /** A sample glyph's name for a screen reader. */
+    sampleFigure: 'sample figure',
     /** A wait for data (components/ui/Skeleton.tsx). */
     wait: {
       slow: 'Waking the data service: this can take up to a minute the first time.',
@@ -359,7 +362,7 @@ export const en = {
   pin: {
     sourceFor: 'Source for {value}',
     staleSuffix: ', stale, {age}',
-    mockSuffix: ', sample data',
+    mockSuffix: ', sample figure',
     stale: 'stale',
     ageUnknown: 'age unknown',
     missing: 'no source yet',
@@ -367,7 +370,7 @@ export const en = {
     copy: 'Copy source',
     copied: 'Copied',
     kinds: {
-      mock: 'MOCK data, not live',
+      mock: 'sample data, not live',
       sandbox: 'test network, not live',
       fixture: 'a fixture, not live',
       prior_dataset: 'an earlier dataset, not live',
@@ -377,9 +380,15 @@ export const en = {
 
   /** The monitor (/monitor), and the line about it on the home page. */
   portfolio: {
+    /** A chain of the person's that could not be read this time; the others are shown all the same. */
+    chainOut: (chain: string) => `${chain} is unavailable right now.`,
+    /** A chain of the person's that this server has switched off: asking again will not help. */
+    chainOff: (chain: string) => `${chain} is switched off on our server for now.`,
+    /** The person's current chain, which no wallet of this sign-in signs on. */
+    notHeld: (chain: string) => `${chain} isn’t held in this sign-in.`,
     title: (vaults: number): string =>
       vaults > 1 ? 'What your vaults hold.' : 'What your vault holds.',
-    lead: 'Read from the chain your plan lives on, each time you open this page. Nothing here signs or moves anything.',
+    lead: 'Read from each chain your plans live on, each time you open this page. Nothing here signs or moves anything.',
     chain: 'Chain',
     reading: 'Reading your vault…',
     signedOut:
@@ -539,7 +548,6 @@ export const en = {
     },
     exitPlan: 'Exit plan',
     costPrefix: 'cost',
-    foot: { sandbox: 'test network, not live', mock: 'sample data, not live' },
     columns: { asset: 'Asset', share: 'Share', amount: 'Amount', why: 'Why' },
     noReason: 'No reason given.',
     projected: 'Projected range a year, not a promise',
@@ -633,7 +641,6 @@ export const en = {
         `You’re buying ${amount} of your plan on ${chain}. Next you review every step, then sign each one in your wallet.`,
       /** The one line over the card when its figures are not live. */
       note: {
-        sample: 'Sample figures · not live',
         testNetwork: (chain: string) => `Test network · ${chain} · not live`,
       },
     },
@@ -802,7 +809,7 @@ export const en = {
       differs: (chain: string) =>
         `Our server’s answer differs from what ${chain} holds. I show the chain’s version and weights, and a follow is held to them.`,
       unverified: {
-        mock: 'MOCK chain: there is no chain to read, so these are our server’s words, not checked.',
+        mock: 'Sample chain: there is no chain to read, so these are our server’s words, not checked.',
         'no-node': (chain: string) =>
           `Not checked against ${chain}: this app has no node of its own to read it from. These are our server’s words.`,
         'no-deployment': (chain: string) =>
@@ -1226,7 +1233,6 @@ export const en = {
         chart:
           'Projected balance to 2031 with a base path and a range from a weak to a strong case, against the $35,000 target.',
         goalLine: 'goal $35k',
-        weak: 'weak case',
         legs: [
           { name: () => 'Tokenized treasuries', why: 'ballast and the exit of first resort' },
           { name: () => 'Private credit', why: 'higher yield, slower exit (credit risk accepted)' },
@@ -1276,7 +1282,7 @@ export const en = {
         error: 'We couldn’t save that just now. Try again in a minute.',
       },
     },
-    foot: 'The plans, rates and odds on this page are MOCK sample data. None of them is live.',
+    foot: 'The plans, rates and odds on this page are sample data. None of them is live.',
   },
 
   /** The partner embed (embed-shell.md): his words, in the partner's face. */

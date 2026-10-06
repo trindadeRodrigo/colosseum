@@ -249,7 +249,9 @@ describe('the steps', () => {
     portStore.set(signedInPort(EMBEDDED, { userId: USER }, 'mock'));
     api({ funded: false, provenance: 'mock' });
     const host = await buy();
-    expect(find(host, '[data-ui="data-note"]').textContent).toBe(en.buy.steps.note.sample);
+    // the card's hatch band and its one quiet line at the foot (MOCK-QUIET), and no top line
+    expect(find(host, '[data-ui="sample-note"]').textContent).toBe(en.shell.mockAnnounce);
+    expect(host.querySelector('[data-ui="data-note"]')).toBeNull();
     await click(next(host, 'amount'));
     expect(button(host, en.buy.funding.mockFund)).toBeDefined();
     expect(host.textContent).not.toMatch(/MOCK/);

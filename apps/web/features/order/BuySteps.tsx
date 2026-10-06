@@ -19,7 +19,8 @@ import { unitsFor } from './units';
 // needs on the plan's chain, what the person trusts, and the review that leads to signing. Above them,
 // where the person is: each step's number and name, filled once it is done. Every step can be opened
 // again from its heading; "Continue" opens the next one and moves the focus to it. Figures that are not
-// live are said once, in a quiet line at the top of the card, and never with a plate on a figure. The plan's buy and a shared
+// live are said once per card, never with a plate on a figure: on the mock the card's hatch band and
+// its "Sample figures" line (MOCK-QUIET), on a test network one line at the top (gate BUY-STEPS). The plan's buy and a shared
 // portfolio's share it; what is checked before an order is made stays theirs (`order.blocked`).
 
 export const MIN_USD = 10;
@@ -94,7 +95,6 @@ export function BuySteps({
   };
   // The label of the whole card: the chain's as it runs now, and what the funding read said.
   const provenance = read?.provenance ?? (mock ? 'mock' : port.network(chain)?.provenance);
-  const labelled = provenance === 'mock' || provenance === 'sandbox';
 
   // Opening a step moves the focus to its heading, once a person has moved at all.
   useEffect(() => {
@@ -248,17 +248,23 @@ export function BuySteps({
   };
 
   return (
-    <Card as="section" aria-label={t.buy.steps.label} className="max-w-3xl">
+    <Card
+      as="section"
+      aria-label={t.buy.steps.label}
+      // On the mock: the hatch band and its one quiet line at the card's foot (MOCK-QUIET).
+      mock={provenance === 'mock'}
+      mockLabels={{ announce: t.shell.mockAnnounce }}
+      className="max-w-3xl"
+    >
       <div data-ui="buy-steps">
-        {labelled && (
-          // One quiet line for every figure on the card, never a plate on a figure (Thom, Oct 6).
+        {provenance === 'sandbox' && (
+          // A test network's figures are real reads, not samples: one quiet line says where they
+          // are from, never a plate on a figure (gate BUY-STEPS).
           <p
             data-ui="data-note"
             className="px-6 pt-5 text-caption text-muted-foreground [overflow-wrap:anywhere]"
           >
-            {provenance === 'sandbox'
-              ? t.buy.steps.note.testNetwork(chainName)
-              : t.buy.steps.note.sample}
+            {t.buy.steps.note.testNetwork(chainName)}
           </p>
         )}
         <ol

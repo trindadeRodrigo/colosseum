@@ -173,15 +173,17 @@ describe('the embed’s vault', () => {
     return host;
   };
 
-  it('reads the public route only, and shows the value and each part on a pin, MOCK where not live', async () => {
+  it('reads the public route only, and shows the value and each part on a pin, sample where not live', async () => {
     const host = await shown(() => json(answer()));
     expect(calls.map((c) => new URL(c.url).pathname)).toEqual([`/v1/vaults/solana/${VAULT}`]);
     expect(find(host, 'h2').textContent).toBe(en.embed.vault.title('Solana'));
     const pins = [...host.querySelectorAll('[data-ui="figure"]')];
     expect(pins).toHaveLength(3);
     expect(pins.map((p) => p.getAttribute('data-state'))).toEqual(['mock', 'mock', 'mock']);
-    expect(host.querySelector('[data-ui="mock-plate"]')).not.toBeNull();
-    expect(host.textContent).toContain(en.shell.testNetwork);
+    expect(find(host, '[data-ui="sample-note"]').textContent).toBe(
+      `${en.shell.mockAnnounce} · ${en.shell.testNetwork}`,
+    );
+    expect(host.textContent).not.toContain('MOCK');
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
     // the way out, and the credit, both to the public vault page, in a new tab
     const out = [...host.querySelectorAll(`a[href="/vaults/solana/${VAULT}"]`)];
