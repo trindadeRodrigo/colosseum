@@ -22,6 +22,7 @@ export {
 } from './intake';
 export { amountInText, horizonsIn, mentionsIn, refusalsIn } from './intake-text';
 export { PERSONAL_PARAMS, PERSONAL_PARAMS_STATUS } from './params';
+export { readBack } from './readback';
 export {
   proposeSleeveRebalances,
   SleeveBook,
@@ -33,7 +34,6 @@ export {
   StoredPlan,
   settleBook,
 } from './rebalance';
-export { readBack } from './readback';
 export { eligibleForGoal, profileOfGoal, registryRowOf, sleeveOfClass } from './registry';
 export {
   INPUT_NAMES,
