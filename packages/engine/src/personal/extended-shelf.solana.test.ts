@@ -127,29 +127,18 @@ describe('plans on the extended shelf on Solana', () => {
     }
   });
 
-  it('a token blocked in a country is never held for a person there', () => {
+  // Gate COUNTRY-REMOVED (Rodrigo, Oct 6): this test held that USDY, wYLDS, PRIME and AUTO were never
+  // held for a person in a country that blocks them (Canada held wYLDS, not USDY). The blocks stay
+  // in the rows as information; the plan reads no country.
+  it('the geo-blocks stay as information, and a person in a blocking country gets the same plan', () => {
     const blocked = inPlans.filter((row) => row.asset.blockedCountries.length > 0);
     expect(blocked.map((row) => row.asset.symbol)).toEqual(['USDY', 'wYLDS', 'PRIME', 'AUTO']);
-    for (const country of ['CA', 'US', 'RU']) {
-      const banned = new Set(
-        blocked
-          .filter((row) => row.asset.blockedCountries.includes(country))
-          .map((row) => row.asset.symbol),
+    const anywhere = run(solana({ goal: 'income', risk: 'low' }));
+    expect(held(anywhere)).toContain('USDY');
+    for (const country of ['CA', 'US', 'RU'])
+      expect(run(solana({ goal: 'income', risk: 'low', country })).lines, country).toEqual(
+        anywhere.lines,
       );
-      expect(banned.size, country).toBeGreaterThan(0);
-      for (const s of shelfGrid('solana').map((g) => ({ ...g, country })))
-        for (const { plan } of candidates(s, extended, onExtended).shown) {
-          expect(violations(plan, extended, onExtended)).toEqual([]);
-          for (const symbol of held(plan))
-            expect(banned.has(symbol), `${country} ${symbol}`).toBe(false);
-        }
-    }
-    // In Canada USDY is blocked and the other rate token is not: the plan holds that one.
-    const canada = run(solana({ goal: 'income', risk: 'low', country: 'CA' }));
-    expect(held(canada)).not.toContain('USDY');
-    expect(held(canada)).toContain('wYLDS');
-    // Where it is not blocked, the same goal holds USDY.
-    expect(held(run(solana({ goal: 'income', risk: 'low' })))).toContain('USDY');
   });
 
   it('a goal in reais holds no bond yet, and says it has no matching leg, as on the launch shelf', () => {

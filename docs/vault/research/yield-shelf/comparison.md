@@ -8,6 +8,9 @@ pnpm -s plan:compare try/prompts/examples.md try/prompts/yield-shelf.md --chain 
 
 Every figure below is **MOCK**. The shelves, the yields and the exit capacities are fixtures: the launch shelf's are written by hand, the extended shelf's yields are figures claimed on a date in the research notes (`solana.md`, `robinhood.md`), and no exit of an added token is measured, so each takes the ceiling of its tier, a labelled fallback (gate `EXIT-SOURCE`). Nothing here is a reading of a market, a forecast or a promise of a return. The same command gives the same tables.
 
+
+**Since this report: gate `COUNTRY-REMOVED` (Rodrigo, Oct 6).** The country is neither asked nor read, and the engine ignores `blockedCountries` (kept on the rows as information). So the "country" in the open questions below is no longer asked, and the goal in Canada no longer swaps USDY for wYLDS: it gets the plan any other goal gets. The rest stands; run the command again to refresh the tables.
+
 ## Solana
 
 Made on `shelf/solana-yield` at the rows of `fixtures/shelves/solana-yield.json` as of 2026-10-06: seven tokens a plan may hold (USDY, wYLDS, kUSDC, jlJupUSD, PST, PRIME, AUTO). All 14 goals were run on Solana, the two written for Robinhood Chain included.

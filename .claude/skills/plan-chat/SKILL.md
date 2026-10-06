@@ -42,7 +42,9 @@ The goal, if given: $ARGUMENTS
 
 Make a new file for this chat in the person's own folder: `try/mine/chat-<UTC time, YYYYMMDDTHHMMSSZ>.md`. Never edit another file in `try/mine/`.
 
-**The shelf.** Every run of this chat uses the extended shelf by default: add `--shelf extended` after the file name in every command below. It adds the fixed-income tokens under test (rate tokens such as USDY on Solana, USDG yield on Robinhood Chain), so a part kept safe can hold a rate token rather than sit in cash. Say it once, with the test-data line. If the person says "use the launch shelf", drop the flag for the rest of the chat; "use the extended shelf" puts it back. The JSON's top-level `shelf` says which one a run used; never mix the two in one answer, and a change of shelf changes no answer and needs no new read-back. Ask for the goal in their own words, in English or Portuguese, in one or two lines, with one example of what helps (what the money is for, how much, any date).
+**The shelf.** Every run of this chat uses the extended shelf by default: add `--shelf extended` after the file name in every command below. It adds the fixed-income tokens under test (rate tokens such as USDY on Solana, USDG yield on Robinhood Chain), so a part kept safe can hold a rate token rather than sit in cash. Say it once, with the test-data line. If the person says "use the launch shelf", drop the flag for the rest of the chat; "use the extended shelf" puts it back. The JSON's top-level `shelf` says which one a run used; never mix the two in one answer, and a change of shelf changes no answer and needs no new read-back.
+
+Ask for the goal in their own words, in English or Portuguese, in one or two lines, with one example of what helps (what the money is for, how much, any date).
 
 ### 2. Read the conversation as the product's reader does
 

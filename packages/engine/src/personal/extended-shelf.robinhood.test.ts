@@ -124,18 +124,25 @@ describe('plans on the extended shelf on Robinhood Chain', () => {
     expect(weightOf(run(usdg({ goal: 'income', risk: 'low' })), 'syrupUSDG')).toBe(2500);
   });
 
-  it('a token blocked in a country is never held for a person there', () => {
-    // No row of this chain has a list yet, so the rule is held on a copy that blocks Spain.
+  // Gate COUNTRY-REMOVED (Rodrigo, Oct 6): this test held that steakUSDG and syrupUSDG, blocked in
+  // Spain on a copy, were never held for a person there. A block is information only now.
+  it('a token blocked in a country is held all the same: the plan reads no country', () => {
     const shelf = editShelf(extended, (a) =>
       ['steakUSDG', 'syrupUSDG'].includes(a.symbol) ? { ...a, blockedCountries: ['ES'] } : a,
     );
-    for (const s of shelfGrid('robinhood').map((g) => ({ ...g, country: 'ES' })))
+    const inSpain = run(usdg({ goal: 'income', risk: 'low', country: 'ES' }));
+    expect(held(inSpain)).toContain('steakUSDG');
+    for (const s of shelfGrid('robinhood')
+      .slice(0, 6)
+      .map((g) => ({ ...g, country: 'ES' })))
       for (const { plan } of candidates(s, shelf, onExtended).shown) {
         expect(violations(plan, shelf, onExtended)).toEqual([]);
-        expect(held(plan)).not.toContain('steakUSDG');
-        expect(held(plan)).not.toContain('syrupUSDG');
+        const { country: _, ...none } = s;
+        expect(plan.lines, JSON.stringify(s)).toEqual(
+          candidates(none, shelf, onExtended).shown.find((c) => c.id === plan.candidate)?.plan
+            .lines,
+        );
       }
-    expect(held(run(usdg({ goal: 'income', risk: 'low', country: 'ES' })))).toContain('steakUSDG');
   });
 
   it('on the grid, every candidate the launch shelf shows is still shown, and its cash share falls from 45.71% to 21.57% of a plan', () => {

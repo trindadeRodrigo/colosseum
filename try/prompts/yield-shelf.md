@@ -21,7 +21,6 @@ amount: 80000
 income: 250
 horizon: 5y
 risk: low
-country: BR
 withdrawals: { monthly: 250, from: 2026-11, months: 36 }
 ```
 
@@ -34,7 +33,6 @@ goal: grow
 amount: 40000
 horizon: 6y
 risk: medium
-country: DE
 limits:
   creditTolerance: none
 ```
@@ -48,7 +46,6 @@ goal: protect
 amount: 60000
 horizon: 4y
 risk: low
-country: PT
 ```
 
 ## Em reais, com saques em reais
@@ -61,7 +58,6 @@ goal: protect
 amount: 20000
 horizon: 3y
 risk: low
-country: BR
 currency: BRL
 language: pt
 withdrawals: { monthly: 1500, from: 2026-12, months: 24, currency: BRL }
@@ -80,11 +76,12 @@ amount: 50000
 income: 150
 horizon: 4y
 risk: low
-country: ES
 withdrawals: { monthly: 150, from: 2026-11, months: 24 }
 ```
 
 ## Income, living in Canada
+
+<!-- Since gate COUNTRY-REMOVED (Oct 6) the plan reads no country: this goal gets the plan any other does. -->
 
 I have $30,000 and want a steady income from it over five years, low risk. I live in Canada.
 
@@ -94,5 +91,4 @@ amount: 30000
 income: 80
 horizon: 5y
 risk: low
-country: CA
 ```
