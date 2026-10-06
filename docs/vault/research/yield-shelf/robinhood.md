@@ -1,29 +1,30 @@
 # The yield shelf on Robinhood Chain: dollar fixed income for a test shelf
 
-Oct 6, 2026. Research for `SHELF-YIELD` (`docs/vault/STATE-VAULT.md`), written from `docs/vault/PROMPT-YIELD-SHELF.md`. Rodrigo asked for the same screening as on Solana, with the same filters, on the list he mapped (`inputs/robinhood_chain_yield_assets.csv`, 30 rows; its yields are claims read on a date, not readings), and added two items to research and then ask about: Uniswap LP positions in dollar pairs, and Pendle PT-USDG. Two research threads ran in parallel, one agent each (the candidates; the pool share and the PT); the session that ran them read the decimals of four of the contracts and the PT's maturity again on chain, and they matched. Everything was read through public, read-only sources: `eth_call` on the chain's public RPC (chain id 4663), the sources the EVM depth collector uses (`scripts/risk-evm/`, read and not run), DexScreener, the lending protocol's and Pendle's public APIs, the issuers' pages. No transaction was sent and no key was used. The chain's explorer API refused requests that day, so no verified source code was read: transfer restrictions were tested on chain instead, by the contracts' getters and by simulating a transfer of nothing between two addresses on no list `[rpc]`. The code was read on `shelf/common` at `375720a`.
+Oct 6, 2026. Research for `SHELF-YIELD-RH` (`docs/vault/STATE-VAULT.md`), written from `docs/vault/PROMPT-YIELD-SHELF.md`. Rodrigo asked for the same screening as on Solana, with the same filters, on the list he mapped (`inputs/robinhood_chain_yield_assets.csv`, 30 rows; its yields are claims read on a date, not readings), and added two items to research and then ask about: Uniswap LP positions in dollar pairs, and Pendle PT-USDG. Two research threads ran in parallel, one agent each (the candidates; the pool share and the PT); the session that ran them read the decimals of four of the contracts and the PT's maturity again on chain, and they matched. Everything was read through public, read-only sources: `eth_call` on the chain's public RPC (chain id 4663), the sources the EVM depth collector uses (`scripts/risk-evm/`, read and not run), DexScreener, the lending protocol's and Pendle's public APIs, the issuers' pages. No transaction was sent and no key was used. The chain's explorer API refused requests that day, so no verified source code was read: transfer restrictions were tested on chain instead, by the contracts' getters and by simulating a transfer of nothing between two addresses on no list `[rpc]`. The code was read on `shelf/common` at `375720a`.
 
 This note is the source of the rows in `packages/engine/src/personal/fixtures/shelves/robinhood-yield.json`, of their leg types in `leg-types.ts` and of their yields in `fixtures/yields-extended.json`. It lists nothing live: part (b), the rollout, is section 7.
 
-Tags: `[n]` checked that day against source n. `[ns]` or `[ns n]` only a search-result snippet of source n was seen. `[rpc]` read on chain that day. `[api]` read from a public API that day, named. `[sheet]` only the input list says it; not verified. `[repo]` read in the code. `[run]` computed that day by the tests of this branch, on fixtures. `[own]` our reasoning, not from a source. Issuer and protocol names appear because the note is internal; what a person reads names the token only.
+Tags: `[n]` checked that day against source n. `[ns]` or `[ns n]` only a search-result snippet of source n was seen. `[rpc]` read on chain that day. `[api]` read from a public API that day, named. `[sheet]` only the input list says it; not verified. `[repo]` read in the code. `[run]` computed that day by the tests of this branch, on fixtures. `[own]` our reasoning, not from a source. A tag may name its API or its source number beside it (`[api: 2]`, `[api Morpho, 2]`, `[9 ns]`, `[111s]` for a snippet of source 111). Issuer and protocol names appear because the note is internal; what a person reads names the token only.
 
 ## 1. Bottom line
 
-- **Three tokens are on the extended shelf and can be in a plan**: steakUSDG, syrupUSDG and spUSDG. Each passes the five filters with a caution. None is a rate leg: SGOV stays the chain's one rate token.
+- **Two tokens are on the extended shelf and can be in a plan**: steakUSDG (a deposit in lending markets) and syrupUSDG (credit and basis). Each passes the five filters with a caution. Neither is a rate leg: SGOV stays the chain's one rate token.
+- **spUSDG passes the filters and is held out, for Rodrigo**: what funds its rate was not verified, so its leg type is a judgment and not a reading. It is listed with the reason; section 5.3 has the choice and a recommendation.
 - **The PT is listed with its maturity and is in no plan**: PT-USDG, 25 March 2027. The engine has no maturity date; the model is section 5.2, for Rodrigo.
 - **No pool share is listed.** The vault holds token balances only, Uniswap on this chain is v3 and v4, whose positions are not tokens a vault can hold, and no fungible wrapper over a dollar pair was found. The type question is section 5.1.
 - **rUSDG goes to Rodrigo** (on hold; the recommendation is out). **mGLO and syrupUSDC are out.**
-- **What it changes, on fixtures**: on the grid of 36 goals the share of a plan left in cash falls from 47.69% to 20.06%, the mean over the 39 candidates both shelves show `[run]`; the detail is in `comparison.md`. Two of the three tokens have no market route and take the thinnest tier, $1,500 a line, which is why a large plan still leaves a third in cash. These are MOCK figures from fixture yields and tier ceilings, not a reading of any market.
+- **What it changes, on fixtures**: on the grid of 36 goals the share of a plan left in cash falls from 45.71% to 21.57%, the mean over the 42 candidates the launch shelf shows, all still shown `[run]`; the detail is in `comparison.md`. steakUSDG has no market route and takes the thinnest tier, $1,500 a line, which is why a $50,000 plan still leaves about a third in cash. These are MOCK figures from fixture yields and tier ceilings, not a reading of any market.
 
 | Token | Issuer | Leg types | Tier | Verdict | The filter that decides |
 |---|---|---|---|---|---|
 | steakUSDG | Steakhouse, on Morpho | market_deposit | C | add with caution | 3: no market route, redemption only |
 | syrupUSDG | Maple | credit, basis | A | add with caution | 3: one pool; the yield is the input list's |
-| spUSDG | Spark | market_deposit | C | add with caution | 3: no market route, redemption only |
-| PT-USDG-25MAR2027 | Pendle | rate, fixed to maturity | B | add with caution, held out | 3: a thin market; and the maturity |
+| spUSDG | Spark | not settled; nearest is market_deposit | C | passes with a caution; held out, for Rodrigo | 3: no market route, redemption only; and the leg type |
+| PT-USDG-25MAR2027 | Pendle | none recorded; `rate` is proposed | B | add with caution, held out | 3: a thin market; and the maturity |
 | rUSDG | Mellow | none settled | C | hold, for Rodrigo | 5: a carry strategy with a cap that is not published |
 | Uniswap dollar-pair LP | Uniswap | none fits | none | not listed | 1: the vault cannot hold it |
-| mGLO | Midas | credit | none | out | 3: no pool, and redemption is for KYC'd addresses |
-| syrupUSDC | Maple | credit, basis | none | out | 4: a contract with almost no supply on this chain |
+| mGLO | Midas | credit | none: no route | out | 3: no pool, and redemption is for KYC'd addresses |
+| syrupUSDC | Maple | credit, basis | none: no route | out | 4: a contract with almost no supply on this chain |
 
 ## 2. The filters, and how the rows were made
 
@@ -35,7 +36,7 @@ Tags: `[n]` checked that day against source n. `[ns]` or `[ns n]` only a search-
 
 **The tier** is the launch shelf's rule, on the price impact of a sale into USDG: A, $50,000 at 35 bps or less; B, $10,000 at 35 bps or less; C, about $1,000 to $2,000 at 30 bps or less. One call was made here and is Rodrigo's to change `[own]`: **a token with no market route takes C, whatever its redemption allows.** steakUSDG and spUSDG both redeem $50,000 at once and at no price impact today, which by size would be A. They are C because the vault trades one token for one token through an allowed router (`contracts/src/BasketVault.sol`) and cannot call a vault's deposit or redeem yet, so redemption is not an exit a plan can count on. The tier is a fallback in any case: Bearing's measured exit replaces it at the rollout (gate `EXIT-SOURCE`).
 
-**The fixture yields** are the dated figures of section 3, each with a haircut taken by hand, as the launch shelf's are: a quarter off a variable rate read from the protocol, half off a figure only the input list gives (syrupUSDG: no figure was read from the issuer). They are fixtures, plated MOCK wherever shown.
+**The fixture yields** are the dated figures of section 3, each with a haircut taken by hand, as the launch shelf's are: a quarter off a variable rate read from the protocol (steakUSDG: the vault's net rate at the time of reading, 3.99%; its average that day was 3.75%), half off a figure only the input list gives (syrupUSDG: the low end of the list's 4.6 to 5.0%, which the list dates September 2026; no figure was read from the issuer). A token in no plan has no fixture yield. They are fixtures, plated MOCK wherever shown.
 
 **The issuer** on a row is the name that groups tokens for the 50% issuer cap (gate `SOLVER-CAPS`): syrupUSDG carries "Maple", as syrupUSDC does on Solana.
 
@@ -80,9 +81,9 @@ Read on chain between 15:33 and 15:37 UTC (blocks 81739082 to 81741059) `[rpc]`.
 
 #### spUSDG (Spark, Sky ecosystem)
 
-- **Verdict**: add with caution. Deciding filter 3: exit is redemption against the USDG left in the vault.
+- **Verdict**: passes the five filters with a caution (filter 3: the exit is redemption against the USDG left in the vault). Held out of every plan until Rodrigo settles its leg type (section 5.3).
 - **Issuer and backing**: "Spark Savings USDG" [rpc]. The rate is a number set by Spark (`vsr`), not a market rate; the deposited USDG may be taken by Spark's liquidity layer, which then owes it back [own, from the contract's getters]. Today almost nothing is taken: 14.668M USDG sits in the vault of 14.690M total assets, 22.4k outstanding [rpc].
-- **Mechanism and leg types**: `market_deposit`, with a note. `rate` does not fit (the rate is administered, not passed through); what the holder depends on is Spark's balance sheet and the USDG left in the vault [own]. It is also 2.5% of steakUSDG's collateral [api Morpho, 2].
+- **Mechanism and leg types**: not settled; the nearest of the four is `market_deposit`, and no row is recorded. `rate` does not fit (the rate is administered, not passed through); what the holder depends on is Spark's balance sheet and the USDG left in the vault [own]. It is also 2.5% of steakUSDG's collateral [api Morpho, 2].
 - **Address**: 0xde770c84FE66E063336b31737cFE9790f18c4087, 6 decimals, ERC-4626 with `asset()` = USDG, upgradeable proxy (implementation 0x797c…5f02); supply 14.54M shares; deposit cap 500M [rpc].
 - **Transfer restrictions**: none found; the simulated transfer passes [rpc]. Source not read.
 - **Redemption**: `withdraw` / `redeem` in one transaction, no KYC, up to the idle USDG (14.67M now): $10k and $50k are covered [rpc].
@@ -97,7 +98,7 @@ Read on chain between 15:33 and 15:37 UTC (blocks 81739082 to 81741059) `[rpc]`.
 
 - **Verdict**: hold, for Rodrigo. Deciding filter 5. Recommendation: out, unless the leverage cap is shown to be low.
 - **Issuer and backing**: Mellow's "USDG Yield Vault", a Core Vault; "Mellow is appointed to provide curation services" [7].
-- **Mechanism and leg types**: "a capped stablecoin carry strategy with Morpho markets underneath" [7]. A carry on Morpho borrows against one dollar asset to hold another: leverage [own]. No leg type fits (set to null); nearest is `market_deposit` plus the carried asset's leg. The positions and the cap were not read. One sub-vault, 0x9bc4…e046 [rpc].
+- **Mechanism and leg types**: "a capped stablecoin carry strategy with Morpho markets underneath" [7]. A carry on Morpho borrows against one dollar asset to hold another: leverage [own]. No leg type fits; nearest is `market_deposit` plus the carried asset's leg. The positions and the cap were not read. One sub-vault, 0x9bc4…e046 [rpc].
 - **Address**: the share token is **0xf04c58853D54f2445989108C29087F1A61C034cB** (symbol rUSDG, 18 decimals, supply 988,125) [rpc]. The sheet's 0xCe93…bD3B is the vault, which is not a token: its `shareManager()` returns the address above [rpc].
 - **Transfer restrictions**: none active: `flags()` = 0, whitelist root zero, the simulated transfer passes [rpc]. The contract has whitelist, lock-up and pause switches an admin can turn on [own].
 - **Redemption**: deposit is immediate (`SyncDepositQueue`); withdrawal is request then claim, "typically 2–3 days" [7]; the oracle's redeem interval is 172,800 s and the last report is from today, not flagged [rpc]. Idle USDG in the vault: 0 [rpc].
@@ -118,7 +119,7 @@ Read on chain between 15:33 and 15:37 UTC (blocks 81739082 to 81741059) `[rpc]`.
 - **Redemption**: Midas only, with KYC and a greenlisted address [6][9 ns]. Instant route 0.5% fee, finite capacity; standard route monthly at NAV, about 35 days after valuation [6].
 - **Geo-blocks**: KYC/AML eligibility; country list not read (Midas pages returned 403).
 - **Depth**: no DEX pool [api DexScreener, 3]. No exit for an unlisted contract.
-- **Tier**: C with a caution (no route).
+- **Tier**: none: no route, and no row.
 - **Yield**: "target net yield of approximately 7%", not guaranteed [6]; a target, so no fixture figure. The 4.96% on Morpho is the lenders' rate against mGLO [api Morpho, 2].
 - **Incidents**: none found (one search).
 - **Not verified**: Midas's own documents; the redemption vault and its greenlist flag on this chain.
@@ -133,7 +134,7 @@ Read on chain between 15:33 and 15:37 UTC (blocks 81739082 to 81741059) `[rpc]`.
 - **Redemption**: none here.
 - **Geo-blocks**: not checked.
 - **Depth**: no pool [api DexScreener, 3]. No USDC with real liquidity was seen on the chain: two tokens called USDC, pools of $0.67 and $5.1k [api DexScreener, 3].
-- **Tier**: C (no route).
+- **Tier**: none: no route, and no row.
 - **Yield**: none.
 - **Incidents**: none found.
 - **Not verified**: whether an official USDC exists on Robinhood Chain.
@@ -148,7 +149,7 @@ Chain reads at block 81739511, 15:34 UTC `[rpc]`.
 
 - **Issuer and backing**: no issuer. A position is a share of a pool of two dollar tokens; its value is whatever mix of the two the pool leaves it with [own].
 
-- **Mechanism and leg types**: earns swap fees, and on some venues emissions. It fits none of the four leg types: `legTypes: null`. Nearest for the budget: `credit`. See the proposal.
+- **Mechanism and leg types**: earns swap fees, and on some venues emissions. It fits none of the four leg types. Nearest for the budget: `credit`. See the proposal.
 
 - **Address**: there is no token. Uniswap on this chain is v3 (factory `0x1f7d7550B1b028f7571E69A784071F0205FD2EfA`) and v4 (position manager `0x58daec3116aae6d93017baaea7749052e8a04fa7`) [112]. A v3 position is an ERC-721; a v4 position is an entry in the position manager. DexScreener labels every Uniswap pair on the chain v3 or v4; no v2 pair was seen `[api: DexScreener]` [106].
 
@@ -247,7 +248,7 @@ The holdability answer is no, so nothing is listed (section 3.2). The modelling 
 
 ### 5.2 Pendle PT-USDG: listed, held out; the model for a maturity
 
-The PT is on the extended shelf with its maturity (`maturity: 2027-03-25` on its row) and the reason it is in no plan. Nothing in the engine was changed: the row is held out by the loader, not by `buildWorld`. **Recommendation: build the model below as one slice, after Rodrigo's word; type it `rate`.** YT is out: it is a claim on the yield alone and is worth nothing at maturity.
+The PT is on the extended shelf with its maturity (`maturity: 2027-03-25` on its row) and the reason it is in no plan. That interim is done, and by the fixture's loader (`readExtendedFile` in `testing.ts`), which keeps a held-out row off the shelf the engine takes: nothing in the engine was changed, there is no `MATURITIES` table yet and `buildWorld` is as it was. **Recommendation: build the model below as one slice, after Rodrigo's word; type it `rate`.** YT is out: it is a claim on the yield alone and is worth nothing at maturity.
 
 #### Proposal: Pendle PT-USDG
 
@@ -261,27 +262,33 @@ The PT is on the extended shelf with its maturity (`maturity: 2027-03-25` on its
 5. Eligibility in `buildWorld` (`world.ts:221`): leave the PT out, with the reason, when it matures after the date the money is needed, or when it has already matured. `byLiquidity`/`placeSetAside` (`set-aside.ts:57`, `:69`) may use it for a withdrawal only in or after its maturity month.
 6. Yield row: `method: "pt_implied_to_maturity"`, source the market's `lastLnImpliedRate`, with `fetched_at`. No literal in code.
 
-**Interim.** List the PT on the extended shelf with its row in `MATURITIES` and no plan weight: `buildWorld` leaves out any asset that has a maturity row, with the reason "matures on 2027-03-25; the schedule does not count a maturity yet".
+**Interim (done, another way).** The PT is on the extended shelf with `maturity` on its fixture row and the reason "a token with a maturity (25 March 2027): the schedule models none yet". The loader keeps it off the shelf the engine takes. The `MATURITIES` table and the rule in `buildWorld` come with the model, not before.
 
-**Recommendation: do the interim now, the model (steps 1 to 6) as one slice later.** Trade-offs: the side table keeps Thom's type untouched but is a second place to look; a PT that matures becomes idle cash until a rebalance; the pool is thin, so real plans could hold only small lines (tier B).
+**Recommendation: the model (steps 1 to 6) as one slice, after Rodrigo's word.** Trade-offs: the side table keeps Thom's type untouched but is a second place to look; a PT that matures becomes idle cash until a rebalance; the pool is thin, so real plans could hold only small lines (tier B).
 
 **Tests that pin it.** A PT line is cash at par from its maturity month and never before; a goal ending before maturity leaves it out with the reason; an expired PT is refused; `yields_fall` leaves its income unchanged; every `MATURITIES` symbol has a `LEG_TYPES` row; the interim test: a shelf with the PT yields plans with no PT line and the reason shown.
 
-### 5.3 A verdict the filters do not settle: rUSDG
+### 5.3 Two verdicts for Rodrigo: spUSDG and rUSDG
 
-On hold, listed and in no plan. **Recommendation: out, on filter 5.** The issuer's documents call it a capped stablecoin carry strategy with lending markets underneath, which is leverage; the positions and the cap are not published in what was read. It holds about $1.0M, keeps no idle USDG, and redeems by request and claim, typically in 2 to 3 days `[7]`. The input list's address is the vault, not a token: the share token is `0xf04c58853D54f2445989108C29087F1A61C034cB` `[rpc]`. Revisit only if the cap is shown to be low.
+**spUSDG: passes the filters; its leg type is the question.** It is a savings vault with instant redemption (14.67M of 14.69M USDG idle today `[rpc]`) and a rate its issuer's governance sets, 3.50% when read `[rpc]`. What funds that rate, and who may take the assets, was not verified. It is not a pass-through of a sovereign rate, so `rate` is not earned on what was read; the nearest of the four is `market_deposit`, a deposit that pays a variable rate and can run out of free liquidity.
+- Option 1: type it `market_deposit`. It then takes the 60% cap, stays outside the credit budget and outside the safe-yield sleeve, and a "no lending" plan holds it, as it holds steakUSDG (section 5.4).
+- Option 2: type it `rate`, once the issuer's documents show the rate is backed by sovereign paper. It would then enter the safe-yield sleeve beside SGOV.
+- Option 3: leave it out until what funds the rate is read.
+- **Recommendation: option 1, after one reading of the issuer's documents on what funds the rate.** Until Rodrigo answers it is listed and in no plan, with no leg type recorded and no fixture yield: a kind is never guessed (`leg-types.ts`). Adding it is one line on its row and one `LEG_TYPES` row.
+
+**rUSDG: on hold, listed and in no plan. Recommendation: out, on filter 5.** The issuer's documents call it a capped stablecoin carry strategy with lending markets underneath, which is leverage; the positions and the cap are not published in what was read. It holds about $1.0M, keeps no idle USDG, and redeems by request and claim, typically in 2 to 3 days `[7]`. The input list's address is the vault, not a token: the share token is `0xf04c58853D54f2445989108C29087F1A61C034cB` `[rpc]`. Revisit only if the cap is shown to be low.
 
 ### 5.4 Calls made here, for Rodrigo to overturn
 
-- **The tier of a token that only redeems** (steakUSDG, spUSDG): C today, for the reason in section 2. On the grid this is the difference between 20% and nearly nothing left in cash. If the vault gains a deposit and redeem leg, tier them by the liquidity free to withdraw, which Bearing would measure (steakUSDG: $36.2M withdrawable at about 90% utilisation `[api: 2]`; spUSDG: 14.67M of 14.69M USDG idle `[rpc]`).
-- **steakUSDG is typed `market_deposit`, which does not say all of it.** It lends USDG against four tokens at 91.5% loan-to-value: USDe 66%, syrupUSDG 25%, mGLO 6%, spUSDG 2.5% `[api: 2]`. Its borrowers' collateral is basis and credit, so a fall in those tokens reaches the vault through bad debt, and the four leg types have no way to say so. It does not count against the credit budget. Rodrigo may prefer to count it there.
-- **spUSDG is typed `market_deposit`, not `rate`.** Its rate is set by the issuer's governance and paid from lending deployments, not passed through from a sovereign rate; `market_deposit` is the nearest of the four. Typed `rate` it would enter the safe-yield sleeve, which this note does not think it has earned.
+- **steakUSDG is in test plans though the vault cannot enter or leave it yet.** No pool trades it; it redeems at par to anyone ($36.2M withdrawable at about 90% utilisation `[api: 2]`), and the vault has no deposit or redeem call. It is at the thinnest tier, C, so no plan holds more than $1,500 of it. On the grid this tier is the difference between about 22% and much less left in cash. If Rodrigo would rather it wait off the shelf until the vault has that leg, it is one line on its row (`heldOut`); if the vault gains the leg, tier it by the liquidity free to withdraw, which Bearing would measure.
+- **steakUSDG is typed `market_deposit`, which does not say all of it.** It lends USDG against four tokens at 91.5% loan-to-value: USDe 66%, syrupUSDG 25%, mGLO 6%, spUSDG 2.5% `[api: 2]`. Its borrowers' collateral is basis and credit, so a fall in those tokens reaches the vault through bad debt, and the four leg types have no way to say so. Rodrigo may prefer to count it against the credit budget.
+- **What that typing does to a plan with "no lending".** The credit budget counts credit and basis legs only. A person who refuses credit therefore still holds a market deposit: steakUSDG at 15% of a $10,000 plan here `[run]`, as jlUSDC is held on Solana's launch shelf today. The plan's own words for that limit are "No tokens that lend to borrowers or trade a spread", and steakUSDG lends to borrowers. This is how the engine reads the limit on every chain, not something the new rows change; it is said here because a second lending vault makes it plainer. Whether "no lending" should also leave out market deposits is Rodrigo's call, and an engine change.
 - **mGLO is out on secondary sources.** That redemption needs a greenlisted, KYC'd address comes from the curator's write-up of July 2026 and a search snippet; the issuer's own pages refused the reader. A contract can receive the token (a transfer between unlisted addresses passes `[rpc]`), but with no pool and a permissioned redemption a vault cannot leave it. Say if it should be held instead.
 - **syrupUSDG's yield is the input list's**: the low end of 4.6 to 5.0%, with half taken off. No figure was read from the issuer.
 
 ## 6. What could not be verified
 
-- **Verified source code** for every contract: the explorer's API refused. Restrictions were tested on chain by getters and a simulated transfer of nothing, which passed for all six candidates.
+- **Verified source code** for every contract: the explorer's API refused. Restrictions were tested on chain by getters and a simulated transfer of nothing; section 3 says, token by token, what was run.
 - **Geo-blocks** for every token: the front-ends' terms were not read.
 - **Maple**: syrupUSDG's yield, the excluded countries, the bridge route and withdrawal timing, and whether the pool price (1.0127 USDG) equals the net asset value.
 - **Spark**: what funds the rate and who may take the assets; the rating the input list cites.
@@ -298,15 +305,15 @@ Not done here. Nothing below is started. Per token added to plans, what is left 
 
 | Step | What | Who |
 |---|---|---|
-| The contract on mainnet | Read again the address, decimals and standard of each token on the day of listing: steakUSDG (ERC-4626, 18 decimals), syrupUSDG (ERC-20, bridged, 6), spUSDG (ERC-4626, 6), in section 3 | Rodrigo's session, read-only |
-| A live yield source | steakUSDG: the vault's net rate from the lending protocol's public API. spUSDG: the vault's rate by `eth_call`, annualised. syrupUSDG: none read; the issuer's figure, or the token's price over time. Each with `source`, `fetched_at` and `method` | Rodrigo (feeds) |
-| How the vault enters and leaves | steakUSDG and spUSDG have no pool: the EVM vault needs a deposit and redeem leg for an ERC-4626 vault, or a router on its allowed list that does it in one call. syrupUSDG trades on one Uniswap v4 pool the collector can already quote | Thom |
-| Bearing's exit measurement | The collectors are not edited before Oct 12 (`CLAUDE.md`). Until then each added token takes its tier ceiling, labelled a fallback. After: syrupUSDG's pool in the EVM collector's universe; a free-liquidity reading for the two vaults | Rodrigo, after Oct 12 |
-| The vault's on-chain asset list | The EVM registry entry for each token, with its price reference (none of the three has a Chainlink feed that was verified). A deploy: it needs a person's word | Thom |
+| The contract on mainnet | Read again the address, decimals and standard of each token on the day of listing: steakUSDG (ERC-4626, 18 decimals) and syrupUSDG (ERC-20, bridged, 6), in section 3; spUSDG (ERC-4626, 6) if section 5.3 adds it | Rodrigo's session, read-only |
+| A live yield source | steakUSDG: the vault's net rate from the lending protocol's public API. syrupUSDG: none read; the issuer's figure, or the token's price over time. spUSDG, if added: the vault's rate by `eth_call`, annualised. Each with `source`, `fetched_at` and `method` | Rodrigo (feeds) |
+| How the vault enters and leaves | steakUSDG (and spUSDG, if added) has no pool: the EVM vault needs a deposit and redeem leg for an ERC-4626 vault, or a router on its allowed list that does it in one call. syrupUSDG trades on one Uniswap v4 pool the collector can already quote | Thom |
+| Bearing's exit measurement | The collectors are not edited before Oct 12 (`CLAUDE.md`). Until then each added token takes its tier ceiling, labelled a fallback. After: syrupUSDG's pool in the EVM collector's universe; a free-liquidity reading for steakUSDG | Rodrigo, after Oct 12 |
+| The vault's on-chain asset list | The EVM registry entry for each token, with its price reference (no Chainlink feed was verified for either). A deploy: it needs a person's word | Thom |
 | The production registry row | One row per token with its class, issuer, tier or measured cap, `blockedCountries` once the terms are read, and its leg types on the shelf row when the schema commit moves them there | Rodrigo, Thom for the schema |
 | The decision | A `/decide` entry under gate `UNIVERSE` for the final list, with the answers to section 5 | Rodrigo |
 
-The PT needs section 5.2 decided and built first; rUSDG needs section 5.3.
+The PT needs section 5.2 decided and built first; spUSDG and rUSDG need section 5.3.
 
 ## 8. Sources
 

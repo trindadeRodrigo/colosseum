@@ -17,19 +17,9 @@
       "quotedYield": 0.046,
       "haircutYield": 0.023,
       "haircutRule": "HC-INPUT-LIST, taken by hand: half off a figure only the input list gives",
-      "source": "docs/vault/research/yield-shelf/robinhood.md [sheet]: the low end of the 4.6 to 5.0% in the input list of 2026-10-06, not verified against the issuer",
+      "source": "docs/vault/research/yield-shelf/robinhood.md [sheet]: the low end of the 4.6 to 5.0% in the input list of 2026-10-06, which dates it September 2026 and gives the issuer and a newsletter as its source; not verified against the issuer",
       "method": "input_list_claim_not_verified_not_a_reading",
       "fetchedAt": "2026-10-06T00:00:00.000Z",
-      "provenance": "fixture"
-    },
-    {
-      "assetId": "robinhood:spusdg",
-      "quotedYield": 0.035,
-      "haircutYield": 0.02625,
-      "haircutRule": "HC-LEND-VAR, taken by hand: a quarter off a variable rate",
-      "source": "docs/vault/research/yield-shelf/robinhood.md [rpc]: the rate the savings vault is set to, read on chain 2026-10-06 and annualised",
-      "method": "protocol_rate_read_on_a_date_not_a_reading",
-      "fetchedAt": "2026-10-06T15:35:00.000Z",
       "provenance": "fixture"
     }
   ]

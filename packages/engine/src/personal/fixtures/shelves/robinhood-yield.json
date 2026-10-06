@@ -81,13 +81,14 @@
         "sheet": "spusdg",
         "provenance": "fixture"
       },
-      "verdict": "add_with_caution",
+      "verdict": "hold",
       "source": "docs/vault/research/yield-shelf/robinhood.md, section 3, spUSDG",
       "unverified": [
         "geo-blocks",
         "what funds the rate and who may take the assets",
         "a market route: there is none, the exit is redemption from the vault, which the plan's vault cannot do yet"
-      ]
+      ],
+      "heldOut": "on hold: what funds its rate is not verified, so its leg type is not settled, and a person decides it"
     },
     {
       "asset": {

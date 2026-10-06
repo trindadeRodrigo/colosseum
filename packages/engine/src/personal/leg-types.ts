@@ -58,12 +58,6 @@ export const LEG_TYPES: Record<string, LegTypeRow> = {
       'The USDG form of syrupUSDC, typed as it is: loans to institutions, and disclosures that allow basis trades, as read in docs/vault/research/yield-shelf/robinhood.md, section 3',
     readAt: '2026-10-06',
   },
-  spUSDG: {
-    types: ['market_deposit'],
-    source:
-      'A savings vault whose rate its governance sets and pays from lending deployments; typed as a deposit, the nearest of the four, and not as a sovereign rate, as read in docs/vault/research/yield-shelf/robinhood.md, section 3',
-    readAt: '2026-10-06',
-  },
   // MOCK: the stand-in dollar-yield token of the mock chain (packages/chain-mock), so a plan built on
   // the mock has a dollar-yield line. Typed as a rate leg, the strictest kind with no credit in it.
   mYIELD: {
