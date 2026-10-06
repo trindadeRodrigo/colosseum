@@ -835,6 +835,7 @@ describe('the /v1 route table', () => {
       '/v1/mock/orders/{id}/legs/{legId}/land',
       '/v1/orders',
       '/v1/orders/{id}',
+      '/v1/orders/{id}/continue',
       '/v1/orders/{id}/legs/{legId}/build',
       '/v1/orders/{id}/legs/{legId}/cancel',
       '/v1/orders/{id}/legs/{legId}/report',
