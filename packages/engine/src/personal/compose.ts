@@ -324,10 +324,27 @@ function build(
         }
       : undefined;
   const sleeves = sizeSleeves(w, sa?.bps ?? 0, asideOfMix);
-  const [growth = 0, dollarYield = 0, gold = 0, cash = 0, safeYield = 0, setAside = 0] = split(
+  const [growthUp = 0, yieldUp = 0, goldUp = 0, cashDown = 0, safeYield = 0, setAside = 0] = split(
     w.amount,
     [...SLEEVES.map((sleeve) => sleeves.sized[sleeve]), sleeves.safeYieldBps, sleeves.setAsideBps],
   );
+  // A mix states each share exactly, and a share can sit exactly at a cap ("half in stocks", where
+  // one issuer may hold half). The odd cents of the split are then no part of a share: stocks and
+  // crypto, gold and dollar yield take theirs rounded down to the cent, and the odd cents stay in
+  // cash where the mix has cash, else in dollar yield where it has some. So a class sized at a cap
+  // never passes it by a cent of rounding, which the cap, itself rounded down, would call money kept
+  // out. A plan from the table keeps its split as it was.
+  const whole = (cents: number, sleeve: Sleeve) =>
+    Math.min(cents, shareOf(w.amount, sleeves.sized[sleeve]));
+  const oddToCash = sheet.mix !== undefined && sleeves.sized.cash > 0;
+  const oddToYield = sheet.mix !== undefined && !oddToCash && sleeves.sized.dollarYield > 0;
+  const rounded = oddToCash || oddToYield;
+  const growth = rounded ? whole(growthUp, 'growth') : growthUp;
+  const gold = rounded ? whole(goldUp, 'gold') : goldUp;
+  const yieldDown = oddToCash ? whole(yieldUp, 'dollarYield') : yieldUp;
+  const odd = growthUp - growth + (goldUp - gold) + (yieldUp - yieldDown);
+  const dollarYield = yieldDown + (oddToYield ? odd : 0);
+  const cash = cashDown + (oddToCash ? odd : 0);
   const book = new Book(w);
   const themes = resolveThemes(w, book.removed);
 

@@ -545,6 +545,50 @@ describe('a candidate that would change a share the mix states is not made', () 
   });
 });
 
+describe('a cent of rounding is not a limit', () => {
+  it('$1,000.01, half in stocks and half in cash: the odd cent stays in cash, and nothing is kept out', () => {
+    const plan = run(
+      sheet({
+        amountUsd: 1000.01,
+        rules: noGlide,
+        mix: mix({ growthBps: 5000, cashBps: 5000 }),
+      }),
+    );
+    expect(plan.lines.map((l) => [l.assetId, l.amountUsd, l.weightBps])).toEqual([
+      ['solana:spyx', 500, 5000],
+      ['solana:usdc', 500.01, 5000],
+    ]);
+    expect(plan.sheet.risk).toBe('low');
+    for (const rule of ['ISSUER_CAP', 'OVERFLOW_ISSUER', 'YIELD_TOO_SMALL', 'UNPLACED'])
+      expect(rules(plan)).not.toContain(rule);
+    expect(plan.flags).not.toContain('unplaced');
+  });
+
+  it('whatever the cents of the amount, stocks sized at their issuer’s cap spill nothing', () => {
+    // 50% with one issuer at low risk, 70% at medium: the share is the cap. Amounts no ceiling binds
+    // at, so the cap by risk is the one limit in play.
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 100_000, max: 10_000_000 }).map((cents) => cents / 100),
+        fc.constantFrom<[number, number, number]>(
+          [5000, 5000, 0],
+          [7000, 3000, 0],
+          [5000, 0, 5000],
+        ),
+        (amountUsd, [growthBps, cashBps, dollarYieldBps]) => {
+          const plan = run(
+            sheet({ amountUsd, rules: noGlide, mix: mix({ growthBps, cashBps, dollarYieldBps }) }),
+          );
+          expect(sleeveBps(plan, shelf, 'growth')).toBe(growthBps);
+          expect(rules(plan)).not.toContain('OVERFLOW_ISSUER');
+          expect(plan.flags).not.toContain('unplaced');
+        },
+      ),
+      { numRuns: 60 },
+    );
+  }, 60_000);
+});
+
 describe('self-check: the measure sees what it measures (review of Oct 6, finding 8)', () => {
   /** A copy of a plan with something changed, as a broken engine would have made it. */
   const tampered = (plan: PersonalProposal, change: (copy: PersonalProposal) => void) => {
