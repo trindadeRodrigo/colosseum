@@ -7,3 +7,12 @@ useDefault = true
 description = "Recorded chain data: transactions and accounts, full of base58 addresses and signatures. Only the generic rule is lifted here; a private key or a provider token in a fixture is still caught."
 targetRules = ["generic-api-key"]
 paths = ['''^fixtures/''']
+
+[[allowlists]]
+description = "The EVM deploy configs, the test network kit's record and the EVM deployment records: public addresses under keys such as `token`, `feed` and `tokenIssuer` (Deploy.s.sol reads `token`; EvmDeploymentRecord names `tokenIssuer`). Only the generic rule is lifted; a private key there is still caught."
+targetRules = ["generic-api-key"]
+paths = [
+  '''^contracts/script/config/[0-9]+\.json$''',
+  '''^contracts/script/testnet/deployed/[0-9]+\.json$''',
+  '''^deployments/(robinhood|base)-(testnet|local)\.json$''',
+]
