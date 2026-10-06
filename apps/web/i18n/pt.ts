@@ -10,7 +10,7 @@ export const pt: Dictionary = {
   shell: {
     skip: 'Pular para o conteúdo',
     nav: 'Principal',
-    home: 'tenonfi, seu objetivo',
+    home: 'tenonfi, início',
     menu: 'Menu',
     invest: 'Investir',
     portfolio: 'Portfólio',
@@ -1043,6 +1043,7 @@ export const pt: Dictionary = {
       resources: 'Recursos',
       analytics: 'Análises',
       cta: 'Entrar',
+      openApp: 'Abrir o app',
     },
     stage: {
       label: 'Como a tenonfi encaixa',

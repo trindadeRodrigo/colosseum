@@ -15,7 +15,8 @@ import { GOAL_TEXT } from '../goal/read-goal';
 // is handed to the goal screen (`/goal`), which reads it into limits the person can check, before
 // they sign in. So there is no made-up plan on this page, only the real reader one step on.
 
-export function Simulate() {
+/** `signedIn`: a person signed in on this browser is not asked to sign in. */
+export function Simulate({ signedIn = false }: { signedIn?: boolean }) {
   const d = useT();
   const t = d.landing.sim;
   const lang = useLang();
@@ -86,13 +87,15 @@ export function Simulate() {
             <p id={hintId} className="pt-0.5 font-mono text-[11px]">
               {d.goal.composer.hint}
             </p>
-            <p>
-              {d.goal.visitor.before}{' '}
-              <Link href="/sign-in?next=/goal" className={buttonClass({ variant: 'link' })}>
-                {d.goal.visitor.link}
-              </Link>{' '}
-              {d.goal.visitor.after}
-            </p>
+            {!signedIn && (
+              <p>
+                {d.goal.visitor.before}{' '}
+                <Link href="/sign-in?next=/goal" className={buttonClass({ variant: 'link' })}>
+                  {d.goal.visitor.link}
+                </Link>{' '}
+                {d.goal.visitor.after}
+              </p>
+            )}
           </div>
         </div>
       </div>

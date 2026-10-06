@@ -11,7 +11,7 @@ export const en = {
   shell: {
     skip: 'Skip to content',
     nav: 'Main',
-    home: 'tenonfi, your goal',
+    home: 'tenonfi home',
     menu: 'Menu',
     invest: 'Invest',
     portfolio: 'Portfolio',
@@ -1070,6 +1070,8 @@ export const en = {
       resources: 'Resources',
       analytics: 'Analytics',
       cta: 'Sign in',
+      /** In place of "Sign in" for a person signed in on this browser. */
+      openApp: 'Open the app',
     },
     stage: {
       label: 'How tenonfi fits',
