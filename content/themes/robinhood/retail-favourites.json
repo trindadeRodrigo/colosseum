@@ -1,0 +1,29 @@
+{
+  "slug": "retail-favourites",
+  "name": {
+    "en": "Retail favourites",
+    "pt": "Favoritas do varejo"
+  },
+  "chain": "robinhood",
+  "version": 1,
+  "curator": "Rodrigo",
+  "status": "proposed",
+  "decidedOn": "2026-10-06",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/robinhood.json; the membership is Rodrigo's to confirm (gate THEMES). This list is about how a stock trades, which filings rarely state: only the two names whose own annual report supports it are here.",
+  "members": [
+    {
+      "symbol": "GME",
+      "reason": {
+        "en": "GameStop's annual report cites the 2021 short squeeze in its shares",
+        "pt": "o relatório anual da GameStop cita o short squeeze de 2021 nas suas ações"
+      }
+    },
+    {
+      "symbol": "AMC",
+      "reason": {
+        "en": "AMC reports a sizable base of retail shareholders",
+        "pt": "a AMC relata uma base grande de acionistas de varejo"
+      }
+    }
+  ]
+}

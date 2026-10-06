@@ -1,0 +1,22 @@
+{
+  "slug": "commodities",
+  "name": {
+    "en": "Commodities and real assets",
+    "pt": "Commodities e ativos reais"
+  },
+  "chain": "solana",
+  "version": 1,
+  "curator": "Rodrigo",
+  "status": "proposed",
+  "decidedOn": "2026-10-06",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/solana.json; the membership is Rodrigo's to confirm (gate THEMES). Three funds that hold a commodity, and USA Rare Earth, a company that mines and processes one.",
+  "members": [
+    {
+      "symbol": "GLDx",
+      "reason": {
+        "en": "GLD is a trust that holds gold bullion",
+        "pt": "o GLD é um fundo que mantém ouro em barras"
+      }
+    }
+  ]
+}

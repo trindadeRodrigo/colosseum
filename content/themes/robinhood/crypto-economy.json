@@ -1,0 +1,43 @@
+{
+  "slug": "crypto-economy",
+  "name": {
+    "en": "Crypto economy",
+    "pt": "Economia cripto"
+  },
+  "chain": "robinhood",
+  "version": 1,
+  "curator": "Rodrigo",
+  "status": "proposed",
+  "decidedOn": "2026-10-06",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/robinhood.json; the membership is Rodrigo's to confirm (gate THEMES). Companies whose business or core plan is crypto. A company that only holds bitcoin in its treasury (GameStop, Trump Media, Tesla) is left out, and so is STRC, a preferred stock.",
+  "members": [
+    {
+      "symbol": "COIN",
+      "reason": {
+        "en": "Coinbase runs exchanges where customers trade crypto, and holds crypto in custody",
+        "pt": "a Coinbase opera corretoras onde clientes negociam cripto, e faz a custódia de cripto"
+      }
+    },
+    {
+      "symbol": "CRCL",
+      "reason": {
+        "en": "Circle issues the USDC and EURC stablecoins",
+        "pt": "a Circle emite as stablecoins USDC e EURC"
+      }
+    },
+    {
+      "symbol": "MSTR",
+      "reason": {
+        "en": "MSTR's issuer, formerly MicroStrategy, holds bitcoin as its main treasury reserve asset",
+        "pt": "a emissora de MSTR, antes MicroStrategy, mantém bitcoin como principal ativo de reserva de tesouraria"
+      }
+    },
+    {
+      "symbol": "CLSK",
+      "reason": {
+        "en": "CleanSpark mines bitcoin in data centers it owns and operates",
+        "pt": "a CleanSpark minera bitcoin em data centers próprios"
+      }
+    }
+  ]
+}

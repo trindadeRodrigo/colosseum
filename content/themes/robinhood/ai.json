@@ -1,0 +1,64 @@
+{
+  "slug": "ai",
+  "name": {
+    "en": "AI",
+    "pt": "IA"
+  },
+  "chain": "robinhood",
+  "version": 1,
+  "curator": "Rodrigo",
+  "status": "proposed",
+  "decidedOn": "2026-10-06",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/robinhood.json; the membership is Rodrigo's to confirm (gate THEMES). The seven names of the Solana list (gate THEME-AI-SOLANA), with the same reasons, proposed for Robinhood Chain. That gate made no list for another chain.",
+  "members": [
+    {
+      "symbol": "NVDA",
+      "reason": {
+        "en": "Nvidia makes most of the chips used to train and run AI models",
+        "pt": "a Nvidia fabrica a maior parte dos chips usados para treinar e rodar modelos de IA"
+      }
+    },
+    {
+      "symbol": "MSFT",
+      "reason": {
+        "en": "Microsoft sells AI through its Azure cloud and Copilot, and is a partner of OpenAI",
+        "pt": "a Microsoft vende IA pela nuvem Azure e pelo Copilot, e é parceira da OpenAI"
+      }
+    },
+    {
+      "symbol": "GOOGL",
+      "reason": {
+        "en": "Alphabet builds the Gemini models through DeepMind, its own TPU chips and the Google Cloud",
+        "pt": "a Alphabet faz os modelos Gemini pela DeepMind, os próprios chips TPU e a Google Cloud"
+      }
+    },
+    {
+      "symbol": "META",
+      "reason": {
+        "en": "Meta builds the Llama models and is among the largest spenders on AI",
+        "pt": "a Meta faz os modelos Llama e está entre as empresas que mais gastam com IA"
+      }
+    },
+    {
+      "symbol": "AMZN",
+      "reason": {
+        "en": "Amazon sells AI through the AWS cloud (Bedrock), makes Trainium chips and has invested in Anthropic",
+        "pt": "a Amazon vende IA pela nuvem AWS (Bedrock), fabrica os chips Trainium e investiu na Anthropic"
+      }
+    },
+    {
+      "symbol": "TSLA",
+      "reason": {
+        "en": "Tesla builds self-driving software and robots",
+        "pt": "a Tesla desenvolve direção autônoma e robôs"
+      }
+    },
+    {
+      "symbol": "AAPL",
+      "reason": {
+        "en": "Apple runs Apple Intelligence on its own devices",
+        "pt": "a Apple roda o Apple Intelligence nos próprios aparelhos"
+      }
+    }
+  ]
+}

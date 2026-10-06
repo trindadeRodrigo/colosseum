@@ -1,0 +1,64 @@
+{
+  "slug": "big-tech",
+  "name": {
+    "en": "Big Tech",
+    "pt": "Gigantes de tecnologia"
+  },
+  "chain": "solana",
+  "version": 1,
+  "curator": "Rodrigo",
+  "status": "proposed",
+  "decidedOn": "2026-10-06",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/solana.json; the membership is Rodrigo's to confirm (gate THEMES). The same seven names as the shared portfolio The Seven, in equal parts. Tesla is here to match it: no filing read supports the grouping, which is a market convention.",
+  "members": [
+    {
+      "symbol": "AAPLx",
+      "reason": {
+        "en": "Apple sells the iPhone, the Mac, the iPad and wearables, and services such as the App Store",
+        "pt": "a Apple vende o iPhone, o Mac, o iPad e vestíveis, e serviços como a App Store"
+      }
+    },
+    {
+      "symbol": "MSFTx",
+      "reason": {
+        "en": "Microsoft sells Windows, Microsoft 365, the Azure cloud, LinkedIn and Xbox",
+        "pt": "a Microsoft vende o Windows, o Microsoft 365, a nuvem Azure, o LinkedIn e o Xbox"
+      }
+    },
+    {
+      "symbol": "GOOGLx",
+      "reason": {
+        "en": "Alphabet owns Google, with Search, YouTube, Android, Chrome and Google Cloud",
+        "pt": "a Alphabet é dona do Google, com a Busca, o YouTube, o Android, o Chrome e a Google Cloud"
+      }
+    },
+    {
+      "symbol": "AMZNx",
+      "reason": {
+        "en": "Amazon runs online and physical stores and the AWS cloud",
+        "pt": "a Amazon opera lojas online e físicas e a nuvem AWS"
+      }
+    },
+    {
+      "symbol": "METAx",
+      "reason": {
+        "en": "Meta runs Facebook, Instagram, WhatsApp, Messenger and Threads",
+        "pt": "a Meta opera o Facebook, o Instagram, o WhatsApp, o Messenger e o Threads"
+      }
+    },
+    {
+      "symbol": "NVDAx",
+      "reason": {
+        "en": "Nvidia designs the GPUs that cloud providers and AI model makers run on",
+        "pt": "a Nvidia projeta as GPUs usadas pelos provedores de nuvem e pelos criadores de modelos de IA"
+      }
+    },
+    {
+      "symbol": "TSLAx",
+      "reason": {
+        "en": "Tesla makes electric vehicles and self-driving software; the market counts it among the Magnificent Seven",
+        "pt": "a Tesla fabrica veículos elétricos e software de direção autônoma; o mercado a inclui entre as Sete Magníficas"
+      }
+    }
+  ]
+}

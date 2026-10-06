@@ -4,6 +4,7 @@ import type { PlanSleeve, Shelf } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
 import { candidates, compose } from './index';
 import { PERSONAL_PARAMS } from './params';
+import { parseStockAttributes } from './stock-attributes';
 import {
   aiList,
   allReasons,
@@ -61,20 +62,32 @@ const every = (cents: number) => Math.round(cents * 100);
 const roomyLines = () => ctxWith({ params: { ...PERSONAL_PARAMS, maxLinesPerChain: 16 } });
 
 describe('the list is data', () => {
-  it('every file under content/themes validates, sits at <chain>/<slug>.json, and names tokens its chain lists', () => {
-    const root = join(import.meta.dirname, '../../../../content/themes');
+  // A list names tracked tokens of its chain: the ones with a row of sourced attributes in
+  // content/stocks/<chain>.json. Until the stock labels of Oct 6 the rule here was "tokens its chain
+  // lists"; a label may now name a tracked stock the shelf does not list yet (a stock of gate UNIVERSE
+  // or of the Robinhood cut, a thin token), and the sleeve holds only the names the shelf lists. A
+  // symbol written wrong is still caught: it has no row.
+  it('every file under content/themes validates, sits at <chain>/<slug>.json, and names tracked tokens of its chain', () => {
+    const content = join(import.meta.dirname, '../../../../content');
+    const root = join(content, 'themes');
     const files = readdirSync(root).flatMap((chain) =>
       readdirSync(join(root, chain)).map((file) => ({ chain, file })),
     );
     expect(files.length).toBeGreaterThan(0);
+    const trackedOn = (chain: string) => {
+      const path = join(content, 'stocks', `${chain}.json`);
+      const stocks = parseStockAttributes(JSON.parse(readFileSync(path, 'utf8')), path);
+      return new Set(stocks.stocks.map((row) => row.symbol));
+    };
     for (const { chain, file } of files) {
       const list = parseThemeList(JSON.parse(readFileSync(join(root, chain, file), 'utf8')), file);
       expect(`${list.chain}/${list.slug}.json`).toBe(`${chain}/${file}`);
-      const listed = new Set(
-        shelf.assets.filter((a) => a.chain === list.chain).map((a) => a.symbol),
-      );
-      for (const m of list.members) expect(listed.has(m.symbol), m.symbol).toBe(true);
+      const tracked = trackedOn(list.chain);
+      for (const m of list.members) expect(tracked.has(m.symbol), `${file} ${m.symbol}`).toBe(true);
     }
+    // The one confirmed list names only tokens the shelf lists, as it did when it was confirmed.
+    const listed = new Set(shelf.assets.filter((a) => a.chain === ai.chain).map((a) => a.symbol));
+    for (const m of ai.members) expect(listed.has(m.symbol), m.symbol).toBe(true);
   });
 
   it('the Solana AI list is the seven names Rodrigo confirmed on Oct 5 (gate THEME-AI-SOLANA)', () => {

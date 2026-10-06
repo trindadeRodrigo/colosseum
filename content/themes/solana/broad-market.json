@@ -1,0 +1,29 @@
+{
+  "slug": "broad-market",
+  "name": {
+    "en": "Broad market",
+    "pt": "Mercado amplo"
+  },
+  "chain": "solana",
+  "version": 1,
+  "curator": "Rodrigo",
+  "status": "proposed",
+  "decidedOn": "2026-10-06",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/solana.json; the membership is Rodrigo's to confirm (gate THEMES). Index funds. EWY, a fund of one country, is on the emerging markets list.",
+  "members": [
+    {
+      "symbol": "SPYx",
+      "reason": {
+        "en": "SPY is an index fund that tracks the S&P 500",
+        "pt": "o SPY é um fundo de índice que acompanha o S&P 500"
+      }
+    },
+    {
+      "symbol": "QQQx",
+      "reason": {
+        "en": "QQQ is an index fund that tracks the Nasdaq-100",
+        "pt": "o QQQ é um fundo de índice que acompanha o Nasdaq-100"
+      }
+    }
+  ]
+}
