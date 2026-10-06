@@ -1,4 +1,5 @@
-import type { Provenance } from '@colosseum/schemas';
+import type { ChainId, Provenance } from '@colosseum/schemas';
+import { ChainBadge } from '../../components/ui/ChainBadge';
 import { MockPlate } from '../../components/ui/MockPlate';
 
 // A chain's name as a screen shows it, with what a person has to know about where it runs. A chain the
@@ -34,6 +35,16 @@ export function ChainName({ name, ...mark }: ChainMarkProps & { name: string }) 
   return (
     <span data-ui="chain-name" className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
       <span>{name}</span>
+      <ChainMark {...mark} />
+    </span>
+  );
+}
+
+/** The chain's badge, then the mark: where a screen names the chain a plan or a vault is on. */
+export function ChainBadgeMarked({ chain, ...mark }: ChainMarkProps & { chain: ChainId }) {
+  return (
+    <span data-ui="chain-name" className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+      <ChainBadge chain={chain} />
       <ChainMark {...mark} />
     </span>
   );

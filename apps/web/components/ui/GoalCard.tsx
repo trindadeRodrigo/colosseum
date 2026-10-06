@@ -1,5 +1,7 @@
+import type { ChainId } from '@colosseum/schemas';
 import { useId } from 'react';
 import { Button } from './Button';
+import { ChainBadge } from './ChainBadge';
 import { cn } from './cn';
 import { HatchBand, SampleNote } from './internal/mock-parts';
 import { LatticeStatus } from './Lattice';
@@ -41,6 +43,8 @@ type Common = {
   meta?: string;
   /** An input of this plan is not live: a hatch band on the left edge and one quiet line. */
   mock?: boolean;
+  /** The chain the goal's plan or vault is on, as a badge after the status. */
+  chain?: ChainId;
   labels?: Partial<GoalCardLabels>;
   className?: string;
 };
@@ -77,7 +81,16 @@ export type GoalCardProps = Common &
   );
 
 export function GoalCard(props: GoalCardProps) {
-  const { sentence, action, variant = 'card', meta, mock = false, labels, className } = props;
+  const {
+    sentence,
+    action,
+    variant = 'card',
+    meta,
+    mock = false,
+    chain,
+    labels,
+    className,
+  } = props;
   const sentenceId = useId();
   const header = variant === 'header';
   const Heading = header ? 'h1' : 'h3';
@@ -132,6 +145,7 @@ export function GoalCard(props: GoalCardProps) {
                   </p>
                 )
               )}
+              {chain && <ChainBadge chain={chain} />}
             </div>
             {props.reason && <p className="text-body-sm text-foreground">{props.reason}</p>}
             {(props.amount || props.detail) && (
@@ -151,6 +165,7 @@ export function GoalCard(props: GoalCardProps) {
           </>
         )}
 
+        {props.state === 'draft' && chain && <ChainBadge chain={chain} />}
         {mock && <SampleNote line={labels?.sample ?? GOAL_CARD_LABELS.sample} />}
         {header && meta && <p className="text-caption text-muted-foreground">{meta}</p>}
         <Button

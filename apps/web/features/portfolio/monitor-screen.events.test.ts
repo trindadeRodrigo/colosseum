@@ -2,6 +2,7 @@
 import { DISCLAIMER, DISCLAIMER_SHORT } from '@colosseum/schemas';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CHAIN_NAMES } from '../../components/ui/ChainBadge';
 import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
@@ -15,7 +16,16 @@ import { EMBEDDED, fakePort, json, PHANTOM, signedInPort } from '../wallet/test/
 import { portStore } from '../wallet/test/mock-provider';
 import { MonitorScreen } from './MonitorScreen';
 import { PORTFOLIO_PATH } from './portfolio';
-import { chainOf, labelled, portfolioBody, SECOND_VAULT, VAULT, vault } from './test/portfolio';
+import {
+  chainOf,
+  labelled,
+  portfolioBody,
+  portfolioOf,
+  robinhoodChain,
+  SECOND_VAULT,
+  VAULT,
+  vault,
+} from './test/portfolio';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -603,4 +613,92 @@ it('names the vault by its address, cut, with the whole of it kept for whoever a
   const host = await screen();
   const meta = find(host, `[title="${VAULT}"]`);
   expect(meta.textContent).toContain('EPjF…kGDw');
+});
+
+describe('the chain of each vault', () => {
+  const onRobinhood: Person = { ...onSolana, wallets: EMBEDDED, chain: 'robinhood' };
+  const chainsOf = (host: HTMLElement, where = '') =>
+    [...host.querySelectorAll(`${where} [data-ui="chain-badge"]`)].map((b) =>
+      b.getAttribute('data-chain'),
+    );
+
+  it.each([
+    ['solana', onSolana, () => portfolioBody()],
+    ['robinhood', onRobinhood, () => portfolioOf(robinhoodChain())],
+  ] as const)(
+    'is badged on the goal card and the vault panel, on %s',
+    async (chain, person, body) => {
+      api({ person, portfolio: () => json(body()) });
+      signIn(chain === 'solana' ? PHANTOM : EMBEDDED, chain === 'solana' ? 'sandbox' : 'mock');
+      const host = await screen();
+      const vault = find(host, '[data-ui="vault"]');
+      expect(chainsOf(vault as HTMLElement)).toEqual([chain, chain]);
+      expect(chainsOf(vault as HTMLElement, '[data-ui="goal-card"]')).toEqual([chain]);
+      expect(chainsOf(vault as HTMLElement, '[data-ui="card-header"]')).toEqual([chain]);
+      // the page's chain line names it too, and there is nothing to group
+      expect(find(host, 'header [data-ui="chain-badge"]').textContent).toBe(CHAIN_NAMES[chain]);
+      expect(host.querySelector('[data-ui="chain-group"]')).toBeNull();
+      expect(host.querySelector('[data-ui="across-chains"]')).toBeNull();
+    },
+  );
+
+  it('says tUSDG for a Robinhood vault’s dollar, and never USDC, in English and Portuguese', async () => {
+    for (const lang of ['en', 'pt'] as const) {
+      api({ person: onRobinhood, portfolio: () => json(portfolioOf(robinhoodChain())) });
+      signIn(EMBEDDED, 'mock');
+      const host = await screen(lang);
+      const vault = find(host, '[data-ui="vault"]');
+      expect(vault.textContent).toContain('tUSDG');
+      expect(vault.textContent).not.toMatch(/usdc/i);
+      expect(host.textContent).not.toMatch(/usdc/i);
+      await unmountAll();
+    }
+  });
+
+  it('groups vaults on two chains under a heading each, with a total each, and adds them only where it says so', async () => {
+    api({ person: onSolana, portfolio: () => json(portfolioOf(chainOf(), robinhoodChain())) });
+    signIn();
+    const host = await screen();
+    const groups = [...host.querySelectorAll<HTMLElement>('[data-ui="chain-group"]')];
+    expect(groups.map((g) => g.getAttribute('data-chain'))).toEqual(['solana', 'robinhood']);
+    expect(groups.map((g) => g.querySelector('h2')?.textContent)).toEqual([
+      expect.stringContaining('Solana'),
+      expect.stringContaining('Robinhood Chain'),
+    ]);
+    // each chain's vaults sit under its heading, each badged with that chain
+    for (const group of groups) {
+      const chain = group.getAttribute('data-chain');
+      expect(group.querySelectorAll('[data-ui="vault"]')).toHaveLength(1);
+      expect(new Set(chainsOf(group))).toEqual(new Set([chain]));
+    }
+    // a total per chain, each with its pin, never one chain's figure under the other's heading
+    const totals = groups.map((g) => find(g, '[data-ui="chain-total"]').textContent);
+    expect(totals[0]).toContain(en.portfolio.group.worth(1, 'Solana'));
+    expect(totals[0]).toContain('$1,040.00');
+    expect(totals[1]).toContain(en.portfolio.group.worth(1, 'Robinhood Chain'));
+    expect(totals[1]).toContain('$26.50');
+    expect(totals[1]).not.toContain('$1,040.00');
+    for (const group of groups)
+      expect(find(group, '[data-ui="chain-total"] [data-ui="pin"]')).toBeTruthy();
+    // the one figure across chains says so
+    const across = find(host, '[data-ui="across-chains"]').textContent ?? '';
+    expect(across).toContain(en.portfolio.group.across(2));
+    expect(en.portfolio.group.across(2)).toBe('Across both chains, together');
+    expect(across).toContain('$1,066.50');
+    // the Robinhood vault still never says USDC
+    expect(groups[1]?.textContent).not.toMatch(/usdc/i);
+    // no single chain line in the header once there are two
+    expect(host.querySelector('header [data-ui="chain-badge"]')).toBeNull();
+  });
+
+  it('groups in Portuguese too, with the label that says it adds the chains up', async () => {
+    api({ person: onSolana, portfolio: () => json(portfolioOf(chainOf(), robinhoodChain())) });
+    signIn();
+    const host = await screen('pt');
+    const pt = dictionary('pt');
+    expect(find(host, '[data-ui="across-chains"]').textContent).toContain(
+      pt.portfolio.group.across(2),
+    );
+    expect(host.querySelectorAll('[data-ui="chain-group"]')).toHaveLength(2);
+  });
 });

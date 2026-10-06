@@ -3,7 +3,9 @@ import { pinState } from '../../components/ui/provenance';
 import { json } from '../wallet/test/fake-port';
 import { dollars, drift, share, tokens, utc } from './figures';
 import {
+  addDecimals,
   assetName,
+  chainTotal,
   PORTFOLIO_PATH,
   positionValueSource,
   readPortfolio,
@@ -11,7 +13,16 @@ import {
   vaultValueSource,
   worst,
 } from './portfolio';
-import { chainOf, portfolioBody, price, READ_AT, vault } from './test/portfolio';
+import {
+  chainOf,
+  portfolioBody,
+  portfolioOf,
+  price,
+  READ_AT,
+  robinhoodChain,
+  SECOND_VAULT,
+  vault,
+} from './test/portfolio';
 
 // Reading the person's vaults, GET /v1/portfolio, and what each figure's pin is handed. The API is a
 // double that answers the way apps/api/src/routes/v1/portfolio.ts and its error handler do.
@@ -28,7 +39,7 @@ describe('reading the portfolio', () => {
     const outcome = await readPortfolio(api, 'solana');
     expect(api).toHaveBeenCalledWith(PORTFOLIO_PATH);
     expect(outcome.kind).toBe('read');
-    if (outcome.kind === 'read') expect(outcome.chain.vaults[0]?.address).toBe(vault().address);
+    if (outcome.kind === 'read') expect(outcome.chains[0].vaults[0]?.address).toBe(vault().address);
   });
 
   it.each([
@@ -73,16 +84,23 @@ describe('reading the portfolio', () => {
       expect((await readPortfolio(answering(json(answer)), 'solana')).kind).toBe('unreadable');
   });
 
-  it('shows nothing for another chain than the person’s, nor for two chains (ONE-CHAIN)', async () => {
+  it('shows nothing that is not for the person’s chain, nor a chain twice, nor a vault filed under another chain', async () => {
     const other = chainOf([vault({ chain: 'robinhood' })], { chain: 'robinhood' });
     const evmVault = { ...portfolioBody(), chains: [other] };
     // the answer is for Robinhood Chain; the person's plan lives on Solana
     expect((await readPortfolio(answering(json(evmVault)), 'solana')).kind).toBe('unreadable');
-    const both = { ...portfolioBody(), chains: [chainOf(), other] };
-    expect((await readPortfolio(answering(json(both)), 'solana')).kind).toBe('unreadable');
+    // Solana twice
+    const twice = { ...portfolioBody(), chains: [chainOf(), chainOf()] };
+    expect((await readPortfolio(answering(json(twice)), 'solana')).kind).toBe('unreadable');
     // a vault of another chain inside the person's chain
     const mixed = { ...portfolioBody(), chains: [chainOf([vault(), vault({ chain: 'base' })])] };
     expect((await readPortfolio(answering(json(mixed)), 'solana')).kind).toBe('unreadable');
+    // a Solana vault filed under Robinhood Chain, beside the person's own chain
+    const misfiled = {
+      ...portfolioBody(),
+      chains: [chainOf(), chainOf([vault()], { chain: 'robinhood' })],
+    };
+    expect((await readPortfolio(answering(json(misfiled)), 'solana')).kind).toBe('unreadable');
     // another chain's answer with no vault in it: not "no vault on Solana yet"
     const emptyElsewhere = { ...portfolioBody(), chains: [chainOf([], { chain: 'robinhood' })] };
     expect((await readPortfolio(answering(json(emptyElsewhere)), 'solana')).kind).toBe(
@@ -90,6 +108,38 @@ describe('reading the portfolio', () => {
     );
     // the bite: the same answer for the person's own chain is read
     expect((await readPortfolio(answering(json(evmVault)), 'robinhood')).kind).toBe('read');
+  });
+
+  it('reads vaults on two chains, each under its own chain, the person’s first', async () => {
+    const outcome = await readPortfolio(
+      answering(json(portfolioOf(robinhoodChain(), chainOf()))),
+      'solana',
+    );
+    expect(outcome.kind).toBe('read');
+    if (outcome.kind === 'read')
+      expect(outcome.chains.map((entry) => entry.chain)).toEqual(['solana', 'robinhood']);
+  });
+});
+
+describe('a chain’s total', () => {
+  it('adds decimal strings exactly, never through a float', () => {
+    expect(addDecimals(['1040', '20.5'])).toBe('1060.5');
+    expect(addDecimals(['0.1', '0.2'])).toBe('0.3');
+    expect(addDecimals(['0.05', '0.95'])).toBe('1');
+    expect(addDecimals(['12345678901234567890.01', '1'])).toBe('12345678901234567891.01');
+    expect(addDecimals([])).toBe('0');
+  });
+
+  it('is its vaults’ values added, with a pin on every source and the label that is not live', () => {
+    const entry = chainOf([
+      vault(),
+      vault({ address: SECOND_VAULT, valueUsd: '20.5', provenance: 'mock' }),
+    ]);
+    const total = chainTotal(entry, 'their sum', 'the vaults added');
+    expect(total.valueUsd).toBe('1060.5');
+    expect(total.obs.method).toBe('the vaults added');
+    expect(total.obs.provenance).toBe('mock');
+    expect(total.obs.source).toBe('Pyth Hermes');
   });
 });
 
@@ -203,5 +253,9 @@ describe('how the figures are written', () => {
   it('names an asset by the part of its id after the chain', () => {
     expect(assetName('solana:usdy')).toBe('USDY');
     expect(assetName('robinhood:tsla-x')).toBe('TSLA-X');
+    // Robinhood Chain's dollar is tUSDG, on the mock too, where its id says usdc
+    expect(assetName('robinhood:usdc')).toBe('tUSDG');
+    expect(assetName('robinhood:tusdg')).toBe('tUSDG');
+    expect(assetName('solana:usdc')).toBe('USDC');
   });
 });

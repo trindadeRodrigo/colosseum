@@ -646,6 +646,7 @@ export const embed = {
     </EmbedShell>
   ),
   loading: <EmbedShell label="Plan by tenonfi" state="loading" />,
+  slow: <EmbedShell label="Plan by tenonfi" state="loading" slow />,
   unavailable: <EmbedShell label="Plan by tenonfi" state="unavailable" />,
 };
 

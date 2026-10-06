@@ -3,6 +3,7 @@ import { deploymentsOf, GuardRefusal } from '@colosseum/sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { dictionary } from '../../i18n';
 import { json } from '../wallet/test/fake-port';
+import { activityOf } from './activity';
 import { formatBps, formatRaw, shortfallBps } from './amounts';
 import { placeOrder, readFunding, readOrder } from './order-api';
 import { checkDeposit, depositRawOf } from './order-check';
@@ -12,6 +13,7 @@ import { recallPlan, rememberPlan } from './plan-store';
 import { targetsOfPlan } from './plan-terms';
 import { chainReady, deploymentsFor, explorerUrlFor, networkFor } from './readiness';
 import {
+  doneOrder,
   LEG_CREATE,
   LEG_SWAP,
   linesOn,
@@ -350,6 +352,11 @@ describe('an order holds the amount the person typed, in committed units', () =>
     expect(robinhood?.tokens[robinhood.cash]).toEqual({ symbol: 'tUSDG', decimals: 6 });
     expect(robinhood?.tokens['robinhood:tspy']).toEqual({ symbol: 'tSPY', decimals: 18 });
     expect(unitsFor('base', false)).toBeNull();
+    // the mock's dollar goes by the name of the chain it stands in for: never USDC on Robinhood Chain
+    const mock = unitsFor('robinhood', true);
+    expect(mock && mock.tokens[mock.cash]?.symbol).toBe('tUSDG');
+    const mockSolana = unitsFor('solana', true);
+    expect(mockSolana && mockSolana.tokens[mockSolana.cash]?.symbol).toBe('USDC');
   });
 
   it('takes every decimals from the deployment file the guard reads, and the mock’s from cashDecimals', () => {
@@ -408,5 +415,40 @@ describe('an order holds the amount the person typed, in committed units', () =>
       why: 'deposit',
     });
     expect(checkDeposit(order, 10, null)).toEqual({ ok: false, why: 'units' });
+  });
+});
+
+describe('what reached the chain, line by line', () => {
+  it.each([
+    ['solana', 'Solscan'],
+    ['robinhood', 'Robinhood explorer'],
+  ] as const)('says the chain of every line on %s, and names its explorer', (chain, explorer) => {
+    const lines = activityOf(doneOrder(chain), en, false);
+    expect(lines.length).toBe(2);
+    for (const line of lines) {
+      expect(line.chain).toBe(chain);
+      expect(line.explorer).toBe(explorer);
+    }
+    expect(dictionary('pt').chain.explorers[chain]).toBe(
+      chain === 'solana' ? 'Solscan' : 'explorador da Robinhood',
+    );
+    if (chain === 'robinhood')
+      expect(lines.map((line) => line.detail).join(' ')).not.toMatch(/usdc/i);
+  });
+
+  it('names Robinhood Chain’s dollar tUSDG, also where the mock’s id says usdc', () => {
+    const order = doneOrder('robinhood');
+    const mocked = {
+      ...order,
+      legs: order.legs.map((leg) => ({
+        ...leg,
+        trades: leg.trades.map((t) => ({ ...t, sell: 'robinhood:usdc' })),
+      })),
+    };
+    const detail = activityOf(mocked, en, true)
+      .map((line) => line.detail)
+      .join(' ');
+    expect(detail).toContain('tUSDG → tspy');
+    expect(detail).not.toMatch(/usdc/i);
   });
 });

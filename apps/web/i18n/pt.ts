@@ -10,7 +10,7 @@ export const pt: Dictionary = {
   shell: {
     skip: 'Pular para o conteúdo',
     nav: 'Principal',
-    home: 'tenonfi, seu objetivo',
+    home: 'tenonfi, início',
     menu: 'Menu',
     invest: 'Investir',
     portfolio: 'Portfólio',
@@ -33,6 +33,11 @@ export const pt: Dictionary = {
     slowDown: 'Nosso servidor pediu para eu ir mais devagar. Espere um minuto e tente de novo.',
     mockAnnounce: 'Números de exemplo',
     sampleFigure: 'número de exemplo',
+    wait: {
+      slow: 'Acordando o serviço de dados: da primeira vez isso pode levar até um minuto.',
+      over: 'Nosso servidor não respondeu a tempo, então nada aparece aqui ainda.',
+      retry: 'Tentar de novo',
+    },
   },
 
   signIn: {
@@ -105,6 +110,7 @@ export const pt: Dictionary = {
 
   chain: {
     names: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
+    explorers: { solana: 'Solscan', robinhood: 'explorador da Robinhood', base: 'Basescan' },
     pick: {
       title: 'Escolha a rede onde seu plano vai ficar',
       asked: {
@@ -381,6 +387,15 @@ export const pt: Dictionary = {
     empty: (chain: string) =>
       `Você ainda não tem cofre na ${chain}. Um cofre é criado quando você compra seu primeiro plano.`,
     startGoal: 'Comece pelo seu objetivo',
+    group: {
+      worth: (vaults: number, chain: string) =>
+        vaults > 1 ? `Seus ${vaults} cofres na ${chain} valem` : `Seu cofre na ${chain} vale`,
+      method: (vaults: number, chain: string) =>
+        `seus ${vaults} cofres na ${chain}, cada um avaliado como mostrado, somados`,
+      across: (chains: number) =>
+        chains === 2 ? 'Nas duas redes, juntas' : `Nas ${chains} redes, juntas`,
+      acrossMethod: (chains: number) => `os totais das ${chains} redes acima, somados`,
+    },
     vault: {
       title: 'Seu cofre',
       address: 'Endereço do cofre',
@@ -435,6 +450,7 @@ export const pt: Dictionary = {
       title: 'Seu portfólio',
       worth: (chain: string) => `Seu cofre na ${chain} vale`,
       many: (vaults: number, chain: string) => `Você tem ${vaults} cofres na ${chain}.`,
+      manyChains: (vaults: number, chains: string) => `Você tem ${vaults} cofres, na ${chains}.`,
       see: 'Ver seu portfólio',
     },
   },
@@ -642,7 +658,7 @@ export const pt: Dictionary = {
         version: (n: number) => `versão ${n}`,
         waiting: (n: number) => `versão ${n} aguarda`,
         open: (name: string) => `Abrir ${name}`,
-        on: (chains: string) => `na ${chains}`,
+        on: 'na',
       },
       failure: {
         unreachable:
@@ -948,7 +964,6 @@ export const pt: Dictionary = {
       waiting: 'Aguardando…',
       settled: 'Concluído',
     },
-    explorer: 'explorador',
     signature: 'assinatura',
     notRetried: '(sem nova tentativa)',
     link: {
@@ -1033,6 +1048,7 @@ export const pt: Dictionary = {
       resources: 'Recursos',
       analytics: 'Análises',
       cta: 'Entrar',
+      openApp: 'Abrir o app',
     },
     stage: {
       label: 'Como a tenonfi encaixa',

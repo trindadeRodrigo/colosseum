@@ -1,4 +1,5 @@
-import type { ExecutionStatus, Provenance } from '@colosseum/schemas';
+import type { ChainId, ExecutionStatus, Provenance } from '@colosseum/schemas';
+import { ChainBadge } from './ChainBadge';
 import { CopyButton } from './CopyButton';
 import { cn } from './cn';
 import { ExplorerLink, type ExplorerLinkLabels } from './ExplorerLink';
@@ -24,8 +25,10 @@ export type Execution = {
   at: string;
   signature: string | null;
   explorerUrl: string | null;
-  /** The explorer's name: "Solana Explorer". */
+  /** The explorer's name, shown beside the link: "Solscan". */
   explorer: string;
+  /** The chain it was done on, as a badge after the verb. */
+  chain?: ChainId;
   /**
    * Anything but `live` carries the hatch and the sample glyph. A transaction on a test network
    * (`sandbox`) also says "test network" after the glyph: a row has no popover to say it in.
@@ -94,6 +97,7 @@ export function ExecutionList({ executions, labels, className }: ExecutionListPr
           >
             {mock && <HatchBand className="absolute inset-y-0 left-0" />}
             <span className="font-medium">{e.verb}</span>
+            {e.chain && <ChainBadge chain={e.chain} />}
             <span className="tabular-nums">{e.detail}</span>
             <span aria-hidden="true">·</span>
             {e.status === 'failed' ? (

@@ -11,7 +11,7 @@ export const en = {
   shell: {
     skip: 'Skip to content',
     nav: 'Main',
-    home: 'tenonfi, your goal',
+    home: 'tenonfi home',
     menu: 'Menu',
     invest: 'Invest',
     portfolio: 'Portfolio',
@@ -38,6 +38,12 @@ export const en = {
     mockAnnounce: 'Sample figures',
     /** A sample glyph's name for a screen reader. */
     sampleFigure: 'sample figure',
+    /** A wait for data (components/ui/Skeleton.tsx). */
+    wait: {
+      slow: 'Waking the data service: this can take up to a minute the first time.',
+      over: 'Our server didn’t answer in time, so nothing is shown here yet.',
+      retry: 'Try again',
+    },
   },
 
   signIn: {
@@ -114,6 +120,8 @@ export const en = {
 
   chain: {
     names: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
+    /** The explorer each chain's transaction links open, named beside the link. */
+    explorers: { solana: 'Solscan', robinhood: 'Robinhood explorer', base: 'Basescan' },
     pick: {
       title: 'Choose the chain your plan lives on',
       /** Why this person is asked: they made their wallet here, or connected wallets of both kinds. */
@@ -403,6 +411,19 @@ export const en = {
     empty: (chain: string) =>
       `You have no vault on ${chain} yet. A vault is made when you buy your first plan.`,
     startGoal: 'Start with your goal',
+    /** Vaults on more than one chain: a heading per chain, with what that chain's vaults are worth. */
+    group: {
+      worth: (vaults: number, chain: string) =>
+        vaults > 1
+          ? `Your ${vaults} vaults on ${chain} are worth`
+          : `Your vault on ${chain} is worth`,
+      method: (vaults: number, chain: string) =>
+        `your ${vaults} vaults on ${chain}, each valued as shown, added up`,
+      /** The one total that adds chains up, and says so. */
+      across: (chains: number) =>
+        chains === 2 ? 'Across both chains, together' : `Across all ${chains} chains, together`,
+      acrossMethod: (chains: number) => `the totals of the ${chains} chains above, added up`,
+    },
     vault: {
       title: 'Your vault',
       address: 'Vault address',
@@ -463,6 +484,8 @@ export const en = {
       title: 'Your portfolio',
       worth: (chain: string) => `Your vault on ${chain} is worth`,
       many: (vaults: number, chain: string) => `You have ${vaults} vaults on ${chain}.`,
+      /** Vaults on more than one chain: counted, never added up across them. */
+      manyChains: (vaults: number, chains: string) => `You have ${vaults} vaults, on ${chains}.`,
       see: 'See your portfolio',
     },
   },
@@ -668,7 +691,7 @@ export const en = {
         version: (n: number) => `version ${n}`,
         waiting: (n: number) => `version ${n} waits`,
         open: (name: string) => `Open ${name}`,
-        on: (chains: string) => `on ${chains}`,
+        on: 'on',
       },
       failure: {
         unreachable: 'I couldn’t read the shared portfolios: our server didn’t answer. Try again.',
@@ -969,7 +992,6 @@ export const en = {
       waiting: 'Waiting…',
       settled: 'Settled',
     },
-    explorer: 'explorer',
     signature: 'signature',
     notRetried: '(not retried)',
     link: {
@@ -1056,6 +1078,8 @@ export const en = {
       resources: 'Resources',
       analytics: 'Analytics',
       cta: 'Sign in',
+      /** In place of "Sign in" for a person signed in on this browser. */
+      openApp: 'Open the app',
     },
     stage: {
       label: 'How tenonfi fits',
