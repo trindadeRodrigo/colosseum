@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import type { OrderDetail } from '@colosseum/schemas';
+import { DISCLAIMER, type OrderDetail } from '@colosseum/schemas';
 import {
   basketIdOfPlan,
   deploymentsOf,
@@ -183,11 +183,23 @@ describe('the review', () => {
     await click(primary(host));
     await settle();
     expect(status(host)).toBe(en.order.outcome.done('Solana'));
-    const links = [...host.querySelectorAll('a[href^="https://explorer.example/"]')];
+    const links = [
+      ...host.querySelectorAll('[data-ui="order-step"] a[href^="https://explorer.example/"]'),
+    ];
     expect(links.map((a) => a.getAttribute('href'))).toEqual([
       'https://explorer.example/tx/sig0?cluster=devnet',
       'https://explorer.example/tx/sig1?cluster=devnet',
     ]);
+    // and his activity lines, beside the disclaimer: one per step that reached the chain, each with
+    // its link
+    const activity = find(host, '[data-ui="activity-panel"]');
+    const lines = [...activity.querySelectorAll('[data-ui="execution-list"] li')];
+    expect(lines).toHaveLength(2);
+    for (const line of lines) {
+      expect(line.getAttribute('data-status')).toBe('confirmed');
+      expect(line.querySelector('a[href^="https://explorer.example/"]')).not.toBeNull();
+    }
+    expect(find(activity, '[data-ui="disclaimer"]').textContent).toContain(DISCLAIMER.en);
     expect(host.querySelector('[data-variant="primary"]')).toBeNull();
   });
 });

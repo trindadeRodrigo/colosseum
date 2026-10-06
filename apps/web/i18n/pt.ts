@@ -309,6 +309,23 @@ export const pt: Dictionary = {
     },
   },
 
+  activity: {
+    notAdvice: 'Aviso legal',
+    title: 'O que foi feito',
+    status: {
+      built: 'montada',
+      signed: 'assinada',
+      sent: 'enviada',
+      confirmed: 'confirmada',
+      failed: 'falhou',
+    },
+    unknownStatus: 'situação desconhecida',
+    notRetried: '(não repetida)',
+    signature: 'id da transação',
+    noneYet: 'Nada desta ordem chegou à rede ainda.',
+    noneVault:
+      'Nada que este navegador fez chegou à rede para este cofre. Operações feitas em outro lugar, ou pelo agente, ainda não aparecem aqui.',
+  },
   pin: {
     sourceFor: 'Fonte de {value}',
     staleSuffix: ', desatualizado, {age}',
@@ -371,6 +388,9 @@ export const pt: Dictionary = {
       holdings: 'Posições',
       chips: { label: 'O cofre', address: 'endereço', version: 'versão', follow: 'seguir' },
       parts: 'As partes, por peso',
+      planTitle: (parts: number) =>
+        parts === 1 ? 'Seu plano · 1 parte' : `Seu plano · ${parts} partes`,
+      tooMany: 'Mais partes do que uma barra mostra: cada uma está na tabela abaixo.',
       target: (share: string) => `alvo ${share}`,
       onlyCash: 'Só caixa por enquanto: nada foi comprado para este cofre ainda.',
       columns: {
@@ -393,6 +413,18 @@ export const pt: Dictionary = {
       observed: (when: string) => `Lido da rede em ${when}.`,
       valueMethod: 'posições lidas do cofre, vezes seus preços; caixa a um dólar',
       positionMethod: (method: string) => `${method}; vezes a quantidade que o cofre guarda`,
+    },
+    goalCard: {
+      onTrack: 'No caminho',
+      offTrack: 'Fora do caminho',
+      noStatus: 'Ainda sem situação: o motor só dá uma para objetivos de renda',
+      unknown: (chain: string) => `Seu cofre na ${chain}.`,
+      notJoined:
+        'Não sei para qual objetivo este cofre foi comprado: a compra foi feita em outro navegador, ou antes de este guardar objetivos. O que ele guarda está abaixo.',
+      putIn: (amount: string) => `você colocou ${amount}`,
+      seePlan: 'Ver seu plano',
+      seeOrder: 'Ver a ordem',
+      startGoal: 'Comece pelo seu objetivo',
     },
     summary: {
       title: 'Seu portfólio',

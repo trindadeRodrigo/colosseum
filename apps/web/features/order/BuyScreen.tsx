@@ -132,6 +132,12 @@ export function BuyScreen({ id }: { id: string }) {
       amountUsd: amount,
       lines: plan.proposal.lines,
       approved: null,
+      goal: {
+        sheet: plan.proposal.sheet,
+        card: plan.proposal.card,
+        verdict: plan.proposal.verdict ?? null,
+        placedAt: new Date().toISOString(),
+      },
     });
     if (!kept) {
       setPlacing(false);

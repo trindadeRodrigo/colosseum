@@ -13,6 +13,8 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { dollars } from '../goal/sheet';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
+import { ActivityPanel } from './ActivityPanel';
+import { activityOf } from './activity';
 import { assetName, formatBps, formatRaw, shortfallBps } from './amounts';
 import { type CallFailure, readOrder } from './order-api';
 import { checkDeposit } from './order-check';
@@ -391,6 +393,13 @@ export function OrderScreen({ id }: { id: string }) {
           </Link>
         )}
       </div>
+
+      {/* His "Disclaimer and activity": what reached the chain, line by line with its link, beside the
+          disclaimer. */}
+      <ActivityPanel
+        executions={activityOf(now, t, `${t.chain.names[chain]} ${t.order.explorer}`)}
+        empty={t.activity.noneYet}
+      />
     </div>
   );
 }

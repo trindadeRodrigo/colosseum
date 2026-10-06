@@ -324,6 +324,24 @@ export const en = {
       },
     },
   },
+  /** His guide's "Disclaimer and activity": what was done on chain, beside the disclaimer. */
+  activity: {
+    notAdvice: 'Not licensed advice',
+    title: 'What was done',
+    status: {
+      built: 'built',
+      signed: 'signed',
+      sent: 'sent',
+      confirmed: 'confirmed',
+      failed: 'failed',
+    },
+    unknownStatus: 'status unknown',
+    notRetried: '(not retried)',
+    signature: 'transaction id',
+    noneYet: 'Nothing has reached the chain from this order yet.',
+    noneVault:
+      'Nothing this browser placed has reached the chain for this vault. Trades made elsewhere, or by the keeper, are not listed here yet.',
+  },
   /** The words a provenance pin says, in the language of the view. */
   pin: {
     sourceFor: 'Source for {value}',
@@ -391,6 +409,9 @@ export const en = {
       /** The vault's facts as chips, his case's limits line. */
       chips: { label: 'The vault', address: 'address', version: 'version', follow: 'auto-follow' },
       parts: 'Its parts, by weight',
+      planTitle: (parts: number) =>
+        parts === 1 ? 'Your plan · 1 part' : `Your plan · ${parts} parts`,
+      tooMany: 'More parts than a bar can show: each one is in the table below.',
       target: (share: string) => `target ${share}`,
       onlyCash: 'Only cash so far: nothing has been bought into this vault yet.',
       columns: {
@@ -415,6 +436,19 @@ export const en = {
       valueMethod: 'holdings read from the vault, times their prices; cash at one dollar',
       /** The method line in the pin of one holding's value, after its price's own method. */
       positionMethod: (method: string) => `${method}; times the amount the vault holds`,
+    },
+    /** The goal card of a vault (guidelines.html, "Goal card and plan"), from the goal its plan was built for. */
+    goalCard: {
+      onTrack: 'On track',
+      offTrack: 'Off track',
+      noStatus: 'No status yet: the engine gives one for income goals only',
+      unknown: (chain: string) => `Your vault on ${chain}.`,
+      notJoined:
+        'I can’t tell which goal this vault was bought for: it was bought in another browser, or before this one kept goals. What it holds is below.',
+      putIn: (amount: string) => `you put in ${amount}`,
+      seePlan: 'See your plan',
+      seeOrder: 'See the order',
+      startGoal: 'Start with your goal',
     },
     /** On the home page, under the goal. */
     summary: {

@@ -324,6 +324,10 @@ describe('the buy screen', () => {
       amountUsd: 10,
       approved: null,
     });
+    // and the goal the plan was built for, which the portfolio's goal card is drawn from
+    expect(kept?.goal?.sheet).toEqual(planOn().proposal.sheet);
+    expect(kept?.goal?.card).toEqual(planOn().proposal.card);
+    expect(Number.isNaN(Date.parse(kept?.goal?.placedAt ?? ''))).toBe(false);
     expect(kept?.lines).toEqual(planOn().proposal.lines);
     expect(trustAccepted(USER, TRUST_STATUS.textVersion)).toBe(true);
   });

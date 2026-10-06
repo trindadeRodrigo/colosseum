@@ -174,7 +174,6 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
           </Stat>
           <Stat label={words.lossUsed}>{share(lang, vault.lossUsedBps)}</Stat>
         </StatRow>
-        <Parts vault={vault} />
         {missing > 0 && (
           <p className="text-body-sm text-muted-foreground">{words.unpriced(missing)}</p>
         )}
@@ -217,47 +216,72 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
 const FILL = ['bg-leg-1', 'bg-leg-2', 'bg-leg-3', 'bg-leg-4'] as const;
 
 /**
- * What the vault holds, as the plan's parts are drawn (plan-leg.md, goal-showcase-case.md): one bar,
- * a segment per holding by its weight now, cash the rest, then each part named with its weight and
- * its target. At most four parts go in a bar; a vault with more is the table alone.
+ * "Your plan · 3 parts", as his guide draws it beside the goal card (guidelines.html, "Goal card and
+ * plan"; plan-leg.md): one bar, a segment per holding by its weight now, cash the rest, then each part
+ * named with its weight and its target. At most four parts go in a bar; a vault with more says so and
+ * leaves them to the table.
  */
-function Parts({ vault }: { vault: Vault }) {
+export function PlanParts({ vault }: { vault: Vault }) {
   const t = useT();
   const lang = useLang();
   const words = t.portfolio.vault;
+  const heading = useId();
   const parts = [...vault.positions].sort((a, b) => b.weightBps - a.weightBps);
-  if (parts.length === 0 || parts.length > FILL.length) return null;
   const held = parts.reduce((sum, p) => sum + p.weightBps, 0);
   return (
-    <div data-ui="vault-parts" className="flex flex-col gap-2">
-      <div aria-hidden="true" className="flex h-3 gap-0.5">
-        {parts.map((p, i) => (
-          <span key={p.asset} className={FILL[i]} style={{ width: `${p.weightBps / 100}%` }} />
-        ))}
-        {held < 10_000 && (
-          <span className="bg-muted" style={{ width: `${(10_000 - held) / 100}%` }} />
+    <Card
+      as="section"
+      aria-labelledby={heading}
+      density="dense"
+      mock={vault.provenance !== 'live'}
+      mockLabels={{
+        announce: t.shell.mockAnnounce,
+        note: vault.provenance === 'sandbox' ? t.shell.testNetwork : undefined,
+      }}
+    >
+      <CardHeader title={words.planTitle(parts.length)} level={3} id={heading} density="dense" />
+      <CardBody density="dense" className="clear-right">
+        {parts.length === 0 ? (
+          <p className="text-body-sm">{words.onlyCash}</p>
+        ) : parts.length > FILL.length ? (
+          <p className="text-body-sm text-muted-foreground">{words.tooMany}</p>
+        ) : (
+          <div data-ui="vault-parts" className="flex flex-col gap-2">
+            <div aria-hidden="true" className="flex h-3 gap-0.5">
+              {parts.map((p, i) => (
+                <span
+                  key={p.asset}
+                  className={FILL[i]}
+                  style={{ width: `${p.weightBps / 100}%` }}
+                />
+              ))}
+              {held < 10_000 && (
+                <span className="bg-muted" style={{ width: `${(10_000 - held) / 100}%` }} />
+              )}
+            </div>
+            <ul
+              aria-label={words.parts}
+              className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-x-4 gap-y-1.5"
+            >
+              {parts.map((p, i) => (
+                <li
+                  key={p.asset}
+                  className="grid grid-cols-[10px_1fr_auto] items-baseline gap-x-2 text-[13px]/5"
+                >
+                  <span aria-hidden="true" className={`size-2.5 translate-y-px ${FILL[i]}`} />
+                  <span className="font-mono">{assetName(p.asset)}</span>
+                  <span className="font-mono text-[12px] font-medium tabular-nums">
+                    {share(lang, p.weightBps)}
+                  </span>
+                  <span className="col-start-2 col-end-4 -mt-0.5 text-[12px]/4 text-muted-foreground">
+                    {words.target(share(lang, p.targetBps))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
-      </div>
-      <ul
-        aria-label={words.parts}
-        className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-x-4 gap-y-1.5"
-      >
-        {parts.map((p, i) => (
-          <li
-            key={p.asset}
-            className="grid grid-cols-[10px_1fr_auto] items-baseline gap-x-2 text-[13px]/5"
-          >
-            <span aria-hidden="true" className={`size-2.5 translate-y-px ${FILL[i]}`} />
-            <span className="font-mono">{assetName(p.asset)}</span>
-            <span className="font-mono text-[12px] font-medium tabular-nums">
-              {share(lang, p.weightBps)}
-            </span>
-            <span className="col-start-2 col-end-4 -mt-0.5 text-[12px]/4 text-muted-foreground">
-              {words.target(share(lang, p.targetBps))}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
+      </CardBody>
+    </Card>
   );
 }

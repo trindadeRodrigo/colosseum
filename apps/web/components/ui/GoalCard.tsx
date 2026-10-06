@@ -4,7 +4,7 @@ import { cn } from './cn';
 import { HatchBand, MockWord } from './internal/mock-parts';
 import { LatticeStatus } from './Lattice';
 import { ProvenancePin } from './ProvenancePin';
-import type { PinSource } from './provenance';
+import type { PinLabels, PinSource } from './provenance';
 import { Status, type StatusKind, statusWord } from './StatusMark';
 
 // goal-card.md. One goal, one sentence, where it stands, and where to look next. The card answers a
@@ -48,12 +48,19 @@ export type GoalCardProps = Common &
          * From the engine, never worked out here. The word is always shown beside the mark: a card
          * handed an empty word throws.
          */
-        status: { kind: StatusKind; word: string; date: string };
+        status: { kind: StatusKind; word: string; date: string } | null;
+        /**
+         * Said in place of the status when the engine gives none: the card never works one out. The
+         * date still stands beside it.
+         */
+        noStatus?: { sentence: string; date?: string };
         /** One sentence of reason, when the goal is on watch or off track. The card is not tinted. */
         reason?: string;
         amount?: GoalCardAmount;
         /** After the amount: "access to cash within 7 days". For an income goal, what it pays and from when. */
         detail?: string;
+        /** The pin's words, in the language of the view. */
+        pinLabels?: Partial<PinLabels>;
       }
     | {
         /** The sheet is not validated yet: no status mark and no amount. */
@@ -108,9 +115,18 @@ export function GoalCard(props: GoalCardProps) {
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <Status status={props.status.kind}>
-                {statusWord(props.status.word)} · {props.status.date}
-              </Status>
+              {props.status ? (
+                <Status status={props.status.kind}>
+                  {statusWord(props.status.word)} · {props.status.date}
+                </Status>
+              ) : (
+                props.noStatus && (
+                  <p data-ui="goal-no-status" className="text-caption text-muted-foreground">
+                    {props.noStatus.sentence}
+                    {props.noStatus.date ? ` · ${props.noStatus.date}` : ''}
+                  </p>
+                )
+              )}
               {mock && <MockWord announce />}
             </div>
             {props.reason && <p className="text-body-sm text-foreground">{props.reason}</p>}
@@ -121,6 +137,7 @@ export function GoalCard(props: GoalCardProps) {
                     value={props.amount.figure}
                     labelValue={props.amount.labelValue}
                     obs={props.amount.obs}
+                    labels={props.pinLabels}
                   />
                 )}
                 {props.amount && props.detail && ' · '}

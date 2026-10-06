@@ -4,14 +4,17 @@ import type { ReactNode } from 'react';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardEmpty, CardLoading } from '../../components/ui/Card';
-import { Disclaimer } from '../../components/ui/Disclaimer';
 import { Status } from '../../components/ui/StatusMark';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { ChainName } from '../account/ChainName';
+import { ActivityPanel } from '../order/ActivityPanel';
 import { useWalletPort } from '../wallet/WalletProvider';
 import { usePortfolio } from './use-portfolio';
-import { VaultPanel } from './VaultPanel';
+import { useVaultHistory } from './use-vault-history';
+import { VaultGoalCard } from './VaultGoalCard';
+import { PlanParts, VaultPanel } from './VaultPanel';
+import { goalOfVault } from './vault-goal';
 
 // The monitor (/monitor): the person's vaults on the one chain their plan lives on, read from the API
 // each time the page opens (GET /v1/portfolio). One serif line, then the chain, then a panel per vault,
@@ -27,6 +30,7 @@ export function MonitorScreen() {
   const port = useWalletPort();
   const { account, retry, mock } = useAccount();
   const { state, again, busy } = usePortfolio();
+  const history = useVaultHistory();
   const words = t.portfolio;
   const link = buttonClass({ variant: 'link' });
   const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.mockAnnounce };
@@ -102,7 +106,18 @@ export function MonitorScreen() {
                 </Link>,
               )
             : vaults.map((vault) => (
-                <VaultPanel key={vault.address} chain={outcome.chain} vault={vault} />
+                // His guide's "Goal card and plan" side by side, then what the vault holds
+                <div key={vault.address} data-ui="vault" className="flex flex-col gap-6">
+                  <div className="grid items-start gap-6 min-[980px]:grid-cols-2">
+                    <VaultGoalCard
+                      chain={outcome.chain}
+                      vault={vault}
+                      joined={goalOfVault(vault, history.records)}
+                    />
+                    <PlanParts vault={vault} />
+                  </div>
+                  <VaultPanel chain={outcome.chain} vault={vault} />
+                </div>
               ));
         break;
       case 'unavailable':
@@ -155,7 +170,15 @@ export function MonitorScreen() {
   return (
     <div data-ui="monitor-screen" className="flex flex-col gap-8">
       <header className="flex flex-col gap-3">
-        <h1 className="max-w-(--tf-measure-display) font-display text-display font-normal">
+        {/* The serif answers once per screen: with goal cards below, their sentences are it, and the
+            page heading is the sans face (goal-card.md). */}
+        <h1
+          className={
+            vaults.length > 0
+              ? 'font-sans text-h2 font-semibold'
+              : 'max-w-(--tf-measure-display) font-display text-display font-normal'
+          }
+        >
           {words.title(vaults.length)}
         </h1>
         <p className="max-w-(--tf-measure-body) text-body-lg text-foreground">{words.lead}</p>
@@ -172,7 +195,10 @@ export function MonitorScreen() {
       <div aria-busy={busy} className="flex flex-col gap-6">
         {body}
       </div>
-      {vaults.length > 0 && <Disclaimer lang={lang} label={t.shell.disclaimer} />}
+      {/* His "Disclaimer and activity": the disclaimer under the plans, beside what reached the chain. */}
+      {vaults.length > 0 && (
+        <ActivityPanel executions={history.activity} empty={t.activity.noneVault} />
+      )}
     </div>
   );
 }
