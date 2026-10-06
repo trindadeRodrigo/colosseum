@@ -1,6 +1,15 @@
 import { z } from 'zod';
 import { ApiError } from './api';
-import { Address, Bps, ChainId, chainFamily, EvmAddress, RawAmount, SolanaAddress } from './chain';
+import {
+  Address,
+  Bps,
+  ChainId,
+  chainFamily,
+  EvmAddress,
+  Hex32,
+  RawAmount,
+  SolanaAddress,
+} from './chain';
 import { ChainErrorCode } from './chain-error';
 import { Provenance } from './enums';
 import { RecipeDraft } from './recipe';
@@ -225,7 +234,17 @@ export const IntentRequest = z.discriminatedUnion('type', [
      */
     maxSlippageBps: Bps.max(ORDER_LIMITS.maxSlippageBps).optional(),
     proposalId: z.string().optional(),
+    /**
+     * A shared portfolio's slug, in place of `proposalId`: the buy opens a vault that follows it on the
+     * person's chain (or adds to the one that does), with auto-follow off.
+     */
     family: z.string().optional(),
+    /**
+     * With `family`: the version of the shared portfolio the person reviewed. The order is refused with
+     * `VERSION_CHANGED` when another is in effect, then or when a step is built. Left out, the version in
+     * effect when the order is made, which the order then holds to.
+     */
+    version: z.number().int().min(1).optional(),
     /**
      * Never sent. A buy names no chain: it is on the chain of the person's wallet, where the plan
      * lives (gate ONE-CHAIN). The field a buy once took is refused with a sentence, not ignored, so a
@@ -248,11 +267,19 @@ export const IntentRequest = z.discriminatedUnion('type', [
     vault: Address,
     family: z.string().min(1),
     autoFollow: z.boolean(),
+    /** The version the person reviewed, as for a buy of a shared portfolio. */
+    version: z.number().int().min(1).optional(),
   }),
   z.object({
     type: z.literal('publish'),
     creator: Owner,
     family: z.string().min(1),
+    /**
+     * The family's id as the publish form shows it: for a new shared portfolio `familyIdOf(slug)`, for
+     * an update the id of the one being updated. The order is refused when the server works out another.
+     * Left out, the one the server works out.
+     */
+    familyId: Hex32.optional(),
     name: z.string().min(1),
     copy: z.string(),
     /** One per chain. Only the chain and the weights: the server and the registry assign the rest. */
