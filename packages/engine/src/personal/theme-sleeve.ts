@@ -14,7 +14,7 @@ import type { World } from './world';
 //
 // - Eligible: the list, with the token the chain lists under each symbol (the first by id the person
 //   can hold, where two share one), that the person can hold
-//   (their country, what they cannot hold, what the goal allows: a plan to protect or for income
+//   (what they cannot hold, what the goal allows: a plan to protect or for income
 //   holds no stock, gate PROTECT-NO-STOCKS), and that can take a line at this size within `tau` (its
 //   measured exit, or its tier where nothing is measured, said as such: gate EXIT-SOURCE).
 // - Weights: equal, less for a name the person already holds (as the goal's holdings rule), each name

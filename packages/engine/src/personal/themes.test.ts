@@ -279,13 +279,15 @@ describe('a name is left out, with why', () => {
     expect(namesHeld(plan).size).toBe(6);
   });
 
-  it('not offered in the person’s country', () => {
+  // Gate COUNTRY-REMOVED (Oct 6): this test held that METAx blocked in Brazil was left out of the
+  // theme with NOT_IN_COUNTRY. A country block is information only: METAx is held.
+  it('blocked in the person’s country: held all the same', () => {
     const blocked = editShelf(shelf, (a) =>
       a.id === 'solana:metax' ? { ...a, blockedCountries: ['BR'] } : a,
     );
     const plan = run(themed({ risk: 'high' }), roomy(), blocked);
-    expect(namesHeld(plan).has('METAx')).toBe(false);
-    expect(removedWhy(plan, 'METAx')).toEqual(['NOT_IN_COUNTRY']);
+    expect(namesHeld(plan).has('METAx')).toBe(true);
+    expect(removedWhy(plan, 'METAx')).toEqual([]);
   });
 
   it('ruled out by the person', () => {
@@ -465,22 +467,26 @@ describe('edge cases of the names', () => {
   it('two tokens under one symbol: the first by id the person can hold is the name’s', () => {
     const nvda = shelf.assets.find((a) => a.id === 'solana:nvdax');
     if (!nvda) throw new Error('no NVDAx');
-    const twin = { ...nvda, id: 'solana:nvdax-a', issuer: 'Twin issuer', blockedCountries: ['BR'] };
+    // Gate COUNTRY-REMOVED (Oct 6): the first token was blocked by a country; it is now ruled out
+    // by the person, the one way left to keep a person from a token.
+    const twin = { ...nvda, id: 'solana:nvdax-a', issuer: 'Twin issuer' };
     const second = { ...nvda, id: 'solana:nvdax-b', issuer: 'Twin issuer' };
     const doubled = {
       ...shelf,
       assets: [...shelf.assets.filter((a) => a.id !== 'solana:nvdax'), second, twin],
     };
-    const plan = run(themed({ risk: 'high' }), roomyLines(), doubled);
+    const notA = { cannotHold: { assets: ['solana:nvdax-a'] } };
+    const plan = run(themed({ risk: 'high', limits: notA }), roomyLines(), doubled);
     expect(plan.lines.some((l) => l.assetId === 'solana:nvdax-b')).toBe(true);
     expect(plan.lines.some((l) => l.assetId === 'solana:nvdax-a')).toBe(false);
-    // Both blocked: the name is left out for the first one's reason.
-    const both = editShelf(doubled, (a) =>
-      a.id === 'solana:nvdax-b' ? { ...a, blockedCountries: ['BR'] } : a,
-    );
-    expect(removedWhy(run(themed({ risk: 'high' }), roomyLines(), both), 'NVDAx')).toEqual([
-      'NOT_IN_COUNTRY',
-    ]);
+    // With neither: the first by id, nvdax-a, is the name's.
+    const free = run(themed({ risk: 'high' }), roomyLines(), doubled);
+    expect(free.lines.some((l) => l.assetId === 'solana:nvdax-a')).toBe(true);
+    // Both ruled out: the name is left out for the first one's reason.
+    const both = { cannotHold: { assets: ['solana:nvdax-a', 'solana:nvdax-b'] } };
+    expect(
+      removedWhy(run(themed({ risk: 'high', limits: both }), roomyLines(), doubled), 'NVDAx'),
+    ).toEqual(['EXCLUDED']);
   });
 
   it('a list with a stock and a gold token of one issuer reads each name’s own issuer room', () => {

@@ -1040,7 +1040,6 @@ function switchFor(
   const cannot = sheet.limits?.cannotHold;
   const canHold = (a: BasketAsset) =>
     a.chain === c.chain &&
-    !a.blockedCountries.includes(sheet.country) &&
     eligibleForGoal(a, sheet.goal) &&
     !(cannot?.assets ?? []).includes(a.id) &&
     !(cannot?.classes ?? []).some((x) => x === a.cls) &&

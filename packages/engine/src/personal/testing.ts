@@ -565,14 +565,7 @@ export function expectedSleeves(
 }
 
 /** The rules that say something was left out. */
-const LEFT_OUT = [
-  'MAX_LINES',
-  'BELOW_MINIMUM',
-  'EXCLUDED',
-  'NOT_FOR_GOAL',
-  'NOT_IN_COUNTRY',
-  'NOT_ON_CHAIN',
-];
+const LEFT_OUT = ['MAX_LINES', 'BELOW_MINIMUM', 'EXCLUDED', 'NOT_FOR_GOAL', 'NOT_ON_CHAIN'];
 
 /**
  * Everything a plan must be, whatever the inputs and the numbers: the vault's target rules, the
@@ -677,7 +670,6 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
     // Nothing the person cannot hold.
     const no = s.limits?.cannotHold;
     say(eligibleForGoal(a, s.goal), `${a.id} is not eligible for a goal of ${s.goal}`);
-    say(!a.blockedCountries.includes(s.country), `${a.id} is blocked in ${s.country}`);
     say(!no?.assets?.includes(a.id), `${a.id} was excluded`);
     say(
       !(no?.classes as string[] | undefined)?.includes(a.cls),

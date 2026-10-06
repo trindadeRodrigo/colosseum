@@ -440,6 +440,15 @@ describe('the safe-yield sleeve switches only on the 7-day rule', () => {
       expect(o).toMatchObject({ source: expect.any(String), method: expect.any(String) });
   });
 
+  // Gate COUNTRY-REMOVED (Oct 6): a token blocked in the person's country is switched to all the
+  // same; the switch read `blockedCountries` until then.
+  it('switches to a token blocked in the person’s country: the country is not read', () => {
+    const country = SAFE.sheet.country ?? 'BR';
+    const assets = ASSETS.map((a) => (a.id === SGOV ? { ...a, blockedCountries: [country] } : a));
+    const [p] = run(history(7), { assets }).proposals as [SleeveProposal];
+    expect(bought(p)).toEqual([SGOV]);
+  });
+
   it('readings that are not live never trigger it by default', () => {
     expect(run(history(7), { readingsFrom: undefined }).proposals).toEqual([]);
     const live = history(7).map((o) => ({ ...o, provenance: 'live' as const }));

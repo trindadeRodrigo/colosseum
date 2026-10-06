@@ -244,7 +244,6 @@
                       "horizonMonths",
                       "risk",
                       "themes",
-                      "country",
                       "chains",
                       "rules",
                       "language"
@@ -443,7 +442,6 @@
                             "horizonMonths",
                             "risk",
                             "themes",
-                            "country",
                             "chains",
                             "rules",
                             "language"
@@ -1131,7 +1129,6 @@
                                   "horizonMonths",
                                   "risk",
                                   "themes",
-                                  "country",
                                   "chains",
                                   "rules",
                                   "language"
