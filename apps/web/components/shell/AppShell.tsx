@@ -6,7 +6,8 @@ import { LanguageSwitch } from './LanguageSwitch';
 import { ThemeSwitch } from './ThemeSwitch';
 
 // The one frame of the product's routes: the bar, the page, and the foot. The page is as wide as the
-// system's page (1280px) with its side margins. The disclaimer is in the foot of every product screen,
+// system's page (1280px) with its side margins; Bearing's analytics, a dense instrument with a side
+// menu and wide tables, takes the whole width. The disclaimer is in the foot of every product screen,
 // from the one DISCLAIMER constant, at body size, in the language of the view: the foot is where it
 // stands while a screen has no plan to sit under. A screen that carries its own under its plan or
 // its vaults (disclaimer-block.md) has it once: the foot's is then not drawn, by a rule of the
@@ -22,7 +23,7 @@ export function AppShell({ lang, theme, children }: AppShellProps) {
   return (
     <div
       data-ui="app-shell"
-      className="group/shell mx-auto flex min-h-dvh w-full max-w-page flex-col px-[clamp(16px,4vw,56px)]"
+      className="group/shell mx-auto flex min-h-dvh w-full max-w-page flex-col px-[clamp(16px,4vw,56px)] has-[[data-ui=bearing]]:max-w-none"
     >
       <a href="#content" className={SKIP}>
         {t.skip}

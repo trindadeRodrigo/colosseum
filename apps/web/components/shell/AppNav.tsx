@@ -33,6 +33,8 @@ const LINK = cn(
 const ROUTES = [
   { href: '/', key: 'goal' },
   { href: '/monitor', key: 'portfolio' },
+  // Bearing's analytics: every page of the section is under it
+  { href: '/analytics/stocks', key: 'analytics', section: '/analytics' },
 ] as const;
 
 export function AppNav() {
@@ -60,7 +62,12 @@ export function AppNav() {
               <Link
                 key={route.href}
                 href={route.href}
-                aria-current={pathname === route.href ? 'page' : undefined}
+                aria-current={
+                  pathname === route.href ||
+                  ('section' in route && pathname.startsWith(`${route.section}/`))
+                    ? 'page'
+                    : undefined
+                }
                 className={LINK}
               >
                 {t.shell[route.key]}

@@ -14,6 +14,7 @@ export const en = {
     home: 'tenonfi, your goal',
     goal: 'Goal',
     portfolio: 'Portfolio',
+    analytics: 'Analytics',
     signIn: 'Sign in',
     signOut: 'Sign out',
     signingOut: 'Signing out…',

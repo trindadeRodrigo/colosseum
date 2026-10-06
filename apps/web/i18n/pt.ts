@@ -13,6 +13,7 @@ export const pt: Dictionary = {
     home: 'tenonfi, seu objetivo',
     goal: 'Objetivo',
     portfolio: 'Portfólio',
+    analytics: 'Análises',
     signIn: 'Entrar',
     signOut: 'Sair',
     signingOut: 'Saindo…',

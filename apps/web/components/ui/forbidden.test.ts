@@ -30,14 +30,9 @@ const LEGACY: Record<string, readonly Kind[]> = {
   // and two uppercase labels
   'app/(structurer)/layout.tsx': ['hue'],
   'app/(structurer)/embed/[id]/layout.tsx': ['hue', 'radius', 'case'],
-  'app/(structurer)/risk/page.tsx': ['hue'],
-  'app/(structurer)/risk/[asset]/page.tsx': ['hue'],
-  'app/(structurer)/risk/methodology/page.tsx': ['hue'],
   'components/PlanView.tsx': ['hue'],
   'components/Provenance.tsx': ['radius', 'case'],
   'components/ScheduleChart.tsx': ['hue'],
-  'components/risk/CostCurveChart.tsx': ['hue'],
-  'components/risk/HourOfWeekHeatmap.tsx': ['hue'],
   // the wallet check, a development page (WAL-1), plain until it takes the primitives
   'features/wallet/dev/DevWallet.tsx': ['hue'],
 };

@@ -1,14 +1,14 @@
-import { DISCLAIMER } from '@colosseum/schemas';
+import { METHODOLOGY } from '../../../../features/bearing/pages';
 
-export const metadata = { title: 'Methodology — exit liquidity' };
+// How Bearing measures (method risk-0.3): what is measured, what a number means and what it is not.
+// Generated from docs/risk/PLAN-RISK.md §4 and Appendix A; keep the two in step. It was /risk/methodology.
 
-/** Generated from docs/risk/PLAN-RISK.md §4 and Appendix A (method risk-0.2). Keep the two in step. */
+export const metadata = { title: 'Methodology, Bearing analytics', description: METHODOLOGY.lede };
+
 export default function Methodology() {
   return (
-    <article className="prose max-w-3xl space-y-4 text-sm">
-      <h1 className="text-2xl font-semibold">Methodology (risk-0.3)</h1>
-
-      <h2 className="font-semibold">What is measured</h2>
+    <article className="mt-6 max-w-[72ch] text-body-sm">
+      <h2 className="mt-8 mb-2 text-b-section font-semibold">What is measured</h2>
       <p>
         Every 5 minutes we read the on-chain state of each DEX pool that trades a tokenized stock
         (Raydium CLMM, Orca Whirlpool, Meteora DLMM, Raydium CPMM) and simulate selling and buying
@@ -17,8 +17,8 @@ export default function Methodology() {
         transfer fees. It is checked against Jupiter quotes routed through the same pool; the
         tolerance per venue is part of the test suite.
       </p>
-      <h2 className="font-semibold">What a number means</h2>
-      <ul className="list-disc pl-5">
+      <h2 className="mt-8 mb-2 text-b-section font-semibold">What a number means</h2>
+      <ul className="list-disc space-y-1.5 pl-5">
         <li>
           <b>Cost</b> = 1 − dollars received ÷ (size × the pool's mid price before the trade). It
           includes the pool fee.
@@ -46,8 +46,9 @@ export default function Methodology() {
         <li>
           <b>Recoverable value</b> = the better of selling on a DEX in the best regime inside the
           horizon, and the issuer's redemption where the window opens and settlement fits inside the
-          horizon. Redemption capacity is a scenario input, labelled <i>assumption</i>; a redemption
-          that settles after the horizon is listed but not counted.
+          horizon. Redemption capacity is a scenario input, labelled{' '}
+          <em className="not-italic underline decoration-1 underline-offset-[3px]">assumption</em>
+          {'; '}a redemption that settles after the horizon is listed but not counted.
         </li>
         <li>
           <b>Liquidity score</b> = capacity at τ in the worst regime a horizon can contain, divided
@@ -56,12 +57,15 @@ export default function Methodology() {
         <li>
           <b>Breach</b>: for each upcoming withdrawal, what must come from stock after cash and
           liquid legs, against a share (default 25%) of the worst-regime capacity inside the
-          withdrawal's window. <i>Likely breach</i> applies the dry stress: capacity × max(25%,
-          weekend ratio).
+          withdrawal's window.{' '}
+          <em className="not-italic underline decoration-1 underline-offset-[3px]">
+            Likely breach
+          </em>{' '}
+          applies the dry stress: capacity × max(25%, weekend ratio).
         </li>
       </ul>
-      <h2 className="font-semibold">What a number is not</h2>
-      <ul className="list-disc pl-5">
+      <h2 className="mt-8 mb-2 text-b-section font-semibold">What a number is not</h2>
+      <ul className="list-disc space-y-1.5 pl-5">
         <li>
           Depth measured in calm markets overstates depth in stress. Every curve shows its regime,
           sample count and dates.
@@ -79,7 +83,6 @@ export default function Methodology() {
           published.
         </li>
       </ul>
-      <p className="text-xs text-gray-600">{DISCLAIMER.en}</p>
     </article>
   );
 }
