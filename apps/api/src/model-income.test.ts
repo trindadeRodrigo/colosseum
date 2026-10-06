@@ -20,13 +20,17 @@ import readings from './testing/fixtures/model-readings.json';
 
 const read = (file: string) => JSON.parse(readFileSync(join(DEPLOYMENTS_DIR, file), 'utf8'));
 const READINGS = z
-  .array(z.object({ symbol: z.string(), reading: YieldObservation }))
+  .array(z.object({ symbol: z.string(), chain: z.string(), reading: YieldObservation }))
   .parse(readings);
 const SHELF = shelfTiers(read('../fixtures/risk/launch-shelf-tiers.json'));
 
-const sheet = (chain: 'solana' | 'robinhood', amountUsd: number): PersonalSheet => ({
+const sheet = (
+  chain: 'solana' | 'robinhood',
+  amountUsd: number,
+  goal: 'income' | 'protect' = 'income',
+): PersonalSheet => ({
   basketType: 'standard',
-  goal: 'income',
+  goal,
   amountUsd,
   horizonMonths: 12,
   risk: 'medium',
@@ -38,7 +42,12 @@ const sheet = (chain: 'solana' | 'robinhood', amountUsd: number): PersonalSheet 
 });
 
 /** The plan as `personalize` makes it from the plan inputs, with no measured depth (none is stored for a yield token). */
-function serverPlan(chain: 'solana' | 'robinhood', listed: BasketAsset[], amountUsd: number) {
+function serverPlan(
+  chain: 'solana' | 'robinhood',
+  listed: BasketAsset[],
+  amountUsd: number,
+  goal: 'income' | 'protect' = 'income',
+) {
   const tokens = standIns(listed, 'sandbox');
   const tiers = tierTwins(tokens, SHELF).map((t) => ({
     assetId: t.id,
@@ -55,9 +64,12 @@ function serverPlan(chain: 'solana' | 'robinhood', listed: BasketAsset[], amount
   }));
   const assets = withTiers(listed, tiers, issuers);
   const plan = compose(
-    sheet(chain, amountUsd),
+    sheet(chain, amountUsd, goal),
     { version: 'test-network', assets, families: [] },
-    { now: '2026-10-06T12:00:00.000Z', yields: modelYields(modelledTokens(assets, []), READINGS) },
+    {
+      now: '2026-10-06T12:00:00.000Z',
+      yields: modelYields(modelledTokens(assets, [], 'sandbox'), READINGS),
+    },
   );
   const weight = (id: string) => plan.lines.find((l) => l.assetId === id)?.weightBps ?? 0;
   return { plan, assets, tiers, issuers, weight };
@@ -115,5 +127,39 @@ describe('an income plan on Robinhood Chain’s test network', () => {
     const y = plan.observations.find((o) => o.kind === 'yield' && o.id === id);
     expect(y?.provenance).toBe('sandbox');
     expect(y?.source).toContain('applied to tSGOV on a test network');
+  });
+});
+
+describe('what a chain that is not a test network borrows', () => {
+  const listed = deploymentAssets(SolanaDeploymentRecord.parse(read('solana-devnet.json')));
+
+  it('is nothing: no issuer, no tier and no reading, whatever its tokens are labelled', () => {
+    for (const provenance of ['mock', 'live', undefined]) {
+      const tokens = standIns(listed, provenance);
+      expect(issuerTwins(tokens, SHELF)).toEqual([]);
+      expect(tierTwins(tokens, SHELF)).toEqual([]);
+      expect(modelYields(modelledTokens(listed, [], provenance), READINGS)).toEqual([]);
+    }
+  });
+
+  it('nor does a stand-in take the reading of its model on another chain', () => {
+    const rh = evmAssets(EvmDeploymentRecord.parse(read('robinhood-testnet.json')));
+    const base = READINGS.map((r) => (r.symbol === 'SGOV' ? { ...r, chain: 'base' } : r));
+    const borrowed = modelYields(modelledTokens(rh, [], 'sandbox'), base);
+    expect(borrowed.map((y) => y.assetId)).not.toContain('robinhood:tsgov');
+  });
+});
+
+describe('two stand-ins of one issuer', () => {
+  it('share that issuer’s cap: on Robinhood Chain tSGOV and tGLD hold half a plan to protect together', () => {
+    const listed = evmAssets(EvmDeploymentRecord.parse(read('robinhood-testnet.json')));
+    const { plan, assets, weight } = serverPlan('robinhood', listed, 20_000, 'protect');
+    const sgov = assets.find((a) => a.symbol === 'tSGOV') as BasketAsset;
+    const gld = assets.find((a) => a.symbol === 'tGLD') as BasketAsset;
+    expect([sgov.issuer, gld.issuer]).toEqual(['Robinhood', 'Robinhood']);
+    expect(weight(sgov.id)).toBeGreaterThan(0);
+    expect(weight(gld.id)).toBeGreaterThan(0);
+    expect(weight(sgov.id) + weight(gld.id)).toBe(5000);
+    expect(plan.lines.flatMap((l) => l.reasons.map((r) => r.rule))).toContain('ISSUER_CAP_PLAN');
   });
 });

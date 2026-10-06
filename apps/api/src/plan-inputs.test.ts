@@ -19,7 +19,9 @@ const record = SolanaDeploymentRecord.parse(
   JSON.parse(readFileSync(join(DEPLOYMENTS_DIR, 'solana-devnet.json'), 'utf8')),
 );
 const shelf = deploymentAssets(record);
-const MODEL = z.array(z.object({ symbol: z.string(), reading: YieldObservation })).parse(readings);
+const MODEL = z
+  .array(z.object({ symbol: z.string(), chain: z.string(), reading: YieldObservation }))
+  .parse(readings);
 
 const { db, client } = createDb();
 const tag = randomUUID().slice(0, 8);

@@ -1,6 +1,7 @@
 [
   {
     "symbol": "jlUSDC",
+    "chain": "solana",
     "reading": {
       "assetId": "jlusdc",
       "quotedYield": 0.052,
@@ -14,6 +15,7 @@
   },
   {
     "symbol": "syrupUSDC",
+    "chain": "solana",
     "reading": {
       "assetId": "syrupusdc",
       "quotedYield": 0.068,
@@ -27,6 +29,7 @@
   },
   {
     "symbol": "SGOV",
+    "chain": "robinhood",
     "reading": {
       "assetId": "robinhood:sgov",
       "quotedYield": 0.036,
