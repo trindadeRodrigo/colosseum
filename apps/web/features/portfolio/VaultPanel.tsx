@@ -9,6 +9,7 @@ import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { pinSourceOfPrice } from '../../components/ui/price-source';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
+import { displayName } from '../order/plain';
 import { dollars, drift, share, tokens, utc } from './figures';
 import {
   assetName,
@@ -43,9 +44,8 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
       header: words.columns.asset,
       rowHeader: true,
       cell: (row) => (
-        <span className="font-mono" title={row.asset}>
-          {assetName(row.asset)}
-        </span>
+        // the name a person reads, as the plan screen says it ("syrupUSDC (Maple)")
+        <span className="font-mono">{displayName(row.asset, t.plan)}</span>
       ),
     },
     {
@@ -187,7 +187,7 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
             {vault.pending.newAssets.length > 0 &&
               ` ${words.pendingAssets(
                 new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(
-                  vault.pending.newAssets.map(assetName),
+                  vault.pending.newAssets.map((asset) => displayName(asset, t.plan)),
                 ),
               )}`}
           </p>
@@ -230,8 +230,24 @@ export function PlanParts({ vault }: { vault: Vault }) {
   const lang = useLang();
   const words = t.portfolio.vault;
   const heading = useId();
-  const parts = [...vault.positions].sort((a, b) => b.weightBps - a.weightBps);
-  const held = parts.reduce((sum, p) => sum + p.weightBps, 0);
+  const positions = [...vault.positions].sort((a, b) => b.weightBps - a.weightBps);
+  const held = positions.reduce((sum, p) => sum + p.weightBps, 0);
+  const targeted = positions.reduce((sum, p) => sum + p.targetBps, 0);
+  // Cash is a part of the plan like any other: what the positions leave, named and counted.
+  const cash =
+    held < 10_000
+      ? [
+          {
+            asset: vault.cash.asset,
+            weightBps: 10_000 - held,
+            targetBps: Math.max(0, 10_000 - targeted),
+            fill: 'bg-muted border border-border',
+          },
+        ]
+      : [];
+  const parts = [...positions.map((p, i) => ({ ...p, fill: FILL[i] ?? '' })), ...cash].sort(
+    (a, b) => b.weightBps - a.weightBps,
+  );
   return (
     <Card
       as="section"
@@ -245,35 +261,28 @@ export function PlanParts({ vault }: { vault: Vault }) {
     >
       <CardHeader title={words.planTitle(parts.length)} level={3} id={heading} density="dense" />
       <CardBody density="dense" className="clear-right">
-        {parts.length === 0 ? (
+        {positions.length === 0 ? (
           <p className="text-body-sm">{words.onlyCash}</p>
-        ) : parts.length > FILL.length ? (
+        ) : positions.length > FILL.length ? (
           <p className="text-body-sm text-muted-foreground">{words.tooMany}</p>
         ) : (
           <div data-ui="vault-parts" className="flex flex-col gap-2">
             <div aria-hidden="true" className="flex h-3 gap-0.5">
-              {parts.map((p, i) => (
-                <span
-                  key={p.asset}
-                  className={FILL[i]}
-                  style={{ width: `${p.weightBps / 100}%` }}
-                />
+              {parts.map((p) => (
+                <span key={p.asset} className={p.fill} style={{ width: `${p.weightBps / 100}%` }} />
               ))}
-              {held < 10_000 && (
-                <span className="bg-muted" style={{ width: `${(10_000 - held) / 100}%` }} />
-              )}
             </div>
             <ul
               aria-label={words.parts}
               className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-x-4 gap-y-1.5"
             >
-              {parts.map((p, i) => (
+              {parts.map((p) => (
                 <li
                   key={p.asset}
                   className="grid grid-cols-[10px_1fr_auto] items-baseline gap-x-2 text-[13px]/5"
                 >
-                  <span aria-hidden="true" className={`size-2.5 translate-y-px ${FILL[i]}`} />
-                  <span className="font-mono">{assetName(p.asset)}</span>
+                  <span aria-hidden="true" className={`size-2.5 translate-y-px ${p.fill}`} />
+                  <span className="font-mono">{displayName(p.asset, t.plan)}</span>
                   <span className="font-mono text-[12px] font-medium tabular-nums">
                     {share(lang, p.weightBps)}
                   </span>

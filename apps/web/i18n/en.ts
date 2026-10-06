@@ -336,6 +336,9 @@ export const en = {
         income: (amount: string, months: string) => `Earn income from ${amount} for ${months}.`,
         protect: (amount: string, months: string) => `Protect ${amount} for ${months}.`,
       },
+      /** An income goal that names what it wants a month. */
+      sentenceIncome: (income: string, amount: string, months: string) =>
+        `Earn ${income} a month from ${amount} for ${months}.`,
       months: (n: number) => (n === 1 ? '1 month' : `${n} months`),
       unfinished: 'Your goal, as read so far.',
       draftOpen: 'Draft: finish the limits',
@@ -506,6 +509,9 @@ export const en = {
     goalCard: {
       builtMet: 'On track when the plan was built',
       builtShort: 'Short of its income when the plan was built',
+      /** The income plan's verdict in figures: what it paid a month of what was asked. */
+      builtPaid: (paid: string, asked: string) =>
+        `When this plan was built, it paid ${paid} a month of the ${asked} you asked for.`,
       noStatus: 'No status yet: the engine gives none for a vault',
       unknown: (chain: string) => `Your vault on ${chain}.`,
       notJoined:
@@ -563,6 +569,8 @@ export const en = {
       some: (amount: string) => `In a bad fall: you’d lose about ${amount}, an estimate.`,
     },
     details: 'Details',
+    /** Above what the engine left out of the plan, each with its own reason. */
+    leftOut: 'Left out of this plan',
     kinds: {
       stock: 'Stocks',
       etf: 'Funds',

@@ -184,6 +184,14 @@ export function goalSentence(fields: SheetFields, t: Dictionary, lang: Lang): st
   const amount = parseNumber(fields.amount);
   const months = /^\d+$/.test(fields.horizon.trim()) ? Number(fields.horizon.trim()) : null;
   if (fields.goal === '' || amount === null || Number.isNaN(amount) || months === null) return null;
+  // an income goal that names what it wants a month says so
+  const income = fields.goal === 'income' ? parseNumber(fields.income) : null;
+  if (income !== null && !Number.isNaN(income) && income > 0)
+    return t.goal.card.sentenceIncome(
+      dollars(income, lang),
+      dollars(amount, lang),
+      t.goal.card.months(months),
+    );
   return t.goal.card.sentence[fields.goal](dollars(amount, lang), t.goal.card.months(months));
 }
 
