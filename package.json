@@ -105,7 +105,9 @@
     "risk-evm:universe": "tsx scripts/risk-evm/universe.ts",
     "risk-evm:discover": "tsx scripts/risk-evm/discover.ts",
     "risk-evm:pareto": "tsx scripts/risk-evm/pareto.ts",
-    "risk-evm:oracles": "tsx scripts/risk-evm/oracles.ts"
+    "risk-evm:oracles": "tsx scripts/risk-evm/oracles.ts",
+    "risk-evm:history": "tsx scripts/risk-evm/history-run.ts",
+    "risk-evm:flow-import": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk-evm/flow-import.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
