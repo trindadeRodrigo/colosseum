@@ -237,11 +237,6 @@ export const REASON_TEMPLATES = {
     '{asset} is left out: you said you cannot hold it.',
     '{asset} fica de fora: você disse que não pode ter esse ativo.',
   ),
-  NOT_IN_COUNTRY: rule(
-    ['country'],
-    '{asset} is left out: it is not offered {country|inCountry}.',
-    '{asset} fica de fora: não é oferecido {country|inCountry}.',
-  ),
   NOT_ON_CHAIN: rule(
     ['chain'],
     '{asset} is left out: {chain|chain} does not list it.',
@@ -387,11 +382,6 @@ export const REASON_TEMPLATES = {
     ['goal'],
     '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: the asset list does not allow it in a plan for {goal|goal}.',
     '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: a lista de ativos não permite esse ativo em um plano para {goal|goal}.',
-  ),
-  OVERFLOW_NOT_IN_COUNTRY: rule(
-    ['country'],
-    '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: it is not offered {country|inCountry}.',
-    '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: não é oferecido {country|inCountry}.',
   ),
   OVERFLOW_HELD: rule(
     ['holdings'],
