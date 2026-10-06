@@ -1,3 +1,4 @@
+import type { MarketFilter } from './market-filter';
 import type { HoldableClass } from './types';
 
 // What a goal sentence says in so many words, read by code (gate GUIDED-INTAKE, the checks after the
@@ -566,49 +567,269 @@ export function mixIn(text: string): { mix: MixRead; words: string } | null {
 const endOf = (m: RegExpMatchArray | undefined) => (m ? (m.index ?? 0) + m[0].length : 0);
 const phraseOf = (text: string, at: number, end: number) => text.slice(at, end).trim();
 
-// A market or a trend the person names (gate EXPLICIT-MIX): read to a shared portfolio on the shelf,
-// by its slug, or to a theme that has none yet. English and Portuguese words only.
-export type Market = 'big_tech' | 'us_market' | 'ai';
-const MARKETS: [Market, RegExp][] = [
-  [
-    'big_tech',
-    /(?<![\p{L}])(?:big[- ]?techs?|magnificent (?:7|seven)|mag(?:nificent)? ?7|(?:us|american) tech giants|tech giants|grandes? (?:empresas )?de tecnologia|gigantes (?:da|de) tecnologia)(?![\p{L}])/iu,
-  ],
-  [
-    'us_market',
-    /(?<![\p{L}])(?:s&p(?: ?500)?|s and p(?: 500)?|sp ?500|(?:the )?(?:us|u\.s\.|american) (?:stock )?market|(?:us|u\.s\.|american) stocks|bolsa americana|mercado americano|a[cç][oõ]es americanas)(?![\p{L}])/iu,
-  ],
-  // "AI" and "IA" only in capitals: "ai" is a word in Portuguese ("ai, não sei").
-  [
-    'ai',
-    /(?<![\p{L}])(?:AI|IA|A\.I\.|artificial intelligence|intelig[eê]ncia artificial)(?![\p{L}])/u,
-  ],
-];
-/** The shared portfolio a market reads to; null for a market that has none on any shelf yet. */
-export const MARKET_SLUG: Record<Market, string | null> = {
-  big_tech: 'the-seven',
-  us_market: 'the-500',
-  // TODO(engine/themes): "AI" is a theme sleeve, `{ kind: 'theme', theme: 'ai' }`, once theme sleeves
-  // are built. Until then no portfolio is named for it: no slug is made up.
-  ai: null,
+// ---------------------------------------------------------------------------------------------------
+// A market, an industry or a trend the person names to invest in (gates EXPLICIT-MIX, THEMES and
+// THEME-MATCHED): "big tech", "semiconductors", "space stocks", "setor de defesa". The words are fixed
+// lists, English and Portuguese, and code decides what each one reads to on the person's shelf: a
+// shared portfolio, a curated label, a filter over the stocks' sourced attributes, or nothing. The
+// model names a narrative only by its id here, and one the text has no word for is dropped.
+
+/** The narratives the intake has words for, in the order they are read. */
+export const MARKET_IDS = [
+  'big_tech',
+  'us_market',
+  'ai',
+  'semiconductors',
+  'ai_infrastructure',
+  'crypto_economy',
+  'fintech',
+  'space',
+  'quantum',
+  'ev_autonomy',
+  'cloud_software',
+  'emerging_markets',
+  'commodities',
+  'broad_market',
+  'retail_favourites',
+  'defense',
+] as const;
+export type Market = (typeof MARKET_IDS)[number];
+
+/**
+ * What a narrative reads to, tried in this order and taking the first the person's shelf has: its
+ * shared portfolio, where it names one; its curated label (gate THEMES); its filter over the stocks'
+ * sourced attributes (gate THEME-MATCHED). Where none fits, the first of `nearest` the shelf has is
+ * offered by name: each is the slug of a shared portfolio or of a label.
+ */
+export type Narrative = {
+  portfolio: string | null;
+  label: string;
+  filter: MarketFilter | null;
+  nearest: readonly string[];
 };
-/** The markets the text names, with the words, in the order of the list. */
-export function marketsIn(text: string): { market: Market; words: string; at: number }[] {
-  return MARKETS.flatMap(([market, pattern]) => {
-    const m = pattern.exec(text);
-    return m ? [{ market, words: m[0], at: m.index }] : [];
-  });
+const reads = (
+  label: string,
+  nearest: readonly string[] = [],
+  filter: MarketFilter | null = null,
+  portfolio: string | null = null,
+): Narrative => ({ portfolio, label, filter, nearest });
+export const NARRATIVES: Record<Market, Narrative> = {
+  big_tech: reads('big-tech', ['the-seven', 'ai', 'the-500'], null, 'the-seven'),
+  us_market: reads('broad-market', ['the-500', 'the-seven'], null, 'the-500'),
+  ai: reads('ai', ['the-seven', 'the-500']),
+  semiconductors: reads('semiconductors', ['sand-to-server', 'ai', 'the-seven'], {
+    by: 'industry',
+    value: 'Semiconductors & Semiconductor Equipment',
+  }),
+  ai_infrastructure: reads('ai-infrastructure', ['ai', 'semiconductors', 'the-seven']),
+  crypto_economy: reads('crypto-economy', ['crypto-in-a-suit']),
+  fintech: reads('fintech', ['crypto-economy', 'crypto-in-a-suit']),
+  space: reads('space'),
+  quantum: reads('quantum-computing', ['ai', 'semiconductors']),
+  ev_autonomy: reads('ev-autonomy', ['ai', 'the-seven'], {
+    by: 'sub_industry',
+    value: 'Automobile Manufacturers',
+  }),
+  cloud_software: reads('cloud-software', ['the-seven', 'ai'], {
+    by: 'industry',
+    value: 'Software',
+  }),
+  emerging_markets: reads('emerging-markets-asia'),
+  commodities: reads('commodities', ['storm-cellar']),
+  broad_market: reads('broad-market', ['the-500']),
+  retail_favourites: reads('retail-favourites'),
+  defense: reads('defense', [], { by: 'industry', value: 'Aerospace & Defense' }),
+};
+
+// "Space" and "defense" alone are read only after a word that puts money somewhere ("invest in
+// space", "tudo na defesa"), and never as "in the space of two years" or "in defense of".
+const AFTER_IN = String.raw`(?<=(?<![\p{L}])(?:in|into|em|no|na|nos|nas)[^\S\n]+(?:(?:the|a|o|os|as)[^\S\n]+)?)`;
+// "Blue chips" are large companies, not chip makers.
+const NOT_BLUE = '(?<!blue[- ]?)';
+// The words of each narrative. `asWritten` keeps its capitals: "AI", "IA" and "EVs" are read only in
+// capitals ("ai" is a word in Portuguese: "ai, não sei"). `anyCase` is read in any case.
+// Not read: "crypto" alone, an asset class the plan can hold; and gold, where "all in gold" is a mix.
+const MARKET_WORDS: Record<Market, { asWritten?: string; anyCase?: string }> = {
+  big_tech: {
+    anyCase:
+      'big[- ]?techs?|magnificent (?:7|seven)|mag(?:nificent)? ?7|(?:us|american) tech giants|tech giants|grandes? (?:empresas )?de tecnologia|gigantes (?:da|de) tecnologia',
+  },
+  us_market: {
+    anyCase: String.raw`(?:s&p(?: ?500)?|s and p(?: 500)?|sp ?500)(?: index)?(?: (?:funds?|etfs?))?|(?:the )?(?:us|u\.s\.|american) (?:stock )?market|(?:us|u\.s\.|american) stocks|bolsa americana|mercado americano|a[cç][oõ]es americanas`,
+  },
+  ai: {
+    asWritten: String.raw`AI|IA|A\.I\.`,
+    anyCase: 'artificial intelligence|intelig[eê]ncia artificial',
+  },
+  semiconductors: {
+    asWritten: 'AI [Cc]hips|[Cc]hips (?:de|para) IA',
+    anyCase: `semiconductors?|${NOT_BLUE}(?:chip ?makers?|chip (?:stocks|companies|manufacturers|designers|sector|industry)|chips)|semicondutor(?:es)?|(?:fabricantes|empresas|a[cç][oõ]es) de chips`,
+  },
+  ai_infrastructure: {
+    asWritten:
+      'AI [Ii]nfra(?:structure)?|AI [Dd]ata ?[Cc]ent(?:er|re)s?|[Ii]nfraestrutura de IA|[Dd]ata ?[Cc]enters? de IA',
+    anyCase:
+      'data ?cent(?:er|re)s?|artificial intelligence infrastructure|infraestrutura de intelig[eê]ncia artificial|centros? de dados',
+  },
+  crypto_economy: {
+    anyCase: String.raw`crypto(?:currency)?[- ](?:economy|stocks|equities|companies|miners)|crypto[- ]related (?:stocks|companies)|bitcoin miners|(?:empresas|a[cç][oõ]es) de cripto\p{L}*|economia (?:de )?cripto\p{L}*|mineradoras de bitcoin`,
+  },
+  fintech: {
+    anyCase: 'fintechs?|brokers|brokerages|brokerage (?:stocks|firms|companies)|corretoras',
+  },
+  space: {
+    anyCase: String.raw`space (?:stocks|industry|sector|companies|economy|exploration|tech(?:nology)?)|rockets|(?:setor|ind[uú]stria|economia|explora[cç][aã]o) espacial|empresas espaciais|foguetes|${AFTER_IN}space(?!\s+of(?![\p{L}]))`,
+  },
+  quantum: {
+    anyCase: String.raw`quantum comput(?:ing|ers?)|quantum (?:stocks|companies|tech(?:nology)?)|quantum(?!\s+leap)|computa[cç][aã]o qu[aâ]ntica|computadores qu[aâ]nticos|tecnologia qu[aâ]ntica`,
+  },
+  ev_autonomy: {
+    asWritten: 'EVs?',
+    anyCase:
+      'electric (?:vehicles?|cars?)|self[- ]driving(?: cars?)?|autonomous (?:driving|vehicles?|cars?)|robotaxis?|(?:carros?|ve[ií]culos?) (?:el[eé]tricos?|aut[oô]nomos?)|dire[cç][aã]o aut[oô]noma',
+  },
+  cloud_software: {
+    anyCase:
+      'cloud(?: (?:computing|software|stocks|companies))?|software(?: (?:stocks|companies))?|saas|computa[cç][aã]o em nuvem|nuvem',
+  },
+  emerging_markets: {
+    anyCase:
+      'emerging[- ]markets?(?: (?:stocks|equities))?|asian (?:stocks|markets|equities)|mercados emergentes|pa[ií]ses emergentes|[aá]sia',
+  },
+  commodities: {
+    anyCase:
+      'commodities|commodity (?:stocks|producers)|real assets|oil(?: (?:stocks|companies|and gas))?|silver|mat[eé]rias[- ]primas|ativos reais|petr[oó]leo|prata',
+  },
+  broad_market: {
+    anyCase:
+      'index funds?|the (?:whole|entire|total) (?:stock )?market|total market|fundos? de [ií]ndice|o mercado (?:todo|inteiro)|mercado como um todo',
+  },
+  retail_favourites: {
+    anyCase: 'meme[- ]?stocks?|retail favou?rites?|a[cç][oõ]es[- ]memes?',
+  },
+  defense: {
+    anyCase: String.raw`defen[cs]e (?:stocks|sector|industry|companies|contractors)|aerospace(?: (?:and|&) defen[cs]e)?|weapons|(?:setor|ind[uú]stria|empresas|a[cç][oõ]es) de defesa|ind[uú]stria b[eé]lica|armamentos?|aeroespacial|${AFTER_IN}defen[cs]e(?!\s+of(?![\p{L}]))|${AFTER_IN}defesa(?!\s+d[eoa]s?(?![\p{L}]))`,
+  },
+};
+const wholeWords = (source: string, flags: string) =>
+  new RegExp(`(?<![\\p{L}])(?:${source})(?![\\p{L}])`, flags);
+const MARKETS: [Market, RegExp[]][] = MARKET_IDS.map((market) => {
+  const { asWritten, anyCase } = MARKET_WORDS[market];
+  return [
+    market,
+    [
+      ...(asWritten ? [wholeWords(asWritten, 'gu')] : []),
+      ...(anyCase ? [wholeWords(anyCase, 'giu')] : []),
+    ],
+  ];
+});
+
+// A narrative under a negation is no ask: "no big tech", "I don't want AI", "sem petróleo", "nada de
+// defesa". The window is a few words on one line and stops at a comma or a sentence break, as for a
+// mix: "no stocks, invest in AI" still asks for AI. "Not only AI", "not just AI" and "why not AI" ask.
+const MARKET_NEGATED =
+  /(?<![\p{L}])(?:(?<!why )not(?![^\S\n]+(?:only|just)(?![\p{L}]))|never|without|don'?t|do not|avoid\p{L}*|exclud\p{L}*|except|n[aã]o|nunca|nem|sem|nada de|evit\p{L}*|exceto|fora d[eoa]s?)(?:[^\S\n]+[^\s,;.!?]+){0,3}[^\S\n]*$/iu;
+// "No" negates in English and Spanish, and is "in the" in Portuguese ("investir no S&P 500", "tudo no
+// setor de defesa"): it negates only where its sentence has no Portuguese word.
+const NO_BEFORE = /(?<![\p{L}])no(?:[^\S\n]+[^\s,;.!?]+){0,3}[^\S\n]*$/iu;
+const PORTUGUESE_WORD =
+  /(?<![\p{L}])(?:quero|queria|tenho|gosto|gostaria|prefiro|acho|vou|vai|posso|investir|invisto|aplicar|colocar|botar|apostar|dinheiro|anos?|meses|reais|d[oó]lares|meu|minha|tudo|setor|mercado|interesse|foco|a[cç][oõ]es|em|nos|nas|uma|n[aã]o|é|são|pra|para|por|que|mas|ou|se|mais|muito|bem|também|ainda|só|já)(?![\p{L}])/iu;
+// A narrative's word said of the person, not of what to hold. Where they work or live, or mean to:
+// "I work in software", "I live in Asia", "retire in Asia", "trabalho na área de software", "sou
+// engenheiro de software".
+const ASIDE_BEFORE =
+  /(?<![\p{L}])(?:work(?:s|ed|ing)?|job|career|background|degree|live[sd]?|living|based|born|retir(?:e|es|ed|ing)|mov(?:e|es|ed|ing)|travel\p{L}*|house|home|apartment|trabalh\p{L}*|emprego|carreira|formad[oa]|mor(?:o|a|amos|ei|ava|ando|ar)|viv[oe]\p{L}*|nasci|aposent\p{L}*|mud(?:ar|o|ei|ando)|viaj\p{L}*|casa|apartamento|engenheir[oa]s?|desenvolvedor(?:a|es)?|programador(?:a|es)?|pesquisador(?:a|es)?|cientistas?|consultor(?:a|es)?|analistas?)[^\S\n]+(?:(?:in|at|for|with|as|to|em|no|na|nos|nas|com|de|do|da|para)[^\S\n]+)?(?:(?:an?|the|um|uma|o|a)[^\S\n]+)?(?:(?:[aá]rea|setor|ramo|ind[uú]stria)[^\S\n]+d[eoa][^\S\n]+)?$/iu;
+// What is theirs: "my software company", "minha empresa de software".
+const MINE_BEFORE =
+  /(?<![\p{L}])(?:(?:my|our)|(?:meu|minha|nosso|nossa)[^\S\n]+(?:empresa|startup|neg[oó]cio|trabalho|emprego)[^\S\n]+(?:de|com|em))[^\S\n]+$/iu;
+// And what they are: "a software engineer", "an AI researcher".
+const ASIDE_AFTER =
+  /^[^\S\n]+(?:engineer(?:s|ing)?|developers?|programmers?|architects?|researchers?|scientists?|consultants?|analysts?)(?![\p{L}])/iu;
+
+/**
+ * Why words written from `at` up to `end` are no ask to hold what they name: `negated` ("no big
+ * tech", "sem petróleo") or `aside` ("I work in software"). Null when they read as an ask.
+ */
+export function notAnAsk(text: string, at: number, end: number): 'negated' | 'aside' | null {
+  const before = text.slice(0, at);
+  if (MARKET_NEGATED.test(before)) return 'negated';
+  if (NO_BEFORE.test(before) && !PORTUGUESE_WORD.test(sentenceBefore(text, at))) return 'negated';
+  return ASIDE_BEFORE.test(before) || MINE_BEFORE.test(before) || ASIDE_AFTER.test(text.slice(end))
+    ? 'aside'
+    : null;
+}
+
+const escaped = (words: string) => words.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Where `words` are written in the text, case and spacing aside, as whole words. */
+export function phraseIn(
+  text: string,
+  words: string,
+): { words: string; at: number; end: number }[] {
+  const tokens = words.trim().split(/\s+/).filter(Boolean).map(escaped);
+  if (tokens.length === 0) return [];
+  const pattern = new RegExp(`(?<![\\p{L}\\p{N}])${tokens.join('\\s+')}(?![\\p{L}\\p{N}])`, 'giu');
+  return [...text.matchAll(pattern)].map((m) => ({
+    words: m[0],
+    at: m.index,
+    end: m.index + m[0].length,
+  }));
 }
 
 /**
- * The nearest shared portfolios to a market, in order (gate EXPLICIT-MIX): offered when the market
- * itself has none on the person's shelf, so "no list" is never said without an offer.
+ * A narrative's words in the text, and why they are no ask where they are none: `negated`, `aside`
+ * (`notAnAsk`), or `within`, written inside a longer reading or inside a name the caller excepts.
  */
-export const MARKET_NEAREST: Record<Market, readonly string[]> = {
-  big_tech: ['the-seven', 'the-500'],
-  ai: ['the-seven', 'the-500'],
-  us_market: ['the-500', 'the-seven'],
+export type MarketMention = {
+  market: Market;
+  words: string;
+  at: number;
+  end: number;
+  skipped: 'negated' | 'aside' | 'within' | null;
 };
+
+/**
+ * Every place the text writes a narrative's words, in the order written. Where two readings share
+ * words the longer is the one read ("AI infrastructure" is not also "AI"), and words inside one of the
+ * names in `except` are not read: a shared portfolio's name ("Chips & Agents") names the portfolio.
+ * Those are kept as `within`, so a caller can tell words that are not read from words not written.
+ */
+export function marketMentionsIn(text: string, except: readonly string[] = []): MarketMention[] {
+  const taken = except.flatMap((name) => phraseIn(text, name));
+  const found = MARKETS.flatMap(([market, patterns], order) =>
+    patterns.flatMap((pattern) =>
+      [...text.matchAll(pattern)].map((m) => ({
+        market,
+        order,
+        words: m[0],
+        at: m.index,
+        end: m.index + m[0].length,
+      })),
+    ),
+  ).sort((a, b) => b.end - b.at - (a.end - a.at) || a.at - b.at || a.order - b.order);
+  const read: { at: number; end: number }[] = [...taken];
+  const out: MarketMention[] = [];
+  for (const { market, words, at, end } of found) {
+    const within = read.some((other) => other.at < end && at < other.end);
+    if (!within) read.push({ at, end });
+    out.push({ market, words, at, end, skipped: within ? 'within' : notAnAsk(text, at, end) });
+  }
+  return out.sort((a, b) => a.at - b.at || b.end - a.end);
+}
+
+/**
+ * The narratives the text asks for, with the words of the first place each is asked, in the order of
+ * `MARKET_IDS`.
+ */
+export function marketsIn(
+  text: string,
+  except: readonly string[] = [],
+): { market: Market; words: string; at: number }[] {
+  const asked = marketMentionsIn(text, except).filter((m) => m.skipped === null);
+  return MARKET_IDS.flatMap((market) => {
+    const first = asked.find((m) => m.market === market);
+    return first ? [{ market, words: first.words, at: first.at }] : [];
+  });
+}
 
 /**
  * The sentence written up to `at`: from the last sentence break or line break. A mark inside a

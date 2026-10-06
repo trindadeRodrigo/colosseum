@@ -288,6 +288,22 @@ describe('intake templates', () => {
     }
   });
 
+  // The founder's words (Oct 6) for a market, an industry or a trend the chain has nothing for.
+  it('says "nothing on your chain" as written, with and without a nearest', () => {
+    expect(ASSUMPTION_TEMPLATES.MARKET_NONE).toEqual({
+      en: 'There is no stock for “{words}” on {chain|chain} at the moment. We will be adding more soon.',
+      pt: 'No momento não há nenhuma ação para “{words}” na {chain|chain}. Vamos incluir mais em breve.',
+    });
+    expect(ASSUMPTION_TEMPLATES.MARKET_NEAREST).toEqual({
+      en: 'There is no stock for “{words}” on {chain|chain} at the moment, and we will be adding more soon. The nearest today is {nearest}, which you can choose.',
+      pt: 'No momento não há nenhuma ação para “{words}” na {chain|chain}, e vamos incluir mais em breve. O mais próximo hoje é {nearest}, que você pode escolher.',
+    });
+    expect(ASSUMPTION_TEMPLATES.MARKET_MATCHED).toEqual({
+      en: "No curated list covers “{words}” on {chain|chain}, so the plan holds the stocks matched by {by}: {value}. Matched from each stock's sourced attributes, not a curated theme.",
+      pt: 'Nenhuma lista com curadoria cobre “{words}” na {chain|chain}, então o plano fica com as ações que correspondem a {by}: {value}. Correspondência pelos atributos de cada ação, com fonte; não é um tema com curadoria.',
+    });
+  });
+
   it('names a theme filled by a filter by what it was matched by, in both languages', () => {
     expect(placeholdersOf(MATCHED_NAME.pt)).toEqual(placeholdersOf(MATCHED_NAME.en));
     for (const lang of LANGUAGES) {

@@ -4,6 +4,7 @@ import {
   type ChainId,
   GoalCurrency,
   Language,
+  type PlanSleeve,
   PlanSleeves,
 } from '@colosseum/schemas';
 import { z } from 'zod';
@@ -16,28 +17,40 @@ import {
   goalCuesIn,
   horizonsIn,
   looseRiskWordsIn,
-  MARKET_NEAREST,
-  MARKET_SLUG,
+  MARKET_IDS,
   type Market,
+  marketMentionsIn,
   marketShareIn,
-  marketsIn,
   maxYieldAskedIn,
   mentionsIn,
   mixIn,
+  NARRATIVES,
+  notAnAsk,
   openEndedIn,
   otherLanguageIn,
+  phraseIn,
   refusalsIn,
   riskCuesIn,
   splitIn,
 } from './intake-text';
+import {
+  attributeKey,
+  type FilterMatch,
+  filterOfSlug,
+  MarketFilter,
+  matchedSlug,
+  type ShelfLabel,
+} from './market-filter';
 import { PERSONAL_PARAMS } from './params';
-import { readBack } from './readback';
+import { matchedName, readBack } from './readback';
 import {
   ASSUMPTION_TEMPLATES,
   type AssumptionId,
+  FILTER_BY_WORDS,
   QUESTION_TEMPLATES,
   type QuestionId,
   render,
+  WORDS,
 } from './templates';
 import {
   HoldableClass,
@@ -51,7 +64,10 @@ import {
 // a draft of the sheet and says which fields it could not read. Everything after that is here, in pure
 // code: each value is validated on its own and dropped to null when it fails; an amount and a time
 // frame must be written in the text; a shared portfolio must be on the shelf; a refusal must be
-// written; any field where the model and the rules parser disagree is flagged and asked about. The
+// written; any field where the model and the rules parser disagree is flagged and asked about. A
+// market or an industry the person names is read by fixed words, or named by the model as one
+// attribute and its value, and code decides what holds it on the person's chain: a shared portfolio, a
+// curated label, the stocks a filter matches, or nothing, said so (gates THEMES, THEME-MATCHED). The
 // questions come from fixed templates, one per field, and the read-back the person confirms is drawn
 // from the validated sheet. The engine runs only on the sheet the person confirms.
 //
@@ -134,6 +150,30 @@ export type LimitsDraft = z.infer<typeof LimitsDraft>;
 /** A shared portfolio on the person's chain, by its slug and name. The model never sees this list. */
 export type ShelfPortfolio = { slug: string; name: string };
 
+/**
+ * LOCAL TYPE. A market, an industry or a trend the text asks for ("big tech", "semiconductors",
+ * "obesity drugs"), and what it reads to on the person's chain. Code decides it: the model names a
+ * narrative by its id or by a filter, never a portfolio, a label or an asset.
+ */
+export const IntakeNarrative = z.object({
+  /** Its id in the fixed word lists; null for one the model named by a filter. */
+  id: z.enum(MARKET_IDS).nullable(),
+  /** The person's words, as written. */
+  words: z.string(),
+  /**
+   * `portfolio`: a shared portfolio on the shelf. `label`: a curated label (gate THEMES). `matched`: a
+   * filter over the stocks' sourced attributes (gate THEME-MATCHED). `none`: nothing on the chain.
+   */
+  kind: z.enum(['portfolio', 'label', 'matched', 'none']),
+  /** The shared portfolio's slug, or the slug a theme sleeve takes; null for `none`. */
+  slug: z.string().nullable(),
+  /** For `matched`, the filter, its value as the stocks' attributes write it; null otherwise. */
+  filter: MarketFilter.nullable(),
+  /** What it is said by, in the person's language; null for `none`. */
+  name: z.string().nullable(),
+});
+export type IntakeNarrative = z.infer<typeof IntakeNarrative>;
+
 export type IntakeInput = {
   text: string;
   /** YYYY-MM: the month a time frame like "by 2031" is counted from. No clock is read here. */
@@ -146,6 +186,13 @@ export type IntakeInput = {
   /** The chain of the person's wallet (gate ONE-CHAIN); null while they have not picked one. */
   homeChain: ChainId | null;
   portfolios: ShelfPortfolio[];
+  /** The curated stock labels on the person's chain (gate THEMES). Left out: none. */
+  labels?: ShelfLabel[];
+  /**
+   * What a filter matches among the stocks the shelf lists on the person's chain: pure code over the
+   * sourced attributes, passed by a caller that has them. Left out, or null: nothing matches.
+   */
+  matchOf?: (filter: MarketFilter) => FilterMatch | null;
 };
 
 export type IntakeResult = {
@@ -169,10 +216,56 @@ export type IntakeResult = {
   assumptions: string[];
   /** What the person wants held, as read and checked (gate EXPLICIT-MIX); null when none is. */
   mix: PersonalMix | null;
+  /**
+   * The markets, industries and trends the text asks for, in the order written, each with what it
+   * reads to on the person's chain. Empty while the person has no chain: nothing is resolved then
+   * (flags `market_unresolved:<id>`).
+   */
+  narratives: IntakeNarrative[];
 };
 
 const RISKS = ['low', 'medium', 'high'] as const;
 const WHOLE_MIX_BPS = 10_000;
+
+type MarketShare = ReturnType<typeof marketShareIn>;
+
+/**
+ * The theme sleeves a list of narratives makes, each with the share of the money the text gives it:
+ * one alone with the whole is the whole plan; sums are their shares of the amount, and what is left is
+ * kept in the safe-yield sleeve (gate EXPLICIT-MIX: "that share in stocks and the rest in cash").
+ * `wait`: every share is a sum and the amount is not known yet. Null: a share is missing, one of
+ * several is "the whole", or the sums come to more than the amount. Nothing is filled in.
+ */
+function themeSleevesOf(
+  themes: { slug: string; share: MarketShare }[],
+  amountUsd: number | null,
+): PlanSleeve[] | 'wait' | null {
+  const [only] = themes;
+  if (only && themes.length === 1 && only.share?.kind === 'whole')
+    return [{ kind: 'theme', theme: only.slug, shareBps: WHOLE_MIX_BPS }];
+  const sums = themes.flatMap((t) => (t.share?.kind === 'amount' ? [t.share.value] : []));
+  if (sums.length < themes.length) return null;
+  if (amountUsd === null) return 'wait';
+  const sleeves: PlanSleeve[] = themes.map((t, i) => ({
+    kind: 'theme',
+    theme: t.slug,
+    shareBps: Math.round(((sums[i] ?? 0) / amountUsd) * WHOLE_MIX_BPS),
+  }));
+  const rest = WHOLE_MIX_BPS - sleeves.reduce((n, s) => n + s.shareBps, 0);
+  if (rest > 0) sleeves.push({ kind: 'safe_yield', shareBps: rest });
+  return PlanSleeves.safeParse(sleeves).success ? sleeves : null;
+}
+
+/** Two shares of the money said of one theme: the whole where either is, else the sums together. */
+function sharesAdded(a: MarketShare, b: MarketShare): MarketShare {
+  if (a?.kind === 'whole' || b?.kind === 'whole') return { kind: 'whole' };
+  if (a === null || b === null) return a ?? b;
+  return { kind: 'amount', value: a.value + b.value };
+}
+
+/** The share of the plan a split holds in themes, in basis points. */
+const themeBpsOf = (sleeves: readonly PlanSleeve[] | null | undefined): number =>
+  (sleeves ?? []).reduce((n, s) => (s.kind === 'theme' ? n + s.shareBps : n), 0);
 
 /**
  * The risk a mix needs, as the intake estimates it (gate EXPLICIT-MIX): the lowest risk whose cap per
@@ -221,7 +314,13 @@ const REPLY_FIELDS = {
   // Any language the text is written in (EXPLICIT-MIX): en and pt are kept, any other is read in en.
   language: z.string().trim().toLowerCase().min(2).max(12),
   /** Markets and trends named ("big tech", "AI"): read to the shelf in code, never by the model. */
-  markets: z.array(z.enum(['big_tech', 'us_market', 'ai'])),
+  markets: z.array(z.enum(MARKET_IDS)),
+  /**
+   * A market, an industry or a business the person names that `markets` has no value for ("obesity
+   * drugs"): one attribute and its value (gate THEME-MATCHED), with the person's own words. It names
+   * no company, ticker or portfolio: code looks for the stocks whose sourced attributes carry it.
+   */
+  marketFilter: MarketFilter.extend({ words: z.string().trim().min(1).max(100) }),
   /** What the person said to hold, in whole percents of the plan (gate EXPLICIT-MIX). */
   mix: z.object({
     growthPct: z.number().int().min(0).max(100),
@@ -329,6 +428,10 @@ export function runIntake(input: IntakeInput): IntakeResult {
   // What the model read as a mix and as markets (gate EXPLICIT-MIX); null with no model.
   let replyMix: PersonalMix | null = null;
   let replyMarkets: Market[] | null = null;
+  // The filter the model named for a market the fixed lists have no word for (gate THEME-MATCHED).
+  let replyFilter: (MarketFilter & { words: string }) | null = null;
+  // The shared portfolios the model says the text names, as written.
+  let namedPortfolios: string[] = [];
 
   if (input.reply === null) {
     Object.assign(draft, rules);
@@ -363,6 +466,8 @@ export function runIntake(input: IntakeInput): IntakeResult {
       flags.push(`language_other:${r.language}`);
     }
     replyMarkets = r.markets;
+    replyFilter = r.marketFilter;
+    namedPortfolios = r.portfolios ?? [];
     if (r.mix !== null) {
       const m = r.mix;
       const parsed = PersonalMix.safeParse({
@@ -561,28 +666,156 @@ export function runIntake(input: IntakeInput): IntakeResult {
       if (replyMix && !sameMix(replyMix, parsed.data)) flags.push('disagrees_with_rules:mix');
     }
   }
-  // Markets and trends ("big tech", "the S&P", "AI") read to the shelf: the market's words must be
-  // in the text. One the model names that the text has no word for is dropped and asked.
-  const marketWords = marketsIn(text);
-  for (const m of replyMarkets ?? [])
-    if (!marketWords.some((w) => w.market === m)) {
+  // Markets, industries and trends ("big tech", "the S&P", "semiconductors", "defense stocks"): the
+  // narrative's words must be in the text, as an ask. One the model names that the text has no word
+  // for is dropped and asked; one the text names only to rule it out, or in passing, is dropped. Words
+  // inside a shared portfolio's name ("Chips & Agents") name the portfolio, not a market.
+  const mentions = marketMentionsIn(text, [...portfolios.map((p) => p.name), ...namedPortfolios]);
+  const asked = mentions.filter((m) => m.skipped === null);
+  for (const m of replyMarkets ?? []) {
+    if (asked.some((w) => w.market === m)) continue;
+    const skipped = mentions.find((w) => w.market === m)?.skipped;
+    if (skipped) flags.push(`market_${skipped}:${m}`);
+    else {
       flags.push(`no_cue:market:${m}`);
       unclear.add('themes');
     }
-  // A market with no shared portfolio on the person's shelf is said in one line, never guessed.
-  // It offers the nearest portfolio the shelf has (big tech and AI: The Seven; the US market: The 500).
-  const marketsMissing: { words: string; nearest: string | null }[] = [];
-  for (const { market, words } of marketWords) {
-    const slug = MARKET_SLUG[market];
-    if (slug && portfolios.some((p) => p.slug === slug)) {
-      const themes = draft.themes ?? [];
-      if (!themes.includes(slug)) draft.themes = [...themes, slug];
-    } else {
-      flags.push(`market_not_on_shelf:${market}`);
-      const near = MARKET_NEAREST[market]
-        .map((s) => portfolios.find((p) => p.slug === s))
-        .find((p) => p !== undefined);
-      marketsMissing.push({ words, nearest: near?.name ?? null });
+  }
+  // A market the fixed lists have no word for, named by the model as a filter over the stocks' sourced
+  // attributes (gate THEME-MATCHED). The filter is held to its schema, and the person's words must be
+  // written in the text, as an ask, where no fixed list already reads them. Otherwise it is dropped
+  // and flagged, and nothing is asked about it. With no model there is none.
+  let filterAsked: { filter: MarketFilter; spans: { words: string; at: number }[] } | null = null;
+  if (replyFilter) {
+    const { words, ...filter } = replyFilter;
+    const spans = phraseIn(text, words);
+    const free = spans.filter((s) => !mentions.some((m) => m.at < s.end && s.at < m.end));
+    const asks = free.filter((s) => notAnAsk(text, s.at, s.end) === null);
+    if (matchedSlug(filter) === null) flags.push('model_invalid:marketFilter');
+    else if (spans.length === 0) flags.push('no_cue:marketFilter');
+    else if (free.length === 0) flags.push('market_covers:marketFilter');
+    else if (asks.length === 0) flags.push('market_negated:marketFilter');
+    else filterAsked = { filter, spans: asks };
+  }
+
+  // What each narrative reads to on the person's chain, in this order: its shared portfolio, where it
+  // names one and the shelf holds it; its curated label, when confirmed and holding a stock listed
+  // there (gate THEMES); a filter that matches a stock listed there (gate THEME-MATCHED: the
+  // narrative's own, or the one the model named); or nothing. Code decides, never the model.
+  const labels = input.labels ?? [];
+  const usableLabel = (slug: string): ShelfLabel | null =>
+    labels.find((l) => l.slug === slug && l.status === 'confirmed' && l.listed > 0) ?? null;
+  // The value a matched slug was matched by, as the stocks' attributes write it: the read-back says it.
+  const matchedValues: Record<string, string> = {};
+  // A filter that matches: the slug its theme sleeve takes, and the filter with the value as the
+  // attributes write it. The two writings must be one value (`attributeKey`), or nothing matches.
+  const matchFor = (filter: MarketFilter): { slug: string; filter: MarketFilter } | null => {
+    const slug = matchedSlug(filter);
+    const match = slug ? (input.matchOf?.(filter) ?? null) : null;
+    if (!slug || !match || !(match.listed > 0)) return null;
+    const kept = MarketFilter.safeParse({ by: filter.by, value: match.value });
+    if (!kept.success || attributeKey(kept.data.value) !== attributeKey(filter.value)) return null;
+    matchedValues[slug] = kept.data.value;
+    return { slug, filter: kept.data };
+  };
+  type Read = {
+    id: Market | null;
+    words: string;
+    at: number;
+    /** The share of the money the text gives it: the last one said, wherever it is named. */
+    share: MarketShare;
+    kind: IntakeNarrative['kind'];
+    slug: string | null;
+    filter: MarketFilter | null;
+  };
+  const resolve = (
+    id: Market | null,
+    named: MarketFilter | null,
+  ): Pick<Read, 'kind' | 'slug' | 'filter'> => {
+    const narrative = id ? NARRATIVES[id] : null;
+    const portfolio = narrative?.portfolio;
+    if (portfolio && portfolios.some((p) => p.slug === portfolio))
+      return { kind: 'portfolio', slug: portfolio, filter: null };
+    if (narrative && usableLabel(narrative.label))
+      return { kind: 'label', slug: narrative.label, filter: null };
+    const label = narrative ? labels.find((l) => l.slug === narrative.label) : undefined;
+    // A label that is still a proposal, or lists no stock on this chain, holds nothing: said to the
+    // operator, once, and the narrative goes on to its filter.
+    const unusable = label
+      ? `${label.status === 'confirmed' ? 'label_not_listed' : 'label_proposed'}:${label.slug}`
+      : null;
+    if (unusable && !flags.includes(unusable)) flags.push(unusable);
+    const filter = narrative ? narrative.filter : named;
+    const match = filter ? matchFor(filter) : null;
+    if (match) return { kind: 'matched', ...match };
+    const name = id ?? 'marketFilter';
+    if (filter) flags.push(`filter_no_match:${name}`);
+    flags.push(`market_not_on_shelf:${name}`);
+    return { kind: 'none', slug: null, filter: null };
+  };
+  const shareOf = (spans: { at: number }[]): MarketShare =>
+    spans
+      .map((s) => marketShareIn(text, s.at))
+      .filter((s) => s !== null)
+      .at(-1) ?? null;
+  // In the order of the fixed lists, then the model's filter. While the person has no chain nothing
+  // is resolved, and nothing is said of what their chain has: the chain is asked first.
+  const reads: Read[] = [];
+  const marketsAsked = MARKET_IDS.filter((id) => asked.some((m) => m.market === id));
+  if (input.homeChain === null) {
+    for (const id of marketsAsked) flags.push(`market_unresolved:${id}`);
+    if (filterAsked) flags.push('market_unresolved:marketFilter');
+  } else {
+    for (const id of marketsAsked) {
+      const spans = asked.filter((m) => m.market === id);
+      const [first] = spans;
+      if (first)
+        reads.push({
+          id,
+          words: first.words,
+          at: first.at,
+          share: shareOf(spans),
+          ...resolve(id, null),
+        });
+    }
+    const [first] = filterAsked?.spans ?? [];
+    if (filterAsked && first)
+      reads.push({
+        id: null,
+        words: first.words,
+        at: first.at,
+        share: shareOf(filterAsked.spans),
+        ...resolve(null, filterAsked.filter),
+      });
+  }
+  // A shared portfolio is where the plan starts from, as before.
+  for (const { kind, slug } of reads)
+    if (kind === 'portfolio' && slug && !(draft.themes ?? []).includes(slug))
+      draft.themes = [...(draft.themes ?? []), slug];
+  // The narratives a theme sleeve holds: one per label or filter, however many words name it.
+  const themed = reads
+    .filter((r) => r.kind === 'label' || r.kind === 'matched')
+    .sort((a, b) => a.at - b.at);
+  const themes: { slug: string; words: string; share: MarketShare }[] = [];
+  for (const r of themed) {
+    const same = themes.find((t) => t.slug === r.slug);
+    if (!same && r.slug) themes.push({ slug: r.slug, words: r.words, share: r.share });
+    else if (same) same.share = sharesAdded(same.share, r.share);
+  }
+  // What an answer's theme sleeve names must be on the shelf too: a curated label that holds a stock
+  // on the person's chain, or a filter that matches one there. Otherwise the answer is refused and
+  // the split asked again, as a portfolio answered off the shelf is.
+  let sleevesAnswered = answers.sleeves;
+  let sleevesRefused = false;
+  if (sleevesAnswered && input.homeChain !== null) {
+    for (const s of sleevesAnswered) {
+      if (s.kind !== 'theme' || usableLabel(s.theme)) continue;
+      const by = filterOfSlug(s.theme);
+      if (!by || matchFor({ by: by.by, value: by.key })?.slug !== s.theme) sleevesRefused = true;
+    }
+    if (sleevesRefused) {
+      flags.push('answer_not_on_shelf:sleeves');
+      sleevesAnswered = undefined;
     }
   }
 
@@ -631,16 +864,19 @@ export function runIntake(input: IntakeInput): IntakeResult {
     split.ofMoney.length > 0 ||
     split.pairs.length > 0 ||
     draft.sleeves !== null ||
-    answers.sleeves !== undefined;
+    sleevesAnswered !== undefined;
+  const toGrow = value.goal !== 'income' && value.goal !== 'protect';
+  // A market with a shared portfolio, or with nothing on the chain, is held as before: as a mix. It
+  // is not made where a theme sleeve is in play: the two are not combined (below).
   if (
+    themes.length === 0 &&
     !mixRead &&
     !('mix' in answers) &&
     !splitWritten &&
-    marketWords.length > 0 &&
-    value.goal !== 'income' &&
-    value.goal !== 'protect'
+    reads.length > 0 &&
+    toGrow
   ) {
-    const shares = marketWords.map((w) => ({ words: w.words, share: marketShareIn(text, w.at) }));
+    const shares = reads.map((r) => ({ words: r.words, share: r.share }));
     const whole = shares.find((x) => x.share?.kind === 'whole');
     const sums = shares.flatMap((x) => (x.share?.kind === 'amount' ? [x.share.value] : []));
     const total = sums.reduce((n, x) => n + x, 0);
@@ -666,8 +902,85 @@ export function runIntake(input: IntakeInput): IntakeResult {
       flags.push('market_share_unclear');
     }
   }
-  let mix: PersonalMix | null =
-    'mix' in answers ? (answers.mix ?? null) : (mixRead ?? marketMix?.mix ?? null);
+  // A narrative that reads to a curated label or to a filter is held as a theme sleeve (gates THEMES,
+  // THEME-MATCHED), by the same rule for its share: the whole, or a written sum with the rest kept in
+  // the safe-yield sleeve; with no share said, how much is asked once. A sheet holds a mix or sleeves,
+  // never both, so nothing is combined by guessing. Asked once instead, by the question already there:
+  //   - a theme beside a shared portfolio the text also names, or beside a mix the text states that
+  //     says another share for stocks, or a theme with no share: how much of the money (`mix`);
+  //   - a theme beside a split of the money the text writes: the split (`sleeves`).
+  // A mix that says the same as the themes' shares ("invest in semiconductors, all of it in stocks")
+  // is no second mechanism: the sleeves are made. On a goal of income or to protect a narrative's
+  // share is not read, as a market's is not: the theme is not held, and that is said.
+  let themeSleeves: PlanSleeve[] | null = null;
+  let themeAsk: 'mix' | 'sleeves' | null = null;
+  let themeWait = false;
+  const themesNotHeld = themes.length > 0 && !toGrow;
+  if (themesNotHeld) flags.push('themes_dropped_for_goal');
+  else if (sleevesAnswered !== undefined) {
+    // The person's own split stands as entered: a theme the text names that it leaves out is not held.
+    for (const t of themes)
+      if (!sleevesAnswered.some((x) => x.kind === 'theme' && x.theme === t.slug))
+        flags.push(`theme_not_held:${t.slug}`);
+  } else if (themes.length > 0) {
+    const [only] = themes;
+    const portfolioToo = reads.some((r) => r.kind === 'portfolio');
+    const sameAsMix = (sleeves: PlanSleeve[], m: PersonalMix | null) =>
+      m === null || (m.growthBps === themeBpsOf(sleeves) && m.dollarYieldBps + m.goldBps === 0);
+    if ('mix' in answers) {
+      // The answer to "how much for it": that share for the one theme, and the rest kept safe. An
+      // answer that holds more than stocks and cash, or that cannot be one theme's, stays a mix.
+      const m = answers.mix ?? null;
+      const to: PlanSleeve[] | null =
+        m && only && themes.length === 1 && !portfolioToo && m.growthBps > 0
+          ? [
+              { kind: 'theme', theme: only.slug, shareBps: m.growthBps },
+              ...(m.growthBps < WHOLE_MIX_BPS
+                ? [{ kind: 'safe_yield' as const, shareBps: WHOLE_MIX_BPS - m.growthBps }]
+                : []),
+            ]
+          : null;
+      if (to && sameAsMix(to, m)) {
+        themeSleeves = to;
+        flags.push('sleeves_from_mix_answer');
+      } else for (const t of themes) flags.push(`theme_not_held:${t.slug}`);
+    } else {
+      const besideSplit = splitWritten && !mixRead;
+      const made = portfolioToo || besideSplit ? null : themeSleevesOf(themes, value.amountUsd);
+      if (made === 'wait') themeWait = true;
+      else if (made && sameAsMix(made, mixRead)) {
+        themeSleeves = made;
+        draft.sleeves = made;
+        flags.push('sleeves_from_market');
+      } else if (besideSplit) {
+        themeAsk = 'sleeves';
+        unclear.add('sleeves');
+        flags.push('theme_beside_split');
+      } else {
+        themeAsk = 'mix';
+        marketShareAsk = (themes.find((t) => t.share === null) ?? only)?.words ?? null;
+        if (portfolioToo) flags.push('theme_beside_portfolio');
+        if (mixRead) flags.push('theme_beside_mix');
+        flags.push('market_share_unclear');
+      }
+    }
+  }
+  // While a theme's share is open, or the person has no chain to read a narrative on, neither a mix
+  // read beside it nor the risk is settled: the risk is not asked meanwhile, as for a market.
+  const themeOpen =
+    themeAsk !== null ||
+    themeWait ||
+    (input.homeChain === null &&
+      (marketsAsked.length > 0 || filterAsked !== null) &&
+      !mixRead &&
+      !('mix' in answers) &&
+      !splitWritten &&
+      toGrow);
+  let mix: PersonalMix | null = themeSleeves
+    ? null
+    : 'mix' in answers
+      ? (answers.mix ?? null)
+      : (mixRead ?? marketMix?.mix ?? null);
   const mixWords = (m: PersonalMix) => written?.words ?? marketMix?.words ?? mixPhrase(m, language);
   // A goal of income or to protect holds no stocks (gate PROTECT-NO-STOCKS): a mix with stocks on one
   // is asked once, as whether the goal is to grow or the plan holds no stocks. An answered goal that
@@ -685,17 +998,25 @@ export function runIntake(input: IntakeInput): IntakeResult {
       unclear.add('goal');
     }
   }
-  // With a mix, the risk is never asked: the limits follow what is held, and the read-back says so.
-  // While the goal is asked against the mix, nothing else about the risk is asked either.
-  if (mix || mixConflict || marketShareAsk !== null) {
+  const sleeves = mix ? null : (sleevesAnswered ?? themeSleeves ?? draft.sleeves);
+  // A split held in themes and a part kept safe has no part at a risk the person picks: its limits
+  // follow what it holds, as a mix's do, with the themes' share counted as stocks.
+  const themeBps = themeBpsOf(sleeves);
+  const heldInThemes = themeBps > 0 && !sleeves?.some((x) => x.kind === 'goal');
+  // With a mix, or a plan held in themes, the risk is never asked: the limits follow what is held, and
+  // the read-back says so. While the goal is asked against the mix, or a theme's share is open,
+  // nothing else about the risk is asked either.
+  if (mix || mixConflict || marketShareAsk !== null || heldInThemes || themeOpen) {
     unclear.delete('risk');
-    if (mix && !mixConflict) {
+    if (heldInThemes) {
+      value.risk = answers.risk ?? riskForMixEstimate({ growthBps: themeBps });
+      flags.push('risk_from_themes');
+    } else if (mix && !mixConflict && !themeOpen) {
       value.risk = answers.risk ?? riskForMixEstimate(mix);
       flags.push('risk_from_mix');
     }
-    if (mix && answers.sleeves === undefined) unclear.delete('sleeves');
+    if ((mix && answers.sleeves === undefined) || themeSleeves) unclear.delete('sleeves');
   }
-  const sleeves = mix ? null : (answers.sleeves ?? draft.sleeves);
   const keptSafe = sleeves?.some((x) => x.kind === 'safe_yield') === true && sleeves.length > 1;
   // An answer naming a portfolio is held to the shelf too.
   if (answers.themes) {
@@ -707,7 +1028,12 @@ export function runIntake(input: IntakeInput): IntakeResult {
   }
 
   const needed = (field: QuestionField): boolean => {
-    if (field in answers && field !== 'chains' && !(field === 'themes' && value.themes === null))
+    if (
+      field in answers &&
+      field !== 'chains' &&
+      !(field === 'themes' && value.themes === null) &&
+      !(field === 'sleeves' && sleevesRefused)
+    )
       return false;
     switch (field) {
       case 'goal':
@@ -715,14 +1041,17 @@ export function runIntake(input: IntakeInput): IntakeResult {
         return value[field] === null || unclear.has(field);
       case 'risk':
         return (
-          !mixConflict && marketShareAsk === null && (value[field] === null || unclear.has(field))
+          !mixConflict &&
+          marketShareAsk === null &&
+          !themeOpen &&
+          (value[field] === null || unclear.has(field))
         );
       case 'mix':
         return marketShareAsk !== null;
       case 'horizonMonths':
         return !horizonOpen && (value[field] === null || unclear.has(field));
       case 'sleeves':
-        return unclear.has(field);
+        return unclear.has(field) || sleevesRefused;
       case 'incomeTargetUsdMonthly':
         return value.goal === 'income' && (value[field] === null || unclear.has(field));
       case 'currency':
@@ -799,9 +1128,10 @@ export function runIntake(input: IntakeInput): IntakeResult {
   const assumptions: string[] = [];
   const assume = (id: AssumptionId, params: Record<string, Value> = {}) =>
     assumptions.push(render(ASSUMPTION_TEMPLATES[id][language], params, language));
-  // With a mix the risk is the mix's, said once below; loose risk words are not read as it.
+  // With a mix, or a plan held in themes, the risk is what is held, said once below; loose risk words
+  // are not read as it.
   const loose =
-    answers.risk === undefined && value.risk !== null && !mix
+    answers.risk === undefined && value.risk !== null && !mix && !heldInThemes
       ? looseRiskWordsIn(text, value.risk)
       : null;
   const goalPart = sleeves?.find((x) => x.kind === 'goal');
@@ -814,16 +1144,72 @@ export function runIntake(input: IntakeInput): IntakeResult {
   const exit = exits.find((e) => e.months !== limits.mayNeedInMonths);
   if (exit) assume('EXIT_TIME', { words: exit.words });
   if (flags.includes('max_yield_asked')) assume('MAX_YIELD_LATER');
-  if (mix && !mixConflict && answers.risk === undefined && value.risk !== null)
+  if (mix && !mixConflict && !themeOpen && answers.risk === undefined && value.risk !== null)
     assume('MIX_LIMITS', { words: mixWords(mix), risk: value.risk });
+  // What a theme is said by: a curated label's name, or what a filter matched by.
+  const themeName = (slug: string): string => {
+    const by = filterOfSlug(slug);
+    if (by) return matchedName(by.by, matchedValues[slug] ?? by.key, language);
+    return labels.find((l) => l.slug === slug)?.name[language] ?? slug;
+  };
+  // The same single line for a plan held in themes: in the person's words where the text names the
+  // theme, by the theme's name where an answer does.
+  if (heldInThemes && answers.risk === undefined && value.risk !== null)
+    assume('MIX_LIMITS', {
+      words: (sleeves ?? [])
+        .flatMap((x) => (x.kind === 'theme' ? [x.theme] : []))
+        .map((slug) => themes.find((t) => t.slug === slug)?.words ?? themeName(slug))
+        .join(` ${WORDS[language].and} `),
+      risk: value.risk,
+    });
   if (mixDropped) assume('MIX_DROPPED', mixDropped);
-  for (const { words, nearest } of marketsMissing)
-    if (nearest) assume('MARKET_NEAREST', { words, nearest });
-    else assume('MARKET_NONE', { words });
+  if (themesNotHeld && value.goal)
+    for (const { words } of themes) assume('MIX_DROPPED', { words, goal: value.goal });
+  const chain = input.homeChain;
+  if (chain)
+    for (const r of [...reads].sort((a, b) => a.at - b.at)) {
+      // Matched, not curated: said wherever the plan holds it, or still asks how much of it.
+      if (r.kind === 'matched' && r.filter && r.slug && !themesNotHeld) {
+        const held = sleeves?.some((x) => x.kind === 'theme' && x.theme === r.slug) === true;
+        if (held || themeAsk !== null || themeWait)
+          assume('MARKET_MATCHED', {
+            words: r.words,
+            chain,
+            by: FILTER_BY_WORDS[language][r.filter.by],
+            value: r.filter.value,
+          });
+      }
+      // Nothing on the chain for it: said in one line, with the nearest the shelf has where it has one.
+      if (r.kind === 'none') {
+        const nearest = (r.id ? NARRATIVES[r.id].nearest : [])
+          .map(
+            (slug) =>
+              portfolios.find((p) => p.slug === slug)?.name ?? usableLabel(slug)?.name[language],
+          )
+          .find((name) => name !== undefined);
+        if (nearest) assume('MARKET_NEAREST', { words: r.words, chain, nearest });
+        else assume('MARKET_NONE', { words: r.words, chain });
+      }
+    }
   if (sheet && !sheet.rules.glide && !horizonOpen && answers.rules === undefined)
     assume('GLIDE_OFFER');
 
-  const said = sheet ? readBack(sheet, portfolios) : null;
+  const said = sheet ? readBack(sheet, portfolios, { labels, matched: matchedValues }) : null;
+  const narratives: IntakeNarrative[] = [...reads]
+    .sort((a, b) => a.at - b.at)
+    .map(({ id, words, kind, slug, filter }) => ({
+      id,
+      words,
+      kind,
+      slug,
+      filter,
+      name:
+        kind === 'portfolio'
+          ? (portfolios.find((p) => p.slug === slug)?.name ?? null)
+          : slug
+            ? themeName(slug)
+            : null,
+    }));
   return {
     method,
     language,
@@ -836,6 +1222,7 @@ export function runIntake(input: IntakeInput): IntakeResult {
     readBack: said ? [...said.slice(0, -1), ...assumptions, ...said.slice(-1)] : null,
     assumptions,
     mix,
+    narratives,
   };
 }
 

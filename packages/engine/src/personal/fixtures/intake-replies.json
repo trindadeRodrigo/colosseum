@@ -415,6 +415,147 @@
       }
     }
   },
+  "narratives": {
+    "about": "MOCK. Goals that name a market, an industry or a trend (gates THEMES and THEME-MATCHED), each with a reply written by hand in the shape the intake asks the model for: `markets` by id for a narrative the fixed word lists hold, `marketFilter` (an attribute, a value and the person's own words) for one they do not. Not recorded from a live model.",
+    "cases": {
+      "obesity-drugs": {
+        "text": "I have $2,000 to invest in obesity drugs for 5 years",
+        "reply": {
+          "goal": "grow",
+          "amountUsd": 2000,
+          "incomeTargetUsdMonthly": null,
+          "horizonMonths": 60,
+          "risk": null,
+          "currency": null,
+          "chain": null,
+          "portfolios": [],
+          "language": "en",
+          "noCredit": false,
+          "cannotHold": [],
+          "unclear": [],
+          "openEnded": false,
+          "mayNeedInMonths": null,
+          "sleeves": null,
+          "markets": [],
+          "mix": null,
+          "marketFilter": {
+            "by": "keyword",
+            "value": "GLP-1",
+            "words": "obesity drugs"
+          }
+        }
+      },
+      "obesity-drugs-words-not-written": {
+        "text": "I have $2,000 to invest in obesity drugs for 5 years",
+        "reply": {
+          "goal": "grow",
+          "amountUsd": 2000,
+          "incomeTargetUsdMonthly": null,
+          "horizonMonths": 60,
+          "risk": null,
+          "currency": null,
+          "chain": null,
+          "portfolios": [],
+          "language": "en",
+          "noCredit": false,
+          "cannotHold": [],
+          "unclear": [],
+          "openEnded": false,
+          "mayNeedInMonths": null,
+          "sleeves": null,
+          "markets": [],
+          "mix": null,
+          "marketFilter": {
+            "by": "keyword",
+            "value": "GLP-1",
+            "words": "weight-loss medicines"
+          }
+        }
+      },
+      "obesity-drugs-names-a-stock": {
+        "text": "I have $2,000 to invest in obesity drugs for 5 years",
+        "reply": {
+          "goal": "grow",
+          "amountUsd": 2000,
+          "incomeTargetUsdMonthly": null,
+          "horizonMonths": 60,
+          "risk": null,
+          "currency": null,
+          "chain": null,
+          "portfolios": [],
+          "language": "en",
+          "noCredit": false,
+          "cannotHold": [],
+          "unclear": [],
+          "openEnded": false,
+          "mayNeedInMonths": null,
+          "sleeves": null,
+          "markets": [],
+          "mix": null,
+          "marketFilter": {
+            "by": "keyword",
+            "value": "GLP-1",
+            "words": "obesity drugs",
+            "pick": "LLY"
+          }
+        }
+      },
+      "pharma-in-portuguese": {
+        "text": "Quero investir US$ 2.000 em farmacêuticas por 5 anos",
+        "reply": {
+          "goal": "grow",
+          "amountUsd": 2000,
+          "incomeTargetUsdMonthly": null,
+          "horizonMonths": 60,
+          "risk": null,
+          "currency": "USD",
+          "chain": null,
+          "portfolios": [],
+          "language": "pt",
+          "noCredit": false,
+          "cannotHold": [],
+          "unclear": [],
+          "openEnded": false,
+          "mayNeedInMonths": null,
+          "sleeves": null,
+          "markets": [],
+          "mix": null,
+          "marketFilter": {
+            "by": "industry",
+            "value": "pharmaceuticals",
+            "words": "farmacêuticas"
+          }
+        }
+      },
+      "semiconductors-and-a-filter-for-them": {
+        "text": "Invest $2,000 in chips for 5 years",
+        "reply": {
+          "goal": "grow",
+          "amountUsd": 2000,
+          "incomeTargetUsdMonthly": null,
+          "horizonMonths": 60,
+          "risk": null,
+          "currency": null,
+          "chain": null,
+          "portfolios": [],
+          "language": "en",
+          "noCredit": false,
+          "cannotHold": [],
+          "unclear": [],
+          "openEnded": false,
+          "mayNeedInMonths": null,
+          "sleeves": null,
+          "markets": ["semiconductors"],
+          "mix": null,
+          "marketFilter": {
+            "by": "industry",
+            "value": "Semiconductors & Semiconductor Equipment",
+            "words": "chips"
+          }
+        }
+      }
+    }
+  },
   "conversations": {
     "first-chat-oct6": {
       "about": "MOCK. Rodrigo's first /plan-chat of Oct 6, message by message as he wrote them, with a reply written by hand for each turn as the model would read the whole conversation so far. Not recorded from a live model.",

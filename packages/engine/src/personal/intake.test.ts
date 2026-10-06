@@ -1030,7 +1030,7 @@ describe('a stated mix and a named market (gate EXPLICIT-MIX)', () => {
     expect(ai.flags).toContain('market_not_on_shelf:ai');
     expect(ai.sheet?.themes).toEqual([]);
     expect(ai.assumptions).toContain(
-      'No shared portfolio on your chain holds “AI” yet; the nearest is The Seven, which you can choose.',
+      'There is no stock for “AI” on Solana at the moment, and we will be adding more soon. The nearest today is The Seven, which you can choose.',
     );
     const sp = intake(
       'I want to grow $2,000 in the S&P 500 over 5 years, all of it in stocks',
@@ -1080,7 +1080,7 @@ describe('a stated mix and a named market (gate EXPLICIT-MIX)', () => {
     expect(ai.questions).toEqual([]);
     expect(ai.sheet).toMatchObject({ risk: 'high', themes: [], mix: { growthBps: 10_000 } });
     expect(ai.assumptions).toContain(
-      'No shared portfolio on your chain holds “AI” yet; the nearest is The Seven, which you can choose.',
+      'There is no stock for “AI” on Solana at the moment, and we will be adding more soon. The nearest today is The Seven, which you can choose.',
     );
     for (const t of [
       'invest in big tech',
@@ -1160,18 +1160,18 @@ describe('a stated mix and a named market (gate EXPLICIT-MIX)', () => {
       portfolios: noSeven,
     });
     expect(big.assumptions).toContain(
-      'No shared portfolio on your chain holds “big tech” yet; the nearest is The 500, which you can choose.',
+      'There is no stock for “big tech” on Solana at the moment, and we will be adding more soon. The nearest today is The 500, which you can choose.',
     );
     const no500 = portfolios.filter((p) => p.slug !== 'the-500');
     const us = intake('Invest $2,000 in US stocks for 5 years', r(['us_market']), {
       portfolios: no500,
     });
     expect(us.assumptions).toContain(
-      'No shared portfolio on your chain holds “US stocks” yet; the nearest is The Seven, which you can choose.',
+      'There is no stock for “US stocks” on Solana at the moment, and we will be adding more soon. The nearest today is The Seven, which you can choose.',
     );
     const none = intake('Invest $2,000 in AI for 5 years', r(['ai']), { portfolios: [] });
     expect(none.assumptions).toContain(
-      'No shared portfolio on your chain holds “AI” yet, so the plan does not start from one.',
+      'There is no stock for “AI” on Solana at the moment. We will be adding more soon.',
     );
     expect(big.questions.map((q) => q.field)).not.toContain('risk');
   });

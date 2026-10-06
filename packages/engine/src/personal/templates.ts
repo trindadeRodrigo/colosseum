@@ -945,14 +945,22 @@ export const ASSUMPTION_TEMPLATES = {
     en: 'A plan for {goal|goal} holds no stocks or crypto, so “{words}” is not held.',
     pt: 'Um plano com {goal|goal} não tem ações nem cripto, então “{words}” não é mantido.',
   },
-  // A market the shelf has no shared portfolio for: said in one line, never guessed.
+  // A market, an industry or a trend the person's chain has nothing for (no shared portfolio, no
+  // curated label that holds a stock there, no filter that matches one): said in one line, never
+  // guessed. `nearest` is the name of a shared portfolio or a label the shelf does have.
   MARKET_NONE: {
-    en: 'No shared portfolio on your chain holds “{words}” yet, so the plan does not start from one.',
-    pt: 'Nenhum portfólio compartilhado na sua rede cobre “{words}” ainda, então o plano não parte de um.',
+    en: 'There is no stock for “{words}” on {chain|chain} at the moment. We will be adding more soon.',
+    pt: 'No momento não há nenhuma ação para “{words}” na {chain|chain}. Vamos incluir mais em breve.',
   },
   MARKET_NEAREST: {
-    en: 'No shared portfolio on your chain holds “{words}” yet; the nearest is {nearest}, which you can choose.',
-    pt: 'Nenhum portfólio compartilhado na sua rede cobre “{words}” ainda; o mais próximo é {nearest}, que você pode escolher.',
+    en: 'There is no stock for “{words}” on {chain|chain} at the moment, and we will be adding more soon. The nearest today is {nearest}, which you can choose.',
+    pt: 'No momento não há nenhuma ação para “{words}” na {chain|chain}, e vamos incluir mais em breve. O mais próximo hoje é {nearest}, que você pode escolher.',
+  },
+  // No curated list for what the person named, and a filter over the stocks' sourced attributes that
+  // matches some (gate THEME-MATCHED): the plan holds those, said as matched, never as curated.
+  MARKET_MATCHED: {
+    en: "No curated list covers “{words}” on {chain|chain}, so the plan holds the stocks matched by {by}: {value}. Matched from each stock's sourced attributes, not a curated theme.",
+    pt: 'Nenhuma lista com curadoria cobre “{words}” na {chain|chain}, então o plano fica com as ações que correspondem a {by}: {value}. Correspondência pelos atributos de cada ação, com fonte; não é um tema com curadoria.',
   },
   MAX_YIELD_LATER: {
     en: 'A part that seeks the highest yield is not built yet, so the part that seeks the goal is built as a goal to grow.',
