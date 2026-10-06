@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { DISCLAIMER } from '@colosseum/schemas';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -360,6 +362,92 @@ describe('the closing', () => {
     });
     expect(closing.textContent).toContain(en.landing.closing.status['invalid-email']);
   });
+
+  it('shows the joint drawn in ink, coming together, and no photograph (CLOSING-INK)', async () => {
+    browser();
+    const host = await landing();
+    const closing = find(host, '#updates');
+    expect(closing.querySelector('img, figure, figcaption')).toBeNull();
+    const drawing = find(closing, 'svg[data-ui="closing-drawing"]');
+    expect(drawing.getAttribute('role')).toBe('img');
+    expect(drawing.getAttribute('aria-label')).toBe(en.landing.closing.drawingAlt);
+    // the three pieces, the guides that show how they meet, and nothing raster
+    for (const part of ['rail', 'post', 'nose', 'pin', 'guides'])
+      expect(drawing.querySelector(`[data-part="${part}"]`), part).not.toBeNull();
+    expect(drawing.querySelector('image, foreignObject')).toBeNull();
+    // happy-dom has no IntersectionObserver: the drawing stays exploded, the guides shown
+    expect(drawing.getAttribute('data-state')).toBe('apart');
+  });
+
+  it('stands assembled and still with reduced motion, by CSS before any script', async () => {
+    browser({ reduce: true });
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const host = await landing();
+    const drawing = find(host, 'svg[data-ui="closing-drawing"]');
+    expect(drawing.getAttribute('data-state')).toBe('still');
+    for (const part of ['rail', 'nose', 'pin']) {
+      const cls = find(drawing, `[data-part="${part}"]`).getAttribute('class') ?? '';
+      expect(cls, part).toContain('motion-reduce:!translate-none');
+      expect(cls, part).toContain('motion-reduce:transition-none');
+    }
+    expect(find(drawing, '[data-part="guides"]').getAttribute('class')).toContain(
+      'motion-reduce:opacity-0',
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('closes together once when it comes into view, where motion is welcome', async () => {
+    const seen: ((entries: { isIntersecting: boolean }[]) => void)[] = [];
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(cb: (entries: { isIntersecting: boolean }[]) => void) {
+          seen.push(cb);
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    browser();
+    const host = await landing();
+    const drawing = find(host, 'svg[data-ui="closing-drawing"]');
+    const rail = () =>
+      (find(drawing, '[data-part="rail"]') as unknown as SVGElement).style.translate;
+    expect(drawing.getAttribute('data-state')).toBe('apart');
+    expect(rail()).not.toBe('');
+    await act(async () => {
+      for (const cb of seen) cb([{ isIntersecting: true }]);
+    });
+    expect(drawing.getAttribute('data-state')).toBe('in');
+    expect(rail()).toBe('');
+    vi.unstubAllGlobals();
+  });
+});
+
+it('ships no closing photograph: nothing in the app names closing.jpg, and the file is gone', () => {
+  const web = join(import.meta.dirname, '..', '..');
+  const found: string[] = [];
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      if (name === 'node_modules' || name.startsWith('.')) continue;
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) walk(path);
+      else if (
+        /\.(tsx?|mjs|css|json)$/.test(name) &&
+        readFileSync(path, 'utf8').includes('closing.jpg')
+      )
+        found.push(path.slice(web.length + 1));
+    }
+  };
+  for (const top of ['app', 'components', 'features', 'i18n', 'e2e']) walk(join(web, top));
+  expect(found.filter((f) => !f.endsWith('landing.events.test.ts'))).toEqual([]);
+  expect(existsSync(join(web, 'public', 'landing', 'closing.jpg'))).toBe(false);
 });
 
 it('says the whole page in Portuguese, and calls its figures MOCK in the foot', async () => {
