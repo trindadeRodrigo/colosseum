@@ -114,9 +114,13 @@ describe('the proxy', () => {
     expect(nonceOf(policy)).not.toBe(nonceOf(b.headers.get(REPORT_ONLY)));
     // the page is rendered with the same policy, so Next reads the nonce from it
     expect(a.headers.get('x-middleware-request-content-security-policy-report-only')).toBe(policy);
-    // the enforced header is the frame policy's alone, as before
-    expect(a.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
+    // it sets no enforced policy on a page: next.config.ts answers who may frame it, and Next reads
+    // the nonce from an enforced policy first, so one set here with no nonce would leave the page's
+    // scripts without (the build's check reads both headers and the scripts: check-headers.mjs)
+    expect(a.headers.get('content-security-policy')).toBeNull();
     expect(at('/embed').headers.get('content-security-policy')).toBeNull();
+    // but for an address the config's rule takes for the embed by case alone
+    expect(at('/Embed').headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
     expect(at('/embed').headers.get(REPORT_ONLY)).toContain("'nonce-");
   });
 

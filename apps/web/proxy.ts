@@ -30,7 +30,11 @@ export function proxy(request: NextRequest) {
   headers.set(REPORT_ONLY, policy);
   const response = NextResponse.next({ request: { headers } });
   response.headers.set(REPORT_ONLY, policy);
-  if (!isEmbedPage(request.nextUrl.pathname))
+  // Only where the rule of next.config.ts is wrong: an address it takes for the embed that is not.
+  // On every other page that rule already answers, and an enforced policy set here would be the one
+  // Next reads the nonce from: it has none, and the page's scripts would go without.
+  const { pathname } = request.nextUrl;
+  if (/^\/embed(\/|$)/i.test(pathname) && !isEmbedPage(pathname))
     for (const { key, value } of FRAMED_BY_NOBODY) response.headers.set(key, value);
   return response;
 }
