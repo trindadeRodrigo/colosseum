@@ -20,6 +20,8 @@ import { ChoiceView } from './ChoiceView';
 import { observed } from './observed';
 import { PlanChart } from './PlanChart';
 import { PlanGate } from './PlanGate';
+import { ThemeBlock } from './ThemeBlock';
+import { themesOf, whyOf } from './themes';
 import { usePlan } from './use-plan';
 
 // The plan a goal built, before anything is bought: the goal first, then what the plan holds and why,
@@ -220,7 +222,7 @@ export function PlanScreen({ id }: { id: string }) {
                   weight: line.weightBps / 10_000,
                   weightLabel: `${share(line.weightBps)} · ${dollars(line.amountUsd, lang)}`,
                   rate: null,
-                  why: line.reasons[0]?.text,
+                  why: whyOf(line),
                   // The pane carries the plate for the whole plan, as the showcase case does.
                   mock: false,
                 }))}
@@ -228,6 +230,7 @@ export function PlanScreen({ id }: { id: string }) {
               />
             )}
           </div>
+          <ThemeBlock themes={themesOf(proposal.lines)} t={t} share={share} />
           <ExitPlanLine
             tiers={[
               {

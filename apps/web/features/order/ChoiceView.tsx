@@ -20,6 +20,8 @@ import { dollars } from '../goal/sheet';
 import { assetName, formatBps } from './amounts';
 import { observed } from './observed';
 import type { StoredPlan } from './plan-store';
+import { ThemeBlock } from './ThemeBlock';
+import { themesOf } from './themes';
 
 // The plans one goal built, side by side (gate THREE-PLANS; DESIGN-VAULT section 7): always in the
 // order Cover, Spread, Carry, none picked and none marked (section 2.4 of the method note: a default
@@ -214,6 +216,7 @@ function Candidate({
             ))}
           </ul>
         </div>
+        <ThemeBlock themes={themesOf(proposal.lines)} t={t} share={share} />
         <Link
           href={`/plan/${encodeURIComponent(plan.id)}`}
           className={buttonClass({ variant: 'link' })}

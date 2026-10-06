@@ -515,6 +515,10 @@ export const pt: Dictionary = {
     lead: (chain: string) =>
       `Montado para ${chain}, a partir dos seus limites. Nada é comprado antes de você revisar cada passo e assinar.`,
     holds: 'O que ele tem',
+    theme: {
+      share: (theme: string, share: string) => `${theme}: ${share} do plano`,
+      label: 'Temas',
+    },
     sub: (risk: string, chain: string) => `${risk} · em ${chain} · nada comprado ainda`,
     riskWord: { low: 'Risco baixo', medium: 'Risco médio', high: 'Risco alto' },
     chips: {

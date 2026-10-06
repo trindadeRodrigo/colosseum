@@ -544,6 +544,11 @@ export const en = {
     lead: (chain: string) =>
       `Built for ${chain}, from your limits. Nothing is bought until you review every step and sign it.`,
     holds: 'What it holds',
+    /** A theme sleeve (gate THEMES): the share the person set for it, and why each name is on its list. */
+    theme: {
+      share: (theme: string, share: string) => `${theme}: ${share} of the plan`,
+      label: 'Themes',
+    },
     sub: (risk: string, chain: string) => `${risk} · on ${chain} · nothing bought yet`,
     riskWord: { low: 'Low risk', medium: 'Medium risk', high: 'High risk' },
     chips: {
