@@ -4,6 +4,7 @@ import { draftFromRules } from './draft';
 import evalSet from './fixtures/goals-eval.json';
 import recorded from './fixtures/intake-replies.json';
 import {
+  conversationText,
   type IntakeAnswers,
   type IntakeInput,
   QUESTION_FIELDS,
@@ -14,6 +15,7 @@ import {
 import {
   amountInText,
   countryNamed,
+  exitTimesIn,
   goalCuesIn,
   horizonsIn,
   mentionsIn,
@@ -207,7 +209,11 @@ describe('the checks after the model, on the evaluation set (C14)', () => {
           field === 'horizonMonths' && typeof a === 'number' && typeof b === 'number'
             ? Math.abs(a - b) <= 1
             : false;
-        const differ = a !== null && b !== null && a !== b && !near;
+        // The rules parser's "medium" where the text has no word for it is its default, not a reading
+        // (Oct 6): "risco alto" is high, and asking again would make the person repeat themselves.
+        const rulesDefault =
+          field === 'risk' && b === 'medium' && !riskCuesIn(g.text).includes('medium');
+        const differ = a !== null && b !== null && a !== b && !near && !rulesDefault;
         expect(r.flags.includes(`disagrees_with_rules:${field}`), `${g.id} ${field}`).toBe(differ);
         if (differ)
           expect(
@@ -407,7 +413,7 @@ describe('questions', () => {
         for (const q of result.questions) {
           const template = QUESTION_TEMPLATES[q.template as keyof typeof QUESTION_TEMPLATES];
           expect(template, q.template).toBeDefined();
-          if (q.template !== 'amountOtherCurrency')
+          if (q.template !== 'amountOtherCurrency' && q.template !== 'sleevesMismatch')
             expect(q.text).toBe(render(template[result.language], {}, result.language));
         }
       }
@@ -533,5 +539,171 @@ describe('what the text holds, read by code', () => {
     expect(reply.risk).toBeNull();
     expect(reply.amountUsd).toBeNull();
     expect(flags).toEqual(['model_invalid:amountUsd', 'model_invalid:risk']);
+  });
+});
+
+// Rodrigo's first /plan-chat of Oct 6 (gates GLIDE-OPT-IN, OUTCOME-VIEW, MAX-YIELD-SLEEVE), replayed
+// message by message with a reply written by hand for each turn (MOCK). Each turn reads the whole
+// conversation so far through the same reader and checks: an answer in the person's words counts.
+describe('the first chat of Oct 6, replayed (MOCK replies)', () => {
+  const chat = (
+    recorded as unknown as {
+      conversations: Record<
+        string,
+        { about: string; messages: string[]; replies: unknown[]; horizonFromExitTime: unknown }
+      >;
+    }
+  ).conversations['first-chat-oct6'];
+  if (!chat) throw new Error('no conversation first-chat-oct6');
+  const turn = (n: number, reply: unknown = chat.replies[n - 1]) =>
+    runIntake({
+      text: conversationText(chat.messages[0] ?? '', chat.messages.slice(1, n)),
+      nowMonth: NOW,
+      reply,
+      homeChain: 'solana',
+      portfolios,
+    });
+
+  it('is labelled MOCK', () => {
+    expect(chat.about).toMatch(/^MOCK\./);
+  });
+
+  it('turn 1: catches 70% and "the other half" as more than the whole, and asks the split once', () => {
+    const first = turn(1);
+    expect(first.flags).toContain('split_mismatch');
+    const split = first.questions.filter((q) => q.field === 'sleeves');
+    expect(split).toHaveLength(1);
+    expect(split[0]?.template).toBe('sleevesMismatch');
+    expect(split[0]?.text).toBe(
+      'You wrote 70% and the other half, which come to more than the whole. Which split do you mean: 70% and 30%, or half and half?',
+    );
+    // "Highest yield" is read as high risk for the part that seeks it: one risk for the whole plan
+    // is not asked.
+    expect(first.questions.map((q) => q.field)).toEqual([
+      'goal',
+      'sleeves',
+      'horizonMonths',
+      'country',
+    ]);
+    expect(first.flags).toContain('max_yield_asked');
+    // The country is asked with its reason.
+    expect(first.questions.find((q) => q.field === 'country')?.text).toBe(
+      "Some assets aren't offered in every country. Where do you live?",
+    );
+  });
+
+  it('turn 2: the answers in words are read; only the country is left, and nothing answered is asked', () => {
+    const first = turn(1);
+    const second = turn(2);
+    expect(second.questions.map((q) => q.field)).toEqual(['country']);
+    const answered = ['goal', 'sleeves', 'horizonMonths'];
+    for (const f of answered) expect(second.questions.map((q) => q.field)).not.toContain(f);
+    expect(first.questions.map((q) => q.field)).toEqual(expect.arrayContaining(answered));
+    // "Can take up to 3 months to get out" is no time frame.
+    expect(second.draft.horizonMonths).toBeNull();
+    expect(
+      horizonsIn(conversationText(chat.messages[0] ?? '', chat.messages.slice(1, 2)), NOW),
+    ).toEqual([]);
+  });
+
+  it('turn 3: 70/30, grow, high risk on the part that seeks the goal, no date, no glide, Brazil', () => {
+    const third = turn(3);
+    expect(third.questions).toEqual([]);
+    const sheet = third.sheet as PersonalSheet;
+    expect(PersonalSheet.safeParse(sheet).success).toBe(true);
+    expect(sheet.sleeves).toEqual([
+      { kind: 'safe_yield', shareBps: 7000 },
+      { kind: 'goal', shareBps: 3000 },
+    ]);
+    expect(sheet).toMatchObject({
+      goal: 'grow',
+      amountUsd: 2000,
+      risk: 'high',
+      country: 'BR',
+      horizonOpen: true,
+      rules: { useHoldings: true, glide: false },
+    });
+    // No 3-month horizon and no 3-month limit for the whole plan: the 70% is kept safe by its sleeve.
+    expect(sheet.horizonMonths).not.toBe(3);
+    expect(sheet.limits?.mayNeedInMonths).toBeUndefined();
+    const said = third.readBack ?? [];
+    expect(said[0]).toBe('You set a goal to grow with $2,000, with no date set, at high risk.');
+    expect(said.join(' ')).not.toMatch(/date nears|over \d+ months/);
+    // "3 months" only in the person's own words, said back as a time to get out.
+    for (const s of said.filter((x) => /3 months/.test(x))) expect(s).toMatch(/^I read “/);
+    expect(said).toContain('I took “go crazy” as high risk for the 30% that seeks the goal.');
+    expect(said.find((s) => s.includes('as no date'))).toMatch(
+      /“(?:dont|don't) have a hard cap”|“no hard cap”/,
+    );
+    expect(
+      said.some((s) => /“can take up to 3 months to get out”|up to 3 months to get out/.test(s)),
+    ).toBe(true);
+    expect(said).toContain(
+      'The high risk is for the part that seeks the goal. The part kept safe holds dollar yield from a rate alone, or cash, whatever the risk.',
+    );
+    expect(said.at(-1)).toBe('If this is right, confirm it and the plan is made from it.');
+  });
+
+  it('a model that reads the time to get out as the time frame is overruled, and nothing is asked', () => {
+    const wrong = turn(2, chat.horizonFromExitTime);
+    expect(wrong.flags).toContain('exit_time_not_horizon');
+    expect(wrong.draft.horizonMonths).toBeNull();
+    expect(wrong.questions.map((q) => q.field)).toEqual(['country']);
+  });
+
+  it('with the model off, "no hard cap" is still no date, and the split is still asked', () => {
+    const off = turn(2, null);
+    expect(off.questions.map((q) => q.field)).not.toContain('horizonMonths');
+    expect(off.questions.map((q) => q.field)).toContain('sleeves');
+  });
+
+  it('asks no country where no asset on the shelf is blocked anywhere, and says none', () => {
+    const none = runIntake({
+      text: conversationText(chat.messages[0] ?? '', chat.messages.slice(1, 2)),
+      nowMonth: NOW,
+      reply: chat.replies[1],
+      homeChain: 'solana',
+      portfolios,
+      countryMatters: false,
+    });
+    expect(none.questions).toEqual([]);
+    expect(none.sheet?.country).toBe('ZZ');
+    expect((none.readBack ?? []).join(' ')).not.toMatch(/You live/);
+  });
+});
+
+describe('the glide is opt-in (gate GLIDE-OPT-IN, Oct 6)', () => {
+  const sheetOf = (text: string, horizonMonths: number) =>
+    runIntake({
+      text,
+      nowMonth: NOW,
+      reply: { goal: 'grow', amountUsd: 5000, horizonMonths, risk: 'high', country: 'US' },
+      homeChain: 'solana',
+      portfolios,
+      answers: { country: 'US' },
+    });
+  it('is off for a time frame alone, and offered in one sentence', () => {
+    const r = sheetOf('Grow $5,000 for the next 15 years, high risk.', 180);
+    expect(r.sheet?.rules.glide).toBe(false);
+    expect(r.sheet?.horizonMonths).toBe(180);
+    expect(r.readBack?.join(' ')).toMatch(/unless you ask for it/);
+  });
+  it('is on for a date the money is needed by, or when the person asks for it', () => {
+    expect(sheetOf('I need $5,000 to grow by 2031, high risk.', 51).sheet?.rules.glide).toBe(true);
+    expect(
+      sheetOf('Grow $5,000 over 10 years, high risk, and de-risk as the date nears.', 120).sheet
+        ?.rules.glide,
+    ).toBe(true);
+    expect(
+      sheetOf('I need this money in 5 years. Grow $5,000, high risk.', 60).sheet?.rules.glide,
+    ).toBe(true);
+  });
+  it('a time to get out is never the time frame', () => {
+    expect(horizonsIn('I may need it in 3 months', NOW)).toEqual([]);
+    expect(exitTimesIn('the rest can take up to 3 months to get out').map((e) => e.months)).toEqual(
+      [3],
+    );
+    expect(horizonsIn('posso precisar em 3 meses', NOW)).toEqual([]);
+    expect(horizonsIn('Grow $5,000 in 3 months', NOW)).toEqual([3]);
   });
 });

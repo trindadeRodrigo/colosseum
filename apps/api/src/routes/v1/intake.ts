@@ -1,4 +1,5 @@
 import {
+  conversationText,
   Disagreement,
   IntakeAnswers,
   IntakeQuestion,
@@ -28,7 +29,12 @@ export const IntakeRequest = z.object({
   text: z.string().trim().min(GOAL_TEXT.min).max(GOAL_TEXT.max),
   /** The language of the page, when the text does not settle it. */
   language: Language.optional(),
-  /** The person's answers to earlier questions, by field. */
+  /**
+   * The person's later messages, in their own words, in order ("70-30, I want to grow it", "I live in
+   * Brazil"). Each turn reads `text` with these through the same reader and checks (Oct 6).
+   */
+  followUps: z.array(z.string().trim().min(1).max(GOAL_TEXT.max)).max(10).optional(),
+  /** The person's answers to earlier questions, by field, from a form. */
   answers: IntakeAnswers.optional(),
 });
 export type IntakeRequest = z.infer<typeof IntakeRequest>;
@@ -53,8 +59,13 @@ export const IntakeResponse = z.object({
   disagreements: z.array(Disagreement),
   /** The sheet the person confirms, once nothing is left to ask. What `personalize` will run on. */
   sheet: PersonalSheet.nullable(),
-  /** What was understood, said back sentence by sentence from the sheet by templates. */
+  /**
+   * What was understood, said back sentence by sentence from the sheet by templates, with what was
+   * assumed before the last sentence.
+   */
   readBack: z.array(z.string()).nullable(),
+  /** What was assumed from the person's words ("I took 'go crazy' as high risk"), from templates. */
+  assumptions: z.array(z.string()),
 });
 export type IntakeResponse = z.infer<typeof IntakeResponse>;
 
@@ -76,14 +87,15 @@ export function registerIntakeRoute(
         summary:
           'Read a goal into a sheet, ask what it leaves open, and say back what was understood',
         description:
-          "The guided intake. Send the text of a goal, and on later turns the same text with `answers`, the person's answers by field. A model reads the text into a draft of the sheet; it never sets weights, picks assets or states a figure, and every value it gives is checked in code: an amount must be written in the text in its role (the income as a rate a month, the sum put in never as one) and in dollars (an amount in another currency is asked in dollars), a time frame must be written as one (not an age), a shared portfolio must be on the shelf of the person's chain, a refusal (\"no stocks\", \"sem crédito\") must be written, a goal, a risk or a country the text has no word for is asked with the model's value as the start, and a field the rules parser reads differently is flagged and asked. With no model (none configured, down, out of the daily budget for everyone or for this person), the rules parser fills the draft, every field it read is asked once, and the same questions are asked; `reader` says which read it; a failed call is not cached, so a later turn may be read by the model and the draft can change. `questions` holds one question per field still open or unclear, in the person's language, from fixed templates. Once none is left, `sheet` is the validated sheet on the chain of the person's wallet and `readBack` says it back sentence by sentence, from templates, never from the model. Nothing is built or stored: the person's confirm sends `sheet` to `POST /v1/baskets/personalize`. The plan that follows is not advice: see its `disclaimer`.",
+          'The guided intake. Send the text of a goal, and on later turns the same text with the person\'s later messages in `followUps` (their own words, read again with the text by the same reader and checks) or `answers` (by field, from a form). A model reads the text into a draft of the sheet; it never sets weights, picks assets or states a figure, and every value it gives is checked in code: an amount must be written in the text in its role (the income as a rate a month, the sum put in never as one) and in dollars (an amount in another currency is asked in dollars), a time frame must be written as one (not an age), a shared portfolio must be on the shelf of the person\'s chain, a refusal ("no stocks", "sem crédito") must be written, a goal, a risk or a country the text has no word for is asked with the model\'s value as the start, a time to get the money out ("can take up to 3 months to get out") is never the time frame, a goal with no date ("no hard cap") is built with no date and said back so, a split ("70% safe, 30% to risk") must be written and add up to the whole, and a field the rules parser reads differently is flagged and asked. The glide is off unless the text asks for it or names a date the money is needed by. The country is asked only where an asset on the chain is not offered somewhere. With no model (none configured, down, out of the daily budget for everyone or for this person), the rules parser fills the draft, every field it read is asked once, and the same questions are asked; `reader` says which read it; a failed call is not cached, so a later turn may be read by the model and the draft can change. `questions` holds one question per field still open or unclear, in the person\'s language, from fixed templates. Once none is left, `sheet` is the validated sheet on the chain of the person\'s wallet and `readBack` says it back sentence by sentence, from templates, never from the model. Nothing is built or stored: the person\'s confirm sends `sheet` to `POST /v1/baskets/personalize`. The plan that follows is not advice: see its `disclaimer`.',
         body: IntakeRequest,
         response: { 200: IntakeResponse, default: OrderError },
       },
     },
     async (req): Promise<IntakeResponse> => {
       const principal = signedIn(req);
-      const { text, language, answers } = req.body;
+      const { language, answers } = req.body;
+      const text = conversationText(req.body.text, req.body.followUps);
       const nowMonth = monthOf(deps.now());
       const { chain } = await personChain(deps.db, principal);
       const portfolios = chain
@@ -92,6 +104,16 @@ export function registerIntakeRoute(
             name: f.meta.name,
           }))
         : [];
+      // The country is asked only where an asset on the chain's shelf is not offered somewhere. When
+      // the shelf cannot be read, it is asked.
+      let countryMatters = true;
+      if (chain)
+        try {
+          const assets = await deps.chains.get(chain).adapter.listAssets();
+          countryMatters = assets.some((a) => a.blockedCountries.length > 0);
+        } catch {
+          countryMatters = true;
+        }
       const read: { reply: unknown; why?: string } = model
         ? await model.read(text, nowMonth, language, principal.userId ?? principal.ip)
         : { reply: null, why: 'model_not_configured' };
@@ -103,6 +125,7 @@ export function registerIntakeRoute(
         answers,
         homeChain: chain,
         portfolios,
+        countryMatters,
       });
       const byModel = read.reply !== null && model !== null;
       return {
@@ -120,6 +143,7 @@ export function registerIntakeRoute(
         disagreements: result.disagreements,
         sheet: result.sheet,
         readBack: result.readBack,
+        assumptions: result.assumptions,
       };
     },
   );

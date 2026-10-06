@@ -19,6 +19,9 @@ export type Mention = {
   timeFrame: boolean;
   /** As written. */
   text: string;
+  /** Where it is written: from `at` up to `end`. */
+  at: number;
+  end: number;
 };
 
 const THOUSAND = 10 * 10 * 10;
@@ -120,6 +123,16 @@ const AGE_AFTER = /^\s*(?:old|of age|de idade)\b/iu;
 const inTimeFrame = (text: string, at: number, end: number) =>
   TIME_FRAME_BEFORE.test(text.slice(0, at)) && !AGE_AFTER.test(text.slice(end));
 
+// A time to get the money out, not a date for the goal (gate GLIDE-OPT-IN, Oct 6): "can take up to 3
+// months to get out", "I may need it in 3 months", "posso precisar em 3 meses", "resgatar em até 3
+// meses". Read in the words just before and just after the duration.
+const EXIT_BEFORE =
+  /(?:may|might|could|can)\s+need\b[^.;!?]{0,25}$|\b(?:take|takes|wait)\s+(?:up to|at most|no more than)?\s*$|\bup to\s*$|(?:posso|pode ser que eu|talvez eu?)\s+precis\p{L}*[^.;!?]{0,25}$|(?:sacar|resgatar|tirar|retirar)\p{L}*[^.;!?]{0,15}$/iu;
+const EXIT_AFTER =
+  /^\s*(?:\S+\s+){0,2}?(?:to\s+(?:get\s+(?:it\s+|the money\s+)?out|exit|withdraw|cash out|sell|sell out|take (?:it )?out)|para\s+(?:sair|sacar|resgatar|tirar|retirar|vender))\b/iu;
+const exitAround = (text: string, at: number, end: number) =>
+  EXIT_BEFORE.test(text.slice(0, at)) || EXIT_AFTER.test(text.slice(end));
+
 /** Every number in the text, read with its currency and what it counts. */
 export function mentionsIn(text: string): Mention[] {
   const out: Mention[] = [];
@@ -144,7 +157,7 @@ export function mentionsIn(text: string): Mention[] {
       kind === 'amount' &&
       (PER_MONTH_AFTER.test(text.slice(end)) || PER_MONTH_BEFORE.test(text.slice(0, at)));
     const timeFrame = kind === 'year' || (kind === 'duration' && inTimeFrame(text, at, end));
-    out.push({ value, currency, kind, perMonth, timeFrame, text: m[0].trim() });
+    out.push({ value, currency, kind, perMonth, timeFrame, text: m[0].trim(), at, end });
   }
   return out;
 }
@@ -209,7 +222,7 @@ const monthsBetween = (fromMonth: string, year: number): number => {
 export function horizonsIn(text: string, nowMonth: string): number[] {
   const found = new Set<number>();
   for (const m of mentionsIn(text)) {
-    if (!m.timeFrame) continue;
+    if (!m.timeFrame || exitAround(text, m.at, m.end)) continue;
     if (m.kind === 'duration') {
       const unit = /(\p{L}+)$/u.exec(m.text)?.[1] ?? '';
       if (UNIT_MONTH.test(unit)) found.add(m.value);
@@ -229,15 +242,121 @@ export function horizonsIn(text: string, nowMonth: string): number[] {
     // "$300 a month" is a rate, not a time frame; "a year" alone is read as one.
     if (/^an?$/i.test(m[1] ?? '') && !UNIT_YEAR.test(m[2] ?? '')) continue;
     const at = m.index ?? 0;
-    if (!inTimeFrame(text, at, at + m[0].length)) continue;
+    if (!inTimeFrame(text, at, at + m[0].length) || exitAround(text, at, at + m[0].length))
+      continue;
     found.add(UNIT_YEAR.test(m[2] ?? '') ? n * 12 : n);
   }
   for (const m of half) {
     const at = m.index ?? 0;
-    if (inTimeFrame(text, at, at + m[0].length)) found.add(12 / 2);
+    const end = at + m[0].length;
+    if (inTimeFrame(text, at, end) && !exitAround(text, at, end)) found.add(12 / 2);
   }
   return [...found].sort((a, b) => a - b);
 }
+
+/**
+ * The times to get the money out the text writes, in months, with the words around each: "can take up
+ * to 3 months to get out", "I may need it in 3 months". These are a limit on how liquid the plan is,
+ * never its time frame: `horizonsIn` leaves them out (gate GLIDE-OPT-IN, Oct 6).
+ */
+export function exitTimesIn(text: string): { months: number; words: string }[] {
+  const out: { months: number; words: string }[] = [];
+  for (const m of mentionsIn(text)) {
+    if (m.kind !== 'duration' || !exitAround(text, m.at, m.end)) continue;
+    const unit = /(\p{L}+)$/u.exec(m.text)?.[1] ?? '';
+    const months = UNIT_MONTH.test(unit) ? m.value : UNIT_YEAR.test(unit) ? m.value * 12 : null;
+    if (months !== null) out.push({ months, words: phraseAround(text, m.at, m.end) });
+  }
+  for (const m of text.matchAll(WORD_DURATION)) {
+    const n = wordNumber(m[1] ?? '');
+    const at = m.index ?? 0;
+    const end = at + m[0].length;
+    if (!Number.isFinite(n) || /^an?$/i.test(m[1] ?? '') || !exitAround(text, at, end)) continue;
+    out.push({
+      months: UNIT_YEAR.test(m[2] ?? '') ? n * 12 : n,
+      words: phraseAround(text, at, end),
+    });
+  }
+  return out;
+}
+
+/** The clause a figure is written in, trimmed to a few words either side: what the person said. */
+function phraseAround(text: string, at: number, end: number): string {
+  const before =
+    text
+      .slice(0, at)
+      .split(/[.;!?,]/)
+      .at(-1) ?? '';
+  const after = text.slice(end).split(/[.;!?,]/)[0] ?? '';
+  // A few words either side, as the regular expressions count them.
+  const left = /(?:\S+\s+){0,3}\S+$/u.exec(before.trim())?.[0] ?? '';
+  const right = /^\S+(?:\s+\S+){0,3}/u.exec(after.trim())?.[0] ?? '';
+  return [left, text.slice(at, end).trim(), right].filter(Boolean).join(' ');
+}
+
+// No date for the goal (gate GLIDE-OPT-IN, Oct 6): "no hard cap", "no date", "open-ended", "sem prazo".
+const OPEN_ENDED =
+  /(?<![\p{L}])(?:no (?:hard )?(?:cap|deadline|date|end date|time limit|horizon|time frame|timeframe|rush)|(?:do not|don't|dont|do n't) have (?:a |any )?(?:hard )?(?:cap|deadline|date|end date|time limit|horizon|time frame|timeframe)|open[- ]ended|indefinitely|no particular (?:date|time)|sem (?:prazo|data|pressa|horizonte)|n[aã]o tenho (?:um )?(?:prazo|data|horizonte)|prazo indefinido|por tempo indeterminado)(?![\p{L}])/iu;
+/** The words that say the goal has no date, as written; null when the text has none. */
+export const openEndedIn = (text: string): string | null => OPEN_ENDED.exec(text)?.[0] ?? null;
+
+// The glide is opt-in (gate GLIDE-OPT-IN, Oct 6): on only when the text asks to take less risk as time
+// passes, or names a date by which the money is needed ("I need it by 2031", "preciso em 3 anos").
+const DERISK =
+  /(?<![\p{L}])(?:de-?risk\p{L}*|glide|less risk (?:as|over) time|safer as (?:the date|it|time)\p{L}* (?:nears|gets closer|approaches|goes on)|reduce (?:the )?risk over time|(?:ir )?reduzi\p{L}* (?:o )?risco (?:com o tempo|ao longo do tempo)|menos risco (?:com o tempo|perto da data))(?![\p{L}])/iu;
+const NEED_BY =
+  /(?<![\p{L}])(?<!(?:may|might|could|can)\s)(?:need|needs|needed)\s+(?:(?:it|this|that|the|my|them)\s+)?(?:(?:money|cash|amount|sum)\s+)?(?:by|in|within|before)\s+\S+|(?<!(?:posso|talvez)\s)preciso\s+(?:(?:dele|disso|do dinheiro|desse dinheiro|deste dinheiro)\s+)?(?:em|at[eé]|antes de)\s+\S+/iu;
+/** Whether the text asks for the glide, or names a date by which the money is needed. */
+export function glideAskedIn(text: string, nowMonth: string): boolean {
+  if (DERISK.test(text)) return true;
+  if (mentionsIn(text).some((m) => m.kind === 'year' && m.timeFrame)) return true;
+  const need = NEED_BY.exec(text);
+  return need !== null && horizonsIn(text.slice(need.index), nowMonth).length > 0;
+}
+
+// The person's split of the plan in so many words (gate SLEEVES): "70-30", "70/30", "70% and 30%".
+const PAIR = /(?<!\d)(\d{1,2})\s*(?:%\s*)?(?:-|\/|x|e|and|to)\s*(\d{1,2})\s*%?(?!\d)/giu;
+const HALF =
+  /(?<![\p{L}])(?:the other half|other half|a outra metade|outra metade|half|metade)(?![\p{L}])/iu;
+/**
+ * The shares the text writes, as percents of the whole: pairs that add up to a whole ("70-30"), and
+ * every percent written. `mismatch` is a percent written beside "the other half" that, with the half,
+ * is not the whole ("70% ... the other half" is 120%): the split is asked, never guessed.
+ */
+export function splitIn(text: string): {
+  pairs: [number, number][];
+  percents: number[];
+  /** Whether "half" or "metade" is written. */
+  half: boolean;
+  mismatch: { pct: number } | null;
+} {
+  const whole = 100;
+  const pairs: [number, number][] = [];
+  for (const m of text.matchAll(PAIR)) {
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    if (a + b === whole) pairs.push([a, b]);
+  }
+  const percents = mentionsIn(text)
+    .filter((m) => m.kind === 'percent')
+    .map((m) => m.value);
+  const half = whole / 2;
+  const halfWritten = HALF.test(text);
+  const off = halfWritten ? percents.find((p) => p !== half && p < whole) : undefined;
+  return {
+    pairs,
+    percents,
+    half: halfWritten,
+    mismatch: off !== undefined ? { pct: off } : null,
+  };
+}
+
+// "Highest yield possible" for a part of the plan: the max-yield objective (gate MAX-YIELD-SLEEVE, Oct
+// 6), not built yet. The intake flags it so what reads the answer can say what was done instead.
+const MAX_YIELD =
+  /(?<![\p{L}])(?:highest|maximum|max|most|best)\s+(?:possible\s+)?(?:yield|return|returns|rate)|(?:maior|m[aá]ximo)\s+(?:rendimento|retorno|rentabilidade)|rendimento m[aá]ximo(?![\p{L}])/iu;
+/** Whether the text asks for the highest yield possible. */
+export const maxYieldAskedIn = (text: string): boolean => MAX_YIELD.test(text);
 
 // A refusal written in the text: "no stocks", "sem ações", "without crypto", "no credit".
 const NEG = String.raw`(?:\bno\b|\bnot?\s+(?:any|in)\b|\bwithout\b|\bzero\b|\bsem\b|\bnada de\b|\bn[aã]o\s+quero\b|\bfora\b|\bexclud\w*\b|\bavoid\w*\b|\bevit\w*\b)`;
@@ -288,9 +407,33 @@ const RISK_CUES: Record<'low' | 'medium' | 'high', RegExp> = {
 /** The goals the text has a word for. */
 export const goalCuesIn = (text: string) =>
   (Object.keys(GOAL_CUES) as (keyof typeof GOAL_CUES)[]).filter((g) => GOAL_CUES[g].test(text));
-/** The risks the text has a word for. */
+// Words that say a risk loosely (Oct 6): read as that risk, and said back as an assumption ("I took
+// 'go crazy' as high risk"), never taken in silence.
+const LOOSE_RISK_CUES: Record<'low' | 'medium' | 'high', RegExp | null> = {
+  low: cue(
+    String.raw`as safe as possible|t[aã]o seguro quanto poss[ií]vel|o mais seguro poss[ií]vel`,
+  ),
+  medium: null,
+  high: cue(
+    String.raw`go crazy|going crazy|crazy|yolo|all in|risk it|highest (?:possible )?(?:yield|return)|as much risk as possible|maximum risk|max risk|arriscar tudo|pode arriscar|loucura|chutar o balde|risco m[aá]ximo`,
+  ),
+};
+/** The risks the text has a word for, plain or loose. */
 export const riskCuesIn = (text: string) =>
-  (Object.keys(RISK_CUES) as (keyof typeof RISK_CUES)[]).filter((r) => RISK_CUES[r].test(text));
+  (Object.keys(RISK_CUES) as (keyof typeof RISK_CUES)[]).filter(
+    (r) => RISK_CUES[r].test(text) || LOOSE_RISK_CUES[r]?.test(text) === true,
+  );
+/**
+ * The loose words a risk was read from, as written, when the text has no plain word for it: "go
+ * crazy" for high. Null when a plain word says it ("high risk", "risco alto") or none does.
+ */
+export function looseRiskWordsIn(text: string, risk: 'low' | 'medium' | 'high'): string | null {
+  const loose = LOOSE_RISK_CUES[risk];
+  if (RISK_CUES[risk].test(text) || !loose) return null;
+  // The last one written: on a later turn, the person's own answer.
+  const all = [...text.matchAll(new RegExp(loose.source, 'giu'))];
+  return all.at(-1)?.[0] ?? null;
+}
 
 const plain = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 const NEGATED_BEFORE =

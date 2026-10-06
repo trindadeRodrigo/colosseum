@@ -43,6 +43,9 @@ export const INTAKE_REPLY_SCHEMA = {
     'noCredit',
     'cannotHold',
     'unclear',
+    'openEnded',
+    'mayNeedInMonths',
+    'sleeves',
   ],
   properties: {
     goal: { anyOf: [{ type: 'string', enum: ['grow', 'income', 'protect'] }, { type: 'null' }] },
@@ -78,8 +81,28 @@ export const INTAKE_REPLY_SCHEMA = {
           'country',
           'currency',
           'themes',
+          'sleeves',
         ],
       },
+    },
+    openEnded: { type: 'boolean' },
+    mayNeedInMonths: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
+    sleeves: {
+      anyOf: [
+        {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['kind', 'sharePct'],
+            properties: {
+              kind: { type: 'string', enum: ['goal', 'safe_yield'] },
+              sharePct: { type: 'integer' },
+            },
+          },
+        },
+        { type: 'null' },
+      ],
     },
   },
 } as const;
@@ -89,7 +112,11 @@ const SYSTEM = [
   'Fill a field only with what the text says. When the text does not say it, give null. Never guess, never pick a value for the person, never suggest anything.',
   'goal: grow (make the money grow), income (earn a monthly income from it) or protect (keep it safe). risk: low, medium or high, only as the person says it ("conservative" is low, "aggressive" is high).',
   'amountUsd: the money the person puts in, as written, only when it is in dollars or has no currency; a sum in another currency is null and its currency goes in currency. incomeTargetUsdMonthly: the income a month the person wants, in dollars. Do not convert currencies.',
-  'horizonMonths: the time frame in months (years times 12; "by YEAR" counts to January of that year from the current month given).',
+  'horizonMonths: the time frame of the goal in months (years times 12; "by YEAR" counts to January of that year from the current month given). A time to get the money out is not a time frame: "can take up to 3 months to get out", "I may need it in 3 months" go in mayNeedInMonths when they cover the whole plan, and nowhere when they cover one part; never in horizonMonths.',
+  'openEnded: true only when the person says the goal has no date ("no hard cap", "no deadline", "open-ended", "sem prazo"); then horizonMonths is null.',
+  'sleeves: when the person splits the money into a part kept safe and easy to take out and a part that seeks a return ("70% safe and liquid, 30% to risk"), two items: kind safe_yield for the safe part and kind goal for the rest, each sharePct as written, adding up to 100. When the shares they write do not add up to 100 ("70% here and the other half there"), give null and put sleeves in unclear. No split: null.',
+  'risk with a split: the risk of the goal part ("as low as possible for the 70%, go crazy for the rest" is high). The safe part needs none.',
+  "The text may hold several messages: the goal, then the person's answers to questions. Read them together; a later message corrects an earlier one.",
   'currency: the ISO code of the currency the goal is counted in (USD, BRL, EUR), only when written. country: ISO two-letter code of where the person lives, only when written. chain: a blockchain the person names.',
   'portfolios: the names of shared portfolios the person names ("starting from The Seven"), as written. noCredit: true only if the person rules out credit or lending. cannotHold: classes the person rules out ("no stocks", "sem ações").',
   'language: the language the text is written in. unclear: every field the text mentions in a way you cannot read with confidence.',
