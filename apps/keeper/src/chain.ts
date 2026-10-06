@@ -1,4 +1,4 @@
-import type { BuiltTx, ChainAdapter, ChainErrorCode, VaultState } from '@colosseum/schemas';
+import type { BuiltTx, ChainAdapter, ChainErrorCode, Trade, VaultState } from '@colosseum/schemas';
 
 // What the keeper needs of a chain, whichever chain it is: the adapter of DESIGN-VAULT 3.2 and one
 // read of a vault as the chain's keeper path would find it. Solana's reader and the EVM reader each
@@ -15,6 +15,8 @@ export type KeeperPositionView = {
   reference: string | null;
   /** Why the asset itself cannot be traded now; null when it can. */
   trade: string | null;
+  /** EVM: false for an asset taken off the factory's list, which can be sold and never bought. */
+  listed?: boolean;
 };
 
 /** A vault as the chain's keeper path would find it now, all of it read at one moment. */
@@ -35,6 +37,11 @@ export type KeeperView = {
 
 export type KeeperAdapter = ChainAdapter & {
   getKeeperContext(vault: string): Promise<KeeperView | null>;
+  /**
+   * A keeper leg, on EVM pinned to `nonce` where it is given: the nonce of an earlier leg of the vault
+   * that the node does not hold, so that of the two at most one can land. Solana takes no nonce.
+   */
+  buildKeeperLeg(vault: string, trade: Trade, options?: { nonce?: number }): Promise<BuiltTx>;
   /** Solana only: writes what a vault's accounts hold into what the program records. */
   buildSyncBalances?(vault: string): Promise<BuiltTx>;
 };

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { callAs, loadEvmKey, type ScriptCall } from '@colosseum/chain-evm/server';
 import { createEvmRpc, EvmDeploymentRecord, VAULT_FACTORY_ABI } from '@colosseum/chain-evm/vault';
+import { assertTestnetChainId, assertTestnetNode } from './node';
 
 // Robinhood Chain test network (46630) only. A dry run unless `--send`:
 //
@@ -38,8 +39,12 @@ const env = (name: string) => {
 async function main() {
   if (!target || !/^0x[0-9a-fA-F]{40}$/.test(target)) throw new Error('name the address');
   const to = target as `0x${string}`;
-  const rpc = createEvmRpc(env('ROBINHOOD_RPC_URL'));
+  const url = env('ROBINHOOD_RPC_URL');
   const chainId = RECORD.evmChainId;
+  // The record and the node are both asked: 46630, and never a mainnet.
+  assertTestnetChainId(chainId);
+  await assertTestnetNode(url);
+  const rpc = createEvmRpc(url);
   const run = async (who: Parameters<typeof callAs>[0], call: Parameters<typeof callAs>[3]) => {
     const hash = await callAs(who, rpc, chainId, call, send);
     console.log(

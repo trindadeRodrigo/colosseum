@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { callAs, loadEvmKey } from '@colosseum/chain-evm/server';
 import { createEvmRpc, EvmDeploymentRecord } from '@colosseum/chain-evm/vault';
+import { assertTestnetChainId, assertTestnetNode } from './node';
 
 // Funds a fresh test wallet on Robinhood Chain's test network (46630) only, for a buy: the deployer
 // mints <usd> tUSDG to <address> (granting itself the minter role on tUSDG first, as the token's admin,
@@ -75,9 +76,12 @@ const env = (name: string) => {
 async function main() {
   if (!target || !/^0x[0-9a-fA-F]{40}$/.test(target)) throw new Error('name the address');
   const to = target as `0x${string}`;
-  const rpc = createEvmRpc(env('ROBINHOOD_RPC_URL'));
+  const url = env('ROBINHOOD_RPC_URL');
   const chainId = RECORD.evmChainId;
-  if (chainId !== 46_630) throw new Error('this script funds a wallet on 46630 only');
+  // The record and the node are both asked: 46630, and never a mainnet.
+  assertTestnetChainId(chainId);
+  await assertTestnetNode(url);
+  const rpc = createEvmRpc(url);
   const run = async (who: Parameters<typeof callAs>[0], call: Parameters<typeof callAs>[3]) => {
     const hash = await callAs(who, rpc, chainId, call, send);
     console.log(

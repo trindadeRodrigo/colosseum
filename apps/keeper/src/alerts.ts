@@ -52,3 +52,16 @@ export function notifierFromEnv(
     },
   };
 }
+
+/**
+ * `KEEPER_LOW_GAS`, read once at start: below it the keeper's own balance is an alert. A whole number
+ * of the chain's smallest unit (wei, lamports), or `fallback` when unset; anything else stops the
+ * keeper at start rather than in a round.
+ */
+export function lowGasFromEnv(env: NodeJS.ProcessEnv, fallback: bigint): bigint {
+  const value = env.KEEPER_LOW_GAS?.trim();
+  if (!value) return fallback;
+  if (!/^\d+$/.test(value))
+    throw new Error("KEEPER_LOW_GAS is not a whole number of the chain's smallest unit");
+  return BigInt(value);
+}

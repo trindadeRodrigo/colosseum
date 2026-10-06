@@ -86,6 +86,11 @@ export function nextTrade(
       skipped.push(`${asset}: ${position.trade}`);
       continue;
     }
+    // The contract buys only what is listed: a delisted asset is sold, and never bought.
+    if (t.buy === asset && position.listed === false) {
+      skipped.push(`${asset}: taken off the list, so it is sold and never bought`);
+      continue;
+    }
     if (!held(t)) {
       skipped.push(`${asset}: ${REVERTED}`);
       continue;

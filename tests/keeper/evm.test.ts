@@ -69,6 +69,8 @@ describe.skipIf(!FORK_URL)('the keeper on a copy of Robinhood Chain test network
       priceDevBps: 200,
     });
     const targets = ctx?.positions.filter((p) => p.targetBps > 0) ?? [];
+    // every target is one of the vault's targets() and on the factory's list
+    expect(targets.every((p) => p.target && p.listed)).toBe(true);
     expect(targets.map((p) => p.asset).sort()).toEqual([id('tnvda'), id('tqqq'), id('tspy')]);
     for (const p of targets) {
       expect([p.asset, p.keeperOn, p.reference, p.trade, p.needsSync]).toEqual([
@@ -166,5 +168,30 @@ describe.skipIf(!FORK_URL)('the keeper on a copy of Robinhood Chain test network
     expect([...memory.reverted].some((k) => k.startsWith(`${w.vault} v${active.version} `))).toBe(
       false,
     );
+  });
+  it('forgets a leg the node refused at its preflight: nothing was sent, and the vault is free', async () => {
+    const w = await start();
+    await w.later(3_700);
+    const plan = of(await round(w, { dryRun: true }), w.vault);
+    const asset = /for (robinhood:[a-z]+)/.exec(plan.reason)?.[1];
+    if (!asset) throw new Error(`no leg planned: ${plan.reason}`);
+    // The price jumps 3% between the build and the relay: the relay's own preflight refuses the leg,
+    // so it never reaches the node. The price goes back afterwards.
+    const line = of(
+      await round(w, {
+        send: async (wire) => {
+          await w.movePrice(asset, 300);
+          try {
+            await w.adapter.relay(wire);
+          } finally {
+            await w.movePrice(asset, -291);
+          }
+        },
+      }),
+      w.vault,
+    );
+    expect(line.reason).toContain('was refused before it was sent');
+    expect(memory.inFlight.has(w.vault)).toBe(false);
+    expect([...memory.reverted].some((k) => k.endsWith(`->${asset}`))).toBe(false);
   });
 });

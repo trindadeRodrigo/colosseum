@@ -108,10 +108,14 @@ export async function runRound(
   /**
    * The fate of the leg sent earlier for this vault, if there is one. A leg that landed or expired
    * frees the vault, one that reverted joins the reverted set, one that is still open holds the vault.
+   * On EVM, an open leg the node does not hold frees the vault too, and the next leg takes its nonce
+   * (`pin`): of the two, at most one can land.
    */
-  async function earlier(vault: string): Promise<{ hold: string | null; note: string | null }> {
+  async function earlier(
+    vault: string,
+  ): Promise<{ hold: string | null; note: string | null; pin: number | null }> {
     const sent = memory.inFlight.get(vault);
-    if (!sent) return { hold: null, note: null };
+    if (!sent) return { hold: null, note: null, pin: null };
     let status: TxStatus;
     try {
       status = await adapter.track(sent.txId, sent.validUntil ?? undefined);
@@ -131,17 +135,30 @@ export async function runRound(
         });
         if (fate.state === 'gone') status = { status: 'expired', explorerUrl: status.explorerUrl };
         else if (fate.state === 'landed') status = await adapter.track(fate.txId);
+        else if ((await adapter.carries(sent.txId, sent.messageHash)) === 'unseen')
+          // Open, and the node has never seen it: it was turned away, or it is somewhere the node
+          // cannot see. It stays remembered until a leg on its nonce replaces it.
+          return {
+            hold: null,
+            note: `leg ${sent.txId} is not held by the node; the next leg takes its nonce ${sent.nonce}`,
+            pin: sent.nonce,
+          };
       }
     } catch (e) {
-      return { hold: `the fate of leg ${sent.txId} could not be read (${codeOf(e)})`, note: null };
+      return {
+        hold: `the fate of leg ${sent.txId} could not be read (${codeOf(e)})`,
+        note: null,
+        pin: null,
+      };
     }
     if (status.status === 'pending')
-      return { hold: `leg ${sent.txId} is not settled yet`, note: null };
+      return { hold: `leg ${sent.txId} is not settled yet`, note: null, pin: null };
     if (status.status === 'reverted') memory.reverted.add(sent.key);
     memory.inFlight.delete(vault);
     await save();
     return {
       hold: null,
+      pin: null,
       note:
         status.status === 'reverted'
           ? `leg ${sent.txId} reverted: ${status.error?.code ?? ''}; it is not sent again`
@@ -310,7 +327,11 @@ export async function runRound(
       }
       let leg: BuiltTx;
       try {
-        leg = await adapter.buildKeeperLeg(vault, trade);
+        leg = await adapter.buildKeeperLeg(
+          vault,
+          trade,
+          before.pin !== null ? { nonce: before.pin } : undefined,
+        );
       } catch (e) {
         // The builder simulated it and the program would refuse it: no fee is spent.
         if (!(e instanceof ChainError)) throw e;
@@ -343,6 +364,16 @@ export async function runRound(
         await send(signed.wire, leg);
         status = await settle(signed.txId, validUntil);
       } catch (e) {
+        if (e instanceof ChainError && e.unsent) {
+          // Refused before it left this process (the node's preflight): it can never land.
+          memory.inFlight.delete(vault);
+          await save();
+          stop(
+            `the leg ${trade.sell} -> ${trade.buy} was refused before it was sent: ${e.code}; nothing left the keeper`,
+            !e.retryable,
+          );
+          continue;
+        }
         stop(
           `the leg ${trade.sell} -> ${trade.buy} was sent and no answer settled it (${codeOf(e)}); its fate is read before the vault is planned again`,
           true,

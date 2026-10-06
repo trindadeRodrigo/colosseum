@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { notifierFromEnv } from '../../apps/keeper/src/alerts';
+import { lowGasFromEnv, notifierFromEnv } from '../../apps/keeper/src/alerts';
 
 // The keeper's alerts beyond its log: a Discord webhook and a health-check ping, both optional, their
 // URLs never in anything it says.
@@ -70,5 +70,14 @@ describe('the keeper’s notifier', () => {
     ]);
     expect(said.join(' ')).not.toContain('secret-token');
     expect(said.join(' ')).not.toContain('hc.example');
+  });
+});
+
+describe('the low-gas threshold', () => {
+  it('is read once at start: a whole number, the default when unset, and anything else refused', () => {
+    expect(lowGasFromEnv({}, 7n)).toBe(7n);
+    expect(lowGasFromEnv({ KEEPER_LOW_GAS: ' 1000 ' }, 7n)).toBe(1000n);
+    for (const bad of ['0.0005', '1e15', '-1', 'lots'])
+      expect(() => lowGasFromEnv({ KEEPER_LOW_GAS: bad }, 7n)).toThrow(/not a whole number/);
   });
 });

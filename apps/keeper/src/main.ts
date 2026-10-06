@@ -23,7 +23,7 @@ import {
   SolanaDeploymentRecord,
 } from '@colosseum/chain-solana/vault';
 import { type BuiltTx, parseChainConfigs } from '@colosseum/schemas';
-import { notifierFromEnv } from './alerts';
+import { lowGasFromEnv, notifierFromEnv } from './alerts';
 import type { KeeperAdapter } from './chain';
 import { loadMemory, lockState, saveMemory } from './memory';
 import { runRound, type VaultLine } from './round';
@@ -141,6 +141,8 @@ async function robinhood(): Promise<Wired> {
   const network = process.env.CHAIN_NETWORK_ROBINHOOD?.trim() || 'testnet';
   if (network !== 'testnet' && network !== 'local')
     throw new Error('the keeper runs Robinhood Chain on its test network or a local copy only');
+  // 0.0005 ETH
+  const low = lowGasFromEnv(process.env, 500_000_000_000_000n);
   const name = `robinhood-${network}`;
   const file = `${DEPLOYMENTS}${name}.json`;
   if (!existsSync(file)) throw new Error(`no deploy record for CHAIN_NETWORK_ROBINHOOD=${network}`);
@@ -179,7 +181,7 @@ async function robinhood(): Promise<Wired> {
     stateName: `${record.network}-${record.evmChainId}-${record.contracts.factory}`,
     gas: async () => ({
       have: await rpc.getBalance({ address: key.address }),
-      low: BigInt(process.env.KEEPER_LOW_GAS?.trim() || '500000000000000'),
+      low,
       unit: 'wei',
     }),
   };
@@ -189,6 +191,8 @@ async function robinhood(): Promise<Wired> {
 async function solana(): Promise<Wired> {
   const network = process.env.CHAIN_NETWORK_SOLANA?.trim() || 'testnet';
   if (network === 'mainnet') throw new Error('the keeper does not run on mainnet in this slot');
+  // 0.05 SOL
+  const low = lowGasFromEnv(process.env, 50_000_000n);
   const name =
     network === 'testnet' ? 'solana-devnet' : network === 'local' ? 'solana-local' : null;
   const file = name ? `${DEPLOYMENTS}${name}.json` : null;
@@ -242,7 +246,7 @@ async function solana(): Promise<Wired> {
     stateName: `${record.network}-${await rpc.getGenesisHash().send()}`,
     gas: async () => ({
       have: BigInt((await rpc.getBalance(key.address).send()).value),
-      low: BigInt(process.env.KEEPER_LOW_GAS?.trim() || '50000000'),
+      low,
       unit: 'lamports',
     }),
   };

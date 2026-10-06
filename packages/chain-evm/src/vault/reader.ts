@@ -168,6 +168,10 @@ export type EvmKeeperPosition = {
   asset: AssetId;
   token: Address;
   targetBps: number;
+  /** One of the vault's `targets()`, a dropped asset kept at weight zero included: the contract values it on every leg. */
+  target: boolean;
+  /** On the factory's list: an asset taken off it can be sold and never bought (`isAsset`). */
+  listed: boolean;
   /** What the vault holds: balances are read, not tracked, so there is never a record to sync. */
   raw: string;
   needsSync: false;
@@ -811,10 +815,13 @@ export function createEvmVaultReader(options: EvmVaultReaderOptions): EvmVaultRe
           onFactory(m, 'isVault', [address]) as Promise<boolean>,
         ]);
         if (!isVault) return null;
-        const [state, platform] = await Promise.all([
+        const [state, platform, snap] = await Promise.all([
           readVault(m, address, onchain),
           platformAt(m),
+          onVault(m, address, 'snapshot') as Promise<Snapshot>,
         ]);
+        // The vault's targets, the cash token last left out: those the contract values on every leg.
+        const targetTokens = new Set(snap.tokens.slice(0, -1).map(lower));
         const tokenOfId = (id: AssetId) =>
           (byId.get(id)?.address ?? unlistedToken(id) ?? ZERO_ADDRESS) as Address;
         const seen = (r: Round, decimals: number) =>
@@ -830,7 +837,7 @@ export function createEvmVaultReader(options: EvmVaultReaderOptions): EvmVaultRe
             const a = await assetOf(m, token);
             const feed = orNull(a.feed);
             const average = orNull(a.averageFeed);
-            const [priceRound, averageRound, effectiveAt, paused] = await Promise.all([
+            const [priceRound, averageRound, effectiveAt, paused, listed] = await Promise.all([
               feed ? roundOf(m, feed) : Promise.resolve(null),
               average ? roundOf(m, average) : Promise.resolve(null),
               a.scheduleSelector === '0x00000000'
@@ -839,12 +846,15 @@ export function createEvmVaultReader(options: EvmVaultReaderOptions): EvmVaultRe
               orNull(a.pauseProbe) && a.pauseSelector !== '0x00000000'
                 ? wordOf(m, lower(a.pauseProbe), a.pauseSelector)
                 : Promise.resolve(null),
+              onFactory(m, 'isAsset', [token]) as Promise<boolean>,
             ]);
             const lastKeeperAt = BigInt(p.lastKeeperAt ?? 0);
             return {
               asset: p.asset,
               token,
               targetBps: p.targetBps,
+              target: targetTokens.has(lower(token)),
+              listed,
               raw: p.raw,
               needsSync: false,
               keeperOn: (a.flags & 1) === 1,
@@ -897,8 +907,9 @@ export function createEvmVaultReader(options: EvmVaultReaderOptions): EvmVaultRe
           );
           sequencerDown = up === null || up[1] !== 0n || up[2] > m.time || m.time - up[2] < 3_600n;
         }
-        // A target the vault holds that cannot be valued stops every leg, as it does in the contract.
-        const held = positions.find((p) => p.targetBps > 0 && p.raw !== '0' && p.reference);
+        // A target the vault holds that cannot be valued stops every leg, as it does in the contract:
+        // every one of its `targets()`, a dropped asset kept at weight zero included.
+        const held = positions.find((p) => p.target && p.raw !== '0' && p.reference);
         return {
           vault: state,
           rules: {
