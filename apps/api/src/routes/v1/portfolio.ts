@@ -48,15 +48,17 @@ export function registerPortfolioRoute(scope: FastifyInstance, deps: OrderDeps) 
         tags: ['portfolio'],
         summary: "The signed-in person's vaults on every chain, with holdings, prices and drift",
         description:
-          'Read from every chain this server runs that the person holds a wallet for, whatever their current chain is: each plan lives on its own chain, and `chains` has an entry for each, in the server’s order. The wallets are those of the identity token. `driftBps` is the weight of a position minus its target. The entry and every price carry `provenance`; anything that is not `live` is a test network or MOCK.',
+          'Read from every chain this server runs that the person holds a wallet for, whatever their current chain is: each plan lives on its own chain, and `chains` has an entry for each, in the server’s order. A chain switched off here is left out, and when every chain of the person’s is off the answer is 503 `CHAIN_UNAVAILABLE`. The wallets are those of the identity token. `driftBps` is the weight of a position minus its target. The entry and every price carry `provenance`; anything that is not `live` is a test network or MOCK.',
         response: { 200: PortfolioResponse, default: OrderError },
       },
     },
     async (req) => {
       const principal = signedIn(req);
-      // Every chain the person can hold a vault on, not only the current one (CHAIN-SWITCH).
-      const held = new Set(chainsHeld(principal));
-      const entries = deps.chains.active().filter((e) => held.has(e.chain));
+      // Every chain the person can hold a vault on, not only the current one (CHAIN-SWITCH). A chain
+      // switched off here is left out; when every one of theirs is off, the first one's refusal says so.
+      const held = chainsHeld(principal);
+      const entries = deps.chains.active().filter((e) => held.includes(e.chain));
+      if (!entries.length && held[0]) deps.chains.get(held[0]);
       const chains = await refusing(() =>
         Promise.all(entries.map((entry) => chainPortfolio(deps, entry, principal.wallets))),
       );

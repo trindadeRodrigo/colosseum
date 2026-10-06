@@ -111,8 +111,9 @@ describe('the current chain, where new plans are made (gates ONE-CHAIN, CHAIN-SW
   });
 
   it('stands whatever wallets are linked later, until the person switches', async () => {
-    // A person signs in with an outside Solana wallet and buys.
+    // A person signs in with an outside Solana wallet, which names their chain, and buys.
     const sol = await someone('solana');
+    expect(await me(sol)).toMatchObject({ chain: 'solana', chainSource: 'wallet' });
     await fund(sol);
     expect((await settleAll(sol, await order(sol, { amountUsd: 100 }))).status).toBe('done');
     expect(await vaultsOf(sol)).toEqual([['solana', 1]]);

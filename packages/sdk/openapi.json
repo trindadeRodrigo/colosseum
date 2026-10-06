@@ -7675,7 +7675,7 @@
       "get": {
         "summary": "The signed-in person's vaults on every chain, with holdings, prices and drift",
         "tags": ["portfolio"],
-        "description": "Read from every chain this server runs that the person holds a wallet for, whatever their current chain is: each plan lives on its own chain, and `chains` has an entry for each, in the server’s order. The wallets are those of the identity token. `driftBps` is the weight of a position minus its target. The entry and every price carry `provenance`; anything that is not `live` is a test network or MOCK.",
+        "description": "Read from every chain this server runs that the person holds a wallet for, whatever their current chain is: each plan lives on its own chain, and `chains` has an entry for each, in the server’s order. A chain switched off here is left out, and when every chain of the person’s is off the answer is 503 `CHAIN_UNAVAILABLE`. The wallets are those of the identity token. `driftBps` is the weight of a position minus its target. The entry and every price carry `provenance`; anything that is not `live` is a test network or MOCK.",
         "security": [
           {
             "accessToken": [],

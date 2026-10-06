@@ -1505,6 +1505,11 @@ describe('refusals', () => {
     expect(solanaOnly.legs.every((l) => l.chain === 'solana')).toBe(true);
     const portfolio = PortfolioResponse.parse((await get(sol, '/v1/portfolio', off.app)).json());
     expect(portfolio.chains.map((c) => c.chain)).toEqual(['solana']);
+    // A person with wallets of both families reads the chain that is on (CHAIN-SWITCH).
+    const both = await someone('passkey');
+    const theirs = await get(both, '/v1/portfolio', off.app);
+    expect(theirs.statusCode, theirs.body).toBe(200);
+    expect(PortfolioResponse.parse(theirs.json()).chains.map((c) => c.chain)).toEqual(['solana']);
     await off.app.close();
   });
 
@@ -1566,7 +1571,7 @@ describe('refusals', () => {
     const cases: [object, number, RegExp][] = [
       [{ proposalId: undefined }, 400, /names the plan/],
       [{ proposalId: '4b1c0f0e-3f8e-4d0e-9d2b-0d7a3a6b1c2d' }, 404, /no plan/],
-      [{ proposalId: plans.robinhood }, 422, /made for Robinhood Chain/],
+      [{ proposalId: plans.robinhood }, 422, /no evm address, and this plan is on Robinhood Chain/],
       [{ proposalId: undefined, family: 'core' }, 404, /no shared portfolio with that slug/],
       [{ amountUsd: 0.0001 }, 422, /less than one cent/],
     ];
