@@ -6,10 +6,10 @@ import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { readLinkedPlan, recallPlan, rememberPlan, type StoredPlan } from './plan-store';
 import { chainReady, onMock } from './readiness';
 
-// What the plan screen and the buy screen stand on: the person, their chain, and the plan with this id
-// as this tab kept it, or, for a plan made from a link (an agent's, AGT-2), as the API reads it back.
-// A plan lives on one chain (gate ONE-CHAIN): one made for another chain than the person's is not
-// offered for buying.
+// What the plan screen and the buy screen stand on: the person, the plan with this id as this tab kept
+// it, or, for a plan made from a link (an agent's, AGT-2), as the API reads it back, and the plan's
+// chain. A plan lives on one chain (gate ONE-CHAIN) and is bought there, whatever the person's current
+// chain is (CHAIN-SWITCH). One on a chain no wallet of theirs signs on is not offered for buying.
 
 export type PlanState =
   | { kind: 'loading' }
@@ -17,10 +17,14 @@ export type PlanState =
   /** The person's chain is not known, or not chosen: the account says why. */
   | { kind: 'no-chain' }
   | { kind: 'missing' }
-  | { kind: 'other-chain'; planChain: ChainId; chain: ChainId }
+  /** On a chain no wallet of the person's signs on. */
+  | { kind: 'unsignable'; planChain: ChainId }
+  /** Spread over more than one chain: made before a plan lived on one. */
+  | { kind: 'split' }
   | {
       kind: 'ready';
       plan: StoredPlan;
+      /** The plan's chain. */
       chain: ChainId;
       /** The chain runs on the mock. */
       mock: boolean;
@@ -60,14 +64,14 @@ export function usePlan(id: string): PlanState {
     return { kind: 'signed-out' };
   if (!plan) return { kind: 'missing' };
   if (account.status !== 'ready') return { kind: 'no-chain' };
-  const chain = account.chain;
-  const planChain = plan.proposal.sheet.chains[0] ?? plan.proposal.recipes[0]?.chain;
+  const chain = plan.proposal.sheet.chains[0] ?? plan.proposal.recipes[0]?.chain ?? account.chain;
   if (
-    planChain !== chain ||
+    plan.proposal.sheet.chains.length > 1 ||
     plan.proposal.recipes.some((r) => r.chain !== chain) ||
     plan.proposal.lines.some((l) => l.chain !== chain)
   )
-    return { kind: 'other-chain', planChain: planChain ?? chain, chain };
+    return { kind: 'split' };
+  if (!account.options.includes(chain)) return { kind: 'unsignable', planChain: chain };
   const mock = onMock(port, chain);
   return {
     kind: 'ready',

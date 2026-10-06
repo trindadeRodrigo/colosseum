@@ -7,6 +7,7 @@ import { EmbedShell } from '../../components/ui/EmbedShell';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { API } from '../../lib/api';
+import { fillFromWords, preRead } from '../goal/pre-read';
 import { GOAL_TEXT, ReadGoalError, readGoal } from '../goal/read-goal';
 import { dollars, fieldsOfDraft, goalSentence, type SheetFields } from '../goal/sheet';
 import { apiUrl } from '../wallet/api-url';
@@ -46,9 +47,12 @@ export function EmbedGoal({ style }: { style: CSSProperties }) {
     if (!typed || busy) return;
     setBusy(true);
     setFailure(null);
+    // the goal's own words fill what the reader leaves, as on the goal screen
+    const said = preRead(typed);
     try {
       const reading = await readGoal(call, typed, lang);
-      setRead({ text: typed, fields: fieldsOfDraft(reading.draft, lang) });
+      const { draft } = fillFromWords(reading.draft, reading.guessed, said);
+      setRead({ text: typed, fields: fieldsOfDraft(draft, lang) });
     } catch (e) {
       setFailure(
         e instanceof ReadGoalError && e.kind === 'too_short' ? words.tooShort : words.readFailure,
