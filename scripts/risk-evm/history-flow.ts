@@ -1,6 +1,8 @@
 // The swaps of a walk (history.ts) as risk_pool_flow rows: the hourly file of every pool, the swaps
 // bucketed by hour with `@colosseum/risk`'s own `addSwap` and `poolFlow`, and the row per pool, regime
-// and window under `flow-0.1`, the same aggregation Solana's Step 5b rows use. No I/O.
+// and window under `flow-0.1`, the same aggregation Solana's Step 5b rows use. No I/O: the caller hands
+// in a reader of each pool's swaps, read twice (the hourly prices need every pool's hours before any
+// pool's swaps can be valued), so fifteen million swaps never sit in memory at once.
 import {
   addSwap,
   FLOW_METHOD_VERSION,
@@ -11,6 +13,7 @@ import {
 } from '@colosseum/risk';
 import type { ChainConfig } from './config';
 import {
+  accumulateHour,
   dollarPoolOf,
   flowSwap,
   HISTORY_METHOD,
@@ -18,6 +21,7 @@ import {
   type HourRow,
   hourlyRows,
   hoursOf,
+  newHourAccumulator,
   type PoolDecimals,
   type SwapRow,
 } from './history';
@@ -69,74 +73,91 @@ export type FlowBuild = {
   dataTo: string;
 };
 
+/** A swap's place in the chain, as a number: dedupes a resumed walk without a string per swap. */
+const place = (s: Pick<SwapRow, 'block' | 'logIndex'>) => s.block * 1_000_000 + s.logIndex;
+
 /**
- * Every pool's rows. `span` is the walk's: hourly rows are written for each of its hours, so `hours`
- * counts the hours of the regime in the window, swaps or not. A swap seen twice (a walk resumed after a
- * crash) counts once. `to` is the newest swap of the walk, as in Solana's import.
+ * Every pool's rows. `swapsOf` yields one pool's swaps (any order) and is called twice per pool.
+ * `span` is the walk's: hourly rows are written for each of its hours, so `hours` counts the hours of
+ * the regime in the window, swaps or not. A swap seen twice (a walk resumed after a crash) counts once.
+ * `to` is the newest swap of the walk, as in Solana's import.
  */
 export function buildFlowRows(inp: {
   chain: ChainConfig;
   pools: HistoryPool[];
   decimals: Map<string, PoolDecimals>;
-  swaps: SwapRow[];
+  swapsOf: (pool: string) => Iterable<SwapRow>;
   span: { fromT: number; headT: number };
   regimeAt: (t: number) => Regime;
   fetchedAt: Date;
 }): FlowBuild {
-  const seen = new Set<string>();
-  const swaps: SwapRow[] = [];
-  const duplicates = new Map<string, number>();
-  for (const s of inp.swaps) {
-    const key = `${s.tx}/${s.logIndex}`;
-    if (seen.has(key)) {
-      duplicates.set(s.pool, (duplicates.get(s.pool) ?? 0) + 1);
-      continue;
-    }
-    seen.add(key);
-    swaps.push(s);
-  }
   const hours = hoursOf(inp.span.fromT, inp.span.headT);
   const dollarPools = dollarPoolOf(inp.pools, inp.chain.dollar.address);
+  // first pass: the last swap of each hour of each pool, and the newest swap of the walk
+  const acc = newHourAccumulator();
+  const duplicates = new Map<string, number>();
+  const counted = new Map<string, number>();
+  let newest = 0;
+  for (const p of inp.pools) {
+    const seen = new Set<number>();
+    let n = 0;
+    let d = 0;
+    for (const s of inp.swapsOf(p.address)) {
+      if (s.pool !== p.address) continue;
+      const k = place(s);
+      if (seen.has(k)) {
+        d++;
+        continue;
+      }
+      seen.add(k);
+      n++;
+      accumulateHour(acc, s);
+      if (s.t > newest) newest = s.t;
+    }
+    counted.set(p.address, n);
+    duplicates.set(p.address, d);
+  }
   const hourly = hourlyRows({
     pools: inp.pools,
     decimals: inp.decimals,
-    swaps,
+    swaps: acc,
     hours,
     dollar: inp.chain.dollar.address,
   });
-  const newest = swaps.reduce((a, s) => Math.max(a, s.t), 0);
   const to = new Date((newest || inp.span.headT) * 1000).toISOString();
-  const rows: FlowRow[] = [];
-  const perPool: FlowBuild['perPool'] = [];
-  const byPool = new Map<string, SwapRow[]>();
-  for (const s of swaps) {
-    let l = byPool.get(s.pool);
+  const hourlyByPool = new Map<string, HourRow[]>();
+  for (const h of hourly) {
+    let l = hourlyByPool.get(h.pool);
     if (!l) {
       l = [];
-      byPool.set(s.pool, l);
+      hourlyByPool.set(h.pool, l);
     }
-    l.push(s);
+    l.push(h);
   }
+  // second pass: each swap valued at its hour's quote, into the buckets, then the rows
+  const rows: FlowRow[] = [];
+  const perPool: FlowBuild['perPool'] = [];
   for (const p of inp.pools) {
     const d = inp.decimals.get(p.address);
     const hs = new Map<string, FlowHour>(
-      hourly
-        .filter((h) => h.pool === p.address)
-        .map((h) => [
-          h.hour,
-          {
-            hour: h.hour,
-            regime: inp.regimeAt(Date.parse(h.hour) / 1000),
-            quoteUsd: h.quoteUsd,
-            depth2pctSellUsd: null,
-          },
-        ]),
+      (hourlyByPool.get(p.address) ?? []).map((h) => [
+        h.hour,
+        {
+          hour: h.hour,
+          regime: inp.regimeAt(Date.parse(h.hour) / 1000),
+          quoteUsd: h.quoteUsd,
+          depth2pctSellUsd: null,
+        },
+      ]),
     );
     const buckets = new Map<string, FlowBucket>();
-    const mine = byPool.get(p.address) ?? [];
-    let unpriced = 0;
+    const seen = new Set<number>();
     let withoutSide = 0;
-    for (const s of mine) {
+    for (const s of inp.swapsOf(p.address)) {
+      if (s.pool !== p.address) continue;
+      const k = place(s);
+      if (seen.has(k)) continue;
+      seen.add(k);
       let f: { t: number; side: 'sell' | 'buy'; quote: number } | null = null;
       if (d)
         try {
@@ -173,6 +194,7 @@ export function buildFlowRows(inp: {
         provenance: 'live',
       });
     const all = aggs.find((g) => g.regime === 'all' && g.window === '28d');
+    let unpriced = 0;
     for (const b of buckets.values()) unpriced += b.unpriced;
     const quoteStockHasDollarPool = !p.otherIsStock || dollarPools.has(p.other);
     const reason = !d
@@ -193,7 +215,7 @@ export function buildFlowRows(inp: {
       symbol: p.symbol,
       quote: p.otherSymbol ?? p.other,
       kind: p.kind,
-      swaps: mine.length,
+      swaps: counted.get(p.address) ?? 0,
       duplicates: duplicates.get(p.address) ?? 0,
       unpriced,
       withoutSide,
@@ -203,3 +225,17 @@ export function buildFlowRows(inp: {
   }
   return { rows, hourly, perPool, dataTo: to };
 }
+
+/** A reader over an array, for tests and small walks. */
+export const swapsFromArray = (swaps: SwapRow[]) => {
+  const byPool = new Map<string, SwapRow[]>();
+  for (const s of swaps) {
+    let l = byPool.get(s.pool);
+    if (!l) {
+      l = [];
+      byPool.set(s.pool, l);
+    }
+    l.push(s);
+  }
+  return (pool: string): Iterable<SwapRow> => byPool.get(pool) ?? [];
+};

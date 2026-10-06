@@ -29,7 +29,7 @@ import {
   swapFilters,
   swapSides,
 } from '../scripts/risk-evm/history';
-import { buildFlowRows } from '../scripts/risk-evm/history-flow';
+import { buildFlowRows, swapsFromArray } from '../scripts/risk-evm/history-flow';
 import { type Cursor, runHistory } from '../scripts/risk-evm/history-run';
 import { replayRpc, requestKey } from '../scripts/risk-evm/replay';
 import type { RpcReply, RpcRequest } from '../scripts/risk-evm/rpc';
@@ -552,7 +552,7 @@ describe('prices by the hour and the quote in dollars', () => {
       chain: robinhood,
       pools,
       decimals,
-      swaps: [...sells, sells[0] as SwapRow], // one swap twice: a resumed walk
+      swapsOf: swapsFromArray([...sells, sells[0] as SwapRow]), // one swap twice: a resumed walk
       span,
       regimeAt: regimeOfT,
       fetchedAt: new Date('2026-10-06T00:00:00Z'),
@@ -616,7 +616,7 @@ describe('prices by the hour and the quote in dollars', () => {
       chain: robinhood,
       pools: [pa],
       decimals,
-      swaps: [hooked, sold],
+      swapsOf: swapsFromArray([hooked, sold]),
       span: { fromT: h0 - 3600, headT: h0 + 3600 },
       regimeAt: regimeOfT,
       fetchedAt: new Date('2026-10-06T00:00:00Z'),
@@ -646,7 +646,7 @@ describe('the recording end to end', () => {
       chain: robinhood,
       pools: fx.pools,
       decimals,
-      swaps,
+      swapsOf: swapsFromArray(swaps),
       span: { fromT: cursor.fromT, headT: cursor.headT },
       regimeAt: regimeOfT,
       fetchedAt: new Date(fx.recordedAt),
@@ -718,7 +718,7 @@ describe('the recording end to end', () => {
         },
       ],
       decimals: new Map([[pool, { decimals0: 6, decimals1: 18 }]]),
-      swaps: [],
+      swapsOf: swapsFromArray([]),
       span: { fromT: 1_791_000_000, headT: 1_791_003_600 },
       regimeAt: regimeOfT,
       fetchedAt: new Date('2026-10-06T00:00:00Z'),

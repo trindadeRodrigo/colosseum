@@ -71,19 +71,29 @@ for (const p of pools) {
   if (d) decimals.set(p.address, d);
 }
 
-// every swap of every pool; the builder drops a swap seen twice
-const swaps: SwapRow[] = [];
+// each pool's swaps are read from its day files when the builder asks, twice, one pool at a time
 const swapsDir = join(root, 'swaps');
 let files = 0;
-for (const p of pools) {
-  const d = join(swapsDir, p.address);
-  if (!existsSync(d)) continue;
-  for (const f of readdirSync(d)
-    .filter((x) => x.endsWith('.jsonl'))
-    .sort()) {
-    files++;
-    for (const l of readFileSync(join(d, f), 'utf8').split('\n'))
-      if (l) swaps.push(JSON.parse(l) as SwapRow);
+const dayFiles = (pool: string) => {
+  const d = join(swapsDir, pool);
+  return existsSync(d)
+    ? readdirSync(d)
+        .filter((x) => x.endsWith('.jsonl'))
+        .sort()
+        .map((f) => join(d, f))
+    : [];
+};
+for (const p of pools) files += dayFiles(p.address).length;
+function* swapsOf(pool: string): Generator<SwapRow> {
+  for (const f of dayFiles(pool)) {
+    const text = readFileSync(f, 'utf8');
+    let i = 0;
+    while (i < text.length) {
+      const j = text.indexOf('\n', i);
+      const end = j < 0 ? text.length : j;
+      if (end > i) yield JSON.parse(text.slice(i, end)) as SwapRow;
+      i = end + 1;
+    }
   }
 }
 
@@ -97,7 +107,7 @@ const built = buildFlowRows({
   chain,
   pools,
   decimals,
-  swaps,
+  swapsOf,
   span,
   regimeAt: regimeOfT,
   fetchedAt: new Date(),
@@ -139,9 +149,10 @@ console.log(
     dataTo: built.dataTo,
     pools: pools.length,
     poolsWithSwaps: built.perPool.filter((r) => r.swaps > 0).length,
+    withoutSide: built.perPool.reduce((a, r) => a + r.withoutSide, 0),
     poolsWithoutDecimals: pools.length - decimals.size,
     swapFiles: files,
-    swaps: swaps.length,
+    swaps: built.perPool.reduce((a, r) => a + r.swaps, 0),
     duplicatesDropped: built.perPool.reduce((a, r) => a + r.duplicates, 0),
     unpricedSwaps: unpriced.reduce((a, r) => a + r.unpriced, 0),
     unpricedByReason: unpriced.reduce<Record<string, number>>((a, r) => {

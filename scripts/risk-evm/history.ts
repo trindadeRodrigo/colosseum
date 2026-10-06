@@ -421,11 +421,42 @@ export type HourRow = {
   depth2pctSellUsd: null;
 };
 
+/** What the hourly prices need of a pool's swaps: the last swap of each hour and how many there were. */
+export type HourAccumulator = {
+  last: Map<string, Map<number, { block: number; logIndex: number; sqrt: string }>>;
+  counts: Map<string, Map<number, number>>;
+};
+export const newHourAccumulator = (): HourAccumulator => ({ last: new Map(), counts: new Map() });
+
+/** Adds one swap to the accumulator, so a walk of millions of swaps is read once, pool by pool. */
+export function accumulateHour(
+  acc: HourAccumulator,
+  s: Pick<SwapRow, 'pool' | 't' | 'block' | 'logIndex' | 'sqrtPriceX96'>,
+): void {
+  const h = hourStart(s.t);
+  let m = acc.last.get(s.pool);
+  if (!m) {
+    m = new Map();
+    acc.last.set(s.pool, m);
+  }
+  const have = m.get(h);
+  if (!have || s.block > have.block || (s.block === have.block && s.logIndex > have.logIndex))
+    m.set(h, { block: s.block, logIndex: s.logIndex, sqrt: s.sqrtPriceX96 });
+  let c = acc.counts.get(s.pool);
+  if (!c) {
+    c = new Map();
+    acc.counts.set(s.pool, c);
+  }
+  c.set(h, (c.get(h) ?? 0) + 1);
+}
+
 export type PricingInput = {
   pools: HistoryPool[];
   decimals: Map<string, PoolDecimals>;
-  /** Swaps of every pool, any order. */
-  swaps: Iterable<Pick<SwapRow, 'pool' | 't' | 'block' | 'logIndex' | 'sqrtPriceX96'>>;
+  /** Swaps of every pool, any order; or the accumulator a streaming reader already filled. */
+  swaps:
+    | Iterable<Pick<SwapRow, 'pool' | 't' | 'block' | 'logIndex' | 'sqrtPriceX96'>>
+    | HourAccumulator;
   /** The hours to write a row for, unix seconds of each hour's start, ascending. */
   hours: number[];
   dollar: string;
@@ -455,25 +486,13 @@ export function hourlyRows(inp: PricingInput): HourRow[] {
   const dollar = inp.dollar.toLowerCase();
   const dollarPool = dollarPoolOf(inp.pools, dollar);
   // the last swap of each pool in each hour
-  const last = new Map<string, Map<number, { block: number; logIndex: number; sqrt: string }>>();
-  const counts = new Map<string, Map<number, number>>();
-  for (const s of inp.swaps) {
-    const h = hourStart(s.t);
-    let m = last.get(s.pool);
-    if (!m) {
-      m = new Map();
-      last.set(s.pool, m);
-    }
-    const have = m.get(h);
-    if (!have || s.block > have.block || (s.block === have.block && s.logIndex > have.logIndex))
-      m.set(h, { block: s.block, logIndex: s.logIndex, sqrt: s.sqrtPriceX96 });
-    let c = counts.get(s.pool);
-    if (!c) {
-      c = new Map();
-      counts.set(s.pool, c);
-    }
-    c.set(h, (c.get(h) ?? 0) + 1);
+  let acc: HourAccumulator;
+  if ('last' in inp.swaps && 'counts' in inp.swaps) acc = inp.swaps;
+  else {
+    acc = newHourAccumulator();
+    for (const s of inp.swaps) accumulateHour(acc, s);
   }
+  const { last, counts } = acc;
   // each pool's price per hour, carried
   const price = new Map<string, Map<number, { v: number; carried: number }>>();
   for (const p of inp.pools) {
