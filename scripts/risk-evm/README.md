@@ -260,6 +260,25 @@ A list run also reads the Chainlink feed of every tracked stock that has one (PL
 - Ages at the block: 1 minute to 10.6 hours, 4.6 hours at the median (the US session had closed 4.5 hours before). GLD's answer was 9.2 hours old.
 - With the feeds the run was 288 RPC calls in 52 requests, 30 seconds. The feeds are one call of those; the rest moves with the pools, run to run.
 
+## Thirty days of trades (PLAN-UNIVERSE RU.14, gate `EVM-HISTORY`)
+
+Quotes cannot be read at a past block on the public RPC, so the exit-cost history of a Robinhood stock starts with the loop. Trades can: the chain serves `Swap` events for its whole life, 100,000 blocks a query. `pnpm risk-evm:history` walks them for every pool of the cut the asset list names (427 on the cut of Oct 5: 195 Uniswap v3 pools, 232 v4 pools, reachable or not), and `pnpm risk-evm:flow-import` turns them into the same `risk_pool_flow` rows Solana's Step 5b history fills, so an EVM stock's fact sheet answers its `flow` block.
+
+```sh
+RISK_EVM_DIR=… pnpm risk-evm:history --days 30     # read-only; 30 days is 256 windows per filter, 15 to 30 minutes
+RISK_EVM_DIR=… pnpm risk-evm:flow-import           # the rows into the database; writes hourly/<pool>.jsonl beside the swaps
+```
+
+- **Two filters, newest window first.** The v3 pools' addresses in one `address` list with the v3 `Swap` topic; the pool manager with the v4 `Swap` topic and the pool ids in the second topic. A window the endpoint refuses for its 10,000-log cap is halved until it answers; any other refusal stops the walk, and the next run resumes from the oldest window it finished (`cursor.json`). A finished walk is not walked again: move the folder aside first.
+- **Time.** A log carries its block, not its time. Headers are read every 10,000 blocks (about 17 minutes of chain) and a swap's time is linear between the two around it; the run reads one exact block in every 25 gaps and records the largest difference (`maxTimeErrorS`, 1 s on Oct 6). The day a swap is filed under follows from that time.
+- **The two sign conventions.** v3 logs the pool's deltas (positive came in); v4 logs the swapper's (negative went in). `swapSides` in `history.ts` is the one place that knows, and the test proves it on the recording: across more than a thousand consecutive swaps of one pool, a swap that sends token 0 in never raises `sqrtPriceX96`.
+- **Files**, under `<RISK_EVM_DIR>/history/<chain>/`: `swaps/<pool>/<day>.jsonl` (block, log index, transaction, both amounts as the event signed them, `sqrtPriceX96`, liquidity, tick, the fee a v4 pool reported, the sender, the interpolated time); `<day>.done` once every window of that UTC day is in, with the source, the method and the time error; `headers.jsonl`; `cursor.json`; `runs.jsonl`; after an import, `hourly/<pool>.jsonl`.
+- **Prices by the hour** (`hourlyRows`): a pool's price is its last swap's in the hour, carried for up to 24 hours when an hour has none. The quote in dollars: the dollar token at par (`usdg_at_par`); another stock at its own deepest dollar pool's price that hour (`implied_from_<pool>`); the native token and its wrapper implied from this pool's own price and the stock's dollar price that hour. A quote with no dollar price that hour, or a token whose decimals the issuer registry does not give, leaves the swap counted and unvalued (`unpriced_swaps`), with the reason in the import's summary. No depth: the ±2% depth of Solana's replay needs the pool's layout, which is not reconstructed; `median_depth_sell_usd` is null and turnover answers with that reason.
+- **The rows.** `buildFlowRows` (`history-flow.ts`) feeds `@colosseum/risk`'s own `addSwap` and `poolFlow`: one row per pool, regime (and `all`) and window (24 h, 7 d, 28 d ending at the newest swap), `flow-0.1`, `source` and `method` naming the chain's logs and `history-evm-0.1`. A swap seen twice (a walk resumed after a crash) counts once. `asset_mint` is the stock's address as the cut spells it, the collector's spelling. The EVM pools get no `risk_pools` row (that table feeds `/risk/assets`, the plan fact sheet's exits and `/risk/recoverable`, which must not see them: DU6), so the sheet's `byPool` reads `venue` and `quote` as `unknown` for them until `risk_pool_flow` carries both; the figures are unaffected.
+- **Not compared with anything.** The fee a v4 pool reports is recorded and not applied; no price here is set against the oracle (`ORACLE-VS-DEX`).
+
+Tests: `pnpm vitest run tests/risk-evm-history.test.ts` on `fixtures/risk-evm/robinhood-history.json.gz`, a recorded quarter-day walk of seven pools (`record-history-fixture.ts`): each decoder read by hand, the sign conventions, the halving, the resume, the interpolation against exact blocks, the hourly prices and the flow rows recomputed by hand, and an insert inside a transaction that is rolled back.
+
 ## Files
 
 | File | What it is |
@@ -285,6 +304,9 @@ A list run also reads the Chainlink feed of every tracked stock that has one (PL
 | `record-list-fixture.ts` | Re-records `fixtures/risk-evm/robinhood-list-run.json.gz`: two runs for two stocks at one block |
 | `oracles.ts`, `feeds.ts` | The command for the oracle map; the directory, the match, the confirmation and one pass. `feeds.ts` reads only through the client it is given |
 | `record-oracles-fixture.ts` | Re-records `fixtures/risk-evm/robinhood-oracles.json.gz` from the directory and the chain |
+| `history.ts` | The trade history (RU.14): decoders, filters, the window walk, block times, prices by the hour. No I/O |
+| `history-run.ts`, `history-flow.ts`, `flow-import.ts`, `flow-insert.ts` | The walk command; the swaps as `risk_pool_flow` rows (no I/O); the import command; the insert |
+| `record-history-fixture.ts` | Re-records `fixtures/risk-evm/robinhood-history.json.gz`: a quarter-day walk of seven pools |
 
 After editing `ClQuoter.sol`, run `pnpm exec tsx scripts/risk-evm/build-quoter.ts`; a test fails while the JSON is stale. The tests are in `tests/risk-evm.test.ts`. They replay `fixtures/risk-evm/robinhood-nvda-quotes.json` and the endpoint errors in `fixtures/risk-evm/rpc-errors.json`; none calls the network. The token list and the discovery are tested in `tests/risk-evm-universe.test.ts`, which replays one recorded pass for two tokens (`fixtures/risk-evm/robinhood-discovery.json.gz`). The cut is tested in `tests/risk-evm-cut.test.ts`, on the discovery of Oct 5 frozen to what the cut reads (`fixtures/risk/universe/robinhood-discovery-20261005T1947.json.gz`, made by `pnpm risk:freeze-universe-fixture <discovery.json> --chain robinhood`). The oracle read is tested in `tests/risk-evm-oracle-run.test.ts`, on the same recording and by hand. The run on the list is tested in `tests/risk-evm-list.test.ts`, which replays two recorded runs for NVDA and GME at one block (`fixtures/risk-evm/robinhood-list-run.json.gz`): every reachable pool, then the three deepest. The oracle map is tested in `tests/risk-evm-oracles.test.ts`, which replays one recorded pass (`fixtures/risk-evm/robinhood-oracles.json.gz`: the directory and the chain's answers at block 81,164,613).
 
