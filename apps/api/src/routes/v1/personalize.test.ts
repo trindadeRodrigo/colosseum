@@ -322,7 +322,7 @@ describe('POST /v1/baskets/personalize', () => {
 
   it('refuses a country that is no country ("ZZ"), with the fix, and stores nothing (Oct 6)', async () => {
     const who = await someone('solana');
-    for (const country of ['ZZ', 'QQ', 'EU']) {
+    for (const country of ['ZZ', 'QQ', 'EU', 'SU', 'UK']) {
       // Each passes the shared schema's two capitals: the refusal is the route's own check.
       const res = await post(who, PATH, { sheet: sheet({ country }) });
       expect(res.statusCode, res.body).toBe(422);

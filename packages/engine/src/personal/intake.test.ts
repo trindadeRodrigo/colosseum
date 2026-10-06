@@ -709,6 +709,38 @@ describe('the review of Oct 6', () => {
     expect(calm.questions.map((q) => q.field)).toContain('risk');
   });
 
+  it('"the UK" or "Britain" is GB; UK is never taken as a code (re-review of Oct 6)', () => {
+    expect(countryNamed('I live in the UK', 'GB')).toBe(true);
+    expect(countryNamed('Moro na Grã-Bretanha', 'GB')).toBe(true);
+    expect(countryNamed('I left the UK for Brazil', 'GB')).toBe(false);
+    expect(countryNamed('I live in Ukraine', 'GB')).toBe(false);
+    const base = { goal: 'grow', amountUsd: 5000, horizonMonths: 60, risk: 'high' };
+    const text = 'I live in the UK. Grow $5,000 over 5 years, high risk.';
+    const run = (reply: Record<string, unknown>, answers = {}) =>
+      runIntake({ text, nowMonth: NOW_MONTH, reply, homeChain: 'solana', portfolios, answers });
+    for (const country of ['UK', 'GB']) {
+      const r = run({ ...base, country });
+      expect(r.sheet?.country, country).toBe('GB');
+      expect(r.questions, country).toEqual([]);
+    }
+    // An answer of SU or UK is no country: it is asked again, and no sheet is made.
+    for (const country of ['SU', 'UK']) {
+      const r = run({ ...base, country: null }, { country });
+      expect(r.sheet, country).toBeNull();
+      expect(
+        r.questions.map((q) => q.field),
+        country,
+      ).toEqual(['country']);
+    }
+  });
+
+  it('the negation of a loose risk phrase stops at a comma or a sentence break', () => {
+    expect(riskCuesIn('no stocks, go crazy')).toContain('high');
+    expect(riskCuesIn('I have no fear, go crazy')).toContain('high');
+    expect(riskCuesIn('No fear. Go crazy.')).toContain('high');
+    expect(riskCuesIn("don't go crazy")).not.toContain('high');
+  });
+
   it('a written date beats "no rush", in English and Portuguese', () => {
     for (const [text, months] of [
       ['No rush, but I need $5,000 to grow by 2030, high risk.', 39],

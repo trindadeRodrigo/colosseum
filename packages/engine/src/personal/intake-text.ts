@@ -428,8 +428,9 @@ const LOOSE_RISK_CUES: Record<'low' | 'medium' | 'high', RegExp | null> = {
   ),
 };
 // A loose cue under a negation is no cue: "don't go crazy", "não pode arriscar".
+// The window stops at a comma or a sentence break: "no stocks, go crazy" still goes crazy.
 const LOOSE_NEGATED =
-  /(?<![\p{L}])(?:not|no|never|nothing|don'?t|do not|doesn'?t|won'?t|can'?t|cannot|n[aã]o|nunca|nada|sem)(?:\s+\S+){0,2}\s*$/iu;
+  /(?<![\p{L}])(?:not|no|never|nothing|don'?t|do not|doesn'?t|won'?t|can'?t|cannot|n[aã]o|nunca|nada|sem)(?:\s+[^\s,;.!?]+){0,2}\s*$/iu;
 /** The loose cue's matches that are not under a negation, as written. */
 const looseMatches = (pattern: RegExp, text: string): string[] =>
   [...text.matchAll(new RegExp(pattern.source, 'giu'))]
@@ -463,6 +464,9 @@ const DEMONYMS: Record<string, string[]> = {
   MX: ['mexican', 'mexicano', 'mexicana'],
   GB: ['british', 'britanic', 'england', 'inglaterra'],
 };
+const WHOLE_WORD_ALIASES: Record<string, string[]> = {
+  GB: ['uk', 'u\\.k\\.', 'britain', 'great britain', 'gra-bretanha', 'gra bretanha'],
+};
 /**
  * Whether the text names the country `code`: its name in either language as the templates write it
  * ("Brazil", "Brasil"), or a word for its people ("brazilian", "brasileira").
@@ -474,6 +478,13 @@ export function countryNamed(text: string, code: string): boolean {
     .filter((x): x is string => x !== undefined)
     .map((phrase) => plain(phrase).replace(/^(in the|in|nos|nas|no|na|em)\s+/, ''));
   const words = [...names, ...(DEMONYMS[code] ?? [])];
+  // Whole-word aliases: "the UK", "Britain" name GB ("uk" is not the start of "ukraine").
+  const aliased = (WHOLE_WORD_ALIASES[code] ?? []).some((a) =>
+    [...said.matchAll(new RegExp(`(?<![\\p{L}])${a}(?![\\p{L}])`, 'gu'))].some(
+      (m) => !NEGATED_BEFORE.test(said.slice(0, m.index ?? 0)),
+    ),
+  );
+  if (aliased) return true;
   // A country named only under a negation ("not in Brazil anymore", "saí do Brasil") is not its cue.
   return words.some((w) =>
     [

@@ -292,7 +292,8 @@ export function runIntake(input: IntakeInput): IntakeResult {
     const r = read.reply;
     draft.goal = r.goal;
     draft.risk = r.risk;
-    draft.country = r.country;
+    // "UK" is the person's word for GB, never a code: it is read as GB, and GB is then held to the text.
+    draft.country = r.country === 'UK' ? 'GB' : r.country;
     draft.language = r.language;
 
     // An amount must be written in the text, in dollars or with no currency beside it.
