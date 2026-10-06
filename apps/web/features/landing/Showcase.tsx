@@ -39,7 +39,7 @@ function Kpis({ items }: { items: Kpi[] }) {
         <div
           key={kpi.label}
           className={[
-            'min-w-0 px-3 py-2.5',
+            '@container min-w-0 px-3 py-2.5',
             // hairlines between the cells: four in a row, or two by two on a phone
             i % 2 === 0
               ? 'border-r border-border'
@@ -49,7 +49,10 @@ function Kpis({ items }: { items: Kpi[] }) {
           ].join(' ')}
         >
           <dt className="font-mono text-[11px]/4 text-muted-foreground">{kpi.label}</dt>
-          <dd className="mt-0.5 text-[1.125rem]/7 font-medium tabular-nums">
+          {/* A figure with its pin and MOCK plate is one unbreakable line (ProvenancePin). In a cell
+              narrower than 12rem (all four, at every width this page has today) the plate goes
+              under the figure; the figure and its pin stay together. */}
+          <dd className="mt-0.5 text-[1.125rem]/7 font-medium tabular-nums @max-[12rem]:[&_[data-ui=figure]_[data-ui=mock-plate]]:ml-0 @max-[12rem]:[&_[data-ui=figure]_[data-ui=mock-plate]]:flex @max-[12rem]:[&_[data-ui=figure]_[data-ui=mock-plate]]:w-fit">
             {kpi.value}
             {kpi.unit && (
               <small className="ml-1 font-mono text-[11px] font-normal text-muted-foreground">
