@@ -1,5 +1,5 @@
 'use client';
-import type { BasketSheet } from '@colosseum/schemas';
+import type { BasketSheet, BasketSheetDraft } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useEffect, useId, useRef, useState } from 'react';
 import { CardWait } from '../../components/shell/Wait';
@@ -23,6 +23,7 @@ import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { type BuildOutcome, buildPlan, planProvenance } from './build-plan';
 import { GOAL_DRAFT, GOAL_HANDOFF } from './draft';
 import { exampleDraft } from './examples';
+import { browserCountry, fillFromWords, preRead } from './pre-read';
 import { GOAL_TEXT, type ReadFailure, ReadGoalError, readGoal } from './read-goal';
 import {
   checkSheet,
@@ -147,6 +148,20 @@ export function GoalScreen() {
     }
   }, [who, where]);
 
+  /**
+   * The country a sheet starts with: the one the reading gave, else the one the browser's language
+   * names, which the sheet says it took from there (the schema needs one: BasketSheet.country).
+   */
+  function withCountry(draft: BasketSheetDraft) {
+    const guess = draft.country
+      ? null
+      : browserCountry(navigator.languages ?? [navigator.language]);
+    return {
+      draft: guess ? { ...draft, country: guess } : draft,
+      countryFromBrowser: guess !== null,
+    };
+  }
+
   async function read(typed: string) {
     setReading(true);
     setReadFailure(null);
@@ -154,7 +169,8 @@ export function GoalScreen() {
     // One of this page's own examples, sent as it is: its limits are known here (examples.ts).
     const known = exampleDraft(typed, t.goal.examples.list, lang);
     if (known) {
-      const fields = fieldsOfDraft(known, lang);
+      const { draft, countryFromBrowser } = withCountry(known);
+      const fields = fieldsOfDraft(draft, lang);
       setSheet({
         goalText: typed.trim(),
         source: {
@@ -165,19 +181,27 @@ export function GoalScreen() {
         firstReader: false,
         read: fields,
         fields,
+        countryFromBrowser,
       });
       setReading(false);
       return;
     }
+    // What the words say, read here before the text is sent: they fill what the reader leaves.
+    const words = preRead(typed);
     try {
       const reading = await readGoal(apiFetch, typed, lang);
-      const fields = fieldsOfDraft(reading.draft, lang);
+      const filled = fillFromWords(reading.draft, reading.guessed, words);
+      const { draft, countryFromBrowser } = withCountry(filled.draft);
+      const fields = fieldsOfDraft(draft, lang);
       setSheet({
         goalText: typed,
-        source: reading.source,
+        source: filled.filled
+          ? { ...reading.source, method: `${reading.source.method} · ${t.goal.filledFromWords}` }
+          : reading.source,
         firstReader: reading.firstReader,
         read: fields,
         fields,
+        countryFromBrowser,
       });
     } catch (e) {
       // The text stays in the box, and a sheet read before stays as it was.
@@ -245,7 +269,11 @@ export function GoalScreen() {
         ? t.chain.unknown.signedOut
         : account.why === 'no_identity'
           ? t.chain.unknown.noIdentity
-          : t.shell.slowDown;
+          : account.why === 'off'
+            ? t.chain.unknown.off
+            : account.why === 'refused'
+              ? t.chain.unknown.refused
+              : t.shell.slowDown;
   const chainFact: SheetFact =
     account.status === 'ready'
       ? {
@@ -293,7 +321,6 @@ export function GoalScreen() {
   // What stands between valid limits and a plan, besides the fields: who is asking, and on which chain.
   const blocked = [
     ...(account.status === 'signed-out' ? [t.goal.blocked.signedOut] : []),
-    ...(account.status === 'needs-chain' ? [t.goal.blocked.chainNotChosen] : []),
     ...(account.status === 'no-wallet' ? [t.chain.noWallet] : []),
     ...(account.status === 'unknown'
       ? [account.why === 'unreachable' ? t.goal.blocked.chainUnknown : unknownWhy]
@@ -301,10 +328,7 @@ export function GoalScreen() {
     ...(chainOff ? [t.goal.blocked.chainOff(chainName)] : []),
     ...(build.kind === 'signed-out' ? [t.goal.blocked.signInAgain] : []),
     ...(build.kind === 'no-identity' ? [t.goal.blocked.noIdentity] : []),
-    // Said once: the account says the same when it has read that no chain is chosen.
-    ...(build.kind === 'no-chain' && account.status !== 'needs-chain'
-      ? [t.goal.blocked.chainNotChosen]
-      : []),
+    ...(build.kind === 'no-chain' ? [t.goal.blocked.chainNotChosen] : []),
     ...(build.kind === 'refused' ? [t.goal.blocked.refused] : []),
     ...(build.kind === 'currency' ? [t.goal.blocked.currency] : []),
   ];
@@ -353,6 +377,7 @@ export function GoalScreen() {
           t,
           dictionary(sheet.fields.language),
           lang,
+          sheet.countryFromBrowser,
         )
       : null;
 

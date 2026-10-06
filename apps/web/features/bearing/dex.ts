@@ -14,7 +14,8 @@ import type {
 // The stocks and commodities pages, worked out from the API's answers (analytics2.js, dexRender).
 // Every derived figure is a fact whose method names its parts and its formula.
 
-export const COMMODITIES = ['GLDx'];
+// Gold: the xStock on Solana, the stock token on Robinhood Chain.
+export const COMMODITIES = ['GLDx', 'GLD'];
 export const HOUR = 3600e3;
 export const DAY = 864e5;
 export const hourOf = (t: string | number) => Math.floor(new Date(t).getTime() / HOUR) * HOUR;
@@ -39,14 +40,47 @@ export function capFact(a: AssetRow | undefined, r: string, body: AssetsBody): F
     regime: r,
     method: `largest sale at cost ≤ τ = ${pct(body.tau)} on the fitted sell curve`,
     methodVersion: body.methodVersion,
+    provenance: a?.provenance,
   });
 }
 
-/** The newest 24 h of swap volume on an asset's sheet. */
+/** The newest 24 h of swap volume on an asset's sheet: Bearing's own, from the swap history. */
 export function vol24(sheet: Res<SheetBody>): Fact {
   if (!sheet.ok) return none(sheet.reason);
   const w = (sheet.body.flow.byWindow ?? []).find((x) => x.window === '24h');
   return w ? w.volumeUsd : none('not_collected');
+}
+
+/** The source of the pools' outside volume figure, named on its pin (gate VOLUME-DEXSCREENER). */
+export const DEXSCREENER_24H = 'DexScreener · 24 h';
+
+/**
+ * DexScreener's 24 h volume of the pools, summed: what DexScreener reported for each pair when the pool
+ * was registered (`risk_pools.discovery_volume24h_usd`). It stands where Bearing's swap history is not
+ * collected, under its own source, and is never Bearing's measure: no swap is counted here.
+ */
+export function dexVolume(pools: readonly Pool[]): Fact {
+  const known = pools.filter((p) => typeof p.discoveryVolume24hUsd === 'number');
+  if (!known.length) return none(pools.length ? 'not_collected' : 'nothing_selected');
+  let at: string | null = null;
+  for (const p of known) at = maxT(at, p.fetchedAt);
+  return mk(
+    known.reduce((s, p) => s + (p.discoveryVolume24hUsd as number), 0),
+    {
+      source: DEXSCREENER_24H,
+      fetchedAt: at,
+      quality: known.length < pools.length ? 'lower_bound' : 'measured',
+      method: `sum of DexScreener's 24 h volume of ${known.length} pools (api.dexscreener.com, h24), as reported when each pool was registered; DexScreener's figure, not Bearing's swap history`,
+      methodVersion: 'registry-0.1',
+    },
+  );
+}
+
+/** An asset's 24 h volume: Bearing's swap history where it is collected, else DexScreener's figure. */
+export function assetVol(d: DexAsset | undefined): Fact {
+  if (!d) return none('not_collected');
+  const own = vol24(d.sheet);
+  return has(own) || !poolsOf(d).length ? own : dexVolume(poolsOf(d));
 }
 
 export const dexIds = (body: AssetsBody, page: 'stocks' | 'commodities') =>
@@ -100,13 +134,16 @@ export function dexCounters(
       methodVersion: body.methodVersion,
     },
   );
-  const vol = sumFact(
+  const flow = sumFact(
     selIds.map((id) => (dd[id] ? vol24(dd[id].sheet) : none('not_collected'))),
     {
       method:
         'sum over the selected assets of the volume of successful swaps in the newest 24 h of the swap history',
     },
   );
+  // Bearing's own measure where it is collected; DexScreener's, named as such, where it is not.
+  // With no pool to sum (Robinhood Chain's are not in the registry), the missing figure keeps its reason.
+  const vol = has(flow) || !pools.length ? flow : dexVolume(pools);
   let lpW = 0;
   let lpS = 0;
   let lpT: string | null | undefined = null;
@@ -139,7 +176,7 @@ export function dexCounters(
     const w = (s.body.flow.byWindow ?? []).find((x) => x.window === '24h');
     if (w?.to) volTo = maxT(volTo, w.to);
   }
-  return { tvl, cap, vol, lp, volTo };
+  return { tvl, cap, vol, lp, volTo: has(flow) ? volTo : null };
 }
 
 /** Exit capacity hour by hour, summed over the selected assets; an hour short of an asset says so. */
@@ -187,6 +224,7 @@ export function capacitySeries(
           fetchedAt: last,
           method: `${src.method}; summed over the selected assets per UTC hour`,
           methodVersion: src.methodVersion,
+          provenance: src.provenance,
           quality: lastP.ns < n || lastP.lb ? 'lower_bound' : 'measured',
         })
       : none('not_collected');

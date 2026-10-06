@@ -1,5 +1,5 @@
 'use client';
-import type { ChainId } from '@colosseum/schemas';
+import { ChainId } from '@colosseum/schemas';
 import {
   createContext,
   type ReactNode,
@@ -14,12 +14,21 @@ import { remember } from '../../components/shell/remember';
 import { SIGNED_IN_COOKIE } from '../../i18n';
 import { forgetGoalDraft } from '../goal/draft';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
-import { fetchPerson, localPerson, type Person, PersonError, storeChain } from './person';
+import { chainInAddress, FIRST_CHAIN, recallChain, rememberChain } from './chain-choice';
+import {
+  fetchPerson,
+  HOME_CHAIN,
+  localPerson,
+  type Person,
+  PersonError,
+  storeChain,
+} from './person';
 
-// The signed-in person and the one chain their plan lives on, for every product screen. The chain is
-// the API's to say (GET /v1/me): the chain of the outside wallet a person connected, or the one they
-// chose when they made a wallet here. It is asked for once per person, and read again on every
-// device, so a second device lands on the same chain without asking.
+// The signed-in person and their current chain, for every product screen (gate CHAIN-SWITCH). The
+// current chain is where a new plan is made; a plan already made stays on its own. It is the API's to
+// say (GET /v1/me): the chain of the outside wallet a person connected, or the one they chose. A person
+// who made their wallets here is not asked: they start on the chain they were looking at, and switch
+// from the bar. Someone signed out has a chain too, the one they are looking at, kept in this browser.
 
 export type Account =
   /** The wallet is loading, or the API is being asked. */
@@ -36,11 +45,18 @@ export type Account =
    * made, or none is linked to the sign-in.
    */
   | { status: 'no-wallet' }
-  /** A wallet made here, and no chain chosen yet: the one time it is asked. */
-  | { status: 'needs-chain'; options: ChainId[] }
-  | { status: 'ready'; chain: ChainId; source: 'picked' | 'wallet' };
+  /**
+   * The current chain, and the chains a wallet of the person's signs on, which they may switch to: an
+   * EVM wallet alone signs on Robinhood Chain only.
+   */
+  | { status: 'ready'; chain: ChainId; source: 'picked' | 'wallet'; options: ChainId[] };
 
-export type Unknown = 'unreachable' | 'signed_out' | 'no_identity' | 'busy';
+/**
+ * `off`: every chain a wallet of theirs signs on is switched off on our server, so none can be started
+ * on. `refused`: the server would not start them on the chain asked for (409 `NO_WALLET_FOR_CHAIN`,
+ * 422): it does not take that chain for these wallets.
+ */
+export type Unknown = 'unreachable' | 'signed_out' | 'no_identity' | 'busy' | 'off' | 'refused';
 
 export type AccountValue = {
   account: Account;
@@ -49,14 +65,16 @@ export type AccountValue = {
    * chain is worked out here and kept only while the page is open. Shown with the sample glyph.
    */
   mock: boolean;
-  /** Stores the choice. Throws a `PersonError` whose kind says why it was not stored. */
-  pick(chain: ChainId): Promise<void>;
   /**
-   * The chain this person tried to choose when another had been stored before, on another device or
-   * in another tab. The account then says where the plan does live, and the screen says why the
-   * choice was not kept. Null otherwise.
+   * The chain a screen shows and builds on: the current chain of someone signed in, the chain someone
+   * signed out is looking at. Null while the person is signed in and their chain is not known.
    */
-  overruled: ChainId | null;
+  chain: ChainId | null;
+  /**
+   * Switches it. Signed in, the API stores it, and a `PersonError` says why it was not stored;
+   * signed out, this browser keeps it.
+   */
+  choose(chain: ChainId): Promise<void>;
   /** Asks the API again, after it did not answer. */
   retry(): void;
 };
@@ -66,18 +84,34 @@ const AccountContext = createContext<AccountValue | null>(null);
 type Read = { key: string; person: Person | null; why?: Unknown };
 
 /** Why the API did not say who is signed in, as far as a person can do something about it. */
-const whyNot = (e: unknown): Unknown =>
-  e instanceof PersonError &&
-  (e.kind === 'signed_out' || e.kind === 'no_identity' || e.kind === 'busy')
-    ? e.kind
-    : 'unreachable';
+const whyNot = (e: unknown): Unknown => {
+  if (!(e instanceof PersonError)) return 'unreachable';
+  if (e.kind === 'signed_out' || e.kind === 'no_identity' || e.kind === 'busy') return e.kind;
+  return e.kind === 'no_wallet' || e.kind === 'not_offered' ? 'refused' : 'unreachable';
+};
 
 export function AccountProvider({ children }: { children: ReactNode }) {
   const port = useWalletPort();
   const apiFetch = useApiFetch();
   const [read, setRead] = useState<Read | null>(null);
   const [round, setRound] = useState(0);
-  const [refused, setRefused] = useState<{ key: string; tried: ChainId } | null>(null);
+  // The chain someone signed out is looking at: the address's, else this browser's, else the first.
+  // Read as the provider is made, before any screen reads it or writes the address. Nothing shows it
+  // while the wallet loads, so the server's page and the browser's first one are the same.
+  const [browsing, setBrowsing] = useState<ChainId>(() =>
+    typeof window === 'undefined'
+      ? FIRST_CHAIN
+      : (chainInAddress(window.location.search) ?? recallChain() ?? FIRST_CHAIN),
+  );
+  const looking = useRef(browsing);
+  looking.current = browsing;
+  // The throwaway wallet's chain, chosen in this tab: it has no account on the API to keep it.
+  const testPick = useRef<ChainId | null>(null);
+  // A chain the address named is the one this browser is on now.
+  useEffect(() => {
+    const named = chainInAddress(window.location.search);
+    if (named) rememberChain(named);
+  }, []);
 
   // Who is signed in, with which wallets. A new person or a new wallet is read again; the same ones
   // are not, however often the port is rebuilt.
@@ -113,45 +147,50 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     const done = (person: Person | null, why?: Unknown) => {
       if (live) setRead({ key, person, why });
     };
-    if (now.test) done(localPerson(now.userId ?? 'test', now.accounts, null));
+    if (now.test) done(localPerson(now.userId ?? 'test', now.accounts, testPick.current));
     else fetchPerson(call).then(done, (e: unknown) => done(null, whyNot(e)));
     return () => {
       live = false;
     };
   }, [key, round]);
 
-  const pick = useCallback(
+  const choose = useCallback(
     async (chain: ChainId) => {
+      if (key === null) {
+        rememberChain(chain);
+        setBrowsing(chain);
+        return;
+      }
       const { port: now, apiFetch: call } = latest.current;
-      if (key === null) throw new PersonError('signed_out');
       if (now.test) {
+        testPick.current = chain;
         setRead({ key, person: localPerson(now.userId ?? 'test', now.accounts, chain) });
         return;
       }
+      const person = await storeChain(call, chain);
       // An answer is this person's only while they are still the one signed in.
-      const mine = () => latest.current.key === key;
-      try {
-        const person = await storeChain(call, chain);
-        if (mine()) setRead({ key, person });
-      } catch (e) {
-        // Chosen before, on another device or in another tab: read where the plan does live, so the
-        // screen can name that chain and not the one just tried.
-        if (e instanceof PersonError && e.kind === 'taken') {
-          let why: Unknown | undefined;
-          const person = await fetchPerson(call).catch((again: unknown) => {
-            why = whyNot(again);
-            return null;
-          });
-          if (mine()) {
-            setRefused({ key, tried: chain });
-            setRead({ key, person, why });
-          }
-        }
-        throw e;
-      }
+      if (latest.current.key === key) setRead({ key, person });
     },
     [key],
   );
+
+  // A person with wallets and no chain yet (they made their wallets here, or connected wallets of
+  // both families) starts on the chain they were looking at, where a wallet of theirs signs and our
+  // server runs. Not asked: they switch from the bar. When it cannot be stored, the account says why.
+  const person = read?.key === key ? read.person : null;
+  useEffect(() => {
+    if (!person || person.chain || person.chainOptions.length === 0 || key === null) return;
+    const on = person.chainOptions.filter((c) => latest.current.port.network(c)?.on !== false);
+    const start = on.includes(looking.current) ? looking.current : on[0];
+    if (!start) {
+      setRead({ key, person: null, why: 'off' });
+      return;
+    }
+    choose(start).catch((e: unknown) => {
+      if (latest.current.key === key) setRead({ key, person: null, why: whyNot(e) });
+    });
+  }, [person, key, choose]);
+
   const retry = useCallback(() => {
     setRead(null);
     setRound((n) => n + 1);
@@ -166,16 +205,36 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     if (!read || read.key !== key) return { status: 'loading' };
     const person = read.person;
     if (!person) return { status: 'unknown', why: read.why ?? 'unreachable' };
-    if (person.chain)
-      return { status: 'ready', chain: person.chain, source: person.chainSource ?? 'picked' };
+    if (person.chain) {
+      // The chains a wallet of theirs signs on, as the API says (`chainOptions`); worked out from the
+      // wallets it read when it lists none, as an API from before CHAIN-SWITCH does once there is a chain.
+      const held = new Set(person.wallets.map((w) => HOME_CHAIN[w.family]));
+      return {
+        status: 'ready',
+        chain: person.chain,
+        source: person.chainSource ?? 'picked',
+        options: person.chainOptions.length
+          ? person.chainOptions
+          : ChainId.options.filter((c) => held.has(c)),
+      };
+    }
     if (person.chainOptions.length === 0) return { status: 'no-wallet' };
-    return { status: 'needs-chain', options: person.chainOptions };
+    // The chain they start on is being stored.
+    return { status: 'loading' };
   }, [port.status, port.walletsOwed, key, read]);
 
-  const overruled = refused !== null && refused.key === key ? refused.tried : null;
+  // Signed out later, the person goes on looking at the chain they were on.
+  const current = account.status === 'ready' ? account.chain : null;
+  useEffect(() => {
+    if (!current) return;
+    rememberChain(current);
+    setBrowsing(current);
+  }, [current]);
+
+  const chain = current ?? (account.status === 'signed-out' ? browsing : null);
   const value = useMemo(
-    () => ({ account, mock: port.test, pick, retry, overruled }),
-    [account, port.test, pick, retry, overruled],
+    () => ({ account, mock: port.test, chain, choose, retry }),
+    [account, port.test, chain, choose, retry],
   );
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;
 }

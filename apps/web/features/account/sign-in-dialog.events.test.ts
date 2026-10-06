@@ -129,18 +129,14 @@ describe('the sign-in dialog', () => {
     expect(document.activeElement).toBe(last);
   });
 
-  it('closes once the person is signed in and their chain chosen, and the action carries on', async () => {
+  it('closes once the person is signed in and their chain known, and the action carries on', async () => {
     const host = await shell();
     const action = find<HTMLAnchorElement>(host, '[data-ui="page-action"]');
     await click(action);
     const box = dialog() as HTMLElement;
     await click(button(box, en.signIn.passkey.continue));
     await settle();
-    // a wallet made here: the chain is asked, inside the dialog
-    expect(box.textContent).toContain(en.chain.pick.title);
-    await click(button(box, 'Solana'));
-    await click(button(box, en.chain.pick.confirm('Solana')));
-    await settle();
+    // a wallet made here: nothing is asked, the chain they were looking at is stored (CHAIN-SWITCH)
     expect(dialog()).toBeNull();
     // on to the order the action was for
     expect(router.push.mock.calls).toEqual([['/orders/o1']]);
@@ -200,17 +196,17 @@ describe('the sign-in dialog', () => {
     expect(router.push.mock.calls).toEqual([['/orders/o1']]);
   });
 
-  it('opened while signed in with no chain yet, closes once the chain is chosen in it', async () => {
+  it('opened while signed in with no chain yet, starts them on one, and its link carries on', async () => {
     portStore.set(signedInPort(EMBEDDED));
     const host = await shell();
     await settle();
     await click(find<HTMLAnchorElement>(host, '[data-ui="page-action"]'));
     await settle();
     const box = dialog() as HTMLElement;
-    expect(box.textContent).toContain(en.chain.pick.title);
-    await click(button(box, 'Solana'));
-    await click(button(box, en.chain.pick.confirm('Solana')));
-    await settle();
+    // nobody is asked (CHAIN-SWITCH): the chain they were looking at is stored
+    expect(person.chain).toBe('solana');
+    expect(box.textContent).toContain(en.chain.is.picked('Solana'));
+    await click(button(box, en.signIn.done.next));
     expect(dialog()).toBeNull();
     expect(router.push.mock.calls).toEqual([['/orders/o1']]);
   });
