@@ -46,6 +46,8 @@ export const en = {
       body: 'No seed phrase to write down. I use the passkey this device keeps for this site, or make one if it has none. A wallet is made for you that only that passkey opens.',
       /** One button: signs in with a passkey this device has, or makes one. */
       continue: 'Continue with a passkey',
+      /** After the prompt to use one was closed: makes one, and with it a new account. */
+      createNew: 'Create a new passkey',
       waiting: 'Waiting for your passkey…',
       making: 'Making your wallet…',
     },
@@ -76,8 +78,9 @@ export const en = {
         'Passkeys aren’t switched on for this app yet, so none can be created or used here. Connect a wallet instead, or come back later.',
       passkeyNotCreated:
         'The passkey wasn’t created: the prompt was closed or ran out of time. Nothing was saved. Try again when you’re ready.',
+      /** The prompt to use a passkey was closed: nothing is made unless the person asks (SIGN-IN-FLOW). */
       passkeyNotUsed:
-        'No passkey was used: the prompt was closed or ran out of time. If you have no passkey for this site yet, create one.',
+        'No passkey was used: the prompt was closed or ran out of time. If you made a passkey on another device, sign in on that device. A new passkey starts a new account, with a wallet of its own.',
       passkeyUnknown: 'I don’t know that passkey. Create a new one, or connect a wallet.',
       /** Privy's `passkey_not_registered`: the passkey picked was made for another site or app. */
       passkeyNotRegistered: 'That passkey isn’t registered here. Pick another, or create one.',

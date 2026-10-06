@@ -89,12 +89,10 @@ describe('the sign-in panel: two ways in, one button each', () => {
   });
 
   it.each([
-    ['the device has none for this site (its prompt is closed)', 'closed'],
     ['the one it has is unknown here', 'unknownPasskey'],
     ['Privy has not registered it', 'notRegistered'],
   ] as const)('makes one when %s', async (_, what) => {
     const thrown = {
-      closed: THROWN.closed,
       unknownPasskey: THROWN.unknownPasskey,
       notRegistered: privy('passkey_not_registered', 'Passkey not registered'),
     }[what];
@@ -108,6 +106,61 @@ describe('the sign-in panel: two ways in, one button each', () => {
     expect(signIn.mock.calls).toEqual([['passkey'], ['passkey', { create: true }]]);
     expect(onSignedIn).toHaveBeenCalledTimes(1);
     expect(alert(host)).toBeNull();
+  });
+
+  it('makes none when the prompt is closed: it says a new passkey is a new account, and offers one', async () => {
+    const signIn = vi.fn(async (_m: string, choice?: { create?: boolean }) => {
+      if (!choice?.create) throw THROWN.closed;
+    });
+    const onSignedIn = vi.fn();
+    portStore.set(fakePort({ found: FOUND, signIn }));
+    const host = await screen('en', onSignedIn);
+    await click(button(host, en.passkey.continue));
+    // one call, and nothing made
+    expect(signIn.mock.calls).toEqual([['passkey']]);
+    expect(onSignedIn).not.toHaveBeenCalled();
+    expect(alert(host)).toBe(en.failure.passkeyNotUsed);
+    expect(en.failure.passkeyNotUsed).toContain('new account');
+    expect(en.failure.passkeyNotUsed).toContain('another device');
+    // the one way to make one: asked for, as a link and not a second primary
+    const create = find(find(host, '[data-ui="create-new-passkey"]'), 'button');
+    expect(create.getAttribute('data-variant')).toBe('link');
+    expect(create.textContent).toContain(en.passkey.createNew);
+    expect(host.querySelectorAll('[data-variant="primary"]')).toHaveLength(1);
+    await click(create);
+    expect(signIn.mock.calls).toEqual([['passkey'], ['passkey', { create: true }]]);
+    expect(onSignedIn).toHaveBeenCalledTimes(1);
+    expect(alert(host)).toBeNull();
+    expect(host.querySelector('[data-ui="create-new-passkey"]')).toBeNull();
+  });
+
+  it('says so when the prompt to make one is closed too, and makes nothing', async () => {
+    const signIn = vi.fn(async () => {
+      throw THROWN.closed;
+    });
+    portStore.set(fakePort({ found: FOUND, signIn }));
+    const host = await screen();
+    await click(button(host, en.passkey.continue));
+    await click(find(find(host, '[data-ui="create-new-passkey"]'), 'button'));
+    expect(alert(host)).toBe(en.failure.passkeyNotCreated);
+    expect(host.querySelector('[data-ui="create-new-passkey"]')).toBeNull();
+  });
+
+  it('offers no new passkey after any other failure', async () => {
+    for (const thrown of [THROWN.off, THROWN.tooMany, THROWN.offline]) {
+      portStore.set(
+        fakePort({
+          found: FOUND,
+          signIn: vi.fn(async () => {
+            throw thrown;
+          }),
+        }),
+      );
+      const host = await screen();
+      await click(button(host, en.passkey.continue));
+      expect(host.querySelector('[data-ui="create-new-passkey"]')).toBeNull();
+      await unmountAll();
+    }
   });
 
   it('makes none when using one failed for another reason, and says that reason', async () => {
@@ -243,16 +296,11 @@ describe('the sign-in panel: two ways in, one button each', () => {
 });
 
 describe('the sign-in panel: every failure is a sentence a person can act on', () => {
-  // A passkey that fails to be used for want of one is then made; a failure is said for what was
-  // tried last. The port here throws the same thing every time it is called.
+  // A passkey unknown here is then made; a failure is said for what was tried last. A closed prompt
+  // makes nothing. The port here throws the same thing every time it is called.
   const CASES: Array<[string, unknown, 'passkey' | 'wallet', SignInFailure]> = [
     ['passkeys are not enabled for the app (Privy’s 403)', THROWN.off, 'passkey', 'passkeyOff'],
-    [
-      'the prompt is closed, and closed again when one is to be made',
-      THROWN.closed,
-      'passkey',
-      'passkeyNotCreated',
-    ],
+    ['the prompt is closed', THROWN.closed, 'passkey', 'passkeyNotUsed'],
     ['the passkey is one nobody is known by', THROWN.unknownPasskey, 'passkey', 'passkeyUnknown'],
     ['the browser has no passkeys', THROWN.noWebAuthn, 'passkey', 'passkeyUnsupported'],
     ['the wallet refuses', THROWN.refused, 'wallet', 'walletRefused'],
@@ -303,7 +351,7 @@ describe('the sign-in panel: every failure is a sentence a person can act on', (
     portStore.set(fakePort({ found: FOUND, signIn }));
     const host = await screen();
     await click(button(host, en.passkey.continue));
-    expect(alert(host)).toBe(en.failure.passkeyNotCreated);
+    expect(alert(host)).toBe(en.failure.passkeyNotUsed);
     fail = false;
     await click(button(host, en.passkey.continue));
     expect(alert(host)).toBeNull();

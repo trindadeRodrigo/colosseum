@@ -3,7 +3,6 @@ import type { ChainId } from '@colosseum/schemas';
 import { useId, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
-import { cn } from '../../components/ui/cn';
 import { LatticeStatus } from '../../components/ui/Lattice';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { useT } from '../../i18n/I18nProvider';
@@ -19,7 +18,8 @@ import { useWalletPort } from './WalletProvider';
 
 // The two ways in, on the primitives (GATES, SIGN-IN, SIGN-IN-FLOW): one button for a passkey and one
 // for a wallet. "Continue with a passkey" uses the passkey this device has for the site, and makes one
-// when it has none (a closed prompt, or a passkey unknown here, means none). "Connect a wallet" opens
+// when the one it offers is unknown here. A closed prompt makes nothing: the sentence says a new
+// passkey starts a new account and offers "Create a new passkey", for the person to ask. "Connect a wallet" opens
 // our own list of the wallets found in this browser, one entry per wallet with its own name and icon;
 // a wallet that signs on both families asks first which chain the plan lives on, since that is the
 // family it signs in with, and a wallet of one family is that family's. Nothing of the wallet
@@ -27,8 +27,8 @@ import { useWalletPort } from './WalletProvider';
 // a busy button changes its label. A failure is a sentence that says what to do, never what the wallet
 // or the provider threw.
 
-/** Which button is running: the passkey, or a wallet by its id. */
-type Busy = 'passkey' | `wallet:${string}` | null;
+/** Which button is running: the passkey, a new passkey asked for, or a wallet by its id. */
+type Busy = 'passkey' | 'create' | `wallet:${string}` | null;
 
 /** The chain of each family, as the plan lives on it (one EVM chain while Base is not deployed). */
 const CHAIN_OF: Record<'solana' | 'evm', ChainId> = { solana: 'solana', evm: 'robinhood' };
@@ -264,6 +264,21 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
           <StatusMark status="off-track" size={12} className="mt-1.5" />
           <span>{t.signIn.failure[failure]}</span>
         </p>
+      )}
+      {failure === 'passkeyNotUsed' && (
+        <div data-ui="create-new-passkey">
+          <Button
+            variant="link"
+            busy={busy === 'create'}
+            busyLabel={t.signIn.passkey.waiting}
+            disabled={busy !== null && busy !== 'create'}
+            onClick={() =>
+              run('create', 'passkey-create', () => port.signIn('passkey', { create: true }))
+            }
+          >
+            {t.signIn.passkey.createNew}
+          </Button>
+        </div>
       )}
     </div>
   );

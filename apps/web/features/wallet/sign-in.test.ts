@@ -365,12 +365,18 @@ describe('the wallets as the sign-in screen offers them', () => {
     expect(choices.find((c) => c.name === 'Phantom')?.icon).toBe(ICON);
   });
 
-  it('makes a passkey after using one failed for want of one, and after nothing else', () => {
+  it('makes a passkey only when the one offered is unknown or not registered here', () => {
     const privyError = (code: string) =>
       toWalletError(Object.assign(new Error(code), { privyErrorCode: code }));
-    for (const code of ['passkey_not_allowed', 'user_does_not_exist', 'passkey_not_registered'])
+    for (const code of ['user_does_not_exist', 'passkey_not_registered'])
       expect(makeOneInstead(privyError(code)), code).toBe(true);
-    for (const code of ['disallowed_login_method', 'too_many_requests', 'client_request_timeout'])
+    // a closed prompt asks the person first (SIGN-IN-FLOW)
+    for (const code of [
+      'passkey_not_allowed',
+      'disallowed_login_method',
+      'too_many_requests',
+      'client_request_timeout',
+    ])
       expect(makeOneInstead(privyError(code)), code).toBe(false);
     expect(makeOneInstead(new Error('anything'))).toBe(false);
   });

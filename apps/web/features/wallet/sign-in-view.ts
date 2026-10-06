@@ -75,15 +75,12 @@ export function walletChoices(found: readonly FoundWallet[]): WalletChoice[] {
 }
 
 /**
- * Whether a failed attempt to use a passkey means "make one instead": the device had none for this
- * site (its prompt was closed, as a browser does when it has nothing to offer), or the one it had is
- * unknown here. Any other failure (passkeys off, too many tries, no network) is said as it is.
+ * Whether a failed attempt to use a passkey means "make one instead": the passkey the device offered
+ * is unknown here, or not registered. A closed prompt is not one of these: it may be a person who
+ * changed their mind, so nothing is made unless they ask ("Create a new passkey", SIGN-IN-FLOW). Any
+ * other failure (passkeys off, too many tries, no network) is said as it is.
  */
 export function makeOneInstead(error: unknown): boolean {
   const { reason } = (typeof error === 'object' && error !== null ? error : {}) as Failure;
-  return (
-    reason === 'passkey_cancelled' ||
-    reason === 'passkey_unknown' ||
-    reason === 'passkey_not_registered'
-  );
+  return reason === 'passkey_unknown' || reason === 'passkey_not_registered';
 }

@@ -42,6 +42,7 @@ export const pt: Dictionary = {
       title: 'Chave de acesso',
       body: 'Você não precisa anotar frase de recuperação. Eu uso a chave de acesso que este aparelho guarda para este site, ou crio uma se não houver. A carteira que criamos para você só abre com essa chave.',
       continue: 'Continuar com uma chave de acesso',
+      createNew: 'Criar uma chave de acesso nova',
       waiting: 'Aguardando sua chave de acesso…',
       making: 'Criando sua carteira…',
     },
@@ -68,7 +69,7 @@ export const pt: Dictionary = {
       passkeyNotCreated:
         'A chave de acesso não foi criada: a janela foi fechada ou o tempo acabou. Nada foi salvo. Tente de novo quando quiser.',
       passkeyNotUsed:
-        'Nenhuma chave de acesso foi usada: a janela foi fechada ou o tempo acabou. Se você ainda não tem uma chave de acesso para este site, crie uma.',
+        'Nenhuma chave de acesso foi usada: a janela foi fechada ou o tempo acabou. Se você criou uma chave de acesso em outro aparelho, entre por esse aparelho. Uma chave nova abre uma conta nova, com uma carteira própria.',
       passkeyUnknown: 'Não reconheço essa chave de acesso. Crie uma nova ou conecte uma carteira.',
       passkeyNotRegistered:
         'Essa chave de acesso não está registrada aqui. Escolha outra ou crie uma.',
