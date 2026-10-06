@@ -67,7 +67,7 @@ export type PinLabels = {
 export const PIN_LABELS: PinLabels = {
   sourceFor: 'Source for {value}',
   staleSuffix: ', stale, {age}',
-  mockSuffix: ', mock data',
+  mockSuffix: ', sample figure',
   stale: 'stale',
   ageUnknown: 'age unknown',
   missing: 'no source yet',
@@ -75,7 +75,7 @@ export const PIN_LABELS: PinLabels = {
   copy: 'Copy source',
   copied: 'Copied',
   kinds: {
-    mock: 'mock data',
+    mock: 'sample data, not live',
     sandbox: 'test network',
     fixture: 'fixture',
     prior_dataset: 'prior dataset',

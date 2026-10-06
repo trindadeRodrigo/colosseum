@@ -14,6 +14,7 @@ import { V1_SECURITY_SCHEMES, v1Transform } from './openapi';
 import { bearingPlanInputs } from './plan-inputs';
 import { corsAllowlist, corsByPath } from './plugins/cors';
 import { requireDeclared } from './plugins/limits';
+import { loggerOptions } from './redact';
 import { registerMonitorRoutes } from './routes/monitor';
 import { registerPlanRoutes } from './routes/plans';
 import { registerReadRoutes } from './routes/read';
@@ -54,7 +55,8 @@ export async function buildApp(
   // Stops here on a flag it cannot read.
   const flags = parseFlags(env);
   const app = Fastify({
-    logger: process.env.NODE_ENV !== 'test',
+    // No node's URL in a log line (redact.ts): the configured ones, and any a library's error names.
+    logger: process.env.NODE_ENV !== 'test' ? loggerOptions({ ...process.env, ...env }) : false,
   }).withTypeProvider<ZodTypeProvider>();
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);

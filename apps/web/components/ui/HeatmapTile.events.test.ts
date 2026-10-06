@@ -85,7 +85,7 @@ describe('the heatmap tile', () => {
     expect(levels[thinnest.day * 24 + thinnest.hour]).toBe(1);
   });
 
-  it('a stale tile has the band and "stale · 9 h"; a MOCK tile the band and MOCK; a live one neither', async () => {
+  it('a stale tile has the band and "stale · 9 h"; a sample tile the band and its named glyph; a live one neither', async () => {
     const live = await mount(tile());
     expect(live.querySelector('.tf-hatch')).toBeNull();
     const stale = await mount(tile({ kind: 'stale', ageSec: 9 * 3600 }));
@@ -93,7 +93,8 @@ describe('the heatmap tile', () => {
     expect(find(stale, '[data-ui="stale-plate"]').textContent).toContain('stale · 9 h');
     const mock = await mount(tile({ kind: 'mock' }));
     expect(mock.querySelector('[data-ui="heatmap-tile"] > .tf-hatch')).not.toBeNull();
-    expect(mock.textContent).toContain('MOCK');
+    expect(mock.textContent).not.toContain('MOCK');
+    expect(find(mock, '[data-ui="sample-glyph"]').getAttribute('aria-label')).toBe('sample figure');
   });
 
   it('shows the same hours as a table of days, which can put the deepest day first', async () => {

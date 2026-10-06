@@ -107,7 +107,7 @@ export function ChainPick({ options, onConfirm, onFailed }: ChainPickProps) {
                       provenance={network.provenance}
                       labels={{
                         testNetwork: t.shell.testNetwork,
-                        mockAnnounce: t.shell.mockAnnounce,
+                        mockAnnounce: t.shell.sampleFigure,
                       }}
                       announce={index === 0}
                     />

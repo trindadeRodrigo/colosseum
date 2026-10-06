@@ -23,6 +23,15 @@ const scene = vi.hoisted(() => ({
   })),
 }));
 vi.mock('./joint-scene', () => ({ createJointScene: scene.create }));
+const coinsScene = vi.hoisted(() => ({
+  create: vi.fn((_canvas: HTMLCanvasElement, _options?: { onReady?: () => void }) => ({
+    setProgress: vi.fn(),
+    resize: vi.fn(),
+    setVisible: vi.fn(),
+    dispose: vi.fn(),
+  })),
+}));
+vi.mock('./coins-scene', () => ({ createCoinsScene: coinsScene.create }));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
 vi.mock('next/link', () => import('../wallet/test/mock-next'));
 
@@ -69,6 +78,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   router.push.mockClear();
   scene.create.mockClear();
+  coinsScene.create.mockClear();
 });
 afterEach(async () => {
   await unmountAll();
@@ -263,7 +273,7 @@ describe('the hero on a phone (hero-3d.html, its 820px rule)', () => {
 });
 
 describe('the showcase', () => {
-  it('shows his two sample people, each case MOCK in its head and on every pinned figure', async () => {
+  it('shows his two sample people, each case sample on every pinned figure and said once', async () => {
     browser();
     const host = await landing();
     const cases = [...host.querySelectorAll('article[data-ui="showcase-case"]')];
@@ -272,10 +282,9 @@ describe('the showcase', () => {
       en.landing.show.growth.label,
     ]);
     for (const c of cases) {
-      // the plate in the case's head, not only the pins' own
-      expect(
-        c.querySelector('[data-ui="case-head"] [data-ui="mock-plate"]')?.textContent,
-      ).toContain('MOCK');
+      // said once at the case's foot, not by a word beside each figure (MOCK-QUIET)
+      expect(c.textContent).not.toContain('MOCK');
+      expect(c.textContent).toContain(en.landing.show.sample);
       const pins = [...c.querySelectorAll('[data-ui="figure"]')];
       expect(pins.length).toBeGreaterThan(0);
       // nothing in a sample case is drawn as live
@@ -284,6 +293,13 @@ describe('the showcase', () => {
       expect(c.querySelector('blockquote')?.textContent).toMatch(/^“.+”$/);
     }
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
+    // the page never writes the word MOCK: its foot and each case say "sample" (MOCK-QUIET)
+    expect(host.textContent).not.toMatch(/MOCK/);
+    // once in each case, and once under the closing's plan of coins
+    expect(
+      host.querySelectorAll('article[data-ui="showcase-case"] [data-ui="sample-note"]'),
+    ).toHaveLength(2);
+    expect(host.querySelectorAll('#updates [data-ui="sample-note"]')).toHaveLength(1);
   });
 
   it('draws each plan as a joint whose parts are its legend’s, share for share', async () => {
@@ -578,29 +594,32 @@ describe('the closing', () => {
     expect(closing.textContent).toContain(en.landing.closing.status['invalid-email']);
   });
 
-  it('sets the joint behind its heading, with no frame, the words on top (CLOSING-INK, Oct 6)', async () => {
+  it('sets the coins behind its heading, with no frame, the words on top (CLOSING-COINS, Oct 6)', async () => {
     browser();
     const host = await landing();
     const closing = find(host, '#updates');
     expect(closing.querySelector('img, figure, figcaption, [data-ui="subscribe-art"]')).toBeNull();
+    // the joint is gone from the closing: it is the hero's alone
+    expect(closing.querySelector('[data-ui="closing-drawing"]')).toBeNull();
     const track = find(closing, '[data-ui="closing-track"]');
     const canvas = find(track, 'canvas[data-ui="closing-canvas"]');
     const words = find(track, '[data-ui="closing-words"]');
-    // the heading is in the words, which come after the drawing and stand above it
     expect(words.querySelector('h2')?.textContent).toBe(en.landing.closing.title);
     expect(canvas.className).toContain('z-0');
     expect(canvas.className).toContain('pointer-events-none');
     expect(words.className).toContain('z-10');
     expect(canvas.compareDocumentPosition(words) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    // a short hold: two screens of track, one of them sticky
     expect(track.className).toContain('h-[200svh]');
     expect(find(track, '.sticky').className).toContain('h-svh');
-    // the field is below the stage, outside it
     expect(track.querySelector('input[type="email"]')).toBeNull();
     expect(closing.querySelector('input[type="email"]')).not.toBeNull();
+    // the plan's parts, for a screen reader, each with its share
+    const parts = [...find(track, 'ul.sr-only').querySelectorAll('li')].map((li) => li.textContent);
+    expect(parts).toContain('SPY · 15%');
+    expect(parts).toHaveLength(10);
   });
 
-  it('stands the ink drawing, assembled and still, where there is no WebGL', async () => {
+  it('stands the plan drawn flat, every coin with its ticker and share, where there is no WebGL', async () => {
     const seen: ((entries: { isIntersecting: boolean }[]) => void)[] = [];
     vi.stubGlobal(
       'IntersectionObserver',
@@ -620,19 +639,22 @@ describe('the closing', () => {
     await settle(10);
     const track = find(host, '[data-ui="closing-track"]');
     expect(track.getAttribute('data-mode')).toBe('still');
-    const drawing = find(track, 'svg[data-ui="closing-drawing"]');
-    expect(drawing.getAttribute('data-state')).toBe('still');
-    expect(drawing.getAttribute('aria-label')).toBe(en.landing.closing.drawingAlt);
-    for (const part of ['rail', 'post', 'nose', 'pin'])
-      expect(find(drawing, `[data-part="${part}"]`)).toBeTruthy();
-    // the canvas is not named while it draws nothing
+    const still = find(track, 'svg[data-ui="coins-still"]');
+    expect(still.getAttribute('aria-label')).toBe(en.landing.closing.drawingAlt);
+    const coins = [...still.querySelectorAll('[data-part="coin"]')];
+    expect(coins).toHaveLength(10);
+    for (const coin of coins) {
+      // the face is text: its ticker and its share, no picture
+      expect(coin.querySelector('text')?.textContent).toBe(coin.getAttribute('data-ticker'));
+      expect(coin.querySelector('[data-part="share"]')?.textContent).toMatch(/^\d+%$/);
+    }
+    expect(still.querySelector('image, foreignObject')).toBeNull();
     expect(find(track, 'canvas').getAttribute('aria-hidden')).toBe('true');
-    const stages = scene.create.mock.calls.filter(([, o]) => (o as { stage?: unknown })?.stage);
-    expect(stages).toHaveLength(0);
+    expect(coinsScene.create).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 
-  it('holds nothing and moves nothing with reduced motion: the drawing, assembled', async () => {
+  it('holds nothing and moves nothing with reduced motion: the plan, whole', async () => {
     vi.stubGlobal(
       'IntersectionObserver',
       class {
@@ -645,9 +667,10 @@ describe('the closing', () => {
     await settle(10);
     const track = find(host, '[data-ui="closing-track"]');
     expect(track.className).toContain('motion-reduce:h-svh');
-    expect(find(track, 'svg[data-ui="closing-drawing"]').getAttribute('data-state')).toBe('still');
-    const stages = scene.create.mock.calls.filter(([, o]) => (o as { stage?: unknown })?.stage);
-    expect(stages).toHaveLength(0);
+    expect(
+      find(track, 'svg[data-ui="coins-still"]').querySelectorAll('[data-part="coin"]'),
+    ).toHaveLength(10);
+    expect(coinsScene.create).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 
@@ -672,28 +695,21 @@ describe('the closing', () => {
     const track = find(host, '[data-ui="closing-track"]');
     const mine = observers.find((o) => o.els.includes(track));
     expect(mine).toBeTruthy();
-    const closingScenes = () =>
-      scene.create.mock.calls
-        .map((call, i) => ({ options: call[1] as { stage?: unknown }, i }))
-        .filter(({ options }) => options?.stage);
-    // far away: nothing loaded
-    expect(closingScenes()).toHaveLength(0);
+    expect(coinsScene.create).not.toHaveBeenCalled();
     await act(async () => mine?.cb([{ isIntersecting: true }]));
     await settle(10);
-    expect(closingScenes()).toHaveLength(1);
-    const made = scene.create.mock.results[closingScenes()[0]?.i ?? 0]?.value as {
+    expect(coinsScene.create).toHaveBeenCalledTimes(1);
+    expect(coinsScene.create.mock.calls[0]?.[0]).toBe(find(track, 'canvas'));
+    const made = coinsScene.create.mock.results[0]?.value as {
       setVisible: ReturnType<typeof vi.fn>;
       setProgress: ReturnType<typeof vi.fn>;
     };
     expect(made.setProgress).toHaveBeenCalled();
-    // it is drawn on the closing's own canvas
-    expect(scene.create.mock.calls[closingScenes()[0]?.i ?? 0]?.[0]).toBe(find(track, 'canvas'));
-    // out of sight: paused; back: drawn again, and still only the one canvas
     await act(async () => mine?.cb([{ isIntersecting: false }]));
     expect(made.setVisible).toHaveBeenLastCalledWith(false);
     await act(async () => mine?.cb([{ isIntersecting: true }]));
     expect(made.setVisible).toHaveBeenLastCalledWith(true);
-    expect(closingScenes()).toHaveLength(1);
+    expect(coinsScene.create).toHaveBeenCalledTimes(1);
     expect(track.querySelectorAll('canvas')).toHaveLength(1);
     vi.unstubAllGlobals();
   });

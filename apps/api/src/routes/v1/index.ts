@@ -24,6 +24,12 @@ import {
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import {
+  createTestFunds,
+  faucetKeysFrom,
+  type TestFunds,
+  type TestFundsSender,
+} from '../../faucet/test-funds';
+import {
   type ChainRegistry,
   createChainRegistry,
   type EvmInputs,
@@ -42,6 +48,7 @@ import { registerMockRoutes } from './mock';
 import { registerOrderRoutes } from './orders';
 import { registerPortfolioRoute } from './portfolio';
 import { registerSharedRoutes } from './shared';
+import { registerTestnetRoute } from './testnet';
 import { registerVaultRoute } from './vault';
 
 /**
@@ -77,6 +84,12 @@ export type V1Deps = {
   /** The daily cap and the keeping time of plans made from a link. Default: `LINKED_PLANS`. */
   linkedPlans?: LinkedPlanLimits;
   /**
+   * The test faucet's senders (POST /v1/testnet/fund). Left out: made from the faucet keys in the
+   * environment (`FAUCET_KEY_ENV`), for the chains on a test network only, or none. A test hands in
+   * its own.
+   */
+  testFunds?: TestFundsSender[];
+  /**
    * What `requireDeclared(root)` answered, when the app called it before its own routes, so that a
    * /v1 path registered ahead of these is held to the rule too. Left out, it is called here.
    */
@@ -99,19 +112,47 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
     db = own.db;
     app.addHook('onClose', () => own.client.end());
   }
+  // Read only when the registry is made here: a test that hands in its chains hands in its senders.
+  const solana = deps.chains
+    ? undefined
+    : (deps.solana ??
+      (await solanaFromEnv(env, flags.chainMode.solana, db, deps.solanaRecord ?? null)));
+  const robinhood = deps.chains
+    ? undefined
+    : (deps.robinhood ??
+      (await robinhoodFromEnv(env, flags.chainMode.robinhood, db, deps.robinhoodRecord ?? null)));
   const chains =
     deps.chains ??
     createChainRegistry(flags, parseChainConfigs(env, deps.contracts), {
       seed: `${Date.now()}:${randomUUID()}`,
       now: deps.now,
-      solana:
-        deps.solana ??
-        (await solanaFromEnv(env, flags.chainMode.solana, db, deps.solanaRecord ?? null)),
-      robinhood:
-        deps.robinhood ??
-        (await robinhoodFromEnv(env, flags.chainMode.robinhood, db, deps.robinhoodRecord ?? null)),
+      solana,
+      robinhood,
     });
   const orderDeps: OrderDeps = { db, chains, now: deps.now ?? (() => new Date()) };
+
+  // The test faucet. Its key-holding file is loaded only here, only when a faucet key is set for a
+  // chain on a test network (DESIGN-VAULT section 2, rule 5): otherwise it is never in the process.
+  let senders = deps.testFunds ?? [];
+  const faucetKeys = deps.testFunds ? null : faucetKeysFrom(env, chains);
+  if (faucetKeys) {
+    const { createFaucetSenders } = await import('../../faucet/signer');
+    senders = await createFaucetSenders(faucetKeys, chains.active(), {
+      // The node is held to the genesis of the network the record was deployed on.
+      ...(solana
+        ? { solana: { rpc: solana.rpc, genesisHash: deps.solanaRecord?.genesisHash ?? null } }
+        : {}),
+      ...(robinhood ? { robinhood } : {}),
+    });
+  }
+  const testFunds: TestFunds | null = senders.length
+    ? createTestFunds({
+        senders,
+        now: deps.now,
+        // The chain and the error's name: never the error, whose message can carry the RPC URL.
+        log: (fields) => app.log.error(fields, 'a test faucet send failed'),
+      })
+    : null;
 
   // Its own scope: sign-in, the rate limits and the error shape apply to these routes and to no
   // others. Default deny: a route under /v1 that does not say who may call it and which budget it
@@ -149,7 +190,8 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
     });
     registerConfigRoute(scope, config);
     registerMeRoutes(scope, orderDeps);
-    registerFundingRoute(scope, orderDeps);
+    registerFundingRoute(scope, orderDeps, testFunds ?? undefined);
+    registerTestnetRoute(scope, orderDeps, testFunds);
     registerOrderRoutes(scope, orderDeps);
     registerBasketRoutes(
       scope,

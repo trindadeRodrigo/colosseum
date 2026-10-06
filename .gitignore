@@ -33,3 +33,6 @@ apps/web/e2e/.results/
 
 # Papers read for the research notes: copyrighted, never committed
 docs/vault/research/articles/
+
+# Test-network keys belong outside the checkout (scripts/testnet/make-faucet-keys.ts refuses to write in it).
+testnet-keys/
