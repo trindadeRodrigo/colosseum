@@ -261,9 +261,7 @@ export function TripChart({
       <CaseReadout
         at={cursor.at}
         hint={words.hint}
-        idle={
-          <CaseLegend series={series} focus={focus} onFocus={setFocus} label={words.series} />
-        }
+        idle={<CaseLegend series={series} focus={focus} onFocus={setFocus} label={words.series} />}
       >
         {i !== null && (
           <>
@@ -439,9 +437,7 @@ export function GrowthChart({
       <CaseReadout
         at={cursor.at}
         hint={words.hint}
-        idle={
-          <CaseLegend series={series} focus={focus} onFocus={setFocus} label={words.series} />
-        }
+        idle={<CaseLegend series={series} focus={focus} onFocus={setFocus} label={words.series} />}
       >
         {i !== null && (
           <>
