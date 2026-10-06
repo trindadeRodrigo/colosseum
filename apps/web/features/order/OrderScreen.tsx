@@ -16,10 +16,9 @@ import { type Dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { dollars } from '../goal/sheet';
+import { utc } from '../portfolio/figures';
 import { SharedReview } from '../shared/SharedReview';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
-import { ActivityPanel } from './ActivityPanel';
-import { activityOf } from './activity';
 import { formatBps, formatRaw, shortfallBps, tokenName } from './amounts';
 import { type CallFailure, readOrder } from './order-api';
 import { checkDeposit, checkFamilyBuy, type DepositCheck, sharedShapeOk } from './order-check';
@@ -233,6 +232,10 @@ export function OrderScreen({ id }: { id: string }) {
         ? `/indexes/${encodeURIComponent(terms.slug)}`
         : '/publish';
   const testNetwork = shown.legs[0]?.provenance === 'sandbox';
+  // A deposit that landed stays in the vault as cash, whatever became of the steps after it.
+  const deposited = now.legs.some(
+    (leg) => (leg.kind === 'create_vault' || leg.kind === 'deposit') && leg.status === 'confirmed',
+  );
 
   // The one primary button of the view: sign, carry on, approve a step again, or nothing.
   const next: NextStep | { kind: 'first' } =
@@ -284,10 +287,8 @@ export function OrderScreen({ id }: { id: string }) {
             {!record.approved && (
               <Stat label={t.order.review.expires} className="max-[620px]:col-span-2">
                 <time dateTime={new Date(shown.expiresAt * 1000).toISOString()}>
-                  {new Intl.DateTimeFormat(LOCALE[lang], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  }).format(new Date(shown.expiresAt * 1000))}
+                  {/* the one way this app writes a time: the date, the minute and the zone */}
+                  {utc(lang, shown.expiresAt)}
                 </time>
               </Stat>
             )}
@@ -369,13 +370,26 @@ export function OrderScreen({ id }: { id: string }) {
               {view.alarm && <StatusMark status="off-track" size={12} className="mt-1.5" />}
               <span>{view.sentence}</span>
             </p>
-            {view.check && (
-              <p className="font-mono text-source text-muted-foreground">{view.check}</p>
-            )}
-            {view.detail && (
-              <p className="font-mono text-source text-muted-foreground break-words">
-                {view.detail}
+            {!done && deposited && view.next.kind === 'new-order' && (
+              <p data-ui="order-deposit-kept" className="text-body">
+                {t.order.outcome.depositKept}
               </p>
+            )}
+            {/* The check that failed and the guard's own words are for the team: behind a fold. */}
+            {(view.check || view.detail) && (
+              <details data-ui="order-support">
+                <summary className="cursor-pointer text-body-sm text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+                  {t.order.outcome.forSupport}
+                </summary>
+                {view.check && (
+                  <p className="mt-1 font-mono text-source text-muted-foreground">{view.check}</p>
+                )}
+                {view.detail && (
+                  <p className="font-mono text-source text-muted-foreground break-words">
+                    {view.detail}
+                  </p>
+                )}
+              </details>
             )}
           </div>
         )}
@@ -423,9 +437,29 @@ export function OrderScreen({ id }: { id: string }) {
           </p>
         )}
         {next.kind === 'new-order' && (
-          <Link href={newOrder} className={buttonClass({ variant: 'primary' })}>
-            {t.order.outcome.newOrder}
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link href={newOrder} className={buttonClass({ variant: 'primary' })}>
+              {t.order.outcome.newOrder}
+            </Link>
+            {deposited && (
+              <Link href="/monitor" className={buttonClass({ variant: 'secondary' })}>
+                {t.order.outcome.seePortfolio}
+              </Link>
+            )}
+          </div>
+        )}
+        {/* The order is done: the next step is the portfolio it filled, and another buy beside it. */}
+        {done && !running && terms?.kind !== 'publish' && (
+          <div data-ui="order-next" className="flex flex-wrap items-center gap-3">
+            <Link href="/monitor" className={buttonClass({ variant: 'primary' })}>
+              {t.order.outcome.seePortfolio}
+            </Link>
+            {buying && (
+              <Link href={newOrder} className={buttonClass({ variant: 'secondary' })}>
+                {t.order.outcome.buyMore}
+              </Link>
+            )}
+          </div>
         )}
         {next.kind === 'other-order' && (
           <Link
@@ -436,13 +470,6 @@ export function OrderScreen({ id }: { id: string }) {
           </Link>
         )}
       </div>
-
-      {/* His "Disclaimer and activity": what reached the chain, line by line with its link, beside the
-          disclaimer. */}
-      <ActivityPanel
-        executions={activityOf(now, t, onMock(port, chain))}
-        empty={t.activity.noneYet}
-      />
     </div>
   );
 }
@@ -516,7 +543,10 @@ function Step({
     <li data-ui="order-step" data-status={now.status} className="flex flex-col gap-1 py-3">
       <p className="flex flex-wrap items-baseline gap-x-2 text-body">
         <span className="font-medium">
-          {t.order.step(n)} · {t.order.kind[leg.kind]}
+          {t.order.step(n)} ·{' '}
+          {leg.kind === 'create_vault' && leg.trades.length > 0
+            ? t.order.kind.create_vault_buy
+            : t.order.kind[leg.kind]}
         </span>
         {leg.cashRaw && <span className="tabular-nums">{spend(leg.cashRaw)}</span>}
         <span aria-hidden="true">·</span>
@@ -545,18 +575,20 @@ function Step({
             return (
               <li key={`${trade.sell}>${trade.buy}:${trade.amountInRaw}`} className="tabular-nums">
                 {t.order.review.spend(spend(trade.amountInRaw), symbol(trade.buy))}
-                {expected && (
+                {/* In the token's own units where this app has them. Where it has none (the mock's
+                    tokens), a raw count would read as billions: the step says how far under the
+                    quote it may land, and no figure it cannot name (the flow audit, finding 23). */}
+                {expected && whole(expected.minOutRaw, trade.buy) !== null && (
                   <>
                     {' · '}
-                    {whole(expected.minOutRaw, trade.buy) !== null
-                      ? t.order.review.atLeastWhole(whole(expected.minOutRaw, trade.buy) as string)
-                      : t.order.review.atLeast(
-                          formatRaw(expected.minOutRaw, 0, locale) ?? expected.minOutRaw,
-                          tokenName(trade.buy),
-                        )}
+                    {t.order.review.atLeastWhole(whole(expected.minOutRaw, trade.buy) as string)}
                     {under !== null && ` · ${t.order.review.under(formatBps(under, locale))}`}
                   </>
                 )}
+                {expected &&
+                  whole(expected.minOutRaw, trade.buy) === null &&
+                  under !== null &&
+                  ` · ${t.order.review.atMostUnder(formatBps(under, locale))}`}
               </li>
             );
           })}

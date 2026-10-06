@@ -153,7 +153,7 @@ test('publish a portfolio, find it on the shelf, buy it and follow it, every ste
   await expect(page).toHaveURL(/\/indexes\/three-of-the-largest\/buy$/);
   await throughBuySteps(page, { amount: '40' });
   await check(page, 'family-buy');
-  await page.getByRole('button', { name: en.shared.buy.review('$40') }).click();
+  await page.getByRole('button', { name: en.buy.review('$40') }).click();
 
   await expect(page).toHaveURL(/\/orders\/[^/]+$/);
   const steps = page.locator('[data-ui="order-step"]');
@@ -194,7 +194,7 @@ test('a portfolio that holds gold offers no auto-follow, and says why', async ({
   await toFamily(page, 'With some gold');
   const offer = page.locator('[data-ui="auto-follow-offer"]');
   await expect(offer).toHaveAttribute('data-offered', 'false');
-  await expect(offer).toContainText(en.shared.offer.noOracle('GOLD', 'Solana'));
+  await expect(offer).toContainText(en.shared.offer.noOracle('Gold', 'Solana'));
   await check(page, 'family-gold');
 });
 

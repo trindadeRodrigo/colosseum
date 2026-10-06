@@ -70,7 +70,7 @@ export function FamilyBuyScreen({ slug }: { slug: string }) {
     recipe,
   );
   const followed = recipe ? followedOf(recipe, check) : null;
-  const parsed = parseNumber(text);
+  const parsed = parseNumber(text, lang);
   const amount =
     parsed !== null && !Number.isNaN(parsed) && parsed >= MIN_USD && parsed <= MAX_USD
       ? parsed
@@ -230,7 +230,7 @@ export function FamilyBuyScreen({ slug }: { slug: string }) {
         onReadAgain={() => setRound((n) => n + 1)}
         trust={{ accepted, checked: ticked, onCheck: setTicked }}
         order={{
-          label: t.shared.buy.review(dollars(amount ?? MIN_USD, lang)),
+          label: t.buy.review(dollars(amount ?? MIN_USD, lang)),
           busy: placing,
           busyLabel: t.buy.reviewing,
           blocked,

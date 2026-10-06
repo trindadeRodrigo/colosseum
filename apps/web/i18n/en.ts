@@ -386,7 +386,9 @@ export const en = {
     unknownStatus: 'status unknown',
     notRetried: '(not retried)',
     signature: 'transaction id',
-    noneYet: 'Nothing has reached the chain from this order yet.',
+    /** The heading of one order's lines on the portfolio: "Buy of $80,000 · Oct 5, 2026, 15:00 UTC". */
+    buy: (amount: string, when: string) => `Buy of ${amount} · ${when}`,
+    order: (when: string) => `Order · ${when}`,
     noneVault:
       'Nothing this browser placed for your vaults has reached the chain. Trades made elsewhere, or by the keeper, are not listed here yet.',
   },
@@ -756,18 +758,21 @@ export const en = {
     amount: {
       label: 'Amount (dollars)',
       hint: (planned: string) => `Your plan was built for ${planned}. From $10 to $1,000,000.`,
+      /** Under an amount that is not the plan's: its limits were set in dollars at that amount. */
+      other: (planned: string) =>
+        `Your plan was built for ${planned}, and its limits were worked out at that amount. To buy another amount, build the plan again for it.`,
     },
     /** The four steps of a buy, one open at a time. */
     steps: {
       label: 'Steps to buy',
-      names: { amount: 'Amount', funds: 'Funds', trust: 'Trust', review: 'Sign' },
+      names: { amount: 'Amount', funds: 'Funds', trust: 'Trust', review: 'Review' },
       /** Read after a step's name by a screen reader. */
       done: 'done',
       next: 'Continue',
       funds: { ready: 'Ready', short: 'Something is missing', reading: 'Reading…' },
       trust: { accepted: 'Accepted', open: 'Not accepted yet' },
       reviewLead: (amount: string, chain: string) =>
-        `You’re buying ${amount} of your plan on ${chain}. Next you review every step, then sign each one in your wallet.`,
+        `You’re buying ${amount} on ${chain}. Next you review every step, then sign each one in your wallet.`,
       /** The one line over the card when its figures are not live. */
       note: {
         testNetwork: (chain: string) => `Test network · ${chain} · not live`,
@@ -971,7 +976,6 @@ export const en = {
       lead: (chain: string) =>
         `A vault of yours on ${chain} follows this portfolio, at the version shown, with auto-follow off. Nothing is bought until you review every step and sign it.`,
       amountHint: 'In dollars, at least $10.',
-      review: (amount: string) => `Review the buy of ${amount}`,
       blocked: {
         terms: 'I couldn’t read this portfolio, so there is nothing to follow yet.',
         missing: 'The chain doesn’t hold this portfolio, so it can’t be followed.',
@@ -1094,8 +1098,8 @@ export const en = {
       steps: 'Steps',
       expires: 'Sign before',
       spend: (amount: string, asset: string) => `Spend ${amount} on ${asset}`,
-      atLeast: (amount: string, asset: string) =>
-        `receive at least ${amount} of ${asset}, in its smallest units`,
+      /** Where this app has no units for the token: how far under the quote the step may land. */
+      atMostUnder: (pct: string) => `at most ${pct} under the quote`,
       atLeastWhole: (amount: string) => `receive at least ${amount}`,
       under: (pct: string) => `${pct} under the quote`,
       noTrades: 'No trade in this step.',
@@ -1154,6 +1158,8 @@ export const en = {
     kind: {
       approve: 'Allow the deposit',
       create_vault: 'Open your vault and deposit',
+      /** The same step where it also buys (Robinhood Chain): the buys are named, not hidden. */
+      create_vault_buy: 'Open your vault, deposit and buy',
       deposit: 'Deposit',
       swap: 'Buy',
       set_targets: 'Set your vault’s targets',
@@ -1191,7 +1197,14 @@ export const en = {
     },
     outcome: {
       done: (chain: string) =>
-        `Every step is confirmed on ${chain}, as our server reports it. Each step’s transaction is linked beside it.`,
+        `Every step is confirmed on ${chain}. Each step’s transaction is linked beside it.`,
+      seePortfolio: 'See your portfolio',
+      buyMore: 'Buy more',
+      /** After a step failed or was refused once the deposit had landed. */
+      depositKept:
+        'What you deposited is in your vault, as cash: nothing is lost. A new order would deposit again.',
+      /** The fold over the check that failed and the guard's own words, to quote to the team. */
+      forSupport: 'Details for support',
       refused: (step: number) =>
         `I didn’t sign step ${step}: the transaction our server built for it isn’t the step you approved. Nothing was signed for it.`,
       refusedOrder:

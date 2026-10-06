@@ -14,6 +14,7 @@ import { basketOfPlan } from '../order/readiness';
 import { doneOrder, ORDER_ID, orderOn, PLAN_ID, planOn, recordOf } from '../order/test/fixtures';
 import { EMBEDDED, fakePort, json, PHANTOM, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
+import { utc } from './figures';
 import { MonitorScreen } from './MonitorScreen';
 import { PORTFOLIO_PATH } from './portfolio';
 import {
@@ -622,6 +623,15 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     const activity = find(host, '[data-ui="activity-panel"]');
     const lines = [...activity.querySelectorAll('[data-ui="execution-list"] li')];
     expect(lines.length).toBe(doneOrder().legs.length);
+    // under the order they were steps of, and each time in the one format, with its zone
+    const orders = [...activity.querySelectorAll('[data-ui="activity-order"] h3')];
+    expect(orders.map((h) => h.textContent)).toEqual([
+      en.activity.buy('$40,000', utc('en', doneOrder().createdAt)),
+    ]);
+    for (const line of lines)
+      expect(line.querySelector('time')?.textContent).toMatch(
+        /^[A-Z][a-z]{2} \d{1,2}, \d{4}, \d{2}:\d{2} UTC$/,
+      );
     // each link from this app's own chain table, devnet's explorer, whatever the API sent
     for (const line of lines)
       expect(line.querySelector('a[href^="https://solscan.io/tx/"]')).not.toBeNull();

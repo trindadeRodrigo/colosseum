@@ -247,7 +247,7 @@ describe('a shared portfolio read from the chain by this app', () => {
     await settle(50);
     await click(find(host, 'input[type="checkbox"]'));
     const review = [...host.querySelectorAll<HTMLElement>('button')].find((b) =>
-      b.textContent?.includes(en.shared.buy.review('$10')),
+      b.textContent?.includes(en.buy.review('$10')),
     );
     await click(review as HTMLElement);
     await settle(50);
@@ -315,7 +315,7 @@ describe('a shared portfolio this app could read from the chain and could not', 
     await settle(50);
     await click(find(host, 'input[type="checkbox"]'));
     const review = [...host.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
-      b.textContent?.includes(en.shared.buy.review('$10')),
+      b.textContent?.includes(en.buy.review('$10')),
     );
     expect(review?.getAttribute('aria-disabled')).toBe('true');
     expect(host.textContent).toContain(tampered);

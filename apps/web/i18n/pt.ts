@@ -345,7 +345,8 @@ export const pt: Dictionary = {
     unknownStatus: 'situação desconhecida',
     notRetried: '(não repetida)',
     signature: 'id da transação',
-    noneYet: 'Nada desta ordem chegou à rede ainda.',
+    buy: (amount: string, when: string) => `Compra de ${amount} · ${when}`,
+    order: (when: string) => `Ordem · ${when}`,
     noneVault:
       'Nada que este navegador fez para os seus cofres chegou à rede. Operações feitas em outro lugar, ou pelo agente, ainda não aparecem aqui.',
   },
@@ -683,16 +684,18 @@ export const pt: Dictionary = {
       label: 'Valor (dólares)',
       hint: (planned: string) =>
         `Seu plano foi montado para ${planned}. De US$ 10 a US$ 1.000.000.`,
+      other: (planned: string) =>
+        `Seu plano foi montado para ${planned}, e os limites dele foram calculados para esse valor. Para comprar outro valor, monte o plano de novo para ele.`,
     },
     steps: {
       label: 'Passos para comprar',
-      names: { amount: 'Valor', funds: 'Fundos', trust: 'Confiança', review: 'Assinar' },
+      names: { amount: 'Valor', funds: 'Fundos', trust: 'Confiança', review: 'Revisar' },
       done: 'feito',
       next: 'Continuar',
       funds: { ready: 'Pronto', short: 'Falta algo', reading: 'Lendo…' },
       trust: { accepted: 'Aceito', open: 'Ainda não aceito' },
       reviewLead: (amount: string, chain: string) =>
-        `Você está comprando ${amount} do seu plano em ${chain}. Em seguida você revisa cada passo e assina cada um na sua carteira.`,
+        `Você está comprando ${amount} em ${chain}. Em seguida você revisa cada passo e assina cada um na sua carteira.`,
       note: {
         testNetwork: (chain: string) => `Rede de teste · ${chain} · valores não reais`,
       },
@@ -900,7 +903,6 @@ export const pt: Dictionary = {
       lead: (chain: string) =>
         `Um cofre seu na ${chain} segue este portfólio, na versão mostrada, com o seguir automático desativado. Nada é comprado até você revisar cada passo e assinar.`,
       amountHint: 'Em dólares, a partir de US$ 10.',
-      review: (amount: string) => `Revisar a compra de ${amount}`,
       blocked: {
         terms: 'Não consegui ler este portfólio, então ainda não há o que seguir.',
         missing: 'A rede não tem este portfólio, então não dá para segui-lo.',
@@ -1026,8 +1028,7 @@ export const pt: Dictionary = {
       steps: 'Passos',
       expires: 'Assine antes de',
       spend: (amount: string, asset: string) => `Gastar ${amount} em ${asset}`,
-      atLeast: (amount: string, asset: string) =>
-        `receber pelo menos ${amount} de ${asset}, em suas menores unidades`,
+      atMostUnder: (pct: string) => `no máximo ${pct} abaixo da cotação`,
       atLeastWhole: (amount: string) => `receber pelo menos ${amount}`,
       under: (pct: string) => `${pct} abaixo da cotação`,
       noTrades: 'Nenhuma negociação neste passo.',
@@ -1086,6 +1087,7 @@ export const pt: Dictionary = {
     kind: {
       approve: 'Autorizar o depósito',
       create_vault: 'Abrir seu cofre e depositar',
+      create_vault_buy: 'Abrir seu cofre, depositar e comprar',
       deposit: 'Depositar',
       swap: 'Comprar',
       set_targets: 'Definir as metas do seu cofre',
@@ -1123,7 +1125,12 @@ export const pt: Dictionary = {
     },
     outcome: {
       done: (chain: string) =>
-        `Todos os passos estão confirmados em ${chain}, segundo nosso servidor. A transação de cada passo está no link ao lado dele.`,
+        `Todos os passos estão confirmados em ${chain}. A transação de cada passo está no link ao lado dele.`,
+      seePortfolio: 'Ver seu portfólio',
+      buyMore: 'Comprar mais',
+      depositKept:
+        'O que você depositou está no seu cofre, em caixa: nada se perdeu. Uma nova ordem depositaria de novo.',
+      forSupport: 'Detalhes para o suporte',
       refused: (step: number) =>
         `Não assinei o passo ${step}: a transação que nosso servidor montou para ele não é o passo que você aprovou. Nada foi assinado para ele.`,
       refusedOrder:

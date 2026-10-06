@@ -340,7 +340,7 @@ describe('buying a portfolio, which follows it', () => {
     await settle(400);
     await settle(50);
     await click(find(host, `input[type="checkbox"]`));
-    await click(button(host, en.shared.buy.review('$10')) as HTMLElement);
+    await click(button(host, en.buy.review('$10')) as HTMLElement);
     await settle(50);
     expect(calls.find((c) => c.path === '/v1/orders')?.body).toEqual({
       type: 'buy',

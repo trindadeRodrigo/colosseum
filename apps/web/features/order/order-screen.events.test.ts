@@ -18,6 +18,7 @@ import { parse } from '../../components/ui/test/html';
 import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
+import { utc } from '../portfolio/figures';
 import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
 import { OrderScreen } from './OrderScreen';
@@ -137,6 +138,11 @@ describe('the review', () => {
     expect(steps[1]).toContain(en.order.review.atLeastWhole('0.0099 SPYx'));
     expect(steps[1]).toContain(en.order.review.under('1%'));
     expect(label(primary(host))).toBe(en.order.signAndBuy('$10'));
+    // the deadline in the one way this app writes a time: the date, the minute and the zone
+    expect(find(host, 'time').textContent).toBe(utc('en', orderOn().expiresAt));
+    expect(find(host, 'time').textContent).toMatch(
+      /^[A-Z][a-z]{2} \d{1,2}, \d{4}, \d{2}:\d{2} UTC$/,
+    );
     // on a test network: the hatch and one quiet line that says so, never the word MOCK
     expect(host.textContent).not.toContain('MOCK');
     expect(host.querySelector('[data-ui="sample-note"]')?.textContent).toBe(
@@ -243,17 +249,26 @@ describe('the review', () => {
       'https://solscan.io/tx/sig1?cluster=devnet',
     ]);
     expect(host.querySelector('a[href^="https://explorer.example/"]')).toBeNull();
-    // and his activity lines, beside the disclaimer: one per step that reached the chain, each with
-    // its link
-    const activity = find(host, '[data-ui="activity-panel"]');
-    const lines = [...activity.querySelectorAll('[data-ui="execution-list"] li')];
-    expect(lines).toHaveLength(2);
-    for (const line of lines) {
-      expect(line.getAttribute('data-status')).toBe('confirmed');
-      expect(line.querySelector('a[href^="https://solscan.io/tx/"]')).not.toBeNull();
-    }
-    expect(find(activity, '[data-ui="disclaimer"]').textContent).toContain(DISCLAIMER.en);
-    expect(host.querySelector('[data-variant="primary"]')).toBeNull();
+    // the steps are the record of what was done: the same lines are not listed again under them,
+    // and the disclaimer is the shell's foot (the flow audit, finding 27)
+    expect(host.querySelector('[data-ui="activity-panel"]')).toBeNull();
+    expect(host.querySelector('[data-ui="execution-list"]')).toBeNull();
+    // nothing more to sign, and no hedge about who reports it
+    expect(host.querySelector('button[data-variant="primary"]')).toBeNull();
+    expect(status(host)).not.toMatch(/server reports/);
+    // the next step: the portfolio the buy filled, and another buy of the same plan beside it
+    const next = [...find(host, '[data-ui="order-next"]').querySelectorAll('a')];
+    expect(next.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      [en.order.outcome.seePortfolio, '/monitor'],
+      [en.order.outcome.buyMore, `/plan/${PLAN_ID}/buy`],
+    ]);
+    expect(next[0]?.className).toContain(buttonClass({ variant: 'primary' }));
+  });
+
+  it('offers no next step before the order is done', async () => {
+    api(orderOn());
+    seed();
+    expect((await screen()).querySelector('[data-ui="order-next"]')).toBeNull();
   });
 });
 
@@ -358,7 +373,13 @@ describe('what the executor answers', () => {
     const said = status(host);
     expect(said).toContain(en.order.outcome.refused(2));
     expect(said).toContain(en.order.outcome.refusedWhy.moved);
-    expect(said).toContain(en.order.outcome.check('minimum'));
+    // the check that failed and the guard's own words are kept for the team, behind a fold
+    const support = find<HTMLDetailsElement>(host, '[data-ui="order-support"]');
+    expect(support.open).toBe(false);
+    expect(find(support, 'summary').textContent).toBe(en.order.outcome.forSupport);
+    expect(support.textContent).toContain(en.order.outcome.check('minimum'));
+    // nothing was deposited yet, so nothing is said about a deposit
+    expect(host.querySelector('[data-ui="order-deposit-kept"]')).toBeNull();
     // the region that says it is read out as it changes
     expect(host.querySelector('[data-ui="order-status"]')?.getAttribute('aria-live')).toBe(
       'polite',
@@ -366,6 +387,51 @@ describe('what the executor answers', () => {
     const next = primary(host);
     expect(label(next)).toBe(en.order.outcome.newOrder);
     expect(next.getAttribute('href')).toBe(`/plan/${PLAN_ID}/buy`);
+  });
+
+  it('says the deposit is still in the vault when a later step fails, and leads to the portfolio', async () => {
+    api(orderOn());
+    seed();
+    const landed = doneOrder();
+    const failed: OrderDetail = {
+      ...landed,
+      status: 'open',
+      legs: landed.legs.map((leg) =>
+        leg.id === LEG_SWAP ? { ...leg, status: 'failed', txId: null } : leg,
+      ),
+    };
+    run.answer = async () => ({ status: 'failed', order: failed, legId: LEG_SWAP, error: null });
+    const host = await screen();
+    await click(primary(host));
+    await settle();
+    expect(find(host, '[data-ui="order-deposit-kept"]').textContent).toBe(
+      en.order.outcome.depositKept,
+    );
+    const links = [...host.querySelectorAll('a')].map((a) => [
+      a.textContent,
+      a.getAttribute('href'),
+    ]);
+    expect(links).toContainEqual([en.order.outcome.newOrder, `/plan/${PLAN_ID}/buy`]);
+    expect(links).toContainEqual([en.order.outcome.seePortfolio, '/monitor']);
+  });
+
+  it('never shows a token’s smallest units: where it has none for a token, how far under the quote', async () => {
+    // a token this app has no committed units for
+    const order = orderOn();
+    const odd: OrderDetail = {
+      ...order,
+      legs: order.legs.map((leg) => ({
+        ...leg,
+        trades: leg.trades.map((trade) => ({ ...trade, buy: 'solana:somethingnew' })),
+      })),
+    };
+    api(odd);
+    seed();
+    const host = await screen();
+    const step = [...host.querySelectorAll('[data-ui="order-step"]')][1]?.textContent ?? '';
+    expect(step).toContain(en.order.review.spend('6 USDC', 'SOMETHINGNEW'));
+    expect(step).toContain(en.order.review.atMostUnder('1%'));
+    expect(step).not.toMatch(/smallest|990,000|990000/);
   });
 
   it('asks again after needs_review, and hands that answer back only once the person approves', async () => {
@@ -496,7 +562,8 @@ describe('a buy on Robinhood Chain', () => {
     expect(steps).toHaveLength(2);
     expect(steps[0]).toContain(en.order.kind.approve);
     expect(steps[0]).toContain('10 tUSDG');
-    expect(steps[1]).toContain(en.order.kind.create_vault);
+    // the step that also buys says so: nothing on this chain is called only "deposit"
+    expect(steps[1]).toContain(en.order.kind.create_vault_buy);
     expect(steps[1]).toContain('10 tUSDG');
     expect(steps[1]).toContain(en.order.review.spend('6 tUSDG', 'SPY'));
     expect(label(primary(host))).toBe(en.order.signAndBuy('$10'));
@@ -580,7 +647,7 @@ describe.each([
     if (chain === 'robinhood') expect(host.textContent).not.toMatch(/usdc/i);
   });
 
-  it('names the explorer beside each step’s link, and badges each line of the activity', async () => {
+  it('names the explorer beside each step’s link', async () => {
     api(orderOn(chain), chain);
     seed(recordOf(chain));
     run.answer = async () => ({ status: 'done', order: doneOrder(chain) });
@@ -588,13 +655,9 @@ describe.each([
     await click(primary(host));
     await settle();
     const names = [...host.querySelectorAll('[data-ui="explorer-name"]')].map((n) => n.textContent);
-    // a link per step, and a line per step in the activity
-    expect(names).toHaveLength(4);
+    // a link per step
+    expect(names).toHaveLength(2);
     expect(new Set(names)).toEqual(new Set([explorer]));
-    const lines = [...host.querySelectorAll('[data-ui="execution-list"] li')];
-    expect(lines).toHaveLength(2);
-    for (const line of lines)
-      expect(line.querySelector('[data-ui="chain-badge"]')?.getAttribute('data-chain')).toBe(chain);
     if (chain === 'robinhood') expect(host.textContent).not.toMatch(/usdc/i);
   });
 });

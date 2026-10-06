@@ -165,51 +165,49 @@ export function MonitorScreen() {
   else {
     switch (state.outcome.kind) {
       case 'read':
-        body = [
-          // Each chain that could not be read says so; the ones that were read are shown all the same.
-          ...(state.outcome.unavailable.length > 0 || state.outcome.current === 'not-held'
-            ? [
-                <ul key="chains-out" data-ui="chains-out" className="flex flex-col gap-1.5">
-                  {state.outcome.unavailable.map((u) => (
-                    <li key={u.chain} data-chain={u.chain}>
-                      <Status status="watch">
-                        {u.retryable
-                          ? words.chainOut(nameOf(u.chain))
-                          : words.chainOff(nameOf(u.chain))}
-                      </Status>
-                    </li>
-                  ))}
-                  {state.outcome.current === 'not-held' && chain && (
-                    <li data-chain={chain}>
-                      <Status status="watch">{words.notHeld(nameOf(chain))}</Status>
-                    </li>
-                  )}
-                </ul>,
-                ...(state.outcome.unavailable.some((u) => u.retryable)
-                  ? [<div key="again">{readAgain}</div>]
-                  : []),
-              ]
-            : []),
-          // "No vault on <chain> yet" is said only of a chain that was read, and only when every chain
-          // of theirs was: a chain that could not be read may hold one.
-          vaults.length === 0 &&
-          state.outcome.current === 'read' &&
-          state.outcome.unavailable.length === 0
-            ? say(
+        // Each chain that could not be read says so; the ones that were read are shown all the same.
+        body = (
+          <>
+            {(state.outcome.unavailable.length > 0 || state.outcome.current === 'not-held') && (
+              <ul data-ui="chains-out" className="flex flex-col gap-1.5">
+                {state.outcome.unavailable.map((u) => (
+                  <li key={u.chain} data-chain={u.chain}>
+                    <Status status="watch">
+                      {u.retryable
+                        ? words.chainOut(nameOf(u.chain))
+                        : words.chainOff(nameOf(u.chain))}
+                    </Status>
+                  </li>
+                ))}
+                {state.outcome.current === 'not-held' && chain && (
+                  <li data-chain={chain}>
+                    <Status status="watch">{words.notHeld(nameOf(chain))}</Status>
+                  </li>
+                )}
+              </ul>
+            )}
+            {state.outcome.unavailable.some((u) => u.retryable) && <div>{readAgain}</div>}
+            {/* "No vault on <chain> yet" is said only of a chain that was read, and only when every
+                chain of theirs was: a chain that could not be read may hold one. */}
+            {vaults.length === 0 &&
+            state.outcome.current === 'read' &&
+            state.outcome.unavailable.length === 0 ? (
+              say(
                 words.empty(chainName),
                 <Link href="/goal" className={link}>
                   {words.startGoal}
                 </Link>,
               )
-            : vaults.length === 0
-              ? null
-              : grouped
-                ? [
-                    <AcrossChains key="across" totals={held.map(totalOf)} />,
-                    ...held.map(chainGroup),
-                  ]
-                : held.flatMap((entry) => entry.vaults.map((vault) => vaultBlock(entry, vault))),
-        ];
+            ) : vaults.length === 0 ? null : grouped ? (
+              <>
+                <AcrossChains totals={held.map(totalOf)} />
+                {held.map(chainGroup)}
+              </>
+            ) : (
+              held.flatMap((entry) => entry.vaults.map((vault) => vaultBlock(entry, vault)))
+            )}
+          </>
+        );
         break;
       case 'unavailable':
         body = say(
@@ -282,7 +280,7 @@ export function MonitorScreen() {
       </div>
       {/* His "Disclaimer and activity": the disclaimer under the plans, beside what reached the chain. */}
       {vaults.length > 0 && (
-        <ActivityPanel executions={history.activity} empty={t.activity.noneVault} />
+        <ActivityPanel groups={history.activity} empty={t.activity.noneVault} />
       )}
     </div>
   );

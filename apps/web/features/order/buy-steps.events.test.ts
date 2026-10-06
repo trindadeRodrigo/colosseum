@@ -169,6 +169,29 @@ describe('the amount', () => {
     await type(input, '200');
     expect(next(host, 'amount').getAttribute('aria-disabled')).toBeNull();
   });
+
+  it('reads a lone mark as the page’s language does: three decimals are no amount of money', async () => {
+    api();
+    const host = await buy();
+    const input = find<HTMLInputElement>(host, 'input[inputmode="decimal"]');
+    // in English "10.555" is not ten thousand: it is refused, not read as $10,555
+    await type(input, '10.555');
+    expect(next(host, 'amount').getAttribute('aria-disabled')).toBe('true');
+    expect(host.textContent).toContain(en.buy.blocked.amount);
+    for (const fine of ['10.55', '10,555', '1,000.5']) {
+      await type(input, fine);
+      expect(next(host, 'amount').getAttribute('aria-disabled'), fine).toBeNull();
+    }
+  });
+
+  it('says plainly that the plan was built for another amount when the amount is changed', async () => {
+    api();
+    const host = await buy();
+    expect(host.textContent).not.toContain(en.buy.amount.other('$40,000'));
+    await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '100');
+    expect(host.textContent).toContain(en.buy.amount.other('$40,000'));
+    expect(host.textContent).not.toContain(en.buy.amount.hint('$40,000'));
+  });
 });
 
 describe('the steps', () => {
@@ -182,7 +205,7 @@ describe('the steps', () => {
       // a funded wallet: the funds are done before the step is opened
       '2Funds, done',
       '3Trust',
-      '4Sign',
+      '4Review',
     ]);
     const current = () =>
       progress.querySelector('[aria-current="step"]')?.getAttribute('data-step');
@@ -298,6 +321,21 @@ describe('the funds', () => {
     expect(next(host, 'funds').getAttribute('aria-disabled')).toBeNull();
   });
 
+  it('offers one way to fill the wallet at a time, and names the cash as the plan does', async () => {
+    api({ funded: false, faucet: true });
+    portStore.set(signedInPort(EMBEDDED, { userId: USER, test: true }, 'mock'));
+    const host = await buy();
+    await click(next(host, 'amount'));
+    expect(button(host, en.buy.funding.testFunds)).toBeDefined();
+    expect(button(host, en.buy.funding.mockFund)).toBeUndefined();
+    // the source line of the details names the token as every screen does, at the one time format
+    const sources = [...find(host, '[data-ui="funding-details"]').querySelectorAll('ul li')].map(
+      (li) => li.textContent ?? '',
+    );
+    expect(sources[0]).toMatch(/^USDC · /);
+    expect(sources[0]).toMatch(/[A-Z][a-z]{2} \d{1,2}, \d{4}, \d{2}:\d{2} UTC/);
+  });
+
   it('hides the button where the server has no faucet key, and shows the address to fund', async () => {
     api({ funded: false, faucet: false });
     const host = await buy();
@@ -348,8 +386,33 @@ describe('the funds', () => {
   });
 });
 
+describe('a notice accepted before', () => {
+  it('is not a step again: three steps, and the notice is still there to read at the review', async () => {
+    api({ funded: true });
+    window.localStorage.setItem(
+      `tf-trust:${USER}`,
+      JSON.stringify({ textVersion: TRUST_STATUS.textVersion }),
+    );
+    const host = await buy();
+    const progress = find(host, 'ol[data-ui="buy-progress"]');
+    expect([...progress.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
+      '1Amount',
+      '2Funds, done',
+      '3Review',
+    ]);
+    expect(host.querySelector('[data-ui="buy-step"][data-step="trust"]')).toBeNull();
+    await click(next(host, 'amount'));
+    await click(next(host, 'funds'));
+    expect(opened(host)).toEqual(['review']);
+    const kept = find<HTMLDetailsElement>(panel(host, 'review'), '[data-ui="trust-kept"]');
+    expect(kept.open).toBe(false);
+    expect(kept.textContent).toContain(en.trust.accepted);
+    expect(kept.querySelector('input[type="checkbox"]')).toBeNull();
+  });
+});
+
 describe('what you’re trusting', () => {
-  it('says the four points in short, keeps every item of the notice behind "Read the full list"', async () => {
+  it('says in short only what applies to a plan’s own vault, and keeps every item of the notice behind "Read the full list"', async () => {
     api({ funded: true });
     const host = await buy();
     const notice = find(host, '[data-ui="trust-notice"]');
@@ -359,7 +422,7 @@ describe('what you’re trusting', () => {
     expect(short).toEqual([
       en.trust.short.unaudited,
       en.trust.short.keys,
-      en.trust.short.keeper('0.75%', '1%'),
+      // no keeper line: a plan's vault follows nothing, so the keeper does not trade it
       en.trust.short.issuers,
     ]);
     const full = find<HTMLDetailsElement>(notice, 'details[data-ui="trust-full"]');

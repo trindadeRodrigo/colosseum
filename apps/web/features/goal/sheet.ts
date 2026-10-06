@@ -70,12 +70,20 @@ const grouped = (text: string, mark: string) =>
  * as anything: "10 20" is two numbers, and neither language sets off thousands with a space.
  * Null when nothing was typed, NaN when it is not a number that can be read one way only.
  */
-export function parseNumber(text: string): number | null {
+export function parseNumber(text: string, lang?: Lang): number | null {
   const bare = text.trim().replace(/^(US\$|\$)\s*/, '');
   if (bare === '') return null;
   if (!/^\d[\d.,]*$/.test(bare)) return Number.NaN;
   const marks = [...new Set(bare.replace(/\d/g, ''))];
   if (marks.length === 0) return Number(bare);
+  // In the language of the page a lone mark means one thing: "10.555" in English is ten dollars and
+  // three decimals, which no amount of money has, not ten thousand (the flow audit, finding 18).
+  if (lang && marks.length === 1) {
+    const decimal = lang === 'pt' ? ',' : '.';
+    if (marks[0] !== decimal)
+      return grouped(bare, marks[0] as string) ? Number(bare.replace(/[.,]/g, '')) : Number.NaN;
+    return /^\d+[.,]\d{1,2}$/.test(bare) ? Number(bare.replace(',', '.')) : Number.NaN;
+  }
   const number = (whole: string, cents = '') =>
     Number(`${whole.replace(/[.,]/g, '')}${cents ? `.${cents}` : ''}`);
   if (marks.length === 2) {
