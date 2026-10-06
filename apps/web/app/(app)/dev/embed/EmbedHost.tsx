@@ -1,6 +1,6 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
-import { HEIGHT_MESSAGE } from '../../../../features/embed/host-height';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { HEIGHT_MESSAGE, HEIGHT_REQUEST } from '../../../../features/embed/host-height';
 
 // The partner's side, as a host app would write it: a frame per skin, each sized by the height the
 // embed posts. The skins are named in the frame's address (features/embed/theme.ts); the sample
@@ -26,6 +26,11 @@ const SKINS: { name: string; query: string; ground: string }[] = [
 function Frame({ src, title }: { src: string; title: string }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(320);
+  const ask = useCallback(
+    () =>
+      frame.current?.contentWindow?.postMessage({ type: HEIGHT_REQUEST }, window.location.origin),
+    [],
+  );
   useEffect(() => {
     const listen = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow) return;
@@ -35,13 +40,17 @@ function Frame({ src, title }: { src: string; title: string }) {
         setHeight(Math.min(data.height, 4000));
     };
     window.addEventListener('message', listen);
+    // the embed may have told its height before this listener was up: ask again
+    ask();
     return () => window.removeEventListener('message', listen);
-  }, []);
+  }, [ask]);
+
   return (
     <iframe
       ref={frame}
       src={src}
       title={title}
+      onLoad={ask}
       style={{ width: '100%', height, border: 0, display: 'block' }}
     />
   );

@@ -11,7 +11,7 @@ import { READ_IN_DOLLARS } from '../goal/test/plan';
 import { chainOf, price, SECOND_VAULT, VAULT, vault } from '../portfolio/test/portfolio';
 import { EmbedGoal } from './EmbedGoal';
 import { EmbedVault } from './EmbedVault';
-import { HEIGHT_MESSAGE } from './host-height';
+import { HEIGHT_MESSAGE, HEIGHT_REQUEST } from './host-height';
 import { partnerTheme, themeStyle } from './theme';
 
 // The partner embed with real events (embed-shell.md, guidelines.html section 08): in the partner's
@@ -117,6 +117,17 @@ describe('the embed’s goal', () => {
     Object.defineProperty(window, 'parent', { configurable: true, value: { postMessage: post } });
     try {
       await goal();
+      expect(post).toHaveBeenCalledWith({ type: HEIGHT_MESSAGE, height: expect.any(Number) }, '*');
+      // a host that missed it asks, and is told again; anyone else asking is not answered
+      post.mockClear();
+      window.dispatchEvent(new MessageEvent('message', { data: { type: HEIGHT_REQUEST } }));
+      expect(post).not.toHaveBeenCalled();
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: HEIGHT_REQUEST },
+          source: window.parent as unknown as Window,
+        }),
+      );
       expect(post).toHaveBeenCalledWith({ type: HEIGHT_MESSAGE, height: expect.any(Number) }, '*');
     } finally {
       if (parent) Object.defineProperty(window, 'parent', parent);
