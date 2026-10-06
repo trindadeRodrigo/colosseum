@@ -1,7 +1,7 @@
 import type { PersonalProposal } from '@colosseum/engine/personal';
 import { DISCLAIMER, type Provenance } from '@colosseum/schemas';
 import { WORDS } from '../../packages/engine/src/personal/templates';
-import type { DataMode } from './data';
+import type { DataMode, ShelfName } from './data';
 import type { GoalRun } from './run';
 
 // The playground's report: one self-contained HTML page per run. Plain on purpose: system fonts, light
@@ -16,6 +16,8 @@ import type { GoalRun } from './run';
 export type ReportMeta = {
   file: string;
   mode: DataMode;
+  /** The fixture shelf, in fixtures mode. Left out: the launch shelf. */
+  shelf?: ShelfName;
   now: string;
 };
 
@@ -278,6 +280,13 @@ function goalSection(run: GoalRun, i: number, mode: DataMode): string {
     ${questionsSection(run)}
     ${readBackSection(run)}
     ${plansSection(run, mode)}
+    ${
+      run.heldOut.length
+        ? `<details><summary>Listed on this shelf, in no plan yet (${run.heldOut.length})</summary>${list(
+            run.heldOut.map((h) => `<code>${esc(h.symbol)}</code>: ${esc(h.reason)}`),
+          )}</details>`
+        : ''
+    }
     <details><summary>Where the figures come from</summary>${list(run.sources.map(esc))}</details>
   </section>`;
 }
@@ -310,9 +319,14 @@ nav ol{padding-left:1.2rem}
 
 /** The page for one run. The same runs and meta give the same page. */
 export function renderReport(runs: GoalRun[], meta: ReportMeta): string {
+  const extended = meta.mode === 'fixtures' && meta.shelf === 'extended';
   const banner =
     meta.mode === 'fixtures'
-      ? `<p class="banner"><span class="plate">MOCK</span> Every figure on this page comes from the engine's fixtures: the launch shelf, yields and exit capacities written by hand for tests. None is live.</p>`
+      ? `<p class="banner"><span class="plate">MOCK</span> Every figure on this page comes from the engine's fixtures: ${
+          extended
+            ? 'the extended shelf (the launch shelf and the fixed-income tokens under test), yields written by hand or claimed on a date in the research notes, and exit capacities written by hand for tests'
+            : 'the launch shelf, yields and exit capacities written by hand for tests'
+        }. None is live.</p>`
       : `<p class="banner">Figures from the local database, read the way the API reads them. Each keeps its own provenance; anything not live is plated <span class="plate">MOCK</span>, and a test network says so. The shelf is the mock chain's.</p>`;
   const disclaimer = `<div class="disclaimer"><p>${esc(DISCLAIMER.en)}</p><p lang="pt">${esc(DISCLAIMER.pt)}</p></div>`;
   const nav = `<nav><ol>${runs
@@ -333,7 +347,9 @@ export function renderReport(runs: GoalRun[], meta: ReportMeta): string {
 <title>Plan playground</title><style>${CSS}</style></head>
 <body><main>
 <h1>Plan playground</h1>
-<p class="meta">${esc(meta.file)} · data: ${esc(meta.mode)} · plans made at ${esc(meta.now)} · a developer tool</p>
+<p class="meta">${esc(meta.file)} · data: ${esc(meta.mode)}${
+    meta.mode === 'fixtures' ? ` · shelf: ${esc(meta.shelf ?? 'launch')}` : ''
+  } · plans made at ${esc(meta.now)} · a developer tool</p>
 ${banner}
 ${disclaimer}
 ${nav}

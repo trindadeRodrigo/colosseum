@@ -8,6 +8,7 @@ does not give advice, and nothing it shows is live unless the page says so.
 pnpm plan:try try/prompts/examples.md
 pnpm plan:try try/mine/my-goals.md --data db
 pnpm plan:try try/mine/my-goals.md --now 2026-10-06T12:00:00Z --no-open
+pnpm plan:try try/prompts/examples.md --shelf extended
 ```
 
 The page goes to `try/out/<file>-<time>.html`, and the terminal prints one line per goal. Put your own
@@ -16,8 +17,8 @@ files in `try/mine/`: that folder and `try/out/` are not committed.
 With `--json` the command prints one JSON document to stdout instead (`scripts/try/json.ts`): per goal
 the reader, what was read, the flags and disagreements, the open questions with their answer keys, text
 and options, the read-back, each candidate shown (lines with symbol, share, dollars and reasons; the
-scorecard, the status, the income verdict and its ways), the candidates not shown with why, the plates
-and the disclaimer. No page is written and nothing opens.
+scorecard, the status, the income verdict and its ways), the candidates not shown with why, the shelf
+and what it leaves out of every plan, the plates and the disclaimer. No page is written and nothing opens.
 
 ## Chat with it
 
@@ -118,6 +119,29 @@ reads no refusals ("no stocks" goes under `limits`). The examples answer those, 
   yet, so a withdrawal in reais has no plan here.
 
 Theme lists come from `content/themes/<chain>/` in both modes.
+
+## The two fixture shelves
+
+In fixtures mode, `--shelf` picks what the plans are made from:
+
+- `--shelf launch` (the default): the launch shelf, as every test of the engine reads it.
+- `--shelf extended`: the launch shelf with the fixed-income tokens under test added on Solana and
+  Robinhood Chain (`packages/engine/src/personal/fixtures/shelves/<chain>-yield.json`). Each was
+  screened in `docs/vault/research/yield-shelf/<chain>.md`, which gives its issuer, its mechanism, how
+  it exits and the verdict. Their yields (`fixtures/yields-extended.json`) are figures claimed on a
+  date in those notes, not readings of any feed. Every figure is plated **MOCK**, as on the launch
+  shelf. A token the shelf lists and no plan holds yet (a bond in another currency, a token with a
+  maturity) is named under each goal with the reason, and in the JSON under `shelfLeftOut`.
+
+Run the same file with each to see what the added tokens change. `--shelf` does not go with
+`--data db`, which lists the mock chain's tokens.
+
+`pnpm plan:compare <file.md>... --chain solana|robinhood [--now ISO]` does that for you: it runs every
+goal of the files on the one chain named, on both shelves, with the rules parser, and prints Markdown:
+per goal the candidates each shelf shows, their lines, the cash share, the scorecard's main lines and
+the income verdict, then the cash share of the plain plan goal by goal. It is how
+`docs/vault/research/yield-shelf/comparison.md` is made. `try/prompts/yield-shelf.md` holds six goals
+written for the added tokens.
 
 ## What MOCK means
 

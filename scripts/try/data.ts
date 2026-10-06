@@ -7,6 +7,9 @@ import { loadFamilies } from '../../apps/api/src/orders/store';
 import { BEARING_SOURCE, bearingPlanInputs } from '../../apps/api/src/plan-inputs';
 import { loadThemeLists } from '../../apps/api/src/theme-lists';
 import {
+  extendedHeldOut,
+  extendedShelf,
+  extendedYields,
   fixtureLiquidity,
   fixtureYields,
   LIQUIDITY_SOURCE,
@@ -23,8 +26,15 @@ import {
 //   Bearing's measured exit and the stored yields (`bearingPlanInputs`). Each figure keeps its own
 //   provenance; the API reads no exchange rate yet, and neither does this mode.
 // Theme lists come from `content/themes/<chain>/` through the API's loader in both modes.
+//
+// In `fixtures` mode the shelf is one of two: `launch`, the launch shelf, or `extended`, the launch
+// shelf plus the fixed-income tokens screened in docs/vault/research/yield-shelf/ with their dated
+// yield claims (fixtures/shelves/, fixtures/yields-extended.json). Both are fixtures, plated MOCK.
 
 export type DataMode = 'fixtures' | 'db';
+export type ShelfName = 'launch' | 'extended';
+/** A token the shelf lists and no plan holds yet, with the reason its row gives. */
+export type LeftOffPlans = { symbol: string; reason: string };
 
 /** What a plan on one chain is made from, besides the time and the person's holdings. */
 export type ChainData = {
@@ -35,6 +45,8 @@ export type ChainData = {
   fx: FxObservation[];
   /** Where the shelf and the figures come from, in words. */
   sources: string[];
+  /** What the shelf lists on this chain and leaves out of every plan. */
+  heldOut: LeftOffPlans[];
 };
 
 export type DataSource = {
@@ -58,25 +70,37 @@ function shelfOn(shelf: Shelf, chain: ChainId): Shelf {
 const portfoliosOf = (shelf: Shelf): ShelfPortfolio[] =>
   shelf.families.map((f) => ({ slug: f.meta.slug, name: f.meta.name }));
 
-export function fixturesSource(): DataSource {
+export function fixturesSource(shelfName: ShelfName = 'launch'): DataSource {
+  const extended = shelfName === 'extended';
   return {
     mode: 'fixtures',
     async forChain(chain) {
-      const shelf = shelfOn(launchShelf(), chain);
+      const shelf = shelfOn(extended ? extendedShelf() : launchShelf(), chain);
       const themes = loadThemeLists(chain);
+      const heldOut = extended
+        ? extendedHeldOut(chain).map((row) => ({
+            symbol: row.asset.symbol,
+            reason: row.heldOut ?? '',
+          }))
+        : [];
       return {
         shelf,
         portfolios: portfoliosOf(shelf),
         context: {
-          yields: fixtureYields(),
+          yields: extended ? extendedYields() : fixtureYields(),
           liquidity: fixtureLiquidity(),
           liquiditySource: LIQUIDITY_SOURCE,
           ...(themes.length ? { themes } : {}),
         },
         fx: [usdBrl()],
+        heldOut,
         sources: [
-          `Shelf: the launch shelf (${shelf.version}), a fixture`,
-          'Yields: packages/engine/src/personal/fixtures/yields.json, written by hand (MOCK)',
+          extended
+            ? `Shelf: the extended shelf (${shelf.version}), a fixture: the launch shelf and the fixed-income tokens of docs/vault/research/yield-shelf/${chain}.md`
+            : `Shelf: the launch shelf (${shelf.version}), a fixture`,
+          extended
+            ? 'Yields: packages/engine/src/personal/fixtures/yields.json, written by hand, and fixtures/yields-extended.json, dated claims from the research notes, not readings (MOCK)'
+            : 'Yields: packages/engine/src/personal/fixtures/yields.json, written by hand (MOCK)',
           `Exit: ${LIQUIDITY_SOURCE} (MOCK)`,
           'FX: one fixture rate of dollars into reais (MOCK)',
           `Theme lists: content/themes/${chain}/ (${themes.map((t) => `${t.slug} ${t.status}`).join(', ') || 'none'})`,
@@ -108,6 +132,7 @@ export function dbSource(): DataSource {
             : {}),
         },
         fx: [],
+        heldOut: [],
         sources: [
           `Shelf: the mock chain's tokens for ${chain} (packages/chain-mock, MOCK) and the shared portfolios in effect in the database (${families.length})`,
           `Yields: the stored readings of those tokens (${figures.yields?.length ?? 0}), each with its own provenance`,

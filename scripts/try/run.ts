@@ -11,7 +11,7 @@ import {
 } from '@colosseum/engine/personal';
 import { currencyOf, type Language } from '@colosseum/schemas';
 import type { IntakeModel } from '../../apps/api/src/llm';
-import type { DataSource } from './data';
+import type { DataSource, LeftOffPlans } from './data';
 import type { PromptGoal } from './prompt-file';
 
 // One goal through the real pipeline, as the API runs it: the intake (the model when one is given,
@@ -51,6 +51,8 @@ export type GoalRun = {
   /** Why no plan was made from a whole sheet: the engine's own words. */
   error: string | null;
   sources: string[];
+  /** What the chain's shelf lists and leaves out of every plan, each with its reason. */
+  heldOut: LeftOffPlans[];
   /** The symbol of each token on the chain's shelf, by asset id. */
   symbols: Record<string, string>;
 };
@@ -128,5 +130,16 @@ export async function runGoal(goal: PromptGoal, opts: RunOptions): Promise<GoalR
     }
   }
   const symbols = Object.fromEntries(data.shelf.assets.map((a) => [a.id, a.symbol]));
-  return { goal, reader, intake, open, plain, made, error, sources: data.sources, symbols };
+  return {
+    goal,
+    reader,
+    intake,
+    open,
+    plain,
+    made,
+    error,
+    sources: data.sources,
+    heldOut: data.heldOut,
+    symbols,
+  };
 }

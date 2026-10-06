@@ -21,7 +21,8 @@ The goal, if given: $ARGUMENTS
 ## 1. Start
 
 1. Make a new prompt file for this chat, so earlier chats stay: `try/mine/chat-<UTC time, YYYYMMDDTHHMMSSZ>.md`. Never edit another file in `try/mine/`.
-2. Ask the person for their goal in their own words, in English or Portuguese. Answer in the language they write in, for the whole chat.
+2. The shelf. The plans are made from the launch shelf unless the person asks for the other one ("use the extended shelf", "with the new yield tokens"): then add `--shelf extended` to every run of this chat, and say once that the extended shelf adds fixed-income tokens under test, every figure still **MOCK**. "Use the launch shelf" goes back. The top-level `shelf` of the JSON says which one a run used; never mix the two in one answer.
+3. Ask the person for their goal in their own words, in English or Portuguese. Answer in the language they write in, for the whole chat.
 
 ## 2. Read the goal as the product's reader does
 
@@ -59,6 +60,7 @@ Read the JSON from stdout. For each goal in `goals[]`:
 
 - If `questions` is not empty: ask each one using `questions[].text` verbatim, and offer `options` when present. Ask them in one message. Write each answer under the question's `key` in the goal's ```` ```yaml answers ```` block, in the form the table in `try/README.md` ("Answering questions") gives (`horizon: 15y`, `risk: low`, `country: PT`). Run again. Repeat until `sheetWhole` is true.
 - If `error` is set, say it as the tool wrote it, and ask what to change.
+- On the extended shelf the command is the same with `--shelf extended` after the file name, here and in step 6.
 - The run stops on a mistake in the file and prints the line; fix the file, not the person's words, and run again.
 
 ## 5. Read back, then confirm
@@ -77,7 +79,7 @@ Only after the person confirms:
    - the scorecard in plain words, each figure as given: months covered, months paid at the rates observed and under each stress, carry observed (bps), exit cost at this size (or "not measured"), the share with a measured exit, the largest issuer, the issuers, the credit and basis legs;
    - for an income goal, `income`: the target a month, what the plan pays a month at observed yields after haircut, met or short, the gap; then `income.ways` verbatim and `income.noAmountCloses` verbatim when present;
    - `status`, when present: months paid, the stresses, `status.ways` and `status.noAmountCloses` verbatim;
-3. `notShown[]`: each with its `why` verbatim.
+3. `notShown[]`: each with its `why` verbatim. Then `shelfLeftOut[]`, when not empty: each token the shelf lists and no plan holds yet, with its `reason` verbatim.
 4. The plate: the top-level `plate` sentence, and **MOCK** beside each plan.
 5. The disclaimer: `disclaimer.en` or `disclaimer.pt`, verbatim, in the person's language.
 6. The report path, for the detail.
@@ -86,7 +88,7 @@ Then stop and let the person look. Do not add a view on which to take.
 
 ## 7. Changes mid-chat
 
-When the person changes something ("make it 20 years", "add 50% AI", "I already hold $3k NVDA", "no stocks"), write it in the goal's `yaml answers` (`horizon: 20y`, `sleeves: { goal: 50, ai: 50 }`, `holdings: { NVDA: 3000 }`, `limits: { cannotHold: { classes: [stock] } }`), keep the goal text and the reply as they are, and go back to step 4: new questions are asked, the new read-back is confirmed, then the plans are shown. Say what changed between the runs only from the two outputs: which lines, shares and dollars moved, which candidates appeared or went, and what the verdict and status now say.
+When the person changes something ("make it 20 years", "add 50% AI", "I already hold $3k NVDA", "no stocks"), write it in the goal's `yaml answers` (`horizon: 20y`, `sleeves: { goal: 50, ai: 50 }`, `holdings: { NVDA: 3000 }`, `limits: { cannotHold: { classes: [stock] } }`), keep the goal text and the reply as they are, and go back to step 4: new questions are asked, the new read-back is confirmed, then the plans are shown. A change of shelf ("use the extended shelf") changes no answer: run again with or without `--shelf extended` and show the plans, with no new read-back. Say what changed between the runs only from the two outputs: which lines, shares and dollars moved, which candidates appeared or went, and what the verdict and status now say.
 
 ## 8. Several goals
 
