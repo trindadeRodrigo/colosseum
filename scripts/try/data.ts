@@ -96,7 +96,11 @@ export function fixturesSource(shelfName: ShelfName = 'launch'): DataSource {
         heldOut,
         sources: [
           extended
-            ? `Shelf: the extended shelf (${shelf.version}), a fixture: the launch shelf and the fixed-income tokens of docs/vault/research/yield-shelf/${chain}.md`
+            ? `Shelf: the extended shelf (${shelf.version}), a fixture: the launch shelf and ${
+                chain === 'solana' || chain === 'robinhood'
+                  ? `the fixed-income tokens of docs/vault/research/yield-shelf/${chain}.md`
+                  : 'no token added on this chain'
+              }`
             : `Shelf: the launch shelf (${shelf.version}), a fixture`,
           extended
             ? 'Yields: packages/engine/src/personal/fixtures/yields.json, written by hand, and fixtures/yields-extended.json, dated claims from the research notes, not readings (MOCK)'

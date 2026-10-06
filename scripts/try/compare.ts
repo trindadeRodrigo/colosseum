@@ -17,6 +17,8 @@ import { type GoalRun, runGoal } from './run';
 
 const USAGE =
   'usage: pnpm plan:compare <file.md>... --chain solana|robinhood [--now 2026-10-06T12:00:00Z]';
+/** The chains the extended shelf adds tokens on: the only ones with two shelves to compare. */
+const CHAINS: ChainId[] = ['solana', 'robinhood'];
 const SHELVES: ShelfName[] = ['launch', 'extended'];
 
 type Args = { files: string[]; chain: ChainId; now: Date };
@@ -29,7 +31,8 @@ export function parseCompareArgs(argv: string[], clock: () => Date = () => new D
     const a = argv[i];
     if (a === '--chain') {
       const v = ChainId.safeParse(argv[++i]);
-      if (!v.success) throw new Error(`--chain is one of ${ChainId.options.join(', ')}\n${USAGE}`);
+      if (!v.success || !CHAINS.includes(v.data))
+        throw new Error(`--chain is one of ${CHAINS.join(', ')}\n${USAGE}`);
       chain = v.data;
     } else if (a === '--now') {
       const v = argv[++i] ?? '';
@@ -126,7 +129,7 @@ export function compareMarkdown(goals: Compared[], chain: ChainId, now: string):
     '',
   ];
   const cash: { title: string; launch: number; extended: number }[] = [];
-  let unchanged = 0;
+  let [planned, unchanged] = [0, 0];
   for (const g of goals) {
     out.push(`#### ${g.title}`, '');
     out.push(`- Launch shelf: ${cell(made(g.launch))}`);
@@ -140,8 +143,12 @@ export function compareMarkdown(goals: Compared[], chain: ChainId, now: string):
       continue;
     }
     const plans = (r: GoalRun, id: string) => r.made?.shown.find((c) => c.id === id)?.plan;
+    // What changed: a candidate one shelf shows and the other does not, or one whose lines differ;
+    // and the plain plan, which is not always one of the three.
     const changed = ids.filter((id) => !same(plans(a, id), plans(b, id)));
-    if (changed.length === 0 && same(a.plain ?? undefined, b.plain ?? undefined)) unchanged += 1;
+    if (!same(a.plain ?? undefined, b.plain ?? undefined)) changed.push('the plain plan');
+    planned += 1;
+    if (changed.length === 0) unchanged += 1;
     out.push(`- Lines changed in: ${changed.length ? changed.join(', ') : 'none'}`, '');
     out.push(
       '| Candidate | Shelf | Lines | Cash | Carry (bps) | Issuers | Largest issuer | Credit and basis | Measured exit | Months covered | Income |',
@@ -173,12 +180,12 @@ export function compareMarkdown(goals: Compared[], chain: ChainId, now: string):
     out.push(
       `| Mean of ${cash.length} goals | ${pct(mean((c) => c.launch))} | ${pct(mean((c) => c.extended))} |`,
     );
-    out.push(
-      '',
-      `Goals with no line changed on any candidate: ${unchanged} of ${goals.length}.`,
-      '',
-    );
+    out.push('');
   }
+  out.push(
+    `Goals with a plan on either shelf: ${planned} of ${goals.length}. Of those, no line changed in ${unchanged}.`,
+    '',
+  );
   return out.join('\n');
 }
 

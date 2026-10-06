@@ -1,6 +1,6 @@
 # TEMPLATE: a yield-shelf research note, one per chain
 
-Copy this file to `<chain>.md` and fill it. It is the format of `solana.md` and `robinhood.md`, in the house style of `../portfolio-method.md`: plain sentences, numbered sources, each dated, and what could not be verified said plainly. The note is the source of the chain's rows in `packages/engine/src/personal/fixtures/shelves/<chain>-yield.json`, of their leg types in `leg-types.ts` and of their yields in `fixtures/yields-extended.json`. A fact the note could not verify stays marked unverified, and the fixture row says so (`unverified`).
+Copy this file to `<chain>.md` and fill it. It is the format of `solana.md` and `robinhood.md`, in the house style of `../portfolio-method.md`: plain sentences, numbered sources, each dated, and what could not be verified said plainly. The note is the source of the chain's rows in `packages/engine/src/personal/fixtures/shelves/<chain>-yield.json`, of their leg types in `leg-types.ts` and of their yields in `fixtures/yields-extended.json`. A fact the note could not verify stays marked unverified, and the fixture row says so (`unverified`). A fixture row and a fixture yield name this note and the number of its source, never a link: the playground's page carries no URL.
 
 The first line of the note gives the date, the brief (`docs/vault/PROMPT-YIELD-SHELF.md`), who decided the list (Rodrigo, 2026-10-06), the inputs (`inputs/`) and how the research ran.
 

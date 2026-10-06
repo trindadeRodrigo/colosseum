@@ -510,7 +510,14 @@ describe('the extended shelf, with --shelf extended', () => {
       const out = new Set(r.heldOut.map((h) => h.symbol));
       for (const c of r.made?.shown ?? [])
         for (const l of c.plan.lines) expect(out.has(r.symbols[l.assetId] ?? '')).toBe(false);
-      for (const h of r.heldOut) expect(page).toContain(h.reason);
+      // As the page writes it: the reason with its HTML escaped.
+      const esc = (t: string) =>
+        t
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      for (const h of r.heldOut) expect(page).toContain(esc(h.reason));
     }
   });
 });
@@ -531,6 +538,8 @@ describe('the two shelves side by side, with pnpm plan:compare', () => {
     });
     expect(() => parseCompareArgs(['a.md'], clock)).toThrow(/usage/);
     expect(() => parseCompareArgs(['a.md', '--chain', 'mars'], clock)).toThrow(/--chain is one of/);
+    // Base has one shelf: the extended shelf adds nothing there.
+    expect(() => parseCompareArgs(['a.md', '--chain', 'base'], clock)).toThrow(/--chain is one of/);
     expect(() => parseCompareArgs(['a.md', '--chain', 'solana', '--wide'], clock)).toThrow(
       /unknown option/,
     );
@@ -556,6 +565,19 @@ describe('the two shelves side by side, with pnpm plan:compare', () => {
       const text = compareMarkdown(a, chain, NOW.toISOString());
       expect(text).toBe(compareMarkdown(b, chain, NOW.toISOString()));
       expect(text).toContain('Every figure is MOCK');
+      // The count at the foot is over the goals that have a plan: the vague goal has none on either
+      // shelf and is counted neither as changed nor as unchanged.
+      const weights = (r: GoalRun) =>
+        JSON.stringify([
+          r.plain?.lines.map((l) => [l.assetId, l.weightBps]),
+          r.made?.shown.map((c) => [c.id, c.plan.lines.map((l) => [l.assetId, l.weightBps])]),
+        ]);
+      const planned = a.filter((g) => g.launch.run.made || g.extended.run.made);
+      const unchanged = planned.filter((g) => weights(g.launch.run) === weights(g.extended.run));
+      expect(planned.length).toBe(a.length - 1);
+      expect(text).toContain(
+        `Goals with a plan on either shelf: ${planned.length} of ${a.length}. Of those, no line changed in ${unchanged.length}.`,
+      );
       expect(text).not.toMatch(/https?:\/\//);
       for (const g of a) {
         expect(g.launch.run.goal.chain).toBe(chain);

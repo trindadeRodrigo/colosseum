@@ -8,6 +8,7 @@ import {
   DISCLAIMER,
   type FactRegime,
   type FxObservation,
+  isAddressOf,
   normalizeAddress,
   PlanScorecard,
   PlanStatus,
@@ -211,7 +212,7 @@ export function launchShelf(): Shelf {
 
 const ExtendedRow = z
   .object({
-    asset: BasketAssetBase,
+    asset: BasketAssetBase.strict(),
     verdict: z.enum(['add', 'add_with_caution', 'hold']),
     /** Where the row was read: the research note and its section. */
     source: z.string().min(1),
@@ -246,6 +247,7 @@ const EXTENDED_FILES: unknown[] = [solanaYieldShelf, robinhoodYieldShelf];
  */
 export function readExtendedFile(file: unknown): { chain: ChainId; rows: ExtendedRow[] } {
   const read = ExtendedShelfFile.parse(file);
+  const seen = new Set<string>();
   for (const row of read.rows) {
     if (row.asset.chain !== read.chain)
       throw new Error(`extended shelf: ${row.asset.id} is in the file of ${read.chain}`);
@@ -253,7 +255,22 @@ export function readExtendedFile(file: unknown): { chain: ChainId; rows: Extende
       throw new Error(`extended shelf: ${row.asset.id} is on hold and gives no reason`);
     if (row.asset.provenance !== 'fixture')
       throw new Error(`extended shelf: ${row.asset.id} is not marked a fixture`);
-    if (!row.heldOut) BasketAsset.parse(row.asset);
+    // What the shared type's own rules ask of every row, held out or not: an id and an address of
+    // the row's chain.
+    if (!row.asset.id.startsWith(`${read.chain}:`))
+      throw new Error(`extended shelf: the id ${row.asset.id} is not of ${read.chain}`);
+    if (!isAddressOf(chainFamily(read.chain), row.asset.address))
+      throw new Error(`extended shelf: the address of ${row.asset.id} is not of ${read.chain}`);
+    if (seen.has(row.asset.id)) throw new Error(`extended shelf: ${row.asset.id} is listed twice`);
+    seen.add(row.asset.id);
+    if (row.heldOut) continue;
+    // A row a plan may hold: the whole shared type, in dollar yield, with no maturity, which the
+    // schedule does not model.
+    BasketAsset.parse(row.asset);
+    if (row.asset.cls !== 'dollar_yield')
+      throw new Error(`extended shelf: ${row.asset.id} is not a dollar-yield token`);
+    if (row.maturity)
+      throw new Error(`extended shelf: ${row.asset.id} has a maturity and is not held out`);
   }
   return read;
 }

@@ -74,6 +74,27 @@ describe('a file of the extended shelf', () => {
       /not marked a fixture/,
     );
     expect(() => readExtendedFile(file({ verdict: 'out' }))).toThrow();
+    // A key of the asset it does not know is refused too: a misspelt `currency` is not dropped.
+    expect(() => readExtendedFile(file({ asset: { ...sample, curency: 'BRL' } }))).toThrow();
+    expect(() => readExtendedFile(file({ asset: { ...sample, id: 'robinhood:sample' } }))).toThrow(
+      /is not of solana/,
+    );
+    expect(() =>
+      readExtendedFile(file({ asset: { ...sample, address: `0x${'0'.repeat(40)}` } })),
+    ).toThrow(/address/);
+    const twice = file({});
+    expect(() => readExtendedFile({ ...twice, rows: [...twice.rows, ...twice.rows] })).toThrow(
+      /listed twice/,
+    );
+  });
+
+  it('refuses, among the rows a plan may hold, a class other than dollar yield and a maturity', () => {
+    expect(() => readExtendedFile(file({ asset: { ...sample, cls: 'stock' } }))).toThrow(
+      /not a dollar-yield token/,
+    );
+    expect(() => readExtendedFile(file({ maturity: '2027-03-25' }))).toThrow(
+      /has a maturity and is not held out/,
+    );
   });
 
   it('holds a row in plans to the whole shared type, and lets only a row held out carry a currency', () => {
@@ -146,6 +167,11 @@ describe('the yields of the extended shelf', () => {
     expect(extendedYields().slice(0, fixtureYields().length)).toEqual(fixtureYields());
   });
 
+  it('are there for every token a plan may hold: one dated, sourced figure each', () => {
+    const have = new Set(added.map((y) => y.assetId));
+    for (const row of inPlans) expect(have.has(row.asset.id), row.asset.id).toBe(true);
+  });
+
   it('each name a token of the extended shelf, a source in the research note and the day it was read', () => {
     const byId = new Map(rows.map((row) => [row.asset.id, row]));
     expect(new Set(added.map((y) => y.assetId)).size).toBe(added.length);
@@ -155,6 +181,8 @@ describe('the yields of the extended shelf', () => {
       expect(row, `${y.assetId} is not on the extended shelf`).toBeDefined();
       expect(y.provenance, y.assetId).toBe('fixture');
       expect(y.source ?? '', y.assetId).toContain(`${NOTE}${row?.asset.chain}.md`);
+      // The note and its source number, never a link: the playground's page carries no URL.
+      expect(y.source ?? '', y.assetId).not.toMatch(/https?:\/\//);
       expect(y.fetchedAt ?? '', y.assetId).toMatch(/^2026-\d{2}-\d{2}T/);
       expect(y.method, y.assetId).toMatch(/not_a_reading$/);
       expect(y.haircutRule.length, y.assetId).toBeGreaterThan(0);
