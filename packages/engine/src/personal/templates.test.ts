@@ -69,7 +69,6 @@ const SAMPLE: Record<string, string | number> = {
   usd: 4000,
   usdUp: 4000,
   amount: 3000.5,
-  inCountry: 'BR',
   chain: 'robinhood',
   goal: 'grow',
   risk: 'medium',
@@ -225,14 +224,13 @@ describe('explanation templates', () => {
     expect(render('{a|usdUp}', { a: 0 }, 'en')).toBe('$0');
   });
 
-  it('writes a country by its name, and by its code only when it does not know the name', () => {
-    expect(render('{c|inCountry}', { c: 'BR' }, 'en')).toBe('in Brazil');
-    expect(render('{c|inCountry}', { c: 'BR' }, 'pt')).toBe('no Brasil');
-    expect(render('{c|inCountry}', { c: 'US' }, 'pt')).toBe('nos Estados Unidos');
-    expect(render('{c|inCountry}', { c: 'PT' }, 'pt')).toBe('em Portugal');
-    expect(render('{c|inCountry}', { c: 'XX' }, 'en')).toBe('in XX');
-    expect(render('{c|inCountry}', { c: 'XX' }, 'pt')).toBe('em XX');
-    expect(Object.keys(WORDS.en.inCountry).sort()).toEqual(Object.keys(WORDS.pt.inCountry).sort());
+  // Gate COUNTRY-REMOVED (Rodrigo, Oct 6): no sentence names a country, so the wording has no way
+  // to write one, and no reason can name the country as the input that caused it.
+  it('has no way to write a country, and no reason names one as its input', () => {
+    expect(() => render('{c|inCountry}', { c: 'BR' }, 'en')).toThrow(/inCountry/);
+    expect(INPUT_NAMES as readonly string[]).not.toContain('country');
+    for (const t of all)
+      for (const lang of LANGUAGES) expect(t[lang], t.id).not.toMatch(/inCountry|\bcountr|\bpaís/i);
   });
 
   it('builds a reason: the rule, the inputs it names, the values and the text', () => {
