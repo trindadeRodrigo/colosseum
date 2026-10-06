@@ -562,6 +562,17 @@ export const pt: Dictionary = {
     },
     accept: 'Li e aceito',
     accepted: 'Você aceitou este aviso neste navegador.',
+    short: {
+      title: 'No que você confia',
+      unaudited: 'O código dos cofres não foi auditado fora da equipe.',
+      keys: 'A equipe tem chaves que podem atualizar o código dos cofres.',
+      keeper: (tolerance: string, loss: string) =>
+        `Com o seguir automático ativado, nosso operador negocia dentro de limites: no máximo ${tolerance} longe do preço de referência, e no máximo ${loss} do seu cofre perdido numa semana.`,
+      keeperUnset:
+        'Os limites do operador não estão definidos nesta rede, então o seguir automático não é oferecido aqui.',
+      issuers: 'Os emissores de tokens de ações podem congelar ou retomar seus tokens.',
+      full: 'Ler a lista completa',
+    },
   },
 
   buy: {
@@ -571,10 +582,40 @@ export const pt: Dictionary = {
     amount: {
       label: 'Valor (dólares)',
       hint: (planned: string) =>
-        `De US$ 10 a US$ 1.000.000. Seu plano foi montado para ${planned}.`,
+        `Seu plano foi montado para ${planned}. De US$ 10 a US$ 1.000.000.`,
+    },
+    steps: {
+      label: 'Passos para comprar',
+      names: { amount: 'Valor', funds: 'Fundos', trust: 'Confiança', sign: 'Assinar' },
+      done: 'feito',
+      next: 'Continuar',
+      funds: { ready: 'Pronto', short: 'Falta algo', reading: 'Lendo…' },
+      trust: { accepted: 'Aceito', open: 'Ainda não aceito' },
+      sign: (amount: string, chain: string) =>
+        `Você está comprando ${amount} do seu plano em ${chain}. Em seguida você revisa cada passo e assina cada um na sua carteira.`,
+      testNetwork: (chain: string) => `Em ${chain}, rede de teste`,
     },
     funding: {
       title: 'O que sua carteira precisa',
+      needs: (cash: string, gas: string) => `Você precisa de ${cash} e ${gas} para as taxas.`,
+      haveNone: 'Você ainda não tem nada.',
+      lacking: (list: string) => `Ainda faltam ${list}.`,
+      and: (a: string, b: string) => `${a} e ${b}`,
+      details: 'Mostrar os detalhes',
+      testFunds: 'Receber fundos de teste',
+      testFunding: 'Enviando fundos de teste…',
+      testNote: 'Tokens de teste não têm valor. Eles existem só na rede de teste.',
+      testSent: (list: string) => `Enviei ${list} para sua carteira na rede de teste.`,
+      testFailure: {
+        busy: 'Você já recebeu fundos de teste quantas vezes um dia permite. Tente amanhã, ou coloque fundos na carteira você mesmo.',
+        tooMuch:
+          'Este valor precisa de mais do que um envio de fundos de teste dá. Escolha um valor menor e peça de novo.',
+        enough: 'Sua carteira já tem o que esta compra precisa.',
+        refused:
+          'Nosso servidor não enviou fundos de teste para esta compra. Leia sua carteira de novo e tente outra vez.',
+        unreachable:
+          'A rede de teste não aceitou a transferência, ou nosso servidor não respondeu. Leia sua carteira de novo: parte pode ter chegado.',
+      },
       reading: 'Lendo sua carteira…',
       cash: (symbol: string) => `Dinheiro para depositar (${symbol})`,
       gas: (symbol: string) => `Taxas da rede (${symbol})`,
@@ -602,8 +643,8 @@ export const pt: Dictionary = {
     reviewing: 'Criando sua ordem…',
     blocked: {
       amount: 'Digite um valor de US$ 10 a US$ 1.000.000 para continuar.',
-      funding: 'Sua carteira precisa do que falta acima antes de você continuar.',
-      trust: 'Aceite o aviso acima para continuar.',
+      funding: 'Sua carteira precisa do que falta antes de você continuar.',
+      trust: 'Aceite o aviso para continuar.',
       wallet: 'Nenhuma carteira sua está conectada nesta rede.',
     },
     failure: {

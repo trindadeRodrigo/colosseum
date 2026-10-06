@@ -4,6 +4,7 @@ import {
   FundingResponse,
   OrderDetail,
   type OrderErrorCode,
+  TestFundsResponse,
 } from '@colosseum/schemas';
 import type { ApiFetch } from '../account/person';
 
@@ -11,6 +12,7 @@ import type { ApiFetch } from '../account/person';
 //
 //   GET  /v1/funding?amountUsd=&proposalId=&wallet=   what the wallet is missing for this buy, cash and gas
 //   POST /v1/orders { type: 'buy', owner, amountUsd, proposalId }   the order, its steps planned, nothing built
+//   POST /v1/testnet/fund { amountUsd, proposalId | family, wallet }   test network only: what is missing, sent
 //
 // Every answer is read with the shared schema. What the server says in a refusal is written for a
 // developer: the screen has a sentence of its own for each thing the person can do about it.
@@ -167,4 +169,47 @@ export async function fundMock(
   } catch {
     return false;
   }
+}
+
+export type TestFundsOutcome =
+  | { kind: 'sent'; sent: TestFundsResponse }
+  /** 429: the person, or the faucet, has had its sends for the day. */
+  | { kind: 'busy' }
+  /** 422: more than one send gives. */
+  | { kind: 'too-much' }
+  /** 409: nothing is missing. */
+  | { kind: 'enough' }
+  /** Refused, or the server could not be read. */
+  | { kind: 'refused' }
+  /** No answer, a 5xx, or the test network did not take it. */
+  | { kind: 'unreachable' };
+
+/**
+ * Test network only: POST /v1/testnet/fund asks the server to send the wallet what this buy is missing.
+ * The server works out the amounts itself; nothing here says how much.
+ */
+export async function requestTestFunds(
+  apiFetch: ApiFetch,
+  ask: ({ proposalId: string } | { family: string }) & { amountUsd: number; wallet: string },
+): Promise<TestFundsOutcome> {
+  let res: Response;
+  try {
+    res = await apiFetch('/v1/testnet/fund', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(ask),
+    });
+  } catch {
+    return { kind: 'unreachable' };
+  }
+  const body = await bodyOf(res);
+  if (res.status === 429) return { kind: 'busy' };
+  if (res.status === 422) return { kind: 'too-much' };
+  if (res.status === 409) return { kind: 'enough' };
+  if (res.status >= 500) return { kind: 'unreachable' };
+  if (!res.ok) return { kind: 'refused' };
+  const sent = TestFundsResponse.safeParse(body);
+  return sent.success && sent.data.wallet === ask.wallet
+    ? { kind: 'sent', sent: sent.data }
+    : { kind: 'refused' };
 }

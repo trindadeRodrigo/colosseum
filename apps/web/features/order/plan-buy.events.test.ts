@@ -126,6 +126,8 @@ const buy = async () => {
   await settle();
   return host;
 };
+/** The buy's one button that makes the order: in its last step, "Review and sign". */
+const SIGN = '[data-step="sign"] [data-variant="primary"]';
 const label = (el: Element) =>
   el.querySelector('.grid > span:not([aria-hidden])')?.textContent ?? el.textContent;
 const primaryLink = (host: HTMLElement) =>
@@ -343,7 +345,7 @@ describe('the plan screen', () => {
     await type(find<HTMLInputElement>(bought, 'input[inputmode="decimal"]'), '10');
     await settle(350);
     await click(find(bought, '[data-ui="trust-notice"] input[type="checkbox"]'));
-    await click(find(bought, '[data-variant="primary"]'));
+    await click(find(bought, SIGN));
     await settle();
     expect(server.to('/v1/orders').map((c) => c.body)).toEqual([
       { type: 'buy', owner: { solana: SOLANA }, amountUsd: 10, proposalId: PLAN_ID },
@@ -400,7 +402,7 @@ describe('the buy screen', () => {
     expect(host.textContent).toContain(en.buy.funding.short('Solana'));
     // in whole units, with the units the test network's deployment committed
     expect(host.textContent).toContain('40,000 tUSDC');
-    const button = find(host, '[data-variant="primary"]');
+    const button = find(host, SIGN);
     expect(label(button)).toBe(en.buy.review('$40,000'));
     expect(button.getAttribute('aria-disabled')).toBe('true');
     expect(host.textContent).toContain(en.buy.blocked.funding);
@@ -432,11 +434,11 @@ describe('the buy screen', () => {
     expect(notice.textContent).toContain(en.trust.unaudited);
     expect(notice.textContent).toContain(en.trust.admin(TRUST_STATUS.admin.solana as string));
     expect(notice.textContent).toContain(en.trust.keeper('0.75%', '1%'));
-    const button = find(host, '[data-variant="primary"]');
+    const button = find(host, SIGN);
     expect(button.getAttribute('aria-disabled')).toBe('true');
     expect(host.textContent).toContain(en.buy.blocked.trust);
     await click(find(notice, 'input[type="checkbox"]'));
-    expect(find(host, '[data-variant="primary"]').getAttribute('aria-disabled')).toBeNull();
+    expect(find(host, SIGN).getAttribute('aria-disabled')).toBeNull();
   });
 
   it('makes the order, keeps the plan beside it and the acceptance, then goes to its review', async () => {
@@ -446,7 +448,7 @@ describe('the buy screen', () => {
     await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
     await settle(350);
     await click(find(host, '[data-ui="trust-notice"] input[type="checkbox"]'));
-    await click(find(host, '[data-variant="primary"]'));
+    await click(find(host, SIGN));
     await settle();
     expect(server.to('/v1/orders').map((c) => c.body)).toEqual([
       { type: 'buy', owner: { solana: SOLANA }, amountUsd: 10, proposalId: PLAN_ID },
@@ -496,7 +498,7 @@ describe('the buy screen', () => {
     expect(host.textContent).toContain(en.buy.funding.short('Robinhood Chain'));
     expect(host.textContent).toContain('40,000 tUSDG');
     expect(host.textContent).toContain('ETH');
-    expect(find(host, '[data-variant="primary"]').getAttribute('aria-disabled')).toBe('true');
+    expect(find(host, SIGN).getAttribute('aria-disabled')).toBe('true');
 
     await unmountAll();
     const funded = api({
@@ -519,7 +521,7 @@ describe('the buy screen', () => {
     expect(find(ready, '[data-ui="trust-notice"]').textContent).toContain(
       en.trust.admin(TRUST_STATUS.admin.robinhood as string),
     );
-    await click(find(ready, '[data-variant="primary"]'));
+    await click(find(ready, SIGN));
     await settle();
     expect(funded.to('/v1/orders').map((c) => c.body)).toEqual([
       { type: 'buy', owner: { evm: EVM }, amountUsd: 10, proposalId: PLAN_ID },
@@ -536,7 +538,7 @@ describe('the buy screen', () => {
     );
     const host = await buy();
     expect(host.textContent).toContain(en.trust.accepted);
-    await click(find(host, '[data-variant="primary"]'));
+    await click(find(host, SIGN));
     await settle();
     expect(find(host, '[role="alert"]').textContent).toBe(en.buy.failure.VERSION_CHANGED);
     expect(router.push).not.toHaveBeenCalled();
