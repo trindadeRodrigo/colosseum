@@ -81,7 +81,7 @@ export function PlanScreen({ id }: { id: string }) {
     [t.plan.chips.goal, t.goal.options.goal[sheet.goal].toLowerCase()],
     [t.plan.chips.amount, dollars(sheet.amountUsd, lang)],
     [t.plan.chips.horizon, t.goal.card.months(sheet.horizonMonths)],
-    [t.plan.chips.risk, t.goal.options.risk[sheet.risk].toLowerCase()],
+    [t.plan.chips.risk, t.plan.chips.riskValue[sheet.risk]],
     [t.plan.chips.chain, chainName],
   ];
 
@@ -226,6 +226,7 @@ export function PlanScreen({ id }: { id: string }) {
                   mock: false,
                 }))}
                 labels={{ afterHaircut: t.plan.legs.afterHaircut, quoted: t.plan.legs.quoted }}
+                pinLabels={t.pin}
               />
             )}
           </div>
@@ -246,6 +247,7 @@ export function PlanScreen({ id }: { id: string }) {
             caveat={card.exit.costBps === null ? t.plan.exitUnmeasured : undefined}
             inKind={t.plan.inKind}
             labels={{ exitPlan: t.plan.exitPlan, costPrefix: t.plan.costPrefix }}
+            pinLabels={t.pin}
           />
           {proposal.verdict && (
             <p className="max-w-(--tf-measure-body) text-body">

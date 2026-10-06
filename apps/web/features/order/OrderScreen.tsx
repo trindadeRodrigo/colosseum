@@ -20,7 +20,7 @@ import { SharedReview } from '../shared/SharedReview';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { ActivityPanel } from './ActivityPanel';
 import { activityOf } from './activity';
-import { assetName, formatBps, formatRaw, shortfallBps } from './amounts';
+import { assetTicker, formatBps, formatRaw, shortfallBps } from './amounts';
 import { type CallFailure, readOrder } from './order-api';
 import { checkDeposit, checkFamilyBuy, type DepositCheck, sharedShapeOk } from './order-check';
 import { isBuy, keepOrder, type OrderRecord, recallOrder } from './order-record';
@@ -508,7 +508,7 @@ function Step({
   };
   const spend = (raw: string) => (units ? whole(raw, units.cash) : null) ?? raw;
   /** A token by the symbol this repository committed for it, or its id on the chain where none is. */
-  const symbol = (asset: string) => units?.tokens[asset]?.symbol ?? assetName(asset);
+  const symbol = (asset: string) => units?.tokens[asset]?.symbol ?? assetTicker(asset);
   const status = phase
     ? t.order.phase[phase as keyof Dictionary['order']['phase']]
     : t.order.status[now.status];
@@ -551,7 +551,10 @@ function Step({
                     {' · '}
                     {whole(expected.minOutRaw, trade.buy) !== null
                       ? t.order.review.atLeastWhole(whole(expected.minOutRaw, trade.buy) as string)
-                      : t.order.review.atLeast(expected.minOutRaw, assetName(trade.buy))}
+                      : t.order.review.atLeast(
+                          formatRaw(expected.minOutRaw, 0, locale) ?? expected.minOutRaw,
+                          assetTicker(trade.buy),
+                        )}
                     {under !== null && ` · ${t.order.review.under(formatBps(under, locale))}`}
                   </>
                 )}
