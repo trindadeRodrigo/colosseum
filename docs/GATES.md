@@ -147,6 +147,12 @@ Rodrigo's answers after reading the portfolio-method note (`docs/vault/research/
 | **NO-FREEZE** | DECIDED | No feature freeze on Oct 9. Building continues, as much as can be done, up to the submission on Oct 12; `main` is tagged at submission. It replaces `FREEZE` | So the solver work (`docs/vault/PROMPT-BUILD-SOLVER.md`) can land before the submission. Thom has not answered yet, and the last days of his plan change with it |
 | **SOLVER-CAPS** | DECIDED | Three numbers `SOLVER-PARAMS` left open. (1) The 50% issuer cap binds on dollar yield, gold and cash, counting only what those sleeves hold of an issuer; stocks and crypto keep the cap per stock and per issuer by risk. (2) A dollar-yield token the cap table does not name takes the figure of its leg type: market deposit 60% (as Kamino), rate 40% (as USDY), credit and basis 40% (as syrupUSDC); so jlUSDC 60%, SGOV 40%. (3) A person who has not said how much credit risk they accept gets `limited` (25% of the plan in credit and basis legs), the old parser's default, until the guided intake asks | Asked in the ENG-3 session: on Solana every stock token has one issuer (xStocks), so a plan-wide 50% would have held a growth plan to half in stocks; the launch shelf lists jlUSDC and SGOV, which the cap table did not name; the sheet had no field for credit tolerance. Consequence, measured in slice 1: an income plan on Solana holds 50% jlUSDC, 25% syrupUSDC and 25% cash; on Robinhood Chain, 40% SGOV and the rest cash |
 
+## Decided on 2026-10-06 (Thom, plans in dollars)
+
+| Gate | Status | Decision | Facts |
+|---|---|---|---|
+| **USD-ONLY** — the currency of a plan | DECIDED | Plans are in US dollars for now. A sheet whose goal or any withdrawal is in another currency is refused with 422, code `CURRENCY_UNSUPPORTED`, "Plans are in US dollars for now", before anything is read; the goal screen says it plainly in English and Portuguese ("Plans are in dollars for now": the app's copy writes no capitals but MOCK). The goal form offers no currency. The engine keeps its handling of other currencies for when this is lifted | The API reads no exchange rate yet, so a withdrawal in reais was already refused, while a goal in reais with no withdrawals was answered with lines whose value moves with the rate. One rule for both is simpler to say and to keep. `personalize` and `propose` share the check (`apps/api/src/orders/personalize.ts`) |
+
 ## Decided on 2026-10-06 (Rodrigo)
 
 | Gate | Status | Decision | Facts |

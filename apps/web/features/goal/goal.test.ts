@@ -267,6 +267,12 @@ describe('building a plan: the one call, against a double of the route that is n
     expect(await answers(422, { error: 'no plan', code: 'GOAL_NOT_ACHIEVABLE' })).toEqual({
       kind: 'no-plan',
     });
+    expect(
+      await answers(422, {
+        error: 'Plans are in US dollars for now',
+        code: 'CURRENCY_UNSUPPORTED',
+      }),
+    ).toEqual({ kind: 'currency' });
     expect(await answers(429)).toEqual({ kind: 'busy' });
     expect(await answers(500)).toEqual({ kind: 'unreachable' });
     expect(

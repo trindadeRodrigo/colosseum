@@ -331,6 +331,8 @@ export const OrderErrorCode = z.enum([
   'CHAIN_UNAVAILABLE',
   /** The plan an order buys is no longer stored: one made from a link nobody bought goes after days. */
   'PLAN_GONE',
+  /** A plan's goal or a withdrawal in another currency than US dollars (gate USD-ONLY). */
+  'CURRENCY_UNSUPPORTED',
 ]);
 export type OrderErrorCode = z.infer<typeof OrderErrorCode>;
 

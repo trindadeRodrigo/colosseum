@@ -279,6 +279,7 @@ export function GoalScreen() {
       ? [t.goal.blocked.chainNotChosen]
       : []),
     ...(build.kind === 'refused' ? [t.goal.blocked.refused] : []),
+    ...(build.kind === 'currency' ? [t.goal.blocked.currency] : []),
   ];
 
   const readSentence =
