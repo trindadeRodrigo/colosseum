@@ -11,7 +11,7 @@ import { newMemory } from '../../apps/keeper/src/memory';
 const NODE = 'https://node.example/key-in-the-path';
 const STOP = new Error('the test has seen enough');
 
-function keeper(failures: number) {
+function keeper(failures: number, vaults: string[] = []) {
   let asked = 0;
   const wired = {
     network: 'solana-devnet',
@@ -21,7 +21,11 @@ function keeper(failures: number) {
         if (asked++ < failures) throw new Error(`the Solana RPC at ${NODE} did not answer`);
         return [{ id: 'solana:usdc', cls: 'cash', priceKind: 'scope', decimals: 6 }];
       },
-      listAutoFollowVaults: async () => [],
+      listAutoFollowVaults: async () => vaults,
+      // A vault whose read fails in words that quote the node's address.
+      getKeeperContext: async () => {
+        throw new Error(`request to ${NODE} failed, reason: socket hang up`);
+      },
     },
     sign: async () => ({ wire: '', txId: '' }),
     gas: async () => ({ have: 1n, low: 5n, unit: 'lamports' }),
@@ -75,6 +79,15 @@ describe('the keeper, set up', () => {
       ["the keeper's gas is low: 1 of the 5 lamports it should keep"],
     ]);
     expect(JSON.stringify(k.lines)).not.toContain(NODE);
+  });
+
+  it("takes the node's address out of a vault's failure, in its line and its alert", async () => {
+    const k = keeper(0, ['Vau1t']);
+    await expect(k.run({})).rejects.toBe(STOP);
+    const failed = 'failed: request to <SOLANA_RPC_URL> failed, reason: socket hang up';
+    expect(k.lines[0]).toMatchObject({ vault: 'Vau1t', outcome: 'skipped', reason: failed });
+    expect(k.alerts[0]).toEqual([`Vau1t: ${failed}`, expect.stringContaining('gas is low')]);
+    expect(JSON.stringify([k.lines, k.alerts])).not.toContain(NODE);
   });
 
   it('with --once, ends with the failed round, said and pinged', async () => {

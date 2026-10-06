@@ -36,17 +36,25 @@ describe.skipIf(!FORK_URL)('the keeper on a copy of Robinhood Chain test network
   };
   const round = async (
     w: TestnetWorld,
-    more: { send?: (wire: string) => Promise<unknown>; dryRun?: boolean } = {},
+    more: { send?: (wire: string) => Promise<unknown>; dryRun?: boolean; only?: boolean } = {},
   ) => {
+    const { only, ...rest } = more;
     const lines: VaultLine[] = [];
+    // `only`: this vault and no other, so no other auto-follow vault on the copy takes a nonce or a
+    // turn the case counts on.
+    const adapter: KeeperAdapter = only
+      ? Object.assign(Object.create(w.adapter), {
+          listAutoFollowVaults: async () => [w.vault],
+        })
+      : (w.adapter as KeeperAdapter);
     await runRound(
       {
-        adapter: w.adapter as KeeperAdapter,
+        adapter,
         sign: sign(w),
         settleMs: 20_000,
         shuffle: (v) => v,
         log: (l) => lines.push(l),
-        ...more,
+        ...rest,
       },
       memory,
     );
@@ -202,6 +210,7 @@ describe.skipIf(!FORK_URL)('the keeper on a copy of Robinhood Chain test network
     let dropped = '';
     const first = of(
       await round(w, {
+        only: true,
         send: async (wire) => {
           dropped = wire;
         },
@@ -214,7 +223,7 @@ describe.skipIf(!FORK_URL)('the keeper on a copy of Robinhood Chain test network
     const count = () =>
       w.client.getTransactionCount({ address: held.signer as `0x${string}`, blockTag: 'latest' });
     expect(await count()).toBe(held.nonce);
-    const second = of(await round(w), w.vault);
+    const second = of(await round(w, { only: true }), w.vault);
     expect(second.reason).toContain(
       `leg ${held.txId} is not held by the node; the next leg takes its nonce ${held.nonce}`,
     );
@@ -250,22 +259,21 @@ describe.skipIf(!FORK_URL)('the keeper on a copy of Robinhood Chain test network
       }),
     );
     await w.later(61);
-    const adopted = of(await round(w, {}), w.vault);
-    expect(adopted.reason).toContain(`adopted version ${active.version + 1}`);
-    const ctx = await w.adapter.getKeeperContext(w.vault);
-    const dropped = ctx?.positions.find((p) => p.asset === gone);
-    // still one of the vault's targets(), at weight zero, and held
-    expect([dropped?.target, dropped?.targetBps, dropped?.raw !== '0']).toEqual([true, 0, true]);
-    // Its price jumps past what the average allows: it cannot be valued, so no leg can pass.
+    // Its price jumps past what the average allows before the round: once adopted at weight zero, it
+    // cannot be valued, so the round adopts and then finds that no leg can pass, selling it included.
     await w.movePrice(gone, 300);
     try {
+      const line = of(await round(w, { only: true }), w.vault);
+      expect(line.reason).toContain(`adopted version ${active.version + 1}`);
       const now = await w.adapter.getKeeperContext(w.vault);
-      const reference = now?.positions.find((p) => p.asset === gone)?.reference;
-      expect(reference).toBeTruthy();
-      expect(now?.blocked).toBe(reference);
-      const line = of(await round(w, { dryRun: true }), w.vault);
-      expect(line.reason).toContain(`no leg would pass: ${reference}`);
-      expect(line.txIds).toEqual([]);
+      const dropped = now?.positions.find((p) => p.asset === gone);
+      // still one of the vault's targets(), at weight zero, and held
+      expect([dropped?.target, dropped?.targetBps, dropped?.raw !== '0']).toEqual([true, 0, true]);
+      expect(dropped?.reference).toBeTruthy();
+      expect(now?.blocked).toBe(dropped?.reference);
+      expect(line.reason).toContain(`no leg would pass: ${dropped?.reference}`);
+      // the adoption, and nothing else
+      expect(line.txIds).toHaveLength(1);
     } finally {
       await w.movePrice(gone, -291);
     }

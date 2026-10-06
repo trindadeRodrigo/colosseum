@@ -54,7 +54,7 @@ export async function runKeeper(o: KeeperRun): Promise<void> {
     },
     round: async () => {
       const lines = await runRound(
-        { adapter: wired.adapter, dryRun: o.dryRun, log, sign: wired.sign, save: o.save },
+        { adapter: wired.adapter, dryRun: o.dryRun, log, sign: wired.sign, save: o.save, hide },
         memory,
       );
       const alerts = lines.filter((l) => l.alert).map((l) => `${l.vault}: ${l.reason}`);

@@ -51,6 +51,8 @@ export type KeeperOptions = {
   /** The order vaults are visited in; random by default, so no vault always goes last. */
   shuffle?: <T>(items: T[]) => T[];
   log?: (line: VaultLine) => void;
+  /** What every line's reason is said with: the keeper takes the nodes' addresses out of it. */
+  hide?: (text: string) => string;
 };
 
 const shuffled = <T>(items: T[]): T[] => {
@@ -74,6 +76,7 @@ export async function runRound(
 ): Promise<VaultLine[]> {
   const { adapter } = o;
   const log = o.log ?? (() => {});
+  const hide = o.hide ?? ((text: string) => text);
   const send = o.send ?? ((signed: string) => adapter.relay(signed));
   const save = async () => {
     await o.save?.(memory);
@@ -202,7 +205,8 @@ export async function runRound(
       const l: VaultLine = {
         vault,
         outcome,
-        reason: [...did, reason].join('; ') + budget,
+        // A vault's failure can quote the transport, which can name the node: never its address.
+        reason: hide([...did, reason].join('; ') + budget),
         txIds,
         alert: alert || raise,
       };
