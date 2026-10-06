@@ -37,10 +37,11 @@ import {
 } from '@colosseum/risk';
 import type { AssetFacts, PlanFacts } from '@colosseum/schemas';
 import { and, desc, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm';
+import { curveVersionOf, RISK_METHOD_VERSION } from './curve-version';
 import { capacityAtTau } from './history';
 
 const ROOT = process.env.REPO_ROOT ?? join(import.meta.dirname, '..', '..', '..');
-const CURVE_METHOD_VERSION = 'risk-0.3';
+const CURVE_METHOD_VERSION = RISK_METHOD_VERSION;
 const fixture = (name: string) =>
   JSON.parse(readFileSync(join(ROOT, 'fixtures/risk', name), 'utf8'));
 
@@ -297,10 +298,12 @@ export async function loadAssetFacts(
     platformFeeBps: params.platformFeeBps,
     gapGridPct: defaultLendingReportParams().gapGridPct,
   };
+  // an EVM address is read under the EVM collector's version, a Solana one under risk-0.3
+  const curveVersion = mint ? curveVersionOf(mint) : CURVE_METHOD_VERSION;
   const none = {
     source: 'risk_depth_curves',
     method: 'fitCurve_isotonic_pl_ln_notional',
-    methodVersion: CURVE_METHOD_VERSION,
+    methodVersion: curveVersion,
     provenance: 'live' as const,
   };
   const curveRows = mint
@@ -308,10 +311,7 @@ export async function loadAssetFacts(
         .select()
         .from(riskDepthCurves)
         .where(
-          and(
-            eq(riskDepthCurves.assetMint, mint),
-            eq(riskDepthCurves.methodVersion, CURVE_METHOD_VERSION),
-          ),
+          and(eq(riskDepthCurves.assetMint, mint), eq(riskDepthCurves.methodVersion, curveVersion)),
         )
     : [];
   if (!curveRows.some((r) => r.side === 'sell'))
