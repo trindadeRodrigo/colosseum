@@ -1152,7 +1152,6 @@ export const en = {
         chart:
           'Projected balance to 2031 with a base path and a range from a weak to a strong case, against the $35,000 target.',
         goalLine: 'goal $35k',
-        weak: 'weak case',
         legs: [
           { name: () => 'Tokenized treasuries', why: 'ballast and the exit of first resort' },
           { name: () => 'Private credit', why: 'higher yield, slower exit (credit risk accepted)' },

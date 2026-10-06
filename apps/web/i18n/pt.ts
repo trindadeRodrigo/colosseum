@@ -1150,7 +1150,6 @@ export const pt: Dictionary = {
         chart:
           'Saldo projetado até 2031, com um caminho base e uma faixa do cenário fraco ao forte, contra o alvo de US$ 35.000.',
         goalLine: 'alvo US$ 35 mil',
-        weak: 'cenário fraco',
         legs: [
           { name: () => 'Títulos do Tesouro tokenizados', why: 'lastro e a primeira saída' },
           {

@@ -10,8 +10,8 @@ import { GROWTH, SAMPLE, type SampleLeg, TICKERS, TRIP } from './sample';
 
 // "Same pieces. Different people. Different fit." (goal-showcase-case.md): two sample people, each
 // with the goal in their own words over their plan drawn as a joint, and the plan cut for it beside them: the limits
-// as chips, four figures, the chart, the parts and the exit plan. Everything in a case is MOCK, and
-// says so with the plate in its head and the hatched pin on every figure that stands on a rate. The
+// as chips, four figures, the chart, the parts and the exit plan. Everything in a case is sample, and
+// says so once at its foot and with the hatched pin on every figure that stands on a rate. The
 // full disclaimer sits once under the section.
 
 const whole = (lang: Lang, usd: number) =>
@@ -214,7 +214,6 @@ export function Showcase({ lang }: { lang: Lang }) {
                 lang={lang}
                 labels={{ ...chartLabels, chart: t.growth.chart }}
                 goal={t.growth.goalLine}
-                weak={t.growth.weak}
               />
             }
             legs={GROWTH.legs}
