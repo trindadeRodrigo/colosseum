@@ -99,6 +99,92 @@
                         "type": "string",
                         "enum": ["pt", "en"]
                       },
+                      "currency": {
+                        "type": "string",
+                        "pattern": "^[A-Z]{3}$"
+                      },
+                      "obligations": {
+                        "maxItems": 480,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "month": {
+                              "type": "string",
+                              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+                            },
+                            "amount": {
+                              "type": "number",
+                              "exclusiveMinimum": 0
+                            },
+                            "currency": {
+                              "type": "string",
+                              "pattern": "^[A-Z]{3}$"
+                            }
+                          },
+                          "required": ["month", "amount", "currency"]
+                        }
+                      },
+                      "sleeves": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": ["goal"]
+                                },
+                                "shareBps": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 10000
+                                }
+                              },
+                              "required": ["kind", "shareBps"]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": ["theme"]
+                                },
+                                "shareBps": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 10000
+                                },
+                                "theme": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": ["kind", "shareBps", "theme"]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": ["safe_yield"]
+                                },
+                                "shareBps": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 10000
+                                }
+                              },
+                              "required": ["kind", "shareBps"]
+                            }
+                          ]
+                        }
+                      },
+                      "restoreSplit": {
+                        "type": "boolean"
+                      },
                       "limits": {
                         "type": "object",
                         "properties": {
@@ -258,6 +344,96 @@
                             "language": {
                               "type": "string",
                               "enum": ["pt", "en"]
+                            },
+                            "currency": {
+                              "type": "string",
+                              "pattern": "^[A-Z]{3}$"
+                            },
+                            "obligations": {
+                              "maxItems": 480,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "month": {
+                                    "type": "string",
+                                    "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+                                  },
+                                  "amount": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0
+                                  },
+                                  "currency": {
+                                    "type": "string",
+                                    "pattern": "^[A-Z]{3}$"
+                                  }
+                                },
+                                "required": ["month", "amount", "currency"],
+                                "additionalProperties": false
+                              }
+                            },
+                            "sleeves": {
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": ["goal"]
+                                      },
+                                      "shareBps": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 10000
+                                      }
+                                    },
+                                    "required": ["kind", "shareBps"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": ["theme"]
+                                      },
+                                      "shareBps": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 10000
+                                      },
+                                      "theme": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      }
+                                    },
+                                    "required": ["kind", "shareBps", "theme"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": ["safe_yield"]
+                                      },
+                                      "shareBps": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 10000
+                                      }
+                                    },
+                                    "required": ["kind", "shareBps"],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              }
+                            },
+                            "restoreSplit": {
+                              "type": "boolean"
                             }
                           },
                           "required": [
@@ -584,7 +760,7 @@
                               },
                               "kind": {
                                 "type": "string",
-                                "enum": ["yield", "price", "liquidity"]
+                                "enum": ["yield", "price", "liquidity", "fx"]
                               }
                             },
                             "required": [

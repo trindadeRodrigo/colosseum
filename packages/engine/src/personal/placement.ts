@@ -301,6 +301,77 @@ export class Book {
   }
 
   /**
+   * Places a unit on dollar-yield tokens in the order given, each up to the least of its cap in the
+   * plan, its exit ceiling and its issuer's room: what is set aside for withdrawals goes to the most
+   * liquid first. A token with no leg type or no yield reading is passed over; the banded fill that
+   * comes after says why.
+   */
+  fillInOrder(unit: Sized, candidates: BasketAsset[]): Fill {
+    const { w } = this;
+    let left = unit.cents;
+    let placed = false;
+    const why: Reason[] = [];
+    for (const asset of candidates) {
+      if (left <= 0) break;
+      const blocked = w.blockOf(asset) ?? this.noLineLeft(asset);
+      if (blocked) {
+        why.push(blocked);
+        continue;
+      }
+      const cap = w.yieldCapOf(asset);
+      if (!cap || !w.yields.has(asset.id)) continue;
+      const room = this.room(asset);
+      const own = cap.cents - (this.lines.get(asset.id)?.cents ?? 0);
+      const limit = own < room.cents ? { cents: Math.max(0, own), why: cap.why } : room;
+      const take = Math.min(left, limit.cents);
+      // A new line has a least size; a line already there takes any amount.
+      const least = this.lines.has(asset.id) ? 1 : w.minLine;
+      // Too small for a line: it takes nothing, and its limit is not what kept the money out.
+      if (take < least) continue;
+      const reasons = [...unit.reasons];
+      if (take < left) {
+        reasons.push(limit.why);
+        why.push(limit.why);
+      }
+      this.put(asset, take, reasons);
+      left -= take;
+      placed = true;
+    }
+    return { left, placed, why: once(why), tooSmall: false };
+  }
+
+  /**
+   * Moves cents of a line to cash, as the coverage check does: the line keeps its reasons and gains
+   * `because`. What its issuer and the credit budget count goes down with it.
+   */
+  toCash(assetId: string, cents: number, because: Reason): void {
+    const line = this.lines.get(assetId);
+    if (!line || cents <= 0) return;
+    const moved = Math.min(cents, line.cents);
+    line.cents -= moved;
+    line.reasons.push(because);
+    // A line held through a shared portfolio gives from what is through it last.
+    // What is through a portfolio is never more than the line it is part of.
+    let owed = Math.max(0, sum([...line.via.values()]) - line.cents);
+    for (const [slug, through] of [...line.via.entries()].sort(([a], [b]) => (a < b ? 1 : -1))) {
+      if (owed <= 0) break;
+      const cut = Math.min(through, owed);
+      line.via.set(slug, through - cut);
+      owed -= cut;
+    }
+    const { asset } = line;
+    this.withIssuer.set(asset.issuer, (this.withIssuer.get(asset.issuer) ?? 0) - moved);
+    if (this.w.sleeveOf(asset) !== 'growth')
+      this.withIssuerOutsideGrowth.set(
+        asset.issuer,
+        (this.withIssuerOutsideGrowth.get(asset.issuer) ?? 0) - moved,
+      );
+    if (this.w.sleeveOf(asset) === 'dollarYield' && this.w.isCredit(asset))
+      this.creditUsed -= moved;
+    this.cash.cents += moved;
+  }
+
+  /**
    * Whether the plan can take a shared portfolio whole, each part at its own size: null when it can,
    * and the first limit in the way when it cannot, as a fact about the portfolio.
    */

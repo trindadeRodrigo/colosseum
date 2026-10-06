@@ -68,6 +68,7 @@ const SAMPLE: Record<string, string | number> = {
   pct: 1432,
   usd: 4000,
   usdUp: 4000,
+  amount: 3000.5,
   inCountry: 'BR',
   chain: 'robinhood',
   goal: 'grow',
