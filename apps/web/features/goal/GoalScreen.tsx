@@ -213,7 +213,7 @@ export function GoalScreen() {
   const chainName = chain ? (network?.name ?? t.chain.names[chain]) : '';
   // Our server has the person's chain switched off: nothing can be built there for now.
   const chainOff = network?.on === false;
-  const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.mockAnnounce };
+  const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.sampleFigure };
   const link = buttonClass({ variant: 'link' });
   // Why the API did not say which chain: it did not answer, it no longer knows this sign-in, it was
   // sent no identity token, or it asked for fewer requests. Each is a different thing for the person
@@ -442,7 +442,7 @@ export function GoalScreen() {
           otherIssues={blocked}
           onChange={change}
           onBuild={buildFrom}
-          labels={{ ...t.goal.sheet, mockAnnounce: t.shell.mockAnnounce }}
+          labels={{ ...t.goal.sheet, mockAnnounce: t.shell.sampleFigure }}
         />
       ) : reading ? (
         <ConstraintSheet<BasketSheet>
@@ -453,7 +453,7 @@ export function GoalScreen() {
           valid={null}
           onChange={change}
           onBuild={buildFrom}
-          labels={{ ...t.goal.sheet, mockAnnounce: t.shell.mockAnnounce }}
+          labels={{ ...t.goal.sheet, mockAnnounce: t.shell.sampleFigure }}
         />
       ) : null}
 

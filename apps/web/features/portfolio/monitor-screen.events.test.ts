@@ -155,14 +155,16 @@ describe('the monitor, for a person with a vault on their chain', () => {
       expect(pin.querySelector('button')?.getAttribute('aria-label')).toMatch(/^Source for /);
   });
 
-  it('draws a test network as the hatch and MOCK, with the words, never as live (rule 2)', async () => {
+  it('draws a test network as the hatch and a quiet line with the words, never as live (rule 2)', async () => {
     api({ person: onSolana });
     signIn();
     const host = await screen();
     const card = panel(host);
     expect(card.querySelector('.tf-hatch')).not.toBeNull();
-    expect(card.querySelector('[data-ui="mock-plate"]')?.textContent).toContain('MOCK');
-    expect(find(card, '[data-ui="mock-note"]').textContent).toBe(en.shell.testNetwork);
+    expect(card.textContent).not.toContain('MOCK');
+    expect(find(card, '[data-ui="sample-note"]').textContent).toBe(
+      `${en.shell.mockAnnounce} · ${en.shell.testNetwork}`,
+    );
     // the chain line says it too
     expect(find(host, 'header [data-ui="chain-name"]').textContent).toContain(en.shell.testNetwork);
     // no figure is drawn live
@@ -170,11 +172,11 @@ describe('the monitor, for a person with a vault on their chain', () => {
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
 
-  it('draws a live vault with live pins and no plate, and the same vault on the mock with MOCK alone', async () => {
+  it('draws a live vault with live pins and no mark, and the same vault on the mock with the line alone', async () => {
     api({ person: onSolana, portfolio: () => json(portfolioBody(labelled('live'))) });
     signIn(PHANTOM, 'live');
     const live = await screen();
-    expect(live.querySelector('[data-ui="mock-plate"]')).toBeNull();
+    expect(live.querySelector('[data-ui="sample-note"]')).toBeNull();
     expect(live.querySelector('.tf-hatch')).toBeNull();
     expect(new Set(pins(live).map((pin) => pin.getAttribute('data-state')))).toEqual(
       new Set(['live']),
@@ -184,8 +186,7 @@ describe('the monitor, for a person with a vault on their chain', () => {
     signIn(PHANTOM, 'mock');
     const mocked = await screen();
     const card = panel(mocked);
-    expect(card.querySelector('[data-ui="mock-plate"]')).not.toBeNull();
-    expect(card.querySelector('[data-ui="mock-note"]')).toBeNull();
+    expect(find(card, '[data-ui="sample-note"]').textContent).toBe(en.shell.mockAnnounce);
     expect(hatchProblems(parse(mocked.innerHTML))).toEqual([]);
   });
 
@@ -597,7 +598,9 @@ describe('the monitor in Portuguese', () => {
       expect(text(host)).toContain(label);
     expect(text(host).replace(/\s/g, ' ')).toContain('US$ 1.040,00');
     expect(text(host)).toContain('−2,50%');
-    expect(find(panel(host), '[data-ui="mock-note"]').textContent).toBe(pt.shell.testNetwork);
+    expect(find(panel(host), '[data-ui="sample-note"]').textContent).toBe(
+      `${pt.shell.mockAnnounce} · ${pt.shell.testNetwork}`,
+    );
     for (const pin of pins(host))
       expect(pin.querySelector('button')?.getAttribute('aria-label')).toMatch(/^Fonte de /);
     expect(text(host)).not.toContain(en.portfolio.vault.title);

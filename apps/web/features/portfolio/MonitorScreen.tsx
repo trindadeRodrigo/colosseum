@@ -41,7 +41,7 @@ export function MonitorScreen() {
   const history = useVaultHistory();
   const words = t.portfolio;
   const link = buttonClass({ variant: 'link' });
-  const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.mockAnnounce };
+  const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.sampleFigure };
   const groupId = useId();
 
   const chain = state.kind === 'reading' || state.kind === 'answered' ? state.chain : null;

@@ -169,8 +169,8 @@ describe('ProvenancePin (provenance-pin.md)', () => {
       };
       expect(label(pin.live)).toBe('Source for 6.40%');
       expect(label(pin.stale)).toBe('Source for 6.40%, stale, 3 hours old');
-      expect(label(pin.mock)).toBe('Source for 6.40%, mock data');
-      expect(label(pin.sandbox)).toBe('Source for 6.40%, mock data');
+      expect(label(pin.mock)).toBe('Source for 6.40%, sample figure');
+      expect(label(pin.sandbox)).toBe('Source for 6.40%, sample figure');
       expect(label(pin.labelled)).toBe('Source for $12,480');
       expect(pinLabel('1', { ...STALE_SPECIMEN, staleAgeSec: 3600 })).toBe(
         'Source for 1, stale, 1 hour old',
@@ -200,13 +200,16 @@ describe('ProvenancePin (provenance-pin.md)', () => {
       expect(staleWords({ ...LIVE_SPECIMEN, staleAgeSec: 0 })).toBe('stale · 1 min');
     });
 
-    it('never shows mock data without the MOCK plate, and never with a solid pin', () => {
+    it('shows sample data by its hatched pin and its name, never the word MOCK, never a solid pin', () => {
       for (const node of [pin.mock, pin.sandbox, pin.unknownKind]) {
         const root = render(node);
-        expect(text(one(root, ui('mock-plate')))).toBe('MOCK');
+        expect(one(root, ui('pin-glyph'))).toBeTruthy();
+        expect(all(root, (el) => 'data-hatch' in el.attrs)).toHaveLength(1);
+        expect(text(root)).not.toContain('MOCK');
+        expect(one(root, ui('pin')).attrs['aria-label']).toMatch(/, sample figure$/);
         expect(all(root, tag('circle'))).toHaveLength(0);
       }
-      expect(all(render(pin.live), ui('mock-plate'))).toHaveLength(0);
+      expect(all(render(pin.live), (el) => 'data-hatch' in el.attrs)).toHaveLength(0);
     });
   });
 
@@ -256,10 +259,11 @@ describe('ProvenancePin (provenance-pin.md)', () => {
 
     it('adds the state: how stale, or which kind of mock', () => {
       expect(text(one(render(pin.openWithDocs), ui('pin-popover')))).toContain('stale · 3 h');
-      expect(text(one(render(pin.sandbox), ui('pin-popover')))).toContain('MOCK · test network');
-      expect(text(one(render(pin.unknownKind), ui('pin-popover')))).toContain('MOCK · not live');
+      expect(text(one(render(pin.sandbox), ui('pin-popover')))).toContain('test network');
+      expect(text(one(render(pin.unknownKind), ui('pin-popover')))).toContain('not live');
+      expect(text(one(render(pin.sandbox), ui('pin-popover')))).not.toContain('MOCK');
       expect(PIN_LABELS.kinds).toEqual({
-        mock: 'mock data',
+        mock: 'sample data, not live',
         sandbox: 'test network',
         fixture: 'fixture',
         prior_dataset: 'prior dataset',
@@ -270,8 +274,8 @@ describe('ProvenancePin (provenance-pin.md)', () => {
     it('opens on a provenance named like something every object has, and calls it "not live"', () => {
       for (const node of [pin.inheritedKind, pin.constructorKind]) {
         const root = render(node); // `kinds['__proto__']` is an object: React cannot draw one
-        expect(text(one(root, ui('pin-popover')))).toContain('MOCK · not live');
-        expect(text(one(root, ui('mock-plate')))).toBe('MOCK');
+        expect(text(one(root, ui('pin-popover')))).toContain('not live');
+        expect(all(root, (el) => 'data-hatch' in el.attrs)).toHaveLength(1);
         expect(all(root, tag('circle'))).toHaveLength(0);
       }
       for (const odd of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', '', 'replayed'])
