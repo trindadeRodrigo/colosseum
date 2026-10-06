@@ -70,7 +70,8 @@ describe('the prompt file', () => {
       amountUsd: 10_000,
       horizonMonths: 120,
       risk: 'high',
-      country: 'GB',
+      // `country: gb` in the file is accepted and read by nothing (gate COUNTRY-REMOVED, Oct 6); it
+      // was `country: 'GB'`.
       sleeves: [
         { kind: 'goal', shareBps: 5000 },
         { kind: 'theme', shareBps: 5000, theme: 'ai' },
@@ -371,9 +372,11 @@ describe('a run of examples.md on the fixtures, the model off', () => {
     // The vague goal is left with questions, each with the key to answer it under.
     const vague = runs.find((r) => r.goal.answersText === '');
     expect(vague?.made).toBeNull();
+    // No country is asked (gate COUNTRY-REMOVED, Oct 6); the list held 'country' too.
     expect(vague?.open.map((q) => q.key)).toEqual(
-      expect.arrayContaining(['goal', 'amount', 'horizon', 'risk', 'country']),
+      expect.arrayContaining(['goal', 'amount', 'horizon', 'risk']),
     );
+    expect(vague?.open.map((q) => q.key)).not.toContain('country');
     // The 50/50 AI goal holds a theme sleeve made of the list.
     const ai = runs.find((r) => r.goal.answers.sleeves?.some((s) => s.kind === 'theme'));
     expect(
