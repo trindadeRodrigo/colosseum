@@ -254,6 +254,37 @@ describe('the test faucet', () => {
     expect((await ask(enough.funds)).left).toBe(TEST_FUNDS.perPerson - 1);
   });
 
+  it('sends one at a time: two people at once never both pass a float that covers one', async () => {
+    const entry = entryOn('solana');
+    // A float of exactly one send's worth, which each send spends.
+    let float = { cashRaw: 1_010_000n, gasRaw: 12_625_000n + RESERVE };
+    const sender: TestFundsSender = {
+      chain: 'solana',
+      float: async () => {
+        await new Promise((r) => setTimeout(r, 5));
+        return float;
+      },
+      send: vi.fn(async (order: TestFundsSend) => {
+        await new Promise((r) => setTimeout(r, 5));
+        float = { cashRaw: float.cashRaw - order.cashRaw, gasRaw: float.gasRaw - order.gasRaw };
+        return ['tx'];
+      }),
+    };
+    const funds = createTestFunds({ senders: [sender] });
+    const ask = (who: string) =>
+      funds.send(who, entry, funding(entry, { cash: '1000000', gas: '10100000' }));
+    const [a, b] = await Promise.allSettled([ask('user-a'), ask('user-b')]);
+    expect([a.status, b.status].sort()).toEqual(['fulfilled', 'rejected']);
+    const refused = (
+      a.status === 'rejected' ? a.reason : (b as PromiseRejectedResult).reason
+    ) as Refusal;
+    expect(refused.status).toBe(409);
+    expect(sender.send).toHaveBeenCalledOnce();
+    // and a refusal does not stop the next send in line
+    float = { cashRaw: 10n ** 12n, gasRaw: 10n ** 12n };
+    await expect(ask('user-c')).resolves.toMatchObject({ txIds: ['tx'] });
+  });
+
   it('caps the gas of one send hard: at most 0.0005 ETH on Robinhood Chain', async () => {
     expect(TEST_FUNDS.maxGasRaw.robinhood).toBe(500_000_000_000_000n);
     const entry = entryOn('robinhood');
@@ -309,7 +340,9 @@ describe('the test faucet', () => {
     );
     expect(failed.status).toBe(502);
     expect(JSON.stringify(failed.body())).not.toMatch(/SECRET|https?:/);
-    expect(log).toHaveBeenCalledOnce();
+    // and writes the chain and the error's kind, never its message
+    expect(log).toHaveBeenCalledWith({ chain: 'solana', error: 'Error' });
+    expect(JSON.stringify(log.mock.calls)).not.toMatch(/SECRET|https?:/);
   });
 
   it('is not offered on a chain it holds no key for', async () => {

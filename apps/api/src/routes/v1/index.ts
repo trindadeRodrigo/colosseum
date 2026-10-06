@@ -137,13 +137,20 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
   const faucetKeys = deps.testFunds ? null : faucetKeysFrom(env, chains);
   if (faucetKeys) {
     const { createFaucetSenders } = await import('../../faucet/signer');
-    senders = await createFaucetSenders(faucetKeys, chains.active(), { solana, robinhood });
+    senders = await createFaucetSenders(faucetKeys, chains.active(), {
+      // The node is held to the genesis of the network the record was deployed on.
+      ...(solana
+        ? { solana: { rpc: solana.rpc, genesisHash: deps.solanaRecord?.genesisHash ?? null } }
+        : {}),
+      ...(robinhood ? { robinhood } : {}),
+    });
   }
   const testFunds: TestFunds | null = senders.length
     ? createTestFunds({
         senders,
         now: deps.now,
-        log: (err) => app.log.error({ err }, 'a test faucet send failed'),
+        // The chain and the error's name: never the error, whose message can carry the RPC URL.
+        log: (fields) => app.log.error(fields, 'a test faucet send failed'),
       })
     : null;
 

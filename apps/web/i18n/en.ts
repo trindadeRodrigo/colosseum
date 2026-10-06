@@ -634,7 +634,7 @@ export const en = {
       /** The one line over the card when its figures are not live. */
       note: {
         sample: 'Sample figures · not live',
-        testNetwork: (chain: string) => `Sample figures · test network · ${chain}`,
+        testNetwork: (chain: string) => `Test network · ${chain} · not live`,
       },
     },
     funding: {

@@ -1,10 +1,13 @@
+import { generateKeyPairSync } from 'node:crypto';
 import { createMockAdapter } from '@colosseum/chain-mock';
+import { MAINNET_GENESIS_HASH } from '@colosseum/chain-solana/vault';
 import { parseChainConfigs } from '@colosseum/schemas';
 import { address, generateKeyPairSigner } from '@solana/kit';
 import { SYSTEM_PROGRAM_ADDRESS } from '@solana-program/system';
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from '@solana-program/token';
-import { decodeFunctionData } from 'viem';
-import { describe, expect, it } from 'vitest';
+import { decodeFunctionData, type PublicClient } from 'viem';
+import { generatePrivateKey } from 'viem/accounts';
+import { describe, expect, it, vi } from 'vitest';
 import type { ChainEntry, SolanaInputs } from '../orders/chains';
 import { createFaucetSenders, evmTestFundsCalls, solanaTestFundsInstructions } from './signer';
 
@@ -98,25 +101,116 @@ describe('the faucet signer', () => {
     };
     await expect(
       createFaucetSenders({ solana: '[]' }, [entry], {
-        solana: { rpc: {} as SolanaInputs['rpc'], assets: [] },
+        solana: { rpc: solanaNode(DEVNET).rpc, genesisHash: DEVNET },
       }),
     ).rejects.toThrow(/not on a test network/);
   });
 
   it('refuses a key in the wrong form without repeating it', async () => {
-    const config = parseChainConfigs({}).solana;
-    const entry: ChainEntry = {
-      chain: 'solana',
-      mode: 'live',
-      provenance: 'sandbox',
-      source: 'a devnet node',
-      config,
-      adapter: createMockAdapter({ chain: 'solana' }),
-    };
-    const err = await createFaucetSenders({ solana: 'secret-words' }, [entry], {
-      solana: { rpc: {} as SolanaInputs['rpc'], assets: [] },
+    const err = await createFaucetSenders({ solana: 'secret-words' }, [testnetEntry('solana')], {
+      solana: { rpc: solanaNode(DEVNET).rpc, genesisHash: DEVNET },
     }).catch((e: unknown) => e as Error);
-    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toMatch(/JSON array of 64 bytes/);
     expect((err as Error).message).not.toContain('secret-words');
   });
 });
+
+describe('the faucet signer asks its node which network it is', () => {
+  it('on Solana: makes no sender for a node whose genesis is not devnet’s, nor without one to hold it to', async () => {
+    const make = (node: string, genesisHash: string | null) =>
+      createFaucetSenders({ solana: solanaKeyText() }, [testnetEntry('solana')], {
+        solana: { rpc: solanaNode(node).rpc, genesisHash },
+      });
+    await expect(make(MAINNET_GENESIS_HASH, DEVNET)).rejects.toThrow(/not the test network/);
+    await expect(make('another-network', DEVNET)).rejects.toThrow(/not the test network/);
+    await expect(make(DEVNET, null)).rejects.toThrow(/genesis hash/);
+    await expect(make(MAINNET_GENESIS_HASH, MAINNET_GENESIS_HASH)).rejects.toThrow(/genesis hash/);
+    expect(await make(DEVNET, DEVNET)).toHaveLength(1);
+  });
+
+  it('on Solana: a send asks again, and signs nothing when the node has become another network', async () => {
+    const node = solanaNode(DEVNET);
+    const [sender] = await createFaucetSenders(
+      { solana: solanaKeyText() },
+      [testnetEntry('solana')],
+      {
+        solana: { rpc: node.rpc, genesisHash: DEVNET },
+      },
+    );
+    node.answer(MAINNET_GENESIS_HASH);
+    await expect(
+      sender?.send({ to: TO, cashAddress: MINT, cashRaw: 1n, gasRaw: 1n }),
+    ).rejects.toThrow(/not the test network/);
+    expect(node.sent).not.toHaveBeenCalled();
+  });
+
+  it('on Robinhood Chain: makes no sender for a node of another chain id, and a send asks again', async () => {
+    const entry = testnetEntry('robinhood');
+    const chainId = entry.config.evmChainId as number;
+    const node = evmNode(1);
+    await expect(
+      createFaucetSenders({ robinhood: generatePrivateKey() }, [entry], {
+        robinhood: { rpc: node.rpc },
+      }),
+    ).rejects.toThrow(/chain 1, not/);
+    node.answer(chainId);
+    const [sender] = await createFaucetSenders({ robinhood: generatePrivateKey() }, [entry], {
+      robinhood: { rpc: node.rpc },
+    });
+    node.answer(1);
+    await expect(
+      sender?.send({
+        to: '0x1111111111111111111111111111111111111111',
+        cashAddress: '0xd3d6e7bf284d922651983468b75492be4f3f689a',
+        cashRaw: 1n,
+        gasRaw: 1n,
+      }),
+    ).rejects.toThrow(/chain 1, not/);
+    expect(node.sent).not.toHaveBeenCalled();
+  });
+});
+
+const DEVNET = 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG';
+
+/** A chain on its real adapter on the test network, as the registry makes one. */
+function testnetEntry(chain: 'solana' | 'robinhood'): ChainEntry {
+  return {
+    chain,
+    mode: 'live',
+    provenance: 'sandbox',
+    source: 'a test network node',
+    config: parseChainConfigs({})[chain],
+    adapter: createMockAdapter({ chain }),
+  };
+}
+
+/** A Solana key in solana-keygen's form. */
+function solanaKeyText(): string {
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+  const seed = Buffer.from(privateKey.export({ format: 'jwk' }).d ?? '', 'base64url');
+  const pub = Buffer.from(publicKey.export({ format: 'jwk' }).x ?? '', 'base64url');
+  return JSON.stringify([...seed, ...pub]);
+}
+
+/** A Solana node that answers a genesis hash, which a test can change, and records any send. */
+function solanaNode(genesis: string) {
+  let now = genesis;
+  const sent = vi.fn();
+  const rpc = {
+    getGenesisHash: () => ({ send: async () => now }),
+    sendTransaction: (...args: unknown[]) => ({ send: async () => sent(...args) }),
+  } as unknown as SolanaInputs['rpc'];
+  return { rpc, sent, answer: (g: string) => (now = g) };
+}
+
+/** An EVM node that answers a chain id, which a test can change, and records any send. */
+function evmNode(chainId: number) {
+  let now = chainId;
+  const sent = vi.fn();
+  const rpc = {
+    getChainId: async () => now,
+    sendRawTransaction: sent,
+    call: sent,
+  } as unknown as PublicClient;
+  return { rpc, sent, answer: (id: number) => (now = id) };
+}

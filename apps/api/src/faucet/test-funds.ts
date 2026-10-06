@@ -123,13 +123,28 @@ export function createTestFunds(options: {
   senders: TestFundsSender[];
   limits?: TestFundsLimits;
   now?: () => Date;
-  /** Where a sender's failure is written. It is never sent to the caller: it may name a node. */
-  log?: (err: unknown) => void;
+  /**
+   * Where a sender's failure is written: the chain and the error's name only (`failureFields`). The
+   * error itself never is, here or to the caller: a node library's message can carry the RPC URL.
+   */
+  log?: (fields: { chain: ChainId; error: string }) => void;
 }): TestFunds {
   const limits = options.limits ?? TEST_FUNDS;
   const now = options.now ?? (() => new Date());
   const counter = createCounter(limits.windowSeconds * 1000);
   const senders = new Map(options.senders.map((s) => [s.chain, s]));
+  // One send at a time per chain, from the float check to the last transaction: two people at once
+  // never both pass a check that covers one, and an EVM faucet never reads one nonce twice.
+  const queues = new Map<ChainId, Promise<unknown>>();
+  const inTurn = <T>(chain: ChainId, run: () => Promise<T>): Promise<T> => {
+    const turn = (queues.get(chain) ?? Promise.resolve()).then(run, run);
+    queues.set(
+      chain,
+      turn.catch(() => undefined),
+    );
+    return turn;
+  };
+  const failed = (chain: ChainId, err: unknown) => options.log?.(failureFields(chain, err));
 
   return {
     offered: (entry) => onTestNetwork(entry) && senders.has(entry.chain),
@@ -160,46 +175,61 @@ export function createTestFunds(options: {
       const assets = await entry.adapter.listAssets();
       const cash = assets.find((a) => a.id === read.cash.asset);
       if (!cash) throw new Error(`${entry.chain} lists no ${read.cash.asset}`);
-      // The float first: a send it cannot cover is refused before it counts against anybody.
-      let held: { cashRaw: bigint; gasRaw: bigint };
-      try {
-        held = await sender.float(cash.address);
-      } catch (err) {
-        options.log?.(err);
-        throw new Refusal(502, 'the test network did not answer', { details: { retryable: true } });
-      }
-      const reserve = limits.gasReserveRaw[entry.chain] ?? 0n;
-      if (held.gasRaw < gasRaw + reserve) throw low(TEST_FUNDS_LOW.gas);
-      if (held.cashRaw < cashRaw) throw low(TEST_FUNDS_LOW.cash);
+      return inTurn(entry.chain, async () => {
+        // The float first: a send it cannot cover is refused before it counts against anybody.
+        let held: { cashRaw: bigint; gasRaw: bigint };
+        try {
+          held = await sender.float(cash.address);
+        } catch (err) {
+          failed(entry.chain, err);
+          throw new Refusal(502, 'the test network did not answer', {
+            details: { retryable: true },
+          });
+        }
+        const reserve = limits.gasReserveRaw[entry.chain] ?? 0n;
+        if (held.gasRaw < gasRaw + reserve) throw low(TEST_FUNDS_LOW.gas);
+        if (held.cashRaw < cashRaw) throw low(TEST_FUNDS_LOW.cash);
 
-      const at = now().getTime();
-      const mine = counter.take(`person:${who}`, limits.perPerson, at);
-      if (!mine.ok)
-        throw tooMany(mine.resetAt - at, 'you have had test funds as often as a day allows');
-      const all = counter.take('everybody', limits.perDay, at);
-      if (!all.ok) throw tooMany(all.resetAt - at, 'the test faucet has sent all it may today');
-      let txIds: string[];
-      try {
-        txIds = await sender.send({ to: read.wallet, cashAddress: cash.address, cashRaw, gasRaw });
-      } catch (err) {
-        options.log?.(err);
-        throw new Refusal(502, 'the test network did not take the transfer', {
-          fix: 'Read your wallet again: part of it may have arrived. Then ask again.',
-          details: { retryable: true },
-        });
-      }
-      return {
-        chain: entry.chain,
-        provenance: 'sandbox',
-        wallet: read.wallet,
-        cash: { symbol: read.cash.symbol, decimals: read.cash.decimals, raw: cashRaw.toString() },
-        gas: { symbol: read.gas.symbol, decimals: read.gas.decimals, raw: gasRaw.toString() },
-        txIds,
-        left: mine.remaining,
-      };
+        const at = now().getTime();
+        const mine = counter.take(`person:${who}`, limits.perPerson, at);
+        if (!mine.ok)
+          throw tooMany(mine.resetAt - at, 'you have had test funds as often as a day allows');
+        const all = counter.take('everybody', limits.perDay, at);
+        if (!all.ok) throw tooMany(all.resetAt - at, 'the test faucet has sent all it may today');
+        let txIds: string[];
+        try {
+          txIds = await sender.send({
+            to: read.wallet,
+            cashAddress: cash.address,
+            cashRaw,
+            gasRaw,
+          });
+        } catch (err) {
+          failed(entry.chain, err);
+          throw new Refusal(502, 'the test network did not take the transfer', {
+            fix: 'Read your wallet again: part of it may have arrived. Then ask again.',
+            details: { retryable: true },
+          });
+        }
+        return {
+          chain: entry.chain,
+          provenance: 'sandbox',
+          wallet: read.wallet,
+          cash: { symbol: read.cash.symbol, decimals: read.cash.decimals, raw: cashRaw.toString() },
+          gas: { symbol: read.gas.symbol, decimals: read.gas.decimals, raw: gasRaw.toString() },
+          txIds,
+          left: mine.remaining,
+        } satisfies TestFundsResponse;
+      });
     },
   };
 }
+
+/** What is written of a failed send: the chain and the kind of error, never its message. */
+export const failureFields = (chain: ChainId, err: unknown) => ({
+  chain,
+  error: err instanceof Error ? err.name : typeof err,
+});
 
 /** The float cannot cover the send: a person tops it up from the deployer. */
 const low = (why: string) =>

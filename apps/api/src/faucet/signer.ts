@@ -1,3 +1,4 @@
+import { MAINNET_GENESIS_HASH } from '@colosseum/chain-solana/vault';
 import type { ChainId } from '@colosseum/schemas';
 import {
   type Address,
@@ -5,11 +6,13 @@ import {
   appendTransactionMessageInstructions,
   createKeyPairSignerFromBytes,
   createTransactionMessage,
+  type GetGenesisHashApi,
   getBase64EncodedWireTransaction,
   getSignatureFromTransaction,
   type IInstruction,
   type KeyPairSigner,
   pipe,
+  type Rpc,
   type Signature,
   setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash,
@@ -37,11 +40,18 @@ import { onTestNetwork, type TestFundsSend, type TestFundsSender } from './test-
 
 const WAIT_MS = 60_000;
 
-/** The senders for every chain a faucet key was handed in for. Refuses a chain not on a test network. */
+/** Solana's node, and the genesis hash of the test network its record was deployed on. */
+export type FaucetSolana = Pick<SolanaInputs, 'rpc'> & { genesisHash: string | null };
+
+/**
+ * The senders for every chain a faucet key was handed in for. Refuses a chain not on a test network by
+ * its config, and a node that is not that network by what it answers: Solana's genesis hash against the
+ * deploy record's (and never mainnet's), the EVM chain id against the config's. Each send asks again.
+ */
 export async function createFaucetSenders(
   keys: Partial<Record<ChainId, string>>,
   entries: ChainEntry[],
-  inputs: { solana?: SolanaInputs; robinhood?: EvmInputs },
+  inputs: { solana?: FaucetSolana; robinhood?: Pick<EvmInputs, 'rpc'> },
 ): Promise<TestFundsSender[]> {
   const senders: TestFundsSender[] = [];
   for (const entry of entries) {
@@ -51,12 +61,46 @@ export async function createFaucetSenders(
       throw new Error(
         `a faucet key is set for ${entry.config.name}, which is not on a test network`,
       );
-    if (entry.chain === 'solana' && inputs.solana)
-      senders.push(solanaSender(await solanaKey(key), inputs.solana.rpc));
-    else if (entry.chain === 'robinhood' && inputs.robinhood && entry.config.evmChainId)
+    if (entry.chain === 'solana' && inputs.solana) {
+      const { rpc, genesisHash } = inputs.solana;
+      if (!genesisHash || genesisHash === MAINNET_GENESIS_HASH)
+        throw new Error('the Solana faucet needs the test network record’s genesis hash');
+      await onGenesis(rpc, genesisHash);
+      senders.push(solanaSender(await solanaKey(key), rpc, genesisHash));
+    } else if (entry.chain === 'robinhood' && inputs.robinhood && entry.config.evmChainId) {
+      await onChainId(inputs.robinhood.rpc, entry.config.evmChainId);
       senders.push(evmSender(evmKey(key), inputs.robinhood.rpc, entry.config.evmChainId));
+    }
   }
   return senders;
+}
+
+/** Throws unless the node answers this genesis hash. The node's own error is never repeated. */
+async function onGenesis(rpc: SolanaInputs['rpc'], genesisHash: string): Promise<void> {
+  const ask = (rpc as unknown as Rpc<GetGenesisHashApi>).getGenesisHash;
+  if (typeof ask !== 'function') throw new Error('the Solana faucet’s node cannot say its network');
+  let answered: string;
+  try {
+    answered = await (rpc as unknown as Rpc<GetGenesisHashApi>).getGenesisHash().send();
+  } catch {
+    throw new Error('the Solana faucet’s node did not say its network');
+  }
+  if (answered !== genesisHash)
+    throw new Error('the Solana faucet’s node is not the test network: nothing is signed');
+}
+
+/** Throws unless the node answers this chain id. A key of a test network never signs for another. */
+async function onChainId(rpc: PublicClient, chainId: number): Promise<void> {
+  let answered: number;
+  try {
+    answered = await rpc.getChainId();
+  } catch {
+    throw new Error('the EVM faucet’s node did not say its chain');
+  }
+  if (answered !== chainId)
+    throw new Error(
+      `the EVM faucet’s node is chain ${answered}, not ${chainId}: nothing is signed`,
+    );
 }
 
 /** A Solana key as `solana-keygen` writes it: a JSON array of 64 bytes. */
@@ -134,7 +178,11 @@ export async function solanaTestFundsInstructions(
   return ixs;
 }
 
-function solanaSender(faucet: KeyPairSigner, rpc: SolanaInputs['rpc']): TestFundsSender {
+function solanaSender(
+  faucet: KeyPairSigner,
+  rpc: SolanaInputs['rpc'],
+  genesisHash: string,
+): TestFundsSender {
   return {
     chain: 'solana',
     async float(cashAddress) {
@@ -151,6 +199,7 @@ function solanaSender(faucet: KeyPairSigner, rpc: SolanaInputs['rpc']): TestFund
       return { cashRaw, gasRaw: BigInt(lamports) };
     },
     async send(order) {
+      await onGenesis(rpc, genesisHash);
       const ixs = await solanaTestFundsInstructions(
         faucet,
         order,
@@ -246,9 +295,7 @@ function evmSender(
       return { cashRaw, gasRaw };
     },
     async send(order) {
-      // A key of a test network never signs for another chain.
-      const answered = await rpc.getChainId();
-      if (answered !== chainId) throw new Error(`the node is chain ${answered}, not ${chainId}`);
+      await onChainId(rpc, chainId);
       const hashes: string[] = [];
       for (const call of evmTestFundsCalls(order)) {
         const request = { account: account.address, ...call };

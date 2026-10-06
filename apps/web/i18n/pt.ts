@@ -595,7 +595,7 @@ export const pt: Dictionary = {
         `Você está comprando ${amount} do seu plano em ${chain}. Em seguida você revisa cada passo e assina cada um na sua carteira.`,
       note: {
         sample: 'Valores de exemplo · não são reais',
-        testNetwork: (chain: string) => `Valores de exemplo · rede de teste · ${chain}`,
+        testNetwork: (chain: string) => `Rede de teste · ${chain} · valores não reais`,
       },
     },
     funding: {
