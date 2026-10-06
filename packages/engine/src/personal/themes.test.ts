@@ -159,8 +159,11 @@ describe('a split goal 50% / theme 50%', () => {
     expect(theme?.holds.every((h) => SYMBOLS.has(symbolOf(h.assetId)))).toBe(true);
     const spy = plan.lines.find((l) => l.assetId === 'solana:spyx');
     expect(spy?.amountUsd).toBe(1750);
-    expect(spy?.reasons.map((r) => r.rule)).toContain('ISSUER_CAP');
-    const said = allReasons(plan).find((r) => r.rule === 'OVERFLOW_ISSUER');
+    expect(spy?.reasons.map((r) => r.rule)).toContain('ISSUER_CAP_THEME');
+    const said = allReasons(plan).find((r) => r.rule === 'OVERFLOW_ISSUER_THEME');
+    expect(said?.text).toBe(
+      '$2,250 meant for SPY is held in dollar yield or cash instead: no more than 70% of the plan is with one issuer at medium risk, Backed (xStocks) is at that limit, and the theme AI you asked for holds its share of it first.',
+    );
     expect(said?.params.assets).toBe('SPY');
     expect(said?.params.usd).toBe(2250);
   });
@@ -421,13 +424,16 @@ describe('what the person already holds counts in the theme sleeve, as in the go
     const plan = run(s, ctxWith({ holdings: [{ underlying: 'NVDA', valueUsd: 9000 }] }));
     expect(namesHeld(plain).has('NVDAx')).toBe(true);
     expect(namesHeld(plan).has('NVDAx')).toBe(false);
-    expect(removedWhy(plan, 'NVDAx')).toEqual(['ALREADY_HELD_NONE']);
+    expect(removedWhy(plan, 'NVDAx')).toEqual(['THEME_HELD_NONE']);
     const texts = allReasons(plan).map((r) => r.text);
-    expect(texts).toContain('No NVDA: you already hold $9,000 of it.');
+    // The theme counts of the $9,000 up to its level, $833.33; the goal counts the rest.
+    expect(texts).toContain(
+      'No NVDA in AI: $833 of what you already hold of it counts here, as much as each of its other names holds.',
+    );
     const others = [...namesHeld(plan).values()];
     expect(every(others.reduce((n, x) => n + x, 0))).toBe(every(5000));
     expect(texts).toContain(
-      'A larger share here: you already hold $9,000 of NVDA, so this plan buys less of it.',
+      'A larger share here: you already hold $833 of NVDA, so this plan buys less of it.',
     );
   });
 
@@ -439,7 +445,9 @@ describe('what the person already holds counts in the theme sleeve, as in the go
     expect(nvda).toBeGreaterThan(0);
     expect(nvda).toBeLessThan(Math.min(...others));
     const line = plan.lines.find((l) => l.assetId === 'solana:nvdax');
-    expect(line?.reasons.map((r) => r.rule)).toContain('ALREADY_HELD');
+    expect(line?.reasons.map((r) => r.rule)).toContain('THEME_HELD');
+    // The holding explains the gap and no more: NVDAx and its $300 come to the others' level.
+    expect(Math.abs(nvda + 300 - Math.min(...others))).toBeLessThanOrEqual(0.02);
   });
 
   it('with holdings switched off, a holding changes nothing', () => {
@@ -498,5 +506,132 @@ describe('edge cases of the names', () => {
     );
     expect(holds.get('GLDx')).toBe(100);
     expect(holds.get('NVDAx')).toBe(3500);
+  });
+});
+
+describe('the review of #72, second round', () => {
+  it('a theme’s overflow does not take the line kept for the goal’s stocks (4 lines, medium risk)', () => {
+    const c = ctxWith({ params: { ...PERSONAL_PARAMS, maxLinesPerChain: 4 } });
+    const plan = run(themed(), c);
+    const spy = plan.lines.find((l) => l.assetId === 'solana:spyx');
+    expect(spy?.amountUsd ?? 0).toBeGreaterThan(0);
+    expect(removedWhy(plan, 'SPY')).not.toContain('MAX_LINES');
+  });
+
+  it('a line kept for a goal stock that ends with no money goes to the theme', () => {
+    // Low risk: one issuer at most 50%. The theme's $5,000 and the goal's gold use it up, so SPY
+    // takes nothing; the line kept for it is given to a theme name.
+    const plan = run(themed({ risk: 'low' }));
+    expect(plan.lines.some((l) => l.assetId === 'solana:spyx')).toBe(false);
+    expect(removedWhy(plan, 'SPY')).toEqual(['ISSUER_CAP_THEME']);
+    // Eight lines: syrupUSDC, GLDx and six names, none kept idle.
+    expect(namesHeld(plan).size).toBe(6);
+    expect(plan.lines.filter((l) => !l.assetId.endsWith(':usdc')).length).toBe(
+      PERSONAL_PARAMS.maxLinesPerChain,
+    );
+  });
+
+  it('issuer room is kept only for names that can be held and sold, so a followed portfolio is not opened for room the theme never uses', () => {
+    // A list whose only name the chain lists is NVDAx: the theme keeps at most the cap on one stock
+    // ($2,000 at medium risk) of Backed's room, not its $5,000, so The Seven (40% of the plan) is
+    // followed whole beside it.
+    const chips: ThemeList = {
+      ...ai,
+      slug: 'chips',
+      members: [
+        { symbol: 'NVDAx', reason: { en: 'chips', pt: 'chips' } },
+        { symbol: 'ZZZx', reason: { en: 'none', pt: 'nenhum' } },
+      ],
+    };
+    const c = ctxWith({ themes: [chips], params: { ...PERSONAL_PARAMS, maxLinesPerChain: 16 } });
+    const s = sheet({
+      themes: ['the-seven'],
+      sleeves: [
+        { kind: 'goal', shareBps: 5000 },
+        { kind: 'theme', shareBps: 5000, theme: 'chips' },
+      ],
+    });
+    const plan = run(s, c);
+    expect(plan.lines.filter((l) => l.viaIndex === 'the-seven').length).toBeGreaterThan(0);
+    expect(allReasons(plan).some((r) => r.rule === 'NOT_WHOLE_ISSUER')).toBe(false);
+  });
+
+  it('a holding counts once: the theme first, the goal the rest', () => {
+    const s = themed({
+      risk: 'high',
+      themes: ['the-seven'],
+      rules: { useHoldings: true, glide: true },
+    });
+    const plan = run(s, ctxWith({ holdings: [{ underlying: 'NVDA', valueUsd: 3000 }] }));
+    const said = [
+      ...plan.lines.flatMap((l) => l.reasons),
+      ...plan.removed.flatMap((r) => r.reasons),
+    ].filter(
+      (r) =>
+        r.params.asset === 'NVDA' &&
+        ['THEME_HELD', 'THEME_HELD_NONE', 'ALREADY_HELD', 'ALREADY_HELD_NONE'].includes(r.rule),
+    );
+    const once = new Map(said.map((r) => [r.rule.startsWith('THEME') ? 'theme' : 'goal', r]));
+    const total = [...once.values()].reduce((n, r) => n + every(Number(r.params.heldUsd)), 0);
+    expect(once.has('theme')).toBe(true);
+    expect(total).toBe(every(3000));
+  });
+
+  it('violations(): a smaller theme name is excused only by its own holding, as much as it explains', () => {
+    const s = themed({ risk: 'high' });
+    const plan = run(s);
+    const nvda = plan.lines.find((l) => l.assetId === 'solana:nvdax');
+    if (!nvda) throw new Error('no NVDAx');
+    const theme = themeOf(plan);
+    const tamper = (heldUsd: number, rule: string) => {
+      const copy = structuredClone(plan);
+      const h = copy.split
+        ?.find((x) => x.kind === 'theme')
+        ?.holds.find((x) => x.assetId === nvda.assetId);
+      if (!h || !theme) throw new Error('no hold');
+      h.amountUsd -= 200;
+      const cash = copy.split?.find((x) => x.kind === 'theme')?.holds;
+      cash?.push({ assetId: 'solana:usdc', amountUsd: 200 });
+      copy.lines
+        .find((l) => l.assetId === nvda.assetId)
+        ?.reasons.push({
+          rule,
+          inputs: ['holdings'],
+          params: { asset: 'NVDA', heldUsd, theme: 'AI' },
+          text: 'held',
+        });
+      return violations(copy, shelf, {
+        ...ctx,
+        holdings: [{ underlying: 'NVDA', valueUsd: 1000 }],
+      });
+    };
+    const flag = (v: string[]) => v.some((x) => x.includes('no limit is said'));
+    // The goal's own sentence excuses nothing in the theme; a theme holding that explains $50 of a
+    // $200 gap excuses nothing; one that explains it all does — but only with holdings read.
+    expect(flag(tamper(200, 'ALREADY_HELD'))).toBe(true);
+    expect(flag(tamper(50, 'THEME_HELD'))).toBe(true);
+    expect(flag(tamper(5000, 'THEME_HELD'))).toBe(true);
+  });
+});
+
+describe('a plan all in a theme, with a withdrawal it cannot pay', () => {
+  it('says the shortfall on an empty cash line (found by the property test)', () => {
+    const c = {
+      ...ctx,
+      liquidity: fixtureLiquidity({}, 0),
+      yields: ctx.yields?.filter((y) => y.assetId === 'solana:jlusdc'),
+    };
+    const s = sheet({
+      amountUsd: 50,
+      horizonMonths: 1,
+      risk: 'low',
+      rules: { useHoldings: false, glide: false },
+      obligations: [{ month: '2026-10', amount: 500, currency: 'USD' }],
+      sleeves: [{ kind: 'theme', shareBps: 10_000, theme: 'ai' }],
+    });
+    const plan = run(s, c);
+    expect(plan.flags).toContain('coverage_short');
+    const cash = plan.lines.find((l) => l.assetId === 'solana:usdc');
+    expect(cash?.reasons.map((r) => r.rule)).toContain('COVERAGE_SHORT');
   });
 });

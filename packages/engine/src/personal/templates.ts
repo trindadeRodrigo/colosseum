@@ -78,6 +78,21 @@ export const REASON_TEMPLATES = {
     '{theme} lists more names than this plan has parts left, so it holds the {count} easiest to sell: first the names whose exit is measured, by how much of each can be sold, then the others, by their tier.',
     '{theme} tem mais nomes do que as partes que restam neste plano, então fica com os {count} mais fáceis de vender: primeiro os nomes com saída medida, por quanto de cada um pode ser vendido, depois os outros, pela faixa.',
   ),
+  THEME_HELD: rule(
+    ['holdings', 'themes'],
+    'Less {asset} in {theme}: {heldUsd|usd} of what you already hold of it counts here, so the theme buys it only up to the total of each of its other names.',
+    'Menos {asset} em {theme}: {heldUsd|usd} do que você já tem desse ativo conta aqui, então o tema compra só até o total de cada um dos outros nomes.',
+  ),
+  THEME_HELD_NONE: rule(
+    ['holdings', 'themes'],
+    'No {asset} in {theme}: {heldUsd|usd} of what you already hold of it counts here, as much as each of its other names holds.',
+    'Sem {asset} em {theme}: {heldUsd|usd} do que você já tem desse ativo conta aqui, tanto quanto cada um dos outros nomes.',
+  ),
+  ISSUER_CAP_THEME: rule(
+    ['risk', 'sleeves', 'themes'],
+    'No more than {capBps|pct} of the plan with one issuer at {risk|risk}: {issuer} is at that limit, and the theme {themes|list} you asked for holds its share of it first.',
+    'No máximo {capBps|pct} do plano com um só emissor, com {risk|risk}: {issuer} está nesse limite, e o tema {themes|list} que você pediu fica com a parte dele primeiro.',
+  ),
   THEME_TOO_THIN: rule(
     ['amount', 'themes'],
     '{asset} is left out of {theme}: selling it at this size would cost too much, so it cannot take {minUsd|usd}, the least a part of your plan can be.',
@@ -423,6 +438,11 @@ export const REASON_TEMPLATES = {
     ['country'],
     '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: it is not offered {country|inCountry}.',
     '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: não é oferecido {country|inCountry}.',
+  ),
+  OVERFLOW_ISSUER_THEME: rule(
+    ['risk', 'sleeves', 'themes'],
+    '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: no more than {capBps|pct} of the plan is with one issuer at {risk|risk}, {issuer} is at that limit, and the theme {themes|list} you asked for holds its share of it first.',
+    '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: no máximo {capBps|pct} do plano fica com um só emissor, com {risk|risk}, {issuer} está nesse limite, e o tema {themes|list} que você pediu fica com a parte dele primeiro.',
   ),
   OVERFLOW_THEME_NO_LIST: rule(
     ['themes', 'chain'],

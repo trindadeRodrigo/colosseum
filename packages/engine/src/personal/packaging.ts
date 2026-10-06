@@ -177,7 +177,15 @@ export function packageUp(w: World, book: Book): Packaged {
   const lines: BasketLine[] = [];
   for (const sleeve of SLEEVES)
     for (const row of largestFirst(
-      all.filter((r) => r.sleeve === sleeve && (r.cents > 0 || r.bps > 0)),
+      // The cash line stays, empty, where it is the only place a plan says its withdrawals fall
+      // short (a plan whose every dollar another sleeve holds).
+      all.filter(
+        (r) =>
+          r.sleeve === sleeve &&
+          (r.cents > 0 ||
+            r.bps > 0 ||
+            (r === cash && r.reasons.some((x) => x.rule === 'COVERAGE_SHORT'))),
+      ),
       (r) => r.bps,
       (r) => r.asset.id,
     )) {

@@ -942,6 +942,15 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
     // and cash, never more of a token than its line; its names in equal parts, unless the line says
     // which limit holds one to less; each name's line says the theme and why the name is on it.
     const lists = (ctx.themes ?? []).filter((t) => t.chain === s.chains[0]);
+    /** What the person holds of an underlying, in cents, where the plan reads holdings. */
+    const heldOfUnderlying = (u: string) =>
+      s.rules.useHoldings
+        ? sum(
+            (ctx.holdings ?? [])
+              .filter((h) => (h.underlying ?? (h.asset ? byId.get(h.asset)?.underlying : '')) === u)
+              .map((h) => cents(h.valueUsd)),
+          )
+        : 0;
     for (const x of plan.split ?? []) {
       if (x.kind !== 'theme') continue;
       const list = lists.find((t) => t.slug === x.theme && t.status === 'confirmed');
@@ -979,9 +988,16 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
             ((r.rule === 'EXIT_CEILING' || r.rule === 'TIER_CEILING') &&
               r.params.asset === a.symbol) ||
             (r.rule === 'SINGLE_STOCK_CAP' && r.params.asset === a.underlying) ||
-            // What the person already holds of it is bought less (DESIGN-VAULT section 7).
-            (r.rule === 'ALREADY_HELD' && r.params.asset === a.underlying) ||
-            ((r.rule === 'ISSUER_CAP' || r.rule === 'ISSUER_CAP_PLAN') &&
+            // What the person already holds of it, as this theme counts it, explains that much less
+            // and no more: the name and its holding come to the others' level.
+            (r.rule === 'THEME_HELD' &&
+              r.params.asset === a.underlying &&
+              r.params.theme === name &&
+              cents(Number(r.params.heldUsd)) <= heldOfUnderlying(a.underlying) &&
+              held + cents(Number(r.params.heldUsd)) >= top - 2) ||
+            ((r.rule === 'ISSUER_CAP' ||
+              r.rule === 'ISSUER_CAP_PLAN' ||
+              r.rule === 'ISSUER_CAP_THEME') &&
               r.params.issuer === a.issuer),
         );
         say(
@@ -1303,7 +1319,12 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
         inSleeve('cash') >= share(r.params.floorBps) - 1,
         `"${r.text}", and the plan holds ${inSleeve('cash') / 100} in cash`,
       );
-    if (r.rule === 'ISSUER_CAP' || r.rule === 'OVERFLOW_ISSUER') {
+    if (
+      r.rule === 'ISSUER_CAP' ||
+      r.rule === 'OVERFLOW_ISSUER' ||
+      r.rule === 'ISSUER_CAP_THEME' ||
+      r.rule === 'OVERFLOW_ISSUER_THEME'
+    ) {
       const with_ =
         (total((a) => a.issuer).get(String(r.params.issuer)) ?? 0) +
         movedFromIssuer(String(r.params.issuer));
