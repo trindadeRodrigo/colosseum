@@ -54,7 +54,7 @@ describe('PlanLegs (plan-leg.md)', () => {
     const label = labels[3];
     expect(all(label as never, ui('hatch-band'))).toHaveLength(1);
     expect(all(label as never, ui('mock-plate'))).toHaveLength(1);
-    expect(text(label as never)).toContain('BRL leg·10%·—MOCK·integration in progress');
+    expect(text(label as never)).toContain('BRL leg·10%MOCK·integration in progress');
     for (const live of labels.slice(0, 3))
       expect(all(live as never, ui('hatch-band'))).toHaveLength(0);
   });
@@ -67,8 +67,9 @@ describe('PlanLegs (plan-leg.md)', () => {
     expect(all(first as never, ui('pin'))).toHaveLength(1);
     const quoted = all(first as never, (e) => text(e) === 'quoted 4.35%').at(-1);
     expect(classes(quoted as never)).toContain('text-muted-foreground');
-    // a leg with no yield shows a dash, not a zero, and has no pin
-    expect(text(labels[2] as never)).toContain('Cash buffer·20%·—·reachable today');
+    // a leg with no yield says nothing about one: no zero, no dash, and no pin
+    expect(text(labels[2] as never)).toContain('Cash buffer·20%·reachable today');
+    expect(text(labels[2] as never)).not.toContain('—');
     expect(all(labels[2] as never, ui('pin'))).toHaveLength(0);
   });
 

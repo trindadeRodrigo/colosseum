@@ -214,16 +214,40 @@ describe('the candidates on the plan screen', () => {
     );
   });
 
-  it('marks each candidate built on anything not live with the plate and the words "test network"', async () => {
+  it('says once, quietly, on each card that its figures are samples on a test network, with no plate', async () => {
     keep([candidate('cover'), candidate('spread'), candidate('carry')]);
     const host = await shown();
-    // each card carries the plate and the words, and each pinned figure its own plate
-    expect(cards(host).map((c) => c.querySelector('[data-ui="mock-note"]')?.textContent)).toEqual([
-      en.shell.testNetwork,
-      en.shell.testNetwork,
-      en.shell.testNetwork,
-    ]);
+    expect(cards(host).map((c) => c.querySelector('[data-ui="sample-line"]')?.textContent)).toEqual(
+      Array(3).fill(en.plan.choice.sample.sandbox),
+    );
+    for (const card of cards(host))
+      expect(
+        card.querySelector(':scope > [data-ui="mock-plate"], :scope > .tf-mock-plate'),
+      ).toBeNull();
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
+  });
+
+  it('leads each card with a sentence and three figures at most, and keeps the rest in a closed Details', async () => {
+    keep([candidate('cover'), candidate('spread'), candidate('carry')]);
+    const host = await shown();
+    for (const card of cards(host)) {
+      expect(card.querySelector('[data-ui="candidate-summary"]')?.textContent).toMatch(
+        /^\$40,000 for 36 months, medium risk, on Solana: \$24,000 goes to SPYx/,
+      );
+      const headline = card.querySelectorAll('[data-ui="candidate-headline"] > div');
+      expect(headline.length).toBeLessThanOrEqual(3);
+      const details = card.querySelector<HTMLDetailsElement>(
+        'details[data-ui="candidate-details"]',
+      );
+      expect(details?.open).toBe(false);
+      expect(details?.querySelector('[data-ui="candidate-score"]')).not.toBeNull();
+    }
+    // the worst case in words: the stress that pays the fewest months
+    expect(cards(host)[2]?.querySelector('[data-ui="candidate-headline"]')?.textContent).toContain(
+      en.plan.choice.headline.worstMonths(en.plan.choice.stress.yields_fall('50%'), 8, 12),
+    );
+    // no engine code and no id on the page
+    expect(host.textContent).not.toMatch(/\b[a-z]+_[a-z_]+(:|\b)|solana:/);
   });
 
   it('keeps the picker in reach on a phone: held at the foot while the plans stack', async () => {
