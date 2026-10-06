@@ -20,7 +20,7 @@ import { ChoiceView } from './ChoiceView';
 import { observed } from './observed';
 import { PlanChart } from './PlanChart';
 import { PlanGate } from './PlanGate';
-import { bySize, displayName, flagSentences, isCashId, kindLabel } from './plain';
+import { displayName, flagSentences, kindLabel, planSummary } from './plain';
 import { usePlan } from './use-plan';
 
 // The plan a goal built, before anything is bought: the goal first, then what the plan holds and why,
@@ -92,29 +92,7 @@ export function PlanScreen({ id }: { id: string }) {
 
   const name = (assetId: string) => displayName(assetId, t.plan);
   // The plan in one sentence: what goes where, largest first, then the largest holding's own reason.
-  const lines = bySize(proposal.lines.filter((l) => l.amountUsd > 0));
-  const isCash = (l: BasketLine) => isCashId(l.assetId);
-  const parts = lines
-    .slice(0, 3)
-    .map((l) =>
-      (isCash(l) ? t.plan.summary.stays : t.plan.summary.goes)(
-        dollars(l.amountUsd, lang),
-        name(l.assetId),
-      ),
-    );
-  if (lines.length > 3) parts.push(t.plan.summary.more(lines.length - 3));
-  const why = lines.find((l) => !isCash(l))?.reasons[0]?.text;
-  const summary = [
-    `${t.plan.summary.head(
-      dollars(sheet.amountUsd, lang),
-      t.goal.card.months(sheet.horizonMonths),
-      t.plan.riskWord[sheet.risk].toLowerCase(),
-      chainName,
-    )} ${new Intl.ListFormat(locale, { type: 'conjunction' }).format(parts)}.`,
-    why,
-  ]
-    .filter(Boolean)
-    .join(' ');
+  const summary = planSummary(proposal, t, lang, chainName);
   const notes = flagSentences([...proposal.flags, ...(plan.rollUp?.flags ?? [])], t.plan, name);
 
   return (

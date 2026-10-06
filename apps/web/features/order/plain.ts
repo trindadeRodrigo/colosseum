@@ -1,5 +1,6 @@
-import type { BasketLine } from '@colosseum/schemas';
-import type { Dictionary } from '../../i18n';
+import type { BasketLine, BasketProposal } from '@colosseum/schemas';
+import { type Dictionary, type Lang, LOCALE } from '../../i18n';
+import { dollars } from '../goal/sheet';
 
 // The plan in plain words (Thom, Oct 6: the plan screen read as a list of engine codes). Nothing here
 // shows an engine code: an asset by its name, a kind of asset by a word, a flag by a sentence, and a
@@ -140,3 +141,37 @@ export function flagSentences(
 /** The lines from the largest, cash last among equals. */
 export const bySize = (lines: readonly BasketLine[]) =>
   [...lines].sort((a, b) => b.amountUsd - a.amountUsd || a.assetId.localeCompare(b.assetId));
+
+/**
+ * A plan in one sentence, from its lines: what goes where, largest first (three at most, then how many
+ * more), and the largest holding's own reason. "$200 for 2 months, high risk, on Solana: $150 stays in
+ * Cash (USDC) and $50 goes to syrupUSDC (Maple)." No rate: a plan carries none per line.
+ */
+export function planSummary(
+  proposal: Pick<BasketProposal, 'sheet' | 'lines'>,
+  t: Pick<Dictionary, 'plan' | 'goal'>,
+  lang: Lang,
+  chainName: string,
+): string {
+  const { sheet } = proposal;
+  const name = (assetId: string) => displayName(assetId, t.plan);
+  const lines = bySize(proposal.lines.filter((l) => l.amountUsd > 0));
+  const parts = lines
+    .slice(0, 3)
+    .map((l) =>
+      (isCashId(l.assetId) ? t.plan.summary.stays : t.plan.summary.goes)(
+        dollars(l.amountUsd, lang),
+        name(l.assetId),
+      ),
+    );
+  if (lines.length > 3) parts.push(t.plan.summary.more(lines.length - 3));
+  const why = lines.find((l) => !isCashId(l.assetId))?.reasons[0]?.text;
+  const head = t.plan.summary.head(
+    dollars(sheet.amountUsd, lang),
+    t.goal.card.months(sheet.horizonMonths),
+    t.plan.riskWord[sheet.risk].toLowerCase(),
+    chainName,
+  );
+  const list = new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(parts);
+  return [`${head} ${list}.`, why].filter(Boolean).join(' ');
+}
