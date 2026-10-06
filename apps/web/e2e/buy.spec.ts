@@ -10,7 +10,10 @@ import { dictionary } from '../i18n';
 // light and in dark, and for no sideways scroll.
 
 const en = dictionary('en');
-const STUB = 'http://localhost:3901';
+
+// These run on the stub's Solana; the Robinhood Chain run (E2E_CHAIN=robinhood) is buy-robinhood.spec.ts.
+test.skip(process.env.E2E_CHAIN === 'robinhood', 'the stub runs Robinhood Chain');
+const STUB = `http://localhost:${process.env.E2E_API_PORT ?? 3901}`;
 /** Screenshots are taken only for a run that names a folder for them (SCREENSHOTS_DIR). */
 const SHOTS = process.env.SCREENSHOTS_DIR;
 const shot = (name: string) => `${SHOTS}/${name}.png`;
@@ -23,14 +26,17 @@ const REFERENCE = new URL('../../../.design/branding/working-brand/patterns/', i
  * screenshot of each theme at 375 px and at 1280 px to set beside the guide's.
  */
 async function check(page: Page, name: string) {
+  // Colours ease from one theme to the other: with easing off, axe reads the theme it was given.
+  await page.addStyleTag({
+    content: '*,*::before,*::after{transition:none!important;animation:none!important}',
+  });
   for (const theme of ['light', 'dark'] as const) {
     await page.evaluate((t) => {
       const html = document.documentElement;
       html.classList.remove('light', 'dark', 'tf-auto');
       html.classList.add(t);
     }, theme);
-    // Colours ease from one theme to the other: axe reads them once they have.
-    await page.waitForTimeout(600);
+    await page.waitForTimeout(100);
     const result = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
       .analyze();
@@ -50,15 +56,77 @@ async function check(page: Page, name: string) {
   }
 }
 
+/** Follows a link of the product's bar, as a phone does: the menu button, then the link in its sheet. */
+async function go(page: Page, name: string) {
+  await page.getByRole('button', { name: en.shell.menu }).click();
+  await page.locator('[data-ui="compact-nav-sheet"]').getByRole('link', { name }).click();
+}
+
 /** From a signed-out page to the buy screen of a plan, with the wallet funded and the notice ticked. */
+test('his landing page: the hero, the two sample cases, the typing box that hands a goal on', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.landing.stage.title);
+  await expect(page.locator('article[data-ui="showcase-case"]')).toHaveCount(2);
+  // a jump to the end of the page, over the stage, finds his bar compact, with its action
+  await page.keyboard.press('End');
+  await expect(page.locator('[data-ui="compact-nav"]')).toHaveAttribute('data-compact', 'true');
+  await expect(
+    page.locator('[data-ui="compact-nav"]').getByRole('link', { name: en.landing.nav.cta }),
+  ).toBeVisible();
+  await page.keyboard.press('Home');
+  await check(page, 'landing');
+  const box = page.locator('#simulate textarea');
+  await box.fill('Grow $2,000 for ten years, high risk');
+  await box.press('Enter');
+  await expect(page).toHaveURL(/\/goal$/);
+  // the goal screen reads what the landing handed it
+  await expect(page.getByText(en.goal.sheet.title).first()).toBeVisible();
+});
+
+test('the two sample cases fit their cards on a phone and a tablet, in English and Portuguese', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  for (const lang of ['en', 'pt'] as const) {
+    await context.addCookies([{ name: 'tf-lang', value: lang, url: baseURL ?? '' }]);
+    for (const width of [360, 390, 768]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto('/');
+      await expect(page.locator('article[data-ui="showcase-case"]')).toHaveCount(2);
+      // every box inside a case that is drawn at all stays within the case's own edges; a box inside
+      // a part that scrolls on its own (the chart on a phone) is held to that part instead
+      const out = await page.evaluate(() =>
+        [...document.querySelectorAll('article[data-ui="showcase-case"]')].flatMap((card) => {
+          const edge = card.getBoundingClientRect();
+          const scrolls = (el: Element) => {
+            for (let a = el.parentElement; a && a !== card; a = a.parentElement)
+              if (/auto|scroll|hidden|clip/.test(getComputedStyle(a).overflowX)) return true;
+            return false;
+          };
+          return [...card.querySelectorAll('*')].flatMap((el) => {
+            const r = el.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0 || el.closest('.sr-only') || scrolls(el)) return [];
+            const over = r.right - edge.right > 0.5 || edge.left - r.left > 0.5;
+            return over ? [`${el.tagName} "${(el.textContent ?? '').slice(0, 30)}"`] : [];
+          });
+        }),
+      );
+      expect(out, `${lang} at ${width}px`).toEqual([]);
+    }
+  }
+});
+
 async function toReview(page: Page) {
   await page.request.post(`${STUB}/__stub/reset`);
   await page.goto('/sign-in');
   await page.getByRole('button', { name: en.signIn.passkey.create }).click();
   await page.getByRole('button', { name: 'Solana' }).click();
   await page.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
-  // home is the goal (WEB-2)
-  await expect(page).toHaveURL(/:\d+\/$/);
+  // sign-in leads to the goal; `/` is his landing page for a visitor (WEB-2b)
+  await expect(page).toHaveURL(/\/goal$/);
   await check(page, 'home');
 
   const goal = page.getByRole('textbox', { name: en.goal.composer.label, exact: true });
@@ -101,12 +169,18 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
   await check(page, 'done');
 
   // The monitor reads the vault the buy opened, with a pin on its value, under the MOCK plate.
-  await page.getByRole('navigation').getByRole('link', { name: en.shell.portfolio }).click();
+  // at 375 px his bar keeps its links in the sheet under the menu button
+  await go(page, en.shell.portfolio);
   await expect(page).toHaveURL(/\/monitor$/);
   const vault = page.locator('section[data-ui="card"]').filter({
     has: page.getByRole('heading', { name: en.portfolio.vault.title }),
   });
   await expect(vault).toHaveCount(1);
+  // his goal card, joined to the goal the plan was built for, and what reached the chain, with links
+  await expect(page.locator('[data-ui="goal-card"] h3')).toHaveText('Grow $40 over 36 months.');
+  await expect(
+    page.locator('[data-ui="activity-panel"] [data-ui="execution-list"] li a[href]'),
+  ).toHaveCount(4);
   await expect(vault.locator('[data-ui="vault-value"] [data-ui="figure"]')).toHaveCount(1);
   await expect(vault.locator('[data-ui="mock-plate"]').first()).toBeVisible();
   await check(page, 'monitor');
@@ -114,7 +188,7 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
   await expect(page.locator('main [data-ui="disclaimer"]')).toBeVisible();
   await expect(page.locator('[data-ui="disclaimer"]:visible')).toHaveCount(1);
   // and home says where the money is, under the goal
-  await page.getByRole('navigation').getByRole('link', { name: en.shell.goal }).click();
+  await go(page, en.shell.invest);
   await expect(page.getByRole('link', { name: en.portfolio.summary.see })).toBeVisible();
   // a page with no disclaimer of its own keeps the foot's
   await expect(page.locator('footer [data-ui="disclaimer"]')).toBeVisible();

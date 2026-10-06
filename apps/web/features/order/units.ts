@@ -1,4 +1,5 @@
 import type { AssetId, ChainId } from '@colosseum/schemas';
+import robinhoodTestnet from '../../../../deployments/robinhood-testnet.json';
 import devnet from '../../../../deployments/solana-devnet.json';
 import { deploymentsFor } from './readiness';
 
@@ -7,7 +8,7 @@ import { deploymentsFor } from './readiness';
 // `cashDecimals` on the mock), never from what the API answers. A hostile API that said the cash token
 // had 9 decimals would have a deposit of 40,000 dollars read as 40: the order screen shows and checks
 // every amount with these. The symbol is a name only: the test network's deploy record names its tokens
-// (deployments/solana-devnet.json), the mock's dollar is USDC, and any other token goes by its id. A
+// (deployments/solana-devnet.json, deployments/robinhood-testnet.json), the mock's dollar is USDC, and any other token goes by its id. A
 // chain with no deployment has no units here, and nothing is signed for it.
 
 export type TokenUnits = { symbol: string; decimals: number };
@@ -17,7 +18,13 @@ export type ChainUnits = { cash: AssetId; tokens: Partial<Record<AssetId, TokenU
 export const MOCK_CASH_SYMBOL = 'USDC';
 
 const RECORDED: Record<string, string> = Object.fromEntries(
-  [devnet.cash, ...devnet.assets, ...devnet.retired].map((t) => [t.id, t.symbol]),
+  [
+    devnet.cash,
+    ...devnet.assets,
+    ...devnet.retired,
+    robinhoodTestnet.cash,
+    ...robinhoodTestnet.assets,
+  ].flatMap((t) => (t.id && t.symbol ? [[t.id, t.symbol]] : [])),
 );
 const symbolOf = (id: AssetId) => RECORDED[id] ?? id.slice(id.indexOf(':') + 1).toUpperCase();
 
@@ -41,4 +48,24 @@ export function unitsFor(chain: ChainId, mock: boolean): ChainUnits | null {
       ]),
     ),
   };
+}
+
+/**
+ * The mock chain's shelf (packages/chain-mock), by slug: what a portfolio can be published with on the
+ * mock, where the committed deployment names the cash token and nothing else. MOCK throughout.
+ */
+const MOCK_SHELF = ['spy', 'nvda', 'tsla', 'gold', 'yield'] as const;
+
+/**
+ * The assets a portfolio may name on this chain, other than cash: the committed deployment's on a real
+ * network, the mock's shelf on the mock. Empty when no deployment is committed: nothing is published.
+ */
+export function assetsFor(chain: ChainId, mock: boolean): { id: AssetId; symbol: string }[] {
+  const units = unitsFor(chain, mock);
+  if (!units) return [];
+  if (mock)
+    return MOCK_SHELF.map((slug) => ({ id: `${chain}:${slug}`, symbol: slug.toUpperCase() }));
+  return Object.entries(units.tokens)
+    .filter(([id]) => id !== units.cash)
+    .map(([id, token]) => ({ id, symbol: token?.symbol ?? id }));
 }

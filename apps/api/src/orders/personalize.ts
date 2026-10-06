@@ -129,6 +129,17 @@ export async function personalize(
     // the server's, and fails as one.
     if (e instanceof PersonalInputError && e.code === 'InvalidSheet')
       throw new Refusal(422, `no plan can be made from this sheet: ${e.message}`);
+    // A withdrawal in another currency needs an exchange rate, and this server reads none yet: the
+    // sheet is the caller's to change, so it is refused as one, never a server error.
+    if (
+      e instanceof PersonalInputError &&
+      e.code === 'InvalidContext' &&
+      e.issues.length > 0 &&
+      e.issues.every((i) => i.path === 'fx')
+    )
+      throw new Refusal(422, `no plan can be made from this sheet: ${e.message}`, {
+        fix: 'Send the withdrawals in USD: this server does not read exchange rates yet.',
+      });
     throw e;
   }
   const proposal = sharedProposal(plan);

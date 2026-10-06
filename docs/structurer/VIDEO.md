@@ -28,7 +28,7 @@ Screen: `/monitor` with drift table → "Run policy now" → confirmation with a
 "The policy is stored: allowed assets, weight bands, a drift trigger, withdrawals only to you. The USD yield legs rebalance under a limit you approved on-chain: the agent key moves only what you allowed, and the output lands in your account. The Kamino and stock legs ask for your signature. You can revoke the agent any time." Show the revoke.
 
 **2:30–2:48 B2B and traction.**
-Screen: `/docs` (three endpoints) → `/embed/<id>` → LOI slide → Nexa analog slide.
+Screen: `/docs` (three endpoints) → `/embed` in a partner's skin (`/dev/embed` frames it) → LOI slide → Nexa analog slide.
 "Distributors embed this through three endpoints: goals, plans, transactions. Two Brazilian self-custody wallets signed letters of intent this month. Nexa raised R$25M in July 2025 to structure goals inside FIDCs with advisors; we do the same on-chain and non-custodial."
 
 **2:48–3:00 Close.**
@@ -48,7 +48,7 @@ Screen: stats card from the database (wallets, deposited value, executions, reba
 | 7 | xStocks buy (weekday clip, date on screen) | plan `17b2e84a…` executed | D6-PM | pending founder run (weekday) |
 | 8 | Monitor: drift table, Run policy, agent-signed confirmation | `/monitor` | D7-AM | ready; run pending founder approval step |
 | 9 | Revoke the agent (off-switch) | `buildRevokeUnsigned` in a one-liner or UI button | D7-PM | todo (UI button) |
-| 10 | API docs + embed | `/docs`, `/embed/<id>` | D6-AM, D4-AM | ready |
+| 10 | API docs + embed | `/docs`, `/embed` (framed on `/dev/embed`) | D6-AM, D4-AM | ready |
 | 11 | LOI slide (Chainless, Picnic, dated) | PDFs from founder | founder | pending |
 | 12 | Nexa analog slide | facts from HANDOFF §9 | D9-PM | todo |
 | 13 | Stats card (wallets, deposited value, executions, rebalances) | `GET /executions` + positions | D9-AM | todo (small route + card) |

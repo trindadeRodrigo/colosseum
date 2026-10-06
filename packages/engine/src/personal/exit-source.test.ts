@@ -65,7 +65,13 @@ describe('what a token may weigh comes from its measured exit', () => {
 
   it('the tier is what stops a token that is not measured, and the reason says tier, not cost', () => {
     // $150,000 of income on Solana: two dollar-yield tokens, neither measured, $50,000 each by tier.
-    const made = plan({ goal: 'income', amountUsd: 150_000 });
+    // The person accepts credit risk, so syrupUSDC's 50% credit budget and 40% cap ($60,000) are above
+    // its tier: the tier is what stops it.
+    const made = plan({
+      goal: 'income',
+      amountUsd: 150_000,
+      limits: { creditTolerance: 'accept' },
+    });
     expect(line(made, 'solana:syrupusdc')?.amountUsd).toBe(50_000);
     expect(rulesOn(made, 'solana:syrupusdc')).toContain('TIER_CEILING');
     expect(rulesOn(made, 'solana:syrupusdc')).not.toContain('EXIT_CEILING');

@@ -1,3 +1,4 @@
+import { familyIdOf, metaHash } from '@colosseum/basket';
 import type { Db } from '@colosseum/db';
 import {
   type Address,
@@ -8,15 +9,27 @@ import {
   chainFamily,
   type Leg,
   type Order,
+  type Recipe,
   type ReportLegRequest,
   stampTx,
   type Trade,
 } from '@colosseum/schemas';
 import { assertBuilds, type ChainEntry, type ChainRegistry } from './chains';
 import { legErrorFromRevert, Refusal, refusing } from './errors';
-import { basketIdOf, expectedOf, ORDER_POLICY, slippageOf, targetsOf, tradesFor } from './prepare';
+import { familyBySlug } from './families';
+import {
+  basketIdOf,
+  basketIdOfBuy,
+  expectedOf,
+  ORDER_POLICY,
+  slippageOf,
+  targetsOf,
+  tradesFor,
+} from './prepare';
+import { autoFollowOffer, familyText, followedOn, recipeTargets, refuseAutoFollow } from './shared';
 import {
   blockedBy,
+  isLinkedProposal,
   liveElsewhere,
   loadFamilies,
   loadOrder,
@@ -122,12 +135,26 @@ async function buildFor(
   owner: Address,
   /** EVM: the nonce of the step's earlier attempt that can still land, for the rebuild to share. */
   nonce: number | undefined,
+  /** The signed-in person building it: the buyer of a plan made from a link. */
+  buyer: string | undefined,
 ): Promise<BuiltTx> {
   const { request, order } = stored;
-  if (request.type !== 'buy' || !request.proposalId)
+  if (request.type === 'publish' || request.type === 'follow')
+    return buildShared(deps, stored, leg, entry, owner, nonce);
+  if (request.type !== 'buy' || !(request.proposalId || request.family))
     throw new Refusal(501, `a ${request.type} order cannot be built yet`);
   const { adapter } = entry;
-  const basketId = basketIdOf(request.proposalId);
+  // A buy of a shared portfolio reaches the vault numbered from the family's id.
+  const family = request.family ? await familyBySlug(deps.db, request.family) : null;
+  if (request.family && !family)
+    throw new Refusal(409, 'the shared portfolio this order buys is gone');
+  const basketId = family
+    ? basketIdOf(family.familyId)
+    : basketIdOfBuy(
+        request.proposalId ?? '',
+        await isLinkedProposal(deps.db, request.proposalId ?? ''),
+        buyer,
+      );
   const slippageBps = slippageOf(request);
   const trades = leg.trades.length ? leg.trades : undefined;
   const shared = nonce === undefined ? {} : { nonce };
@@ -141,7 +168,37 @@ async function buildFor(
     case 'approve':
       return adapter.buildApprove({ owner, basketId, amountRaw: cashOf(leg), ...shared });
     case 'create_vault': {
-      const proposal = await loadProposal(deps.db, request.proposalId);
+      if (request.family) {
+        // A vault that follows the version the order holds to: it copies that version's weights, and
+        // the trades are the ones planned for them. Once it is open the order's swaps buy what it
+        // follows, whatever the portfolio publishes meanwhile.
+        const followed = await refusing(() =>
+          followedOn(request.family ?? '', leg.chain, sharedOf(deps), request.version),
+        );
+        const assets = await adapter.listAssets();
+        const cash = assets.find((x) => x.cls === 'cash');
+        if (!cash) throw new Error(`${entry.chain} lists no cash token`);
+        const targets = recipeTargets(followed.onchain.active);
+        const planned = order.legs.flatMap((l) => l.trades);
+        if (!sameTrades(planned, tradesFor(targets, BigInt(cashOf(leg)), cash.id)))
+          throw new Refusal(409, 'the shared portfolio has changed since the order was made', {
+            code: 'VERSION_CHANGED',
+            fix: 'Make the order again.',
+          });
+        return adapter.buildCreateVault({
+          owner,
+          basketId,
+          targets: [],
+          recipeOnchainId: followed.recipe.onchainId,
+          expectedVersion: followed.onchain.active.version,
+          autoFollow: false,
+          depositRaw: cashOf(leg),
+          trades,
+          slippageBps,
+          ...shared,
+        });
+      }
+      const proposal = await loadProposal(deps.db, request.proposalId ?? '');
       const recipe = proposal?.recipes.find((r) => r.chain === leg.chain);
       if (!recipe) throw new Refusal(409, 'the plan this order buys is no longer stored');
       const assets = await adapter.listAssets();
@@ -172,6 +229,12 @@ async function buildFor(
       });
     }
     case 'deposit':
+      // A deposit into a vault that follows a shared portfolio buys the version the order holds to,
+      // as the create does.
+      if (request.family)
+        await refusing(() =>
+          followedOn(request.family ?? '', leg.chain, sharedOf(deps), request.version),
+        );
       return adapter.buildDeposit({
         vault: await vault(),
         amountRaw: cashOf(leg),
@@ -186,6 +249,90 @@ async function buildFor(
         slippageBps,
         ...shared,
       });
+    default:
+      throw new Refusal(501, `a ${leg.kind} step cannot be built yet`);
+  }
+}
+
+/** The store of shared portfolios, as the planning functions take it. */
+const sharedOf = (deps: OrderDeps) => ({
+  chains: deps.chains,
+  bySlug: (slug: string) => familyBySlug(deps.db, slug),
+});
+
+/**
+ * One step of a publish or a follow. Each is built from the order's stored request and the chain as it
+ * is now: a follow is refused with `VERSION_CHANGED` once another version is in effect than the one it
+ * holds to, and auto-follow on is checked again (gate GOLD-ONE-TAP).
+ */
+async function buildShared(
+  deps: OrderDeps,
+  stored: StoredOrder,
+  leg: Leg,
+  entry: ChainEntry,
+  owner: Address,
+  nonce: number | undefined,
+): Promise<BuiltTx> {
+  const { request } = stored;
+  const { adapter } = entry;
+  const shared = nonce === undefined ? {} : { nonce };
+  if (request.type === 'publish') {
+    if (leg.kind !== 'publish') throw new Refusal(501, `a ${leg.kind} step cannot be built yet`);
+    const draft = request.recipes.find((r) => r.chain === leg.chain);
+    if (!draft) throw new Error('a publish step on a chain the request has no recipe for');
+    const familyId = request.familyId ?? familyIdOf(request.family);
+    // The hash of the text the order was made with. The guard works it out again from the text the
+    // creator's form showed, and refuses bytes that carry another.
+    const recipe: Recipe = {
+      schemaVersion: 1,
+      familyId,
+      chain: leg.chain,
+      onchainId: null,
+      creator: owner,
+      kind: 'community',
+      version: 1,
+      effectiveAt: 0,
+      components: draft.components,
+      metaHash: metaHash(familyText(request, familyId)),
+      maxFeeBps: 0,
+      flags: 0,
+    };
+    return adapter.buildPublishRecipe({ creator: owner, recipe, ...shared });
+  }
+  if (request.type !== 'follow') throw new Error('not a shared-portfolio order');
+  const { onchain } = await refusing(() =>
+    followedOn(request.family, leg.chain, sharedOf(deps), request.version),
+  );
+  /** The offer, held again when the step is built: the portfolio may have changed since (GOLD-ONE-TAP). */
+  const offered = async () => {
+    const offer = autoFollowOffer(
+      entry,
+      [onchain.active, ...(onchain.pending ? [onchain.pending] : [])].map(recipeTargets),
+      await adapter.listAssets(),
+    );
+    if (!offer.offered) refuseAutoFollow(entry, offer);
+  };
+  switch (leg.kind) {
+    case 'accept_version': {
+      // A vault that has auto-follow on when it takes a version is rebalanced into it by the keeper:
+      // asked for in the order, or on in the vault as the chain has it now.
+      const now = await refusing(() => adapter.getVault(request.vault));
+      if (request.autoFollow || now?.autoFollow) await offered();
+      return adapter.buildAcceptVersion({
+        vault: request.vault,
+        recipeOnchainId: onchain.active.onchainId ?? '',
+        expectedVersion: onchain.active.version,
+        ...shared,
+      });
+    }
+    case 'set_auto_follow': {
+      if (request.autoFollow) await offered();
+      return adapter.buildSetAutoFollow({
+        vault: request.vault,
+        on: request.autoFollow,
+        ...shared,
+      });
+    }
     default:
       throw new Refusal(501, `a ${leg.kind} step cannot be built yet`);
   }
@@ -282,7 +429,9 @@ async function settleLanding(
  * to sign a second transaction for a step whose first may go through. If that transaction has landed
  * and nobody reported it, the leg settles on it here.
  * - Solana: an attempt can land until the chain is past its `validUntil`. Only time closes it.
- * - EVM: there is no expiry. The attempt stays open until it is reported or the person cancels it.
+ * - EVM: a call that trades carries a deadline (`validUntil`); past it with the nonce still free, `fate`
+ *   says `gone`. A call that does not trade has none, and stays open until it is reported or the person
+ *   cancels it.
  *
  * Answers the nonce the next build must share. On an EVM chain a cancelled attempt can still be sent
  * by the wallet that signed it, so the rebuild is given its nonce: at most one of the two can land.
@@ -355,6 +504,8 @@ export async function buildLeg(
   deps: OrderDeps,
   read: StoredOrder,
   legId: string,
+  /** The signed-in person's user id: a plan made from a link numbers its vault with it. */
+  buyer?: string,
 ): Promise<BuildLegResponse> {
   // A leg that was sent is tracked first, so what follows sees what the chain says now.
   const stored = await refreshOrder(deps, read);
@@ -383,7 +534,7 @@ export async function buildLeg(
   let expected: Leg['expected'];
   try {
     [built, expected] = await refusing(async () => [
-      BuiltTx.parse(await buildFor(deps, stored, leg, entry, owner, nonce)),
+      BuiltTx.parse(await buildFor(deps, stored, leg, entry, owner, nonce, buyer)),
       await expectedOf(entry, leg.trades, owner, slippageOf(stored.request)),
     ]);
   } catch (e) {

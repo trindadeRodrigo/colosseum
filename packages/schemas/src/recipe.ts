@@ -81,8 +81,9 @@ export const Recipe = RecipeBase.refine(onOwnChain, {
 export type Recipe = z.infer<typeof Recipe>;
 
 /**
- * What a creator sends to publish on one chain: the chain and the weights. The family id, the version,
- * the effective time, the onchain id and the meta hash are assigned by the server and the registry.
+ * What a creator sends to publish on one chain: the chain and the weights. The family id is a rule
+ * (`familyIdOf(slug)` for a new portfolio), the meta hash is the hash of the publish's text, and the
+ * version, the effective time and the onchain id are the registry's.
  */
 export const RecipeDraft = z
   .object({ chain: ChainId, components: Components })

@@ -14,16 +14,17 @@ import {
   type ExecutionEvent,
   type ExecutionResult,
   execute,
-  type RpcCall,
-  rpcAt,
+  type PlanTerms,
   type SignedRecord,
   type SignedStore,
 } from '@colosseum/sdk';
 import { useCallback } from 'react';
+import type { SharedTerms } from '../shared/terms';
 import { useSigningPort } from '../wallet/signing';
 import { useApiFetch } from '../wallet/WalletProvider';
+import { chainNode } from './chain-node';
 import { targetsOfPlan } from './plan-terms';
-import { deploymentsFor, onMock } from './readiness';
+import { basketOfPlan, deploymentsFor, onMock } from './readiness';
 
 // The one place in the app that signs: an order, through `execute(order, deps)` of @colosseum/sdk. The
 // executor runs the guard on the bytes of every step and asks the wallet only for what the guard
@@ -58,7 +59,17 @@ export type RunInput = {
   /** The order exactly as the review screen showed it when the person approved it. */
   order: OrderDetail;
   /** The plan it buys, as the plan screen showed it: its id and its lines. */
-  plan: { proposalId: string; lines: readonly BasketLine[] };
+  plan: {
+    proposalId: string;
+    lines: readonly BasketLine[];
+    /** For a plan made from a link: the buyer's user id, which its vault's number takes. */
+    buyer?: string | null;
+  };
+  /**
+   * For an order about a shared portfolio: the terms its screen showed (features/shared/terms.ts),
+   * which take the plan's place.
+   */
+  terms?: SharedTerms;
   /** What the person ticked on the review screen, for this order. */
   consents: readonly ConsentKind[];
   /** Only after `needs_review`, and only with what that answer said, once the person approved again. */
@@ -68,35 +79,41 @@ export type RunInput = {
   signal?: { readonly aborted: boolean };
 };
 
-/**
- * One node per chain family, from this app's own variables. A URL that balances calls across nodes is
- * not one node; with none set the executor gets no read of the chain, and then never signs a step a
- * second time on its own: it asks the person (`needs_review`).
- */
-const READ_RPC: Partial<Record<ChainId, string | undefined>> = {
-  solana: process.env.NEXT_PUBLIC_CHAIN_READ_RPC_SOLANA,
-  robinhood: process.env.NEXT_PUBLIC_CHAIN_READ_RPC_ROBINHOOD,
-  base: process.env.NEXT_PUBLIC_CHAIN_READ_RPC_BASE,
-};
-
-const nodeAt = (url: string | undefined): RpcCall | undefined => {
-  if (!url) return undefined;
-  try {
-    const parsed = new URL(url);
-    const local = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
-    if (parsed.protocol !== 'https:' && !(local && parsed.protocol === 'http:')) return undefined;
-  } catch {
-    return undefined;
-  }
-  return rpcAt(url, (input, init) => fetch(input, { ...init, redirect: 'error' }));
-};
-
 /** The caller's own read of the chain, or none: on the mock no node is asked anything. */
 export function chainReadFor(chain: ChainId, mock: boolean): ChainRead | undefined {
   if (mock) return undefined;
-  const node = nodeAt(READ_RPC[chain]);
+  const node = chainNode(chain);
   if (!node) return undefined;
   return chainReadOf(chainFamily(chain) === 'solana' ? { solana: node } : { evm: node });
+}
+
+/**
+ * The guard's terms for an order about a shared portfolio, from what its screen showed: a buy follows
+ * the portfolio's version from a vault numbered by the family's id, with auto-follow off; a follow
+ * names the vault the person picked; a publish names the form's family id, text and weights.
+ */
+export function planTermsOf(terms: SharedTerms): PlanTerms {
+  switch (terms.kind) {
+    case 'family':
+      return { basketId: basketIdOfPlan(terms.familyId), follow: terms.follow, autoFollow: false };
+    case 'follow':
+      return {
+        basketId: terms.basketId,
+        ...(terms.follow ? { follow: terms.follow } : {}),
+        autoFollow: terms.autoFollow,
+      };
+    case 'publish':
+      return {
+        basketId: '0',
+        publish: {
+          action: terms.action,
+          familyId: terms.familyId,
+          components: terms.components,
+          text: terms.text,
+          version: terms.version,
+        },
+      };
+  }
 }
 
 const SIGNED = (key: string) => `tf-signed:${key}`;
@@ -149,7 +166,8 @@ export function useOrderRunner(): { run: (input: RunInput) => Promise<RunOutcome
       const deployment = deployments?.[chain];
       if (!deployments || !deployment) return { status: 'not-runnable', why: 'no-deployment' };
       if (!port.active(chainFamily(chain))) return { status: 'not-runnable', why: 'no-wallet' };
-      const targets = targetsOfPlan(input.plan.lines, chain, deployment.cash);
+      const plan = input.terms ? planTermsOf(input.terms) : null;
+      const targets = input.terms ? [] : targetsOfPlan(input.plan.lines, chain, deployment.cash);
       if (!targets) return { status: 'not-runnable', why: 'plan-mismatch' };
       if (!storageWorks()) return { status: 'not-runnable', why: 'no-store' };
       if (typeof navigator === 'undefined' || !navigator.locks)
@@ -160,7 +178,11 @@ export function useOrderRunner(): { run: (input: RunInput) => Promise<RunOutcome
           api: createOrderApi(apiFetch),
           signer: port,
           deployments,
-          plan: { basketId: basketIdOfPlan(input.plan.proposalId), targets, autoFollow: false },
+          plan: plan ?? {
+            basketId: basketOfPlan(input.plan.proposalId, input.plan.buyer ?? null),
+            targets,
+            autoFollow: false,
+          },
           consents: input.consents,
           signed: localSigned,
           chainRead: chainReadFor(chain, mock),
