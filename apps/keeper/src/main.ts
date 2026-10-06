@@ -22,18 +22,18 @@ import {
   deploymentAssets,
   SolanaDeploymentRecord,
 } from '@colosseum/chain-solana/vault';
-import { type BuiltTx, parseChainConfigs } from '@colosseum/schemas';
+import { parseChainConfigs } from '@colosseum/schemas';
 import { lowGasFromEnv, notifierFromEnv } from './alerts';
-import type { KeeperAdapter } from './chain';
+import { runKeeper, type Wired } from './keeper';
 import { loadMemory, lockState, saveMemory } from './memory';
-import { runRound, type VaultLine } from './round';
 
 // The keeper (DESIGN-VAULT 3.5, section 10): a worker with no HTTP listener, on one chain a process,
 // KEEPER_CHAIN=solana (the default) or robinhood.
 //
 //   SOLANA_RPC_URL=<devnet> KEEPER_SOLANA_KEYPAIR=<path> pnpm --filter @colosseum/keeper start --once
 //   KEEPER_CHAIN=robinhood ROBINHOOD_RPC_URL=<46630 node> KEEPER_ROBINHOOD_KEY=<path> ... --once
-//   ... --loop [--interval 60]     a round every interval seconds, until stopped
+//   ... --loop [--interval 60]     a round every interval seconds, until stopped; a failed round is
+//                                  logged as `round-failed`, alerted, and retried after a back-off (loop.ts)
 //   ... --dry-run                  plans and builds, signs and sends nothing
 //
 // The network is CHAIN_NETWORK_SOLANA (testnet by default; mainnet is refused), and everything it acts
@@ -60,17 +60,6 @@ function args(argv: string[]) {
   return { loop: has('--loop'), dryRun: has('--dry-run'), interval };
 }
 
-/** What a round runs on, whichever chain: the adapter, who signs, and where the memory is kept. */
-type Wired = {
-  network: string;
-  adapter: KeeperAdapter;
-  sign(tx: BuiltTx): Promise<{ wire: string; txId: string }>;
-  /** The state file's name: the network, and what tells a reset copy apart from the one before. */
-  stateName: string;
-  /** What the keeper's key holds of the chain's coin, and the least it should, in its smallest units. */
-  gas(): Promise<{ have: bigint; low: bigint; unit: string }>;
-};
-
 async function main() {
   const { loop, dryRun, interval } = args(process.argv.slice(2));
   const chain = process.env.KEEPER_CHAIN?.trim() || 'solana';
@@ -85,51 +74,21 @@ async function main() {
   // Stopped by a signal, the process still exits through its exit handlers, which release the lock.
   for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => process.exit(1));
   const memory = loadMemory(stateFile);
-  const log = (line: VaultLine) =>
-    console.log(JSON.stringify({ at: new Date().toISOString(), network: wired.network, ...line }));
-
-  const notify = notifierFromEnv(process.env, { label: `keeper ${wired.network}` });
-
-  for (;;) {
-    let lines: VaultLine[];
-    try {
-      lines = await runRound(
-        {
-          adapter: wired.adapter,
-          dryRun,
-          log,
-          sign: wired.sign,
-          save: (m) => saveMemory(stateFile, m),
-        },
-        memory,
-      );
-    } catch (e) {
-      await notify.ping(false);
-      await notify.alert([`the round failed: ${e instanceof Error ? e.message : String(e)}`]);
-      throw e;
-    }
-    const alerts = lines.filter((l) => l.alert).map((l) => `${l.vault}: ${l.reason}`);
-    // Low gas: the keeper cannot pay for its legs much longer.
-    const gas = await wired.gas().catch(() => null);
-    if (gas && gas.have < gas.low)
-      alerts.push(
-        `the keeper's gas is low: ${gas.have} of the ${gas.low} ${gas.unit} it should keep`,
-      );
-    await notify.alert(alerts);
-    await notify.ping(true);
-    console.log(
-      JSON.stringify({
-        at: new Date().toISOString(),
-        round: 'done',
-        vaults: lines.length,
-        acted: lines.filter((l) => l.outcome === 'acted').length,
-        alerts: lines.filter((l) => l.alert).length,
-        inFlight: memory.inFlight.size,
-      }),
-    );
-    if (!loop) return;
-    await new Promise((resolve) => setTimeout(resolve, interval * 1000));
-  }
+  await runKeeper({
+    wired,
+    loop,
+    dryRun,
+    intervalMs: interval * 1000,
+    memory,
+    save: (m) => saveMemory(stateFile, m),
+    notify: notifierFromEnv(process.env, { label: `keeper ${wired.network}` }),
+    hide: (text) =>
+      // A failed round's reason never carries a node's address: a private node's has its key in it.
+      (['SOLANA_RPC_URL', 'ROBINHOOD_RPC_URL'] as const).reduce((t, name) => {
+        const url = process.env[name]?.trim();
+        return url ? t.split(url).join(`<${name}>`) : t;
+      }, text),
+  });
 }
 
 /**

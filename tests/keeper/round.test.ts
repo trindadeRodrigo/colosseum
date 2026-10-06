@@ -223,17 +223,22 @@ describe('an EVM leg the chain has not settled, found by its nonce', () => {
    * its own (no receipt, no deadline), and `fate` and `carries` say what the round is to find.
    */
   function evm(o: {
-    fate: () => Fate;
+    fate: (attempt: { messageHash: string }) => Fate;
     carries?: () => 'this' | 'unseen';
     landed?: TxStatus['status'];
     send?: () => Promise<void>;
+    /** A version due for adoption while this says so; adopting it lands. */
+    due?: () => boolean;
   }) {
     const sent: string[] = [];
     const pinned: (number | undefined)[] = [];
     let n = 0;
+    let adopted = false;
     const ctx = () =>
       context(
         vault({
+          acceptedVersion: adopted ? 2 : 1,
+          pending: !adopted && o.due?.() ? { version: 2, effectiveAt: 0, newAssets: [] } : null,
           cash: holding(CASH, '100000000'),
           positions: [{ ...holding(SPYX, '0'), targetBps: 10_000, lastKeeperAt: null }],
         }),
@@ -251,27 +256,35 @@ describe('an EVM leg the chain has not settled, found by its nonce', () => {
           evm: { nonce: options?.nonce ?? 7 + n },
         };
       },
+      buildAdoptVersion: async () => ({ signer: '0xkeeper', payload: 'adopt' }),
       track: async (txId: string) =>
-        txId === 'landed'
-          ? {
-              status: o.landed ?? 'confirmed',
-              explorerUrl: '',
-              error: { code: 'ReceivedTooLittle', message: '' },
-            }
-          : { status: 'pending', explorerUrl: '' },
-      fate: async () => o.fate(),
+        txId === 'adopt'
+          ? { status: 'confirmed', explorerUrl: '' }
+          : txId === 'landed'
+            ? {
+                status: o.landed ?? 'confirmed',
+                explorerUrl: '',
+                error: { code: 'ReceivedTooLittle', message: '' },
+              }
+            : { status: 'pending', explorerUrl: '' },
+      fate: async (a: { messageHash: string }) => o.fate(a),
       carries: async () => (o.carries ?? (() => 'this'))(),
     } as unknown as SolanaVaultAdapter;
     const options = {
       adapter,
-      sign: async () => ({ wire: 'w', txId: `tx${++n}` }),
-      send: async () => {
+      sign: async (tx: { payload: string }) => {
+        if (tx.payload !== 'adopt') return { wire: 'w', txId: `tx${++n}` };
+        adopted = true;
+        return { wire: 'adopt', txId: 'adopt' };
+      },
+      send: async (wire: string) => {
+        if (wire === 'adopt') return;
         await o.send?.();
         sent.push(`tx${n}`);
       },
       settleMs: 0,
     };
-    return { options, sent, pinned };
+    return { options, sent, pinned, adopted: () => adopted };
   }
   /** The memory as the keeper finds it after a restart: written to a state file and read back. */
   const reload = (memory: KeeperMemory): KeeperMemory => {
@@ -345,6 +358,65 @@ describe('an EVM leg the chain has not settled, found by its nonce', () => {
     expect(pinned).toEqual([undefined, 7]);
     expect(sent).toEqual(['tx1', 'tx2']);
     expect(memory.inFlight.get(VAULT)).toMatchObject({ txId: 'tx2', nonce: 7 });
+  });
+
+  it('keeps the leg a pinned leg replaced, and records its revert when it takes the nonce first', async () => {
+    let carried: 'this' | 'unseen' = 'this';
+    let taken = false;
+    const { options, sent, pinned } = evm({
+      // Once the nonce is taken, it is the first leg's call that took it.
+      fate: (a) =>
+        !taken
+          ? { state: 'open' }
+          : a.messageHash === 'mh1'
+            ? { state: 'landed', txId: 'landed' }
+            : { state: 'gone' },
+      carries: () => carried,
+      landed: 'reverted',
+    });
+    let memory = newMemory();
+    await runRound(options, memory);
+    carried = 'unseen';
+    memory = reload(memory);
+    await runRound(options, memory);
+    expect(pinned).toEqual([undefined, 7]);
+    expect(memory.inFlight.get(VAULT)).toMatchObject({
+      txId: 'tx2',
+      nonce: 7,
+      replaced: [{ txId: 'tx1', messageHash: 'mh1' }],
+    });
+    taken = true;
+    memory = reload(memory);
+    const [line] = await runRound(options, memory);
+    expect(line?.reason).toMatch(/^leg tx1 reverted: ReceivedTooLittle; it is not sent again; /);
+    expect(line?.alert).toBe(true);
+    // the reverted leg is not sent a third time
+    expect(sent).toEqual(['tx1', 'tx2']);
+  });
+
+  it('drops the pin once an adoption lands in the same round, and settles the held leg', async () => {
+    let carried: 'this' | 'unseen' = 'this';
+    let due = false;
+    const h = evm({
+      // The adoption takes the free nonce: the held leg can no longer land.
+      fate: () => (h?.adopted() ? { state: 'gone' } : { state: 'open' }),
+      carries: () => carried,
+      due: () => due,
+    });
+    const { options, sent, pinned } = h;
+    let memory = newMemory();
+    await runRound(options, memory);
+    carried = 'unseen';
+    due = true;
+    memory = reload(memory);
+    const [line] = await runRound(options, memory);
+    expect(line?.reason).toMatch(
+      /^leg tx1 is not held by the node; the next leg takes its nonce 7; adopted version 2; leg tx1 expired; /,
+    );
+    // the leg after the adoption is on the signer's next nonce, not the one the adoption took
+    expect(pinned).toEqual([undefined, undefined]);
+    expect(sent).toEqual(['tx1', 'tx2']);
+    expect(memory.inFlight.get(VAULT)?.replaced).toBeUndefined();
   });
 
   it('forgets a leg the preflight refused: nothing left the keeper, and the next round plans again', async () => {

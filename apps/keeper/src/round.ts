@@ -8,7 +8,7 @@ import {
   type TxStatus,
 } from '@colosseum/schemas';
 import type { KeeperAdapter, KeeperView } from './chain';
-import { type KeeperMemory, legKey, newMemory, versionPrefix } from './memory';
+import { type InFlight, type KeeperMemory, legKey, newMemory, versionPrefix } from './memory';
 import { legBlocked, nextTrade, REVERTED, syncDecision } from './policy';
 
 export { type KeeperMemory, newMemory } from './memory';
@@ -51,6 +51,8 @@ export type KeeperOptions = {
   /** The order vaults are visited in; random by default, so no vault always goes last. */
   shuffle?: <T>(items: T[]) => T[];
   log?: (line: VaultLine) => void;
+  /** What every line's reason is said with: the keeper takes the nodes' addresses out of it. */
+  hide?: (text: string) => string;
 };
 
 const shuffled = <T>(items: T[]): T[] => {
@@ -74,6 +76,7 @@ export async function runRound(
 ): Promise<VaultLine[]> {
   const { adapter } = o;
   const log = o.log ?? (() => {});
+  const hide = o.hide ?? ((text: string) => text);
   const send = o.send ?? ((signed: string) => adapter.relay(signed));
   const save = async () => {
     await o.save?.(memory);
@@ -117,6 +120,9 @@ export async function runRound(
     const sent = memory.inFlight.get(vault);
     if (!sent) return { hold: null, note: null, pin: null };
     let status: TxStatus;
+    // Which leg the fate is of: this one, or a leg it replaced that took the nonce first.
+    let txId = sent.txId;
+    let key = sent.key;
     try {
       status = await adapter.track(sent.txId, sent.validUntil ?? undefined);
       // EVM: a leg with no deadline is still pending until its nonce says otherwise. Taken by another
@@ -133,8 +139,13 @@ export async function runRound(
           validUntil: sent.validUntil,
           nonce: sent.nonce,
         });
-        if (fate.state === 'gone') status = { status: 'expired', explorerUrl: status.explorerUrl };
-        else if (fate.state === 'landed') status = await adapter.track(fate.txId);
+        if (fate.state === 'gone') {
+          const took = await tookNonce(sent);
+          if (took) {
+            ({ txId, key } = took);
+            status = await adapter.track(took.landedAs);
+          } else status = { status: 'expired', explorerUrl: status.explorerUrl };
+        } else if (fate.state === 'landed') status = await adapter.track(fate.txId);
         else if ((await adapter.carries(sent.txId, sent.messageHash)) === 'unseen')
           // Open, and the node has never seen it: it was turned away, or it is somewhere the node
           // cannot see. It stays remembered until a leg on its nonce replaces it.
@@ -153,7 +164,7 @@ export async function runRound(
     }
     if (status.status === 'pending')
       return { hold: `leg ${sent.txId} is not settled yet`, note: null, pin: null };
-    if (status.status === 'reverted') memory.reverted.add(sent.key);
+    if (status.status === 'reverted') memory.reverted.add(key);
     memory.inFlight.delete(vault);
     await save();
     return {
@@ -161,9 +172,26 @@ export async function runRound(
       pin: null,
       note:
         status.status === 'reverted'
-          ? `leg ${sent.txId} reverted: ${status.error?.code ?? ''}; it is not sent again`
-          : `leg ${sent.txId} ${status.status}`,
+          ? `leg ${txId} reverted: ${status.error?.code ?? ''}; it is not sent again`
+          : `leg ${txId} ${status.status}`,
     };
+  }
+
+  /** EVM: a leg that `sent` replaced on its nonce and that took the nonce itself, if one did. */
+  async function tookNonce(
+    sent: InFlight,
+  ): Promise<{ txId: string; key: string; landedAs: string } | null> {
+    if (sent.nonce === undefined || !sent.signer) return null;
+    for (const r of sent.replaced ?? []) {
+      const fate = await adapter.fate({
+        messageHash: r.messageHash,
+        signer: sent.signer,
+        validUntil: sent.validUntil,
+        nonce: sent.nonce,
+      });
+      if (fate.state === 'landed') return { txId: r.txId, key: r.key, landedAs: fate.txId };
+    }
+    return null;
   }
 
   for (const vault of vaults) {
@@ -177,7 +205,8 @@ export async function runRound(
       const l: VaultLine = {
         vault,
         outcome,
-        reason: [...did, reason].join('; ') + budget,
+        // A vault's failure can quote the transport, which can name the node: never its address.
+        reason: hide([...did, reason].join('; ') + budget),
         txIds,
         alert: alert || raise,
       };
@@ -201,7 +230,7 @@ export async function runRound(
     };
 
     try {
-      const before = await earlier(vault);
+      let before = await earlier(vault);
       if (before.hold) {
         stop(before.hold, true);
         continue;
@@ -254,6 +283,19 @@ export async function runRound(
         }
         did.push(`adopted version ${pending.version}`);
         adopted = true;
+        // The adoption went out on the nonce a held leg was pinned to: that leg's fate is read again
+        // now, and the next leg takes the signer's next nonce.
+        if (before.pin !== null) {
+          before = await earlier(vault);
+          if (before.hold) {
+            stop(before.hold, true);
+            continue;
+          }
+          if (before.note) {
+            did.push(before.note);
+            alert ||= before.note.includes('reverted');
+          }
+        }
         ctx = (await adapter.getKeeperContext(vault)) as KeeperView;
         await forgetOtherVersions(ctx.vault.acceptedVersion);
       }
@@ -345,6 +387,8 @@ export async function runRound(
 
       // From here the leg may land whatever the node answers: it is remembered before it is sent,
       // and only its fate on the chain takes it out of memory.
+      // A leg pinned to a held leg's nonce replaces it in memory, and keeps it, since either may land.
+      const replacing = before.pin !== null ? memory.inFlight.get(vault) : undefined;
       const signed = await o.sign(leg);
       const validUntil = validUntilOf(leg);
       memory.inFlight.set(vault, {
@@ -355,6 +399,18 @@ export async function runRound(
         sentAt: new Date().toISOString(),
         ...(leg.evm?.nonce !== undefined
           ? { nonce: leg.evm.nonce, messageHash: leg.messageHash, signer: leg.signer }
+          : {}),
+        ...(replacing?.messageHash
+          ? {
+              replaced: [
+                ...(replacing.replaced ?? []),
+                {
+                  txId: replacing.txId,
+                  key: replacing.key,
+                  messageHash: replacing.messageHash,
+                },
+              ],
+            }
           : {}),
       });
       await save();

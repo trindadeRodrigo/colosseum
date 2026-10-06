@@ -191,6 +191,76 @@ describe('the hero', () => {
       expect(img.getAttribute('loading')).toBe('lazy');
   });
 });
+describe('the hero on a phone (hero-3d.html, its 820px rule)', () => {
+  /** A copy block placed by a test: its middle at `share` of an 844px screen. */
+  const place = (el: Element, share: number) => {
+    const mid = 844 * share;
+    el.getBoundingClientRect = () =>
+      ({
+        top: mid - 100,
+        bottom: mid + 100,
+        height: 200,
+        width: 390,
+        left: 0,
+        right: 390,
+      }) as DOMRect;
+  };
+  const scrollNow = async () => {
+    await act(async () => {
+      window.dispatchEvent(new Event('scroll'));
+      await new Promise((done) => requestAnimationFrame(() => done(null)));
+    });
+  };
+
+  it('keeps the copy at the foot, and fades a line before it can rise into the joint', async () => {
+    browser();
+    const width = Object.getOwnPropertyDescriptor(window, 'innerWidth');
+    const height = Object.getOwnPropertyDescriptor(window, 'innerHeight');
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 844 });
+    try {
+      const host = await landing();
+      const hero = find(host, '#stage [data-low]');
+      // the copy sits at the foot of the screen on a phone, as his prototype has it
+      expect(hero.parentElement?.parentElement?.className).toContain('max-[819px]:items-end');
+      const step = find(host, '#step-1 [data-on]');
+      // low on the screen: shown
+      place(hero, 0.75);
+      place(step, 0.7);
+      await scrollNow();
+      expect(hero.getAttribute('data-low')).toBe('true');
+      expect(hero.className).not.toContain('max-[819px]:opacity-0');
+      expect(step.getAttribute('data-on')).toBe('true');
+      expect(step.className).not.toContain('max-[819px]:opacity-0');
+      // risen toward the joint, which takes the top third: faded before its plate gets there
+      place(hero, 0.3);
+      place(step, 0.3);
+      await scrollNow();
+      expect(hero.getAttribute('data-low')).toBe('false');
+      expect(hero.className).toContain('max-[819px]:opacity-0');
+      expect(step.getAttribute('data-on')).toBe('false');
+      expect(step.className).toContain('max-[819px]:opacity-0');
+      // with reduced motion nothing is pinned, and nothing fades
+      expect(step.className).toContain('motion-reduce:opacity-100');
+      // the copy marks itself for the bar, which takes its ground when copy reaches it
+      expect(hero.hasAttribute('data-under-bar')).toBe(true);
+      expect(step.hasAttribute('data-under-bar')).toBe(true);
+    } finally {
+      if (width) Object.defineProperty(window, 'innerWidth', width);
+      if (height) Object.defineProperty(window, 'innerHeight', height);
+    }
+  });
+
+  it('fades nothing on a wide screen: the copy stands beside the joint there', async () => {
+    browser();
+    const host = await landing();
+    const step = find(host, '#step-1 [data-on]');
+    place(step, 0.3);
+    await scrollNow();
+    // on a wide screen a step is read from 15% of the way down
+    expect(step.getAttribute('data-on')).toBe('true');
+  });
+});
 
 describe('the showcase', () => {
   it('shows his two sample people, each case sample on every pinned figure and said once', async () => {
