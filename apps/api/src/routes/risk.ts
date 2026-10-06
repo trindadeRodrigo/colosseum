@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  assets as assetsTable,
   createDb,
   riskAssetSnapshots,
   riskDepthCurves,
@@ -9,6 +10,7 @@ import {
   riskLendingFacts,
   riskLpConcentration,
   riskMarketParams,
+  riskPoolFlow,
   riskPoolSnapshots,
   riskPools,
 } from '@colosseum/db';
@@ -26,14 +28,16 @@ import {
   REGIMES,
   type Regime,
   recoverableValue,
+  regimeAt,
   regimesIn,
   weekendRatio,
 } from '@colosseum/risk';
 import { AssetFacts, DISCLAIMER, LendingPoolFacts, PlanFacts } from '@colosseum/schemas';
-import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, like, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import { curveVersionOf, EVM_METHOD_VERSION } from '../curve-version';
 import { loadAssetFacts, loadPlanFacts } from '../facts';
 import { FACTS_METHODOLOGY } from '../facts-methodology';
 import { registerRiskHistoryRoutes } from './risk-history';
@@ -63,6 +67,16 @@ const HONESTY = [
   'Asset- and market-level aggregates only; no wallet positions are published.',
 ];
 const Regimes = z.enum(['us_market_hours', 'us_offhours_weekday', 'weekend', 'us_holiday']);
+/**
+ * The chain a list is read for. Solana is the default, so every address that names none answers as
+ * before. Robinhood Chain's stocks are the seeded `assets` rows (`robinhood:<SYM>`, PLAN-UNIVERSE RU.8)
+ * with the EVM collector's curves (`evmq-0.1`); its pools have no `risk_pools` rows (RU.14, DU6).
+ */
+const ChainName = z.enum(['solana', 'robinhood']);
+const Chain = ChainName.default('solana');
+type Chain = z.infer<typeof ChainName>;
+const EVM_POOLS_NOT_IN_REGISTRY =
+  'not collected on Robinhood Chain: its pools are not in the pool registry (PLAN-UNIVERSE RU.14, DU6)';
 
 export async function registerRiskRoutes(app: FastifyInstance) {
   const { db } = createDb();
@@ -76,7 +90,30 @@ export async function registerRiskRoutes(app: FastifyInstance) {
         sql`lower(${riskPools.assetSymbol}) = ${id.toLowerCase()} or ${riskPools.assetMint} = ${id}`,
       )
       .limit(1);
-    return rows[0] ?? null;
+    if (rows[0]) return rows[0];
+    // A Robinhood Chain stock: its seeded row, by id (`robinhood:NVDA`) or address, in any case.
+    const [evm] = await db
+      .select({ mint: assetsTable.mint, symbol: assetsTable.symbol })
+      .from(assetsTable)
+      .where(
+        and(
+          eq(assetsTable.chain, 'evm'),
+          or(
+            sql`lower(${assetsTable.id}) = ${id.toLowerCase()}`,
+            sql`lower(${assetsTable.mint}) = ${id.toLowerCase()}`,
+          ),
+        ),
+      )
+      .limit(1);
+    return evm?.mint ? { mint: evm.mint, symbol: evm.symbol } : null;
+  }
+  /** The tracked Robinhood Chain stocks: id, symbol and address as the collector spells it. */
+  async function evmAssets() {
+    const rows = await db
+      .select({ id: assetsTable.id, symbol: assetsTable.symbol, mint: assetsTable.mint })
+      .from(assetsTable)
+      .where(and(eq(assetsTable.chain, 'evm'), like(assetsTable.id, 'robinhood:%')));
+    return rows.flatMap((r) => (r.mint ? [{ id: r.id, symbol: r.symbol, mint: r.mint }] : []));
   }
   async function curvesFor(mint: string, side: 'sell' | 'buy' = 'sell'): Promise<AssetCurves> {
     const rows = await db
@@ -86,7 +123,8 @@ export async function registerRiskRoutes(app: FastifyInstance) {
         and(
           eq(riskDepthCurves.assetMint, mint),
           eq(riskDepthCurves.side, side),
-          eq(riskDepthCurves.methodVersion, METHOD_VERSION),
+          // each address under its own collector's version (curve-version.ts)
+          eq(riskDepthCurves.methodVersion, curveVersionOf(mint)),
         ),
       );
     const byRegime: Partial<Record<Regime, DepthCurve>> = {};
@@ -109,17 +147,62 @@ export async function registerRiskRoutes(app: FastifyInstance) {
   // how a routed sale divides across the pools, leg by leg, from the hourly split snapshot (risk-split.ts)
   await registerRiskSplitRoute(app, db, resolveAsset, REGIME_PARAMS);
 
+  /** Sell capacity at tau per regime, as `/risk/assets` lists it. */
+  function capacityAt(c: AssetCurves, tau: number) {
+    return Object.fromEntries(
+      REGIMES.filter((r) => c.byRegime[r]).map((r) => {
+        const cv = c.byRegime[r] as DepthCurve;
+        const m = maxNotionalAt(cv, tau);
+        return [
+          r,
+          {
+            status: cv.insufficientFrom === 0 ? 'insufficient_samples' : 'ok',
+            capacityUsd: cv.insufficientFrom === 0 ? null : m.notionalUsd,
+            lowerBound: m.lowerBound,
+            samples: cv.samples,
+            from: cv.from,
+            to: cv.to,
+            insufficientFrom: cv.insufficientFrom,
+          },
+        ];
+      }),
+    );
+  }
+  /** The assets of a chain with their pool TVL where the registry holds it, largest first. */
+  async function chainAssets(chain: Chain) {
+    if (chain === 'robinhood')
+      return (await evmAssets()).map((a) => ({ ...a, tvl: null, pools: null }));
+    const pools = await db
+      .select()
+      .from(riskPools)
+      .where(inArray(riskPools.tier, ['A', 'B']));
+    const tvl = new Map<string, { symbol: string; tvl: number; pools: number }>();
+    for (const p of pools) {
+      const v = tvl.get(p.assetMint) ?? { symbol: p.assetSymbol, tvl: 0, pools: 0 };
+      v.tvl += p.tvlUsd ?? 0;
+      v.pools++;
+      tvl.set(p.assetMint, v);
+    }
+    return [...tvl.entries()]
+      .sort((a, b) => b[1].tvl - a[1].tvl)
+      .map(([mint, v]) => ({ id: mint, symbol: v.symbol, mint, tvl: v.tvl, pools: v.pools }));
+  }
+
   f.get(
     '/risk/assets',
     {
       schema: {
         summary: 'Assets with measured exit capacity per regime',
-        description: `Sell-side capacity at cost tolerance tau per time-of-week regime, weekend/market-hours ratio, and coverage.\n\n${DISCLAIMER.en}`,
-        querystring: z.object({ tau: z.coerce.number().positive().max(0.5).default(0.01) }),
+        description: `Sell-side capacity at cost tolerance tau per time-of-week regime, weekend/market-hours ratio, and coverage. \`chain\` (default solana) names the chain: Robinhood Chain's stocks carry the EVM collector's curves and no pool TVL, which its registry does not hold.\n\n${DISCLAIMER.en}`,
+        querystring: z.object({
+          tau: z.coerce.number().positive().max(0.5).default(0.01),
+          chain: Chain,
+        }),
         response: {
           200: z.object({
             methodVersion: z.string(),
             tau: z.number(),
+            chain: z.string(),
             honesty: z.array(z.string()),
             disclaimer: z.string(),
             assets: z.array(z.any()),
@@ -128,52 +211,27 @@ export async function registerRiskRoutes(app: FastifyInstance) {
       },
     },
     async (req) => {
-      const tau = req.query.tau;
-      const pools = await db
-        .select()
-        .from(riskPools)
-        .where(inArray(riskPools.tier, ['A', 'B']));
-      const tvl = new Map<string, { symbol: string; tvl: number; pools: number }>();
-      for (const p of pools) {
-        const v = tvl.get(p.assetMint) ?? { symbol: p.assetSymbol, tvl: 0, pools: 0 };
-        v.tvl += p.tvlUsd ?? 0;
-        v.pools++;
-        tvl.set(p.assetMint, v);
-      }
+      const { tau, chain } = req.query;
       const assets = [];
-      for (const [mint, v] of [...tvl.entries()].sort((a, b) => b[1].tvl - a[1].tvl)) {
-        const c = await curvesFor(mint);
-        const capacity = Object.fromEntries(
-          REGIMES.filter((r) => c.byRegime[r]).map((r) => {
-            const m = maxNotionalAt(c.byRegime[r] as DepthCurve, tau);
-            const cv = c.byRegime[r] as DepthCurve;
-            return [
-              r,
-              {
-                status: cv.insufficientFrom === 0 ? 'insufficient_samples' : 'ok',
-                capacityUsd: cv.insufficientFrom === 0 ? null : m.notionalUsd,
-                lowerBound: m.lowerBound,
-                samples: cv.samples,
-                from: cv.from,
-                to: cv.to,
-                insufficientFrom: cv.insufficientFrom,
-              },
-            ];
-          }),
-        );
+      for (const a of await chainAssets(chain)) {
+        const c = await curvesFor(a.mint);
         assets.push({
-          assetMint: mint,
-          symbol: v.symbol,
-          poolTvlUsd: v.tvl,
-          pools: v.pools,
-          capacityAtTau: capacity,
+          ...(chain === 'robinhood' ? { id: a.id } : {}),
+          assetMint: a.mint,
+          symbol: a.symbol,
+          chain,
+          poolTvlUsd: a.tvl,
+          pools: a.pools,
+          ...(chain === 'robinhood' ? { poolsNullReason: EVM_POOLS_NOT_IN_REGISTRY } : {}),
+          capacityAtTau: capacityAt(c, tau),
           weekendRatio: weekendRatio(c, tau),
           provenance: 'live',
         });
       }
       return {
-        methodVersion: METHOD_VERSION,
+        methodVersion: chain === 'robinhood' ? EVM_METHOD_VERSION : METHOD_VERSION,
         tau,
+        chain,
         honesty: HONESTY,
         disclaimer: DISCLAIMER.en,
         assets,
@@ -400,7 +458,7 @@ export async function registerRiskRoutes(app: FastifyInstance) {
             eq(riskDepthCurves.assetMint, a.mint),
             eq(riskDepthCurves.side, req.query.side),
             eq(riskDepthCurves.regime, req.query.regime),
-            eq(riskDepthCurves.methodVersion, METHOD_VERSION),
+            eq(riskDepthCurves.methodVersion, curveVersionOf(a.mint)),
           ),
         );
       if (!row)
@@ -539,14 +597,20 @@ export async function registerRiskRoutes(app: FastifyInstance) {
       const at = req.query.at ? new Date(req.query.at) : new Date();
       const r = recoverableValue(
         c,
-        ISSUERS.xstocks ?? null,
+        // the xStocks issuer's redemption route is Solana's; an EVM stock is read without one
+        curveVersionOf(a.mint) === EVM_METHOD_VERSION ? null : (ISSUERS.xstocks ?? null),
         req.query.notional,
         at,
         req.query.hours,
         REGIME_PARAMS,
         req.query.holderKyc,
       );
-      return { asset: a.symbol, ...r, methodVersion: METHOD_VERSION, disclaimer: DISCLAIMER.en };
+      return {
+        asset: a.symbol,
+        ...r,
+        methodVersion: curveVersionOf(a.mint),
+        disclaimer: DISCLAIMER.en,
+      };
     },
   );
 
@@ -575,7 +639,12 @@ export async function registerRiskRoutes(app: FastifyInstance) {
         req.query.tau,
         req.query.nRef,
       );
-      return { asset: a.symbol, ...s, methodVersion: METHOD_VERSION, disclaimer: DISCLAIMER.en };
+      return {
+        asset: a.symbol,
+        ...s,
+        methodVersion: curveVersionOf(a.mint),
+        disclaimer: DISCLAIMER.en,
+      };
     },
   );
 
@@ -906,14 +975,18 @@ export async function registerRiskRoutes(app: FastifyInstance) {
     {
       schema: {
         summary: 'Pool registry: venue, exit path, on-chain TVL and refresh tier',
+        description: `\`chain\` (default solana) names the chain. Robinhood Chain's pools are not in the registry (PLAN-UNIVERSE RU.14, DU6): its list is empty and says so.\n\n${DISCLAIMER.en}`,
         querystring: z.object({
           asset: z.string().optional(),
           includeDust: z.coerce.boolean().default(false),
+          chain: Chain,
         }),
         response: { 200: z.any() },
       },
     },
     async (req) => {
+      if (req.query.chain === 'robinhood')
+        return { pools: [], nullReason: EVM_POOLS_NOT_IN_REGISTRY, disclaimer: DISCLAIMER.en };
       const a = req.query.asset ? await resolveAsset(req.query.asset) : null;
       const rows = await db
         .select()
@@ -927,6 +1000,123 @@ export async function registerRiskRoutes(app: FastifyInstance) {
         .orderBy(desc(riskPools.tvlUsd))
         .limit(500);
       return { pools: rows, disclaimer: DISCLAIMER.en };
+    },
+  );
+
+  f.get(
+    '/risk/chains',
+    {
+      schema: {
+        summary:
+          'The chains side by side: assets tracked, pool TVL, exit capacity at tau now, 24 h volume',
+        description: `One row per chain Bearing measures. Every figure carries its source, time, method and provenance, or is null with the reason it is not collected.\n\n${DISCLAIMER.en}`,
+        querystring: z.object({ tau: z.coerce.number().positive().max(0.5).default(0.01) }),
+        response: { 200: z.any() },
+      },
+    },
+    async (req) => {
+      const tau = req.query.tau;
+      const now = new Date();
+      const regime = regimeAt(now, REGIME_PARAMS);
+      const chains = [];
+      for (const chain of ChainName.options) {
+        const assets = await chainAssets(chain);
+        // exit capacity in the regime of now, summed over the assets that measure it
+        let capacity = 0;
+        let measured = 0;
+        let capTo: string | null = null;
+        for (const a of assets) {
+          const c = (await curvesFor(a.mint)).byRegime[regime];
+          if (!c || c.insufficientFrom === 0) continue;
+          capacity += maxNotionalAt(c, tau).notionalUsd;
+          measured++;
+          if (c.to && (!capTo || c.to > capTo)) capTo = c.to;
+        }
+        // 24 h volume: each pool's newest 24 h row of the swap history, by the chain's address family
+        const flow = await db
+          .select({
+            pool: riskPoolFlow.pool,
+            usd: sql<number>`${riskPoolFlow.sellUsd} + ${riskPoolFlow.buyUsd}`,
+            dataTo: riskPoolFlow.dataTo,
+          })
+          .from(riskPoolFlow)
+          .where(
+            and(
+              eq(riskPoolFlow.window, '24h'),
+              eq(riskPoolFlow.regime, 'all'),
+              chain === 'robinhood'
+                ? like(riskPoolFlow.pool, '0x%')
+                : sql`${riskPoolFlow.pool} not like '0x%'`,
+            ),
+          )
+          .orderBy(desc(riskPoolFlow.dataTo));
+        const newestFlow = new Map<string, { usd: number; dataTo: Date }>();
+        for (const r of flow) if (!newestFlow.has(r.pool)) newestFlow.set(r.pool, r);
+        let volTo: string | null = null;
+        for (const r of newestFlow.values()) {
+          const t = r.dataTo.toISOString();
+          if (!volTo || t > volTo) volTo = t;
+        }
+        const tvl = assets.every((a) => a.tvl === null)
+          ? null
+          : assets.reduce((sum, a) => sum + (a.tvl ?? 0), 0);
+        chains.push({
+          chain,
+          assetsTracked: {
+            value: assets.length,
+            source:
+              chain === 'robinhood'
+                ? 'assets (seeded rows robinhood:<symbol>, PLAN-UNIVERSE RU.8)'
+                : 'risk_pools (tiers A and B)',
+            method: 'count of the tracked stocks',
+            fetchedAt: null,
+            provenance: 'live',
+          },
+          poolTvlUsd:
+            tvl === null
+              ? { value: null, nullReason: EVM_POOLS_NOT_IN_REGISTRY }
+              : {
+                  value: tvl,
+                  source: 'risk_pools.tvl_usd, read when each pool was registered',
+                  method: 'sum over the tracked pools',
+                  fetchedAt: null,
+                  provenance: 'live',
+                },
+          exitCapacityUsd:
+            measured === 0
+              ? {
+                  value: null,
+                  regime,
+                  nullReason: `not collected yet on ${chain === 'robinhood' ? 'Robinhood Chain' : 'Solana'}: no curve measures ${regime}`,
+                }
+              : {
+                  value: capacity,
+                  regime,
+                  measuredAssets: measured,
+                  assets: assets.length,
+                  source: 'risk_depth_curves',
+                  method: `sum over the assets of the largest sale at cost ≤ ${tau} in ${regime}`,
+                  methodVersion: chain === 'robinhood' ? EVM_METHOD_VERSION : METHOD_VERSION,
+                  fetchedAt: capTo,
+                  provenance: 'live',
+                },
+          volume24hUsd:
+            newestFlow.size === 0
+              ? {
+                  value: null,
+                  nullReason: `not collected yet on ${chain === 'robinhood' ? 'Robinhood Chain' : 'Solana'}: no swap history imported (risk_pool_flow)`,
+                }
+              : {
+                  value: [...newestFlow.values()].reduce((sum, r) => sum + r.usd, 0),
+                  pools: newestFlow.size,
+                  source: 'risk_pool_flow (24 h window, every regime)',
+                  method: 'sum over the pools of the swap volume in the newest 24 h of the history',
+                  fetchedAt: volTo,
+                  provenance: 'live',
+                },
+        });
+      }
+      return { tau, regime, at: now.toISOString(), chains, disclaimer: DISCLAIMER.en };
     },
   );
 }

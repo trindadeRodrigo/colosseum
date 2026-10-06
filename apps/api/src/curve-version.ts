@@ -12,3 +12,7 @@ const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 
 export const curveVersionOf = (address: string): string =>
   EVM_ADDRESS.test(address) ? EVM_METHOD_VERSION : RISK_METHOD_VERSION;
+
+/** How a curve is matched to an asset: an EVM address in lower case, any other address as it is. */
+export const curveKey = (address: string): string =>
+  EVM_ADDRESS.test(address) ? address.toLowerCase() : address;
