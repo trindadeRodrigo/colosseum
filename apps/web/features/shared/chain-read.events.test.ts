@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { createHash } from 'node:crypto';
-import { deploymentsOf, readSolanaRecipe, rpcAt } from '@colosseum/sdk';
+import { deploymentsOf, familyTextHash, readSolanaRecipe, rpcAt } from '@colosseum/sdk';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
@@ -57,6 +57,9 @@ const MINT = {
 };
 const PROGRAM = '529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW';
 
+/** The meta hash the account carries: set by a test, zeros otherwise. */
+const META = { hash: '00'.repeat(32) };
+
 /** The registry's account, laid out as programs/basket writes it: version 3 in effect. */
 function account(): Uint8Array {
   const b = new Uint8Array(1022);
@@ -66,6 +69,7 @@ function account(): Uint8Array {
   b.set(Buffer.from(FAMILY_ID, 'hex'), 40);
   view.setUint32(72, 3, true);
   view.setBigInt64(76, 1_791_100_000n, true);
+  b.set(Buffer.from(META.hash, 'hex'), 84);
   b[116] = 3;
   [
     [MINT.spyx, 5000],
@@ -89,6 +93,7 @@ const person: Person = {
 beforeEach(() => {
   window.localStorage.clear();
   NODE.asked.length = 0;
+  META.hash = '00'.repeat(32);
   portStore.set(signedInPort(EMBEDDED, { userId: USER }));
   portStore.setApi(async (path, init) => {
     if (path === '/v1/me') return json(person);
@@ -153,6 +158,29 @@ describe('a shared portfolio read from the chain by this app', () => {
     const legs = find(host, '[data-ui="plan-legs"]').textContent ?? '';
     for (const part of ['SPYX', '50%', 'NVDAX', '25%', 'TSLAX']) expect(legs).toContain(part);
     expect(legs).not.toContain('40%');
+  });
+
+  it('says the text does not match when no version on the chain carries its hash, and shows the creator read', async () => {
+    const host = await mount(withAccount('en', createElement(FamilyScreen, { slug: SLUG })));
+    for (let i = 0; i < 5; i += 1) await settle(50);
+    // the server says the text is the version in effect's; the chain's hash is of other words
+    expect(find(host, '[data-ui="text-unverified"]').textContent).toContain(
+      en.shared.text.unverified,
+    );
+    expect(find(host, '[data-ui="creator"]').textContent).toBe(CREATOR);
+    await unmountAll();
+    // the hash of exactly the name and description shown, worked out here: no mark
+    const shown = familyOf(FAMILY_ID);
+    META.hash = familyTextHash({
+      familyId: FAMILY_ID,
+      slug: SLUG,
+      name: shown.name,
+      copy: shown.copy,
+      kind: 'index',
+    });
+    const again = await mount(withAccount('en', createElement(FamilyScreen, { slug: SLUG })));
+    for (let i = 0; i < 5; i += 1) await settle(50);
+    expect(again.querySelector('[data-ui="text-unverified"]')).toBeNull();
   });
 
   it('buys and follows the account, version and weights the chain holds, never the server’s', async () => {

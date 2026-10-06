@@ -1,6 +1,12 @@
 'use client';
-import type { ChainId, SharedRecipe, Target } from '@colosseum/schemas';
-import { type ChainRecipe, familyIdOf, readSolanaRecipe, vaultOf } from '@colosseum/sdk';
+import type { ChainId, SharedFamily, SharedRecipe, Target } from '@colosseum/schemas';
+import {
+  type ChainRecipe,
+  familyIdOf,
+  familyTextHash,
+  readSolanaRecipe,
+  vaultOf,
+} from '@colosseum/sdk';
 import { useEffect, useState } from 'react';
 import { chainNode } from '../order/chain-node';
 import { deploymentsFor } from '../order/readiness';
@@ -29,6 +35,11 @@ export type ChainCheck =
       targets: Target[] | null;
       /** Our server answered something else than the chain holds: another account, version or weights. */
       differs: boolean;
+      /**
+       * Which version's hash the text shown (name, description) is the text of, worked out here
+       * (`familyTextHash`): null when neither, and the page says the text does not match.
+       */
+      textMatches: 'active' | 'pending' | null;
     }
   /** The registry has no portfolio of this creator and family on the chain. */
   | { state: 'missing' }
@@ -42,11 +53,23 @@ const sameTargets = (a: readonly Target[], b: readonly Target[]) =>
 export function useChainRecipe(
   chain: ChainId,
   mock: boolean,
-  slug: string,
-  familyId: string,
+  family: Pick<SharedFamily, 'slug' | 'familyId' | 'name' | 'copy' | 'kind'> | null,
   recipe: SharedRecipe | null,
 ): ChainCheck {
   const [check, setCheck] = useState<ChainCheck>({ state: 'reading' });
+  const known = family !== null;
+  const slug = family?.slug ?? '';
+  const familyId = family?.familyId ?? '';
+  // The text as the page shows it, hashed here: the same encoding the guard and the registry use.
+  const textHash = family
+    ? familyTextHash({
+        familyId: familyIdOf(family.slug),
+        slug: family.slug,
+        name: family.name,
+        copy: family.copy,
+        kind: family.kind,
+      })
+    : '';
   const creator = recipe?.creator ?? null;
   const onchainId = recipe?.onchainId ?? null;
   const version = recipe?.active.version ?? null;
@@ -57,7 +80,8 @@ export function useChainRecipe(
       if (mine) setCheck(next);
     };
     if (mock) say({ state: 'unverified', why: 'mock' });
-    else if (familyIdOf(slug) !== familyId) say({ state: 'unverified', why: 'family-id' });
+    else if (!known || familyIdOf(slug) !== familyId)
+      say({ state: 'unverified', why: 'family-id' });
     else {
       const deployment = deploymentsFor(chain, false)?.[chain];
       const node = chainNode(chain);
@@ -78,6 +102,12 @@ export function useChainRecipe(
               state: 'read',
               recipe: read,
               targets,
+              textMatches:
+                read.active.metaHash === textHash
+                  ? 'active'
+                  : read.pending?.metaHash === textHash
+                    ? 'pending'
+                    : null,
               differs:
                 read.address !== onchainId ||
                 read.active.version !== version ||
@@ -92,7 +122,7 @@ export function useChainRecipe(
     return () => {
       mine = false;
     };
-  }, [chain, mock, slug, familyId, creator, onchainId, version, shown]);
+  }, [chain, mock, known, slug, familyId, creator, onchainId, version, shown, textHash]);
   return check;
 }
 

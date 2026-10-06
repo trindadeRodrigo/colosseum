@@ -117,6 +117,8 @@ describe('the shelf', () => {
         name: '<img src=x onerror=alert(1)>Three',
         copy: 'Visit <a href="https://x.invalid">this</a>',
         recipes: [recipeOf({ textMatches: null })],
+        // the server's word: no badge is drawn from it
+        platform: true,
       }),
     });
     const host = await show(createElement(ShelfScreen));
@@ -131,6 +133,7 @@ describe('the shelf', () => {
     // words that match no version the creator published are said to be unverified
     expect(card.textContent).toContain(en.shared.text.unverified);
     expect(card.textContent).toContain('SPYX 40%');
+    expect(card.textContent).not.toContain(en.shared.shelf.card.platform);
     // a test network's portfolio carries the plate, the hatch and the words
     expect(card.textContent).toContain('MOCK');
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
@@ -208,6 +211,15 @@ describe('a portfolio’s page (gate GOLD-ONE-TAP)', () => {
     await settle(50);
     expect(calls.some((c) => c.path === '/v1/orders')).toBe(false);
     expect(find(host, '[role="alert"]').textContent).toContain(en.order.mismatch.shape);
+  });
+
+  it('offers no follow of a portfolio whose id is not its slug’s (gate FAMILY-ID)', async () => {
+    api({ family: familyOf('ab'.repeat(32)) });
+    const host = await show(createElement(FamilyScreen, { slug: SLUG }));
+    expect(host.textContent).toContain(en.shared.family.foreign);
+    expect(
+      [...host.querySelectorAll('a')].some((a) => a.textContent === en.shared.family.buy),
+    ).toBe(false);
   });
 
   it('is not offered on another chain than the person’s (gate ONE-CHAIN)', async () => {

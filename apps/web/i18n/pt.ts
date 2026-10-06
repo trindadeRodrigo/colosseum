@@ -633,6 +633,8 @@ export const pt: Dictionary = {
         `A ${chain} não tem esse portfólio: li a rede, e o registro não o tem. Não dá para segui-lo.`,
       unlisted:
         'A versão na rede tem um token que este app não lista, então não vou oferecer seguir.',
+      foreign:
+        'Este portfólio não foi publicado por este app, então não consigo conferir o identificador dele pelo nome, e seguir ainda não é oferecido aqui.',
     },
     check: {
       reading: 'Lendo da rede…',

@@ -648,6 +648,8 @@ export const en = {
         `${chain} has no such portfolio: I read the chain, and the registry doesn’t hold it. It can’t be followed.`,
       unlisted:
         'The chain’s version holds a token this app doesn’t list, so I won’t offer to follow it.',
+      foreign:
+        'This portfolio wasn’t published through this app, so I can’t check its id against its name, and following it isn’t offered here yet.',
     },
     check: {
       reading: 'Reading it from the chain…',

@@ -10,7 +10,9 @@ import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { assetName, formatBps } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
+import { networkFor } from '../order/readiness';
 import { useApiFetch } from '../wallet/WalletProvider';
+import { isPlatformCreator } from './platform';
 import { readShelf } from './shared-api';
 import { shortAddress, useSharedPerson } from './use-person';
 
@@ -148,7 +150,12 @@ function FamilyCard({ family }: { family: SharedFamily }) {
               {c.by(shortAddress(recipe.creator))}
             </span>
           )}
-          {family.platform && <span className="font-medium text-foreground">{c.platform}</span>}
+          {recipe &&
+            isPlatformCreator(
+              networkFor(recipe.chain, recipe.provenance === 'mock'),
+              recipe.chain,
+              recipe.creator,
+            ) && <span className="font-medium text-foreground">{c.platform}</span>}
           <span>{c.on(family.chains.map((chain) => t.chain.names[chain]).join(', '))}</span>
         </p>
         {family.copy && (

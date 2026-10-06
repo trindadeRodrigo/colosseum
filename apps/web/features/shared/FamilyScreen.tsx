@@ -23,8 +23,10 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 import { assetName, formatBps } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
 import { keepOrder } from '../order/order-record';
+import { networkFor } from '../order/readiness';
 import { useApiFetch } from '../wallet/WalletProvider';
-import { type ChainCheck, isVaultOf, useChainRecipe } from './chain-recipe';
+import { type ChainCheck, familyIdFor, isVaultOf, useChainRecipe } from './chain-recipe';
+import { isPlatformCreator } from './platform';
 import { Offer } from './ShelfScreen';
 import { SourceMark } from './SourceMark';
 import { placeShared, readFamily, readPortfolio, readVersions } from './shared-api';
@@ -49,6 +51,11 @@ export type Followed = {
   missing: boolean;
   /** Read from the chain, the version holds a token this app does not list. */
   unlisted: boolean;
+  /**
+   * The portfolio's id is not the one its slug gives: it was not published through the app, so a
+   * follow held to `familyIdOf(slug)` cannot be signed, and none is offered (gate FAMILY-ID).
+   */
+  foreign: boolean;
 };
 
 export function followedOf(recipe: SharedRecipe, check: ChainCheck): Followed | null {
@@ -60,6 +67,7 @@ export function followedOf(recipe: SharedRecipe, check: ChainCheck): Followed | 
       source: 'chain',
       missing: true,
       unlisted: false,
+      foreign: false,
     };
   if (check.state === 'read')
     return {
@@ -68,6 +76,7 @@ export function followedOf(recipe: SharedRecipe, check: ChainCheck): Followed | 
       source: 'chain',
       missing: false,
       unlisted: check.targets === null,
+      foreign: false,
     };
   return {
     follow: { recipeOnchainId: recipe.onchainId, version: recipe.active.version },
@@ -75,6 +84,7 @@ export function followedOf(recipe: SharedRecipe, check: ChainCheck): Followed | 
     source: 'api',
     missing: false,
     unlisted: false,
+    foreign: check.state === 'unverified' && check.why === 'family-id',
   };
 }
 
@@ -138,7 +148,6 @@ export function FamilyScreen({ slug }: { slug: string }) {
   const { family } = load;
   const mine = chain ? family.recipes.find((r) => r.chain === chain) : null;
   const recipes = chain ? (mine ? [mine] : []) : family.recipes;
-  const [first] = family.recipes;
   return (
     <div data-ui="family-screen" className="flex flex-col gap-8">
       <header className="flex flex-col gap-3">
@@ -151,30 +160,6 @@ export function FamilyScreen({ slug }: { slug: string }) {
         {family.copy && (
           <p className="max-w-(--tf-measure-body) whitespace-pre-line text-body-lg [overflow-wrap:anywhere]">
             {family.copy}
-          </p>
-        )}
-        <p className="flex flex-wrap items-baseline gap-x-2 text-body-sm text-muted-foreground">
-          {first && (
-            <>
-              <span>{t.shared.text.creator}</span>
-              <span className="break-all font-mono text-source text-foreground">
-                {first.creator}
-              </span>
-            </>
-          )}
-          {family.platform && (
-            <span className="font-medium text-foreground">{t.shared.shelf.card.platform}</span>
-          )}
-        </p>
-        {recipes.some((r) => r.textMatches === null) && (
-          <p className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm">
-            <StatusMark status="watch" className="mt-1.5" />
-            <span>{t.shared.text.unverified}</span>
-          </p>
-        )}
-        {recipes.some((r) => r.textMatches === 'pending') && (
-          <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
-            {t.shared.text.pending}
           </p>
         )}
       </header>
@@ -211,7 +196,7 @@ function RecipeSection({
   const chainName = t.chain.names[recipe.chain];
   const own = person.kind === 'ready' && person.chain === recipe.chain;
   const mock = own ? person.mock : recipe.provenance === 'mock';
-  const check = useChainRecipe(recipe.chain, mock, family.slug, family.familyId, recipe);
+  const check = useChainRecipe(recipe.chain, mock, family, recipe);
   const followed = followedOf(recipe, check);
   const reasonId = useId();
   const locale = LOCALE[lang];
@@ -243,7 +228,9 @@ function RecipeSection({
           ? f.missingOnChain(chainName)
           : followed?.unlisted
             ? f.unlisted
-            : null;
+            : followed?.foreign
+              ? f.foreign
+              : null;
   return (
     <div className="flex flex-col gap-6">
       <Card
@@ -297,6 +284,22 @@ function RecipeSection({
               />
             </div>
           )}
+          <p className="flex flex-wrap items-baseline gap-x-2 text-body-sm text-muted-foreground">
+            <span>{t.shared.text.creator}</span>
+            <span data-ui="creator" className="break-all font-mono text-source text-foreground">
+              {read?.creator ?? recipe.creator}
+            </span>
+            {isPlatformCreator(
+              networkFor(recipe.chain, mock),
+              recipe.chain,
+              read?.creator ?? recipe.creator,
+            ) && (
+              <span className="font-medium text-foreground">{t.shared.shelf.card.platform}</span>
+            )}
+          </p>
+          <TextMark
+            matches={read && check.state === 'read' ? check.textMatches : recipe.textMatches}
+          />
           <SourceMark check={check} chain={recipe.chain} />
           <Offer recipe={recipe} />
         </CardBody>
@@ -426,7 +429,7 @@ function VaultsPanel({
     const terms: SharedTerms = {
       kind: 'follow',
       slug: family.slug,
-      familyId: family.familyId,
+      familyId: familyIdFor(family.slug),
       vault: vault.address,
       basketId: vault.basketId,
       follow: accept ? followed.follow : null,
@@ -663,5 +666,28 @@ function VersionsPanel({ slug, chain }: { slug: string; chain: ChainId | null })
         />
       ))}
     </section>
+  );
+}
+
+/**
+ * Whether the name and description are the text the creator published: the hash of the text shown,
+ * against the version the page reads (worked out here where the chain was read, the server's word
+ * otherwise). The creator's words are never vouched for when neither version matches.
+ */
+function TextMark({ matches }: { matches: 'active' | 'pending' | null }) {
+  const t = useT();
+  if (matches === 'active') return null;
+  return matches === 'pending' ? (
+    <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
+      {t.shared.text.pending}
+    </p>
+  ) : (
+    <p
+      data-ui="text-unverified"
+      className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm"
+    >
+      <StatusMark status="watch" className="mt-1.5" />
+      <span>{t.shared.text.unverified}</span>
+    </p>
   );
 }

@@ -17,7 +17,7 @@ import { gasUnitsFor } from '../order/readiness';
 import { TrustNotice } from '../order/TrustNotice';
 import { unitsFor } from '../order/units';
 import { useApiFetch } from '../wallet/WalletProvider';
-import { useChainRecipe } from './chain-recipe';
+import { familyIdFor, useChainRecipe } from './chain-recipe';
 import { followedOf } from './FamilyScreen';
 import { SourceMark } from './SourceMark';
 import { placeShared, readFamily } from './shared-api';
@@ -70,8 +70,7 @@ export function FamilyBuyScreen({ slug }: { slug: string }) {
   const check = useChainRecipe(
     chain ?? 'solana',
     mock,
-    slug,
-    family && family !== 'failed' ? family.familyId : '',
+    family && family !== 'failed' ? family : null,
     recipe,
   );
   const followed = recipe ? followedOf(recipe, check) : null;
@@ -137,6 +136,7 @@ export function FamilyBuyScreen({ slug }: { slug: string }) {
     ...(!followed ? [t.shared.check.reading] : []),
     ...(followed?.missing ? [t.shared.buy.blocked.missing] : []),
     ...(followed?.unlisted ? [t.shared.buy.blocked.unlisted] : []),
+    ...(followed?.foreign ? [t.shared.family.foreign] : []),
     ...(!owner ? [t.buy.blocked.wallet] : []),
     ...(amount === null ? [t.buy.blocked.amount] : []),
     ...(amount !== null && owner && !read?.ok ? [t.buy.blocked.funding] : []),
@@ -153,7 +153,8 @@ export function FamilyBuyScreen({ slug }: { slug: string }) {
     const terms: SharedTerms = {
       kind: 'family',
       slug,
-      familyId: family.familyId,
+      // The vault's number is basketIdOfPlan(familyIdOf(slug)): this page's own, never the server's.
+      familyId: familyIdFor(slug),
       follow: followed.follow,
       targets: followed.targets,
       source: followed.source,
