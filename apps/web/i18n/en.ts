@@ -544,6 +544,84 @@ export const en = {
     lead: (chain: string) =>
       `Built for ${chain}, from your limits. Nothing is bought until you review every step and sign it.`,
     holds: 'What it holds',
+    /** Cash, named by its token: "Cash (USDC)". */
+    cash: (token: string) => `Cash (${token})`,
+    /** The plan in one sentence, from its lines (features/order/plain.ts). */
+    summary: {
+      head: (amount: string, months: string, risk: string, chain: string) =>
+        `${amount} for ${months}, ${risk}, on ${chain}:`,
+      headOpen: (amount: string, risk: string, chain: string) =>
+        `${amount} with no date set, ${risk}, on ${chain}:`,
+      stays: (amount: string, name: string) => `${amount} stays in ${name}`,
+      goes: (amount: string, name: string) => `${amount} goes to ${name}`,
+      more: (n: number) => (n === 1 ? 'one more part' : `${n} more parts`),
+    },
+    /** What a bad fall could cost, said in a sentence. */
+    badFall: {
+      none: 'In a bad fall: you’d lose about $0, since nothing here is stocks, crypto or gold.',
+      some: (amount: string) => `In a bad fall: you’d lose about ${amount}, an estimate.`,
+    },
+    details: 'Details',
+    kinds: {
+      stock: 'Stocks',
+      etf: 'Funds',
+      gold: 'Gold',
+      commodity: 'Commodities',
+      dollar_yield: 'Dollar yield',
+      crypto: 'Crypto',
+      cash: 'Cash',
+      other: 'Other',
+    },
+    /** The engine's flags, each as a sentence. A flag not here is said by `other`, never as its code. */
+    flagWords: {
+      ceilingFromTier: (asset: string) =>
+        `How much ${asset} may weigh comes from its tier, since its selling cost isn’t measured yet.`,
+      coverageFromTier: (asset: string) =>
+        `${asset} counts toward your withdrawals at its tier’s limit, since its selling cost isn’t measured yet.`,
+      capacityThin: (asset: string) =>
+        `${asset} sells cheaply only in small amounts, so the plan holds less of it.`,
+      regimeNotMeasured: (asset: string) =>
+        `Selling ${asset} at some times of the week isn’t measured yet, and may cost more.`,
+      undated: (asset: string) =>
+        `The selling cost measured for ${asset} has no date, so it isn’t used.`,
+      fxOpen: (currency: string) =>
+        `Some of what you owe in ${currency} isn’t held in ${currency}, so a change in the rate can cost you.`,
+      noMatchingLeg: (currency: string) =>
+        `The plan holds nothing in ${currency} to pay withdrawals in it.`,
+      noFx: (currency: string) =>
+        `There’s no exchange rate for ${currency} yet, so withdrawals in it aren’t counted.`,
+      noQuote: 'There’s no recent price quote for selling all of it yet.',
+      withdrawalsShort: 'Not every withdrawal is paid on time with what is set aside.',
+      notLive: 'Some figures come from a test network or sample data, not from live markets.',
+      other: 'The engine noted one more thing about this plan.',
+      simple: {
+        exit_not_measured: 'No part of this plan has a measured selling cost yet.',
+        exit_partly_measured: 'Only part of this plan has a measured selling cost.',
+        exit_beyond_measured_size:
+          'Part of this plan is larger than the largest sale measured, so selling it may cost more.',
+        exit_capacity_short:
+          'Part of this plan is larger than what can be sold for 1% or less at the worst time measured.',
+        exit_cost_below_zero:
+          'A measured selling cost came out below zero, and is counted as zero.',
+        exit_regimes_not_reported: 'The selling cost isn’t reported for every time of the week.',
+        issuer_concentration: 'More than half of the plan is with one issuer.',
+        asset_not_on_shelf:
+          'A part of the plan isn’t on the list of assets, so it couldn’t be classed.',
+        unplaced: 'Some money couldn’t be placed within your limits, and is kept in cash.',
+        no_dollar_yield: 'There’s no dollar yield you can hold here, so the rest is kept in cash.',
+        safe_yield_no_rate_leg:
+          'There’s no token here that pays a rate alone, so the safe part is kept in cash.',
+        yield_not_read: 'There’s no yield reading yet, so no projection is shown.',
+        liquidity_unsourced: 'A selling cost with no source isn’t used.',
+        coverage_moved: 'Money was moved so that your withdrawals are paid on time.',
+        obligations_past: 'A withdrawal dated in the past is left out.',
+        income_not_estimated: 'The income this plan pays isn’t estimated yet.',
+        income_no_amount_closes: 'No larger amount pays the income you asked for.',
+      },
+    },
+    /** A plan this short, or this flat, is said in a sentence instead of a chart. */
+    short: (months: string) => `In ${months}:`,
+    shortRange: (low: string, high: string) => `about ${low} to ${high}`,
     sub: (risk: string, chain: string) => `${risk} · on ${chain} · nothing bought yet`,
     riskWord: { low: 'Low risk', medium: 'Medium risk', high: 'High risk' },
     chips: {
@@ -586,14 +664,14 @@ export const en = {
     noReason: 'No reason given.',
     projected: 'Projected range a year, not a promise',
     projectedValue: (low: string, high: string) => `${low} to ${high}`,
-    basis: (basis: string) => `How it was worked out: ${basis}.`,
+    basis: (basis: string) => `How it was worked out: ${basis.replace(/[.\s]+$/, '')}.`,
     lossInFall: (amount: string) =>
       `In a bad fall, the engine counts a loss of about ${amount} on this plan.`,
     exitUnmeasured: 'Not measured yet, so no cost is shown.',
     exitCost: (cost: string) => `≤ ${cost}`,
     inKind: 'You can also take the tokens themselves out of your vault at any time.',
     risk: {
-      title: 'Risk, as our server rolled it up',
+      title: 'How the plan is spread, and what selling costs',
       byClass: 'By kind of asset',
       byIssuer: 'By issuer',
       share: 'Share',

@@ -1330,6 +1330,15 @@ Order of work:
 - **The pick:** one radio group and one primary button, off until a plan is picked and saying so; then "Buy <name>" leads to `/plan/<candidate id>/buy`, so the order names that candidate's stored id. On a phone the plans stack and the picker is held at the foot of the view (`sticky`); on a wide screen it sits under them.
 - **Kept in the tab:** each candidate as a plan under its own id, with its name, scorecard and status, and the choice under a key the tab makes (`tf-choice:<key>`), read back only for the person who built it and only whole. `/plan/<key>` opens the choice; `/plan/<id>` one plan, as before (an agent's plan from a link included).
 
+**The plan in plain words (WEB-PLAN-CLARITY, Thom, Oct 6).** The plan screen showed engine codes and ids. Now (`features/order/plain.ts`):
+- **No code on the page.** Each flag of the engine and the roll-up is a sentence in the dictionary (`plan.flagWords`, English and Portuguese), each once; a flag no sentence names is said by one sentence that there is a note, never by its code. Kinds of asset are words (`plan.kinds`). The notes and the spread of the plan ("How the plan is spread, and what selling costs", was "Risk, as our server rolled it up") are in a closed "Details" under the plan.
+- **Names, not ids.** "syrupUSDC (Maple)", "Cash (USDC)", "SPYx": the shelf's symbols, the issuer where it says what a dollar-yield token is, a test network's token by the token it stands in for. The web cannot read the registry (`tests/boundaries.test.ts`), so the symbols are a list in `plain.ts`; an unknown token goes by its symbol in capitals, never its id.
+- **One sentence at the top**, from the lines: "$200 for 2 months, high risk, on Solana: $150 stays in Cash (USDC) and $50 goes to syrupUSDC (Maple)." and the largest holding's own reason. No rate in it: the plan carries no rate per line, and a rate needs its pin.
+- **A short or flat plan** (under 6 months, or a projection under 1% of the amount) is said in a sentence on the yield's pin ("In 2 months: about $201.50 to $201.60", to the cent where the dollars round the same) instead of a flat chart; the chart's ticks are one per dollar label.
+- **A bad fall** is a sentence: "In a bad fall: you'd lose about $0, since nothing here is stocks, crypto or gold.", or the engine's estimate.
+- **Punctuation:** the basis sentence keeps one full stop ("gold.." came from the engine's own); a leg with no rate shows no "· —".
+- The MOCK plates are left to `web/mock-quiet` (build-3d).
+
 **His partner embed (WEB-EMBED).** `embed-shell.md` and guidelines.html section 08 ("The joints stay. The wood becomes theirs."), in `app/(embed)/` and `features/embed/`.
 
 - **A bare root.** `app/(embed)/layout.tsx` is a document of its own: the stylesheet, the language, and nothing else of ours. No bar, no wallet provider, no account, no font: a test of the import graph holds it (`product-routes.test.ts`), and the e2e finds no `wallet-adapter`, `Newsreader` or wood hex in the page, nor a nav or main landmark (the host owns those).
