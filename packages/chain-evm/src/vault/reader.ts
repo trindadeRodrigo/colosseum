@@ -923,10 +923,7 @@ export function createEvmVaultReader(options: EvmVaultReaderOptions): EvmVaultRe
 
     quote: () =>
       guarded(async () =>
-        refuse(
-          'NotSupported',
-          'the reader does not quote: quotes arrive with the builders (ADE-2)',
-        ),
+        refuse('NotSupported', 'the reader alone does not quote: createEvmVaultAdapter does'),
       ),
 
     track: (txId, validUntil) =>
