@@ -14,7 +14,7 @@ import { familyByNameKey, familyBySlug } from '../../orders/families';
 import type { OrderDeps } from '../../orders/legs';
 import { homeChain, personChain } from '../../orders/person';
 import { planBuy } from '../../orders/prepare';
-import { loadFamilies, loadProposal } from '../../orders/store';
+import { isLinkedProposal, loadFamilies, loadProposal } from '../../orders/store';
 import { signedIn } from './orders';
 
 // What the wallet is missing on its chain before a buy can be signed (DESIGN-VAULT section 9): the
@@ -107,6 +107,7 @@ export function registerFundingRoute(scope: FastifyInstance, deps: OrderDeps) {
               principal,
               chains: deps.chains,
               loadProposal: (id) => loadProposal(deps.db, id),
+              isLinkedPlan: (id) => isLinkedProposal(deps.db, id),
               homeChain: async () => chain,
               loadFamilies: (on) => loadFamilies(deps.db, on),
               shared: {

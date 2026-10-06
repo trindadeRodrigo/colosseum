@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { DISCLAIMER, type OrderDetail } from '@colosseum/schemas';
 import {
+  basketIdOfLinkedPlan,
   basketIdOfPlan,
   deploymentsOf,
   type ExecutionResult,
@@ -173,6 +174,20 @@ describe('the review', () => {
     });
     // and the order the person approved is kept, so a reload runs the same one
     expect(recallOrder(ORDER_ID, USER)?.approved?.order).toEqual(orderOn());
+  });
+
+  it('names the buyer’s own vault for a plan made from a link, never the one the link gives', async () => {
+    api(orderOn());
+    seed({ ...recordOf(), linked: true });
+    run.answer = async (order) => ({ status: 'done', order: doneOrder() ?? order });
+    const host = await screen();
+    await click(primary(host));
+    await settle();
+    const [{ deps }] = run.calls as [{ order: OrderDetail; deps: ExecutorDeps }];
+    // the number the API gives this buyer's vault (gate AGENT-LINK): from the plan and the person
+    expect(deps.plan.basketId).toBe(basketIdOfLinkedPlan(PLAN_ID, USER));
+    expect(deps.plan.basketId).not.toBe(basketIdOfPlan(PLAN_ID));
+    expect(deps.plan.basketId).not.toBe(basketIdOfLinkedPlan(PLAN_ID, 'did:privy:someone-else'));
   });
 
   it('shows each confirmed step with its explorer link once the order is done', async () => {

@@ -30,6 +30,7 @@ import { type ChainRegistry, createChainRegistry } from '../orders/chains';
 import type { PlanInputs } from '../orders/personalize';
 import { IDENTITY_TOKEN_HEADER, type TokenIssuer } from '../plugins/auth';
 import { LIMITS, type Limits } from '../plugins/limits';
+import type { LinkedPlanLimits } from '../routes/v1/baskets';
 
 // For tests only. Nothing the server runs imports this file: the tokens here are signed with a key
 // pair made in the test, and the app under test is handed that pair's public half as its only issuer.
@@ -374,6 +375,8 @@ export async function testApp(a: {
   env?: EnvLike;
   now?: () => Date;
   limits?: Limits;
+  /** The daily cap and keeping time of plans made from a link. */
+  linkedPlans?: LinkedPlanLimits;
   /** Wraps the registry, to make a chain misbehave. */
   wrap?: (registry: ChainRegistry) => ChainRegistry;
   /** The figures a plan is made with. Default: the server's reader of the stored ones. */
@@ -392,6 +395,7 @@ export async function testApp(a: {
       db: a.db,
       now: a.now,
       limits: a.limits ?? ROOMY,
+      ...(a.linkedPlans ? { linkedPlans: a.linkedPlans } : {}),
       ...(a.planInputs ? { planInputs: a.planInputs } : {}),
     },
   });
