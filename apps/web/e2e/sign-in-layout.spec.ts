@@ -2,8 +2,8 @@ import { expect, type Page, test } from '@playwright/test';
 
 // The sign-in screen on one centred column (Thom, Oct 6): the headline, the lead, both cards, the
 // disclaimer and the row of language and appearance share one left edge and one width, under the
-// centred bar. At desktop width the two cards are as tall as each other, their buttons on one line
-// at the foot, each button as wide as its neighbours. At 375 and 1440, light and dark, in English and
+// centred bar. At desktop width the two cards are as tall as each other, their one button each on one
+// line at the foot and as wide as the other (SIGN-IN-FLOW). At 375 and 1440, light and dark, in English and
 // Portuguese. The bar's "Sign in" is the page it marks, not a button.
 
 const SIZES = [
@@ -65,14 +65,14 @@ for (const size of SIZES)
           expect(lastBottoms).toHaveLength(2);
           expect(Math.abs((lastBottoms[0] ?? 0) - (lastBottoms[1] ?? 1))).toBeLessThan(1);
         }
-        // buttons of a card are as wide as each other
+        // the two ways in, one button each, as wide as each other
         const widths = await page
           .locator('[data-ui="sign-in"] [data-ui="sign-in-buttons"] button')
           .evaluateAll((buttons) =>
             buttons.map((b) => Math.round(b.getBoundingClientRect().width)),
           );
-        expect(new Set(widths.slice(0, 2)).size, `passkey ${widths}`).toBe(1);
-        expect(new Set(widths.slice(2)).size, `wallets ${widths}`).toBe(1);
+        expect(widths, `${widths}`).toHaveLength(2);
+        expect(new Set(widths).size, `${widths}`).toBe(1);
 
         // the bar's way in is the page itself: marked, and not a second primary button
         const here = page.locator('header [data-ui="sign-in-here"]');

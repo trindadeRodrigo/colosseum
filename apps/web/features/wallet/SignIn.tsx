@@ -191,7 +191,7 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
                   className="flex flex-col gap-3"
                 >
                   <p className="text-body-sm">{t.signIn.wallet.both(asking.name)}</p>
-                  <div className="grid w-full grid-cols-1 gap-3 min-[480px]:grid-cols-2">
+                  <div className="grid w-full grid-cols-1 gap-3">
                     {families(asking).map((family) => {
                       const id = asking.ids[family] as string;
                       return (
@@ -226,10 +226,12 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
                           busyLabel={t.signIn.wallet.waiting}
                           disabled={only.length === 0 || (busy !== null && busy !== `wallet:${id}`)}
                           onClick={() => choose(choice)}
-                          className="w-full justify-start gap-3"
+                          className="w-full justify-start"
                         >
-                          <WalletIcon icon={choice.icon} />
-                          {choice.name}
+                          <span className="inline-flex items-center gap-3">
+                            <WalletIcon icon={choice.icon} />
+                            {choice.name}
+                          </span>
                         </Button>
                       </li>
                     );
