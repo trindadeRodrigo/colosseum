@@ -3,11 +3,13 @@ import { type ChainId, chainFamily, type SharedFamily, type Target } from '@colo
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useState } from 'react';
+import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card, CardBody, CardHeader, CardLoading } from '../../components/ui/Card';
+import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { Field, Input, Select, Textarea } from '../../components/ui/Field';
 import { PAGE_TITLE } from '../../components/ui/heading';
+import { SkeletonText } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -160,7 +162,7 @@ export function PublishScreen() {
   if (person.kind === 'loading')
     return (
       <Card>
-        <CardLoading label={t.chain.reading} />
+        <CardWait label={t.chain.reading} skeleton={<SkeletonText lines={4} />} />
       </Card>
     );
   if (person.kind !== 'ready' || !chain)

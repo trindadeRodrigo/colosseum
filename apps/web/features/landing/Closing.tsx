@@ -2,12 +2,13 @@
 import { useState } from 'react';
 import { SubscribeBlock, type SubscribeStatus } from '../../components/ui/SubscribeBlock';
 import { useT } from '../../i18n/I18nProvider';
-import { ClosingDrawing } from './ClosingDrawing';
+import { ClosingCoins } from './ClosingCoins';
 
 // "Built piece by piece." (subscribe-block.md): the closing section and its email field. Sign-ups are
 // not open: there is no route that takes an address, so nothing typed here is sent or kept, and the
 // block says so before and after. The checks of the address are the block's own. Its picture is the
-// hero's joint drawn exploded, coming together (ClosingDrawing, gate CLOSING-INK), not a photograph.
+// assets a plan is made of, as coins that gather into one plan beside the heading as the reader scrolls
+// (ClosingCoins, gate CLOSING-COINS), with no frame; the field sits under it, centred.
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -18,14 +19,14 @@ export function Closing() {
     <section
       id="updates"
       aria-label={t.label}
-      className="relative z-[2] scroll-mt-22 bg-background pt-[clamp(56px,8vw,120px)] pb-[clamp(72px,10vw,140px)]"
+      className="relative z-[2] scroll-mt-22 bg-background pb-[clamp(72px,10vw,140px)]"
     >
-      <div className="mx-auto w-full max-w-page px-[clamp(16px,4vw,56px)]">
+      <div className="mx-auto w-full px-[clamp(16px,4vw,56px)]">
         <SubscribeBlock
           eyebrow={t.eyebrow}
           heading={t.title}
           lede={t.lede}
-          art={<ClosingDrawing label={t.drawingAlt} className="aspect-[12/13] w-full" />}
+          stage={(head) => <ClosingCoins label={t.drawingAlt}>{head}</ClosingCoins>}
           options={[
             { id: 'updates', label: t.updates },
             { id: 'newsletter', label: t.newsletter },

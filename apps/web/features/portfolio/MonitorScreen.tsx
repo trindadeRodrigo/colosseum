@@ -2,11 +2,13 @@
 import type { ChainId } from '@colosseum/schemas';
 import Link from 'next/link';
 import { type ReactNode, useId } from 'react';
+import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card, CardBody, CardEmpty, CardLoading } from '../../components/ui/Card';
+import { Card, CardBody, CardEmpty } from '../../components/ui/Card';
 import { PAGE_TITLE } from '../../components/ui/heading';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
+import { SkeletonSummary } from '../../components/ui/Skeleton';
 import { Status } from '../../components/ui/StatusMark';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
@@ -40,14 +42,14 @@ export function MonitorScreen() {
   const history = useVaultHistory();
   const words = t.portfolio;
   const link = buttonClass({ variant: 'link' });
-  const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.mockAnnounce };
+  const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.sampleFigure };
   const groupId = useId();
 
   const chain = state.kind === 'reading' || state.kind === 'answered' ? state.chain : null;
   const network = chain ? port.network(chain) : null;
   const chainName = chain ? (network?.name ?? t.chain.names[chain]) : '';
-  const chains =
-    state.kind === 'answered' && state.outcome.kind === 'read' ? state.outcome.chains : [];
+  const outcome = state.kind === 'answered' && state.outcome.kind === 'read' ? state.outcome : null;
+  const chains = outcome?.chains ?? [];
   const vaults = chains.flatMap((entry) => entry.vaults);
   // The chains the person holds a vault on. On one, the page is that chain's; on more, it is grouped.
   const held = chains.filter((entry) => entry.vaults.length > 0);
@@ -133,7 +135,7 @@ export function MonitorScreen() {
   if (state.kind === 'loading' || state.kind === 'reading')
     body = (
       <Card>
-        <CardLoading label={words.reading} />
+        <CardWait label={words.reading} skeleton={<SkeletonSummary />} />
       </Card>
     );
   else if (state.kind === 'signed-out')
@@ -163,17 +165,51 @@ export function MonitorScreen() {
   else {
     switch (state.outcome.kind) {
       case 'read':
-        body =
-          vaults.length === 0
+        body = [
+          // Each chain that could not be read says so; the ones that were read are shown all the same.
+          ...(state.outcome.unavailable.length > 0 || state.outcome.current === 'not-held'
+            ? [
+                <ul key="chains-out" data-ui="chains-out" className="flex flex-col gap-1.5">
+                  {state.outcome.unavailable.map((u) => (
+                    <li key={u.chain} data-chain={u.chain}>
+                      <Status status="watch">
+                        {u.retryable
+                          ? words.chainOut(nameOf(u.chain))
+                          : words.chainOff(nameOf(u.chain))}
+                      </Status>
+                    </li>
+                  ))}
+                  {state.outcome.current === 'not-held' && chain && (
+                    <li data-chain={chain}>
+                      <Status status="watch">{words.notHeld(nameOf(chain))}</Status>
+                    </li>
+                  )}
+                </ul>,
+                ...(state.outcome.unavailable.some((u) => u.retryable)
+                  ? [<div key="again">{readAgain}</div>]
+                  : []),
+              ]
+            : []),
+          // "No vault on <chain> yet" is said only of a chain that was read, and only when every chain
+          // of theirs was: a chain that could not be read may hold one.
+          vaults.length === 0 &&
+          state.outcome.current === 'read' &&
+          state.outcome.unavailable.length === 0
             ? say(
                 words.empty(chainName),
                 <Link href="/goal" className={link}>
                   {words.startGoal}
                 </Link>,
               )
-            : grouped
-              ? [<AcrossChains key="across" totals={held.map(totalOf)} />, ...held.map(chainGroup)]
-              : held.flatMap((entry) => entry.vaults.map((vault) => vaultBlock(entry, vault)));
+            : vaults.length === 0
+              ? null
+              : grouped
+                ? [
+                    <AcrossChains key="across" totals={held.map(totalOf)} />,
+                    ...held.map(chainGroup),
+                  ]
+                : held.flatMap((entry) => entry.vaults.map((vault) => vaultBlock(entry, vault))),
+        ];
         break;
       case 'unavailable':
         body = say(

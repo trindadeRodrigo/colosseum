@@ -14,6 +14,7 @@ SOLANA_RPC_URL=<devnet node> KEEPER_SOLANA_KEYPAIR=<path to the keeper key> \
 - It signs with the one key at `KEEPER_SOLANA_KEYPAIR`, only if that key is the record's default keeper, and only transactions whose signer is that key. Neither the path nor anything in the file is ever printed: a file it cannot read is reported in those words only.
 - `KEEPER_STATE_DIR` (default `~/.tenonfi/keeper`) holds what it remembers between runs, one file per network and genesis (`solana-devnet-<genesis>.json`), held by one keeper at a time. See "Legs in flight and reverted legs".
 
+- With `--loop`, a round that fails (the node does not answer, a DNS error, a 429 or a 5xx) is one line with `"outcome":"round-failed"`, its reason and `"alert":true`; the next round comes after 15 s, doubled after each failure in a row up to 5 minutes, and the interval returns once a round goes through. A failed round never ends the loop, and the state file stays held. What is wrong at start (no node, a key that is not the keeper's, the wrong network) stops it before the first round, as before. With `--once` the failed round is said and the keeper exits 1. The same on both chains: `src/loop.ts` runs the rounds, `src/keeper.ts` gives each its lines, alerts and health ping, and no line or alert carries `SOLANA_RPC_URL` or `ROBINHOOD_RPC_URL`, a vault's own failure included. A Solana call the node never answers fails after 30 s, so a hung connection fails the round instead of stalling it.
 ## A round
 
 Every vault with auto-follow on, read from the chain, in random order. For each vault, at most one adoption, one sync and one leg, each built and simulated by the adapter, signed, sent, and tracked until the chain settles it:
@@ -72,7 +73,7 @@ KEEPER_CHAIN=robinhood ROBINHOOD_RPC_URL=<46630 node> KEEPER_ROBINHOOD_KEY=<path
 - `KEEPER_DISCORD_WEBHOOK`: every round's alert lines go there as one message (a vault past half its loss budget, a reverted leg passed over, a leg that would be refused for a reason that does not pass by waiting, a vault held by an unsettled leg), and so does a round that failed. `KEEPER_LOW_GAS` (wei on Robinhood Chain, default 0.0005 ETH; lamports on Solana, default 0.05 SOL): below it, the keeper's own balance is an alert.
 - `KEEPER_HEALTHCHECK_URL`: pinged after every round, and its `/fail` after a round that failed, so a keeper that stopped or hangs is noticed by the check's own schedule.
 - Neither URL is ever printed; a post that fails is said on stderr in words of its own (`apps/keeper/src/alerts.ts`, `tests/keeper/alerts.test.ts`).
-- `scripts/keeper/run.sh <solana|robinhood>` runs the keeper in a loop and starts it again 30 s after it stops; `scripts/keeper/tenonfi-keeper@.service` is the systemd unit for a Linux machine, its environment in `/etc/tenonfi/keeper-<chain>.env`.
+- `scripts/keeper/run.sh <solana|robinhood>` runs the keeper in a loop and starts it again 30 s after it stops (a failed round no longer stops it; a crash or a set-up error does); `scripts/keeper/tenonfi-keeper@.service` is the systemd unit for a Linux machine, its environment in `/etc/tenonfi/keeper-<chain>.env`.
 
 ## For later
 

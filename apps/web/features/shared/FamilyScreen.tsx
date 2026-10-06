@@ -11,13 +11,15 @@ import type {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useState } from 'react';
+import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card, CardBody, CardHeader, CardLoading } from '../../components/ui/Card';
+import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { DataTable } from '../../components/ui/DataTable';
 import { utcMinute } from '../../components/ui/ExecutionList';
 import { PAGE_TITLE } from '../../components/ui/heading';
 import { MAX_LEGS, PlanLegs } from '../../components/ui/PlanLegs';
+import { SkeletonPlan, SkeletonRows } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -130,7 +132,7 @@ export function FamilyScreen({ slug }: { slug: string }) {
   if (load.kind === 'loading')
     return (
       <Card>
-        <CardLoading label={t.shared.family.loading} />
+        <CardWait label={t.shared.family.loading} skeleton={<SkeletonPlan />} />
       </Card>
     );
   if (load.kind !== 'read')
@@ -520,7 +522,7 @@ function VaultsPanel({
     <Card as="section" aria-labelledby={titleId}>
       <CardHeader title={v.title} level={2} id={titleId} />
       {vaults === null ? (
-        <CardLoading label={t.shared.vault.loading} />
+        <CardWait label={t.shared.vault.loading} skeleton={<SkeletonRows rows={2} columns={3} />} />
       ) : (
         <CardBody className="flex flex-col gap-4">
           {vaults === 'failed' ? (

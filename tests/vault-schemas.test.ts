@@ -438,7 +438,8 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
     expect(LegRouteParams.parse(ids)).toEqual(ids);
     expect(OrderRouteParams.parse({ id: ids.id })).toEqual({ id: ids.id });
     const empty = { chains: [], disclaimer: schemas.DISCLAIMER.en };
-    expect(PortfolioResponse.parse(empty)).toEqual(empty);
+    // a server older than `unavailable` sends none: every chain it had was read
+    expect(PortfolioResponse.parse(empty)).toEqual({ ...empty, unavailable: [] });
     const chain = {
       chain: 'solana',
       name: 'Solana',

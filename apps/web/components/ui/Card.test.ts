@@ -51,38 +51,38 @@ describe('Card (card.md)', () => {
     expect(c.attrs['aria-current']).toBe('page');
   });
 
-  it('when mocked draws the hatch band on its edge and the word itself, and never a hatched body', () => {
+  it('when mocked draws the hatch band on its edge and one quiet line, never the word MOCK', () => {
     const { tree, card: c } = root(card.mock);
     expect(all(c, ui('hatch-band'))).toHaveLength(1);
-    expect(all(tree, ui('mock-plate'))).toHaveLength(1);
-    expect(text(one(tree, ui('mock-plate')))).toBe('MOCK: sample data, not live');
+    const line = one(tree, ui('sample-note'));
+    expect(text(line)).toBe('Sample figures');
+    expect(classes(line)).toContain('text-muted-foreground');
+    expect(text(tree)).not.toContain('MOCK');
     expect(classes(c)).not.toContain('tf-hatch');
     expect(all(tree, (e) => classes(e).includes('tf-hatch') && text(e) !== '')).toHaveLength(0);
     // with nothing inside it but a body, and with nothing at all: the card needs no help
     for (const node of [card.mockBody, card.mockEmpty]) {
       const bare = root(node);
       expect(all(bare.card, ui('hatch-band'))).toHaveLength(1);
-      expect(all(bare.card, ui('mock-plate'))).toHaveLength(1);
+      expect(all(bare.card, ui('sample-note'))).toHaveLength(1);
     }
-    // a body alone still has no hairline above it: the plate is not its elder sibling
+    // the line is at the foot: a body is still the first thing in the card
     const body = one(root(card.mockBody).tree, ui('card-body'));
     expect(body.parent?.children[0]).toBe(body);
+    expect(body.parent?.parent?.children.at(-1)).toMatchObject({
+      attrs: { 'data-ui': 'sample-note' },
+    });
   });
 
-  it('says the plate’s hidden words as it is told to, and a note under it for everyone to read', () => {
+  it('says its line in the language it is told, with the test network after it', () => {
     const told = root(card.mockNoted);
-    expect(text(one(told.tree, ui('mock-plate')))).toBe('MOCK: dados de exemplo');
-    expect(text(one(told.tree, ui('mock-note')))).toBe('rede de teste');
-    // still the one band and the one plate, and the note is not on the hatch
+    expect(text(one(told.tree, ui('sample-note')))).toBe('Números de exemplo · rede de teste');
     expect(all(told.card, ui('hatch-band'))).toHaveLength(1);
-    expect(all(told.tree, ui('mock-plate'))).toHaveLength(1);
     expect(all(told.tree, (e) => classes(e).includes('tf-hatch') && text(e) !== '')).toHaveLength(
       0,
     );
     // with no note, no note
-    const plain = root(card.mockTold);
-    expect(all(plain.tree, ui('mock-note'))).toHaveLength(0);
-    expect(text(one(plain.tree, ui('mock-plate')))).toBe('MOCK: dados de exemplo');
+    expect(text(one(root(card.mockTold).tree, ui('sample-note')))).toBe('Números de exemplo');
   });
 
   it('has square corners as a table panel', () => {

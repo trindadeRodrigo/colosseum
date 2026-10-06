@@ -2,11 +2,13 @@
 import type { SharedFamily, SharedRecipe } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useEffect, useId, useState } from 'react';
+import { Wait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card, CardBody, CardEmpty, CardHeader, CardLoading } from '../../components/ui/Card';
+import { Card, CardBody, CardEmpty, CardHeader } from '../../components/ui/Card';
 import { ChainBadges } from '../../components/ui/ChainBadge';
 import { PAGE_TITLE } from '../../components/ui/heading';
+import { SkeletonCards } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -71,9 +73,7 @@ export function ShelfScreen() {
       </header>
 
       {load.kind === 'loading' ? (
-        <Card>
-          <CardLoading label={t.shared.shelf.loading} />
-        </Card>
+        <Wait label={t.shared.shelf.loading} skeleton={<SkeletonCards />} />
       ) : load.kind !== 'read' ? (
         <section aria-labelledby={titleId} className="flex flex-col items-start gap-4">
           <p className="max-w-(--tf-measure-body) text-body">

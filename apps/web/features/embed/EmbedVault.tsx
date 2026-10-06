@@ -5,8 +5,8 @@ import { useEffect, useState } from 'react';
 import { Mark } from '../../components/shell/Mark';
 import { Disclaimer } from '../../components/ui/Disclaimer';
 import { EmbedShell } from '../../components/ui/EmbedShell';
-import { MockPlate } from '../../components/ui/MockPlate';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
+import { useWaitPhase } from '../../components/ui/wait';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { API } from '../../lib/api';
@@ -23,8 +23,8 @@ import { PARTNER_BUTTON } from './EmbedGoal';
 import { useHostHeight } from './host-height';
 
 // A plan held in a vault, in the partner's skin (embed-shell.md, Anatomy): what it is worth, its parts
-// with their weights, each value on its pin in the partner's muted colour, the MOCK plate where the
-// chain is not live, the disclaimer, and the way to see it in tenonfi. Read from the public vault
+// with their weights, each value on its pin in the partner's muted colour, the quiet sample line
+// where the chain is not live, the disclaimer, and the way to see it in tenonfi. Read from the public vault
 // route (`GET /v1/vaults/{chain}/{address}`): anybody may read a vault, so nothing here needs a
 // sign-in, and nothing is written or signed.
 
@@ -69,8 +69,12 @@ export function EmbedVault({
     };
   }, [chain, address]);
 
+  // The hosted API may be asleep: after a few seconds the wait says so, and after a minute it is the
+  // one sentence the shell has for a plan it cannot show.
+  const phase = useWaitPhase(state.kind === 'loading');
   const labels = {
     loading: words.loading,
+    slow: t.shell.wait.slow,
     unavailable: words.unavailable,
     showSchedule: words.showSchedule,
     poweredBy: words.poweredBy,
@@ -78,7 +82,17 @@ export function EmbedVault({
   if (state.kind !== 'read')
     return (
       <div style={style} data-ui="embed-frame">
-        <EmbedShell label={words.label} lang={LOCALE[lang]} state={state.kind} labels={labels} />
+        {state.kind === 'loading' && phase !== 'over' ? (
+          <EmbedShell
+            label={words.label}
+            lang={LOCALE[lang]}
+            state="loading"
+            slow={phase === 'slow'}
+            labels={labels}
+          />
+        ) : (
+          <EmbedShell label={words.label} lang={LOCALE[lang]} state="unavailable" labels={labels} />
+        )}
       </div>
     );
 
@@ -104,17 +118,15 @@ export function EmbedVault({
         lead={words.vault.lead}
         credit={{ name: 'tenonfi', href: page, symbol: <Mark size={16} /> }}
         labels={labels}
+        sample={
+          vault.provenance === 'live'
+            ? undefined
+            : {
+                line: t.shell.mockAnnounce,
+                note: vault.provenance === 'sandbox' ? t.shell.testNetwork : undefined,
+              }
+        }
       >
-        {vault.provenance !== 'live' && (
-          <p className="flex flex-wrap items-center gap-[0.5em]">
-            <MockPlate labels={{ announce: t.shell.mockAnnounce }} />
-            {vault.provenance === 'sandbox' && (
-              <span className="text-[length:var(--tf-e-small)] text-muted-foreground">
-                {t.shell.testNetwork}
-              </span>
-            )}
-          </p>
-        )}
         <dl>
           <div className="flex justify-between gap-[0.75em] py-[0.6em]">
             <dt className="text-muted-foreground">{words.vault.value}</dt>

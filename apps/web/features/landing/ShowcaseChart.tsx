@@ -22,19 +22,27 @@ import { GROWTH, SAMPLE, TRIP } from './sample';
 
 // The two charts of his showcase (goal-showcase-case.md, part 5), drawn as SVG from the sample series:
 // the colours are the plan-leg tokens and the text colours of the view, so light and dark both hold.
-// Solid is the base, dashed is projected (the payout, the weak case, the target). Labels sit at the
-// lines; each chart has a sentence for a screen reader and the same figures as a hidden table.
+// Solid is the base, dashed is projected (the payout, the weak case, the target). The words that mark a
+// line sit in a band above the plot, never over a bar or a line (Thom, Oct 6); each chart has a
+// sentence for a screen reader and the same figures as a hidden table.
 //
 // Each is drawn at its own measured width (as the Bearing charts are), so its 10px type stays 10px on a
 // phone and nothing scrolls sideways. A crosshair reads a month out (`useChartCursor`, shared with the
 // Bearing charts): a mouse hovers, a finger taps and drags, the arrow keys step, Home and End jump. The
-// readout under the chart is an aria-live line, every figure in it pinned MOCK like the rest of the
-// case. Pointing at the legend lights a series and dims the others.
+// line under the chart is the legend and the readout in one: the series' names with their swatches
+// while nothing is pointed at (pointing at one lights it and dims the others), and the month's values
+// in the same places when a month is; an aria-live line, every figure on its sample pin.
 
 /** The width a chart is laid out for before it is measured: the server's drawing, scaled. */
 const W_DEFAULT = 640;
-const H = 220;
-const TOP = 14;
+const H = 232;
+/** The band above the plot that holds the words marking a line: nothing is drawn in it but them. */
+export const BAND = 20;
+const TOP = BAND + 6;
+/** The baseline of a word in the band. */
+const BAND_Y = 13;
+/** About how wide a character of the 10px mono face is: for keeping a word on the chart. */
+const CHAR = 6.2;
 const BOTTOM = 26;
 const MONO = { fontFamily: 'var(--font-mono)', fontSize: 10 } as const;
 
@@ -100,7 +108,7 @@ function Table({ labels, rows }: { labels: Labels; rows: [string, string][] }) {
   );
 }
 
-/** A sample figure in the readout: the amount and the MOCK pin, as every figure of a case has. */
+/** A sample figure in the readout: the amount and its sample pin, as every figure of a case has. */
 function Sample({ lang, usd }: { lang: Lang; usd: number }) {
   return <ProvenancePin value={whole(lang, usd)} obs={SAMPLE} labels={dictionary(lang).pin} />;
 }
@@ -150,6 +158,11 @@ export function TripChart({
   const bar = width / TRIP.balances.length;
   const centre = (i: number) => left + i * bar + bar / 2;
   const payoutX = left + TRIP.months * bar;
+  // the words end at the line, or start at it where there is no room before it
+  const payoutLabel =
+    payoutX - 4 - payout.length * CHAR >= 2
+      ? { x: payoutX - 4, anchor: 'end' as const }
+      : { x: payoutX + 4, anchor: 'start' as const };
   const series: CaseSeries[] = TRIP.legs.map((leg, i) => ({
     id: `part-${leg.chart}`,
     label: parts[i] ?? '',
@@ -214,15 +227,22 @@ export function TripChart({
                 </g>
               );
             })}
+            {/* the payout's start, its line rising into the band as the leader of its words */}
             <line
               x1={payoutX}
               x2={payoutX}
-              y1={TOP}
+              y1={BAND_Y - 9}
               y2={TOP + height}
               stroke="var(--foreground)"
               strokeDasharray="3 3"
             />
-            <text x={payoutX - 6} y={TOP + 10} textAnchor="end" fill="var(--foreground)">
+            <text
+              data-ui="chart-note"
+              x={payoutLabel.x}
+              y={BAND_Y}
+              textAnchor={payoutLabel.anchor}
+              fill="var(--foreground)"
+            >
               {payout}
             </text>
             <text x={left} y={H - 8} fill="var(--muted-foreground)">
@@ -238,7 +258,11 @@ export function TripChart({
           </svg>
         </CasePlot>
       </div>
-      <CaseReadout at={cursor.at} hint={words.hint}>
+      <CaseReadout
+        at={cursor.at}
+        hint={words.hint}
+        idle={<CaseLegend series={series} focus={focus} onFocus={setFocus} label={words.series} />}
+      >
         {i !== null && (
           <>
             <span className="text-foreground">{monthName(lang, plusMonths(TRIP.start, i))}</span>
@@ -258,7 +282,6 @@ export function TripChart({
           </>
         )}
       </CaseReadout>
-      <CaseLegend series={series} focus={focus} onFocus={setFocus} label={words.series} />
       <Table
         labels={labels}
         rows={TRIP.balances.map((value, m) => [
@@ -275,12 +298,11 @@ export function GrowthChart({
   lang,
   labels,
   goal,
-  weak,
 }: {
   lang: Lang;
   labels: Labels;
+  /** The words of the target line, in the band above the plot: "goal $35k". */
   goal: string;
-  weak: string;
 }) {
   const words = dictionary(lang).landing.show.readout;
   const [box, measured] = useWidth<HTMLDivElement>();
@@ -367,18 +389,19 @@ export function GrowthChart({
                 stroke="var(--foreground)"
                 strokeDasharray="6 4"
               />
-              <text x={left + 6} y={y(GROWTH.targetUsd) - 6} fill="var(--foreground)">
+              {/* its words in the band, after a short stroke of the same dash */}
+              <line
+                x1={left}
+                x2={left + 14}
+                y1={BAND_Y - 3}
+                y2={BAND_Y - 3}
+                stroke="var(--foreground)"
+                strokeDasharray="6 4"
+              />
+              <text data-ui="chart-note" x={left + 18} y={BAND_Y} fill="var(--foreground)">
                 {goal}
               </text>
             </g>
-            <text
-              x={x(last) - 4}
-              y={y(GROWTH.weak[last] ?? min) + 14}
-              textAnchor="end"
-              fill="var(--muted-foreground)"
-            >
-              {weak}
-            </text>
             <text x={left} y={H - 8} fill="var(--muted-foreground)">
               {monthName(lang, GROWTH.start)}
             </text>
@@ -411,7 +434,11 @@ export function GrowthChart({
           </svg>
         </CasePlot>
       </div>
-      <CaseReadout at={cursor.at} hint={words.hint}>
+      <CaseReadout
+        at={cursor.at}
+        hint={words.hint}
+        idle={<CaseLegend series={series} focus={focus} onFocus={setFocus} label={words.series} />}
+      >
         {i !== null && (
           <>
             <span className="text-foreground">{monthName(lang, growthMonth(i))}</span>
@@ -428,7 +455,6 @@ export function GrowthChart({
           </>
         )}
       </CaseReadout>
-      <CaseLegend series={series} focus={focus} onFocus={setFocus} label={words.series} />
       <Table
         labels={labels}
         rows={GROWTH.base.map((value, m) => [monthName(lang, growthMonth(m)), whole(lang, value)])}

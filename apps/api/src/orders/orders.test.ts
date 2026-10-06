@@ -29,7 +29,7 @@ import {
 import { registerV1Routes } from '../routes/v1';
 import { planFixture, testIssuer } from '../testing/harness';
 import { createChainRegistry } from './chains';
-import { Refusal, refusalFromChainError } from './errors';
+import { Refusal, refusalFromChainError, UNSAID_CHAIN_ERROR } from './errors';
 import { attemptFor, orderStatus } from './legs';
 import { basketIdOf, prepareIntent, targetsOf, tradesFor } from './prepare';
 
@@ -479,6 +479,22 @@ describe('a chain refusal as the API answers it', () => {
     expect(answer(new ChainError('VaultExists', 'x', true))[2]).toEqual(d('VaultExists', true));
     expect(answer(new ChainError('Unknown', 'x'))[0]).toBe(500);
   });
+
+  it('says its own text only for a refusal the adapter wrote, never for one it wrapped', () => {
+    // viem's message names the node's URL, and a node's URL can carry its key
+    const raw = new Error('HTTP request failed.\n\nURL: https://rpc.example.invalid/v2/KEY-abc123');
+    const wrapped = new ChainError('Unavailable', raw.message);
+    wrapped.cause = raw;
+    for (const e of [new ChainError('Unknown', raw.message), wrapped]) {
+      const r = refusalFromChainError(e);
+      expect(r.message).toBe(UNSAID_CHAIN_ERROR);
+      expect(JSON.stringify(r.body())).not.toContain('rpc.example');
+      // the code and whether to ask again still reach the caller
+      expect(r.extra.details).toMatchObject({ chainCode: e.code });
+    }
+    // a refusal the adapter wrote in its own words is said as it is
+    expect(refusalFromChainError(new ChainError('NotFunded', 'add cash')).message).toBe('add cash');
+  });
 });
 
 describe('view: value, weight and drift, as the portfolio route gets them from packages/basket', () => {
@@ -824,6 +840,7 @@ describe('the /v1 route table', () => {
       '/v1/orders/{id}/legs/{legId}/report',
       '/v1/portfolio',
       '/v1/shelf',
+      '/v1/testnet/fund',
       '/v1/vaults/{chain}/{address}',
     ]);
     // No route lets a caller through without a token: 503 with no Privy app set, 401 with one.
@@ -874,7 +891,10 @@ describe('no /v1 route can make the server sign', () => {
 
   it('reaches no key, no signer and no chain package that can sign', () => {
     const { files, packages } = reach(join(src, 'routes/v1/index.ts'));
+    // The test faucet's rules are here; its signing file is not: one dynamic import loads it, only when
+    // a faucet key is set (tests/boundaries.test.ts, BEHIND_A_FLAG).
     expect(files.map((f) => relative(src, f)).sort()).toEqual([
+      'faucet/test-funds.ts',
       'orders/chains.ts',
       'orders/errors.ts',
       'orders/families.ts',
@@ -896,6 +916,7 @@ describe('no /v1 route can make the server sign', () => {
       'routes/v1/orders.ts',
       'routes/v1/portfolio.ts',
       'routes/v1/shared.ts',
+      'routes/v1/testnet.ts',
       'routes/v1/vault.ts',
     ]);
     // The chain packages that can sign keep that behind their `./server` entry, and neither the

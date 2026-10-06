@@ -2,6 +2,7 @@
 import type { BasketSheet } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useEffect, useId, useRef, useState } from 'react';
+import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
@@ -11,6 +12,7 @@ import { ConstraintSheet, type SheetFact } from '../../components/ui/ConstraintS
 import { cn } from '../../components/ui/cn';
 import { GoalCard } from '../../components/ui/GoalCard';
 import { PAGE_TITLE } from '../../components/ui/heading';
+import { Skeleton, SkeletonText } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -231,7 +233,7 @@ export function GoalScreen() {
   const chainName = chain ? (network?.name ?? t.chain.names[chain]) : '';
   // Our server has the person's chain switched off: nothing can be built there for now.
   const chainOff = network?.on === false;
-  const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.mockAnnounce };
+  const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.sampleFigure };
   const link = buttonClass({ variant: 'link' });
   // Why the API did not say which chain: it did not answer, it no longer knows this sign-in, it was
   // sent no identity token, or it asked for fewer requests. Each is a different thing for the person
@@ -458,7 +460,7 @@ export function GoalScreen() {
           otherIssues={blocked}
           onChange={change}
           onBuild={buildFrom}
-          labels={{ ...t.goal.sheet, mockAnnounce: t.shell.mockAnnounce }}
+          labels={{ ...t.goal.sheet, mockAnnounce: t.shell.sampleFigure }}
         />
       ) : reading ? (
         <ConstraintSheet<BasketSheet>
@@ -469,11 +471,28 @@ export function GoalScreen() {
           valid={null}
           onChange={change}
           onBuild={buildFrom}
-          labels={{ ...t.goal.sheet, mockAnnounce: t.shell.mockAnnounce }}
+          labels={{ ...t.goal.sheet, mockAnnounce: t.shell.sampleFigure }}
         />
       ) : null}
 
       <div aria-live="polite" className="flex flex-col gap-4">
+        {/* While the plan is built: the card it comes in, in its own shape, and the wait in words. The
+            hosted API may be waking; after a minute the wait gives up and asks to build again. */}
+        {solving && (
+          <Card as="section" aria-label={t.goal.sheet.building}>
+            <CardWait
+              label={t.goal.sheet.building}
+              skeleton={
+                <span aria-hidden="true" className="flex flex-col gap-3">
+                  <Skeleton className="h-6 w-1/2" />
+                  <SkeletonText lines={2} />
+                  <Skeleton className="h-4 w-32" />
+                </span>
+              }
+              onRetry={forget}
+            />
+          </Card>
+        )}
         {build.kind === 'unavailable' && (
           <Card as="section" aria-labelledby={outcomeId}>
             <CardHeader title={t.goal.built.unavailable.title} level={2} id={outcomeId} />

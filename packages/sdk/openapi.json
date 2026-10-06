@@ -1031,7 +1031,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -2051,7 +2052,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -2747,7 +2749,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -3090,7 +3093,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -3110,7 +3114,7 @@
       "get": {
         "summary": "What the signed-in wallet is missing on its chain: the dollar token and native gas",
         "tags": ["funding"],
-        "description": "For the one chain the person’s plans live on. With `amountUsd` and `proposalId` (a plan) or `family` (a shared portfolio’s slug), the need is that of a buy of that amount: the whole deposit in the chain’s dollar token, and the network fee of every step the order would have. With neither, the need is nothing and the answer is what the wallet holds. `missingRaw` is what to add. It reads one wallet, named in the answer: `wallet` when the query names one of the person’s on that chain, and otherwise the wallet their plans are held by (the outside wallet when that names the chain, the wallet made in the app when the chain was picked). An order may name any of the person’s wallets of that family as its owner: ask about the one the order will name. Every figure carries its source, its time and its method, and `provenance`: `mock` on the mock chain, `sandbox` on a test network.",
+        "description": "On the chain of the plan that `proposalId` names, which a buy of it is on; otherwise on the person’s current chain (`GET /v1/me`). With `amountUsd` and `proposalId` (a plan) or `family` (a shared portfolio’s slug), the need is that of a buy of that amount: the whole deposit in the chain’s dollar token, and the network fee of every step the order would have. With neither, the need is nothing and the answer is what the wallet holds. `missingRaw` is what to add. It reads one wallet, named in the answer: `wallet` when the query names one of the person’s on that chain, and otherwise the wallet their plans are held by (the outside wallet when that names the chain, the wallet made in the app when the chain was picked). An order may name any of the person’s wallets of that family as its owner: ask about the one the order will name. Every figure carries its source, its time and its method, and `provenance`: `mock` on the mock chain, `sandbox` on a test network.",
         "parameters": [
           {
             "schema": {
@@ -3332,6 +3336,9 @@
                     },
                     "ok": {
                       "type": "boolean"
+                    },
+                    "testFunds": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -3472,7 +3479,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -3915,7 +3923,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -4192,7 +4201,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -4210,9 +4220,9 @@
     },
     "/v1/me": {
       "get": {
-        "summary": "The signed-in person: their wallets, and the chain their plans live on",
+        "summary": "The signed-in person: their wallets, and the chain their new plans are made on",
         "tags": ["person"],
-        "description": "A plan lives on one chain, the chain of the person’s wallet. Someone who connected an outside wallet is on the chain of that wallet’s family: Solana, or Robinhood Chain for an EVM wallet (`chainSource` is `wallet`). Someone who made a wallet in the app picks the chain once: until then `chain` is null and `chainOptions` lists what may be picked. The wallets are those of the verified identity token.",
+        "description": "`chain` is the current chain: a new plan is made there. Each plan lives on one chain, its own, and stays there when the current chain changes. Someone who connected an outside wallet starts on the chain of that wallet’s family: Solana, or Robinhood Chain for an EVM wallet (`chainSource` is `wallet`). Someone who made a wallet in the app picks the chain: until then `chain` is null. `chainOptions` lists the chains the person holds a wallet for, which they may switch to with `PUT /v1/me/chain`. The wallets are those of the verified identity token.",
         "security": [
           {
             "accessToken": [],
@@ -4419,7 +4429,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -4437,9 +4448,9 @@
     },
     "/v1/me/chain": {
       "put": {
-        "summary": "Pick the chain your plans live on. Once",
+        "summary": "Pick or switch the chain your new plans are made on",
         "tags": ["person"],
-        "description": "For someone who made a wallet in the app. The chain has to be one they hold a wallet for and one this server runs: Solana or Robinhood Chain. The pick is stored once and never changes: the same chain again answers as before, another chain answers 409. Someone whose chain is that of the outside wallet they connected has nothing to pick, and another chain answers 409 too.",
+        "description": "Sets the current chain. It may be changed at any time; plans already made stay on their own chains, and are bought there. The chain has to be one this server offers (Solana or Robinhood Chain; another answers 422) and one the person holds a wallet for: a chain none of their wallets signs on answers 409 with code `NO_WALLET_FOR_CHAIN`, so someone signed in with an EVM wallet alone cannot switch to Solana. The same chain again answers as before and writes nothing.",
         "requestBody": {
           "required": true,
           "content": {
@@ -4664,7 +4675,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -5475,7 +5487,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -6024,7 +6037,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -6490,7 +6504,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -7049,7 +7064,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -7641,7 +7657,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -7659,9 +7676,9 @@
     },
     "/v1/portfolio": {
       "get": {
-        "summary": "The signed-in person's vaults on their chain, with holdings, prices and drift",
+        "summary": "The signed-in person's vaults on every chain, with holdings, prices and drift",
         "tags": ["portfolio"],
-        "description": "Read from the one chain the person’s plans live on (`GET /v1/me`), for the wallets in the identity token: `chains` has that one entry. `driftBps` is the weight of a position minus its target. The entry and every price carry `provenance`; anything that is not `live` is a test network or MOCK.",
+        "description": "Read from every chain this server runs that the person holds a wallet for, whatever their current chain is: each plan lives on its own chain, and `chains` has an entry for each that could be read, in the server’s order. A chain that could not be read is in `unavailable` with its code, why, and whether asking again may help: one switched off here (`CHAIN_UNAVAILABLE`, not retryable) or one whose read failed; the others are answered all the same. Only when none of the person’s chains could be read is the answer 503 `CHAIN_UNAVAILABLE`. The wallets are those of the identity token. `driftBps` is the weight of a position minus its target. The entry and every price carry `provenance`; anything that is not `live` is a test network or MOCK.",
         "security": [
           {
             "accessToken": [],
@@ -8029,11 +8046,38 @@
                         "additionalProperties": false
                       }
                     },
+                    "unavailable": {
+                      "default": [],
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "chain": {
+                            "type": "string",
+                            "enum": ["solana", "base", "robinhood"]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "error": {
+                            "type": "string"
+                          },
+                          "retryable": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": ["chain", "name", "code", "error", "retryable"],
+                        "additionalProperties": false
+                      }
+                    },
                     "disclaimer": {
                       "type": "string"
                     }
                   },
-                  "required": ["chains", "disclaimer"],
+                  "required": ["chains", "unavailable", "disclaimer"],
                   "additionalProperties": false
                 }
               }
@@ -8160,7 +8204,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -8597,7 +8642,287 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
+                      ]
+                    },
+                    "fix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/testnet/fund": {
+      "post": {
+        "summary": "Test network only: send the signed-in wallet the test tokens and gas a buy is missing",
+        "tags": ["funding"],
+        "description": "For the one chain the person’s plans live on, when it runs on a test network and this server holds a faucet key for it (GET /v1/funding says `testFunds: true`). The server works out what is missing for this buy itself, as GET /v1/funding does, and sends that with a small margin: test dollars and the native token for fees, transferred from the faucet’s float. Never on mainnet. A person may ask three times a day, the faucet as a whole a hundred; one send is at most $5,000 in test dollars. The faucet is a wallet holding a float of test tokens that it transfers from, with no mint authority or role; a send the float cannot cover answers 409 with `test funds are low; ask the team` (or `test gas is low; ask the team`). The answer names what was sent and the test network’s transaction ids, and nothing about the node or the key.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "wallet": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{40}$"
+                      }
+                    ]
+                  },
+                  "amountUsd": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000000
+                  },
+                  "proposalId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "family": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]*$"
+                  }
+                },
+                "required": ["amountUsd"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "build",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "chain": {
+                      "type": "string",
+                      "enum": ["solana", "base", "robinhood"]
+                    },
+                    "provenance": {
+                      "type": "string",
+                      "enum": ["sandbox"]
+                    },
+                    "wallet": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                        },
+                        {
+                          "type": "string",
+                          "pattern": "^0x[0-9a-f]{40}$"
+                        }
+                      ]
+                    },
+                    "cash": {
+                      "type": "object",
+                      "properties": {
+                        "symbol": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "decimals": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "raw": {
+                          "type": "string",
+                          "maxLength": 78,
+                          "pattern": "^(?:0|[1-9]\\d*)$"
+                        }
+                      },
+                      "required": ["symbol", "decimals", "raw"],
+                      "additionalProperties": false
+                    },
+                    "gas": {
+                      "type": "object",
+                      "properties": {
+                        "symbol": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "decimals": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "raw": {
+                          "type": "string",
+                          "maxLength": 78,
+                          "pattern": "^(?:0|[1-9]\\d*)$"
+                        }
+                      },
+                      "required": ["symbol", "decimals", "raw"],
+                      "additionalProperties": false
+                    },
+                    "txIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "left": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": ["chain", "provenance", "wallet", "cash", "gas", "txIds", "left"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "chainCode": {
+                          "type": "string",
+                          "enum": [
+                            "NotKeeper",
+                            "AutoFollowOff",
+                            "KeeperPaused",
+                            "MintNotAccepted",
+                            "RouterNotAllowed",
+                            "SpentTooMuch",
+                            "ReceivedTooLittle",
+                            "OtherAccountDebited",
+                            "AccountTampered",
+                            "PriceStale",
+                            "PriceDeviation",
+                            "MarketClosed",
+                            "MultiplierWindow",
+                            "NotTowardTarget",
+                            "PastTarget",
+                            "Cooldown",
+                            "LossCapReached",
+                            "AssetNotPriced",
+                            "NewAssetNeedsOwner",
+                            "VersionNotEffective",
+                            "CreatorLimit",
+                            "VersionMismatch",
+                            "WrongDestination",
+                            "ParamOutOfBounds",
+                            "NotUpgradeAuthority",
+                            "InvalidTargets",
+                            "NotCashMint",
+                            "ZeroAddress",
+                            "LockedAtLaunch",
+                            "HookNotAllowed",
+                            "AssetListFull",
+                            "SameMint",
+                            "NoPendingVersion",
+                            "NotCreatorOrGuardian",
+                            "NotCashLeg",
+                            "KeeperAssetOff",
+                            "PriceOutOfRange",
+                            "NothingTraded",
+                            "NotOwner",
+                            "CashTokenNotSet",
+                            "DepositShortfall",
+                            "GasTooLow",
+                            "NotAdmin",
+                            "NoCode",
+                            "AssetIsRouter",
+                            "RouterIsAsset",
+                            "NotCreating",
+                            "RouterFailed",
+                            "BalanceUnreadable",
+                            "CashTokenNotRemovable",
+                            "HandoverNotDone",
+                            "AlreadySet",
+                            "RecipeExists",
+                            "BadInput",
+                            "NotSupported",
+                            "TooManyTrades",
+                            "BadTrade",
+                            "VaultNotFound",
+                            "VaultExists",
+                            "RecipeNotFound",
+                            "NotFollowing",
+                            "NotFunded",
+                            "NoGas",
+                            "AllowanceTooLow",
+                            "Expired",
+                            "NotBuiltHere",
+                            "Unavailable",
+                            "Unknown"
+                          ]
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "blocking": {
+                          "type": "object",
+                          "properties": {
+                            "orderId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "legId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["orderId", "legId"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_FUNDED",
+                        "ASSET_NOT_ELIGIBLE",
+                        "GOAL_NOT_ACHIEVABLE",
+                        "NEW_ASSET_NEEDS_APPROVAL",
+                        "VERSION_CHANGED",
+                        "CREATOR_LIMIT",
+                        "ORDER_EXPIRED",
+                        "US_PERSON",
+                        "RATE_LIMITED",
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE",
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -9127,7 +9452,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {

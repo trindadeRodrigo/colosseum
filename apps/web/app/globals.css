@@ -27,6 +27,12 @@
 @source not inline("{italic,font-thin,font-extralight,font-light,text-justify}");
 
 @custom-variant dark (&:where(.dark, .dark *));
+/* The landing closing's wide layout, the joint beside its heading (features/landing/closing-pose.ts, isNarrow). */
+@custom-variant closing-wide {
+  @media (min-width: 960px) and (min-aspect-ratio: 23 / 20) {
+    @slot;
+  }
+}
 
 /* ---------------------------------------------------------------------------------------------------
  * A. Semantic variables. OKLCH as in working-brand.theme.json; the comment is the .yml name and hex.
@@ -499,6 +505,11 @@
   --ease-seat: var(--tf-ease-seat);
   --animate-seat: seat var(--tf-dur-slide) var(--tf-ease-seat) both;
   --animate-pin-drop: pin-drop var(--tf-dur-fade) var(--tf-ease-seat) var(--tf-delay-pin) both;
+  /* A dialog rises 12px as it fades in (320ms); its scrim fades (160ms). With reduced motion both are
+   * a 120ms crossfade (STYLE.md, Motion). */
+  --animate-dialog-in: dialog-in var(--tf-dur-slide) var(--tf-ease-seat) both;
+  --animate-scrim-in: fade var(--tf-dur-fade) var(--tf-ease-seat) both;
+  --animate-crossfade: fade 120ms linear both;
   --default-transition-duration: 160ms;
   --default-transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 
@@ -526,12 +537,60 @@
   }
 }
 
+@keyframes dialog-in {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
 @keyframes fade {
   from {
     opacity: 0;
   }
   to {
     opacity: 1;
+  }
+}
+
+/* The loader (STYLE.md, "the lattice assembles"): a 3x3 lattice whose horizontals slide in on x, then
+ * whose verticals drop on y, 240ms each with a 60ms stagger, then a 400ms hold, over and over while a
+ * wait lasts. Under reduced motion it is the still lattice. */
+.tf-lattice-assemble .tf-lattice-h {
+  animation: lattice-h 1240ms var(--tf-ease-seat) calc(var(--i) * 60ms) infinite both;
+}
+.tf-lattice-assemble .tf-lattice-v {
+  animation: lattice-v 1240ms var(--tf-ease-seat) calc(420ms + var(--i) * 60ms) infinite both;
+}
+
+@keyframes lattice-h {
+  0% {
+    transform: translateX(-100%);
+  }
+  19%,
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes lattice-v {
+  0% {
+    transform: translateY(-100%);
+  }
+  19%,
+  100% {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tf-lattice-assemble .tf-lattice-h,
+  .tf-lattice-assemble .tf-lattice-v {
+    animation: none;
   }
 }
 

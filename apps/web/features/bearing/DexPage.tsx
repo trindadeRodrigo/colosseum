@@ -34,6 +34,7 @@ import {
   Kpis,
   Loading,
   MultiSelect,
+  PageWait,
   Pie,
   Reason,
   SrcLine,
@@ -98,7 +99,20 @@ export function DexPage({ page }: { page: 'stocks' | 'commodities' }) {
     else state.setSel({ assets: [symbol], pools: null });
   }, [asked, b, page, router, state]);
 
-  if (!b || (b.assets.ok && !dd)) return <Loading>{t.dex.reading}</Loading>;
+  const k = t.dex.kpi;
+  if (!b || (b.assets.ok && !dd))
+    return (
+      <PageWait
+        label={t.dex.reading}
+        kpis={[
+          { label: k.tvl, note: k.tvlNote },
+          { label: k.pools, note: k.poolsNote('0') },
+          { label: k.capacity, note: k.capacityNote(t.regimes.us_market_hours) },
+          { label: k.volume, note: k.volumeNote('2026-01-01 00:00') },
+          { label: k.lp, note: k.lpNote },
+        ]}
+      />
+    );
   if (!b.assets.ok)
     return (
       <p className="mt-6">

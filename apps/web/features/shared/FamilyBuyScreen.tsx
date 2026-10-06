@@ -2,21 +2,18 @@
 import { chainFamily, type SharedFamily, TRUST_STATUS } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useId, useRef, useState } from 'react';
-import { Button } from '../../components/ui/Button';
+import { useEffect, useRef, useState } from 'react';
+import { CardWait } from '../../components/shell/Wait';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card, CardBody, CardLoading } from '../../components/ui/Card';
-import { Field, Input } from '../../components/ui/Field';
+import { Card } from '../../components/ui/Card';
 import { PAGE_TITLE } from '../../components/ui/heading';
-import { StatusMark } from '../../components/ui/StatusMark';
+import { SkeletonPlan } from '../../components/ui/Skeleton';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { dollars, parseNumber } from '../goal/sheet';
-import { type Funding, FundingCard, MAX_USD, MIN_USD } from '../order/BuyScreen';
-import { fundMock, readFunding } from '../order/order-api';
+import { BuySteps, MAX_USD, MIN_USD } from '../order/BuySteps';
+import type { Funding } from '../order/FundingStep';
+import { readFunding } from '../order/order-api';
 import { acceptTrust, keepOrder, trustAccepted } from '../order/order-record';
-import { gasUnitsFor } from '../order/readiness';
-import { TrustNotice } from '../order/TrustNotice';
-import { unitsFor } from '../order/units';
 import { useApiFetch } from '../wallet/WalletProvider';
 import { familyIdFor, useChainRecipe } from './chain-recipe';
 import { followedOf } from './FamilyScreen';
@@ -26,8 +23,9 @@ import type { SharedTerms } from './terms';
 import { useSharedPerson } from './use-person';
 
 // Buying a shared portfolio, which opens a vault that follows it on the person's chain (gate
-// ONE-CHAIN): the amount, what the wallet is missing for it (GET /v1/funding with the slug), the trust
-// notice before the first deposit, and one primary button that names the amount. The version and the
+// ONE-CHAIN), in the plan's four steps (BuySteps): the amount, what the wallet is missing for it (GET
+// /v1/funding with the slug), the trust notice before the first deposit, and one primary button that
+// names the amount. The version and the
 // weights the buy is held to are the chain's where this app read them, and our server's, said to be
 // unverified, where it could not (chain-recipe.ts). The order is reviewed and signed on the order
 // screen.
@@ -45,9 +43,6 @@ export function FamilyBuyScreen({ slug }: { slug: string }) {
   const [ticked, setTicked] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
-  const [addingMock, setAddingMock] = useState(false);
-  const reasonId = useId();
-  const fundingId = useId();
   const asked = useRef(0);
   const chain = person.kind === 'ready' ? person.chain : null;
   const owner = person.kind === 'ready' ? person.owner : null;
@@ -100,7 +95,7 @@ export function FamilyBuyScreen({ slug }: { slug: string }) {
   if (person.kind === 'loading' || (person.kind === 'ready' && family === null))
     return (
       <Card>
-        <CardLoading label={t.shared.family.loading} />
+        <CardWait label={t.shared.family.loading} skeleton={<SkeletonPlan legs={3} />} />
       </Card>
     );
   if (person.kind !== 'ready' || family === 'failed' || !family || !recipe || !chain)
@@ -208,14 +203,6 @@ export function FamilyBuyScreen({ slug }: { slug: string }) {
     router.push(`/orders/${encodeURIComponent(placed.order.id)}`);
   }
 
-  async function addMock() {
-    if (!chain) return;
-    setAddingMock(true);
-    await fundMock(apiFetch, { chain, cashUsd: Math.max(amount ?? 0, MIN_USD) * 2 });
-    setAddingMock(false);
-    setRound((n) => n + 1);
-  }
-
   return (
     <div data-ui="family-buy-screen" className="flex flex-col gap-8">
       <header className="flex flex-col gap-3">
@@ -227,71 +214,30 @@ export function FamilyBuyScreen({ slug }: { slug: string }) {
         <SourceMark check={check} chain={chain} />
       </header>
 
-      <div className="grid items-start gap-6 lg:grid-cols-2 [&>*]:min-w-0">
-        <div className="flex flex-col gap-6">
-          <Card>
-            <CardBody>
-              <Field
-                label={t.buy.amount.label}
-                hint={t.shared.buy.amountHint}
-                error={text.trim() && amount === null ? t.buy.blocked.amount : undefined}
-              >
-                {(control) => (
-                  <Input
-                    {...control}
-                    inputMode="decimal"
-                    width="14ch"
-                    value={text}
-                    onChange={(e) => setText(e.currentTarget.value)}
-                  />
-                )}
-              </Field>
-            </CardBody>
-          </Card>
-          <FundingCard
-            id={fundingId}
-            funding={funding}
-            chainName={chainName}
-            owner={owner}
-            mock={mock}
-            units={unitsFor(chain, mock)}
-            gasUnits={gasUnitsFor(chain)}
-            mockBusy={addingMock}
-            onReadAgain={() => setRound((n) => n + 1)}
-            onMock={addMock}
-          />
-        </div>
-        <TrustNotice chain={chain} accepted={accepted} checked={ticked} onCheck={setTicked} />
-      </div>
-
-      <div className="flex flex-col items-start gap-2">
-        <Button
-          variant="primary"
-          busy={placing}
-          busyLabel={t.buy.reviewing}
-          disabled={blocked.length > 0}
-          aria-describedby={blocked.length > 0 ? reasonId : undefined}
-          onClick={review}
-        >
-          {t.shared.buy.review(dollars(amount ?? MIN_USD, lang))}
-        </Button>
-        {blocked.length > 0 && (
-          <ul id={reasonId} className="flex max-w-(--tf-measure-body) flex-col gap-1 text-body-sm">
-            {blocked.map((reason) => (
-              <li key={reason}>{reason}</li>
-            ))}
-          </ul>
-        )}
-        {failure && (
-          <p
-            role="alert"
-            className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm text-destructive"
-          >
-            <StatusMark status="off-track" size={12} className="mt-1.5" />
-            <span>{failure}</span>
-          </p>
-        )}
-      </div>
+      <BuySteps
+        chain={chain}
+        chainName={chainName}
+        mock={mock}
+        amount={{
+          text,
+          onText: setText,
+          hint: t.shared.buy.amountHint,
+          value: amount,
+        }}
+        funding={funding}
+        owner={owner}
+        buyOf={{ family: slug }}
+        onReadAgain={() => setRound((n) => n + 1)}
+        trust={{ accepted, checked: ticked, onCheck: setTicked }}
+        order={{
+          label: t.shared.buy.review(dollars(amount ?? MIN_USD, lang)),
+          busy: placing,
+          busyLabel: t.buy.reviewing,
+          blocked,
+          failure,
+          onReview: review,
+        }}
+      />
     </div>
   );
 }

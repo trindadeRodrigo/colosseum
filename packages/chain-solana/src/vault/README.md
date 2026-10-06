@@ -2,7 +2,7 @@
 
 `import { createSolanaVaultAdapter } from '@colosseum/chain-solana/vault'` for the whole `ChainAdapter` (reads, builders, quotes, the probe); `createSolanaVaultReader` for the read side alone. The root entry does not re-export either, and nothing here holds a key: signing is behind `@colosseum/chain-solana/server`.
 
-Both take a `ChainConfig`, an RPC client the caller makes (`createVaultRpc(url)`), and the asset list. They read no environment. The program id (`contracts.program`), the router and the price account come from the config; the cash mint, the price owner and the default keeper come from the program's own Config account.
+Both take a `ChainConfig`, an RPC client the caller makes (`createVaultRpc(url)`, whose every call gives up after 30 s and is then said as not answered: `tests/solana-vault/rpc.test.ts`), and the asset list. They read no environment. The program id (`contracts.program`), the router and the price account come from the config; the cash mint, the price owner and the default keeper come from the program's own Config account.
 
 It decodes the program's four accounts: Config, Vault, the asset list (`getAssetList`) and a shared portfolio (`getRecipe`). The asset list on chain holds mints, ceilings and price entries; the ids, classes and sheets of the assets still come from the caller's list, matched by mint.
 

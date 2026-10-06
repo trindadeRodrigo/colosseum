@@ -1,7 +1,9 @@
 'use client';
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
+import { Wait } from '../../components/shell/Wait';
 import { cn } from '../../components/ui/cn';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
+import { Skeleton, SkeletonChart, SkeletonRows } from '../../components/ui/Skeleton';
 import { type BearingDictionary, bearingDictionary } from '../../i18n/bearing';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useBearing } from './BearingProvider';
@@ -322,8 +324,82 @@ export function Card({
   );
 }
 
-export function Loading({ children }: { children: ReactNode }) {
-  return <p className="text-caption text-muted-foreground">{children}</p>;
+/** A part of a page waiting for its data: the frame of the chart or table to come, and what it waits for. */
+export function Loading({ children }: { children: string }) {
+  const { retry } = useBearing();
+  return <Wait label={children} onRetry={retry} skeleton={<SkeletonChart />} />;
+}
+
+/**
+ * A page waiting for its data, in the page's own boxes: its filters, its row of figures with their
+ * labels (already known, so they are written), the two chart cards and the table. Nothing moves when
+ * the data comes: the boxes are where the page puts its own.
+ */
+export function PageWait({
+  label,
+  kpis,
+  filters = 2,
+}: {
+  label: string;
+  /**
+   * The page's figures, in order: each label, and its note as the page will write it (the words are
+   * known before the data; a count or a time in them is a stand-in). The note is laid out unseen
+   * under its bar, so it wraps where the real one will and the row keeps its height. It names no
+   * time read from a clock: the server and the browser would write different words.
+   */
+  kpis: readonly { label: string; note?: string }[];
+  /** How many selectors the page has above its figures. */
+  filters?: number;
+}) {
+  const { retry } = useBearing();
+  return (
+    <Wait
+      label={label}
+      onRetry={retry}
+      className="mt-6"
+      skeleton={
+        <div data-ui="bearing-skeleton">
+          <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+            {Array.from({ length: filters }, (_, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: still boxes with no identity of their own
+              <Skeleton key={i} className="h-8 w-36" />
+            ))}
+            <Skeleton className="h-3 w-48" />
+          </div>
+          <Kpis>
+            {kpis.map(({ label, note }, i) => (
+              <Kpi
+                // biome-ignore lint/suspicious/noArrayIndexKey: the figures to come, in the page's order
+                key={i}
+                label={label}
+                note={
+                  note ? (
+                    <span aria-hidden="true" className="relative block">
+                      <span className="invisible">{note}</span>
+                      <Skeleton className="absolute inset-x-0 top-1 h-2.5 w-3/4" />
+                    </span>
+                  ) : undefined
+                }
+              >
+                <Skeleton className="inline-block h-5 w-28 align-middle" />
+              </Kpi>
+            ))}
+          </Kpis>
+          <div className="mt-4 grid grid-cols-[minmax(0,1fr)] items-stretch gap-4 min-[1100px]:grid-cols-[minmax(260px,1fr)_minmax(0,2.6fr)]">
+            <Card>
+              <SkeletonChart />
+            </Card>
+            <Card>
+              <SkeletonChart />
+            </Card>
+          </div>
+          <div className="mt-8">
+            <SkeletonRows rows={5} columns={5} />
+          </div>
+        </div>
+      }
+    />
+  );
 }
 
 const SLICE = [
