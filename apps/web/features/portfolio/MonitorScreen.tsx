@@ -195,12 +195,17 @@ export function MonitorScreen() {
           vaults.length === 0 &&
           state.outcome.current === 'read' &&
           state.outcome.unavailable.length === 0
-            ? say(
-                words.empty(chainName),
-                <Link href="/goal" className={link}>
-                  {words.startGoal}
-                </Link>,
-              )
+            ? [
+                // keyed: it is one of a list
+                <div key="empty">
+                  {say(
+                    words.empty(chainName),
+                    <Link href="/goal" className={link}>
+                      {words.startGoal}
+                    </Link>,
+                  )}
+                </div>,
+              ]
             : vaults.length === 0
               ? null
               : grouped
@@ -282,7 +287,11 @@ export function MonitorScreen() {
       </div>
       {/* His "Disclaimer and activity": the disclaimer under the plans, beside what reached the chain. */}
       {vaults.length > 0 && (
-        <ActivityPanel executions={history.activity} empty={t.activity.noneVault} />
+        <ActivityPanel
+          executions={history.activity}
+          groups={history.orders}
+          empty={t.activity.noneVault}
+        />
       )}
     </div>
   );

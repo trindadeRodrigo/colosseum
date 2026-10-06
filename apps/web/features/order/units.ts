@@ -9,8 +9,9 @@ import { deploymentsFor } from './readiness';
 // had 9 decimals would have a deposit of 40,000 dollars read as 40: the order screen shows and checks
 // every amount with these. The symbol is a name only: the test network's deploy record names its tokens
 // (deployments/solana-devnet.json, deployments/robinhood-testnet.json), the mock's dollar goes by the
-// name of the chain it stands in for (USDC, tUSDG on Robinhood Chain), and any other token by its id. A
-// chain with no deployment has no units here, and nothing is signed for it.
+// name of the chain it stands in for (USDC, tUSDG on Robinhood Chain), the mock's other tokens by the
+// mock's own names and decimals, and any other token by its id. A chain with no deployment has no units
+// here, and nothing is signed for it.
 
 export type TokenUnits = { symbol: string; decimals: number };
 export type ChainUnits = { cash: AssetId; tokens: Partial<Record<AssetId, TokenUnits>> };
@@ -21,6 +22,19 @@ export const MOCK_CASH_SYMBOL: Record<ChainId, string> = {
   robinhood: 'tUSDG',
   base: 'USDC',
 };
+
+/**
+ * The mock chain's shelf (packages/chain-mock), by slug: what a portfolio can be published with on the
+ * mock, where the committed deployment names the cash token and nothing else. Sample throughout.
+ */
+const MOCK_SHELF = ['spy', 'nvda', 'tsla', 'gold', 'yield'] as const;
+/**
+ * The decimals of the mock's tokens as packages/chain-mock gives them (apps/web may not import the
+ * mock, so tests/web-units.test.ts holds this to it): the chain's stock-token decimals, but 6 for the
+ * dollar-yield token. With these an order on the mock reads in whole tokens, as one on a test network
+ * does. Each goes by its slug in capitals, the name the rest of the app gives it.
+ */
+const MOCK_STOCK_DECIMALS: Record<ChainId, number> = { solana: 8, robinhood: 18, base: 8 };
 
 const RECORDED: Record<string, string> = Object.fromEntries(
   [
@@ -41,6 +55,15 @@ export function unitsFor(chain: ChainId, mock: boolean): ChainUnits | null {
     return {
       cash: deployment.cash,
       tokens: {
+        ...Object.fromEntries(
+          MOCK_SHELF.map((slug) => [
+            `${chain}:${slug}`,
+            {
+              symbol: slug.toUpperCase(),
+              decimals: slug === 'yield' ? 6 : MOCK_STOCK_DECIMALS[chain],
+            },
+          ]),
+        ),
         [deployment.cash]: { symbol: MOCK_CASH_SYMBOL[chain], decimals: deployment.cashDecimals },
       },
     };
@@ -54,12 +77,6 @@ export function unitsFor(chain: ChainId, mock: boolean): ChainUnits | null {
     ),
   };
 }
-
-/**
- * The mock chain's shelf (packages/chain-mock), by slug: what a portfolio can be published with on the
- * mock, where the committed deployment names the cash token and nothing else. MOCK throughout.
- */
-const MOCK_SHELF = ['spy', 'nvda', 'tsla', 'gold', 'yield'] as const;
 
 /**
  * The assets a portfolio may name on this chain, other than cash: the committed deployment's on a real

@@ -347,6 +347,11 @@ export const pt: Dictionary = {
     notRetried: '(não repetida)',
     signature: 'id da transação',
     noneYet: 'Nada desta ordem chegou à rede ainda.',
+    order: {
+      buy: (amount: string) => `Compra de ${amount}`,
+      follow: 'Seguir um portfólio compartilhado',
+      publish: 'Publicar um portfólio',
+    },
     noneVault:
       'Nada que este navegador fez para os seus cofres chegou à rede. Operações feitas em outro lugar, ou pelo agente, ainda não aparecem aqui.',
   },
@@ -1030,9 +1035,8 @@ export const pt: Dictionary = {
       steps: 'Passos',
       expires: 'Assine antes de',
       spend: (amount: string, asset: string) => `Gastar ${amount} em ${asset}`,
-      atLeast: (amount: string, asset: string) =>
-        `receber pelo menos ${amount} de ${asset}, em suas menores unidades`,
       atLeastWhole: (amount: string) => `receber pelo menos ${amount}`,
+      atMostEach: (price: string) => `no máximo ${price} cada`,
       under: (pct: string) => `${pct} abaixo da cotação`,
       noTrades: 'Nenhuma negociação neste passo.',
       warnings: 'Nosso servidor avisa',
@@ -1100,6 +1104,10 @@ export const pt: Dictionary = {
       adopt_version: 'Operador: adotar uma versão',
       keeper_leg: 'Operador: negociar',
     },
+    kindWithBuys: {
+      create_vault: 'Abrir seu cofre, depositar e comprar',
+      deposit: 'Depositar e comprar',
+    },
     status: {
       planned: 'Não começou',
       built: 'Montado, ainda não assinado',
@@ -1127,7 +1135,12 @@ export const pt: Dictionary = {
     },
     outcome: {
       done: (chain: string) =>
-        `Todos os passos estão confirmados em ${chain}, segundo nosso servidor. A transação de cada passo está no link ao lado dele.`,
+        `Todos os passos estão confirmados em ${chain}. A transação de cada passo está no link ao lado dele.`,
+      seePortfolio: 'Ver seu portfólio',
+      buyMore: 'Comprar mais',
+      depositSafe: (amount: string) =>
+        `Seu depósito de ${amount} está no seu cofre em dinheiro, e é seu. Uma nova ordem depositaria de novo: ela ainda não consegue usar o dinheiro que já está lá.`,
+      details: 'Detalhes',
       refused: (step: number) =>
         `Não assinei o passo ${step}: a transação que nosso servidor montou para ele não é o passo que você aprovou. Nada foi assinado para ele.`,
       refusedOrder:

@@ -288,8 +288,11 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
   // a vault opened with the deposit, then one swap per asset: the mock trades separately
   await expect(steps).toHaveCount(4);
   await expect(steps.nth(1)).toContainText('receive at least');
-  // a token by its ticker, and an amount in its smallest units grouped as any figure is
-  await expect(steps.nth(1)).toContainText(/on SPY · receive at least \d{1,3}(,\d{3})+ of SPY/);
+  // a token by its ticker, its minimum in whole tokens with the price that means, never raw units
+  await expect(steps.nth(1)).toContainText(
+    /on SPY · receive at least [\d.,]+ SPY \(at most \$[\d.,]+ each\)/,
+  );
+  await expect(page.locator('main')).not.toContainText('smallest units');
   await check(page, 'review');
 
   await page.getByRole('button', { name: en.order.signAndBuy('$40') }).click();
@@ -300,8 +303,9 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
   await check(page, 'done');
 
   // The monitor reads the vault the buy opened, with a pin on its value, its card saying it is sample.
-  // at 375 px his bar keeps its links in the sheet under the menu button
-  await go(page, en.shell.portfolio);
+  // The done order's one primary leads there; "Buy more" is beside it.
+  await expect(page.getByRole('link', { name: en.order.outcome.buyMore })).toBeVisible();
+  await page.getByRole('link', { name: en.order.outcome.seePortfolio }).click();
   await expect(page).toHaveURL(/\/monitor$/);
   const vault = page.locator('section[data-ui="card"]').filter({
     has: page.getByRole('heading', { name: en.portfolio.vault.title }),

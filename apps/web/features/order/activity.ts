@@ -36,7 +36,8 @@ export function activityOf(
       const tokens = unitsFor(leg.chain, mock)?.tokens;
       const name = (asset: string) => tokens?.[asset]?.symbol ?? assetTicker(asset);
       return {
-        id: leg.id,
+        // an order's own step: two orders may number their steps alike
+        id: `${order.id}:${leg.id}`,
         verb: t.order.kind[leg.kind],
         detail: leg.trades.map((trade) => `${name(trade.sell)} → ${name(trade.buy)}`).join(', '),
         status: STATUS[leg.status] as ExecutionStatus,

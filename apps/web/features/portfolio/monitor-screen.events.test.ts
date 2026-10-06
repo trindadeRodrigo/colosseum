@@ -629,6 +629,46 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
       expect(line.querySelector('a[href^="https://solscan.io/tx/"]')).not.toBeNull();
     expect(find(activity, '[data-ui="disclaimer"] p[lang]').textContent).toBe(DISCLAIMER.en);
   });
+
+  it('groups what was done by order, each under what it was and when, with no step listed twice', async () => {
+    const second = 'order-2';
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      api({
+        person: onSolana,
+        portfolio: () => {
+          bought({ orderId: second, amountUsd: 500 });
+          return bought();
+        },
+        // two orders whose steps are numbered alike, as every order's are
+        more: (path) =>
+          path === `/v1/orders/${ORDER_ID}`
+            ? json(doneOrder())
+            : path === `/v1/orders/${second}`
+              ? json({ ...doneOrder(), id: second, createdAt: '2026-10-05T16:00:00.000Z' })
+              : null,
+      });
+      signIn();
+      const host = await screen();
+      await settle();
+      const orders = [...host.querySelectorAll('[data-ui="activity-order"]')];
+      expect(orders.map((o) => o.querySelector('h3 span')?.textContent).sort()).toEqual(
+        [en.activity.order.buy('$40,000'), en.activity.order.buy('$500')].sort(),
+      );
+      for (const order of orders) {
+        expect(order.querySelector('h3 time')?.textContent).toMatch(
+          /^\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC$/,
+        );
+        expect(order.querySelectorAll('[data-ui="execution-list"] li')).toHaveLength(
+          doneOrder().legs.length,
+        );
+      }
+      // React is given one key per line: no "same key" complaint
+      expect(errors.mock.calls.flat().join(' ')).not.toMatch(/key/i);
+    } finally {
+      errors.mockRestore();
+    }
+  });
 });
 
 describe('the monitor in Portuguese', () => {

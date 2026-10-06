@@ -8,6 +8,7 @@ import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/Card';
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { CopyButton } from '../../components/ui/CopyButton';
+import { utcMinute } from '../../components/ui/ExecutionList';
 import { ExplorerLink } from '../../components/ui/ExplorerLink';
 import { PAGE_TITLE } from '../../components/ui/heading';
 import { SkeletonSummary } from '../../components/ui/Skeleton';
@@ -18,8 +19,6 @@ import { useAccount } from '../account/AccountProvider';
 import { dollars } from '../goal/sheet';
 import { SharedReview } from '../shared/SharedReview';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
-import { ActivityPanel } from './ActivityPanel';
-import { activityOf } from './activity';
 import { assetTicker, formatBps, formatRaw, shortfallBps } from './amounts';
 import { type CallFailure, readOrder } from './order-api';
 import { checkDeposit, checkFamilyBuy, type DepositCheck, sharedShapeOk } from './order-check';
@@ -233,6 +232,14 @@ export function OrderScreen({ id }: { id: string }) {
         ? `/indexes/${encodeURIComponent(terms.slug)}`
         : '/publish';
   const testNetwork = shown.legs[0]?.provenance === 'sandbox';
+  // The order stopped for good after its deposit reached the chain: the money is in the vault as cash.
+  const deposited =
+    buying &&
+    now.legs.some(
+      (leg) =>
+        (leg.kind === 'create_vault' || leg.kind === 'deposit') && leg.status === 'confirmed',
+    );
+  const stranded = deposited && !done && view?.next.kind === 'new-order';
 
   // The one primary button of the view: sign, carry on, approve a step again, or nothing.
   const next: NextStep | { kind: 'first' } =
@@ -284,11 +291,9 @@ export function OrderScreen({ id }: { id: string }) {
             <Stat label={t.order.review.steps}>{legs.length}</Stat>
             {!record.approved && (
               <Stat label={t.order.review.expires} className="max-[620px]:col-span-2">
+                {/* The one way a time is written here, with its zone (ExecutionList's). */}
                 <time dateTime={new Date(shown.expiresAt * 1000).toISOString()}>
-                  {new Intl.DateTimeFormat(LOCALE[lang], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  }).format(new Date(shown.expiresAt * 1000))}
+                  {utcMinute(new Date(shown.expiresAt * 1000).toISOString())}
                 </time>
               </Stat>
             )}
@@ -308,6 +313,7 @@ export function OrderScreen({ id }: { id: string }) {
                   mock={onMock(port, chain)}
                   t={t}
                   locale={LOCALE[lang]}
+                  money={(value) => dollars(value, lang)}
                 />
               );
             })}
@@ -370,13 +376,26 @@ export function OrderScreen({ id }: { id: string }) {
               {view.alarm && <StatusMark status="off-track" size={12} className="mt-1.5" />}
               <span>{view.sentence}</span>
             </p>
-            {view.check && (
-              <p className="font-mono text-source text-muted-foreground">{view.check}</p>
-            )}
-            {view.detail && (
-              <p className="font-mono text-source text-muted-foreground break-words">
-                {view.detail}
+            {stranded && (
+              <p data-ui="deposit-safe" className="text-body">
+                {t.order.outcome.depositSafe(depositShown)}
               </p>
+            )}
+            {/* What failed, in the guard's own words: for the person to quote, not to read first. */}
+            {(view.check || view.detail) && (
+              <details data-ui="order-details" className="text-body-sm">
+                <summary className="cursor-pointer text-muted-foreground">
+                  {t.order.outcome.details}
+                </summary>
+                {view.check && (
+                  <p className="font-mono text-source text-muted-foreground">{view.check}</p>
+                )}
+                {view.detail && (
+                  <p className="font-mono text-source text-muted-foreground break-words">
+                    {view.detail}
+                  </p>
+                )}
+              </details>
             )}
           </div>
         )}
@@ -423,11 +442,36 @@ export function OrderScreen({ id }: { id: string }) {
             {t.order.review.consentNeeded}
           </p>
         )}
-        {next.kind === 'new-order' && (
-          <Link href={newOrder} className={buttonClass({ variant: 'primary' })}>
-            {t.order.outcome.newOrder}
-          </Link>
+        {/* Done: the way on is the portfolio, where the vault now is; a buy can be made again. */}
+        {done && (
+          <div data-ui="order-next" className="flex flex-wrap items-center gap-3">
+            <Link href="/monitor" className={buttonClass({ variant: 'primary' })}>
+              {t.order.outcome.seePortfolio}
+            </Link>
+            {buying && (
+              <Link href={newOrder} className={buttonClass({ variant: 'secondary' })}>
+                {t.order.outcome.buyMore}
+              </Link>
+            )}
+          </div>
         )}
+        {next.kind === 'new-order' &&
+          !done &&
+          (stranded ? (
+            // The deposit is in the vault: that is where to look first, not at a second deposit.
+            <div data-ui="order-next" className="flex flex-wrap items-center gap-3">
+              <Link href="/monitor" className={buttonClass({ variant: 'primary' })}>
+                {t.order.outcome.seePortfolio}
+              </Link>
+              <Link href={newOrder} className={buttonClass({ variant: 'secondary' })}>
+                {t.order.outcome.newOrder}
+              </Link>
+            </div>
+          ) : (
+            <Link href={newOrder} className={buttonClass({ variant: 'primary' })}>
+              {t.order.outcome.newOrder}
+            </Link>
+          ))}
         {next.kind === 'other-order' && (
           <Link
             href={`/orders/${encodeURIComponent(next.orderId)}`}
@@ -437,13 +481,6 @@ export function OrderScreen({ id }: { id: string }) {
           </Link>
         )}
       </div>
-
-      {/* His "Disclaimer and activity": what reached the chain, line by line with its link, beside the
-          disclaimer. */}
-      <ActivityPanel
-        executions={activityOf(now, t, onMock(port, chain))}
-        empty={t.activity.noneYet}
-      />
     </div>
   );
 }
@@ -484,6 +521,7 @@ function Step({
   mock,
   t,
   locale,
+  money,
 }: {
   n: number;
   /** The explorer's name, for the link's accessible name. */
@@ -499,6 +537,8 @@ function Step({
   units: ChainUnits | null;
   t: Dictionary;
   locale: string;
+  /** A dollar figure in the language of the page. */
+  money: (value: number) => string;
 }) {
   /** A raw amount of a token in whole units with its symbol, or null when its units are not known. */
   const whole = (raw: string, asset: string) => {
@@ -513,11 +553,26 @@ function Step({
     ? t.order.phase[phase as keyof Dictionary['order']['phase']]
     : t.order.status[now.status];
   const failed = now.status === 'failed';
+  // A step that deposits and buys in one transaction says so: the buys are not hidden under "deposit".
+  const title =
+    leg.trades.length > 0 && (leg.kind === 'create_vault' || leg.kind === 'deposit')
+      ? t.order.kindWithBuys[leg.kind]
+      : t.order.kind[leg.kind];
+  /** The most one token costs when the least is received: what is spent over that minimum. */
+  const each = (spentRaw: string, minOutRaw: string, asset: string) => {
+    const cash = units?.tokens[units.cash];
+    const token = units?.tokens[asset];
+    const least = Number(minOutRaw);
+    if (!cash || !token || !(least > 0)) return null;
+    const price = Number(spentRaw) / 10 ** cash.decimals / (least / 10 ** token.decimals);
+    // A minimum too small to mean a price (a dust amount) gets none.
+    return Number.isFinite(price) && price < 1e9 ? money(price) : null;
+  };
   return (
     <li data-ui="order-step" data-status={now.status} className="flex flex-col gap-1 py-3">
       <p className="flex flex-wrap items-baseline gap-x-2 text-body">
         <span className="font-medium">
-          {t.order.step(n)} · {t.order.kind[leg.kind]}
+          {t.order.step(n)} · {title}
         </span>
         {leg.cashRaw && <span className="tabular-nums">{spend(leg.cashRaw)}</span>}
         <span aria-hidden="true">·</span>
@@ -546,18 +601,21 @@ function Step({
             return (
               <li key={`${trade.sell}>${trade.buy}:${trade.amountInRaw}`} className="tabular-nums">
                 {t.order.review.spend(spend(trade.amountInRaw), symbol(trade.buy))}
-                {expected && (
+                {/* In whole tokens, with the price that minimum means. A token whose units this app has
+                    no record of gets no figure: a raw amount reads as nothing a person can check. */}
+                {expected && whole(expected.minOutRaw, trade.buy) !== null && (
                   <>
                     {' · '}
-                    {whole(expected.minOutRaw, trade.buy) !== null
-                      ? t.order.review.atLeastWhole(whole(expected.minOutRaw, trade.buy) as string)
-                      : t.order.review.atLeast(
-                          formatRaw(expected.minOutRaw, 0, locale) ?? expected.minOutRaw,
-                          assetTicker(trade.buy),
-                        )}
-                    {under !== null && ` · ${t.order.review.under(formatBps(under, locale))}`}
+                    {t.order.review.atLeastWhole(whole(expected.minOutRaw, trade.buy) as string)}
+                    {each(trade.amountInRaw, expected.minOutRaw, trade.buy) !== null &&
+                      ` (${t.order.review.atMostEach(
+                        each(trade.amountInRaw, expected.minOutRaw, trade.buy) as string,
+                      )})`}
                   </>
                 )}
+                {expected &&
+                  under !== null &&
+                  ` · ${t.order.review.under(formatBps(under, locale))}`}
               </li>
             );
           })}

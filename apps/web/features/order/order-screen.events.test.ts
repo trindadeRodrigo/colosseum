@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { DISCLAIMER, type OrderDetail } from '@colosseum/schemas';
+import type { OrderDetail } from '@colosseum/schemas';
 import {
   basketIdOfLinkedPlan,
   basketIdOfPlan,
@@ -243,17 +243,20 @@ describe('the review', () => {
       'https://solscan.io/tx/sig1?cluster=devnet',
     ]);
     expect(host.querySelector('a[href^="https://explorer.example/"]')).toBeNull();
-    // and his activity lines, beside the disclaimer: one per step that reached the chain, each with
-    // its link
-    const activity = find(host, '[data-ui="activity-panel"]');
-    const lines = [...activity.querySelectorAll('[data-ui="execution-list"] li')];
-    expect(lines).toHaveLength(2);
-    for (const line of lines) {
-      expect(line.getAttribute('data-status')).toBe('confirmed');
-      expect(line.querySelector('a[href^="https://solscan.io/tx/"]')).not.toBeNull();
-    }
-    expect(find(activity, '[data-ui="disclaimer"]').textContent).toContain(DISCLAIMER.en);
-    expect(host.querySelector('[data-variant="primary"]')).toBeNull();
+    // the steps are not listed a second time under themselves: that list is the portfolio's
+    expect(host.querySelector('[data-ui="activity-panel"]')).toBeNull();
+    expect(host.querySelector('[data-ui="execution-list"]')).toBeNull();
+    // nothing left to sign: the one primary is the way on, to the portfolio, and a buy can be made again
+    expect(host.querySelector('button[data-variant="primary"]')).toBeNull();
+    const next = [...find(host, '[data-ui="order-next"]').querySelectorAll('a')];
+    expect(next.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      [en.order.outcome.seePortfolio, '/monitor'],
+      [en.order.outcome.buyMore, `/plan/${PLAN_ID}/buy`],
+    ]);
+    expect(next[0]?.className).toContain('bg-primary');
+    expect(next[1]?.className).not.toContain('bg-primary');
+    // said plainly, with no hedge about who reports it
+    expect(status(host)).not.toMatch(/server/i);
   });
 });
 
@@ -422,6 +425,78 @@ describe('what the executor answers', () => {
     await settle();
     expect(status(host)).toContain(en.order.outcome.failed(2));
     expect(label(primary(host))).toBe(en.order.outcome.newOrder);
+    // nothing was deposited: no word about a deposit in the vault
+    expect(host.querySelector('[data-ui="deposit-safe"]')).toBeNull();
+  });
+
+  it('says the deposit is in the vault as cash when a later step fails, and leads there first', async () => {
+    api(orderOn());
+    seed();
+    run.answer = async (order) => ({
+      status: 'failed',
+      order: {
+        ...order,
+        legs: order.legs.map((leg, i) =>
+          i === 0 ? { ...leg, status: 'confirmed', txId: 'sig0' } : { ...leg, status: 'failed' },
+        ),
+      },
+      legId: LEG_SWAP,
+      error: null,
+    });
+    const host = await screen();
+    await click(primary(host));
+    await settle();
+    expect(find(host, '[data-ui="deposit-safe"]').textContent).toBe(
+      en.order.outcome.depositSafe('10 tUSDC'),
+    );
+    // the vault first; a new order, which deposits again, is the second thing offered
+    const next = [...find(host, '[data-ui="order-next"]').querySelectorAll('a')];
+    expect(next.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      [en.order.outcome.seePortfolio, '/monitor'],
+      [en.order.outcome.newOrder, `/plan/${PLAN_ID}/buy`],
+    ]);
+    expect(next[0]?.className).toContain('bg-primary');
+    expect(next[1]?.className).not.toContain('bg-primary');
+  });
+
+  it('keeps the guard’s own words for a refusal behind "Details"', async () => {
+    api(orderOn());
+    seed();
+    run.answer = async (order) => ({
+      status: 'refused',
+      order,
+      legId: LEG_SWAP,
+      refusal: new GuardRefusal('minimum', 'a trade accepts 1 at the least', LEG_SWAP),
+    });
+    const host = await screen();
+    await click(primary(host));
+    await settle();
+    const details = find(host, '[data-ui="order-details"]');
+    expect(find(details, 'summary').textContent).toBe(en.order.outcome.details);
+    expect(details.textContent).toContain(en.order.outcome.check('minimum'));
+    expect(details.textContent).toContain('a trade accepts 1 at the least');
+    expect(details.hasAttribute('open')).toBe(false);
+  });
+});
+
+describe('what a person can read on the review', () => {
+  it('writes a trade’s minimum in whole tokens with the price it means, never in raw units', async () => {
+    api(orderOn());
+    seed();
+    const host = await screen();
+    const trade = find(host, '[data-ui="order-step"] ul li').textContent ?? '';
+    expect(trade).toMatch(/receive at least [\d.,]+ tSPYx? \(at most \$[\d.,]+ each\)/);
+    expect(host.textContent).not.toMatch(/smallest units/);
+    expect(dictionary('pt').order.review.atMostEach('US$ 1,00')).toBe('no máximo US$ 1,00 cada');
+  });
+
+  it('writes the deadline as every other time here is written, with its zone', async () => {
+    api(orderOn());
+    seed();
+    const host = await screen();
+    expect(find(host, '[data-ui="order-screen"] time').textContent).toMatch(
+      /^\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC$/,
+    );
   });
 });
 
@@ -496,7 +571,8 @@ describe('a buy on Robinhood Chain', () => {
     expect(steps).toHaveLength(2);
     expect(steps[0]).toContain(en.order.kind.approve);
     expect(steps[0]).toContain('10 tUSDG');
-    expect(steps[1]).toContain(en.order.kind.create_vault);
+    // the step that deposits also buys, and says so
+    expect(steps[1]).toContain(en.order.kindWithBuys.create_vault);
     expect(steps[1]).toContain('10 tUSDG');
     expect(steps[1]).toContain(en.order.review.spend('6 tUSDG', 'tSPY'));
     expect(label(primary(host))).toBe(en.order.signAndBuy('$10'));
@@ -580,7 +656,7 @@ describe.each([
     if (chain === 'robinhood') expect(host.textContent).not.toMatch(/usdc/i);
   });
 
-  it('names the explorer beside each step’s link, and badges each line of the activity', async () => {
+  it('names the explorer beside each step’s link', async () => {
     api(orderOn(chain), chain);
     seed(recordOf(chain));
     run.answer = async () => ({ status: 'done', order: doneOrder(chain) });
@@ -588,13 +664,9 @@ describe.each([
     await click(primary(host));
     await settle();
     const names = [...host.querySelectorAll('[data-ui="explorer-name"]')].map((n) => n.textContent);
-    // a link per step, and a line per step in the activity
-    expect(names).toHaveLength(4);
+    // a link per step
+    expect(names).toHaveLength(2);
     expect(new Set(names)).toEqual(new Set([explorer]));
-    const lines = [...host.querySelectorAll('[data-ui="execution-list"] li')];
-    expect(lines).toHaveLength(2);
-    for (const line of lines)
-      expect(line.querySelector('[data-ui="chain-badge"]')?.getAttribute('data-chain')).toBe(chain);
     if (chain === 'robinhood') expect(host.textContent).not.toMatch(/usdc/i);
   });
 });

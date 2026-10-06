@@ -1,8 +1,9 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import type { Execution } from '../../components/ui/ExecutionList';
-import { useT } from '../../i18n/I18nProvider';
+import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
+import { dollars } from '../goal/sheet';
 import { activityOf } from '../order/activity';
 import { readOrder } from '../order/order-api';
 import { type OrderRecord, recallOrders } from '../order/order-record';
@@ -13,9 +14,22 @@ import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 // from the API (GET /v1/orders/{id}), so a line says where a step stands now. The API has no route
 // that lists a person's orders or the keeper's trades, so this is the history this browser knows.
 
+/** What one order did on chain, under what the order was. */
+export type OrderActivity = {
+  orderId: string;
+  /** "Buy of $80,000": the order in a few words. */
+  title: string;
+  /** When the order was made, as an ISO instant. */
+  at: string;
+  executions: Execution[];
+};
+
 export type VaultHistory = {
   records: OrderRecord[];
+  /** Every step that reached the chain, newest first. */
   activity: Execution[];
+  /** The same steps by the order they belong to, the newest order first. */
+  orders: OrderActivity[];
   /** The orders whose deposit is confirmed on chain, as the API last said: only these were put in. */
   deposited: ReadonlySet<string>;
 };
@@ -29,7 +43,8 @@ export function useVaultHistory(): VaultHistory {
   const known = account.status === 'ready';
   const userId = port.userId;
   const [records, setRecords] = useState<OrderRecord[]>([]);
-  const [activity, setActivity] = useState<Execution[]>([]);
+  const lang = useLang();
+  const [orders, setOrders] = useState<OrderActivity[]>([]);
   const [deposited, setDeposited] = useState<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
@@ -41,7 +56,7 @@ export function useVaultHistory(): VaultHistory {
   useEffect(() => {
     let live = true;
     if (records.length === 0) {
-      setActivity([]);
+      setOrders([]);
       setDeposited(new Set());
       return;
     }
@@ -61,13 +76,27 @@ export function useVaultHistory(): VaultHistory {
           ),
         ),
       );
-      setActivity(
+      setOrders(
         read
-          .flatMap((answer, i) => {
-            const chain = records[i]?.chain;
-            return answer.kind === 'read' && chain
-              ? activityOf(answer.order, t, onMock(port, chain))
-              : [];
+          .flatMap((answer, i): OrderActivity[] => {
+            const record = records[i];
+            if (answer.kind !== 'read' || !record) return [];
+            const executions = activityOf(answer.order, t, onMock(port, record.chain));
+            if (executions.length === 0) return [];
+            const kind = record.terms?.kind;
+            return [
+              {
+                orderId: answer.order.id,
+                title:
+                  kind === 'follow'
+                    ? t.activity.order.follow
+                    : kind === 'publish'
+                      ? t.activity.order.publish
+                      : t.activity.order.buy(dollars(record.amountUsd, lang)),
+                at: answer.order.createdAt,
+                executions,
+              },
+            ];
           })
           .sort((a, b) => b.at.localeCompare(a.at)),
       );
@@ -75,7 +104,11 @@ export function useVaultHistory(): VaultHistory {
     return () => {
       live = false;
     };
-  }, [ids, apiFetch, t]);
+  }, [ids, apiFetch, t, lang]);
 
-  return { records, activity, deposited };
+  const activity = useMemo(
+    () => orders.flatMap((o) => o.executions).sort((a, b) => b.at.localeCompare(a.at)),
+    [orders],
+  );
+  return { records, activity, orders, deposited };
 }

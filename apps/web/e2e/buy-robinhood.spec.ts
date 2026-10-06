@@ -69,7 +69,8 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   const steps = page.locator('[data-ui="order-step"]');
   await expect(steps).toHaveCount(2);
   await expect(steps.nth(0)).toContainText(en.order.kind.approve);
-  await expect(steps.nth(1)).toContainText(en.order.kind.create_vault);
+  // the step that opens the vault also buys, and says so
+  await expect(steps.nth(1)).toContainText(en.order.kindWithBuys.create_vault);
   await expect(steps.nth(1)).toContainText('receive at least');
   await named(page);
 
@@ -79,14 +80,10 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   });
   for (let i = 0; i < 2; i += 1)
     await expect(steps.nth(i)).toHaveAttribute('data-status', 'confirmed');
-  // each step's link names the explorer it opens, and each line of the activity its chain
+  // each step's link names the explorer it opens
   await expect(steps.locator('[data-ui="explorer-name"]')).toHaveText([
     en.chain.explorers.robinhood,
     en.chain.explorers.robinhood,
-  ]);
-  await expect(page.locator('[data-ui="execution-list"] li [data-ui="chain-badge"]')).toHaveText([
-    NAME,
-    NAME,
   ]);
   await named(page);
 
@@ -101,6 +98,12 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   await expect(vault).toHaveCount(1);
   await expect(vault.locator('[data-ui="chain-badge"]').first()).toHaveText(NAME);
   await expect(vault).toContainText('tUSDG');
+  // what was done, under its order, each line with its chain
+  await expect(page.locator('[data-ui="activity-order"]')).toHaveCount(1);
+  await expect(page.locator('[data-ui="execution-list"] li [data-ui="chain-badge"]')).toHaveText([
+    NAME,
+    NAME,
+  ]);
   await named(page);
 });
 

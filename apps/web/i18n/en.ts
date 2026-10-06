@@ -384,6 +384,12 @@ export const en = {
     notRetried: '(not retried)',
     signature: 'transaction id',
     noneYet: 'Nothing has reached the chain from this order yet.',
+    /** What an order was, over its steps. */
+    order: {
+      buy: (amount: string) => `Buy of ${amount}`,
+      follow: 'Follow a shared portfolio',
+      publish: 'Publish a portfolio',
+    },
     noneVault:
       'Nothing this browser placed for your vaults has reached the chain. Trades made elsewhere, or by the keeper, are not listed here yet.',
   },
@@ -1093,9 +1099,9 @@ export const en = {
       steps: 'Steps',
       expires: 'Sign before',
       spend: (amount: string, asset: string) => `Spend ${amount} on ${asset}`,
-      atLeast: (amount: string, asset: string) =>
-        `receive at least ${amount} of ${asset}, in its smallest units`,
       atLeastWhole: (amount: string) => `receive at least ${amount}`,
+      /** The most a token costs at that minimum: what is spent over the least received. */
+      atMostEach: (price: string) => `at most ${price} each`,
       under: (pct: string) => `${pct} under the quote`,
       noTrades: 'No trade in this step.',
       warnings: 'Our server warns',
@@ -1163,6 +1169,11 @@ export const en = {
       adopt_version: 'Keeper: adopt a version',
       keeper_leg: 'Keeper: trade',
     },
+    /** A step that deposits and buys in one transaction, as on Robinhood Chain: the buys are named. */
+    kindWithBuys: {
+      create_vault: 'Open your vault, deposit and buy',
+      deposit: 'Deposit and buy',
+    },
     status: {
       planned: 'Not started',
       built: 'Built, not signed yet',
@@ -1190,7 +1201,13 @@ export const en = {
     },
     outcome: {
       done: (chain: string) =>
-        `Every step is confirmed on ${chain}, as our server reports it. Each step’s transaction is linked beside it.`,
+        `Every step is confirmed on ${chain}. Each step’s transaction is linked beside it.`,
+      seePortfolio: 'See your portfolio',
+      buyMore: 'Buy more',
+      /** The order stopped after its deposit landed: the money is in the vault, as cash. */
+      depositSafe: (amount: string) =>
+        `Your deposit of ${amount} is in your vault as cash, and it’s yours. A new order would deposit again: it can’t yet spend the cash already there.`,
+      details: 'Details',
       refused: (step: number) =>
         `I didn’t sign step ${step}: the transaction our server built for it isn’t the step you approved. Nothing was signed for it.`,
       refusedOrder:
