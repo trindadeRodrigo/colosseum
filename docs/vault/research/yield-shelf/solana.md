@@ -9,7 +9,8 @@ Tags: `[n]` checked that day against source n. `[ns]` or `[ns n]` only a search-
 ## 1. Bottom line
 
 - **Seven tokens are on the extended shelf and can be in a plan**: USDY, wYLDS, kUSDC, jlJupUSD, PST, PRIME and AUTO. Two are rate legs (USDY, wYLDS), two are deposits in a lending market (kUSDC, jlJupUSD), three are credit (PST, PRIME, AUTO). All but USDY carry a caution, said on the row.
-- **Four local-currency bonds are listed in their own currency and are in no plan yet**: TESOURO (reais), CETES (Mexican pesos), GILTS (pounds), KTB (won). A vault can hold them; the engine cannot use a bond as the matching leg of a goal until Rodrigo approves the change in section 5.3.
+- **One of the seven needs Rodrigo's word first: kUSDC.** No market trades it; its exit is redemption at the lending reserve, which is open to anyone and at par, and which the vault cannot do yet. It is in test plans, at the thinnest tier, because Rodrigo chose it and the exit exists; section 5.2 asks whether it should wait off the shelf until the vault can redeem.
+- **Four local-currency bonds are listed in their own currency and are in no plan yet**: TESOURO (reais), CETES (Mexican pesos), GILTS (pounds), KTB (won). A vault can hold them; the engine cannot use a bond as the matching leg of a goal until Rodrigo approves the change in sections 5.3 and 5.4.
 - **Eight are on hold**, listed and in no plan, each with what would settle it: sUSD, sUSDe, ONyc, USD*, eUSX, oTFY, and the two bonds with no market on Solana (USTRY, EUROB).
 - **Three of the tokens Rodrigo chose are out**: sUSDS (no Solana mint was found), USDC+ (it lost its backing in the Drift exploit of April 2026) and USX (it pays nothing; it is only the exit leg of eUSX).
 - **Two tokens fit none of the four leg types**: ONyc (reinsurance) and USD* (a mix with swap fees). No type was invented: both wait for Rodrigo (section 5.1).
@@ -39,6 +40,7 @@ Tags: `[n]` checked that day against source n. `[ns]` or `[ns n]` only a search-
 | sUSDS | Sky | rate, credit | none | out | 4: no Solana mint found |
 | USDC+ | Reflect | market_deposit | none | out | 4: exploit-linked, redemption paused |
 | USX | Solstice | no yield | A | out | not a yield asset |
+| MEX | Etherfuse | none | none | out | 2: not a bond; what backs it was not found |
 
 ## 2. The filters, and how the rows were made
 
@@ -49,8 +51,8 @@ Tags: `[n]` checked that day against source n. `[ns]` or `[ns n]` only a search-
 5. Low or medium risk: levered, algorithmic and junior tranches are out.
 
 **The tier** is the launch shelf's rule, on the price impact of a sale into USDC: A, $50,000 at 35 bps or less; B, $10,000 at 35 bps or less; C, about $1,000 to $2,000 at 30 bps or less. Depth is the loss of a sale against a $100 sale on the Jupiter quote API, read between 15:34 and 15:36 UTC `[api]`. Three calls were made here and are Rodrigo's to change `[own]`:
-- A token thinner than C has no tier that says so, since the launch shelf's fourth tier is "not listed". sUSD and sUSDe are therefore on hold, not listed at C.
-- A token with no market route takes C, whatever its redemption allows (kUSDC). The Solana vault trades through a router; it cannot redeem at a lending reserve today, so redemption is not yet an exit a plan can count on.
+- A token thinner than C has no tier that says so, since the launch shelf's fourth tier is "not listed". sUSD and sUSDe are therefore on hold and in no plan. Their rows carry C because the row's type has nothing thinner; the table above says "thinner than C".
+- A token with no market route is judged by how it exits. Where the only exit is the issuer's, after KYC, a vault has none: USTRY and EUROB are on hold. Where anyone may redeem at par, the exit exists but the vault cannot use it yet: the Solana vault trades through a router and cannot redeem at a lending reserve today. kUSDC is the one such token here. It takes C, whatever its redemption allows, so no plan holds more than $1,500 of it, and it is the first question of section 5.2.
 - The tier is a fallback. Bearing's measured exit replaces it at the rollout (gate `EXIT-SOURCE`); no exit of an added token is measured yet, so every plan line of one says it takes its tier ceiling.
 
 **The fixture yields** are the dated figures of section 3, each with a haircut taken by hand, as the launch shelf's are: three tenths off a figure an aggregator reports, a quarter off a variable rate read from the protocol, half off a figure only the input list gives. They are fixtures, plated MOCK wherever shown.
@@ -121,7 +123,7 @@ Depth is the loss on a sale to USDC against a $100 sale, from the Jupiter quote 
 - **Redemption** Not applicable. Nearest on Solana: jlUSDS (`j14XLJZS…LWvh`), a Jupiter Lend deposit at 4.01% [5], which is `market_deposit`, not the Savings Rate.
 - **Geo-blocks** Not researched.
 - **Depth** None.
-- **Tier** C (placeholder; nothing to sell).
+- **Tier** None: there is nothing to sell, and no row.
 - **Yield** Savings Rate 3.60% on Ethereum, 2026-10-06 [9]. It applies to no Solana token found.
 - **Incidents** Not researched.
 - **Not verified** That no Solana sUSDS mint exists: absence from Jupiter is not proof; Sky's developer docs were not read.
@@ -190,7 +192,125 @@ Depth is the loss on a sale to USDC against a $100 sale, from the Jupiter quote 
 
 Depth method: Jupiter quote, token to USDC, output per token at the size against output per token at $100, in bps `[api]`. The API's own `priceImpactPct` is given beside it where it differs. All eight mints are classic SPL Token: no transfer hook, no default-frozen accounts, no permanent delegate `[rpc]`.
 
+#### ONyc (OnRe)
 
+- **Verdict.** Hold. Deciding filter: 5. It passes 1 to 4. What settles it: (a) Rodrigo's decision on a leg type for reinsurance; (b) the collateral make-up from OnRe's transparency dashboard, to rule out a basis asset or leverage inside.
+- **Issuer and backing.** OnRe, "a fully licensed, collateralized reinsurer and onchain asset manager"; ONyc combines "premium income with collateral returns" `[102]`. Legal entity and regulator not found on the pages read.
+- **Mechanism and leg types.** None of the four fits; `legTypes` is null. The return is underwriting premium less insured losses, plus the yield on the collateral `[102]`. Nearest type: credit, because a loss is written down across the pool through NAV `[own]`. The difference: the loss comes from insured events, not from a borrower's default. A new type ("underwriting") would need: a NAV write-down on loss events, a tail that is seasonal and not tied to rates, the share of the yield that is collateral return and what that collateral is, and the redemption queue `[own]`.
+- **Address.** `5Y8NV33Vv7WbnLfq3zBcKSdYPrk7g2KoiQoe7M2tcxp5`, 9 decimals, SPL Token (Tokenkeg) `[rpc]`. Jupiter-verified, 8,977 holders `[api: Jupiter tokens]`. Supply 254.1M × $1.1516 ≈ $293M, against $288M TVL on DefiLlama `[rpc][113]`.
+- **Transfer restrictions.** Freeze authority `45Ynzauh…3jaJ5`; mint authority `AbpE5YLp…bMnNX`; no extensions `[rpc]`. No allowlist. The terms read have no clause on freezing or on program holders `[101]`.
+- **Redemption.** A holder without KYC sells on the DEX. Issuer redemption carries a 25 bps fee and settles in USDC or USDG, with no fixed holding period `[ns 102]`. Direct mint and redeem at size need KYC `[ns 102]`. Queue not verified.
+- **Geo-blocks.** Open Access Interface Terms of Use, effective 2025-11-09 `[101]`: AF, DZ, AO, AU, BY, BO, BA, BG, BF, BI, CM, CF, CU, HR, CD, ET, GW, HT, IR, IQ, CI, KE, XK, KW, LA, LB, LR, LY, ML, MC, ME, MZ, MM, NA, NP, NI, NG, KP, CY, MK, PA, PG, RO, RU, RS, SO, ZA, KR, SS, SD, SY, UA, GB, US, VE, VN, YE, ZW; plus Crimea, North Cyprus, South Ossetia, Somaliland and any sanctioned country. Brazil is not on the list `[101]`.
+- **Depth.** $1k: 0.0 bps. $10k: 0.01 bps. $50k: 0.07 bps. Route: Orca Whirlpool. API impact 0.8 bps at every size. Read 15:34 UTC `[api: Jupiter quote]`.
+- **Tier.** A.
+- **Yield.** 11.02% on 2026-10-06, 30-day mean 11.23%: DefiLlama pool `7083d6a5-e3cb-4eeb-8204-f1b735e4ecbb`, an aggregator figure `[113]`. Sheet: ~11% `[sheet]`. Live: the same DefiLlama pool; an issuer NAV endpoint was not found.
+- **Incidents.** None found. OnRe is not among the 11 protocols named after the Drift exploit `[107]`.
+- **Not verified.** The mint on an OnRe page (cross-checked by the verified flag and the supply match only). Collateral make-up and leverage. Legal entity. Redemption queue. Use of the freeze authority.
+
+#### PRIME (Hastra / Figure)
+
+- **Verdict.** Add with caution. Deciding filter: 1 (a classic mint with no allowlist; it passes). Caution: the geo-blocks and the unstake terms could not be read today.
+- **Issuer and backing.** Hastra, a Solana protocol built with Figure Technology Solutions `[ns 117]`. A person locks USDC for wYLDS (wrapped YLDS, Figure's registered yield-bearing dollar token) and stakes wYLDS for PRIME `[ns 117]`. PRIME earns from Democratized Prime, Figure's warehouse lending against home-equity lines of credit awaiting securitisation `[ns 117]`.
+- **Mechanism and leg types.** `credit`. Underneath sits a rate leg (wYLDS), and the lending pool can queue exits as a market deposit does; the shares are not published `[own]`.
+- **Address.** `3b8X44fLF9ooXaUm3hhSgjpmVs6rZZ3pPoGnGahc3Uu7`, 6 decimals, SPL Token `[rpc]`. Jupiter-verified, 1,645 holders `[api: Jupiter tokens]`. Supply 118.9M × $1.0627 ≈ $126.4M, against $127.4M on DefiLlama `[rpc][113]`.
+- **Transfer restrictions.** Freeze authority `YBRBjnVx…gojJU`; mint authority `EtnHujEk…J31KK`; no extensions `[rpc]`.
+- **Redemption.** DEX sale, or unstake to wYLDS and wYLDS to USDC in the Hastra app `[sheet]`. Delays and fees not verified.
+- **Geo-blocks.** Not verified. `hastra.io/terms` returned only its title to the reader `[116]`. The sheet says "geo-restricted" `[sheet]`. The row carries the US only, from the input list's line on the issuer, and says it is not verified; the rest is unknown, not unblocked.
+- **Depth.** $1k: 0.07 bps. $10k: 0.63 bps. $50k: 0.82 bps. Route: Orca Whirlpool, Manifest, AlphaQ. Read 15:34 UTC `[api: Jupiter quote]`.
+- **Tier.** A.
+- **Yield.** 5.94% on 2026-10-06, 30-day mean 6.06%: DefiLlama pool `76bb34c2-e68a-4398-9fba-d8a14c0caa44` `[113]`. Sheet: "up to ~8%" `[sheet]`, which is above the figure read. Live: the same pool; the on-chain PRIME/wYLDS rate account was not identified.
+- **Incidents.** None found. Not named in the Drift list `[107]`.
+- **Not verified.** The mint on a Hastra page. Geo-blocks. Unstake delay and fees. Who bears a default and in what order. The issuing entity.
+
+#### AUTO (Hastra / Figure)
+
+- **Verdict.** Add with caution. Deciding filter: 1 (passes). Caution: consumer credit from one originator, 535 holders, and the same unread terms as PRIME.
+- **Issuer and backing.** Hastra. Staking wYLDS gives AUTO, a share in a consumer auto-loan pool on Figure's Democratized Prime; the loans are originated and serviced by a third-party auto lender and tokenised under a master participation agreement `[ns 116]`. AUTO accrues borrower interest net of Hastra's fee `[ns 116]`.
+- **Mechanism and leg types.** `credit`. wYLDS underneath is a rate leg `[own]`.
+- **Address.** `GNE6oDS6jHrfaV3GQVVCCp37fDnT7PiPuewMKBj2bqNm`, 6 decimals, SPL Token `[rpc]`. Jupiter-verified as "Hastra AUTO" `[api: Jupiter tokens]`. Supply 65.8M × $1.0224 ≈ $67.28M, against $67.29M on DefiLlama `[rpc][113]`.
+- **Transfer restrictions.** Freeze authority `GWceuiUg…RLBWp8`; mint authority `f8WN35KH…kTsrA`; no extensions `[rpc]`.
+- **Redemption.** DEX sale, or unstake to wYLDS in the Hastra app `[sheet]`. Delays not verified.
+- **Geo-blocks.** Not verified, as for PRIME.
+- **Depth.** $1k: 0.0 bps. $10k: 0.62 bps. $50k: 2.59 bps. Route: the Manifest order book up to $10k; at $50k it also goes through the Orca AUTO/PRIME pool ($3.59M) `[118]` and then PRIME to USDC. Read 15:34 UTC `[api: Jupiter quote]`. The exit therefore leans on PRIME's pools `[own]`.
+- **Tier.** A.
+- **Yield.** 9.24% on 2026-10-06, 30-day mean 8.49%: DefiLlama pool `4964d3ac-eb9a-54dd-a7f6-faadac4393ea` `[113]`. Sheet: ~9% target `[sheet]`. Live: the same pool.
+- **Incidents.** None found.
+- **Not verified.** The mint on a Hastra page. Geo-blocks. The auto lender and the quality of the loans. Unstake terms. Any first-loss cover.
+
+#### USD* (Perena)
+
+- **Verdict.** Hold. Deciding filter: 5. What settles it: Perena's published backing, with the share that is delta-neutral and a statement on leverage.
+- **Issuer and backing.** Perena. USD* is described as backed by "delta-neutral positions, secured lending markets, and tokenized real-world assets", priced at the pool's net asset value `[ns 112]`. A separate junior token (USD*-J, about 17% of the structure) takes losses first `[ns 112]`. USD*-J is out by filter 5 `[own]`; this section is about USD* only.
+- **Mechanism and leg types.** None of the four alone; `legTypes` is null. It is a mix of basis, market deposit and rate, plus swap fees from the stablecoin pool, and the shares could not be read `[own]`. Nearest single type: market_deposit. To type it the engine needs the published share of each source, or a "stable-pool" type that covers swap-fee income and the depeg risk of each pool asset `[own]`.
+- **Address.** `star9agSpjiFe3M49B3RniVU4CMBBEK3Qnaqn3RGiFM`, 6 decimals, SPL Token `[rpc]`. Jupiter-verified as "USD Star", 8,591 holders; supply 10.49M, about $11.5M `[api: Jupiter tokens][rpc]`.
+- **Transfer restrictions.** No freeze authority; mint authority `ECJGrTZ6…qyCjHT`; no extensions `[rpc]`.
+- **Redemption.** Burn in Perena's own program at any time: no lock, a 0.05% redemption fee, deposits free `[111]`.
+- **Geo-blocks.** Not verified; no terms page was read.
+- **Depth.** $1k, $10k, $50k: 0.0 bps each, at $1.10061 per token. Route: "Perena Star V2", which is the issuer's own program, not an outside market. Read 15:34 UTC `[api: Jupiter quote]`. Outside pools hold about $3.7k (Orca USD*/USDC) `[118]`. If Perena's program pauses there is no other exit `[own]`.
+- **Tier.** A as measured, with that caution.
+- **Yield.** ~9.3% `[sheet]` only. No issuer or aggregator figure was read today; DefiLlama lists no Perena pool for USD* `[113]`. Live: none found; the candidate is the USD* price in Perena's program state, differenced over time.
+- **Incidents.** None found. Not named in the Drift list `[107]`.
+- **Not verified.** The mint on a Perena page (the vanity address and the Jupiter route name agree). Backing shares. Leverage. Geo-blocks. Current yield. What a redemption gets when the pool is short of USDC.
+
+#### USDC+ (Reflect)
+
+- **Verdict.** Out. Deciding filter: 4.
+- **Issuer and backing.** Reflect (reflect.money). The docs describe USDC supplied to over-collateralised lending pools on Kamino and Jupiter Lend, redeemable "anytime" `[106]`. That page carries no notice of what followed.
+- **Mechanism and leg types.** `market_deposit` as documented `[106]`. Moot now.
+- **Address.** `usd63SVWcKqLeyNHpmVhZGYAqfE5RHE8jwqjRA2ida2`, 6 decimals, SPL Token, freeze authority `KuBAWM6p…bcLgw` `[rpc]`. Jupiter-verified as "USD Coin Plus"; supply 1.88M `[api: Jupiter tokens][rpc]`. Not confirmed on a Reflect page.
+- **Transfer restrictions.** Freeze authority present; no extensions `[rpc]`.
+- **Redemption.** Mint and redemption were paused after the Drift exploit `[ns 108]`. From 2026-07-02, for 180 days, a voluntary buy-back pays 0.20 USDC plus 80 Reflect Credits per USDC+, and the holder gives up claims against Drift `[ns 108]`.
+- **Geo-blocks.** Not read; not needed.
+- **Depth.** None. Jupiter answers `TOKEN_NOT_TRADABLE` `[api: Jupiter quote]`. One Meteora pool with $25 `[118]`. Jupiter's price is $0.21 `[api: Jupiter tokens]`.
+- **Tier.** C, no exit.
+- **Yield.** None recorded.
+- **Incidents.** Drift was exploited on 2026-04-01 for about $285M `[ns 108]`. Reflect Money is the first of 11 affected protocols named on 2026-04-02 `[107]`.
+- **Not verified.** The share of backing lost. The mint on Reflect's own page.
+
+#### USX (Solstice)
+
+- **Verdict.** Hold, no deciding filter: it is a plain stablecoin with no yield, so it is not a shelf candidate by itself. It matters only as the exit leg of eUSX.
+- **Issuer and backing.** Solstice. Verified institutions mint USX against USDC or USDT and redeem it for the same `[ns 105]`.
+- **Mechanism and leg types.** No yield leg; `legTypes` is null `[own]`.
+- **Address.** `6FrrzDk5mQARGc1TDYoyVnSyRdds1t4PbtohCD6p3tgG`, 6 decimals, SPL Token `[rpc]`. Jupiter-verified, 11,597 holders, supply 212.0M `[api: Jupiter tokens][rpc]`.
+- **Transfer restrictions.** One key, `Ze3CQhTM…qnto4`, is both mint and freeze authority; no extensions `[rpc]`.
+- **Redemption.** DEX sale. Issuer mint and redeem are KYC and institutional `[ns 105]`; $500K+ `[sheet]`.
+- **Geo-blocks.** Terms & Conditions `[ns 105]`: CU, KP, CD, IR, LY, BY, RU, SO, SS, SD, SY, US, YE; plus Crimea, Donetsk and Luhansk, and any sanctioned place. Read as a snippet only.
+- **Depth.** $1k: 0.02 bps. $10k: 0.03 bps. $50k: 0.08 bps, at $0.9995. Route: Raydium CLMM, Orca Whirlpool, Manifest. Read 15:34 UTC `[api: Jupiter quote]`.
+- **Tier.** A.
+- **Yield.** None; USX pays nothing.
+- **Incidents.** On 2025-12-26 USX fell to about $0.80 on Solana DEXs (one report says lower) when pool liquidity ran out; Solstice added liquidity and said collateral stayed above 100% `[ns 114][ns 115]`. strcUSX was wound down, with accrual ending Sep 21 and funds returned in USX (a search snippet whose page was not identified). No report was found that the wind-down touched USX reserves.
+- **Not verified.** The mint on a Solstice page. The terms in full. A reserve attestation.
+
+#### eUSX (Solstice)
+
+- **Verdict.** Hold. Deciding filter: 5. What settles it: (a) the full text of the "professional and institutional users only" clause; (b) who runs the strategy, on which venues, in whose custody, and whether with leverage; (c) a current rate read from the vault, not a track-record figure.
+- **Issuer and backing.** Solstice YieldVault. eUSX is the share a person gets for locking USX; "rewards accrue into its exchange rate" `[103]`. The yield comes from "delta-neutral strategies" `[103]`: funding-rate arbitrage and hedged staking, with a part in tokenised Treasuries `[ns 105]`.
+- **Mechanism and leg types.** `basis` and `rate`. Mostly basis; the Treasury share is not published. The strategy trades off chain, so venue and custody risk sit on top `[own]`. It is not algorithmic and no leverage is stated, but none is ruled out either `[own]`.
+- **Address.** `3ThdFZQKM6kRyVGLG48kaPg5TRMhYMKY1iCRa9xop1WC`, 6 decimals, SPL Token `[rpc]`. The same address is printed in Solstice's docs `[103]`. Supply 11.62M, 6,331 holders `[rpc][api: Jupiter tokens]`.
+- **Transfer restrictions.** No freeze authority; mint authority `2aHdm37d…rpWbRM`; no extensions `[rpc]`.
+- **Redemption.** Unlock to USX in the app: cooldown "7 days standard; 24 hours for $1,000 or less" `[103]`. Or sell on the DEX. Locking needs no KYC `[sheet]`.
+- **Geo-blocks.** As USX `[ns 105]`. The site also says the products are "intended for professional and institutional users only and are not available to retail investors in any jurisdiction" `[ns 105]`. If that holds for DEX buyers, eUSX is out for a retail plan `[own]`.
+- **Depth.** $1k: 3.9 bps. $10k: 23.6 bps. $50k: 33.4 bps. Route: eUSX to USX on Orca and Raydium (about $1.1M each `[118]`), then USX to USDC. API impact: 8.8, 28.5 and 38.3 bps. Read 15:34 UTC `[api: Jupiter quote]`.
+- **Tier.** A by one reading, 1.6 bps under the line; treat as B until measured again `[own]`.
+- **Yield.** Issuer's claim: "13.96% 3-Year IRR", "21.5% in 2024", "zero negative months", undated `[104]`. This is a track record of the strategy, not a current rate, and it is the source of the sheet's ~14% `[sheet]`. Live: no endpoint found; the candidate is the eUSX/USX rate in the vault program, or the pool price (1.047 USX today `[118]`), differenced over time.
+- **Incidents.** The USX depeg of 2025-12-26; Solstice said eUSX and the YieldVault were not affected `[ns 114]`. strcUSX wound down in September. No exploit found; Solstice is not in the Drift list `[107]`.
+- **Not verified.** The clause above. Manager, venues, custody, leverage. A current yield. Whether the eUSX pools held their price during the December depeg.
+
+#### oTFY (Obligate)
+
+- **Verdict.** Hold. Deciding filter: 1. What settles it: an Obligate document that names the mint and says whether a holder without KYC may hold and sell it.
+- **Issuer and backing.** Obligate AG (Zurich), through a Luxembourg securitisation vehicle; the token tracks the net asset value of a revolving book of trade-finance notes `[109]`, 7 to 90 days, on physical commodity trade `[ns 120]`.
+- **Mechanism and leg types.** `credit`.
+- **Address.** There is a Solana mint and it does move: `BwB3tNH92jKw6naNGDYDbDwRo8bvYxZVvZjRZRcoWR2h`, 9 decimals, SPL Token `[rpc]`. Found through the Raydium pair `7GzGBjKG…7qyq` `[118]`. Supply 25.74M matches the ~$26M reported `[rpc][ns 109]`. But Jupiter lists it unverified, as "RWA10 Yield Strategy", with 41 holders `[api: Jupiter tokens]`, and no Obligate page read shows the mint. `addressVerified` is false.
+- **Transfer restrictions.** One key, `A1dZeiEE…YV2qm`, is both mint and freeze authority; no extensions, so no allowlist on chain `[rpc]`.
+- **Redemption.** Issuer: KYC, qualified or professional investors `[110]`, $10,000 minimum, one-day subscription, seven-day redemption window subject to the liquidity buffer `[109]`. Secondary: one Raydium pool, kept near NAV by a market maker `[109]`.
+- **Geo-blocks.** Not verified; no oTFY terms were found.
+- **Depth.** $1k: 0.02 bps. $10k: 0.24 bps. $50k: 1.23 bps. Route: Raydium CLMM oTFY/USDC, $0.99M, $30k traded in 24h `[118]`. Read 15:35 UTC `[api: Jupiter quote]`. The API's own impact field is unusable here (no reference price). One pool and one market maker `[own]`.
+- **Tier.** A as measured.
+- **Yield.** 8.75% a year on Obligate's home page, undated `[110]`; a case study of 2026-08-18 calls it a 7-day historical figure `[109]`. Live: none found; Kamino's Obligate market prices oTFY from a daily Chainlink NAV feed `[109]`, which could be differenced.
+- **Incidents.** None found. The token launched in June 2026 `[ns 120]`.
+- **Not verified.** The mint against Obligate's own page. Whether Obligate allows holders without KYC or freezes them. Geo-blocks. The feed address.
 
 ### 3.3 The Etherfuse bonds
 
@@ -305,7 +425,12 @@ No type was invented. Both are listed and held out.
 
 ### 5.2 Verdicts the filters do not settle
 
-Each is listed, held out, and says why on the page. A recommendation for each:
+**kUSDC first, because it is in test plans.** Filter 3 asks that a token can be sold at a person's size. kUSDC cannot be sold: Jupiter answers "not tradable" `[api]`. It can be redeemed at the reserve by anyone, at par, while USDC is free there (about 10.9M at 91% utilisation `[6]`), and the vault has no instruction for that yet. On the grid of goals it is in 86 of the 90 plans shown, never above the $1,500 of its tier, and up to 37.5% of a small plan ($375 of $1,000) `[run]`.
+- Option 1 (as built): keep it in test plans at the thinnest tier, with the caution on its row. The plans then show what the shelf would do once the vault can redeem; nothing here is live.
+- Option 2: hold it out, as USTRY and EUROB are, until the program has a redeem leg, and let jlUSDC and jlJupUSD be the market deposits meanwhile.
+- **Recommendation: option 1 for testing, and no listing in part (b) before the vault can redeem it.** It is Rodrigo's call; moving it is one line on its row (`heldOut`).
+
+The rest are listed, held out, and say why on the page. A recommendation for each:
 
 | Token | Recommendation | What would change it |
 |---|---|---|
@@ -363,7 +488,9 @@ Paths are in this repository, read on `shelf/common`. Nothing was changed.
 
 ### 5.5 Smaller calls made here, for Rodrigo to overturn
 
-- **kUSDC is tier C.** It redeems at par with about 10.9M USDC free today `[6]`, which by size would be A, as jlUSDC is on the launch shelf. It is C because no router trades it and the vault cannot redeem at a reserve yet. If the vault gains that leg, tier it by the free liquidity Bearing measures.
+- **kUSDC's tier, if it stays (section 5.2).** By what it redeems it would be A, as jlUSDC is on the launch shelf. It is C because no router trades it. If the vault gains a redeem leg, tier it by the free liquidity Bearing measures.
+- **wYLDS is typed `rate` only.** It wraps a certificate that is an unsecured debt of its issuer `[13s]`, so the issuer's credit stands beside the rate. Every rate token has an issuer; this one's promise is unsecured. Typed `rate` it enters the safe-yield sleeve and a "no lending" plan. Typed `rate` with `credit` it would count against the credit budget and leave both. Rodrigo may prefer the second.
+- **No `LEG_TYPES` row for a token that is in no plan.** The six new rows are the tokens a plan may hold. A token on hold or held out gets its row when it enters plans, so a type is never recorded ahead of the decision that it waits on. The shared test fails if a row is moved into plans without one.
 - **wYLDS is tier B, and its yield is taken on trust.** Its price stays near one dollar, so the yield is not in the price, and how a plain holder (a vault) receives it was not verified. If a vault earns nothing by holding it, it is cash with an issuer, and comes off the shelf. This is the first thing to check before a rollout.
 - **USDY is not blocked for Brazil.** The issuer's eligibility page (seen as a search extract) bars the US, Canada and the sanctioned list, and asks professional or qualified status in Brazil, the EEA, the UK, Hong Kong, Malaysia, Singapore and Switzerland to be *issued* USDY `[18s]`. A plan buys it on a pool. Only the barred countries are on the row. Whether the second list should also block is Rodrigo's call; `portfolio-method.md` already notes that a Brazilian retail holder cannot redeem with the issuer.
 - **jlJupUSD's yield leaves the incentive out**: 3.79% from borrowers is the figure, and the further 1.50% of rewards is not counted `[5]`.
