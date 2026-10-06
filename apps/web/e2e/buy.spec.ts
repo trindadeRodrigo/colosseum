@@ -129,7 +129,7 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
   await expect(page.locator('main [data-ui="disclaimer"]')).toBeVisible();
   await expect(page.locator('[data-ui="disclaimer"]:visible')).toHaveCount(1);
   // and home says where the money is, under the goal
-  await page.getByRole('navigation').getByRole('link', { name: en.shell.goal }).click();
+  await page.getByRole('navigation').getByRole('link', { name: en.shell.invest }).click();
   await expect(page.getByRole('link', { name: en.portfolio.summary.see })).toBeVisible();
   // a page with no disclaimer of its own keeps the foot's
   await expect(page.locator('footer [data-ui="disclaimer"]')).toBeVisible();

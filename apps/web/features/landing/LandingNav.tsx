@@ -7,7 +7,9 @@ import { STEP_IDS } from './JointStage';
 
 // His landing header (compact-nav.md): the mark and the wordmark alone over the hero, then, from step
 // 03, a solid centred bar with the menu and the one call to action. With reduced motion the stage is
-// not pinned, so the bar is compact from the start. A person signed in on this browser never sees
+// not pinned, so the bar is compact from the start. His items: Products and Invest are the page's own
+// showcase and typing box, Resources is how Bearing measures, and Analytics is Bearing; the product's
+// bar has the same items on its routes (components/shell/AppNav.tsx). A person signed in on this browser never sees
 // this page: `/` sends them to their goal (app/(marketing)/page.tsx), so the action is "Sign in".
 
 export function LandingNav() {
@@ -26,7 +28,8 @@ export function LandingNav() {
       links={[
         { label: t.products, href: '#showcase' },
         { label: t.invest, href: '#simulate' },
-        { label: t.resources, href: '#resources' },
+        { label: t.resources, href: '/risk/methodology' },
+        { label: t.analytics, href: '/risk' },
       ]}
       cta={{ label: t.cta, href: '/sign-in?next=/goal' }}
       stage={{ compactAt: STEP_IDS[2], releaseAbove: STEP_IDS[1] }}

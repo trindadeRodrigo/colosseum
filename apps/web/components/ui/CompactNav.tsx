@@ -35,7 +35,14 @@ export type CompactNavProps = {
    * The one call to action in the bar. A signed-in visitor gets "Open app"; the bar never shows a
    * balance.
    */
-  cta: { label: string; href: string };
+  cta?: { label: string; href: string };
+  /**
+   * In place of `cta`, where the action is more than a link: the product's wallet ("Sign in", then
+   * the short address and "Sign out"). Still one action in the bar.
+   */
+  action?: ReactNode;
+  /** At the top of the phone's sheet: what the bar has no room for there (the wallet's address). */
+  sheetHead?: ReactNode;
   /** Where "Skip to content" goes: the id of the main content. */
   contentId: string;
   /**
@@ -64,6 +71,8 @@ export function CompactNav({
   homeHref = '/',
   links,
   cta,
+  action,
+  sheetHead,
   contentId,
   stage,
   compact: controlled,
@@ -203,9 +212,12 @@ export function CompactNav({
           >
             <Icon name={open ? 'X' : 'Menu'} />
           </button>
-          <Button variant="primary" href={cta.href} className="ml-2 whitespace-nowrap">
-            {cta.label}
-          </Button>
+          {action ??
+            (cta && (
+              <Button variant="primary" href={cta.href} className="ml-2 whitespace-nowrap">
+                {cta.label}
+              </Button>
+            ))}
         </nav>
       </div>
       <div
@@ -214,6 +226,7 @@ export function CompactNav({
         hidden={!open}
         className="fixed top-[calc(env(safe-area-inset-top,0px)+78px)] right-4 left-4 z-30 flex flex-col rounded-md border border-border bg-card p-2 min-[820px]:hidden"
       >
+        {sheetHead && <div className="border-b border-border px-3 pt-1 pb-3">{sheetHead}</div>}
         {links.map((link, index) => (
           <a
             key={link.href}
