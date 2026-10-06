@@ -14,6 +14,7 @@ import {
   LiquidityAssessment,
   type LiquidityProvider,
   Obligation,
+  PlanCandidateId,
   PlanSplitSleeve,
   Price,
   Provenance,
@@ -26,13 +27,14 @@ import {
   YieldObservation,
 } from '@colosseum/schemas';
 import { z } from 'zod';
+import { paramsHashOf } from './compose';
 import { legTypesOf } from './leg-types';
 import { BPS, byName, floorCents, split, sum, toCents, toUsd } from './money';
 import { PERSONAL_PARAMS } from './params';
 import { eligibleForGoal } from './registry';
 import { reason } from './templates';
 import { PersonalInputError, PersonalParameters, PersonalSheet } from './types';
-import { monthAfter } from './world';
+import { monthAfter, tableFor } from './world';
 
 // Rebalancing, sleeve by sleeve (ENG-3 slice 4; docs/vault/PROMPT-BUILD-SOLVER.md). The output is a
 // list of proposals the person taps: nothing here is sent, and the keeper does not rebalance on drift
@@ -124,6 +126,10 @@ export const StoredPlan = z.object({
   sheet: PersonalSheet,
   lines: z.array(BasketLine.pick({ assetId: true, amountUsd: true })),
   split: z.array(PlanSplitSleeve).optional(),
+  /** The candidate the plan was made as: its table is `tableFor` of the parameters, as in `compose`. */
+  candidate: PlanCandidateId.optional(),
+  /** The hash of the table the plan was made with: when given, the table used here must match it. */
+  paramsHash: z.string().min(1).optional(),
 });
 export type StoredPlan = z.input<typeof StoredPlan>;
 
@@ -143,6 +149,12 @@ export const SleeveRebalanceContext = z.object({
    * left out, it is the plan's proportions, which holds only for a vault just bought.
    */
   book: SleeveBook.optional(),
+  /**
+   * The caller's word that the vault has not traded since it was bought as this plan: the only case
+   * in which the book is read from the plan's proportions. Left out with no book and more than one
+   * sleeve, the call is refused.
+   */
+  boughtAsPlanned: z.literal(true).optional(),
   prices: z.array(Price),
   /** The chain's asset list: decimals, symbols, classes, issuers, tiers. */
   assets: z.array(BasketAsset),
@@ -267,56 +279,115 @@ function vaultRaw(v: VaultState): Raw {
   return r;
 }
 
+/** One proposal as carried out: what each of its trades really took in and brought out, in order. */
+export type Execution = {
+  proposal: Pick<SleeveProposal, 'kind' | 'sleeve' | 'plan' | 'bookAfter'>;
+  fills: { inRaw: string; outRaw: string }[];
+};
+
 /**
- * The book once a vault has changed, so it adds up to the vault again: each token's difference
- * between what `expected` (a proposal's `bookAfter`, or the book with a deposit or withdrawal applied)
- * says and what the vault holds is given to the sleeves that moved that token from `before`, in
- * proportion to how much each moved it (a trade's real cost and fill land on the sleeve that traded);
- * where none moved it, to its holders by what they hold. What no sleeve holds is `unowned`.
+ * The book once a vault has changed, trade by trade, so it adds up to the vault again.
+ *
+ * - `before` is the book as given to the call (without the deposit). `flows` (the call's answer) puts
+ *   each sleeve's part of the deposit in its cash first and takes its part of the withdrawal out last.
+ * - A sleeve's proposal: each trade's real amount in leaves that sleeve's row and its real amount out
+ *   enters it, so a cost or a fill that differs from the plan lands on the sleeve that traded, even
+ *   when several proposals are carried out in one batch.
+ * - A breach: each sale is shared by the sleeves in proportion to what they own of the token, and so
+ *   are its proceeds.
+ * - The split restored: the trades are applied to the whole, then each token is shared by the
+ *   proposal's `bookAfter`, which is what restoring the split means.
+ * - What is then left between the book and `vaultAfter` (what no execution explains) is reported in
+ *   `unowned` when the vault holds more, and taken from the holders of the token, in proportion,
+ *   when it holds less. A fill that takes more than its sleeve owns is refused.
  */
 export function settleBook(
   before: SleeveBook,
-  expected: SleeveBook,
+  executions: Execution[],
   vaultAfter: VaultState,
+  flows: { sleeve: string; depositRaw: string; withdrawalRaw: string }[] = [],
 ): { book: SleeveBook; unowned: { asset: string; raw: string }[] } {
-  const b = rowsOf(SleeveBook.parse(before));
-  const e = rowsOf(SleeveBook.parse(expected));
-  const order = [...new Set([...b.keys(), ...e.keys()])].sort();
-  const actual = vaultRaw(VaultState.parse(vaultAfter));
+  const rows = rowsOf(SleeveBook.parse(before));
+  const vault = VaultState.parse(vaultAfter);
+  const cashId = vault.cash.asset;
+  for (const f of flows) rows.set(f.sleeve, rows.get(f.sleeve) ?? new Map());
+  const order = () => [...rows.keys()].sort();
+  const refuse = (message: string): never => {
+    throw new PersonalInputError('InvalidContext', [{ path: 'executions', message }]);
+  };
+  const take = (row: Raw, asset: string, raw: bigint) => {
+    const have = row.get(asset) ?? 0n;
+    if (have < raw) refuse(`a fill takes ${raw} of ${asset} from a sleeve that owns ${have}`);
+    row.set(asset, have - raw);
+  };
+  for (const f of flows) addRaw(rows.get(f.sleeve) ?? new Map(), cashId, BigInt(f.depositRaw));
+  for (const { proposal, fills } of executions) {
+    const trades = proposal.plan.trades;
+    if (fills.length !== trades.length) refuse('one fill per trade, in the order of the trades');
+    if (proposal.sleeve) {
+      const key = keyOf(proposal.sleeve);
+      const row = rows.get(key) ?? refuse(`${key} is not in the book`);
+      trades.forEach((t, i) => {
+        take(row, t.sell, BigInt(fills[i]?.inRaw ?? '0'));
+        addRaw(row, t.buy, BigInt(fills[i]?.outRaw ?? '0'));
+      });
+      continue;
+    }
+    if (proposal.kind === 'liquidity_breach') {
+      const keys = order();
+      trades.forEach((t, i) => {
+        const owned = keys.map((k) => rows.get(k)?.get(t.sell) ?? 0n);
+        const sold = apportion(owned, BigInt(fills[i]?.inRaw ?? '0'));
+        const got = apportion(sold, BigInt(fills[i]?.outRaw ?? '0'));
+        keys.forEach((k, j) => {
+          const row = rows.get(k) ?? new Map<string, bigint>();
+          take(row, t.sell, sold[j] ?? 0n);
+          addRaw(row, t.buy, got[j] ?? 0n);
+        });
+      });
+      continue;
+    }
+    // The split restored: the whole traded, then shared as the proposal's book shares it.
+    const whole: Raw = new Map();
+    for (const r of rows.values()) for (const [k, n] of r) addRaw(whole, k, n);
+    trades.forEach((t, i) => {
+      take(whole, t.sell, BigInt(fills[i]?.inRaw ?? '0'));
+      addRaw(whole, t.buy, BigInt(fills[i]?.outRaw ?? '0'));
+    });
+    const target = rowsOf(proposal.bookAfter);
+    const keys = order();
+    const next = new Map(keys.map((k) => [k, new Map<string, bigint>()]));
+    for (const [asset, n] of whole) {
+      const w = keys.map((k) => target.get(k)?.get(asset) ?? 0n);
+      const parts = apportion(
+        w.some((x) => x > 0n) ? w : keys.map((k) => (rows.get(k)?.get(asset) ?? 0n) + 1n),
+        n,
+      );
+      keys.forEach((k, j) => {
+        next.get(k)?.set(asset, parts[j] ?? 0n);
+      });
+    }
+    for (const [k, r] of next) rows.set(k, r);
+  }
+  for (const f of flows) take(rows.get(f.sleeve) ?? new Map(), cashId, BigInt(f.withdrawalRaw));
+  // What no execution explains.
+  const keys = order();
+  const actual = vaultRaw(vault);
   const tokens = [
-    ...new Set([...actual.keys(), ...[...e.values()].flatMap((r) => [...r.keys()])]),
+    ...new Set([...actual.keys(), ...[...rows.values()].flatMap((r) => [...r.keys()])]),
   ].sort();
   const unowned: { asset: string; raw: string }[] = [];
   for (const k of tokens) {
-    const held = order.map((s) => e.get(s)?.get(k) ?? 0n);
+    const held = keys.map((s) => rows.get(s)?.get(k) ?? 0n);
     const diff = (actual.get(k) ?? 0n) - held.reduce((n, x) => n + x, 0n);
-    if (diff === 0n) continue;
-    const moved = order.map((s, i) => {
-      const d = (held[i] ?? 0n) - (b.get(s)?.get(k) ?? 0n);
-      return d < 0n ? -d : d;
-    });
-    const tryWith = (w: bigint[]) => {
-      if (w.every((x) => x === 0n)) return null;
-      const parts = apportion(w, diff < 0n ? -diff : diff);
-      const rows = held.map((h, i) => h + (diff < 0n ? -(parts[i] ?? 0n) : (parts[i] ?? 0n)));
-      return rows.every((x) => x >= 0n) ? rows : null;
-    };
-    const rows = tryWith(moved) ?? tryWith(held);
-    if (!rows) {
-      if (diff > 0n) unowned.push({ asset: k, raw: diff.toString() });
-      else
-        throw new PersonalInputError('InvalidContext', [
-          { path: 'vaultAfter', message: `the book holds more ${k} than the vault` },
-        ]);
-      continue;
-    }
-    order.forEach((s, i) => {
-      const r = e.get(s) ?? new Map<string, bigint>();
-      r.set(k, rows[i] ?? 0n);
-      e.set(s, r);
+    if (diff > 0n) unowned.push({ asset: k, raw: diff.toString() });
+    if (diff >= 0n) continue;
+    const less = apportion(held, -diff);
+    keys.forEach((s, j) => {
+      rows.get(s)?.set(k, (held[j] ?? 0n) - (less[j] ?? 0n));
     });
   }
-  return { book: bookOf(e, order), unowned };
+  return { book: bookOf(rows, keys), unowned };
 }
 
 /**
@@ -340,7 +411,8 @@ export function proposeSleeveRebalances(
     );
   const plan = parsedPlan.data;
   const ctx = parsed.data;
-  const P = ctx.params ?? PERSONAL_PARAMS;
+  // The table the plan was made with: the candidate's, as `compose` builds it.
+  const P = tableFor(ctx.params ?? PERSONAL_PARAMS, plan.candidate ?? null);
   const { sheet } = plan;
   const lang: Language = sheet.language;
   const band = P.driftBandBps;
@@ -348,6 +420,11 @@ export function proposeSleeveRebalances(
   const refuse = (path: string, message: string): never => {
     throw new PersonalInputError('InvalidContext', [{ path, message }]);
   };
+  if (plan.paramsHash !== undefined && paramsHashOf(P) !== plan.paramsHash)
+    refuse(
+      'context.params',
+      'this plan was made with another parameter table: pass the table it was made with (its hash is the plan’s paramsHash)',
+    );
 
   // ---- The vault, its prices, and dollars kept in the basket's scale until the last step.
   const vault = ctx.vault;
@@ -436,6 +513,13 @@ export function proposeSleeveRebalances(
     rows = new Map([[keys[0] ?? 'goal', new Map(held)]]);
   } else {
     bookFrom = 'plan';
+    // Only on the caller's word that nothing has traded since the plan was bought: any trade since
+    // may have moved value between sleeves while the vault still looks like the plan.
+    if (ctx.boughtAsPlanned !== true)
+      refuse(
+        'context.book',
+        'which sleeve owns what is not known: pass the sleeve book, or boughtAsPlanned when the vault has not traded since it was bought as this plan',
+      );
     const heldCents: Cents = new Map(
       sortedKeys(held).map((k) => [k, centsOf(k, held.get(k) ?? 0n)]),
     );
@@ -444,7 +528,7 @@ export function proposeSleeveRebalances(
     if (gap >= band || [...held.keys()].some((k) => !priceOf.has(k)))
       refuse(
         'context.book',
-        `the vault is ${gap} bps from the plan it was bought as, so which sleeve owns what cannot be read from the plan: pass the sleeve book`,
+        `the vault is ${gap} bps from the plan it was bought as, which a vault that has not traded cannot be: pass the sleeve book`,
       );
     flags.add('book_from_plan');
     rows = new Map(keys.map((k) => [k, new Map<string, bigint>()]));

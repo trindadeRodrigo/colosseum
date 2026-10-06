@@ -8,6 +8,7 @@ import type {
   VaultState,
   YieldObservation,
 } from '@colosseum/schemas';
+import { BasketProposalBase, PlanCandidateId } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
 import { compose } from './compose';
 import {
@@ -153,22 +154,29 @@ function vaultOfRaw(raw: Map<string, bigint>): VaultState {
 const priceInt = (id: string) => BigInt(id === CASH ? 1 : (PRICE[id] ?? 0));
 const unitOf = (id: string) => 10n ** BigInt(decimalsOf(id));
 /**
- * The vault after the trades land at the fixture prices, exactly in raw units. `costBps` is taken
- * off what each trade brings in, as a pool would.
+ * What each trade really takes in and brings out at the fixture prices, exactly in raw units, with
+ * `costBps` taken off what it brings out, as a pool would.
  */
-function applied(v: VaultState, trades: Trade[], costBps = 0n): VaultState {
-  const raw = rawIn(v);
-  for (const t of trades) {
+const fillsOf = (trades: Trade[], costBps = 0n) =>
+  trades.map((t) => {
     const amount = BigInt(t.amountInRaw);
     const out =
       t.buy === CASH
         ? (amount * priceInt(t.sell) * unitOf(CASH)) / unitOf(t.sell)
         : (amount * unitOf(t.buy)) / (priceInt(t.buy) * unitOf(CASH));
-    raw.set(t.sell, (raw.get(t.sell) ?? 0n) - amount);
-    raw.set(t.buy, (raw.get(t.buy) ?? 0n) + (out * (10_000n - costBps)) / 10_000n);
-  }
+    return { inRaw: amount.toString(), outRaw: ((out * (10_000n - costBps)) / 10_000n).toString() };
+  });
+function applyFills(v: VaultState, trades: Trade[], fills: { inRaw: string; outRaw: string }[]) {
+  const raw = rawIn(v);
+  trades.forEach((t, i) => {
+    raw.set(t.sell, (raw.get(t.sell) ?? 0n) - BigInt(fills[i]?.inRaw ?? '0'));
+    raw.set(t.buy, (raw.get(t.buy) ?? 0n) + BigInt(fills[i]?.outRaw ?? '0'));
+  });
   return vaultOfRaw(raw);
 }
+/** The vault after the trades land at the fixture prices, less `costBps` on what each brings out. */
+const applied = (v: VaultState, trades: Trade[], costBps = 0n) =>
+  applyFills(v, trades, fillsOf(trades, costBps));
 const withCash = (v: VaultState, delta: bigint): VaultState => ({
   ...v,
   cash: { ...v.cash, raw: (BigInt(v.cash.raw) + delta).toString() },
@@ -193,22 +201,30 @@ const sleeveUsd = (book: SleeveBook, sleeve: string) =>
     (n, h) => n + (Number(h.raw) / 10 ** decimalsOf(h.asset)) * Number(priceInt(h.asset)),
     0,
   );
-/** The book a proposal expects, laid over the book: its own sleeve's row, or every row. */
-const expectedAfter = (book: SleeveBook, p: SleeveProposal): SleeveBook => {
-  if (!p.sleeve) return p.bookAfter;
-  const key = p.sleeve.kind === 'theme' ? `theme:${p.sleeve.theme}` : p.sleeve.kind;
-  return book.map((r) => (r.sleeve === key ? (p.bookAfter.find((x) => x.sleeve === key) ?? r) : r));
-};
-/** Every proposal of an answer carried out in turn: the vault traded and the book settled. */
-function carryOut(out: SleeveProposals, v: VaultState, costBps = 0n) {
-  let book = out.book;
-  let now = v;
-  for (const p of out.proposals) {
-    const next = applied(now, p.plan.trades, costBps);
-    book = settleBook(book, expectedAfter(book, p), next).book;
-    now = next;
-  }
-  return { book, vault: now };
+/**
+ * Every proposal of an answer carried out in one batch, each trade at its own fill, then the book
+ * settled once from the book as given (`book`, or the answer's when none was given), with the
+ * answer's flows when `deposit` says the deposit landed.
+ */
+function carryOut(
+  out: SleeveProposals,
+  v: VaultState,
+  opts: { book?: SleeveBook; costBps?: bigint; deposit?: boolean } = {},
+) {
+  let now = opts.deposit
+    ? withCash(
+        v,
+        out.flows.reduce((n, f) => n + BigInt(f.depositRaw), 0n),
+      )
+    : v;
+  const executions = out.proposals.map((p) => {
+    const fills = fillsOf(p.plan.trades, opts.costBps);
+    now = applyFills(now, p.plan.trades, fills);
+    return { proposal: p, fills };
+  });
+  const before = opts.book ?? out.book;
+  const settled = settleBook(before, executions, now, opts.deposit ? out.flows : []);
+  return { book: settled.book, unowned: settled.unowned, vault: now };
 }
 
 const plan = (
@@ -368,6 +384,8 @@ function history(
 }
 /** The fixture readings are not live: the tests let them count, and the proposal says MOCK. */
 const FIXTURE_READINGS: Partial<SleeveRebalanceContext> = { readingsFrom: ['fixture'] };
+/** The caller's word that the vault has not traded since it was bought as the plan. */
+const JUST_BOUGHT = { boughtAsPlanned: true as const };
 
 /** A liquidity provider with these exit capacities, in dollars, at any cost. */
 const provider = (capacityUsd: Record<string, number>): LiquidityProvider =>
@@ -395,7 +413,10 @@ const provider = (capacityUsd: Record<string, number>): LiquidityProvider =>
 
 describe('the safe-yield sleeve switches only on the 7-day rule', () => {
   const run = (yields: YieldObservation[], over: Partial<SleeveRebalanceContext> = {}) =>
-    proposeSleeveRebalances(SAFE, context(SAFE_VAULT, { yields, ...FIXTURE_READINGS, ...over }));
+    proposeSleeveRebalances(
+      SAFE,
+      context(SAFE_VAULT, { yields, ...FIXTURE_READINGS, ...JUST_BOUGHT, ...over }),
+    );
 
   it('6 days ahead: no switch', () => {
     expect(run(history(6)).proposals).toEqual([]);
@@ -475,7 +496,7 @@ describe('the safe-yield sleeve switches only on the 7-day rule', () => {
   it('stops at the cap per asset of the plan, and says so', () => {
     const out = proposeSleeveRebalances(
       bigPlan,
-      context(bigVault, { yields: history(7), ...FIXTURE_READINGS }),
+      context(bigVault, { yields: history(7), ...FIXTURE_READINGS, ...JUST_BOUGHT }),
     );
     const [p] = out.proposals as [SleeveProposal];
     expect(p.reasons.map((r) => r.rule)).toEqual([
@@ -518,6 +539,7 @@ describe('the safe-yield sleeve switches only on the 7-day rule', () => {
       context(vault({ [MYIELD]: 3000, [SPY]: 3000, [USDY]: 3000, [CASH]: 1000 }), {
         assets: shared,
         yields: history(7),
+        ...JUST_BOUGHT,
         ...FIXTURE_READINGS,
       }),
     );
@@ -536,6 +558,7 @@ describe('the safe-yield sleeve switches only on the 7-day rule', () => {
   it('after the switch, the next call proposes nothing for the goal sleeve (review, repro B)', () => {
     const first = run(history(7));
     const done = carryOut(first, SAFE_VAULT);
+    expect(done.unowned).toEqual([]);
     const again = proposeSleeveRebalances(
       SAFE,
       context(done.vault, { book: done.book, yields: history(7), ...FIXTURE_READINGS }),
@@ -671,7 +694,7 @@ describe('the sleeve book: who owns what', () => {
     expect(first.proposals.map((p) => [p.kind, p.sleeve?.kind])).toEqual([
       ['set_aside_refill', 'goal'],
     ]);
-    const done = carryOut(first, v);
+    const done = carryOut(first, v, { book });
     expect(sleeveUsd(done.book, 'goal')).toBeCloseTo(6500, 0);
     expect(sleeveUsd(done.book, 'safe_yield')).toBeCloseTo(3000, 0);
     // The set-aside is in the goal sleeve's cash, not the safe-yield sleeve's.
@@ -686,13 +709,20 @@ describe('the sleeve book: who owns what', () => {
     expect(second.proposals).toEqual([]);
   });
 
-  it('is derived from the plan only for a vault just bought; otherwise it is asked for', () => {
-    const moved = vault({ [SPY]: 6000, [USDY]: 2000, [CASH]: 1500 });
-    expect(() => proposeSleeveRebalances(stored, context(moved, november))).toThrow(
-      /pass the sleeve book/,
+  it('is derived from the plan only on the word that nothing traded since; otherwise it is asked for', () => {
+    // The re-review's repro: the goal sold $400 of SPYx to cash. Within the band of the plan, but
+    // reading the book from the plan would move $100 of the goal's money to the safe-yield sleeve.
+    const sold400 = vault({ [SPY]: 3600, [USDY]: 2000, [CASH]: 4400 });
+    expect(() => proposeSleeveRebalances(stored, context(sold400))).toThrow(
+      /pass the sleeve book, or boughtAsPlanned/,
     );
+    const moved = vault({ [SPY]: 6000, [USDY]: 2000, [CASH]: 1500 });
+    expect(() =>
+      proposeSleeveRebalances(stored, context(moved, { ...november, ...JUST_BOUGHT })),
+    ).toThrow(/pass the sleeve book/);
     const bought = vault({ [SPY]: 4000, [USDY]: 2000, [CASH]: 4000 });
-    const out = proposeSleeveRebalances(stored, context(bought));
+    expect(() => proposeSleeveRebalances(stored, context(bought))).toThrow(/boughtAsPlanned/);
+    const out = proposeSleeveRebalances(stored, context(bought, JUST_BOUGHT));
     expect(out.bookFrom).toBe('plan');
     expect(out.flags).toContain('book_from_plan');
     expect(sleeveUsd(out.book, 'safe_yield')).toBeCloseTo(3000, 2);
@@ -728,13 +758,34 @@ describe('the sleeve book: who owns what', () => {
     });
     const v = vaultOfBook(book);
     const first = proposeSleeveRebalances(stored, context(v, { book, ...november }));
-    const done = carryOut(first, v, 100n);
+    const done = carryOut(first, v, { book, costBps: 100n });
     const sums = new Map<string, bigint>();
     for (const r of done.book)
       for (const h of r.holds) sums.set(h.asset, (sums.get(h.asset) ?? 0n) + BigInt(h.raw));
     expect(sums).toEqual(new Map([...rawIn(done.vault)].filter(([, n]) => n > 0n)));
     expect(sleeveUsd(done.book, 'safe_yield')).toBeCloseTo(3000, 2);
     expect(sleeveUsd(done.book, 'goal')).toBeLessThan(6500);
+  });
+
+  it('settles a batch trade by trade: two sleeves sharing the cash, each keeps its own cost', () => {
+    // The goal refills its set-aside (sells SPYx) and the safe-yield sleeve is 10 points off (buys
+    // USDY with its own cash), carried out together at a 1% cost and settled once.
+    const book = bookOf({
+      goal: { [SPY]: 6000, [CASH]: 500 },
+      safe_yield: { [USDY]: 1700, [CASH]: 1300 },
+    });
+    const v = vaultOfBook(book);
+    const out = proposeSleeveRebalances(stored, context(v, { book, ...november }));
+    expect(out.proposals.map((p) => [p.kind, p.sleeve?.kind])).toEqual([
+      ['set_aside_refill', 'goal'],
+      ['drift', 'safe_yield'],
+    ]);
+    const done = carryOut(out, v, { book, costBps: 100n });
+    expect(done.unowned).toEqual([]);
+    const costOf = (p: SleeveProposal) => p.plan.trades.reduce((n, t) => n + usdOf(t) * 0.01, 0);
+    const [goal, safe] = out.proposals as [SleeveProposal, SleeveProposal];
+    expect(sleeveUsd(done.book, 'goal')).toBeCloseTo(6500 - costOf(goal), 1);
+    expect(sleeveUsd(done.book, 'safe_yield')).toBeCloseTo(3000 - costOf(safe), 1);
   });
 });
 
@@ -792,7 +843,7 @@ describe('between sleeves, nothing moves unless the person chose to restore the 
       const own = cashOf[p.sleeve?.kind as 'goal' | 'theme'];
       expect(buysUsd, p.sleeve?.kind).toBeLessThanOrEqual(salesUsd + own + 0.01);
     }
-    const done = carryOut(out, vaultOfBook(book));
+    const done = carryOut(out, vaultOfBook(book), { book });
     expect(sleeveUsd(done.book, 'goal')).toBeCloseTo(5500, 0);
     expect(sleeveUsd(done.book, 'theme:ai')).toBeCloseTo(5000, 0);
   });
@@ -899,20 +950,28 @@ describe('with restoreSplit off, a sleeve’s value moves only through its own t
             ...(round === 0 && deposit > 0n ? { deposit: String(deposit) } : {}),
           }),
         );
-        if (round === 0 && deposit > 0n) v = withCash(v, deposit);
         const before = {
           goal: sleeveUsd(out.book, 'goal'),
           theme: sleeveUsd(out.book, 'theme:ai'),
         };
-        const done = carryOut(out, v);
-        // Trades at the fixture prices and no cost keep each sleeve's value, to the cent per trade.
-        const trades = out.proposals.reduce((n, p) => n + p.plan.trades.length, 0) + 1;
-        expect(Math.abs(sleeveUsd(done.book, 'goal') - before.goal), `case ${c}`).toBeLessThan(
-          0.01 * trades,
-        );
-        expect(Math.abs(sleeveUsd(done.book, 'theme:ai') - before.theme), `case ${c}`).toBeLessThan(
-          0.01 * trades,
-        );
+        // All proposals in one batch, each trade losing 0.3%, the book settled once.
+        const done = carryOut(out, v, { book, costBps: 30n, deposit: round === 0 && deposit > 0n });
+        expect(done.unowned, `case ${c}`).toEqual([]);
+        // Each sleeve's value moves only by the cost of its own trades, to the cent per trade.
+        for (const [key, was] of [
+          ['goal', before.goal],
+          ['theme:ai', before.theme],
+        ] as const) {
+          const own = out.proposals.filter(
+            (p) => (p.sleeve?.kind === 'theme' ? 'theme:ai' : p.sleeve?.kind) === key,
+          );
+          const traded = own.flatMap((p) => p.plan.trades);
+          const cost = traded.reduce((n, t) => n + usdOf(t) * 0.003, 0);
+          const moved = sleeveUsd(done.book, key) - was;
+          expect(Math.abs(moved + cost), `case ${c} ${key}`).toBeLessThan(
+            0.01 * (traded.length + 1),
+          );
+        }
         book = done.book;
         v = done.vault;
       }
@@ -993,7 +1052,7 @@ describe('every proposal is explained, in English and Portuguese', () => {
     const pt = plan({ [SPY]: 6000, [USDY]: 3000, [CASH]: 1000 }, { language: 'pt' }, SAFE_SPLIT);
     const [p] = proposeSleeveRebalances(
       pt,
-      context(SAFE_VAULT, { yields: history(7), ...FIXTURE_READINGS }),
+      context(SAFE_VAULT, { yields: history(7), ...FIXTURE_READINGS, ...JUST_BOUGHT }),
     ).proposals as [SleeveProposal];
     expect(p.reasons[0]?.text).toBe(
       'Na parte do seu plano em rendimento em dólar só de taxa, USDY passa para SGOV: em cada um dos últimos 7 dias de leituras, SGOV rendeu mais que USDY após o deságio, por mais de 0,5% ao ano.',
@@ -1001,11 +1060,48 @@ describe('every proposal is explained, in English and Portuguese', () => {
     expect(p.reasons.at(-1)?.text).toMatch(/^MOCK: /);
     const [en] = proposeSleeveRebalances(
       SAFE,
-      context(SAFE_VAULT, { yields: history(7), ...FIXTURE_READINGS }),
+      context(SAFE_VAULT, { yields: history(7), ...FIXTURE_READINGS, ...JUST_BOUGHT }),
     ).proposals as [SleeveProposal];
     expect(en.reasons[0]?.text).toBe(
       'In the part of your plan in dollar yield from a rate alone, USDY moves to SGOV: on each of the last 7 days of readings, SGOV yielded more than USDY after haircut, by over 0.5% a year.',
     );
+  });
+});
+
+describe('the table is the one the plan was made with', () => {
+  const yields = history(7);
+  const ctx = (over: Partial<SleeveRebalanceContext> = {}) =>
+    context(SAFE_VAULT, {
+      yields,
+      ...FIXTURE_READINGS,
+      ...JUST_BOUGHT,
+      liquidity: provider({ [SGOV]: 4000 }),
+      ...over,
+    });
+
+  it("Cover's half share of depth holds the switch to $500 of $4,000 measured, not $1,000", () => {
+    const [p] = proposeSleeveRebalances({ ...SAFE, candidate: 'cover' }, ctx()).proposals as [
+      SleeveProposal,
+    ];
+    expect(p.reasons.map((r) => r.rule)).toContain('SAFE_YIELD_SWITCH_EXIT');
+    expect(p.targets).toEqual([
+      { asset: SGOV, weightBps: 1666 },
+      { asset: USDY, weightBps: 8333 },
+    ]);
+  });
+
+  it('Spread holds every rate token in one band, so it never switches', () => {
+    expect(proposeSleeveRebalances({ ...SAFE, candidate: 'spread' }, ctx()).proposals).toEqual([]);
+  });
+
+  it('a plan made with another table is refused, not rebalanced on this one', () => {
+    expect(() =>
+      proposeSleeveRebalances({ ...SAFE, candidate: 'cover', paramsHash: 'another' }, ctx()),
+    ).toThrow(/another parameter table/);
+  });
+
+  it('the shared candidate ids are the candidates', () => {
+    expect(BasketProposalBase.shape.candidate.unwrap().options).toEqual(PlanCandidateId.options);
   });
 });
 
@@ -1047,7 +1143,13 @@ describe('a plan as compose makes it', () => {
           lastKeeperAt: null,
         })),
     };
-    const out = proposeSleeveRebalances(made, { now: NOW, vault: held, prices, assets });
+    const out = proposeSleeveRebalances(made, {
+      now: NOW,
+      vault: held,
+      prices,
+      assets,
+      boughtAsPlanned: true,
+    });
     expect(made.split?.map((x) => x.kind)).toEqual(['goal', 'safe_yield']);
     expect(out.proposals).toEqual([]);
     expect(out.splitDriftBps).toBeLessThan(10);

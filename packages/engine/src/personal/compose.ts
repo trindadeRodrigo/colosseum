@@ -119,6 +119,9 @@ function canonical(value: unknown): string {
 }
 const hashOf = (value: unknown): string => sha256Hex(new TextEncoder().encode(canonical(value)));
 
+/** The hash of a parameter table, as a plan's `paramsHash` states it. */
+export const paramsHashOf = (P: World['P']): string => hashOf(P);
+
 type Named = { name: string; weight: number; reasons: Reason[] };
 
 /** The parts of a shared portfolio that sit in one sleeve and that the person can hold. */
