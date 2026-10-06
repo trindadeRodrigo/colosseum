@@ -121,6 +121,11 @@ describe.skipIf(!FORK_URL)('the guard, on what the EVM adapter builds', () => {
       trades: trade(buy),
     };
     passes(follows, buy);
+    // A create that trades states its deadline as the attempt's `validUntil`, a few minutes ahead.
+    const wall = Math.floor(Date.now() / 1000);
+    expect(buy.lastValidBlockHeight).toBeGreaterThan(wall);
+    expect(buy.lastValidBlockHeight).toBeLessThanOrEqual(wall + 1_800);
+    expect(own.lastValidBlockHeight).toBeGreaterThan(wall);
     refused({ ...follows, trades: [] }, buy);
   });
 

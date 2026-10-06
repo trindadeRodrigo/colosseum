@@ -1,6 +1,6 @@
 # Orders: what this folder does, and what it does not do yet
 
-The order layer behind `/v1/orders` (DESIGN-VAULT 3.3). It plans the legs of an order, builds one unsigned transaction per leg, and settles a leg when the chain says its transaction landed. It holds no key and signs nothing. It runs on `packages/chain-mock`, and, since ADS-2, on Solana's real adapter (`@colosseum/chain-solana/vault`) where Solana is `live` or `readonly` on a test network or a local copy of mainnet. Mainnet and the EVM chains in `live` or `readonly` stop the API at start.
+The order layer behind `/v1/orders` (DESIGN-VAULT 3.3). It plans the legs of an order, builds one unsigned transaction per leg, and settles a leg when the chain says its transaction landed. It holds no key and signs nothing. It runs on `packages/chain-mock`, and, since ADS-2, on Solana's real adapter (`@colosseum/chain-solana/vault`) where Solana is `live` or `readonly` on a test network or a local copy of mainnet, and, since ADE-2, on the EVM adapter (`@colosseum/chain-evm/vault`) where Robinhood Chain is. Mainnet, and Base, in `live` or `readonly` stop the API at start.
 
 | File | What it holds |
 |---|---|
@@ -11,7 +11,7 @@ The order layer behind `/v1/orders` (DESIGN-VAULT 3.3). It plans the legs of an 
 | `person.ts` | The chain a person's plans live on: the one stored on the user, at a pick or the first time an outside wallet named it |
 | `legs.ts` | Build, report, cancel, and the read that tracks sent legs again. `attemptFor`: which attempt a transaction is |
 | `store.ts` | The tables, through Drizzle. Every writer locks the leg row first, then its attempts; an EVM build takes a lock on (chain, wallet) before that |
-| `chains.ts` | The adapter registry by chain mode: the mock for `mock`; for Solana in `live` or `readonly` on `testnet` or `local`, the real adapter, labelled `sandbox`, on the RPC at `SOLANA_RPC_URL` and the network's assets in `basket_assets` (or what `V1Deps.solana` hands in) |
+| `chains.ts` | The adapter registry by chain mode: the mock for `mock`; for Solana in `live` or `readonly` on `testnet` or `local`, the real adapter, labelled `sandbox`, on the RPC at `SOLANA_RPC_URL` and the network's assets in `basket_assets` (or what `V1Deps.solana` hands in); for Robinhood Chain the same on the EVM adapter, at `ROBINHOOD_RPC_URL` (or `V1Deps.robinhood`) |
 | `errors.ts` | A refusal (its body is the shared `OrderError`); a chain's refusal mapped onto the order codes |
 
 ## The rules an order follows
@@ -49,6 +49,14 @@ The order layer behind `/v1/orders` (DESIGN-VAULT 3.3). It plans the legs of an 
 - A creator's publish or update of a shared portfolio is built as a `publish` step (`buildPublishRecipe`), and the guard signs it since AGT-4, held to the family id and the text the creator's form shows. `buildCancelPending` is built by the adapter and signed by the guard, but no intent asks for it yet.
 - `relay` sends with the node's preflight. A swap whose price moved past its minimum after the build is refused there and is not sent: its attempt stays `built` until the blockhash runs out, about a minute, and only then can the step be built again with a fresh quote. The web says so while it waits.
 - Checked end to end on a local validator: a person's buy of three assets, four steps, each built by `POST .../build`, signed in the test with a key made for the run, reported with `signedTx`, relayed by the API and settled by the read that tracks it, and the portfolio read back from the chain with the three positions (`tests/solana-vault/validator.test.ts`, `SOLANA_LOCAL_VALIDATOR=1`).
+
+## Robinhood Chain, as built (ADE-2)
+
+- Its addresses come from `deployments/robinhood-testnet.json` for `testnet` and `deployments/robinhood-local.json` for `local`, chosen by `CHAIN_NETWORK_ROBINHOOD` (`evmDeployment` in `src/deployments.ts`): the factory and the registry become `contracts.robinhood`, the router `CHAIN_ROUTER_ROBINHOOD`, which may say the same and no other. The record is read strictly and is its file's network. With no record, `live` and `readonly` do not start.
+- The node is `ROBINHOOD_RPC_URL`, asked at start for its chain id (the record's, never 4663 or 8453) and for code at the factory. The tokens are the `robinhood` rows of `basket_assets`, held to the record at start (`holdToEvmRecord`) and filled from it by `pnpm exec tsx scripts/robinhood/basket-assets.ts`.
+- A buy on Robinhood Chain is an approval of the deposit to the plan's vault address, then one `create_vault` that deposits and makes up to eight trades (`tradesInCreate`, `needsApprove`). Every step states its nonce and gas; a trade carries a deadline 900 s after the block's time, which is its attempt's `validUntil`. The step that pulls cash is refused with `AllowanceTooLow` until the approval has landed.
+- `fate` on Robinhood Chain looks for the transaction on an attempt's nonce in the latest 600 blocks, about two minutes: a step reported later than that, and never reported, stays open until the person reports or cancels it.
+- Not run end to end through the routes yet: the adapter, its probe and the guard are held on a copy of the test network (`packages/chain-evm/test/testnet.test.ts`, `tests/evm-vault/guard.test.ts`), the start-up path in `tests/evm-vault/api.test.ts`.
 
 ## What moved into the shared packages
 
