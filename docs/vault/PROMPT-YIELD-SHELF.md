@@ -57,7 +57,8 @@ Solana and Robinhood Chain are separate tracks: a plan lives on one chain, so ea
   - reUSD and nPERENA (unconfirmed).
 - **Robinhood Chain:** run the same screening on its list, with the same filters. Expect:
   - **candidates:** steakUSDG (Morpho vault), syrupUSDG, spUSDG (Spark), rUSDG (Mellow, verify), mGLO (Midas; it has no DEX pool, so check how it exits), and syrupUSDC if it is really on the chain;
-  - **out:** USDG itself (cash, already the chain's cash token), USDe (no base yield), ETH staking tokens (not dollar), LP positions, Pendle PT/YT, permissioned funds, anything not deployed, and Robinhood Earn (an app account, not a token a vault holds).
+  - **added by Rodrigo on 2026-10-06, research and then ask** (see "Uniswap LP and Pendle PT" below): Uniswap LP positions in dollar pairs, and Pendle PT-USDG;
+  - **out:** USDG itself (cash, already the chain's cash token), USDe (no base yield), ETH staking tokens (not dollar), other DEX LPs (up, Ramses X, Fables, Ekubo, PancakeSwap), Pendle YT (it goes to zero at maturity) and the matured PT/YT-sNET, permissioned funds, anything not deployed, and Robinhood Earn (an app account, not a token a vault holds).
 
   Any Robinhood candidate whose verdict is not clear from the filters goes to Rodrigo with a recommendation. Do not add it on your own.
 
@@ -137,6 +138,27 @@ Use the house style of `docs/vault/research/portfolio-method.md`: numbered sourc
   - a USDG goal on Robinhood Chain;
   - a person in a country one token blocks.
 
+### Uniswap LP and Pendle PT (Robinhood Chain)
+
+Rodrigo asked for both. Research them like the other candidates, then bring him the modelling choice with a recommendation, before any fixture row:
+
+- **Uniswap LP.**
+  - **Can the vault hold it?** On v3 and v4 a position is an NFT, so check whether the vault (`contracts/`, the EVM registry and the guard in `packages/sdk`) can hold one. It cannot today: it holds token balances. Only a fungible LP token can be a line (a v2 pool, or a vault that wraps a v3/v4 position into an ERC-20). Find which dollar pairs exist (USDG with USDC or USDe, for example), how deep they are, and which route is fungible.
+  - **Is its yield real?** Separate fees from emissions.
+  - **Its risks:** the depeg risk of the pair's other token, and how it exits (burning the LP token, then the two tokens back to USDG).
+  - **The modelling question:** it fits none of the four leg types. Propose either the nearest type or a new one, with its cap and its credit-budget rule.
+- **Pendle PT-USDG (March 2027).**
+  - **Research:** the fixed implied rate and how it is read live; the SY underlying (USDG in what?); depth before maturity; and what happens at maturity (redeem 1:1).
+  - **The modelling question:** the engine has no maturity date. Propose the smallest honest model:
+    - a rate leg until maturity, priced at its market price, with its exit cost before maturity;
+    - its maturity date on the asset row;
+    - the schedule counting it at par only after maturity;
+    - not held past a goal's date if it matures after it.
+
+    Say what the scheduler would need.
+  - YT is out.
+- **Until Rodrigo answers:** list the PT on the extended shelf with its maturity, left out of every plan with a reason. Do not list the LP until the holdability answer is yes.
+
 ### Part (b), the live rollout: do NOT do it here, but write it down
 
 At the end of each chain's note, add a section "Rollout (b)": per token added, what is left and who does it.
@@ -161,6 +183,7 @@ Add a ledger row in `docs/vault/STATE-VAULT.md` (`SHELF-YIELD`) with owner Rodri
 
 - a candidate whose verdict the filters do not settle;
 - a token that fits no existing leg type;
+- the Uniswap LP and Pendle PT models (above);
 - the Etherfuse matching-leg change;
 - anything that changes what a plan for an existing goal does on the launch shelf.
 
