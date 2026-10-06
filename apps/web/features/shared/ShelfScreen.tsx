@@ -61,7 +61,7 @@ export function ShelfScreen() {
         <p className="max-w-(--tf-measure-body) text-body-lg">
           {chainName ? t.shared.shelf.lead(chainName) : t.shared.shelf.leadAll}
         </p>
-        {person.kind === 'ready' && (
+        {person.kind === 'ready' && person.publishable && (
           <Link href="/publish" className={`${buttonClass({ variant: 'link' })} self-start`}>
             {t.shared.shelf.publish}
           </Link>
@@ -90,7 +90,7 @@ export function ShelfScreen() {
           <CardEmpty
             sentence={chainName ? t.shared.shelf.empty(chainName) : t.shared.shelf.emptyAll}
             action={
-              person.kind === 'ready' ? (
+              person.kind === 'ready' && person.publishable ? (
                 <Link href="/publish" className={buttonClass({ variant: 'link' })}>
                   {t.shared.shelf.publish}
                 </Link>
