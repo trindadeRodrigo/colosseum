@@ -831,6 +831,10 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
           `"${r.text}" said of a tolerance that was ${s.limits?.creditTolerance ? '' : 'not '}stated`,
         );
     }
+    if (r.rule === 'CREDIT_NONE_MIX') {
+      say(credit === 0, `"${r.text}" but credit holds ${credit / 100}`);
+      say(s.mix?.creditBps === 0, `"${r.text}" said of a mix with a credit share`);
+    }
     if (r.rule === 'CREDIT_NONE') {
       say(credit === 0, `"${r.text}" but credit holds ${credit / 100}`);
       say(s.limits?.creditTolerance === 'none', `"${r.text}" said to someone who did not say so`);
@@ -897,7 +901,7 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
   // no more than asked; where they hold less, a line or a left-out entry says why.
   const saidRules = new Set(allReasons(plan).map((r) => r.rule));
   if (!s.mix) {
-    for (const rule of ['MIX', 'MIX_ALL', 'MIX_LIMITS', 'CREDIT_BUDGET_MIX'])
+    for (const rule of ['MIX', 'MIX_ALL', 'MIX_LIMITS', 'CREDIT_BUDGET_MIX', 'CREDIT_NONE_MIX'])
       say(!saidRules.has(rule), `${rule} said of a plan with no mix`);
     say(
       !plan.flags.some((f) => f.startsWith('limits_from_mix:')),

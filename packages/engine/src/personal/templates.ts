@@ -306,6 +306,11 @@ export const REASON_TEMPLATES = {
     'You asked for up to {capBps|pct} of the plan in tokens that lend to borrowers or trade a spread: those tokens together are at that limit.',
     'Você pediu até {capBps|pct} do plano em tokens que emprestam a tomadores ou operam uma diferença de taxas: esses tokens juntos estão nesse limite.',
   ),
+  CREDIT_NONE_MIX: rule(
+    ['mix'],
+    '{asset} is left out: it lends to borrowers or trades a spread, and the mix you asked for holds none of those.',
+    '{asset} fica de fora: ele empresta a tomadores ou opera uma diferença de taxas, e a composição que você pediu não tem nenhum desses.',
+  ),
   CREDIT_NONE: rule(
     ['credit'],
     '{asset} is left out: it lends to borrowers or trades a spread, and you accept no credit risk.',

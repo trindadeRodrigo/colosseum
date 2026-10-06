@@ -138,6 +138,15 @@ describe('only credit: credit and basis tokens up to the caps', () => {
   });
 });
 
+describe('a mix with no credit', () => {
+  it('leaves credit tokens out with the mix as the reason, never a tolerance the person did not state', () => {
+    const plan = run(sheet({ mix: mix({ dollarYieldBps: 10_000, creditBps: 0 }) }));
+    expect(plan.lines.find((l) => l.assetId === 'solana:syrupusdc')).toBeUndefined();
+    expect(rules(plan)).toContain('CREDIT_NONE_MIX');
+    expect(rules(plan)).not.toContain('CREDIT_NONE');
+  });
+});
+
 describe('the caps still hold, and say why', () => {
   it('all in gold: one issuer holds at most half, the rest goes to dollar yield, with why', () => {
     const plan = run(sheet({ mix: mix({ goldBps: 10_000 }) }));

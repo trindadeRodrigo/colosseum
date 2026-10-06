@@ -195,9 +195,11 @@ export class Book {
       if (w.isCredit(a.asset) && w.creditBudget.cents - this.creditUsed <= 0)
         return w.creditBudget.bps === 0 && w.creditBudget.byPlan
           ? reason('CREDIT_NONE_PLAN', { asset: a.asset.symbol }, w.lang)
-          : w.creditBudget.bps === 0 && w.creditBudget.stated
-            ? reason('CREDIT_NONE', { asset: a.asset.symbol }, w.lang)
-            : creditWhy(a.asset);
+          : w.creditBudget.bps === 0 && w.creditBudget.fromMix
+            ? reason('CREDIT_NONE_MIX', { asset: a.asset.symbol }, w.lang)
+            : w.creditBudget.bps === 0 && w.creditBudget.stated
+              ? reason('CREDIT_NONE', { asset: a.asset.symbol }, w.lang)
+              : creditWhy(a.asset);
       return null;
     };
     // A token with no room takes no line, and the limit that stops it is said.
@@ -205,7 +207,12 @@ export class Book {
       const stop = full(a);
       if (!stop) return true;
       why.push(stop);
-      if (stop.rule === 'CREDIT_NONE' || stop.rule === 'CREDIT_NONE_PLAN') leave(a.asset, stop);
+      if (
+        stop.rule === 'CREDIT_NONE' ||
+        stop.rule === 'CREDIT_NONE_PLAN' ||
+        stop.rule === 'CREDIT_NONE_MIX'
+      )
+        leave(a.asset, stop);
       return false;
     });
     const dropped = new Set<string>();
