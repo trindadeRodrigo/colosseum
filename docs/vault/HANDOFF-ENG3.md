@@ -11,7 +11,7 @@
 | Slice 1: the banded fill and the caps | `engine/fill`, #46 | **Merged** (Oct 6) |
 | Slice 2: the sheet, currency, sleeves, withdrawals, coverage, schedule | `engine/sheet`, #48 | **Merged** (Oct 6, `a87a52c`). Rodrigo merged it before Thom approved its two schema commits (`5bccfad`, `f354d75`): Thom should still read them |
 | Slice 3: three plans, scorecard, status | `engine/plans`, draft PR #64 into `staging` | **Built**: the status, the ways, the three candidates, the scorecard, the API. Waits for `/review-pr`, Thom's approval of the shared types (`ebdbb13`), and out of draft |
-| Slice 4 | `engine/themes` (#72), `engine/rebalance` (stacked on #72), `engine/intake` (#71) | The theme sleeve and rebalancing per sleeve (with the safe-yield switch) built, in draft; the guided intake on its own branch |
+| Slice 4 | `engine/themes` (#72), `engine/rebalance` (#73, stacked on #72), `engine/intake` (#71) | The theme sleeve and rebalancing per sleeve (with the safe-yield switch) built, in draft; the guided intake on its own branch |
 
 Worktree: `~/Documents/Colosseum-engine` (a `git worktree` of the main checkout), on `engine/plans`. Start the session in the main checkout so the hooks load, and work in that worktree. Its `apps/web/.next` goes stale when `staging` moves pages: delete it (gitignored) if the web typecheck names a missing page.
 
