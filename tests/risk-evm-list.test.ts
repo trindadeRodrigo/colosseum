@@ -336,6 +336,7 @@ describe('pool rows, by hand', () => {
       cut: 'cut.json',
       cutFetchedAt: '2026-10-05T20:11:13.000Z',
       handListNotTracked: [],
+      feeds: {},
       pools: {
         XYZ: [
           pool('0xa1'),

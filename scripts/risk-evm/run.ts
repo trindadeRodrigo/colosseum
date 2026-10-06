@@ -29,6 +29,7 @@ import {
   sellAmounts,
 } from './curve';
 import { type ListRun, listCandidates, poolRows } from './listed';
+import { oracleCalls, oracleRows } from './oracle';
 import {
   cacheIsFresh,
   cachePath,
@@ -166,6 +167,11 @@ export type RunSummary = {
     poolRowsByReason: Record<string, number>;
     poolsFile: string;
     handListNotTracked: string[];
+    /** The oracle read of the run (RU.7): rows written, how many carry a price, and why not when it failed. */
+    oracleRows: number;
+    oracleRowsRead: number;
+    oracleFile: string;
+    oracleError?: string;
   };
 };
 
@@ -468,6 +474,52 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
       else poolTally.byReason[l.reason] = (poolTally.byReason[l.reason] ?? 0) + 1;
     }
   };
+  // A list run: the feed of every token it is about to measure, in one call at the block it holds.
+  // The oracle is recorded beside the pool price, never blended with it (ORACLE-VS-DEX); a failed read
+  // costs the run nothing but these rows.
+  const oracleFileAt = (p: Pin) =>
+    join(opts.dir, 'oracle', `${p.time.toISOString().slice(0, 10)}.jsonl`);
+  const oracle: { rows: number; read: number; error?: string } = { rows: 0, read: 0 };
+  if (listed) {
+    const withFeed = todo.flatMap(({ token }) => {
+      const feed = listed.feeds[token.symbol];
+      return feed ? [{ token, feed }] : [];
+    });
+    try {
+      if (withFeed.length > 0) {
+        const [reply] = await rpc.batch([
+          {
+            method: 'eth_call',
+            params: [
+              {
+                to: chain.multicall3,
+                data: encodeAggregate3(oracleCalls(withFeed.map((t) => t.feed))),
+              },
+              pin.tag,
+            ],
+          },
+        ]);
+        if (!reply || reply.error || typeof reply.result !== 'string')
+          throw new Error(reply?.error?.message ?? 'no result');
+        const lines = oracleRows({
+          chain: chain.id,
+          tokens: withFeed,
+          replies: decodeAggregate3(reply.result),
+          blockTime: pin.time,
+          blockNumber: pin.number,
+          source: `latestRoundData() of each feed's proxy by eth_call (Multicall3) at block ${pin.number} on ${chain.name} (chain ${chain.chainId}) through ${label}; feeds from ${listed.list}`,
+        });
+        mkdirSync(join(opts.dir, 'oracle'), { recursive: true });
+        appendFileSync(oracleFileAt(pin), `${lines.map((l) => JSON.stringify(l)).join('\n')}\n`);
+        oracle.rows = lines.length;
+        oracle.read = lines.filter((l) => l.price !== null).length;
+      }
+    } catch (e) {
+      if (e instanceof RpcUnreachable) throw e;
+      oracle.error = e instanceof Error ? e.message : String(e);
+      opts.log({ event: 'oracle_read_failed', block: pin.number, error: oracle.error });
+    }
+  }
   const results: TokenResult[] = [];
   let mids: Mids | null = null;
   /** Set when the block in use must be replaced before the next read: why, for the log. */
@@ -616,6 +668,10 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
             poolRowsByReason: poolTally.byReason,
             poolsFile: poolsFileAt(first),
             handListNotTracked: listed.handListNotTracked,
+            oracleRows: oracle.rows,
+            oracleRowsRead: oracle.read,
+            oracleFile: oracleFileAt(first),
+            ...(oracle.error ? { oracleError: oracle.error } : {}),
           },
         }
       : {}),

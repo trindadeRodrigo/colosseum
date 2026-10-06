@@ -244,6 +244,22 @@ RISK_EVM_MAX_POOLS=5 pnpm risk-evm:collect --list   # at most five pools a token
 - 271 RPC calls in 48 requests, 29 seconds, with the confirmation of the pools. The hand list's run is 54 pools and about ten seconds.
 - **The asset row barely moves.** Against the three deepest dollar pools of each token at the same block, a pool beyond the three was the best at 4 of 480 points (MSTR and SGOV at $100, by 2.3 and 0.9 basis points). What the wider run adds is the pool rows, for a split across pools later.
 
+## The oracle beside the pool price
+
+A list run also reads the Chainlink feed of every tracked stock that has one (PLAN-UNIVERSE RU.7, method `evmo-0.1`): `latestRoundData()` of each proxy the asset list names, in one Multicall3 call at the block the run holds, before the first pool is asked. The rows go to `oracle/<day>.jsonl`. A run without `--list` reads no feed.
+
+- **A row** is one feed at one block: `asset`, `assetMint`, `feed` (the proxy), `fetchedAt` and `slot` (the block's), `roundId`, `answer` (as read, an integer in the feed's decimals), `price` (the same with its point), `decimals`, `updatedAt` (the feed's own time for the answer), `ageSeconds` (the block's time less `updatedAt`), and `source`, `method`, `methodVersion`, `provenance`. A feed that does not answer, or answers zero or less, is a row with `price: null` and a `reason` (`no_answer_from_the_feed`, `answer_not_positive`), never a zero.
+- **Kept apart (gate `ORACLE-VS-DEX`).** The answer is written as read. It is not compared with, corrected by or blended into a pool price, no multiplier is applied, and nothing is refused for age. The asset row and the pool rows do not depend on it: a refused oracle read costs the run only these rows (`oracle_read_failed` in the log, `oracleError` in the run's summary).
+- **The same block.** The feeds are read at the block the run pins first, which is the block of the asset rows. A token the run measures again on a fresh block (its block's state was gone) keeps the oracle row of the first block; both rows carry their own `slot`.
+- **A stock with no oracle** (`oracle: null` in the list) is not asked and has no row. A retry within the hour reads the feeds of the tokens it retries, at its own block.
+- **The import.** `pnpm risk-evm:import` loads the rows that carry a price into `risk_price_observations`: `chain` as the row says (`robinhood`), `price_source` `chainlink`, `mint` the token address as the collector writes it, `ref` the proxy, `observed_at` and `slot` the block's, `source_ts` the feed's `updatedAt`, `quote` `usd`. The table's key leaves an existing row as it is, so a second import inserts nothing. No migration.
+
+### The run of 2026-10-06 (block 81,211,551, 00:31 UTC, off session, by hand into a temporary folder)
+
+- 24 feeds asked in one call, 24 answered; 24 rows. The six stocks with no feed have none.
+- Ages at the block: 1 minute to 10.6 hours, 4.6 hours at the median (the US session had closed 4.5 hours before). GLD's answer was 9.2 hours old.
+- With the feeds the run was 288 RPC calls in 52 requests, 30 seconds: one call more than without.
+
 ## Files
 
 | File | What it is |
@@ -264,12 +280,13 @@ RISK_EVM_MAX_POOLS=5 pnpm risk-evm:collect --list   # at most five pools a token
 | `multicall.ts`, `replay.ts` | Many reads in one `eth_call`; recorded answers given back to a test |
 | `record-discovery-fixture.ts` | Re-records `fixtures/risk-evm/robinhood-discovery.json.gz` from the chain |
 | `pareto.ts`, `cut.ts` | The command for the cut; the rule applied to a discovery file and what it reports. `cut.ts` has no I/O |
+| `oracle.ts`, `oracle-import.ts` | The oracle rows of a list run, with no I/O; their insert into `risk_price_observations` |
 | `listed.ts` | A run on the asset list: its tokens and pools from the list and the cut, and the pool rows. No I/O |
 | `record-list-fixture.ts` | Re-records `fixtures/risk-evm/robinhood-list-run.json.gz`: two runs for two stocks at one block |
 | `oracles.ts`, `feeds.ts` | The command for the oracle map; the directory, the match, the confirmation and one pass. `feeds.ts` reads only through the client it is given |
 | `record-oracles-fixture.ts` | Re-records `fixtures/risk-evm/robinhood-oracles.json.gz` from the directory and the chain |
 
-After editing `ClQuoter.sol`, run `pnpm exec tsx scripts/risk-evm/build-quoter.ts`; a test fails while the JSON is stale. The tests are in `tests/risk-evm.test.ts`. They replay `fixtures/risk-evm/robinhood-nvda-quotes.json` and the endpoint errors in `fixtures/risk-evm/rpc-errors.json`; none calls the network. The token list and the discovery are tested in `tests/risk-evm-universe.test.ts`, which replays one recorded pass for two tokens (`fixtures/risk-evm/robinhood-discovery.json.gz`). The cut is tested in `tests/risk-evm-cut.test.ts`, on the discovery of Oct 5 frozen to what the cut reads (`fixtures/risk/universe/robinhood-discovery-20261005T1947.json.gz`, made by `pnpm risk:freeze-universe-fixture <discovery.json> --chain robinhood`). The run on the list is tested in `tests/risk-evm-list.test.ts`, which replays two recorded runs for NVDA and GME at one block (`fixtures/risk-evm/robinhood-list-run.json.gz`): every reachable pool, then the three deepest. The oracle map is tested in `tests/risk-evm-oracles.test.ts`, which replays one recorded pass (`fixtures/risk-evm/robinhood-oracles.json.gz`: the directory and the chain's answers at block 81,164,613).
+After editing `ClQuoter.sol`, run `pnpm exec tsx scripts/risk-evm/build-quoter.ts`; a test fails while the JSON is stale. The tests are in `tests/risk-evm.test.ts`. They replay `fixtures/risk-evm/robinhood-nvda-quotes.json` and the endpoint errors in `fixtures/risk-evm/rpc-errors.json`; none calls the network. The token list and the discovery are tested in `tests/risk-evm-universe.test.ts`, which replays one recorded pass for two tokens (`fixtures/risk-evm/robinhood-discovery.json.gz`). The cut is tested in `tests/risk-evm-cut.test.ts`, on the discovery of Oct 5 frozen to what the cut reads (`fixtures/risk/universe/robinhood-discovery-20261005T1947.json.gz`, made by `pnpm risk:freeze-universe-fixture <discovery.json> --chain robinhood`). The oracle read is tested in `tests/risk-evm-oracle-run.test.ts`, on the same recording and by hand. The run on the list is tested in `tests/risk-evm-list.test.ts`, which replays two recorded runs for NVDA and GME at one block (`fixtures/risk-evm/robinhood-list-run.json.gz`): every reachable pool, then the three deepest. The oracle map is tested in `tests/risk-evm-oracles.test.ts`, which replays one recorded pass (`fixtures/risk-evm/robinhood-oracles.json.gz`: the directory and the chain's answers at block 81,164,613).
 
 ## What Rodrigo's side needs before the API can serve these curves (RISK-1)
 

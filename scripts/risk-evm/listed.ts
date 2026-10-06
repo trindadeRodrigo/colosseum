@@ -5,6 +5,7 @@
 import type { AssetList } from '@colosseum/schemas';
 import type { ChainConfig, TokenConfig } from './config';
 import { costPct, GRID_USD, outUsdOf, type PoolQuotes, type Side } from './curve';
+import type { ListedFeed } from './oracle';
 import type { Candidate, PoolRef } from './pools';
 
 export const POOLS_METHOD_VERSION = 'evmq-pools-0.1';
@@ -52,6 +53,11 @@ export type ListRun = {
   cutFetchedAt: string;
   /** Every ranked pool of each token, by symbol, deepest first. */
   pools: Record<string, ListedPool[]>;
+  /**
+   * The Chainlink feed of each token that has one, by symbol, as the list carries it (RU.7). A stock
+   * with no oracle is not here and has no oracle row.
+   */
+  feeds: Record<string, ListedFeed>;
   /** Tokens of the hand list in config.ts that the asset list does not track: not read in a list run. */
   handListNotTracked: string[];
 };
@@ -79,6 +85,7 @@ export function listRun(
     fail(`${names.list} was written from ${list.inputs.cut}, not from ${names.cut}: refused`);
   const inCut = new Map(cut.tracked.map((t) => [lower(t.address), t]));
   const pools: Record<string, ListedPool[]> = {};
+  const feeds: Record<string, ListedFeed> = {};
   const tokens = list.assets.map((a): TokenConfig => {
     const t =
       inCut.get(a.address) ?? fail(`${a.symbol} of the list is not tracked in ${names.cut}`);
@@ -105,6 +112,10 @@ export function listRun(
     )
       fail(`${a.symbol}: the cut's pools are not the ${a.pools.ranked} the list counts`);
     pools[a.symbol] = mine;
+    if (a.oracle?.kind === 'chainlink') {
+      if (a.oracle.decimals === null) fail(`${a.symbol}: the list gives its feed no decimals`);
+      feeds[a.symbol] = { address: a.oracle.ref, decimals: a.oracle.decimals as number };
+    }
     return { symbol: a.symbol, address: t.address, decimals: a.decimals };
   });
   if (tokens.length !== cut.tracked.length)
@@ -117,6 +128,7 @@ export function listRun(
       cut: names.cut,
       cutFetchedAt: cut.fetchedAt,
       pools,
+      feeds,
       handListNotTracked: chain.tokens
         .filter((t) => !tracked.has(lower(t.address)))
         .map((t) => t.symbol),
