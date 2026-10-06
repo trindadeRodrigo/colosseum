@@ -14,8 +14,8 @@ import { V1_SECURITY_SCHEMES, v1Transform } from './openapi';
 import { bearingPlanInputs } from './plan-inputs';
 import { corsAllowlist, corsByPath } from './plugins/cors';
 import { hideServerErrors } from './plugins/errors';
-import { requireDeclared } from './plugins/limits';
-import { proxyTrust } from './plugins/proxy';
+import { registerOpenWriteLimit, requireDeclared } from './plugins/limits';
+import { logForwardedHopsOnce, proxyTrust } from './plugins/proxy';
 import { loggerOptions } from './redact';
 import { registerMonitorRoutes } from './routes/monitor';
 import { registerPlanRoutes } from './routes/plans';
@@ -71,6 +71,10 @@ export async function buildApp(
   // /v1 answers a browser only from the allowlist (CORS_ORIGINS). Every other route, the risk layer's
   // /risk/* included, reflects any origin as it always has.
   await app.register(cors, { delegator: corsByPath(corsAllowlist(env)) });
+  // After CORS, so a refusal still carries its headers and a browser can read it. The structurer's
+  // open writes share the anonymous budget, by address (plugins/limits.ts).
+  registerOpenWriteLimit(app, { limits: deps.v1?.limits, now: deps.v1?.now });
+  logForwardedHopsOnce(app);
   await app.register(swagger, {
     openapi: {
       openapi: '3.1.0',

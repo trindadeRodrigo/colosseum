@@ -1,4 +1,5 @@
 import type { EnvLike } from '@colosseum/schemas';
+import type { FastifyInstance } from 'fastify';
 
 // Whose address a request is counted against (plugins/limits.ts). By default it is the address the
 // connection came from, and a forwarded one is not believed. Behind a host's proxy that address is the
@@ -9,6 +10,28 @@ import type { EnvLike } from '@colosseum/schemas';
 
 /** The most proxies a host is taken to put in front of one process. */
 const MAX_HOPS = 5;
+
+/**
+ * Says once, on the first request a proxy forwarded, how many entries its `X-Forwarded-For` had: the
+ * number a person reads from the host's log to set `TRUST_PROXY_HOPS`. The count only, never an
+ * address. A caller can add entries of their own, so the number to set is the smallest seen from a
+ * plain request (a browser, or `curl` with no such header), not the largest.
+ */
+export function logForwardedHopsOnce(app: FastifyInstance): void {
+  let said = false;
+  app.addHook('onRequest', async (req) => {
+    if (said) return;
+    const forwarded = req.headers['x-forwarded-for'];
+    if (forwarded === undefined) return;
+    said = true;
+    const hops = [forwarded]
+      .flat()
+      .join(',')
+      .split(',')
+      .filter((entry) => entry.trim()).length;
+    req.log.info(`forwarded hops seen: ${hops}`);
+  });
+}
 
 /**
  * How many proxies stand in front: 0 when `TRUST_PROXY_HOPS` is unset or empty. Throws on anything
