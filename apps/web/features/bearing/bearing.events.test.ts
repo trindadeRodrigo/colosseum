@@ -91,6 +91,10 @@ describe('the commodities page on the recording', () => {
     const toggle = find<HTMLButtonElement>(host, 'button[aria-controls="bearing-nav"]');
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(toggle.textContent).toBe('Hide menu');
+    // the methodology is reached from here: the bar has no Resources item (Thom, Oct 6)
+    expect(find(host, '#bearing-nav a[href="/analytics/methodology"]').textContent).toBe(
+      'Methodology',
+    );
     await click(toggle);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(toggle.textContent).toBe('Show menu');

@@ -76,20 +76,15 @@ describe('the frame', () => {
     expect(links(host).map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
       [en.products, '/shelf'],
       [en.invest, '/goal'],
-      [en.resources, '/analytics/methodology'],
       [en.analytics, '/analytics/stocks'],
     ]);
+    // no Resources item (Thom, Oct 6): the methodology is reached from Bearing's own side menu
+    expect(host.querySelector('nav a[href="/analytics/methodology"]')).toBeNull();
     // the page a person is on is said, not only shown; the plan and the order are under Invest
-    expect(links(host).map((a) => a.getAttribute('aria-current'))).toEqual([
-      null,
-      'page',
-      null,
-      null,
-    ]);
-    // every page of Bearing's analytics is under Analytics; its methodology is Resources
+    expect(links(host).map((a) => a.getAttribute('aria-current'))).toEqual([null, 'page', null]);
+    // every page of Bearing's analytics is under Analytics, its methodology too
     location.pathname = '/analytics/lending';
     expect(links(await shell()).map((a) => a.getAttribute('aria-current'))).toEqual([
-      null,
       null,
       null,
       'page',
@@ -99,20 +94,17 @@ describe('the frame', () => {
       null,
       null,
       'page',
-      null,
     ]);
     location.pathname = '/plan/abc';
     expect(links(await shell()).map((a) => a.getAttribute('aria-current'))).toEqual([
       null,
       'page',
       null,
-      null,
     ]);
     // a shared portfolio's page is under Products, the shelf
     location.pathname = '/indexes/some-portfolio';
     expect(links(await shell()).map((a) => a.getAttribute('aria-current'))).toEqual([
       'page',
-      null,
       null,
       null,
     ]);
@@ -124,7 +116,6 @@ describe('the frame', () => {
       [en.products, null],
       [en.invest, null],
       [en.portfolio, 'page'],
-      [en.resources, null],
       [en.analytics, null],
     ]);
     // on a phone the same links are in the sheet under the menu button
@@ -133,7 +124,6 @@ describe('the frame', () => {
       '/shelf',
       '/goal',
       '/monitor',
-      '/analytics/methodology',
       '/analytics/stocks',
     ]);
     expect(find(signedIn, `button[aria-label="${en.menu}"]`).getAttribute('aria-expanded')).toBe(
@@ -356,7 +346,7 @@ describe('English or Portuguese', () => {
     const host = await shell('pt');
     expect(find(host, 'a[href="#content"]').textContent).toBe(pt.skip);
     expect([...find(host, 'nav').querySelectorAll(':scope > a')].map((a) => a.textContent)).toEqual(
-      [pt.products, pt.invest, pt.resources, pt.analytics],
+      [pt.products, pt.invest, pt.analytics],
     );
     expect(find(host, 'header a[href="/sign-in"]').textContent).toBe(pt.signIn);
     expect(host.textContent).not.toMatch(/!/);
