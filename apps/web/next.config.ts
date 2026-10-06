@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { NextConfig } from 'next';
 import { PHASE_DEVELOPMENT_SERVER } from 'next/constants';
+import { frameHeaders } from './lib/frame-policy';
 
 // The env file lives at the repo root; Next only reads its own directory. Existing variables win.
 const rootEnv = resolve(process.cwd(), '../../.env');

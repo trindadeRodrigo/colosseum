@@ -77,8 +77,20 @@ export function GoalScreen() {
         setText(stored.text);
         setSheet(stored.sheet);
       }
-      const typed = window.sessionStorage.getItem(GOAL_HANDOFF);
+      // A goal handed over by the landing page (in the tab), or by a partner's embed, whose frame
+      // shares no storage with this tab: in the fragment of the address, which no server sees. The
+      // fragment is taken out of the address once read.
+      const fragment = /^#goal=(.*)$/.exec(window.location.hash)?.[1];
+      let typed = window.sessionStorage.getItem(GOAL_HANDOFF);
       window.sessionStorage.removeItem(GOAL_HANDOFF);
+      if (fragment !== undefined) {
+        try {
+          typed = decodeURIComponent(fragment);
+        } catch {
+          typed = null;
+        }
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
       if (typed !== null && typed.trim() !== '' && typed.length <= GOAL_TEXT.max) {
         handed.current = typed.trim();
         setText(handed.current);

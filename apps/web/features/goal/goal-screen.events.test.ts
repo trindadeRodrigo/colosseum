@@ -125,6 +125,18 @@ describe('a goal handed over from the landing page', () => {
     expect(sheet(host)).not.toBeNull();
   });
 
+  it('is read from the address’s fragment, as a partner’s embed hands it, and the fragment taken out', async () => {
+    const server = api({});
+    window.history.replaceState(null, '', `/goal#goal=${encodeURIComponent(GOAL)}`);
+    const host = await screen();
+    await settle();
+    expect(server.to('/goals')).toEqual([
+      { method: 'POST', path: '/goals', body: { text: GOAL, language: 'en' } },
+    ]);
+    expect(box(host).value).toBe(GOAL);
+    expect(window.location.hash).toBe('');
+  });
+
   it('reads nothing when nothing was handed over', async () => {
     const server = api({});
     await screen();
