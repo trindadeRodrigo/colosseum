@@ -12,6 +12,7 @@ import type { Language, Reason } from '@colosseum/schemas';
 //   month   a YYYY-MM month                   April 2028      abril de 2028
 //   months  a count of months                 18 months       18 meses
 //   goal, risk, sleeve, chain, candidate      the word for it, from WORDS
+//   part     one of the person's sleeves: goal, safe_yield, or theme:<slug>
 //   inCountry                                 in Brazil       no Brasil
 //   regimes  times of the week, by their codes   at the weekend and on US holidays
 //   list     names joined by commas            AAPL, MSFT and NVDA   AAPL, MSFT e NVDA
@@ -33,6 +34,7 @@ export const INPUT_NAMES = [
   'sleeves',
   'currency',
   'obligations',
+  'restoreSplit',
 ] as const;
 export type InputName = (typeof INPUT_NAMES)[number];
 
@@ -468,6 +470,48 @@ export const REASON_TEMPLATES = {
     'No return is assumed for this part of your plan. In a {fallBps|pct} fall it would lose {lossUsd|usdUp}.',
     'Nenhum retorno é presumido para esta parte do seu plano. Em uma queda de {fallBps|pct}, ela perderia {lossUsd|usdUp}.',
   ),
+
+  // Rebalancing, sleeve by sleeve (slice 4): proposals the person taps; nothing is sent for them.
+  REBALANCE_DRIFT: rule(
+    ['sleeves'],
+    'In the {part|part}, the holdings are {driftBps|pct} away from their targets, at or over the {bandBps|pct} at which a rebalance is proposed: these trades bring them back.',
+    'Na {part|part}, as posições estão {driftBps|pct} longe dos alvos, no limite de {bandBps|pct} a partir do qual um rebalanceamento é proposto, ou acima: estas operações as trazem de volta.',
+  ),
+  REBALANCE_DEPOSIT: rule(
+    ['amount', 'sleeves'],
+    '{usd|usd} of new money goes into the {part|part}, to what is under its targets first.',
+    '{usd|usd} de dinheiro novo vão para a {part|part}, primeiro para o que está abaixo dos alvos.',
+  ),
+  REBALANCE_WITHDRAWAL: rule(
+    ['amount', 'sleeves'],
+    '{usd|usd} of what you withdraw comes out of the {part|part}, from what is over its targets first.',
+    '{usd|usd} do que você saca saem da {part|part}, primeiro do que está acima dos alvos.',
+  ),
+  SAFE_YIELD_SWITCH: rule(
+    ['sleeves'],
+    'In the {part|part}, {from} moves to {to}: on each of the last {days} days of readings, {to} yielded more than {from} after haircut, by over {bandBps|pct} a year.',
+    'Na {part|part}, {from} passa para {to}: em cada um dos últimos {days} dias de leituras, {to} rendeu mais que {from} após o deságio, por mais de {bandBps|pct} ao ano.',
+  ),
+  SAFE_YIELD_SWITCH_CAPPED: rule(
+    ['sleeves'],
+    '{usd|usd} stays in {from}: {to} may hold at most {capBps|pct} of the plan.',
+    '{usd|usd} ficam em {from}: {to} pode ter no máximo {capBps|pct} do plano.',
+  ),
+  SET_ASIDE_REFILL: rule(
+    ['obligations'],
+    'Your withdrawals from {from|month} to {to|month} come to {owedUsd|usd}, and the cash and rate legs of the {part|part} hold {heldUsd|usd}: {shortUsd|usd} is moved to cash to set them aside again.',
+    'Os seus saques de {from|month} a {to|month} somam {owedUsd|usd}, e o caixa e os tokens só de taxa da {part|part} guardam {heldUsd|usd}: {shortUsd|usd} vão para o caixa para separá-los de novo.',
+  ),
+  RESTORE_SPLIT: rule(
+    ['restoreSplit', 'sleeves'],
+    'You chose to bring each part of your plan back to its share. The parts are {driftBps|pct} away from the shares you set, at or over {bandBps|pct}: these trades restore them.',
+    'Você escolheu trazer cada parte do seu plano de volta à sua parcela. As partes estão {driftBps|pct} longe das parcelas que você definiu, no limite de {bandBps|pct} ou acima: estas operações as restauram.',
+  ),
+  LIQUIDITY_BREACH: rule(
+    ['obligations'],
+    'Selling in time for your withdrawals from {first|month} may fall {shortfallUsd|usdUp} short when markets are thin, so these sales to cash come first, and every other rebalance waits until they are done.',
+    'Vender a tempo para os seus saques a partir de {first|month} pode ficar {shortfallUsd|usdUp} abaixo do necessário quando o mercado está raso, então estas vendas para caixa vêm primeiro, e qualquer outro rebalanceamento espera até elas terminarem.',
+  ),
 } as const satisfies Record<string, Template>;
 
 export type RuleId = keyof typeof REASON_TEMPLATES;
@@ -541,7 +585,7 @@ export const TEXT_TEMPLATES = {
 export type TextId = keyof typeof TEXT_TEMPLATES;
 
 type Words = Record<
-  'goal' | 'risk' | 'sleeve' | 'chain' | 'inCountry' | 'regime' | 'candidate',
+  'goal' | 'risk' | 'sleeve' | 'chain' | 'inCountry' | 'regime' | 'candidate' | 'part',
   Record<string, string>
 > & { and: string };
 
@@ -558,6 +602,12 @@ export const WORDS: Record<Language, Words> = {
     chain: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
     // The working names of the three candidates (gate THREE-PLANS): product words are a brand decision.
     candidate: { cover: 'Cover', spread: 'Spread', carry: 'Carry' },
+    // One of the person's sleeves, as a rebalance names it; a theme's slug is written after it.
+    part: {
+      goal: 'part of your plan for your goal',
+      safe_yield: 'part of your plan in dollar yield from a rate alone',
+      theme: 'part of your plan for the theme',
+    },
     // The times of the week the risk layer measures apart, in the order they are written.
     regime: {
       us_market_hours: 'in US market hours',
@@ -609,6 +659,11 @@ export const WORDS: Record<Language, Words> = {
     },
     chain: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
     candidate: { cover: 'Cobertura', spread: 'Diversificação', carry: 'Rendimento' },
+    part: {
+      goal: 'parte do seu plano para a sua meta',
+      safe_yield: 'parte do seu plano em rendimento em dólar só de taxa',
+      theme: 'parte do seu plano para o tema',
+    },
     regime: {
       us_market_hours: 'no horário do mercado dos EUA',
       us_offhours_weekday: 'em dias úteis fora do horário do mercado dos EUA',
@@ -740,6 +795,13 @@ const FORMATS: Record<string, (value: Value, lang: Language, key: string) => str
   sleeve: (value, lang) => WORDS[lang].sleeve[String(value)] ?? String(value),
   chain: (value, lang) => WORDS[lang].chain[String(value)] ?? String(value),
   candidate: (value, lang) => WORDS[lang].candidate[String(value)] ?? String(value),
+  // A sleeve by its kind, or `theme:<slug>` for a theme sleeve.
+  part: (value, lang) => {
+    const [kind = '', ...slug] = String(value).split(':');
+    const word = WORDS[lang].part[kind];
+    if (!word) return String(value);
+    return slug.length > 0 ? `${word} ${slug.join(':')}` : word;
+  },
 };
 
 const PLACEHOLDER = /\{(\w+)(?:\|(\w+))?\}/g;

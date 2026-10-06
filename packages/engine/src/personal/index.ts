@@ -6,6 +6,15 @@ export { candidates } from './candidates';
 export { compose, composeAs, PERSONAL_ENGINE_VERSION } from './compose';
 export { draftFromRules } from './draft';
 export { PERSONAL_PARAMS, PERSONAL_PARAMS_STATUS } from './params';
+export {
+  proposeSleeveRebalances,
+  type SleeveProposal,
+  type SleeveProposals,
+  SleeveRebalanceContext,
+  type SleeveRebalanceKind,
+  type SleeveRef,
+  StoredPlan,
+} from './rebalance';
 export { eligibleForGoal, profileOfGoal, registryRowOf, sleeveOfClass } from './registry';
 export {
   INPUT_NAMES,
