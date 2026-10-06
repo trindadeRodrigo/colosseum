@@ -196,7 +196,7 @@ const ICONS: IconName[] = ['ArrowUp', 'ArrowUpRight', 'Check', 'ChevronDown', 'C
 const NAV_LINKS = [
   { label: 'Products', href: '#products' },
   { label: 'Invest', href: '#invest', current: 'true' as const },
-  { label: 'Resources', href: '#resources' },
+  { label: 'Analytics', href: '#analytics' },
 ];
 
 /** An example partner: neutral colours, their own face, their own radius. Not ours. */

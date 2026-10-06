@@ -263,7 +263,7 @@ export function PlanScreen({ id }: { id: string }) {
         </div>
         <div className="flex flex-wrap justify-between gap-x-6 gap-y-1 border-t border-border px-6 py-3 font-mono text-source text-muted-foreground">
           <span>{foot}</span>
-          <span>{DISCLAIMER_SHORT}</span>
+          <span>{DISCLAIMER_SHORT[lang]}</span>
         </div>
       </Card>
 

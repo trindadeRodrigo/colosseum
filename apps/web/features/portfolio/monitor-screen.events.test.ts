@@ -257,7 +257,7 @@ describe('the monitor, for a person with a vault on their chain', () => {
     const chips = find(host, `ul[aria-label="${en.portfolio.vault.chips.label}"]`).textContent;
     expect(chips).toContain('version: 1');
     expect(chips).toContain('auto-follow: on');
-    expect(host.textContent).toContain(DISCLAIMER_SHORT);
+    expect(host.textContent).toContain(DISCLAIMER_SHORT.en);
   });
 
   it('says a vault of cash alone in words, with no empty table', async () => {

@@ -141,7 +141,7 @@ function Case({
             <span className="inline-flex items-center gap-1">
               {t.sample} <PinGlyph state="mock" />
             </span>
-            <span>{foot ? `${foot} ${DISCLAIMER_SHORT}` : DISCLAIMER_SHORT}</span>
+            <span>{foot ? `${foot} ${DISCLAIMER_SHORT[lang]}` : DISCLAIMER_SHORT[lang]}</span>
           </div>
         </div>
       </CaseScope>
