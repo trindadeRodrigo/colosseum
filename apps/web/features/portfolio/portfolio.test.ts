@@ -84,11 +84,47 @@ describe('reading the portfolio', () => {
       expect((await readPortfolio(answering(json(answer)), 'solana')).kind).toBe('unreadable');
   });
 
-  it('shows nothing that is not for the person’s chain, nor a chain twice, nor a vault filed under another chain', async () => {
+  it('shows the chains that were read when the current one was not, and says where the current one stands', async () => {
     const other = chainOf([vault({ chain: 'robinhood' })], { chain: 'robinhood' });
     const evmVault = { ...portfolioBody(), chains: [other] };
-    // the answer is for Robinhood Chain; the person's plan lives on Solana
-    expect((await readPortfolio(answering(json(evmVault)), 'solana')).kind).toBe('unreadable');
+    // the answer is for Robinhood Chain alone; the person's current chain is Solana, not held here
+    expect(await readPortfolio(answering(json(evmVault)), 'solana')).toEqual({
+      kind: 'read',
+      chains: [other],
+      unavailable: [],
+      current: 'not-held',
+    });
+    // Solana could not be read this time: Robinhood Chain is shown, and Solana is said to be out
+    const out = {
+      chain: 'solana',
+      name: 'Solana',
+      code: 'CHAIN_UNAVAILABLE',
+      error: 'the node did not answer',
+      retryable: true,
+    };
+    expect(
+      await readPortfolio(answering(json({ ...evmVault, unavailable: [out] })), 'solana'),
+    ).toMatchObject({ kind: 'read', chains: [other], unavailable: [out], current: 'unavailable' });
+    // the current chain read, another out: the current first, the other said
+    const both = {
+      ...portfolioBody(),
+      unavailable: [{ ...out, chain: 'robinhood', name: 'Robinhood Chain' }],
+    };
+    expect(await readPortfolio(answering(json(both)), 'solana')).toMatchObject({
+      kind: 'read',
+      current: 'read',
+      unavailable: [{ chain: 'robinhood' }],
+    });
+    // a chain both read and out is not an answer
+    expect(
+      (await readPortfolio(answering(json({ ...portfolioBody(), unavailable: [out] })), 'solana'))
+        .kind,
+    ).toBe('unreadable');
+  });
+
+  it('shows nothing with a chain twice, nor a vault filed under another chain', async () => {
+    const other = chainOf([vault({ chain: 'robinhood' })], { chain: 'robinhood' });
+    const evmVault = { ...portfolioBody(), chains: [other] };
     // Solana twice
     const twice = { ...portfolioBody(), chains: [chainOf(), chainOf()] };
     expect((await readPortfolio(answering(json(twice)), 'solana')).kind).toBe('unreadable');
@@ -101,13 +137,11 @@ describe('reading the portfolio', () => {
       chains: [chainOf(), chainOf([vault()], { chain: 'robinhood' })],
     };
     expect((await readPortfolio(answering(json(misfiled)), 'solana')).kind).toBe('unreadable');
-    // another chain's answer with no vault in it: not "no vault on Solana yet"
-    const emptyElsewhere = { ...portfolioBody(), chains: [chainOf([], { chain: 'robinhood' })] };
-    expect((await readPortfolio(answering(json(emptyElsewhere)), 'solana')).kind).toBe(
-      'unreadable',
-    );
-    // the bite: the same answer for the person's own chain is read
-    expect((await readPortfolio(answering(json(evmVault)), 'robinhood')).kind).toBe('read');
+    // the same answer for the person's own chain is read as theirs
+    expect(await readPortfolio(answering(json(evmVault)), 'robinhood')).toMatchObject({
+      kind: 'read',
+      current: 'read',
+    });
   });
 
   it('reads vaults on two chains, each under its own chain, the person’s first', async () => {

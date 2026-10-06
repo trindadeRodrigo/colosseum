@@ -4,8 +4,9 @@ import { eq, isNull, sql } from 'drizzle-orm';
 import type { ChainRegistry } from './chains';
 import { Refusal } from './errors';
 
-// The chain a person's plans live on (gates ONE-CHAIN and CHAIN-PICK). One place decides it, and every
-// route that needs "the person's chain" asks here: the orders, the funding check and the portfolio.
+// The person's current chain: where their new plans are made (gates ONE-CHAIN and CHAIN-SWITCH). One
+// place decides it, and every route that needs it asks here: a new plan, a buy of a shared portfolio and
+// the funding check with no plan named. A stored plan is bought on its own chain, whatever this says.
 
 /**
  * The chain a wallet family means. A Solana wallet is on Solana. An EVM address serves every EVM chain,
@@ -27,8 +28,8 @@ function walletChain(principal: Principal): ChainId | null {
   return families.size === 1 && only ? HOME_CHAIN[only] : null;
 }
 
-/** What a person with no chain yet may pick: the home chain of each family they hold a wallet of. */
-function pickable(principal: Principal): ChainId[] {
+/** The chains a person can sign on, and so may switch to: the home chain of each family they hold. */
+export function chainsHeld(principal: Principal): ChainId[] {
   const held = new Set(principal.wallets.map((w) => HOME_CHAIN[w.family]));
   return ChainId.options.filter((chain) => held.has(chain));
 }
@@ -46,9 +47,9 @@ async function storedChain(db: Db, principal: Principal): Promise<Stored | null>
 }
 
 /**
- * Writes the chain on the user, once. A row whose chain is set is never written again: of two writes
- * at the same moment the first stands, and the answer is what the row holds afterwards. `pickedAt` is
- * the time of a pick, and null for a chain that an outside wallet named.
+ * Writes the chain on the user. `pickedAt` is the time of a pick, and null for a chain that an outside
+ * wallet named: that one is written only on a row with no chain, so it never undoes a pick. A pick
+ * always writes, and of two at the same moment the later stands.
  */
 async function storeChain(
   db: Db,
@@ -62,24 +63,25 @@ async function storeChain(
     .onConflictDoUpdate({
       target: users.privyId,
       set: { chainId: sql`excluded.chain_id`, chainPickedAt: sql`excluded.chain_picked_at` },
-      setWhere: isNull(users.chainId),
+      ...(pickedAt ? {} : { setWhere: isNull(users.chainId) }),
     });
 }
 
 /**
- * Where this person's plans live.
- * - A stored chain stands, whatever wallets came later: the plan lives there. It is stored at a pick,
- *   and the first time an outside wallet names it.
+ * The person's current chain, and the chains they may switch to.
+ * - A stored chain stands, whatever wallets came later, until the person switches. It is stored at a
+ *   pick, and the first time an outside wallet names it.
  * - With nothing stored, an outside wallet names the chain of its family, and that is stored now. So a
  *   person who later links a wallet of the other family keeps their chain, as a person who picked does.
  * - Otherwise there is none yet: the person made their wallet in the app and has not picked, or
  *   connected outside wallets of both families at once.
  */
 export async function personChain(db: Db, principal: Principal): Promise<PersonChain> {
+  const options = chainsHeld(principal);
   const answer = (s: Stored): PersonChain => ({
     chain: s.chain,
     chainSource: s.source,
-    chainOptions: [],
+    chainOptions: options,
   });
   const stored = await storedChain(db, principal);
   if (stored) return answer(stored);
@@ -92,26 +94,30 @@ export async function personChain(db: Db, principal: Principal): Promise<PersonC
     }
     return answer({ chain: fromWallet, source: 'wallet' });
   }
-  return { chain: null, chainSource: null, chainOptions: pickable(principal) };
+  return { chain: null, chainSource: null, chainOptions: options };
 }
 
-/** The person's chain, for a route that cannot go on without one. */
+/** The person's current chain, for a route that cannot go on without one. */
 export async function homeChain(db: Db, principal: Principal): Promise<ChainId> {
   const { chain } = await personChain(db, principal);
   if (!chain)
-    throw new Refusal(409, 'pick the chain your plans live on first', {
-      fix: 'Pick Solana or Robinhood Chain once, with PUT /v1/me/chain.',
+    throw new Refusal(409, 'pick the chain for your new plans first', {
+      fix: 'Pick Solana or Robinhood Chain with PUT /v1/me/chain. You can switch later.',
       details: { retryable: false },
     });
   return chain;
 }
 
+/** The chains a pick may name: the home chain of a family. Base is not offered while it is not deployed. */
+const OFFERED: readonly ChainId[] = Object.values(HOME_CHAIN);
+
 /**
- * Stores the pick. Once: the same chain again changes nothing and answers as before, and another chain
- * is refused, whether the first came from a pick or from an outside wallet. The chain has to be one the
- * person holds a wallet for, and one this server runs.
+ * Switches the person's current chain (gate CHAIN-SWITCH), for a person who made their wallets in the
+ * app and for one whose outside wallets sign on both families. The same chain again changes nothing.
+ * A chain the person holds no wallet for is refused with 409 `NO_WALLET_FOR_CHAIN`: an EVM wallet alone
+ * cannot sign on Solana. Plans already made stay on their chains. The answer is what the row holds.
  */
-export async function pickChain(
+export async function switchChain(
   db: Db,
   chains: ChainRegistry,
   principal: Principal,
@@ -120,31 +126,25 @@ export async function pickChain(
 ): Promise<PersonChain> {
   if (!principal.userId) throw new Refusal(401, 'sign in first');
   const current = await personChain(db, principal);
-  if (current.chain) {
-    if (current.chain === chain) return current;
-    throw new Refusal(
-      409,
-      current.chainSource === 'picked'
-        ? `the chain is picked once, and it is ${chains.name(current.chain)}`
-        : `your plans live on ${chains.name(current.chain)}, the chain of the wallet you connected`,
-      { details: { retryable: false } },
-    );
-  }
+  if (current.chain === chain) return current;
   if (!current.chainOptions.length) throw new Refusal(422, 'no wallet is linked to this sign-in');
-  if (!current.chainOptions.includes(chain))
+  if (!OFFERED.includes(chain))
     throw new Refusal(422, `${chains.name(chain)} is not a chain you can pick`, {
       fix: `Pick ${current.chainOptions.map((c) => chains.name(c)).join(' or ')}.`,
     });
+  if (!current.chainOptions.includes(chain))
+    throw new Refusal(409, `no wallet you signed in with signs on ${chains.name(chain)}`, {
+      code: 'NO_WALLET_FOR_CHAIN',
+      fix: `Sign in with a wallet that signs on ${chains.name(chain)}, or with a passkey.`,
+      details: { retryable: false },
+    });
   // Refuses a chain that is switched off here, before anything is stored.
   chains.get(chain);
-  // Of two picks at once, the first stands.
   await storeChain(db, principal.userId, chain, now);
   const stored = await storedChain(db, principal);
-  if (stored?.chain !== chain)
-    throw new Refusal(
-      409,
-      `the chain is picked once, and it is ${chains.name(stored?.chain ?? chain)}`,
-      { details: { retryable: false } },
-    );
-  return { chain, chainSource: stored.source, chainOptions: [] };
+  return {
+    chain: stored?.chain ?? chain,
+    chainSource: stored?.source ?? 'picked',
+    chainOptions: current.chainOptions,
+  };
 }

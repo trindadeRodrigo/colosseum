@@ -79,6 +79,22 @@ export const PortfolioResponse = z.object({
       prices: z.array(Price),
     }),
   ),
+  /**
+   * The chains of the person's that could not be read this time, each with why: one switched off on
+   * this server (`CHAIN_UNAVAILABLE`, not retryable), or one whose read failed. The chains that were
+   * read are in `chains` all the same. Left out by a server older than this field: none.
+   */
+  unavailable: z
+    .array(
+      z.object({
+        chain: ChainId,
+        name: z.string(),
+        code: z.string(),
+        error: z.string(),
+        retryable: z.boolean(),
+      }),
+    )
+    .default([]),
   disclaimer: z.string(),
 });
 export type PortfolioResponse = z.infer<typeof PortfolioResponse>;

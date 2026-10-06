@@ -55,7 +55,7 @@ export type SheetGroup = { legend: string; fields: readonly SheetField[] };
  */
 export type SheetFact = {
   label: string;
-  /** The value, in words, with whatever goes beside it: a MOCK plate, a link to where it is set. */
+  /** The value, in words, with whatever goes beside it: a sample glyph, a link to where it is set. */
   value: ReactNode;
   /** One sentence under it. */
   note?: string;
@@ -66,7 +66,7 @@ export type SheetSource = {
   method: string;
   model?: string;
   fetchedAt: string;
-  /** A reading that came from a fixture or a mock carries the MOCK plate. */
+  /** A reading that came from a fixture or a mock carries the sample glyph. */
   provenance: Provenance;
 };
 
@@ -149,7 +149,7 @@ export function ConstraintSheet<Sheet>(props: ConstraintSheetProps<Sheet>) {
               {source.model ? ` (${source.model})` : ''}
               {when ? ` · ${when}` : ''}
             </span>
-            {source.provenance !== 'live' && <MockPlate labels={{ announce: text.mockAnnounce }} />}
+            {source.provenance !== 'live' && <MockPlate labels={{ figure: text.mockAnnounce }} />}
           </p>
         )}
       </div>

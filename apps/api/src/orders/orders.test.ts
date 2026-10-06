@@ -29,7 +29,7 @@ import {
 import { registerV1Routes } from '../routes/v1';
 import { planFixture, testIssuer } from '../testing/harness';
 import { createChainRegistry } from './chains';
-import { Refusal, refusalFromChainError } from './errors';
+import { Refusal, refusalFromChainError, UNSAID_CHAIN_ERROR } from './errors';
 import { attemptFor, orderStatus } from './legs';
 import { basketIdOf, prepareIntent, targetsOf, tradesFor } from './prepare';
 
@@ -478,6 +478,22 @@ describe('a chain refusal as the API answers it', () => {
     // An adapter that says retryable for itself is believed.
     expect(answer(new ChainError('VaultExists', 'x', true))[2]).toEqual(d('VaultExists', true));
     expect(answer(new ChainError('Unknown', 'x'))[0]).toBe(500);
+  });
+
+  it('says its own text only for a refusal the adapter wrote, never for one it wrapped', () => {
+    // viem's message names the node's URL, and a node's URL can carry its key
+    const raw = new Error('HTTP request failed.\n\nURL: https://rpc.example.invalid/v2/KEY-abc123');
+    const wrapped = new ChainError('Unavailable', raw.message);
+    wrapped.cause = raw;
+    for (const e of [new ChainError('Unknown', raw.message), wrapped]) {
+      const r = refusalFromChainError(e);
+      expect(r.message).toBe(UNSAID_CHAIN_ERROR);
+      expect(JSON.stringify(r.body())).not.toContain('rpc.example');
+      // the code and whether to ask again still reach the caller
+      expect(r.extra.details).toMatchObject({ chainCode: e.code });
+    }
+    // a refusal the adapter wrote in its own words is said as it is
+    expect(refusalFromChainError(new ChainError('NotFunded', 'add cash')).message).toBe('add cash');
   });
 });
 

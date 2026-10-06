@@ -138,8 +138,11 @@ describe('the shelf', () => {
     expect(card.textContent).toContain(en.shared.text.unverified);
     expect(card.textContent).toContain('SPYX 40%');
     expect(card.textContent).not.toContain(en.shared.shelf.card.platform);
-    // a test network's portfolio carries the plate, the hatch and the words
-    expect(card.textContent).toContain('MOCK');
+    // a test network's portfolio carries the hatch and one quiet line, never the word MOCK
+    expect(card.textContent).not.toContain('MOCK');
+    expect(card.querySelector('[data-ui="sample-note"]')?.textContent).toBe(
+      `${en.shell.mockAnnounce} · ${en.shell.testNetwork}`,
+    );
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
 

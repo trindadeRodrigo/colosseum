@@ -76,6 +76,7 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
     page.locator('[data-ui="compact-nav"]').getByRole('link', { name: en.landing.nav.cta }),
   ).toBeVisible();
   await page.keyboard.press('Home');
+  await expect(page.locator('main')).not.toContainText('MOCK');
   await check(page, 'landing');
   // the closing: its heading over the joint's canvas, readable (CLOSING-INK, Oct 6)
   const words = page.locator('#updates [data-ui="closing-words"]');
@@ -219,6 +220,7 @@ async function toReview(page: Page) {
 
   await expect(page).toHaveURL(/\/plan\/[^/]+$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Grow $40 over 36 months.');
+  await expect(page.locator('main')).not.toContainText('MOCK');
   await check(page, 'plan');
   await page.getByRole('link', { name: en.plan.buy }).click();
 
@@ -226,6 +228,7 @@ async function toReview(page: Page) {
   await page.getByRole('button', { name: en.buy.funding.mockFund }).click();
   await expect(page.getByText(en.buy.funding.ok)).toBeVisible();
   await page.getByLabel(en.trust.accept).check();
+  await expect(page.locator('main')).not.toContainText('MOCK');
   await check(page, 'buy');
   await page.getByRole('button', { name: en.buy.review('$40') }).click();
 
@@ -250,7 +253,7 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
     await expect(steps.nth(i)).toHaveAttribute('data-status', 'confirmed');
   await check(page, 'done');
 
-  // The monitor reads the vault the buy opened, with a pin on its value, under the MOCK plate.
+  // The monitor reads the vault the buy opened, with a pin on its value, its card saying it is sample.
   // at 375 px his bar keeps its links in the sheet under the menu button
   await go(page, en.shell.portfolio);
   await expect(page).toHaveURL(/\/monitor$/);
@@ -264,7 +267,8 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
     page.locator('[data-ui="activity-panel"] [data-ui="execution-list"] li a[href]'),
   ).toHaveCount(4);
   await expect(vault.locator('[data-ui="vault-value"] [data-ui="figure"]')).toHaveCount(1);
-  await expect(vault.locator('[data-ui="mock-plate"]').first()).toBeVisible();
+  await expect(vault.locator('[data-ui="sample-note"]')).toBeVisible();
+  await expect(page.locator('main')).not.toContainText('MOCK');
   await expect(vault.locator('[data-ui="chain-badge"]')).toHaveText('Solana');
   await check(page, 'monitor');
   // the disclaimer is under the vault, once: the shell's foot does not repeat it

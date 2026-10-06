@@ -333,6 +333,8 @@ export const OrderErrorCode = z.enum([
   'PLAN_GONE',
   /** A plan's goal or a withdrawal in another currency than US dollars (gate USD-ONLY). */
   'CURRENCY_UNSUPPORTED',
+  /** A switch to a chain none of the person's wallets signs on: an EVM wallet alone cannot sign on Solana. */
+  'NO_WALLET_FOR_CHAIN',
 ]);
 export type OrderErrorCode = z.infer<typeof OrderErrorCode>;
 

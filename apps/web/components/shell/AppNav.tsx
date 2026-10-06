@@ -123,7 +123,7 @@ function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
       {shorten(wallet.address)}
     </span>
   );
-  const plate = port.test && <MockPlate labels={{ announce: t.shell.mockAnnounce }} />;
+  const plate = port.test && <MockPlate labels={{ figure: t.shell.sampleFigure }} />;
   const action = (
     <div data-ui="account-control" className="relative ml-2 flex items-center gap-3">
       <span role="status" data-ui="account-said" className="sr-only">

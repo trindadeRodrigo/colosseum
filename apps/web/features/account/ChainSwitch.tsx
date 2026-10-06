@@ -49,7 +49,7 @@ export function ChainSwitch() {
   if (!chain) return null;
   const signedIn = account.status === 'ready';
   const nameOf = (id: ChainId) => port.network(id)?.name ?? t.chain.names[id];
-  const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.mockAnnounce };
+  const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.sampleFigure };
 
   /** Why a chain cannot be chosen, or null when it can. */
   const why = (id: ChainId): string | null => {

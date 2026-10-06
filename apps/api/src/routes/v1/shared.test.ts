@@ -645,7 +645,7 @@ describe('a person buys a shared portfolio, following it on their own chain', ()
     });
     expect([res.statusCode, res.json().error]).toEqual([
       422,
-      'this shared portfolio is not published on Robinhood Chain, where your plans live',
+      'this shared portfolio is not published on Robinhood Chain',
     ]);
     // The shelf of that chain does not offer it.
     const shelf = ShelfResponse.parse((await get(evm, '/v1/shelf?chain=robinhood')).json());
@@ -887,6 +887,8 @@ describe('a vault follows a shared portfolio, and auto-follow where it is offere
       404,
       'no vault of yours at that address',
     ]);
+    // A vault is read on its own chain, named by its address: a person on Robinhood Chain with no
+    // Solana wallet has no vault there.
     const evm = await someone('robinhood');
     const wrongChain = await post(evm, '/v1/orders', {
       type: 'follow',
@@ -895,8 +897,8 @@ describe('a vault follows a shared portfolio, and auto-follow where it is offere
       autoFollow: false,
     });
     expect([wrongChain.statusCode, wrongChain.json().error]).toEqual([
-      422,
-      'that vault is not on Robinhood Chain, where your plans live',
+      404,
+      'no vault of yours at that address',
     ]);
     const { who, vault: own } = await withVault();
     const stale = await post(who, '/v1/orders', {
