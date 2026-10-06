@@ -1,14 +1,24 @@
-import type { ChainId, EnvLike, FundingResponse, TestFundsResponse } from '@colosseum/schemas';
+import {
+  type ChainId,
+  type EnvLike,
+  type FundingResponse,
+  TEST_FUNDS_LOW,
+  type TestFundsResponse,
+} from '@colosseum/schemas';
 import type { ChainEntry, ChainRegistry } from '../orders/chains';
 import { Refusal } from '../orders/errors';
 import { createCounter } from '../plugins/limits';
 
 // The test faucet behind POST /v1/testnet/fund: it sends a wallet the test tokens and the gas a buy is
-// missing, on a test network only. Key-free: what holds a key is a sender (faucet/signer.ts), handed
-// in. Here are the rules a send is held to, whichever sender does it:
+// missing, on a test network only. The faucet is a wallet of its own holding a float of test tokens,
+// and it transfers from that float: it mints nothing and holds no authority or role, so the most a
+// compromised server loses is the float. Key-free here: what holds the key is a sender
+// (faucet/signer.ts), handed in. The rules a send is held to, whichever sender does it:
 // - the chain runs on its real adapter on network `testnet`, never the mock and never mainnet;
 // - what is sent is what the server read as missing for this buy, with a small margin, and never more
-//   than a fixed ceiling;
+//   than a fixed ceiling, tight for gas, which is scarce on Robinhood Chain's test network;
+// - the float covers it, with gas left for the faucet's own fee, or nothing is sent and the answer
+//   says the faucet is low;
 // - a person may ask a few times a day, and the faucet as a whole a few more.
 // The counts are kept in memory, per process, as the other rate limits are (plugins/limits.ts).
 
@@ -23,10 +33,17 @@ export const TEST_FUNDS = {
   cashMarginBps: 100,
   /** Over what is missing of gas, in basis points: fees move between the read and the buy. */
   gasMarginBps: 2_500,
-  /** The most test dollars one send mints, in whole dollars. */
+  /** The most test dollars one send transfers, in whole dollars. */
   maxCashUsd: 5_000,
-  /** The most gas one send transfers, in raw units of the native token, by chain. */
-  maxGasRaw: { solana: 100_000_000n, robinhood: 10_000_000_000_000_000n } as Partial<
+  /**
+   * The most gas one send transfers, in raw units of the native token: 0.05 SOL; 0.0005 ETH, about
+   * twenty times what a buy's steps cost there.
+   */
+  maxGasRaw: { solana: 50_000_000n, robinhood: 500_000_000_000_000n } as Partial<
+    Record<ChainId, bigint>
+  >,
+  /** Gas the float keeps for the faucet's own fees: 0.005 SOL; 0.0001 ETH. */
+  gasReserveRaw: { solana: 5_000_000n, robinhood: 100_000_000_000_000n } as Partial<
     Record<ChainId, bigint>
   >,
 } as const;
@@ -39,6 +56,7 @@ export type TestFundsLimits = {
   gasMarginBps: number;
   maxCashUsd: number;
   maxGasRaw: Partial<Record<ChainId, bigint>>;
+  gasReserveRaw: Partial<Record<ChainId, bigint>>;
 };
 
 /** What a sender is asked to do: amounts already held to the rules, in raw units. */
@@ -51,9 +69,11 @@ export type TestFundsSend = {
   gasRaw: bigint;
 };
 
-/** Sends test tokens and gas on one chain's test network, as the key it holds. */
+/** Sends test tokens and gas on one chain's test network, from the float of the key it holds. */
 export type TestFundsSender = {
   chain: ChainId;
+  /** What the faucet's wallet holds now, in raw units: the test dollar, and the native token. */
+  float(cashAddress: string): Promise<{ cashRaw: bigint; gasRaw: bigint }>;
   /** Answers the transaction ids, in the order sent. Throws when the network refused one. */
   send(order: TestFundsSend): Promise<string[]>;
 };
@@ -137,16 +157,27 @@ export function createTestFunds(options: {
           { fix: 'Choose a smaller amount, then ask again.', details: { retryable: false } },
         );
 
+      const assets = await entry.adapter.listAssets();
+      const cash = assets.find((a) => a.id === read.cash.asset);
+      if (!cash) throw new Error(`${entry.chain} lists no ${read.cash.asset}`);
+      // The float first: a send it cannot cover is refused before it counts against anybody.
+      let held: { cashRaw: bigint; gasRaw: bigint };
+      try {
+        held = await sender.float(cash.address);
+      } catch (err) {
+        options.log?.(err);
+        throw new Refusal(502, 'the test network did not answer', { details: { retryable: true } });
+      }
+      const reserve = limits.gasReserveRaw[entry.chain] ?? 0n;
+      if (held.gasRaw < gasRaw + reserve) throw low(TEST_FUNDS_LOW.gas);
+      if (held.cashRaw < cashRaw) throw low(TEST_FUNDS_LOW.cash);
+
       const at = now().getTime();
       const mine = counter.take(`person:${who}`, limits.perPerson, at);
       if (!mine.ok)
         throw tooMany(mine.resetAt - at, 'you have had test funds as often as a day allows');
       const all = counter.take('everybody', limits.perDay, at);
       if (!all.ok) throw tooMany(all.resetAt - at, 'the test faucet has sent all it may today');
-
-      const assets = await entry.adapter.listAssets();
-      const cash = assets.find((a) => a.id === read.cash.asset);
-      if (!cash) throw new Error(`${entry.chain} lists no ${read.cash.asset}`);
       let txIds: string[];
       try {
         txIds = await sender.send({ to: read.wallet, cashAddress: cash.address, cashRaw, gasRaw });
@@ -169,6 +200,13 @@ export function createTestFunds(options: {
     },
   };
 }
+
+/** The float cannot cover the send: a person tops it up from the deployer. */
+const low = (why: string) =>
+  new Refusal(503, why, {
+    fix: 'The test faucet needs topping up. Ask the team, or fund the wallet yourself.',
+    details: { retryable: false },
+  });
 
 function tooMany(ms: number, why: string): Refusal {
   const hours = Math.max(1, Math.ceil(ms / 3_600_000));

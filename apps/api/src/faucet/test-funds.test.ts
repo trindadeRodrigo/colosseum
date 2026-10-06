@@ -4,6 +4,7 @@ import {
   type FundingResponse,
   parseChainConfigs,
   parseFlags,
+  TEST_FUNDS_LOW,
 } from '@colosseum/schemas';
 import { describe, expect, it, vi } from 'vitest';
 import { type ChainEntry, type ChainRegistry, createChainRegistry } from '../orders/chains';
@@ -17,8 +18,9 @@ import {
 } from './test-funds';
 
 // The test faucet's rules, without a chain or a database: what it refuses (mainnet, the mock, a person
-// or the faucet over its daily count, a buy that needs more than one send gives), what it sends (what
-// is missing with a small margin), and that a server with no key loads no sender at all.
+// or the faucet over its daily count, a buy that needs more than one send gives, a send its float
+// cannot cover), what it sends (what is missing with a small margin), and that a server with no key
+// loads no sender at all.
 
 const WALLET = 'So11111111111111111111111111111111111111112';
 
@@ -72,10 +74,20 @@ function funding(
   };
 }
 
-function faucet(chain: ChainId = 'solana', now = () => new Date('2026-10-06T12:00:00Z')) {
+/** The gas a Solana float keeps for the faucet's own fees. */
+const RESERVE = TEST_FUNDS.gasReserveRaw.solana ?? 0n;
+/** A float that covers anything these tests ask. */
+const PLENTY = async () => ({ cashRaw: 10n ** 15n, gasRaw: 10n ** 20n });
+
+function faucet(
+  chain: ChainId = 'solana',
+  now = () => new Date('2026-10-06T12:00:00Z'),
+  float: TestFundsSender['float'] = PLENTY,
+) {
   const sent: TestFundsSend[] = [];
   const sender: TestFundsSender = {
     chain,
+    float: vi.fn(float),
     send: vi.fn(async (order: TestFundsSend) => {
       sent.push(order);
       return [`tx${sent.length}`];
@@ -211,9 +223,57 @@ describe('the test faucet', () => {
     expect((await ask('user-1')).left).toBe(2);
   });
 
+  it('sends nothing the float cannot cover, says which is low, and counts nothing for it', async () => {
+    const entry = entryOn('solana');
+    // $1 of test dollars and 0.0101 SOL missing: with margins, 1,010,000 and 12,625,000 raw
+    const ask = (funds: ReturnType<typeof faucet>['funds']) =>
+      funds.send('user-1', entry, funding(entry, { cash: '1000000', gas: '10100000' }));
+    // Gas: what is sent plus the faucet's own fee reserve (0.005 SOL).
+    const thin = faucet('solana', undefined, async () => ({
+      cashRaw: 10n ** 12n,
+      gasRaw: 12_625_000n + RESERVE - 1n,
+    }));
+    const gas = await refusal(ask(thin.funds));
+    expect(gas.status).toBe(503);
+    expect(gas.body().error).toBe(TEST_FUNDS_LOW.gas);
+    expect(thin.sender.send).not.toHaveBeenCalled();
+    // Cash: the float's test dollars.
+    const poor = faucet('solana', undefined, async () => ({
+      cashRaw: 1_009_999n,
+      gasRaw: 10n ** 12n,
+    }));
+    const cash = await refusal(ask(poor.funds));
+    expect(cash.status).toBe(503);
+    expect(cash.body().error).toBe(TEST_FUNDS_LOW.cash);
+    expect(poor.sender.send).not.toHaveBeenCalled();
+    // Just enough: it sends, and the refusals above used none of the person's three.
+    const enough = faucet('solana', undefined, async () => ({
+      cashRaw: 1_010_000n,
+      gasRaw: 12_625_000n + RESERVE,
+    }));
+    expect((await ask(enough.funds)).left).toBe(TEST_FUNDS.perPerson - 1);
+  });
+
+  it('caps the gas of one send hard: at most 0.0005 ETH on Robinhood Chain', async () => {
+    expect(TEST_FUNDS.maxGasRaw.robinhood).toBe(500_000_000_000_000n);
+    const entry = entryOn('robinhood');
+    const { funds, sender } = faucet('robinhood');
+    // 0.0004 ETH missing is 0.0005 with its margin: sent; a wei more is not.
+    await funds.send('user-1', entry, funding(entry, { cash: '0', gas: '400000000000000' }));
+    const over = await refusal(
+      funds.send('user-1', entry, funding(entry, { cash: '0', gas: '400000000000001' })),
+    );
+    expect(over.status).toBe(422);
+    expect(sender.send).toHaveBeenCalledOnce();
+  });
+
   it('stops everybody once the faucet has sent its daily count', async () => {
     const entry = entryOn('solana');
-    const sender: TestFundsSender = { chain: 'solana', send: vi.fn(async () => ['tx']) };
+    const sender: TestFundsSender = {
+      chain: 'solana',
+      float: PLENTY,
+      send: vi.fn(async () => ['tx']),
+    };
     const funds = createTestFunds({
       senders: [sender],
       limits: { ...TEST_FUNDS, perDay: 2 },
@@ -236,6 +296,7 @@ describe('the test faucet', () => {
       senders: [
         {
           chain: 'solana',
+          float: PLENTY,
           send: async () => {
             throw new Error('POST https://devnet.example/?api-key=SECRET failed');
           },

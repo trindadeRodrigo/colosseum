@@ -31,6 +31,7 @@ let plans: Record<HomeChain, string>;
 const sent: TestFundsSend[] = [];
 const sender: TestFundsSender = {
   chain: 'solana',
+  float: async () => ({ cashRaw: 10n ** 15n, gasRaw: 10n ** 20n }),
   send: async (order) => {
     sent.push(order);
     return ['devnet-signature'];

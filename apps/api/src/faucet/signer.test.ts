@@ -2,7 +2,7 @@ import { createMockAdapter } from '@colosseum/chain-mock';
 import { parseChainConfigs } from '@colosseum/schemas';
 import { address, generateKeyPairSigner } from '@solana/kit';
 import { SYSTEM_PROGRAM_ADDRESS } from '@solana-program/system';
-import { TOKEN_PROGRAM_ADDRESS } from '@solana-program/token';
+import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from '@solana-program/token';
 import { decodeFunctionData } from 'viem';
 import { describe, expect, it } from 'vitest';
 import type { ChainEntry, SolanaInputs } from '../orders/chains';
@@ -15,24 +15,33 @@ const MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
 const TO = 'So11111111111111111111111111111111111111112';
 
 describe('the faucet signer', () => {
-  it('on Solana: makes the token account, mints the test dollar into it, and sends SOL', async () => {
+  it('on Solana: makes the token account, moves the test dollar into it from the float, and sends SOL', async () => {
     const faucet = await generateKeyPairSigner();
     const ixs = await solanaTestFundsInstructions(
       faucet,
       { to: TO, cashAddress: MINT, cashRaw: 202_000_000n, gasRaw: 12_625_000n },
-      TOKEN_PROGRAM_ADDRESS,
+      { tokenProgram: TOKEN_PROGRAM_ADDRESS, decimals: 6 },
     );
     expect(ixs.map((ix) => ix.programAddress)).toEqual([
       address('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'),
       TOKEN_PROGRAM_ADDRESS,
       SYSTEM_PROGRAM_ADDRESS,
     ]);
-    // mintTo: instruction 7, then the amount, little-endian; to the account the first one makes.
-    const mint = ixs[1];
-    expect(mint?.data?.[0]).toBe(7);
-    expect(Buffer.from(mint?.data ?? []).readBigUInt64LE(1)).toBe(202_000_000n);
-    expect(mint?.accounts?.[1]?.address).toBe(ixs[0]?.accounts?.[1]?.address);
-    expect(mint?.accounts?.[2]?.address).toBe(faucet.address);
+    // transferChecked (12), never mintTo (7): the amount and the decimals, from the faucet's own
+    // token account to the one the first instruction makes, the faucet signing as its owner.
+    const move = ixs[1];
+    expect(move?.data?.[0]).toBe(12);
+    expect(Buffer.from(move?.data ?? []).readBigUInt64LE(1)).toBe(202_000_000n);
+    expect(move?.data?.[9]).toBe(6);
+    const [faucetAta] = await findAssociatedTokenPda({
+      owner: faucet.address,
+      mint: address(MINT),
+      tokenProgram: TOKEN_PROGRAM_ADDRESS,
+    });
+    expect(move?.accounts?.[0]?.address).toBe(faucetAta);
+    expect(move?.accounts?.[1]?.address).toBe(MINT);
+    expect(move?.accounts?.[2]?.address).toBe(ixs[0]?.accounts?.[1]?.address);
+    expect(move?.accounts?.[3]?.address).toBe(faucet.address);
     // transferSol: instruction 2, then the lamports; to the wallet itself.
     const sol = ixs[2];
     expect(Buffer.from(sol?.data ?? []).readUInt32LE(0)).toBe(2);
@@ -42,12 +51,12 @@ describe('the faucet signer', () => {
     const gasOnly = await solanaTestFundsInstructions(
       faucet,
       { to: TO, cashAddress: MINT, cashRaw: 0n, gasRaw: 1n },
-      TOKEN_PROGRAM_ADDRESS,
+      { tokenProgram: TOKEN_PROGRAM_ADDRESS, decimals: 6 },
     );
     expect(gasOnly.map((ix) => ix.programAddress)).toEqual([SYSTEM_PROGRAM_ADDRESS]);
   });
 
-  it('on Robinhood Chain: mints the test dollar to the wallet, then sends ETH', () => {
+  it('on Robinhood Chain: transfers the test dollar from the float to the wallet, then sends ETH', () => {
     const to = '0x1111111111111111111111111111111111111111';
     const cash = '0xd3d6e7bf284d922651983468b75492be4f3f689a';
     const calls = evmTestFundsCalls({ to, cashAddress: cash, cashRaw: 101_000_000n, gasRaw: 7n });
@@ -58,17 +67,18 @@ describe('the faucet signer', () => {
       abi: [
         {
           type: 'function',
-          name: 'mint',
+          name: 'transfer',
           stateMutability: 'nonpayable',
           inputs: [
             { name: 'to', type: 'address' },
             { name: 'amount', type: 'uint256' },
           ],
-          outputs: [],
+          outputs: [{ type: 'bool' }],
         },
       ],
       data: calls[0]?.data ?? '0x',
     });
+    expect(decoded.functionName).toBe('transfer');
     expect(decoded.args).toEqual([to, 101_000_000n]);
     expect(calls[1]).toEqual({ to, data: '0x', value: 7n });
     expect(() =>

@@ -5,7 +5,6 @@ import {
   appendTransactionMessageInstructions,
   createKeyPairSignerFromBytes,
   createTransactionMessage,
-  getAddressDecoder,
   getBase64EncodedWireTransaction,
   getSignatureFromTransaction,
   type IInstruction,
@@ -19,8 +18,9 @@ import {
 } from '@solana/kit';
 import { getTransferSolInstruction } from '@solana-program/system';
 import {
+  findAssociatedTokenPda,
   getCreateAssociatedTokenIdempotentInstructionAsync,
-  getMintToInstruction,
+  getTransferCheckedInstruction,
 } from '@solana-program/token';
 import { type Abi, encodeFunctionData, type Hex, isAddress, type PublicClient } from 'viem';
 import { type PrivateKeyAccount, privateKeyToAccount } from 'viem/accounts';
@@ -28,7 +28,9 @@ import type { ChainEntry, EvmInputs, SolanaInputs } from '../orders/chains';
 import { onTestNetwork, type TestFundsSend, type TestFundsSender } from './test-funds';
 
 // The one file of apps/api that holds a key (DESIGN-VAULT section 2, rule 5, held to a condition): the
-// test faucet's. Nothing loads it but one dynamic import in routes/v1/index.ts, inside
+// test faucet's, a wallet of its own made for it (scripts/testnet/faucet-keys.ts) that holds a float of
+// test tokens and transfers from it. It mints nothing and holds no authority or role: never the admin,
+// upgrade or deployer key. Nothing loads it but one dynamic import in routes/v1/index.ts, inside
 // `if (faucetKeys)`, which is set only when a faucet key is configured for a chain that runs on its
 // real adapter on a test network. A key is read from the value handed in, never from a file, and is
 // never part of a message. Each sender checks the network again before it signs anything.
@@ -77,30 +79,52 @@ function evmKey(text: string): PrivateKeyAccount {
   return privateKeyToAccount(text as Hex);
 }
 
+/** A mint's token program and decimals, read from its account: the same offsets in both programs. */
+async function mintOf(rpc: SolanaInputs['rpc'], mint: Address) {
+  const { value } = await rpc.getMultipleAccounts([mint], { encoding: 'base64' }).send();
+  const account = value[0];
+  if (!account) throw new Error('the test dollar mint is not on this network');
+  const data = Buffer.from(account.data[0], 'base64');
+  if (data.length < 82) throw new Error('the test dollar mint is not a mint');
+  return { tokenProgram: account.owner, decimals: data[44] ?? 0 };
+}
+
+/** The faucet's token account for a mint: the associated one. */
+const ataOf = async (owner: Address, mint: Address, tokenProgram: Address) =>
+  (await findAssociatedTokenPda({ owner, mint, tokenProgram }))[0];
+
 /**
- * The instructions of one Solana send: the wallet's token account for the test dollar (made if it is
- * not there), the test dollar minted into it by the faucet as the mint's authority, and SOL for fees.
+ * The instructions of one Solana send, all from the faucet's float: the wallet's token account for
+ * the test dollar (made if it is not there), the test dollar moved into it from the faucet's own
+ * account (`transferChecked`, the faucet as owner), and SOL for fees. Nothing is minted.
  */
 export async function solanaTestFundsInstructions(
   faucet: TransactionSigner,
   order: TestFundsSend,
-  tokenProgram: Address,
+  mint: { tokenProgram: Address; decimals: number },
 ): Promise<IInstruction[]> {
   const to = address(order.to);
-  const mint = address(order.cashAddress);
+  const cash = address(order.cashAddress);
+  const { tokenProgram, decimals } = mint;
   const ixs: IInstruction[] = [];
   if (order.cashRaw > 0n) {
     const create = await getCreateAssociatedTokenIdempotentInstructionAsync({
       payer: faucet,
       owner: to,
-      mint,
+      mint: cash,
       tokenProgram,
     });
-    const ata = create.accounts[1].address;
     ixs.push(
       create,
-      getMintToInstruction(
-        { mint, token: ata, mintAuthority: faucet, amount: order.cashRaw },
+      getTransferCheckedInstruction(
+        {
+          source: await ataOf(faucet.address, cash, tokenProgram),
+          mint: cash,
+          destination: create.accounts[1].address,
+          authority: faucet,
+          amount: order.cashRaw,
+          decimals,
+        },
         { programAddress: tokenProgram },
       ),
     );
@@ -113,18 +137,25 @@ export async function solanaTestFundsInstructions(
 function solanaSender(faucet: KeyPairSigner, rpc: SolanaInputs['rpc']): TestFundsSender {
   return {
     chain: 'solana',
+    async float(cashAddress) {
+      const mint = address(cashAddress);
+      const { tokenProgram } = await mintOf(rpc, mint);
+      const ata = await ataOf(faucet.address, mint, tokenProgram);
+      const [{ value: lamports }, { value: accounts }] = await Promise.all([
+        rpc.getBalance(faucet.address, { commitment: 'confirmed' }).send(),
+        rpc.getMultipleAccounts([ata], { encoding: 'base64' }).send(),
+      ]);
+      const data = accounts[0] ? Buffer.from(accounts[0].data[0], 'base64') : null;
+      // A token account's amount: a u64 after the mint and the owner.
+      const cashRaw = data && data.length >= 72 ? data.readBigUInt64LE(64) : 0n;
+      return { cashRaw, gasRaw: BigInt(lamports) };
+    },
     async send(order) {
-      // The mint's program, and that this key may mint it: a key that may not sends nothing.
-      const { value } = await rpc
-        .getMultipleAccounts([address(order.cashAddress)], { encoding: 'base64' })
-        .send();
-      const mint = value[0];
-      if (!mint) throw new Error('the test dollar mint is not on this network');
-      const data = Buffer.from(mint.data[0], 'base64');
-      const authority =
-        data.readUInt32LE(0) === 1 ? getAddressDecoder().decode(data.subarray(4, 36)) : null;
-      if (authority !== faucet.address) throw new Error('the faucet key is not the mint authority');
-      const ixs = await solanaTestFundsInstructions(faucet, order, mint.owner);
+      const ixs = await solanaTestFundsInstructions(
+        faucet,
+        order,
+        await mintOf(rpc, address(order.cashAddress)),
+      );
       const { value: blockhash } = await rpc.getLatestBlockhash({ commitment: 'confirmed' }).send();
       const signed = await signTransactionMessageWithSigners(
         pipe(
@@ -155,21 +186,28 @@ function solanaSender(faucet: KeyPairSigner, rpc: SolanaInputs['rpc']): TestFund
   };
 }
 
-/** The test dollar's mint call (tUSDG): the faucet key needs its MINTER_ROLE. */
-const MINT_ABI = [
+/** The test dollar's two calls the faucet makes (tUSDG, an ERC-20): a balance, and a transfer. */
+const TOKEN_ABI = [
   {
     type: 'function',
-    name: 'mint',
+    name: 'transfer',
     stateMutability: 'nonpayable',
     inputs: [
       { name: 'to', type: 'address' },
       { name: 'amount', type: 'uint256' },
     ],
-    outputs: [],
+    outputs: [{ type: 'bool' }],
+  },
+  {
+    type: 'function',
+    name: 'balanceOf',
+    stateMutability: 'view',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ type: 'uint256' }],
   },
 ] as const satisfies Abi;
 
-/** The calls of one EVM send: the test dollar minted to the wallet, then ETH for fees. */
+/** The calls of one EVM send, from the faucet's float: the test dollar transferred, then ETH for fees. */
 export function evmTestFundsCalls(order: TestFundsSend): { to: Hex; data: Hex; value: bigint }[] {
   if (!isAddress(order.to) || !isAddress(order.cashAddress)) throw new Error('not an EVM address');
   const calls: { to: Hex; data: Hex; value: bigint }[] = [];
@@ -177,8 +215,8 @@ export function evmTestFundsCalls(order: TestFundsSend): { to: Hex; data: Hex; v
     calls.push({
       to: order.cashAddress,
       data: encodeFunctionData({
-        abi: MINT_ABI,
-        functionName: 'mint',
+        abi: TOKEN_ABI,
+        functionName: 'transfer',
         args: [order.to, order.cashRaw],
       }),
       value: 0n,
@@ -194,6 +232,19 @@ function evmSender(
 ): TestFundsSender {
   return {
     chain: 'robinhood',
+    async float(cashAddress) {
+      if (!isAddress(cashAddress)) throw new Error('not an EVM address');
+      const [cashRaw, gasRaw] = await Promise.all([
+        rpc.readContract({
+          address: cashAddress,
+          abi: TOKEN_ABI,
+          functionName: 'balanceOf',
+          args: [account.address],
+        }),
+        rpc.getBalance({ address: account.address }),
+      ]);
+      return { cashRaw, gasRaw };
+    },
     async send(order) {
       // A key of a test network never signs for another chain.
       const answered = await rpc.getChainId();
@@ -201,7 +252,7 @@ function evmSender(
       const hashes: string[] = [];
       for (const call of evmTestFundsCalls(order)) {
         const request = { account: account.address, ...call };
-        // Simulated first: a refusal (no minter role) sends nothing.
+        // Simulated first: a refusal sends nothing.
         await rpc.call(request);
         const [gas, gasPrice, nonce] = await Promise.all([
           rpc.estimateGas(request),

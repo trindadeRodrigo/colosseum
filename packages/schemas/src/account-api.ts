@@ -127,6 +127,15 @@ export const TestFundsRequest = z
   });
 export type TestFundsRequest = z.infer<typeof TestFundsRequest>;
 
+/**
+ * What POST /v1/testnet/fund answers, with 503, when its float cannot cover a send: the faucet is a
+ * wallet holding test tokens, and a person tops it up. A client may tell the two apart by `error`.
+ */
+export const TEST_FUNDS_LOW = {
+  gas: 'test gas is low, ask the team',
+  cash: 'test dollars are low, ask the team',
+} as const;
+
 /** One token sent by the test faucet, in raw units. */
 export const TestFundsSent = z.object({
   symbol: z.string().min(1),
