@@ -67,13 +67,76 @@ describe('the chain registry', () => {
     });
   });
 
-  it('stops at start on live or readonly: no adapter is wired, and nothing falls back to the mock', () => {
+  it('stops at start on live or readonly where no adapter is wired, and nothing falls back to the mock', () => {
     const address = '0x00000000000000000000000000000000000000aa';
-    const ready = { CHAIN_ROUTER_ROBINHOOD: address };
     for (const mode of ['live', 'readonly'])
-      expect(() => registry({ ...ready, CHAIN_MODE_ROBINHOOD: mode })).toThrow(
-        `CHAIN_MODE_ROBINHOOD is ${mode}, and the API has no robinhood adapter for that yet`,
+      expect(() => registry({ CHAIN_ROUTER_BASE: address, CHAIN_MODE_BASE: mode })).toThrow(
+        `CHAIN_MODE_BASE is ${mode}, and the API has no base adapter for that yet`,
       );
+    // Robinhood Chain has its adapter, and does not start without its node and its asset list.
+    for (const mode of ['live', 'readonly'])
+      expect(() =>
+        registry({ CHAIN_ROUTER_ROBINHOOD: address, CHAIN_MODE_ROBINHOOD: mode }),
+      ).toThrow(
+        `CHAIN_MODE_ROBINHOOD is ${mode}, and the API was given no Robinhood Chain RPC or no asset list`,
+      );
+  });
+
+  it('runs Robinhood Chain on the EVM adapter in live or readonly, on its test network or a local copy, labelled sandbox', () => {
+    const contracts = {
+      robinhood: {
+        factory: '0x00000000000000000000000000000000000000f1',
+        registry: '0x00000000000000000000000000000000000000f2',
+      },
+    };
+    const cash = {
+      id: 'robinhood:tusdg',
+      chain: 'robinhood' as const,
+      address: '0x00000000000000000000000000000000000000c0',
+      symbol: 'tUSDG',
+      decimals: 6,
+      cls: 'cash' as const,
+      underlying: 'USD',
+      issuer: 'test',
+      tier: 'A' as const,
+      priceKind: 'none' as const,
+      priceRef: '',
+      session: 'always' as const,
+      autoFollowEligible: true,
+      maxWeightBps: 0,
+      blockedCountries: [],
+      sheet: 'test',
+      provenance: 'sandbox' as const,
+    };
+    // Nothing is asked of the node here: the adapter reads only when a route asks it to.
+    const robinhood = { rpc: {} as never, assets: [cash] };
+    for (const mode of ['live', 'readonly'] as const)
+      for (const network of ['testnet', 'local']) {
+        const e = {
+          CHAIN_MODE_ROBINHOOD: mode,
+          CHAIN_NETWORK_ROBINHOOD: network,
+          CHAIN_ROUTER_ROBINHOOD: '0x00000000000000000000000000000000000000ab',
+        };
+        const entry = createChainRegistry(parseFlags(e), parseChainConfigs(e, contracts), {
+          seed: 'a',
+          robinhood,
+        }).get('robinhood');
+        expect([entry.mode, entry.provenance, entry.mock]).toEqual([mode, 'sandbox', undefined]);
+        expect(entry.adapter.capabilities).toMatchObject({
+          trade: mode,
+          maxTradesPerTx: 8,
+          tradesInCreate: true,
+          needsApprove: true,
+        });
+        expect(entry.source).not.toMatch(/https?:/);
+      }
+    const onMainnet = { CHAIN_MODE_ROBINHOOD: 'live', CHAIN_NETWORK_ROBINHOOD: 'mainnet' };
+    expect(() =>
+      createChainRegistry(parseFlags(onMainnet), parseChainConfigs(onMainnet, contracts), {
+        seed: 'a',
+        robinhood,
+      }),
+    ).toThrow('CHAIN_MODE_ROBINHOOD is live on mainnet, which this API does not run yet');
   });
 
   it('runs Solana on its real adapter in live or readonly, on a test network or a local copy, labelled sandbox', () => {
@@ -832,13 +895,14 @@ describe('no /v1 route can make the server sign', () => {
       'routes/v1/shared.ts',
     ]);
     // The chain packages that can sign keep that behind their `./server` entry, and neither the
-    // package's root nor that entry is here: the Solana adapter comes in by its key-free `./vault`
-    // entry, which tests/boundaries.test.ts holds to reaching no signing file. packages/basket is
+    // package's root nor that entry is here: the Solana and EVM adapters come in by their key-free
+    // `./vault` entries, which tests/boundaries.test.ts holds to reaching no signing file. packages/basket is
     // arithmetic over what it is handed: it imports the schemas and nothing else. The engine comes in
     // by its `./personal` entry, which reads no clock, network or environment
     // (packages/engine/src/personal/purity.test.ts), not by its root, which holds the model client.
     expect([...packages.keys()].sort()).toEqual([
       '@colosseum/basket',
+      '@colosseum/chain-evm/vault',
       '@colosseum/chain-mock',
       '@colosseum/chain-solana/vault',
       '@colosseum/db',

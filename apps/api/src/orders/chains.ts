@@ -1,3 +1,9 @@
+import {
+  createEvmVaultAdapter,
+  type EvmRpc,
+  ROBINHOOD_TESTNET_POOLS,
+  type V4Pools,
+} from '@colosseum/chain-evm/vault';
 import { createMockAdapter, type MockControl } from '@colosseum/chain-mock';
 import {
   createSolanaVaultAdapter,
@@ -18,9 +24,9 @@ import {
 import { Refusal } from './errors';
 
 // One adapter per chain, chosen by the chain's mode. `mock` runs on packages/chain-mock. `live` and
-// `readonly` run Solana on its real adapter (packages/chain-solana/src/vault), on a test network or a
-// local copy of mainnet only for now: mainnet, and the EVM chains, say so at start. Nothing falls back
-// to the mock.
+// `readonly` run Solana on its real adapter (packages/chain-solana/src/vault) and Robinhood Chain on the
+// EVM adapter (packages/chain-evm/src/vault), on a test network or a local copy only for now: mainnet,
+// and Base, say so at start. Nothing falls back to the mock.
 
 export type ChainEntry = {
   chain: ChainId;
@@ -59,6 +65,16 @@ export type SolanaInputs = {
   jupiter?: JupiterOptions;
 };
 
+/** What Robinhood Chain runs on in `live` or `readonly`, from the server's own settings. */
+export type EvmInputs = {
+  /** Made from the server's RPC URL (`ROBINHOOD_RPC_URL`), which no figure and no message repeats. */
+  rpc: EvmRpc;
+  /** The assets of the network, with their token contracts and feeds. */
+  assets: BasketAsset[];
+  /** The pools trades go through. Default: the test network's (`ROBINHOOD_TESTNET_POOLS`). */
+  pools?: V4Pools;
+};
+
 export type RegistryOptions = {
   /**
    * Mixed into every transaction the mock builds, so a mock started today never repeats an id that an
@@ -69,6 +85,8 @@ export type RegistryOptions = {
   now?: () => Date;
   /** For Solana in `live` or `readonly`. */
   solana?: SolanaInputs;
+  /** For Robinhood Chain in `live` or `readonly`. */
+  robinhood?: EvmInputs;
 };
 
 export function createChainRegistry(
@@ -123,8 +141,8 @@ export function createChainRegistry(
 }
 
 /**
- * A chain on its real adapter. Solana only, and not on mainnet yet: the first real network is the test
- * one (or a local copy of mainnet), labelled `sandbox` on every figure.
+ * A chain on its real adapter: Solana or Robinhood Chain, and not on mainnet yet: the first real network
+ * is the test one (or a local copy), labelled `sandbox` on every figure.
  */
 function realEntry(
   chain: ChainId,
@@ -134,7 +152,7 @@ function realEntry(
   options: RegistryOptions,
 ): ChainEntry {
   const key = envKey('CHAIN_MODE', chain);
-  if (chain !== 'solana')
+  if (chain === 'base')
     throw new Error(
       `${key} is ${mode}, and the API has no ${chain} adapter for that yet: set it to mock or off`,
     );
@@ -142,6 +160,28 @@ function realEntry(
     throw new Error(
       `${key} is ${mode} on mainnet, which this API does not run yet: set ${envKey('CHAIN_NETWORK', chain)} to testnet or local`,
     );
+  if (chain === 'robinhood') {
+    if (!options.robinhood)
+      throw new Error(
+        `${key} is ${mode}, and the API was given no Robinhood Chain RPC or no asset list for ${config.networkName}`,
+      );
+    return {
+      chain,
+      mode,
+      provenance: chainProvenance(config.network, mode) ?? 'sandbox',
+      source: `Robinhood Chain ${config.networkName}, read over JSON-RPC by the EVM vault adapter`,
+      config,
+      adapter: createEvmVaultAdapter({
+        config,
+        rpc: options.robinhood.rpc,
+        assets: options.robinhood.assets,
+        pools: options.robinhood.pools ?? ROBINHOOD_TESTNET_POOLS,
+        trade: mode,
+        autoFollow: flags.autoFollow[chain],
+        ...(options.now ? { now: options.now } : {}),
+      }),
+    };
+  }
   if (!options.solana)
     throw new Error(
       `${key} is ${mode}, and the API was given no Solana RPC or no asset list for ${config.networkName}`,
