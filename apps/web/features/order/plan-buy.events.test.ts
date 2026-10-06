@@ -265,6 +265,8 @@ describe('the plan screen', () => {
     expect(server.to('/v1/orders').map((c) => c.body)).toEqual([
       { type: 'buy', owner: { solana: SOLANA }, amountUsd: 10, proposalId: PLAN_ID },
     ]);
+    // kept as a plan from a link, so the order screen names the buyer's own vault
+    expect(recallOrder(ORDER_ID, USER)?.linked).toBe(true);
   });
 
   it('shows no plan from a link the API answers for another id, or that is not a plan', async () => {
@@ -379,6 +381,7 @@ describe('the buy screen', () => {
     expect(kept?.goal?.card).toEqual(planOn().proposal.card);
     expect(Number.isNaN(Date.parse(kept?.goal?.placedAt ?? ''))).toBe(false);
     expect(kept?.lines).toEqual(planOn().proposal.lines);
+    expect(kept?.linked).toBeUndefined();
     expect(trustAccepted(USER, TRUST_STATUS.textVersion)).toBe(true);
   });
 

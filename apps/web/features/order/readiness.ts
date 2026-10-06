@@ -1,5 +1,6 @@
 import type { ChainId } from '@colosseum/schemas';
 import {
+  basketIdOfLinkedPlan,
   basketIdOfPlan,
   type DeploymentNetwork,
   deploymentsOf,
@@ -67,6 +68,9 @@ export const chainReady = (chain: ChainId, mock: boolean): boolean =>
 
 /**
  * The vault a plan was bought into, by its number on chain: the API's own rule, from the SDK
- * (`basketIdOfPlan`). The portfolio joins a vault to the goal of its plan with it.
+ * (`basketIdOfPlan`), or, for a plan made from a link, the buyer's own (`basketIdOfLinkedPlan`, gate
+ * `AGENT-LINK`). The runner names it to the guard, and the portfolio joins a vault to the goal of its
+ * plan with it.
  */
-export const basketOfPlan = (proposalId: string): string => basketIdOfPlan(proposalId);
+export const basketOfPlan = (proposalId: string, buyer: string | null = null): string =>
+  buyer ? basketIdOfLinkedPlan(proposalId, buyer) : basketIdOfPlan(proposalId);

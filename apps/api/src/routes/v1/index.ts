@@ -34,7 +34,7 @@ import type { OrderDeps } from '../../orders/legs';
 import type { PlanInputs } from '../../orders/personalize';
 import { authFromEnv, enforceSignIn, identify, type TokenIssuer } from '../../plugins/auth';
 import { type Limits, registerLimits, requireDeclared } from '../../plugins/limits';
-import { registerBasketRoutes } from './baskets';
+import { type LinkedPlanLimits, registerBasketRoutes } from './baskets';
 import { buildConfig, registerConfigRoute } from './config';
 import { registerFundingRoute } from './funding';
 import { registerMeRoutes } from './me';
@@ -74,6 +74,8 @@ export type V1Deps = {
   planInputs?: PlanInputs;
   /** The rate limits. Default: `LIMITS`, the ones a server runs with. */
   limits?: Limits;
+  /** The daily cap and the keeping time of plans made from a link. Default: `LINKED_PLANS`. */
+  linkedPlans?: LinkedPlanLimits;
   /**
    * What `requireDeclared(root)` answered, when the app called it before its own routes, so that a
    * /v1 path registered ahead of these is held to the rule too. Left out, it is called here.
@@ -149,9 +151,13 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
     registerMeRoutes(scope, orderDeps);
     registerFundingRoute(scope, orderDeps);
     registerOrderRoutes(scope, orderDeps);
-    registerBasketRoutes(scope, orderDeps, deps.planInputs ?? (async () => ({})), {
-      agentSurface: flags.agentSurface,
-    });
+    registerBasketRoutes(
+      scope,
+      orderDeps,
+      deps.planInputs ?? (async () => ({})),
+      { agentSurface: flags.agentSurface },
+      deps.linkedPlans,
+    );
     registerPortfolioRoute(scope, orderDeps);
     registerSharedRoutes(scope, orderDeps);
     registerVaultRoute(scope, orderDeps);

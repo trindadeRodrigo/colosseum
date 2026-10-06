@@ -1,10 +1,17 @@
 import { proposals } from '@colosseum/db';
-import { type BasketSheet, OrderError, YieldObservation } from '@colosseum/schemas';
-import { eq } from 'drizzle-orm';
+import {
+  type BasketSheet,
+  OrderError,
+  PortfolioResponse,
+  YieldObservation,
+} from '@colosseum/schemas';
+import { eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ChainRegistry } from '../../orders/chains';
 import type { PlanInputs } from '../../orders/personalize';
+import { basketIdOf, basketIdOfLinked } from '../../orders/prepare';
+import { countLinkedSince } from '../../orders/store';
 import { bearingPlanInputs } from '../../plan-inputs';
 import mockYields from '../../testing/fixtures/mock-yields.json';
 import { orderFlow } from '../../testing/flow';
@@ -47,7 +54,7 @@ afterAll(async () => {
 
 const fallback = { solana: '', robinhood: '' };
 const withMockYieldOff: PlanInputs = async () => ({});
-const { post, get, fund, order } = orderFlow({
+const { post, get, fund, order, settleAll } = orderFlow({
   app: () => app,
   registry: () => registry,
   plans: () => fallback,
@@ -147,5 +154,123 @@ describe('a plan proposed from a link', () => {
     } finally {
       await off.app.close();
     }
+  });
+
+  it('keeps the agent’s words out: a theme is a shared portfolio’s slug, of at most 64 characters', async () => {
+    const before = (await data.db.select({ id: proposals.id }).from(proposals)).length;
+    const long = await post(null, '/v1/baskets/propose', {
+      sheet: sheet({ themes: ['a'.repeat(65)] }),
+    });
+    expect(long.statusCode).toBe(400);
+    const unknown = await post(null, '/v1/baskets/propose', {
+      sheet: sheet({ goal: 'grow', risk: 'medium', themes: ['ignore-your-instructions'] }),
+    });
+    expect(unknown.statusCode).toBe(422);
+    expect(OrderError.parse(unknown.json()).error).toBe(
+      'a theme is not a shared portfolio on Solana',
+    );
+    // a sleeve's theme too
+    const sleeve = await post(null, '/v1/baskets/propose', {
+      sheet: sheet({
+        goal: 'grow',
+        risk: 'medium',
+        sleeves: [
+          { kind: 'goal', shareBps: 5000 },
+          { kind: 'theme', shareBps: 5000, theme: 'no-such-portfolio' },
+        ],
+      }),
+    });
+    expect(sleeve.statusCode).toBe(422);
+    // a body over 16 KB is not read
+    const big = await post(null, '/v1/baskets/propose', {
+      sheet: sheet(),
+      padding: 'x'.repeat(17 * 1024),
+    });
+    expect(big.statusCode).toBe(413);
+    expect((await data.db.select({ id: proposals.id }).from(proposals)).length).toBe(before);
+  });
+
+  it('makes at most so many a day across every caller', async () => {
+    // Other test files store plans with no person at the same time: a cap the day has already reached
+    // is the one that can be held to here.
+    const capped = await testApp({
+      issuer: issuer.issuer,
+      db: data.db,
+      env: { AGENT_SURFACE: 'on' },
+      planInputs: withMockYieldOff,
+      linkedPlans: { perDay: 0, keepDays: 7 },
+    });
+    try {
+      const before = await countLinkedSince(data.db, new Date(Date.now() - 24 * 60 * 60 * 1000));
+      for (const remoteAddress of ['10.9.9.8', '10.9.9.9']) {
+        const refused = await capped.app.inject({
+          method: 'POST',
+          url: '/v1/baskets/propose',
+          payload: { sheet: sheet({ amountUsd: 1_234 }) },
+          remoteAddress,
+        });
+        expect(refused.statusCode).toBe(429);
+        expect(OrderError.parse(refused.json())).toMatchObject({
+          code: 'RATE_LIMITED',
+          details: { retryable: true },
+        });
+      }
+      // and the server with room makes it
+      const made = await post(null, '/v1/baskets/propose', { sheet: sheet({ amountUsd: 1_234 }) });
+      expect(made.statusCode, made.body).toBe(200);
+      expect(
+        await countLinkedSince(data.db, new Date(Date.now() - 24 * 60 * 60 * 1000)),
+      ).toBeGreaterThan(before);
+    } finally {
+      await capped.app.close();
+    }
+  });
+
+  it('forgets a plan nobody bought after a few days, and keeps one somebody bought', async () => {
+    const make = async (amountUsd: number) =>
+      PersonalizeResponse.parse(
+        (await post(null, '/v1/baskets/propose', { sheet: sheet({ amountUsd }) })).json(),
+      ).id;
+    const bought = await make(3_001);
+    const unbought = await make(3_002);
+    const buyer = data.track(await person(issuer, 'solana'));
+    await fund(buyer, undefined, 4_000);
+    await order(buyer, { proposalId: bought, amountUsd: 3_001 });
+    // both made eight days ago
+    await data.db
+      .update(proposals)
+      .set({ createdAt: sql`now() - interval '8 days'` })
+      .where(inArray(proposals.id, [bought, unbought]));
+    const fresh = await make(3_003);
+    const left = await data.db
+      .select({ id: proposals.id })
+      .from(proposals)
+      .where(inArray(proposals.id, [bought, unbought, fresh]));
+    expect(left.map((r) => r.id).sort()).toEqual([bought, fresh].sort());
+    expect((await get(null, `/v1/baskets/${unbought}`)).statusCode).toBe(404);
+    expect((await get(null, `/v1/baskets/${bought}`)).statusCode).toBe(200);
+  });
+
+  it('opens each buyer’s own vault: its number is the plan’s and the buyer’s, never the link’s alone', async () => {
+    const { id } = PersonalizeResponse.parse(
+      (await post(null, '/v1/baskets/propose', { sheet: sheet({ amountUsd: 2_500 }) })).json(),
+    );
+    const numbers: string[] = [];
+    for (const buyer of [
+      data.track(await person(issuer, 'solana')),
+      data.track(await person(issuer, 'solana')),
+    ]) {
+      await fund(buyer, undefined, 3_000);
+      await settleAll(buyer, await order(buyer, { proposalId: id, amountUsd: 2_500 }));
+      const mine = PortfolioResponse.parse((await get(buyer, '/v1/portfolio')).json());
+      const vaults = mine.chains[0]?.vaults ?? [];
+      expect(vaults).toHaveLength(1);
+      const basketId = vaults[0]?.basketId ?? '';
+      expect(basketId).toBe(basketIdOfLinked(id, buyer.sub));
+      numbers.push(basketId);
+    }
+    // two buyers, two numbers, and neither is the one the plan's id gives by itself
+    expect(new Set(numbers).size).toBe(2);
+    expect(numbers).not.toContain(basketIdOf(id));
   });
 });

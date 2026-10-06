@@ -32,12 +32,17 @@ export function createTenonfiMcp(config: McpConfig, fetchFn: Fetch = fetch): Mcp
       const value = requestInfo?.headers.get(name);
       if (value) signIn[name] = value;
     }
-    const client = createTenonfiClient((path, init) =>
-      fetchFn(new URL(path, api).toString(), {
+    const client = createTenonfiClient(async (path, init) => {
+      // Every call stays on the API's origin, and follows no redirect: a person's sign-in goes to the
+      // API and nowhere else.
+      const url = new URL(path, api);
+      if (url.origin !== api.origin) throw new Error(`a call left the API: ${url.origin}`);
+      return fetchFn(url.toString(), {
         ...init,
+        redirect: 'error',
         headers: { accept: 'application/json', ...init?.headers, ...signIn },
-      }),
-    );
+      });
+    });
     const server = new McpServer(
       { name: 'tenonfi', version: '0.1.0' },
       { instructions: INSTRUCTIONS },

@@ -14,7 +14,14 @@ const APP = 'https://app.tenonfi.test';
 const API = 'https://api.tenonfi.test';
 const SIGN_IN = { authorization: 'Bearer access', 'privy-id-token': 'identity' };
 
-type Sent = { method: string; url: string; headers: Record<string, string>; body?: unknown };
+type Sent = {
+  method: string;
+  url: string;
+  origin: string;
+  redirect?: string;
+  headers: Record<string, string>;
+  body?: unknown;
+};
 type Answer = { status: number; body: unknown };
 
 const CONFIG = {
@@ -98,6 +105,8 @@ function serve(answers: Record<string, Answer>) {
     sent.push({
       method,
       url: target.pathname + target.search,
+      origin: target.origin,
+      ...(init?.redirect ? { redirect: init.redirect } : {}),
       headers: (init?.headers ?? {}) as Record<string, string>,
       ...(init?.body === undefined ? {} : { body: JSON.parse(String(init.body)) }),
     });
@@ -183,7 +192,10 @@ describe('each tool', () => {
   it('get_shared_portfolios keeps the creator’s words under untrusted, and links each page', async () => {
     const { mcp, sent } = serve({
       'GET /v1/shelf': { status: 200, body: { families: [FAMILY], disclaimer: 'd' } },
-      'GET /v1/indexes/a b': { status: 200, body: { family: FAMILY, disclaimer: 'd' } },
+      'GET /v1/indexes/three-of-the-largest': {
+        status: 200,
+        body: { family: FAMILY, disclaimer: 'd' },
+      },
     });
     const shelf = await callTool(mcp, 'get_shared_portfolios', { chain: 'solana' });
     const [family] = (shelf.structuredContent?.families ?? []) as Record<string, unknown>[];
@@ -195,8 +207,11 @@ describe('each tool', () => {
       pageUrl: `${APP}/indexes/three-of-the-largest`,
       recipes: FAMILY.recipes,
     });
-    await callTool(mcp, 'get_shared_portfolios', { slug: 'a b' });
-    expect(sent.map((s) => s.url)).toEqual(['/v1/shelf?chain=solana', '/v1/indexes/a%20b']);
+    await callTool(mcp, 'get_shared_portfolios', { slug: FAMILY.slug });
+    expect(sent.map((s) => s.url)).toEqual([
+      '/v1/shelf?chain=solana',
+      '/v1/indexes/three-of-the-largest',
+    ]);
   });
 
   it('prepare_order checks what it names and answers the page the person signs on', async () => {
@@ -303,6 +318,36 @@ describe('what the server passes on, and what it cannot do', () => {
     const result = await callTool(half.mcp, 'get_portfolio', {}, { authorization: 'Bearer a' });
     expect(failureOf(result).code).toBe('SIGN_IN_REQUIRED');
     expect(half.sent).toHaveLength(0);
+  });
+
+  it('keeps every call on the API, inside its route, and follows no redirect, whatever it is handed', async () => {
+    const { mcp, sent } = serve({
+      'GET /v1/indexes/three-of-the-largest': {
+        status: 200,
+        body: { family: FAMILY, disclaimer: 'd' },
+      },
+    });
+    // a path in an argument is refused before anything is sent
+    for (const [name, args] of [
+      ['get_shared_portfolios', { slug: '..' }],
+      ['get_shared_portfolios', { slug: '../../v1/me' }],
+      ['prepare_order', { action: 'follow', slug: '..' }],
+      ['get_portfolio', { chain: 'solana', vault: 'https://evil.example/x' }],
+      ['get_portfolio', { chain: 'solana', vault: '..' }],
+      ['get_asset_risk', { asset: '//evil.example' }],
+      ['get_asset_risk', { asset: '..' }],
+    ] as const) {
+      const result = await callTool(mcp, name, args, SIGN_IN);
+      expect(result.isError, `${name} ${JSON.stringify(args)}`).toBe(true);
+    }
+    expect(sent).toHaveLength(0);
+    // and what is sent stays on the API's origin and follows no redirect
+    await callTool(mcp, 'get_shared_portfolios', { slug: FAMILY.slug }, SIGN_IN);
+    await callTool(mcp, 'get_asset_risk', { asset: 'solana:spyx' }, SIGN_IN);
+    expect(sent.map((s) => [s.origin, s.redirect, s.url])).toEqual([
+      [API, 'error', '/v1/indexes/three-of-the-largest'],
+      [API, 'error', '/risk/facts/assets/solana%3Aspyx'],
+    ]);
   });
 
   it('never sends anything that builds, signs, reports or places an order, whatever it is asked', async () => {

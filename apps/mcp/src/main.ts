@@ -6,7 +6,8 @@ import { createTenonfiMcp } from './server';
 // holds no secret: the API's and the app's addresses, the port and the origins a browser may call from.
 //
 //   TENONFI_API_URL      the API (default https://tenonfi-api.onrender.com)
-//   TENONFI_APP_URL      the app, where the links a person opens point (default http://localhost:3000)
+//   TENONFI_APP_URL      the app, where the links a person opens point: required, but for a server that
+//                        listens on this machine alone (then http://localhost:3000)
 //   PORT, HOST           where to listen (default 8787 on 0.0.0.0; the host sets PORT)
 //   MCP_ALLOWED_ORIGINS  browser origins allowed to call /mcp, comma-separated (default none)
 

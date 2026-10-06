@@ -20,11 +20,11 @@ pnpm --filter @colosseum/mcp start
 | Variable | What | Default |
 |---|---|---|
 | `TENONFI_API_URL` | the API | `https://tenonfi-api.onrender.com` |
-| `TENONFI_APP_URL` | the app, where links point | `http://localhost:3000` |
+| `TENONFI_APP_URL` | the app, where links point | required, but for a server on `HOST=127.0.0.1` (then `http://localhost:3000`) |
 | `PORT`, `HOST` | where to listen | `8787`, `0.0.0.0` |
 | `MCP_ALLOWED_ORIGINS` | browser origins allowed to call `/mcp`, comma-separated | none |
 
-It holds no secret. `build_plan` needs the API's agent surface on (`AGENT_SURFACE=on` on the API): off, the API answers 404 and the tool says so.
+It holds no secret. Every call stays on the API's origin and follows no redirect. The API counts every agent behind one MCP server as one anonymous caller, so they share its budget. `build_plan` needs the API's agent surface on (`AGENT_SURFACE=on` on the API): off, the API answers 404 and the tool says so.
 
 ## Host on Render
 

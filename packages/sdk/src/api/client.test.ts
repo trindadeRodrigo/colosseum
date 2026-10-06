@@ -53,6 +53,13 @@ describe('the API client', () => {
       ['GET', '/v1/shelf'],
     ]);
     expect(() => pathOf('/v1/baskets/{id}')).toThrow('no value for {id}');
+    // no value steps out of its segment: a slash is escaped, and `.` or `..` is refused
+    expect(pathOf('/v1/indexes/{slug}', { slug: '../../me' })).toBe('/v1/indexes/..%2F..%2Fme');
+    expect(
+      new URL(pathOf('/v1/indexes/{slug}', { slug: '../../me' }), 'https://a.test').pathname,
+    ).toBe('/v1/indexes/..%2F..%2Fme');
+    for (const slug of ['..', '.', ''])
+      expect(() => pathOf('/v1/indexes/{slug}', { slug })).toThrow('not a path segment');
   });
 
   it('sends a body as JSON, and no content type with no body', async () => {

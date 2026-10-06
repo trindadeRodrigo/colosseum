@@ -17,10 +17,19 @@ import {
 import { assertBuilds, type ChainEntry, type ChainRegistry } from './chains';
 import { legErrorFromRevert, Refusal, refusing } from './errors';
 import { familyBySlug } from './families';
-import { basketIdOf, expectedOf, ORDER_POLICY, slippageOf, targetsOf, tradesFor } from './prepare';
+import {
+  basketIdOf,
+  basketIdOfBuy,
+  expectedOf,
+  ORDER_POLICY,
+  slippageOf,
+  targetsOf,
+  tradesFor,
+} from './prepare';
 import { autoFollowOffer, familyText, followedOn, recipeTargets, refuseAutoFollow } from './shared';
 import {
   blockedBy,
+  isLinkedProposal,
   liveElsewhere,
   loadFamilies,
   loadOrder,
@@ -126,6 +135,8 @@ async function buildFor(
   owner: Address,
   /** EVM: the nonce of the step's earlier attempt that can still land, for the rebuild to share. */
   nonce: number | undefined,
+  /** The signed-in person building it: the buyer of a plan made from a link. */
+  buyer: string | undefined,
 ): Promise<BuiltTx> {
   const { request, order } = stored;
   if (request.type === 'publish' || request.type === 'follow')
@@ -137,7 +148,13 @@ async function buildFor(
   const family = request.family ? await familyBySlug(deps.db, request.family) : null;
   if (request.family && !family)
     throw new Refusal(409, 'the shared portfolio this order buys is gone');
-  const basketId = basketIdOf(family ? family.familyId : (request.proposalId ?? ''));
+  const basketId = family
+    ? basketIdOf(family.familyId)
+    : basketIdOfBuy(
+        request.proposalId ?? '',
+        await isLinkedProposal(deps.db, request.proposalId ?? ''),
+        buyer,
+      );
   const slippageBps = slippageOf(request);
   const trades = leg.trades.length ? leg.trades : undefined;
   const shared = nonce === undefined ? {} : { nonce };
@@ -487,6 +504,8 @@ export async function buildLeg(
   deps: OrderDeps,
   read: StoredOrder,
   legId: string,
+  /** The signed-in person's user id: a plan made from a link numbers its vault with it. */
+  buyer?: string,
 ): Promise<BuildLegResponse> {
   // A leg that was sent is tracked first, so what follows sees what the chain says now.
   const stored = await refreshOrder(deps, read);
@@ -515,7 +534,7 @@ export async function buildLeg(
   let expected: Leg['expected'];
   try {
     [built, expected] = await refusing(async () => [
-      BuiltTx.parse(await buildFor(deps, stored, leg, entry, owner, nonce)),
+      BuiltTx.parse(await buildFor(deps, stored, leg, entry, owner, nonce, buyer)),
       await expectedOf(entry, leg.trades, owner, slippageOf(stored.request)),
     ]);
   } catch (e) {

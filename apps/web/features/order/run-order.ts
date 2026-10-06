@@ -24,7 +24,7 @@ import { useSigningPort } from '../wallet/signing';
 import { useApiFetch } from '../wallet/WalletProvider';
 import { chainNode } from './chain-node';
 import { targetsOfPlan } from './plan-terms';
-import { deploymentsFor, onMock } from './readiness';
+import { basketOfPlan, deploymentsFor, onMock } from './readiness';
 
 // The one place in the app that signs: an order, through `execute(order, deps)` of @colosseum/sdk. The
 // executor runs the guard on the bytes of every step and asks the wallet only for what the guard
@@ -59,7 +59,12 @@ export type RunInput = {
   /** The order exactly as the review screen showed it when the person approved it. */
   order: OrderDetail;
   /** The plan it buys, as the plan screen showed it: its id and its lines. */
-  plan: { proposalId: string; lines: readonly BasketLine[] };
+  plan: {
+    proposalId: string;
+    lines: readonly BasketLine[];
+    /** For a plan made from a link: the buyer's user id, which its vault's number takes. */
+    buyer?: string | null;
+  };
   /**
    * For an order about a shared portfolio: the terms its screen showed (features/shared/terms.ts),
    * which take the plan's place.
@@ -174,7 +179,7 @@ export function useOrderRunner(): { run: (input: RunInput) => Promise<RunOutcome
           signer: port,
           deployments,
           plan: plan ?? {
-            basketId: basketIdOfPlan(input.plan.proposalId),
+            basketId: basketOfPlan(input.plan.proposalId, input.plan.buyer ?? null),
             targets,
             autoFollow: false,
           },

@@ -30,13 +30,23 @@ export type AssetRiskFacts = {
   disclaimer: string;
 };
 
-/** Puts the path parameters into a route's path, each encoded. */
+/**
+ * Puts the path parameters into a route's path, each encoded as one segment: a slash is escaped, and a
+ * value that is `.` or `..`, which a URL reads as a step up the path however it is escaped, is refused.
+ * No value leaves its route.
+ */
 export function pathOf(path: string, params: Record<string, string> = {}): string {
   return path.replace(/\{(\w+)\}/g, (_, name: string) => {
     const value = params[name];
     if (value === undefined) throw new Error(`no value for {${name}} in ${path}`);
-    return encodeURIComponent(value);
+    return segment(value);
   });
+}
+
+function segment(value: string): string {
+  if (value === '' || value === '.' || value === '..')
+    throw new RangeError(`not a path segment: ${JSON.stringify(value)}`);
+  return encodeURIComponent(value);
 }
 
 function queryOf(query: Record<string, unknown> | undefined): string {
@@ -81,6 +91,6 @@ export function createTenonfiClient(fetchApi: ApiFetch): TenonfiClient {
       return send(method, pathOf(path, given.params) + queryOf(given.query), given.body);
     },
     assetRisk: (asset, sizeUsd) =>
-      send('GET', `/risk/facts/assets/${encodeURIComponent(asset)}${queryOf({ sizeUsd })}`),
+      send('GET', `/risk/facts/assets/${segment(asset)}${queryOf({ sizeUsd })}`),
   };
 }

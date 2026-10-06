@@ -8,14 +8,16 @@ import { createTenonfiMcp } from './server';
 // settings from the environment, `/mcp` and `/health`, and a browser page refused.
 
 describe('the settings', () => {
-  it('default to the hosted API, a local app and port 8787, and read nothing else', () => {
-    expect(configOf({ SECRET: 'x' })).toEqual({
+  it('default to the hosted API and port 8787, and read nothing else', () => {
+    expect(configOf({ SECRET: 'x', TENONFI_APP_URL: 'https://app.example' })).toEqual({
       apiUrl: 'https://tenonfi-api.onrender.com',
-      appUrl: 'http://localhost:3000',
+      appUrl: 'https://app.example',
       port: 8787,
       host: '0.0.0.0',
       allowedOrigins: [],
     });
+    // the app on this machine only for a server that listens on this machine alone
+    expect(configOf({ HOST: '127.0.0.1' }).appUrl).toBe('http://localhost:3000');
     expect(
       configOf({
         TENONFI_API_URL: 'https://api.example/ignored/path',
@@ -34,7 +36,10 @@ describe('the settings', () => {
   it('refuse an address that is not https, but on this machine, and a port that is not one', () => {
     expect(() => configOf({ TENONFI_API_URL: 'http://api.example' })).toThrow(/https/);
     expect(() => configOf({ TENONFI_APP_URL: 'javascript:alert(1)' })).toThrow(/https/);
-    expect(() => configOf({ PORT: 'eighty' })).toThrow(/PORT/);
+    expect(() => configOf({ PORT: 'eighty', HOST: '127.0.0.1' })).toThrow(/PORT/);
+    // a server others reach is told where the app is, and it is not this machine
+    expect(() => configOf({})).toThrow(/TENONFI_APP_URL is required/);
+    expect(() => configOf({ TENONFI_APP_URL: 'http://localhost:3000' })).toThrow(/this machine/);
   });
 });
 
@@ -45,7 +50,7 @@ afterEach(() => {
 });
 
 async function listen(allowedOrigins: string[] = []) {
-  const config = { ...configOf({}), allowedOrigins };
+  const config = { ...configOf({ HOST: '127.0.0.1' }), allowedOrigins };
   const mcp = createTenonfiMcp(config, async () => Response.json({ error: 'no' }, { status: 404 }));
   server = createServer(serveNode(mcp, config));
   await new Promise<void>((done) => server?.listen(0, '127.0.0.1', done));

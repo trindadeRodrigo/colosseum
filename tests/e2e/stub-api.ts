@@ -20,7 +20,13 @@ import {
   type SharedFamily,
   type Target,
 } from '@colosseum/schemas';
-import { ApiRefusal, basketIdOfPlan, deploymentsOf, type OrderApi } from '@colosseum/sdk';
+import {
+  ApiRefusal,
+  basketIdOfLinkedPlan,
+  basketIdOfPlan,
+  deploymentsOf,
+  type OrderApi,
+} from '@colosseum/sdk';
 import { apiDouble } from '../../packages/sdk/test/api-double';
 import { type MockWorld, tampered } from '../../packages/sdk/test/mock';
 import { riskAnswer } from './stub-risk';
@@ -166,7 +172,12 @@ function doubleFor(owner: string) {
   // A wallet first seen here gets mock gas, as from a faucet: a publish or a follow deposits nothing,
   // and its one step still pays the network fee.
   adapter.mock.fund(owner, { gasRaw: '1000000000' });
-  const made = apiDouble(w, { basketId: basketIdOfPlan(PLAN_ID), targets: WEIGHTS });
+  // A plan made from a link numbers the buyer's vault from the plan and the person (gate AGENT-LINK):
+  // the throwaway wallet's user id is `test:` and the first 8 letters of its Solana address.
+  const basketId = linked
+    ? basketIdOfLinkedPlan(PLAN_ID, `test:${owner.slice(0, 8)}`)
+    : basketIdOfPlan(PLAN_ID);
+  const made = apiDouble(w, { basketId, targets: WEIGHTS });
   world.double = { owner, api: made.api, buy: made.buy, place: made.place };
   return world.double;
 }

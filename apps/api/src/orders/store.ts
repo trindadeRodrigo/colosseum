@@ -1,4 +1,5 @@
 import {
+  baskets,
   type Db,
   indexFamilies,
   legAttempts,
@@ -31,6 +32,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  lt,
   ne,
   notInArray,
   sql,
@@ -195,6 +197,44 @@ export async function loadProposal(db: Db, id: string): Promise<BasketProposal |
   if (!parsed.success)
     throw new Refusal(409, 'the stored plan cannot be read: make the plan again');
   return parsed.data;
+}
+
+/** How many plans were made from a link since this time: what the daily cap counts. */
+export async function countLinkedSince(db: Db, since: Date): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(proposals)
+    .where(and(isNull(proposals.userId), gte(proposals.createdAt, since)));
+  return row?.n ?? 0;
+}
+
+/**
+ * Deletes the plans made from a link before this time that nobody bought: no order names them and no
+ * plan of a person keeps them. Answers how many went. A plan somebody bought stays.
+ */
+export async function forgetUnboughtLinked(db: Db, before: Date): Promise<number> {
+  const gone = await db
+    .delete(proposals)
+    .where(
+      and(
+        isNull(proposals.userId),
+        lt(proposals.createdAt, before),
+        sql`not exists (select 1 from ${orders} where ${orders.request}->>'proposalId' = ${proposals.id}::text)`,
+        sql`not exists (select 1 from ${baskets} where ${baskets.proposalId} = ${proposals.id})`,
+      ),
+    )
+    .returning({ id: proposals.id });
+  return gone.length;
+}
+
+/** True when the plan with this id was made from a link: stored with no person (gate `AGENT-LINK`). */
+export async function isLinkedProposal(db: Db, id: string): Promise<boolean> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return false;
+  const [row] = await db
+    .select({ id: proposals.id })
+    .from(proposals)
+    .where(and(eq(proposals.id, id), isNull(proposals.userId)));
+  return row !== undefined;
 }
 
 /**

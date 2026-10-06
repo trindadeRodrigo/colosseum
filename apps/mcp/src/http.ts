@@ -18,26 +18,46 @@ export type ServeConfig = McpConfig & {
 };
 
 const DEFAULT_API = 'https://tenonfi-api.onrender.com';
-const DEFAULT_APP = 'http://localhost:3000';
+/** The app on this machine: the default only for a server that listens on this machine alone. */
+const LOCAL_APP = 'http://localhost:3000';
+
+const LOOPBACK = ['localhost', '127.0.0.1', '[::1]', '::1'];
 
 /** An address the server may point at: https, or http on this machine. */
 function addressOf(name: string, value: string): string {
   const url = new URL(value);
-  const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  const local = LOOPBACK.includes(url.hostname);
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && local))
     throw new Error(`${name} must be https, or http on localhost: ${value}`);
   return url.origin;
+}
+
+/**
+ * Where the links a person opens point. A server others can reach must be told (TENONFI_APP_URL), and
+ * not this machine: a link to localhost would open nothing for them.
+ */
+function appOf(env: Record<string, string | undefined>, host: string): string {
+  const local = LOOPBACK.includes(host);
+  if (env.TENONFI_APP_URL === undefined) {
+    if (local) return LOCAL_APP;
+    throw new Error('TENONFI_APP_URL is required: the links a person opens point there');
+  }
+  const app = addressOf('TENONFI_APP_URL', env.TENONFI_APP_URL);
+  if (!local && LOOPBACK.includes(new URL(app).hostname))
+    throw new Error(`TENONFI_APP_URL is this machine, and the server listens on ${host}: ${app}`);
+  return app;
 }
 
 /** The settings, from the environment the process was given. Reads nothing else. */
 export function configOf(env: Record<string, string | undefined>): ServeConfig {
   const port = Number(env.PORT ?? 8787);
   if (!Number.isInteger(port) || port <= 0 || port > 65_535) throw new Error(`PORT: ${env.PORT}`);
+  const host = env.HOST ?? '0.0.0.0';
   return {
     apiUrl: addressOf('TENONFI_API_URL', env.TENONFI_API_URL ?? DEFAULT_API),
-    appUrl: addressOf('TENONFI_APP_URL', env.TENONFI_APP_URL ?? DEFAULT_APP),
+    appUrl: appOf(env, host),
     port,
-    host: env.HOST ?? '0.0.0.0',
+    host,
     allowedOrigins: (env.MCP_ALLOWED_ORIGINS ?? '')
       .split(',')
       .map((o) => o.trim())

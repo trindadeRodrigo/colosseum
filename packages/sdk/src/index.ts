@@ -7,7 +7,7 @@
 export * from './api';
 export * from './executor';
 export * from './guard';
-export { basketIdOfPlan, familyIdOf } from './plan';
+export { basketIdOfLinkedPlan, basketIdOfPlan, familyIdOf } from './plan';
 export {
   type ChainRecipe,
   type ChainRecipeLine,
