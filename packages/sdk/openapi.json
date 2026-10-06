@@ -22,6 +22,1094 @@
     }
   },
   "paths": {
+    "/v1/baskets/intake": {
+      "post": {
+        "summary": "Read a goal into a sheet, ask what it leaves open, and say back what was understood",
+        "tags": ["plans"],
+        "description": "The guided intake. Send the text of a goal, and on later turns the same text with `answers`, the person's answers by field. A model reads the text into a draft of the sheet; it never sets weights, picks assets or states a figure, and every value it gives is checked in code: an amount and a time frame must be written in the text (an amount in another currency than dollars is asked in dollars), a shared portfolio must be on the shelf of the person's chain, a refusal (\"no stocks\", \"sem crédito\") must be written, and a field the rules parser reads differently is flagged and asked. With no model (none configured, down, out of its daily budget), the rules parser fills the draft and the same questions are asked; `reader` says which read it. `questions` holds one question per field still open or unclear, in the person's language, from fixed templates. Once none is left, `sheet` is the validated sheet on the chain of the person's wallet and `readBack` says it back sentence by sentence, from templates, never from the model. Nothing is built or stored: the person's confirm sends `sheet` to `POST /v1/baskets/personalize`. The plan that follows is not advice: see its `disclaimer`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 2000
+                  },
+                  "language": {
+                    "type": "string",
+                    "enum": ["pt", "en"]
+                  },
+                  "answers": {
+                    "type": "object",
+                    "properties": {
+                      "goal": {
+                        "type": "string",
+                        "enum": ["grow", "income", "protect"]
+                      },
+                      "amountUsd": {
+                        "type": "number",
+                        "minimum": 10,
+                        "maximum": 1000000
+                      },
+                      "incomeTargetUsdMonthly": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "horizonMonths": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 480
+                      },
+                      "risk": {
+                        "type": "string",
+                        "enum": ["low", "medium", "high"]
+                      },
+                      "country": {
+                        "type": "string",
+                        "pattern": "^[A-Z]{2}$"
+                      },
+                      "currency": {
+                        "type": "string",
+                        "pattern": "^[A-Z]{3}$"
+                      },
+                      "themes": {
+                        "maxItems": 3,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "language": {
+                        "type": "string",
+                        "enum": ["pt", "en"]
+                      },
+                      "rules": {
+                        "type": "object",
+                        "properties": {
+                          "useHoldings": {
+                            "type": "boolean"
+                          },
+                          "glide": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": ["useHoldings", "glide"]
+                      },
+                      "obligations": {
+                        "maxItems": 480,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "month": {
+                              "type": "string",
+                              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+                            },
+                            "amount": {
+                              "type": "number",
+                              "exclusiveMinimum": 0
+                            },
+                            "currency": {
+                              "type": "string",
+                              "pattern": "^[A-Z]{3}$"
+                            }
+                          },
+                          "required": ["month", "amount", "currency"]
+                        }
+                      },
+                      "sleeves": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": ["goal"]
+                                },
+                                "shareBps": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 10000
+                                }
+                              },
+                              "required": ["kind", "shareBps"]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": ["theme"]
+                                },
+                                "shareBps": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 10000
+                                },
+                                "theme": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": ["kind", "shareBps", "theme"]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": ["safe_yield"]
+                                },
+                                "shareBps": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 10000
+                                }
+                              },
+                              "required": ["kind", "shareBps"]
+                            }
+                          ]
+                        }
+                      },
+                      "restoreSplit": {
+                        "type": "boolean"
+                      },
+                      "limits": {
+                        "type": "object",
+                        "properties": {
+                          "mustKeepUsd": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "mayNeedInMonths": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 480
+                          },
+                          "creditTolerance": {
+                            "type": "string",
+                            "enum": ["none", "limited", "accept"]
+                          },
+                          "cannotHold": {
+                            "type": "object",
+                            "properties": {
+                              "classes": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "enum": [
+                                    "stock",
+                                    "etf",
+                                    "gold",
+                                    "commodity",
+                                    "dollar_yield",
+                                    "crypto"
+                                  ]
+                                }
+                              },
+                              "underlyings": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "assets": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["text"]
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "parse",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "reader": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "type": "string",
+                          "enum": ["model", "rules"]
+                        },
+                        "model": {
+                          "type": ["string", "null"]
+                        },
+                        "provenance": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": ["live", "mock"]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "why": {
+                          "type": ["string", "null"]
+                        }
+                      },
+                      "required": ["method", "model", "provenance", "why"],
+                      "additionalProperties": false
+                    },
+                    "language": {
+                      "type": "string",
+                      "enum": ["pt", "en"]
+                    },
+                    "draft": {
+                      "type": "object",
+                      "properties": {
+                        "basketType": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": ["standard"]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "goal": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": ["grow", "income", "protect"]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "amountUsd": {
+                          "anyOf": [
+                            {
+                              "type": "number",
+                              "minimum": 10,
+                              "maximum": 1000000
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "horizonMonths": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 480
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "risk": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": ["low", "medium", "high"]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "themes": {
+                          "anyOf": [
+                            {
+                              "maxItems": 3,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "country": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^[A-Z]{2}$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "chains": {
+                          "anyOf": [
+                            {
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": ["solana", "base", "robinhood"]
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "incomeTargetUsdMonthly": {
+                          "anyOf": [
+                            {
+                              "type": "number",
+                              "exclusiveMinimum": 0
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "rules": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "useHoldings": {
+                                  "type": "boolean"
+                                },
+                                "glide": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": ["useHoldings", "glide"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "language": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": ["pt", "en"]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "currency": {
+                          "default": null,
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^[A-Z]{3}$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "obligations": {
+                          "default": null,
+                          "anyOf": [
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "month": {
+                                    "type": "string",
+                                    "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+                                  },
+                                  "amount": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0
+                                  },
+                                  "currency": {
+                                    "type": "string",
+                                    "pattern": "^[A-Z]{3}$"
+                                  }
+                                },
+                                "required": ["month", "amount", "currency"],
+                                "additionalProperties": false
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "sleeves": {
+                          "default": null,
+                          "anyOf": [
+                            {
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": ["goal"]
+                                      },
+                                      "shareBps": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 10000
+                                      }
+                                    },
+                                    "required": ["kind", "shareBps"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": ["theme"]
+                                      },
+                                      "shareBps": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 10000
+                                      },
+                                      "theme": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      }
+                                    },
+                                    "required": ["kind", "shareBps", "theme"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": ["safe_yield"]
+                                      },
+                                      "shareBps": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 10000
+                                      }
+                                    },
+                                    "required": ["kind", "shareBps"],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "restoreSplit": {
+                          "default": null,
+                          "type": ["boolean", "null"]
+                        }
+                      },
+                      "required": [
+                        "basketType",
+                        "goal",
+                        "amountUsd",
+                        "horizonMonths",
+                        "risk",
+                        "themes",
+                        "country",
+                        "chains",
+                        "incomeTargetUsdMonthly",
+                        "rules",
+                        "language",
+                        "currency",
+                        "obligations",
+                        "sleeves",
+                        "restoreSplit"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "limits": {
+                      "type": "object",
+                      "properties": {
+                        "creditTolerance": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": ["none"]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "cannotHoldClasses": {
+                          "anyOf": [
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "stock",
+                                  "etf",
+                                  "gold",
+                                  "commodity",
+                                  "dollar_yield",
+                                  "crypto"
+                                ]
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["creditTolerance", "cannotHoldClasses"],
+                      "additionalProperties": false
+                    },
+                    "questions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string",
+                            "enum": [
+                              "goal",
+                              "amountUsd",
+                              "incomeTargetUsdMonthly",
+                              "horizonMonths",
+                              "risk",
+                              "country",
+                              "currency",
+                              "themes",
+                              "chains"
+                            ]
+                          },
+                          "template": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          },
+                          "options": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "read": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["field", "template", "text"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "flags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "disagreements": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "model": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rules": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["field", "model", "rules"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "sheet": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "basketType": {
+                              "type": "string",
+                              "enum": ["standard"]
+                            },
+                            "goal": {
+                              "type": "string",
+                              "enum": ["grow", "income", "protect"]
+                            },
+                            "amountUsd": {
+                              "type": "number",
+                              "minimum": 10,
+                              "maximum": 1000000
+                            },
+                            "horizonMonths": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 480
+                            },
+                            "risk": {
+                              "type": "string",
+                              "enum": ["low", "medium", "high"]
+                            },
+                            "themes": {
+                              "maxItems": 3,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "country": {
+                              "type": "string",
+                              "pattern": "^[A-Z]{2}$"
+                            },
+                            "chains": {
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": ["solana", "base", "robinhood"]
+                              }
+                            },
+                            "incomeTargetUsdMonthly": {
+                              "type": "number",
+                              "exclusiveMinimum": 0
+                            },
+                            "rules": {
+                              "type": "object",
+                              "properties": {
+                                "useHoldings": {
+                                  "type": "boolean"
+                                },
+                                "glide": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": ["useHoldings", "glide"],
+                              "additionalProperties": false
+                            },
+                            "language": {
+                              "type": "string",
+                              "enum": ["pt", "en"]
+                            },
+                            "currency": {
+                              "type": "string",
+                              "pattern": "^[A-Z]{3}$"
+                            },
+                            "obligations": {
+                              "maxItems": 480,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "month": {
+                                    "type": "string",
+                                    "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+                                  },
+                                  "amount": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0
+                                  },
+                                  "currency": {
+                                    "type": "string",
+                                    "pattern": "^[A-Z]{3}$"
+                                  }
+                                },
+                                "required": ["month", "amount", "currency"],
+                                "additionalProperties": false
+                              }
+                            },
+                            "sleeves": {
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": ["goal"]
+                                      },
+                                      "shareBps": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 10000
+                                      }
+                                    },
+                                    "required": ["kind", "shareBps"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": ["theme"]
+                                      },
+                                      "shareBps": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 10000
+                                      },
+                                      "theme": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      }
+                                    },
+                                    "required": ["kind", "shareBps", "theme"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": ["safe_yield"]
+                                      },
+                                      "shareBps": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 10000
+                                      }
+                                    },
+                                    "required": ["kind", "shareBps"],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              }
+                            },
+                            "restoreSplit": {
+                              "type": "boolean"
+                            },
+                            "limits": {
+                              "type": "object",
+                              "properties": {
+                                "mustKeepUsd": {
+                                  "type": "number",
+                                  "minimum": 0
+                                },
+                                "mayNeedInMonths": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 480
+                                },
+                                "creditTolerance": {
+                                  "type": "string",
+                                  "enum": ["none", "limited", "accept"]
+                                },
+                                "cannotHold": {
+                                  "type": "object",
+                                  "properties": {
+                                    "classes": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "enum": [
+                                          "stock",
+                                          "etf",
+                                          "gold",
+                                          "commodity",
+                                          "dollar_yield",
+                                          "crypto"
+                                        ]
+                                      }
+                                    },
+                                    "underlyings": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      }
+                                    },
+                                    "assets": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                      }
+                                    }
+                                  },
+                                  "additionalProperties": false
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "basketType",
+                            "goal",
+                            "amountUsd",
+                            "horizonMonths",
+                            "risk",
+                            "themes",
+                            "country",
+                            "chains",
+                            "rules",
+                            "language"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "readBack": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "reader",
+                    "language",
+                    "draft",
+                    "limits",
+                    "questions",
+                    "flags",
+                    "disagreements",
+                    "sheet",
+                    "readBack"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "chainCode": {
+                          "type": "string",
+                          "enum": [
+                            "NotKeeper",
+                            "AutoFollowOff",
+                            "KeeperPaused",
+                            "MintNotAccepted",
+                            "RouterNotAllowed",
+                            "SpentTooMuch",
+                            "ReceivedTooLittle",
+                            "OtherAccountDebited",
+                            "AccountTampered",
+                            "PriceStale",
+                            "PriceDeviation",
+                            "MarketClosed",
+                            "MultiplierWindow",
+                            "NotTowardTarget",
+                            "PastTarget",
+                            "Cooldown",
+                            "LossCapReached",
+                            "AssetNotPriced",
+                            "NewAssetNeedsOwner",
+                            "VersionNotEffective",
+                            "CreatorLimit",
+                            "VersionMismatch",
+                            "WrongDestination",
+                            "ParamOutOfBounds",
+                            "NotUpgradeAuthority",
+                            "InvalidTargets",
+                            "NotCashMint",
+                            "ZeroAddress",
+                            "LockedAtLaunch",
+                            "HookNotAllowed",
+                            "AssetListFull",
+                            "SameMint",
+                            "NoPendingVersion",
+                            "NotCreatorOrGuardian",
+                            "NotCashLeg",
+                            "KeeperAssetOff",
+                            "PriceOutOfRange",
+                            "NothingTraded",
+                            "NotOwner",
+                            "CashTokenNotSet",
+                            "DepositShortfall",
+                            "GasTooLow",
+                            "NotAdmin",
+                            "NoCode",
+                            "AssetIsRouter",
+                            "RouterIsAsset",
+                            "NotCreating",
+                            "RouterFailed",
+                            "BalanceUnreadable",
+                            "CashTokenNotRemovable",
+                            "HandoverNotDone",
+                            "AlreadySet",
+                            "RecipeExists",
+                            "BadInput",
+                            "NotSupported",
+                            "TooManyTrades",
+                            "BadTrade",
+                            "VaultNotFound",
+                            "VaultExists",
+                            "RecipeNotFound",
+                            "NotFollowing",
+                            "NotFunded",
+                            "NoGas",
+                            "AllowanceTooLow",
+                            "Expired",
+                            "NotBuiltHere",
+                            "Unavailable",
+                            "Unknown"
+                          ]
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "blocking": {
+                          "type": "object",
+                          "properties": {
+                            "orderId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "legId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["orderId", "legId"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_FUNDED",
+                        "ASSET_NOT_ELIGIBLE",
+                        "GOAL_NOT_ACHIEVABLE",
+                        "NEW_ASSET_NEEDS_APPROVAL",
+                        "VERSION_CHANGED",
+                        "CREATOR_LIMIT",
+                        "ORDER_EXPIRED",
+                        "US_PERSON",
+                        "RATE_LIMITED",
+                        "CHAIN_UNAVAILABLE"
+                      ]
+                    },
+                    "fix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/baskets/personalize": {
       "post": {
         "summary": "Make a plan from a goal and its limits, and store it. Nothing is bought",
