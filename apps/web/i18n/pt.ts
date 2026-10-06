@@ -338,8 +338,12 @@ export const pt: Dictionary = {
     mockSuffix: ', dados de exemplo',
     stale: 'desatualizado',
     ageUnknown: 'idade desconhecida',
-    age: (count: number, unit: 'minute' | 'hour' | 'day') =>
-      `há ${count} ${{ minute: 'minuto', hour: 'hora', day: 'dia' }[unit]}${count === 1 ? '' : 's'}`,
+    age: {
+      said: 'há {n} {unit}',
+      minute: ['minuto', 'minutos'],
+      hour: ['hora', 'horas'],
+      day: ['dia', 'dias'],
+    },
     missing: 'ainda sem fonte',
     provenance: 'Procedência',
     copy: 'Copiar fonte',

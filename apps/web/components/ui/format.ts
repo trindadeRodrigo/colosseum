@@ -26,8 +26,16 @@ export type Age = {
   unit: 'minute' | 'hour' | 'day';
 };
 
-/** An age said in full, in the view's language: "3 hours old", "há 3 horas". */
-export type AgeWords = (count: number, unit: Age['unit']) => string;
+/**
+ * An age said in full, in the view's language: "3 hours old", "há 3 horas". Words only, so it can be
+ * handed from a server component: `said` with `{n}` and `{unit}`, and each unit in the one and the many.
+ */
+export type AgeWords = { said: string } & Record<Age['unit'], readonly string[]>;
+
+export const sayAge = (age: Age, words: AgeWords): string =>
+  words.said
+    .replace('{n}', String(age.count))
+    .replace('{unit}', words[age.unit][age.count === 1 ? 0 : 1] ?? words[age.unit][0] ?? age.unit);
 
 /**
  * An age in seconds as the stale tag shows it: minutes under an hour, hours under two days, then days.

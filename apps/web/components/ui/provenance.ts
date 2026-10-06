@@ -1,5 +1,5 @@
 import type { Provenance } from '@colosseum/schemas';
-import { type Age, type AgeWords, formatAge, isoUtc } from './format';
+import { type Age, type AgeWords, formatAge, isoUtc, sayAge } from './format';
 
 // What the provenance pin is handed, and what state that puts a figure in (provenance-pin.md). This is
 // a plain module, apart from ProvenancePin.tsx, so that a server component can ask the state of a
@@ -86,7 +86,7 @@ export const PIN_LABELS: PinLabels = {
 };
 
 const ageSaid = (age: Age | null, labels: PinLabels) =>
-  age === null ? labels.ageUnknown : labels.age ? labels.age(age.count, age.unit) : age.long;
+  age === null ? labels.ageUnknown : labels.age ? sayAge(age, labels.age) : age.long;
 
 /** "Source for 6.40%", with ", stale, 3 hours old" or ", mock data" appended. */
 export function pinLabel(value: string, obs: PinSource, labels: PinLabels = PIN_LABELS): string {

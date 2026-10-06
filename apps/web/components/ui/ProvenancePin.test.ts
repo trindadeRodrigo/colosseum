@@ -186,6 +186,9 @@ describe('ProvenancePin (provenance-pin.md)', () => {
       expect(at(120)).toBe('Fonte de 6,40%, desatualizado, há 2 minutos');
       expect(at(3 * 86_400)).toBe('Fonte de 6,40%, desatualizado, há 3 dias');
       expect(at(13 * 3600)).not.toMatch(/hour|old/);
+      // the words are plain data: a server component hands them to the pin, and no function crosses
+      for (const lang of ['en', 'pt'] as const)
+        expect(JSON.parse(JSON.stringify(dictionary(lang).pin))).toEqual(dictionary(lang).pin);
       // and English says it as it did
       expect(pinLabel('1', { ...STALE_SPECIMEN, staleAgeSec: 7200 }, dictionary('en').pin)).toBe(
         'Source for 1, stale, 2 hours old',

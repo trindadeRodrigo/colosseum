@@ -358,9 +358,16 @@ export const en = {
     mockSuffix: ', sample data',
     stale: 'stale',
     ageUnknown: 'age unknown',
-    /** The age said in full in the pin's accessible name. */
-    age: (count: number, unit: 'minute' | 'hour' | 'day') =>
-      `${count} ${unit}${count === 1 ? '' : 's'} old`,
+    /**
+     * The age said in full in the pin's accessible name: `{n}` the count, `{unit}` its word. Words, not
+     * a function: a server component hands these to the pin, and a function cannot cross to the client.
+     */
+    age: {
+      said: '{n} {unit} old',
+      minute: ['minute', 'minutes'],
+      hour: ['hour', 'hours'],
+      day: ['day', 'days'],
+    },
     missing: 'no source yet',
     provenance: 'Provenance',
     copy: 'Copy source',
