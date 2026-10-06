@@ -265,9 +265,10 @@ function Ridge() {
       {near.map((d) => (
         <Line key={d} d={d} part="ridge" weight="outline" />
       ))}
-      {CLOUDS.map((band, i) => (
-        <Line key={`${i}`} d={path(band)} part="cloud" dash="cloud" faint={i > 0} />
-      ))}
+      {CLOUDS.map((band, i) => {
+        const d = path(band);
+        return <Line key={d} d={d} part="cloud" dash="cloud" faint={i > 0} />;
+      })}
       <g data-part="mark" className="text-primary">
         <Line d={`M${SUMMIT[0]} ${SUMMIT[1] - 4}V${SUMMIT[1] - 28}l14 5l-14 5`} part="mark" wood />
       </g>
