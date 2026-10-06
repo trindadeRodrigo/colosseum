@@ -228,6 +228,12 @@ export const BasketProposalBase = z.object({
   disclaimer: z.string(),
   /** Present when the person split the plan (gate SLEEVES): each sleeve and its targets. Additive. */
   split: z.array(PlanSplitSleeve).optional(),
+  /**
+   * Present on a plan made as one of the three candidates (gate THREE-PLANS): which one, so the table
+   * it was made with (`paramsHash`) can be rebuilt to rebalance it. The ids of `PlanCandidateId`,
+   * written here because plan-candidates.ts imports this file. Additive.
+   */
+  candidate: z.enum(['cover', 'spread', 'carry']).optional(),
 });
 
 export const BasketProposal = BasketProposalBase.refine(

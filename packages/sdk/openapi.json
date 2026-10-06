@@ -821,6 +821,10 @@
                             "required": ["kind", "shareBps", "amountUsd", "holds"],
                             "additionalProperties": false
                           }
+                        },
+                        "candidate": {
+                          "type": "string",
+                          "enum": ["cover", "spread", "carry"]
                         }
                       },
                       "required": [
@@ -1517,6 +1521,10 @@
                                   "required": ["kind", "shareBps", "amountUsd", "holds"],
                                   "additionalProperties": false
                                 }
+                              },
+                              "candidate": {
+                                "type": "string",
+                                "enum": ["cover", "spread", "carry"]
                               }
                             },
                             "required": [
