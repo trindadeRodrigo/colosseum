@@ -31,6 +31,7 @@ import {
   Pie,
   Reason,
   SrcLine,
+  useChartPin,
   useFmt,
   useWords,
 } from './parts';
@@ -61,6 +62,7 @@ export function StablePage() {
 type Token = { t: string; rs: LendRow[] } | { t: string; rs: null };
 
 function StableView({ rows }: { rows: LendRow[] }) {
+  const chartPin = useChartPin();
   const fm = useFmt();
   const { clock } = useBearing();
   const wds = useWords();
@@ -112,6 +114,7 @@ function StableView({ rows }: { rows: LendRow[] }) {
     const tf = seriesFact(sup, src, 'supplied summed over the selected reserves');
     chart = (
       <TimeChart
+        {...chartPin(tf)}
         title={w.supplied.title}
         labels={wds.chart}
         locale={fm.locale}

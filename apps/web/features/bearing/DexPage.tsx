@@ -37,6 +37,7 @@ import {
   Pie,
   Reason,
   SrcLine,
+  useChartPin,
   useFmt,
   useReason,
   useWords,
@@ -374,12 +375,14 @@ function CapacityChart({
   range: number;
   setRange: (r: number) => void;
 }) {
+  const chartPin = useChartPin();
   const fm = useFmt();
   const all = useWords();
   const t = all.dex.capacity;
   const s = capacitySeries(selIds, dd, t.partial, fm.usd1);
   return (
     <TimeChart
+      {...chartPin(s.fact)}
       title={t.title}
       labels={all.chart}
       locale={fm.locale}
@@ -426,6 +429,7 @@ function TvlChart({
   range: number;
   setRange: (r: number) => void;
 }) {
+  const chartPin = useChartPin();
   const fm = useFmt();
   const { reader } = useBearing();
   const all = useWords();
@@ -453,6 +457,7 @@ function TvlChart({
   const share = tvl ? recTvl / tvl : null;
   return (
     <TimeChart
+      {...chartPin(s.fact)}
       title={t.recorded}
       labels={all.chart}
       locale={fm.locale}

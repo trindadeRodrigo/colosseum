@@ -249,6 +249,16 @@ export const SMALL_BTN =
   'min-h-7 cursor-pointer rounded-md border border-input px-2.5 py-1 text-[0.8125rem] font-medium hover:border-primary hover:text-primary';
 
 /** The line under a chart: where its headline figure came from, when, with the pin. */
+/** A chart's pin from its source fact, for the figures its readout names; none for no fact. */
+export function useChartPin(): (f: Fact | null | undefined) => {
+  pin?: ReturnType<typeof pinSource>;
+  pinLabels?: ReturnType<typeof useT>['pin'];
+} {
+  const { clock } = useBearing();
+  const all = useT();
+  return (f) => (f && f.value != null ? { pin: pinSource(f, clock), pinLabels: all.pin } : {});
+}
+
 export function SrcLine({ f, what }: { f: Fact | null | undefined; what: string }) {
   const { clock } = useBearing();
   const all = useT();
