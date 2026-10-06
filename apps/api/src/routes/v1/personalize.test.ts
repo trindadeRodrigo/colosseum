@@ -94,6 +94,62 @@ const plansOf = async (sub: string) => {
 };
 
 describe('POST /v1/baskets/personalize', () => {
+  it('keeps the currency, the sleeves and the restore choice, as sent and as stored', async () => {
+    const who = await someone('solana');
+    const asked = sheet({
+      currency: 'USD',
+      sleeves: [{ kind: 'goal', shareBps: 10_000 }],
+      restoreSplit: true,
+    });
+    const res = await post(who, PATH, { sheet: asked });
+    expect(res.statusCode, res.body).toBe(200);
+    const { id, proposal } = PersonalizeResponse.parse(res.json());
+    expect(proposal.sheet).toEqual(asked);
+    expect((await loadProposal(data.db, id))?.sheet).toEqual(asked);
+    // Shares that do not add up are refused before the engine runs.
+    const bad = await post(who, PATH, {
+      sheet: { ...asked, sleeves: [{ kind: 'safe_yield', shareBps: 4000 }] },
+    });
+    expect(bad.statusCode).toBe(400);
+    // A goal in reais and a split into goal and safe yield are built (ENG-3 slice 2): the plan says
+    // its value in reais moves with the rate.
+    const reais = await post(who, PATH, {
+      sheet: {
+        ...asked,
+        currency: 'BRL',
+        sleeves: [
+          { kind: 'goal', shareBps: 6000 },
+          { kind: 'safe_yield', shareBps: 4000 },
+        ],
+      },
+    });
+    expect(reais.statusCode, reais.body).toBe(200);
+    expect(PersonalizeResponse.parse(reais.json()).proposal.flags).toContain('fx_open:BRL');
+    // Dated withdrawals are applied: the plan is made, and its sheet says them back.
+    const obligations = [{ month: '2027-06', amount: 3000, currency: 'USD' }];
+    const withdrawing = await post(who, PATH, { sheet: { ...asked, obligations } });
+    expect(withdrawing.statusCode, withdrawing.body).toBe(200);
+    expect(PersonalizeResponse.parse(withdrawing.json()).proposal.sheet.obligations).toEqual(
+      obligations,
+    );
+    // A withdrawal in reais needs an exchange rate the server does not read yet: refused, with the fix.
+    const inReais = await post(who, PATH, {
+      sheet: { ...asked, obligations: [{ month: '2027-06', amount: 3000, currency: 'BRL' }] },
+    });
+    expect(inReais.statusCode, inReais.body).toBe(422);
+    expect(inReais.body).toContain('USDBRL');
+    // A theme sleeve is refused until the engine applies it, never ignored.
+    const theme = {
+      sleeves: [
+        { kind: 'theme', shareBps: 5000, theme: 'ai' },
+        { kind: 'safe_yield', shareBps: 5000 },
+      ],
+    };
+    const refused = await post(who, PATH, { sheet: { ...asked, ...theme } });
+    expect(refused.statusCode).toBeGreaterThanOrEqual(400);
+    expect(refused.statusCode).toBeLessThan(500);
+  });
+
   it('makes a plan to protect with no stock token, stores it, and a buy buys it on the same chain', async () => {
     const who = await someone('solana');
     const asked = sheet();

@@ -1,4 +1,5 @@
-import type { OrderDetail } from '@colosseum/schemas';
+import type { OrderDetail, Target } from '@colosseum/schemas';
+import { type SharedTerms, tradesOf } from '../shared/terms';
 import type { ChainUnits } from './units';
 
 // Before an order is offered for signing: does it move the money the person asked for, in the units
@@ -45,4 +46,52 @@ export function checkDeposit(
   }
   if (spent > deposit) return { ok: false, why: 'steps' };
   return { ok: true, depositRaw: deposit, decimals: cash.decimals };
+}
+
+/**
+ * A buy of a shared portfolio (WEB-4): the deposit as for a plan, and each trade the share of the
+ * deposit that the portfolio's weight gives, in the order its screen read them (`tradesOf`). An API that
+ * planned other weights than the version read from the chain is caught here.
+ */
+export function checkFamilyBuy(
+  order: Pick<OrderDetail, 'depositRaw' | 'legs'>,
+  amountUsd: number,
+  units: ChainUnits | null,
+  targets: readonly Target[],
+): DepositCheck | { ok: false; why: 'trades' } {
+  const deposit = checkDeposit(order, amountUsd, units);
+  if (!deposit.ok || !units) return deposit;
+  const want = tradesOf(targets, deposit.depositRaw);
+  const made = order.legs
+    .slice()
+    .sort((a, b) => a.seq - b.seq)
+    .flatMap((leg) => leg.trades);
+  const same =
+    made.length === want.length &&
+    made.every(
+      (t, i) =>
+        t.sell === units.cash && t.buy === want[i]?.asset && t.amountInRaw === want[i]?.amountInRaw,
+    );
+  return same ? deposit : { ok: false, why: 'trades' };
+}
+
+/**
+ * A follow or a publish moves no cash and trades nothing: no deposit, no cash on a step, no trade, and
+ * only the steps its terms call for, each once. The guard holds each step's bytes to the terms; this
+ * holds the order's shape to them before anything is offered for signing.
+ */
+export function sharedShapeOk(
+  order: Pick<OrderDetail, 'depositRaw' | 'legs'>,
+  terms: Exclude<SharedTerms, { kind: 'family' }>,
+): boolean {
+  if (order.depositRaw !== undefined || order.legs.length === 0) return false;
+  if (order.legs.some((l) => l.cashRaw !== undefined || l.trades.length > 0)) return false;
+  const kinds = order.legs.map((l) => l.kind);
+  if (terms.kind === 'publish') return kinds.length === 1 && kinds[0] === 'publish';
+  const allowed = new Set(['accept_version', 'set_auto_follow']);
+  return (
+    kinds.every((k) => allowed.has(k)) &&
+    new Set(kinds).size === kinds.length &&
+    kinds.includes('accept_version') === (terms.follow !== null)
+  );
 }

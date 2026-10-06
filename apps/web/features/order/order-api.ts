@@ -54,14 +54,17 @@ const bodyOf = async (res: Response): Promise<Record<string, unknown>> => {
   return typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
 };
 
-/** What the wallet is missing for a buy of this plan and amount, read from the wallet on its chain. */
+/**
+ * What the wallet is missing for a buy of this plan, or of this shared portfolio (by its slug), and
+ * amount, read from the wallet on its chain.
+ */
 export async function readFunding(
   apiFetch: ApiFetch,
-  ask: { proposalId: string; amountUsd: number; wallet: string },
+  ask: ({ proposalId: string } | { family: string }) & { amountUsd: number; wallet: string },
 ): Promise<FundingOutcome> {
   const query = new URLSearchParams({
     amountUsd: String(ask.amountUsd),
-    proposalId: ask.proposalId,
+    ...('family' in ask ? { family: ask.family } : { proposalId: ask.proposalId }),
     wallet: ask.wallet,
   });
   let res: Response;

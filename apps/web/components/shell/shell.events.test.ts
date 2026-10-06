@@ -42,7 +42,7 @@ const pressed = (group: Element) =>
 beforeEach(() => {
   portStore.set(fakePort());
   portStore.setApi(async () => json({}, 404));
-  location.pathname = '/';
+  location.pathname = '/goal';
   router.refresh.mockClear();
   document.documentElement.className = 'fonts tf-auto';
   for (const name of ['tf-theme', 'tf-lang']) remember(name, null);
@@ -53,33 +53,92 @@ describe('the frame', () => {
   it('is a bar, the page and a foot, with a way past the bar for a keyboard', async () => {
     const host = await shell();
     const frame = find(host, '[data-ui="app-shell"]');
-    expect([...frame.children].map((el) => el.tagName)).toEqual(['A', 'HEADER', 'MAIN', 'FOOTER']);
+    expect([...frame.children].map((el) => el.tagName)).toEqual(['HEADER', 'MAIN', 'FOOTER']);
+    // the first link of the bar
     const skip = find<HTMLAnchorElement>(frame, 'a[href="#content"]');
+    expect(find(frame, 'header').querySelector('a')).toBe(skip);
     expect(skip.textContent).toBe(en.skip);
     expect(find(frame, 'main').id).toBe('content');
     expect(find(frame, 'main').textContent).toBe('the page');
     expect(find(frame, 'nav').getAttribute('aria-label')).toBe(en.nav);
   });
 
-  it('shows the mark and the wordmark, in lower case, the goal as the first link and the portfolio after it', async () => {
+  it('is his compact bar: the mark and the wordmark, then his items on the product’s routes', async () => {
     const host = await shell();
+    const bar = find(host, '[data-ui="compact-nav"]');
+    expect(bar.getAttribute('data-compact')).toBe('true');
     const home = find<HTMLAnchorElement>(host, `a[aria-label="${en.home}"]`);
     expect(home.textContent).toBe('tenonfi');
     expect(home.getAttribute('href')).toBe('/');
     expect(home.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
-    const links = [...find(host, 'nav').querySelectorAll('a')];
-    expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
-      [en.goal, '/'],
-      [en.portfolio, '/monitor'],
+    const links = (root: HTMLElement) => [...find(root, 'nav').querySelectorAll(':scope > a')];
+    // a visitor: no portfolio to show
+    expect(links(host).map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      [en.products, '/shelf'],
+      [en.invest, '/goal'],
+      [en.resources, '/analytics/methodology'],
+      [en.analytics, '/analytics/stocks'],
     ]);
-    // the page a person is on is said, not only shown
-    expect(links.map((a) => a.getAttribute('aria-current'))).toEqual(['page', null]);
+    // the page a person is on is said, not only shown; the plan and the order are under Invest
+    expect(links(host).map((a) => a.getAttribute('aria-current'))).toEqual([
+      null,
+      'page',
+      null,
+      null,
+    ]);
+    // every page of Bearing's analytics is under Analytics; its methodology is Resources
+    location.pathname = '/analytics/lending';
+    expect(links(await shell()).map((a) => a.getAttribute('aria-current'))).toEqual([
+      null,
+      null,
+      null,
+      'page',
+    ]);
+    location.pathname = '/analytics/methodology';
+    expect(links(await shell()).map((a) => a.getAttribute('aria-current'))).toEqual([
+      null,
+      null,
+      'page',
+      null,
+    ]);
+    location.pathname = '/plan/abc';
+    expect(links(await shell()).map((a) => a.getAttribute('aria-current'))).toEqual([
+      null,
+      'page',
+      null,
+      null,
+    ]);
+    // a shared portfolio's page is under Products, the shelf
+    location.pathname = '/indexes/some-portfolio';
+    expect(links(await shell()).map((a) => a.getAttribute('aria-current'))).toEqual([
+      'page',
+      null,
+      null,
+      null,
+    ]);
+    // someone signed in gets their portfolio, after Invest
+    portStore.set(signedInPort(EMBEDDED));
     location.pathname = '/monitor';
-    const monitor = [...find(await shell(), 'nav').querySelectorAll('a')];
-    expect(monitor.map((a) => a.getAttribute('aria-current'))).toEqual([null, 'page']);
-    location.pathname = '/sign-in';
-    const elsewhere = [...find(await shell(), 'nav').querySelectorAll('a')];
-    expect(elsewhere.map((a) => a.getAttribute('aria-current'))).toEqual([null, null]);
+    const signedIn = await shell();
+    expect(links(signedIn).map((a) => [a.textContent, a.getAttribute('aria-current')])).toEqual([
+      [en.products, null],
+      [en.invest, null],
+      [en.portfolio, 'page'],
+      [en.resources, null],
+      [en.analytics, null],
+    ]);
+    // on a phone the same links are in the sheet under the menu button
+    const sheet = find(signedIn, '[data-ui="compact-nav-sheet"]');
+    expect([...sheet.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual([
+      '/shelf',
+      '/goal',
+      '/monitor',
+      '/analytics/methodology',
+      '/analytics/stocks',
+    ]);
+    expect(find(signedIn, `button[aria-label="${en.menu}"]`).getAttribute('aria-expanded')).toBe(
+      'false',
+    );
   });
 
   it('renders the disclaimer from the one constant, whole, at body size, in the language of the view', async () => {
@@ -104,7 +163,8 @@ describe('the frame', () => {
     // the port is still loading: the bar says nothing about the person yet
     portStore.set(fakePort({ status: 'loading' }));
     const loading = await shell();
-    expect(find(loading, 'header').textContent).toBe(`tenonfi${en.goal}${en.portfolio}`);
+    expect(loading.querySelector('[data-ui="account"]')).toBeNull();
+    expect(loading.querySelector('header a[href="/sign-in"]')).toBeNull();
   });
 });
 
@@ -295,10 +355,9 @@ describe('English or Portuguese', () => {
     const pt = dictionary('pt').shell;
     const host = await shell('pt');
     expect(find(host, 'a[href="#content"]').textContent).toBe(pt.skip);
-    expect([...find(host, 'nav').querySelectorAll('a')].map((a) => a.textContent)).toEqual([
-      pt.goal,
-      pt.portfolio,
-    ]);
+    expect([...find(host, 'nav').querySelectorAll(':scope > a')].map((a) => a.textContent)).toEqual(
+      [pt.products, pt.invest, pt.resources, pt.analytics],
+    );
     expect(find(host, 'header a[href="/sign-in"]').textContent).toBe(pt.signIn);
     expect(host.textContent).not.toMatch(/!/);
   });

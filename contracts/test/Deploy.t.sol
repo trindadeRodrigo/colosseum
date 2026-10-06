@@ -203,9 +203,32 @@ contract DeployTest is Test {
         }
         assertEq(cfg.routers.length, 1);
         assertEq(factory.routerPull(cfg.routers[0].router), 2, "Universal Router 2.1.2 pulls through Permit2");
+        _assertIsTheKitsRecord(cfg);
         // 6 creations, the registry, the guardian, the keeper, the price deviation, 12 assets, the cash
         // token, the router and 12 closed days: the 36 the deploy sent on Oct 5.
         assertEq(script.sent(), 6 + 4 + 12 + 1 + 1 + 12);
+    }
+
+    /// The filled file names what the kit deployed, as its own record says: the cash, the router, and each
+    /// token in the kit's order with its price contract and its average.
+    function _assertIsTheKitsRecord(Deploy.Config memory cfg) internal view {
+        string memory kit = vm.readFile("script/testnet/deployed/46630.json");
+        assertEq(cfg.cashToken, vm.parseJsonAddress(kit, ".cash"));
+        assertEq(cfg.assets[0].token, cfg.cashToken, "the cash is listed first");
+        assertEq(cfg.routers[0].router, vm.parseJsonAddress(kit, ".router"));
+        uint256 n;
+        while (vm.keyExistsJson(kit, string.concat(".tokens[", vm.toString(n), "]"))) ++n;
+        assertEq(cfg.assets.length, n + 1);
+        for (uint256 i; i < n; ++i) {
+            string memory e = string.concat(".tokens[", vm.toString(i), "]");
+            Deploy.Asset memory a = cfg.assets[i + 1];
+            assertEq(a.token, vm.parseJsonAddress(kit, string.concat(e, ".address")));
+            assertEq(a.config.feed, vm.parseJsonAddress(kit, string.concat(e, ".feed")));
+            assertEq(a.config.averageFeed, vm.parseJsonAddress(kit, string.concat(e, ".average")));
+            assertEq(a.config.pauseProbe, a.token, "the issuer's pause is read on the token");
+            assertGt(a.config.minPrice, 0);
+            assertLe(uint256(a.config.maxPrice), 2 * uint256(a.config.minPrice));
+        }
     }
 
     /// `settings()`: what a test network lists once its tokens exist, written into the deployed factory.

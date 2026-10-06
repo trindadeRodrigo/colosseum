@@ -20,6 +20,7 @@ import { withAccount } from '../account/test/screen';
 import { EMBEDDED, fakePort, json, PHANTOM, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
 import { PERSONALIZE_PATH } from './build-plan';
+import { GOAL_HANDOFF } from './draft';
 import { GoalScreen } from './GoalScreen';
 import { FIELD_ID } from './sheet';
 import { proposalFor, READ_IN_DOLLARS, READ_IN_REAIS } from './test/plan';
@@ -110,6 +111,28 @@ beforeEach(() => {
 });
 afterEach(unmountAll);
 
+describe('a goal handed over from the landing page', () => {
+  it('is read as the screen opens, once, and taken out of the tab', async () => {
+    const server = api({});
+    window.sessionStorage.setItem(GOAL_HANDOFF, GOAL);
+    const host = await screen();
+    await settle();
+    expect(server.to('/goals')).toEqual([
+      { method: 'POST', path: '/goals', body: { text: GOAL, language: 'en' } },
+    ]);
+    expect(box(host).value).toBe(GOAL);
+    expect(window.sessionStorage.getItem(GOAL_HANDOFF)).toBeNull();
+    expect(sheet(host)).not.toBeNull();
+  });
+
+  it('reads nothing when nothing was handed over', async () => {
+    const server = api({});
+    await screen();
+    await settle();
+    expect(server.to('/goals')).toEqual([]);
+  });
+});
+
 describe('the goal screen, before anything is read', () => {
   it('asks the one question, in the one serif line, with the typing box and three examples', async () => {
     const server = api({});
@@ -146,7 +169,7 @@ describe('the goal screen, before anything is read', () => {
     const link = [...visitor.querySelectorAll('a')].find(
       (a) => a.textContent === en.goal.visitor.link,
     );
-    expect(link?.getAttribute('href')).toBe('/sign-in?next=/');
+    expect(link?.getAttribute('href')).toBe('/sign-in?next=/goal');
     expect(visitor.textContent).toContain(en.goal.visitor.after);
     await unmountAll();
     api({ person: onSolana });
@@ -373,7 +396,7 @@ describe('“Build my plan”', () => {
     // and the way to sign in comes back to this screen
     const facts = find(host, '[data-ui="sheet-facts"]');
     expect(facts.textContent).toContain(en.goal.chain.unset);
-    expect(find(facts, 'a').getAttribute('href')).toBe('/sign-in?next=/');
+    expect(find(facts, 'a').getAttribute('href')).toBe('/sign-in?next=/goal');
     expect(find(facts, 'a').textContent).toBe(en.shell.signIn);
   });
 
@@ -397,7 +420,7 @@ describe('“Build my plan”', () => {
     const way = find(find(host, '[data-ui="sheet-facts"]'), 'a');
     expect([way.textContent, way.getAttribute('href')]).toEqual([
       en.goal.chain.choose,
-      '/sign-in?next=/',
+      '/sign-in?next=/goal',
     ]);
     // the choice is not offered here: it is asked in one place
     expect(host.querySelector('[role="group"]')).toBeNull();

@@ -3,9 +3,11 @@ import {
   type BasketProposal,
   BasketSheet,
   Bps,
+  type FxObservation,
   type LiquidityProvider,
   type ObservationRef,
   PersonalParams,
+  type PlanSleeve,
   type Verdict,
   type YieldObservation,
 } from '@colosseum/schemas';
@@ -153,6 +155,11 @@ export type ComposeContext = {
   holdings?: HeldPosition[];
   /** Yield observations, keyed by the shelf's asset id (`solana:syrupusdc`). */
   yields?: YieldObservation[];
+  /**
+   * FX readings, pair `USD<currency>` (units of the currency for one dollar), each with its source,
+   * time and method. Needed only to count a withdrawal that is not in dollars; never guessed.
+   */
+  fx?: FxObservation[];
   /** Measured exit capacity and cost, keyed by the shelf's asset id. */
   liquidity?: LiquidityProvider;
   /**
@@ -163,6 +170,23 @@ export type ComposeContext = {
   /** The parameter table. Left out: `PERSONAL_PARAMS`, the starting table. */
   params?: PersonalParameters;
 };
+
+/**
+ * LOCAL TYPE. A liquidity provider that knows which tokens sell into one pool, and what that pool
+ * takes in one window at `tau` for all of them together. `LiquidityProvider` has per-token figures
+ * only, and two tokens on one pool cannot each sell their own capacity at once. The coverage check
+ * reads this where the provider has it; a provider without it is read token by token.
+ */
+export type PooledLiquidityProvider = LiquidityProvider & {
+  poolOf(
+    assetId: string,
+    tau: number,
+    windowDays: number,
+  ): { pool: string; capacityUsd: number } | null;
+};
+
+export const reportsPools = (p: LiquidityProvider): p is PooledLiquidityProvider =>
+  typeof (p as Partial<PooledLiquidityProvider>).poolOf === 'function';
 
 /**
  * LOCAL TYPE. A figure the plan was shaped by: `ObservationRef` of packages/schemas, where the source
@@ -182,8 +206,39 @@ export type PersonalObservation = Omit<ObservationRef, 'source' | 'fetchedAt'> &
 export type PersonalProposal = Omit<BasketProposal, 'sheet' | 'observations' | 'verdict'> & {
   sheet: PersonalSheet;
   sleeves: { sleeve: Sleeve; weightBps: number; amountUsd: number }[];
+  /**
+   * Present when the person split the plan (gate SLEEVES): each of their sleeves, its share and its
+   * dollars, and for the safe-yield sleeve what it holds by token (cash included), before the lines
+   * are rounded to whole basis points. The goal sleeve is the rest of every line.
+   */
+  split?: {
+    kind: PlanSleeve['kind'];
+    shareBps: number;
+    amountUsd: number;
+    holds: { assetId: string; amountUsd: number }[];
+  }[];
   observations: PersonalObservation[];
   verdict?: PersonalVerdict;
+  /** Present when the sheet has withdrawals: the plan month by month, in the goal's currency. */
+  schedule?: PersonalSchedule;
+};
+
+/**
+ * LOCAL TYPE. The plan month by month in the goal's currency (slice 2): what is withdrawn, what is
+ * left, and whether the month's withdrawal was paid. Dollar yield accrues at its yield after
+ * haircut; stocks, crypto, gold and cash accrue nothing. A token is sold at its measured exit cost,
+ * no more of it in a month than one window's capacity; where nothing is measured, at `tau` and its
+ * tier ceiling, flagged. `atPar` is the same draw with every cost at zero, for comparison.
+ */
+export type PersonalSchedule = {
+  currency: string;
+  /** Units of the goal's currency per dollar, held for the whole schedule; 1 for dollars. */
+  rate: number;
+  rows: { month: string; withdrawal: number; balance: number; paid: boolean }[];
+  monthsPaid: number;
+  monthsWithWithdrawal: number;
+  /** What was owed and not paid, in the goal's currency. */
+  shortfall: number;
 };
 
 /**

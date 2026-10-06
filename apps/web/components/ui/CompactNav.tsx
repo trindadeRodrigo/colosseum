@@ -1,5 +1,14 @@
 'use client';
-import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
+import {
+  type AnchorHTMLAttributes,
+  type ComponentType,
+  type ReactNode,
+  type Ref,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react';
 import { Button } from './Button';
 import { buttonClass } from './button-class';
 import { cn } from './cn';
@@ -16,8 +25,11 @@ import { COMPACT_NAV_LABELS, type CompactNavLabels } from './labels';
 export type NavLink = {
   label: string;
   href: string;
-  /** The section in view. */
-  current?: boolean;
+  /**
+   * The link to where the person is: `page` for a page of the app, `true` for a section of a page in
+   * view (compact-nav.md, link current).
+   */
+  current?: 'page' | 'true' | false;
 };
 
 export type { CompactNavLabels } from './labels';
@@ -35,7 +47,14 @@ export type CompactNavProps = {
    * The one call to action in the bar. A signed-in visitor gets "Open app"; the bar never shows a
    * balance.
    */
-  cta: { label: string; href: string };
+  cta?: { label: string; href: string };
+  /**
+   * In place of `cta`, where the action is more than a link: the product's wallet ("Sign in", then
+   * the short address and "Sign out"). Still one action in the bar.
+   */
+  action?: ReactNode;
+  /** At the top of the phone's sheet: what the bar has no room for there (the wallet's address). */
+  sheetHead?: ReactNode;
   /** Where "Skip to content" goes: the id of the main content. */
   contentId: string;
   /**
@@ -44,6 +63,13 @@ export type CompactNavProps = {
    * a page with no stage, or a stage in its still form.
    */
   stage?: { compactAt: string; releaseAbove: string };
+  /**
+   * What draws a link: a plain anchor by default, or the router's link (`next/link`) where the bar
+   * leads between pages of one app, so a page change keeps what the app holds in memory.
+   */
+  linkAs?: ComponentType<
+    AnchorHTMLAttributes<HTMLAnchorElement> & { href: string; ref?: Ref<HTMLAnchorElement> }
+  >;
   /** Sets the state from outside and switches the observer off. */
   compact?: boolean;
   labels?: Partial<CompactNavLabels>;
@@ -64,9 +90,12 @@ export function CompactNav({
   homeHref = '/',
   links,
   cta,
+  action,
+  sheetHead,
   contentId,
   stage,
   compact: controlled,
+  linkAs: A = 'a' as unknown as NonNullable<CompactNavProps['linkAs']>,
   labels,
   className,
 }: CompactNavProps) {
@@ -85,26 +114,32 @@ export function CompactNav({
     if (controlled !== undefined || compactAt === undefined || releaseAbove === undefined) return;
     const step = document.getElementById(compactAt);
     const before = document.getElementById(releaseAbove);
-    if (!step || !before || typeof IntersectionObserver === 'undefined') {
+    if (!step || !before) {
       setSeen(true);
       return;
     }
-    // The line sits 60% of the way down the viewport. The bar compacts once the top of step 03 is
-    // above it, and opens again only when the top of step 02 is back below it.
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const line = entry.rootBounds?.bottom ?? window.innerHeight * 0.6;
-          const above = entry.boundingClientRect.top < line;
-          if (entry.target === step && above) setSeen(true);
-          if (entry.target === before && !above) setSeen(false);
-        }
-      },
-      { rootMargin: '0px 0px -40% 0px' },
-    );
-    observer.observe(step);
-    observer.observe(before);
-    return () => observer.disconnect();
+    // The line sits 60% of the way down the viewport (compact-nav.md). The bar is compact once the top
+    // of step 03 is above it, and opens again only when the top of step 02 is back below it. It is
+    // decided from where the steps are now, on every scroll, so a jump past step 03 (End, a link to a
+    // section, a reload half way down) finds the bar compact too.
+    let frame = 0;
+    const decide = () => {
+      frame = 0;
+      const line = window.innerHeight * 0.6;
+      if (step.getBoundingClientRect().top < line) setSeen(true);
+      else if (before.getBoundingClientRect().top >= line) setSeen(false);
+    };
+    const schedule = () => {
+      if (frame === 0) frame = requestAnimationFrame(decide);
+    };
+    decide();
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    return () => {
+      if (frame !== 0) cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+    };
   }, [controlled, compactAt, releaseAbove]);
 
   useEffect(() => {
@@ -150,13 +185,13 @@ export function CompactNav({
         data-ui="compact-nav-bar"
         className={cn(
           'fixed top-[calc(env(safe-area-inset-top,0px)+12px)] left-1/2 z-30 flex -translate-x-1/2 items-center justify-between gap-6 rounded-md border py-2',
-          'transition-[max-width,padding,background-color,border-color] duration-[480ms] ease-seat motion-reduce:transition-none',
+          'transition-[max-width,padding] duration-[480ms] ease-seat motion-reduce:transition-none',
           compact
             ? 'w-max max-w-[min(860px,calc(100%-32px))] border-border bg-card pr-2 pl-[18px]'
             : 'w-[calc(100%-2*clamp(16px,4vw,56px))] max-w-page border-transparent bg-transparent px-0',
         )}
       >
-        <a
+        <A
           href={homeHref}
           aria-label={homeLabel}
           className={cn('flex shrink-0 items-center gap-2.5 text-foreground', FOCUS)}
@@ -170,7 +205,7 @@ export function CompactNav({
           >
             {wordmark}
           </span>
-        </a>
+        </A>
         <nav
           aria-label={text.main}
           className={cn(
@@ -182,14 +217,14 @@ export function CompactNav({
           )}
         >
           {links.map((link) => (
-            <a
+            <A
               key={link.href}
               href={link.href}
-              aria-current={link.current ? 'true' : undefined}
+              aria-current={link.current || undefined}
               className={cn(LINK, 'max-[819px]:hidden')}
             >
               {link.label}
-            </a>
+            </A>
           ))}
           <button
             ref={menu}
@@ -203,9 +238,12 @@ export function CompactNav({
           >
             <Icon name={open ? 'X' : 'Menu'} />
           </button>
-          <Button variant="primary" href={cta.href} className="ml-2 whitespace-nowrap">
-            {cta.label}
-          </Button>
+          {action ??
+            (cta && (
+              <Button variant="primary" href={cta.href} className="ml-2 whitespace-nowrap">
+                {cta.label}
+              </Button>
+            ))}
         </nav>
       </div>
       <div
@@ -214,17 +252,18 @@ export function CompactNav({
         hidden={!open}
         className="fixed top-[calc(env(safe-area-inset-top,0px)+78px)] right-4 left-4 z-30 flex flex-col rounded-md border border-border bg-card p-2 min-[820px]:hidden"
       >
+        {sheetHead && <div className="border-b border-border px-3 pt-1 pb-3">{sheetHead}</div>}
         {links.map((link, index) => (
-          <a
+          <A
             key={link.href}
             ref={index === 0 ? firstLink : undefined}
             href={link.href}
-            aria-current={link.current ? 'true' : undefined}
+            aria-current={link.current || undefined}
             onClick={() => setOpen(false)}
             className={LINK}
           >
             {link.label}
-          </a>
+          </A>
         ))}
       </div>
     </header>

@@ -6,6 +6,7 @@ import {
   chainFamily,
   DISCLAIMER,
   type FactRegime,
+  type FxObservation,
   normalizeAddress,
   type Reason,
   type Recipe,
@@ -27,6 +28,7 @@ import {
   type PersonalParameters,
   type PersonalProposal,
   type PersonalSheet,
+  type PooledLiquidityProvider,
   SLEEVES,
   type Sleeve,
 } from './types';
@@ -301,6 +303,80 @@ export function sheet(over: Partial<PersonalSheet> = {}): PersonalSheet {
   };
 }
 
+/** MOCK: a cash token in reais on Solana, for tests only; the launch shelf lists none. */
+export const reaisToken = (): BasketAsset => {
+  const usdc = launchShelf().assets.find((a) => a.id === 'solana:usdc');
+  if (!usdc) throw new Error('no USDC on the launch shelf');
+  return {
+    ...usdc,
+    id: 'solana:brlx',
+    symbol: 'BRLX',
+    underlying: 'BRL',
+    issuer: 'brlx',
+    currency: 'BRL',
+    provenance: 'fixture',
+  };
+};
+export const withReais = (shelf: Shelf = launchShelf()): Shelf => ({
+  ...shelf,
+  assets: [...shelf.assets, reaisToken()],
+});
+
+/** MOCK: a rate of dollars into reais, labelled as a fixture. */
+export const usdBrl = (value = 5.5): FxObservation => ({
+  pair: 'USDBRL',
+  value,
+  source: 'test fixture (MOCK)',
+  method: 'fixed in the test',
+  fetchedAt: NOW,
+  provenance: 'fixture',
+});
+
+/** MOCK: a second rate-only token on Robinhood Chain, for the shared-pool test; the shelf lists one. */
+export const secondRateToken = (): BasketAsset => {
+  const sgov = launchShelf().assets.find((a) => a.id === 'robinhood:sgov');
+  if (!sgov) throw new Error('no SGOV on the launch shelf');
+  return {
+    ...sgov,
+    id: 'robinhood:usdy',
+    symbol: 'USDY',
+    underlying: 'USDY',
+    issuer: 'usdy-fixture',
+    provenance: 'fixture',
+  };
+};
+
+/** MOCK: the SGOV reading again, for `secondRateToken`, labelled as a fixture. */
+export const secondRateYield = (): YieldObservation => {
+  const sgov = fixtureYields().find((y) => y.assetId === 'robinhood:sgov');
+  if (!sgov) throw new Error('no SGOV reading in the fixtures');
+  return {
+    ...sgov,
+    assetId: 'robinhood:usdy',
+    source: 'test fixture (MOCK)',
+    provenance: 'fixture',
+  };
+};
+
+/**
+ * The fixture provider, where some tokens sell into one pool: each pool takes at most its figure in
+ * one window for all its tokens together, whatever each token's own figure says.
+ */
+export function pooledLiquidity(
+  capacityUsd: Record<string, number>,
+  poolOf: Record<string, string>,
+  poolCapacityUsd: Record<string, number>,
+): RegimeLiquidityProvider & PooledLiquidityProvider {
+  return {
+    ...fixtureLiquidity(capacityUsd),
+    poolOf: (id) => {
+      const pool = poolOf[id];
+      const capacity = pool === undefined ? undefined : poolCapacityUsd[pool];
+      return pool === undefined || capacity === undefined ? null : { pool, capacityUsd: capacity };
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------------------------------
 // What the tests measure a plan with, written apart from the engine: it reads the plan, the shelf and
 // the parameter table, and never the engine's own working.
@@ -416,10 +492,20 @@ export function expectedSleeves(
 ): Record<Sleeve, number> {
   const row = table.sleeves[`${sheetOf.goal}:${sheetOf.risk}`];
   if (!row) throw new Error('no row');
-  let growth = row.growthBps;
-  let dollarYield = row.dollarYieldBps;
-  let gold = row.goldBps;
-  let cash = 10_000 - growth - dollarYield - gold;
+  // With a split (gate SLEEVES), the goal sleeve's share scales the row and the date's floors; the
+  // safe-yield share counts toward what must not be lost. The result is the goal sleeve only.
+  const share = (kind: string) =>
+    (sheetOf.sleeves ?? [{ kind: 'goal', shareBps: 10_000 }])
+      .filter((x) => x.kind === kind)
+      .reduce((n, x) => n + x.shareBps, 0);
+  const goalBps = share('goal');
+  const safeBps = share('safe_yield');
+  const scaled = (bps: number) => Math.floor((bps * goalBps) / 10_000);
+  const scaledUp = (bps: number) => Math.ceil((bps * goalBps) / 10_000);
+  let growth = scaled(row.growthBps);
+  let dollarYield = scaled(row.dollarYieldBps);
+  let gold = scaled(row.goldBps);
+  let cash = goalBps - growth - dollarYield - gold;
   const fromStocksThenGold = (need: number) => {
     const stocks = Math.min(growth, need);
     const metal = Math.min(gold, need - stocks);
@@ -439,17 +525,19 @@ export function expectedSleeves(
 
   const { glide } = sheetOf.rules;
   if (glide) {
-    const least = floorOf(
-      table.glideFloor,
-      sheetOf.horizonMonths,
-      (s: { dollarYieldBps: number }) => s.dollarYieldBps,
+    const least = scaledUp(
+      floorOf(
+        table.glideFloor,
+        sheetOf.horizonMonths,
+        (s: { dollarYieldBps: number }) => s.dollarYieldBps,
+      ),
     );
     if (dollarYield < least) dollarYield += fromStocksThenGold(least - dollarYield);
   }
   const said = sheetOf.limits?.mayNeedInMonths;
   const soon = glide ? Math.min(said ?? sheetOf.horizonMonths, sheetOf.horizonMonths) : said;
   if (soon !== undefined) {
-    const least = floorOf(table.cashFloor, soon, (s: { cashBps: number }) => s.cashBps);
+    const least = scaledUp(floorOf(table.cashFloor, soon, (s: { cashBps: number }) => s.cashBps));
     if (cash < least) {
       const found = fromStocksThenGold(least - cash);
       const fromYield = Math.min(dollarYield, least - cash - found);
@@ -460,7 +548,8 @@ export function expectedSleeves(
   const keep = sheetOf.limits?.mustKeepUsd ?? 0;
   if (keep > 0) {
     const least = Math.min(10_000, Math.ceil((cents(keep) * 10_000) / cents(sheetOf.amountUsd)));
-    if (dollarYield + cash < least) dollarYield += fromStocksThenGold(least - dollarYield - cash);
+    if (dollarYield + cash + safeBps < least)
+      dollarYield += fromStocksThenGold(least - dollarYield - cash - safeBps);
   }
   return { growth, dollarYield, gold, cash };
 }
@@ -684,6 +773,20 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
         .map((l) => l.cents),
     );
   const bySymbol = new Map(lines.map((l) => [l.a.symbol, l]));
+  /** What the coverage check says it moved to cash from the lines of a token, or of an issuer. */
+  const movedOn = (keep: (a: BasketAsset) => boolean) =>
+    sum(
+      plan.lines
+        .filter((l) => {
+          const a = byId.get(l.assetId);
+          return a !== undefined && keep(a);
+        })
+        .flatMap((l) => l.reasons)
+        .filter((x) => x.rule === 'COVERAGE_MOVED' || x.rule === 'COVERAGE_MOVED_UNCOUNTED')
+        .map((x) => cents(Number(x.params.usd))),
+    );
+  const movedFrom = (symbol: string) => movedOn((a) => a.symbol === symbol);
+  const movedFromIssuer = (issuer: string) => movedOn((a) => a.issuer === issuer);
   const ys = new Map((ctx.yields ?? []).map((y) => [y.assetId, y.haircutYield]));
   for (const r of allReasons(plan)) {
     if (r.rule === 'CREDIT_BUDGET' || r.rule === 'CREDIT_BUDGET_UNSAID') {
@@ -699,8 +802,14 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
     }
     if (r.rule === 'ASSET_CAP') {
       const held = bySymbol.get(String(r.params.asset));
+      const cap = Math.floor((amount * Number(r.params.capBps)) / 10_000);
+      // The coverage check may move part of a line to cash after it was placed at its cap; the line
+      // says how much. A line it moved whole is gone, and is then held to no more than the cap.
+      const after = (held?.cents ?? 0) + movedFrom(String(r.params.asset));
       say(
-        Math.abs((held?.cents ?? 0) - Math.floor((amount * Number(r.params.capBps)) / 10_000)) <= 1,
+        Math.abs(after - cap) <= 1 ||
+          (plan.flags.includes('coverage_moved') && held === undefined) ||
+          (movedFrom(String(r.params.asset)) > 0 && after <= cap),
         `"${r.text}" but the line holds ${held ? held.cents / 100 : 'nothing'}`,
       );
     }
@@ -726,6 +835,209 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
       held <= stockCap,
       `${name} holds ${held / 100}, over the single-stock cap of ${stockCap / 100}`,
     );
+
+  // The person's split (gate SLEEVES): each sleeve's share and dollars as asked, and the safe-yield
+  // sleeve in rate legs and cash only, never more of a token than its line holds.
+  const lineUsd = new Map(plan.lines.map((l) => [l.assetId, cents(l.amountUsd)]));
+  const splitSaid = allReasons(plan).filter((r) => r.rule.startsWith('SPLIT_'));
+  if (!s.sleeves) {
+    say(plan.split === undefined, 'a split on a plan whose sheet has none');
+    say(splitSaid.length === 0, `"${splitSaid[0]?.text}" said of a plan with no split`);
+  } else {
+    say(
+      JSON.stringify(plan.split?.map((x) => [x.kind, x.shareBps])) ===
+        JSON.stringify(s.sleeves.map((x) => [x.kind, x.shareBps])),
+      'the split on the plan is not the one asked for',
+    );
+    say(
+      sum((plan.split ?? []).map((x) => cents(x.amountUsd))) === amount,
+      'the sleeves do not add up to the amount',
+    );
+    for (const x of plan.split ?? []) {
+      say(
+        Math.abs(cents(x.amountUsd) - (amount * x.shareBps) / 10_000) <= 1,
+        `the ${x.kind} sleeve holds ${x.amountUsd}, not its share of ${x.shareBps} bps`,
+      );
+      if (x.kind !== 'safe_yield') continue;
+      say(
+        sum(x.holds.map((h) => cents(h.amountUsd))) === cents(x.amountUsd),
+        'the safe-yield sleeve holds more or less than its dollars',
+      );
+      for (const h of x.holds) {
+        const a = byId.get(h.assetId);
+        const rateOnly =
+          a?.cls === 'cash' ||
+          (a?.cls === 'dollar_yield' &&
+            (LEG_TYPES[a.symbol]?.types ?? []).length > 0 &&
+            (LEG_TYPES[a.symbol]?.types ?? []).every((t) => t === 'rate'));
+        say(rateOnly, `the safe-yield sleeve holds ${h.assetId}, which is not a rate leg`);
+        // Lines are rounded to whole basis points after the sleeves are filled: a cent or two.
+        const slack = Math.ceil(amount / 10_000) + 1;
+        say(
+          cents(h.amountUsd) <= (lineUsd.get(h.assetId) ?? 0) + slack,
+          `the safe-yield sleeve holds ${h.amountUsd} of ${h.assetId}, more than its line`,
+        );
+      }
+    }
+    const goalShare = s.sleeves.find((x) => x.kind === 'goal')?.shareBps ?? 0;
+    for (const r of splitSaid)
+      if (r.rule === 'SPLIT_GOAL')
+        say(
+          goalShare < 10_000 && Number(r.params.shareBps) === goalShare,
+          `"${r.text}" but the goal sleeve is ${goalShare} bps`,
+        );
+  }
+  // A goal in dollars has no open-FX line; a goal in another currency has one on every line not
+  // counted in it, and the flag.
+  const goalCurrency = s.currency ?? 'USD';
+  say(
+    plan.flags.includes(`fx_open:${goalCurrency}`) === (goalCurrency !== 'USD'),
+    `the open-FX flag does not match a goal in ${goalCurrency}`,
+  );
+  for (const l of plan.lines) {
+    const inGoal = (byId.get(l.assetId)?.currency ?? 'USD') === goalCurrency;
+    say(
+      l.reasons.some((r) => r.rule === 'FX_OPEN') === !inGoal,
+      `${l.assetId}: the open-FX line is ${inGoal ? 'misplaced' : 'missing'}`,
+    );
+  }
+
+  // Withdrawals (slice 2): the next `setAsideMonths` of them are set aside in cash, the matching legs
+  // and rate legs, and what the plan says of them is true of it. Converted here at the latest reading.
+  const nowMonth = ctx.now.slice(0, 7);
+  const monthIndex = (m: string) => Number(m.slice(0, 4)) * 12 + Number(m.slice(5, 7)) - 1;
+  const fxOf = (cur: string) =>
+    [...(ctx.fx ?? [])]
+      .filter((f) => f.pair === `USD${cur}`)
+      .sort((a, b) =>
+        a.fetchedAt < b.fetchedAt ? 1 : a.fetchedAt > b.fetchedAt ? -1 : a.value - b.value,
+      )[0]?.value;
+  const toCome = (s.obligations ?? []).filter((o) => o.month >= nowMonth);
+  const inWindow = toCome.filter(
+    (o) => monthIndex(o.month) - monthIndex(nowMonth) < P.setAsideMonths,
+  );
+  const owedCents = (o: { amount: number; currency: string }) =>
+    Math.ceil(
+      Math.round(
+        (o.amount / (o.currency === 'USD' ? 1 : (fxOf(o.currency) ?? Number.NaN))) * 100 * 10_000,
+      ) / 10_000,
+    );
+  const owed = sum(inWindow.map(owedCents));
+  const goalShareBps = (s.sleeves ?? [{ kind: 'goal', shareBps: 10_000 }])
+    .filter((x) => x.kind === 'goal')
+    .reduce((n, x) => n + x.shareBps, 0);
+  const safeShareBps = (s.sleeves ?? [])
+    .filter((x) => x.kind === 'safe_yield')
+    .reduce((n, x) => n + x.shareBps, 0);
+  const goalCents = (amount * goalShareBps) / 10_000;
+  const isRate = (a: BasketAsset | undefined) =>
+    a?.cls === 'dollar_yield' &&
+    (LEG_TYPES[a.symbol]?.types ?? []).length > 0 &&
+    (LEG_TYPES[a.symbol]?.types ?? []).every((t) => t === 'rate');
+  const centsWhere = (keep: (a: BasketAsset | undefined) => boolean) =>
+    sum(plan.lines.filter((l) => keep(byId.get(l.assetId))).map((l) => cents(l.amountUsd)));
+  const reasonsOf = (rule: string) => allReasons(plan).filter((r) => r.rule === rule);
+  const twoBps = 2 * Math.ceil(amount / 10_000) + 2;
+  if (owed > 0 && goalShareBps > 0) {
+    // What is set aside, with the safe-yield sleeve, is held in cash, the matching legs and rate legs.
+    const setAside = Math.min(owed, goalCents);
+    say(
+      centsWhere((a) => a?.cls === 'cash' || isRate(a)) + twoBps >=
+        setAside + (amount * safeShareBps) / 10_000,
+      `${owed / 100} owed in the next months, and cash and rate legs hold ${centsWhere((a) => a?.cls === 'cash' || isRate(a)) / 100}`,
+    );
+    const [said] = reasonsOf('SET_ASIDE');
+    // A goal sleeve under a cent has nothing to set aside, and says it is short.
+    say(
+      said !== undefined || goalCents < 1,
+      'withdrawals in the next months, and no line says what is set aside',
+    );
+    if (said)
+      say(
+        cents(Number(said.params.usd)) + 1 >= Math.floor(setAside) &&
+          cents(Number(said.params.usd)) <= owed + twoBps,
+        `"${said.text}" but ${owed / 100} is owed`,
+      );
+    say(
+      plan.flags.includes('set_aside_short') === owed > goalCents ||
+        Math.abs(owed - goalCents) <= 1,
+      `the short flag is ${plan.flags.includes('set_aside_short') ? 'set' : 'missing'} with ${owed / 100} owed and ${goalCents / 100} for the goal`,
+    );
+  } else if (owed > 0) {
+    // No goal sleeve: nothing is set aside, and the plan says it falls short.
+    say(
+      plan.flags.includes('set_aside_short'),
+      'withdrawals with no goal sleeve, and no short flag',
+    );
+  } else {
+    for (const rule of ['SET_ASIDE', 'SET_ASIDE_SHORT', 'SET_ASIDE_CASH', 'NO_MATCHING_LEG'])
+      say(reasonsOf(rule).length === 0, `${rule} said with nothing to set aside`);
+  }
+  // A withdrawal named on the plan is one of the sheet's, in the window.
+  for (const r of reasonsOf('WITHDRAWAL'))
+    say(
+      inWindow.some(
+        (o) =>
+          o.month === r.params.month &&
+          o.currency === r.params.currency &&
+          o.amount === r.params.amount,
+      ),
+      `"${r.text}" is not a withdrawal of the next months`,
+    );
+  // The coverage check: a plan that does not say it falls short holds, in cash and dollar yield, at
+  // least what is owed; one that says so says it on its cash line.
+  if (inWindow.length > 0 && !plan.flags.includes('coverage_short') && owed <= goalCents)
+    say(
+      centsWhere((a) => a?.cls === 'cash' || a?.cls === 'dollar_yield') + twoBps >= owed,
+      `${owed / 100} owed in the next months, more than cash and dollar yield hold`,
+    );
+  say(
+    plan.flags.includes('coverage_short') === reasonsOf('COVERAGE_SHORT').length > 0,
+    'coverage_short and its sentence do not go together',
+  );
+  say(
+    plan.flags.includes('coverage_moved') === reasonsOf('COVERAGE_CASH').length > 0,
+    'coverage_moved and its sentence do not go together',
+  );
+  // The schedule: there when there are withdrawals to come and the rate of the goal's currency is
+  // known, in that currency, never paying more months than have a withdrawal.
+  const rateKnown = goalCurrency === 'USD' || fxOf(goalCurrency) !== undefined;
+  say(
+    (plan.schedule !== undefined) === (toCome.length > 0 && rateKnown),
+    `the schedule is ${plan.schedule ? 'there' : 'missing'} with ${toCome.length} withdrawals to come`,
+  );
+  if (plan.schedule) {
+    const sc = plan.schedule;
+    say(sc.currency === goalCurrency, `the schedule is in ${sc.currency}, not ${goalCurrency}`);
+    say(sc.monthsPaid <= sc.monthsWithWithdrawal, 'the schedule pays more months than it has');
+    say(
+      sc.rows.every((r) => r.balance >= 0),
+      'the schedule has a balance under zero',
+    );
+    say(sc.rows[0]?.month === nowMonth, 'the schedule does not start this month');
+    say(
+      sc.monthsWithWithdrawal === new Set(toCome.map((o) => o.month)).size ||
+        sc.rows.length < monthIndex(toCome.at(-1)?.month ?? nowMonth) - monthIndex(nowMonth) + 1,
+      'the schedule does not count the months with a withdrawal',
+    );
+  }
+
+  // What must not be lost stays in dollar yield and cash, sleeves and all.
+  const mustKeep = s.limits?.mustKeepUsd ?? 0;
+  if (mustKeep > 0) {
+    const kept = sum(
+      plan.lines
+        .filter((l) => {
+          const c = byId.get(l.assetId)?.cls;
+          return c === 'cash' || c === 'dollar_yield';
+        })
+        .map((l) => cents(l.amountUsd)),
+    );
+    say(
+      kept + Math.ceil(amount / 10_000) >= Math.min(amount, cents(mustKeep)),
+      `${kept / 100} in dollar yield and cash, under the ${mustKeep} that must not be lost`,
+    );
+  }
 
   // A plan lives on one chain: every line is on it, no reason names another, and there is one
   // recipe, whose amount is the deposit.
@@ -874,7 +1186,9 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
         `"${r.text}", and the plan holds ${inSleeve('cash') / 100} in cash`,
       );
     if (r.rule === 'ISSUER_CAP' || r.rule === 'OVERFLOW_ISSUER') {
-      const with_ = total((a) => a.issuer).get(String(r.params.issuer)) ?? 0;
+      const with_ =
+        (total((a) => a.issuer).get(String(r.params.issuer)) ?? 0) +
+        movedFromIssuer(String(r.params.issuer));
       say(
         with_ >= share(r.params.capBps) - Math.max(leastLine, share(3)),
         `"${r.text}", and it holds ${with_ / 100}`,
@@ -882,7 +1196,7 @@ export function violations(plan: PersonalProposal, shelf: Shelf, ctx: ComposeCon
     }
     // The plan's issuer cap counts dollar yield, gold and cash only (gate SOLVER-CAPS).
     if (r.rule === 'ISSUER_CAP_PLAN' || r.rule === 'OVERFLOW_ISSUER_PLAN') {
-      const with_ = nonGrowthOf(String(r.params.issuer));
+      const with_ = nonGrowthOf(String(r.params.issuer)) + movedFromIssuer(String(r.params.issuer));
       say(
         with_ >= share(r.params.capBps) - Math.max(leastLine, share(3)),
         `"${r.text}", and it holds ${with_ / 100}`,

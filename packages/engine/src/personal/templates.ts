@@ -7,6 +7,7 @@ import type { Language, Reason } from '@colosseum/schemas';
 // A value is written `{name}` (as it came) or `{name|format}`:
 //   usd     dollars, cents under one          $4,000  $0.40   US$ 4.000  US$ 0,40
 //   usdUp   the same, rounded up (a loss)     $229            US$ 229
+//   amount  any currency, cents if any        3,000  2,500.50 3.000  2.500,50
 //   pct     basis points as a percentage      14.32%          14,32%
 //   month   a YYYY-MM month                   April 2028      abril de 2028
 //   months  a count of months                 18 months       18 meses
@@ -29,6 +30,9 @@ export const INPUT_NAMES = [
   'mustKeep',
   'mayNeed',
   'credit',
+  'sleeves',
+  'currency',
+  'obligations',
 ] as const;
 export type InputName = (typeof INPUT_NAMES)[number];
 
@@ -41,6 +45,75 @@ export const REASON_TEMPLATES = {
     ['goal', 'risk'],
     'For {goal|goal} at {risk|risk}, the starting share of {sleeve|sleeve} is {sleeveBps|pct}.',
     'Para {goal|goal}, com {risk|risk}, a parcela inicial de {sleeve|sleeve} é {sleeveBps|pct}.',
+  ),
+  // The person's split of the plan (gate SLEEVES).
+  SPLIT_GOAL: rule(
+    ['sleeves', 'goal'],
+    'You set {shareBps|pct} of the plan for {goal|goal}; the shares here are of the whole plan.',
+    'Você destinou {shareBps|pct} do plano para {goal|goal}; as parcelas aqui são do plano inteiro.',
+  ),
+  SPLIT_SAFE_YIELD: rule(
+    ['sleeves'],
+    'You set {shareBps|pct} of the plan apart for dollar yield from a rate alone: tokens that pass through a government or money-market rate, with no lending to borrowers and no trading spread.',
+    'Você separou {shareBps|pct} do plano para rendimento em dólar só de taxa: tokens que repassam uma taxa de governo ou de mercado monetário, sem empréstimo a tomadores e sem spread de negociação.',
+  ),
+  SAFE_YIELD_NO_RATE: rule(
+    ['sleeves', 'chain'],
+    'No token you can hold on {chain|chain} pays a rate alone, so {usd|usd} of the part you set apart for it stays in cash.',
+    'Nenhum token que você pode ter na {chain|chain} paga só uma taxa, então {usd|usd} da parte separada para isso fica em caixa.',
+  ),
+  // A goal in a currency other than dollars.
+  FX_OPEN: rule(
+    ['currency'],
+    'This line is not counted in {currency}, the currency of your goal: its value in {currency} moves with the exchange rate.',
+    'Esta linha não é contada em {currency}, a moeda da sua meta: o valor dela em {currency} muda com o câmbio.',
+  ),
+  // Withdrawals: what is set aside for the next months of them (slice 2).
+  SET_ASIDE: rule(
+    ['obligations'],
+    '{usd|usd} of the plan is set aside for your withdrawals from {from|month} to {to|month}, the next {months|months} of them; this line holds some or all of it.',
+    '{usd|usd} do plano ficam separados para os seus saques de {from|month} a {to|month}, os próximos {months|months}; esta linha guarda parte ou todo esse valor.',
+  ),
+  WITHDRAWAL: rule(
+    ['obligations'],
+    'You withdraw {amount|amount} {currency} in {month|month}.',
+    'Você saca {amount|amount} {currency} em {month|month}.',
+  ),
+  SET_ASIDE_SHORT: rule(
+    ['obligations', 'amount'],
+    'Your withdrawals from {from|month} to {to|month} come to {owedUsd|usd}, more than the {goalUsd|usd} of the plan kept for your goal: all of it is set aside, and {shortUsd|usd} of them is not covered.',
+    'Os seus saques de {from|month} a {to|month} somam {owedUsd|usd}, mais do que os {goalUsd|usd} do plano destinados à sua meta: tudo isso fica separado, e {shortUsd|usd} deles não está coberto.',
+  ),
+  SET_ASIDE_CASH: rule(
+    ['obligations', 'chain'],
+    '{usd|usd} of what is set aside for your withdrawals stays in cash: no token on {chain|chain} that pays a rate alone has room for it.',
+    '{usd|usd} do que fica separado para os seus saques fica em caixa: nenhum token na {chain|chain} que paga só uma taxa comporta esse valor.',
+  ),
+  NO_MATCHING_LEG: rule(
+    ['currency', 'obligations', 'chain'],
+    'No token you can hold on {chain|chain} is counted in {currency}, so {usd|usd} set aside for your withdrawals in {currency} stays in dollar cash.',
+    'Nenhum token que você pode ter na {chain|chain} é contado em {currency}, então {usd|usd} separados para os seus saques em {currency} ficam em caixa em dólar.',
+  ),
+  // The coverage check: what can be sold in time pays the withdrawals of the next months.
+  COVERAGE_MOVED: rule(
+    ['obligations'],
+    '{usd|usd} of this line is held in cash instead: by {month|month}, {assets|list} can be sold for {sellUsd|usd} after the cost of selling, and your withdrawals to then come to more than that and the cash.',
+    '{usd|usd} desta linha ficam em caixa: até {month|month}, {assets|list} podem ser vendidos por {sellUsd|usd} depois do custo de venda, e os seus saques até lá somam mais do que isso e o caixa.',
+  ),
+  COVERAGE_MOVED_UNCOUNTED: rule(
+    ['obligations'],
+    '{usd|usd} of this line is held in cash instead: what is set aside cannot be sold in time for all of your withdrawals to {month|month}, and a withdrawal is not paid by selling stocks, crypto or gold.',
+    '{usd|usd} desta linha ficam em caixa: o que está separado não pode ser vendido a tempo para todos os seus saques até {month|month}, e um saque não é pago vendendo ações, cripto ou ouro.',
+  ),
+  COVERAGE_CASH: rule(
+    ['obligations'],
+    '{usd|usd} is held in cash so that your withdrawals to {month|month} can be paid in time: the tokens of the plan cannot all be sold by then at a cost within the limit.',
+    '{usd|usd} ficam em caixa para que os seus saques até {month|month} possam ser pagos a tempo: os tokens do plano não podem ser todos vendidos até lá com um custo dentro do limite.',
+  ),
+  COVERAGE_SHORT: rule(
+    ['obligations', 'amount'],
+    'Your withdrawals to {month|month} come to {owedUsd|usd}; this plan can pay {paidUsd|usd} of them in time.',
+    'Os seus saques até {month|month} somam {owedUsd|usd}; este plano consegue pagar {paidUsd|usd} deles a tempo.',
   ),
   // The date sets a floor on dollar yield. What dollar yield has no room for stays in cash, so the
   // sentence names both: it is true of every plan, whatever the chain lists and whatever is capped.
@@ -533,6 +606,15 @@ const listed = (words: string[], lang: Language): string =>
 
 const FORMATS: Record<string, (value: Value, lang: Language, key: string) => string> = {
   usd: (value, lang, key) => dollars(number(value, key), lang, false),
+  // An amount in any currency, as the person gave it: digits in threes, cents only when there are.
+  amount: (value, lang, key) => {
+    const cents = Math.round(number(value, key) * CENTS);
+    const whole = grouped(Math.floor(cents / CENTS), lang);
+    const part = cents % CENTS;
+    return part === 0
+      ? whole
+      : `${whole}${lang === 'pt' ? ',' : '.'}${String(part).padStart(2, '0')}`;
+  },
   usdUp: (value, lang, key) => dollars(number(value, key), lang, true),
   inCountry: (value, lang) =>
     WORDS[lang].inCountry[String(value)] ?? `${lang === 'pt' ? 'em' : 'in'} ${value}`,
