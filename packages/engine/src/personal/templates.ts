@@ -515,7 +515,7 @@ export const WORDS: Record<Language, Words> = {
       cash: 'cash',
     },
     chain: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
-    // The working names of the three candidates (gate THREE-PLANS): product words are a brand decision.
+    // The names of the three candidates (gates THREE-PLANS, CANDIDATE-NAMES, Rodrigo, Oct 6).
     candidate: { cover: 'Cover', spread: 'Spread', carry: 'Carry' },
     // The times of the week the risk layer measures apart, in the order they are written.
     regime: {

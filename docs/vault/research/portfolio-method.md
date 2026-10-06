@@ -139,7 +139,7 @@ Each candidate is the same engine with a different objective, inside the same li
 | Spread | Least concentration | Dedication as today; yield legs filled equally within caps; issuer and chain caps tighter | Largest issuer share; number of issuers |
 | Carry | Most observed haircut yield inside the limits | Dedication at the window only; credit share at the person's tolerance; yield legs filled by band | Observed carry; funded ratio |
 
-The names are placeholders; product words are a brand decision.
+The names are placeholders; product words are a brand decision. (Decided on 2026-10-06, gate `CANDIDATE-NAMES`: Cover, Spread, Carry; Cobertura, Diversificação, Rendimento.)
 
 How they are kept different, each rule with its study:
 
