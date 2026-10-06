@@ -4,8 +4,8 @@ import type { ChainId } from '@colosseum/schemas';
 // address (`?chain=robinhood`) so a link opens on it. With none named it follows the chain the app's bar
 // is on, else the one this browser was last on (the bar's own memory, `recallChain` of
 // features/account/chain-choice.ts, gate CHAIN-SWITCH), else Solana. Choosing one here is remembered
-// the same way (`rememberChain`), so the bar of someone signed out opens on it next time. It does not
-// move a signed-in person's chain: that is where their plans are made, and the bar's to change.
+// the same way (`rememberChain`), and moves the bar of someone signed out with it (BearingFromBar). It
+// does not move a signed-in person's chain: that is where their plans are made, and the bar's to change.
 
 export const BEARING_CHAINS = ['solana', 'robinhood'] as const satisfies readonly ChainId[];
 export type BearingChain = (typeof BEARING_CHAINS)[number];

@@ -115,6 +115,7 @@ export function BearingProvider({
   now: fixedNow,
   barChain,
   followsBar = false,
+  moveBar,
 }: {
   children: ReactNode;
   /** A reader of a stub, in tests. */
@@ -128,6 +129,12 @@ export function BearingProvider({
   barChain?: ChainId | null;
   /** Mounted under the bar: the first pick waits for the bar to settle (BearingFromBar). */
   followsBar?: boolean;
+  /**
+   * Moves the bar's switcher to the chain chosen here, so the two agree. Given only for someone
+   * signed out: a signed-in person's chain is where their plans are made, and the toggle here only
+   * filters the page.
+   */
+  moveBar?: (chain: BearingChain) => void;
 }) {
   const reader = useMemo(() => given ?? makeReader(), [given]);
   const router = useRouter();
@@ -135,7 +142,7 @@ export function BearingProvider({
   const [chain, setChainState] = useState<BearingChain>(FIRST);
   // Nothing is read before the chain is known: a page would otherwise read Solana's routes first.
   const [known, setKnown] = useState(false);
-  const setChain = useCallback(
+  const show = useCallback(
     (next: BearingChain) => {
       setChainState(next);
       rememberChain(next);
@@ -147,6 +154,17 @@ export function BearingProvider({
   const settled = !followsBar || barChain !== undefined;
   // The bar's chain at the first pick: a later change from it is a move of the bar's switcher.
   const lastBar = useRef<ChainId | null | undefined>(undefined);
+  // The toggle here: the page reads the chain, and the bar of someone signed out goes with it. The
+  // bar's answer is then not a move of its own to follow.
+  const setChain = useCallback(
+    (next: BearingChain) => {
+      show(next);
+      if (!moveBar) return;
+      lastBar.current = next;
+      moveBar(next);
+    },
+    [show, moveBar],
+  );
   // On arrival, once the bar has settled: the address's chain, else the bar's, else this browser's,
   // else Solana, then named in the address so the page can be shared as it is. The account settling
   // is not a move of the bar: a link that names a chain keeps it.
@@ -164,8 +182,8 @@ export function BearingProvider({
   useEffect(() => {
     if (!known || barChain === undefined || barChain === lastBar.current) return;
     lastBar.current = barChain;
-    if (barChain === 'solana' || barChain === 'robinhood') setChain(barChain);
-  }, [barChain, known, setChain]);
+    if (barChain === 'solana' || barChain === 'robinhood') show(barChain);
+  }, [barChain, known, show]);
   const [mode, setMode] = useState<Mode>('loading');
   const [newest, setNewest] = useState<string | null>(null);
   const [now, setNow] = useState(() => fixedNow ?? 0);
