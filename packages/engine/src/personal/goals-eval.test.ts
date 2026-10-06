@@ -94,7 +94,7 @@ describe('the rules parser on the evaluation set, as it is today', () => {
   it('gets 0 of the 18 goals wholly right: what it misses, goal by goal', () => {
     const missed = Object.fromEntries(goals.map((g) => [g.id, misses(g)]));
     expect(missed).toEqual({
-      'en-grow-10y-high': ['amountUsd', 'horizonMonths', 'currency'],
+      'en-grow-10y-high': ['amountUsd', 'currency'],
       'en-protect-18m-low': ['goal', 'amountUsd', 'currency'],
       'en-income-300-month': [
         'amountUsd',
@@ -104,15 +104,8 @@ describe('the rules parser on the evaluation set, as it is today', () => {
         'currency',
       ],
       'en-grow-by-2031-theme-chain': ['amountUsd', 'risk', 'themes', 'chains', 'currency'],
-      'en-protect-country-no-stocks': [
-        'goal',
-        'amountUsd',
-        'horizonMonths',
-        'risk',
-        'country',
-        'currency',
-      ],
-      'en-grow-6m-conservative': ['amountUsd', 'horizonMonths', 'currency'],
+      'en-protect-country-no-stocks': ['goal', 'amountUsd', 'risk', 'country', 'currency'],
+      'en-grow-6m-conservative': ['amountUsd', 'currency'],
       'pt-grow-10y-high': ['amountUsd', 'risk', 'currency'],
       'pt-protect-18m-low': ['goal', 'amountUsd', 'risk', 'currency'],
       'pt-income-300-month': [
@@ -130,19 +123,12 @@ describe('the rules parser on the evaluation set, as it is today', () => {
         'language',
         'currency',
       ],
-      'pt-protect-country-no-stocks': [
-        'goal',
-        'amountUsd',
-        'horizonMonths',
-        'risk',
-        'country',
-        'currency',
-      ],
-      'pt-grow-6m-conservative': ['amountUsd', 'horizonMonths', 'currency'],
+      'pt-protect-country-no-stocks': ['goal', 'amountUsd', 'risk', 'country', 'currency'],
+      'pt-grow-6m-conservative': ['amountUsd', 'currency'],
       // Added with ENG-3 slice 4.
-      'en-grow-3y-no-credit': ['amountUsd', 'horizonMonths', 'currency'],
+      'en-grow-3y-no-credit': ['amountUsd', 'currency'],
       'en-income-two-amounts': ['amountUsd', 'horizonMonths', 'incomeTargetUsdMonthly', 'currency'],
-      'en-grow-3k-no-crypto': ['amountUsd', 'horizonMonths', 'currency'],
+      'en-grow-3k-no-crypto': ['amountUsd', 'currency'],
       'pt-protect-reais-sem-acoes': ['goal', 'horizonMonths', 'risk', 'currency'],
       'pt-income-two-amounts-mil': [
         'amountUsd',
@@ -150,7 +136,7 @@ describe('the rules parser on the evaluation set, as it is today', () => {
         'incomeTargetUsdMonthly',
         'currency',
       ],
-      'pt-protect-sem-credito': ['goal', 'amountUsd', 'horizonMonths', 'risk', 'currency'],
+      'pt-protect-sem-credito': ['goal', 'amountUsd', 'risk', 'currency'],
     });
     expect(Object.values(missed).filter((fields) => fields.length === 0)).toHaveLength(0);
   });
@@ -164,7 +150,9 @@ describe('the rules parser on the evaluation set, as it is today', () => {
       goal: 12,
       // The one it gets is the goal in reais, which has no amount in dollars: it reads none at all.
       amountUsd: 1,
-      horizonMonths: 5,
+      // A span ("over 10 years", "por 6 meses") is read as the time frame of a goal that is not an
+      // income since Oct 6.
+      horizonMonths: 13,
       risk: 8,
       themes: 16,
       country: 16,

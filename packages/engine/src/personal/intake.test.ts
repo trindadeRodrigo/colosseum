@@ -333,6 +333,57 @@ describe('the re-review of Oct 5', () => {
     expect(highly.flags).toContain('no_cue:risk');
   });
 
+  describe('"for the next N years" is a time frame, in both readers', () => {
+    const cases: [string, number][] = [
+      ['for the next 15 years', 180],
+      ['over the next 10 years', 120],
+      ['in the next 18 months', 18],
+      ['within 5 years', 60],
+      ['for the coming 3 years', 36],
+      ['pelos próximos 15 anos', 180],
+      ['nos próximos 10 anos', 120],
+      ['durante 5 anos', 60],
+      ['em até 3 anos', 36],
+    ];
+    for (const [phrase, months] of cases)
+      it(`"${phrase}" is ${months} months`, () => {
+        expect(horizonsIn(phrase, NOW)).toEqual([months]);
+        const text = /anos|meses/.test(phrase)
+          ? `Quero crescer US$ 5.000 ${phrase}, risco alto.`
+          : `Grow $5,000 ${phrase}, high risk.`;
+        const result = runIntake({
+          text,
+          nowMonth: NOW,
+          reply: { goal: 'grow', amountUsd: 5000, horizonMonths: months, risk: 'high' },
+          homeChain: 'solana',
+          portfolios,
+        });
+        expect(result.draft.horizonMonths).toBe(months);
+        expect(result.flags.filter((f) => f.includes('horizonMonths'))).toEqual([]);
+        expect(result.questions.map((q) => q.field)).not.toContain('horizonMonths');
+      });
+
+    it('an income paid "for the next 15 years" asks no time-frame question', () => {
+      const result = runIntake({
+        text: 'pay me around $500 a month for the next 15 years',
+        nowMonth: NOW,
+        reply: { goal: 'income', incomeTargetUsdMonthly: 500, horizonMonths: 180 },
+        homeChain: 'solana',
+        portfolios,
+      });
+      expect(result.draft.horizonMonths).toBe(180);
+      expect(result.flags.filter((f) => f.includes('horizonMonths'))).toEqual([]);
+      expect(result.questions.map((q) => q.field)).not.toContain('horizonMonths');
+    });
+
+    it('an age is still no time frame, and beside a real one only the real one is read', () => {
+      expect(horizonsIn('I am 35 years old', NOW)).toEqual([]);
+      expect(horizonsIn('tenho 40 anos de idade', NOW)).toEqual([]);
+      expect(horizonsIn("I'm 40 and want to retire in 25 years", NOW)).toEqual([300]);
+      expect(draftFromRules('I am 35 years old', NOW).draft.horizonMonths).toBeNull();
+    });
+  });
+
   it('a time frame one month from the rules parser is the same one: no disagreement is flagged', () => {
     // The rules parser reads "for 5 years" as 61 months; the model's 60 is the same time frame.
     const rules = draftFromRules(goalOf('en-income-300-month').text, NOW).draft;
