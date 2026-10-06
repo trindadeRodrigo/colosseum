@@ -1076,7 +1076,6 @@ export const en = {
       eyebrow: 'Two goals, two cuts',
       title: 'Same pieces. Different people. Different fit.',
       lead: 'What a plan looks like when it starts from a life, not a product list. Sample plans: every figure below is illustrative.',
-      photoCaption: 'placeholder photo · generated',
       sample: 'sample rates, not live',
       estimate: 'estimate',
       sampleUnit: 'sample',
@@ -1089,7 +1088,7 @@ export const en = {
       exitPlan: 'Exit plan before investing',
       trip: {
         label: 'Example: a trip in 2029',
-        alt: 'A woman with a small backpack walks a coastal cliff trail at golden hour.',
+        alt: 'Mariana’s plan drawn as a joint, its parts stacked into one post, each as tall as its share.',
         who: (cash: string) => `Mariana · 31 · paid in ${cash}`,
         quote:
           'I want a savings plan I can reach any day, that pays me $1,000 a month during a three-month trip in 2029.',
@@ -1116,7 +1115,7 @@ export const en = {
       },
       growth: {
         label: 'Example: a growth goal with higher risk',
-        alt: 'A climber with a rope over his shoulder stands on a granite ridge above the clouds at sunrise.',
+        alt: 'Diego’s plan drawn as a joint, its parts stacked into one post, each as tall as its share.',
         who: 'Diego · 38 · crypto-native',
         quote:
           'Turn $20,000 into $35,000 by 2031 for a season in the mountains. I can live with a 25% drop along the way.',

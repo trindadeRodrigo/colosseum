@@ -198,6 +198,62 @@ describe('the showcase', () => {
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
 
+  it('draws each plan as a joint whose parts are its legend’s, share for share', async () => {
+    browser();
+    const host = await landing();
+    const cases = [...host.querySelectorAll('article[data-ui="showcase-case"]')];
+    expect(cases).toHaveLength(2);
+    for (const c of cases) {
+      const drawing = c.querySelector('svg[data-ui="plan-drawing"]');
+      const drawn = [...(drawing?.querySelectorAll('[data-part="layer"]') ?? [])].map((l) =>
+        Number(l.getAttribute('data-share')),
+      );
+      const legend = [...c.querySelectorAll(`ul[aria-label="${en.landing.show.legs}"] li`)].map(
+        (li) => Number(li.querySelector('.font-mono')?.textContent?.replace('%', '')),
+      );
+      expect(drawn.length).toBeGreaterThan(0);
+      expect(drawn).toEqual(legend);
+      // no photograph, and no caption saying one was there
+      expect(c.querySelector('img, figcaption')).toBeNull();
+    }
+    expect(host.textContent).not.toContain('placeholder photo');
+  });
+
+  it('settles the joint in from the bottom when the card comes into view, and not with reduced motion', async () => {
+    const seen: ((entries: { isIntersecting: boolean }[]) => void)[] = [];
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(cb: (entries: { isIntersecting: boolean }[]) => void) {
+          seen.push(cb);
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      top: 5000,
+    } as DOMRect);
+    browser();
+    let host = await landing();
+    const drawings = () => [...host.querySelectorAll('svg[data-ui="plan-drawing"]')];
+    expect(drawings().map((d) => d.getAttribute('data-state'))).toEqual(['armed', 'armed']);
+    await act(async () => {
+      for (const cb of seen) cb([{ isIntersecting: true }]);
+    });
+    expect(drawings().map((d) => d.getAttribute('data-state'))).toEqual(['in', 'in']);
+    await unmountAll();
+    vi.restoreAllMocks();
+    // with reduced motion it stands as it is, and nothing waits for it
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      top: 5000,
+    } as DOMRect);
+    browser({ reduce: true });
+    host = await landing();
+    expect(drawings().map((d) => d.getAttribute('data-state'))).toEqual(['still', 'still']);
+    vi.unstubAllGlobals();
+  });
+
   it('keeps stock tokens out of the income case (PROTECT-NO-STOCKS) and names them in the growth case', async () => {
     browser();
     const host = await landing();
