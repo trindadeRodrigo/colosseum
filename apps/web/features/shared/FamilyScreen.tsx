@@ -25,10 +25,13 @@ import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { switchFailure } from '../account/ChainSwitch';
+import { dollars } from '../goal/sheet';
 import { assetTicker, formatBps } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
-import { keepOrder } from '../order/order-record';
+import { keepOrder, type OrderRecord, recallOrders } from '../order/order-record';
+import { goalLine } from '../order/plain';
 import { networkFor } from '../order/readiness';
+import { goalOfVault } from '../portfolio/vault-goal';
 import { useApiFetch } from '../wallet/WalletProvider';
 import { type ChainCheck, familyIdFor, isVaultOf, useChainRecipe } from './chain-recipe';
 import { isPlatformCreator } from './platform';
@@ -242,6 +245,12 @@ function RecipeSection({
       }
     : recipe.pending;
 
+  // A check that found something wrong is not folded away: the read failed, the chain has no such
+  // portfolio, it differs from what our server said, or its words match no version on the chain.
+  const alarm =
+    check.state === 'failed' ||
+    check.state === 'missing' ||
+    (check.state === 'read' && (check.differs || check.textMatches === null));
   const blocked =
     person.kind !== 'ready'
       ? null
@@ -312,21 +321,32 @@ function RecipeSection({
               />
             </div>
           )}
-          <p className="flex flex-wrap items-baseline gap-x-2 text-body-sm text-muted-foreground">
-            <span>{t.shared.text.creator}</span>
-            <span data-ui="creator" className="break-all font-mono text-source text-foreground">
-              {read?.creator ?? recipe.creator}
-            </span>
-            {isPlatformCreator(
-              networkFor(recipe.chain, mock),
-              recipe.chain,
-              read?.creator ?? recipe.creator,
-            ) && (
-              <span className="font-medium text-foreground">{t.shared.shelf.card.platform}</span>
-            )}
-          </p>
-          <TextMark matches={check.state === 'read' ? check.textMatches : 'unchecked'} />
-          <SourceMark check={check} chain={recipe.chain} />
+          {/* Who published it and what this app checked: open when a check found something wrong,
+              folded under "Details" while there is nothing to act on. */}
+          <details data-ui="recipe-checks" open={alarm || undefined} className="flex flex-col">
+            <summary className="cursor-pointer text-body-sm text-muted-foreground">
+              {f.checks}
+            </summary>
+            <div className="flex flex-col gap-2 pt-2">
+              <p className="flex flex-wrap items-baseline gap-x-2 text-body-sm text-muted-foreground">
+                <span>{t.shared.text.creator}</span>
+                <span data-ui="creator" className="break-all font-mono text-source text-foreground">
+                  {read?.creator ?? recipe.creator}
+                </span>
+                {isPlatformCreator(
+                  networkFor(recipe.chain, mock),
+                  recipe.chain,
+                  read?.creator ?? recipe.creator,
+                ) && (
+                  <span className="font-medium text-foreground">
+                    {t.shared.shelf.card.platform}
+                  </span>
+                )}
+              </p>
+              <TextMark matches={check.state === 'read' ? check.textMatches : 'unchecked'} />
+              <SourceMark check={check} chain={recipe.chain} />
+            </div>
+          </details>
           <Offer recipe={recipe} />
         </CardBody>
       </Card>
@@ -577,6 +597,18 @@ function VaultsPanel({
     router.push(`/orders/${encodeURIComponent(placed.order.id)}`);
   }
 
+  const lang = useLang();
+  // A vault bought from a goal goes by that goal, as the portfolio names it; any other by its address.
+  const [records, setRecords] = useState<OrderRecord[]>([]);
+  useEffect(() => setRecords(recallOrders(person.userId)), [person.userId]);
+  const nameOf = (vault: VaultView) => {
+    const joined = goalOfVault(vault, records);
+    return joined
+      ? goalLine(joined.goal.sheet, t, dollars(joined.goal.sheet.amountUsd, lang), (usd) =>
+          dollars(usd, lang),
+        )
+      : v.address(shortAddress(vault.address));
+  };
   const offered = recipe.autoFollow.offered;
   /**
    * The switch an accept asks for: the vault's own, but never on into a portfolio that does not offer
@@ -612,10 +644,14 @@ function VaultsPanel({
                         className={buttonClass({ variant: 'link' })}
                         title={vault.address}
                       >
-                        {v.address(shortAddress(vault.address))}
+                        {nameOf(vault)}
                       </Link>
                       <span className="text-body-sm text-muted-foreground">
-                        {follows ? v.following : v.notFollowing}
+                        {follows
+                          ? v.following
+                          : vault.recipeOnchainId === null
+                            ? v.fromGoal
+                            : v.notFollowing}
                       </span>
                       {follows && (
                         <span className="text-body-sm text-muted-foreground">

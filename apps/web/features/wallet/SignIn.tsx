@@ -77,7 +77,10 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
       await action();
       onSignedIn?.();
     } catch (e) {
-      const said = signInFailure(e, attempt);
+      // A passkey sign-in that failed with nothing more said: no passkey was taken, and the sentence
+      // says that, not "I can't tell why".
+      const read = signInFailure(e, attempt);
+      const said = read === 'other' && attempt === 'passkey-use' ? 'passkeyNotAccepted' : read;
       setFailure(said);
       // Nothing is made because using a passkey failed: the person is offered the button, and asks.
       if (!what.startsWith('wallet:') && offersNewPasskey(said)) setOfferCreate(true);
@@ -282,7 +285,10 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
         </p>
       )}
       {offerCreate && (
-        <div data-ui="create-new-passkey">
+        // Offered, never pushed: it says first what a new passkey is, so nobody who has an account
+        // takes it for the way back in.
+        <div data-ui="create-new-passkey" className="flex flex-col items-start gap-2">
+          <p className="max-w-(--tf-measure-body) text-body-sm">{t.signIn.passkey.createWarning}</p>
           <Button
             busy={busy === 'create'}
             busyLabel={t.signIn.passkey.waiting}

@@ -57,6 +57,8 @@ export const pt: Dictionary = {
       body: 'Você não precisa anotar frase de recuperação. Eu uso a chave de acesso que este aparelho guarda para este site. A carteira que criamos para você só abre com essa chave.',
       continue: 'Continuar com uma chave de acesso',
       createNew: 'Criar uma chave de acesso nova',
+      createWarning:
+        'É sua primeira vez? Uma chave de acesso nova abre uma conta nova, com uma carteira nova e vazia. Ela não abre uma carteira que você já tem.',
       waiting: 'Aguardando sua chave de acesso…',
       making: 'Criando sua carteira…',
     },
@@ -86,10 +88,13 @@ export const pt: Dictionary = {
       passkeyNotCreated:
         'A chave de acesso não foi criada: a janela foi fechada ou o tempo acabou. Nada foi salvo. Tente de novo quando quiser.',
       passkeyNotUsed:
-        'Nenhuma chave de acesso foi usada. Se você criou uma em outro aparelho, use esse aparelho ou escolha “usar um celular” na janela. É novo aqui? Crie uma chave de acesso: ela abre uma conta nova, com uma carteira nova e vazia.',
-      passkeyUnknown: 'Não reconheço essa chave de acesso. Crie uma nova ou conecte uma carteira.',
+        'Nenhuma chave de acesso foi usada. Se você criou uma em outro aparelho, use esse aparelho ou escolha “usar um celular” na janela.',
+      passkeyNotAccepted:
+        'Nenhuma chave de acesso deste site foi aceita, então você não entrou. Tente de novo com a chave com que você se cadastrou, no aparelho que a tem.',
+      passkeyUnknown:
+        'Não reconheço essa chave de acesso: nenhuma conta aqui foi aberta com ela. Tente a chave com que você se cadastrou.',
       passkeyNotRegistered:
-        'Essa chave de acesso não está registrada aqui. Escolha outra ou crie uma.',
+        'Essa chave de acesso não está registrada aqui: ela foi criada para outro site ou aplicativo. Escolha a chave com que você se cadastrou aqui.',
       accountsFull:
         'Este app não está aceitando contas novas agora. Use uma chave de acesso ou carteira com que você já entrou, ou volte mais tarde.',
       notInvited:
@@ -847,6 +852,8 @@ export const pt: Dictionary = {
         `Você tem um cofre na ${chain} que segue este portfólio. Troque para a ${chain} para atualizá-lo lá.`,
       switchTo: (chain: string) => `Trocar para a ${chain}`,
       recipe: (chain: string) => `Na ${chain}`,
+      /** Over the creator's address and the checks, folded away while nothing is wrong. */
+      checks: 'Detalhes: quem publicou e o que foi conferido',
       inEffect: 'Em vigor',
       since: (when: string) => `desde ${when}`,
       waits: (n: number, when: string) => `A versão ${n} entra em vigor em ${when}`,
@@ -923,6 +930,7 @@ export const pt: Dictionary = {
       none: 'Você ainda não tem um cofre nesta rede. Compre este portfólio para abrir um que o segue.',
       following: 'Segue este portfólio',
       notFollowing: 'Segue outra coisa',
+      fromGoal: 'Guarda o plano do seu objetivo',
       followWith: 'Seguir com este cofre',
       followNote:
         'Seu cofre assume os pesos deste portfólio. Nada é negociado nesse passo: você rebalanceia depois, ou o operador faz isso com o seguir automático ativado.',

@@ -12,7 +12,10 @@ import type { Vault } from './portfolio';
 export type VaultGoal = { goal: PlacedGoal; record: OrderRecord };
 
 /** The orders this browser placed into this vault, newest first. */
-export const ordersOfVault = (vault: Vault, records: readonly OrderRecord[]): OrderRecord[] =>
+export const ordersOfVault = (
+  vault: Pick<Vault, 'chain' | 'basketId'>,
+  records: readonly OrderRecord[],
+): OrderRecord[] =>
   records.filter(
     (r) =>
       r.chain === vault.chain &&
@@ -21,7 +24,10 @@ export const ordersOfVault = (vault: Vault, records: readonly OrderRecord[]): Or
   );
 
 /** The goal of the newest of those orders that kept one, or null. */
-export function goalOfVault(vault: Vault, records: readonly OrderRecord[]): VaultGoal | null {
+export function goalOfVault(
+  vault: Pick<Vault, 'chain' | 'basketId'>,
+  records: readonly OrderRecord[],
+): VaultGoal | null {
   for (const record of ordersOfVault(vault, records))
     if (record.goal) return { goal: record.goal, record };
   return null;

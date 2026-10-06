@@ -69,6 +69,9 @@ export const en = {
       continue: 'Continue with a passkey',
       /** After the prompt to use one was closed: makes one, and with it a new account. */
       createNew: 'Create a new passkey',
+      /** Over that button: what a new passkey is, so nobody takes it for the way back in. */
+      createWarning:
+        'New here? A new passkey opens a new account with a new, empty wallet. It doesn’t open a wallet you already have.',
       waiting: 'Waiting for your passkey…',
       making: 'Making your wallet…',
     },
@@ -106,10 +109,15 @@ export const en = {
         'The passkey wasn’t created: the prompt was closed or ran out of time. Nothing was saved. Try again when you’re ready.',
       /** The prompt to use a passkey was closed: nothing is made unless the person asks (SIGN-IN-FLOW). */
       passkeyNotUsed:
-        'No passkey was used. If you made one on another device, use that device or choose “use a phone” in the prompt. New here? Create a passkey: it opens a new account with a new, empty wallet.',
-      passkeyUnknown: 'I don’t know that passkey. Create a new one, or connect a wallet.',
+        'No passkey was used. If you made one on another device, use that device or choose “use a phone” in the prompt.',
+      /** A passkey sign-in that failed with nothing more said: no passkey was taken. */
+      passkeyNotAccepted:
+        'No passkey for this site was accepted, so you aren’t signed in. Try again with the passkey you signed up with, on the device that has it.',
+      passkeyUnknown:
+        'I don’t know that passkey: no account here was opened with it. Try the one you signed up with.',
       /** Privy's `passkey_not_registered`: the passkey picked was made for another site or app. */
-      passkeyNotRegistered: 'That passkey isn’t registered here. Pick another, or create one.',
+      passkeyNotRegistered:
+        'That passkey isn’t registered here: it was made for another site or app. Pick the one you signed up with here.',
       /** Privy's `max_accounts_reached`. */
       accountsFull:
         'This app can’t take new accounts right now. Use a passkey or wallet you’ve signed in with before, or come back later.',
@@ -917,6 +925,8 @@ export const en = {
         `You have a vault on ${chain} that follows this portfolio. Switch to ${chain} to update it there.`,
       switchTo: (chain: string) => `Switch to ${chain}`,
       recipe: (chain: string) => `On ${chain}`,
+      /** Over the creator's address and the checks, folded away while nothing is wrong. */
+      checks: 'Details: who published it, and what was checked',
       inEffect: 'In effect',
       since: (when: string) => `since ${when}`,
       waits: (n: number, when: string) => `Version ${n} takes effect on ${when}`,
@@ -993,6 +1003,8 @@ export const en = {
       none: 'You have no vault on this chain yet. Buy this portfolio to open one that follows it.',
       following: 'Follows this portfolio',
       notFollowing: 'Follows something else',
+      /** A vault bought from a goal: it holds that plan, and follows no shared portfolio. */
+      fromGoal: 'Holds the plan of your goal',
       followWith: 'Follow with this vault',
       followNote:
         'Your vault takes this portfolio’s weights. Nothing is traded in that step: you rebalance after, or the keeper does with auto-follow on.',

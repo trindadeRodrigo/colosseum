@@ -8,7 +8,9 @@ import { parse } from '../../components/ui/test/html';
 import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
-import { recallOrder } from '../order/order-record';
+import { keepOrder, recallOrder } from '../order/order-record';
+import { basketOfPlan } from '../order/readiness';
+import { PLAN_ID, planOn, recordOf } from '../order/test/fixtures';
 import { EMBEDDED, fakePort, json, signedInPort } from '../wallet/test/fake-port';
 import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
@@ -321,6 +323,45 @@ describe('a portfolio’s page (gate GOLD-ONE-TAP)', () => {
     expect(host.querySelector('[data-ui="vaults-elsewhere"]')).toBeNull();
   });
 
+  it('folds who published it and the checks under "Details" while nothing is wrong', async () => {
+    api({ family: familyOf(FAMILY_ID) });
+    const host = await show(createElement(FamilyScreen, { slug: SLUG }));
+    const checks = find(host, '[data-ui="recipe-checks"]');
+    expect(find(checks, 'summary').textContent).toBe(en.shared.family.checks);
+    // nothing to act on: folded, with the creator's address and the marks inside it
+    expect(checks.hasAttribute('open')).toBe(false);
+    expect(checks.querySelector('[data-ui="creator"]')).not.toBeNull();
+    expect(checks.querySelector('[data-ui="source-mark"]')).not.toBeNull();
+  });
+
+  it('names a vault bought from a goal by that goal, and says it holds that plan', async () => {
+    const plan = planOn();
+    keepOrder(
+      recordOf('solana', {
+        userId: USER,
+        goal: {
+          sheet: plan.proposal.sheet,
+          card: plan.proposal.card,
+          verdict: null,
+          placedAt: '2026-10-01T00:00:00Z',
+        },
+      }),
+    );
+    api({
+      family: familyOf(FAMILY_ID),
+      vaults: [
+        vaultOf({ address: MY_VAULT, basketId: basketOfPlan(PLAN_ID), recipeOnchainId: null }),
+      ],
+    });
+    const host = await show(createElement(FamilyScreen, { slug: SLUG }));
+    const mine = find(host, '[data-ui="my-vault"]');
+    expect(find(mine, 'a').textContent).toBe('Grow $40,000 over 36 months.');
+    expect(mine.textContent).toContain(en.shared.vaults.fromGoal);
+    expect(mine.textContent).not.toContain(en.shared.vaults.notFollowing);
+    // the address is still there for whoever asks
+    expect(find(mine, 'a').getAttribute('title')).toBe(MY_VAULT);
+  });
+
   it('says nothing of a vault on another chain that follows something else', async () => {
     api({
       chain: 'robinhood',
@@ -557,7 +598,8 @@ describe('a vault’s public page', () => {
     expect(cells.slice(3)).toEqual(['65%', '65%', '0%']);
     expect(host.textContent).toContain('$10.00');
     expect(host.textContent).not.toContain('0.00837024899664214');
-    // the sign-in settling does not read it again
+    // read once (the fetch here is one function throughout, so this does not show the screen
+    // ignoring a fetch that changes when the sign-in settles: that is VaultScreen's `call` ref)
     await act(async () => portStore.set(signedInPort(EMBEDDED, { userId: USER })));
     await settle(50);
     expect(asked.filter((p) => p.startsWith('/v1/vaults/'))).toHaveLength(1);

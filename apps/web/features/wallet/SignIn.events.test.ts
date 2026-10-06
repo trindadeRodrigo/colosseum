@@ -125,12 +125,44 @@ describe('the sign-in panel: two ways in, one button each', () => {
     },
   );
 
-  it('says a closed prompt in words that point to another device, a phone, and a new account', () => {
+  it('says a closed prompt in words that point to another device and a phone, and never to a new passkey', () => {
     for (const lang of ['en', 'pt'] as const) {
       const sentence = dictionary(lang).signIn.failure.passkeyNotUsed;
       expect(sentence).toMatch(lang === 'en' ? /another device/ : /outro aparelho/);
       expect(sentence).toMatch(lang === 'en' ? /use a phone/ : /usar um celular/);
-      expect(sentence).toMatch(lang === 'en' ? /new account/ : /conta nova/);
+      expect(sentence).not.toMatch(/create|crie/i);
+    }
+  });
+
+  it('never gives "Create a new passkey" as the fix: the offer says first that it is a new, empty wallet', async () => {
+    for (const lang of ['en', 'pt'] as const) {
+      const t = dictionary(lang).signIn;
+      // no failure sentence of a passkey tells the person to make one
+      for (const key of [
+        'passkeyNotUsed',
+        'passkeyNotAccepted',
+        'passkeyUnknown',
+        'passkeyNotRegistered',
+      ] as const)
+        expect(t.failure[key], key).not.toMatch(/create|crie|criar/i);
+      portStore.set(
+        fakePort({
+          found: FOUND,
+          signIn: vi.fn(async () => {
+            throw THROWN.strange;
+          }),
+        }),
+      );
+      const host = await screen(lang);
+      await click(button(host, t.passkey.continue));
+      expect(alert(host)).toBe(t.failure.passkeyNotAccepted);
+      expect(alert(host)).not.toBe(t.failure.other);
+      const offer = find(host, '[data-ui="create-new-passkey"]');
+      // the warning comes before the button
+      expect(offer.firstElementChild?.textContent).toBe(t.passkey.createWarning);
+      expect(t.passkey.createWarning).toMatch(lang === 'en' ? /new, empty wallet/ : /nova e vazia/);
+      expect(find(offer, 'button').className).not.toContain('bg-primary');
+      await unmountAll();
     }
   });
 
@@ -344,7 +376,9 @@ describe('the sign-in panel: every failure is a sentence a person can act on', (
     ['wallet sign-in is not enabled for the app', THROWN.off, 'wallet', 'walletOff'],
     ['the provider asks for fewer requests', THROWN.tooMany, 'passkey', 'tooMany'],
     ['the provider cannot be reached', THROWN.offline, 'wallet', 'offline'],
-    ['something nobody foresaw is thrown', THROWN.strange, 'passkey', 'other'],
+    // with a passkey, a failure nobody foresaw is said as what it is: no passkey was taken
+    ['something nobody foresaw is thrown', THROWN.strange, 'passkey', 'passkeyNotAccepted'],
+    ['something nobody foresaw is thrown by a wallet', THROWN.strange, 'wallet', 'other'],
   ];
 
   describe.each(['en', 'pt'] as const)('in %s', (lang) => {
