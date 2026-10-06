@@ -68,7 +68,11 @@ beforeAll(async () => {
   issuer = await testIssuer('mcp');
   data = await testDb();
   undo.push(() => data.cleanUp());
-  ({ app, registry } = await testApp({ issuer: issuer.issuer, db: data.db }));
+  ({ app, registry } = await testApp({
+    issuer: issuer.issuer,
+    db: data.db,
+    env: { AGENT_SURFACE: 'on' },
+  }));
   undo.push(() => app.close());
 });
 afterAll(async () => {
