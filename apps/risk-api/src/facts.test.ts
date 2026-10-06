@@ -13,7 +13,7 @@ import {
   roundTripCost,
 } from '@colosseum/risk';
 import { AssetFacts, collectFacts } from '@colosseum/schemas';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildRiskApp } from './app';
 
@@ -22,8 +22,10 @@ import { buildRiskApp } from './app';
 // with provenance 'fixture' and tier X (never listed), and removed afterwards.
 const MINT = 'FIXTUREfactsMint1111111111111111111111111111';
 const POOL = 'FIXTUREfactsPool1111111111111111111111111111';
-/** A second pool of the asset with no risk_pools row: its venue and quote come from its own flow rows (RU.14). */
+/** A second pool with a risk_pools row and its own venue and quote on the flow rows: the row's own win (RU.14). */
 const POOL2 = 'FIXTUREfactsPool2222222222222222222222222222';
+/** A third pool with no risk_pools row at all, and no quote symbol: the sheet falls back to the quote mint. */
+const POOL3 = 'FIXTUREfactsPool3333333333333333333333333333';
 const SYMBOL = 'FIXTUREFACTS';
 const syn = JSON.parse(readFileSync('fixtures/risk/curves-synthetic.json', 'utf8')).spyx as Record<
   Regime,
@@ -130,28 +132,80 @@ beforeAll(async () => {
       })),
     )
     .onConflictDoNothing();
+  await db
+    .insert(riskPoolFlow)
+    .values(
+      flowRows.map((g) => ({
+        pool: POOL3,
+        assetMint: MINT,
+        assetSymbol: SYMBOL,
+        regime: g.regime,
+        window: g.window,
+        // an empty pool: the asset's sums stay the first pool's
+        swaps: 0,
+        sellSwaps: 0,
+        buySwaps: 0,
+        unpricedSwaps: 0,
+        sellUsd: 0,
+        buyUsd: 0,
+        hours: 0,
+        medianDepthSellUsd: null,
+        dataFrom: new Date(g.from),
+        dataTo: new Date(g.to),
+        methodVersion: FLOW_METHOD_VERSION,
+        venue: 'uniswap-v3',
+        quoteSymbol: null,
+        quoteMint: '0xabc0000000000000000000000000000000000abc',
+        source: 'fixture flow rows',
+        method: 'fixture',
+        fetchedAt: new Date(),
+        provenance: 'fixture' as const,
+      })),
+    )
+    .onConflictDoNothing();
   const now = new Date();
   await db
     .insert(riskPools)
-    .values({
-      address: POOL,
-      program: 'fixture',
-      venue: 'fixture',
-      assetMint: MINT,
-      assetSymbol: SYMBOL,
-      quoteMint: 'fixture',
-      exitPath: 'direct_usd',
-      assetIsToken0: 1,
-      decimals0: 8,
-      decimals1: 6,
-      tier: 'X',
-      status: 'fixture',
-      methodVersion: 'fixture',
-      source: 'fixtures/risk/curves-synthetic.json',
-      method: 'fixture',
-      fetchedAt: now,
-      provenance: 'fixture',
-    })
+    .values([
+      {
+        address: POOL,
+        program: 'fixture',
+        venue: 'fixture',
+        assetMint: MINT,
+        assetSymbol: SYMBOL,
+        quoteMint: 'fixture',
+        exitPath: 'direct_usd',
+        assetIsToken0: 1,
+        decimals0: 8,
+        decimals1: 6,
+        tier: 'X',
+        status: 'fixture',
+        methodVersion: 'fixture',
+        source: 'fixtures/risk/curves-synthetic.json',
+        method: 'fixture',
+        fetchedAt: now,
+        provenance: 'fixture',
+      },
+      {
+        address: POOL2,
+        program: 'fixture',
+        venue: 'fixture',
+        assetMint: MINT,
+        assetSymbol: SYMBOL,
+        quoteMint: 'fixture',
+        exitPath: 'direct_usd',
+        assetIsToken0: 1,
+        decimals0: 8,
+        decimals1: 6,
+        tier: 'X',
+        status: 'fixture',
+        methodVersion: 'fixture',
+        source: 'fixtures/risk/curves-synthetic.json',
+        method: 'fixture',
+        fetchedAt: now,
+        provenance: 'fixture',
+      },
+    ])
     .onConflictDoNothing();
   for (const [side, curves] of [
     ['sell', sell],
@@ -183,7 +237,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.delete(riskPoolFlow).where(eq(riskPoolFlow.assetMint, MINT));
   await db.delete(riskDepthCurves).where(eq(riskDepthCurves.assetMint, MINT));
-  await db.delete(riskPools).where(eq(riskPools.address, POOL));
+  await db.delete(riskPools).where(inArray(riskPools.address, [POOL, POOL2]));
   await client.end();
 });
 
@@ -268,10 +322,15 @@ describe('GET /risk/facts/assets/:id', () => {
       regime: 'weekend',
       detail: '3 priced swaps (0 unpriced), 8 needed',
     });
-    // the first pool's venue and quote come from risk_pools, the second's from its own rows (no risk_pools row)
-    expect(flow?.byPool).toHaveLength(2);
-    expect(flow?.byPool[0]).toMatchObject({ pool: POOL, venue: 'fixture', quote: 'fixture' });
-    expect(flow?.byPool[1]).toMatchObject({ pool: POOL2, venue: 'uniswap-v4', quote: 'USDG' });
+    // venue and quote: the flow row's own first, risk_pools' second, the quote mint when there is no symbol
+    expect(flow?.byPool).toHaveLength(3);
+    expect(flow?.byPool[0]).toMatchObject({ pool: POOL, venue: 'fixture', quote: 'fixture' }); // risk_pools only
+    expect(flow?.byPool[1]).toMatchObject({ pool: POOL2, venue: 'uniswap-v4', quote: 'USDG' }); // both: own wins
+    expect(flow?.byPool[2]).toMatchObject({
+      pool: POOL3,
+      venue: 'uniswap-v3',
+      quote: '0xabc0000000000000000000000000000000000abc',
+    }); // own only, no symbol
     expect(flow?.holders.top10Share).toMatchObject({ value: null, reason: 'not_collected' });
     await app.close();
   });
