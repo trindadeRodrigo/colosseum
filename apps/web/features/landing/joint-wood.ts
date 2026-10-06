@@ -61,6 +61,7 @@ export const HARDWOOD: Species = {
 export type Shared = {
   uRail: { value: number };
   uPin: { value: number };
+  uLower: { value: number };
   uAo: { value: number };
   uGrain: { value: number };
   uFrame: { value: number };
@@ -72,6 +73,7 @@ export function sharedUniforms(): Shared {
   return {
     uRail: { value: 0 },
     uPin: { value: 0 },
+    uLower: { value: 0 },
     uAo: { value: 1 },
     uGrain: { value: 0.012 },
     uFrame: { value: 0 },
@@ -91,7 +93,7 @@ type Cut = {
   seed: number;
   /** The piece's own origin in the assembly, mm, apart from the shared motion. */
   origin: Vector3;
-  moves: 'none' | 'rail' | 'pin';
+  moves: 'none' | 'rail' | 'pin' | 'lower';
 };
 
 /** A number as a GLSL float literal. */
@@ -116,6 +118,7 @@ uniform vec3 uOrigin;
 uniform float uMoves;
 uniform float uRail;
 uniform float uPin;
+uniform float uLower;
 uniform float uAo;
 uniform float uGrain;
 uniform float uFrame;
@@ -153,8 +156,8 @@ float sdBox(vec3 p, vec3 b) {
   vec3 q = abs(p) - b;
   return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
 }
-float sdCylZ(vec3 p, float r, float h) {
-  vec2 d = vec2(length(p.xy) - r, abs(p.z) - h);
+float sdCylY(vec3 p, float r, float h) {
+  vec2 d = vec2(length(p.xz) - r, abs(p.y) - h);
   return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
 }
 float sdJoint(vec3 p) {
@@ -168,10 +171,13 @@ float sdJoint(vec3 p) {
   float tenon = max(
     sdBox(p - vec3(sx + ${f(MM.tenon.len / 2)}, 0.0, 0.0),
           vec3(${f(MM.tenon.len / 2)}, ${f(MM.tenon.h / 2)}, ${f(MM.tenon.w / 2)})),
-    -(length(p.xy - vec2(sx + ${f(MM.pin.at)}, 0.0)) - ${f(MM.hole.d / 2)}));
-  vec3 pc = vec3(${f(-MM.post.w / 2 + MM.pin.at)}, 0.0, uPin);
-  float pin = sdCylZ(p - pc, ${f(MM.pin.d / 2)}, ${f(MM.pin.len / 2)});
-  return min(min(post, body), min(tenon, pin));
+    -(length(p.xz - vec2(sx + ${f(MM.pin.at)}, 0.0)) - ${f(MM.hole.d / 2)}));
+  vec3 pc = vec3(${f(-MM.post.w / 2 + MM.pin.at)} - uRail, uPin, 0.0);
+  float pin = sdCylY(p - pc, ${f(MM.pin.d / 2)}, ${f(MM.pin.len / 2)});
+  float lower = sdBox(
+    p - vec3(0.0, ${f(MM.lower.y)}, ${f(MM.post.w / 2 + MM.lower.len / 2)} + uLower),
+    vec3(${f(MM.lower.w / 2)}, ${f(MM.lower.h / 2)}, ${f(MM.lower.len / 2)}));
+  return min(min(post, body), min(min(tenon, pin), lower));
 }
 float jointAo(vec3 p, vec3 n) {
   float occ = 0.0;
@@ -260,7 +266,7 @@ export function woodMaterial(species: Species, cut: Cut, shared: Shared, worldPe
     uRoughSide: { value: species.roughSide },
     uRoughEnd: { value: species.roughEnd },
     uOrigin: { value: cut.origin.clone() },
-    uMoves: { value: cut.moves === 'rail' ? 1 : cut.moves === 'pin' ? 2 : 0 },
+    uMoves: { value: ['none', 'rail', 'pin', 'lower'].indexOf(cut.moves) },
     uWorldPerMM: { value: worldPerMM },
   };
   material.onBeforeCompile = (shader) => {
@@ -301,7 +307,9 @@ export function woodMaterial(species: Species, cut: Cut, shared: Shared, worldPe
         /* glsl */ `#include <aomap_fragment>
   {
     vec3 at = vLocal + uOrigin
-      + (uMoves == 1.0 ? vec3(-uRail, 0.0, 0.0) : uMoves == 2.0 ? vec3(0.0, 0.0, uPin) : vec3(0.0));
+      + (uMoves == 1.0 ? vec3(-uRail, 0.0, 0.0)
+        : uMoves == 2.0 ? vec3(-uRail, uPin, 0.0)
+        : uMoves == 3.0 ? vec3(0.0, 0.0, uLower) : vec3(0.0));
     float ao = mix(1.0, jointAo(at, normalize(vLocalN)), uAo);
     reflectedLight.indirectDiffuse *= ao;
     reflectedLight.indirectSpecular *= ao * ao;

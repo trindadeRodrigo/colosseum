@@ -1,24 +1,27 @@
 import { type BufferGeometry, ExtrudeGeometry, Path, Shape } from 'three';
 
-// The pinned through-tenon (J1 in imagery-style.md), modelled once in millimetres with his
-// proportions: a 45 × 45 hinoki post, a 45 × 60 hardwood rail whose tenon is a third of the rail's
-// thickness and two thirds of its height (logo-directions.md, 7 : 3 : 2), through the post and 60 mm
-// out the far side, and a hinoki pin across the tenon's nose, offset toward the end grain as the logo
-// draws it. Every outside edge carries a small chamfer; the mortise and the pin hole are real
-// cavities, cut with 0.1 mm of clearance a side so the seated joint shows no gap.
+// The pinned through-tenon of his hero (hero-3d.html, `initScene`; J1 in imagery-style.md), modelled
+// once in millimetres at the size of his prototype (one of its units is 15 mm): a 45 × 45 hinoki post
+// with a through-mortise, a 45 × 45 hardwood rail whose tenon passes through it and stands 31.5 mm
+// proud of the far face, a hinoki pin (Ø 9, his spec) dropped through the tenon's nose, and the lower
+// hinoki member of his corner, set against the post below. Every outside edge carries a small
+// chamfer; the mortise and the pin hole are real cavities, cut with 0.1 mm of clearance a side so the
+// seated joint shows no gap.
 //
 // Axes of the assembly: y up the post, x along the rail (the rail comes in from -x and its tenon
-// leaves the post at +x), z along the pin.
+// leaves the post at +x), z along the lower member, toward the camera.
 
 export const MM = {
-  post: { w: 45, top: 170, bottom: -900 },
-  mortise: { w: 15.2, h: 40.2 },
-  rail: { w: 45, h: 60, len: 380 },
-  /** Measured from the rail's shoulder: 45 through the post, 60 out the far face. */
-  tenon: { w: 15, h: 40, len: 105 },
-  /** `at` is the pin's centre, from the shoulder: 35 mm past the post, 25 from the end grain. */
-  pin: { d: 14, len: 38, at: 80 },
-  hole: { d: 14.2 },
+  post: { w: 45, top: 105, bottom: -105 },
+  mortise: { w: 18.2, h: 24.2 },
+  rail: { w: 45, h: 45, len: 180 },
+  /** Measured from the rail's shoulder: 45 through the post, 31.5 out the far face. */
+  tenon: { w: 18, h: 24, len: 76.5 },
+  /** `at` is the pin's centre, from the shoulder: midway along the nose. The pin stands upright. */
+  pin: { d: 9, len: 51, at: 60.75 },
+  hole: { d: 9.2 },
+  /** The lower member: its axis 78 mm below the rail's, from the post's front face toward the camera. */
+  lower: { w: 45, h: 45, len: 150, y: -78 },
   chamfer: 0.8,
 } as const;
 
@@ -110,24 +113,35 @@ export function railBodyGeometry(len: number = MM.rail.len) {
   return prism(rect(-len, 0, -h / 2, h / 2, ALL), w);
 }
 
-/** The tenon from just inside the shoulder to its end grain, with the pin's hole across it. */
+/** The tenon from just inside the shoulder to its end grain, with the pin's hole down through it. */
 export function tenonGeometry() {
   const { w, h, len } = MM.tenon;
-  const s = rect(-2, len, -h / 2, h / 2, [false, true, true, false]);
+  // drawn in plan (x along the rail, the shape's y across it) and pushed down through its height
+  const s = rect(-2, len, -w / 2, w / 2, [false, true, true, false]);
   const hole = new Path();
   hole.absarc(MM.pin.at, 0, MM.hole.d / 2, 0, Math.PI * 2, true);
   s.holes.push(hole);
-  const geo = prism(s, w);
+  const geo = prism(s, h);
   smoothRound(geo, MM.pin.at, 0, MM.hole.d / 2);
+  geo.rotateX(Math.PI / 2);
   return geo;
 }
 
-/** The pin, a round dowel lying along z, chamfered at both ends. */
+/** The pin, a round dowel standing on y, chamfered at both ends. */
 export function pinGeometry() {
   const r = MM.pin.d / 2;
   const s = new Shape();
   s.absarc(0, 0, r, 0, Math.PI * 2, false);
-  const geo = prism(s, MM.pin.len, 1);
+  const geo = prism(s, MM.pin.len, 0.6);
   smoothRound(geo, 0, 0, r);
+  geo.rotateX(Math.PI / 2);
+  return geo;
+}
+
+/** The lower member of his corner, its end against the post's front face, running toward the camera. */
+export function lowerGeometry() {
+  const { w, h, len, y } = MM.lower;
+  const geo = prism(rect(-w / 2, w / 2, -h / 2, h / 2, ALL), len);
+  geo.translate(0, y, MM.post.w / 2 + len / 2);
   return geo;
 }

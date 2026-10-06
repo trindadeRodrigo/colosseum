@@ -37,8 +37,8 @@ const landing = async (lang: Lang = 'en') => {
 /** The probe's WebGL context, let go once the stage knows WebGL is there. */
 const released = vi.fn();
 
-/** What the browser says about reduced motion, WebGL and saving data, for one test. */
-function browser({ reduce = false, webgl = false, saveData = false } = {}) {
+/** What the browser says about reduced motion, WebGL, its renderer and saving data, for one test. */
+function browser({ reduce = false, webgl = false, saveData = false, gpu = 'Apple M1' } = {}) {
   Object.defineProperty(navigator, 'connection', { value: { saveData }, configurable: true });
   vi.spyOn(window, 'matchMedia').mockImplementation(
     (query: string) =>
@@ -52,7 +52,10 @@ function browser({ reduce = false, webgl = false, saveData = false } = {}) {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
     () =>
       (webgl
-        ? ({ getExtension: () => ({ loseContext: released }) } as unknown as RenderingContext)
+        ? ({
+            getExtension: () => ({ loseContext: released, UNMASKED_RENDERER_WEBGL: 0x9246 }),
+            getParameter: () => gpu,
+          } as unknown as RenderingContext)
         : null) as never,
   );
 }
@@ -130,6 +133,16 @@ describe('the hero', () => {
     const stills = [...host.querySelectorAll('.sticky [data-ui="joint-still"]')];
     expect(stills.map((s) => s.getAttribute('data-seated'))).toEqual(['false', 'true']);
     expect(host.querySelector('.sticky [data-ui="joint-drawing"]')).toBeNull();
+  });
+
+  it('shows the stills, and loads no scene, where WebGL is only a software rasteriser', async () => {
+    browser({
+      webgl: true,
+      gpu: 'ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device), SwiftShader driver)',
+    });
+    const host = await landing();
+    expect(scene.create).not.toHaveBeenCalled();
+    expect(host.querySelectorAll('.sticky [data-ui="joint-still"]')).toHaveLength(2);
   });
 
   it('falls back to the stills when the scene cannot start', async () => {

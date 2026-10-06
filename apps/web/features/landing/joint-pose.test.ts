@@ -15,19 +15,21 @@ describe('the pose of the joint', () => {
   });
 
   it('is apart at the hero, seated and pinned at step 03', () => {
-    expect(poseAt(0).rail).toBeGreaterThan(MM.tenon.len);
-    expect(poseAt(0).pin).toBeGreaterThan(MM.tenon.w);
-    expect(poseAt(1)).toEqual({ rail: 0, pin: 0 });
+    // the tenon's tip clear of the mortise, the pin clear of the tenon, the lower member off the post
+    expect(poseAt(0).rail).toBeGreaterThan(MM.tenon.len - MM.post.w);
+    expect(poseAt(0).pin).toBeGreaterThan((MM.pin.len + MM.tenon.h) / 2);
+    expect(poseAt(0).lower).toBeGreaterThan(0);
+    expect(poseAt(1)).toEqual({ rail: 0, lower: 0, pin: 0 });
   });
 
-  it('only ever closes: the rail and the pin never back out or pass their seat', () => {
+  it('only ever closes: no piece backs out or passes its seat', () => {
     let last = poseAt(0);
     for (const p of steps(2000)) {
       const now = poseAt(p);
-      expect(now.rail, `p = ${p}`).toBeLessThanOrEqual(last.rail + 1e-9);
-      expect(now.pin, `p = ${p}`).toBeLessThanOrEqual(last.pin + 1e-9);
-      expect(now.rail).toBeGreaterThanOrEqual(0);
-      expect(now.pin).toBeGreaterThanOrEqual(0);
+      for (const piece of ['rail', 'lower', 'pin'] as const) {
+        expect(now[piece], `${piece} at p = ${p}`).toBeLessThanOrEqual(last[piece] + 1e-9);
+        expect(now[piece]).toBeGreaterThanOrEqual(0);
+      }
       last = now;
     }
   });
@@ -61,20 +63,21 @@ describe('the cut of the joint', () => {
     expect((MM.hole.d - MM.pin.d) / 2).toBeCloseTo(0.1);
   });
 
-  it('keeps his proportions: post 45, rail 45 × 60, the tenon a third thick and two thirds high', () => {
+  it('keeps the sizes of his prototype: post and rail 45 × 45, the tenon 24 high and 18 thick', () => {
     expect(MM.post.w).toBe(45);
-    expect([MM.rail.w, MM.rail.h]).toEqual([45, 60]);
-    expect(MM.tenon.w).toBe(MM.rail.w / 3);
-    expect(MM.tenon.h / MM.rail.h).toBeCloseTo(2 / 3);
+    expect(MM.post.top - MM.post.bottom).toBe(210);
+    expect([MM.rail.w, MM.rail.h]).toEqual([45, 45]);
+    expect([MM.tenon.h, MM.tenon.w]).toEqual([24, 18]);
+    expect(MM.pin.d).toBe(9);
   });
 
-  it('puts the pin through the nose, nearer the end grain than the post, as the logo draws it', () => {
-    const nose = MM.tenon.len - MM.post.w;
+  it('drops the pin through the tenon where it stands proud of the post, with wood on every side', () => {
     const fromPost = MM.pin.at - MM.post.w;
     const fromEnd = MM.tenon.len - MM.pin.at;
-    expect(fromPost - MM.pin.d / 2).toBeGreaterThan(0);
-    expect(fromEnd - MM.pin.d / 2).toBeGreaterThan(0);
-    expect(fromEnd).toBeLessThan(fromPost);
-    expect(fromPost + fromEnd).toBe(nose);
+    expect(fromPost - MM.hole.d / 2).toBeGreaterThan(0);
+    expect(fromEnd - MM.hole.d / 2).toBeGreaterThan(0);
+    expect((MM.tenon.w - MM.hole.d) / 2).toBeGreaterThan(4);
+    // and it stands out above and below the tenon once it is home
+    expect(MM.pin.len).toBeGreaterThan(MM.tenon.h);
   });
 });

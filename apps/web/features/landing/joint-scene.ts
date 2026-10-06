@@ -1,10 +1,10 @@
 import {
   AgXToneMapping,
   Color,
+  DirectionalLight,
   Group,
   Mesh,
   MeshBasicMaterial,
-  PCFShadowMap,
   PerspectiveCamera,
   PlaneGeometry,
   PMREMGenerator,
@@ -14,16 +14,25 @@ import {
   type Texture,
   Vector2,
   Vector3,
+  VSMShadowMap,
   WebGLRenderer,
 } from 'three';
-import { MM, pinGeometry, postGeometry, railBodyGeometry, tenonGeometry } from './joint-geometry';
+import {
+  lowerGeometry,
+  MM,
+  pinGeometry,
+  postGeometry,
+  railBodyGeometry,
+  tenonGeometry,
+} from './joint-geometry';
 import { poseAt } from './joint-pose';
 import { HARDWOOD, HINOKI, sharedUniforms, woodMaterial } from './joint-wood';
 
-// The through-tenon of his hero (joint-stage.md, imagery-style.md §2), set up as he would photograph
-// it: a pale post with a real mortise, a dark rail whose tenon slides through it and seats, and a pale
-// pin driven across the tenon's nose last. One small softbox high on the left with a grid, a fill card
-// on the right three stops under, no rim; a long lens from about 30° above. The pose is a function of
+// The through-tenon of his hero (joint-stage.md, imagery-style.md §2), in his composition and lit as
+// he would photograph it: a pale post with a real mortise, a dark rail whose tenon slides through it
+// and seats, the pale lower member set against the post, and a pale pin dropped through the tenon's
+// nose last. One softbox high on the left, a fill card on the right three stops under, and his faint
+// warm rim from behind. The pose is a function of
 // the reader's progress through the three steps and nothing else, and a frame is drawn only while it
 // moves. Loaded only when the stage is near, motion is allowed and WebGL is there (JointStage.tsx).
 // Nothing is downloaded but this module: the wood and the room are computed.
@@ -46,33 +55,33 @@ export type SceneOptions = {
   still?: boolean;
 };
 
-/** World units per millimetre: the joint is modelled in mm and drawn at a tenth of a metre a unit. */
-const S = 0.01;
-const deg = Math.PI / 180;
-
 /**
- * The camera's bearing: 35° round from the rail's axis toward the pin's, 30° above, on a long lens
- * (imagery-style.md). The rail runs back to the upper left as the logo draws it, the tenon comes
- * through toward the camera, and the face the pin goes into is the one the key lights.
+ * His prototype's world (hero-3d.html, `initScene`): one unit is 15 mm, the camera at (14, 17, 24) with
+ * a 30° lens looking at the origin, and the joint turned (0.12, −0.62, 0) and set to the right of the
+ * copy. His framing is kept as he drew it, step for step; only the materials and the light are new.
  */
-const VIEW = { azimuth: 35 * deg, elevation: 30 * deg, fov: 15 };
-/** Which way along z the pin stands off before it is driven: away from the camera. */
-const FAR = VIEW.azimuth > 0 ? -1 : 1;
+const S = 1 / 15;
+const deg = Math.PI / 180;
+const CAMERA = new Vector3(14, 17, 24);
+const FOV = 30;
+const TURN = { x: 0.12, y: -0.62 };
+/** Where the joint stands: beside the copy on a wide screen, above it on a phone (his `layout`). */
+const PLACE = {
+  wide: { x: 4.6, y: -0.55, z: -2.76, scale: 1 },
+  narrow: { x: 0.4, y: 2.7, z: 0, scale: 0.5 },
+  still: { x: 1.9, y: 1.3, z: 0, scale: 0.64 },
+};
 
 type Mood = {
   exposure: number;
-  key: {
-    color: number;
-    intensity: number;
-    azimuth: number;
-    elevation: number;
-    radius: number;
-    /** How far the softbox is from the joint, in world units (a tenth of a metre). */
-    distance: number;
-  };
-  /** The softbox, the fill card and the room as the environment sees them. */
+  /** The key: a softbox under a grid, high on the left, close enough that its light falls off. */
+  key: { color: number; intensity: number; dir: Vector3; radius: number; angle: number };
+  /** His faint warm rim from behind on the right, so the far edges part from the ground. */
+  rim: { color: number; intensity: number };
+  /** The softbox, the fill card and the rim strip as the room shows them in reflections. */
   box: { color: number; strength: number; w: number; h: number };
-  fill: { color: number; strength: number; azimuth: number };
+  fill: { color: number; strength: number };
+  strip: number;
   room: number;
   env: number;
   ao: number;
@@ -82,21 +91,35 @@ type Mood = {
   saturation: number;
 };
 
-// Black: a 3,400 K softbox high on the left, a neutral card on the right three stops under, no rim, a
-// black room. Paper: a large 5,200 K diffuser overhead and a weak bounce, a pale room.
+/** The key's distance from the joint, in units: about 0.9 m, as his photograph's softbox stood. */
+const KEY_DISTANCE = 60;
+const toCamera = CAMERA.clone().normalize();
+/** Camera right, low: where the fill card stands. */
+const FILL_DIR = new Vector3()
+  .crossVectors(new Vector3(0, 1, 0), toCamera)
+  .negate()
+  .multiplyScalar(0.9)
+  .addScaledVector(toCamera, 0.45)
+  .setY(0.12)
+  .normalize();
+const RIM_DIR = new Vector3(10, 4, -8).normalize();
+
+// Black: a 3,400 K softbox high on the left, a neutral card on the right three stops under, his faint
+// warm rim, a black room. Paper: a large 5,200 K diffuser overhead and a weak bounce, a pale room.
 const MOODS: Record<'dark' | 'light', Mood> = {
   dark: {
     exposure: 1.05,
     key: {
       color: 0xffd2a6,
-      intensity: 420,
-      azimuth: 45 * deg,
-      elevation: 50 * deg,
-      radius: 10,
-      distance: 9,
+      intensity: 5.4 * KEY_DISTANCE ** 2,
+      dir: new Vector3(-9, 14, 10).normalize(),
+      radius: 5,
+      angle: 22 * deg,
     },
+    rim: { color: 0xffd9a8, intensity: 2.4 },
     box: { color: 0xffd2a6, strength: 7, w: 3, h: 6 },
-    fill: { color: 0xfff4e8, strength: 0.18, azimuth: -70 * deg },
+    fill: { color: 0xfff4e8, strength: 0.2 },
+    strip: 4,
     room: 0x050403,
     env: 0.45,
     ao: 1,
@@ -108,16 +131,17 @@ const MOODS: Record<'dark' | 'light', Mood> = {
     exposure: 0.8,
     key: {
       color: 0xfff3e4,
-      intensity: 1900,
-      azimuth: 42 * deg,
-      elevation: 62 * deg,
-      radius: 14,
-      distance: 14,
+      intensity: 6.2 * KEY_DISTANCE ** 2,
+      dir: new Vector3(-5, 14, 6).normalize(),
+      radius: 8,
+      angle: 34 * deg,
     },
+    rim: { color: 0xfff3e4, intensity: 0.5 },
     box: { color: 0xfff3e4, strength: 1.1, w: 8, h: 8 },
-    fill: { color: 0xfff6ec, strength: 1.1, azimuth: -70 * deg },
-    room: 0x4a443c,
-    env: 0.3,
+    fill: { color: 0xfff6ec, strength: 2 },
+    strip: 0.6,
+    room: 0x5a5349,
+    env: 0.45,
     ao: 1,
     grain: 0.01,
     curve: 0.4,
@@ -126,16 +150,6 @@ const MOODS: Record<'dark' | 'light', Mood> = {
 };
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
-
-/** A direction at a bearing from the camera's own (positive turns to the camera's left). */
-function bearing(azimuthFromCamera: number, elevation: number) {
-  const a = VIEW.azimuth + azimuthFromCamera;
-  return new Vector3(
-    Math.cos(a) * Math.cos(elevation),
-    Math.sin(elevation),
-    Math.sin(a) * Math.cos(elevation),
-  );
-}
 
 function isDark() {
   return getComputedStyle(document.documentElement).colorScheme.includes('dark');
@@ -158,10 +172,11 @@ export function createJointScene(
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = AgXToneMapping;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = PCFShadowMap;
+  // variance shadows: a soft, even penumbra with no dither pattern at the edges
+  renderer.shadowMap.type = VSMShadowMap;
 
   const scene = new Scene();
-  const camera = new PerspectiveCamera(VIEW.fov, 1, 1, 60);
+  const camera = new PerspectiveCamera(FOV, 1, 1, 200);
 
   // --- the pieces ---------------------------------------------------------------------------------
   const shared = sharedUniforms();
@@ -201,13 +216,27 @@ export function createJointScene(
   const pinWood = woodMaterial(
     HINOKI,
     {
-      grain: Z,
-      across: [X, Y],
-      pith: new Vector2(-38, 26),
+      grain: Y,
+      across: [X, Z],
+      pith: new Vector2(-30, 24),
       runout: new Vector2(0.05, 0),
       seed: 11.3,
       origin: pinOrigin,
       moves: 'pin',
+    },
+    shared,
+    S,
+  );
+  const lowerWood = woodMaterial(
+    HINOKI,
+    {
+      grain: Z,
+      across: [X, Y],
+      pith: new Vector2(110, MM.lower.y - 130),
+      runout: new Vector2(-0.02, 0.015),
+      seed: 5.9,
+      origin: new Vector3(),
+      moves: 'lower',
     },
     shared,
     S,
@@ -220,47 +249,52 @@ export function createJointScene(
     return m;
   };
   const assembly = new Group();
-  assembly.scale.setScalar(S);
+  assembly.rotation.set(TURN.x, TURN.y, 0);
   scene.add(assembly);
-  // A still is a specimen, whole within its frame; the stage crops a longer post and rail at its edges.
-  assembly.add(mesh(postGeometry(options.still ? -230 : undefined), post.material));
+  assembly.add(mesh(postGeometry(), post.material));
   const railGroup = new Group();
-  railGroup.add(mesh(railBodyGeometry(options.still ? 190 : undefined), rail.material));
+  railGroup.add(mesh(railBodyGeometry(), rail.material));
   railGroup.add(mesh(tenonGeometry(), rail.material));
   assembly.add(railGroup);
   const pin = mesh(pinGeometry(), pinWood.material);
   assembly.add(pin);
+  const lower = mesh(lowerGeometry(), lowerWood.material);
+  assembly.add(lower);
 
   const place = (p: number) => {
     const pose = poseAt(p);
     railGroup.position.set(railOrigin.x - pose.rail, 0, 0);
-    pin.position.set(pinOrigin.x, 0, FAR * pose.pin);
+    // the pin waits above its hole, wherever the rail has brought it (his `pose`)
+    pin.position.set(pinOrigin.x - pose.rail, pose.pin, 0);
+    lower.position.set(0, 0, pose.lower);
     shared.uRail.value = pose.rail;
-    shared.uPin.value = FAR * pose.pin;
+    shared.uPin.value = pose.pin;
+    shared.uLower.value = pose.lower;
   };
 
   // --- the light ----------------------------------------------------------------------------------
-  // The key is a softbox under a 40° grid, close to the joint: its light falls off across the
-  // pieces, so the rail's far end and the foot of the post go quietly dark, as in his photograph.
+  // The key is a spot with a soft edge standing where his softbox would: its light falls off across
+  // the pieces, so the rail's far end goes quietly darker, as in his photograph.
   const key = new SpotLight();
-  key.angle = 24 * deg;
   key.penumbra = 1;
   key.decay = 2;
   key.castShadow = true;
   key.shadow.mapSize.setScalar(lite ? 1024 : 2048);
-  key.shadow.bias = -0.00015;
-  key.shadow.normalBias = 0.004;
-  key.shadow.camera.near = 3;
-  key.shadow.camera.far = 20;
-  const focus = new Vector3(0.05, 0.05, 0);
-  key.target.position.copy(focus);
+  key.shadow.bias = -0.0005;
+  key.shadow.normalBias = 0.02;
+  key.shadow.blurSamples = 12;
+  key.shadow.camera.near = KEY_DISTANCE - 25;
+  key.shadow.camera.far = KEY_DISTANCE + 25;
   scene.add(key, key.target);
+  const rim = new DirectionalLight();
+  rim.position.copy(RIM_DIR);
+  scene.add(rim);
 
   const pmrem = new PMREMGenerator(renderer);
   let envMap: Texture | null = null;
   let dark = isDark();
 
-  /** The room the joint stands in, as its surfaces reflect it: the softbox, the fill card, the walls. */
+  /** The room the joint stands in, as its surfaces reflect it: the softbox, the fill, the rim strip. */
   const roomFor = (mood: Mood) => {
     const room = new Scene();
     room.background = new Color(mood.room);
@@ -272,11 +306,10 @@ export function createJointScene(
       m.position.copy(dir).multiplyScalar(9);
       m.lookAt(0, 0, 0);
       room.add(m);
-      return m;
     };
-    const keyDir = bearing(mood.key.azimuth, mood.key.elevation);
-    panel(mood.box.color, mood.box.strength, mood.box.w, mood.box.h, keyDir);
-    panel(mood.fill.color, mood.fill.strength, 12, 12, bearing(mood.fill.azimuth, 5 * deg));
+    panel(mood.box.color, mood.box.strength, mood.box.w, mood.box.h, mood.key.dir);
+    panel(mood.fill.color, mood.fill.strength, 12, 12, FILL_DIR);
+    panel(mood.rim.color, mood.strip, 1.2, 9, RIM_DIR);
     return room;
   };
 
@@ -285,11 +318,11 @@ export function createJointScene(
     renderer.toneMappingExposure = mood.exposure;
     key.color.setHex(mood.key.color);
     key.intensity = mood.key.intensity;
+    key.angle = mood.key.angle;
     key.shadow.radius = mood.key.radius;
-    key.position.copy(
-      bearing(mood.key.azimuth, mood.key.elevation).multiplyScalar(mood.key.distance).add(focus),
-    );
-    key.angle = (dark ? 24 : 40) * deg;
+    rim.color.setHex(mood.rim.color);
+    rim.intensity = mood.rim.intensity;
+    aim();
     const room = roomFor(mood);
     envMap?.dispose();
     envMap = pmrem.fromScene(room, 0.03).texture;
@@ -306,29 +339,33 @@ export function createJointScene(
     shared.uContrastCurve.value = mood.curve;
     shared.uSaturation.value = mood.saturation;
   };
+  /** The key follows the joint wherever the frame puts it. */
+  const aim = () => {
+    const mood = MOODS[dark ? 'dark' : 'light'];
+    key.target.position.copy(assembly.position);
+    key.position.copy(mood.key.dir).multiplyScalar(KEY_DISTANCE).add(assembly.position);
+    rim.target.position.copy(assembly.position);
+    rim.position.copy(RIM_DIR).add(assembly.position);
+    key.target.updateMatrixWorld();
+    rim.target.updateMatrixWorld();
+  };
 
   // --- the frame ----------------------------------------------------------------------------------
-  // The joint sits in the right part of the page's column, clear of the copy; on a phone it sits
-  // above the copy's plate. A shift of the lens, not a turn of the camera, puts it there.
+  // His camera and his placing of the joint: to the right of the copy on a wide screen, above the
+  // copy's plate on a phone. Nothing reaches under the bar at the top.
   const resize = () => {
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
     if (w === 0 || h === 0) return;
-    const narrow = w < 820 && !options.still;
+    const at = options.still ? PLACE.still : w < 820 ? PLACE.narrow : PLACE.wide;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
-    // how many millimetres of the scene the height of the frame holds: on a wide screen the joint
-    // keeps its share of the height; on a phone it keeps its share of the width
-    const span = options.still ? 520 : narrow ? clamp((270 * h) / w, 400, 640) : 300;
-    const distance = (span * S) / (2 * Math.tan((VIEW.fov * deg) / 2));
-    camera.position.copy(bearing(0, VIEW.elevation).multiplyScalar(distance).add(focus));
-    camera.lookAt(focus);
-    const column = Math.min(w, 1280);
-    const left = (w - column) / 2;
-    const cx = options.still ? w * 0.56 : narrow ? w * 0.48 : left + column * 0.8;
-    const cy = narrow ? h * 0.29 : options.still ? h * 0.5 : h * 0.56;
-    camera.setViewOffset(w, h, w / 2 - cx, h / 2 - cy, w, h);
+    camera.position.copy(CAMERA);
+    camera.lookAt(0, 0, 0);
     camera.updateProjectionMatrix();
+    assembly.position.set(at.x, at.y, at.z);
+    assembly.scale.setScalar(S * at.scale);
+    aim();
     draw();
   };
 
@@ -406,7 +443,7 @@ export function createJointScene(
       scene.traverse((o) => {
         if (o instanceof Mesh) o.geometry.dispose();
       });
-      for (const m of [post, rail, pinWood]) m.material.dispose();
+      for (const m of [post, rail, pinWood, lowerWood]) m.material.dispose();
       envMap?.dispose();
       pmrem.dispose();
       renderer.dispose();

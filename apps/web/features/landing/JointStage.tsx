@@ -13,7 +13,8 @@ import type { JointScene } from './joint-scene';
 // - Motion allowed, WebGL there, data not saved: the 3D scene, loaded after the first paint, faded in
 //   once its first frame is drawn, and drawn only while the pose moves and the stage is on screen.
 //   Phones and small GPUs get its lighter path.
-// - No WebGL: stills of the same scene in the same pinned layer, apart, then seated from step 03.
+// - No WebGL, or only a software one: stills of the same scene in the same pinned layer, apart, then
+//   seated from step 03.
 // - Data saved: the line drawing there instead, which costs nothing to fetch. So does no script.
 // - Reduced motion: nothing is pinned. The seated still stands beside the copy and the steps scroll
 //   as text. This is CSS alone, so the server's page is already right.
@@ -235,13 +236,21 @@ export function JointStage() {
   );
 }
 
+/**
+ * Whether WebGL is there on a real GPU. A software rasteriser (SwiftShader, llvmpipe) draws the wood
+ * on the processor, a frame in seconds, and holds up every page of the browser while it does: there
+ * the stills stand in, as they do with no WebGL at all.
+ */
 function hasWebGL(): boolean {
   try {
     const probe = document.createElement('canvas');
     const gl = probe.getContext('webgl2') ?? probe.getContext('webgl');
+    if (!gl) return false;
+    const info = gl.getExtension('WEBGL_debug_renderer_info');
+    const renderer = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : '';
     // The probe's context is let go at once: a page has only a few, and the scene needs one.
-    gl?.getExtension('WEBGL_lose_context')?.loseContext();
-    return Boolean(gl);
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return !/swiftshader|llvmpipe|software/i.test(renderer);
   } catch {
     return false;
   }
