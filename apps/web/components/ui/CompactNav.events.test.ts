@@ -121,11 +121,21 @@ describe('CompactNav over a stage (compact-nav.md, Trigger)', () => {
       }),
     );
     expect(bar(host).getAttribute('data-compact')).toBe('false');
+    // over the hero there is no ground: the band is see-through and lets clicks pass
+    const ground = find(host, '[data-ui="compact-nav-ground"]');
+    expect(ground.className).toContain('opacity-0');
+    expect(ground.className).toContain('pointer-events-none');
     // straight to the end of the page: both steps far above the window
     tops.s2 = -9000;
     tops.s3 = -8000;
     await scroll();
     expect(bar(host).getAttribute('data-compact')).toBe('true');
+    // compact, the band the bar floats in is the page's ground, the full width of the window, so no
+    // copy is read behind the bar or beside it (e2e/landing-nav.spec.ts checks it in a browser)
+    expect(ground.className).toContain('opacity-100');
+    expect(ground.className).toEqual(expect.stringContaining('inset-x-0'));
+    expect(ground.className).toContain('bg-background');
+    expect(ground.getAttribute('aria-hidden')).toBe('true');
     // back between them: it stays compact until step 02 is below the line again
     tops.s2 = 100;
     tops.s3 = 900;
