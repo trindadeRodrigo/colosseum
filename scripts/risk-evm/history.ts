@@ -478,9 +478,9 @@ export function dollarPoolOf(pools: HistoryPool[], dollar: string): Map<string, 
  * The hourly rows of every pool. The hour's price is its last swap's; an hour without a swap carries
  * the last price for up to MAX_CARRY_HOURS, then has none. The quote in dollars: the dollar token at
  * par (`usdg_at_par` on Robinhood Chain); another stock at its own dollar pool's price that hour
- * (`implied_from_<pool>`); anything else (the native token, its wrapper) implied from this pool's own
- * price and the asset's dollar price that hour (`implied_from_<asset's dollar pool>`). An hour where
- * the reference has no price leaves the quote without a dollar value, and its swaps unpriced.
+ * (`implied_from_<pool>`); the native token and its wrapper at the chain's one price for the hour, the
+ * swap-weighted median of what every native-quoted pool implies (`native_median_of_<n>_pools`). An hour
+ * where the reference has no price leaves the quote without a dollar value, and its swaps unpriced.
  */
 export function hourlyRows(inp: PricingInput): HourRow[] {
   const dollar = inp.dollar.toLowerCase();
@@ -520,6 +520,31 @@ export function hourlyRows(inp: PricingInput): HourRow[] {
     const v = price.get(dp.address)?.get(h)?.v;
     return v === undefined ? null : { v, pool: dp.address };
   };
+  // the native token's dollar price, one per hour for the chain: the swap-weighted median of what every
+  // pool quoted in it implies from its own price that hour and its stock's dollar price, so a near-empty
+  // pool a swap pushed to an extreme is valued at the market's price, not its own; carried 24 hours
+  const isNative = (p: HistoryPool) =>
+    p.other === ZERO_ADDRESS || p.otherSymbol === 'wrapped native';
+  const nativeUsd = new Map<number, { v: number; pools: number; carried: number }>();
+  let lastNative: { v: number; pools: number } | null = null;
+  let lastNativeH = 0;
+  for (const h of inp.hours) {
+    const implied: Array<{ v: number; w: number }> = [];
+    for (const p of inp.pools) {
+      if (!isNative(p)) continue;
+      const own = price.get(p.address)?.get(h);
+      const n = counts.get(p.address)?.get(h) ?? 0;
+      if (!own || own.carried > 0 || n === 0 || !(own.v > 0)) continue;
+      const r = usdOfStock(p.asset, h);
+      if (r) implied.push({ v: r.v / own.v, w: n });
+    }
+    if (implied.length) {
+      lastNative = { v: weightedMedian(implied), pools: implied.length };
+      lastNativeH = h;
+    }
+    if (lastNative && (h - lastNativeH) / HOUR <= MAX_CARRY_HOURS)
+      nativeUsd.set(h, { ...lastNative, carried: (h - lastNativeH) / HOUR });
+  }
   const out: HourRow[] = [];
   for (const p of inp.pools) {
     for (const h of inp.hours) {
@@ -535,11 +560,11 @@ export function hourlyRows(inp: PricingInput): HourRow[] {
           quoteUsd = r.v;
           method = `implied_from_${r.pool}`;
         }
-      } else if (own) {
-        const r = usdOfStock(p.asset, h);
-        if (r && own.v > 0) {
-          quoteUsd = r.v / own.v;
-          method = `implied_from_${r.pool}`;
+      } else if (isNative(p)) {
+        const r = nativeUsd.get(h);
+        if (r) {
+          quoteUsd = r.v;
+          method = `native_median_of_${r.pools}_pools${r.carried ? `_carried_${r.carried}h` : ''}`;
         }
       }
       out.push({
@@ -556,6 +581,18 @@ export function hourlyRows(inp: PricingInput): HourRow[] {
     }
   }
   return out;
+}
+
+/** The value with half the weight at or below it (the lower one when the weight splits exactly). */
+export function weightedMedian(xs: Array<{ v: number; w: number }>): number {
+  const sorted = [...xs].sort((a, b) => a.v - b.v);
+  const total = sorted.reduce((a, x) => a + x.w, 0);
+  let acc = 0;
+  for (const x of sorted) {
+    acc += x.w;
+    if (acc * 2 >= total) return x.v;
+  }
+  return (sorted.at(-1) as { v: number }).v;
 }
 
 /** The hours of a span, each hour's start in unix seconds, the hour of `to` included. */

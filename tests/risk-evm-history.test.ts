@@ -28,6 +28,7 @@ import {
   type SwapRow,
   swapFilters,
   swapSides,
+  weightedMedian,
 } from '../scripts/risk-evm/history';
 import { buildFlowRows, swapsFromArray } from '../scripts/risk-evm/history-flow';
 import { type Cursor, runHistory } from '../scripts/risk-evm/history-run';
@@ -496,11 +497,12 @@ describe('prices by the hour and the quote in dollars', () => {
     expect(at('pa', 2)).toMatchObject({ quotePerAsset: expect.closeTo(110, 6), carriedHours: 0 });
     expect(at('pa', 26)).toMatchObject({ quotePerAsset: expect.closeTo(110, 6), carriedHours: 24 });
     expect(at('pa', 27)).toMatchObject({ quotePerAsset: null, carriedHours: null, quoteUsd: 1 });
-    // the native token: this pool's price against the asset's dollar price, the same hour
+    // the native token: the chain's one price for the hour, implied by the pools that swapped in it
     expect(at('pe', 0)?.quoteUsd).toBeCloseTo(102 / 0.05, 4);
-    expect(at('pe', 0)?.quoteUsdMethod).toBe('implied_from_pa');
-    // two hours on, the asset is 110 in its dollar pool and still 0.05 ETH here (carried)
-    expect(at('pe', 2)?.quoteUsd).toBeCloseTo(110 / 0.05, 4);
+    expect(at('pe', 0)?.quoteUsdMethod).toBe('native_median_of_1_pools');
+    // two hours on, no native pool swapped: the hour's price is carried, not re-implied from a carried price
+    expect(at('pe', 2)?.quoteUsd).toBeCloseTo(102 / 0.05, 4);
+    expect(at('pe', 2)?.quoteUsdMethod).toBe('native_median_of_1_pools_carried_2h');
     expect(at('pe', 27)).toMatchObject({ quoteUsd: null, quoteUsdMethod: null });
     // another stock: its own dollar pool
     expect(at('pab', 0)).toMatchObject({
@@ -509,6 +511,42 @@ describe('prices by the hour and the quote in dollars', () => {
     });
     // a token nobody knows: no decimals, no price, no dollar value
     expect(at('px', 0)).toMatchObject({ quotePerAsset: null, quoteUsd: null, swapsInHour: 1 });
+  });
+
+  it('a near-empty native pool pushed to an absurd price is valued at the market, not at itself', () => {
+    const broken = pool('pbroken', A, ETH, { tvlUsd: 1 });
+    const dec = new Map(decimals);
+    dec.set('pbroken', poolDecimals(broken, robinhood, () => 18) as PoolDecimals);
+    const rows = hourlyRows({
+      pools: [...pools, broken],
+      decimals: dec,
+      swaps: [
+        swap(pa, h0 + 60, 100, 1),
+        swap(pe, h0 + 200, 0.05, 3), // AAA at 0.05 ETH: ETH is 2,000 dollars
+        swap(broken, h0 + 300, 1e-30, 9), // AAA at 1e-30 ETH: ETH would be 10^32 dollars
+      ],
+      hours: hoursOf(h0, h0 + 3600),
+      dollar,
+    });
+    const atH0 = (p: string) =>
+      rows.find((r) => r.pool === p && r.hour === new Date(h0 * 1000).toISOString());
+    // two pools with one swap each: the weighted median is the lower, the market's
+    expect(atH0('pe')?.quoteUsd).toBeCloseTo(2000, 2);
+    expect(atH0('pbroken')?.quoteUsd).toBeCloseTo(2000, 2);
+    expect(atH0('pbroken')?.quoteUsdMethod).toBe('native_median_of_2_pools');
+    expect(
+      weightedMedian([
+        { v: 1, w: 1 },
+        { v: 1e32, w: 1 },
+      ]),
+    ).toBe(1);
+    expect(
+      weightedMedian([
+        { v: 1, w: 1 },
+        { v: 2, w: 5 },
+        { v: 1e32, w: 1 },
+      ]),
+    ).toBe(2);
   });
 
   it('a swap as the flow counts it: the side by which token went in, the quote leg in units', () => {
