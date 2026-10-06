@@ -13,7 +13,7 @@ export default function Page() {
     const el = canvas.current;
     if (!el) return;
     const query = new URLSearchParams(window.location.search);
-    const scene = createJointScene(el, { still: true, third: query.get('third') === '1' });
+    const scene = createJointScene(el, { still: true });
     scene.setProgress(query.get('state') === 'seated' ? 1 : 0);
     // the still option settles in one frame; the drawing is read after it
     const id = window.setTimeout(() => {

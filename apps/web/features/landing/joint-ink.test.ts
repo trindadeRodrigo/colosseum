@@ -44,11 +44,16 @@ describe('the drawing of a piece', () => {
     expect(root.length).toBeGreaterThanOrEqual(4);
   });
 
-  it('cuts the mortise right through the post, and the pin hole right through the tenon', () => {
+  it('cuts the mortise right through the post, and the slot right through the tenon', () => {
     const throughX = edgesOf(postGeometry()).filter(
-      (e) => e.crease && e.a.y === e.b.y && Math.abs(e.a.y) < 30 && Math.abs(e.a.x - e.b.x) === 50,
+      (e) => e.crease && e.a.y === e.b.y && Math.abs(e.a.y) < 20 && Math.abs(e.a.x - e.b.x) === 30,
     );
-    expect(throughX.length).toBe(4);
-    expect(edgesOf(pinGeometry()).length).toBeGreaterThan(48);
+    expect(throughX).toHaveLength(4);
+    // the slot's four corners each run the tenon's whole height
+    const down = edgesOf(railGeometry()).filter(
+      (e) => e.crease && e.a.x > 40 && e.a.x < 50 && Math.abs(e.a.y - e.b.y) === 20,
+    );
+    expect(down).toHaveLength(4);
+    expect(edgesOf(pinGeometry()).filter((e) => e.crease)).toHaveLength(12);
   });
 });

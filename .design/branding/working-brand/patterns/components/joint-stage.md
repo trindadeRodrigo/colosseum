@@ -1,7 +1,7 @@
 # Joint stage (pinned hero)
 > Type: custom | Component: `<JointStage>` | Source: landing prototype `.stage` / `.sticky` / `#scene` (three.js)
 
-The landing hero: the through-tenon joint (post, rail, pin in hardwood and hinoki) sits pinned behind the copy and **seats as you scroll steps 01–03**, then the stage releases and scrolls away with the page. It is the brand's lock animation (H2) driven by the reader, not by a timer.
+The landing hero: one slender pinned through-tenon (post, rail, pin), drawn as a joiner's drawing in the brand's ink (gate `JOINT-3D`), sits pinned behind the copy and **seats as you scroll steps 01–03**, then the stage releases and scrolls away with the page. It is the brand's lock animation (H2) driven by the reader, not by a timer.
 
 ## Anatomy
 

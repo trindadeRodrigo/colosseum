@@ -8,7 +8,7 @@ import {
   Vector3,
   WebGLRenderer,
 } from 'three';
-import { MM, pinGeometry, postGeometry, railGeometry, thirdGeometry } from './joint-geometry';
+import { MM, pinGeometry, postGeometry, railGeometry } from './joint-geometry';
 import { type Ink, InkPiece } from './joint-ink';
 import { DRAW, poseAt } from './joint-pose';
 
@@ -45,8 +45,6 @@ export type SceneOptions = {
   light?: boolean;
   /** The joint alone, whole in a square frame: how the stills of the fallbacks are made. */
   still?: boolean;
-  /** A second rail into the post's front face, with its own through-tenon. */
-  third?: boolean;
 };
 
 /** Read by the build's budget check (scripts/check-build.mjs, STAGE_MARKERS). */
@@ -60,11 +58,12 @@ const MARK = 'tf-joint-ink';
 const S = 1 / 15;
 const CAMERA = new Vector3(14, 17, 24);
 const FOV = 30;
-const TURN = { x: 0.12, y: -0.62 };
+/** The joint's bearing at the hero: the rail running back to the left, the tenon's nose toward the eye. */
+const BEARING = { x: 0.12, y: -0.8 };
 const PLACE = {
-  wide: { x: 4.6, y: -0.55, z: -2.76, scale: 1 },
-  narrow: { x: 1.1, y: 4.55, z: 0, scale: 0.31 },
-  still: { x: 1.9, y: -0.5, z: 0, scale: 0.72 },
+  wide: { x: 5.0, y: -0.2, z: -3.0, scale: 0.78 },
+  narrow: { x: 1.3, y: 6.0, z: 0, scale: 0.16 },
+  still: { x: 1.2, y: 0, z: 0, scale: 0.82 },
 };
 
 /** His tokens: washi and hinoki-deep on black; ink and hardwood on paper (color-system.md). */
@@ -103,24 +102,24 @@ export function createJointScene(
   camera.lookAt(0, 0, 0);
 
   const assembly = new Group();
-  assembly.rotation.set(TURN.x, TURN.y, 0);
+  assembly.rotation.set(BEARING.x, BEARING.y, 0);
   scene.add(assembly);
-  const post = new InkPiece(postGeometry(options.third));
+  const post = new InkPiece(postGeometry());
   const rail = new InkPiece(railGeometry());
   const pin = new InkPiece(pinGeometry());
-  const third = options.third ? new InkPiece(thirdGeometry()) : null;
-  const pieces = [post, rail, pin, ...(third ? [third] : [])];
+  const pieces = [post, rail, pin];
   for (const piece of pieces) assembly.add(piece.object);
 
   const railOrigin = -MM.post.w / 2;
-  const pinOrigin = railOrigin + MM.pin.at;
+  const pinOrigin = railOrigin + (MM.slot.x0 + MM.slot.x1) / 2;
   const place = (p: number) => {
     const pose = poseAt(p);
     rail.object.position.set(railOrigin - pose.rail, 0, 0);
-    // the pin waits behind the place its hole will come to, on the side away from the copy, and goes
-    // in once the rail is all but home (the last of the draw is the pin's)
-    pin.object.position.set(pinOrigin - Math.min(pose.rail, DRAW), 0, -pose.pin);
-    third?.object.position.set(0, 0, pose.lower);
+    // the pin waits above the place its slot will come to, and goes in once the rail is all but home
+    // (the last of the draw is the pin's)
+    pin.object.position.set(pinOrigin - Math.min(pose.rail, DRAW), pose.pin, 0);
+    assembly.rotation.y = BEARING.y + pose.turn;
+    assembly.updateMatrixWorld(true);
     for (const piece of pieces) piece.update(camera.position);
   };
 
